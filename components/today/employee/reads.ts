@@ -86,3 +86,7 @@ export const readWaitingForYou=cache((s:SessionContext)=>shared(s,()=>{
  const on=(code:string)=>moduleState(s,code,null)==='on';
  return pendingTaskSummary(s,undefined,{attendance:on('attendance'),claims:on('claims'),performance:on('performance'),rewards:on('rewards')});
 }));
+
+/** The Notice Board, ported from the retired dashboard (owner decision, 12 Nov 2026): the person's newest live notices
+ * with the exact unread count (core/employee-today-reads.ts). */
+export const readOwnNotices=cache(own.readOwnNotices);

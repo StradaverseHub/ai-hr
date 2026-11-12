@@ -17,6 +17,7 @@ import {readEmployeeHomeIdentityContextTx,readEmployeeHomePayHints} from './empl
 import {readMyPayrollReadiness} from './pre-salary/person-items';
 import {readLoopCards} from './loops/cards';
 import {readEmployeeHomeCalendar} from './employee-home-calendar';
+import {readEmployeeHomeNotices} from './employee-home-notices';
 import {readHomeTeamCalendar,readHomeTeamCalendarAndManagers} from './employee-home-sharing';
 import {reportingLinesFor} from './read';
 import {attendanceEmploymentRangePage} from '../packs/attendance/service';
@@ -79,3 +80,8 @@ export const readManagersAway=async(s:SessionContext,employmentId:string,today:s
  const [lines,calendar]=await sharedOwnRead(s,()=>Promise.all([reportingLinesFor(s,employmentId),readHomeTeamCalendar(s,employmentId,today,to)]));
  return managerAbsences(lines.managers.map(line=>line.employmentId),calendar.days);
 };
+
+/** The Notice Board (owner decision, 12 Nov 2026, ported from the retired dashboard): the person's newest live notices,
+ * at most five, with the exact unread count, from the Notice owner's own Home reader (core/employee-home-notices.ts),
+ * which proves the employment is the person's own first. */
+export const readOwnNotices=(s:SessionContext,employmentId:string)=>sharedOwnRead(s,()=>readEmployeeHomeNotices(s,employmentId));

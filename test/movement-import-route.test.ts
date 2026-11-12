@@ -19,6 +19,13 @@ describe('single-template Movement transport (ac6645ec)',()=>{
   expect(response.headers.get('content-type')).toContain('spreadsheetml');expect(mocks.template).toHaveBeenCalledTimes(1);expect(mocks.template.mock.calls[0]).toHaveLength(1);
   expect(mocks.build.mock.calls[0][0]).toMatchObject({tenantId:'tenant',types:[{code:'transfer'}],companies:[]});
  });
+ it('names a template too large to build in plain words on download, never "use Personnel"',async()=>{
+  // A list too large to read for the template and a Reference beyond its sheet bound are both one finite code.
+  mocks.template.mockRejectedValueOnce(new Error('movement_reference_catalog_too_large'));
+  const catalogue=await POST(request('download'));expect(catalogue.status).toBe(400);expect(await catalogue.json()).toEqual({ok:false,error:'movement_template_too_large'});
+  mocks.build.mockRejectedValueOnce(new Error('movement_template_too_large'));
+  const sheet=await POST(request('download'));expect(sheet.status).toBe(400);expect(await sheet.json()).toEqual({ok:false,error:'movement_template_too_large'});
+ });
  it('stores the actual uploaded bytes on a background check and only enqueues it',async()=>{
   const file=new File(['exact fictional bytes'],'movements.xlsx');const response=await POST(request('preview',{file,operationKey:'op'}));
   expect(response.status).toBe(202);expect(await response.json()).toEqual({ok:true,job:{id:'check',state:'queued'},existing:false});

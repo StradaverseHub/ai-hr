@@ -160,6 +160,20 @@ it('uses stable Company identities for both EBAC-style overtime branches through
  const [duplicateLabel]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'EBAC HOME SDN BHD'}).returning();
  const options=await payFormulaOptions(ctx),field=options.personnelFields.find(f=>f.key==='companyId');expect(field?.listValues).toContainEqual({value:base.companyId,label:'EBAC HOME SDN BHD · '+base.companyId});expect(field?.listValues).toContainEqual({value:duplicateLabel.id,label:'EBAC HOME SDN BHD · '+duplicateLabel.id});
 });
+it('matches the effective company code through companyCode, and refuses saving a companyId compared with a code',async()=>{
+ await owner.db.update(schema.company).set({companyLabel:'ACMT'}).where(eq(schema.company.id,base.companyId));
+ const allowance=await upsertPayComponent(ctx,{...item,code:'COMPANY_FIXED',name:'Company fixed allowance',orpOvertime:true,rule:null});
+ await setEmploymentPayComponent(ctx,{employmentId:employee.employmentId,componentId:allowance.id,amount:1000,effectiveFrom:context.period+'-01'});
+ const source=(field:string,a:string,b:string)=>`If {#EmployeeProfile}("${field}") = "${a}" Or {#EmployeeProfile}("${field}") = "${b}" Then\n Return ({#Basic} + {#FixedAllowances}) / 26 / 8 * 1.5 * {#Input}\nElse\n Return {#Basic} / 26 / 8 * 1.5 * {#Input}\nEnd If`;
+ // Independent expectations: (5000 + 1000) / 26 / 8 * 1.5 * 3 = 129.81; 5000 / 26 / 8 * 1.5 * 3 = 108.17.
+ const yes=await savePayFormula(ctx,{formulaId:'CODE_YES',description:'Company code branch',method:'write',source:source('companyCode','ACME','ACMT')}),no=await savePayFormula(ctx,{formulaId:'CODE_NO',description:'Other company code branch',method:'write',source:source('companyCode','ACME','OTHER')});
+ const matched=await testPayFormula(ctx,{...yes,context});expect(matched.amount).toBe('129.81');expect((await testPayFormula(ctx,{...no,context})).amount).toBe('108.17');
+ expect(matched.readRequirements.fieldIds).toContain('employment.organisation_assignment.companyname');
+ await expect(savePayFormula(ctx,{formulaId:'CODE_AS_ID',description:'The reported production mistake',method:'write',source:source('companyId','ACME','ACMT')})).rejects.toThrow(/companyId is the company's internal ID, so it never equals "ACME"\. Use companyCode/);
+ const options=await payFormulaOptions(ctx),code=options.personnelFields.find(f=>f.key==='companyCode');
+ expect(code).toMatchObject({enabled:true,formulaType:'string',dateBasis:'effective-date',functionCode:'EmployeeProfile',labelKey:'payFormula.fields.companyCode',listValues:[]});
+ expect(options.personnelFields.find(f=>f.key==='companyId')?.labelKey).toBe('payFormula.fields.companyId');
+});
 it('refuses current-only history and sensitive authoring while retaining the existing formula contract',async()=>{
  const historical=await savePayFormula(ctx,{formulaId:'PAST',description:'No current-as-past source',method:'write',source:'{#Explain}({#EmployeeInformation}("profile.personal_details.fullname"))\nReturn 1'});
  expect(await testPayFormula(ctx,{...historical,context})).toMatchObject({passed:false,error:expect.stringContaining('current-only')});

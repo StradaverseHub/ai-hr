@@ -2752,8 +2752,16 @@
       "comingUpEmpty": "Nothing coming up for your team.",
       "comingUpPartial": "Some items could not be loaded just now.",
       "otherWork": "{count, plural, one {# other item is waiting for you} other {# other items are waiting for you}}",
-      "seeAllWork": "See all {count} in Tasks"
-    }
+      "seeAllWork": "See all {count} in Tasks",
+      "teamTodayTitle": "Your team today",
+      "teamTodayEmpty": "No attendance is recorded for your team today.",
+      "teamTodayOpen": "Open My Team",
+      "reviewDue": "Review for {name} due {date}",
+      "reviewDueUnnamed": "A review is due {date}",
+      "holiday": "{name}, a public holiday, on {date}",
+      "holidayUnnamed": "A public holiday on {date}"
+    },
+    "workspaceTitle": "Your workspace"
   },
   "why": {
     "link": "Why?",

@@ -86,7 +86,7 @@ export type DashboardCardChoice = {
   displayOrder: number;
   /**
    * OPTIONAL so every existing caller keeps compiling; supplied in practice by both real sources (the
-   * tenant's dashboard_card_config rows and BUILTIN_ROLE_DASHBOARD_CARDS). The normaliser needs it only to
+   * tenant's dashboard_card_config rows and BUILTIN_DASHBOARD_CARDS). The normaliser needs it only to
    * enforce the MAX_SHORTCUTS cap (feedback 3d2bc793) — with it absent no card counts as a shortcut and
    * the cap is inert, which is the correct behaviour for a caller that does not model card types.
    */
@@ -358,10 +358,9 @@ export function normalizeDashboardLayout(raw: unknown, cards: readonly Dashboard
 //
 // Managers and HR Admins get the SAME Customize Dashboard experience employees have. Two pure additions:
 //
-//  1. A per-ROLE built-in fallback catalog (`BUILTIN_ROLE_DASHBOARD_CARDS`): the manager/admin dashboard
-//     sections card-wrapped, used when a tenant has no dashboard_card_config rows for the role — the same
-//     never-render-blank guarantee employees have. `BUILTIN_DASHBOARD_CARDS` above deliberately STAYS the
-//     employee set (its long-standing meaning; existing callers and saved layouts are untouched).
+ //  1. A per-ROLE built-in fallback catalog for the manager/admin dashboards. RETIRED with the old dashboard
+//     (owner decision, 12 Nov 2026): no screen draws those dashboards any more. `BUILTIN_DASHBOARD_CARDS` above
+//     STAYS the employee set.
 //
 //  2. A per-ROLE stored layout shape: `app_user.dashboard_layout` evolves from one flat
 //     `{ selected, order }` to `{ employee?: {…}, manager?: {…}, hr_admin?: {…} }` so a person who wears
@@ -443,57 +442,3 @@ export function removeRoleLayout(
   }
   return Object.keys(out).length > 0 ? out : null;
 }
-
-const builtinCard = (key: string): BuiltinDashboardCard => BUILTIN_DASHBOARD_CARDS.find((c) => c.cardKey === key)!;
-
-/** The card-wrapped manager dashboard sections (9606c59f) — mirrors the 0299 seed. */
-const BUILTIN_MANAGER_CARDS: BuiltinDashboardCard[] = [
-  // a00c4f64: href follows the calendar to /leave/tracker. It was the in-page anchor '#planned-absences',
-  // which now scrolls to nothing — see the same repoint in lib/dashboard-cards CARD_META and migration 0404.
-  { cardKey: 'teamAwayToday', name: 'Team Away Today', cardType: 'information', href: '/leave/tracker', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 1 },
-  { cardKey: 'approvalRequests', name: 'Approval Requests', cardType: 'action', href: '/approvals', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 2 },
-  { cardKey: 'upcomingReminders', name: 'Upcoming Reminders', cardType: 'information', href: '#upcoming-events', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 3 },
-];
-
-/** The card-wrapped HR-admin dashboard sections (9606c59f) — mirrors the 0299 seed. */
-const BUILTIN_HR_ADMIN_CARDS: BuiltinDashboardCard[] = [
-  { cardKey: 'headcount', name: 'Headcount', cardType: 'information', href: '/personnel', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 1 },
-  { cardKey: 'pendingLeave', name: 'Pending Leave', cardType: 'information', href: '/leave', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 2 },
-  { cardKey: 'companies', name: 'Companies', cardType: 'information', href: '/admin/organization', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 3 },
-  // display_order 4 used to TIE with plannedAbsences; a00c4f64 removed that row, so 4 is this card's alone.
-  { cardKey: 'latestPayroll', name: 'Latest Payroll', cardType: 'information', href: '/payroll', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 4 },
-];
-
-/** Sections shared with the employee dashboard, plus the wrapped attendance breakdown (manager + admin). */
-const BUILTIN_ATTENDANCE_OVERVIEW: BuiltinDashboardCard = { cardKey: 'attendanceOverview', name: 'Attendance Overview', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 8 };
-
-/**
- * Built-in default card catalog PER ROLE — the same never-render-blank fallback employees have, for every
- * role: used when a tenant has no active dashboard_card_config rows for that role (e.g. provisioned after
- * the 0299 seed migration ran). Mirrors the 0212 + 0296 + 0299 + 0391 seeds as amended by 0404 (which
- * deleted the shared plannedAbsences row from all three roles); employee IS `BUILTIN_DASHBOARD_CARDS`.
- */
-export const BUILTIN_ROLE_DASHBOARD_CARDS: Record<DashboardLayoutRole, BuiltinDashboardCard[]> = {
-  employee: BUILTIN_DASHBOARD_CARDS,
-  manager: [
-    ...BUILTIN_MANAGER_CARDS,
-    builtinCard('upcomingEvents'),
-    builtinCard('recentlyJoined'),
-    builtinCard('recentActivity'),
-    BUILTIN_ATTENDANCE_OVERVIEW,
-    // 6e122302 — every role gets the notice card, because a notice targets an EMPLOYMENT and a manager or
-    // an HR admin is an employee who receives announcements like anyone else. Giving it to the employee
-    // dashboard alone would hide from managers the notices they were personally sent.
-    builtinCard('noticeBoard'),
-  ],
-  hr_admin: [
-    ...BUILTIN_HR_ADMIN_CARDS,
-    builtinCard('upcomingEvents'),
-    builtinCard('recentlyJoined'),
-    builtinCard('recentActivity'),
-    BUILTIN_ATTENDANCE_OVERVIEW,
-    { cardKey: 'headcountByCompany', name: 'Headcount by Company', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 9 },
-    { cardKey: 'latestPayrollRun', name: 'Latest Payroll Run', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 10 },
-    builtinCard('noticeBoard'),
-  ],
-};

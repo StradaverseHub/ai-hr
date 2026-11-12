@@ -939,8 +939,12 @@ export function resolvePayRule(
  *  The same CODE may appear more than once (a recurring value and a one-off batch value), which is why the
  *  result is positional. */
 export type ResolvablePayComponent = {
-  /** Retained original entry, never inferred from a previously calculated transaction. */
+  /** The saved monetary input `{#PayItemInput}` and unprorated rule-free figures read (documented in
+   *  lib/pay-formula-registry.ts). Never this row's own `{#Input}` when `currentInput` is present. */
   formulaInput?:string;
+  /** This row's own `{#Input}`, decided by lib/pay-formula-input.ts (the keyed quantity of a priced one-off row,
+   *  otherwise the saved amount). null = the row has no input; undefined = older caller, `formulaInput` applies. */
+  currentInput?:string|null;
   prorates?:boolean;
   prorateOverride?:boolean|null;
   rounding?:string|null;

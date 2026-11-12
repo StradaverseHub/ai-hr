@@ -360,9 +360,8 @@ export async function getCard(ctx: SessionContext, id: string): Promise<Dashboar
 /**
  * The ACTIVE dashboard cards the dashboard customizer (feedback 578a2fcf, role-widened by 9606c59f)
  * renders against for ONE role: the flattened, HR-configured catalog that role may show / add / reorder,
- * i.e. listCards filtered to status='active' AND audience ∋ role. When a tenant has NO rows for the role
- * (provisioned after the seed migrations), the caller falls back to lib/dashboard-layout
- * BUILTIN_ROLE_DASHBOARD_CARDS[role], so no dashboard ever renders blank. Read-only → no DomainEvent
+ * i.e. listCards filtered to status='active' AND audience ∋ role. The old dashboard that drew these is retired
+ * (owner decision, 12 Nov 2026); My Home reads its own projection (listEmployeeHomeCards below). Read-only → no DomainEvent
  * (substrate skip, per CLAUDE.md "When NOT to append": read operation).
  */
 export type EmployeeDashboardCard = {

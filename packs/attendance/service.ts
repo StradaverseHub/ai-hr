@@ -31,6 +31,8 @@ export * from '../../core/attendance-explain';
 export * from '../../core/attendance-clock';
 
 export * from '../../core/attendance-clock-read';
+// Manager Today's "Your team today" counts (owner decision, 12 Nov 2026).
+export * from './team-today';
 export * from '../../core/mobile-clock-attempt';
 export {resolveOwnClockEmployment,OwnClockEmploymentUnavailableError} from '../../core/attendance-clock-subject';
 

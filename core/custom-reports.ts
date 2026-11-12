@@ -414,7 +414,7 @@ export async function runPayrollComparisonReport(ctx:SessionContext,scopeIds:rea
     assertValid(spec);
     if(spec.datasetId!==PAYROLL_COMPARISON_DATASET)throw new MasterReportAccessError();
     if(!saved&&!builtIn)await comparisonAccess(tx,ctx,spec,'create',scopeIds);
-    const execution=await executePayrollComparisonTx(tx,ctx,spec,scopeIds,builtIn?builtInFilters:p.filters??{},p.verb??'view');
+    const execution=await executePayrollComparisonTx(tx,ctx,spec,scopeIds,builtIn?builtInFilters:p.filters??{},p.verb??'view',{readyCompanies:true});
     if(builtIn)await attachPayrollReconciliationRemarks(tx,ctx,execution);
     let canEdit=true;try{await comparisonAccess(tx,ctx,spec,'edit',execution.companyIds);}catch(error){if(error instanceof MasterReportAccessError)canEdit=false;else throw error;}
     let canExport=true;try{await comparisonAccess(tx,ctx,spec,'export',execution.companyIds);}catch(error){if(error instanceof MasterReportAccessError)canExport=false;else throw error;}
@@ -436,14 +436,18 @@ export async function recordPayrollComparisonRun(ctx:SessionContext,run:Awaited<
     await comparisonAccess(tx,ctx,spec,kind==='export'?'export':'view',run.companyIds);
     const {employeeSearch,employmentId,...filters}=run.filters;
     const auditFilters={...filters,employeeFilterApplied:!!(employeeSearch||employmentId)};
-    const snapshot={payItemCode:run.definition.payItemCode,filters:auditFilters,runs:run.result.runs,sourceRevisions:run.sourceRevisions,generatedAt:run.generatedAt};
+    // Which companies the rows and totals cover, and why each other company with payroll was left out (ids and
+    // reason codes only; no names or money).
+    const inclusion=run.inclusion?{includedCompanyIds:run.inclusion.includedCompanyIds,
+      excluded:run.inclusion.excluded.map(({companyId,reasons})=>({companyId,reasons})),neverRanCount:run.inclusion.neverRanCount}:null;
+    const snapshot={payItemCode:run.definition.payItemCode,filters:auditFilters,runs:run.result.runs,sourceRevisions:run.sourceRevisions,inclusion,generatedAt:run.generatedAt};
     const digest=createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
     const scopes=sql`ARRAY[${sql.join(run.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]`;
     const [audit]=await tx.execute(sql`select app.record_custom_report_run(${run.reportId}::uuid,${run.version}::integer,
       ${kind},${format},${scopes},${run.result.displayedRows},${run.result.available?'success':'skipped'},${'comparison:'+digest}) as id`) as unknown as {id:string}[];
     await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'custom-report',aggregateId:run.reportId??audit.id,
       eventType:'custom-report.comparison-recorded',actor:actorOf(ctx),payload:{auditId:audit.id,reportVersion:run.version,kind,format,
-        payItemCode:run.definition.payItemCode,filters:auditFilters,sourceRuns:run.result.runs,sourceRevisions:run.sourceRevisions,generatedAt:run.generatedAt,digest}});
+        payItemCode:run.definition.payItemCode,filters:auditFilters,sourceRuns:run.result.runs,sourceRevisions:run.sourceRevisions,inclusion,generatedAt:run.generatedAt,digest}});
     return audit.id;
   });
 }

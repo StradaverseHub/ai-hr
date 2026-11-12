@@ -33,7 +33,6 @@ import type { SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import {
   BUILTIN_DASHBOARD_CARDS,
-  BUILTIN_ROLE_DASHBOARD_CARDS,
   FIXED_ROW_KEYS,
   MAX_FIRST_ROW,
   isFixedRowKey,
@@ -41,7 +40,6 @@ import {
   partitionDashboardRows,
   type DashboardCardChoice,
 } from '../lib/dashboard-layout';
-import { getDashboardLayout, setDashboardLayout } from '../core/dashboard-prefs';
 import { listDashboardCards, listEmployeeDashboardCards } from '../core/dashboard-card-config';
 import { closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -114,11 +112,9 @@ describe('partitionDashboardRows — the three-way split still works (2806443b m
 describe('normalizeDashboardLayout against the builtin catalog (a00c4f64 flags)', () => {
   it('the Leave Calendar is out of the catalog and NOTHING is mandatory any more', () => {
     expect(BUILTIN_DASHBOARD_CARDS.find((c) => c.cardKey === 'plannedAbsences')).toBeUndefined();
-    // It was the only mandatory card; with it gone every card on every role catalog is removable.
-    for (const [role, cards] of Object.entries(BUILTIN_ROLE_DASHBOARD_CARDS)) {
-      expect(cards.filter((c) => c.mandatory).map((c) => c.cardKey), `${role} mandatory cards`).toEqual([]);
-      expect(cards.map((c) => c.cardKey), `${role} still lists the calendar`).not.toContain('plannedAbsences');
-    }
+    // It was the only mandatory card; with it gone every builtin card is removable. (The manager and HR-admin
+    // builtin catalogs were retired with the old dashboard on 12 Nov 2026.)
+    expect(BUILTIN_DASHBOARD_CARDS.filter((c) => c.mandatory).map((c) => c.cardKey)).toEqual([]);
     // Display-order swap (0296) is untouched by the move: upcomingEvents 5, recentlyJoined 6.
     expect(BUILTIN_DASHBOARD_CARDS.find((c) => c.cardKey === 'upcomingEvents')!.displayOrder).toBe(5);
     expect(BUILTIN_DASHBOARD_CARDS.find((c) => c.cardKey === 'recentlyJoined')!.displayOrder).toBe(6);
@@ -298,7 +294,7 @@ describe('0404 data migration — the Leave Calendar leaves the dashboard catalo
     expect(byKey.get('recentlyJoined')!.displayOrder).toBe(6);
   });
 
-  it('a SAVED layout that still names the calendar loads without it, and keeps the rest', async () => {
+  it('a layout saved before the calendar left normalises without it, and keeps the rest', async () => {
     // The DB half of the "no dashboard_layout migration needed" claim: the JSON is written before the
     // card is deleted, and read back after.
     await owner.db.execute(sql.raw(seed0212));
@@ -307,23 +303,22 @@ describe('0404 data migration — the Leave Calendar leaves the dashboard catalo
     const before = await listEmployeeDashboardCards(ctx);
     const keys = before.map((c) => c.cardKey);
     expect(keys).toContain('plannedAbsences');
-    await setDashboardLayout(ctx, { selected: keys, order: keys }, before);
+    const saved = normalizeDashboardLayout({ selected: keys, order: keys }, before);
     // …now the card goes away.
     for (const stmt of stmts0404) await owner.db.execute(sql.raw(stmt));
     const after = await listEmployeeDashboardCards(ctx);
-    const layout = await getDashboardLayout(ctx, after);
+    const layout = normalizeDashboardLayout(saved, after);
     expect(layout.selected).not.toContain('plannedAbsences');
     expect(layout.order).not.toContain('plannedAbsences');
     expect(layout.selected).toEqual(keys.filter((k) => k !== 'plannedAbsences'));
   });
 
-  it('an employee CAN remove Pending Tasks: the removal persists', async () => {
+  it('an employee CAN remove Pending Tasks: the write rule keeps the removal', async () => {
     await runSeedAndMigration();
     const ctx = await newEmployeeCtx();
     const cards = await listEmployeeDashboardCards(ctx);
     const withoutTasks = cards.map((c) => c.cardKey).filter((k) => k !== 'pendingTasks');
-    await setDashboardLayout(ctx, { selected: withoutTasks, order: withoutTasks }, cards);
-    const layout = await getDashboardLayout(ctx, cards);
+    const layout = normalizeDashboardLayout({ selected: withoutTasks, order: withoutTasks }, cards);
     expect(layout.selected).not.toContain('pendingTasks');
   });
 
@@ -365,11 +360,8 @@ describe('0404 data migration — the Leave Calendar leaves the dashboard catalo
     expectAdminRows(partitionDefault(await listDashboardCards(ctx, 'hr_admin')));
   });
 
-  it('the builtin per-role fallback catalogs partition to the SAME defaults as the seeds (no drift)', () => {
-    expectManagerRows(partitionDefault(BUILTIN_ROLE_DASHBOARD_CARDS.manager));
-    expectAdminRows(partitionDefault(BUILTIN_ROLE_DASHBOARD_CARDS.hr_admin));
-    // and the employee builtin keeps its 2806443b arrangement minus the calendar
-    const rows = partitionDefault(BUILTIN_ROLE_DASHBOARD_CARDS.employee);
+  it('the employee builtin catalog keeps its 2806443b arrangement minus the calendar', () => {
+    const rows = partitionDefault(BUILTIN_DASHBOARD_CARDS);
     expect(rows.row1).toEqual(['leaveBalance', 'nextHoliday', 'pendingTasks', 'upcomingEvents']);
     expect(rows.row2).toEqual([]);
     expect(rows.row3).toEqual(['recentlyJoined', 'recentActivity', 'noticeBoard']);
@@ -384,13 +376,12 @@ describe('0404 data migration — the Leave Calendar leaves the dashboard catalo
     }
   });
 
-  it('an OPTIONAL manager card removal persists (remove works for the new roles too)', async () => {
+  it('an OPTIONAL manager card removal is kept by the write rule (remove works for every role catalog)', async () => {
     await runFullSeedChain();
     const ctx = await newEmployeeCtx();
     const cards = await listDashboardCards(ctx, 'manager');
     const withoutAway = cards.map((c) => c.cardKey).filter((k) => k !== 'teamAwayToday');
-    await setDashboardLayout(ctx, { selected: withoutAway, order: withoutAway }, cards, 'manager');
-    const layout = await getDashboardLayout(ctx, cards, 'manager');
+    const layout = normalizeDashboardLayout({ selected: withoutAway, order: withoutAway }, cards);
     expect(layout.selected).not.toContain('teamAwayToday');
   });
 

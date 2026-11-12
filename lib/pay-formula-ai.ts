@@ -48,7 +48,7 @@ export function payFormulaDraftPrompt(input: unknown) {
       'Expressions use + - * /, = <> < <= > >=, And Or Not, parentheses, quoted strings, True/False, and calls {#Function} with literal parameters as specified.',
       'Use newlines between statements. Optional explanation: {#Explain}("label" & value). No loops, JavaScript, SQL, filesystem, network or external resource access.',
       'Use only the supplied function signatures and supported field names. Examples: Return {#Basic} / 26 / 8 * 2 * {#Input}.',
-      'Compare companyId and other identity fields with the stable permitted UUID selected locally. A company name such as EBAC does not identify a UUID: use {#MISSING:Company} for the unresolved literal and ask the author to select it from the local permitted list. No private list is supplied to you.',
+      'A company code given by the author, such as ACME, is compared through the company code field: {#EmployeeProfile}("companyCode") = "ACME", with the code exactly as the author wrote it; if it is unclear whether the text is a company code, list that interpretation in assumptions and ask the author to confirm it. companyId is the internal ID: compare companyId and other internal-ID fields only with the stable permitted UUID selected locally, never with a code or name. When a company cannot be identified by a code the author gave, use {#MISSING:Company} for the unresolved literal and ask the author to select it from the local permitted list. No private list is supplied to you.',
       'Nationality comparisons must use the exact value entered by the author; ask if the stored catalogue value is unclear. Do not infer nationality or eligibility.',
     ].join(' '),
     prompt: JSON.stringify({ requirement: request.requirement,

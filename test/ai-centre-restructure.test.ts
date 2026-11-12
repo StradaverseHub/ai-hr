@@ -20,11 +20,21 @@ describe('one place per fact',()=>{
 
  it('Today fix b: passports are shown once, as the loop card; Today reads no second 30-day list',()=>{
   expect(code('components/today/reads.ts')).not.toMatch(/followupItemsTx|passport_expiry/);
-  expect(code('components/today/sections.tsx')).not.toMatch(/passport/i);
+  // The earlier Today's sections (components/today/sections.tsx) were retired on 12 Nov 2026.
+  expect(fs.existsSync(path.join(ROOT,'components/today/sections.tsx'))).toBe(false);
  });
 
  it('Today fix d: Today counts exceptions with the same read and arguments as Exceptions',()=>{
-  expect(code('components/today/reads.ts')).toContain('openExceptionsAcrossRuns(s)');
+  // The earlier Today's Watching section (openExceptionsAcrossRuns) was retired with the old dashboard (12 Nov 2026).
+  // Today's exception count is now Admin Today's, for the companies in view; it must count the SAME population as
+  // Exceptions: the same three predicates and the same three inner joins as the Exceptions reader below.
+  expect(code('components/today/reads.ts')).not.toContain('openExceptionsAcrossRuns');
+  expect(code('components/today/admin/reads.ts')).toContain('readAdminExceptionCounts(s,{scopeIds:scopeOf(key)})');
+  const today=code('core/today-admin-reads.ts');
+  const counts=today.slice(today.indexOf('export async function readAdminExceptionCounts'));
+  expect(counts.length).toBeGreaterThan(100);
+  for(const clause of ['isNull(v.supersededAt)','isNull(v.resolvedAt)',"ne(v.disposition,'auto_clear')",'.innerJoin(employment,eq(employment.id,v.employmentId))',
+   '.innerJoin(person,eq(person.id,employment.personId))','.innerJoin(payrollBatch,eq(payrollBatch.id,v.batchId))'])expect(counts.slice(0,counts.indexOf('\n}')),clause).toContain(clause);
   // Since the AI-native batch Exceptions reads the same population grouped in the database (its reader names the
   // same three predicates and inner joins; test/payroll-exceptions-groups.test.ts proves the counts equal on a group-sized
   // fixture), and its page no longer lists the capped rows itself.
