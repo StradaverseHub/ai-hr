@@ -330,7 +330,8 @@ describe('dated-policy raw writer routing',()=>{
    expect(attendancePolicyFinancialContract(identity,financial).state).toBe('unavailable');
    const independent=attendancePolicyIndependentSource(financial);expect(independent).not.toBeNull();
    if(!independent)throw Error('Expected independently refused duration source');
-   expect(attendancePolicyFinancialDurationContract(identity,independent).state).toBe('unavailable');
+   // 2f803985: a disabled (Manual) policy is a complete known zero with no cash or TOIL capability.
+   expect(attendancePolicyFinancialDurationContract(identity,independent)).toMatchObject({state:'none',reason:'manualApproval'});
   }
   expect(await owner.db.select().from(s.attendanceOvertimeLine)).toEqual([]);
   expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
