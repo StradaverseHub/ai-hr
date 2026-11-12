@@ -12,13 +12,13 @@ const readers:NotificationRecipientReaders<Probe>={
  leaveSubmitted:port('leaveSubmitted'),leaveCancellationSubmitted:port('leaveCancellationSubmitted'),overtimeSubmitted:port('overtimeSubmitted'),readinessNudge:port('readinessNudge'),peerFeedback:port('peerFeedback'),
  assessmentReviewTask:(state,_event,phase)=>{state.calls.push({port:'assessmentReviewTask',selector:phase});return Promise.resolve([resolved]);},
  assessmentKpiApproval:port('assessmentKpiApproval'),legacyReviewStarted:port('legacyReviewStarted'),legacyReviewEvaluated:port('legacyReviewEvaluated'),legacyReviewDecidedLetter:port('legacyReviewDecidedLetter'),legacyReviewReminder:port('legacyReviewReminder'),
- delegationStarted:port('delegationStarted'),delegationEnded:port('delegationEnded'),leaveEscalation:port('leaveEscalation'),automaticReviewChase:port('automaticReviewChase'),
+ delegationStarted:port('delegationStarted'),delegationEnded:port('delegationEnded'),leaveEscalation:port('leaveEscalation'),attendanceEscalation:port('attendanceEscalation'),automaticReviewChase:port('automaticReviewChase'),
  missingClockFollowup:port('missingClockFollowup'),passportFollowup:port('passportFollowup'),lifecycleFollowup:port('lifecycleFollowup'),employeeLoopDigest:port('employeeLoopDigest'),noticePublished:port('noticePublished'),payrollClosed:port('payrollClosed'),bulkJobInitiator:port('bulkJobInitiator'),
  approvalChase:source=>state=>{state.calls.push({port:'approvalChase',selector:source});return Promise.resolve([resolved]);},
 };
 const registry=createNotificationRegistry(readers),recipes=Object.entries(registry).flatMap(([eventType,value])=>(Array.isArray(value)?value:[value]).map(spec=>({eventType,spec})));
 const eligible=(spec:NotificationSpec<Probe>):NotificationPayload=>spec.recipientGuard?{[spec.recipientGuard.field]:spec.recipientGuard.not?false:true}:{};
-const unsupported=new Set(['bulkJobInitiator','rewardPreparationReleased','rewardPreparationChanged','rewardPreparationInvalidated','probation','leaveSubmitted','leaveCancellationSubmitted','overtimeSubmitted','readinessNudge','peerFeedback','assessmentReviewTask','assessmentKpiApproval','legacyReviewStarted','legacyReviewEvaluated','legacyReviewDecidedLetter','legacyReviewReminder','leaveEscalation','automaticReviewChase','missingClockFollowup','passportFollowup','lifecycleFollowup','employeeLoopDigest','approvalChase']);
+const unsupported=new Set(['attendanceEscalation','bulkJobInitiator','rewardPreparationReleased','rewardPreparationChanged','rewardPreparationInvalidated','probation','leaveSubmitted','leaveCancellationSubmitted','overtimeSubmitted','readinessNudge','peerFeedback','assessmentReviewTask','assessmentKpiApproval','legacyReviewStarted','legacyReviewEvaluated','legacyReviewDecidedLetter','legacyReviewReminder','leaveEscalation','automaticReviewChase','missingClockFollowup','passportFollowup','lifecycleFollowup','employeeLoopDigest','approvalChase']);
 
 // Reviewed domain identities, independent of the registry's runtime count/factory expansion.
 const expectedRecipeKeys=[
@@ -26,6 +26,7 @@ const expectedRecipeKeys=[
  'attendance-correction.approved|attendance.ot-approved',
  'attendance-correction.rejected|attendance.ot-rejected',
  'attendance-correction.requested|attendance.ot-requested',
+ 'attendance-workflow.stage.escalated|attendance.escalated',
  'automatic-chase.approval-raised|attendance.approval-overdue',
  'automatic-chase.approval-raised|claim.approval-overdue',
  'automatic-chase.approval-raised|toil.approval-overdue',

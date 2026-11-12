@@ -47,6 +47,8 @@ export { ClockDataChangedError, AttendancePayrollClosedError } from '../../core/
 
 export * from '../../core/attendance-rotation';
 export * from '../../core/attendance-workflow';
+// 96a54ed2 Request On Behalf / Approve On Behalf (permission key + HR scope or own reporting line).
+export * from '../../core/attendance-on-behalf';
 export * from '../../core/attendance-application-history';
 
 export * from './day-adjustment';

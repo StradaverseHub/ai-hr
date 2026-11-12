@@ -4,7 +4,9 @@ import type { AttendanceLevelProblem } from './attendance-workflow-v3';
 export const ATTENDANCE_PREVIEW_ROW_LIMIT = 5000;
 export const ATTENDANCE_PREVIEW_HISTORY_LIMIT = 20;
 
-/** Read-only Direct Superior diagnosis codes (app.attendance_workflow_superior_diagnostic). */
+/** Read-only Direct Superior diagnosis codes (app.attendance_workflow_superior_diagnostic). Since 5140 the diagnostic
+ * no longer produces login_wrong_company or outside_company_scope (approvers may be in any company of the tenant);
+ * both stay in this vocabulary only so previews stored before it still render. */
 export const ATTENDANCE_SUPERIOR_PROBLEMS = ['no_superior', 'superior_inactive', 'no_login', 'multiple_logins', 'login_wrong_company', 'outside_company_scope', 'ambiguous_superior', 'cycle', 'duplicate_person', 'duplicate_login', 'missing_person'] as const;
 export type AttendanceSuperiorProblem = typeof ATTENDANCE_SUPERIOR_PROBLEMS[number];
 
@@ -14,7 +16,8 @@ export type AttendancePreviewApproverSource =
     | { kind: 'hr_admin' }
     | { kind: 'cc' };
 
-export type AttendancePreviewApprover = { name: string; employeeCode: string | null; kind: 'direct_manager' | 'specific_employee' | 'hr_admin' };
+/** pendingActivation: the approver has no account yet; requests wait for them (an information note, not a warning). */
+export type AttendancePreviewApprover = { name: string; employeeCode: string | null; kind: 'direct_manager' | 'specific_employee' | 'hr_admin'; pendingActivation?: true };
 export type AttendanceWorkflowPreviewLevel = { level: number; state: 'resolved' | 'skipped'; approvers: AttendancePreviewApprover[] };
 export type AttendanceWorkflowPreviewEmployee = {
     employmentId: string; employeeCode: string | null; name: string; companyId: string;
