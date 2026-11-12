@@ -1,4 +1,4 @@
-/** The per-company "minimum people present" leave setting (owner decision, 12 November 2026; draft migration 9770).
+/** The per-company "minimum people present" leave setting (owner decision, 12 November 2026; migration 5161).
  *
  * One fact, one owner: `company.leave_team_minimum_present`, the fewest people of a team who must be present on any
  * day. NULL means no minimum. Only this module writes it (setLeaveTeamMinimum: authorization, the change and its audit

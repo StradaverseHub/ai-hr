@@ -5,7 +5,7 @@ import type { LeaveTeamMinimumRow } from '@/packs/leave/service';
 import { setLeaveTeamMinimumAction } from '../../actions';
 
 /**
- * Owner decision 12 November 2026 — the per-company "minimum people present" leave setting (draft migration 9770,
+ * Owner decision 12 November 2026 — the per-company "minimum people present" leave setting (migration 5161,
  * core/leave-team-minimum.ts), one row per company the administrator administers.
  *
  * The leave recommendation an approver sees (on Approvals and Manager Today) checks each day of a request against it

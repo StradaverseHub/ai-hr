@@ -14,7 +14,7 @@
  *    (Level 2 at most; core/loops/act-passports.ts), and the probation loop may open the probation review and route it to
  *    the manager with its due date, deciding nothing (core/loops/act-probation.ts). Neither changes employment status or
  *    an identity record, so each is classed by the request it makes, not by the record a person later decides on.
- *    Migration 9780 (draft) widens the database cap to match. Both are Level 2 at most. The probation step's undo
+ *    Migration 5162 widens the database cap to match. Both are Level 2 at most. The probation step's undo
  *    cancels the review it opened, by HR only, and it opens only legacy-path reviews: an employment owned by the
  *    Probation module keeps its manual flow (owner, 13 November 2026).
  *  - Level 3 (Act and audit) acts exactly as Level 2; instead of every action showing in HR's feed, HR reviews a weekly

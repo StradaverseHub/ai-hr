@@ -1,5 +1,5 @@
 /** Owner decision 12 November 2026 (Manager Today, item 4) — the per-company "minimum people present" leave setting
- * (draft migration 9770, core/leave-team-minimum.ts) and the approver recommendation's team_coverage check against it
+ * (migration 5161, core/leave-team-minimum.ts) and the approver recommendation's team_coverage check against it
  * (core/recommenders/leave-decision.ts), on fictional data.
  *
  *  1. The setting: an administrator of the company saves it, and the change and its audit event commit together; an
@@ -153,7 +153,7 @@ describe('the company setting',()=>{
   await expect(setLeaveTeamMinimum(hr,{companyId:b.companyId,minimum:'-1'})).rejects.toMatchObject({code:'invalid'});
   expect(await stored(b.companyId)).toBeNull();
   expect(await events(b.companyId)).toEqual([]);
-  // The column refuses a negative number on its own (migration 9770's CHECK).
+  // The column refuses a negative number on its own (migration 5161's CHECK).
   expect(sqlState(await setMinimum(-1).then(()=>null,(error:unknown)=>error))).toBe('23514');
  });
 });

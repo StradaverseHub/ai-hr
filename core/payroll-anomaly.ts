@@ -154,7 +154,7 @@ export type ThresholdProvenance = {
  * (migration 2005, policy teras_payroll_loop_setting_read). So `readable` is asked with the policy's OWN predicate.
  *
  * THE SCHEDULED SWEEP (no login, no agent; scripts/anomaly-sweep.ts) cannot see the row, so the same statement also asks
- * app.sweep_swing_thresholds (migration 9760, a narrow reader that answers only such a system session): the company's
+ * app.sweep_swing_thresholds (migration 5160, a narrow reader that answers only such a system session): the company's
  * threshold and nothing else. The sweep judges by that threshold WITHOUT the company's exclusions (the reader does not
  * disclose them; fail safe, a stricter flag, never a looser one), and a company with no setting is the 15% default as
  * for anyone else. (Owner, 12 November 2026: the sweep uses each company's own threshold.)
