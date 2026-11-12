@@ -34787,7 +34787,19 @@
         "nationality": "Kewarganegaraan",
         "maritalStatus": "Status perkahwinan"
       },
-      "conditions": "Syarat yang disahkan"
+      "conditions": "Syarat yang disahkan",
+      "busy": "Penerangan anda sebelum ini masih sedang didraf. Tunggu sehingga selesai (sehingga {seconds} saat), kemudian cuba lagi.",
+      "reasons": {
+        "timeout": "Penyedia AI tidak membalas dalam masa {seconds} saat, jadi tiada draf dibuat. Cuba lagi.",
+        "provider_unavailable": "Penyedia AI tidak dapat dihubungi atau tidak memberikan balasan yang boleh digunakan. Cuba lagi kemudian.",
+        "invalid_draft": "Balasan AI tidak lulus semakan formula, jadi ia tidak dipaparkan. Ubah ayat penerangan dan cuba lagi.",
+        "paused": "Pendrafan formula AI dijeda. Penyuntingan manual masih tersedia.",
+        "daily_limit": "Had permintaan AI harian telah dicapai. Penyuntingan manual masih tersedia.",
+        "monthly_limit": "Had AI bulanan telah dicapai. Penyuntingan manual masih tersedia.",
+        "concurrent_limit": "Semua slot permintaan AI sedang digunakan. Cuba lagi sebentar lagi.",
+        "access_changed": "Akses anda atau tetapan formula berubah semasa draf sedang dijana. Cuba lagi.",
+        "interrupted": "Pendrafan berhenti sebelum selesai kerana perkhidmatan dimulakan semula. Cuba lagi."
+      }
     }
   },
   "payrollTaxBasis": {

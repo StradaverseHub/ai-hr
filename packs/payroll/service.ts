@@ -94,6 +94,7 @@ export * from '../../core/payroll-tax-basis';
 
 export * from '../../core/payroll-employment-eligibility';
 export {draftPayFormula} from '../../core/pay-formula-ai';
+export {startPayFormulaDraftJob,readPayFormulaDraftJob,discardPayFormulaDraftJob} from '../../core/pay-formula-ai-job';
 
 export {tryLockPayrollHistoryReadTx} from '../../core/payroll-history-lock';
 

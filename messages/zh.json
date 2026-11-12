@@ -34787,7 +34787,19 @@
         "nationality": "国籍",
         "maritalStatus": "婚姻状况"
       },
-      "conditions": "已验证的条件"
+      "conditions": "已验证的条件",
+      "busy": "您之前的描述仍在起草中。请等待其完成（最多 {seconds} 秒）后再试。",
+      "reasons": {
+        "timeout": "AI 服务商未在 {seconds} 秒内回复，因此未生成草稿。请重试。",
+        "provider_unavailable": "无法连接 AI 服务商，或其未返回可用的回复。请稍后重试。",
+        "invalid_draft": "AI 回复未通过公式检查，因此不予显示。请换一种描述方式后重试。",
+        "paused": "AI 公式起草已暂停。仍可手动编辑。",
+        "daily_limit": "已达到每日 AI 请求额度。仍可手动编辑。",
+        "monthly_limit": "已达到每月 AI 额度。仍可手动编辑。",
+        "concurrent_limit": "所有 AI 请求名额均在使用中。请稍后重试。",
+        "access_changed": "生成草稿期间，您的访问权限或公式设置发生了变化。请重试。",
+        "interrupted": "由于服务重新启动，起草在完成前已停止。请重试。"
+      }
     }
   },
   "payrollTaxBasis": {
