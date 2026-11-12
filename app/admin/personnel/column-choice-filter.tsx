@@ -38,7 +38,7 @@ function HeaderPanel({label, summary, active, pending, children, onOpen, open, s
 }) {
   const panelId = useId();
   const trigger = useRef<HTMLButtonElement>(null);
-  const {at, anchorTo, release} = useAnchoredPanel({open, onClose: () => { setOpen(false); release(); trigger.current?.focus(); }, width: PANEL_WIDTH, flipHeight: 380});
+  const {at, anchorTo, release} = useAnchoredPanel({open, onClose: () => { setOpen(false); release(); trigger.current?.focus(); }, width: PANEL_WIDTH, flipHeight: 380, align: 'start'});
   const toggle = () => {
     if (open) { setOpen(false); release(); return; }
     onOpen();

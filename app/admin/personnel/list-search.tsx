@@ -1,7 +1,8 @@
 'use client';
-import {useEffect,useId,useRef,useState} from 'react';
+import {useEffect,useId,useLayoutEffect,useRef,useState} from 'react';
 import {useTranslations} from 'next-intl';
 import {inputCls} from '@/components/ui';
+import {visibleHorizontalBounds} from '@/components/ui/anchored-panel';
 import type {PersonnelPrivateCriteria} from '@/lib/personnel-list-controls';
 import {PersonnelFilterFeedback,usePersonnelAutoFilter} from './auto-filter';
 import {PrivateCriteriaFields} from './private-filter-fields';
@@ -9,6 +10,18 @@ import {SWITCHER_RESULT_CAP,type SwitcherEmployee} from './employee-search';
 
 const emptyCriteria: PersonnelPrivateCriteria = {term: '', filters: []};
 type Suggestions = {query: string; rows: SwitcherEmployee[]; failed?: boolean};
+
+/** The suggestion list's preferred width (24rem); it is never narrower than the box. */
+export const SUGGESTION_LIST_WIDTH = 384;
+/**
+ * aa045103 · how wide the suggestion list may open. It is LEFT-anchored to the box and grows rightwards: at
+ * least the box's own width, at most 24rem, and never past the visible right edge (less an 8px gutter).
+ * Anchoring it to the box's RIGHT edge instead (8e898a8ac) made a 24rem list reach 6rem left of an 18rem box,
+ * and when the box sits at the content area's left edge that part went under the sidebar (<main> clips it).
+ */
+export function suggestionListWidth(box: {left: number; width: number}, bounds: {right: number}, preferred = SUGGESTION_LIST_WIDTH, edge = 8): number {
+  return Math.round(Math.max(box.width, Math.min(preferred, bounds.right - box.left - edge)));
+}
 
 /**
  * eaa7697c — the visible "Search employee ID or name…" box beside Filter on the Personnel listing.
@@ -78,6 +91,24 @@ export function PersonnelListSearch({parameters, pageSize, privateCriteria = emp
   // Options: each suggestion, then "Show all matches in the list" (applies the typed words).
   const optionCount = rows.length + (word ? 1 : 0);
   const optionId = (index: number) => `${listId}-option-${index}`;
+  // Measured before paint while the list is open, and again on resize (the sidebar collapsing resizes it too).
+  const [listWidth, setListWidth] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (!showList) return;
+    const measure = () => {
+      const el = box.current;
+      const rect = el?.getBoundingClientRect();
+      // No layout box (jsdom, a hidden ancestor): nothing to measure, so the list keeps the box's own width.
+      if (!el || !rect?.width) { setListWidth(null); return; }
+      setListWidth(suggestionListWidth(rect, visibleHorizontalBounds(el)));
+    };
+    measure();
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null;
+    const shell = box.current?.closest('main');
+    if (observer && shell) observer.observe(shell);
+    window.addEventListener('resize', measure);
+    return () => { observer?.disconnect(); window.removeEventListener('resize', measure); };
+  }, [showList]);
 
   const apply = () => {
     const form = input.current?.form;
@@ -133,7 +164,9 @@ export function PersonnelListSearch({parameters, pageSize, privateCriteria = emp
         // here would scroll the page sideways on a phone.
         className={`${inputCls} h-9 w-52 sm:w-64 md:w-72`}/>
       {showList && <div id={listId} role="listbox" aria-label={t('resultsLabel')}
-        className="absolute right-0 z-50 mt-1 max-h-96 w-[min(24rem,90vw)] overflow-y-auto rounded-md border border-border bg-popover py-1 text-popover-foreground shadow-lg">
+        // LEFT-anchored and at least the box's width; the measured width keeps it inside the content area.
+        style={listWidth ? {width: listWidth} : undefined}
+        className="absolute left-0 z-50 mt-1 max-h-96 w-full min-w-full overflow-y-auto rounded-md border border-border bg-popover py-1 text-popover-foreground shadow-lg">
         <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground" aria-hidden>{t('matchingHeading')}</p>
         {rows.length === 0 && <p role="status" className="px-3 py-3 text-sm text-muted-foreground">{loading ? common('loading') : current?.failed ? t('loadFailed') : t('noMatches')}</p>}
         {rows.map((row, index) => <div key={row.employmentId} id={optionId(index)} role="option" aria-selected={index === active}
