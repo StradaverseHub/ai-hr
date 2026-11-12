@@ -3,7 +3,7 @@ import {getTranslations} from 'next-intl/server';
 import type {SessionContext} from '@/db/client';
 import {cn} from '@/lib/utils';
 import {calendarDaysBetween} from '@/lib/hr-date-calendar';
-import {formatPayPeriodMonth,todayInKualaLumpur} from '@/lib/hr-date';
+import {HR_LOCAL_TZ,formatPayPeriodMonth,todayInKualaLumpur} from '@/lib/hr-date';
 import {PAYROLL_READINESS_HREF} from '@/lib/pre-salary/items';
 import {withTodayOrigin} from '@/lib/ai-centre/inbox-origin';
 import {assignedApprovalHref} from '@/lib/assigned-approval-focus';
@@ -13,7 +13,10 @@ import {Panel,PanelLink,PanelNote,hrDay} from '../employee/panel';
 import {AskChips,type AskChip} from '../employee/ask-chips';
 import {stepTitle} from '../employee/panels';
 import {moduleState,readAskAllowed,readOwnContext,readOwnPassportCards,readOwnPayHints,readOwnReadiness} from '../employee/reads';
-import {readAdminNeeds,readExceptions,readHandled,readManagerQueue,readNeeds,readReadiness,readTeamAttendanceToday,readTeamReminders} from './reads';
+import {readAdminNeeds,readExceptions,readHandled,readManagerQueue,readMorning,readNeeds,readReadiness,readTeamAttendanceToday,readTeamReminders} from './reads';
+import {ActionButton} from '@/components/ui/action-button';
+import {dateTimeFormatter} from '@/lib/date-time-formatter';
+import {startMorningSummaryAction,stopMorningSummaryAction} from '@/app/today-morning-actions';
 import {DecisionRecommendation,RecommendationNote} from './recommendation';
 
 /** HR administrator and manager Today's panels (owner-approved AdminToday.dc.html and ManagerToday.dc.html). Each is its
@@ -167,6 +170,38 @@ export async function WatchingPanel(p:RoleContext){
  return <Panel id="today-watching" title={t('watchingTitle')}>
   {!data.ok?<PanelNote>{t('unavailable')}</PanelNote>:notBlocking===0?<p className="m-0 text-sm text-muted-foreground">{t('watchingEmpty')}</p>:
    <p data-today-watch="exceptions" className="m-0 text-[0.8125rem]">{t('watchingExceptions',{count:notBlocking})} <Link href="/control-tower/exceptions" className="font-semibold text-primary hover:underline">{t('cta.exceptions')}</Link></p>}
+ </Panel>;
+}
+
+// ── Morning summary (administrator) ─────────────────────────────────────────────────────────────────────────────
+/** The administrator's own daily digest (owner decision, 11 Nov 2026; core/digest/own-digest.ts). Started here, for the
+ * viewer only, once a group administrator has allowed it in AI Centre settings; prepared each night by the sweep under
+ * the viewer's own current authority. Shows today's counts and links only (nobody's name), or what happens next, and
+ * the one button to start or stop it. Not drawn when it is neither running nor allowed. */
+export async function MorningSummaryPanel(p:RoleContext){
+ const [t,data]=await Promise.all([getTranslations('today.admin.morning'),attempt(()=>readMorning(p.session))]);
+ if(!data.ok)return <Panel id="today-morning" title={t('title')}><PanelNote>{t('unavailable')}</PanelNote></Panel>;
+ const {offered,stopped,mandate,prepared}=data.value;
+ if(!mandate&&!offered)return null;
+ if(!mandate)return <Panel id="today-morning" title={t('title')}>
+  <p className="m-0 text-sm text-muted-foreground">{t('intro')}</p>
+  <form action={startMorningSummaryAction}><ActionButton actionKind="saving" type="submit" data-today-morning-start className={QUIET_BUTTON}>{t('start')}</ActionButton></form>
+ </Panel>;
+ const digest=prepared&&prepared.digest.asOf===p.today?prepared.digest:null;
+ const time=prepared?dateTimeFormatter(p.locale,{hour:'numeric',minute:'2-digit',timeZone:HR_LOCAL_TZ}).format(prepared.preparedAt):null;
+ const line=(key:string,words:string,href:string,cta:string)=><li key={key} data-today-morning-line={key} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-[0.8125rem]">
+  <span className="min-w-0">{words}</span><PanelLink href={href} label={words}>{cta}</PanelLink></li>;
+ return <Panel id="today-morning" title={t('title')}>
+  {digest?<>
+   <ul data-today-morning-digest className="m-0 flex list-none flex-col gap-1 p-0">
+    {line('approvals',t('approvals',{count:digest.approvals.total}),digest.approvals.page,t('openApprovals'))}
+    {digest.setup&&line('setup',t('setup',{blocked:digest.setup.blocked,attention:digest.setup.attention}),digest.setup.page,t('openSetup'))}
+    {digest.deadlines&&line('deadlines',t('deadlines',{overdue:digest.deadlines.overdue,dueSoon:digest.deadlines.dueSoon}),digest.deadlines.page,t('openDeadlines'))}
+   </ul>
+   <p className="m-0 text-xs text-muted-foreground">{t('preparedAt',{time:time!})}</p>
+  </>:<p data-today-morning-waiting className="m-0 text-sm text-muted-foreground">{t(stopped?'paused':prepared?'notToday':'first')}</p>}
+  <form action={stopMorningSummaryAction}><ActionButton actionKind="saving" type="submit" data-today-morning-stop className={QUIET_BUTTON}>{t('stop')}</ActionButton></form>
+  <p className="m-0 text-xs text-muted-foreground">{t('forYouOnly')}</p>
  </Panel>;
 }
 

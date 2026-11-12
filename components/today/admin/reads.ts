@@ -24,6 +24,7 @@ import {readOwnCalendar} from '../employee/reads';
 import {pendingManagerReviewsFor} from '@/core/employment-review';
 import {teamAttendanceToday,type TeamAttendanceToday} from '@/packs/attendance/service';
 import {addCalendarDays} from '@/lib/hr-date-calendar';
+import {readMorningSummary,type MorningSummary} from '@/core/digest/own-digest';
 
 const shared=<T,>(s:SessionContext,read:()=>Promise<T>)=>withSharedReadSnapshot(s,read,undefined,requestReadScope());
 type Settled<T>={ok:true;value:T}|{ok:false};
@@ -108,6 +109,12 @@ export const readHandled=cache((s:SessionContext,key:string,today:string):Promis
  }));
 
 export type {PayrollReadiness,StatutoryDeadlines};
+
+/** The administrator's own morning summary (core/digest/own-digest.ts, owner decision 11 Nov 2026): whether it can be
+ * started, the viewer's own mandate in force and its latest prepared digest, in one statement keyed by the viewer's
+ * login, so it does not grow with the companies in view. */
+export const readMorning=cache((s:SessionContext):Promise<MorningSummary>=>shared(s,()=>readMorningSummary(s)));
+export type {MorningSummary};
 
 // ── Manager Today: the retired dashboard's team cards, ported (owner decision, 12 Nov 2026) ──────────────────────
 /** Today's attendance for the manager's own reports (packs/attendance team-today.ts): one bounded statement. Null when

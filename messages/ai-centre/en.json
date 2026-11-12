@@ -2675,6 +2675,28 @@
         "payrollBlocking": "What is blocking this month's payroll?",
         "claimsBeforeCutOff": "Who has not sent their claims before the cut-off?",
         "approvalsWaiting": "Which approvals have waited more than 3 days?"
+      },
+      "morning": {
+        "title": "Morning summary",
+        "intro": "Each morning, AI Centre counts what waits for you: decisions, setup gaps and statutory deadlines. It is prepared for you only and decides nothing.",
+        "start": "Send me a morning summary",
+        "stop": "Stop my morning summary",
+        "started": "Your morning summary starts tomorrow morning.",
+        "stoppedToast": "Your morning summary is stopped.",
+        "startFailed": "The morning summary could not be started. Refresh the page and try again.",
+        "stopFailed": "The morning summary could not be stopped. Refresh the page and try again.",
+        "unavailable": "Your morning summary could not be loaded.",
+        "approvals": "{count, plural, =0 {Nothing waits for your decision} one {# decision waits for you} other {# decisions wait for you}}",
+        "setup": "Setup: {blocked} blocked, {attention} need attention",
+        "deadlines": "Statutory deadlines: {overdue} overdue, {dueSoon} due within 7 days",
+        "openApprovals": "Review",
+        "openSetup": "Open setup",
+        "openDeadlines": "Open forms",
+        "preparedAt": "Prepared this morning at {time}.",
+        "first": "Your first summary is prepared early tomorrow morning.",
+        "notToday": "No summary was prepared this morning. It will be tried again tonight.",
+        "paused": "AI activity is stopped, so no summary is prepared until it is resumed.",
+        "forYouOnly": "Only you see this summary. It counts and links; people still make every decision."
       }
     },
     "manager": {

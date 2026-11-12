@@ -16,7 +16,7 @@ import {resolveServerTree} from './helpers/server-tree';
 const fx=vi.hoisted(()=>({state:{} as {
  needs:unknown;needsPartial:boolean;needsFail:boolean;readiness:unknown;exceptions:{total:number;blocking:number};handled:unknown;handledFail:boolean;
  queue:unknown;summary:{items:unknown[];approvalCount:number};ask:boolean;own:unknown;ownReadiness:unknown;payHints:unknown;push:ReturnType<typeof vi.fn>;recommendCalls:string[][];views:Map<string,unknown>;
- throwPanel:string|null;ownCalls:unknown[];teamToday:unknown;reminders:unknown;teamTodayCalls:string[];
+ throwPanel:string|null;ownCalls:unknown[];teamToday:unknown;reminders:unknown;teamTodayCalls:string[];morning:unknown;morningFail:boolean;
 }}));
 const S=fx.state;
 
@@ -51,6 +51,7 @@ vi.mock('@/components/today/admin/reads',async()=>{
   readManagerQueue:async()=>({...managerQueue(S.summary as never),failed:false}),
   readTeamAttendanceToday:async(_s:unknown,key:string)=>{S.teamTodayCalls.push(key);return S.teamToday;},
   readTeamReminders:async()=>S.reminders,
+  readMorning:async()=>{if(S.morningFail)throw Error('Fixture morning summary outage');return S.morning;},
  };
 });
 vi.mock('@/components/today/employee/reads',()=>({
@@ -59,6 +60,8 @@ vi.mock('@/components/today/employee/reads',()=>({
  readManagersAway:async()=>[],readOwnCalendar:async()=>({days:[]}),readOwnRequests:async()=>({requests:[],failed:false}),readOwnTimeOff:async()=>({balances:[],canApply:false}),
  readOwnWeek:async()=>[],
 }));
+// The morning summary's start and stop actions (their service is tested in test/mandate-morning-summary.test.ts).
+vi.mock('@/app/today-morning-actions',()=>({startMorningSummaryAction:async()=>{},stopMorningSummaryAction:async()=>{}}));
 // The approvals page's own recommendation read (its own tests: test/approvals-leave-recommendation.dom.test.tsx).
 vi.mock('@/app/approvals/leave-recommendations',()=>({readApprovalRecommendations:async(_s:unknown,ids:readonly string[])=>{
  S.recommendCalls.push([...ids]);return {active:true,views:S.views,deferred:new Set<string>()};}}));
@@ -98,6 +101,7 @@ beforeEach(()=>{
   payHints:{nextPayment:{date:'2026-11-27'},payslips:[]},
   push:vi.fn(),recommendCalls:[],views:new Map(),throwPanel:null,ownCalls:[],summary:{items:[],approvalCount:0},
   teamToday:{date:'2026-11-12',present:7,late:2,halfDay:1,absent:3},reminders:{reviews:[],holidays:[],failed:false},teamTodayCalls:[],
+  morning:{offered:false,stopped:false,mandate:null,prepared:null},morningFail:false,
  });
  window.sessionStorage.clear();
 });
@@ -190,6 +194,62 @@ describe('Administrator Today',()=>{
   expect([...view.container.querySelectorAll('[data-today-panel]')].map(panel=>panel.getAttribute('data-today-panel')))
    .toEqual(['today-readiness','today-needs','today-handled','today-watching','today-own','today-ask-prompts']);
   expect(text(view.panel('today-watching')!.querySelector('[data-today-watch="exceptions"]'))).toContain('97 payroll exceptions need a look but do not block a run.');
+ });
+
+ it('draws the morning summary only when it runs or can be started, with today\'s counts and links and one button',async()=>{
+  // Neither allowed nor running: no panel (the default above).
+  let view=await show('admin');
+  expect(view.panel('today-morning')).toBeNull();
+  cleanup();
+  // Allowed, not started: what it is, and the button that starts it.
+  S.morning={offered:true,stopped:false,mandate:null,prepared:null};
+  view=await show('admin');
+  let morning=view.panel('today-morning')!;
+  expect([...view.container.querySelectorAll('[data-today-panel]')].map(panel=>panel.getAttribute('data-today-panel')))
+   .toEqual(['today-readiness','today-needs','today-handled','today-watching','today-morning','today-own','today-ask-prompts']);
+  expect(text(morning.querySelector('h2'))).toBe('Morning summary');
+  expect(text(morning)).toContain('Each morning, AI Centre counts what waits for you: decisions, setup gaps and statutory deadlines. It is prepared for you only and decides nothing.');
+  expect(text(morning.querySelector('[data-today-morning-start]'))).toBe('Send me a morning summary');
+  expect(morning.querySelector('[data-today-morning-stop]')).toBeNull();
+  cleanup();
+  // Started, nothing prepared yet: when it comes, and the stop button.
+  const mandate={id:'fictional-mandate',validUntil:new Date('2027-02-10T00:00:00Z')};
+  S.morning={offered:true,stopped:false,mandate,prepared:null};
+  view=await show('admin');
+  morning=view.panel('today-morning')!;
+  expect(text(morning.querySelector('[data-today-morning-waiting]'))).toBe('Your first summary is prepared early tomorrow morning.');
+  expect(text(morning.querySelector('[data-today-morning-stop]'))).toBe('Stop my morning summary');
+  expect(morning.querySelector('[data-today-morning-start]')).toBeNull();
+  cleanup();
+  // Today's digest: counts and links only, prepared at 03:05 Malaysia time.
+  const digest={kind:'teras.daily_digest',version:1,asOf:'2026-11-12',approvals:{total:4,byKind:[{kind:'leave',count:3},{kind:'claim',count:1}],page:'/approvals'},
+   setup:{blocked:1,attention:2,companies:3,unknown:0,page:'/payroll/setup?readiness=full'},deadlines:{overdue:1,dueSoon:2,page:'/payroll/statutory-forms'},text:'fixture'};
+  S.morning={offered:true,stopped:false,mandate,prepared:{recordId:'fictional-record',preparedAt:new Date('2026-11-11T19:05:00Z'),digest}};
+  view=await show('admin');
+  morning=view.panel('today-morning')!;
+  const lines=[...morning.querySelectorAll('[data-today-morning-line]')];
+  expect(lines.map(line=>line.getAttribute('data-today-morning-line'))).toEqual(['approvals','setup','deadlines']);
+  expect(lines.map(line=>text(line.querySelector('span')))).toEqual(['4 decisions wait for you','Setup: 1 blocked, 2 need attention','Statutory deadlines: 1 overdue, 2 due within 7 days']);
+  expect(lines.map(line=>line.querySelector('a')!.getAttribute('href'))).toEqual(['/approvals','/payroll/setup?readiness=full','/payroll/statutory-forms']);
+  expect(text(morning)).toContain('Prepared this morning at 3:05');
+  expect(text(morning)).toContain('Only you see this summary. It counts and links; people still make every decision.');
+  expect(text(morning)).not.toContain('fictional');
+  cleanup();
+  // Yesterday's digest is not shown as today's; the stop switch says why nothing comes.
+  S.morning={offered:true,stopped:false,mandate,prepared:{recordId:'fictional-record',preparedAt:new Date('2026-11-10T19:05:00Z'),digest:{...digest,asOf:'2026-11-11'}}};
+  view=await show('admin');
+  expect(view.panel('today-morning')!.querySelector('[data-today-morning-line]')).toBeNull();
+  expect(text(view.panel('today-morning')!.querySelector('[data-today-morning-waiting]'))).toBe('No summary was prepared this morning. It will be tried again tonight.');
+  cleanup();
+  S.morning={offered:false,stopped:true,mandate,prepared:null};
+  view=await show('admin');
+  expect(text(view.panel('today-morning')!.querySelector('[data-today-morning-waiting]'))).toBe('AI activity is stopped, so no summary is prepared until it is resumed.');
+  cleanup();
+  // A failed read stays inside its own panel.
+  S.morningFail=true;
+  view=await show('admin');
+  expect(text(view.panel('today-morning')!.querySelector('[data-today-unavailable]'))).toBe('Your morning summary could not be loaded.');
+  expect(view.panel('today-watching')).not.toBeNull();
  });
 
  it('shows the administrator their own record: what to send to HR, and the next payday',async()=>{

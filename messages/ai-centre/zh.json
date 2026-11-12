@@ -2675,6 +2675,28 @@
         "payrollBlocking": "是什么阻碍了本月的薪资？",
         "claimsBeforeCutOff": "谁还没有在截止日前提交报销？",
         "approvalsWaiting": "哪些审批已等待超过 3 天？"
+      },
+      "morning": {
+        "title": "晨间摘要",
+        "intro": "每天早上，AI Centre 会统计等待您处理的事项：待决定事项、设置缺口和法定截止日期。摘要仅为您准备，不会做出任何决定。",
+        "start": "每天早上给我发送摘要",
+        "stop": "停止我的晨间摘要",
+        "started": "您的晨间摘要将从明天早上开始。",
+        "stoppedToast": "您的晨间摘要已停止。",
+        "startFailed": "无法开始晨间摘要。请刷新页面后重试。",
+        "stopFailed": "无法停止晨间摘要。请刷新页面后重试。",
+        "unavailable": "无法加载您的晨间摘要。",
+        "approvals": "{count, plural, =0 {没有等待您决定的事项} other {# 项决定等待您处理}}",
+        "setup": "设置：{blocked} 项受阻，{attention} 项需要关注",
+        "deadlines": "法定截止日期：{overdue} 项逾期，{dueSoon} 项将在 7 天内到期",
+        "openApprovals": "审阅",
+        "openSetup": "打开设置",
+        "openDeadlines": "打开表格",
+        "preparedAt": "今天早上 {time} 准备。",
+        "first": "您的第一份摘要将在明天清晨准备好。",
+        "notToday": "今天早上没有准备摘要。今晚会再次尝试。",
+        "paused": "AI 活动已停止，恢复之前不会准备摘要。",
+        "forYouOnly": "只有您能看到此摘要。它只统计并提供链接；所有决定仍由人做出。"
       }
     },
     "manager": {

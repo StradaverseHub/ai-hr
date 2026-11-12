@@ -35,6 +35,9 @@ import { sql } from 'drizzle-orm';
 // AI v2 W8: the SAME principal then runs the five loops at the Prepare level (core/loops/run.ts): each only behind its
 // own switch (off by default) and the tenant stop switch, reading through the native owners under its sponsor's current
 // authority, preparing cards a person confirms, and verifying its earlier cards. Deterministic, no model and no spend.
+// Owner decision (11 Nov 2026): the SAME principal then prepares the morning summaries people started on Today — each
+// `daily_digest` mandate in force with nothing prepared yet today (core/digest/run.ts runDueDailyDigests). The runner
+// re-checks both keys, the stop switch and each grantor's current authority, and records every run. Counts and links only.
 // Idempotent: a re-run opens nothing already open (and escalation fires once per (group, step) ever).
 // Schedule daily, e.g.
 //   0 3 * * *  cd /opt/ai-hr && node --env-file=.env.production --import tsx scripts/review-sweep.ts
@@ -57,6 +60,7 @@ import { queueEmployeeLoopDigests } from '../core/loops/employee-action-digest';
 import { runLoopsForTenant } from '../core/loops/run';
 import { runPayrollAuditLoop } from '../core/payroll-audit/run';
 import { runPayrollLearning } from '../core/payroll-learning/recompute';
+import { runDueDailyDigests } from '../core/digest/run';
 
 async function main() {
   const startedAt = Date.now();
@@ -115,6 +119,10 @@ async function main() {
   let loopCasesClosed = 0;
   let loopRunsStopped = 0;
   let loopRunsFailed = 0;
+  let digestsPrepared = 0;
+  let digestsStopped = 0;
+  let digestsFailed = 0;
+  let digestsCappedTenants = 0;
   for (const t of tenants) {
     try {
       // Engine jobs retain the legacy no-login context: actorOf stamps system.
@@ -263,6 +271,18 @@ async function main() {
         else if (c.status === 'failed') { loopRunsFailed++; console.error('  payroll history learning could not complete a company; nothing was written for it.'); }
       }
 
+      // Morning summaries (owner decision, 11 Nov 2026): every daily digest mandate due today, as the same principal.
+      const digests = await runDueDailyDigests({ tenantId: t.id, principalId, entitlements }).catch(() => null);
+      if (digests === null) { digestsFailed++; console.error('  morning summaries failed before any was prepared.'); }
+      else {
+        digestsPrepared += digests.prepared;
+        digestsStopped += digests.stopped;
+        digestsFailed += digests.failed;
+        if (digests.stopped > 0) console.log(`  ${digests.stopped} morning summar${digests.stopped === 1 ? 'y' : 'ies'} stopped by their checks (recorded).`);
+        if (digests.failed > 0) console.error(`  ${digests.failed} morning summar${digests.failed === 1 ? 'y' : 'ies'} could not be prepared.`);
+        if (digests.capped) { digestsCappedTenants++; console.error('  ⚠ morning summaries reached the per-run cap; the rest are prepared on the next run.'); }
+      }
+
       // Project the new started/reminder/escalation/nudge events into notifications now — gated on the
       // tenant's `notifications` entitlement, which the snapshot above makes this context answer truthfully.
       const notificationsOn = isModuleEnabled(ctx, 'notifications') || (entitlements.scopedModules.notifications ?? []).some(companyId => isModuleEnabled(ctx, 'notifications', companyId));
@@ -279,7 +299,7 @@ async function main() {
         console.error('  Notification queue reached its batch limit; more work may remain.');
       }
       if (orchestration?.failed || chasers?.failed || projection.cappedOut || projectionBlocked || releasesFailed || loops.some(loop => loop.status === 'failed') || audit === null || (audit?.status === 'ran' && audit.failed > 0)
-        || learning === null || learning.companies.some(c => c.status === 'failed')) failures++;
+        || learning === null || learning.companies.some(c => c.status === 'failed') || digests === null || digests.failed > 0) failures++;
       totalOpened += opened;
       totalReminders += reminders;
       totalEscalated += escalated;
@@ -292,6 +312,7 @@ async function main() {
         `  ✓ ${t.name} (${t.id}): ${opened} review(s) opened, ${reminders} reminder(s), ${escalated} escalation(s), ${movementsApplied} movement(s) applied` +
           (chasers ? `, ${chaseSent} automatic chase(s) using fixed templates` : ', chasers off') +
           `, ${loops.filter(loop => loop.status === 'ran').length} loop(s) run` +
+          (digests ? `, ${digests.prepared} morning summar${digests.prepared === 1 ? 'y' : 'ies'} prepared` : '') +
           (movementsFailed > 0 ? ` — ${movementsFailed} movement(s) COULD NOT be applied` : '') +
           // Every nudge counter is printed, not just the flattering one: `orphaned` means a real gap with
           // nobody to tell, and `cappedOut` means work was left undone. A sweep that reports only what it
@@ -378,6 +399,10 @@ async function main() {
         loopCasesClosed,
         loopRunsStopped,
         loopRunsFailed,
+        digestsPrepared,
+        digestsStopped,
+        digestsFailed,
+        digestsCappedTenants,
       },
     });
   } catch (e) {
