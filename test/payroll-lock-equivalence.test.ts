@@ -17,6 +17,7 @@ import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {setCp38} from '../core/cp38';
 import {createBatch,generatePayslips,resetProcessedBatch,setPayrollInput} from '../core/payroll';
 import {createLoan,prefillLoansForBatch} from '../core/loans';
+import {withoutVerifiedTraces} from './helpers/statutory-trace-evidence';
 import {listPayComponents,seedPayComponentCatalog,setEmploymentPayComponent} from '../core/pay-components';
 import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 
@@ -93,7 +94,8 @@ describe('payroll figures under the reader/writer Access lock',()=>{
   await generatePayslips(a,{batchId});
   const second=await snapshot();
   expect(second).toEqual(first);
-  const document=JSON.stringify(first),digest=createHash('sha256').update(document).digest('hex');
+  // 69d6ed3c — the golden predates statutory trace v1; each trace is verified against its payslip, then set aside.
+  const document=JSON.stringify(withoutVerifiedTraces(first)),digest=createHash('sha256').update(document).digest('hex');
   if(digest!==GOLDEN)console.log(`PAYROLL_EQUIVALENCE_DOCUMENT ${document}`);
   expect(digest).toBe(GOLDEN);
  },240000);

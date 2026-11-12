@@ -73,6 +73,17 @@ const money = (st: unknown) => {
     expect(Math.round(items.reduce((sum, it) => sum + it.amount, 0) * 100) / 100).toBe(figures.wages);
     rest.hrdfWorking = figures;
   }
+  // 69d6ed3c — statutory trace v1 likewise: its ITEM LINES are provenance (the legacy path can only name Basic
+  // and one residual line; the typed path names each pay item). Every other trace figure — the wages, the
+  // schedule rows, both shares, this run's amounts — is still compared byte-for-byte, and on BOTH paths the
+  // lines must add up to the very wages the lookups were made on.
+  if (rest.statutoryTrace && typeof rest.statutoryTrace === 'object') {
+    type Line = { epfNormal: number; epfBonus: number; socsoEis: number };
+    const { items, ...figures } = rest.statutoryTrace as { items: Line[]; epf: { normalWage: number; bonusWage: number }; socso: { wage: number } } & Record<string, unknown>;
+    const sum = (k: keyof Line) => Math.round(items.reduce((s, l) => s + l[k], 0) * 100) / 100;
+    expect([sum('epfNormal'), sum('epfBonus'), sum('socsoEis')]).toEqual([figures.epf.normalWage, figures.epf.bonusWage, figures.socso.wage]);
+    rest.statutoryTrace = figures;
+  }
   return rest;
 };
 const noUnexpectedNewKeys = (typed: unknown, legacy: unknown) =>

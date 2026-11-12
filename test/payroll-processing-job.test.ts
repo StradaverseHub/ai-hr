@@ -21,6 +21,7 @@ import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {setCp38} from '../core/cp38';
 import {createBatch,generatePayslips,resetProcessedBatch,setPayrollInput,BatchNotDraftError} from '../core/payroll';
 import {createLoan,prefillLoansForBatch} from '../core/loans';
+import {withoutVerifiedTraces} from './helpers/statutory-trace-evidence';
 import {listPayComponents,seedPayComponentCatalog,setEmploymentPayComponent} from '../core/pay-components';
 import {runBulkJobTick} from '../core/bulk-job-worker';
 import {createIndividualTxn} from '../core/payroll-individual-txn';
@@ -133,7 +134,9 @@ describe('payroll processing background job',()=>{
   // audit comparison uses a second synchronous run after a reset, so both sides start from the same history.
   await generatePayslips(f.a,{batchId:f.batchId});
   const sync=await f.snapshot();
-  expect(createHash('sha256').update(JSON.stringify(sync)).digest('hex')).toBe(GOLDEN);
+  // 69d6ed3c — the golden predates statutory trace v1; each trace is verified against its payslip, then set
+  // aside. The full documents (traces included) are still compared sync-vs-job below with toEqual.
+  expect(createHash('sha256').update(JSON.stringify(withoutVerifiedTraces(sync))).digest('hex')).toBe(GOLDEN);
   await resetProcessedBatch(f.a,{batchId:f.batchId,reason:'Fictional job equivalence reset'});
   const before=await f.lastSequence();
   await generatePayslips(f.a,{batchId:f.batchId});
@@ -156,7 +159,7 @@ describe('payroll processing background job',()=>{
   expect(Number(done.metrics.chunks)).toBeGreaterThanOrEqual(4);
   const viaJob=await f.snapshot();
   expect(viaJob).toEqual(sync);
-  expect(createHash('sha256').update(JSON.stringify(viaJob)).digest('hex')).toBe(GOLDEN);
+  expect(createHash('sha256').update(JSON.stringify(withoutVerifiedTraces(viaJob))).digest('hex')).toBe(GOLDEN);
   // The same audit events (the reset's own events precede `started`; the job's notice is kernel bookkeeping).
   expect(await f.eventsSince(started)).toEqual(syncEvents);
   const status=await payrollProcessingStatus(f.a,f.batchId);

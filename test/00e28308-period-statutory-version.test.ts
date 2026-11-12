@@ -388,6 +388,26 @@ describe('00e28308 · the month records the ruleset version it was opened under'
         hrdfWorking: { version: 1, items: [{ kind: 'basic', amount: 5000 }], wages: 5000, status: 'not_registered',
           subject: false, rate: 0, calculatedLevy: 0, levy: 0 },
         pcbExemptions: {version:1,payPeriod:MONTH,taxYear:2026,basis:'selected_calculation',rows:[]},
+        // 69d6ed3c — statutory trace v1 (additive display evidence; no figure above moves). Every amount in it
+        // is a golden figure above: EPF 5,000 on the KWSP Part A row 4,980.01–5,000.00 (550 / 650), SOCSO and EIS
+        // on the PERKESO row 4,900.01–5,000.00. This fixture's profile leaves Subject to SKBBK unticked.
+        statutoryTrace: {
+          version: 1, rulesetVersion: GOLDEN_STATUTORY.version,
+          epf: { method: 'schedule_row', base: 5000, band: { from: 4980.01, upTo: 5000 }, scheduleEmployee: 550, scheduleEmployer: 650,
+            part: 'A', mode: 'auto', age: null, citizenship: 'citizen', normalWage: 5000, bonusWage: 0,
+            employee: GOLDEN_STATUTORY.epfEmployee, employer: GOLDEN_STATUTORY.epfEmployer, employeeOnBonus: 0 },
+          socso: { category: 1, wage: 5000, band: { from: 4900.01, upTo: 5000 },
+            scheduleEmployee: GOLDEN_STATUTORY.socsoEmployee, scheduleEmployer: GOLDEN_STATUTORY.socsoEmployer,
+            employee: GOLDEN_STATUTORY.socsoEmployee, employer: GOLDEN_STATUTORY.socsoEmployer },
+          skbbk: { wage: 5000, employee: 0, employer: 0, notApplicable: 'not_subject' },
+          eis: { wage: 5000, band: { from: 4900.01, upTo: 5000 }, scheduleEmployee: GOLDEN_STATUTORY.eisEmployee,
+            scheduleEmployer: GOLDEN_STATUTORY.eisEmployer, employee: GOLDEN_STATUTORY.eisEmployee, employer: GOLDEN_STATUTORY.eisEmployer },
+          items: [{ kind: 'basic', amount: 5000, epfNormal: 5000, epfBonus: 0, socsoEis: 5000 }],
+          run: { kind: 'single', own: { epfAdditional: 0, socsoWageExtra: 0 },
+            thisRun: { epfEmployee: GOLDEN_STATUTORY.epfEmployee, epfEmployer: GOLDEN_STATUTORY.epfEmployer,
+              socsoEmployee: GOLDEN_STATUTORY.socsoEmployee, socsoEmployer: GOLDEN_STATUTORY.socsoEmployer, socsoSkbbk: 0,
+              eisEmployee: GOLDEN_STATUTORY.eisEmployee, eisEmployer: GOLDEN_STATUTORY.eisEmployer } },
+        },
         salaryBasis: { version: 1, referenceDate: '2026-05-31', compensationId: salaryOwners[0].id,
           effectiveFrom: '2025-01-01', basicSalary: '5000.00', payMode: 'monthly' },
         pcbMeta: {
