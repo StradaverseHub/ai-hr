@@ -1,3 +1,15 @@
+# Payroll history effective reads — 12 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/payroll-batch-totals-20261112` (base `origin/main` at `2a2495919`, the build installed on production)
+allocates `5129_payroll_history_effective_reads` at idx 4529 / when 1793330004829, keeping the shared offset (tag 51NN,
+idx 45NN, when …48NN). Production's installed watermark is `5127_import_log_actor_labels` (when 1793330004827) and PR
+240 holds `5128_account_action_authority` (when 1793330004828, branch `claude/fix-account-action-privilege`); a survey of
+every origin head and local worktree on 12 November 2026 found no other claim above 5127 (the 9730/9740/9750 drafts are
+the renumbered 5125–5127). Functions and one view only (no table, column, index, policy or data change); every replaced
+object is checked against its reviewed predecessor. If PR 240's 5128 is installed after this entry it would sit below
+this watermark and must move above it first. Recheck peer claims and the installed ledger at admission; this grants no
+installation authority.
+
 # Irwin board items combined release rebased onto release candidate 3 — 12 November 2026 MYT (unapplied, renumbered)
 
 Branch `claude/irwin-board-combined-20261112` merges `origin/alpha` at `05c4aa0348700a08de6723e88a67f2cbd43689d4`

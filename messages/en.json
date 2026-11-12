@@ -32301,6 +32301,23 @@
       "stalePayroll": "Payroll requires recalculation",
       "itemNotRecorded": "The selected pay item is not recorded in historical results"
     },
+    "inclusion": {
+      "coverage": "Companies in this comparison",
+      "comparing": "Comparing {included} of {total} companies with payroll. Rows and totals cover these companies only.",
+      "comparedCompanies": "Companies compared",
+      "notIncluded": "Not included",
+      "notIncludedHelp": "These companies are left out of the rows and totals until their payroll for both months is ready.",
+      "reasons": {
+        "missingPayroll": "No payroll run in {month, date, ::MMMMyyyy}",
+        "previousNotClosed": "{month, date, ::MMMMyyyy} not closed yet",
+        "stalePayroll": "{month, date, ::MMMMyyyy} needs reprocess",
+        "draftPayroll": "{month, date, ::MMMMyyyy} still a draft"
+      },
+      "neverRan": "{count, plural, =1 {# company in this scope has} other {# companies in this scope have}} never run payroll and {count, plural, =1 {is} other {are}} left out.",
+      "neverRanShort": "Never ran payroll",
+      "emptyNoneReady": "No company is ready to compare for these months. See Not included for what each company needs.",
+      "emptyNoPayroll": "No company in this scope has run payroll yet."
+    },
     "basis": "Source: saved paid payroll results. Organisation follows the last recorded paying-employer date on the current side, or the previous side when no current result exists. Current authorised labels are shown. Applied evidence order: verified employer transfer, hire, recorded exit, then latest salary-changing increment/promotion/demotion; remaining rows are unexplained. Labels do not prove the cause of the entire monetary difference.",
     "remarks": {
       "disabled": "Automatic explanations are off.",

@@ -15,11 +15,11 @@ import { payPeriodBounds } from './payslip-segment';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { isCalendarDate } from '../lib/calendar-date';
 import {
-  ALL_RECORDED_PAY_ITEMS, DEFAULT_PAYROLL_COMPARISON, PAYROLL_COMPARISON_DATASET, payrollComparisonFilters,
+  ALL_RECORDED_PAY_ITEMS, DEFAULT_PAYROLL_COMPARISON, PAYROLL_COMPARISON_DATASET, PAYROLL_COMPARISON_REASONS, PAYROLL_COMPARISON_REASON_FILTERS, payrollComparisonFilters,
   validatePayrollComparisonDefinition, type PayrollComparisonMovement,
 } from '../lib/payroll-period-comparison';
 import {RECORDED_PAYROLL_TOTALS,payrollComparisonDatedSubjects,recordedPayrollComparisonAmount,recordedPayrollComparisonCodes} from '../lib/payroll-comparison-source';
-import { comparePayrollResults, type ComparisonIdentity, type ComparisonResult } from '../lib/payroll-comparison-result';
+import { comparePayrollResults, payrollComparisonAvailability, payrollComparisonInclusion, type ComparisonIdentity, type ComparisonResult, type PayrollComparisonInclusion } from '../lib/payroll-comparison-result';
 import { MasterReportAccessError } from './employee-master-access';
 const object=(value:unknown):Record<string,unknown>=>value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:{};
 export const payrollComparisonSpec=(definition=DEFAULT_PAYROLL_COMPARISON):CustomReportSpec=>({
@@ -47,9 +47,15 @@ export async function payrollComparisonOptions(ctx:SessionContext,scope:readonly
   return {...choices,payItems:[{code:ALL_RECORDED_PAY_ITEMS,name:'All recorded pay items'},{code:'BASIC',name:'Basic Salary actually paid'},...Object.entries(RECORDED_PAYROLL_TOTALS).map(([code,name])=>({code,name})),...items.filter(item=>item.code!=='BASIC').map(item=>({code:item.code,name:item.name}))]};
 }
 export type PayrollComparisonExecution={filters:ReturnType<typeof payrollComparisonFilters>;definition:ReturnType<typeof validatePayrollComparisonDefinition>;
-  result:ComparisonResult;companyIds:string[];sourceRevisions:{id:string;version:number;runId:string}[];contextUnavailable:boolean};
+  result:ComparisonResult;companyIds:string[];sourceRevisions:{id:string;version:number;runId:string}[];contextUnavailable:boolean;
+  /** Ready-company comparison (Reconciliation, the comparison report, its export and HR remarks): which companies the
+   * rows and totals cover and why each other company with payroll is left out. Null for an all-or-nothing caller. */
+  inclusion?:PayrollComparisonInclusion|null};
 
-export async function executePayrollComparisonTx(tx:Tx,ctx:SessionContext,spec:CustomReportSpec,scope:readonly string[],raw:Record<string,unknown>,verb:'view'|'export'):Promise<PayrollComparisonExecution>{
+/** `readyCompanies`: compare every company in scope that is ready for both months and list the others with their
+ * reasons, instead of refusing the whole comparison when one company is not ready. Companies that have never run
+ * payroll are left out and counted. Each included company still passes the saved-results completeness check. */
+export async function executePayrollComparisonTx(tx:Tx,ctx:SessionContext,spec:CustomReportSpec,scope:readonly string[],raw:Record<string,unknown>,verb:'view'|'export',options:{readyCompanies?:boolean}={}):Promise<PayrollComparisonExecution>{
   const definition=validatePayrollComparisonDefinition(spec.payrollComparison);
   let filters=payrollComparisonFilters(raw,definition);
   const scopeIds=filters.companyId?[filters.companyId]:[...scope];
@@ -71,16 +77,36 @@ export async function executePayrollComparisonTx(tx:Tx,ctx:SessionContext,spec:C
   }
   const previous=payPeriodBounds(filters.previousPeriod!),current=payPeriodBounds(filters.currentPeriod!);
   if(!previous||!current)throw new Error('Choose valid payroll periods.');
-  // All Company means payroll companies in the comparison, not every dormant company in the group.
-  // A company with payroll on only one side remains selected and still reports missing evidence.
-  if(!filters.companyId){
-    const represented=await tx.selectDistinct({companyId:payrollBatch.companyId}).from(payrollHistoryEffectiveBatch).where(and(
-      inArray(payrollBatch.companyId,ids),inArray(payrollBatch.payPeriod,[filters.previousPeriod!,filters.currentPeriod!]),
-      requestedCycles.length?inArray(payrollBatch.payrollCycleId,requestedCycles):undefined,
-      sql`(${payrollBatch.historyImportAttemptId} is null or ${payrollBatch.employeeCount}>0)`));
-    if(represented.length)ids=represented.map(row=>row.companyId);
+  const sourcesFor=(companyIds:readonly string[])=>payrollComparisonSourcesTx(tx,ctx,{companyIds,previousPeriod:filters.previousPeriod!,currentPeriod:filters.currentPeriod!,runType:filters.runType,cycleIds:filters.cycleIds,previousCycleIds:filters.previousCycleIds,payItemCode:definition.payItemCode});
+  let inclusion:PayrollComparisonInclusion|null=null,compared=ids;
+  let runs:Awaited<ReturnType<typeof sourcesFor>>['runs'],sources:Awaited<ReturnType<typeof sourcesFor>>['sources'];
+  if(options.readyCompanies){
+    // Companies with any payroll run at all; the rest have never run payroll and are only counted.
+    const ran=new Set((await tx.selectDistinct({companyId:payrollBatch.companyId}).from(payrollBatch).where(inArray(payrollBatch.companyId,ids))).map(row=>row.companyId));
+    const withPayroll=ids.filter(id=>ran.has(id));
+    ({runs,sources}=withPayroll.length?await sourcesFor(withPayroll):{runs:[],sources:[]});
+    const availability=payrollComparisonAvailability(runs,withPayroll,filters.previousPeriod!,filters.currentPeriod!,filters.runType);
+    const names=new Map((withPayroll.length?await tx.select({id:company.id,name:company.legalName}).from(company).where(inArray(company.id,withPayroll)):[]).map(row=>[row.id,row.name]));
+    inclusion=payrollComparisonInclusion(withPayroll,availability.issues,ids.length-withPayroll.length,names);
+    // A ready company's runs and saved results only; the completeness check still refuses any incomplete included run.
+    if(inclusion.excluded.length&&inclusion.includedCompanyIds.length)({runs,sources}=await sourcesFor(inclusion.includedCompanyIds));
+    else if(!inclusion.includedCompanyIds.length)sources=[];
+    runs=runs.filter(run=>inclusion!.includedCompanyIds.includes(run.companyId));
+    compared=inclusion.includedCompanyIds;
+    if(withPayroll.length)ids=withPayroll;
+  }else{
+    // All Company means payroll companies in the comparison, not every dormant company in the group.
+    // A company with payroll on only one side remains selected and still reports missing evidence.
+    if(!filters.companyId){
+      const represented=await tx.selectDistinct({companyId:payrollBatch.companyId}).from(payrollHistoryEffectiveBatch).where(and(
+        inArray(payrollBatch.companyId,ids),inArray(payrollBatch.payPeriod,[filters.previousPeriod!,filters.currentPeriod!]),
+        requestedCycles.length?inArray(payrollBatch.payrollCycleId,requestedCycles):undefined,
+        sql`(${payrollBatch.historyImportAttemptId} is null or ${payrollBatch.employeeCount}>0)`));
+      if(represented.length)ids=represented.map(row=>row.companyId);
+    }
+    ({runs,sources}=await sourcesFor(ids));
+    compared=ids;
   }
-  const {runs,sources}=await payrollComparisonSourcesTx(tx,ctx,{companyIds:ids,previousPeriod:filters.previousPeriod!,currentPeriod:filters.currentPeriod!,runType:filters.runType,cycleIds:filters.cycleIds,previousCycleIds:filters.previousCycleIds,payItemCode:definition.payItemCode});
   const employmentIds=[...new Set(sources.map(source=>source.employmentId))];
   if(employmentIds.length>10000)throw new Error('This comparison exceeds 10000 employments. Narrow the company scope.');
   const identities:ComparisonIdentity[]=[];
@@ -148,11 +174,20 @@ export async function executePayrollComparisonTx(tx:Tx,ctx:SessionContext,spec:C
         grade:placement&&grade?.gradeId?gradeNames.get(grade.gradeId)??null:null,movements,verifiedTransferIds});
     }
   }
-  const input={definition,filters,companyIds:ids,runs,sources,identities,
+  // No ready company: nothing to compare, and the inclusion says why. The explicit company filter narrows within it.
+  const comparedFilters=filters.companyId&&!compared.includes(filters.companyId)?null:filters;
+  const input={definition,filters,companyIds:compared,runs,sources,identities,
     previousFrom:previous.from,currentFrom:current.from,currentTo:current.to,paginate:verb!=='export'};
-  const result=definition.payItemCode===ALL_RECORDED_PAY_ITEMS
-    ? compareRecordedPayItems(input, sources) : comparePayrollResults(input);
-  return {definition,filters,result,companyIds:ids,sourceRevisions:sources.map(({id,version,runId})=>({id,version,runId})),contextUnavailable};
+  const result=options.readyCompanies&&(!compared.length||!comparedFilters)?noComparison(filters)
+    : definition.payItemCode===ALL_RECORDED_PAY_ITEMS ? compareRecordedPayItems(input, sources) : comparePayrollResults(input);
+  return {definition,filters,result,companyIds:ids,sourceRevisions:sources.map(({id,version,runId})=>({id,version,runId})),contextUnavailable,inclusion};
+}
+
+/** The empty result of a ready-company comparison with no ready company: no rows, totals or issues of its own. */
+function noComparison(filters:ReturnType<typeof payrollComparisonFilters>):ComparisonResult{
+  const zero=<K extends string>(keys:readonly K[])=>Object.fromEntries(keys.map(key=>[key,0])) as Record<K,number>;
+  return {available:false,issues:[],provisional:false,runs:[],rows:[],displayedRows:0,comparisonRows:0,
+    reasonCounts:zero(PAYROLL_COMPARISON_REASONS),reasonFilterCounts:zero(PAYROLL_COMPARISON_REASON_FILTERS),summary:null,page:filters.page,pageSize:filters.pageSize};
 }
 
 function compareRecordedPayItems(input:Parameters<typeof comparePayrollResults>[0], sources: Awaited<ReturnType<typeof payrollComparisonSourcesTx>>['sources']):ComparisonResult {
@@ -197,21 +232,29 @@ function compareRecordedPayItems(input:Parameters<typeof comparePayrollResults>[
 export async function payrollReconciliationPeriods(ctx: SessionContext, scope: readonly string[]) {
   return withTenant(ctx, async tx => {
     const ids = await payrollComparisonAccessTx(tx, ctx, payrollComparisonSpec(), 'view', scope);
-    const groups = tx.$with('reconciliation_periods').as(tx.select({
-      companyId: payrollBatch.companyId,
-      companyName: company.legalName,
-      period: payrollBatch.payPeriod,
-      runCount: sql<number>`count(*) filter (where ${payrollBatch.status} in ('processed', 'closed'))::int`.as('run_count'),
-      requiresReprocessing: sql<boolean>`bool_or(${payrollBatch.needsRecalcAt} is not null or ${payrollBatch.status} = 'draft')`.as('requires_reprocessing'),
+    // The scope's effective batches, read ONCE: every history batch's visible count comes from the effective-batch
+    // view, and the groups, the runs joined back to them and each group's previous month all read this set (it is
+    // referenced three times, so PostgreSQL materialises it). Same rows as reading the view in each place: every
+    // previous-month batch the check reads belongs to a group's company, which is in `ids`.
+    const batches = tx.$with('reconciliation_batches').as(tx.select({
+      id: payrollBatch.id, tenantId: payrollBatch.tenantId, companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod,
+      status: payrollBatch.status, needsRecalcAt: payrollBatch.needsRecalcAt, payrollCycleId: payrollBatch.payrollCycleId,
     }).from(payrollHistoryEffectiveBatch)
-      .innerJoin(company, eq(company.id, payrollBatch.companyId))
       .where(and(inArray(payrollBatch.companyId, ids),
-        sql`(${payrollBatch.historyImportAttemptId} is null or ${payrollBatch.employeeCount} > 0)`))
-      .having(sql`bool_or(${payrollBatch.status} in ('processed', 'closed'))`)
-      .groupBy(payrollBatch.companyId, company.legalName, payrollBatch.payPeriod)
-      .orderBy(desc(payrollBatch.payPeriod), asc(company.legalName), asc(payrollBatch.companyId))
+        sql`(${payrollBatch.historyImportAttemptId} is null or ${payrollBatch.employeeCount} > 0)`)));
+    const groups = tx.$with('reconciliation_periods').as(tx.select({
+      companyId: batches.companyId,
+      companyName: company.legalName,
+      period: batches.payPeriod,
+      runCount: sql<number>`count(*) filter (where ${batches.status} in ('processed', 'closed'))::int`.as('run_count'),
+      requiresReprocessing: sql<boolean>`bool_or(${batches.needsRecalcAt} is not null or ${batches.status} = 'draft')`.as('requires_reprocessing'),
+    }).from(batches)
+      .innerJoin(company, eq(company.id, batches.companyId))
+      .having(sql`bool_or(${batches.status} in ('processed', 'closed'))`)
+      .groupBy(batches.companyId, company.legalName, batches.payPeriod)
+      .orderBy(desc(batches.payPeriod), asc(company.legalName), asc(batches.companyId))
       .limit(120));
-    return tx.with(groups).select({
+    return tx.with(batches, groups).select({
       companyId: groups.companyId,
       companyName: groups.companyName,
       period: groups.period,
@@ -219,9 +262,8 @@ export async function payrollReconciliationPeriods(ctx: SessionContext, scope: r
       requiresReprocessing: groups.requiresReprocessing,
       previousReady: sql<boolean>`coalesce((
         select bool_and(prior.status = 'closed' and prior.needs_recalc_at is null)
-        from payroll_history_effective_batch prior
+        from reconciliation_batches prior
         where prior.tenant_id = ${ctx.tenantId}::uuid and prior.company_id = ${groups.companyId}
-          and (prior.history_import_attempt_id is null or prior.employee_count > 0)
           and prior.pay_period = to_char(to_date(${groups.period}, 'YYYY-MM') - interval '1 month', 'YYYY-MM')
       ), false)`,
       generatedAt: sql<string | null>`(
@@ -235,14 +277,13 @@ export async function payrollReconciliationPeriods(ctx: SessionContext, scope: r
       )`,
       lastProcessed: sql<string | null>`max(${domainEvent.occurredAt})::text`,
       cycles: sql<string[]>`coalesce(array_agg(distinct ${payrollCycle.name} order by ${payrollCycle.name}) filter (where ${payrollCycle.name} is not null), '{}'::text[])`,
-    }).from(groups).innerJoin(payrollHistoryEffectiveBatch, and(
-      eq(payrollBatch.companyId, groups.companyId), eq(payrollBatch.payPeriod, groups.period),
-      inArray(payrollBatch.status, ['processed', 'closed']),
-      sql`(${payrollBatch.historyImportAttemptId} is null or ${payrollBatch.employeeCount} > 0)`,
+    }).from(groups).innerJoin(batches, and(
+      eq(batches.companyId, groups.companyId), eq(batches.payPeriod, groups.period),
+      inArray(batches.status, ['processed', 'closed']),
     )).leftJoin(domainEvent, and(
       eq(domainEvent.tenantId, ctx.tenantId), eq(domainEvent.aggregateType, 'payroll-batch'),
-      eq(domainEvent.aggregateId, payrollBatch.id), inArray(domainEvent.eventType, ['payroll-batch.processed', 'payroll-batch.selective-reprocessed']),
-    )).leftJoin(payrollCycle, eq(payrollCycle.id, payrollBatch.payrollCycleId))
+      eq(domainEvent.aggregateId, batches.id), inArray(domainEvent.eventType, ['payroll-batch.processed', 'payroll-batch.selective-reprocessed']),
+    )).leftJoin(payrollCycle, eq(payrollCycle.id, batches.payrollCycleId))
       .groupBy(groups.companyId, groups.companyName, groups.period, groups.runCount, groups.requiresReprocessing)
       .orderBy(desc(groups.period), asc(groups.companyName), asc(groups.companyId));
   }, { readOnlySnapshot: true });
