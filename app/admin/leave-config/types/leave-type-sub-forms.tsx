@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 // core/leave-compute.ts is the RSC-SAFE half of the leave engine (it imports no db/postgres, see its
 // header), which is why a client component may pull VALUES from it. The worked example below runs the
@@ -21,7 +21,7 @@ import {
   normalizeDayFieldOnBlur,
   normalizeDayText,
 } from '@/lib/day-format';
-import { Search } from 'lucide-react';
+import { CalendarDays, Check, ChevronDown, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   LEAVE_COLORS,
@@ -30,8 +30,10 @@ import {
   LEAVE_ICON_KEYS,
   type LeaveColorToken,
   type LeaveIconKey,
+  leaveVisual,
 } from '@/lib/leave-visual';
 import { Button, Field, inputCls } from '@/components/ui';
+import { AnchoredPanel, useAnchoredPanel } from '@/components/ui/anchored-panel';
 
 /**
  * a6fe37fc ROUND 2 — the stateful sub-forms of the NEW leave type screen
@@ -1239,30 +1241,90 @@ export function MaxConsecutiveForm({
 /* ── Visual (TAB 1) ────────────────────────────────────────────────────────────────────────────── */
 
 /**
- * Colour token + icon — IA §3.1 F32, TAB 1. MARKER: `visual=1`. Purely cosmetic: the picked icon and
- * colour only change how the type LOOKS on the employee Leave tab.
+ * 73cbffa1 — THE COMPACT ICON AND COLOUR PICKERS. IA §3.1 F32, TAB 1.
+ *
+ * These replace the separate `LeaveVisualForm` (its own form, its own Save, all 16 icons and all 7
+ * swatches always on the page). The pickers are NOT forms: they are controlled fields of the IDENTITY form
+ * on tab 1, which now carries the `visual=1` marker beside `identity=1` and `leaveUnit=1`, so icon and
+ * colour save with the same Save button as code, name and description.
+ *
+ * ⚠️ THE HIDDEN INPUT IS RENDERED OUTSIDE THE `open` CONDITIONAL. The panel mounts only while it is open;
+ * the posted `icon` / `color` value must exist whether or not it is, or a Save with the panel closed would
+ * post nothing under the `visual=1` marker and clear the stored choice.
+ *
+ * ⚠️ NO <Field> (A <label>) AROUND THE TRIGGER. components/ui/multi-select-popover.tsx records the bug:
+ * a label forwards its activation click to the first labelable descendant — the trigger — so the click
+ * that closed the panel re-opened it. The caption is a plain span, named onto the trigger with
+ * aria-labelledby.
+ *
+ * The options are exactly LEAVE_ICON_KEYS and LEAVE_COLOR_TOKENS, plus "Default" ('' ⇒ null, which falls
+ * back to the code-keyed look through `leaveVisual`). Positioning and Escape come from
+ * components/ui/anchored-panel.tsx (no popover dependency is installed, and none is added for this).
  */
-export function LeaveVisualForm({
+function usePickerPanel(width: number) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const { at, anchorTo, release } = useAnchoredPanel({
+    open,
+    width,
+    flipHeight: 280,
+    // Escape: the hook has already released the anchor.
+    onClose: () => {
+      setOpen(false);
+      triggerRef.current?.focus();
+    },
+  });
+  // Outside click closes WITHOUT moving focus: the administrator clicked somewhere else on purpose.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        release();
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open, release]);
+  const close = () => {
+    release();
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
+  const toggle = () => {
+    if (open) {
+      close();
+      return;
+    }
+    if (triggerRef.current) anchorTo(triggerRef.current);
+    setOpen(true);
+  };
+  return { open, at, triggerRef, wrapRef, toggle, close };
+}
+
+const PICKER_TRIGGER_CLS = cn(inputCls, 'flex w-full items-center gap-2 text-left');
+
+/** Icon picker: shows only the chosen icon; the panel keeps the search and the full 16-icon library. */
+export function LeaveIconPicker({
   t,
-  id,
-  name,
+  value,
+  onChange,
   color,
-  icon,
-  action,
+  code,
 }: {
   t: ReturnType<typeof useTranslations>;
-  id: string;
-  name: string;
-  color: string | null;
-  icon: string | null;
-  action: Action;
+  value: LeaveIconKey | '';
+  onChange: (next: LeaveIconKey | '') => void;
+  /** The colour currently chosen in the sibling picker — the trigger previews the icon in it. */
+  color: LeaveColorToken | '';
+  /** For the code-keyed default icon shown while "Default" is chosen. */
+  code: string;
 }) {
-  const [selColor, setSelColor] = useState<LeaveColorToken | ''>(
-    color && (LEAVE_COLOR_TOKENS as string[]).includes(color) ? (color as LeaveColorToken) : '',
-  );
-  const [selIcon, setSelIcon] = useState<LeaveIconKey | ''>(
-    icon && (LEAVE_ICON_KEYS as string[]).includes(icon) ? (icon as LeaveIconKey) : '',
-  );
+  const uid = useId();
+  const captionId = `${uid}-caption`;
+  const panelId = `${uid}-panel`;
+  const { open, at, triggerRef, wrapRef, toggle, close } = usePickerPanel(312);
   const [query, setQuery] = useState('');
 
   const q = query.trim().toLowerCase();
@@ -1271,63 +1333,83 @@ export function LeaveVisualForm({
     if (key.toLowerCase().includes(q)) return true;
     return LEAVE_ICONS[key].keywords.some((kw) => kw.includes(q));
   });
-  const PreviewIcon = selIcon ? LEAVE_ICONS[selIcon].Icon : null;
+  const preview = leaveVisual({ icon: value || null, color: color || null, code });
+  const PreviewIcon = preview.Icon;
+  const pick = (next: LeaveIconKey | '') => {
+    onChange(next);
+    setQuery('');
+    close();
+  };
 
   return (
-    <div className="space-y-1.5">
-      <span className="text-xs font-medium text-muted-foreground">{t('visual.sectionTitle')}</span>
-      <form action={action} className="space-y-3 rounded-lg bg-background p-3">
-        <input type="hidden" name="id" value={id} />
-        {/* preserve the name — this form does not edit it */}
-        <input type="hidden" name="name" value={name} />
-        {/* marker: tells the action to touch the color + icon columns (tri-state guard) */}
-        <input type="hidden" name="visual" value="1" />
-        {/* the picked values, posted back to the action */}
-        <input type="hidden" name="icon" value={selIcon} />
-        <input type="hidden" name="color" value={selColor} />
-
-        <div className="space-y-1.5">
-          <span className="text-xs font-medium text-foreground">{t('visual.iconLabel')}</span>
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search
-                className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
-                aria-hidden
-              />
-              <input
-                type="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={t('visual.searchPlaceholder')}
-                aria-label={t('visual.searchPlaceholder')}
-                className={`${inputCls} w-full pl-7`}
-              />
-            </div>
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border">
-              {PreviewIcon ? (
-                <PreviewIcon className="size-4" aria-hidden />
-              ) : (
-                <span className="text-xs text-muted-foreground">—</span>
-              )}
-            </span>
+    <div ref={wrapRef} className="flex min-w-0 flex-col gap-1.5">
+      <span id={captionId} className="text-xs font-medium text-muted-foreground">
+        {t('visual.iconLabel')}
+      </span>
+      {/* the picked value, posted with the identity form's `visual=1` marker — mounted whether or not the
+          panel is open */}
+      <input type="hidden" name="icon" value={value} />
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={toggle}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        aria-labelledby={captionId}
+        data-picker="icon"
+        data-value={value}
+        className={PICKER_TRIGGER_CLS}
+      >
+        <span
+          aria-hidden
+          className={cn(
+            'flex size-6 shrink-0 items-center justify-center rounded-md',
+            preview.hasColor ? preview.chipClass : 'bg-muted text-foreground',
+          )}
+        >
+          <PreviewIcon className="size-3.5" />
+        </span>
+        <span className="min-w-0 flex-1 truncate">{t('visual.changeIcon')}</span>
+        <ChevronDown aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+      </button>
+      {open && (
+        <AnchoredPanel at={at} id={panelId} role="dialog" aria-labelledby={captionId} className="w-[19.5rem] space-y-2">
+          <div className="relative">
+            <Search
+              className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+              aria-hidden
+            />
+            <input
+              type="search"
+              value={query}
+              autoFocus
+              onChange={(e) => setQuery(e.target.value)}
+              // Enter in a search box inside the identity form must not submit it.
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.preventDefault();
+              }}
+              placeholder={t('visual.searchPlaceholder')}
+              aria-label={t('visual.searchPlaceholder')}
+              className={`${inputCls} w-full pl-7`}
+            />
           </div>
-          <div className="grid grid-cols-6 gap-1.5 sm:grid-cols-8">
+          <div className="grid grid-cols-8 gap-1.5">
             {shownIcons.map((key) => {
               const Ico = LEAVE_ICONS[key].Icon;
-              const active = selIcon === key;
+              const active = value === key;
               return (
                 <button
                   key={key}
                   type="button"
-                  onClick={() => setSelIcon(active ? '' : key)}
+                  onClick={() => pick(key)}
                   aria-pressed={active}
                   aria-label={key}
                   title={key}
-                  className={`flex aspect-square items-center justify-center rounded-md border ${
-                    active
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border text-foreground hover:bg-muted'
-                  }`}
+                  className={cn(
+                    'flex aspect-square items-center justify-center rounded-md border',
+                    active ? 'border-primary bg-primary/10 text-primary' : 'border-border text-foreground hover:bg-muted',
+                  )}
                 >
                   <Ico className="size-4" aria-hidden />
                 </button>
@@ -1337,35 +1419,102 @@ export function LeaveVisualForm({
               <p className="col-span-full text-xs text-muted-foreground">{t('visual.noIcons')}</p>
             )}
           </div>
-        </div>
+          <div className="border-t border-border pt-2">
+            <button
+              type="button"
+              onClick={() => pick('')}
+              aria-pressed={value === ''}
+              className={cn(
+                'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs',
+                value === '' ? 'bg-accent text-accent-foreground' : 'text-foreground hover:bg-muted',
+              )}
+            >
+              <CalendarDays aria-hidden className="size-3.5 text-muted-foreground" />
+              {t('visual.default')}
+            </button>
+          </div>
+        </AnchoredPanel>
+      )}
+    </div>
+  );
+}
 
-        <div className="space-y-1.5">
-          <span className="text-xs font-medium text-foreground">{t('visual.colorLabel')}</span>
-          <div className="flex flex-wrap gap-1.5">
-            {LEAVE_COLOR_TOKENS.map((token) => {
-              const active = selColor === token;
+/** Colour picker: shows only the chosen swatch and its name; the panel lists the same 7 colours. */
+export function LeaveColourPicker({
+  t,
+  value,
+  onChange,
+}: {
+  t: ReturnType<typeof useTranslations>;
+  value: LeaveColorToken | '';
+  onChange: (next: LeaveColorToken | '') => void;
+}) {
+  const uid = useId();
+  const captionId = `${uid}-caption`;
+  const panelId = `${uid}-panel`;
+  const { open, at, triggerRef, wrapRef, toggle, close } = usePickerPanel(240);
+  const pick = (next: LeaveColorToken | '') => {
+    onChange(next);
+    close();
+  };
+  const swatch = (token: LeaveColorToken | '') =>
+    token ? (
+      <span aria-hidden className={cn('size-4 shrink-0 rounded-full ring-1 ring-border', LEAVE_COLORS[token].bg)} />
+    ) : (
+      <span aria-hidden className="size-4 shrink-0 rounded-full border border-dashed border-muted-foreground/60" />
+    );
+  const options: (LeaveColorToken | '')[] = [...LEAVE_COLOR_TOKENS, ''];
+
+  return (
+    <div ref={wrapRef} className="flex min-w-0 flex-col gap-1.5">
+      <span id={captionId} className="text-xs font-medium text-muted-foreground">
+        {t('visual.colorLabel')}
+      </span>
+      {/* the picked value, posted with the identity form's `visual=1` marker */}
+      <input type="hidden" name="color" value={value} />
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={toggle}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        aria-labelledby={captionId}
+        data-picker="color"
+        data-value={value}
+        className={PICKER_TRIGGER_CLS}
+      >
+        {swatch(value)}
+        <span className="min-w-0 flex-1 truncate">{value ? t(`visual.color.${value}`) : t('visual.default')}</span>
+        <ChevronDown aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+      </button>
+      {open && (
+        <AnchoredPanel at={at} id={panelId} role="dialog" aria-labelledby={captionId} className="w-60 p-1.5">
+          <ul className="space-y-0.5">
+            {options.map((token) => {
+              const active = value === token;
+              const label = token ? t(`visual.color.${token}`) : t('visual.default');
               return (
-                <button
-                  key={token}
-                  type="button"
-                  onClick={() => setSelColor(active ? '' : token)}
-                  aria-pressed={active}
-                  aria-label={t(`visual.color.${token}`)}
-                  title={t(`visual.color.${token}`)}
-                  className={`size-7 rounded-full ${LEAVE_COLORS[token].bg} ${
-                    active ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : 'ring-1 ring-border'
-                  }`}
-                />
+                <li key={token || 'default'}>
+                  <button
+                    type="button"
+                    onClick={() => pick(token)}
+                    aria-pressed={active}
+                    className={cn(
+                      'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm',
+                      active ? 'bg-accent text-accent-foreground' : 'text-foreground hover:bg-muted',
+                    )}
+                  >
+                    {swatch(token)}
+                    <span className="min-w-0 flex-1 truncate">{label}</span>
+                    {active && <Check aria-hidden className="size-4 shrink-0 text-primary" />}
+                  </button>
+                </li>
               );
             })}
-          </div>
-        </div>
-
-        <Button type="submit" size="sm">
-          {t('save')}
-        </Button>
-      </form>
-      <p className="text-xs text-muted-foreground">{t('visual.help')}</p>
+          </ul>
+        </AnchoredPanel>
+      )}
     </div>
   );
 }

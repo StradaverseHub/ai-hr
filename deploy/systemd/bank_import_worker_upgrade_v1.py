@@ -1,6 +1,7 @@
 """Staging-only managed update. Bundle with the reviewed format and installer, hash-pin as root.
 No entry point or source imports: the private bundle supplies the reviewed modules.
 Drain before web installation; activate only after exact web source/build arrival.
+adopt-stopped replaces drain+activate only for a cleanly stopped prior worker without a managed receipt.
 """
 import argparse
 import fcntl
@@ -58,6 +59,75 @@ def validate_existing(base, source, unit_hash, env_hash):
     base.validate_service(report, release)
     base.check(report.get('Restart') == 'on-failure' and report.get('NeedDaemonReload') == 'no', 'loaded prior service is not the reviewed configuration')
     return report
+
+
+OVERRIDE_KEYS = ('DropInPaths', 'ExecStartPre', 'ExecStartPost', 'ExecStop', 'ExecStopPost', 'ExecCondition',
+                 'PassEnvironment', 'RootDirectory', 'RootImage', 'PAMName')
+
+
+def unit_or_identity_processes(uid):
+    """Every live PID running as the worker identity (any of real/effective/saved/fs UID) or inside the unit's cgroup.
+    A process that exits during the scan is gone; any other unreadable process refuses the adoption.
+    """
+    found = []
+    for entry in sorted(Path('/proc').iterdir(), key=lambda item: item.name):
+        if not entry.name.isdigit():
+            continue
+        try:
+            status = (entry / 'status').read_bytes()
+            groups = (entry / 'cgroup').read_bytes()
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+        uids = next((line.split()[1:] for line in status.splitlines() if line.startswith(b'Uid:')), None)
+        if not uids:
+            raise ValueError('Worker adoption refused: process identity is unreadable')
+        unit = b'/aihr-bank-import.service'
+        if str(uid).encode() in uids or any(line.endswith(unit) or unit + b'/' in line for line in groups.splitlines()):
+            found.append(int(entry.name))
+    return found
+
+
+def stopped_runtime(base):
+    fields = ['ControlGroup', 'ExecMainPID', 'ExecMainExitTimestamp', 'InactiveEnterTimestamp']
+    raw = base.command(['/usr/bin/systemctl', 'show', 'aihr-bank-import.service', '--no-pager',
+                        *['--property=' + field for field in fields]]).stdout
+    return dict(line.split('=', 1) for line in raw.splitlines() if '=' in line)
+
+
+def validate_stopped_prior(base, source, unit_hash, env_hash):
+    """adopt-stopped only: a cleanly exited prior worker installed before managed receipts existed.
+    The operator's observed unit hash pins it instead of a unit re-rendered from the current template.
+    Refuses an active, failed, restarting or reloaded unit and any live unit/identity process.
+    """
+    release = base.ROOT / 'releases' / source
+    for path in (base.UNIT, base.ENV):
+        base.root_protected(path, regular=True)
+    receipt = release / 'worker-install-v2.json'
+    base.check(not receipt.exists() and not receipt.is_symlink(), 'prior worker has a managed receipt; use drain and activate')
+    base.check(digest(base.read_bounded(base.UNIT, 65536)) == unit_hash, 'observed prior unit differs')
+    base.check(digest(base.read_bounded(base.ENV, 1024**2)) == env_hash, 'protected worker environment differs')
+    try:
+        identity = pwd.getpwnam(base.USER)
+    except KeyError:
+        identity = None
+    base.check(identity is not None and identity.pw_uid > 0, 'existing dedicated worker identity required')
+    report = properties(base)
+    for key, wanted in {'User': base.USER, 'Group': base.USER, 'WorkingDirectory': str(release), 'FragmentPath': str(base.UNIT),
+                        'EnvironmentFiles': str(base.ENV) + ' (ignore_errors=no)'}.items():
+        base.check(report.get(key) == wanted, 'prior worker service configuration differs: ' + key)
+    for key in OVERRIDE_KEYS:
+        # systemd 255 omits an unset Exec*/override property from `systemctl show --property=`; absent means unset.
+        base.check(report.get(key, '') == '', 'unreviewed prior service override: ' + key)
+    base.check(report.get('Restart') == 'on-failure' and report.get('NeedDaemonReload') == 'no' and
+               report.get('UnitFileState') == 'enabled', 'loaded prior service is not the observed configuration')
+    base.check(report.get('ActiveState') == 'inactive' and report.get('SubState') == 'dead' and report.get('MainPID') == '0',
+               'prior worker is not stopped')
+    base.check(report.get('Result') == 'success' and report.get('ExecMainStatus') == '0', 'prior worker did not exit cleanly')
+    runtime = stopped_runtime(base)
+    base.check(runtime.get('ControlGroup') == '', 'systemd still tracks a prior worker control group')
+    live = unit_or_identity_processes(identity.pw_uid)
+    base.check(not live, 'a live process remains for the prior worker unit or identity')
+    return {'state': 'stopped', 'forcedKill': False, 'properties': report, 'runtime': runtime, 'livePids': live}
 
 
 def validate_process(base, report, source):
@@ -178,20 +248,109 @@ def quiesce_failed_activation(base, operation, source):
     return result
 
 
+def stage_release(base, fmt, archive, operation, args, manifest):
+    """Extract authenticated bytes into a new immutable release; shared by activate and adopt-stopped."""
+    staged = operation / 'activation-release'
+    staged.mkdir(mode=0o700)
+    fmt.extract_archive(archive, staged, args.source, args.lock_sha256, args.package_sha256)
+    entries = {row['path']: row for row in manifest['entries']}
+    for path in staged.rglob('*'):
+        if not path.is_symlink():
+            os.chmod(path, 0o755 if path.is_dir() else entries[path.relative_to(staged).as_posix()]['mode'])
+    os.chmod(staged, 0o755)
+    release = base.ROOT / 'releases' / args.source
+    base.root_protected(release.parent)
+    base.check(not release.exists() and not release.is_symlink(), 'immutable destination already exists')
+    os.rename(staged, release)
+    return release
+
+
+def replace_and_start(base, fmt, args, operation, release, state, prior_unit_sha256, receipt):
+    """Atomic current-template unit, reload, start, three stable observations, receipt; quarantine on any failure.
+    Shared by activate and adopt-stopped; only the pinned prior unit hash and receipt provenance differ.
+    """
+    try:
+        atomic_unit(base, base.service_unit(args.source).encode(), prior_unit_sha256)
+        base.command(['/usr/bin/systemctl', 'daemon-reload'])
+        base.validate_service(properties(base), release)
+        base.command(['/usr/bin/systemctl', 'start', 'aihr-bank-import.service'])
+        stable_pid = None
+        for _ in range(3):
+            time.sleep(4)
+            report = properties(base)
+            base.validate_service(report, release)
+            base.check(report.get('NRestarts') == '0' and report.get('NeedDaemonReload') == 'no', 'updated service is not stable')
+            pid = validate_process(base, report, args.source)
+            base.check(stable_pid in (None, pid), 'updated worker PID changed')
+            stable_pid = pid
+        base.check(healthy_web_state(base, args.source, args.build_id) == state, 'web changed before worker acceptance')
+        base.check(digest(base.read_bounded(base.ENV, 1024**2)) == args.worker_env_sha256, 'worker environment changed during activation')
+        accepted = {**receipt, 'source': args.source, 'webBuildId': args.build_id, 'archiveSha256': args.archive_sha256,
+                    'selectedEnvironmentSha256': args.worker_env_sha256,
+                    'unitSha256': digest(base.service_unit(args.source).encode()), 'workerPid': stable_pid,
+                    'serviceStable': True, 'journeyVerified': False}
+        base.write_new(release / 'worker-install-v2.json', fmt.canonical(accepted), 0o444)
+        base.write_new(operation / 'activated.json', fmt.canonical(accepted), 0o400)
+        print(json.dumps(accepted))
+        return accepted
+    except Exception:
+        # Includes replacement/fsync, reload/start, process proof and receipt persistence failures.
+        # Quarantine refuses any foreign/unchanged unit rather than touching another release.
+        observed = quiesce_failed_activation(base, operation, args.source)
+        print(json.dumps({'workerActivationFailed': True, **observed}), file=sys.stderr)
+        raise RuntimeError('Worker activation failed; retained packages and protected failure observations require explicit administrator recovery') from None
+
+
+def adopt_stopped(base, fmt, args, operation, identity):
+    """Staging-only replacement for drain+activate when the prior worker is already cleanly stopped and has no
+    managed receipt. It never signals, kills, restores or deletes the prior worker, its release or its records.
+    """
+    state = healthy_web_state(base, args.source, args.build_id)
+    prior = validate_stopped_prior(base, args.previous_worker_source, args.observed_unit_sha256, args.worker_env_sha256)
+    base.check(not operation.exists() and not operation.is_symlink(), 'existing update attempt needs separate recovery review')
+    operation.mkdir(mode=0o700)
+    # The adopted unit cannot be re-rendered from any reviewed template; retain its exact bytes for recovery.
+    prior_unit = base.read_bounded(base.UNIT, 65536)
+    base.check(digest(prior_unit) == args.observed_unit_sha256, 'observed prior unit differs')
+    base.write_new(operation / 'prior-unit.service', prior_unit, 0o400)
+    archive = operation / 'authenticated-worker.zip'
+    base.snapshot_archive(args.archive, archive, args.archive_sha256, fmt.MAX_ARCHIVE)
+    manifest = fmt.inspect_archive(archive, args.source, args.lock_sha256, args.package_sha256)
+    manifest_sha256 = fmt.digest(fmt.canonical(manifest))
+    base.write_new(operation / 'stopped-prior.json', fmt.canonical({'identity': identity, 'manifestSha256': manifest_sha256, 'prior': prior}), 0o400)
+    release = stage_release(base, fmt, archive, operation, args, manifest)
+    base.check(healthy_web_state(base, args.source, args.build_id) == state, 'web changed before activation')
+    # Re-verify the pinned unit, environment and stopped state immediately before replacement.
+    base.check(validate_stopped_prior(base, args.previous_worker_source, args.observed_unit_sha256, args.worker_env_sha256) == prior,
+               'prior worker changed before unit replacement')
+    replace_and_start(base, fmt, args, operation, release, state, args.observed_unit_sha256,
+                      {'manifestSha256': manifest_sha256, 'mode': 'adopt-stopped', 'previousWorkerSource': args.previous_worker_source,
+                       'previousUnitSha256': args.observed_unit_sha256,
+                       'priorObservationSha256': fmt.digest(fmt.canonical(prior))})
+
+
 def upgrade(argv, fmt, base):
     parser = argparse.ArgumentParser()
-    parser.add_argument('phase', choices=['drain', 'activate'])
-    for name in ('previous-web-source', 'previous-web-build', 'previous-worker-source', 'source', 'build-id', 'archive', 'archive-sha256',
-                 'lock-sha256', 'package-sha256', 'unit-sha256', 'worker-env-sha256'):
-        parser.add_argument('--' + name, required=True)
+    parser.add_argument('phase', choices=['drain', 'activate', 'adopt-stopped'])
+    common = ('previous-worker-source', 'source', 'build-id', 'archive', 'archive-sha256', 'lock-sha256', 'package-sha256', 'worker-env-sha256')
+    managed = ('previous-web-source', 'previous-web-build', 'unit-sha256')
+    adopted = ('observed-unit-sha256',)
+    for name in common + managed + adopted:
+        parser.add_argument('--' + name)
     args = parser.parse_args(argv)
+    adopt = args.phase == 'adopt-stopped'
+    for name in common + (adopted if adopt else managed):
+        base.check(getattr(args, name.replace('-', '_')) is not None, '--' + name + ' is required for ' + args.phase)
+    for name in managed if adopt else adopted:
+        base.check(getattr(args, name.replace('-', '_')) is None, '--' + name + ' is not part of ' + args.phase)
     base.check(os.geteuid() == 0, 'root must run the independently hash-pinned self-contained bundle with Python -I')
-    for value in (args.previous_web_source, args.previous_worker_source, args.source):
+    for value in ((args.previous_worker_source, args.source) if adopt else (args.previous_web_source, args.previous_worker_source, args.source)):
         base.check(re.fullmatch('[a-f0-9]{40}', value or ''), 'exact sources required')
     base.check(args.previous_worker_source != args.source, 'update requires a different worker source')
-    for value in (args.previous_web_build, args.build_id):
+    for value in ((args.build_id,) if adopt else (args.previous_web_build, args.build_id)):
         base.check(re.fullmatch('[A-Za-z0-9_-]{1,160}', value or ''), 'exact builds required')
-    for value in (args.archive_sha256, args.lock_sha256, args.package_sha256, args.unit_sha256, args.worker_env_sha256):
+    pinned = (args.observed_unit_sha256,) if adopt else (args.unit_sha256,)
+    for value in (args.archive_sha256, args.lock_sha256, args.package_sha256, *pinned, args.worker_env_sha256):
         base.check(re.fullmatch('[a-f0-9]{64}', value or ''), 'independently authenticated digests required')
     base.root_protected(base.NODE, regular=True)
     base.check(base.command([str(base.NODE), '--version']).stdout.strip() == 'v22.23.3', 'reviewed worker runtime required')
@@ -207,8 +366,10 @@ def upgrade(argv, fmt, base):
             operations.mkdir(mode=0o700)
         base.root_protected(operations)
         operation = operations / args.source
-        identity = {name: getattr(args, name) for name in ('previous_web_source', 'previous_web_build', 'previous_worker_source', 'source', 'build_id',
-                    'archive_sha256', 'lock_sha256', 'package_sha256', 'unit_sha256', 'worker_env_sha256')}
+        identity = {name.replace('-', '_'): getattr(args, name.replace('-', '_')) for name in common + (adopted if adopt else managed)}
+        if adopt:
+            adopt_stopped(base, fmt, args, operation, identity)
+            return
         if args.phase == 'drain':
             state = healthy_web_state(base, args.previous_web_source, args.previous_web_build)
             report = validate_existing(base, args.previous_worker_source, args.unit_sha256, args.worker_env_sha256)
@@ -238,49 +399,10 @@ def upgrade(argv, fmt, base):
         manifest = fmt.inspect_archive(archive, args.source, args.lock_sha256, args.package_sha256)
         base.check(fmt.digest(fmt.canonical(manifest)) == record.get('manifestSha256'), 'prepared manifest changed')
         # Re-extract authenticated bytes instead of trusting an earlier unpacked tree.
-        staged = operation / 'activation-release'
-        staged.mkdir(mode=0o700)
-        fmt.extract_archive(archive, staged, args.source, args.lock_sha256, args.package_sha256)
-        entries = {row['path']: row for row in manifest['entries']}
-        for path in staged.rglob('*'):
-            if not path.is_symlink():
-                os.chmod(path, 0o755 if path.is_dir() else entries[path.relative_to(staged).as_posix()]['mode'])
-        os.chmod(staged, 0o755)
-        release = base.ROOT / 'releases' / args.source
-        base.root_protected(release.parent)
-        base.check(not release.exists() and not release.is_symlink(), 'immutable destination already exists')
-        os.rename(staged, release)
+        release = stage_release(base, fmt, archive, operation, args, manifest)
         base.check(healthy_web_state(base, args.source, args.build_id) == state, 'web changed before activation')
-        try:
-            atomic_unit(base, base.service_unit(args.source).encode(), args.unit_sha256)
-            base.command(['/usr/bin/systemctl', 'daemon-reload'])
-            base.validate_service(properties(base), release)
-            base.command(['/usr/bin/systemctl', 'start', 'aihr-bank-import.service'])
-            stable_pid = None
-            for _ in range(3):
-                time.sleep(4)
-                report = properties(base)
-                base.validate_service(report, release)
-                base.check(report.get('NRestarts') == '0' and report.get('NeedDaemonReload') == 'no', 'updated service is not stable')
-                pid = validate_process(base, report, args.source)
-                base.check(stable_pid in (None, pid), 'updated worker PID changed')
-                stable_pid = pid
-            base.check(healthy_web_state(base, args.source, args.build_id) == state, 'web changed before worker acceptance')
-            base.check(digest(base.read_bounded(base.ENV, 1024**2)) == args.worker_env_sha256, 'worker environment changed during activation')
-            accepted = {'source': args.source, 'webBuildId': args.build_id, 'archiveSha256': args.archive_sha256,
-                        'manifestSha256': record['manifestSha256'], 'selectedEnvironmentSha256': args.worker_env_sha256,
-                        'unitSha256': digest(base.service_unit(args.source).encode()), 'workerPid': stable_pid,
-                        'serviceStable': True, 'journeyVerified': False,
-                        'previousWebSource': args.previous_web_source, 'previousWebBuildId': args.previous_web_build,
-                        'previousWorkerSource': args.previous_worker_source}
-            base.write_new(release / 'worker-install-v2.json', fmt.canonical(accepted), 0o444)
-            base.write_new(operation / 'activated.json', fmt.canonical(accepted), 0o400)
-            print(json.dumps(accepted))
-        except Exception:
-            # Includes replacement/fsync, reload/start, process proof and receipt persistence failures.
-            # Quarantine refuses any foreign/unchanged unit rather than touching another release.
-            observed = quiesce_failed_activation(base, operation, args.source)
-            print(json.dumps({'workerActivationFailed': True, **observed}), file=sys.stderr)
-            raise RuntimeError('Worker activation failed; retained packages and protected failure observations require explicit administrator recovery') from None
+        replace_and_start(base, fmt, args, operation, release, state, args.unit_sha256,
+                          {'manifestSha256': record['manifestSha256'], 'previousWebSource': args.previous_web_source,
+                           'previousWebBuildId': args.previous_web_build, 'previousWorkerSource': args.previous_worker_source})
     finally:
         os.close(fd)

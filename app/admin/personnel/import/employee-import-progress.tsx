@@ -3,6 +3,7 @@ import {useEffect,useRef,useState} from 'react';
 import {useTranslations} from 'next-intl';
 import {Card} from '@/components/ui';
 import {employeeImportActive,employeeImportPercent,type EmployeeImportProgress} from '@/lib/employee-import-job';
+import {employeeProgressErrorMessage} from '@/lib/employee-import-upload-errors';
 import type {ImportResult} from '@/lib/import-schema';
 
 const endpoint='/admin/personnel/import/employee/jobs';
@@ -10,7 +11,7 @@ const pollMs=2000;
 
 /** Shows a running background employee import and hands the finished outcome to the existing result panel. */
 export function EmployeeImportJobPanel({job:initial,onFinished}:{job:EmployeeImportProgress;onFinished:(result:ImportResult)=>void}){
- const j=useTranslations('people.import.employeeJob');
+ const j=useTranslations('people.import.employeeJob'),ti=useTranslations('people.import');
  const [job,setJob]=useState(initial),[error,setError]=useState(''),[checkedAt,setCheckedAt]=useState(0);
  const finished=useRef(false);
  useEffect(()=>{
@@ -18,11 +19,13 @@ export function EmployeeImportJobPanel({job:initial,onFinished}:{job:EmployeeImp
   const poll=async()=>{
    let again=true;
    try{
-    const response=await fetch(`${endpoint}/${initial.id}`,{cache:'no-store'});
+    let response:Response;
+    // Item 1859cce0 — a failed check is said plainly; the import itself keeps running in the background.
+    try{response=await fetch(`${endpoint}/${initial.id}`,{cache:'no-store'});}catch(thrown){if(alive)setError(employeeProgressErrorMessage({thrown},ti));return;}
     const payload=await response.json().catch(()=>null);
-    if(!response.ok||!payload)throw new Error(payload?.error??'');
+    if(!response.ok||!payload){if(alive)setError(employeeProgressErrorMessage({status:response.status,error:payload?.error},ti));return;}
     if(alive){setJob(payload.job);setError('');setCheckedAt(Date.now());again=employeeImportActive(payload.job.state);}
-   }catch(e){if(alive)setError((e as Error).message||'');}
+   }catch{if(alive)setError(ti('uploadErrors.unknown'));}
    finally{if(alive&&again)timer=setTimeout(poll,pollMs);}
   };
   void poll();return()=>{alive=false;clearTimeout(timer);};

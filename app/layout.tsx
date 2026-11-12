@@ -190,8 +190,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // identity at all. It always resolves to something renderable — an employed viewer, a named principal
   // with no employment (an admin never hired, or a leaver), or a login attached to no person at all.
   // Memoised, so the NoticePopupSlot below shares the employment row rather than re-reading it.
-  const [viewer,{accessConfigurationAvailable,workforceAvailable,onboarded}]=await Promise.all([
-    viewerIdentity(session),readShellNavigationAccess(session,!isAdmin(session)),
+  const [viewer,{accessConfigurationAvailable,workforceAvailable,onboarded,peopleGeneralConfigurable}]=await Promise.all([
+    viewerIdentity(session),readShellNavigationAccess(session,!isAdmin(session),isAdmin(session)),
   ]);
   const letterDestinations=isModuleEnabledOrFalse(session,'employees')
     ? await letterNavigation(session,scopeIds) : [];
@@ -340,6 +340,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               assistantAccess={assistantAccess}
               feedbackAccess={feedbackAccess}
               privateCaseHandler={privateCaseHandler}
+              // 82748f92 — the People › Settings General search alias only (command bar). Same function as the page guard.
+              canConfigurePeopleGeneral={peopleGeneralConfigurable===true}
               defaultCollapsed={railCollapsed}
               // r398 — the Monolith rail's user line. Display only, the same identity the header shows.
               viewerName={viewer.name}

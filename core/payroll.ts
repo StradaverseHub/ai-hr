@@ -2,6 +2,7 @@ import {personnelGroupingReadinessTx} from './personnel-quality';
 import {payrollEmploymentPredicate,outstandingPaymentPredicate,payrollCompensationEffectiveOn,payrollEmploymentEnd,payrollRunContextsTx,type PayrollEligibilityRun} from './payroll-employment-eligibility';
 import {PayrollTaxBasisError} from '../lib/payroll-tax-basis';
 import {readPayrollComponentInputsTx,readPayrollIndividualLedgerTx,readPayrollAttendanceHoursTx} from './payroll-formula-inputs';
+import {repriceIndividualLedgerTx,PayItemFormulaRepriceError,type RepricedPayItem} from '../packs/payroll/individual-calculation';
 import { captureRunInputsAtProcessingTx } from './payroll-audit/inputs';
 import {eligibleWorkingDays,payrollIncrementBasic,payrollRateBasic,payrollRoundAmount as roundAmount} from '../lib/payroll-basic';
 import {preparePayFormulaRuntimeTx} from './pay-formula-runtime';
@@ -467,7 +468,7 @@ export type ReprocessEmployeeOutcome = {
    *  'not_eligible': no longer in this month, but removal is switched off or not permitted, so the old
    *  result is kept for an administrator to remove. */
   status: 'reprocessed' | 'skipped' | 'validation_failed' | 'excluded' | 'not_eligible';
-  reasonCode: 'NOTHING_PAYABLE' | 'PAYROLL_CONFIGURATION_INCOMPLETE' | 'TAX_SCHEME_CONFIGURATION_INCOMPLETE' | ReprocessExclusionReason | null;
+  reasonCode: 'NOTHING_PAYABLE' | 'PAYROLL_CONFIGURATION_INCOMPLETE' | 'TAX_SCHEME_CONFIGURATION_INCOMPLETE' | 'PAY_ITEM_FORMULA_FAILED' | ReprocessExclusionReason | null;
   validationCode?: string;
   /** 3244584c — an exclusion carries its cause and the effective date (`gap` = the cause, `date` = ISO). */
   validationDetails?: { gap: string; date?: string }[];
@@ -480,6 +481,10 @@ export type ReprocessEmployeeOutcome = {
   classification?: 'added' | 'recalculated';
   configuredTaxScheme?: ReprocessTaxScheme;
   effectiveTaxScheme?: ReprocessTaxScheme;
+  /** 792053e5 — the Pay Items whose one-off transactions were re-priced with an updated formula (amount moved). */
+  repricedItems?: RepricedPayItem[];
+  /** 792053e5 — the Pay Item whose updated formula could not price this employee's transactions (PAY_ITEM_FORMULA_FAILED). */
+  formulaFailure?: { componentId: string; code: string; name: string; dates: string[]; reason: string; detail: string | null };
 };
 
 export type ReprocessJobResult = {
@@ -512,8 +517,13 @@ function taxSchemeOutcomeDetails(error:Error): Pick<ReprocessEmployeeOutcome,'co
 }
 
 function employeeReprocessValidation(error: unknown): Pick<ReprocessEmployeeOutcome,
-  'status' | 'reasonCode' | 'validationCode' | 'validationDetails' | 'configuredTaxScheme' | 'effectiveTaxScheme'> | null {
+  'status' | 'reasonCode' | 'validationCode' | 'validationDetails' | 'configuredTaxScheme' | 'effectiveTaxScheme' | 'formulaFailure'> | null {
   if (error instanceof ReprocessNothingPayableError) return {status:'skipped',reasonCode:'NOTHING_PAYABLE'};
+  // 792053e5 — the updated Pay Item formula could not price this employee's transactions: an outcome naming the item,
+  // the dates and the reason (the savepoint rolled back their re-pricing; the previous result stays), never a run stop.
+  if (error instanceof PayItemFormulaRepriceError) return {status:'validation_failed',reasonCode:'PAY_ITEM_FORMULA_FAILED',
+    validationCode:'pay_item_formula_failed',formulaFailure:{componentId:error.componentId,code:error.code,name:error.itemName,
+      dates:error.dates,reason:error.reason,detail:error.detail}};
   // 3244584c — the removal decision (excluded vs not_eligible) is the loop's; this maps the cause only.
   if (error instanceof ReprocessEmploymentNotInPeriodError) return {status:'excluded',reasonCode:error.reason,
     validationCode:'employment_not_in_period',
@@ -4509,6 +4519,19 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       const plan: PayrollProcessingPlan = { employmentIds, prefillOvertime };
       return { processingPlan: plan };
     }
+
+    // ── 792053e5 — RE-PRICE FORMULA-PRICED ONE-OFF ROWS WITH THE LATEST SAVED FORMULA, BEFORE ANY READER SEES THEM ──
+    // A one-off row whose amount a Pay Item formula produced was priced once, when it was keyed or imported, and every
+    // later generation paid that stored figure, so a corrected formula marked the run but reprocessing returned the old
+    // amount. The rows of the employees generated now (the whole run, a processing chunk, or the one employee of a
+    // selective reprocess, inside its savepoint) are re-priced from their saved Hours, Days or Quantity through the same
+    // pricing owners that priced them at entry; hand-typed amounts carry no pricing marker and are never touched. This
+    // transaction holds the run's catalogue and company/month keys and the run is draft, processing or processed — a
+    // closed run is never generated, so its rows stay as they were. A formula that cannot price a row throws a named
+    // PayItemFormulaRepriceError here, before any figure is computed or written.
+    const repricedByEmp = settingEnabled(ctx, 'payroll.individual_txn_pay_enabled')
+      ? await repriceIndividualLedgerTx(tx, ctx, { batch: { id: batch.id, companyId: batch.companyId, payPeriod: batch.payPeriod, payrollCycleId: batch.payrollCycleId ?? null }, employmentIds: emps.map((e) => e.employmentId) })
+      : new Map<string, RepricedPayItem[]>();
 
     const outstandingRows=emps.length?await tx.select({id:employment.id}).from(employment).where(and(inArray(employment.id,emps.map(e=>e.employmentId)),outstandingPaymentPredicate(batch,settingEnabled(ctx,'payroll.individual_txn_pay_enabled')))):[];
     const postEmploymentIds=new Set(outstandingRows.map(row=>row.id));
@@ -8600,6 +8623,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       }
       return {
         snapshotLinks,
+        // 792053e5 — the Pay Items re-priced with an updated formula, per employee, for the outcome remark.
+        repriced: Object.fromEntries(repricedByEmp),
         reprocessed: emps.length,
         recalculated: recalculatedCount,
         added: addedNow.size,
@@ -10197,7 +10222,8 @@ export async function reprocessEmployeeTx(tx:Tx,ctx:SessionContext,run:Selective
     .where(and(eq(payslip.batchId,run.batchId),eq(payslip.employmentId,employmentId))).limit(1);
   let classification: ReprocessEmployeeOutcome['classification'];
   let historyId: string | null = null;
-  let outcomeState: Pick<ReprocessEmployeeOutcome,'status'|'reasonCode'|'validationCode'|'validationDetails'|'configuredTaxScheme'|'effectiveTaxScheme'>;
+  let outcomeState: Pick<ReprocessEmployeeOutcome,'status'|'reasonCode'|'validationCode'|'validationDetails'|'configuredTaxScheme'|'effectiveTaxScheme'|'formulaFailure'>;
+  let repricedItems: RepricedPayItem[] | undefined;
   try {
     if (exclusion) throw exclusion;
     // Nested drizzle transaction is a SAVEPOINT on this same connection, never another tenant
@@ -10209,11 +10235,17 @@ export async function reprocessEmployeeTx(tx:Tx,ctx:SessionContext,run:Selective
     classification = result.added ? 'added' : 'recalculated';
     historyId = result.snapshotLinks?.[employmentId] ?? null;
     if (!historyId) throw new Error('Selected payroll result has no history checkpoint.');
+    repricedItems = result.repriced?.[employmentId];
     outcomeState = {status:'reprocessed',reasonCode:null};
   } catch (error) {
     const validation = employeeReprocessValidation(error);
     if (!validation) throw error;
     outcomeState = validation;
+  }
+  // 792053e5 — an employee whose updated formula could not be priced still owes a recalculation, whatever marked (or
+  // did not mark) the run: the mark is what makes closeBatch refuse until the formula is fixed and they are reprocessed.
+  if (outcomeState.reasonCode === 'PAY_ITEM_FORMULA_FAILED' && before) {
+    await markBatchNeedsRecalc(tx, ctx, { batchId: run.batchId, employmentIds: [employmentId] });
   }
   // 3244584c — AN EXCLUDED EMPLOYEE'S OLD RESULT LEAVES THE RUN, through the removal owner itself
   // (snapshot, loan/claim/one-off release, statutory adjustment, verdicts, totals by delta, recount,
@@ -10247,6 +10279,7 @@ export async function reprocessEmployeeTx(tx:Tx,ctx:SessionContext,run:Selective
     ...(outcomeState.status==='reprocessed' && typeof savedScheme==='string'
       && (REPROCESS_TAX_SCHEMES as readonly string[]).includes(savedScheme) ? {effectiveTaxScheme:savedScheme as ReprocessTaxScheme}:{}),
     resultRetained:outcomeState.status === 'excluded' ? false : outcomeState.status !== 'reprocessed' && !!before,
+    ...(repricedItems?.length ? {repricedItems} : {}),
     payslipId:after?.id ?? null,versionBefore:before?.version ?? null,
     versionAfter:after?.version ?? null,historyId,at:new Date().toISOString(),
   };
@@ -10447,8 +10480,16 @@ export function decodeReprocessEmployeeOutcomes(result: unknown, selection: read
       ? r.versionBefore!==null || r.versionAfter!==1
       : r.versionBefore===null || r.versionAfter!==r.versionBefore+1)) return null;
     if (r.status === 'skipped' && r.reasonCode !== 'NOTHING_PAYABLE') return null;
-    if (r.status === 'validation_failed' && (!['PAYROLL_CONFIGURATION_INCOMPLETE','TAX_SCHEME_CONFIGURATION_INCOMPLETE'].includes(r.reasonCode ?? '')
+    if (r.status === 'validation_failed' && (!['PAYROLL_CONFIGURATION_INCOMPLETE','TAX_SCHEME_CONFIGURATION_INCOMPLETE','PAY_ITEM_FORMULA_FAILED'].includes(r.reasonCode ?? '')
       || typeof r.validationCode !== 'string')) return null;
+    // 792053e5 — a formula failure names its Pay Item and dates; a re-priced item carries finite figures.
+    if ((r.reasonCode === 'PAY_ITEM_FORMULA_FAILED') !== (r.formulaFailure !== undefined)) return null;
+    if (r.formulaFailure !== undefined && (typeof r.formulaFailure !== 'object' || r.formulaFailure === null
+      || typeof r.formulaFailure.code !== 'string' || typeof r.formulaFailure.name !== 'string' || typeof r.formulaFailure.reason !== 'string'
+      || !Array.isArray(r.formulaFailure.dates) || r.formulaFailure.dates.some(d => typeof d !== 'string'))) return null;
+    if (r.repricedItems !== undefined && (r.status !== 'reprocessed' || !Array.isArray(r.repricedItems)
+      || r.repricedItems.some(i => !i || typeof i.code !== 'string' || typeof i.name !== 'string'
+        || ![i.count,i.quantity,i.before,i.after].every(n => typeof n === 'number' && Number.isFinite(n))))) return null;
     // 3244584c — an exclusion either removed the payslip it found (history row, no result after) or found
     // none to remove; 'not_eligible' kept it untouched, like any other retained outcome.
     if ((r.status === 'excluded' || r.status === 'not_eligible') && !REPROCESS_EXCLUSION_REASONS.has(r.reasonCode ?? '')) return null;

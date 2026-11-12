@@ -155,17 +155,27 @@ describe('staged employee import job',()=>{
   expect(counted).toEqual({n:4,hired:4});
  });
 
- it('discards everything when a row is refused, leaving hired-then-voided events and releasing identifiers',async()=>{
+ it('reports every row refused while saving, discards everything, leaves hired-then-voided events and releases identifiers',async()=>{
   const tag='DSC';const rows=Array.from({length:5},(_,i)=>row(tag,i));
-  await owner.db.execute(sql`CREATE FUNCTION public.staged_job_refuse() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF EXISTS(SELECT 1 FROM employment WHERE id=NEW.employment_id AND employee_code LIKE 'STGDSC%003') THEN RAISE EXCEPTION 'fixture compensation refusal'; END IF; RETURN NEW; END $$`);
+  // Item 1859cce0 — two rows refused by an owner while saving: both are reported in one run, with nothing left behind.
+  await owner.db.execute(sql`CREATE FUNCTION public.staged_job_refuse() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF EXISTS(SELECT 1 FROM employment WHERE id=NEW.employment_id AND (employee_code LIKE 'STGDSC%003' OR employee_code LIKE 'STGDSC%001')) THEN RAISE EXCEPTION 'fixture compensation refusal'; END IF; RETURN NEW; END $$`);
   await owner.db.execute(sql`CREATE TRIGGER staged_job_refuse BEFORE INSERT ON compensation FOR EACH ROW EXECUTE FUNCTION public.staged_job_refuse()`);
   try{
    const {job}=await startJob(rows);
    await ticks(j=>j.state==='failed',800);
    const final=await getEmployeeImportJob(ctx,job.id);
-   expect(final.state).toBe('failed');expect(final.error).toMatch(/row 4/);
-   expect(final.errors.find(e=>e.rowNum===4)?.message).toMatch(/refused/);
-   expect(final.errors.filter(e=>e.rowNum!==4).every(e=>e.message.includes('rolled back'))).toBe(true);
+   expect(final.state).toBe('failed');expect(final.error).toMatch(/Row 2, 4 could not be saved/);
+   expect(final.errors.find(e=>e.rowNum===2)?.message).toMatch(/refused by a safeguard.*Reference/);
+   expect(final.errors.find(e=>e.rowNum===4)?.message).toMatch(/refused by a safeguard.*Reference/);
+   const others=final.errors.filter(e=>e.rowNum!==2&&e.rowNum!==4);
+   expect(others.map(e=>e.rowNum)).toEqual([1,3,5]);
+   expect(others.every(e=>/cancelled because row 2, 4 could not be saved.*no problem/.test(e.message))).toBe(true);
+   expect(final.errors.some(e=>e.message.includes('rolled back'))).toBe(false);
+   // Import History keeps the save report on the failed event, kept after the job cleared its plan.
+   const [failedEvent]=await owner.client<{detail:{rows?:{rowNum:number;outcome:string;message:string;employeeCode:string;companyId:string}[]}}[]>`select detail from import_attempt_event where attempt_id=${final.attemptId}::uuid and kind='failed'`;
+   expect(failedEvent.detail.rows?.map(r=>[r.rowNum,r.outcome,r.employeeCode,r.companyId])).toEqual([[2,'stopped','STGDSC001',b.companyId],[4,'stopped','STGDSC003',b.companyId]]);
+   // A refused row is never staged: its savepoint rolled back, so only the other three hires exist to void.
+   expect(await owner.client<{n:number}[]>`select count(*)::int n from employment where voided_employee_code in ('STGDSC001','STGDSC003')`.then(r=>r[0].n)).toBe(0);
    expect(await withTenant(ctx,tx=>tx.execute(sql`select count(*)::int n from employment where voided_employee_code like 'STGDSC%' or employee_code like 'STGDSC%'`)).then(r=>r[0].n)).toBe(0);
    const staged=await owner.client<{id:string;voided_at:Date|null;employee_code:string|null;import_pending_attempt_id:string|null}[]>`select id,voided_at,employee_code,import_pending_attempt_id from employment e where e.voided_employee_code like 'STGDSC%'`;
    expect(staged.length).toBeGreaterThan(0);expect(staged.every(r=>r.voided_at&&r.employee_code===null&&r.import_pending_attempt_id===null)).toBe(true);
@@ -287,6 +297,36 @@ describe('staged employee import job',()=>{
   const [beat]=await owner.client<{kinds:string[]}[]>`select kinds from bulk_job_worker order by beat_at desc limit 1`;
   expect(beat.kinds).toContain('employee_import');
  },180000);
+
+ it('names the subordinate of a manager refused while saving, skips its reporting line and discards the file (item 1859cce0)',async()=>{
+  const tag='SRF';
+  const manager={...row(tag,0),direct_superior:''};
+  const report={...row(tag,1),direct_superior:row(tag,0).employee_code};
+  const bystander={...row(tag,2),direct_superior:''};
+  await owner.db.execute(sql`CREATE FUNCTION public.staged_job_refuse_mgr() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF EXISTS(SELECT 1 FROM employment WHERE id=NEW.employment_id AND employee_code='STGSRF000') THEN RAISE EXCEPTION 'fixture manager refusal'; END IF; RETURN NEW; END $$`);
+  await owner.db.execute(sql`CREATE TRIGGER staged_job_refuse_mgr BEFORE INSERT ON compensation FOR EACH ROW EXECUTE FUNCTION public.staged_job_refuse_mgr()`);
+  try{
+   const baseline=await owner.client<{e:number;p:number;a:number}[]>`select (select count(*)::int from employment where voided_at is null) e,(select count(*)::int from person) p,(select count(*)::int from assignment) a`;
+   const {job}=await startJob([report,manager,bystander]);
+   await ticks(j=>j.state==='failed',800);
+   const final=await getEmployeeImportJob(ctx,job.id);
+   // Row 2 (the manager) stopped the file; row 1 is named because its direct superior was not saved; row 3 has no problem.
+   expect(final.errors.map(e=>e.rowNum)).toEqual([1,2,3]);
+   expect(final.errors[0].message).toMatch(/direct superior on row 2 could not be saved/);
+   expect(final.errors[1].message).toMatch(/refused by a safeguard/);
+   expect(final.errors[2].message).toMatch(/cancelled because row 1, 2 could not be saved.*no problem/);
+   const [failedEvent]=await owner.client<{detail:{rows:{rowNum:number;column?:string}[]}}[]>`select detail from import_attempt_event where attempt_id=${final.attemptId}::uuid and kind='failed'`;
+   expect(failedEvent.detail.rows.map(r=>[r.rowNum,r.column??null])).toEqual([[1,'direct_superior'],[2,null]]);
+   // Nothing of the file remains live: no employee, and the staged ones were voided.
+   expect(await visibleLike('STGSRF')).toBe(0);
+   const [after]=await owner.client<{e:number}[]>`select count(*)::int e from employment where voided_at is null`;
+   expect(after.e).toBe(baseline[0].e);
+   expect(await owner.client<{n:number}[]>`select count(*)::int n from reporting_line r join employment s on s.id=r.subordinate_employment_id where s.voided_employee_code like 'STGSRF%' or s.employee_code like 'STGSRF%'`.then(r=>r[0].n)).toBe(0);
+  }finally{
+   await owner.db.execute(sql`DROP TRIGGER IF EXISTS staged_job_refuse_mgr ON compensation`);
+   await owner.db.execute(sql`DROP FUNCTION IF EXISTS public.staged_job_refuse_mgr()`);
+  }
+ });
 
  it('applies direct superiors after every employee, as their own steps, and releases the reporting line',async()=>{
   const tag='SUP';

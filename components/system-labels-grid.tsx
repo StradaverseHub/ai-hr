@@ -28,6 +28,7 @@ import { refreshEditableRows } from '@/lib/refresh-editable-rows';
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useFitToView } from '@/components/ui/fit-to-view';
 import { useTranslations } from 'next-intl';
+import { useRegisteredUnsavedChanges } from '@/components/use-registered-unsaved-changes';
 import { toast } from 'sonner';
 import {
   ArchiveRestore,
@@ -339,6 +340,7 @@ export function SystemLabelsGrid({
   const dirtyExisting = rows.filter((r) => !r.isNew && r.dirty);
   const drafts = rows.filter((r) => r.isNew);
   const hasChanges = dirtyExisting.length > 0 || drafts.length > 0;
+  useRegisteredUnsavedChanges(hasChanges, t('unsavedChanges'));
   // 797e3523: how many filters diverge from their defaults — badges the Filter button so a collapsed
   // panel never silently hides rows.
   const activeFilterCount = (search.trim() ? 1 : 0) + (statusFilter !== 'active' ? 1 : 0) + (scopeFilter !== 'all' ? 1 : 0);

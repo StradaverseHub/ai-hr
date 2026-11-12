@@ -70,7 +70,7 @@ import {
   reportingLine,
 } from '../db/schema';
 import { labelUsableByCompany } from './system-labels';
-import { lockEmploymentStatutoryOwnerTx, wouldCreateAdminCycle } from './org';
+import { lockEmploymentStatutoryOwnerTx, wouldCreateAdminCycle, setEmploymentInfo } from './org';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
 /** The event this module appends. Loaded by core/movement.ts's projection (it projects no row of its own). */
@@ -92,6 +92,28 @@ export type HireCorrectionField = (typeof HIRE_CORRECTION_FIELDS)[number];
 
 /** `undefined` (absent) = leave alone; `null` = clear (not allowed for department, which is required). */
 export type HireCorrectionChanges = Partial<Record<HireCorrectionField, string | null>>;
+
+/**
+ * 2260a06b — the end date of the employee's CURRENT Employee Type (Contract End Date for a contract employee,
+ * Internship End Date for an intern). It is a flat employment fact, not a dated assignment field, so it is not
+ * part of the chain walk: the correction writes it through setEmploymentInfo (the profile's own validation, the
+ * open-renewal refusal and provisional alignment) in the same transaction. Employee Type itself stays excluded.
+ */
+export const HIRE_CORRECTION_END_DATE_FIELDS = ['contractEndDate', 'internshipEndDate'] as const;
+export type HireCorrectionEndDateField = (typeof HIRE_CORRECTION_END_DATE_FIELDS)[number];
+export const hireCorrectionEndDateFieldFor = (employmentType: string | null | undefined): HireCorrectionEndDateField | null =>
+  employmentType === 'contract' ? 'contractEndDate' : employmentType === 'intern' ? 'internshipEndDate' : null;
+
+/** The posted end date (absent = untouched). Only the two allow-listed names are read. */
+export function parseHireCorrectionEndDate(formData: FormData): Partial<Record<HireCorrectionEndDateField, string | null>> {
+  const out: Partial<Record<HireCorrectionEndDateField, string | null>> = {};
+  for (const f of HIRE_CORRECTION_END_DATE_FIELDS) {
+    const v = formData.get(f);
+    if (v == null) continue;
+    out[f] = String(v).trim() || null;
+  }
+  return out;
+}
 
 export class HireCorrectionError extends Error {
   constructor(message: string) {
@@ -552,6 +574,8 @@ export type HireCorrectionView = {
   employmentType: string | null;
   fields: HireCorrectionFieldView[];
   salaryAtHire?: { amount: string; currency: string };
+  /** 2260a06b — the current type's end date, when the current type has one. */
+  endDate?: { field: HireCorrectionEndDateField; value: string | null };
 };
 
 export function hireCorrectionView(ctx: SessionContext, employmentId: string): Promise<HireCorrectionView> {
@@ -615,6 +639,7 @@ export async function hireCorrectionViewTx(tx: Tx, ctx: SessionContext, employme
       .where(and(eq(compensation.employmentId, employmentId), eq(compensation.tenantId, ctx.tenantId),
         eq(compensation.validFrom, plan.anchor), isNull(compensation.supersededAt),
         sql`app.can_admin_employment(${employmentId}::uuid)`));
+    const endDate = await currentEndDateTx(tx, employmentId);
     return {
       hiredOn: plan.anchor,
       companyId: v1.companyId,
@@ -625,7 +650,31 @@ export async function hireCorrectionViewTx(tx: Tx, ctx: SessionContext, employme
       employmentType: v1.row.employmentType,
       salaryAtHire,
       fields,
+      ...(endDate ? { endDate } : {}),
     };
+}
+
+/** The current open assignment's type and that type's stored end date (the internship falls back to the
+ *  provisional date the Draft captured, as the Employment tab shows it). */
+async function currentEndDateTx(tx: Tx, employmentId: string) {
+  const [row] = await tx
+    .select({
+      employmentType: assignment.employmentType,
+      contractEndDate: employment.contractEndDate,
+      internshipEndDate: employment.internshipEndDate,
+      provisionalEndOn: employment.provisionalEndOn,
+    })
+    .from(employment)
+    .innerJoin(
+      assignment,
+      and(eq(assignment.employmentId, employment.id), isNull(assignment.validTo), isNull(assignment.supersededAt)),
+    )
+    .where(eq(employment.id, employmentId))
+    .limit(1);
+  const field = hireCorrectionEndDateFieldFor(row?.employmentType);
+  if (!row || !field) return null;
+  const value = field === 'contractEndDate' ? row.contractEndDate : (row.internshipEndDate ?? row.provisionalEndOn);
+  return { field, value, stored: field === 'contractEndDate' ? row.contractEndDate : row.internshipEndDate };
 }
 
 
@@ -682,6 +731,8 @@ export type CorrectHireDetailsInput = {
   basicSalary?: number;
   /** Loosely typed ON PURPOSE: only the allow-listed fields are ever read from it (see the module header). */
   changes: HireCorrectionChanges & Record<string, unknown>;
+  /** 2260a06b — the current type's end date. A date for the other type is refused. */
+  endDates?: Partial<Record<HireCorrectionEndDateField, string | null>>;
   reason?: string | null;
 };
 
@@ -694,6 +745,8 @@ export type CorrectHireDetailsResult = {
   currentRecordChanged: HireCorrectionField[];
   /** How many assignment versions were superseded and re-inserted. */
   assignmentVersions: number;
+  /** 2260a06b — the end date this correction changed, if any. */
+  endDateChange?: { field: HireCorrectionEndDateField; before: string | null; after: string | null } | null;
 };
 
 /**
@@ -733,6 +786,11 @@ export async function correctHireDetails(
       await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [input.employmentId], { configuration: true });
       if (requested.managerEmploymentId !== undefined) await lockOrgReportingTx(tx, ctx.tenantId);
     }
+    // 2260a06b — an end-date correction writes through setEmploymentInfo, which takes this employment's leave
+    // dependency lock; take it here, before the employment row, so the salary path keeps the writers' lock order.
+    if (input.basicSalary !== undefined && Object.keys(input.endDates ?? {}).length) {
+      await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [input.employmentId], { configuration: true });
+    }
     await assertWorkforceEmploymentTx(tx,ctx,input.employmentId,'maintain');
     // Same lock order as every movement writer: the person's statutory owner, then the employment row.
     // Holding the employment row for the whole correction serialises two corrections of one hire.
@@ -761,7 +819,27 @@ export async function correctHireDetails(
       await correctHireBasicSalaryTx(tx, ctx, {
         employmentId: input.employmentId, hireDate: plan.anchor, basicSalary: input.basicSalary, reason,
       });
-    if (!changes.length && !salaryCorrection) throw new HireCorrectionNoChangeError();
+    // 2260a06b — the current type's end date. Compared with what the Employment tab shows (the internship falls
+    // back to the Draft's provisional date), so re-posting the shown value is not a change.
+    let endDateChange: CorrectHireDetailsResult['endDateChange'] = null;
+    const postedEnd = Object.entries(input.endDates ?? {}).filter(([f, v]) =>
+      (HIRE_CORRECTION_END_DATE_FIELDS as readonly string[]).includes(f) && v !== undefined);
+    if (postedEnd.length) {
+      const current = await currentEndDateTx(tx, input.employmentId);
+      for (const [f, v] of postedEnd) {
+        if (!current || current.field !== f) {
+          throw new HireCorrectionError('That end date does not apply to this employee\'s current Employee Type.');
+        }
+        const after = v === null ? null : String(v).trim() || null;
+        if (after !== current.value) endDateChange = { field: current.field, before: current.stored, after };
+      }
+    }
+    if (!changes.length && !salaryCorrection && !endDateChange) throw new HireCorrectionNoChangeError();
+    if (endDateChange) {
+      // The profile's own writer: required for the type, later than the start/join date, refused while a
+      // contract renewal is open, provisional date kept aligned, and an employment.info.updated audit row.
+      await setEmploymentInfo(ctx, { employmentId: input.employmentId, [endDateChange.field]: endDateChange.after }, tx);
+    }
     const changed = new Map(changes.map((c) => [c.field, c.after]));
 
     // ── which assignment versions take which fields ──
@@ -930,6 +1008,7 @@ export async function correctHireDetails(
         reason,
         changes,
         ...(salaryCorrection ? { salaryCorrection } : {}),
+        ...(endDateChange ? { endDateChange } : {}),
         assignment: replaced,
         reportingLine: rlRecord,
         currentRecordChanged,
@@ -942,6 +1021,7 @@ export async function correctHireDetails(
       changes,
       currentRecordChanged,
       assignmentVersions: replaced.length,
+      endDateChange,
     };
   });
 }

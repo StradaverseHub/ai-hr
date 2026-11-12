@@ -117,6 +117,7 @@ async function commitMeasuredEmployeeImport(csv:string,companyId:string,binding:
  const bound=EmployeeImportEvaluationBindingSchema.parse(structuredClone(binding)),ctx=await getBrowserCommandSession();
  const started=await createEmployeeImportJob(ctx,{companyId:captured.companyId,csv:captured.csv,fileName:fileName??'',dependentsCsv:captured.dependentsCsv??'',registers:captured.registers??{},allocationsCsv:captured.allocationsCsv??'',allocationToken},pastedSource(captured.csv,fileName),bound);
  revalidatePath('/admin/personnel/import');
+ revalidatePath('/admin/personnel/import/history');
  if('replay' in started){revalidatePath('/admin/personnel');return measuredImportReplay(captured.companyId,started.replay);}
  return started;
 }

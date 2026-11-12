@@ -6,6 +6,7 @@ import { useMemo, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import { formatImportActor, formatImportBatch } from '@/lib/import-reference';
 import { UploadCloud } from 'lucide-react';
 import { Button, Card, Field, inputCls } from '@/components/ui';
 import { DownloadTemplate } from '@/components/download-template';
@@ -806,6 +807,7 @@ function ImportLog({
   busy: boolean;
 }) {
   const t = useTranslations('admin.leaveBfImport');
+  const labels = useTranslations('importLog');
   const [openId, setOpenId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
@@ -857,7 +859,8 @@ function ImportLog({
                       {new Date(run.createdAt).toLocaleString()}
                     </td>
                     <td className="px-3 py-2 font-medium">
-                      {run.fileName || <span className="font-normal text-muted-foreground">{t('historyPasted')}</span>}
+                      {formatImportBatch(labels, run.id)}
+                      <div className="break-all text-xs font-normal text-muted-foreground">{run.fileName || t('historyPasted')}</div>
                       <div className={`text-xs font-normal ${outcomeCls}`}>{outcomeLabel}</div>
                       {run.reversedAt && (
                         <div className="text-xs font-normal text-muted-foreground">
@@ -898,7 +901,7 @@ function ImportLog({
                       )}
                     </td>
                     <td className="px-3 py-2 text-muted-foreground">{t(`mode.${run.mode}.short`)}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{run.actorName || t('historyActorUnknown')}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{run.actor ? formatImportActor(labels, run.actor) : run.actorName || t('historyActorUnknown')}</td>
                     <td className="px-3 py-2 tabular-nums">{run.totalRows}</td>
                     <td className="px-3 py-2 tabular-nums text-emerald-700 dark:text-emerald-400">
                       {run.importedRows}

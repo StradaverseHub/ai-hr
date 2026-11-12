@@ -14,6 +14,8 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {parseCsvRecords} from '../lib/csv';
 import {historyColumnLabel,readHistoryField,type PayrollHistoryRecord} from '../lib/payroll-history-import-schema';
 import {historyRecordKey,type HistoryRevisionPlan,type HistoryRevisionRow,type ImportedPayrollValues,type HistoryRevisionChange} from '../lib/payroll-history-revisions';
+import {actorOn,creatorOf,resolveImportActors,type ImportRowActors} from './import-actor-label';
+import type {ImportActor} from '../lib/import-reference';
 
 export class PayrollHistoryRevisionError extends Error{constructor(message:string){super(message);this.name='PayrollHistoryRevisionError';}}
 function fail(message:string):never{throw new PayrollHistoryRevisionError(message);}
@@ -702,14 +704,21 @@ export async function releaseStagedPayrollHistoryRevertTx(tx:Tx,ctx:SessionConte
  return{attemptId:p.id,restored:p.changes.length};
 }
 
+const personName=(actor:ImportActor)=>actor.kind==='person'?actor.name:null;
+function labelAttempt<A extends {id:string;createdBy:string},E extends {actorId:string}>(actors:Map<string,ImportRowActors>,row:A,events:E[]){
+ const createdByActor=creatorOf(actors,row.id);
+ return {...row,createdByActor,createdByName:personName(createdByActor),events:events.map(event=>{const actor=actorOn(actors,row.id,event.actorId);return {...event,actor,actorName:personName(actor)};})};
+}
 export async function listPayrollHistoryAttempts(ctx:SessionContext,options:{before?:string;limit?:number}={}){
  assertModuleGate(ctx,'payroll');if(options.before&&!uuid.test(options.before))fail('Import cursor unavailable.');return withTenant(ctx,async tx=>{
   await principal(tx,ctx);const limit=Math.min(100,Math.max(1,options.limit??25));
-  const rows=await tx.select({id:attempt.id,sourceName:attempt.sourceName,sourceHash:attempt.sourceHash,companyIds:attempt.companyIds,plan:attempt.plan,createdBy:attempt.createdBy,createdByName:sql<string|null>`app.payroll_history_actor_label(${attempt.id},${attempt.createdBy})`,createdAt:attempt.createdAt}).from(attempt)
+  const rows=await tx.select({id:attempt.id,sourceName:attempt.sourceName,sourceHash:attempt.sourceHash,companyIds:attempt.companyIds,plan:attempt.plan,createdBy:attempt.createdBy,createdAt:attempt.createdAt}).from(attempt)
    .where(options.before?sql`(${attempt.createdAt},${attempt.id}) < (select created_at,id from payroll_history_import_attempt where id=${options.before}::uuid)`:undefined)
    .orderBy(desc(attempt.createdAt),desc(attempt.id)).limit(limit+1);
-  const chosen=rows.slice(0,limit),events=chosen.length?await tx.select({...getTableColumns(historyEvent),actorName:sql<string|null>`app.payroll_history_actor_label(${historyEvent.attemptId},${historyEvent.actorId})`}).from(historyEvent).where(inArray(historyEvent.attemptId,chosen.map(row=>row.id))).orderBy(asc(historyEvent.createdAt),asc(historyEvent.id)):[];
-  return {items:chosen.map(row=>({...row,events:events.filter(event=>event.attemptId===row.id)})),nextCursor:rows.length>limit?chosen.at(-1)!.id:null};
+  const chosen=rows.slice(0,limit),events=chosen.length?await tx.select(getTableColumns(historyEvent)).from(historyEvent).where(inArray(historyEvent.attemptId,chosen.map(row=>row.id))).orderBy(asc(historyEvent.createdAt),asc(historyEvent.id)):[];
+  // Board 8d02748a: every recorded actor on the page in ONE set-wise read (no per-row label function).
+  const actors=await resolveImportActors(tx,'payroll_history',chosen.map(row=>row.id));
+  return {items:chosen.map(row=>labelAttempt(actors,row,events.filter(event=>event.attemptId===row.id))),nextCursor:rows.length>limit?chosen.at(-1)!.id:null};
  });
 }
 export async function payrollHistorySource(ctx:SessionContext,id:string){
@@ -722,9 +731,10 @@ export async function getPayrollHistoryAttempt(ctx:SessionContext,id:string){
  assertModuleGate(ctx,'payroll');if(!uuid.test(id))return null;
  return withTenant(ctx,async tx=>{
   await principal(tx,ctx);
-  const [source]=await tx.select({id:attempt.id,sourceName:attempt.sourceName,sourceHash:attempt.sourceHash,companyIds:attempt.companyIds,plan:attempt.plan,createdBy:attempt.createdBy,createdByName:sql<string|null>`app.payroll_history_actor_label(${attempt.id},${attempt.createdBy})`,createdAt:attempt.createdAt}).from(attempt).where(eq(attempt.id,id));
+  const [source]=await tx.select({id:attempt.id,sourceName:attempt.sourceName,sourceHash:attempt.sourceHash,companyIds:attempt.companyIds,plan:attempt.plan,createdBy:attempt.createdBy,createdAt:attempt.createdAt}).from(attempt).where(eq(attempt.id,id));
   if(!source)return null;
-  const events=await tx.select({...getTableColumns(historyEvent),actorName:sql<string|null>`app.payroll_history_actor_label(${historyEvent.attemptId},${historyEvent.actorId})`}).from(historyEvent).where(eq(historyEvent.attemptId,id)).orderBy(asc(historyEvent.createdAt),asc(historyEvent.id));
-  return {...source,events};
+  const events=await tx.select(getTableColumns(historyEvent)).from(historyEvent).where(eq(historyEvent.attemptId,id)).orderBy(asc(historyEvent.createdAt),asc(historyEvent.id));
+  const actors=await resolveImportActors(tx,'payroll_history',[id]);
+  return labelAttempt(actors,source,events);
  });
 }

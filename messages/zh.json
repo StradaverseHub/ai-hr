@@ -348,6 +348,7 @@
     "attendance": "考勤记录",
     "attendanceSettings": "考勤",
     "attendanceSettingsPage": "设置",
+    "peopleSettings": "设置",
     "employeeAttendance": "员工考勤",
     "myAttendance": "我的考勤",
     "manage": "管理",
@@ -870,7 +871,21 @@
         "privateExpired": "私密筛选已到期或不可用。请重新应用。",
         "superiorId": "直属上司 · 员工编号",
         "superiorName": "直属上司 · 姓名",
-        "removeCriterion": "移除{name}筛选"
+        "removeCriterion": "移除{name}筛选",
+        "choiceAll": "全部",
+        "choiceSelected": "已选 {count} 项",
+        "findOption": "在{name}中查找",
+        "noOptions": "没有匹配的值",
+        "selectAllOptions": "全选",
+        "clearSelection": "清除选择",
+        "applyChoice": "应用",
+        "clearChoice": "清除",
+        "dateFrom": "起",
+        "dateTo": "止",
+        "dateFromLabel": "{name}起",
+        "dateToLabel": "{name}止",
+        "choicePending": "正在更新列表…",
+        "choiceFailed": "无法更新列表，请重试。"
       }
     },
     "switcher": {
@@ -879,7 +894,10 @@
       "resultsLabel": "员工搜索结果",
       "noMatches": "没有匹配的员工。",
       "currentTag": "当前",
-      "loadFailed": "无法加载员工搜索，请重试。"
+      "loadFailed": "无法加载员工搜索，请重试。",
+      "matchingHeading": "匹配的员工",
+      "showAll": "在列表中显示全部 {count} 个匹配项（Enter）",
+      "showAllMore": "在列表中显示所有匹配项（Enter）"
     },
     "detail": {
       "incentiveDeclarations": {
@@ -1287,7 +1305,7 @@
         "deleteConfirmTitle": "删除资历",
         "deleteConfirmBody": "移除此资历记录？它将不再显示在该员工的资历历史中。",
         "none": "暂无资历记录。",
-        "hint": "这些记录由 HR 维护。资历类型在 系统设置 > 系统标签 > 档案选项 中管理。",
+        "hint": "这些记录由 HR 维护。资历类型在 人员 > 配置 > 设置 > 系统标签 > 档案选项 中管理。",
         "level": "资历",
         "levelPlaceholder": "选择资历",
         "institute": "院校",
@@ -1451,6 +1469,7 @@
         "status_terminated": "已离职",
         "probationGroup": "试用期信息",
         "contractGroup": "合同信息",
+        "internshipGroup": "实习信息",
         "contractStartDate": "合同开始日期",
         "contractEndDate": "合同结束日期",
         "contractRemark": "备注",
@@ -1789,6 +1808,8 @@
           "position": "职位",
           "grade": "职级",
           "employmentType": "雇佣类型",
+          "contractEndDate": "合同结束日期",
+          "internshipEndDate": "实习结束日期",
           "manager": "汇报经理",
           "salary": "薪资",
           "orgDivision": "事业部",
@@ -1880,6 +1901,8 @@
           "closedPayrollBody": "此更正会更新员工记录及之后的处理。已关闭的薪资、已发布的工资单和法定申报将保留最终数字，不会重新计算。如需调整金额，请使用薪资更正流程。更正后的工资自已关闭薪资之后的第一个月起生效。",
           "closedPayrollAcknowledge": "我了解已关闭的薪资不会改变。",
           "mustChange": "必须更改",
+          "endDateRequiredContract": "因为新的员工类型为合同，所以必填。合同自生效日期开始，结束日期必须晚于生效日期。",
+          "endDateRequiredIntern": "因为新的员工类型为实习，所以必填。实习结束日期必须晚于生效日期。",
           "mustChangeRefused": "此事件类型要求更改{field}。请输入新值。",
           "documentOptional": "证明文件（可选）",
           "documentRequired": "证明文件（更改此项时必需）"
@@ -3020,6 +3043,14 @@
         "waiting": "正在等待导入进程。检查会自动开始；请勿再次上传该文件。",
         "otherRunning": "您发起的另一项异动检查仍在进行。请等待其完成后再检查新文件。",
         "workerUnavailable": "导入服务尚未运行。您的文件已保留，服务一运行检查便会自动开始。"
+      },
+      "historyButton": "导入历史",
+      "uploadErrors": {
+        "unreachable": "无法连接服务器。请检查网络连接后重试；再次发送同一文件不会重复导入。",
+        "unavailable": "系统暂时不可用。请先打开导入历史，确认此导入是否已收到，再重试。",
+        "timeout": "处理时间比预期长。导入可能仍在进行：请查看导入历史，在显示结果之前不要重新上传文件。",
+        "unknown": "无法确认导入结果。请先查看导入历史再重试。",
+        "progressUnreachable": "无法连接服务器以查看进度。导入仍在后台进行，此页面会继续检查。"
       }
     },
     "wizard": {
@@ -3345,9 +3376,14 @@
         "bank_statutory": "银行与法定",
         "employee_full": "全部 — 新员工",
         "movement": "人事变动",
-        "information_correction": "仅信息更正"
+        "information_correction": "仅信息更正",
+        "profile": "个人资料",
+        "family": "家庭",
+        "qualification": "资历",
+        "emergency": "紧急联系人",
+        "notRecorded": "未记录"
       },
-      "reference": "参考号",
+      "reference": "批次编号",
       "referenceLabel": "参考号 {reference}",
       "type": "类型",
       "file": "文件",
@@ -3426,6 +3462,87 @@
       "employeeFull": {
         "created": "已创建 {code} · {name}",
         "willVoid": "该员工将被作废：从列表、人数统计和薪资中移除，保留在审计记录中。员工编号、邮箱和 NRIC 将被释放。"
+      },
+      "listDescription": "每个人事导入文件：由谁导入、何时导入、涉及哪些公司，以及每一行的结果。",
+      "backToImport": "导入员工",
+      "total": "总计",
+      "successful": "成功",
+      "failed": "失败",
+      "totalRows": "总行数",
+      "pasted": "粘贴的数据",
+      "openLog": "打开 {file} 的导入日志",
+      "log": {
+        "title": "文件的每一行",
+        "hint": "已保存的行显示更改内容。未保存的行显示原因。仅显示您可查看的公司的员工。",
+        "empty": "您无法查看此文件的任何行。",
+        "row": "行",
+        "employee": "员工",
+        "result": "结果",
+        "field": "字段",
+        "before": "更正前",
+        "after": "更正后",
+        "reason": "提供的原因",
+        "saved": "已保存",
+        "unchanged": "未更改",
+        "notSaved": "未保存",
+        "notConfirmed": "已检查，未保存",
+        "nothingChanged": "所有值均已一致——未保存任何内容。"
+      },
+      "run": {
+        "noFile": "此导入保留摘要和未保存的行。文件本身不会被存储。",
+        "failedTitle": "未保存的行",
+        "hint": "每个未保存的行及其原因。",
+        "truncated": "显示 {total} 个未保存行中的 {shown} 个。",
+        "noDetail": "此导入未记录行详情。",
+        "none": "所有行均已保存。",
+        "reasonColumn": "原因"
+      },
+      "errorReport": {
+        "title": "错误报告",
+        "hint": "每个问题一行：行号、员工、需要更正的列以及错误内容。",
+        "download": "下载错误报告",
+        "filterLabel": "显示行",
+        "problemRows": "有问题的行（{count}）",
+        "allRows": "所有行（{count}）",
+        "saved": "已保存的员工",
+        "toFix": "需要修正的问题行",
+        "cancelled": "没有问题、因文件被取消而未保存的行",
+        "cancelledTitle": "此文件在保存时被取消，因此未创建任何员工。",
+        "cancelledBody": "第 {rows} 行无法保存（见下文）。文件要么全部保存，要么全部不保存，因此没有问题的行也未保存。请修正所列的行，然后重新上传整个文件。",
+        "stoppedBody": "导入在完成前停止，因此未保存任何内容。原因见下方审计记录。请重新上传整个文件。",
+        "restricted": "仅显示您可查看的公司的行。",
+        "noProblems": "此文件未发现问题。",
+        "noRows": "此导入没有可显示的行。",
+        "colRow": "行",
+        "colCode": "员工编号",
+        "colName": "姓名",
+        "colColumn": "列",
+        "colProblem": "问题",
+        "colResult": "结果",
+        "stage": {
+          "check": "在文件检查中发现",
+          "save": "在保存时发现——导致文件停止"
+        },
+        "outcome": {
+          "refused": "未保存",
+          "stopped": "导致保存停止",
+          "cancelled": "未保存——文件已取消",
+          "saved": "已保存",
+          "pending": "未完成"
+        },
+        "cancelledRow": "没有问题。因第 {rows} 行导致文件停止而未保存。",
+        "cancelledRowUnnamed": "没有问题。因文件被取消而未保存。",
+        "contract": {
+          "required": "雇佣类型为合同时必填。",
+          "before_hire": "不能早于集团入职日期。",
+          "end_not_after_start": "必须晚于合同开始日期。"
+        },
+        "csvBatch": "批次编号",
+        "csvFile": "文件名",
+        "csvStatus": "最终状态",
+        "csvStage": "发现于",
+        "rowsHint": "行号按文件中的员工行计数，与导入预览一致。",
+        "truncated": "显示前 {shown} 行，共 {total} 行。下载错误报告以查看全部。"
       }
     },
     "informationCorrection": {
@@ -3464,14 +3581,40 @@
         "hiredOn": "集团入职日期",
         "joinDate": "入职日期",
         "gradeId": "职级",
-        "employmentType": "雇佣类型"
+        "employmentType": "雇佣类型",
+        "businessUnitId": "业务单位",
+        "departmentId": "部门",
+        "positionId": "职位",
+        "orgDivision": "事业部",
+        "orgBranch": "分行",
+        "orgRegion": "区域",
+        "orgLine": "条线",
+        "orgSection": "科室",
+        "orgTeam": "团队",
+        "orgBase": "基地",
+        "employmentCategory": "类别",
+        "probationValue": "试用期",
+        "probationUnit": "试用期单位",
+        "extendedProbationValue": "延长试用期",
+        "extendedProbationUnit": "延长试用期单位",
+        "confirmationDate": "转正日期",
+        "noticeBeforeConfirmationValue": "转正前通知期",
+        "noticeBeforeConfirmationUnit": "转正前通知期单位",
+        "noticeAfterConfirmationValue": "转正后通知期",
+        "noticeAfterConfirmationUnit": "转正后通知期单位",
+        "managerEmploymentId": "直属上级",
+        "contractEndDate": "合同结束日期",
+        "internshipEndDate": "实习结束日期"
       },
       "statuses": {
         "applied": "成功",
         "failed": "失败",
         "unchanged": "未更改"
       },
-      "effective": "未来处理将从{date}起使用这些更正信息。"
+      "effective": "未来处理将从{date}起使用这些更正信息。",
+      "templateFields": "此模板可更正的字段（新增字段已突出显示）。空白单元格保留现有值。",
+      "templateFieldsLabel": "此模板可更正的字段",
+      "ownersNote": "基本工资和辞职日期须在记录它们的事件上更正：请使用变动导入，操作选择“Update”。付款方式在银行与法定导入中。"
     }
   },
   "leave": {
@@ -7132,6 +7275,21 @@
       "reprocessOutcomeDetails": "查看完整原因",
       "reprocessReviewTaxConfiguration": "检查此批次的税务配置",
       "reprocessReviewPcbConfiguration": "检查 PCB 配置",
+      "reprocessPayItemFormulaReason": "更新后的工资项目公式无法计算此员工的交易。请更正公式，然后重新处理此员工。",
+      "reprocessPayItemRepriced": "{name}，已按更新后的公式重新计算",
+      "reprocessPayItemRepricedDetail": "{count, plural, other {# 笔交易}}{quantity}：{before} → {after}",
+      "reprocessPayItemFormulaFailed": "{name}（{code}）：更新后的公式无法计算 {count, plural, other {# 笔交易}}（{dates}）。",
+      "reprocessPayItemReason_formula_failed": "无法按这些输入计算公式。",
+      "reprocessPayItemReason_not_positive": "公式未得出正数金额。",
+      "reprocessPayItemReason_zero_divisor": "对于这些输入，公式除以零。",
+      "reprocessPayItemReason_input_missing": "交易缺少公式所需的小时、天数或数量。",
+      "reprocessPayItemReason_no_longer_calculates": "此工资项目已不再通过公式计算金额。",
+      "reprocessPayItemQuantity_hours": "，{qty} 小时",
+      "reprocessPayItemQuantity_days": "，{qty} 天",
+      "reprocessPayItemQuantity_qty": "，数量 {qty}",
+      "reprocessPayItemQuantity_units": "，{qty} 个单位",
+      "reprocessOpenPayItem": "打开工资项目",
+      "reprocessOpenTransactions": "打开交易",
       "reprocessOutcomeRecordedAt": "记录时间：{at}",
       "reprocessOutcomeTitle": "所选员工的处理结果",
       "reprocessOutcomeSummary": "已选择：{selected} · 已重新处理：{succeeded} · 已跳过：{skipped}（已完成 — 无应付款项）· 配置不完整：{failed}",
@@ -9992,9 +10150,9 @@
       "importing": "正在导入…",
       "logFile": "日志文件",
       "backImport": "返回导入",
-      "reference": "导入编号",
+      "reference": "批次编号",
       "time": "日期与时间（MYT）",
-      "user": "用户编号",
+      "user": "导入人",
       "older": "更早的尝试",
       "noAttempts": "暂无导入尝试。",
       "fingerprint": "源文件指纹（SHA-256）",
@@ -10150,13 +10308,13 @@
       "confirm": "确认导入",
       "reference": "批次编号",
       "time": "日期和时间",
-      "user": "用户编号",
+      "user": "导入人",
       "validated": "已验证",
       "completed": "已完成",
       "reverted": "已撤销",
       "empty": "所选公司范围内没有导入记录。",
       "revert": "撤销导入",
-      "revertWarning": "撤销批次 {id}（{file}）？仅撤销该批次创建的 {count} 条交易，保留原始导入日志。",
+      "revertWarning": "撤销{batch}（{file}）？仅撤销该批次创建的 {count} 条交易，保留原始导入日志。",
       "revertControls": "若记录已变更或当前薪资控制不允许撤销，将拒绝整个操作。手工录入和其他导入不受影响。",
       "revertConfirm": "我确认撤销所列导入批次。",
       "processedConfirm": "若现有薪资控制允许修改已处理交易，我确认需要重新计算薪资。",
@@ -10871,8 +11029,7 @@
       "policyBadge": "政策",
       "save": "保存",
       "cancel": "取消",
-      "typeLabel": "类型",
-      "rename": "重命名",
+      "unsavedChanges": "更改尚未保存",
       "unarchive": "取消归档",
       "archive": "归档",
       "deleteTypeConfirmTitle": "删除此休假类型？",
@@ -11117,12 +11274,13 @@
         "summaryCounts": "另计入：{list}"
       },
       "visual": {
-        "sectionTitle": "假期类型视觉配置",
         "help": "可选。图标和颜色主题会显示在员工「我的资料 → 假期」标签中此假期类型旁边。纯视觉效果——不影响权益、资格或计算。",
         "iconLabel": "图标",
         "colorLabel": "颜色主题",
         "searchPlaceholder": "搜索图标…",
         "noIcons": "没有匹配的图标。",
+        "changeIcon": "更换图标",
+        "default": "默认",
         "color": {
           "blue": "蓝色",
           "green": "绿色",
@@ -13552,7 +13710,10 @@
       "shiftsInGroupCheckTitle": "保存前请检查",
       "shiftsInGroupWarning": "保存此工作周将更改 {count} 个班次的工作日：{names}。这些班次上所有人的加班计算将从保存当天起改变。",
       "shiftsInGroupEmploymentsWarning": "直接归入此组的 {count} 名员工也将遵循此设定。",
-      "shiftsInGroupNothingUntilSave": "在您按下保存之前，不会有任何变化。"
+      "shiftsInGroupNothingUntilSave": "在您按下保存之前，不会有任何变化。",
+      "otMovedNote": "此组的加班区间、费率、取整和提前加班设置现已移至 加班模式 › 1. 常规设置。",
+      "otMovedOpen": "打开",
+      "otSettingPending": "加班设置部分（班前和班后加班、审批方式、迟到抵扣和取整）将在确认薪资能收到其加班数据后添加到此处。在此之前，此组的加班计算与现在完全相同。"
     },
     "leaveConfigLeaveCredit": {
       "pageDescription": "在休息日、休假日或公共假期工作所获得的额度，以及使用这些额度的补休假。"
@@ -13823,14 +13984,14 @@
       "historyHint": "每一次导入都会记录，以便数月之后仍能回答“谁加载的、什么时候”。上传的文件本身不会保留。",
       "historyEmpty": "尚未导入任何内容。",
       "historyColWhen": "时间",
-      "historyColFile": "文件",
-      "historyColBy": "操作人",
+      "historyColFile": "批次编号",
+      "historyColBy": "导入人",
       "historyColRecords": "记录数",
       "historyColImported": "已导入",
       "historyColFailed": "失败",
       "historyColDuplicate": "重复",
       "historyPasted": "粘贴导入",
-      "historyActorUnknown": "未知",
+      "historyActorUnknown": "不可用的用户",
       "historyViewFailed": "错误",
       "historyOutcomeSucceeded": "成功",
       "historyOutcomePartial": "部分导入",
@@ -13891,13 +14052,13 @@
       "historyTitle": "导入日志",
       "historyEmpty": "尚未导入任何内容。",
       "historyColWhen": "时间",
-      "historyColFile": "文件",
-      "historyColBy": "操作人",
+      "historyColFile": "批次编号",
+      "historyColBy": "导入人",
       "historyColRecords": "记录数",
       "historyColImported": "已导入",
       "historyColFailed": "失败",
       "historyPasted": "粘贴导入",
-      "historyActorUnknown": "未知",
+      "historyActorUnknown": "不可用的用户",
       "historyViewFailed": "错误",
       "historyOutcomeSucceeded": "成功",
       "historyOutcomePartial": "部分导入",
@@ -13974,7 +14135,7 @@
       "historyEmpty": "暂无导入记录。",
       "when": "日期",
       "importType": "导入类型",
-      "file": "文件",
+      "file": "批次编号",
       "rows": "行数",
       "imported": "已导入",
       "failed": "失败",
@@ -14063,7 +14224,17 @@
       "poolHistorical": "保留的不可用班次",
       "poolHistoricalHelp": "这些已保存的引用保留供您查看。保存新轮班前，请明确移除或替换它们；移除后无法重新选择。",
       "poolRemoveNamed": "从已选班次中移除 {shift}",
-      "poolRemove": "移除"
+      "poolRemove": "移除",
+      "methodWorkingWeek": "工作周",
+      "methodWeekly": "每周模式",
+      "methodDaily": "每日模式",
+      "methodHint": "工作周重复一周。每周模式重复数周；每日模式按天数循环重复。三者都使用同一张日类型和班次表。",
+      "stepDays": "每天的日类型和班次",
+      "weeksCount": "周数",
+      "daysCount": "天数",
+      "standardWeekHint": "标准组仅使用工作周。在工作日，每位员工按其本人所分配班次的时间工作。",
+      "shiftFromEmployee": "员工本人的班次",
+      "saveWeek": "保存工作周"
     }
   },
   "topbar": {
@@ -23806,9 +23977,9 @@
       "back": "导入打卡数据",
       "recent": "导入日志 · 最新的在前",
       "colAt": "导入日期/时间",
-      "colFile": "文件名",
+      "colFile": "批次编号",
       "colMapping": "映射",
-      "colUser": "用户",
+      "colUser": "导入人",
       "colTotal": "总计",
       "colImported": "已导入",
       "colFailed": "失败",
@@ -23816,7 +23987,7 @@
       "duplicatesNote": "{count, plural, =1 {# 条重复} other {# 条重复}}",
       "stoppedNote": "已中止，未保存任何数据",
       "empty": "尚未导入任何打卡文件。",
-      "unknownUser": "—"
+      "unknownUser": "不可用的用户"
     },
     "log": {
       "back": "导入日志",
@@ -23824,7 +23995,7 @@
       "at": "导入日期/时间",
       "fileName": "文件名",
       "mappingName": "映射名称",
-      "user": "用户",
+      "user": "导入人",
       "total": "总行数",
       "valid": "有效记录",
       "imported": "已导入记录",
@@ -23931,6 +24102,44 @@
       "desc": "配置并测试关联薪资项目的考勤计算。",
       "cta": "打开公式构建器"
     }
+  },
+  "peopleSettingsHub": {
+    "title": "人员设置",
+    "subtitle": "管理人员设置的中心。打开某个部分进行配置；仅显示您有权访问的部分。",
+    "employeeId": {
+      "title": "员工编号规则",
+      "desc": "新员工编号的生成方式：前缀、起始号码、位数和适用范围。",
+      "cta": "打开员工编号规则"
+    },
+    "general": {
+      "title": "常规",
+      "desc": "适用于整个组织的员工资料录入规则，例如重复身份证号码和电子邮件检查。",
+      "cta": "打开常规设置"
+    },
+    "systemLabels": {
+      "title": "系统标签",
+      "desc": "所有人共用的选项列表：部门、职位、成本中心、业务单位、职级和档案选项。",
+      "cta": "打开系统标签"
+    },
+    "movement": {
+      "title": "异动设置",
+      "desc": "HR 可为员工记录的职业异动类型，以及其提供的离职原因。",
+      "cta": "打开异动设置"
+    },
+    "hiringDefaults": {
+      "title": "入职默认设置",
+      "desc": "HR 创建员工时套用的各公司试用期长度和评核提醒频率。",
+      "cta": "打开入职默认设置"
+    },
+    "changeRequests": {
+      "title": "员工变更申请设置",
+      "desc": "员工在“我的档案”中可查看和更改的内容、照片编辑，以及由谁审批其申请。",
+      "cta": "打开变更申请设置"
+    },
+    "empty": "您无权访问任何人员设置。",
+    "backToSettings": "返回设置",
+    "leaveUnsaved": "离开此页面并放弃未保存的更改？",
+    "leaveOtherUnsaved": "保存此表单会离开另一表单的未保存更改。放弃这些更改？"
   },
   "rewards": {
     "promotionNominationsHelp": "查看您有权访问的年度奖励评审中的提名。",
@@ -27418,7 +27627,79 @@
     "approvalLevel": "审批级别",
     "warningIssue": "问题",
     "legacyReadinessWarning": "必需的审批人不可用。",
-    "warningPage": "第 {from}–{to} 项，共 {total} 项"
+    "warningPage": "第 {from}–{to} 项，共 {total} 项",
+    "groups": {
+      "help": "同一组内，所选的每个字段都必须匹配。匹配任一组的员工都使用此审批流程。",
+      "or": "或",
+      "groupNumber": "第 {number} 组",
+      "remove": "删除第 {number} 组",
+      "add": "+ 添加“或”组",
+      "everyone": "所选公司的全部员工"
+    },
+    "copy": {
+      "action": "复制",
+      "rowLabel": "复制审批流程 {code}",
+      "help": "通过复制创建新的审批流程。原审批流程不会被更改。",
+      "banner": "复制自 {code}（版本 {version}）。请输入新的流程代码、流程名称和说明。原审批流程不会被更改。",
+      "codePlaceholder": "输入新代码",
+      "namePlaceholder": "输入新名称"
+    },
+    "previewHistory": {
+      "action": "预览记录",
+      "rowLabel": "{code} 的预览记录",
+      "title": "预览记录",
+      "backToWorkflow": "返回审批流程",
+      "generate": "生成新预览",
+      "generating": "正在生成预览…",
+      "failed": "无法生成预览，请重试。",
+      "latestTitle": "最新预览",
+      "summary": "于 {date} 为版本 {version} 生成：{total} 名匹配员工，{warnings} 条配置警告。",
+      "olderVersion": "此预览是为版本 {previewVersion} 生成的。此后审批流程已再次保存，当前为版本 {currentVersion}，因此结果可能已过时。",
+      "none": "尚未生成预览。请生成预览以检查匹配员工和配置警告。",
+      "open": "打开预览记录",
+      "savedHint": "审批流程已保存。请生成预览以检查匹配员工和配置警告。",
+      "draftNotStored": "未保存更改的草稿预览，不会被存储；保存审批流程后即可保留预览。",
+      "stats": {
+        "generatedAt": "生成时间",
+        "generatedBy": "生成人",
+        "workflowVersion": "流程版本",
+        "matching": "匹配员工",
+        "warnings": "配置警告"
+      },
+      "earlier": "预览",
+      "chip": "{date} · v{version}",
+      "warningsTitle": "配置警告（{count}）",
+      "approverSource": "审批人来源",
+      "warning": "警告",
+      "noWarnings": "没有配置警告。",
+      "warningsTruncated": "显示 {total} 条警告中的前 {shown} 条。",
+      "employeesTitle": "匹配员工（{count}）",
+      "noEmployees": "没有员工匹配此审批流程。",
+      "employeesTruncated": "显示 {total} 名员工中的前 {shown} 名。总数是准确的。",
+      "seeWarning": "查看警告",
+      "notRequired": "无需审批 - 没有更上一级直属上级",
+      "otherWorkflow": "由 {code} 处理（优先级更高）",
+      "stoppedAt": "汇报关系止于{level}。",
+      "problems": {
+        "tie": "有两个审批流程以相同优先级匹配此员工。请更改优先级或适用范围。",
+        "no_superior": "未设置直属上级。请在人事档案中设置。",
+        "superior_inactive": "直属上级已停用。请在人事档案中更新直属上级。",
+        "no_login": "没有可用的登录账号。请让人力资源部为此人创建或重新启用登录账号。",
+        "multiple_logins": "有多个可用的登录账号。请让人力资源部只保留一个。",
+        "login_wrong_company": "其登录账号未涵盖此员工的公司。请让人力资源部扩展该账号的公司权限。",
+        "outside_company_scope": "任职公司不属于此员工的公司或其母公司。请选择允许公司范围内的上级。",
+        "ambiguous_superior": "记录了多个当前直属上级。请在人事档案中只保留一个。",
+        "cycle": "汇报关系回到了之前的人员。请在人事档案中更正。",
+        "duplicate_person": "同一人将审批多次。请更改审批级别或汇报关系。",
+        "duplicate_login": "两名审批人共用一个登录账号。请让人力资源部更正登录账号。",
+        "missing_person": "上级的个人档案缺失。请让人力资源部检查人事档案。",
+        "cc_unavailable": "某抄送人缺失、已停用或没有唯一可用的登录账号。",
+        "unresolved": "无法为此员工确定审批路线。",
+        "hr_unavailable": "没有人力资源管理员可以为此员工审批。",
+        "selected_unavailable": "所选审批人已停用、没有唯一可用的登录账号，或不在允许的公司范围内。请更换所选人员。",
+        "login_unusable": "审批人没有可用于此员工公司的唯一登录账号。请让人力资源部更正其登录账号。"
+      }
+    }
   },
   "attendanceHistory": {
     "title": "申请历史",
@@ -27637,7 +27918,10 @@
       "showWaiting": "仅显示待审核",
       "showAll": "显示全部",
       "older": "更早的打卡"
-    }
+    },
+    "skippedNoSuperior": "已自动跳过 - 没有更上一级直属上级（{sources}）",
+    "skippedDecidedAt": "于提交申请时决定，{date}",
+    "skippedLabel": "无需审批"
   },
   "scheduleDrafts": {
     "staleLadder": "“常规”部分的加班时段或费率已更改。您的草稿仍保留在此。保存加班设置前，请重新加载此页面。只有在您确认后，未保存的更改才会被丢弃。",
@@ -29253,7 +29537,12 @@
     "positionSearch": "搜索职位",
     "loadMorePositions": "加载更多职位",
     "attendanceFormulaBinding": "考勤公式结果集：{id}",
-    "chooseOneCompany": "保存新模式前，请在屏幕顶部的公司切换器中选择一家公司。新模式将归属该公司。"
+    "chooseOneCompany": "保存新模式前，请在屏幕顶部的公司切换器中选择一家公司。新模式将归属该公司。",
+    "legacyGeneralSettings": "1. 常规设置",
+    "legacyGroup": "排班组：{name}",
+    "legacyOpenGroup": "打开排班组",
+    "legacyMovedHelp": "这些加班区间、费率、取整和提前加班设置已从排班组移至此处，外观和功能与之前完全相同；每次保存都会记录为此模式的新版本。",
+    "legacyGroupGone": "此模式对应的排班组已不存在，因此无法编辑其加班区间。之前的版本仍会保留。"
   },
   "systemTestingWorkspace": {
     "title": "系统测试",
@@ -37179,7 +37468,11 @@
     "notTerminated": "未离职",
     "terminated": "已离职",
     "duplicateHint": "重复检查仅涵盖您拥有管理员权限及身份资料访问权的公司。",
-    "duplicateUnavailable": "此范围内无法查看重复证据。请移除此筛选或选择获准范围。"
+    "duplicateUnavailable": "此范围内无法查看重复证据。请移除此筛选或选择获准范围。",
+    "hiredFrom": "集团入职日期起",
+    "hiredTo": "集团入职日期止",
+    "confirmedFrom": "转正日期起",
+    "confirmedTo": "转正日期止"
   },
   "rewardSetupAccess": {
     "title": "薪酬配置权限",
@@ -37607,7 +37900,7 @@
     "noShifts": "此列表没有班次。",
     "includeMarked": "纳入所选的 {count} 项 →",
     "excludeMarked": "← 排除所选的 {count} 项",
-    "rotationPoolSave": "此列表显示为 {date} 保存的轮班。如需更改班次列表，请在下方值班表部分随新的轮班一起保存。",
+    "rotationPoolSave": "此列表显示为 {date} 保存的模式。如需更改允许的班次，请在下方随新的模式一起保存。",
     "saveShiftPool": "保存允许的班次",
     "currentRotation": "{days} 天轮班，自 {date} 起生效",
     "company": "公司",
@@ -37977,5 +38270,13 @@
       "otherRunning": "另一项排班组分配仍在保存。请等待其完成后再试。",
       "queuedBehind": "正在排队，等待另一项排班组分配完成。该分配完成后将自动开始。"
     }
+  },
+  "importLog": {
+    "batchReference": "批次编号",
+    "importedBy": "导入人",
+    "batchLabel": "批次 {code}",
+    "actorWithId": "{name}（{employeeId}）",
+    "actorUnlinked": "管理员登录账号（无员工记录 · 账号结尾 {suffix}）",
+    "actorUnavailable": "不可用的用户"
   }
 }

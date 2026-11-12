@@ -32,7 +32,7 @@ import {
 import { reprojectEntitlementForEmployment } from '@/core/leave';
 // c063eea9 — the hire-details correction. Its form parser lives in core/ (a 'use server' module may only
 // export async functions) and reads ONLY the six allow-listed fields.
-import { correctHireDetails, parseHireCorrectionForm } from '@/core/hire-correction';
+import { correctHireDetails, parseHireCorrectionEndDate, parseHireCorrectionForm } from '@/core/hire-correction';
 // r256 420ebab5 — the SERVICE behind the Payroll tab's policy card. The per-card door is
 // assignPolicyAction (app/admin/payroll-policy/actions.ts, resolved through getSession); the consolidated
 // door reaches the same service directly, under requireAdmin, so both write through one implementation.
@@ -447,6 +447,9 @@ function parseMovementForm(formData: FormData, mode: 'create' | 'edit' = 'create
     paymentTerm: optional('paymentTerm') ?? undefined,
     // The flat, non-dated org columns the comparison screen now carries (Division … Category).
     ...Object.fromEntries(MOVEMENT_FLAT_FIELDS.map((f) => [f, optional(f)])),
+    // 2260a06b — the end date of the Employee Type the movement leaves the employee with (only that row renders).
+    contractEndDate: optional('contractEndDate'),
+    internshipEndDate: optional('internshipEndDate'),
     // ae9350f2 — the Termination movement's structured exit fields. The reason CODE is the only thing the
     // form posts for classification: core/movement.ts validates it against the built-in catalogue and
     // derives `terminationType` from it, so the two can never be submitted in contradiction.
@@ -649,6 +652,7 @@ export async function correctHireDetailsAction(formData: FormData) {
     const res = await correctHireDetails(s, {
       employmentId,
       changes: parseHireCorrectionForm(formData),
+      endDates: parseHireCorrectionEndDate(formData),
       basicSalary: salary === null ? undefined : Number(salary),
       reason: orNull(formData.get('reason')),
     });
@@ -1267,6 +1271,8 @@ async function applyEmploymentInfoSection(
     contractStartDate: str('contractStartDate'),
     contractEndDate: str('contractEndDate'),
     contractRemark: str('contractRemark'),
+    // 2260a06b — the Internship Information block, rendered only for an Intern; absent (undefined) otherwise.
+    internshipEndDate: str('internshipEndDate'),
     // c5ac75fa / 8ebabbf2 — the eight flat org columns (orgDivision/orgBranch/orgRegion/orgLine/orgSection/
     // orgTeam/orgBase/employmentCategory) are NOT written here. They were owned by
     // setOrganisationAssignmentAction, which 8ebabbf2 deleted along with the editable Organisation

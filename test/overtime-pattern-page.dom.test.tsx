@@ -10,6 +10,7 @@ vi.mock('../packs/attendance/service',()=>({overtimePatternWorkspaceCompanies:m.
 vi.mock('../components/overtime-patterns/starter-initializer',()=>({OvertimeStarterInitializer:()=>null}));
 vi.mock('../components/overtime-patterns/group-policy-review',()=>({OvertimeGroupPolicyReview:()=>null}));
 vi.mock('../components/overtime-patterns/workspace',()=>({OvertimeWorkspace:(props:unknown)=>m.workspace(props)}));
+vi.mock('../app/admin/attendance/settings/overtime-patterns/legacy-bands',()=>({LegacyOvertimeBands:()=>null}));
 const active='10000000-0000-4000-8000-000000000001',archived='10000000-0000-4000-8000-000000000002',session={tenantId:'tenant'};
 afterEach(cleanup);beforeEach(()=>{
  vi.clearAllMocks();m.scope.mockResolvedValue({s:session,scopeIds:[active,archived]});m.companies.mockResolvedValue([{id:active,name:'Active fictional company',currency:'MYR',minorScale:2}]);m.list.mockResolvedValue({items:[],nextCursor:null});m.setup.mockResolvedValue({companies:[],employees:[],earningItems:[],choices:{}});m.groups.mockResolvedValue([]);
@@ -32,5 +33,19 @@ describe('Overtime workspace tolerates historical company selections',()=>{
   m.scope.mockResolvedValue({s:session,scopeIds:[active,second]});m.companies.mockResolvedValue([{id:active,name:'Active fictional company',currency:'MYR',minorScale:2},{id:second,name:'Second fictional company',currency:'SGD',minorScale:2}]);
   render(<NextIntlClientProvider locale="en" messages={en}>{await Page({searchParams:Promise.resolve({new:'1'})})}</NextIntlClientProvider>);
   expect(m.workspace.mock.lastCall![0]).toMatchObject({detail:null,newPatternCompany:null});
+ });
+ // 2f803985 — a legacy (Schedule Group) pattern opens on 1. General Settings with its group's band editor.
+ it('mounts the relocated band editor for a legacy pattern only, carrying the group, pattern and refusal',async()=>{
+  const {LegacyOvertimeBands}=await import('../app/admin/attendance/settings/overtime-patterns/legacy-bands');
+  const pattern='20000000-0000-4000-8000-000000000001',group='30000000-0000-4000-8000-000000000001',version='40000000-0000-4000-8000-000000000001';
+  m.detail.mockResolvedValue({pattern:{id:pattern,kind:'legacy',legacyRuleId:group},versions:[{id:version,ordinal:1,status:'active'}],assignments:[],writable:false});
+  render(<NextIntlClientProvider locale="en" messages={en}>{await Page({searchParams:Promise.resolve({pattern,bandError:'Refused ladder',saveAck:'0'.repeat(32)})})}</NextIntlClientProvider>);
+  const props=m.workspace.mock.lastCall![0] as {legacyEditor:{type:unknown;props:Record<string,unknown>}};
+  expect(props.legacyEditor.type).toBe(LegacyOvertimeBands);
+  expect(props.legacyEditor.props).toMatchObject({ruleId:group,patternId:pattern,error:'Refused ladder',savedReceipt:'0'.repeat(32)});
+  cleanup();m.workspace.mockClear();
+  m.detail.mockResolvedValue({pattern:{id:pattern,kind:'formula',legacyRuleId:null},versions:[{id:version,ordinal:1,status:'draft'}],assignments:[],writable:true});
+  render(<NextIntlClientProvider locale="en" messages={en}>{await Page({searchParams:Promise.resolve({pattern,saveAck:'not-a-receipt'})})}</NextIntlClientProvider>);
+  expect((m.workspace.mock.lastCall![0] as {legacyEditor?:unknown}).legacyEditor).toBeUndefined();
  });
 });

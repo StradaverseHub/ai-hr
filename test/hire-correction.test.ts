@@ -292,7 +292,8 @@ describe('c063eea9 — the original hire is never edited; history is kept', () =
       expect(rep.departmentId).toBe(hr);
     }
     // No salary rides on the correction (ADR-0030 has nothing to redact).
-    const json = JSON.stringify(p);
+    // Strip generated UUIDs first: a random id can contain "4321" (CI run 43065775926) without any salary leaking.
+    const json = JSON.stringify(p).replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '<id>');
     expect(json).not.toMatch(/salary|basic|compensation|4321/i);
   });
 });

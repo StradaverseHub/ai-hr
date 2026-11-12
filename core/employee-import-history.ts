@@ -17,10 +17,14 @@ import type {SessionContext,Tx} from '../db/client';
 import {employment} from '../db/schema';
 import {actorOf,appendEvent} from '../db/events';
 import type {ImportPlanBase} from '../lib/import-history';
+import type {ImportIssue} from '../lib/import-schema';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {ImportHistoryError,type ImportAttemptItemRow,type ImportRevertHandler} from './import-history';
+import {workforceCompanies} from './workforce-access';
+import {employeeImportReport,scopeEmployeeImportIssues,scopeEmployeeImportReport,type EmployeeImportReport} from '../lib/employee-import-report';
 
-export type EmployeeFullImportPlan=ImportPlanBase&{kind:'employee_full';companyId:string;rows:{rowNum:number;fullName:string;employeeCode:string;company:string;ok:boolean;errors:string[]}[]};
+/** `companyId` and `issues` (item 1859cce0) are absent on attempts recorded before them; readers guard the shape. */
+export type EmployeeFullImportPlan=ImportPlanBase&{kind:'employee_full';companyId:string;rows:{rowNum:number;fullName:string;employeeCode:string;company:string;companyId?:string;ok:boolean;errors:string[];issues?:ImportIssue[]}[]};
 /** The item's `after`: what the import created. No identity number, salary or bank detail is recorded. */
 export type EmployeeFullItemState={employeeCode:string;fullName:string;rowNum:number};
 
@@ -100,3 +104,15 @@ export const employeeFullRevertHandler:ImportRevertHandler={
   return{voided:result.employments};
  },
 };
+
+/**
+ * Item 1859cce0 — the attempt's error report for this viewer. A viewer who can view every company of the attempt
+ * (the same rule as the original file) gets every row; anyone else gets only rows of companies they can view, read
+ * as one set-based company list (no per-row or per-company query, no exclusive Access lock).
+ */
+export async function employeeImportErrorReportFor(ctx:SessionContext,item:{plan:unknown;events:readonly {kind:string;detail:Record<string,unknown>}[];canDownloadSource:boolean}):Promise<{report:EmployeeImportReport;full:boolean;scopeIssues:<T extends {rowNum:number}>(issues:readonly T[])=>T[]}>{
+ const report=employeeImportReport(item.plan,item.events);
+ if(item.canDownloadSource)return{report,full:true,scopeIssues:issues=>[...issues]};
+ const visible=new Set(await workforceCompanies(ctx,'view'));
+ return{report:scopeEmployeeImportReport(report,visible,false),full:false,scopeIssues:issues=>scopeEmployeeImportIssues(issues,item.plan,visible,false)};
+}

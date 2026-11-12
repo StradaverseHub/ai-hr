@@ -119,6 +119,11 @@ function scenarios(f: PersonnelScaleFixture): Scenario[] {
     {name: 'filter-parent-company', sp: {parent: f.companies.b}},
     {name: 'filter-grade', sp: {grade: '13,H'}},
     {name: 'filter-quality-superior', sp: {quality: 'missing_direct_superior'}},
+    // aa045103 — the header multi-select and range filters (ordinary params, typed-fact predicates).
+    {name: 'filter-departments-multi-blank', sp: {dept: [f.departments.b[1], f.departments.a[0], '__blank'].join(',')}},
+    {name: 'filter-types-statuses-multi', sp: {type: 'contract,intern', bucket: 'active,probation'}},
+    {name: 'filter-positions-grades-blank', sp: {position: [f.positions[1], '__blank'].join(','), grade: '13,__blank'}},
+    {name: 'filter-group-join-confirmation-range', sp: {hiredFrom: '2019-01-01', hiredTo: '2024-12-31', confirmedFrom: '2020-01-01'}},
     {name: 'sort-department', sp: {sort: 'department'}},
     {name: 'sort-join-date-desc', sp: {sort: 'joinDate', direction: 'desc'}},
     {name: 'private-search', search: 'Tan'},

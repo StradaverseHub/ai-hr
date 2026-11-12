@@ -1,3 +1,14 @@
+# Security Center account-action authority (PR 240) renumbered above staging — 12 November 2026 MYT (unapplied, renumbered)
+
+Staging now has every migration through `5127_import_log_actor_labels` (idx 4527 / when 1793330004827), installed from
+alpha `69de131ecec4d132cf456d695f68337edff032e7`. PR 240's unapplied `5102_account_action_authority` (idx 4502 / when
+1793330004802; reserved as `5122` / when 1793330004822 in the sections below) sits under that watermark and would be
+skipped there silently (docs/SCALE-AND-RELEASE-RULES.md rule 11). Owner-approved on 12 November 2026, it moves to
+`5128_account_action_authority` at idx 4528 / when 1793330004828, keeping the shared offset (tag 51NN, idx 45NN, when
+…48NN). The SQL bytes are unchanged (SHA256 `16f2188970a3ae2002b3aa067677ec89f7b338151c96476355efc3b24725a7cf`; the
+file does not name its own tag) and were never applied anywhere. Recheck peer claims and the installed ledger at
+admission; this grants no installation authority.
+
 # Security Center account-action authority (PR 240) — 12 November 2026 MYT (unapplied, renumbered)
 
 Main now ends with the combined release block (`5000`–`5090`, idx 4400–4490, when 1793330004700–1793330004790), so
@@ -18,10 +29,44 @@ anywhere. A survey of main and the 150 most recently updated origin heads found 
 claim at idx 4302 or between when 1793330004500 and 1793330009820; 4900 and 4901 are
 reserved the same day for the rebased ccd3a65c and 4452ba3c board releases. Recheck
 peer claims and the installed ledger at admission; this grants no installation authority.
+# Irwin board items combined release rebased onto release candidate 3 — 12 November 2026 MYT (unapplied, renumbered)
+
+Branch `claude/irwin-board-combined-20261112` merges `origin/alpha` at `05c4aa0348700a08de6723e88a67f2cbd43689d4`
+(release candidate 3, now on staging), which journals `5120_access_review_custody_held_mode` (idx 4520 / when
+1793330004820) and `5121_personnel_search_set_mapping` (idx 4521 / when 1793330004821). Staging's applied watermark is
+therefore when 1793330004821, and the release's five unapplied migrations, journalled below it at 5100–5112, would be
+skipped there silently (docs/SCALE-AND-RELEASE-RULES.md rule 11). PR 240 holds `5122` (when 1793330004822). The five
+move above both, keeping the shared offset (tag 51NN, idx 45NN, when …48NN), in their previous journal order. The SQL
+bytes are unchanged (none names its own tag) and were never applied anywhere.
+
+| Previous tag | Previous idx / when | Allocated tag | idx / when | SHA256 (unchanged) |
+| --- | ---: | --- | ---: | --- |
+| `5100_import_history_kind` | 4500 / 1793330004800 | `5123_import_history_kind` | 4523 / 1793330004823 | `2da28686e0f48790491ed9677813be1fae9a71f1e9fbbe1c9b51786f401420e7` |
+| `5101_attendance_workflow_skipped_levels` | 4501 / 1793330004801 | `5124_attendance_workflow_skipped_levels` | 4524 / 1793330004824 | `849dba4bf7c3aa39e45eb7f463ef24301a2eea3b10a781cf39858aa218635c6d` |
+| `5110_individual_txn_pricing_marker` | 4510 / 1793330004810 | `5125_individual_txn_pricing_marker` | 4525 / 1793330004825 | `d48a8a3e394da801bbb0e9917d74d934ab51a3470bdea1bc8d8be1b110a24837` |
+| `5111_contract_internship_end_dates` | 4511 / 1793330004811 | `5126_contract_internship_end_dates` | 4526 / 1793330004826 | `cbc405c4dde11abbe8f298feaf4af0795c8cf742701f62565547eb9ec9d10796` |
+| `5112_import_log_actor_labels` | 4512 / 1793330004812 | `5127_import_log_actor_labels` | 4527 / 1793330004827 | `1f90bf32091400f2ec667a8538802248a90bb1336c869a8b8faad349b2530ce2` |
+
+The 5100–5112 numbers this release previously held are not reused by it. If PR 240's `5122` is installed after this
+release, it would sit below this release's watermark (when 1793330004827) and must be journalled above it first.
+Recheck peer claims and the installed ledger at admission; this grants no installation authority.
+
+# Import History section type (ccd3a65c) — 11 November 2026 MYT (unapplied, renumbered)
+
+Board staging window 3 now follows the combined release block (`5000`–`5090`, idx 4400–4490, when
+1793330004700–1793330004790), so the unapplied `4900_import_history_kind` (idx 4300 / when 1793330004600) would be
+silently skipped after it. It moves to `5100_import_history_kind` at idx 4500 / when 1793330004800 (renumbered `5123` on 12 November 2026, above), keeping the
+block's shared offset (tag 51NN, idx 45NN, when …48NN). Board window 4's `4901_attendance_workflow_skipped_levels`
+follows as `5101` (idx 4501 / when 1793330004801) with one change: its request-links trigger keeps the shared submission lock that
+`3210_attendance_shared_workflow_submission_lock` installs (the draft re-created the exclusive 3101 lock) and PR 240's `4902_account_action_authority` as `5102`
+(idx 4502 / when 1793330004802). The SQL bytes are unchanged and were never applied anywhere. A survey of origin
+branches found no other claim above 5090. Recheck peer claims and the installed ledger at admission; this grants no
+installation authority.
+
 # Combined release block — 11 November 2026 MYT (unapplied allocation, one block)
 
 Branch `claude/combined-release-20261111` (base `claude/architecture-release-20261110` @ `6e4a883c2`) merges every
-accepted branch of the combined release and moves all of their draft migrations into one block (46 migrations): tags `5000`–`5090`,
+accepted branch of the combined release and moves all of their draft migrations into one block (46 migrations; 5120 and 5121 are appended above 5090 and the 5100–5112 reservations later): tags `5000`–`5090`,
 idx 4400–4490, when 1793330004700–1793330004790. Tag number, idx and when share one offset (tag 50NN, idx 44NN, when
 …47NN). The 772-entry journal of the base keeps its entries, order and SQL bytes; the 818-entry journal passes
 `node .github/ci/check-migration-order.mjs origin/main` (main `9cf69292a`, 729 entries ending at
@@ -75,6 +120,7 @@ idx 4400–4490, when 1793330004700–1793330004790. Tag number, idx and when sh
 | `9870_home_own_clock_day` | 3744 / 1793330009870 | `5082_home_own_clock_day` | 4482 / 1793330004782 | `345c604cebcc58946865d6cc93cd248ad693165063a67648d6781243ec652c58` |
 | `9873_home_own_schedule_range` | 3745 / 1793330009873 | `5083_home_own_schedule_range` | 4483 / 1793330004783 | `75045a4ec8c176c55ddc51ddba0b079e6ca8c5662b004a345945ee335efce70a` |
 | `4700_audit_chain_commit_seal` | 4100 / 1793330004400 | `5090_audit_chain_commit_seal` | 4490 / 1793330004790 | `6ce9bebe8c8de296b3b4a03b1d5d52c90c7df79fbdb0b8f8e0617616001e263e` |
+| (allocated directly, branch `claude/personnel-search-scan-20261111`; drafted 5086, then 5092 at 4492 / 1793330004792, SHA256 `977040da60dcf94f9ef2650dceec76192ea53c23b163cc00d6bfd484d760bf0f`) | — | `5121_personnel_search_set_mapping` | 4521 / 1793330004821 | `3d9b5a53b963a0f01843d090a96662da3e9f7b5c5bb0650e3064d237a3c60d54` |
 
 Order and why:
 
@@ -121,9 +167,53 @@ Order and why:
   `5012_import_release_visibility`: the same two leave its release-aware rewrite list (was `3885cb0c5eb07a9c09eca297a4bcb18e1253e2fa5269b9d6c3dc1de8005ac190`).
   `5070_system_label_import_staged_job`: the grade choice list and the uploaded-award validation leave its rewrite list and are verified instead (was `6ed0f9b6bf699fb05d21c920ef2a11f7fedb03308dac3a166b7031dbd2ab7ffb`).
   `test/restricted-owner-release-upgrade.test.ts` applies every migration above main as the literal `ai_hr_owner` login on the installed role topology.
+- **5120 (Access lock restart fix, 12 November 2026; drafted as 5088, first allocated 5091).** Branch
+  `claude/access-lock-restart-20261111` took `5091_access_review_custody_held_mode` at idx 4491 / when 1793330004791,
+  appended after 5090 because staging has already applied 5090 (watermark 1793330004790) and Drizzle skips a migration
+  whose `when` is at or below the applied watermark. Release candidate 3 (`claude/combined-release-rc3-20261112`)
+  renumbers it `5120_access_review_custody_held_mode` at idx 4520 / when 1793330004820, above the numbers other
+  sessions have reserved (below), any of which may reach staging first. Only the header comment changed: SHA256
+  `f99d6938631f4ae17dea7af03b56d5dad4830ef5402b206b097e25ea4854c2a0` (was `32e2a479db86feaa32b2bd9ed9e34c127f4269498ef9d58f8da60ded98ef37c9` as 5091). It re-creates six
+  review-custody functions owned by the migration owner (`app._assistant_own_leave_review_identity`,
+  `app.assistant_own_leave_review_subject`, `app.assistant_own_leave_review_read` from 0622,
+  `app.assistant_generic_review_subject`, `app.assistant_generic_review_read` from 0670 and
+  `app._assistant_leave_decision_login` from 0622) with one change each: the Access lock is taken in the mode the
+  transaction already holds (shared when it holds shared, exclusive otherwise). No purpose-owned object is replaced.
+  Where 5090 is still unapplied (production), 5120 runs in the same batch after it; it only replaces function bodies.
+  `test/migration-installed-watermark.test.ts` records staging's installed ledger and fails when any other entry sits
+  at or below its watermark.
+- **Other sessions' reservations (release coordinator, 12 November 2026).** These numbers belong to other sessions;
+  they are not free and are not allocated by this release:
+  - `5100`, `5101`, `5102` and `5110`–`5112` (when 1793330004800–1793330004812; tag 51NN, when …48NN): the Irwin
+    release, which may deploy to staging before release candidate 3;
+  - `5122` (when 1793330004822): PR 240.
+  Release candidate 3 journals its own migrations above the Irwin release: `5120` (above) and the Personnel search set
+  mapping `5121` (below). `test/migration-installed-watermark.test.ts` records the reservations and fails when any other
+  pending entry sits at or below when 1793330004812, uses a reserved number or `when`, or a reserved number arrives at
+  another `when`.
 <!-- combined-release-fixes:end -->
+- **Personnel search set mapping (5121, 12 November 2026; drafted 5086, then 5092).** Branch
+  `claude/personnel-search-scan-20261111` took `5092_personnel_search_set_mapping` at idx 4492 / when 1793330004792,
+  journalled after 5090 and above the then `5091_access_review_custody_held_mode`, because staging has applied 5090 and
+  drizzle skips an entry whose `when` is below the applied watermark (docs/SCALE-AND-RELEASE-RULES.md rule 11). Release
+  candidate 3 (`claude/combined-release-rc3-20261112`) renumbers it `5121_personnel_search_set_mapping` at idx 4521 /
+  when 1793330004821, journalled after `5120_access_review_custody_held_mode` and above the Irwin release's 5100–5112;
+  only its header comment changed (SHA256 `3d9b5a53b963a0f01843d090a96662da3e9f7b5c5bb0650e3064d237a3c60d54`). 5120
+  replaces none of the functions whose predecessor digests 5121 checks, and reads none of them, so applying 5120 first
+  leaves every checked body as installed. The 5086 number is released. A survey of every origin ref's journal on 12 November 2026 found 5091 and
+  then 5100–5112 (`5100_import_history_kind`, `5101_attendance_workflow_skipped_levels`, `5102_account_action_authority`,
+  `5110`–`5112`), nothing at 5092–5099. Functions only: it replaces `app.company_org_mapping_at`,
+  `app._personnel_employment_tags`, `app.personnel_overview_facts`, `app.personnel_overview_filter_fields`,
+  `app.personnel_filter_companies`, `app.personnel_list_rows`, `app.personnel_list_rows_for_ids` and
+  `app.personnel_private_search_bind()` in place (each checked against its installed body digest, owner and settings)
+  and adds `app._personnel_company_tags` and `app.personnel_search_candidates`; it creates no trigger. Where 5090 and
+  5120 are still unapplied (production), it runs in the same batch after them; it only replaces function bodies. Until
+  it is installed, core/personnel-private-search.ts keeps the previous search reader.
 - **Gaps are deliberate.** 5015–5019, 5034 and 5037–5039, 5057–5059, 5065–5069, 5072–5074 and 5084–5089 are
   left for branches accepted later; they are inserted before 5090 in journal order while the block is unapplied.
+  Staging has now applied the block through 5090, so a gap number journalled before 5090 would be skipped there: a
+  branch that ships to staging takes a number above every installed and reserved number (5112 on 12 November 2026)
+  and is journalled after it (`test/migration-installed-watermark.test.ts` fails otherwise).
 
 Retired: `9002_leave_import_job` (phase 3's leave import proof). The leave ledger import runs on the shared kernel
 (kind `leave_ledger`, 5030), so the proof's table, runner and systemd unit were removed with it; it was never applied.
@@ -255,6 +345,25 @@ idx 4201–4243 or when 1793330004501–1793330004543. A raw tuple scan of the o
 unparseable peer worktree journal (feedback-menu-operator-toggle-616263) found no
 occupant either. Refresh the peer survey and the installed ordered ledger before
 release admission. This reallocation grants no installation authority.
+# Attendance workflow skipped levels and preview history (4452ba3c) — 10 November 2026 MYT (unapplied)
+
+The board staging release moves the unapplied reservation `4501_attendance_workflow_skipped_levels` to `4901_attendance_workflow_skipped_levels`
+at idx 4301 / when 1793330004601, because main now ends at 4800 (idx 4200 / when
+1793330004500) and a lower timestamp would be silently skipped after it. The SQL bytes
+are unchanged and were never applied anywhere. A survey of main and the 150 most recently
+updated origin heads found no other claim between when 1793330004500 and 1793330009820;
+4902 (idx 4302) is PR 240's. Recheck peer claims and the installed ledger at admission;
+this grants no installation authority.
+
+# Import History section type (ccd3a65c) — 10 November 2026 MYT (unapplied)
+
+The board staging release moves the unapplied reservation `4500_import_history_kind` to `4900_import_history_kind`
+at idx 4300 / when 1793330004600, because main now ends at 4800 (idx 4200 / when
+1793330004500) and a lower timestamp would be silently skipped after it. The SQL bytes
+are unchanged and were never applied anywhere. A survey of main and the 150 most recently
+updated origin heads found no other claim between when 1793330004500 and 1793330009820;
+4902 (idx 4302) is PR 240's. Recheck peer claims and the installed ledger at admission;
+this grants no installation authority.
 
 # Shared Leave Groups AI read control — 10 November 2026 MYT (unapplied)
 
@@ -3206,3 +3315,33 @@ one read-only STABLE SECURITY DEFINER probe, `app.reward_access_observation_due(
 only; no table, index, grant on data or existing function changes. Final tag, idx and `when` must be assigned above the
 freshly verified ledger at integration, and the approved upgrade tail pins (`test/helpers/approved-upgrade.ts`) updated
 then. This entry carries no allocation or deployment authority.
+
+## Individual transaction pricing marker — 11 November 2026 (unallocated draft)
+
+Branch `claude/fb-792053e5-reprocess-formula-20261111` (board item 792053e5) journals
+`9730_individual_txn_pricing_marker` at idx 9730 and when 1793330099730 as an UNALLOCATED DRAFT from the owner-provided
+9730–9739 block. It adds three nullable columns to `payroll_individual_txn` (`pricing_source`, `pricing_ref`,
+`priced_at`) and one CHECK tying them to `calculation_method`; no default, no backfill, no new table, grant or function.
+The approved upgrade tail pin and its populated null-column proof (`test/helpers/approved-upgrade.ts`) carry the draft;
+reassign the final tag, idx and `when` above the freshly verified ledger at integration. The marking of rows already on
+open months is the separate report-first script `scripts/mark-individual-txn-pricing-792053e5.ts`, not part of the
+migration. This entry carries no allocation or deployment authority.
+
+## Contract and internship end dates — 11 November 2026 (unallocated draft)
+
+Branch `claude/fb-2260a06b-contract-end-dates-20261111` journals `9750_contract_internship_end_dates` at idx 9750 and when
+1793330099750 as an UNALLOCATED DRAFT from the coordinator-provided 9750–9759 block. It widens the
+`movement_type_field_rule_field_check` vocabulary with `contractEndDate` and `internshipEndDate` and adds one read-only
+STABLE SECURITY DEFINER probe, `app.contract_renewal_open(uuid)`, with EXECUTE for `ai_hr_app` only. No table, column,
+grant on data or data change. ALLOCATED at the Irwin board integration on 12 November 2026 as `5111_contract_internship_end_dates`, idx 4511, when
+1793330004811 (after `5110_individual_txn_pricing_marker`); SQL bytes unchanged. Renumbered the same day to
+`5126_contract_internship_end_dates`, idx 4526, when 1793330004826 (see the release candidate 3 rebase at the top). This entry carries no deployment authority.
+## Import log references — 11 November 2026, allocated 12 November 2026
+
+Branch `claude/fb-8d02748a-import-log-refs-20261111` (board item 8d02748a) drafted `9740_import_log_actor_labels`
+(idx 9740, when 1793330099740) from the coordinator's 9740–9749 block. At the Irwin board integration on 12 November
+2026 it is allocated as `5112_import_log_actor_labels`, idx 4512, when 1793330004812, after `5110` (5111 is reserved for
+another builder's branch); renumbered the same day to `5127_import_log_actor_labels`, idx 4527, when 1793330004827. SQL bytes are unchanged (SHA-256 `1f90bf32091400f2ec667a8538802248a90bb1336c869a8b8faad349b2530ce2`).
+It adds one read-only STABLE SECURITY DEFINER function, `app.import_log_actor_facts(text, uuid[])`, with EXECUTE for
+`ai_hr_app` only; no table, column, policy, grant on data or existing function changes. This entry carries no
+deployment authority.

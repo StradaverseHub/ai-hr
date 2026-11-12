@@ -141,14 +141,29 @@ export async function setPayrollLoopSetting(supplied:SessionContext,input:unknow
 
 /** The proposals one company's dispositions support now, as this transaction may read them. */
 export async function thresholdProposalsTx(tx:Tx,tenantId:string,companyId:string,now:Date):Promise<Readonly<{setting:PayrollLoopSetting;proposals:readonly SwingProposal[]}>>{
- const setting=(await payrollLoopSettingsTx(tx,tenantId,[companyId])).get(companyId)!;
+ return (await thresholdProposalsByCompanyTx(tx,tenantId,[companyId],now)).get(companyId)!;
+}
+
+/** thresholdProposalsTx for many companies in three statements, whatever their number: each company's setting and the
+ * proposals its own dispositions support, less its own rejected proposals. */
+export async function thresholdProposalsByCompanyTx(tx:Tx,tenantId:string,companyIds:readonly string[],now:Date)
+ :Promise<Map<string,Readonly<{setting:PayrollLoopSetting;proposals:readonly SwingProposal[]}>>>{
+ const settings=await payrollLoopSettingsTx(tx,tenantId,companyIds);
+ if(!companyIds.length)return new Map();
  const since=new Date(now.getTime()-PROPOSAL_WINDOW_DAYS*DAY_MS);
- const rows=await tx.select({pattern:terasPayrollSwingDisposition.pattern,swingBp:terasPayrollSwingDisposition.swingBp,disposition:terasPayrollSwingDisposition.disposition})
-  .from(terasPayrollSwingDisposition).where(and(eq(terasPayrollSwingDisposition.tenantId,tenantId),eq(terasPayrollSwingDisposition.companyId,companyId),
-   gte(terasPayrollSwingDisposition.decidedAt,since)));
- const rejected=await tx.select({key:terasPayrollThresholdDecision.proposalKey}).from(terasPayrollThresholdDecision)
-  .where(and(eq(terasPayrollThresholdDecision.tenantId,tenantId),eq(terasPayrollThresholdDecision.companyId,companyId),eq(terasPayrollThresholdDecision.decision,'rejected')));
- return Object.freeze({setting,proposals:deriveSwingProposals(rows,setting,new Set(rejected.map(row=>row.key)))});
+ const rows=await tx.select({companyId:terasPayrollSwingDisposition.companyId,pattern:terasPayrollSwingDisposition.pattern,swingBp:terasPayrollSwingDisposition.swingBp,
+  disposition:terasPayrollSwingDisposition.disposition}).from(terasPayrollSwingDisposition).where(and(eq(terasPayrollSwingDisposition.tenantId,tenantId),
+   inArray(terasPayrollSwingDisposition.companyId,[...companyIds]),gte(terasPayrollSwingDisposition.decidedAt,since)));
+ const rejected=await tx.select({companyId:terasPayrollThresholdDecision.companyId,key:terasPayrollThresholdDecision.proposalKey}).from(terasPayrollThresholdDecision)
+  .where(and(eq(terasPayrollThresholdDecision.tenantId,tenantId),inArray(terasPayrollThresholdDecision.companyId,[...companyIds]),eq(terasPayrollThresholdDecision.decision,'rejected')));
+ return new Map(companyIds.map(companyId=>{
+  const setting=settings.get(companyId)!;
+  // Matched as the database matches a uuid, whatever the caller's spelling of it.
+  const same=(id:string)=>id.toLowerCase()===companyId.toLowerCase();
+  const own=rows.filter(row=>same(row.companyId)).map(({pattern,swingBp,disposition})=>({pattern,swingBp,disposition}));
+  const refused=new Set(rejected.filter(row=>same(row.companyId)).map(row=>row.key));
+  return [companyId,Object.freeze({setting,proposals:deriveSwingProposals(own,setting,refused)})];
+ }));
 }
 
 const DecisionInput=z.object({companyId:z.guid(),proposalKey:z.string().regex(/^[0-9a-f]{64}$/),decision:z.enum(['approved','rejected'])}).strict();

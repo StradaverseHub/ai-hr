@@ -6,6 +6,7 @@ import { withExitDateAuthorityTx } from './exit-date-authority';
 import { isDatabaseError } from '../lib/db-error';
 import { hasClosedPayrollCorrectionAuthorityTx, withClosedPayrollCorrectionAuthorityTx } from './closed-payroll-correction-authority';
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,workforceEmploymentPredicate,WorkforceAccessError} from './workforce-access';
+import {withAccessDisplayRead} from './access-configuration-lock';
 import {withPersonnelRead} from './personnel-read-bounds';
 import {ownPersonPredicate} from './own-person';
 /**
@@ -29,7 +30,7 @@ import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import {isCalendarDate} from '../lib/calendar-date';
-import {MOVEMENT_FLAT_FIELDS,MOVEMENT_PENDING_COMPARISON_FIELDS,MOVEMENT_PENDING_INPUT_FIELDS,movementPendingFormValues,type MovementFlatField,type MovementPendingFormValues} from '../lib/movement-pending-input';
+import {MOVEMENT_FLAT_FIELDS,MOVEMENT_END_DATE_FIELDS,movementEndDateFieldFor,MOVEMENT_PENDING_COMPARISON_FIELDS,MOVEMENT_PENDING_INPUT_FIELDS,movementPendingFormValues,type MovementFlatField,type MovementEndDateField,type MovementPendingFormValues} from '../lib/movement-pending-input';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
 import { appendEvent, actorOf, type MovementTag } from '../db/events';
@@ -55,6 +56,7 @@ import {
   reverseEmploymentBlacklistTx,
   setEmploymentGrade,
   setEmploymentInfo,
+  withEndDateRestoreTx,
   setReportingLine,
   terminateEmploymentTx,
   reverseTerminationTx,
@@ -338,7 +340,9 @@ export type MovementSnapshot = {
 export {MOVEMENT_FLAT_FIELDS};
 export type {MovementFlatField};
 
-export type MovementFlatChange = { field: MovementFlatField; before: string | null; after: string | null };
+/** 2260a06b — the Employee Type end dates join the flat changes: they are flat employment columns too, recorded
+ *  on the same info leg. contractStartDate rides along when a change to Contract starts a new contract. */
+export type MovementFlatChange = { field: MovementFlatField | MovementEndDateField | 'contractStartDate'; before: string | null; after: string | null };
 
 /** The identity half of a history row (no correction affordances — the detail view never offers them). */
 export type MovementRowSummary = Pick<
@@ -347,7 +351,7 @@ export type MovementRowSummary = Pick<
 >;
 
 export type MovementIntentField = 'tenderResignationDate' | 'resignationEffectiveDate' | 'company' | 'businessUnit' | 'department' | 'position' | 'location' |
-  'grade' | 'employmentType' | 'manager' | 'basicSalary' | 'currency' | 'payMode' | 'paymentTerm' | MovementFlatField;
+  'grade' | 'employmentType' | 'manager' | 'basicSalary' | 'currency' | 'payMode' | 'paymentTerm' | MovementFlatField | MovementEndDateField;
 
 /** Saved targets only: not an applied snapshot or an invented historical before-state. */
 export type MovementPendingIntent = { values: { field: MovementIntentField; value: string | null }[] };
@@ -514,7 +518,7 @@ function flatChangesOf(groupEvents: RawEvent[]): MovementFlatChange[] {
     const fields: string[] = Array.isArray(p.fields) ? p.fields : [];
     const before = (p.before ?? {}) as Record<string, unknown>;
     const after = (p.after ?? {}) as Record<string, unknown>;
-    for (const f of MOVEMENT_FLAT_FIELDS) {
+    for (const f of [...MOVEMENT_FLAT_FIELDS, ...MOVEMENT_END_DATE_FIELDS, 'contractStartDate'] as const) {
       if (!fields.includes(f)) continue;
       out.push({
         field: f,
@@ -1189,6 +1193,8 @@ const STATE_CHANGING_EVENT_TYPES = new Set(
  * are recomputed by their existing owner rather than directly overwritten during a correction.
  */
 const REVERSIBLE_INFO_DATE_FIELDS: readonly string[] = ['confirmationDate', 'finalConfirmationDate'];
+/** 2260a06b — what a comparison movement's info leg writes for the Employee Type end dates. */
+const MOVEMENT_INFO_END_DATE_FIELDS: readonly string[] = ['contractStartDate', 'contractEndDate', 'internshipEndDate', 'provisionalEndOn'];
 
 /**
  * b7b22514 — dates that are reversible ONLY on the movement kind that owns them.
@@ -1236,6 +1242,9 @@ function infoLegIsFlatOnly(e: RawEvent, kind: string): boolean {
     (f) =>
       (MOVEMENT_FLAT_FIELDS as readonly string[]).includes(f) ||
       REVERSIBLE_INFO_DATE_FIELDS.includes(f) ||
+      // 2260a06b — the Employee Type end dates only the comparison info leg writes under a movement tag (custom
+      // type codes included), restored field by field in reverseLegTx.
+      MOVEMENT_INFO_END_DATE_FIELDS.includes(f) ||
       kindScoped.includes(f),
   );
 }
@@ -1811,7 +1820,7 @@ async function pendingIntentTx(tx: Tx, tenantId: string, event: RawEvent): Promi
       .where(and(eq(employment.tenantId, tenantId), eq(person.tenantId, tenantId), eq(employment.id, id))).limit(1);
     return row?.name ?? null;
   });
-  for (const field of ['tenderResignationDate','resignationEffectiveDate','employmentType', 'basicSalary', 'currency', 'payMode', 'paymentTerm', ...MOVEMENT_FLAT_FIELDS] as const) {
+  for (const field of ['tenderResignationDate','resignationEffectiveDate','employmentType', 'basicSalary', 'currency', 'payMode', 'paymentTerm', ...MOVEMENT_FLAT_FIELDS, ...MOVEMENT_END_DATE_FIELDS] as const) {
     if (!(field in input)) continue; // Omitted is not a clear and not today's value.
     const value: unknown = Reflect.get(input, field);
     if (value === null || typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value))) {
@@ -1850,7 +1859,8 @@ export async function movementAttachments(
   movementId: string,
 ): Promise<MovementAttachmentSummary[]> {
   assertMovementAdmin(ctx, 'view movement documents');
-  return withTenant(ctx, async (tx) => {
+  // A page read: its Workforce check holds the Access lock shared (withAccessDisplayRead).
+  return withAccessDisplayRead(() => withTenant(ctx, async (tx) => {
     await assertWorkforceEmploymentTx(tx, ctx, employmentId, 'view');
     const { rows } = await projectRows(tx, ctx.tenantId, employmentId);
     const row = rows.find((r) => r.id === movementId);
@@ -1858,21 +1868,21 @@ export async function movementAttachments(
     return (await listMovementAttachmentsTx(tx, ctx.tenantId, employmentId, [row.groupId])).map(
       ({ movementGroupId: _group, ...summary }) => summary,
     );
-  });
+  }));
 }
 
 /** One document's bytes, under the same three checks as movementAttachments. Refuses with one message
  *  whether the document does not exist or the caller may not see it, so the refusal discloses nothing. */
 export async function readMovementAttachment(ctx: SessionContext, employmentId: string, attachmentId: string) {
   assertMovementAdmin(ctx, 'view movement documents');
-  return withTenant(ctx, async (tx) => {
+  return withAccessDisplayRead(() => withTenant(ctx, async (tx) => {
     await assertWorkforceEmploymentTx(tx, ctx, employmentId, 'view');
     const file = await readMovementAttachmentRowTx(tx, ctx.tenantId, employmentId, attachmentId);
     if (!file) throw new MovementDocumentError('Document not found.');
     const { rows } = await projectRows(tx, ctx.tenantId, employmentId);
     if (!rows.some((r) => r.groupId === file.movementGroupId)) throw new MovementDocumentError('Document not found.');
     return { fileName: file.fileName, mimeType: file.mimeType, content: file.content };
-  });
+  }));
 }
 
 /** Edit reads recorded picker values under current RLS. Applied movements use their original legs;
@@ -2016,7 +2026,9 @@ export type MovementCurrentState = {
   /** 3ced1040 — the date a Confirmation movement moves. Read like every other current value so the delta
    *  rule covers it: re-confirming on the date already stored is a no-op, not a second history row. */
   confirmationDate: string | null;
-} & Record<MovementFlatField, string | null>;
+  /** 2260a06b — the contract period and internship end (flat employment columns) a movement may maintain. */
+  contractStartDate: string | null;
+} & Record<MovementFlatField | MovementEndDateField, string | null>;
 
 async function currentStateTx(tx: Tx, employmentId: string): Promise<MovementCurrentState> {
   const [emp] = await tx
@@ -2026,6 +2038,9 @@ async function currentStateTx(tx: Tx, employmentId: string): Promise<MovementCur
       companyId: employment.companyId,
       joinDate: employment.joinDate,
       confirmationDate: employment.confirmationDate,
+      contractStartDate: employment.contractStartDate,
+      contractEndDate: employment.contractEndDate,
+      internshipEndDate: employment.internshipEndDate,
       orgDivision: employment.orgDivision,
       orgRegion: employment.orgRegion,
       orgBranch: employment.orgBranch,
@@ -2107,6 +2122,9 @@ async function currentStateTx(tx: Tx, employmentId: string): Promise<MovementCur
     payMode: comp?.payMode ?? null,
     paymentTerm: comp?.paymentTerm ?? null,
     confirmationDate: emp.confirmationDate,
+    contractStartDate: emp.contractStartDate,
+    contractEndDate: emp.contractEndDate,
+    internshipEndDate: emp.internshipEndDate,
     orgDivision: emp.orgDivision,
     employmentCategory: emp.employmentCategory,
     orgRegion: emp.orgRegion,
@@ -2211,7 +2229,7 @@ export type CreateMovementInput = {
    * scheduled intent (scheduledInputOf ignores it). The movement import never supplies any.
    */
   documents?: MovementDocumentUpload[];
-} & Partial<Record<MovementFlatField, string | null>>;
+} & Partial<Record<MovementFlatField | MovementEndDateField, string | null>>;
 
 /** 941c9dac — one field a movement moved, resolved to raw values. The audit record the reporter asked
  *  for ("what changed, from what to what") is a list of these, stored on the applied event. */
@@ -2272,6 +2290,30 @@ function movementDeltas(p: CreateMovementInput, cur: MovementCurrentState) {
     if (d !== undefined) flat[f] = d;
   }
 
+  /**
+   * 2260a06b — the Employee Type END DATES. Only the date of the RESULTING type is read (Contract End Date for a
+   * contract, Internship End Date for an intern); a date posted for another type is dropped like a forged
+   * company, because the form never offers it. A movement that CHANGES the type into Contract or Intern must
+   * carry that type's end date, later than the effective date, and a change into Contract starts the contract
+   * on the effective date. Every other rule (end after start/join, the open-renewal refusal) is the
+   * setEmploymentInfo owner's, run by the info leg below.
+   */
+  const resultingType = dType ?? cur.employmentType;
+  const endField = movementEndDateFieldFor(resultingType);
+  const endDates: Partial<Record<MovementEndDateField | 'contractStartDate', string | null>> = {};
+  if (endField) {
+    const d = delta(p[endField], cur[endField]);
+    if (d !== undefined) endDates[endField] = d;
+    if (dType) {
+      const typed = p[endField]?.trim() || null;
+      const name = endField === 'contractEndDate' ? 'Contract end date' : 'Internship end date';
+      if (!typed) throw new Error(`${name} is required when the employment type changes to ${dType === 'contract' ? 'Contract' : 'Intern'}.`);
+      if (typed <= p.effectiveDate) throw new Error(`${name} must be later than the effective date.`);
+      if (dType === 'contract' && p.effectiveDate !== cur.contractStartDate) endDates.contractStartDate = p.effectiveDate;
+    }
+  }
+  const endDatesChanged = Object.keys(endDates).length > 0;
+
   const dSalary =
     p.basicSalary !== undefined && Number(p.basicSalary) !== Number(cur.basicSalary ?? NaN)
       ? p.basicSalary
@@ -2315,7 +2357,7 @@ function movementDeltas(p: CreateMovementInput, cur: MovementCurrentState) {
 
   const nothingChanged =
     !assignmentChanged && !gradeChanged && !flatChanged && !managerChanged && !compChanged &&
-    !confirmationChanged && !companyChanged;
+    !confirmationChanged && !companyChanged && !endDatesChanged;
   if (dSalary !== undefined && (!Number.isFinite(dSalary) || dSalary < 0)) {
     throw new Error('A valid basic salary amount is required.');
   }
@@ -2339,6 +2381,8 @@ function movementDeltas(p: CreateMovementInput, cur: MovementCurrentState) {
   add('gradeId', cur.gradeId, dGrade);
   if (managerChanged) add('managerEmploymentId', cur.managerEmploymentId, dManager);
   for (const f of MOVEMENT_FLAT_FIELDS) add(f, cur[f], flat[f]);
+  add('contractStartDate', cur.contractStartDate, endDates.contractStartDate);
+  for (const f of MOVEMENT_END_DATE_FIELDS) add(f, cur[f], endDates[f]);
   if (dSalary !== undefined) add('basicSalary', cur.basicSalary, String(dSalary));
   if (hasComp) {
     add('currency', cur.currency, dCurrency);
@@ -2352,10 +2396,10 @@ function movementDeltas(p: CreateMovementInput, cur: MovementCurrentState) {
   return {
     cur,
     dCompany, dJoinDate,
-    dDept, dPos, dBu, dLoc, dType, dGrade, dManager, flat,
+    dDept, dPos, dBu, dLoc, dType, dGrade, dManager, flat, endDates,
     dSalary, dCurrency, dPayMode, dPaymentTerm, dConfirmation,
     assignmentChanged, gradeChanged, flatChanged, managerChanged, compChanged, hasComp,
-    confirmationChanged, companyChanged, joinDateChanged,
+    confirmationChanged, companyChanged, joinDateChanged, endDatesChanged,
     nothingChanged,
     changes,
     fields: changes.map((c) => c.field),
@@ -2456,10 +2500,10 @@ async function applyComparisonMovementTx(
     const d = movementDeltas(p, cur);
     const {
       dCompany, dJoinDate,
-      dDept, dPos, dBu, dLoc, dType, dGrade, dManager, flat,
+      dDept, dPos, dBu, dLoc, dType, dGrade, dManager, flat, endDates,
       dSalary, dCurrency, dPayMode, dPaymentTerm, dConfirmation,
       assignmentChanged, gradeChanged, flatChanged, compChanged, confirmationChanged,
-      companyChanged, joinDateChanged,
+      companyChanged, joinDateChanged, endDatesChanged,
     } = d;
 
     if (d.nothingChanged) {
@@ -2491,12 +2535,15 @@ async function applyComparisonMovementTx(
     // setEmploymentInfo re-derives finalConfirmationDate from it, which is what flips the derived
     // Employee Status from Probation to Confirmed — there is no status column to write.
     const infoLeg = async () => {
-      if (!flatChanged && !confirmationChanged && !joinDateChanged) return;
+      if (!flatChanged && !confirmationChanged && !joinDateChanged && !endDatesChanged) return;
       await setEmploymentInfo(
         ctx,
         {
           employmentId: p.employmentId,
           ...flat,
+          // 2260a06b — the type end dates (and a new contract's start) ride on the same info leg, after the
+          // assignment leg has written the new type, so the owner validates them for the type they belong to.
+          ...endDates,
           ...(confirmationChanged ? { confirmationDate: dConfirmation } : {}),
           // b7b22514 — the Entity Transfer's new current-company Join Date rides on the SAME
           // setEmploymentInfo call as the flat columns, for the reason Confirmation's date does: two calls
@@ -3866,6 +3913,7 @@ async function replayInputOfTx(tx: Tx, r: ProjectedRow, g: RawEvent[], behaviour
         const fields: string[] = Array.isArray(p.fields) ? p.fields : [];
         for (const f of fields) {
           if ((MOVEMENT_FLAT_FIELDS as readonly string[]).includes(f)) input[f] = p.after?.[f] ?? null;
+          if ((MOVEMENT_END_DATE_FIELDS as readonly string[]).includes(f)) input[f] = p.after?.[f] ?? null;
           if (f === 'tenderResignationDate') {
             if(behaviour==='termination') input.resignationDate=p.after?.[f] ?? null;
             else input.tenderResignationDate=p.after?.[f] ?? null;
@@ -4090,11 +4138,22 @@ async function reverseLegTx(
           tenderResignationDate: employment.tenderResignationDate,
           resignationDate: employment.resignationDate,
           lastWorkingDate: employment.lastWorkingDate,
+          contractStartDate: employment.contractStartDate,
+          contractEndDate: employment.contractEndDate,
+          internshipEndDate: employment.internshipEndDate,
+          provisionalEndOn: employment.provisionalEndOn,
         })
         .from(employment)
         .where(eq(employment.id, employmentId))
         .limit(1);
       if (!cur) return;
+      // 2260a06b — the Employee Type end dates (and the provisional copy setEmploymentInfo kept aligned) are
+      // restored on the same last-write-wins rule as the flat columns, under the restore authority that lets
+      // the owner put back the empty date of a type this rollback is also undoing.
+      const endRestore: Partial<Record<'contractStartDate' | 'contractEndDate' | 'internshipEndDate' | 'provisionalEndOn', string | null>> = {};
+      for (const f of ['contractStartDate', 'contractEndDate', 'internshipEndDate', 'provisionalEndOn'] as const) {
+        if (fields.includes(f) && (cur[f] ?? null) === (after[f] ?? null)) endRestore[f] = before[f] ?? null;
+      }
       const restore: Partial<Record<MovementFlatField | 'confirmationDate' | 'joinDate' | 'tenderResignationDate' | 'resignationDate' | 'lastWorkingDate', string | null>> = {};
       for (const f of MOVEMENT_FLAT_FIELDS) {
         if (!fields.includes(f)) continue;
@@ -4130,7 +4189,9 @@ async function reverseLegTx(
         }else dates.extendedConfirmationDate=before.extendedConfirmationDate??null;
       }
       if(['joinDateChange','groupJoinDateCorrection'].includes(tag.type)&&fields.includes('joinDate')&&(cur.joinDate??null)!==(after.joinDate??null))throw new MovementNotCorrectableError('A later Join Date change conflicts with this event. Review it first.');
-      if (Object.keys(restore).length || Object.keys(dates).length) {
+      if (Object.keys(endRestore).length) {
+        await withEndDateRestoreTx(tx, () => withExitDateAuthorityTx(tx,employmentId,()=>setEmploymentInfo(ctx, { employmentId, ...restore, ...dates, ...endRestore, movement: tag }, tx)));
+      } else if (Object.keys(restore).length || Object.keys(dates).length) {
         await withExitDateAuthorityTx(tx,employmentId,()=>setEmploymentInfo(ctx, { employmentId, ...restore, ...dates, movement: tag }, tx));
       }
       return;
@@ -4318,6 +4379,9 @@ async function reversalGuardTx(tx: Tx, ctx: SessionContext, employmentId: string
     if(event.eventType==='employment.company.transferred'){protectedFields.add('companyId');protectedFields.add('joinDate');}
     if(event.eventType==='assignment.transferred'){protectedFields.add('employmentType');protectedFields.add('companyId');}
     if(event.eventType==='employment.info.updated')for(const field of ((event.payload??{}) as {fields?:string[]}).fields??[])protectedFields.add(field);
+    // ccd3a65c — the organisation dimensions and the Direct Superior an information-only correction can now set.
+    if(event.eventType==='employment.assignment.changed'){const p=(event.payload??{}) as {before?:Record<string,unknown>;after?:Record<string,unknown>};for(const field of ['departmentId','positionId','businessUnitId'])if(p.before?.[field]!==p.after?.[field])protectedFields.add(field);}
+    if(event.eventType==='reporting-line.set')protectedFields.add('managerEmploymentId');
   }
   if(events.some(event=>event.eventType==='employment.information.corrected'&&event.sequence>row.sequence&&(((event.payload??{}) as {fields?:string[]}).fields??[]).some(field=>protectedFields.has(field)))){
     throw new MovementNotCorrectableError('A later information-only correction protects these details. Review the correction history before changing this movement.');
@@ -4786,7 +4850,8 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
         same(p.paymentTerm, cur.paymentTerm) &&
         (!p.employmentType || p.employmentType === cur.employmentType) &&
         (p.basicSalary === undefined || Number(p.basicSalary) === Number(cur.basicSalary ?? NaN)) &&
-        MOVEMENT_FLAT_FIELDS.every((f) => same(p[f], cur[f]));
+        MOVEMENT_FLAT_FIELDS.every((f) => same(p[f], cur[f])) &&
+        MOVEMENT_END_DATE_FIELDS.every((f) => same(p[f], cur[f]));
       // 3ced1040 — a Confirmation's own field, the confirmation date, needs no line here: it IS the
       // effective date, so `datesUnchanged` already covers every way it can move.
       if (datesUnchanged && valuesUnchanged) throw new MovementNoChangeError();
@@ -4833,10 +4898,10 @@ export type ResignationInformation = Record<typeof RESIGNATION_INFO_FIELDS[numbe
 /** View-only current owner effects with per-field provenance. Pending/reversed rows never win.
  * Untagged imported/history values stay visible as legacy; no event is fabricated for them. */
 export function resignationInformation(ctx:SessionContext,employmentId:string):Promise<ResignationInformation>{
-  return withTenant(ctx,async tx=>{
+  return withAccessDisplayRead(()=>withTenant(ctx,async tx=>{
     await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');
     return resignationInformationFromProjection(tx,employmentId,await projectRows(tx,ctx.tenantId,employmentId));
-  });
+  }));
 }
 
 async function resignationInformationFromProjection(

@@ -156,10 +156,21 @@ export async function recordReadiness(
    * treated as a total, which is the exact failure the `count`/`people` split was introduced to prevent
    * and which it caused here instead. Caught by `test/readiness-nudge.test.ts`'s blast-radius case.
    */
-  opts?: { peopleLimit?: number },
+  opts?: {
+    peopleLimit?: number;
+    /** The readiness SCREEN's read (app/control-tower/readiness/page.tsx) plans without JIT. Its one statement checks
+     * row-level security per employment and per compensation row, which the planner prices high enough to compile; on
+     * a group of ~1,000 employments the compilation cost more than the read (test/ai-centre-scale-timing.test.ts). Scoped
+     * to this transaction, as the claims, attendance and analytics reads do; the answer is unchanged. Other callers
+     * (Today, setup readiness) read inside shared snapshots and keep their own setting. */
+    planWithoutJit?: true;
+  },
 ): Promise<ReadinessView> {
   const peopleLimit = opts?.peopleLimit ?? PEOPLE_PER_GAP;
-  return withTenant(ctx, async (tx) => (await readinessSnapshot(tx, peopleLimit)).view);
+  return withTenant(ctx, async (tx) => {
+    if (opts?.planWithoutJit) await tx.execute(sql`set local jit=off`);
+    return (await readinessSnapshot(tx, peopleLimit)).view;
+  });
 }
 
 /** Same engine read, in the orchestrator's transaction so completion has positive source evidence. */
@@ -194,8 +205,12 @@ const READINESS_ROW_FIELDS = {
         eisEligible: schema.employeeStatutoryMy.eisEligible,
         // EXISTS rather than a join: an employment may carry many compensation rows over time and a join
         // would multiply every employee by their salary history before the gaps were even counted.
+        // OFFSET 0 keeps it a per-employment probe of compensation_employment_idx. Without it the planner may hash
+        // the whole tenant's compensation once, checking row-level security on every salary row, including those of
+        // employments the reader cannot see: for a one-company administrator of a 71-company group that was most of
+        // the read (test/ai-centre-scale-timing.test.ts). Same answer: OFFSET 0 changes no row.
         hasComp: sql<boolean>`exists (
-          select 1 from ${schema.compensation} c where c.employment_id = ${schema.employment.id}
+          select 1 from ${schema.compensation} c where c.employment_id = ${schema.employment.id} offset 0
         )`,
 };
 const readinessRowWhere = (adminOnly: boolean, scope?: { employmentIds?: readonly string[]; personId?: string }) =>

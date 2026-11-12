@@ -7570,6 +7570,12 @@ export const payrollIndividualTxn = pgTable(
     unit: text('unit'),
     // NULL retains legacy raw formula input. Explicit methods store the final transaction amount.
     calculationMethod: text('calculation_method').$type<'amount' | 'formula'>(),
+    // 792053e5 (draft 9730) — which Pay Item pricing produced `amount`, so processing an OPEN run re-prices the row
+    // from its saved quantity with the latest saved formula (packs/payroll/individual-calculation.ts). NULL = never
+    // re-priced (hand-typed or unknown origin). pricing_ref: rule sha256 or formula revision id.
+    pricingSource: text('pricing_source').$type<'pay_item_rule' | 'saved_formula'>(),
+    pricingRef: text('pricing_ref'),
+    pricedAt: timestamp('priced_at', { withTimezone: true }),
     notes: text('notes'),
     // 49e7e0a2 (0403) — when this row was last CHANGED. Null on every legacy row and on a row that has
     // never been edited since it was keyed, so `created_at` remains the only timestamp for those. It
@@ -9880,6 +9886,9 @@ export const employeeImportRun = pgTable(
     /** True when more rows failed than `errors` holds (IMPORT_RUN_ERROR_CAP). The screen says so rather
      *  than letting HR believe a truncated report is the whole story. */
     errorsTruncated: boolean('errors_truncated').notNull().default(false),
+    /** ccd3a65c (migration 5123) — which import wrote the run: 'full' or a section key. NULL for runs
+     *  recorded before 5123 ("Not recorded"). Import History lists section runs by this type. */
+    importSection: text('import_section'),
     createdAt: createdAt(),
   },
   (t) => [index('employee_import_run_tenant_created_idx').on(t.tenantId, t.createdAt)],
@@ -10884,7 +10893,18 @@ export const attendanceWorkflowRequest = pgTable('attendance_workflow_request', 
     routingVersion: integer('routing_version').notNull().default(1).$type<1 | 2 | 3 | 4>(),
     cc: jsonb('cc').notNull().default([]).$type<import('../lib/attendance-workflow-v4').AttendanceCcRecipient[]>(),
     stages: jsonb('stages').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedStage[]>(), currentStage: integer('current_stage').notNull().default(0), createdAt: createdAt(),
+    /** v4 only: levels decided "not required" at submission because the reporting chain had ended. */
+    skippedLevels: jsonb('skipped_levels').notNull().default([]).$type<import('../lib/attendance-workflow').AttendanceSkippedLevel[]>(),
 }, t => [uniqueIndex('attendance_workflow_request_correction').on(t.correctionId)]);
+/** Append-only Preview Assignment snapshot of one saved workflow version (admin of every workflow company). */
+export const attendanceWorkflowPreview = pgTable('attendance_workflow_preview', {
+    id: id(), tenantId: tenantId(), lineageId: uuid('lineage_id').notNull(), templateId: uuid('template_id').notNull(),
+    templateVersion: integer('template_version').notNull(), generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
+    generatedByUserId: uuid('generated_by_user_id').notNull(), companyIds: uuid('company_ids').array().notNull(),
+    totalMatching: integer('total_matching').notNull(), warningCount: integer('warning_count').notNull(), truncated: boolean('truncated').notNull().default(false),
+    employees: jsonb('employees').notNull().default([]).$type<import('../lib/attendance-workflow-preview').AttendanceWorkflowPreviewEmployee[]>(),
+    warnings: jsonb('warnings').notNull().default([]).$type<import('../lib/attendance-workflow-preview').AttendanceWorkflowPreviewWarning[]>(),
+});
 export const attendanceWorkflowDecision = pgTable('attendance_workflow_decision', {
     id: id(), tenantId: tenantId(), requestId: uuid('request_id').notNull().references(() => attendanceWorkflowRequest.id),
     employmentId: uuid('employment_id').notNull().references(() => employment.id), stageIndex: integer('stage_index').notNull(),

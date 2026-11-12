@@ -87,6 +87,7 @@ export function Sidebar({
   assistantAccess,
   feedbackAccess,
   privateCaseHandler,
+  canConfigurePeopleGeneral = false,
   defaultCollapsed,
   viewerName = null,
   viewerCode = null,
@@ -96,6 +97,9 @@ export function Sidebar({
    *  never queries. 0 (or a viewer without the row) renders no badge. */
   approvalCount?: number;
   taskCount?: number;
+  /** 82748f92 — app.people_general_can_configure() from the shell's one navigation statement. Gates only the
+   *  People › Settings "General" command-bar alias; fails closed (absent means hidden). */
+  canConfigurePeopleGeneral?: boolean;
   onboardingJoinerCount?:number;
   onboardingChecklistCount?:number;
   defaultCollapsed: boolean;
@@ -311,11 +315,21 @@ export function Sidebar({
           const entry = { href: c.navigationHref ?? c.href, label: t(c.labelKey), section, parent, parentHref };
           navEntries.push(entry);
           if (!activeEntry && c === activeKid) activeEntry = entry;
+          // 82748f92 — a visible row's search aliases (People › Settings sections) stay findable by their own
+          // names. Search entries only; a gated alias is offered only when its page would open.
+          for (const alias of c.searchAliases ?? []) {
+            if (alias.gate === 'peopleGeneral' && !canConfigurePeopleGeneral) continue;
+            navEntries.push({ href: alias.href, label: t(alias.labelKey), section, parent, parentHref });
+          }
         }
       } else if (!r.disabled) {
         const entry = { href: r.navigationHref ?? r.href, label: t(r.labelKey), section, parent: null, parentHref: null };
         navEntries.push(entry);
         if (!activeEntry && isRowActive(r)) activeEntry = entry;
+        for (const alias of r.searchAliases ?? []) {
+          if (alias.gate === 'peopleGeneral' && !canConfigurePeopleGeneral) continue;
+          navEntries.push({ href: alias.href, label: t(alias.labelKey), section, parent: null, parentHref: null });
+        }
       }
     }
   }

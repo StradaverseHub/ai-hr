@@ -15,9 +15,12 @@ import {BANK_IMPORT_MAX_BYTES} from '../lib/bank-import-job';
 import {createHash,randomUUID} from 'node:crypto';
 import {and,asc,desc,eq,getTableColumns,inArray,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {company,importAttempt as attempt,importAttemptItem as item,importAttemptEvent as historyEvent} from '../db/schema';
+import {company,importAttempt as attempt,importAttemptItem as item,importAttemptEvent as historyEvent,employeeImportRun as run,person} from '../db/schema';
 import {actorOf,appendEvent} from '../db/events';
-import {isImportKind,normalizeImportRevertReason,type ImportEventKind,type ImportKind,type ImportPlanBase} from '../lib/import-history';
+import {isImportKind,isImportRunKind,isImportHistoryKind,importAttemptStatus,importAttemptTotals,IMPORT_RUN_KINDS,normalizeImportRevertReason,type ImportAttemptStatus,type ImportEventKind,type ImportHistoryKind,type ImportKind,type ImportPlanBase,type ImportRunKind} from '../lib/import-history';
+import {importRunOutcome,type ImportRunError} from '../lib/import-schema';
+import {actorOn,creatorOf,resolveImportActors,type ImportRowActors} from './import-actor-label';
+import type {ImportActor} from '../lib/import-reference';
 
 export class ImportHistoryError extends Error{
  constructor(message:string,readonly blockers:ImportRevertBlocker[]=[]){super(message);this.name='ImportHistoryError';}
@@ -92,25 +95,31 @@ export async function recordImportEventTx(tx:Tx,ctx:SessionContext,input:{attemp
  return id;
 }
 /** Best effort, in its own transaction: the failed operation's transaction has already rolled back. */
-export async function recordImportFailure(ctx:SessionContext,attemptId:string,importKind:ImportKind,kind:'failed'|'revert_failed',error:unknown){
+/** `extra` adds kind-specific detail (for example the employee import's save report rows, item 1859cce0). */
+export async function recordImportFailure(ctx:SessionContext,attemptId:string,importKind:ImportKind,kind:'failed'|'revert_failed',error:unknown,extra?:Record<string,unknown>){
  if(!uuid.test(attemptId)||!ctx.userId)return;
  const reason=error instanceof ImportHistoryError?error.message:'The operation failed; no changes were committed.';
  try{await withTenant(ctx,async tx=>{
   const[found]=await tx.select({id:attempt.id}).from(attempt).where(and(eq(attempt.id,attemptId),eq(attempt.kind,importKind)));if(!found)return;
-  await recordImportEventTx(tx,ctx,{attemptId,kind,importKind,detail:{message:reason,...(error instanceof ImportHistoryError&&error.blockers.length?{blockers:error.blockers.slice(0,200)}:{})}});
+  await recordImportEventTx(tx,ctx,{attemptId,kind,importKind,detail:{...(extra??{}),message:reason,...(error instanceof ImportHistoryError&&error.blockers.length?{blockers:error.blockers.slice(0,200)}:{})}});
  });}catch(recordError){console.error('[import history failure audit]',recordError);}
 }
 
-const listColumns={id:attempt.id,kind:attempt.kind,sourceName:attempt.sourceName,sourceHash:attempt.sourceHash,companyIds:attempt.companyIds,plan:attempt.plan,createdBy:attempt.createdBy,createdAt:attempt.createdAt,createdByName:sql<string|null>`app.import_attempt_actor_label(${attempt.id},${attempt.createdBy})`};
+const listColumns={id:attempt.id,kind:attempt.kind,sourceName:attempt.sourceName,sourceHash:attempt.sourceHash,companyIds:attempt.companyIds,plan:attempt.plan,createdBy:attempt.createdBy,createdAt:attempt.createdAt};
 async function companyNamesTx(tx:Tx,ids:string[]){
  if(!ids.length)return new Map<string,string>();
  const rows=await tx.select({id:company.id,name:company.legalName,label:company.companyLabel}).from(company).where(inArray(company.id,ids));
  return new Map(rows.map(r=>[r.id,r.label?.trim()?`${r.label.trim()} · ${r.name}`:r.name]));
 }
-async function eventsWithNamesTx(tx:Tx,ids:string[]){
+/** Board 8d02748a: every recorded actor of these attempts in ONE set-wise read (no per-row label function). */
+const personName=(actor:ImportActor)=>actor.kind==='person'?actor.name:null;
+async function eventsWithNamesTx(tx:Tx,ids:string[],actors:Map<string,ImportRowActors>){
  if(!ids.length)return[];
- return tx.select({...getTableColumns(historyEvent),actorName:sql<string|null>`app.import_attempt_actor_label(${historyEvent.attemptId},${historyEvent.actorId})`}).from(historyEvent).where(inArray(historyEvent.attemptId,ids)).orderBy(asc(historyEvent.createdAt),asc(historyEvent.id));
+ const rows=await tx.select(getTableColumns(historyEvent)).from(historyEvent).where(inArray(historyEvent.attemptId,ids)).orderBy(asc(historyEvent.createdAt),asc(historyEvent.id));
+ return rows.map(row=>{const actor=actorOn(actors,row.attemptId,row.actorId);return{...row,actor,actorName:personName(actor)};});
 }
+function creatorLabels(actors:Map<string,ImportRowActors>,id:string){const createdByActor=creatorOf(actors,id);return{createdByActor,createdByName:personName(createdByActor)};}
+function withCreator<R extends {id:string}>(actors:Map<string,ImportRowActors>,row:R){return{...row,...creatorLabels(actors,row.id)};}
 /** Company-scoped by RLS: an attempt is listed when the actor holds view for at least one listed company. */
 export async function listImportAttempts(ctx:SessionContext,options:{kind?:ImportKind;before?:string;limit?:number}={}){
  if(options.kind!==undefined&&!isImportKind(options.kind))fail('Unknown import kind.');
@@ -119,20 +128,84 @@ export async function listImportAttempts(ctx:SessionContext,options:{kind?:Impor
   await principalTx(tx,ctx);const limit=Math.min(100,Math.max(1,options.limit??25));
   const rows=await tx.select(listColumns).from(attempt).where(and(options.kind?eq(attempt.kind,options.kind):undefined,options.before?sql`(${attempt.createdAt},${attempt.id}) < (select created_at,id from import_attempt where id=${options.before}::uuid)`:undefined))
    .orderBy(desc(attempt.createdAt),desc(attempt.id)).limit(limit+1);
-  const chosen=rows.slice(0,limit),events=await eventsWithNamesTx(tx,chosen.map(r=>r.id)),names=await companyNamesTx(tx,[...new Set(chosen.flatMap(r=>r.companyIds))]);
-  return{items:chosen.map(r=>({...r,plan:r.plan as unknown as ImportPlanBase,companies:r.companyIds.map(id=>names.get(id)).filter((n):n is string=>!!n),events:events.filter(e=>e.attemptId===r.id)})),nextCursor:rows.length>limit?chosen.at(-1)!.id:null};
+  const chosen=rows.slice(0,limit),actors=await resolveImportActors(tx,'import_attempt',chosen.map(r=>r.id)),events=await eventsWithNamesTx(tx,chosen.map(r=>r.id),actors),names=await companyNamesTx(tx,[...new Set(chosen.flatMap(r=>r.companyIds))]);
+  return{items:chosen.map(r=>({...withCreator(actors,r),plan:r.plan as unknown as ImportPlanBase,companies:r.companyIds.map(id=>names.get(id)).filter((n):n is string=>!!n),events:events.filter(e=>e.attemptId===r.id)})),nextCursor:rows.length>limit?chosen.at(-1)!.id:null};
  });
 }
 export type ImportAttemptListItem=Awaited<ReturnType<typeof listImportAttempts>>['items'][number];
+
+/**
+ * ccd3a65c — section runs (employee_import_run) are listed by the company access of the viewer, read-side.
+ * Their RLS (0341) is tenant + is_admin only, so this predicate is what keeps another company's failed rows
+ * (employee names and reasons) off the list. A run with no company (register sections) is shown to its
+ * creator, or to a viewer who administers and can view every active company of the tenant.
+ */
+function runVisibleSql(ctx:SessionContext){
+ return sql`((${run.companyId} is not null and app.is_admin_for(${run.companyId}) and app.access_workforce_company(${run.companyId},'workforce.view'))
+  or (${run.companyId} is null and (${run.createdByUserId}=${ctx.userId??''}::text or not exists(select 1 from company c where c.tenant_id=app.current_tenant_id() and c.archived_at is null
+   and not (app.is_admin_for(c.id) and app.access_workforce_company(c.id,'workforce.view'))))))`;
+}
+/** Listed run types: section runs plus runs recorded before migration 5123 (type not recorded). */
+function listedRunSql(kind?:ImportRunKind){
+ return kind?sql`${run.importSection}=${kind}`:sql`(${run.importSection} is null or ${run.importSection} in (${sql.join(IMPORT_RUN_KINDS.map(k=>sql`${k}`),sql`,`)}))`;
+}
+const HISTORY_CURSOR=/^([ar])\.([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+export type ImportHistoryRow={source:'attempt'|'run';id:string;cursor:string;kind:ImportHistoryKind|null;sourceName:string;createdAt:Date;createdBy:string|null;createdByName:string|null;createdByActor:ImportActor;companies:string[];total:number;successful:number;failed:number;status:ImportAttemptStatus};
+/**
+ * ccd3a65c — Import History: every shared import attempt (ADR-0155) and every section run that keeps only
+ * a summary, newest first, with one stable cursor across both sources ((created_at, id) descending).
+ */
+export async function listImportHistory(ctx:SessionContext,options:{kind?:ImportHistoryKind;before?:string;limit?:number}={}):Promise<{items:ImportHistoryRow[];nextCursor:string|null}>{
+ if(options.kind!==undefined&&!isImportHistoryKind(options.kind))fail('Unknown import kind.');
+ const cursor=options.before?HISTORY_CURSOR.exec(options.before):null;
+ if(options.before&&!cursor)fail('Import cursor unavailable.');
+ const limit=Math.min(100,Math.max(1,options.limit??25));
+ return withTenant(ctx,async tx=>{
+  await principalTx(tx,ctx);
+  const bound=cursor?(cursor[1]==='a'?sql`(select created_at,id from import_attempt where id=${cursor[2]}::uuid)`:sql`(select created_at,id from employee_import_run where id=${cursor[2]}::uuid)`):null;
+  const sortKey=(column:typeof attempt.createdAt|typeof run.createdAt)=>sql<string>`lpad(((extract(epoch from ${column})*1000000)::bigint)::text,20,'0')`;
+  const attemptKind=options.kind&&isImportKind(options.kind)?options.kind:undefined,runKind=options.kind&&isImportRunKind(options.kind)?options.kind:undefined;
+  // A filter of the other source still runs the query, with nothing admitted, so both lists keep one type.
+  const attempts=await tx.select({...listColumns,sortKey:sortKey(attempt.createdAt)}).from(attempt)
+   .where(and(options.kind&&!attemptKind?sql`false`:undefined,attemptKind?eq(attempt.kind,attemptKind):undefined,bound?sql`(${attempt.createdAt},${attempt.id}) < ${bound}`:undefined))
+   .orderBy(desc(attempt.createdAt),desc(attempt.id)).limit(limit+1);
+  const runs=await tx.select({id:run.id,section:run.importSection,fileName:run.fileName,companyId:run.companyId,companyName:company.legalName,companyLabel:company.companyLabel,createdBy:run.createdByUserId,createdByName:person.fullName,createdAt:run.createdAt,totalRows:run.totalRows,importedRows:run.importedRows,failedRows:run.failedRows,sortKey:sortKey(run.createdAt)})
+   .from(run).leftJoin(company,eq(company.id,run.companyId)).leftJoin(person,eq(person.id,run.createdByPersonId))
+   .where(and(options.kind&&!runKind?sql`false`:undefined,listedRunSql(runKind),runVisibleSql(ctx),bound?sql`(${run.createdAt},${run.id}) < ${bound}`:undefined))
+   .orderBy(desc(run.createdAt),desc(run.id)).limit(limit+1);
+  const attemptActors=await resolveImportActors(tx,'import_attempt',attempts.map(r=>r.id)),runActors=await resolveImportActors(tx,'employee_import_run',runs.map(r=>r.id));
+  const events=await eventsWithNamesTx(tx,attempts.map(r=>r.id),attemptActors),names=await companyNamesTx(tx,[...new Set(attempts.flatMap(r=>r.companyIds))]);
+  const merged:(ImportHistoryRow&{sortKey:string})[]=[
+   ...attempts.map(r=>{const own=events.filter(e=>e.attemptId===r.id),plan=r.plan as unknown as ImportPlanBase;return{source:'attempt' as const,id:r.id,cursor:'a.'+r.id,kind:isImportKind(r.kind)?r.kind:null,sourceName:r.sourceName,createdAt:r.createdAt,createdBy:r.createdBy,...creatorLabels(attemptActors,r.id),companies:r.companyIds.map(id=>names.get(id)).filter((n):n is string=>!!n),...importAttemptTotals(plan,own),status:importAttemptStatus(plan,own),sortKey:r.sortKey};}),
+   ...runs.map(r=>{const outcome=importRunOutcome(r);return{source:'run' as const,id:r.id,cursor:'r.'+r.id,kind:isImportRunKind(r.section)?r.section:null,sourceName:r.fileName,createdAt:r.createdAt,createdBy:r.createdBy,...creatorLabels(runActors,r.id),companies:r.companyName?[r.companyLabel?.trim()?`${r.companyLabel.trim()} · ${r.companyName}`:r.companyName]:[],total:r.totalRows,successful:r.importedRows,failed:r.failedRows,status:outcome,sortKey:r.sortKey};}),
+  ].sort((a,b)=>a.sortKey<b.sortKey?1:a.sortKey>b.sortKey?-1:a.id<b.id?1:a.id>b.id?-1:0);
+  const chosen=merged.slice(0,limit).map(({sortKey:_sortKey,...row})=>row);
+  return{items:chosen,nextCursor:merged.length>limit?chosen.at(-1)!.cursor:null};
+ });
+}
+/** ccd3a65c — one section run's log: its summary and the rows that were not saved, with their reasons. */
+export async function getImportRun(ctx:SessionContext,id:string){
+ if(!uuid.test(id))return null;
+ return withTenant(ctx,async tx=>{
+  await principalTx(tx,ctx);
+  const[row]=await tx.select({id:run.id,section:run.importSection,fileName:run.fileName,companyName:company.legalName,companyLabel:company.companyLabel,createdBy:run.createdByUserId,createdByName:person.fullName,createdAt:run.createdAt,totalRows:run.totalRows,importedRows:run.importedRows,failedRows:run.failedRows,errors:run.errors,errorsTruncated:run.errorsTruncated})
+   .from(run).leftJoin(company,eq(company.id,run.companyId)).leftJoin(person,eq(person.id,run.createdByPersonId)).where(and(eq(run.id,id),runVisibleSql(ctx)));
+  if(!row)return null;
+  const outcome=importRunOutcome(row),actors=await resolveImportActors(tx,'employee_import_run',[row.id]);
+  return{...withCreator(actors,row),kind:isImportRunKind(row.section)?row.section:null,companies:row.companyName?[row.companyLabel?.trim()?`${row.companyLabel.trim()} · ${row.companyName}`:row.companyName]:[],errors:Array.isArray(row.errors)?row.errors as ImportRunError[]:[],status:outcome};
+ });
+}
+export type ImportRunDetail=NonNullable<Awaited<ReturnType<typeof getImportRun>>>;
 /** Detail with only the items of companies the actor can view (item RLS), plus what the actor may do. */
 export async function getImportAttempt(ctx:SessionContext,id:string){
  if(!uuid.test(id))return null;
  return withTenant(ctx,async tx=>{
   await principalTx(tx,ctx);
   const[row]=await tx.select(listColumns).from(attempt).where(eq(attempt.id,id));if(!row)return null;
-  const items=await importAttemptItemsTx(tx,id),events=await eventsWithNamesTx(tx,[id]),names=await companyNamesTx(tx,row.companyIds);
+  const actors=await resolveImportActors(tx,'import_attempt',[id]);
+  const items=await importAttemptItemsTx(tx,id),events=await eventsWithNamesTx(tx,[id],actors),names=await companyNamesTx(tx,row.companyIds);
   const canDownloadSource=await coversTx(tx,id,'view'),canRevert=await coversTx(tx,id,'maintain');
-  return{...row,plan:row.plan as unknown as ImportPlanBase,companies:row.companyIds.map(c=>names.get(c)).filter((n):n is string=>!!n),items:items.map(i=>({...i,companyName:names.get(i.companyId)??null})),events,canDownloadSource,canRevert};
+  return{...withCreator(actors,row),plan:row.plan as unknown as ImportPlanBase,companies:row.companyIds.map(c=>names.get(c)).filter((n):n is string=>!!n),items:items.map(i=>({...i,companyName:names.get(i.companyId)??null})),events,canDownloadSource,canRevert};
  });
 }
 export type ImportAttemptDetail=NonNullable<Awaited<ReturnType<typeof getImportAttempt>>>;

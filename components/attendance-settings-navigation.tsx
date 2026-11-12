@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { registerUnsavedGuard, UNSAVED_GUARD_IGNORE_SELECTOR } from '@/lib/unsaved-changes';
+import { firstDirtyGuard, registerUnsavedGuard, UNSAVED_GUARD_IGNORE_SELECTOR, type UnsavedGuard } from '@/lib/unsaved-changes';
 
 type SnapshotField=[name:string,...values:unknown[]];
 const fields = (form: HTMLFormElement) => Array.from(form.elements).flatMap<SnapshotField>(element => {
@@ -35,12 +35,24 @@ function acknowledgedSnapshot(form:HTMLFormElement, submitted:string) {
   }).concat(pending));
 }
 
+type GuardMessages = { leaveUnsaved: string; leaveOtherUnsaved: string };
+
 /** Independent forms retain independent save scopes. GET filters are navigation, not edits.
- * A client action increments savedRevision only after persistence succeeds for formId. */
-export function AttendanceSettingsNavigation({ formId, savedRevision }: { formId?: string; savedRevision?: string | number } = {}) {
+ * A client action increments savedRevision only after persistence succeeds for formId.
+ *
+ * 82748f92 — shared by People › Settings (components/people-settings-navigation.tsx) through three optional props.
+ * Attendance passes none of them, so its behaviour is unchanged:
+ * - `messages`: the confirm texts (default: attendanceSettingsHub.leaveUnsaved / leaveOtherUnsaved).
+ * - `includeRegisteredGuards`: a page is also dirty while another registered guard (lib/unsaved-changes.ts) is,
+ *   so formless editors such as the System Labels grids count.
+ * - `resetKey`: re-take every form baseline when it changes (the page's search string: a saved server action that
+ *   redirects back to the same address with ?toast= must not leave a stale baseline that prompts falsely). */
+export function AttendanceSettingsNavigation({ formId, savedRevision, messages, includeRegisteredGuards = false, resetKey }: {
+  formId?: string; savedRevision?: string | number; messages?: GuardMessages; includeRegisteredGuards?: boolean; resetKey?: string;
+} = {}) {
   const t = useTranslations('attendanceSettingsHub');
-  const translationRef = useRef(t);
-  translationRef.current = t;
+  const translationRef = useRef<(key: keyof GuardMessages) => string>(t);
+  translationRef.current = messages ? (key) => messages[key] : t;
   const router = useRouter();
   const pathname = usePathname();
   const baselinesRef = useRef(new Map<HTMLFormElement, string>());
@@ -66,9 +78,16 @@ export function AttendanceSettingsNavigation({ formId, savedRevision }: { formId
     const observer = new MutationObserver(() => { observeForms(); edit(); });
     observer.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['value','checked','selected','data-attendance-saved-receipt']});
     const dirtyForms = () => [...baselines].filter(([form,baseline])=>form.isConnected && snapshot(form)!==baseline).map(([form])=>form);
-    const dirty = () => !leaving && dirtyForms().length>0;
+    let consulting = false;
+    const registeredDirty = () => {
+      if (!includeRegisteredGuards || consulting) return false;
+      consulting = true; // Two consulting guards never recurse into each other.
+      try { return firstDirtyGuard(self) !== null; } finally { consulting = false; }
+    };
+    const dirty = () => !leaving && (dirtyForms().length>0 || registeredDirty());
     const ask = (proceed:()=>void) => { if (!dirty() || window.confirm(translationRef.current('leaveUnsaved'))) { leaving=true; proceed(); } };
-    const unregister=registerUnsavedGuard({isDirty:dirty,prompt:ask});
+    const self:UnsavedGuard={isDirty:dirty,prompt:ask};
+    const unregister=registerUnsavedGuard(self);
     const arm=()=>{
       if(active && dirty() && !armed){window.history.pushState({...window.history.state,__attendanceSettingsGuard:true},'',window.location.href);armed=true;}
     };
@@ -108,7 +127,7 @@ export function AttendanceSettingsNavigation({ formId, savedRevision }: { formId
     document.addEventListener('click',click,true);document.addEventListener('submit',submit,true);
     window.addEventListener('beforeunload',before);window.addEventListener('popstate',pop);
     return()=>{active=false;observer.disconnect();unregister();document.removeEventListener('input',edit,true);document.removeEventListener('change',edit,true);document.removeEventListener('click',click,true);document.removeEventListener('submit',submit,true);window.removeEventListener('beforeunload',before);window.removeEventListener('popstate',pop);};
-  },[pathname,router]);
+  },[pathname,router,includeRegisteredGuards,resetKey]);
   useEffect(() => {
     const previous = savedRef.current;
     savedRef.current = { formId, savedRevision };

@@ -7,7 +7,7 @@ import {performanceCheckin,employment,person,company} from '../../db/schema';
 import {CheckInCompletion as C,type CheckInCompletionHuman as Human} from '../../lib/assistant-actions/checkin-completion-contract';
 import {completeCheckInTx,readCheckInCompletionPlanTx} from '../../packs/performance/service';
 import {assertCanDecide} from '../approvals';
-import {lockAccessConfigurationWriteTx} from '../access-configuration-lock';
+import {lockAccessConfigurationWriteTx,lockAccessConfigurationTx} from '../access-configuration-lock';
 import {withAgentActionGuard} from './agent-action-guard';
 import type {CheckInCompletionSubject} from './checkin-completion-custody-adapter';
 export const checkInCompletionUnavailable=():never=>{throw Error('Please reopen the check-in completion review.');};
@@ -39,7 +39,8 @@ export async function reconcileCheckInCompletionSourceTx(tx:Tx,ctx:SessionContex
  const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_performance_review_receipt(${reference.actionId}::uuid,${reference.eventId}::uuid) as receipt`);return C.Receipt.parse(row?.receipt);
 }
 export async function readCheckInCompletionChoicesTx(tx:Tx,ctx:SessionContext,selection:unknown){
- const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');await lockAccessConfigurationWriteTx(tx,fresh.tenantId);const pick=C.Selection.parse(selection??{query:''});
+ // A choice list only reads: the shared Access lock first, so the actor guard joins it (staging, 11 November 2026). Prepare and confirm keep the exclusive lock.
+ await lockAccessConfigurationTx(tx,ctx.tenantId);const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');const pick=C.Selection.parse(selection??{query:''});
  // The SQL predicate mirrors native visibility/direct-manager/delegation and the actual native super-admin own-subject exception.
  // Limit before projection; only exact participant/company labels and dates are returned.
  const rows=await tx.select({subjectId:performanceCheckin.id,employmentId:performanceCheckin.subjectEmploymentId,scheduledOn:performanceCheckin.scheduledOn,employeeName:person.fullName,companyName:company.legalName}).from(performanceCheckin).innerJoin(employment,and(eq(employment.id,performanceCheckin.subjectEmploymentId),eq(employment.tenantId,performanceCheckin.tenantId))).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).innerJoin(company,and(eq(company.id,employment.companyId),eq(company.tenantId,employment.tenantId)))

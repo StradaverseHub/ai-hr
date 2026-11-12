@@ -11,6 +11,7 @@ import { StatCells } from '@/components/ui/stat-cells';
 import { lineMessage, ResultPill } from '../../line-view';
 import { RunStatusPill } from '../run-status';
 import { RunsTable } from '../runs-table';
+import { formatImportActor, formatImportBatch } from '@/lib/import-reference';
 
 const PAGE_SIZE = 200;
 
@@ -33,6 +34,7 @@ export default async function ClockingImportLogPage({
   const [data, recent] = await Promise.all([getClockingImportRun(s, runId), listClockingImportRuns(s, { limit: 10 })]);
   if (!data) notFound();
   const t = await getTranslations('clockingFile');
+  const labels = await getTranslations('importLog');
   const { run, lines } = data;
 
   const tab = sp.tab === 'imported' ? 'imported' : 'errors';
@@ -69,10 +71,11 @@ export default async function ClockingImportLogPage({
 
       <SectionCard index={1} title={t('sec.importDetails')}>
         <LabelValueList columns={2}>
+          <LabelValue label={labels('batchReference')} value={formatImportBatch(labels, run.id)} />
           <LabelValue label={t('log.at')} value={<span className="tabular-nums">{formatDmyTime(run.createdAt)}</span>} />
           <LabelValue label={t('log.fileName')} value={<span className="break-all">{run.fileName || '—'}</span>} />
           <LabelValue label={t('log.mappingName')} value={run.mappingName || '—'} />
-          <LabelValue label={t('log.user')} value={run.userName ?? t('logs.unknownUser')} />
+          <LabelValue label={t('log.user')} value={formatImportActor(labels, run.actor)} />
         </LabelValueList>
       </SectionCard>
 
