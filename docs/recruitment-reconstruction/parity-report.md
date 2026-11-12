@@ -530,3 +530,18 @@ narrowed to Offer (1); the hiring manager saw the open value and neither the res
 | 43182970215 | Production build | PASS |
 | 43182970215 | Selected tests (64 files) | 58 PASS; FAIL: the known 6 AI files (53 tests) |
 | 43182986638 | Selected tests (56 files, incl. recruitment-custom-fields and -rules) | PASS: 717 tests |
+
+## Slice 15 — Position templates and job interview plans (commit 358b39212)
+
+Local: after one review round and a form fix, the combined run passed 643/643 (41 files) and the form tests 16/16.
+Rendered: templates switched on; a plan with a gap refused; a template with every field saved; "New position from
+template" pre-filled title, location, types, department, level, custom field and a 2-round plan; the edited position
+saved with its template recorded. A refused new-position save kept the typed title, location, plan and company and
+showed three field messages (before the fix both long forms came back empty and the company fell back to the first).
+
+| Run | Job | Result |
+| --- | --- | --- |
+| 43193948915 | Whole-repo type check | PASS |
+| 43193948915 | Production build | PASS |
+| 43193948915 | Selected tests (64 files) | 58 PASS; FAIL: the known 6 AI files (53 tests) |
+| 43193965190 | Selected tests (60 files, incl. position templates, form DOM and action tests) | PASS: 752 tests |
