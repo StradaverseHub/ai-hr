@@ -4,7 +4,10 @@
  * 70 companies and 1,000 employments, every one with an attendance row today.
  *
  * - A manager counts only their own team (direct and indirect reports on current administrative lines), under
- *   "All companies" and under one company.
+ *   "All companies" and under one company. The team spans the manager's company and its subsidiary.
+ * - A report in an unrelated company is not counted: row-level security lets a manager see reports only inside their
+ *   own company subtree (app.is_admin_report_of, migration 0109), and this read adds no other path. (The first version
+ *   of this fixture placed every report in a different unrelated company, so all of them were correctly invisible.)
  * - Someone with no reports gets zeros, never another population; a report who manages others counts only theirs.
  * - The figures equal the old dashboard's per-status count applied to the same team on the same day, computed
  *   independently from the fixture.
@@ -16,7 +19,7 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {teamAttendanceToday} from '../packs/attendance/service';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {createCompany,createDepartment} from '../core/admin';
-import {attendance as attendanceTable} from '../db/schema';
+import {attendance as attendanceTable,reportingLine as reportingLineTable} from '../db/schema';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 
 const COMPANIES=70,EMPLOYMENTS=1000,TEAM=16;
@@ -24,13 +27,13 @@ const STATUSES=['present','late','half_day','absent'] as const;
 const statusOf=(n:number)=>STATUSES[n%4];
 let b:Base,today:string,second:string,companyIds:string[],employmentIds:string[],personIds:string[];
 
-/** Team member n (2..16) works in the seeded company when even, in the second company when odd; the manager (1) in
- * the seeded company. The other 984 employments are spread over all 70 companies. */
+/** Team member n (2..16) works in the seeded company when even, in its subsidiary when odd; the manager (1) in the
+ * seeded company. The other 984 employments are spread over all 70 companies. */
 const companyOf=(n:number)=>n<=TEAM?(n%2===0||n===1?b.companyId:second):companyIds[(n-1)%COMPANIES];
 async function fixture(){
  b=await seedBase();today=todayInKualaLumpur();
  const admin=adminCtx(b);
- second=(await createCompany(admin,{legalName:'Fictional Second Team Sdn Bhd'})).id;
+ second=(await createCompany(admin,{legalName:'Fictional Subsidiary Team Sdn Bhd',parentCompanyId:b.companyId})).id;
  const secondDept=await createDepartment(admin,{companyId:second,name:'Fictional Second Department'});
  // The team, through the canonical hire and reporting-line owners (as the My Team suites build it).
  const team:{personId:string;employmentId:string}[]=[];
@@ -57,6 +60,10 @@ async function fixture(){
  });
  personIds=[...team.map(row=>row.personId),...Array.from({length:rest},(_,i)=>id(pp,TEAM+1+i))];
  employmentIds=[...team.map(row=>row.employmentId),...Array.from({length:rest},(_,i)=>id(ep,TEAM+1+i))];
+ // A report of the manager employed by an unrelated group company (employment 17, company index 16): outside the
+ // manager's company subtree, so row-level security keeps it out of the manager's view and out of the count.
+ await owner.db.insert(reportingLineTable).values({tenantId:b.tenantId,subordinateEmploymentId:employmentIds[16],managerEmploymentId:employmentIds[0],
+  lineType:'administrative',validFrom:'2026-01-01'});
  // Everyone has an attendance row today; employment n is recorded statusOf(n).
  await owner.db.insert(attendanceTable).values(employmentIds.map((employmentId,i)=>({tenantId:b.tenantId,employmentId,attendanceDate:today,
   status:statusOf(i+1),dayType:'workday' as const})));
@@ -90,6 +97,8 @@ describe('teamAttendanceToday',()=>{
   const one=companyOf(2);
   expect(await teamAttendanceToday(manager,{date:today,scopeIds:[one]})).toEqual(expected(range(2,16).filter(n=>companyOf(n)===one)));
   // A company with none of the team counts nothing.
+  // The unrelated company where the manager's cross-company report works: outside the subtree, so nothing.
+  expect(await teamAttendanceToday(manager,{date:today,scopeIds:[companyOf(17)]})).toEqual(expected([]));
   const none=companyIds.find(company=>!range(2,16).some(n=>companyOf(n)===company))!;
   expect(await teamAttendanceToday(manager,{date:today,scopeIds:[none]})).toEqual(expected([]));
  },60000);

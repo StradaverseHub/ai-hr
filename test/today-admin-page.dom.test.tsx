@@ -64,6 +64,8 @@ vi.mock('@/app/approvals/leave-recommendations',()=>({readApprovalRecommendation
  S.recommendCalls.push([...ids]);return {active:true,views:S.views,deferred:new Set<string>()};}}));
 
 import {AdminTodayPage,ManagerTodayPage} from '../components/today/admin/today-pages';
+// The app's own day formatter for Today lines (components/today/employee/panel.tsx), so the test follows its format.
+import {hrDay} from '../components/today/employee/panel';
 import {ASK_HANDOFF_KEY} from '../lib/today/ask-handoff';
 
 const messages=withAiCentre('en',en);
@@ -271,10 +273,10 @@ describe('Manager Today: the team cards ported from the retired dashboard',()=>{
   const team=view.panel('today-team-coming-up')!;
   const lines=[...team.querySelectorAll('[data-today-team-line]')];
   expect(lines.map(line=>line.getAttribute('data-today-team-line'))).toEqual(['cutoff','review','holiday','holiday']);
-  expect(text(lines[1])).toBe('Review for Daniel Fictional due Nov 20');
+  expect(text(lines[1])).toBe(`Review for Daniel Fictional due ${hrDay('en','2026-11-20','day')}`);
   expect(lines[1].querySelector('a')?.getAttribute('href')).toContain('/approvals?category=managerReviews&task=managerReview&requestId=11111111-2222-3333-4444-555555555555');
-  expect(text(lines[2])).toBe('Fictional Day, a public holiday, on Nov 26');
-  expect(text(lines[3])).toBe('A public holiday on Dec 1');
+  expect(text(lines[2])).toBe(`Fictional Day, a public holiday, on ${hrDay('en','2026-11-26','day')}`);
+  expect(text(lines[3])).toBe(`A public holiday on ${hrDay('en','2026-12-01','day')}`);
  });
  it('gives an administrator neither the team attendance nor the team reminders',async()=>{
   const view=await show('admin');
