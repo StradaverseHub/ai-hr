@@ -1606,21 +1606,27 @@ export async function onboardingV9StoreTx(ctx: SessionContext, tx: Tx, id: strin
 export async function onboardingFulfilmentGroupTx(ctx: SessionContext, tx: Tx): Promise<string> {
     return (await configTx(tx, ctx)).config.techGroup;
 }
-export type OnboardingHolding = { caseId: string; requestId: string; requestNumber: string; itemId: string; catalogueId: string; name: string; kind: 'system' | 'device'; group: string };
+/** d1e26f81 — claim, handedAt and card are read-only provenance for offboarding's "Provided by" and card pair. */
+export type OnboardingHolding = { caseId: string; requestId: string; requestNumber: string; itemId: string; catalogueId: string; name: string; kind: 'system' | 'device'; group: string; claim: string | null; handedAt: string | null; card: boolean };
 async function holdingAuthorityTx(ctx: SessionContext, tx: Tx, companyId: string) {
+    if (!ctx.userId) {
+        // d1e26f81 — the release back-fill reads provenance as the storage owner, as readSettlementTx allows.
+        const [owner] = await tx.execute<{ ok: boolean }>(sql`select current_user='ai_hr_owner' OR EXISTS(select 1 from pg_roles where rolname=current_user and rolsuper) as ok`);
+        if (owner?.ok) return;
+    }
     const [permission] = await tx.execute<{ ok: boolean }>(sql`select app.current_user_id() is not null and not app.login_blocked(app.current_user_id()) and app.is_admin_for(${companyId}::uuid) as ok`);
     if (!permission?.ok || !ctx.userId) M.fail('Company HR access is required to review issued onboarding items.', 'forbidden');
 }
 /** Catalogue identity/presentation stays with the Native owner; exits select existing IDs. */
-export async function onboardingReturnCatalogueTx(ctx:SessionContext,tx:Tx,companyId:string):Promise<{id:string;name:string;kind:'system'|'device';group:string;active:boolean}[]> {
+export async function onboardingReturnCatalogueTx(ctx:SessionContext,tx:Tx,companyId:string):Promise<{id:string;name:string;kind:'system'|'device';group:string;active:boolean;card:boolean;companies:string[]}[]> {
     await holdingAuthorityTx(ctx,tx,companyId);
-    return (await configTx(tx,ctx)).config.catalogue.map(item=>({id:item.id,name:item.name,kind:item.type,group:item.team,active:item.active}));
+    return (await configTx(tx,ctx)).config.catalogue.map(item=>({id:item.id,name:item.name,kind:item.type,group:item.team,active:item.active,card:item.card,companies:[...(item.rules.company??[])]}));
 }
 /** Issuance stays on the original handed requisition; names are never used to link a person or item. */
 export async function onboardingHoldingsTx(ctx: SessionContext, tx: Tx, employmentId: string, companyId: string): Promise<OnboardingHolding[]> {
     await holdingAuthorityTx(ctx, tx, companyId);
     const source = await tx.select().from(cases).where(and(eq(cases.tenantId, ctx.tenantId), eq(cases.companyId, companyId), eq(cases.employmentId, employmentId))).orderBy(asc(cases.id));
-    return source.flatMap(row => row.data.requisitions.flatMap(request => request.items.filter(item => !item.recovery && (item.state === 'handed' && !!request.handedAt || item.revokeNeeded)).map(item => ({ caseId: row.id, requestId: request.id, requestNumber: request.number, itemId: item.id, catalogueId:item.catalogueId, name: item.name, kind: item.type, group: item.team }))));
+    return source.flatMap(row => row.data.requisitions.flatMap(request => request.items.filter(item => !item.recovery && (item.state === 'handed' && !!request.handedAt || item.revokeNeeded)).map(item => ({ caseId: row.id, requestId: request.id, requestNumber: request.number, itemId: item.id, catalogueId:item.catalogueId, name: item.name, kind: item.type, group: item.team, claim: item.claim ?? null, handedAt: request.handedAt ?? null, card: !!item.card }))));
 }
 /** Records a confirmed recovery on the issuing owner, in the same transaction as offboarding. */
 export async function onboardingRecoverHoldingTx(ctx: SessionContext, tx: Tx, employmentId: string, companyId: string, source: Pick<OnboardingHolding, 'caseId' | 'requestId' | 'itemId'>, offboardingCaseId: string, reason: string, assigned?:{revision:number;itemId:string}) {
@@ -1645,7 +1651,9 @@ export async function onboardingRecoverHoldingTx(ctx: SessionContext, tx: Tx, em
         M.fail('Another case has already recorded this item recovery.', 'conflict');
     }
     const { config } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config, companyId), now = new Date().toISOString();
-    if(assigned&&(item.team!==assignedGroup||!M.inGroup(config,item.team,actor.id)))M.fail('The issuing providing team changed. Review the recovery assignment.','conflict');
+    // d1e26f81 — return rows take their team from settings (and a card's collect row is Facility's), so the
+    // assigned member must belong to the return row's own team; lc_v9_assigned_item already bound the assignee.
+    if(assigned&&(!assignedGroup||!M.inGroup(config,assignedGroup,actor.id)))M.fail('The return team changed. Review the recovery assignment.','conflict');
     item.recovery = { offboardingCaseId, outcome: item.type === 'system' ? 'revoked' : 'returned', at: now, by: actor.id, reason: reason.trim() };
     item.revokeNeeded = false;
     M.log(c, actor, { now, id: randomUUID } as M.Environment, 'holding.' + item.recovery.outcome, `${item.name} · confirmed by ${assigned?'the assigned providing team':'HR'} on offboarding case ${offboardingCaseId}${reason.trim() ? ' · ' + reason.trim() : ''}`);

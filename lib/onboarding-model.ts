@@ -1,3 +1,4 @@
+import { bulkAssignmentProblem, EQUIPMENT_BULK_LABELS } from './lifecycle-bulk-assignment';
 import type { JoinerSectionSetting, JoinerSections } from './onboarding-page-access';
 import { resolveV9CaseFields, missingV9CaseFields, validateV9CaseValue, type CaseField } from './lifecycle-v9-case-form';
 import { v9EmploymentRule } from './lifecycle-v9-employment';
@@ -483,10 +484,8 @@ export function manualEquipment(config: Config, c: Case, id: string, user: strin
 }
 export function bulkEquipment(config: Config, c: Case, change: EquipmentBulk, a: Actor, env: Environment) {
     if(!a.module&&!(a.caseActions&&a.sections?.equip==='act'))fail('Equipment case actions are required.','forbidden');
-    if (!change.ids.length || new Set(change.ids).size !== change.ids.length || change.group === undefined && change.method === undefined && change.due === undefined) fail('Choose items and at least one equipment change.');
-    if (change.group !== undefined && !config.groups.some(group => group.id === change.group)) fail('Choose an existing assignment group.');
-    if (change.method !== undefined && !['rr','manual'].includes(change.method)) fail('Choose Round robin or Manual.');
-    if (change.due !== undefined && (!Number.isInteger(change.due) || change.due < -999 || change.due > 9999)) fail('Choose an equipment due day from -999 to 9999.');
+    const problem = bulkAssignmentProblem(change, config.groups.map(group => group.id), EQUIPMENT_BULK_LABELS);
+    if (problem) fail(problem);
     let changed = change.ids.length;
     if (c.state === 'pending') {
         if (change.ids.some(id => ![...c.selected, ...c.extras.map(item => item.catalogueId)].includes(id) || !config.catalogue.some(item => item.id === id))) fail('Choose only items selected on this case.');

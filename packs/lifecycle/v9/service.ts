@@ -21,6 +21,8 @@ import { changeV9Note, type CaseNoteCommand } from '../../../lib/lifecycle-v9-no
 import { v9Defaults } from '../../../lib/lifecycle-v9-defaults';
 import { parseV9Config, validateV9ConfigChange, v9Equal } from '../../../lib/lifecycle-v9-validation';
 import { readSettlementTx, type SettlementView } from './settlement';
+import { returnRows, plannedDue, offeredToCompany, existingGroup, type ReturnSources } from '../../../lib/lifecycle-v9-return-presets';
+import { bulkAssignmentProblem, RETURN_BULK_LABELS } from '../../../lib/lifecycle-bulk-assignment';
 import { readV9PersonnelTx, pushV9PersonnelTx, lockV9PersonnelWritesTx, v9PersonnelWritableKeys } from '../../../core/lifecycle-v9-personnel';
 import { onboardingFulfilmentGroupTx, onboardingHoldingsTx, onboardingReturnCatalogueTx, onboardingRecoverHoldingTx, onboardingCommand, onboardingV9ReadTx, onboardingV9DraftEmailFieldsTx, onboardingV9StoreTx, onboardingSetupTx, onboardingEnableV9OffboardingTx, onboardingSaveGroupsTx, onboardingV9DefinitionsChangedTx, onboardingAssignmentLoadsTx, onboardingUnavailableTx } from '../onboarding/service';
 import { issuedToTx, returnAssetTx } from '../../../core/lifecycle-assets';
@@ -33,7 +35,9 @@ export type DirectoryUser = { id: string; name: string };
 export type Options = { checklistOwnerIds?: string[]; users: DirectoryUser[]; companies: { id: string; name: string; registrationNo?: string; address?: string }[]; employees: { id: string; name: string; employeeNo: string; companyId: string }[]; signatoryCandidates?: Record<string,string[]>; signatoryCandidatesByModule?:Record<M.Module,Record<string,string[]>>; labels?: Partial<Record<M.RuleField, Record<string, string>>>; leaveTypes?: { id: string; name: string }[] };
 export type Workspace = { permissions?:{onboarding:boolean;offboarding:boolean;administration:boolean;records?:boolean}; config: M.Config | null; cases: M.Case[]; options: Options; canConfigure: boolean; actor: M.Actor; personnelWritableKeys: string[]; templateUsage?: M.TemplateUsage[]; definitionUsage?: M.DefinitionUsage[] };
 export type OwnCase = Pick<M.Case, 'id' | 'number' | 'module' | 'revision' | 'state' | 'facts' | 'tasks' | 'documents'> & { items:(M.Item&{canFulfil?:boolean})[]; own: boolean; equipment?: { id: string; name: string; kind: 'device'|'system'; state: string; approval: string; handedAt: string|null; receipt: {status:'received'|'problem';at:string;by:string;note:string}|null }[] };
-export type PendingReturns = { held:{id:string;name:string;kind:'system'|'device';group:string|null;source:'asset'|'onboarding';catalogueId?:string;requestNumber?:string}[]; catalogue:{id:string;name:string;kind:'system'|'device';group:string;active:boolean}[]; selected:string[] };
+export type PendingReturns = { held:{id:string;name:string;kind:'system'|'device';group:string|null;source:'asset'|'onboarding';catalogueId?:string;requestNumber?:string}[]; catalogue:{id:string;name:string;kind:'system'|'device';group:string;active:boolean}[]; selected:string[];
+  /** d1e26f81 — the rows submission will create, with their team, method and Day (presets applied). */
+  rows:{previewId:string;name:string;kind:'system'|'device';group:string|null;method:M.ReturnMethod;dueDay:number|null;dueOn:string;cardStep?:'collect'|'deactivate'}[] };
 export type CaseDetail = { returns?:PendingReturns; case: M.Case; calculation: SettlementView | null; personnelWritableKeys: string[]; native?: { config: M.Config; actor: M.Actor } };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function identifier(value: string): string { if (!uuid.test(value)) throw new M.V9Error('A valid record identifier is required.'); return value; }
@@ -91,7 +95,10 @@ async function store(tx: Tx, ctx: SessionContext, row: Row, next: M.Case, action
 async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Config): Promise<M.Environment> {
   const who = await actor(tx, ctx), today = todayInKualaLumpur();
   const users = await tx.execute<DirectoryUser>(sql`select u.id,coalesce(p.full_name,'User') as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id)`);
-  const dates = new Set([today, c.facts.lastDay, c.facts.joinDate, ...c.tasks.map(t => t.dueOn)]);
+  const dates = new Set([today, c.facts.lastDay, c.facts.joinDate, ...c.tasks.map(t => t.dueOn), ...c.items.map(i => i.dueOn)]);
+  // d1e26f81 — Return and revoke items are due Day -1/0 from the effective last working day; leave is checked on those dates.
+  const calculation = c.module === 'off' ? await readSettlementTx(tx, ctx, c, config) : null;
+  for (const day of [c.facts.lastDay, c.returnAnchor, calculation?.lastDay]) if (c.module === 'off' && day && M.validDate(day)) { dates.add(day); dates.add(M.addDays(day, -1)); }
   const anchor = c.module === 'onb' ? c.facts.joinDate : c.facts.lastDay;
   if (M.validDate(anchor)) for (const cl of config.checklists.filter(x => x.module === c.module)) for (const t of cl.tasks) dates.add(M.taskDate(c.module, anchor, t.due));
   const unavailable = await onboardingUnavailableTx(tx, [...dates]);
@@ -135,23 +142,29 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
   const caseLabels: Record<string,string>={name:c.facts.name,company:company[0]?.name??'',group:personnel?.business_group??'',dept:personnel?.department??'',position:personnel?.position??'',supervisor:users.find(user=>user.id===c.facts.supervisorUserId)?.name??'',ta:users.find(user=>user.id===c.facts.taUserId)?.name??''};
   for(const field of caseFields) values['case.'+field.key]=field.key in caseLabels?caseLabels[field.key]:field.type==='date'?fmt(caseValues[field.key]??''):caseValues[field.key]??'';
 
-  const calculation = c.module === 'off' ? await readSettlementTx(tx, ctx, c, config) : null;
   if (calculation?.ready) Object.assign(values, { 'leave.remaining': String(calculation.remainingLeave), 'leave.encashDays': String(calculation.encashDays), 'leave.encashAmount': `${calculation.currency} ${calculation.amount!.toFixed(2)}`, 'leave.dailyRate': `${calculation.currency} ${calculation.dailyRate!.toFixed(2)}`, 'pay.finalPayDate': fmt(calculation.payDate) });
   return { today, now: new Date().toISOString(), actor: who, nextId: randomUUID,
     onLeave: (id, date) => unavailable.some(r => r.user_id === id && r.on_date === date),
     openLoad: id => Number(sharedLoads.find(load => load.user_id === id)?.task_load ?? 0),
     lastAssigned: id => { const last = sharedLoads.find(load => load.user_id === id)?.last_auto; return last ? Date.parse(last) || 0 : 0; },
-    eligibleUser: id => users.some(u => u.id === id), userName: id => users.find(u => u.id === id)?.name ?? 'Unlinked user', mergeValues: values, signatoryUserId: signatory?.signatoryUserId ?? null, actorSignatoryTitle:v9SignatoryTitle(config,who.id,c.facts.company), requireDeliveryAck: true, ...(native && !c.facts.employeeUserId && z.email().max(320).regex(/^[\x21-\x7e]+$/).safeParse((native.c.caseContactEmail ?? nf?.email)?.trim()).success ? { onboardingContact: { email: (native.c.caseContactEmail ?? nf!.email).trim(), sourceRevision: native.c.sourceVersion } } : {}) };
+    eligibleUser: id => users.some(u => u.id === id), userName: id => users.find(u => u.id === id)?.name ?? 'Unlinked user', mergeValues: values, ...(calculation?.lastDay ? { effectiveLastDay: calculation.lastDay } : {}), signatoryUserId: signatory?.signatoryUserId ?? null, actorSignatoryTitle:v9SignatoryTitle(config,who.id,c.facts.company), requireDeliveryAck: true, ...(native && !c.facts.employeeUserId && z.email().max(320).regex(/^[\x21-\x7e]+$/).safeParse((native.c.caseContactEmail ?? nf?.email)?.trim()).success ? { onboardingContact: { email: (native.c.caseContactEmail ?? nf!.email).trim(), sourceRevision: native.c.sourceVersion } } : {}) };
 }
-async function pendingReturnsTx(tx:Tx,ctx:SessionContext,c:M.Case):Promise<PendingReturns> {
+/** d1e26f81 — the sources a leaver's Return and revoke rows are built from, read once per command or view. */
+async function returnSourcesTx(tx:Tx,ctx:SessionContext,c:M.Case):Promise<ReturnSources> {
   const assets=c.facts.employeeNo.trim()?await issuedToTx(tx,c.facts.employeeNo,c.facts.company):[],holdings=await onboardingHoldingsTx(ctx,tx,c.facts.employmentId,c.facts.company);
-  return {held:[...assets.map(asset=>({id:'asset:'+asset.id,name:`${asset.code} · ${asset.model??asset.assetType}`,kind:'device' as const,group:null,source:'asset' as const})),...holdings.map(item=>({id:'onboarding:'+item.itemId,name:item.name,kind:item.kind,group:item.group,source:'onboarding' as const,catalogueId:item.catalogueId,requestNumber:item.requestNumber}))],catalogue:await onboardingReturnCatalogueTx(ctx,tx,c.facts.company),selected:c.returnSelections??[]};
+  return {techGroup:await onboardingFulfilmentGroupTx(ctx,tx),assets,holdings,catalogue:await onboardingReturnCatalogueTx(ctx,tx,c.facts.company),selections:c.returnSelections??[]};
+}
+async function pendingReturnsTx(tx:Tx,ctx:SessionContext,c:M.Case,config:M.Config,anchor:string):Promise<PendingReturns> {
+  const sources=await returnSourcesTx(tx,ctx,c);
+  const rows=returnRows(c,config,sources).map(row=>({previewId:row.previewId,name:row.name,kind:row.kind,group:row.group,method:row.method,...(M.validDate(anchor)?plannedDue(c,row,anchor,c.returnPresets):{dueOn:'',dueDay:row.dueDay}),...(row.cardStep?{cardStep:row.cardStep}:{})}));
+  return {held:[...sources.assets.map(asset=>({id:'asset:'+asset.id,name:`${asset.code} · ${asset.model??asset.assetType}`,kind:'device' as const,group:null,source:'asset' as const})),...sources.holdings.map(item=>({id:'onboarding:'+item.itemId,name:item.name,kind:item.kind,group:item.group,source:'onboarding' as const,catalogueId:item.catalogueId,requestNumber:item.requestNumber}))],catalogue:sources.catalogue.filter(item=>offeredToCompany(item,c.facts.company)||(c.returnSelections??[]).includes(item.id)).map(({id,name,kind,group,active})=>({id,name,kind,group,active})),selected:c.returnSelections??[],rows};
 }
 export async function v9CaseDetail(ctx: SessionContext, id: string): Promise<CaseDetail> {
   return withLifecycleTenant(ctx, async tx => {
     const row = await load(tx, ctx, id), config = await configTx(tx, ctx);
     if (!config) throw new M.V9Error('V9 configuration is not available.');
-    return { ...(row.data.module==='off'&&row.data.state==='pending'?{returns:await pendingReturnsTx(tx,ctx,row.data)}:{}), case: row.data, calculation: await readSettlementTx(tx, ctx, row.data, config), personnelWritableKeys: v9PersonnelWritableKeys, ...(row.native ? { native: { config, actor: await actor(tx, ctx) } } : {}) };
+    const calculation = await readSettlementTx(tx, ctx, row.data, config);
+    return { ...(row.data.module==='off'&&row.data.state==='pending'?{returns:await pendingReturnsTx(tx,ctx,row.data,config,calculation?.lastDay??row.data.facts.lastDay)}:{}), case: row.data, calculation, personnelWritableKeys: v9PersonnelWritableKeys, ...(row.native ? { native: { config, actor: await actor(tx, ctx) } } : {}) };
   });
 }
 
@@ -491,6 +504,8 @@ export type Command = CaseNoteCommand
   | { type: 'retryWorkflow' | 'startWorkflow' | 'testWorkflow'; workflowId: string }
   | { type: 'override'; checklist: string }
   | {type:'returnSelections';ids:string[]}
+  | ({ type: 'returnPresets' } & M.ReturnPreset)
+  | ({ type: 'itemsBulk' } & M.ItemsBulk)
   | { type: 'assign' | 'assignItem'; id: string; userId: string }
   | { type: 'item'; id: string; status: M.Item['status']; reason: string };
 const commandId = z.string().min(1).max(120), reasonText = z.string().max(4000);
@@ -501,6 +516,8 @@ const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('pmKeep'), ids: z.array(commandId).min(1).max(500) }).strict(),
   z.object({ type: z.literal('caseFormSave'), values: z.record(commandId,z.string().max(10000)).refine(value=>Object.keys(value).length<=100), reason: reasonText, submit: z.boolean() }).strict(),
   z.object({type:z.literal('returnSelections'),ids:z.array(commandId).max(100).refine(ids=>new Set(ids).size===ids.length)}).strict(),
+  z.object({type:z.literal('returnPresets'),group:commandId.optional(),method:z.enum(['rr','manual']).optional(),due:z.number().int().min(-999).max(9999).optional()}).strict(),
+  z.object({type:z.literal('itemsBulk'),ids:z.array(commandId).min(1).max(500),group:commandId.optional(),method:z.enum(['rr','manual']).optional(),due:z.number().int().min(-999).max(9999).optional()}).strict(),
   z.object({ type: z.literal('submit') }).strict(), z.object({ type: z.literal('runWorkflows') }).strict(),
   z.object({ type: z.literal('retryWorkflow'), workflowId: commandId }).strict(),
   z.object({ type: z.literal('startWorkflow'), workflowId: commandId }).strict(),
@@ -539,8 +556,16 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     if(command.type==='returnSelections'){
       if(c.module!=='off'||c.state!=='pending')throw new M.V9Error('Return selections can change only before submission.');
       const available=await onboardingReturnCatalogueTx(ctx,tx,c.facts.company),previous=new Set(c.returnSelections??[]);
-      if(command.ids.some(id=>!previous.has(id)&&!available.some(item=>item.id===id&&item.active)))throw new M.V9Error('Choose an active item from the existing catalogue.');
+      if(command.ids.some(id=>!previous.has(id)&&!available.some(item=>item.id===id&&item.active&&offeredToCompany(item,c.facts.company))))throw new M.V9Error('Choose an active item from the existing catalogue.');
       c.returnSelections=[...command.ids];M.appendLog(c,env,'returns.selectionChanged',`${command.ids.length} additional return/revoke items selected.`);
+    }
+    if(command.type==='returnPresets'){
+      // d1e26f81 — "Set for all items" before submission: stored with the case, applied when it is submitted.
+      if(c.module!=='off'||c.state!=='pending')throw new M.V9Error('Return presets can change only before submission.');
+      const change:M.ReturnPreset={...(command.group!==undefined?{group:command.group}:{}),...(command.method!==undefined?{method:command.method}:{}),...(command.due!==undefined?{due:command.due}:{})},ids=returnRows(c,config,await returnSourcesTx(tx,ctx,c)).map(row=>row.previewId),unique=[...new Set(ids)];
+      const problem=bulkAssignmentProblem({ids:unique,...change},config.groups.map(group=>group.id),RETURN_BULK_LABELS);if(problem)throw new M.V9Error(problem);
+      c.returnPresets={...c.returnPresets};for(const id of unique)c.returnPresets[id]={...c.returnPresets[id],...change};
+      M.appendLog(c,env,'returns.presetsChanged',unique.length+' items · '+[change.group?'team '+config.groups.find(group=>group.id===change.group)!.name:'',change.method??'',change.due!==undefined?'due Day '+change.due:''].filter(Boolean).join(' · '));
     }
     if (command.type === 'caseFormSave') {
       if (c.module !== 'off' || !['pending','submitted'].includes(c.state)) throw new M.V9Error('Reopen this case before editing its fields.');
@@ -555,39 +580,40 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
       if (!['Resignation','Termination','Contract end','Retirement','Non-confirmation'].includes(values.type) || !M.validDate(values.notice) || values.notice>c.facts.lastDay) throw new M.V9Error('Choose a valid case type and notice date on or before the last working day.');
       if (!['lastday','date'].includes(values.revokeMode) || values.revokeMode==='date'&&!M.validDate(values.revokeDate)) throw new M.V9Error('Choose when access must be revoked.');
       if (values.pbp && !env.eligibleUser(values.pbp)) throw new M.V9Error('Choose an available People Business Partner.');
-      const priorRevoke = c.revokeDate;
+      const priorRevoke = c.revokeDate, priorMode = c.revokeMode ?? 'lastday';
       c.facts.caseType=values.type;c.facts.noticeDate=values.notice;c.facts.pbpUserId=values.pbp||null;c.revokeMode=values.revokeMode as 'lastday'|'date';c.revokeDate=c.revokeMode==='lastday'?c.facts.lastDay:values.revokeDate;
       c.caseValues={...c.caseValues,...Object.fromEntries(Object.entries(command.values).filter(([key])=>fields.some(field=>field.key===key&&field.custom)))};
-      if (c.revokeDate!==priorRevoke) for (const item of c.items) if (!M.isResolved(item.status) && item.status!=='notReturned' && item.dueOn===priorRevoke) item.dueOn=c.revokeDate;
+      if (c.revokeDate!==priorRevoke || c.revokeMode!==priorMode) for (const item of c.items) {
+        if (!M.returnOpen(item)) continue;
+        // Rows created before d1e26f81 keep the earlier rule: an untouched revoke date follows the case.
+        if (item.method === undefined) { if (item.dueOn===priorRevoke) item.dueOn=c.revokeDate; continue; }
+        if (item.kind !== 'system') continue;
+        if (c.revokeMode==='date') { item.dueDay=null; item.dueOn=c.revokeDate; }
+        else if (item.dueDay===null && item.dueOn===priorRevoke) { item.dueDay=0; item.dueOn=M.returnDue(c.returnAnchor??c.facts.lastDay,0); }
+      }
       env=await environment(tx,ctx,c,config);
       M.appendLog(c,env,'case.fieldsSaved',command.reason.trim()?'Case form updated: '+command.reason.trim():'Case form updated.');
     }
     if (command.type === 'submit' || command.type === 'caseFormSave' && command.submit) {
       M.submit(c, config, env);
       if (c.module === 'off') {
-        const fulfillingGroup = await onboardingFulfilmentGroupTx(ctx, tx), group = config.groups.find(g => g.id === fulfillingGroup), extra: Record<string, number> = {};
+        // d1e26f81 — presets from settings: team, round robin (leaver excluded), Day -1/0 from the effective last working day.
+        const extra: Record<string, number> = {};
         for (const task of c.tasks) if (task.assignee) extra[task.assignee] = (extra[task.assignee] ?? 0) + 1;
-        const assets = c.facts.employeeNo.trim()?await issuedToTx(tx, c.facts.employeeNo, c.facts.company):[];
-        c.items = assets.map(asset => {
-          const assigned = M.assign(config, group?.id ?? null, c.revokeDate, env, extra, 'memberOrder');
-          if (assigned.userId) extra[assigned.userId] = (extra[assigned.userId] ?? 0) + 1;
-          return { id: randomUUID(), name: `${asset.code} · ${asset.model ?? asset.assetType}`, kind: 'device' as const, sourceId: asset.id, group: group?.id ?? null, assignee: assigned.userId, dueOn: c.revokeDate, status: 'todo' as const, reason: '' };
-        });
-        const catalogue=await onboardingReturnCatalogueTx(ctx,tx,c.facts.company),selections=(c.returnSelections??[]).map(id=>catalogue.find(item=>item.id===id&&item.active));
+        const sources = await returnSourcesTx(tx, ctx, c), selections=(c.returnSelections??[]).map(id=>sources.catalogue.find(item=>item.id===id&&item.active));
         if(selections.some(item=>!item))throw new M.V9Error('An additional return item is no longer available. Review the catalogue selections before submission.');
-        const holdings = await onboardingHoldingsTx(ctx, tx, c.facts.employmentId!, c.facts.company);
-        for (const holding of holdings) {
-          const groupId = config.groups.some(group => group.id === holding.group) ? holding.group : null;
-          const assigned = M.assign(config, groupId, c.revokeDate, env, extra, 'memberOrder');
-          if (assigned.userId) extra[assigned.userId] = (extra[assigned.userId] ?? 0) + 1;
-          c.items.push({ id: randomUUID(), name: holding.name, kind: holding.kind, sourceId: null, nativeSource: { caseId: holding.caseId, requestId: holding.requestId, requestNumber: holding.requestNumber, itemId: holding.itemId }, group: groupId, assignee: assigned.userId, dueOn: c.revokeDate, status: 'todo', reason: '' });
+        const assets = sources.assets, holdings = sources.holdings;
+        c.returnAnchor = env.effectiveLastDay && M.validDate(env.effectiveLastDay) ? env.effectiveLastDay : c.facts.lastDay;
+        const pairs = new Map<string, string>();
+        c.items = [];
+        for (const row of returnRows(c, config, sources)) {
+          const { pairKey, ...planned } = row, fields = Object.fromEntries(Object.entries(planned).filter(([key]) => key !== 'previewId')) as Omit<typeof planned, 'previewId'>, due = plannedDue(c, row, c.returnAnchor, c.returnPresets);
+          const item: M.Item = { ...fields, id: randomUUID(), assignee: null, assignmentFailure: null, dueOn: due.dueOn, dueDay: due.dueDay, status: 'todo', reason: '' };
+          if (pairKey) { if (!pairs.has(pairKey)) pairs.set(pairKey, randomUUID()); item.pairId = pairs.get(pairKey); }
+          M.assignReturnItem(c, config, item, env, extra);
+          c.items.push(item);
         }
-        for(const item of selections){
-          if(!item||holdings.some(holding=>holding.catalogueId===item.id))continue;
-          const groupId=config.groups.some(group=>group.id===item.group)?item.group:null,assigned=M.assign(config,groupId,c.revokeDate,env,extra,'memberOrder');
-          if(assigned.userId)extra[assigned.userId]=(extra[assigned.userId]??0)+1;
-          c.items.push({id:randomUUID(),name:item.name,kind:item.kind,sourceId:null,sourceCatalogueId:item.id,group:groupId,assignee:assigned.userId,dueOn:c.revokeDate,status:'todo',reason:''});
-        }
+        c.returnPresets = undefined;
         c.returnSelections=[];
         M.appendLog(c, env, 'returns.created', `${assets.length} issued inventory assets and ${holdings.length} handed onboarding items loaded from their original records.`);
       }
@@ -648,7 +674,18 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
       if(c.documents.find(document=>document.id===command.id)?.status==='hrsigned')for(const workflow of config.workflows)M.runWorkflow(c,config,workflow,env,'hrSigned');
     }
     else if (command.type === 'documentRefresh') { const document = c.documents.find(d => d.id === command.id); if (!document || document.status !== 'draft' || M.documentDeliveryReserved(c, command.id)) throw new M.V9Error('Only an unsigned draft not reserved for email delivery can refresh its source values.'); document.signatoryUserId ??= env.signatoryUserId ?? null; document.mergeValues = M.documentMergeValues(document,{...env.mergeValues,'signatory.name':document.signatoryUserId?env.userName(document.signatoryUserId):'','signatory.title':v9SignatoryTitle(config,document.signatoryUserId,c.facts.company)}); for (const field of document.fields) if (field.owner === 'pmLocked' && field.pmKey) document.values[field.id] = M.personnelFieldSourceValue(field, document.mergeValues); M.appendLog(c, env, 'document.refreshed', document.name); }
-    else if (command.type === 'settlementOptions') { if (!['pending', 'submitted'].includes(c.state)) throw new M.V9Error('Reopen this case before changing its figures.'); c.settlementOptions = command.options; M.appendLog(c, env, 'settlement.adjusted', command.reason); }
+    else if (command.type === 'settlementOptions') {
+      if (!['pending', 'submitted'].includes(c.state)) throw new M.V9Error('Reopen this case before changing its figures.'); c.settlementOptions = command.options; M.appendLog(c, env, 'settlement.adjusted', command.reason);
+      // d1e26f81 — default Return and revoke dates follow the effective last working day; fixed dates stay.
+      const anchor = c.state === 'submitted' ? (await readSettlementTx(tx, ctx, c, config))?.lastDay : undefined;
+      if (anchor && M.validDate(anchor) && anchor !== (c.returnAnchor ?? c.facts.lastDay)) {
+        c.returnAnchor = anchor; let moved = 0;
+        for (const item of c.items) if (M.returnOpen(item) && typeof item.dueDay === 'number') { const next = M.returnDue(anchor, item.dueDay); if (next !== item.dueOn) { item.dueOn = next; moved++; } }
+        M.appendLog(c, env, 'returns.datesMoved', `${moved} return and revoke dates now count from ${anchor}.`);
+      }
+    }
+    else if (command.type === 'itemsBulk') M.bulkItems(c, config, { ids: command.ids, ...(command.group !== undefined ? { group: command.group } : {}), ...(command.method !== undefined ? { method: command.method } : {}), ...(command.due !== undefined ? { due: command.due } : {}) }, env);
+    else if (command.type === 'returnPresets' || command.type === 'returnSelections') { /* Applied above, before submission. */ }
     else if (command.type === 'clear') {
       const calculation = await readSettlementTx(tx, ctx, c, config);
       if (!calculation?.ready || calculation.lastDay !== c.facts.lastDay) throw new M.V9Error('Complete the Leave/Payroll sources and resolve the last working day before clearance.');
@@ -684,7 +721,8 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
       const item = c.items.find(item => item.id === command.id); if (!item) throw new M.V9Error('Item not found.');
       if (M.isResolved(item.status) || item.status === 'notReturned') throw new M.V9Error('Completed work keeps its recorded owner.');
       if (!config.groups.some(group => group.id === item.group && group.members.includes(command.userId)) || !env.eligibleUser(command.userId)) throw new M.V9Error('Choose an eligible member of the providing group.');
-      item.assignee = command.userId;
+      if (command.userId === c.facts.employeeUserId) throw new M.V9Error('The leaver cannot own their own return and revoke items.');
+      item.assignee = command.userId; item.assignmentFailure = null;
       M.appendLog(c, env, 'item.reassigned', `${item.name} · ${env.userName(command.userId)}`, { userId: command.userId, groupId: item.group! });
     } else if (command.type === 'item') {
       if (c.state !== 'submitted') throw new M.V9Error('This case is not open.');
@@ -752,6 +790,51 @@ export async function v9Sweep(ctx: SessionContext, connection: NotificationSweep
   for (const { id } of nativeIds) try {
     const changed = await connection.withTenant(ctx, async tx => { await lockTx(tx, ctx); return v9NativeTransitionTx(ctx, tx, id, now, dates); });
     if (changed.changed) output.processed++;
+  } catch { output.failed++; }
+  return output;
+}
+/**
+ * d1e26f81 — release back-fill for open offboarding cases. Only items still Unassigned, not done and never preset
+ * get the team from settings, round robin (leaver excluded) and, when the date is the untouched revoke-date
+ * default, the Day -1/0 date; any other date is kept as fixed. Chosen owners and done items are never touched.
+ * Safe to re-run: preset items carry `method`, so a second run finds nothing. One short transaction per case.
+ */
+export async function v9BackfillReturnPresets(ctx: SessionContext, connection: NotificationSweepConnection, opts: { apply: boolean }) {
+  assertModuleEnabled(ctx, 'lifecycle');
+  if (ctx.userId) throw new M.V9Error('The return back-fill runs as the storage owner.', 'forbidden');
+  const pending = sql`exists(select 1 from jsonb_array_elements(data->'items') i where i->>'status' in ('todo','progress') and i->>'assignee' is null and not (i ? 'method'))`;
+  const ids = await connection.withTenant(ctx, async tx => {
+    const [permission] = await tx.execute<{ ok: boolean }>(sql`select current_user='ai_hr_owner' OR EXISTS(select 1 from pg_roles where rolname=current_user and rolsuper) as ok`);
+    if (!permission?.ok) throw new M.V9Error('The return back-fill requires the storage owner.', 'forbidden');
+    return tx.execute<{ id: string }>(sql`select id from lc_v9_case where tenant_id=${ctx.tenantId}::uuid and module='off' and data->>'state'='submitted' and ${pending} order by id`);
+  });
+  const output = { cases: ids.length, items: 0, assigned: 0, updated: 0, failed: 0 };
+  for (const { id } of ids) try {
+    await connection.withTenant(ctx, async tx => {
+      await lockTx(tx, ctx);
+      const [row] = await tx.execute<Row>(sql`select id,company_id,revision,data from lc_v9_case where id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid and module='off' and data->>'state'='submitted' and ${pending} for update`);
+      const config = row ? await configTx(tx, ctx) : null; if (!row || !config) return;
+      const c = structuredClone(row.data), env = await environment(tx, ctx, c, config);
+      const targets = c.items.filter(item => (item.status === 'todo' || item.status === 'progress') && !item.assignee && item.method === undefined);
+      if (!targets.length) return;
+      const sources = await returnSourcesTx(tx, ctx, c), anchor = c.returnAnchor ?? (env.effectiveLastDay && M.validDate(env.effectiveLastDay) ? env.effectiveLastDay : c.facts.lastDay), extra: Record<string, number> = {};
+      c.returnAnchor = anchor;
+      for (const item of targets) {
+        const holding = item.nativeSource ? sources.holdings.find(h => h.caseId === item.nativeSource!.caseId && h.itemId === item.nativeSource!.itemId) : undefined;
+        const entry = sources.catalogue.find(e => e.id === (holding?.catalogueId ?? item.sourceCatalogueId));
+        item.group = item.sourceId && !item.nativeSource ? existingGroup(config, sources.techGroup) ?? existingGroup(config, item.group) : existingGroup(config, entry?.group) ?? existingGroup(config, holding?.group) ?? existingGroup(config, item.group);
+        item.catalogueId = holding?.catalogueId ?? item.sourceCatalogueId ?? null;
+        if (holding) item.providedBy = { group: holding.group || null, userId: holding.claim, at: holding.handedAt };
+        item.method = 'rr';
+        if (item.dueOn === c.revokeDate && !(item.kind === 'system' && c.revokeMode === 'date')) { item.dueDay = M.defaultReturnDay(item.kind); item.dueOn = M.returnDue(anchor, item.dueDay); }
+        else item.dueDay = null;
+        M.assignReturnItem(c, config, item, env, extra);
+        if (item.assignee) output.assigned++;
+      }
+      output.items += targets.length;
+      M.appendLog(c, { ...env, actor: { id: 'system', name: 'System' } }, 'returns.presetsApplied', `${targets.length} unassigned return and revoke items received their team, owner and date from settings.`);
+      if (opts.apply) { await store(tx, ctx, row, c, 'returnsPresetsApplied'); output.updated++; }
+    });
   } catch { output.failed++; }
   return output;
 }
