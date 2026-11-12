@@ -1073,7 +1073,9 @@
           "condition_other_clocking": "ada rekod masa lain pada hari itu",
           "condition_inactive": "pekerjaan telah tamat",
           "would_create_overtime": "pembetulan itu akan mewujudkan kerja lebih masa",
-          "approval_routed": "kelulusan kehadiran dihantar ke aliran kerja"
+          "approval_routed": "kelulusan kehadiran dihantar ke aliran kerja",
+          "condition_record_changed": "rekod berubah sebelum ia dapat dilakukan",
+          "condition_no_manager": "pekerja tiada pengurus dalam rekod"
         },
         "status": {
           "fixed": "Dibetulkan · boleh dibuat asal hingga {date}",
@@ -1086,12 +1088,19 @@
           "withdrawnEmployee": "Ditarik balik atas permintaan pekerja",
           "withdrawnHr": "Ditarik balik oleh HR",
           "sentOpen": "Dihantar · boleh ditarik balik hingga {date}",
-          "sentClosed": "Dihantar"
+          "sentClosed": "Dihantar",
+          "opened": "Dibuka · bersama pengurus",
+          "openedOpen": "Dibuka · boleh dibatalkan sehingga {date}",
+          "cancelledHr": "Semakan dibatalkan oleh HR"
         },
         "undo": "Buat asal",
         "notSent": "Tidak dihantar: {reason}",
         "sent": "Permintaan dihantar untuk mengisi {count, plural, one {# butiran} other {# butiran}}",
-        "withdraw": "Tarik balik"
+        "withdraw": "Tarik balik",
+        "passportSent": "Meminta pekerja memperbaharui pasport mereka, yang tamat tempoh pada {date}",
+        "probationOpened": "Membuka semakan percubaan dan menghantarnya kepada pengurus, perlu siap pada {date}",
+        "notOpened": "Tidak dibuka: {reason}",
+        "cancelReview": "Batalkan semakan"
       },
       "limits": {
         "title": "Had yang tidak boleh dilangkaui",
@@ -1106,7 +1115,9 @@
         "requestOnly": "Hanya menghantar permintaan; tidak sekali-kali mengubah rekod",
         "requestActive": "Tidak sekali-kali menghantar permintaan kepada orang yang pekerjaannya telah tamat",
         "perNightRequests": "{company}: paling banyak {count, plural, one {# permintaan} other {# permintaan}} semalam, setiap satu boleh ditarik balik selama {days} hari",
-        "level3": "Pada tahap Bertindak dan diaudit, HR menyemak sampel mingguan dan bukannya setiap tindakan."
+        "level3": "Pada tahap Bertindak dan diaudit, HR menyemak sampel mingguan dan bukannya setiap tindakan.",
+        "passportRequestOnly": "Hanya menghantar permintaan pembaharuan; tidak pernah mengubah rekod pasport",
+        "probationRequestOnly": "Hanya membuka semakan dan menghantarnya kepada pengurus; tidak pernah mengesahkan, melanjutkan atau menamatkan pekerjaan"
       },
       "owner": {
         "suspended": "Digantung: penajanya tidak lagi mempunyai akses HR.",

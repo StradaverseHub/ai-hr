@@ -1,8 +1,8 @@
 /** AI v2 Phase 2 P2-1 — the autonomy ladder's rules, without a database (core/loops/autonomy.ts).
  *
- *  1. The cap is code: every loop that touches pay, employment status, access, discipline or statutory filing, and the
- *     passports loop, can never be above Prepare, whatever a declaration or a configuration says; the declarations
- *     cannot be changed at run time.
+ *  1. The cap is code: every loop that touches pay, employment status, access, discipline or statutory filing can never
+ *     be above Prepare, whatever a declaration or a configuration says; the declarations cannot be changed at run time.
+ *     The probation and passports loops are request-only (owner, 11 and 13 November 2026): each may reach Level 2.
  *  2. The promotion certificate is computed from the evidence exactly: thresholds, strict "under 1%", unknown shares.
  *  3. The demotion rule fires strictly above 1% over the window, never on no actions.
  *  4. Limits are refused, never clamped, outside their closed values.
@@ -14,14 +14,19 @@ import {LOOP_IDS} from '../core/loops/types';
 
 describe('the cap on automatic action',()=>{
  // Wave 1 integration: the Phase 2 Salary payroll loop (pay) is capped with them.
- it('keeps probation, payroll inputs, passports and salary payroll at Prepare, and lets only missing employee data above it',()=>{
-  expect([...CAPPED_LOOPS].sort()).toEqual(['loop_document_expiry','loop_missed_clock_outs','loop_payroll_inputs','loop_probation_ending','loop_salary_payroll']);
+ it('keeps payroll inputs, missed clock-outs and salary payroll at Prepare, and lets missing employee data, probation and passports above it',()=>{
+  expect([...CAPPED_LOOPS].sort()).toEqual(['loop_missed_clock_outs','loop_payroll_inputs','loop_salary_payroll']);
   expect(Object.fromEntries(LOOP_IDS.map(id=>[id,[maxLevel(id),promotableTo(id)]]))).toEqual({
-   loop_probation_ending:[1,1],loop_payroll_inputs:[1,1],loop_missing_employee_data:[3,3],loop_missed_clock_outs:[1,1],loop_document_expiry:[1,1],
+   loop_probation_ending:[2,2],loop_payroll_inputs:[1,1],loop_missing_employee_data:[3,3],loop_missed_clock_outs:[1,1],loop_document_expiry:[2,2],
    loop_salary_payroll:[1,1]});
  });
 
- it.each(['loop_probation_ending','loop_payroll_inputs','loop_document_expiry','loop_salary_payroll','loop_missed_clock_outs'] as const)('%s can never be set above Prepare',id=>{
+ it.each(['loop_probation_ending','loop_document_expiry'] as const)('%s reaches Act within limits but never Act and audit',id=>{
+  for(const level of [0,1,2])expect(levelAllowed(id,level),String(level)).toBe(true);
+  for(const level of [3,4,1.5,-1,Number.NaN])expect(levelAllowed(id,level),String(level)).toBe(false);
+ });
+
+ it.each(['loop_payroll_inputs','loop_salary_payroll','loop_missed_clock_outs'] as const)('%s can never be set above Prepare',id=>{
   expect(levelAllowed(id,0)).toBe(true);expect(levelAllowed(id,1)).toBe(true);
   for(const level of [2,3,4,1.5,-1,Number.NaN])expect(levelAllowed(id,level)).toBe(false);
  });

@@ -1073,7 +1073,9 @@
           "condition_other_clocking": "có lần chấm công khác trong ngày",
           "condition_inactive": "việc làm đã kết thúc",
           "would_create_overtime": "lần sửa sẽ tạo ra giờ làm thêm",
-          "approval_routed": "việc duyệt chấm công đi theo quy trình phê duyệt"
+          "approval_routed": "việc duyệt chấm công đi theo quy trình phê duyệt",
+          "condition_record_changed": "hồ sơ đã thay đổi trước khi thực hiện",
+          "condition_no_manager": "nhân viên chưa có quản lý trong hồ sơ"
         },
         "status": {
           "fixed": "Đã sửa · có thể hoàn tác đến {date}",
@@ -1086,12 +1088,19 @@
           "withdrawnEmployee": "Rút lại theo yêu cầu của nhân viên",
           "withdrawnHr": "Bị HR rút lại",
           "sentOpen": "Đã gửi · có thể rút lại đến {date}",
-          "sentClosed": "Đã gửi"
+          "sentClosed": "Đã gửi",
+          "opened": "Đã mở · quản lý đang xử lý",
+          "openedOpen": "Đã mở · có thể hủy đến {date}",
+          "cancelledHr": "Đánh giá đã bị HR hủy"
         },
         "undo": "Hoàn tác",
         "notSent": "Không gửi: {reason}",
         "sent": "Đã gửi yêu cầu điền {count, plural, other {# thông tin}}",
-        "withdraw": "Rút lại"
+        "withdraw": "Rút lại",
+        "passportSent": "Đã đề nghị nhân viên gia hạn hộ chiếu, hết hạn vào {date}",
+        "probationOpened": "Đã mở đánh giá thử việc và gửi cho quản lý, hạn {date}",
+        "notOpened": "Chưa mở: {reason}",
+        "cancelReview": "Hủy đánh giá"
       },
       "limits": {
         "title": "Những giới hạn không bao giờ được vượt qua",
@@ -1106,7 +1115,9 @@
         "requestOnly": "Chỉ gửi yêu cầu; không bao giờ thay đổi hồ sơ",
         "requestActive": "Không bao giờ gửi yêu cầu cho người đã nghỉ việc",
         "perNightRequests": "{company}: tối đa {count, plural, other {# yêu cầu}} mỗi đêm, mỗi yêu cầu có thể rút lại trong {days} ngày",
-        "level3": "Ở cấp Thực hiện và kiểm tra, HR xem xét mẫu hằng tuần thay vì từng hành động."
+        "level3": "Ở cấp Thực hiện và kiểm tra, HR xem xét mẫu hằng tuần thay vì từng hành động.",
+        "passportRequestOnly": "Chỉ gửi đề nghị gia hạn; không bao giờ thay đổi hồ sơ hộ chiếu",
+        "probationRequestOnly": "Chỉ mở đánh giá và gửi cho quản lý; không bao giờ xác nhận, gia hạn hay chấm dứt hợp đồng lao động"
       },
       "owner": {
         "suspended": "Đã tạm ngưng: người bảo trợ không còn quyền truy cập HR.",

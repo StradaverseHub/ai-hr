@@ -414,16 +414,20 @@ export const AGENT_PRINCIPAL_SPECIALISTS=Object.freeze({
 /** AI v2 Phase 2 P2-1 — what each AI Centre loop does at each level it may reach, run as the agent principal for its
  * sponsor. Levels above Prepare exist only for the loops whose cap allows them (core/loops/autonomy.ts, enforced in code and
  * in migration 0963); test/teras-loop-autonomy-registry.test.ts keeps this list, the agent registry and the cap in step.
- * Pay, employment status, access, discipline and statutory filing loops never go above Prepare. */
+ * Pay, employment status, access, discipline and statutory filing loops never go above Prepare. The passports loop may
+ * send its renewal request, and the probation loop may open the review for the manager, deciding nothing, both at Level 2
+ * at most (owner, 11 and 13 November 2026). */
 const WATCH='Records what it finds for the company; shows nobody a card and changes no record';
 export const AGENT_LOOP_LEVELS=Object.freeze({
- loop_probation_ending:{0:WATCH,1:'Prepares a confirmation review card for HR; HR records the decision'},
+ loop_probation_ending:{0:WATCH,1:'Prepares a confirmation review card for HR; HR records the decision',
+  2:'Opens the probation review itself and sends it to the manager with its due date, within the company\'s nightly limit; decides nothing; HR can cancel it within the undo window'},
  loop_payroll_inputs:{0:WATCH,1:'Prepares a Today card for payroll administrators listing what blocks the payroll run'},
  loop_missing_employee_data:{0:WATCH,1:'Prepares a request card for the employee to fill in their own missing details',
   2:'Sends the employee the request itself, within the company\'s nightly limit; changes no record; HR can withdraw it within the undo window',
   3:'As Level 2; HR reviews a weekly sample of at least 10% and at least 5 requests instead of every one'},
  loop_missed_clock_outs:{0:WATCH,1:'Prepares a correction card for the employee; an authorised human approval workflow decides every correction'},
- loop_document_expiry:{0:WATCH,1:'Prepares a Today card for HR and a reminder card for the employee to renew the passport'},
+ loop_document_expiry:{0:WATCH,1:'Prepares a Today card for HR and a reminder card for the employee to renew the passport',
+  2:'Sends the employee the renewal request itself, within the company\'s nightly limit; changes no record; HR can withdraw it within the undo window'},
  // AI v2 P2-2a and P2-2b: pay and statutory filing, so Prepare at most in every company.
  loop_salary_payroll:{0:WATCH,1:'Prepares each payroll run\'s checks for payroll HR (exceptions, net swing, rule versions, bank file against net pay); a person runs, approves and closes payroll'},
  loop_payroll_audit:{0:WATCH,1:'Captures each run\'s evidence and prepares control findings for payroll HR; a person files with EPF, PERKESO and LHDN and records each disposition'},

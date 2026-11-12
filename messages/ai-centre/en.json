@@ -1073,7 +1073,9 @@
           "condition_other_clocking": "another clocking that day",
           "condition_inactive": "the employment has ended",
           "would_create_overtime": "the fix would have created overtime",
-          "approval_routed": "the attendance approval goes to a workflow"
+          "approval_routed": "the attendance approval goes to a workflow",
+          "condition_record_changed": "the record changed before it could be done",
+          "condition_no_manager": "the employee has no manager on record"
         },
         "status": {
           "fixed": "Fixed · undo until {date}",
@@ -1086,12 +1088,19 @@
           "withdrawnEmployee": "Withdrawn at the employee’s request",
           "withdrawnHr": "Withdrawn by HR",
           "sentOpen": "Sent · can be withdrawn until {date}",
-          "sentClosed": "Sent"
+          "sentClosed": "Sent",
+          "opened": "Opened · with the manager",
+          "openedOpen": "Opened · can be cancelled until {date}",
+          "cancelledHr": "Review cancelled by HR"
         },
         "undo": "Undo",
         "notSent": "Not sent: {reason}",
         "sent": "Request sent to fill in {count, plural, one {# detail} other {# details}}",
-        "withdraw": "Withdraw"
+        "withdraw": "Withdraw",
+        "passportSent": "Asked the employee to renew their passport, which expires on {date}",
+        "probationOpened": "Opened the probation review and sent it to the manager, due {date}",
+        "notOpened": "Not opened: {reason}",
+        "cancelReview": "Cancel review"
       },
       "limits": {
         "title": "Limits it can never cross",
@@ -1106,7 +1115,9 @@
         "requestOnly": "Sends the request only; never changes a record",
         "requestActive": "Never sends a request to someone whose employment has ended",
         "perNightRequests": "{company}: at most {count, plural, one {# request} other {# requests}} a night, each can be withdrawn for {days} days",
-        "level3": "At Act and audit, HR reviews a weekly sample instead of every action."
+        "level3": "At Act and audit, HR reviews a weekly sample instead of every action.",
+        "passportRequestOnly": "Sends the renewal request only; never changes the passport record",
+        "probationRequestOnly": "Opens the review and sends it to the manager only; never confirms, extends or ends employment"
       },
       "owner": {
         "suspended": "Suspended: its sponsor no longer has HR access.",

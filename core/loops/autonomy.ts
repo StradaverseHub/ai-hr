@@ -5,11 +5,18 @@
  *    at Prepare in every company, whatever its declaration or configuration says: maxLevel() computes the ceiling from
  *    the categories, never from a stored value, and the declarations are frozen at load. Migration 0963 repeats the
  *    cap in the database (teras_loop_level_cap), so a direct write cannot raise it either.
- *  - Missed clock-outs require human approval (owner, 9 November 2026); only missing employee data may stand above Prepare. Probation
- *    (employment status), payroll inputs (pay) and passports (owner decision) stay at Prepare, and so do the Phase 2
- *    Salary payroll loop (pay) and the payroll Audit loop (pay and statutory filing; not a LoopId, capped in 0963).
+ *  - Missed clock-outs require human approval (owner, 9 November 2026). Payroll inputs (pay) stay at Prepare, and so do the
+ *    Phase 2 Salary payroll loop (pay) and the payroll Audit loop (pay and statutory filing; not a LoopId, capped in 0963).
  *  - Missing employee data may send the employee a request; it changes no employee record. Missed clock-outs
  *    stay at Prepare: the employee submits a correction and configured human approvers decide it.
+ *  - Request-only acts (owner decision, 11 November 2026, superseding the 3 November rulings that kept probation under
+ *    the employment-status cap and passports at Prepare): the passports loop may send the employee the renewal request
+ *    (Level 2 at most; core/loops/act-passports.ts), and the probation loop may open the probation review and route it to
+ *    the manager with its due date, deciding nothing (core/loops/act-probation.ts). Neither changes employment status or
+ *    an identity record, so each is classed by the request it makes, not by the record a person later decides on.
+ *    Migration 9780 (draft) widens the database cap to match. Both are Level 2 at most. The probation step's undo
+ *    cancels the review it opened, by HR only, and it opens only legacy-path reviews: an employment owned by the
+ *    Probation module keeps its manual flow (owner, 13 November 2026).
  *  - Level 3 (Act and audit) acts exactly as Level 2; instead of every action showing in HR's feed, HR reviews a weekly
  *    sample of at least 10% and at least 5 actions (core/loops/samples.ts). The employee is still told; undo and
  *    demotion are unchanged.
@@ -44,13 +51,16 @@ export const DEMOTION_RULE=Object.freeze({maxCorrectedShare:0.01,windowDays:7});
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
 
 const DECLARATIONS:Record<LoopId,AutonomyDeclaration>={
- loop_probation_ending:{categories:['employment_status'],ceiling:1,actor:false,criteria:['prepared','rule_broken','days_at_level']},
+ // Owner, 11 November 2026 (superseding the employment-status cap for this request-only step): opens the review and
+ // routes it to the manager; never confirms, extends or ends employment. Level 2 at most.
+ loop_probation_ending:{categories:['probation_review_request'],ceiling:2,actor:true,criteria:['prepared','rule_broken','days_at_level']},
  loop_payroll_inputs:{categories:['pay'],ceiling:1,actor:false,criteria:['prepared','rule_broken','days_at_level']},
  // The request to the employee would be sent automatically, never the change itself (owner, 3 November 2026).
  loop_missing_employee_data:{categories:['employee_record_request'],ceiling:3,actor:true,criteria:['prepared','rule_broken','days_at_level']},
  loop_missed_clock_outs:{categories:['attendance'],ceiling:1,actor:false,criteria:['prepared','changed','rule_broken','days_at_level']},
- // Passports stay at Prepare (owner, 3 November 2026).
- loop_document_expiry:{categories:['identity_document'],ceiling:1,actor:false,criteria:['prepared','rule_broken','days_at_level']},
+ // Owner, 11 November 2026 (superseding 3 November): sends the employee the renewal request; Level 2 at most
+ // (coordinator, 13 November 2026). The passport record itself is changed only through HR's approval.
+ loop_document_expiry:{categories:['identity_document_request'],ceiling:2,actor:true,criteria:['prepared','rule_broken','days_at_level']},
  // AI v2 P2-2a: the Salary payroll loop is pay; it stays at Prepare in every company (owner decision 2: a person runs,
  // approves and closes payroll). The payroll Audit loop (P2-2b, its own runner) is not a LoopId: core/loops/levels.ts
  // refuses it, and migration 0963's teras_loop_level_cap keeps it at Prepare in the database.
