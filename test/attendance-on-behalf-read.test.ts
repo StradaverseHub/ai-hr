@@ -52,7 +52,7 @@ describe('the declaration',()=>{
   }
  });
  it('registers no way to file or decide on behalf: no semantic or agent action, and the server actions stay classified as before',()=>{
-  const semantic=[...SEMANTIC_ACTIONS,...TOIL_ACTIONS,...DECISION_ACTIONS];
+  const semantic=[...new Set([...SEMANTIC_ACTIONS,...TOIL_ACTIONS,...DECISION_ACTIONS])];
   const ids=semantic.map(action=>action.id).concat(AGENT_ACTIONS.map(action=>action.id));
   expect(ids.filter(id=>/behalf/i.test(id))).toEqual([]);
   // The registered own-request and assigned-decision actions act only as the person themselves or as the assigned approver.
@@ -152,10 +152,10 @@ describe('an in-scope caller',()=>{
    const outcome=await read(hr.ctx,purpose),expected=await page(hr.ctx,purpose);
    expect(outcome.ok).toBe(true);
    expect(expected.people.length).toBeGreaterThanOrEqual(4);
-   expect((outcome as {people:unknown[]}).people).toEqual(expected.people);
-   expect((outcome as {more:boolean}).more).toBe(expected.more);
+   expect((outcome as unknown as {people:unknown[]}).people).toEqual(expected.people);
+   expect((outcome as unknown as {more:boolean}).more).toBe(expected.more);
    expect(Object.keys(outcome).sort()).toEqual(['more','ok','people','provenance']);
-   expect((outcome as {provenance:{page:string}}).provenance.page).toBe(purpose==='request'?'/attendance/on-behalf/request':'/attendance/on-behalf/approve');
+   expect((outcome as unknown as {provenance:{page:string}}).provenance.page).toBe(purpose==='request'?'/attendance/on-behalf/request':'/attendance/on-behalf/approve');
    const text=JSON.stringify(outcome);
    for(const id of expected.ids)expect(text).not.toContain(id);
    const codes=(await owner.db.select({code:schema.employment.employeeCode}).from(schema.employment).where(eq(schema.employment.tenantId,base.tenantId))).flatMap(row=>row.code?[row.code]:[]);
