@@ -608,7 +608,9 @@ export async function getRewardConfiguration(ctx: SessionContext, unitId: string
     const members = await tx.select({ id: rewardMember.id, userId: rewardMember.userId, role: rewardMember.role }).from(rewardMember).where(eq(rewardMember.unitId, unitId)).orderBy(asc(rewardMember.role), asc(rewardMember.userId));
     const [originRow]=await tx.execute<{origin:{versionId:string;revision:number;name:string;changed:boolean}|null}>(sql`select app.reward_policy_unit_origin(${unitId}::uuid) as origin`);
     const [libraryBinding]=await tx.execute<{bound:boolean}>(sql`select exists(select 1 from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid) as bound`);
-    return { libraryBound:libraryBinding?.bound??false,unit:{...unit,policy:redactPatPolicy(effectiveRewardPolicy(unit.policy,await governanceStateTx(tx,unitId)),roles)}, cycle, name: bu?.name ?? 'Business unit', members,canReadPat:roles.includes('gr'),policyOrigin:originRow?.origin??null,
+    // fc804e8c follow-up: once the reward year has a Limit Controls version, the pools and lump-sum settings are read-only here.
+    const limitsOwned=(await rewardLimitsForUnitTx(tx,unit)).source==='version';
+    return { libraryBound:libraryBinding?.bound??false,limitsOwned,unit:{...unit,policy:redactPatPolicy(effectiveRewardPolicy(unit.policy,await governanceStateTx(tx,unitId)),roles)}, cycle, name: bu?.name ?? 'Business unit', members,canReadPat:roles.includes('gr'),policyOrigin:originRow?.origin??null,
       canConfigure: !(prep?.value?.required&&prep.value.released) && roles.includes('gr') && unit.status === 'draft' && unit.kind === 'annual',
       canManageMembers: !!admin?.ok && unit.status === 'draft',
     };
@@ -732,6 +734,9 @@ export async function saveRewardPolicy(ctx: SessionContext, unitId: string, revi
     const policy: RewardPolicy = { ...settings, multiplierBp: unit.policy.multiplierBp, ...(unit.policy.unitGovernanceDigest?{unitGovernanceDigest:unit.policy.unitGovernanceDigest}:{}),
       ...(unit.policy.lumpReason ? { lumpReason: unit.policy.lumpReason } : {}), ...(unit.policy.payWindowKeep ? { payWindowKeep: unit.policy.payWindowKeep } : {}) };
     if (!roles.includes('gr')) throw new RewardError('Only Group Rewards may change policy.');
+    // fc804e8c follow-up: with a Limit Controls version for the year, Limit Controls own the pools and lump-sum settings;
+    // the review keeps its stored values unchanged (they are not used while the version applies).
+    if ((await rewardLimitsForUnitTx(tx, unit)).source === 'version') Object.assign(policy, { standardPools: unit.policy.standardPools, hPools: unit.policy.hPools, lumpShareBp: unit.policy.lumpShareBp, lumpStepCents: unit.policy.lumpStepCents, lumpCapCents: unit.policy.lumpCapCents });
     const [libraryBinding]=await tx.execute<{bound:boolean}>(sql`select exists(select 1 from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid) as bound`);if(libraryBinding?.bound&&(['ranges','bonusMatrix','bonusStructure','branchFactors']as const).some(key=>!isDeepStrictEqual(policy[key],unit.policy[key])))throw new RewardError('Consumed salary and bonus libraries are read-only. Approve a new plan version for future reviews.');
     assertRewardPolicyGrids(policy);
     const governance=await governanceStateTx(tx,unitId);

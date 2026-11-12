@@ -25176,7 +25176,8 @@
         "promotion": "tăng do thăng chức",
         "special": "điều chỉnh đặc biệt"
       }
-    }
+    },
+    "limitControlsOwned": "Các giá trị này của năm khen thưởng do Kiểm soát giới hạn quản lý. Tại đây chỉ được xem và đợt xét duyệt dùng phiên bản Kiểm soát giới hạn."
   },
   "identityEmail": {
     "title": "Gửi email",
@@ -37418,7 +37419,9 @@
       "accepted": "Đã chấp nhận",
       "adjusted": "Đã điều chỉnh",
       "ignored": "Đã bỏ qua"
-    }
+    },
+    "limitControlsOwned": "Ngưỡng điều chỉnh đề xuất, thời gian dài không tăng lương và chênh lệch lương so với đồng nghiệp của năm khen thưởng này do Kiểm soát giới hạn quản lý. Tại đây chỉ được xem.",
+    "limitControlsLink": "Mở Kiểm soát giới hạn"
   },
   "rewardUploaded": {
     "literalCells": "Hãy thay công thức và ô lỗi bằng giá trị trực tiếp trước khi tải lên.",

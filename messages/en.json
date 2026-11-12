@@ -25176,7 +25176,8 @@
         "promotion": "promotion",
         "special": "special adjustment"
       }
-    }
+    },
+    "limitControlsOwned": "Limit Controls own these values for this reward year. They are read-only here and the review uses the Limit Controls version."
   },
   "identityEmail": {
     "title": "Email delivery",
@@ -37418,7 +37419,9 @@
       "accepted": "Accepted",
       "adjusted": "Adjusted",
       "ignored": "Ignored"
-    }
+    },
+    "limitControlsOwned": "Limit Controls own the override, long-without-increase and peer pay gap thresholds for this reward year. They are read-only here.",
+    "limitControlsLink": "Open Limit Controls"
   },
   "rewardUploaded": {
     "literalCells": "Replace formulas and error cells with literal values before uploading.",

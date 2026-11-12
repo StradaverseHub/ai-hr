@@ -12,7 +12,8 @@ import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
-import {getRewardUnit,saveRewardEntry,decideRewardUnit} from '../packs/rewards/service';
+import {getRewardUnit,saveRewardEntry,decideRewardUnit,getRewardConfiguration,saveRewardPolicy} from '../packs/rewards/service';
+import {saveRewardAdvisorSettings} from '../packs/rewards/advisor';
 import {rewardRulesForReview} from '../packs/rewards/applied-rules';
 import {emptyFacts,type RewardRole} from '../packs/rewards/model';
 import {
@@ -150,5 +151,27 @@ describe('Rewards Limit Controls',()=>{
   await decideRewardUnit(actors.bg!,unitId,(await view()).unit.revision,'return','Fictional return to the BU CEO for changes');
   expect(await limitsFor(actors.bu!)).toMatchObject({source:'version',revision:1});
   await expect(previewRewardLimitReapply(admin,{year,revision:1,reviewIds:[unitId]})).rejects.toThrow(/selection changed/);
+ },180_000);
+ it('keeps the review policy pools, lump-sum settings and advisor thresholds read-only once the year has a version',async()=>{
+  // Before a version the review's own policy owns the pools and lump-sum settings, and a Group Rewards save changes them.
+  let config=await getRewardConfiguration(admin,unitId);
+  expect(config.limitsOwned).toBe(false);
+  await saveRewardPolicy(admin,unitId,config.unit.revision,{...config.unit.policy,standardPools:[400,100,100]});
+  const stored=async()=>(await owner.db.select({policy:schema.rewardUnit.policy}).from(schema.rewardUnit).where(eq(schema.rewardUnit.id,unitId)))[0].policy;
+  expect((await stored()).standardPools).toEqual([400,100,100]);
+  await save(admin,0,v=>{v['pool.standard.merit']={value:700,type:'block'};});
+  config=await getRewardConfiguration(admin,unitId);
+  expect(config.limitsOwned).toBe(true);
+  // A crafted save cannot change them: the stored values are kept and Limit Controls supply the calculation.
+  const before=await stored();
+  await saveRewardPolicy(admin,unitId,config.unit.revision,{...config.unit.policy,standardPools:[900,900,900],hPools:[800,800,800],lumpShareBp:1000,lumpStepCents:2000,lumpCapCents:100});
+  const after=await stored();
+  expect({standardPools:after.standardPools,hPools:after.hPools,lumpShareBp:after.lumpShareBp,lumpStepCents:after.lumpStepCents,lumpCapCents:after.lumpCapCents})
+   .toEqual({standardPools:[400,100,100],hPools:before.hPools,lumpShareBp:before.lumpShareBp,lumpStepCents:before.lumpStepCents,lumpCapCents:before.lumpCapCents});
+  expect((await limitsFor(admin)).values['pool.standard.merit'].value).toBe(700);
+  // The advisor keeps its stored thresholds; only "enabled" and the fairness gap are saved.
+  await saveRewardAdvisorSettings(admin,unitId,{enabled:true,overrideThresholdBp:9999,longWithoutIncreaseYears:19,equityGapBp:9999,fairnessGapBp:1200});
+  const [setting]=await owner.db.execute<{settings:{enabled:boolean;overrideThresholdBp:number;longWithoutIncreaseYears:number;equityGapBp:number;fairnessGapBp:number}}>(sql`select settings from reward_advisor_setting where unit_id=${unitId}::uuid`);
+  expect(setting.settings).toEqual({enabled:true,overrideThresholdBp:200,longWithoutIncreaseYears:3,equityGapBp:1500,fairnessGapBp:1200});
  },180_000);
 });

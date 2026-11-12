@@ -25176,7 +25176,8 @@
         "promotion": "kenaikan pangkat",
         "special": "pelarasan khas"
       }
-    }
+    },
+    "limitControlsOwned": "Kawalan Had memiliki nilai ini bagi tahun ganjaran ini. Nilai ini baca sahaja di sini dan semakan menggunakan versi Kawalan Had."
   },
   "identityEmail": {
     "title": "Penghantaran e-mel",
@@ -37418,7 +37419,9 @@
       "accepted": "Diterima",
       "adjusted": "Dilaras",
       "ignored": "Diabaikan"
-    }
+    },
+    "limitControlsOwned": "Kawalan Had memiliki ambang penggantian, tempoh lama tanpa kenaikan dan jurang gaji rakan sebaya bagi tahun ganjaran ini. Ambang ini baca sahaja di sini.",
+    "limitControlsLink": "Buka Kawalan Had"
   },
   "rewardUploaded": {
     "literalCells": "Gantikan formula dan sel ralat dengan nilai biasa sebelum memuat naik.",

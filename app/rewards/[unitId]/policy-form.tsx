@@ -8,16 +8,19 @@ import {PolicyMatrixGrid} from '../policy-matrix-grid';
 import {BranchPolicyFields} from '../branch-policy-fields';
 import {rewardEligibilitySummary} from '@/packs/rewards/policy-eligibility';
 
-export async function PolicyForm({unitId,revision,policy,readOnly=false,libraryOwned=false}:{unitId:string;revision:number;policy:RewardPolicy;readOnly?:boolean;libraryOwned?:boolean}){
+export async function PolicyForm({unitId,revision,policy,readOnly=false,libraryOwned=false,limitsOwned=false}:{unitId:string;revision:number;policy:RewardPolicy;readOnly?:boolean;libraryOwned?:boolean;limitsOwned?:boolean}){
  const t=await getTranslations('rewards');
  return <form action={policyAction} className="space-y-6"><input type="hidden" name="unitId" value={unitId}/><input type="hidden" name="revision" value={revision}/>
-  <RewardPolicyFields policy={policy} readOnly={readOnly} libraryOwned={libraryOwned} unitId={unitId}/>{!readOnly&&<RewardSubmit type="submit">{t('savePolicy')}</RewardSubmit>}
+  <RewardPolicyFields policy={policy} readOnly={readOnly} libraryOwned={libraryOwned} limitsOwned={limitsOwned} unitId={unitId}/>{!readOnly&&<RewardSubmit type="submit">{t('savePolicy')}</RewardSubmit>}
  </form>;
 }
 /** Reuse the same policy fields in an individual review and a versioned shared configuration. */
-export async function RewardPolicyFields({policy:p,readOnly=false,context='unit',unitId,libraryOwned=false,hideLibraries=false,pristineValidationGuidance=false}:{policy:RewardPolicy;readOnly?:boolean;context?:'unit'|'shared';hideUnitInputs?:boolean;unitId?:string;libraryOwned?:boolean;hideLibraries?:boolean;pristineValidationGuidance?:boolean}){
+export async function RewardPolicyFields({policy:p,readOnly=false,context='unit',unitId,libraryOwned=false,limitsOwned=false,hideLibraries=false,pristineValidationGuidance=false}:{policy:RewardPolicy;readOnly?:boolean;context?:'unit'|'shared';hideUnitInputs?:boolean;unitId?:string;libraryOwned?:boolean;limitsOwned?:boolean;hideLibraries?:boolean;pristineValidationGuidance?:boolean}){
   const t = await getTranslations('rewards');
   const ts=await getTranslations('rewardSetup');const eligibility=rewardEligibilitySummary(p);
+  // fc804e8c follow-up: with a Limit Controls version for the reward year these fields are read-only (disabled, so they are
+  // not submitted and the save keeps the stored values); Limit Controls own them.
+  const limitsNote = limitsOwned ? <p role="note" className="rounded-md border border-border bg-muted p-3 text-sm">{t('limitControlsOwned')} <Link href={`/admin/rewards/limit-controls?year=${p.year}`} className="text-primary underline">{t('sharedPolicy.limitControlsLink')}</Link></p> : null;
   const amount = (name: string, label: string, value: number | null, scale = 100) => <Field label={label}><input name={name} type="number" min="0" step="0.01" defaultValue={value == null ? '' : value / scale} className={inputCls} /></Field>;
   return <fieldset disabled={readOnly} className="space-y-6"><input type="hidden" name="policyGridVersion" value="1"/><input type="hidden" name="policyEligibilityVersion" value="1"/><input type="hidden" name="policyContext" value={context}/>
     {libraryOwned&&<p className="text-sm text-muted-foreground">{ts('libraryReadOnly')}</p>}<p className="max-w-3xl text-sm text-muted-foreground">{t(context==='shared'?'sharedPolicy.policyHelp':'configurationHelp')}</p>{context==='unit'&&<p className="text-sm text-muted-foreground">{t('unitInputsHelp')} {unitId&&<Link href={`/rewards/${unitId}#unit-governance`} className="text-primary underline">{t('unitInputsLink')}</Link>}</p>}
@@ -29,7 +32,7 @@ export async function RewardPolicyFields({policy:p,readOnly=false,context='unit'
       {p.seniorMembershipMode === 'named-members' ? <p className="text-sm text-muted-foreground">{t(context==='shared'?'sharedPolicy.membershipHelp':'seniorMembershipHelp')}</p> : <Field label={t('seniorGrades')}><input readOnly value={p.seniorGrades.join(', ')} className={inputCls} /></Field>}
     </div><fieldset className="space-y-2"><legend className="font-medium">{t('salaryExclusion.label')}</legend><p className="text-sm text-muted-foreground">{t('salaryExclusion.help')}</p><div className="grid gap-4 sm:grid-cols-2">{(['blockedFrom','blockedTo'] as const).map(key=><Field key={key} label={t(key)}><input type="date" name={key} defaultValue={p[key]} required className={inputCls}/></Field>)}</div></fieldset></fieldset>
     {/* Board fc804e8c: a shared configuration has no limits block; its reviews use Limit Controls for the reward year. */}
-    {context==='shared'?<p role="note" className="rounded-md border border-border bg-muted p-3 text-sm">{t('sharedPolicy.limitControlsNote')} <Link href={`/admin/rewards/limit-controls?year=${p.year}`} className="text-primary underline">{t('sharedPolicy.limitControlsLink')}</Link></p>:<fieldset className="space-y-3"><legend className="mb-3 font-semibold">{t('salaryBudgets')}</legend><div className="grid gap-4 sm:grid-cols-3">
+    {context==='shared'?<p role="note" className="rounded-md border border-border bg-muted p-3 text-sm">{t('sharedPolicy.limitControlsNote')} <Link href={`/admin/rewards/limit-controls?year=${p.year}`} className="text-primary underline">{t('sharedPolicy.limitControlsLink')}</Link></p>:<fieldset disabled={limitsOwned} data-limits-owned={limitsOwned||undefined} className="space-y-3"><legend className="mb-3 font-semibold">{t('salaryBudgets')}</legend>{limitsNote}<div className="grid gap-4 sm:grid-cols-3">
       {(['standard', 'h'] as const).flatMap(plan => [0, 1, 2].map(i => <div key={`${plan}.${i}`}>{amount(`${plan}.${i}`, `${t(plan)} · ${t(['merit', 'promotion', 'special'][i])} (%)`, (plan === 'h' ? p.hPools : p.standardPools)[i])}</div>))}
     </div></fieldset>}
     <fieldset className="space-y-3"><legend className="mb-3 font-semibold">{t('meritMatrix')}</legend>
@@ -40,7 +43,7 @@ export async function RewardPolicyFields({policy:p,readOnly=false,context='unit'
       <BranchPolicyFields structure={p.bonusStructure} factors={p.branchFactors} year={p.year}/>
 
     </fieldset>}
-    {context!=='shared'&&<fieldset className="space-y-3"><legend className="mb-3 font-semibold">{t('lumpSum')}</legend><div className="grid gap-4 sm:grid-cols-3">{amount('lumpStep', t('rounding'), p.lumpStepCents)}{amount('lumpShare', t('balanceShare'), p.lumpShareBp)}{amount('lumpCap', t('optionalCap'), p.lumpCapCents)}</div><p className="text-sm text-muted-foreground">{t('lumpPolicyHelp')}</p></fieldset>}
+    {context!=='shared'&&<fieldset disabled={limitsOwned} data-limits-owned={limitsOwned||undefined} className="space-y-3"><legend className="mb-3 font-semibold">{t('lumpSum')}</legend>{limitsNote}<div className="grid gap-4 sm:grid-cols-3">{amount('lumpStep', t('rounding'), p.lumpStepCents)}{amount('lumpShare', t('balanceShare'), p.lumpShareBp)}{amount('lumpCap', t('optionalCap'), p.lumpCapCents)}</div><p className="text-sm text-muted-foreground">{t('lumpPolicyHelp')}</p></fieldset>}
 
     </fieldset>;
 }

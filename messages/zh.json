@@ -25176,7 +25176,8 @@
         "promotion": "晋升加薪",
         "special": "特别调整"
       }
-    }
+    },
+    "limitControlsOwned": "本奖励年度的这些数值由限额控制管理。此处为只读，评审使用限额控制版本。"
   },
   "identityEmail": {
     "title": "邮件发送",
@@ -37418,7 +37419,9 @@
       "accepted": "已接受",
       "adjusted": "已调整",
       "ignored": "已忽略"
-    }
+    },
+    "limitControlsOwned": "本奖励年度的偏离阈值、长期未调薪阈值和同侪薪酬差距阈值由限额控制管理。此处为只读。",
+    "limitControlsLink": "打开限额控制"
   },
   "rewardUploaded": {
     "literalCells": "上传前请将公式和错误单元格替换为实际值。",
