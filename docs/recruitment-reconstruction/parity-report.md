@@ -494,3 +494,24 @@ the related suites passed 544 of 544 (33 files); the reviewer's own run of all 2
 | 43147392242 | Selected tests (25 files, incl. recruitment-background-checks, -rules, recruitment-screening, recruitment-tasks and the Home, mobile and notification suites) | PASS: 303 tests |
 
 No recruitment test failed on GitHub.
+
+## Merge with main and migration renumber (commits 8f980f8c9…1f9b912c4, 2026-11-12)
+
+origin/main (== origin/alpha at the time, 2a2495919) was merged into this branch with a normal merge commit; the
+branch is now 0 behind origin/main. The 14 Recruitment migrations moved from 4400–4413 (idx 3800–3813, when
+…4100–…4113) to 5200–5213 (idx 4600–4613, when …4900–…4913) with SQL bytes unchanged, after a survey of every
+remote journal, allocation document and worktree found no claim on that block. 5214 restates main's 5000 version of
+`app.consume_invitation` with `recruiting_partner` added, because 5201's older restatement would otherwise drop
+main's Access lock (diff checked: one line). Slice 13 (8fefb6242) had no separate GitHub run; it is covered here.
+
+Local: a fresh database applied all 840 journal entries in order (Recruitment last); 52 database files / 830 tests
+and 11 DOM/static files / 100 tests passed, including every Recruitment file and every merge-touched test.
+
+| Run | Job | Result |
+| --- | --- | --- |
+| 43172431727 | Whole-repo type check (three compilers) | PASS |
+| 43172431727 | Production build (`linux-build`) | PASS |
+| 43172431727 | Selected tests (64 files) | 58 PASS; FAIL: the known 6 AI files (53 tests) |
+| 43172447462 | Selected tests (54 files, incl. recruitment-pools, recruitment-blocked-list, the sidebar, shell, navigation, access and invitation suites touched by the merge) | PASS: 674 tests |
+
+origin/alpha later moved one commit ahead of main (69e30634e, no migrations); it is not merged here.
