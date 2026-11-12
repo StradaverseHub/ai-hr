@@ -40,7 +40,10 @@ export type PolicyDurationProposal=
  |{status:'unavailable';reason:'workedEvidenceUnavailable'|'eligibleEvidenceUnavailable'|'approvalUnavailable'|'plannedEvidenceUnavailable'|'lateEvidenceUnavailable'|'calendarUnavailable'|'holidayDesignationUnavailable'|'durationLimitExceeded'|'formulaAllocationUnavailable';date?:string;authority:'proposalOnly'}
  |{status:'calculated';authority:'proposalOnly';intervalBasis:'actual'|'approvedPlan';lateOffsetMinutes:number;selectionSteps:PolicyDurationSelectionStep[];
    parts:(AttendancePolicyPart&{allocatedPayableMinutes:number;allocations:AttendancePolicyInterval[]})[];
-   classes:{dayClass:AttendancePolicyDayClass;eligibleMinutes:number;payableMinutes:number;
+   classes:{dayClass:AttendancePolicyDayClass;
+     /** 2f803985: rounding is finalized per calendar date (one part per date). Absent on proposals
+      * recorded before per-date rounding, which finalized once per classification. */
+     calendarDate?:string;eligibleMinutes:number;payableMinutes:number;
      /** Explicit count with no fabricated clock/date placement; pricing needs a separate bound contract. */
      unplacedPayableMinutes:number;steps:PolicyOvertimeDurationStep[];
      /** Present only for a positive rounding remainder; physical allocations stay unchanged. */
@@ -125,13 +128,17 @@ export function deriveAttendancePolicyDurationProposal(input:PolicyDurationPropo
  if(input.manualApprovedIntervals!==undefined)selectionSteps.push({kind:'manualCount',before:minutes(methodSelected,bound),after:minutes(selected,bound)});
  const parts=grouped.parts.map(part=>({...part,allocatedPayableMinutes:0,allocations:[] as AttendancePolicyInterval[]}));
  const classes:Extract<PolicyDurationProposal,{status:'calculated'}>['classes']=[];
- for(const dayClass of [...new Set(parts.map(part=>part.dayClass))]){
+ // 2f803985 (approved order): the selected minutes are already split into per-date portions; the
+ // threshold, maximum and rounding are finalized LAST and separately for each date's portion, so the
+ // shift date and the next date's early overtime each round on their own minutes.
+ const groups=[...new Map(parts.map(part=>[part.dayClass+'|'+part.date,{dayClass:part.dayClass,date:part.date}])).values()];
+ for(const {dayClass,date} of groups){
   const direction=input.allocationByClass[dayClass];
   if(direction===undefined)return refuse('formulaAllocationUnavailable');
   if(!['earliest','latest'].includes(direction))throw Error('The selected central version must supply explicit count allocation.');
-  const indexes=parts.map((part,index)=>({part,index})).filter(row=>row.part.dayClass===dayClass);
+  const indexes=parts.map((part,index)=>({part,index})).filter(row=>row.part.dayClass===dayClass&&row.part.date===date);
   const eligibleMinutes=indexes.reduce((sum,row)=>sum+row.part.minutes,0);
-  const plannedLimit=plannedParts?.status==='ready'?plannedParts.parts.filter(part=>part.dayClass===dayClass).reduce((sum,part)=>sum+part.minutes,0):null;
+  const plannedLimit=plannedParts?.status==='ready'?plannedParts.parts.filter(part=>part.dayClass===dayClass&&part.date===date).reduce((sum,part)=>sum+part.minutes,0):null;
   const finalized=finalizePolicyOvertimeDuration({policy:policy.overtime,dayClass,approvedEligibleMinutes:eligibleMinutes,preApprovedLimitMinutes:plannedLimit,periodMinutes:bound});
   if(finalized.status!=='known')throw Error('Known selected intervals must produce a known duration.');
   const slots=indexes.flatMap(({part,index})=>part.intervals.map(interval=>({index,interval}))).sort((a,b)=>a.interval.from-b.interval.from||a.interval.to-b.interval.to);
@@ -144,12 +151,12 @@ export function deriveAttendancePolicyDurationProposal(input:PolicyDurationPropo
    parts[index].allocatedPayableMinutes+=count;
   }
   // Reuse the immutable formula's existing count-allocation direction. The first selected
-  // source in that order owns the entire class rounding remainder, including across midnight.
+  // source in that order owns this date portion's rounding remainder (never another date's).
   // Never split the rounding operation per date or manufacture a minute outside the source.
   const anchor=slots[0];
   if(remaining>0&&(!anchor||!finalized.steps.some(step=>step.kind==='rounding'&&step.after>step.before)))
    return refuse('formulaAllocationUnavailable');
-  classes.push({dayClass,eligibleMinutes,payableMinutes:finalized.minutes,unplacedPayableMinutes:remaining,steps:finalized.steps,
+  classes.push({dayClass,calendarDate:date,eligibleMinutes,payableMinutes:finalized.minutes,unplacedPayableMinutes:remaining,steps:finalized.steps,
    ...(remaining>0?{roundingCountAttribution:{kind:'roundingCount' as const,minutes:remaining,direction,
     partSequence:anchor.index,calendarDate:parts[anchor.index].date,dayClass,anchor:{...anchor.interval}}}:{})});
  }

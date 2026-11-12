@@ -212,3 +212,35 @@ describe('Show Lateness Exception After Offset — the employee exception list',
     expect(refused?.latenessAfterOffsetMinutes).toBeNull();
   });
 });
+
+describe('approved order on a split night: split, method, lateness offset on the shift date, rounding last per date', () => {
+  // 09:00–18:00 shift; the employee arrives 20 minutes late, leaves 18:00, returns 22:00 and works to 02:00.
+  const night = (splitAtMidnight: boolean, rounding: AttendanceGroupPolicy['overtime']['rounding']) => input({
+    overtime: { splitAtMidnight, offsetLateness: true, rounding }, workedIntervals: [{ from: 560, to: 1080 }, { from: 1320, to: 1560 }],
+    eligibleActualIntervals: [{ from: 1320, to: 1560 }], lateOffsetIntervals: [{ from: 540, to: 560 }] });
+  const perDate = (r: ReturnType<typeof payable>) => r.parts.map(part => ({ date: part.date,
+    minutes: part.allocatedPayableMinutes + (r.classes.find(row => row.calendarDate === part.date)?.unplacedPayableMinutes ?? 0) }));
+  it('split ON, no rounding: the 20 late minutes come off the shift date only — 100 on 10-Nov, 120 on 11-Nov', () => {
+    const r = payable(night(true, { mode: 'none', step: null }));
+    expect(perDate(r)).toEqual([{ date: '2026-11-10', minutes: 100 }, { date: '2026-11-11', minutes: 120 }]);
+    expect(r.payableMinutes).toBe(220);
+  });
+  it.each([['down', 15, 90, 120], ['up', 15, 105, 120], ['down', 30, 90, 120], ['up', 45, 135, 135], ['down', 45, 90, 90]] as const)(
+    'split ON, round %s %i: each date rounds its own portion — 10-Nov %i, 11-Nov %i', (mode, step, shiftDate, nextDate) => {
+      const r = payable(night(true, { mode, step }));
+      expect(perDate(r)).toEqual([{ date: '2026-11-10', minutes: shiftDate }, { date: '2026-11-11', minutes: nextDate }]);
+      expect(r.classes.map(row => row.calendarDate)).toEqual(['2026-11-10', '2026-11-11']);
+    });
+  it('split OFF: one date, 240 − 20 = 220, rounded once', () => {
+    expect(perDate(payable(night(false, { mode: 'none', step: null })))).toEqual([{ date: '2026-11-10', minutes: 220 }]);
+    expect(payable(night(false, { mode: 'down', step: 15 })).payableMinutes).toBe(210);
+  });
+  it('only when the shift-date portion is exhausted does remaining lateness reach the next date\'s early overtime', () => {
+    // 150 minutes late against 120 shift-date minutes: 10-Nov 0, then 30 more off 11-Nov's 120 = 90.
+    const r = payable(input({ overtime: { splitAtMidnight: true, offsetLateness: true }, workedIntervals: [{ from: 690, to: 1080 }, { from: 1320, to: 1560 }],
+      eligibleActualIntervals: [{ from: 1320, to: 1560 }], lateOffsetIntervals: [{ from: 540, to: 690 }] }));
+    // The shift date's portion is consumed entirely (no part remains for it); the rest comes off the next date.
+    expect(r.parts.map(part => ({ date: part.date, minutes: part.allocatedPayableMinutes }))).toEqual([{ date: '2026-11-11', minutes: 90 }]);
+    expect(r.lateOffsetMinutes).toBe(150);
+  });
+});
