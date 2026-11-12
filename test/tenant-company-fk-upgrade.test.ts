@@ -555,7 +555,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const isCombinedPolicy=(row:(typeof afterPerformancePrivileges.policies)[number])=>combinedPolicies.some(policy=>policy.schemaname===row.schemaname&&policy.tablename===row.tablename&&policy.policyname===row.policyname);
   expect(afterPerformancePrivileges.policies.filter(isCombinedPolicy).map(row=>({...row,qual:digest(row.qual),with_check:digest(row.with_check)}))).toEqual(combinedPolicies);
   for(const rel of Object.keys(combinedRelations))expect(beforePerformancePrivileges.relations.some(row=>row.rel===rel),rel).toBe(false);
-  expect({
+  const terminalComparable={
    relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==receiptTable&&!sealTables.includes(row.rel)&&!isCombinedRelation(row.rel)).map(row=>
     row.rel===clockTable?{...row,acl:beforeClockTable?.acl}:row),
    columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable&&row.rel!==clockTable&&!isCombinedRelation(row.rel)),
@@ -563,7 +563,20 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)).map(row=>
     isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:
      isAssignmentPolicy(row)?{...row,qual:expectedAssignmentQuals[0]}:row),
-  }).toEqual(beforePerformancePrivileges);
+  };
+  {
+   const keyOf={relations:(r:Record<string,unknown>)=>String(r.rel),columns:(r:Record<string,unknown>)=>r.rel+'.'+r.col,functions:(r:Record<string,unknown>)=>String(r.fn),
+    policies:(r:Record<string,unknown>)=>r.schemaname+'.'+r.tablename+'.'+r.policyname};
+   const delta:Record<string,unknown>={};
+   for(const kind of ['relations','columns','functions','policies'] as const){
+    const before=new Map((beforePerformancePrivileges[kind] as Record<string,unknown>[]).map(r=>[keyOf[kind](r),JSON.stringify(r)]));
+    const after=new Map((terminalComparable[kind] as Record<string,unknown>[]).map(r=>[keyOf[kind](r),JSON.stringify(r)]));
+    delta[kind]={added:[...after].filter(([k])=>!before.has(k)).map(([,v])=>JSON.parse(v)),removed:[...before].filter(([k])=>!after.has(k)).map(([,v])=>JSON.parse(v)),
+     changed:[...after].filter(([k,v])=>before.has(k)&&before.get(k)!==v).map(([k,v])=>({before:JSON.parse(before.get(k)!),after:JSON.parse(v)}))};
+   }
+   console.log('[board-release-delta]'+JSON.stringify(delta));
+  }
+  expect(terminalComparable).toEqual(beforePerformancePrivileges);
   const complete=await ledger();expect(complete).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);expect(complete.slice(0,671)).toEqual(afterLedger);
   expect(complete.slice(0,performanceStart)).toEqual(beforePerformanceLedger);
   expect(complete.slice(671).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(APPROVED_UPGRADE_TAIL.map(entry=>({hash:hash(readFileSync('db/migrations/'+entry.tag+'.sql')),created_at:String(entry.when)})));
