@@ -430,7 +430,7 @@
     "profileOptions": "档案选项",
     "delegations": "审批委托",
     "policies": "政策",
-    "dashboardCardConfig": "仪表板卡片",
+    "dashboardCardConfig": "我的首页设置",
     "scheduledActions": "计划任务",
     "systemSettings": "系统设置",
     "systemExplorer": "依赖关系浏览器",
@@ -590,18 +590,7 @@
     "attendanceFormulaBuilder": "考勤公式"
   },
   "dashboard": {
-    "viewAll": "查看全部",
-    "leaveBalance": "假期余额",
-    "daysRemaining": "剩余 {cat, select, other {{v} 天}}",
-    "selectLeaveType": "选择假期类型",
-    "noLeaveTypes": "没有假期类型",
-    "onboardingThisWeek": "本周入职",
-    "startedLast7Days": "过去 7 天内入职",
-    "block_cards": "摘要卡片",
-    "block_plannedAbsences": "请假日历",
-    "block_recentlyJoined": "最近加入",
-    "block_upcomingEvents": "即将到来的活动",
-    "block_recentActivity": "最近活动"
+    "viewAll": "查看全部"
   },
   "people": {
     "employeeStatus": {

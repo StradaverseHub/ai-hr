@@ -757,7 +757,6 @@
       "switchAttestation": "此确认仅在启用直连服务商（Anthropic、OpenAI 或 Google）时适用。"
     },
     "recommendation": {
-      "show": "显示建议",
       "loading": "检查中…",
       "verdict": {
         "recommend_approve": "建议批准：所有检查均已通过",
@@ -2344,34 +2343,9 @@
     "suggestClaim": "提交报销",
     "suggestPay": "为什么我的工资不一样？",
     "suggestLetter": "获取在职证明信",
-    "needsYou": "需要您处理",
-    "needsYouEmpty": "目前没有需要您处理的事项。",
-    "readyToConfirm": "待您确认",
-    "doneForYou": "已为您完成",
-    "doneForYouEmpty": "过去 7 天内尚无为您完成的事项。",
-    "watching": "关注中",
-    "watchingEmpty": "目前没有需要关注的事项。",
-    "atAGlance": "一览",
-    "atAGlanceEmpty": "暂无可显示的内容。",
     "unavailable": "部分项目无法加载。其各自的页面仍可正常使用。",
-    "loading": "正在加载今天",
-    "more": "更多",
     "tasks": {
-      "from": "来自审批",
-      "received": "收到于 {date}",
-      "open": "打开",
-      "seeAll": "查看全部 {count} 项",
       "review": "审阅"
-    },
-    "prepared": {
-      "leaveApply": "已为您准备好休假申请",
-      "leaveCancel": "已为您准备好休假取消",
-      "leaveDecision": "已为您准备好休假决定",
-      "meta": "准备于 {date}",
-      "expires": "{date} 过期",
-      "cta": "审阅并确认",
-      "note": "已由休假服务检查。在您确认之前不会提交任何内容。",
-      "awaiting": "等待您确认"
     },
     "findings": {
       "setupTitle": "{count, plural, other {# 个设置阶段需要关注}}",
@@ -2434,35 +2408,6 @@
         "loop_document_expiry": "护照即将到期",
         "loop_salary_payroll": "薪资发放循环"
       }
-    },
-    "done": {
-      "answeredLabel": "已回答",
-      "checkedLabel": "已检查",
-      "preparedLabel": "已准备",
-      "answeredOthersTitle": "{count, plural, other {已回答 # 个员工问题}}",
-      "answeredOthersBody": "过去 7 天内，针对您当前范围内的公司。涉及敏感事项的问题会转交您的 HR 团队，不计入此处。",
-      "answeredYouTitle": "{count, plural, other {已回答您的 # 个问题}}",
-      "answeredYouBody": "过去 7 天内。",
-      "leaveChecksTitle": "{count, plural, other {已为您检查 # 项休假申请}}",
-      "leaveChecksBody": "余额、重叠、团队覆盖和政策，均由休假服务检查。决定仍由您作出。",
-      "preparedTitle": "{count, plural, other {已准备 # 项您委托的事项}}",
-      "preparedBody": "过去 7 天内，由您委托的任务完成。"
-    },
-    "watch": {
-      "deadlineLabel": "截止日期",
-      "deadlineTitle": "{count, plural, other {# 份 CP22 或 CP22A 通知需要提交}}",
-      "deadlineOverdue": "{count, plural, other {其中 # 份已逾期。}}",
-      "deadlineBody": "7 天内到期，来自法定合规工作清单。",
-      "deadlinePartial": "已检查范围内前 {n} 家公司（共 {total} 家）。",
-      "deadlineCta": "打开法定表格",
-      "exceptionsLabel": "薪资",
-      "exceptionsTitle": "{count, plural, other {# 个薪资异常尚未处理}}",
-      "exceptionsBlocking": "{count, plural, =0 {没有异常阻止薪资运行。} other {其中 # 个阻止薪资运行。}}",
-      "exceptionsCta": "打开异常",
-      "expiryLabel": "即将到期",
-      "passportTitle": "{count, plural, other {# 本已记录的护照将在 30 天内到期}}",
-      "passportBody": "最早的一本于 {date} 到期。",
-      "passportCta": "打开人员"
     },
     "glance": {
       "balances": "假期余额",
