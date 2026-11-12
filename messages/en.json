@@ -430,7 +430,7 @@
     "profileOptions": "Profile Options",
     "delegations": "Approval Delegation",
     "policies": "Policies",
-    "dashboardCardConfig": "Dashboard cards",
+    "dashboardCardConfig": "My Home settings",
     "scheduledActions": "Scheduled actions",
     "systemSettings": "System Settings",
     "systemExplorer": "Dependency explorer",
@@ -592,18 +592,7 @@
     "attendanceApproveOnBehalf": "Approve On Behalf"
   },
   "dashboard": {
-    "viewAll": "View all",
-    "leaveBalance": "Leave balance",
-    "daysRemaining": "{cat, select, one {{v} day} other {{v} days}} remaining",
-    "selectLeaveType": "Select leave type",
-    "noLeaveTypes": "No leave types",
-    "onboardingThisWeek": "Onboarding this week",
-    "startedLast7Days": "Started in the last 7 days",
-    "block_cards": "Summary Cards",
-    "block_plannedAbsences": "Leave Calendar",
-    "block_recentlyJoined": "Recently Joined",
-    "block_upcomingEvents": "Upcoming Events",
-    "block_recentActivity": "Recent Activity"
+    "viewAll": "View all"
   },
   "people": {
     "employeeStatus": {

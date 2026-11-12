@@ -430,7 +430,7 @@
     "profileOptions": "Tùy chọn hồ sơ",
     "delegations": "Ủy quyền phê duyệt",
     "policies": "Chính sách",
-    "dashboardCardConfig": "Thẻ bảng điều khiển",
+    "dashboardCardConfig": "Cài đặt trang chủ của tôi",
     "scheduledActions": "Tác vụ theo lịch",
     "systemSettings": "Cài đặt hệ thống",
     "systemExplorer": "Trình khám phá phụ thuộc",
@@ -592,18 +592,7 @@
     "attendanceApproveOnBehalf": "Phê duyệt thay"
   },
   "dashboard": {
-    "viewAll": "Xem tất cả",
-    "leaveBalance": "Số ngày phép còn lại",
-    "daysRemaining": "còn {cat, select, other {{v} ngày}}",
-    "selectLeaveType": "Chọn loại nghỉ phép",
-    "noLeaveTypes": "Không có loại nghỉ phép",
-    "onboardingThisWeek": "Nhân viên mới tuần này",
-    "startedLast7Days": "Bắt đầu trong 7 ngày qua",
-    "block_cards": "Thẻ tóm tắt",
-    "block_plannedAbsences": "Lịch nghỉ phép",
-    "block_recentlyJoined": "Mới tham gia",
-    "block_upcomingEvents": "Sự kiện sắp tới",
-    "block_recentActivity": "Hoạt động gần đây"
+    "viewAll": "Xem tất cả"
   },
   "people": {
     "employeeStatus": {

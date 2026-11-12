@@ -430,7 +430,7 @@
     "profileOptions": "Pilihan Profil",
     "delegations": "Perwakilan Kelulusan",
     "policies": "Polisi",
-    "dashboardCardConfig": "Kad papan pemuka",
+    "dashboardCardConfig": "Tetapan Home Saya",
     "scheduledActions": "Tugas Berjadual",
     "systemSettings": "Tetapan Sistem",
     "systemExplorer": "Peneroka kebergantungan",
@@ -592,18 +592,7 @@
     "attendanceApproveOnBehalf": "Lulus Bagi Pihak"
   },
   "dashboard": {
-    "viewAll": "Lihat semua",
-    "leaveBalance": "Baki cuti",
-    "daysRemaining": "{cat, select, other {{v} hari}} berbaki",
-    "selectLeaveType": "Pilih jenis cuti",
-    "noLeaveTypes": "Tiada jenis cuti",
-    "onboardingThisWeek": "Pengambilan baharu minggu ini",
-    "startedLast7Days": "Bermula dalam 7 hari lepas",
-    "block_cards": "Kad Ringkasan",
-    "block_plannedAbsences": "Kalendar Cuti",
-    "block_recentlyJoined": "Baru Menyertai",
-    "block_upcomingEvents": "Acara Akan Datang",
-    "block_recentActivity": "Aktiviti Terkini"
+    "viewAll": "Lihat semua"
   },
   "people": {
     "employeeStatus": {

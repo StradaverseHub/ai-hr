@@ -88,7 +88,9 @@ describe('approver recommendation', () => {
     // or a partner's link opens /approvals (test/today-admin-page.dom.test.tsx, test/employee-home-landing.test.ts).
     expect(fs.existsSync(path.join(ROOT, 'app/assistant/centre/inbox.tsx'))).toBe(false);
     expect(fs.existsSync(path.join(ROOT, 'components/today/sections.tsx'))).toBe(false);
-    expect(read('components/ai-centre/leave-recommendation.tsx')).toContain('prefetch={false}');
+    // The never-prefetched "Show the recommendation" link left with the earlier Today (LeaveRecommendationLink, 12 Nov
+    // 2026); the panel file now holds no link at all, so nothing in it can prefetch a recommendation.
+    expect(read('components/ai-centre/leave-recommendation.tsx')).not.toContain("from 'next/link'");
     const action = read('app/assistant/centre/recommendation.ts');
     expect(action).toContain('z.guid().safeParse(leaveRequestId)');
     expect(action).toContain('await recommendLeaveDecision(session, { leaveRequestId: id.data })');

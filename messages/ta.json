@@ -430,7 +430,7 @@
     "profileOptions": "சுயவிவர விருப்பங்கள்",
     "delegations": "ஒப்புதல் ஒப்படைப்பு",
     "policies": "கொள்கைகள்",
-    "dashboardCardConfig": "டாஷ்போர்டு அட்டைகள்",
+    "dashboardCardConfig": "எனது முகப்புப் பக்க அமைப்புகள்",
     "scheduledActions": "திட்டமிட்ட பணிகள்",
     "systemSettings": "அமைப்பு அமைவுகள்",
     "systemExplorer": "சார்பு ஆய்வி",
@@ -592,18 +592,7 @@
     "attendanceApproveOnBehalf": "சார்பாக ஒப்புதல்"
   },
   "dashboard": {
-    "viewAll": "அனைத்தையும் காண்",
-    "leaveBalance": "விடுப்பு இருப்பு",
-    "daysRemaining": "{cat, select, one {{v} நாள்} other {{v} நாட்கள்}} மீதம்",
-    "selectLeaveType": "விடுப்பு வகையைத் தேர்ந்தெடுக்கவும்",
-    "noLeaveTypes": "விடுப்பு வகைகள் இல்லை",
-    "onboardingThisWeek": "இந்த வாரம் சேர்ந்தவர்கள்",
-    "startedLast7Days": "கடந்த 7 நாட்களில் சேர்ந்தனர்",
-    "block_cards": "சுருக்க அட்டைகள்",
-    "block_plannedAbsences": "விடுப்பு நாட்காட்டி",
-    "block_recentlyJoined": "சமீபத்தில் சேர்ந்தவர்கள்",
-    "block_upcomingEvents": "வரவிருக்கும் நிகழ்வுகள்",
-    "block_recentActivity": "சமீபத்திய செயல்பாடு"
+    "viewAll": "அனைத்தையும் காண்"
   },
   "people": {
     "employeeStatus": {

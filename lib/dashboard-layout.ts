@@ -96,91 +96,20 @@ export type DashboardCardChoice = {
 /** The persisted per-user layout: which cards are shown, and the full ordering of available cards. */
 export type DashboardLayout = { selected: string[]; order: string[] };
 
-// ───────────────────────── Two-dimensional widget grid (feedback dashgrid → 2806443b) ─────────────────────────
-//
-// v3 turned the single-column customiser into a 2-D grid; feedback 2806443b reshapes it into THREE areas:
-// a draggable FIRST ROW (`row1`) of up to MAX_FIRST_ROW summary cards, a FIXED SECOND ROW (`row2`) of
-// full-width cards, and a flexible THIRD AREA (`row3`) below it where every remaining selected card
-// lands. Shortcut/action cards (incl. pendingTasks) are not pinned — they are ordinary removable cards.
-//
-// a00c4f64 emptied FIXED_ROW_KEYS: the Leave Calendar was the only full-width card and it moved to its
-// own screen. The three-area split is unchanged and row2 simply comes back empty, which both grids
-// already handled (they render the fixed row only when it has members).
-//
-// Row membership is DERIVED from FIXED_ROW_KEYS, NOT persisted — the stored shape stays `{ selected,
-// order }` and every existing saved layout keeps loading unchanged (back-compat: a legacy layout simply
-// partitions into the three areas on read). DESIGN DECISION: pinning (position) is deliberately NOT
-// derived from the `mandatory` flag — mandatory is per-tenant HR-editable policy governing REMOVABILITY,
-// and HR flagging a summary card mandatory must not yank it out of row 1 into the full-width row. Grey
-// drop-zone outlines + widget auto-resize are DEFERRED.
-
-/** Maximum widgets across the draggable first row (the "top row"); extra selected cards land in row 3. */
-export const MAX_FIRST_ROW = 4;
-
-/**
- * The cardKeys pinned to the full-width fixed second row (feedback 2806443b). The single pin rule
- * consumed by BOTH the employee customizer and the admin settings page — position is a product rule
- * keyed on the cardKey; removability is the separate per-tenant `mandatory` flag.
- *
- * EMPTY since a00c4f64: the Leave Calendar was the only pinned key, and it left the dashboard for its
- * own screen (/leave/tracker, "Team Leave Tracker"). The constant and the rule STAY — every consumer
- * derives row membership from it and both grids already render nothing for an empty fixed row, so the
- * next card that has to span the full width is a one-line change here rather than a re-plumb.
- */
-export const FIXED_ROW_KEYS: readonly string[] = [];
-const FIXED_ROW = new Set<string>(FIXED_ROW_KEYS);
-
-/** Is `key` pinned to the full-width fixed second row? */
-export function isFixedRowKey(key: string): boolean {
-  return FIXED_ROW.has(key);
-}
+// The old dashboard's widget grid (feedback dashgrid → 2806443b: a top row, a pinned full-width row and an area
+// below, with the row split in partitionDashboardRows) was retired with the customizer that drew it (owner decision,
+// 12 Nov 2026). The stored shape stays `{ selected, order }`, and every saved layout is still normalised below.
 
 // ───────────────────────── The Shortcuts section (feedback 3d2bc793) ─────────────────────────
 //
-// Shortcut cards were ordinary cards: adding one dropped it wherever the flat order happened to put it —
-// usually alone below the Leave Calendar — and there was no cap and no section to speak of. They now
-// gather into their OWN row of mini cards between the top row and the pinned calendar, holding up to
-// MAX_SHORTCUTS of them in an order the employee sets.
-//
-// Same rule as the pinned row: membership is DERIVED (from the card's HR-configured `cardType`), never
-// persisted. The stored shape is still `{ selected, order }`, so a layout saved before this change loads
+// Shortcut cards are capped at MAX_SHORTCUTS (normalizeDashboardLayout enforces it on every read and write).
+// Membership is DERIVED (from the card's HR-configured `cardType`), never persisted. The stored shape is still `{ selected, order }`, so a layout saved before this change loads
 // unchanged and every non-shortcut card keeps exactly the position it had — only cards HR typed as
 // 'shortcut' move, which is the point. 'action' cards (Pending Tasks) are deliberately NOT shortcuts:
 // they render a bespoke server node in the top row and must stay there.
 
 /** Maximum shortcut mini cards an employee may show in the Shortcuts section. */
 export const MAX_SHORTCUTS = 4;
-
-/** A layout split into the top row, the Shortcuts row, the fixed (pinned) row, and the third area below. */
-export type DashboardRows = { row1: string[]; shortcuts: string[]; row2: string[]; row3: string[] };
-
-/**
- * Split a normalised layout's SELECTED cards, preserving the layout's order: `row2` = the pinned cards
- * (`pinned` names them — FIXED_ROW_KEYS in production, empty since a00c4f64), `shortcuts` = the cards
- * `shortcuts` names (the tenant's 'shortcut'-typed cards), `row1` = the first MAX_FIRST_ROW remaining
- * cards, `row3` = every remaining card. Pure / framework-free so both the server page and the
- * client customize island can call it. `shortcuts` defaults to empty, which reproduces the pre-3d2bc793
- * three-way split exactly.
- */
-export function partitionDashboardRows(
-  layout: DashboardLayout,
-  pinned: Iterable<string>,
-  shortcuts: Iterable<string> = [],
-): DashboardRows {
-  const pinnedSet = new Set(pinned);
-  const shortcutSet = new Set(shortcuts);
-  const row1: string[] = [];
-  const row2: string[] = [];
-  const row3: string[] = [];
-  const shortcutRow: string[] = [];
-  for (const key of layout.selected) {
-    if (pinnedSet.has(key)) row2.push(key);
-    else if (shortcutSet.has(key)) shortcutRow.push(key);
-    else if (row1.length < MAX_FIRST_ROW) row1.push(key);
-    else row3.push(key);
-  }
-  return { row1, shortcuts: shortcutRow, row2, row3 };
-}
 
 /**
  * Built-in default card catalog — the flattened R39 set, used as a safe fallback when a tenant has NO

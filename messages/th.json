@@ -430,7 +430,7 @@
     "profileOptions": "ตัวเลือกโปรไฟล์",
     "delegations": "การมอบหมายการอนุมัติ",
     "policies": "นโยบาย",
-    "dashboardCardConfig": "การ์ดแดชบอร์ด",
+    "dashboardCardConfig": "การตั้งค่าหน้าแรกของฉัน",
     "scheduledActions": "งานตามกำหนดเวลา",
     "systemSettings": "การตั้งค่าระบบ",
     "systemExplorer": "ตัวสำรวจการพึ่งพา",
@@ -592,18 +592,7 @@
     "attendanceApproveOnBehalf": "อนุมัติแทน"
   },
   "dashboard": {
-    "viewAll": "ดูทั้งหมด",
-    "leaveBalance": "ยอดวันลาคงเหลือ",
-    "daysRemaining": "เหลือ {cat, select, other {{v} วัน}}",
-    "selectLeaveType": "เลือกประเภทการลา",
-    "noLeaveTypes": "ไม่มีประเภทการลา",
-    "onboardingThisWeek": "พนักงานใหม่สัปดาห์นี้",
-    "startedLast7Days": "เริ่มงานใน 7 วันที่ผ่านมา",
-    "block_cards": "การ์ดสรุป",
-    "block_plannedAbsences": "ปฏิทินการลา",
-    "block_recentlyJoined": "เข้าร่วมล่าสุด",
-    "block_upcomingEvents": "กิจกรรมที่กำลังจะมาถึง",
-    "block_recentActivity": "กิจกรรมล่าสุด"
+    "viewAll": "ดูทั้งหมด"
   },
   "people": {
     "employeeStatus": {
