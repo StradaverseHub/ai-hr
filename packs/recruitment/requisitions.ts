@@ -380,16 +380,19 @@ export async function dissociateJob(s: SessionContext, id: unknown, jobId: unkno
 
 /** "Create job" from a requisition: the new-position form's pre-fill, read on the server. */
 export async function requisitionJobPrefill(s: SessionContext, id: unknown) {
-  return withRecruitmentTenant(s, async (tx) => {
-    const r = await requisitionTx(tx, s, id);
-    await assertCompanyTx(tx, r.companyId);
-    if (r.status === 'completed' || r.status === 'cancelled') throw new RecruitmentError('requisition_terminal');
-    return {
-      requisitionId: r.id, reqNumber: r.reqNumber, companyId: r.companyId,
-      values: { title: r.title, description: r.description, jobGradeIds: r.jobGradeIds, workLocation: r.workLocation, recruitmentType: r.recruitmentType, employmentType: r.employmentType, departmentId: r.departmentId },
-      recruiterUserId: r.recruiterUserId,
-    };
-  });
+  return withRecruitmentTenant(s, (tx) => requisitionJobPrefillTx(tx, s, id));
+}
+/** The requisition's job values for "Create job" (administrators; not a completed or cancelled requisition). Read-only. Slice 15
+ *  merges these over a position template's (./position-templates). */
+export async function requisitionJobPrefillTx(tx: Tx, s: SessionContext, id: unknown) {
+  const r = await requisitionTx(tx, s, id);
+  await assertCompanyTx(tx, r.companyId);
+  if (r.status === 'completed' || r.status === 'cancelled') throw new RecruitmentError('requisition_terminal');
+  return {
+    requisitionId: r.id, reqNumber: r.reqNumber, companyId: r.companyId,
+    values: { title: r.title, description: r.description, jobGradeIds: r.jobGradeIds, workLocation: r.workLocation, recruitmentType: r.recruitmentType, employmentType: r.employmentType, departmentId: r.departmentId },
+    recruiterUserId: r.recruiterUserId,
+  };
 }
 
 // ── My approvals ─────────────────────────────────────────────────────────────────────────────────────────

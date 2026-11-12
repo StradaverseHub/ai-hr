@@ -101,6 +101,11 @@ export const recruitmentJobOpening = pgTable('recruitment_job_opening', {
    *  careersPostedAt is set by the database when the flag is turned on and cleared when it is turned off. */
   showOnCareersPage: boolean('show_on_careers_page').notNull().default(false),
   careersPostedAt: ts('careers_posted_at'),
+  /** Slice 15 (5216): the position template the job was created from (reporting only; cleared if the template is deleted). */
+  createdFromTemplateId: uuid('created_from_template_id'),
+  /** Slice 15 (5216): the job's interview plan — one evaluation form (scorecard template) per round, in order; empty = the
+   *  default rounds (D-005). */
+  interviewPlanFormIds: uuid('interview_plan_form_ids').array().notNull().default([]),
   ...audit,
 });
 
@@ -188,6 +193,8 @@ export const recruitmentCompanySetting = pgTable('recruitment_company_setting', 
   repeatWindowMonths: integer('repeat_window_months').notNull().default(3),
   // Slice 7 (5207): days a referral of a candidate keeps the first referrer's credit; 0 = off.
   referralProtectionDays: integer('referral_protection_days').notNull().default(180),
+  // Slice 15 (5216): "New position from template" is offered in the company.
+  positionTemplatesEnabled: boolean('position_templates_enabled').notNull().default(false),
   ...audit,
 });
 

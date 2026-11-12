@@ -260,10 +260,10 @@ describe('case 8 — users without access cannot read or move applications', () 
       from pg_class c join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'recruitment\\_%' order by c.relname`);
     // Slices 2–4 (5202–5204) add fourteen tables, slice 5 (5205) seven, slice 7 (5207) one, slice 8 (5208) three, slice 9
-    // (5209) one, slice 10 (5210) nine, slice 11 (5211) two, slice 12 (5212) five, slice 13 (5213) seven and slice 14 (5215) five; test/recruitment-slices-service.test.ts,
+    // (5209) one, slice 10 (5210) nine, slice 11 (5211) two, slice 12 (5212) five, slice 13 (5213) seven, slice 14 (5215) five and slice 15 (5216) two; test/recruitment-slices-service.test.ts,
     // test/recruitment-candidate-privacy.test.ts, test/recruitment-referrals.test.ts, test/recruitment-careers.test.ts,
-    // test/recruitment-tasks.test.ts, test/recruitment-agencies.test.ts, test/recruitment-screening.test.ts, test/recruitment-pools.test.ts and
-    // test/recruitment-blocked-list.test.ts and test/recruitment-custom-fields.test.ts check them in detail.
+    // test/recruitment-tasks.test.ts, test/recruitment-agencies.test.ts, test/recruitment-screening.test.ts, test/recruitment-pools.test.ts,
+    // test/recruitment-blocked-list.test.ts, test/recruitment-custom-fields.test.ts and test/recruitment-position-templates.test.ts check them in detail.
     expect(rows.map((r) => r.relname)).toEqual([
       'recruitment_agency', 'recruitment_agency_consultant', 'recruitment_agency_contract', 'recruitment_agency_contract_terms', 'recruitment_agency_contract_user',
       'recruitment_agency_submission', 'recruitment_agency_tag', 'recruitment_agency_tag_link',
@@ -273,6 +273,7 @@ describe('case 8 — users without access cannot read or move applications', () 
       'recruitment_candidate_consent', 'recruitment_candidate_custom_restricted', 'recruitment_candidate_custom_value', 'recruitment_candidate_entry', 'recruitment_candidate_file', 'recruitment_candidate_restricted', 'recruitment_candidate_tag',
       'recruitment_careers_application', 'recruitment_careers_notice', 'recruitment_careers_site', 'recruitment_company_setting', 'recruitment_custom_field', 'recruitment_custom_field_option', 'recruitment_evaluation_form', 'recruitment_hire_handoff', 'recruitment_interview', 'recruitment_interview_interviewer',
       'recruitment_job_agency_contract', 'recruitment_job_custom_value', 'recruitment_job_member', 'recruitment_job_opening', 'recruitment_offer', 'recruitment_offer_approval', 'recruitment_offer_field', 'recruitment_offer_value',
+      'recruitment_position_template', 'recruitment_position_template_value',
       'recruitment_process', 'recruitment_process_stage', 'recruitment_referral', 'recruitment_requisition', 'recruitment_requisition_approval',
       'recruitment_requisition_job', 'recruitment_scorecard', 'recruitment_screening_answer', 'recruitment_screening_request', 'recruitment_stage', 'recruitment_tag', 'recruitment_tag_group', 'recruitment_talent_pool',
       'recruitment_talent_pool_member', 'recruitment_talent_pool_share', 'recruitment_task_read_marker',

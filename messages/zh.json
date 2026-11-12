@@ -38063,7 +38063,9 @@
       "custom_field_required": "请填写“更多信息”中所有必填字段（标有 *）。",
       "custom_value_invalid": "“更多信息”中的某个值不符合其字段要求。请检查数字的范围和小数位数（小数请用小数点，例如 2.5，而不是 2,5）、日期以及选项。",
       "custom_field_limit": "该公司的自定义字段或选项已达上限（每类最多启用 50 个字段，共 500 个，每个字段 100 个选项）。请先停用或删除一个。",
-      "required_needs_option": "必填的选择字段至少需要一个已启用的选项。请先添加或启用一个选项，或将该字段改为选填。"
+      "required_needs_option": "必填的选择字段至少需要一个已启用的选项。请先添加或启用一个选项，或将该字段改为选填。",
+      "template_unavailable": "无法使用此职位模板：模板已停用或删除，或公司已关闭模板功能。请从空白表单开始，或选择其他模板。",
+      "template_limit": "公司的职位模板已达允许的上限（200 个）。请先删除不再使用的模板。"
     },
     "overview": {
       "purpose": "您所管理招聘的各公司今天的招聘工作。",
@@ -38151,7 +38153,8 @@
         "departmentId": "部门",
         "processId": "招聘流程",
         "member": "团队成员",
-        "requisition": "招聘需求"
+        "requisition": "招聘需求",
+        "interviewPlan": "面试计划（请填写所用最后一轮之前的每一轮）"
       },
       "company": "公司",
       "switchCompany": "使用此公司",
@@ -38221,7 +38224,20 @@
         "notPublished": "招聘页面尚未发布。请在“设置 › 招聘页面”中发布。",
         "publicLink": "公开链接",
         "postedOn": "自 {date} 起在招聘页面上显示"
-      }
+      },
+      "plan": {
+        "title": "面试计划",
+        "note": "为每一轮选择评估表。将最后几轮留空即可在此结束计划。",
+        "noForms": "公司还没有评估表。请在“设置 › 面试”中添加。",
+        "noRound": "无此轮",
+        "disabledForm": "{name}（已停用）",
+        "asPlanned": "按该轮的计划",
+        "roundForm": "{round}：{form}",
+        "formUnavailable": "评估表已不可用，将使用公司默认评估表",
+        "problem": "请填写所用最后一轮之前的每一轮，每轮使用本公司已启用的评估表。"
+      },
+      "fieldRequired": "请填写此字段。",
+      "fieldInvalid": "请检查此值。"
     },
     "candidates": {
       "purpose": "按阶段查看申请。可推进候选人、选择其他阶段，或注明原因后拒绝。",
@@ -38322,7 +38338,8 @@
         "agencies": "猎头机构",
         "checks": "背景调查",
         "pools": "人才库",
-        "fields": "自定义字段"
+        "fields": "自定义字段",
+        "templates": "职位模板"
       },
       "iv": {
         "rulesTitle": "反馈规则",
@@ -39682,6 +39699,61 @@
         "optionInUse": "已有记录选择了此选项，因此不能删除。取消勾选“已启用”即可停止提供。",
         "addOption": "添加选项"
       }
+    },
+    "templates": {
+      "note": "模板保存贵公司常用的职位信息，让新职位一开始就预先填好。保存前可以修改任何内容；职位不会与模板保持关联：之后修改模板不会改变已有职位。",
+      "settingLabel": "提供“从模板新建职位”",
+      "settingNote": "开启后，创建职位的人员可以从下方已启用的模板开始，也可以在招聘需求的“创建职位”中使用。",
+      "on": "已开启",
+      "off": "已关闭",
+      "save": "保存",
+      "listTitle": "模板",
+      "new": "新建模板",
+      "empty": "还没有模板。请根据贵公司最常用的职位信息创建一个。",
+      "enabled": "已启用",
+      "disabled": "已停用",
+      "rounds": "{count, plural, other {# 轮面试}}",
+      "customValues": "{count, plural, other {# 个自定义字段}}",
+      "positions": "{count, plural, =0 {尚无由此模板创建的职位} other {已由此模板创建 # 个职位}}",
+      "changed": "最近由 {by} 于 {at} 修改",
+      "unnamedUser": "未命名用户",
+      "edit": "编辑",
+      "disable": "停用",
+      "enable": "启用",
+      "disableNamed": "停用 {name}",
+      "enableNamed": "启用 {name}",
+      "delete": "删除",
+      "deleteNamed": "删除 {name}",
+      "deleteNote": "删除模板不会改变由它创建的任何职位；这些职位只是不再显示来源模板。",
+      "editTitle": "编辑模板：{name}",
+      "newTitle": "新建职位模板",
+      "backToList": "返回模板列表",
+      "name": "模板名称",
+      "nameNote": "在选择模板时显示。公司内每个名称只能使用一次。",
+      "defaultProcess": "公司的默认流程",
+      "enabledLabel": "已启用（新建职位时可选）",
+      "saveTemplate": "保存模板",
+      "fromTemplateTitle": "从模板新建职位",
+      "fromTemplateNote": "以某个模板的职位信息开始。保存前可以修改所有内容。",
+      "fromTemplateRequisitionNote": "保留招聘需求自身的信息（职位名称、职级、工作地点、类型和部门），其余由模板填写。",
+      "chooseTemplate": "模板",
+      "choose": "选择模板",
+      "useTemplate": "使用模板",
+      "startBlank": "改为从空白表单开始",
+      "fromTemplate": "已根据模板“{name}”预填。保存前请核对信息。",
+      "notes": {
+        "title": "此模板的部分内容已不可用，已留空：",
+        "process": "其招聘流程已停用或删除。请选择一个流程。",
+        "department": "其部门已不可用。如有需要请选择部门。",
+        "businessUnit": "其业务单元已不可用。如有需要请选择业务单元。",
+        "jobLevels": "{count, plural, other {# 个职级}}已不再适用于本公司，已移除。",
+        "interviewRound": "{round}：此轮的评估表已不可用。请选择其他评估表，或删除此轮及其之后的各轮。",
+        "customFields": "{count, plural, other {# 个自定义字段值}}未复制，因为相应字段已停用、删除或更改。",
+        "customValue": "{field}：保存的答案已不符合该字段（某个选项已停用或移除，或允许范围已更改）。请重新填写。",
+        "unnamedField": "某个自定义字段"
+      },
+      "notFound": "此模板已不存在，可能已被删除。",
+      "nameProblem": "请使用其他名称：本公司的另一个模板已使用该名称（最多 120 个字符）。"
     }
   },
   "careersPublic": {

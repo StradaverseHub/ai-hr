@@ -448,6 +448,9 @@ export type JobFormOptions = {
   users: UserLabel[];
   /** Slice 14: the company's enabled custom job fields, in order (no values: a new job). */
   customFields: CustomFieldView[];
+  /** Slice 15: the company's evaluation forms (scorecard templates) for an interview plan; disabled ones are offered only where a
+   *  plan already holds them. */
+  forms: { id: string; name: string; enabled: boolean; isDefault: boolean }[];
 };
 
 /** Everything a job form for `companyId` offers. Seeds the company's defaults first. */
@@ -457,7 +460,8 @@ export async function jobFormOptions(s: SessionContext, companyId: string): Prom
     return jobFormOptionsTx(tx, s, companyId);
   });
 }
-async function jobFormOptionsTx(tx: Tx, s: SessionContext, companyId: string): Promise<JobFormOptions> {
+/** The same, read-only (no seeding): slice 15's template editor and "New position from template". */
+export async function jobFormOptionsTx(tx: Tx, s: SessionContext, companyId: string): Promise<JobFormOptions> {
   const processes = await tx.select({ id: recruitmentProcess.id, name: recruitmentProcess.name, enabled: recruitmentProcess.enabled })
     .from(recruitmentProcess).where(and(eq(recruitmentProcess.tenantId, s.tenantId), eq(recruitmentProcess.companyId, companyId)))
     .orderBy(asc(recruitmentProcess.name));
@@ -473,7 +477,22 @@ async function jobFormOptionsTx(tx: Tx, s: SessionContext, companyId: string): P
       and (b.company_id = ${companyId}::uuid or b.is_global) order by b.name`);
   const users = [...(await userLabelsTx(tx, companyId)).values()].filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name));
   const customFields = await newRecordCustomFieldsTx(tx, s, 'job', companyId);
-  return { companyId, processes, grades: [...grades], departments: [...departments], businessUnits: [...businessUnits], users, customFields };
+  const forms = await tx.select({ id: recruitmentEvaluationForm.id, name: recruitmentEvaluationForm.name, enabled: recruitmentEvaluationForm.enabled, isDefault: recruitmentEvaluationForm.isDefault })
+    .from(recruitmentEvaluationForm).where(and(eq(recruitmentEvaluationForm.tenantId, s.tenantId), eq(recruitmentEvaluationForm.companyId, companyId)))
+    .orderBy(sql`${recruitmentEvaluationForm.isDefault} desc`, asc(recruitmentEvaluationForm.name));
+  return { companyId, processes, grades: [...grades], departments: [...departments], businessUnits: [...businessUnits], users, customFields, forms };
+}
+
+/**
+ * Slice 15: an interview plan's forms that are NEW to it (not in `kept`) must be enabled evaluation forms of the company; a form the
+ * plan already held may since have been disabled (5216's job guard allows the same).
+ */
+async function assertPlanFormsTx(tx: Tx, s: SessionContext, companyId: string, plan: readonly string[], kept: readonly string[] = []): Promise<void> {
+  const added = [...new Set(plan.filter((id) => !kept.includes(id)))];
+  if (!added.length) return;
+  const [row] = await tx.execute<{ n: number }>(sql`select count(*)::int as n from recruitment_evaluation_form
+    where tenant_id = ${s.tenantId}::uuid and company_id = ${companyId}::uuid and enabled and id = any(${uuidArray(added)}::uuid[])`);
+  if ((row?.n ?? 0) !== added.length) throw new RecruitmentError('invalid_input', ['interviewPlan']);
 }
 
 /** Grades must be live grades of this tenant offered to the company. */
@@ -507,7 +526,7 @@ function validJob(input: JobInput): ValidJob {
 }
 
 /** Create a job opening. Required fields are refused here whatever the form sent; the number is allocated in SQL. */
-export async function createJob(s: SessionContext, input: JobInput & { recruiterUserId?: unknown; requisitionId?: unknown; custom?: RawCustomValues }): Promise<{ id: string; jobNumber: string }> {
+export async function createJob(s: SessionContext, input: JobInput & { recruiterUserId?: unknown; requisitionId?: unknown; custom?: RawCustomValues; templateId?: unknown }): Promise<{ id: string; jobNumber: string }> {
   const job = validJob(input);
   const user = actorId(s);
   return withRecruitmentTenant(s, async (tx) => {
@@ -515,11 +534,25 @@ export async function createJob(s: SessionContext, input: JobInput & { recruiter
     await assertGradesTx(tx, s, job.companyId, job.jobGradeIds);
     const processId = job.processId ?? await defaultProcessTx(tx, s, job.companyId);
     await assertProcessUsableTx(tx, s, job.companyId, processId);
+    // Slice 15: the plan's forms, and the template the job starts from (recorded for reporting only; every rule above and below is
+    // the normal one). The template must be an ENABLED one of this company while the company's setting is on (5216 refuses too).
+    const interviewPlanFormIds = job.interviewPlanFormIds ?? [];
+    await assertPlanFormsTx(tx, s, job.companyId, interviewPlanFormIds);
+    let templateId: string | null = null;
+    if (input.templateId != null && input.templateId !== '') {
+      if (!isUuid(input.templateId)) throw new RecruitmentError('template_unavailable');
+      const [tpl] = await tx.execute<{ id: string }>(sql`select t.id from recruitment_position_template t
+        join recruitment_company_setting cs on cs.company_id = t.company_id and cs.tenant_id = t.tenant_id and cs.position_templates_enabled
+        where t.id = ${input.templateId}::uuid and t.tenant_id = ${s.tenantId}::uuid and t.company_id = ${job.companyId}::uuid and t.enabled`);
+      if (!tpl) throw new RecruitmentError('template_unavailable');
+      templateId = tpl.id;
+    }
     const [row] = await tx.insert(recruitmentJobOpening).values({
       tenantId: s.tenantId, companyId: job.companyId, jobNumber: 'MJ000000', title: job.title, description: job.description,
       jobGradeIds: job.jobGradeIds, workLocation: job.workLocation, recruitmentType: job.recruitmentType, employmentType: job.employmentType,
       replacedEmploymentId: job.replacedEmploymentId, businessUnitId: job.businessUnitId, departmentId: job.departmentId,
       positionAttribute: job.positionAttribute, processId, autoArchiveAfterReject: job.autoArchiveAfterReject,
+      interviewPlanFormIds, createdFromTemplateId: templateId,
       createdByUserId: user, updatedByUserId: user,
     }).returning({ id: recruitmentJobOpening.id, jobNumber: recruitmentJobOpening.jobNumber });
     if (isUuid(input.recruiterUserId)) await addMemberTx(tx, s, row.id, job.companyId, 'recruiter', input.recruiterUserId);
@@ -536,7 +569,7 @@ export async function createJob(s: SessionContext, input: JobInput & { recruiter
     }
     await appendEvent(tx, {
       tenantId: s.tenantId, aggregateType: 'recruitment-job', aggregateId: row.id, eventType: 'recruitment-job.created', actor: actorOf(s),
-      payload: { companyId: job.companyId, jobNumber: row.jobNumber, processId, requisitionId },
+      payload: { companyId: job.companyId, jobNumber: row.jobNumber, processId, requisitionId, templateId, interviewRounds: interviewPlanFormIds.length },
     });
     // Slice 14: the custom job fields of the form, checked (type, range, options, required) and saved with the job — all or nothing.
     if (input.custom) await saveRecordCustomValuesTx(tx, s, 'job', { id: row.id, companyId: job.companyId }, input.custom);
@@ -632,10 +665,13 @@ export async function updateJob(s: SessionContext, jobId: string, input: JobInpu
       await assertProcessUsableTx(tx, s, current.companyId, processId);
     }
     await assertGradesTx(tx, s, current.companyId, job.jobGradeIds);
+    // Slice 15: the interview plan, when the form carried it (Job settings and New position); otherwise it stays as it is.
+    if (job.interviewPlanFormIds) await assertPlanFormsTx(tx, s, current.companyId, job.interviewPlanFormIds, current.interviewPlanFormIds);
     await tx.update(recruitmentJobOpening).set({
       title: job.title, description: job.description, jobGradeIds: job.jobGradeIds, workLocation: job.workLocation,
       recruitmentType: job.recruitmentType, employmentType: job.employmentType, replacedEmploymentId: job.replacedEmploymentId,
       businessUnitId: job.businessUnitId, departmentId: job.departmentId, processId, autoArchiveAfterReject: job.autoArchiveAfterReject,
+      ...(job.interviewPlanFormIds ? { interviewPlanFormIds: job.interviewPlanFormIds } : {}),
       updatedAt: sql`now()`, updatedByUserId: user,
     }).where(eq(recruitmentJobOpening.id, current.id));
     await appendEvent(tx, {

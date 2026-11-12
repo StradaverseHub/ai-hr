@@ -11,6 +11,7 @@ import { revalidatePath } from 'next/cache';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { pgSqlState } from '@/lib/db-error';
+import { formValuesOf, type FormRefusal } from './form-state';
 import {
   addApplication, addJobMember, addPoolCandidateToJob, associateJob, cancelInterview, changeJobStatus, changeRequisitionStatus, createJob,
   createRequisition, decideOffer, decideRequisition, deleteArchiveReason, dissociateJob, markOfferSent, moveApplication, recordOfferDecision,
@@ -29,7 +30,8 @@ import {
   recordBackgroundCheckAuthorisation, saveBackgroundCheckType, startBackgroundCheck, CHECK_FILE_MAX_BYTES, type CheckFileInput,
   addCandidateToPool, blockCandidate, deletePool, removeCandidateFromPool, resolveReviewMark, savePool, unblockCandidate,
   customValuesFromForm, deleteCustomField, deleteCustomFieldOption, moveCustomField, moveCustomFieldOption, saveCustomField, saveCustomFieldOption,
-  CUSTOM_FIELD_LOCALES,
+  CUSTOM_FIELD_LOCALES, interviewPlanFromForm,
+  deletePositionTemplate, savePositionTemplate, setPositionTemplateEnabled, updatePositionTemplateSetting,
 } from '@/packs/recruitment/service';
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
@@ -65,28 +67,59 @@ const jobFields = (f: FormData) => ({
   workLocation: str(f, 'workLocation'), recruitmentType: str(f, 'recruitmentType'), employmentType: str(f, 'employmentType'),
   businessUnitId: str(f, 'businessUnitId'), departmentId: str(f, 'departmentId'), processId: str(f, 'processId'),
   autoArchiveAfterReject: f.get('autoArchiveAfterReject') === 'on',
+  // Slice 15: the interview plan, when the form carried it (Job settings and New position; not Job info).
+  interviewPlanFormIds: interviewPlanFromForm(f),
 });
 
-export async function createJobAction(f: FormData) {
-  const companyId = str(f, 'companyId');
+/**
+ * New position (slice 1; slice 15 review). The save RETURNS a refusal instead of redirecting: the person stays on the same form, in
+ * the same company, with everything typed — the custom fields and the interview plan included — and each refused field is named
+ * beside it (app/recruitment/action-form.tsx). Typed values go back only to this viewer in the action's state, never into a URL.
+ * A successful save redirects to the new position.
+ */
+export async function createJobFormAction(prev: FormRefusal, f: FormData): Promise<FormRefusal> {
   const s = await getSession();
   let id: string;
   try {
     ({ id } = await createJob(s, {
-      ...jobFields(f), companyId, positionAttribute: str(f, 'positionAttribute'), recruiterUserId: str(f, 'recruiterUserId'), requisitionId: str(f, 'requisitionId'),
+      ...jobFields(f), companyId: str(f, 'companyId'), positionAttribute: str(f, 'positionAttribute'), recruiterUserId: str(f, 'recruiterUserId'),
+      requisitionId: str(f, 'requisitionId'),
+      // Slice 15: the template the form was opened from (recorded on the job; every normal rule applies).
+      templateId: str(f, 'templateId'),
     }));
   } catch (e) {
-    const missing = e instanceof RecruitmentError && e.detail?.length ? `&fields=${encodeURIComponent(e.detail.join(','))}` : '';
-    const requisition = str(f, 'requisitionId') ? `&requisition=${encodeURIComponent(str(f, 'requisitionId'))}` : '';
-    redirect(`/recruitment/positions/new?company=${encodeURIComponent(companyId)}&${PROBLEM_PARAM}=${errorCode(e)}${missing}${requisition}`);
+    return refusal(prev, f, e);
   }
   revalidatePath('/recruitment', 'layout');
   redirect(`/recruitment/positions/${id}?notice=created`);
 }
 
+/** A refused form save as the form's state: the code, its sentence in the viewer's language, the refused fields and the typed values. */
+async function refusal(prev: FormRefusal, f: FormData, e: unknown): Promise<FormRefusal> {
+  // Only the error's kind and SQLSTATE are logged: a database error's message carries bound values.
+  if (!(e instanceof RecruitmentError)) console.error('recruitment action failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+  const t = await getTranslations('recruitment.errors');
+  const problem = errorCode(e);
+  const errorText = (RECRUITMENT_ERROR_CODES as readonly string[]).includes(problem) ? t(problem as (typeof RECRUITMENT_ERROR_CODES)[number]) : t('unexpected');
+  return {
+    status: 'refused', problem, errorText, fields: e instanceof RecruitmentError ? [...(e.detail ?? [])] : [], values: formValuesOf(f), nonce: (prev.nonce ?? 0) + 1,
+  };
+}
+
 export async function updateJobAction(f: FormData) {
   const jobId = str(f, 'jobId');
-  return run(back(f, `/recruitment/positions/${encodeURIComponent(jobId)}`), (s) => updateJob(s, jobId, jobFields(f)));
+  const url = back(f, `/recruitment/positions/${encodeURIComponent(jobId)}`);
+  const s = await getSession();
+  try {
+    await updateJob(s, jobId, jobFields(f));
+  } catch (e) {
+    if (!(e instanceof RecruitmentError)) console.error('recruitment action failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+    // The refused fields (e.g. an interview plan with a gap) come back so the page can name them.
+    const fields = e instanceof RecruitmentError && e.detail?.length ? `&fields=${encodeURIComponent(e.detail.join(','))}` : '';
+    redirect(`${withParam(url, PROBLEM_PARAM, errorCode(e))}${fields}`);
+  }
+  revalidatePath('/recruitment', 'layout');
+  redirect(withParam(url, 'notice', 'saved'));
 }
 
 export async function changeJobStatusAction(f: FormData) {
@@ -692,4 +725,38 @@ export async function deleteCustomFieldOptionAction(f: FormData) {
 }
 export async function moveCustomFieldOptionAction(f: FormData) {
   return run(fieldSettingsPage(f), (s) => moveCustomFieldOption(s, str(f, 'optionId'), str(f, 'direction')));
+}
+
+// ── Slice 15: position templates ──────────────────────────────────────────────────────────────────────────────
+const templateSettingsPage = (f: FormData) => back(f, '/recruitment/settings?section=templates');
+/** Settings › Position templates: create (company) or edit (template) a template — the job form's fields, the process, the interview
+ *  plan and custom job field values. Like the new-position form, a refusal is RETURNED (the form keeps everything typed and names
+ *  the refused fields); a successful save redirects to the list. */
+export async function savePositionTemplateFormAction(prev: FormRefusal, f: FormData): Promise<FormRefusal> {
+  const templateId = str(f, 'templateId');
+  const companyId = str(f, 'companyId');
+  const s = await getSession();
+  try {
+    await savePositionTemplate(s, {
+      id: templateId || undefined, companyId, name: str(f, 'name'), title: str(f, 'title'), description: String(f.get('description') ?? ''),
+      workLocation: str(f, 'workLocation'), employmentType: str(f, 'employmentType'), recruitmentType: str(f, 'recruitmentType'),
+      jobGradeIds: f.getAll('jobGradeIds').map(String), businessUnitId: str(f, 'businessUnitId'), departmentId: str(f, 'departmentId'),
+      processId: str(f, 'processId'), interviewPlanFormIds: f.getAll('interviewPlanFormIds').map(String), enabled: f.get('enabled') === 'on',
+      custom: customValuesFromForm(f),
+    });
+  } catch (e) {
+    return refusal(prev, f, e);
+  }
+  revalidatePath('/recruitment', 'layout');
+  redirect(withParam(`/recruitment/settings?${new URLSearchParams({ company: companyId, section: 'templates' })}`, 'notice', 'saved'));
+}
+export async function setPositionTemplateEnabledAction(f: FormData) {
+  return run(templateSettingsPage(f), (s) => setPositionTemplateEnabled(s, str(f, 'templateId'), str(f, 'enabled')));
+}
+export async function deletePositionTemplateAction(f: FormData) {
+  return run(templateSettingsPage(f), (s) => deletePositionTemplate(s, str(f, 'templateId')));
+}
+/** The company's "New position from template" switch. */
+export async function updatePositionTemplateSettingAction(f: FormData) {
+  return run(templateSettingsPage(f), (s) => updatePositionTemplateSetting(s, str(f, 'companyId'), f.get('enabled') === 'on'));
 }

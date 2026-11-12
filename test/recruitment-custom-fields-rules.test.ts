@@ -294,7 +294,8 @@ describe('5215 static shape', () => {
   it('is journalled once at idx 4615 / when 1793330004915, after 5214', () => {
     const entries = journal.entries.filter((e) => e.tag === '5215_recruitment_custom_fields');
     expect(entries).toEqual([expect.objectContaining({ idx: 4615, when: 1793330004915 })]);
-    expect(journal.entries.at(-2)?.tag).toBe('5214_recruitment_consume_invitation_access_lock');
+    // The entry before it (5216, slice 15, follows it since).
+    expect(journal.entries[journal.entries.findIndex((e) => e.tag === '5215_recruitment_custom_fields') - 1]?.tag).toBe('5214_recruitment_consume_invitation_access_lock');
   });
   it('restates 5213\'s removal and company delete byte for byte with added steps only', () => {
     const prior = read('db/migrations/5213_recruitment_talent_pools_blocked_list.sql');

@@ -61,6 +61,10 @@
  *   restricted for candidates, order, enable/disable); a fixed word list refuses sensitive categories (D-052). Values are typed,
  *   one row per record and field, filled on the candidate profile and the job form and shown after the fixed fields; restricted
  *   candidate values sit in an operator-only table; the board, talent pool and job list filter by one choice or yes/no field (5215).
+ * - Position templates (slice 15, ./position-templates and ./position-template-model): administrators keep the company's templates
+ *   (job fields, process, interview plan, custom job values) under Settings › Position templates and switch the feature on; "New
+ *   position from template" opens the ordinary form pre-filled (parts no longer usable left empty with notes; a requisition's values
+ *   win) and the job records the template only (5216). Jobs carry an interview plan (a scorecard template per round).
  * - Team access (slice 2): a job's recruiter, assistants, hiring managers and interviewers reach that job's data through
  *   database predicates (5202); the menu shows for team members, interviewers and pending approvers.
  */
@@ -151,6 +155,9 @@ export const recruitmentPack: ModulePack = {
     { table: 'recruitment_candidate_custom_value', note: 'a candidate\'s typed custom values (non-restricted fields), read with the candidate' },
     { table: 'recruitment_candidate_custom_restricted', note: 'a candidate\'s restricted custom values: administrators and the candidate\'s job operators only' },
     { table: 'recruitment_job_custom_value', note: 'a job\'s typed custom values, read with the job' },
+    // Slice 15 (5216)
+    { table: 'recruitment_position_template', note: 'position templates: name, job fields, process and interview plan to pre-fill new positions; administrators only' },
+    { table: 'recruitment_position_template_value', note: 'a position template\'s typed custom job field values (no personal data)' },
   ],
 };
 registerPack(recruitmentPack);

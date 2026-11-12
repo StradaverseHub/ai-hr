@@ -38063,7 +38063,9 @@
       "custom_field_required": "Isi setiap medan wajib (bertanda *) di bawah Butiran lanjut.",
       "custom_value_invalid": "Satu nilai di bawah Butiran lanjut tidak sepadan dengan medannya. Semak had dan tempat perpuluhan nombor (gunakan titik untuk perpuluhan, contohnya 2.5, bukan 2,5), tarikh dan pilihan.",
       "custom_field_limit": "Syarikat ini sudah mencapai bilangan maksimum medan tersuai atau pilihan (50 medan didayakan bagi setiap jenis, 500 kesemuanya, 100 pilihan bagi setiap medan). Nyahdayakan atau buang satu dahulu.",
-      "required_needs_option": "Medan pilihan yang wajib memerlukan sekurang-kurangnya satu pilihan yang didayakan. Tambah atau dayakan pilihan dahulu, atau jadikan medan ini tidak wajib."
+      "required_needs_option": "Medan pilihan yang wajib memerlukan sekurang-kurangnya satu pilihan yang didayakan. Tambah atau dayakan pilihan dahulu, atau jadikan medan ini tidak wajib.",
+      "template_unavailable": "Templat jawatan ini tidak boleh digunakan: ia dinyahdayakan atau dipadam, atau templat dimatikan untuk syarikat. Mulakan dengan borang kosong atau pilih templat lain.",
+      "template_limit": "Syarikat sudah mempunyai bilangan templat jawatan maksimum yang dibenarkan (200). Padam templat yang tidak digunakan lagi dahulu."
     },
     "overview": {
       "purpose": "Kerja pengambilan hari ini merentas syarikat yang pengambilannya anda uruskan.",
@@ -38151,7 +38153,8 @@
         "departmentId": "jabatan",
         "processId": "proses pengambilan",
         "member": "ahli pasukan",
-        "requisition": "permintaan jawatan"
+        "requisition": "permintaan jawatan",
+        "interviewPlan": "pelan temu duga (isi setiap pusingan sebelum pusingan terakhir yang digunakan)"
       },
       "company": "Syarikat",
       "switchCompany": "Guna syarikat ini",
@@ -38221,7 +38224,20 @@
         "notPublished": "Halaman kerjaya belum diterbitkan. Terbitkannya di Tetapan › Halaman kerjaya.",
         "publicLink": "Pautan awam",
         "postedOn": "Di halaman kerjaya sejak {date}"
-      }
+      },
+      "plan": {
+        "title": "Pelan temu duga",
+        "note": "Pilih borang bagi setiap pusingan. Biarkan pusingan terakhir kosong untuk menamatkan pelan di situ.",
+        "noForms": "Syarikat belum mempunyai borang penilaian. Tambah satu di Tetapan › Temu duga.",
+        "noRound": "Tiada pusingan",
+        "disabledForm": "{name} (dinyahdayakan)",
+        "asPlanned": "Seperti yang dirancang untuk pusingan",
+        "roundForm": "{round}: {form}",
+        "formUnavailable": "borang tidak lagi tersedia, borang lalai syarikat digunakan",
+        "problem": "Isi setiap pusingan sebelum pusingan terakhir yang digunakan, masing-masing dengan borang syarikat ini yang didayakan."
+      },
+      "fieldRequired": "Isi medan ini.",
+      "fieldInvalid": "Semak nilai ini."
     },
     "candidates": {
       "purpose": "Permohonan mengikut peringkat. Gerakkan calon ke hadapan, pilih peringkat lain atau tolak dengan sebab.",
@@ -38322,7 +38338,8 @@
         "agencies": "Agensi",
         "checks": "Semakan latar belakang",
         "pools": "Kumpulan bakat",
-        "fields": "Medan tersuai"
+        "fields": "Medan tersuai",
+        "templates": "Templat jawatan"
       },
       "iv": {
         "rulesTitle": "Peraturan maklum balas",
@@ -39682,6 +39699,61 @@
         "optionInUse": "Rekod telah memilih pilihan ini, jadi ia tidak boleh dipadam. Nyahtanda Didayakan untuk berhenti menawarkannya.",
         "addOption": "Tambah pilihan"
       }
+    },
+    "templates": {
+      "note": "Templat menyimpan butiran jawatan lazim syarikat anda supaya jawatan baharu bermula dengan maklumat yang telah diisi. Pengguna boleh mengubah apa-apa sebelum menyimpan, dan jawatan tidak kekal dipautkan kepada templatnya: perubahan kemudian pada templat tidak mengubah jawatan sedia ada.",
+      "settingLabel": "Tawarkan \"Jawatan baharu daripada templat\"",
+      "settingNote": "Apabila dihidupkan, pengguna yang mencipta jawatan boleh bermula daripada templat yang didayakan di bawah, termasuk daripada \"Cipta jawatan\" pada permintaan.",
+      "on": "Hidup",
+      "off": "Mati",
+      "save": "Simpan",
+      "listTitle": "Templat",
+      "new": "Templat baharu",
+      "empty": "Belum ada templat. Cipta satu daripada butiran jawatan yang paling kerap digunakan syarikat anda.",
+      "enabled": "Didayakan",
+      "disabled": "Dinyahdayakan",
+      "rounds": "{count, plural, other {# pusingan temu duga}}",
+      "customValues": "{count, plural, other {# medan tersuai}}",
+      "positions": "{count, plural, =0 {Tiada jawatan dicipta daripadanya} other {# jawatan dicipta daripadanya}}",
+      "changed": "Kali terakhir diubah oleh {by} pada {at}",
+      "unnamedUser": "pengguna tanpa nama",
+      "edit": "Edit",
+      "disable": "Nyahdayakan",
+      "enable": "Dayakan",
+      "disableNamed": "Nyahdayakan {name}",
+      "enableNamed": "Dayakan {name}",
+      "delete": "Padam",
+      "deleteNamed": "Padam {name}",
+      "deleteNote": "Memadam templat mengekalkan setiap jawatan yang dicipta daripadanya seperti sedia ada; jawatan tersebut hanya tidak lagi menunjukkan templat asalnya.",
+      "editTitle": "Edit templat: {name}",
+      "newTitle": "Templat jawatan baharu",
+      "backToList": "Kembali ke templat",
+      "name": "Nama templat",
+      "nameNote": "Dipaparkan semasa pengguna memilih templat. Setiap nama digunakan sekali sahaja dalam syarikat.",
+      "defaultProcess": "Proses lalai syarikat",
+      "enabledLabel": "Didayakan (ditawarkan untuk jawatan baharu)",
+      "saveTemplate": "Simpan templat",
+      "fromTemplateTitle": "Jawatan baharu daripada templat",
+      "fromTemplateNote": "Mulakan dengan butiran jawatan daripada salah satu templat anda. Anda boleh mengubah semuanya sebelum menyimpan.",
+      "fromTemplateRequisitionNote": "Butiran permintaan itu sendiri (tajuk, tahap jawatan, lokasi kerja, jenis dan jabatan) dikekalkan; templat mengisi selebihnya.",
+      "chooseTemplate": "Templat",
+      "choose": "Pilih templat",
+      "useTemplate": "Guna templat",
+      "startBlank": "Mula dengan borang kosong",
+      "fromTemplate": "Diisi daripada templat \"{name}\". Semak butiran sebelum menyimpan.",
+      "notes": {
+        "title": "Beberapa bahagian templat ini tidak lagi tersedia dan dibiarkan kosong:",
+        "process": "Proses pengambilannya dinyahdayakan atau dipadam. Pilih satu proses.",
+        "department": "Jabatannya tidak lagi tersedia. Pilih jabatan jika perlu.",
+        "businessUnit": "Unit perniagaannya tidak lagi tersedia. Pilih unit perniagaan jika perlu.",
+        "jobLevels": "{count, plural, other {# tahap jawatan}} tidak lagi ditawarkan kepada syarikat dan telah dikeluarkan.",
+        "interviewRound": "{round}: Borang pusingan ini tidak lagi tersedia. Pilih borang lain, atau buang pusingan ini dan pusingan selepasnya.",
+        "customFields": "{count, plural, other {# nilai medan tersuai}} tidak disalin kerana medannya dinyahdayakan, dipadam atau diubah.",
+        "customValue": "{field}: jawapan yang disimpan tidak lagi sesuai dengan medan (pilihan telah dinyahdayakan atau dibuang, atau julat yang dibenarkan berubah). Isi semula.",
+        "unnamedField": "Satu medan tersuai"
+      },
+      "notFound": "Templat ini tidak lagi wujud. Ia mungkin telah dipadam.",
+      "nameProblem": "Gunakan nama lain: templat lain syarikat ini sudah menggunakannya (maksimum 120 aksara)."
     }
   },
   "careersPublic": {

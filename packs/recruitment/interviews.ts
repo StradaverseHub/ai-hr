@@ -71,7 +71,20 @@ async function stagePositionsTx(tx: Tx, processId: string): Promise<Map<string, 
 export type InterviewFormOptions = {
   applicationId: string; candidateName: string; jobTitle: string; stageName: string;
   rounds: number[]; forms: { id: string; name: string; isDefault: boolean }[]; users: UserLabel[];
+  /** Slice 15: the job's interview plan — each round's scorecard template (an evaluation form); empty when the job has none. A
+   *  round whose form has since been disabled names it with `enabled: false` (scheduling then uses the company's default form). */
+  plan: { round: number; formId: string; formName: string | null; enabled: boolean }[];
 };
+
+/** Slice 15: the job's interview plan as rounds (1-based) with each round's form, read with the job. */
+async function jobPlanTx(tx: Tx, jobId: string): Promise<InterviewFormOptions['plan']> {
+  const rows = await tx.execute<{ round: number; form_id: string; name: string | null; enabled: boolean | null }>(sql`
+    select p.round::int as round, p.form_id, f.name, f.enabled
+    from recruitment_job_opening j cross join lateral unnest(j.interview_plan_form_ids) with ordinality as p(form_id, round)
+    left join recruitment_evaluation_form f on f.id = p.form_id
+    where j.id = ${jobId}::uuid order by p.round`);
+  return rows.map((r) => ({ round: r.round, formId: r.form_id, formName: r.name, enabled: r.enabled === true }));
+}
 /** What the "Add an interview" form offers for one application. Operators only. */
 export async function interviewFormOptions(s: SessionContext, applicationId: string): Promise<InterviewFormOptions> {
   return withRecruitmentTenant(s, async (tx) => {
@@ -82,9 +95,13 @@ export async function interviewFormOptions(s: SessionContext, applicationId: str
       .where(and(eq(recruitmentEvaluationForm.companyId, app.company_id), eq(recruitmentEvaluationForm.enabled, true)))
       .orderBy(sql`${recruitmentEvaluationForm.isDefault} desc`, asc(recruitmentEvaluationForm.name));
     const [maxRound] = await tx.execute<{ n: number }>(sql`select coalesce(max(round_no), 0)::int as n from recruitment_interview where application_id = ${app.id}::uuid`);
-    const rounds = [...new Set([...DEFAULT_ROUNDS, ...Array.from({ length: Math.min(20, (maxRound?.n ?? 0) + 1) }, (_, i) => i + 1)])].sort((a, b) => a - b);
+    // Slice 15: a job with an interview plan offers its rounds (and the next one after the last scheduled); one without offers the
+    // default 1st, 2nd and 3rd (D-005).
+    const plan = await jobPlanTx(tx, app.job_id);
+    const planned = plan.length ? plan.map((p) => p.round) : DEFAULT_ROUNDS;
+    const rounds = [...new Set([...planned, ...Array.from({ length: Math.min(20, (maxRound?.n ?? 0) + 1) }, (_, i) => i + 1)])].sort((a, b) => a - b);
     const users = [...(await userLabelsTx(tx, app.company_id)).values()].filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name));
-    return { applicationId: app.id, candidateName: app.candidate_name, jobTitle: app.job_title, stageName: app.stage_name, rounds, forms, users };
+    return { applicationId: app.id, candidateName: app.candidate_name, jobTitle: app.job_title, stageName: app.stage_name, rounds, forms, users, plan };
   });
 }
 
@@ -104,6 +121,11 @@ export async function scheduleInterview(s: SessionContext, input: InterviewInput
     const labels = await userLabelsTx(tx, app.company_id);
     if (!v.interviewerIds.every((id) => labels.get(id)?.active)) throw new RecruitmentError('invalid_input', ['interviewers']);
     let formId = v.formId;
+    // Slice 15: no form chosen — the job's interview plan names the round's form; it is used while it is still enabled.
+    if (!formId) {
+      const planned = (await jobPlanTx(tx, app.job_id)).find((p) => p.round === v.roundNo && p.enabled);
+      if (planned) formId = planned.formId;
+    }
     if (!formId) {
       const [def] = await tx.select({ id: recruitmentEvaluationForm.id }).from(recruitmentEvaluationForm)
         .where(and(eq(recruitmentEvaluationForm.companyId, app.company_id), eq(recruitmentEvaluationForm.isDefault, true)));

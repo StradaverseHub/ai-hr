@@ -94,6 +94,9 @@ export const RECRUITMENT_ERROR_CODES = [
   'sensitive_field', 'field_in_use', 'option_in_use', 'custom_field_required', 'custom_value_invalid', 'custom_field_limit',
   // …a required choice field needs an enabled option (making it required, disabling or deleting its last enabled option).
   'required_needs_option',
+  // Slice 15: the position template is disabled, deleted, of another company, or templates are off for the company; the company
+  // already has the most templates.
+  'template_unavailable', 'template_limit',
 ] as const;
 export type RecruitmentErrorCode = (typeof RECRUITMENT_ERROR_CODES)[number];
 
@@ -119,6 +122,8 @@ export type JobInput = {
   companyId?: unknown; title?: unknown; description?: unknown; jobGradeIds?: unknown; workLocation?: unknown;
   recruitmentType?: unknown; employmentType?: unknown; replacedEmploymentId?: unknown; businessUnitId?: unknown;
   departmentId?: unknown; positionAttribute?: unknown; processId?: unknown; autoArchiveAfterReject?: unknown;
+  /** Slice 15: the interview plan's scorecard templates in round order (empty entries are left out); undefined = unchanged. */
+  interviewPlanFormIds?: unknown;
 };
 export type JobRequiredField = 'company' | 'title' | 'jobLevel' | 'workLocation' | 'recruitmentType' | 'employmentType';
 export type ValidJob = {
@@ -126,7 +131,33 @@ export type ValidJob = {
   recruitmentType: RecruitmentType; employmentType: JobEmploymentType; replacedEmploymentId: string | null;
   businessUnitId: string | null; departmentId: string | null; positionAttribute: PositionAttribute;
   processId: string | null; autoArchiveAfterReject: boolean;
+  /** Slice 15: the interview plan, one evaluation form per round in order; undefined when the form did not carry it. */
+  interviewPlanFormIds: string[] | undefined;
 };
+
+/** Slice 15: the most rounds an interview plan holds (job or template). */
+export const INTERVIEW_PLAN_MAX = 10;
+/** Slice 15: the form marker that says a form carried the interview plan (without it, a job's plan is left as it is). */
+export const INTERVIEW_PLAN_FORM_MARKER = 'ip.present';
+/**
+ * An interview plan from a form: the chosen scorecard template of each round, in order. The plan has no gaps: empty rounds may only
+ * END it (trailing empty rounds are dropped); an empty round followed by a filled one is refused rather than silently renumbering
+ * the later rounds (owner ruling, slice 15 review). The same form may serve several rounds. Null when it has a gap, is longer than
+ * INTERVIEW_PLAN_MAX or names something that is not an id.
+ */
+export function parseInterviewPlan(value: unknown): string[] | null {
+  const raw = (Array.isArray(value) ? value : value == null ? [] : [value]).map((x) => (typeof x === 'string' ? x.trim() : x));
+  let end = raw.length;
+  while (end > 0 && (raw[end - 1] === '' || raw[end - 1] == null)) end--;
+  const list = raw.slice(0, end);
+  if (list.length > INTERVIEW_PLAN_MAX || !list.every(isUuid)) return null;
+  return list as string[];
+}
+/** The interview plan a form carried (`INTERVIEW_PLAN_FORM_MARKER` present), or undefined when it did not (a job's plan is then left
+ *  as it is — the Job info form carries no plan). */
+export function interviewPlanFromForm(form: Pick<FormData, 'has' | 'getAll'>): string[] | undefined {
+  return form.has(INTERVIEW_PLAN_FORM_MARKER) ? form.getAll('interviewPlanFormIds').map(String) : undefined;
+}
 
 const optionalId = (value: unknown): string | null | 'invalid' =>
   value == null || value === '' ? null : isUuid(value) ? value : 'invalid';
@@ -162,6 +193,8 @@ export function validateJobInput(input: JobInput): { ok: true; value: ValidJob }
   if (!positionAttribute) invalid.push('positionAttribute');
   const refs = { replacedEmploymentId: optionalId(input.replacedEmploymentId), businessUnitId: optionalId(input.businessUnitId), departmentId: optionalId(input.departmentId), processId: optionalId(input.processId) };
   for (const [key, value] of Object.entries(refs)) if (value === 'invalid') invalid.push(key);
+  const interviewPlanFormIds = input.interviewPlanFormIds === undefined ? undefined : parseInterviewPlan(input.interviewPlanFormIds);
+  if (interviewPlanFormIds === null) invalid.push('interviewPlan');
   if (invalid.length) return { ok: false, code: 'invalid_input', fields: invalid };
   return {
     ok: true,
@@ -171,6 +204,7 @@ export function validateJobInput(input: JobInput): { ok: true; value: ValidJob }
       businessUnitId: refs.businessUnitId as string | null, departmentId: refs.departmentId as string | null,
       positionAttribute: positionAttribute!, processId: refs.processId as string | null,
       autoArchiveAfterReject: input.autoArchiveAfterReject === true || input.autoArchiveAfterReject === 'on' || input.autoArchiveAfterReject === 'true',
+      interviewPlanFormIds: interviewPlanFormIds ?? undefined,
     },
   };
 }

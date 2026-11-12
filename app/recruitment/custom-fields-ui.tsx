@@ -5,15 +5,20 @@ import {
   CUSTOM_FORM_MARKER, CUSTOM_LONG_TEXT_MAX, CUSTOM_SHORT_TEXT_MAX, answerable, customInputName, formValue, labelFor, type CustomFieldView, type CustomFilterChoice,
 } from '@/packs/recruitment/service';
 import { Pill, selectCls, textareaCls } from './shared';
+import { FieldProblem } from './action-form';
 
 /**
  * Slice 14: custom candidate and job fields on a form and on a record page, and the one-field filter. Every list here is the
  * service's answer for the viewer (restricted candidate fields only reach an administrator or the candidate's job operators).
  * Labels and options show in the viewer's language, or in English when an administrator gave none.
  */
-export async function CustomFieldInputs({ fields, locale }: { fields: CustomFieldView[]; locale: string }) {
+export async function CustomFieldInputs({ fields, locale, optional = false }: { fields: CustomFieldView[]; locale: string;
+  /** Slice 15: a position template's values — every field may be left empty (the position asks for required ones on save). */
+  optional?: boolean }) {
   if (!fields.length) return null;
-  const t = await getTranslations('recruitment.custom');
+  const [t, tj] = await Promise.all([getTranslations('recruitment.custom'), getTranslations('recruitment.job')]);
+  // Inside an ActionForm (new position, position template), a refused custom field says so beside it.
+  const problem = { required: tj('fieldRequired'), invalid: tj('fieldInvalid') };
   return (
     <fieldset className="space-y-3 border-t border-border pt-4">
       <input type="hidden" name={CUSTOM_FORM_MARKER} value="1" />
@@ -23,7 +28,7 @@ export async function CustomFieldInputs({ fields, locale }: { fields: CustomFiel
         <p className="text-xs text-muted-foreground">{t('sectionNote')}</p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {fields.map((f) => <CustomInput key={f.id} f={f} locale={locale} t={t} />)}
+        {fields.map((f) => <CustomInput key={f.id} f={optional ? { ...f, required: false } : f} locale={locale} t={t} problem={problem} />)}
       </div>
     </fieldset>
   );
@@ -31,7 +36,7 @@ export async function CustomFieldInputs({ fields, locale }: { fields: CustomFiel
 
 type T = Awaited<ReturnType<typeof getTranslations<'recruitment.custom'>>>;
 
-function CustomInput({ f, locale, t }: { f: CustomFieldView; locale: string; t: T }) {
+function CustomInput({ f, locale, t, problem }: { f: CustomFieldView; locale: string; t: T; problem: { required: string; invalid: string } }) {
   const name = customInputName(f.id);
   // A required choice field with nothing to choose is not enforced (the service skips it too).
   const required = f.required && answerable(f, f.value);
@@ -59,6 +64,7 @@ function CustomInput({ f, locale, t }: { f: CustomFieldView; locale: string; t: 
           </div>
         )}
         {helpEl}
+        <FieldProblem name={name} {...problem} />
       </fieldset>
     );
   }
@@ -95,7 +101,7 @@ function CustomInput({ f, locale, t }: { f: CustomFieldView; locale: string; t: 
   }
   return (
     <div className={cn('flex flex-col gap-1', wide)}>
-      <Field label={label} required={required} requiredAriaLabel={t('required')}>{control}</Field>
+      <Field label={label} required={required} requiredAriaLabel={t('required')}>{control}<FieldProblem name={name} {...problem} /></Field>
       {(restricted || helpEl) && <div className="flex flex-wrap items-center gap-2">{restricted}{helpEl}</div>}
     </div>
   );

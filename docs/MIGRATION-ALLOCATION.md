@@ -1,3 +1,18 @@
+# Recruitment slice 15 — 12 November 2026 MYT (unapplied)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after the slice 14 entry, `5216_recruitment_position_templates` at
+idx 4616 / when 1793330004916. A read-only survey of the already-fetched refs (7,532 refs, 4,153 distinct commits, 576 distinct
+committed journal blobs; no new fetch), the working trees of all 189 registered worktrees (all journals readable) and 398
+committed allocation-document blobs found no `5216_` migration file and no claim of this name, position or timestamp.
+`origin/main` and `origin/alpha` end at idx 4527 / when 1793330004827, below this block; recheck the target's applied watermark
+before admission (a lower timestamp can be silently skipped). 5216 adds two tables (`recruitment_position_template` and
+`recruitment_position_template_value`), `recruitment_company_setting.position_templates_enabled`,
+`recruitment_job_opening.created_from_template_id` (foreign key setting only that column to NULL on a template delete) and
+`recruitment_job_opening.interview_plan_form_ids`, three guard triggers, and restates `app.recruitment_delete_company_setup`
+(5215 body byte for byte) with added steps only; `app.recruitment_destroy_candidate` is unchanged (templates hold no personal
+data). 5200–5215 are unapplied outside throwaway databases, CI and the branch author's local render database. Recheck peer
+claims, the published baseline and the ordered applied ledger before admission. The reservation grants no installation authority.
+
 # Recruitment slice 14 — 12 November 2026 MYT (unapplied)
 
 Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after the renumbered block's `5214` entry,

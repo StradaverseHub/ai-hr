@@ -38063,7 +38063,9 @@
       "custom_field_required": "Fill in every required field (marked *) under More details.",
       "custom_value_invalid": "A value under More details does not fit its field. Check numbers against their limits and decimal places (use a point for decimals, for example 2.5, not 2,5), dates and choices.",
       "custom_field_limit": "This company already has the most custom fields or options allowed (50 enabled fields of each kind, 500 in all, 100 options per field). Disable or remove one first.",
-      "required_needs_option": "A required choice field needs at least one enabled option. Add or enable an option first, or make the field optional."
+      "required_needs_option": "A required choice field needs at least one enabled option. Add or enable an option first, or make the field optional.",
+      "template_unavailable": "This position template cannot be used: it is disabled or deleted, or templates are turned off for the company. Start from a blank form or choose another template.",
+      "template_limit": "The company already has the most position templates allowed (200). Delete one you no longer use first."
     },
     "overview": {
       "purpose": "Today's hiring work across the companies whose recruitment you manage.",
@@ -38151,7 +38153,8 @@
         "departmentId": "department",
         "processId": "recruitment process",
         "member": "team member",
-        "requisition": "job requisition"
+        "requisition": "job requisition",
+        "interviewPlan": "interview plan (fill every round before the last one you use)"
       },
       "company": "Company",
       "switchCompany": "Use this company",
@@ -38221,7 +38224,20 @@
         "notPublished": "The careers page is not published yet. Publish it in Settings › Careers page.",
         "publicLink": "Public link",
         "postedOn": "On the careers page since {date}"
-      }
+      },
+      "plan": {
+        "title": "Interview plan",
+        "note": "Choose a form for each round. Leave the last rounds empty to end the plan there.",
+        "noForms": "The company has no evaluation forms yet. Add one under Settings › Interviews.",
+        "noRound": "No round",
+        "disabledForm": "{name} (disabled)",
+        "asPlanned": "As planned for the round",
+        "roundForm": "{round}: {form}",
+        "formUnavailable": "form no longer available, the company default is used",
+        "problem": "Fill every round before the last one you use, each with an enabled form of this company."
+      },
+      "fieldRequired": "Fill in this field.",
+      "fieldInvalid": "Check this value."
     },
     "candidates": {
       "purpose": "Applications by stage. Move a candidate forward, choose another stage or reject with a reason.",
@@ -38322,7 +38338,8 @@
         "agencies": "Agencies",
         "checks": "Background checks",
         "pools": "Talent pools",
-        "fields": "Custom fields"
+        "fields": "Custom fields",
+        "templates": "Position templates"
       },
       "iv": {
         "rulesTitle": "Feedback rules",
@@ -39682,6 +39699,61 @@
         "optionInUse": "Records have chosen this option, so it cannot be deleted. Untick Enabled to stop offering it.",
         "addOption": "Add option"
       }
+    },
+    "templates": {
+      "note": "Templates hold your company's usual job details so a new position starts pre-filled. People can change anything before saving, and a position never stays linked to its template: later edits to a template do not change existing positions.",
+      "settingLabel": "Offer \"New position from template\"",
+      "settingNote": "When this is on, people who create positions can start from the enabled templates below, also from a requisition's \"Create job\".",
+      "on": "On",
+      "off": "Off",
+      "save": "Save",
+      "listTitle": "Templates",
+      "new": "New template",
+      "empty": "No templates yet. Create one from the job details your company uses most.",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "rounds": "{count, plural, =1 {# interview round} other {# interview rounds}}",
+      "customValues": "{count, plural, =1 {# custom field} other {# custom fields}}",
+      "positions": "{count, plural, =0 {No positions created from it} =1 {# position created from it} other {# positions created from it}}",
+      "changed": "Last changed by {by} on {at}",
+      "unnamedUser": "an unnamed user",
+      "edit": "Edit",
+      "disable": "Disable",
+      "enable": "Enable",
+      "disableNamed": "Disable {name}",
+      "enableNamed": "Enable {name}",
+      "delete": "Delete",
+      "deleteNamed": "Delete {name}",
+      "deleteNote": "Deleting a template keeps every position created from it as it is; those positions simply no longer show which template they came from.",
+      "editTitle": "Edit template: {name}",
+      "newTitle": "New position template",
+      "backToList": "Back to templates",
+      "name": "Template name",
+      "nameNote": "Shown when people choose a template. Each name is used once in the company.",
+      "defaultProcess": "The company's default process",
+      "enabledLabel": "Enabled (offered for new positions)",
+      "saveTemplate": "Save template",
+      "fromTemplateTitle": "New position from template",
+      "fromTemplateNote": "Start with the job details of one of your templates. You can change everything before saving.",
+      "fromTemplateRequisitionNote": "The requisition's own details (title, job levels, work location, types and department) stay; the template fills in the rest.",
+      "chooseTemplate": "Template",
+      "choose": "Choose a template",
+      "useTemplate": "Use template",
+      "startBlank": "Start blank instead",
+      "fromTemplate": "Pre-filled from template \"{name}\". Review the details before saving.",
+      "notes": {
+        "title": "Some parts of this template are no longer available and were left empty:",
+        "process": "Its recruitment process is disabled or deleted. Choose a process.",
+        "department": "Its department is no longer available. Choose a department if needed.",
+        "businessUnit": "Its business unit is no longer available. Choose a business unit if needed.",
+        "jobLevels": "{count, plural, =1 {# job level is} other {# job levels are}} no longer offered to the company and were left out.",
+        "interviewRound": "{round}: This round's form is no longer available. Choose another form, or remove this round and the ones after it.",
+        "customFields": "{count, plural, =1 {A custom field value was} other {# custom field values were}} not copied because the field is disabled, deleted or changed.",
+        "customValue": "{field}: the saved answer no longer fits the field (an option was disabled or removed, or the allowed range changed). Fill it in again.",
+        "unnamedField": "A custom field"
+      },
+      "notFound": "This template no longer exists. It may have been deleted.",
+      "nameProblem": "Use a different name: another template of this company already has it (at most 120 characters)."
     }
   },
   "careersPublic": {

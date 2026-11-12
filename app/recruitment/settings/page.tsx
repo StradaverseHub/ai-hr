@@ -15,6 +15,7 @@ import { AgencySettingsSection } from './agency-settings';
 import { BackgroundCheckSettingsSection } from './background-check-settings';
 import { PoolSettingsSection } from './pool-settings';
 import { CustomFieldSettingsSection } from './custom-field-settings';
+import { PositionTemplateSettingsSection } from './position-template-settings';
 
 /**
  * Recruitment › Settings for one company (administrators only). Pipeline: the stage catalogue, recruitment processes
@@ -23,9 +24,10 @@ import { CustomFieldSettingsSection } from './custom-field-settings';
  * offer and requisition approval flows. Referrals (slice 7): the referral protection period. Careers page (slice 8): the public
  * page, its publish switch and privacy notice versions. Agencies (slice 10): agency tags, agencies, contracts (each with its own
  * page) and consultants. Background checks (slice 12): the company's check types. Talent pools (slice 13): custom pools, sub-pools
- * and sharing. Custom fields (slice 14): the company's own candidate and job fields and their options. Every change is a domain event.
+ * and sharing. Custom fields (slice 14): the company's own candidate and job fields and their options. Position templates (slice 15):
+ * the company's switch for "New position from template" and its templates. Every change is a domain event.
  */
-export default async function RecruitmentSettingsPage({ searchParams }: { searchParams: Promise<{ company?: string; problem?: string; notice?: string; section?: string; agency?: string; tag?: string; type?: string; status?: string; kind?: string }> }) {
+export default async function RecruitmentSettingsPage({ searchParams }: { searchParams: Promise<{ company?: string; problem?: string; notice?: string; section?: string; agency?: string; tag?: string; type?: string; status?: string; kind?: string; template?: string }> }) {
   await requireModule('recruitment');
   const { s, scopeIds } = await scopedSession();
   const companies = await recruitmentAccess(s, scopeIds, false);
@@ -33,7 +35,7 @@ export default async function RecruitmentSettingsPage({ searchParams }: { search
   const [t, nav, locale] = await Promise.all([getTranslations('recruitment.settings'), getTranslations('nav'), getLocale()]);
   const company = pickCompany(companies, sp.company);
   const settings = company ? await recruitmentSettings(s, company.id) : null;
-  const section = sp.section === 'interviews' || sp.section === 'offers' || sp.section === 'privacy' || sp.section === 'tags' || sp.section === 'referrals' || sp.section === 'careers' || sp.section === 'agencies' || sp.section === 'checks' || sp.section === 'pools' || sp.section === 'fields' ? sp.section : 'general';
+  const section = sp.section === 'interviews' || sp.section === 'offers' || sp.section === 'privacy' || sp.section === 'tags' || sp.section === 'referrals' || sp.section === 'careers' || sp.section === 'agencies' || sp.section === 'checks' || sp.section === 'pools' || sp.section === 'fields' || sp.section === 'templates' ? sp.section : 'general';
   const sectionHref = (key: string) => `/recruitment/settings?${new URLSearchParams({ ...(company ? { company: company.id } : {}), ...(key === 'general' ? {} : { section: key }) })}`;
   const here = sectionHref(section);
   const when = (iso: string) => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' }).format(new Date(iso));
@@ -57,7 +59,7 @@ export default async function RecruitmentSettingsPage({ searchParams }: { search
               <button type="submit" className={btnGhost}>{t('switchCompany')}</button>
             </form>
           )}
-          <SubTabs label={t('sections')} items={(['general', 'interviews', 'offers', 'privacy', 'tags', 'referrals', 'careers', 'agencies', 'checks', 'pools', 'fields'] as const).map((key) => ({ key, href: sectionHref(key), text: t(`section.${key}`), current: section === key }))} />
+          <SubTabs label={t('sections')} items={(['general', 'interviews', 'offers', 'privacy', 'tags', 'referrals', 'careers', 'agencies', 'checks', 'pools', 'fields', 'templates'] as const).map((key) => ({ key, href: sectionHref(key), text: t(`section.${key}`), current: section === key }))} />
           {section === 'interviews' ? <InterviewSettingsSection s={s} companyId={company.id} here={here} />
             : section === 'offers' ? <OfferSettingsSection s={s} companyId={company.id} here={here} />
               : section === 'privacy' ? <PrivacySettingsSection s={s} companyId={company.id} here={here} />
@@ -67,7 +69,8 @@ export default async function RecruitmentSettingsPage({ searchParams }: { search
                       : section === 'agencies' ? <AgencySettingsSection s={s} companyId={company.id} here={here} filters={{ agency: sp.agency, tag: sp.tag, type: sp.type, status: sp.status }} />
                         : section === 'checks' ? <BackgroundCheckSettingsSection s={s} companyId={company.id} here={here} />
                           : section === 'pools' ? <PoolSettingsSection s={s} companyId={company.id} here={here} />
-                            : section === 'fields' ? <CustomFieldSettingsSection s={s} companyId={company.id} kind={sp.kind} /> : (<>
+                            : section === 'fields' ? <CustomFieldSettingsSection s={s} companyId={company.id} kind={sp.kind} />
+                              : section === 'templates' ? <PositionTemplateSettingsSection s={s} companyId={company.id} here={here} template={sp.template} /> : (<>
 
           <section className="space-y-3" aria-labelledby="stages-title">
             <div><h2 id="stages-title" className="text-base font-semibold">{t('stagesTitle')}</h2><p className="text-sm text-muted-foreground">{t('stagesNote')}</p></div>

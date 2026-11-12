@@ -5888,6 +5888,13 @@
       "when": 1793330004915,
       "tag": "5215_recruitment_custom_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 4616,
+      "version": "7",
+      "when": 1793330004916,
+      "tag": "5216_recruitment_position_templates",
+      "breakpoints": true
     }
   ]
 }

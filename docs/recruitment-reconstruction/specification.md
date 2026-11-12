@@ -1267,3 +1267,167 @@ company position templates that pre-fill the new-position form; there is no indu
 106. Company setup deletion covers the new tables; forced RLS and grants with none to PUBLIC.
 107. Rendered: creating a template; creating a position from it and editing before saving; a template with a disabled
      reference.
+
+## Slice 16 — Import, export and the To assign list (owner: group 1, 2026-11-12; EV-063, EV-066, EV-021)
+
+Moka imports résumés through an import template and a résumé import platform, exports lists through custom export
+templates (interview scorecards, registration forms), lets HR export interview feedback, and keeps résumés whose job
+cannot be identified on an "unassigned" list until someone assigns a position (EV-021, EV-063, EV-066). AI HR adds a
+candidate import that runs as a background job, list exports, and a To assign list for candidates without a job.
+
+### Actors and access
+
+- Recruitment administrators and the company's recruiters (operators of any job in the company): import candidates
+  for that company; see and work the To assign list; export lists they can read.
+- Assigning a candidate to a job needs the right to add an application to that job (slice 1 operators).
+- Exports never include a value the exporter could not read on screen (restricted values only for those allowed).
+
+### Import (background job)
+
+- Upload a CSV or XLSX file (≤10 MB, ≤5,000 rows) from AI HR's own import template (download link with the column
+  list): full name, e-mail, mobile, ID type and number, source, job number (optional), job title as written
+  (optional), notes, and the company's enabled custom candidate fields (slice 14) by label.
+- The importer must confirm they may store these people's data (slice 5 permission confirmation); consent stays "not
+  recorded" (slice 5).
+- The file is validated in full first; the importer sees a preview (row counts, errors per row and field, possible
+  duplicates by the slice 5 rule, rows with an unknown job number) and starts the import or cancels.
+- The import runs on the shared background bulk-job framework (core/bulk-job*.ts), never inside the web request, in
+  bounded batches, with progress, cancellation and a result page, so one import never slows other work. Each row is
+  one candidate (and one application at the first enabled stage when a valid job number of an Open job is given).
+  Rows are independent: a failing row is reported and does not stop the others (D-055). Possible duplicates are
+  imported as new candidates and flagged by slice 5's duplicate check, never merged; slice 13 blocked-list matching
+  applies to any application created; slice 5 repeated-application rules apply.
+- Rows without a usable job land on the To assign list. Events carry ids and counts only; the original file is not
+  kept after the job ends.
+
+### To assign list (EV-066)
+
+- Candidates of the company with no application at all (imported without a job, or whose last application was
+  removed), grouped by the job title as written when present, with source, import date and who imported.
+- "Assign to job": choose an Open job; creates an application at its first enabled stage (normal rules: repeat
+  window, duplicates, blocked list). "Remove from list" is not a delete: it archives nothing and simply stops showing
+  the candidate here (they stay in the talent pool and slice 5 retention). Visible on the Overview as a count for
+  operators.
+
+### Export
+
+- Candidates board (current job, stage and filters) and talent pool (current filters): CSV or XLSX with a chosen set
+  of columns; saved column sets per company ("export templates", administrators manage, everyone allowed may use).
+- Interview feedback for one job (operators): one row per scorecard with interviewer, round, result and scores;
+  free-text comments optional.
+- Every export: at most 10,000 rows (larger asks to narrow filters); cells that start with `=`, `+`, `-`, `@`, tab or
+  carriage return are escaped against spreadsheet formula injection; an audit event records who, what kind, filters
+  summary and row count, never values; the file is generated on request and not stored.
+
+### Data
+
+- One migration: import job record (or the bulk-job kind registration the framework needs), import row results
+  without personal data after completion, export templates, a to-assign marker or view; forced RLS, explicit grants,
+  none to PUBLIC; candidate creation uses existing guards; company deletion covers new tables.
+
+### Slice 16 acceptance cases
+
+108. Only administrators and operators import, export and use To assign (service and database); imported candidates
+     belong to the importer's company; nobody else sees them.
+109. Validation finds every bad row before the job starts (independently computed expectations); the preview shows
+     duplicates and unknown jobs; starting requires the permission confirmation.
+110. The import runs as a background job with progress and cancellation, in batches; a failing row does not stop the
+     others; results match the file row for row; applications obey repeat, duplicate and blocked-list rules.
+111. To assign lists exactly the candidates with no application; assigning creates a normal application; removing
+     from the list hides without deleting.
+112. Exports contain exactly the rows and columns the exporter can see (sentinel check for restricted values and
+     other jobs), escape formula-leading cells, cap at 10,000 rows and write an audit event without values.
+113. Removal and company deletion cover the new tables; forced RLS and grants with none to PUBLIC; the AI Centre read
+     is unchanged.
+114. Rendered: downloading the template, uploading a file with errors, the preview, running the import with progress,
+     the To assign list and assigning, an export opened as CSV.
+
+## Slice 17 — Applications left unprocessed (owner: group 1, 2026-11-12; EV-052, EV-054)
+
+Moka sets per-stage rules that remind or eliminate candidates who stay in a stage too long, counted in natural or
+working days, and its board filters by "timeout unprocessed reminder / obsolescence / return" (EV-052, EV-054). AI HR
+adds per-stage waiting limits that remind and suggest; a person always decides to archive (D-057).
+
+### Rules
+
+- Per company, administrators set for any enabled stage: a reminder after N days (1–365) and, optionally, a
+  "suggest archiving" threshold after M days (M > N, ≤730), counted in calendar days or working days. Working days
+  skip weekends and the company's public holidays from AI HR's existing holiday calendar when one is configured for
+  the company; otherwise weekends only (stated on the settings page). Dates through lib/hr-date (Kuala Lumpur).
+- Waiting time is measured from when the application entered its current stage (slice 1 history), for active
+  applications only. Moving the application resets it; nothing else does.
+
+### Where it shows
+
+- Cards and the application page: "Waiting 12 days in Interview" once past the reminder threshold; "Suggested to
+  archive" past the second threshold. Operators and administrators see these; hiring managers see the waiting time
+  only.
+- Candidates board: a filter "Waiting too long" / "Suggested to archive" with counts per stage.
+- Overview To do (slice 9 job workload, not the bell — D-035): per job, "N applications waiting too long" and
+  "N suggested to archive".
+- "Suggested to archive" list per job: operators select applications and archive them with an archive reason
+  (slice 1), in one action, through the normal reject path (blocked-list holds and other guards apply). Nothing is
+  archived without that action.
+
+### Data
+
+- One migration: stage waiting rule table (company, stage, reminder days, archive days, day kind) with forced RLS,
+  explicit grants, none to PUBLIC, administrator-only writes; any index needed to compute stage-entry times without
+  scanning history per card; company deletion covers the table. Waiting is computed, never stored per application.
+
+### Slice 17 acceptance cases
+
+115. Only administrators manage rules (service and database); thresholds are validated.
+116. Waiting days in calendar and working days (weekends, configured public holidays) match independently computed
+     values at Kuala Lumpur day boundaries; moving resets.
+117. Badges, filters and counts match the rules for active applications only; hiring managers see waiting time only.
+118. The suggested list archives only what an operator selects, with a reason, through the normal guards; a blocked-list
+     hold is still respected.
+119. The Overview workload shows the per-job counts within the Overview's own timeout; the bell is unchanged.
+120. Rendered: setting a rule; a card past both thresholds; the filter; archiving from the suggested list.
+
+## Slice 18 — Interview set-up: groups, question bank, addresses and rooms (owner: group 1, 2026-11-12; EV-064, EV-065)
+
+Moka has interviewer groups, an interview question bank linked to evaluation forms so interviewers can read the
+questions, company addresses, and meeting rooms (its own list plus Lark and DingTalk integrations) (EV-064, EV-065).
+AI HR adds the first four; no meeting or calendar integrations (D-058).
+
+### Interviewer groups
+
+- Administrators create groups (name unique in the company, ≤80; members are users with access to the company).
+  When adding interviewers to an interview (slice 2), "Add group" adds each member as an individual interviewer; the
+  group grants no access by itself and later group changes do not change existing interviews.
+
+### Question bank
+
+- Administrators keep questions (title ≤200, guidance ≤2,000, optional category) and link them to scorecard
+  templates (slice 2). Interviewers see the linked questions as guidance on the scorecard form for interviews using
+  that template; questions are not answered fields and add nothing to scores. A question can be retired (hidden from
+  new scorecards) but not deleted while linked.
+
+### Addresses and meeting rooms
+
+- Administrators keep interview addresses per company (name ≤120, address ≤500, region, optional map link that must
+  be https) and rooms per address (name, capacity, enabled).
+- Scheduling an on-site interview (slice 2) picks an address and optionally a room; free-text location remains for
+  other cases. A room cannot be booked for two interviews whose times overlap (database exclusion constraint);
+  cancelled interviews free the room. The interview invitation details shown in AI HR include the address.
+
+### Data
+
+- One migration: group, group member, question, question-scorecard link, address, room tables and room/address
+  columns on interviews with a non-overlap constraint; forced RLS, explicit grants, none to PUBLIC;
+  administrator-only writes for set-up tables; company deletion covers them.
+
+### Slice 18 acceptance cases
+
+121. Only administrators manage groups, questions, addresses and rooms (service and database); members and rooms
+     must belong to the company.
+122. Adding a group adds its current members as interviewers once; later group edits do not change interviews.
+123. Linked questions show on the scorecard form for that template's interviews only, are never scored, and retired
+     questions are hidden from new scorecards.
+124. Overlapping bookings of the same room are refused in the database; cancellation frees the room; an address map
+     link must be https.
+125. Company deletion covers the new tables; forced RLS and grants with none to PUBLIC.
+126. Rendered: creating a group, questions linked to a scorecard, an address with rooms; scheduling with a group and a
+     room; the double-booking refusal; the interviewer seeing the questions.

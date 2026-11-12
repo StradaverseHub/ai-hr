@@ -38063,7 +38063,9 @@
       "custom_field_required": "Điền mọi trường bắt buộc (đánh dấu *) trong Thông tin bổ sung.",
       "custom_value_invalid": "Một giá trị trong Thông tin bổ sung không phù hợp với trường của nó. Hãy kiểm tra giới hạn và số chữ số thập phân (dùng dấu chấm cho phần thập phân, ví dụ 2.5, không phải 2,5), ngày tháng và các lựa chọn.",
       "custom_field_limit": "Công ty này đã đạt số trường tùy chỉnh hoặc lựa chọn tối đa (50 trường đang bật mỗi loại, tổng cộng 500, 100 lựa chọn mỗi trường). Hãy tắt hoặc xóa bớt một mục trước.",
-      "required_needs_option": "Trường lựa chọn bắt buộc cần ít nhất một lựa chọn đang bật. Hãy thêm hoặc bật một lựa chọn trước, hoặc đặt trường thành không bắt buộc."
+      "required_needs_option": "Trường lựa chọn bắt buộc cần ít nhất một lựa chọn đang bật. Hãy thêm hoặc bật một lựa chọn trước, hoặc đặt trường thành không bắt buộc.",
+      "template_unavailable": "Không thể dùng mẫu vị trí này: mẫu đã bị tắt hoặc xóa, hoặc công ty đang tắt tính năng mẫu. Hãy bắt đầu từ biểu mẫu trống hoặc chọn mẫu khác.",
+      "template_limit": "Công ty đã có số mẫu vị trí tối đa cho phép (200). Hãy xóa một mẫu không còn dùng trước."
     },
     "overview": {
       "purpose": "Công việc tuyển dụng hôm nay tại các công ty mà bạn quản lý tuyển dụng.",
@@ -38151,7 +38153,8 @@
         "departmentId": "phòng ban",
         "processId": "quy trình tuyển dụng",
         "member": "thành viên nhóm",
-        "requisition": "yêu cầu tuyển dụng"
+        "requisition": "yêu cầu tuyển dụng",
+        "interviewPlan": "kế hoạch phỏng vấn (điền mọi vòng trước vòng cuối cùng bạn dùng)"
       },
       "company": "Công ty",
       "switchCompany": "Dùng công ty này",
@@ -38221,7 +38224,20 @@
         "notPublished": "Trang tuyển dụng chưa được xuất bản. Hãy xuất bản trong Cài đặt › Trang tuyển dụng.",
         "publicLink": "Liên kết công khai",
         "postedOn": "Trên trang tuyển dụng từ {date}"
-      }
+      },
+      "plan": {
+        "title": "Kế hoạch phỏng vấn",
+        "note": "Chọn một biểu mẫu cho mỗi vòng. Để trống các vòng cuối để kết thúc kế hoạch tại đó.",
+        "noForms": "Công ty chưa có biểu mẫu đánh giá nào. Hãy thêm trong Cài đặt › Phỏng vấn.",
+        "noRound": "Không có vòng",
+        "disabledForm": "{name} (đã tắt)",
+        "asPlanned": "Theo kế hoạch của vòng",
+        "roundForm": "{round}: {form}",
+        "formUnavailable": "biểu mẫu không còn dùng được, biểu mẫu mặc định của công ty sẽ được dùng",
+        "problem": "Điền mọi vòng trước vòng cuối cùng bạn dùng, mỗi vòng với một biểu mẫu đang bật của công ty này."
+      },
+      "fieldRequired": "Hãy điền trường này.",
+      "fieldInvalid": "Hãy kiểm tra giá trị này."
     },
     "candidates": {
       "purpose": "Hồ sơ theo giai đoạn. Chuyển ứng viên sang giai đoạn tiếp theo, chọn giai đoạn khác hoặc từ chối kèm lý do.",
@@ -38322,7 +38338,8 @@
         "agencies": "Công ty tuyển dụng",
         "checks": "Thẩm tra lý lịch",
         "pools": "Kho ứng viên",
-        "fields": "Trường tùy chỉnh"
+        "fields": "Trường tùy chỉnh",
+        "templates": "Mẫu vị trí"
       },
       "iv": {
         "rulesTitle": "Quy tắc đánh giá",
@@ -39682,6 +39699,61 @@
         "optionInUse": "Đã có hồ sơ chọn lựa chọn này nên không thể xóa. Bỏ chọn Đang bật để ngừng cung cấp.",
         "addOption": "Thêm lựa chọn"
       }
+    },
+    "templates": {
+      "note": "Mẫu lưu các thông tin công việc thường dùng của công ty để vị trí mới được điền sẵn. Người dùng có thể thay đổi mọi thứ trước khi lưu, và vị trí không liên kết với mẫu: các chỉnh sửa mẫu sau này không thay đổi các vị trí hiện có.",
+      "settingLabel": "Cho phép \"Vị trí mới từ mẫu\"",
+      "settingNote": "Khi bật, người tạo vị trí có thể bắt đầu từ các mẫu đang bật bên dưới, kể cả từ \"Tạo công việc\" của một yêu cầu tuyển dụng.",
+      "on": "Bật",
+      "off": "Tắt",
+      "save": "Lưu",
+      "listTitle": "Mẫu",
+      "new": "Mẫu mới",
+      "empty": "Chưa có mẫu nào. Hãy tạo một mẫu từ thông tin công việc công ty bạn dùng nhiều nhất.",
+      "enabled": "Đang bật",
+      "disabled": "Đã tắt",
+      "rounds": "{count, plural, other {# vòng phỏng vấn}}",
+      "customValues": "{count, plural, other {# trường tùy chỉnh}}",
+      "positions": "{count, plural, =0 {Chưa có vị trí nào được tạo từ mẫu này} other {# vị trí được tạo từ mẫu này}}",
+      "changed": "Thay đổi lần cuối bởi {by} lúc {at}",
+      "unnamedUser": "người dùng chưa đặt tên",
+      "edit": "Sửa",
+      "disable": "Tắt",
+      "enable": "Bật",
+      "disableNamed": "Tắt {name}",
+      "enableNamed": "Bật {name}",
+      "delete": "Xóa",
+      "deleteNamed": "Xóa {name}",
+      "deleteNote": "Xóa một mẫu vẫn giữ nguyên mọi vị trí đã tạo từ mẫu đó; các vị trí này chỉ không còn hiển thị mẫu gốc.",
+      "editTitle": "Sửa mẫu: {name}",
+      "newTitle": "Mẫu vị trí mới",
+      "backToList": "Quay lại danh sách mẫu",
+      "name": "Tên mẫu",
+      "nameNote": "Hiển thị khi người dùng chọn mẫu. Mỗi tên chỉ dùng một lần trong công ty.",
+      "defaultProcess": "Quy trình mặc định của công ty",
+      "enabledLabel": "Đang bật (được đề xuất cho vị trí mới)",
+      "saveTemplate": "Lưu mẫu",
+      "fromTemplateTitle": "Vị trí mới từ mẫu",
+      "fromTemplateNote": "Bắt đầu với thông tin công việc từ một mẫu của bạn. Bạn có thể thay đổi mọi thứ trước khi lưu.",
+      "fromTemplateRequisitionNote": "Thông tin riêng của yêu cầu (chức danh, cấp bậc, địa điểm làm việc, các loại và phòng ban) được giữ nguyên; mẫu điền phần còn lại.",
+      "chooseTemplate": "Mẫu",
+      "choose": "Chọn một mẫu",
+      "useTemplate": "Dùng mẫu",
+      "startBlank": "Bắt đầu với biểu mẫu trống",
+      "fromTemplate": "Đã điền sẵn từ mẫu \"{name}\". Hãy xem lại thông tin trước khi lưu.",
+      "notes": {
+        "title": "Một số phần của mẫu này không còn dùng được và đã để trống:",
+        "process": "Quy trình tuyển dụng của mẫu đã bị tắt hoặc xóa. Hãy chọn một quy trình.",
+        "department": "Phòng ban của mẫu không còn dùng được. Hãy chọn phòng ban nếu cần.",
+        "businessUnit": "Đơn vị kinh doanh của mẫu không còn dùng được. Hãy chọn đơn vị kinh doanh nếu cần.",
+        "jobLevels": "{count, plural, other {# cấp bậc}} không còn áp dụng cho công ty và đã bị bỏ ra.",
+        "interviewRound": "{round}: Biểu mẫu của vòng này không còn dùng được. Hãy chọn biểu mẫu khác, hoặc bỏ vòng này và các vòng sau nó.",
+        "customFields": "{count, plural, other {# giá trị trường tùy chỉnh}} không được sao chép vì trường đã bị tắt, xóa hoặc thay đổi.",
+        "customValue": "{field}: câu trả lời đã lưu không còn phù hợp với trường (một lựa chọn đã bị tắt hoặc gỡ bỏ, hoặc phạm vi cho phép đã thay đổi). Hãy điền lại.",
+        "unnamedField": "Một trường tùy chỉnh"
+      },
+      "notFound": "Mẫu này không còn tồn tại. Có thể mẫu đã bị xóa.",
+      "nameProblem": "Hãy dùng tên khác: một mẫu khác của công ty này đã dùng tên đó (tối đa 120 ký tự)."
     }
   },
   "careersPublic": {

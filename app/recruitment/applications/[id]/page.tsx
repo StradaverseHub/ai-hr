@@ -224,9 +224,16 @@ function ScheduleForm({ options, t }: { options: InterviewFormOptions; t: T }) {
           </select>
         </Field>
         <Field label={t('iv.form')}>
+          {/* Slice 15: with an interview plan, "" uses the round's planned form (the company default when it is disabled). */}
           <select name="formId" className={selectCls} defaultValue="">
-            {options.forms.map((f) => <option key={f.id} value={f.isDefault ? '' : f.id}>{f.name}</option>)}
+            {options.plan.length > 0 && <option value="">{t('job.plan.asPlanned')}</option>}
+            {options.forms.map((f) => <option key={f.id} value={f.isDefault && !options.plan.length ? '' : f.id}>{f.name}</option>)}
           </select>
+          {options.plan.length > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {options.plan.map((p) => t('job.plan.roundForm', { round: t('iv.round', { n: p.round }), form: p.enabled && p.formName ? p.formName : t('job.plan.formUnavailable') })).join(' · ')}
+            </span>
+          )}
         </Field>
         <Field label={t('iv.startsAt')} required requiredAriaLabel={t('job.required')}>
           <Input name="startsAt" type="datetime-local" required />

@@ -11,16 +11,19 @@ import { addJobMemberAction, changeJobStatusAction, removeJobMemberAction, setJo
 import { Notice, klDate, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../../shared';
 import { JobInfoFields } from '../job-fields';
 import { CustomFieldInputs, CustomFieldValues } from '../../custom-fields-ui';
+import { InterviewPlanInputs } from '../interview-plan';
 import { AgencyAssignmentSection } from '../agency-section';
 
 type Tab = 'info' | 'settings' | 'team';
+/** Job fields a refusal can name (recruitment.job.fieldNames). */
+const JOB_FIELD_NAME_KEYS = ['title', 'description', 'jobLevel', 'workLocation', 'recruitmentType', 'employmentType', 'businessUnitId', 'departmentId', 'processId', 'interviewPlan'] as const;
 
 /**
  * Recruitment › Position: Job info, Job settings and Team, with the status control in the header. Administrators edit;
  * a job-team member sees the job read-only (slice 2).
  */
 export default async function RecruitmentPositionPage({ params, searchParams }: {
-  params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; problem?: string; notice?: string }>;
+  params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; problem?: string; notice?: string; fields?: string }>;
 }) {
   await requireModule('recruitment');
   const { s, scopeIds } = await scopedSession();
@@ -43,6 +46,10 @@ export default async function RecruitmentPositionPage({ params, searchParams }: 
   const careers = tab === 'settings' ? await jobCareersStatus(s, job.id).catch((e) => { if (e instanceof RecruitmentError) return null; throw e; }) : null;
   const hidden = (name: string, value: string | null | undefined) => <input type="hidden" name={name} value={value ?? ''} />;
   const notice = sp.notice === 'created' ? t('createdNotice') : sp.notice === 'saved' ? t('savedNotice') : undefined;
+  const error = await recruitmentErrorText(sp.problem);
+  // Refused job fields (e.g. an interview plan with a gap), named by the form's field names.
+  const named = (sp.fields ?? '').split(',').filter((f) => (JOB_FIELD_NAME_KEYS as readonly string[]).includes(f))
+    .map((f) => t(`fieldNames.${f as (typeof JOB_FIELD_NAME_KEYS)[number]}`));
   return (
     <div className="mx-auto w-full max-w-5xl space-y-5">
       <PageHeader
@@ -57,7 +64,7 @@ export default async function RecruitmentPositionPage({ params, searchParams }: 
         ))]}
       />
       <Notice text={notice} />
-      <ErrorBanner message={await recruitmentErrorText(sp.problem)} />
+      <ErrorBanner message={error && named.length ? `${error} ${named.join(', ')}` : error} />
       {detail.requisition && (
         <p className="text-sm text-muted-foreground">{t('requisition')}: <Link className="text-primary hover:underline" href={`/recruitment/requisitions/${detail.requisition.id}`}>
           <span className="font-mono">{detail.requisition.reqNumber}</span> · {detail.requisition.title}</Link></p>
@@ -101,6 +108,7 @@ export default async function RecruitmentPositionPage({ params, searchParams }: 
                 <label className="flex items-center gap-2 text-sm sm:col-span-2">
                   <input type="checkbox" name="autoArchiveAfterReject" defaultChecked={job.autoArchiveAfterReject} />{t('autoArchive')}
                 </label>
+                <InterviewPlanInputs forms={options.forms} plan={job.interviewPlanFormIds} />
               </div>
               <div className="space-y-2">
                 <h3 className="text-sm font-semibold">{t('pipeline')}</h3>

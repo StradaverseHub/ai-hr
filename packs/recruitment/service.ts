@@ -196,9 +196,23 @@ export type {
   CustomFieldKind, CustomFieldType, CustomFieldLocale, CustomLabels, SensitiveCategory, CustomFieldInput, CustomOptionInput, ValidCustomField, FieldRule,
   TypedValue, RawCustomValues, CustomFilter,
 } from './custom-field-model';
+// Slice 15 — position templates: Settings › Position templates (administrators: templates and the company setting) and "New
+// position from template" (a pre-filled, unsaved draft of the new-position form with notes for parts no longer usable; a
+// requisition's values win over the template's). createJob records the template; jobs carry an interview plan.
+export {
+  positionTemplateSettings, positionTemplateEditor, savePositionTemplate, setPositionTemplateEnabled, deletePositionTemplate,
+  updatePositionTemplateSetting, positionTemplateChoices, positionTemplateChoicesTx, newPositionFromTemplate, newPositionFromTemplateTx,
+} from './position-templates';
+export type {
+  PositionTemplateRow, PositionTemplateSettings, PositionTemplateEditor, TemplateDraftView, PositionTemplateChoices, PositionFromTemplate, NewPositionFromTemplateOptions,
+} from './position-templates';
+export { POSITION_TEMPLATE_NAME_MAX, POSITION_TEMPLATES_MAX, validateTemplateInput, resolveTemplate, mergeRequisition } from './position-template-model';
+export type {
+  TemplateInput, ValidTemplate, TemplateRecord, TemplateAvailability, TemplateNote, PositionDraft, RequisitionValues,
+} from './position-template-model';
 export {
   RecruitmentError, RECRUITMENT_ERROR_CODES, JOB_STATUSES, JOB_STATUS_TRANSITIONS, JOB_MEMBER_ROLES, POSITION_ATTRIBUTES, RECRUITMENT_TYPES,
-  JOB_EMPLOYMENT_TYPES, RECRUITMENT_STAGE_TYPES, canChangeJobStatus, jobTab,
+  JOB_EMPLOYMENT_TYPES, RECRUITMENT_STAGE_TYPES, canChangeJobStatus, jobTab, INTERVIEW_PLAN_MAX, INTERVIEW_PLAN_FORM_MARKER, parseInterviewPlan, interviewPlanFromForm,
 } from './model';
 export type { JobStatus, JobMemberRole, RecruitmentErrorCode, RecruitmentStageType, PositionAttribute, RecruitmentType, JobEmploymentType, ApplicationState } from './model';
 export {
