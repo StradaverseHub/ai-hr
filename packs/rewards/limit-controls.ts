@@ -83,7 +83,7 @@ async function exemptionsTx(tx:Tx,year:number){
 
 export type RewardLimitRowHistory={changedBy:string|null;changedAt:string|null;revision:number|null};
 /** The Limit Controls page: Group Rewards edits, CTRO and EC view. */
-export function rewardLimitControls(ctx:SessionContext,rawYear:number){
+export async function rewardLimitControls(ctx:SessionContext,rawYear:number){
  const year=yearSchema.parse(rawYear);
  return setupReadTenant(ctx,async tx=>{
   const access=await requireAccessTx(tx,'view');
@@ -121,7 +121,7 @@ function merged(values:Partial<RewardLimitValues>):RewardLimitValues{
  const out=baselineRewardLimitValues();for(const key of rewardConfigurableLimitKeys)if(values[key])out[key]=values[key]!;return out;
 }
 /** Read-only preview for "Review before saving". */
-export function previewRewardLimitSave(ctx:SessionContext,raw:unknown){
+export async function previewRewardLimitSave(ctx:SessionContext,raw:unknown){
  const p=parseSave(raw);
  return setupReadTenant(ctx,async tx=>{
   await requireAccessTx(tx,'edit');
@@ -132,7 +132,7 @@ export function previewRewardLimitSave(ctx:SessionContext,raw:unknown){
  });
 }
 /** Save a new version for the reward year. It takes effect at once for Draft reviews; reviews past Draft keep theirs. */
-export function saveRewardLimits(ctx:SessionContext,raw:unknown){
+export async function saveRewardLimits(ctx:SessionContext,raw:unknown){
  const p=parseSave(raw);
  return setupTenant(ctx,async tx=>{
   await requireAccessTx(tx,'edit');
@@ -161,13 +161,13 @@ async function reapplySummaryTx(tx:Tx,p:z.output<typeof reapplySchema>){
   affected:reviews.map(r=>({reviewId:r.reviewId,label:r.label,stage:r.stage,consequence:'recalculation-required' as const})),highImpact:['released-limit']});
  return{current,summary};
 }
-export function previewRewardLimitReapply(ctx:SessionContext,raw:unknown){
+export async function previewRewardLimitReapply(ctx:SessionContext,raw:unknown){
  const p=reapplySchema.parse(raw);
  return setupReadTenant(ctx,async tx=>{await requireAccessTx(tx,'edit');const {summary}=await reapplySummaryTx(tx,p);return{summary,digest:rewardConfigSummaryDigest(summary)};});
 }
 /** Explicitly apply the year's current version to reviews in the approval route. Their checks are recalculated from
  * the new version (and enforced again at the next approval), and each review's current approver is told. */
-export function reapplyRewardLimits(ctx:SessionContext,raw:unknown){
+export async function reapplyRewardLimits(ctx:SessionContext,raw:unknown){
  const p=reapplySchema.parse(raw);
  return setupTenant(ctx,async tx=>{
   await requireAccessTx(tx,'edit');
