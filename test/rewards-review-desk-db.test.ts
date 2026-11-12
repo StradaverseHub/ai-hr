@@ -2,8 +2,8 @@ import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {configureRewardFixture,refreshRewardFixtureBudget} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
-import { type SessionContext } from '../db/client';
+import { eq, sql } from 'drizzle-orm';
+import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
@@ -67,6 +67,30 @@ describe('Rewards review desk (37f82412)', () => {
     expect(after.rows[0].meritCents).toBe(20000);
     // The re-stamped digest keeps the next approval admissible without returning the review.
     expect(await decideRewardUnit(actors.bg!, unitId, after.unit.revision, 'approve', 'Fictional BG CEO adjustment accepted')).toBe('gr');
+  });
+
+  it('re-stamps the submitted digest from the stored rows after a whole-group approval-step edit, so the next approval is admitted', async () => {
+    // The whole-group GR/CTRO/EC edit shares the BG CEO step's re-stamp: jsonb reorders recommendation keys,
+    // so a digest of the in-memory recommendation would not match the rows the next approval reads back.
+    const hire = await hireEmployee(admin, { person: { fullName: 'Fictional whole-group Rewards holder', primaryEmail: 'group@desk.test' }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year - 2}-01-01` });
+    const [holder] = await owner.db.select({ personId: schema.employment.personId }).from(schema.employment).where(eq(schema.employment.id, hire.employmentId));
+    const groupUserId = await createAppUser(b.tenantId, holder.personId, 'employee');
+    await withTenant(admin, tx => tx.execute(sql`select app.reward_save_group_role(${groupUserId}::uuid, 'gr', true, 0, 'Verified fictional whole-group role')`));
+    const group: SessionContext = { ...admin, userId: groupUserId, personId: holder.personId, roles: ['employee'], grants: [{ role: 'employee', companyId: null }] };
+    await submit();
+    const atBg = await view(actors.bg!);
+    expect(await decideRewardUnit(actors.bg!, unitId, atBg.unit.revision, 'approve', 'Fictional BG CEO approval')).toBe('gr');
+    const before = await view(group), row = before.rows[0];
+    expect(before.unit.status).toBe('gr');
+    expect(before.canEdit).toBe(true);
+    await saveRewardEntry(group, unitId, before.unit.revision, row.id, { ...row.recommendation, meritBp: 450 });
+    const after = await view(admin);
+    expect(after.unit.status).toBe('gr');
+    expect(after.unit.revision).toBe(before.unit.revision + 1);
+    expect(after.rows[0].meritBp).toBe(450);
+    // 5,000.00 basic at 4.5% merit is 225.00.
+    expect(after.rows[0].meritCents).toBe(22500);
+    expect(await decideRewardUnit(admin, unitId, after.unit.revision, 'approve', 'Fictional Group Rewards approval after the edit')).toBe('ctro');
   });
 
   it('refuses classification changes by the BG CEO, BU CEO edits after submission and stale revisions', async () => {
