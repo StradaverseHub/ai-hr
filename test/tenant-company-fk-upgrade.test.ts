@@ -454,8 +454,24 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'bulk_job_step':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
    'bulk_job_worker':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
    'payroll_run_group':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
+   // Background AI Formula Generator (5130): one row per login, forced RLS; the app role reads and deletes (own finished
+   // and the tenant's expired rows) and writes only the listed columns below.
+   'pay_formula_ai_draft_job':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=rd/OWNER}'},
   };
   const combinedColumns=[
+   // 5130: INSERT of the admission columns, UPDATE of the outcome columns; tenant_id and user_id are never updated.
+   {rel:'pay_formula_ai_draft_job',col:'deadline_at',acl:'{ai_hr_app=aw/OWNER}'},
+   {rel:'pay_formula_ai_draft_job',col:'expires_at',acl:'{ai_hr_app=aw/OWNER}'},
+   {rel:'pay_formula_ai_draft_job',col:'finished_at',acl:'{ai_hr_app=w/OWNER}'},
+   {rel:'pay_formula_ai_draft_job',col:'id',acl:'{ai_hr_app=aw/OWNER}'},
+   {rel:'pay_formula_ai_draft_job',col:'reason',acl:'{ai_hr_app=w/OWNER}'},
+   {rel:'pay_formula_ai_draft_job',col:'requirement_digest',acl:'{ai_hr_app=aw/OWNER}'},
+   {rel:'pay_formula_ai_draft_job',col:'result',acl:'{ai_hr_app=w/OWNER}'},
+   {rel:'pay_formula_ai_draft_job',col:'started_at',acl:'{ai_hr_app=aw/OWNER}'},
+   {rel:'pay_formula_ai_draft_job',col:'state',acl:'{ai_hr_app=aw/OWNER}'},
+   {rel:'pay_formula_ai_draft_job',col:'tenant_id',acl:'{ai_hr_app=a/OWNER}'},
+   {rel:'pay_formula_ai_draft_job',col:'timeout_ms',acl:'{ai_hr_app=aw/OWNER}'},
+   {rel:'pay_formula_ai_draft_job',col:'user_id',acl:'{ai_hr_app=a/OWNER}'},
    {rel:'payroll_run_group',col:'ended_at',acl:'{ai_hr_app=w/OWNER}'},
    {rel:'payroll_run_group',col:'event_id',acl:'{ai_hr_app=w/OWNER}'},
    {rel:'payroll_run_group',col:'outcomes',acl:'{ai_hr_app=w/OWNER}'},
@@ -490,6 +506,12 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {schemaname:'public',tablename:'label_company_assignment',policyname:'label_company_assignment_import_pending',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'9e82774b0d29ab4d626e9af1fff8806d',with_check:null},
    {schemaname:'public',tablename:'leave_ledger',policyname:'leave_ledger_import_pending',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'ALL',qual:'0f9dd65355006232e921e629437f17ed',with_check:null},
    {schemaname:'public',tablename:'leave_ledger',policyname:'leave_ledger_stage_hidden',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'ALL',qual:'04ae78d4be9a45c73791e800606ae4f3',with_check:'750a56c287292289aa2796686ca07de0'},
+   // 5130: own read/insert/update while the login's roles are current, own finished delete and the tenant's expired delete.
+   {schemaname:'public',tablename:'pay_formula_ai_draft_job',policyname:'pay_formula_ai_draft_job_expired_delete',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'DELETE',qual:'15e7399f642d75240d8949db0ecdd901',with_check:null},
+   {schemaname:'public',tablename:'pay_formula_ai_draft_job',policyname:'pay_formula_ai_draft_job_own_delete',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'DELETE',qual:'58d5af6b910eb37fd003f613bf15a31d',with_check:null},
+   {schemaname:'public',tablename:'pay_formula_ai_draft_job',policyname:'pay_formula_ai_draft_job_own_insert',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'530d1680fe5109e2378b534d6786176d'},
+   {schemaname:'public',tablename:'pay_formula_ai_draft_job',policyname:'pay_formula_ai_draft_job_own_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'1235e2cc02ad2a03cb64db43c0c2be39',with_check:null},
+   {schemaname:'public',tablename:'pay_formula_ai_draft_job',policyname:'pay_formula_ai_draft_job_own_update',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'UPDATE',qual:'1235e2cc02ad2a03cb64db43c0c2be39',with_check:'1235e2cc02ad2a03cb64db43c0c2be39'},
    {schemaname:'public',tablename:'payroll_batch',policyname:'payroll_batch_history_stage',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'6ce658a1711835306c3e9cac03d44dda',with_check:null},
    {schemaname:'public',tablename:'payroll_history_import_record',policyname:'payroll_history_import_record_history_stage',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'b86f613f85d47351b877d5c302dd1f31',with_check:null},
    {schemaname:'public',tablename:'payroll_history_import_revision',policyname:'payroll_history_import_revision_history_stage',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'a9343f694013ea4b56643ee2bc1e5225',with_check:null},
