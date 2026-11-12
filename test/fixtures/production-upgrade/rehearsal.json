@@ -1,0 +1,64 @@
+{
+  "purpose": "Production upgrade rehearsal inputs. Repository and owner-supplied identities only; no host, credential or production data.",
+  "baseline": {
+    "installedSource": "b7c0393aa3c7606a33dd15103426e5c535324065",
+    "installedSourceRecord": "Owner-approved read-only production check relayed 12 Nov 2026: BUILD_ID fJibwqJehk36PFrtzLelT, code-only hotfix installed 8 Nov; release tag prod-2026-11-08.1.",
+    "ledgerEntries": 697,
+    "ledgerWatermark": 1793330001700,
+    "ledgerDigestFormat": "sha256 of the ledger rows ordered by id, each 'hash created_at', joined by a single newline, no trailing newline",
+    "expectedLedgerDigest": "8073fd5df4eb76068c01192d61628cfdb2a300b5050a3e06d872eaaa3a9ddf04",
+    "populatorSource": "2dcb7fbe7c83849f96f4f6efb5d274f119d07cf2",
+    "populatorSourceReason": "prod-2026-11-06.1, whose journal is exactly the 697-entry ledger. The installed b7c0393aa code expects 704 entries, so it cannot populate a 697-entry schema faithfully.",
+    "productionRoles": [
+      "ai_hr_app",
+      "ai_hr_architecture_grade_guard",
+      "ai_hr_draft_discard_port",
+      "ai_hr_job_profile_reader",
+      "ai_hr_owner",
+      "ai_hr_platform",
+      "ai_hr_reward_setup_reader",
+      "ai_hr_reward_upload_reader",
+      "ai_hr_reward_view_reader",
+      "ai_hr_rewards_post_reader"
+    ],
+    "productionPurposeOwners": {
+      "reward_create_planned_unit": "ai_hr_reward_setup_reader",
+      "reward_setup_grade_choices": "ai_hr_reward_setup_reader",
+      "reward_uploaded_snapshot_roster": "ai_hr_reward_setup_reader",
+      "reward_uploaded_validation": "ai_hr_reward_upload_reader"
+    },
+    "productionShape": {
+      "tenants": 1,
+      "companies": 42,
+      "employments": 3700,
+      "payrollBatches": 219,
+      "payslips": 15000,
+      "domainEvents": 46000
+    }
+  },
+  "sizes": {
+    "companies": 72,
+    "payrollCompanies": 8,
+    "payrollEmploymentsPerCompany": 15,
+    "otherEmploymentsPerCompany": 2,
+    "payrollMonths": [
+      "2026-05",
+      "2026-06",
+      "2026-07",
+      "2026-08",
+      "2026-09",
+      "2026-10"
+    ],
+    "openPayrollMonth": "2026-11",
+    "claims": 300,
+    "users": 60,
+    "secondTenantEmployments": 20
+  },
+  "auditHashChainEnabled": "true",
+  "replication": {
+    "targetEmployments": 3800,
+    "note": "Service hires in non-payroll companies are the templates; the test copies their person, employment and every row that references them (except users, payroll, claims and audit events) set-wise inside the same company until the tenant reaches the target. Copied rows have no audit events of their own, like imported history.",
+    "targetDomainEvents": 46000,
+    "eventNote": "After the employment copies, the main tenant's own service-written events are re-appended set-wise (new ids, every other column kept) through the live chain trigger until the tenant holds the target, so the release's receipt backfill and audit-chain seal run over production-scale history. The trigger assigns sequence, chain position and hashes."
+  }
+}
