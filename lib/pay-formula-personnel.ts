@@ -564,6 +564,15 @@ export const PAY_FORMULA_PERSONNEL_ADAPTERS:readonly PersonnelFormulaAdapter[] =
     "dateBasis": "current-only"
   },
   {
+    "key": "companyCode",
+    "fieldId": "employment.organisation_assignment.companyname",
+    "group": "profile",
+    "type": "string",
+    "adapter": "company",
+    "column": "company_label",
+    "dateBasis": "effective-date"
+  },
+  {
     "key": "businessUnitId",
     "fieldId": "employment.organisation_assignment.businessunitname",
     "group": "profile",
@@ -600,6 +609,11 @@ export const PAY_FORMULA_PERSONNEL_ADAPTERS:readonly PersonnelFormulaAdapter[] =
     "dateBasis": "current-only"
   }
 ];
+/** English fallbacks for adapters that share one Personnel field; translations live at payFormula.fields.<key>. */
+export const PAY_FORMULA_SHARED_FIELD_LABELS:Readonly<Record<string,string>>={companyId:'Company internal ID',companyName:'Company legal name',companyCode:'Company code'};
+/** Adapters whose value is a software-generated internal ID (a UUID), never a code or name an author
+ * types. Derived from the closed adapter metadata: the company `id` column and the `*_id` columns. */
+export function personnelFormulaInternalId(adapter:Pick<PersonnelFormulaAdapter,'column'>){return adapter.column==='id'||adapter.column.endsWith('_id');}
 export function personnelFormulaAdapter(code:string,key:string){if(code!=='EmployeeProfile'&&code!=='EmployeeInformation')return undefined;return PAY_FORMULA_PERSONNEL_ADAPTERS.find(a=>a.key===key&&(code==='EmployeeProfile'?'profile':'employee')===a.group);}
 export type PersonnelFormulaRegistration={id:string;sourceKey:string;label:string;description:string;ordinal:number;enabled:boolean};
 export const PAY_FORMULA_PERSONNEL_INVENTORY=PERSONNEL_FIELDS.filter(field=>field.tab==='Profile'||field.tab==='Employment').map(field=>({fieldId:field.id,label:field.label,labelKey:field.labelKey,section:field.section,group:field.tab==='Profile'?'employee' as const:'profile' as const,type:field.type,history:field.history,sensitivity:field.sensitivity,grain:field.grain,unavailableReason:field.grain==='many'?'repeating':field.type==='file'?'file':field.owner==='draft'?'draft':null}));

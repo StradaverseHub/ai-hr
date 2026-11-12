@@ -34537,7 +34537,10 @@
       "dateOfBirth": "Date of birth",
       "gender": "Gender",
       "nationality": "Nationality",
-      "maritalStatus": "Marital status"
+      "maritalStatus": "Marital status",
+      "companyId": "Company internal ID",
+      "companyName": "Company legal name",
+      "companyCode": "Company code"
     },
     "parameter": {
       "payItem": "Pay Item",
@@ -34701,7 +34704,10 @@
       "missing_return": "Some cases give no amount. Add an Else with a Return, for example Return 0.",
       "division_by_zero": "This divides by 0, which payroll cannot do. Change the number you divide by.",
       "possible_zero_divisor": "This divides by {name}. If it is 0, payroll will stop with a calculation error for that employee. Consider checking for 0 first.",
-      "blocked": "Fix the problems listed under Checks before saving."
+      "blocked": "Fix the problems listed under Checks before saving.",
+      "internal_id_comparedCompany": "companyId is the company's internal ID, so it never equals \"{value}\". Use companyCode for the company code, or companyName for the legal name.",
+      "internal_id_compared": "{name} is an internal ID, so it never equals \"{value}\". Choose a value from the field's permitted list.",
+      "internal_id_comparedSuggest": "{name} is an internal ID, so it never equals \"{value}\". Choose a value from the field's permitted list, or use {suggestion}."
     },
     "testArea": {
       "title": "Formula Test & Result",
@@ -34785,7 +34791,10 @@
         "dateOfBirth": "Date of birth",
         "gender": "Gender",
         "nationality": "Nationality",
-        "maritalStatus": "Marital status"
+        "maritalStatus": "Marital status",
+        "companyId": "Company internal ID",
+        "companyName": "Company legal name",
+        "companyCode": "Company code"
       },
       "conditions": "Verified conditions"
     }

@@ -34537,7 +34537,10 @@
       "dateOfBirth": "Ngày sinh",
       "gender": "Giới tính",
       "nationality": "Quốc tịch",
-      "maritalStatus": "Tình trạng hôn nhân"
+      "maritalStatus": "Tình trạng hôn nhân",
+      "companyId": "ID nội bộ của công ty",
+      "companyName": "Tên pháp lý của công ty",
+      "companyCode": "Mã công ty"
     },
     "parameter": {
       "payItem": "Khoản lương",
@@ -34701,7 +34704,10 @@
       "missing_return": "Một số trường hợp không cho ra số tiền. Hãy thêm Else với Return, ví dụ Return 0.",
       "division_by_zero": "Phép này chia cho 0, điều mà bảng lương không thể thực hiện. Hãy đổi số chia.",
       "possible_zero_divisor": "Phép này chia cho {name}. Nếu giá trị đó bằng 0, việc tính lương sẽ dừng với lỗi tính toán cho nhân viên đó. Hãy cân nhắc kiểm tra giá trị 0 trước.",
-      "blocked": "Hãy sửa các vấn đề được liệt kê trong Kiểm tra trước khi lưu."
+      "blocked": "Hãy sửa các vấn đề được liệt kê trong Kiểm tra trước khi lưu.",
+      "internal_id_comparedCompany": "companyId là ID nội bộ của công ty, nên không bao giờ bằng \"{value}\". Dùng companyCode cho mã công ty, hoặc companyName cho tên pháp lý.",
+      "internal_id_compared": "{name} là ID nội bộ, nên không bao giờ bằng \"{value}\". Hãy chọn một giá trị trong danh sách giá trị được phép của trường này.",
+      "internal_id_comparedSuggest": "{name} là ID nội bộ, nên không bao giờ bằng \"{value}\". Hãy chọn một giá trị trong danh sách giá trị được phép của trường này, hoặc dùng {suggestion}."
     },
     "testArea": {
       "title": "Kiểm thử & Kết quả công thức",
@@ -34785,7 +34791,10 @@
         "dateOfBirth": "Ngày sinh",
         "gender": "Giới tính",
         "nationality": "Quốc tịch",
-        "maritalStatus": "Tình trạng hôn nhân"
+        "maritalStatus": "Tình trạng hôn nhân",
+        "companyId": "ID nội bộ của công ty",
+        "companyName": "Tên pháp lý của công ty",
+        "companyCode": "Mã công ty"
       },
       "conditions": "Điều kiện đã xác thực"
     }
