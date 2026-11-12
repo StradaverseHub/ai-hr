@@ -14,7 +14,7 @@ export function OnboardingEquipment({ c, config, actor, directory, revision, dra
   const [bulk, setBulk] = useState(false), [error, setError] = useState(''), [busy, start] = useTransition(), router = useRouter(), request = currentReq(c);
   const rows = request?.items ?? [], open = rows.filter(item => !item.removed && !['rejected','withdrawn'].includes(item.approval) && !['ready','handed'].includes(item.state));
   const ids = draft?.ids ?? open.map(item => item.id), closed = c.state === 'cancelled' || !!request?.cancelledAt || !!request?.handedAt;
-  const canBulk = (actor.module||actor.caseActions&&actor.sections?.equip==='act') && !closed && ids.length > 0;
+  const canBulk = !!(actor.module||actor.caseActions&&actor.sections?.equip==='act') && !closed && ids.length > 0;
   const groupName = (id: string) => config.groups.find(group => group.id === id)?.name ?? copy('Unassigned team');
   function command(value: Parameters<typeof changeOnboarding>[2], close = false) {
     start(async () => {
