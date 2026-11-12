@@ -14,11 +14,13 @@ import {LINK,PanelNote,PanelSkeleton} from './panel';
 import {PanelBoundary} from './panel-boundary';
 import {CalendarPanel,ComingUpPanel,HoursPanel,LeavePanel,NextStepPanel,PaydayPanel,RequestsPanel,WaitingPanel,type PanelContext} from './panels';
 import {TodayPerformance} from '../performance-slot';
+import {WorkspaceLinks} from '../workspace-links';
 import {moduleState,readAskAllowed,readOwnContext,readOwnPassportCards,readOwnReadiness} from './reads';
 
 /** Employee Today (owner decision, 11 Nov 2026): the bento one-pager for an employee, at `/`, in place of the old
- * personal dashboard (app/page.tsx chooses it only for the employee audience, lib/today/employee.ts
- * isEmployeeOnlyAudience; administrators, managers and partners keep components/today/today-page.tsx).
+ * personal dashboard. app/page.tsx draws it for everyone who is neither an administrator nor a manager
+ * (lib/today/admin.ts todayLayoutFor), payroll and performance partners included (owner decision, 12 Nov 2026): a
+ * partner's own payroll or performance pages are offered under "Your workspace" (components/today/workspace-links.tsx).
  *
  * The greeting and date render at once from the HR date owner. The person's own employment is proved first
  * (./reads.ts readOwnContext); then every panel streams inside its own Suspense and error boundary, so the slowest or
@@ -53,11 +55,11 @@ export async function EmployeeTodayPage({session,scopeIds,employmentId,notice,no
   {notice}{header}<PanelNote>{te('pageUnavailable')}</PanelNote>
  </div>;
  if(!own)return pageUnavailable('context');
- const options=<nav aria-label={tHome('homeOptions')} className="flex flex-wrap justify-end gap-4">
-  {own.identity.role==='manager'&&<Link href={'/?'+new URLSearchParams({workspace:'team',...(selected?{employmentId:selected}:{})})} className={LINK}>{tHome('teamWorkbench')}</Link>}
- </nav>;
+ // Your workspace: team pages for someone whose own employment manages people, and a partner's own payroll or
+ // performance pages (the old team workbench and the old personal Home under a partner's Today are retired).
+ const options=<Suspense fallback={null}><WorkspaceLinks session={session} team={own.identity.role==='manager'}/></Suspense>;
  if(!selected)return <div data-today="employee" className="mx-auto w-full max-w-[72rem] min-w-0 space-y-6">
-  {notice}{header}
+  {notice}{header}{options}
   {own.identity.employmentState==='choose'?<section aria-labelledby="today-choose" className="space-y-3 rounded-2xl border border-border bg-card p-5">
    <h2 id="today-choose" className="m-0 text-base font-semibold">{tHome('chooseEmployment')}</h2>
    <p className="m-0 text-sm text-muted-foreground">{tHome('chooseHelp')}</p>

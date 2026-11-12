@@ -2752,7 +2752,8 @@
       "comingUpPartial": "บางรายการโหลดไม่ได้ในขณะนี้",
       "otherWork": "{count, plural, other {มีอีก # รายการรอคุณอยู่}}",
       "seeAllWork": "ดูทั้งหมด {count} รายการในงาน"
-    }
+    },
+    "workspaceTitle": "พื้นที่ทำงานของคุณ"
   },
   "why": {
     "link": "ทำไม?",

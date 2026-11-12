@@ -2752,7 +2752,8 @@
       "comingUpPartial": "Một số mục hiện không tải được.",
       "otherWork": "{count, plural, other {# mục khác đang chờ bạn}}",
       "seeAllWork": "Xem tất cả {count} mục trong Công việc"
-    }
+    },
+    "workspaceTitle": "Không gian làm việc của bạn"
   },
   "why": {
     "link": "Vì sao?",

@@ -9,7 +9,6 @@ import {
   type DashboardCardRow,
   type DashboardCardType,
 } from '@/core/dashboard-card-config';
-import { MAX_FIRST_ROW, MAX_SHORTCUTS, isFixedRowKey } from '@/lib/dashboard-layout';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { Pager } from '@/components/pager';
@@ -20,11 +19,15 @@ import {HomeConfigurationPanel} from '@/components/employee-home/configuration-p
 
 const PAGE = '/admin/settings/dashboard';
 
-// Dashboard Management IA (item c393827d): a left-nav split of the admin surface. The persisted, HR-owned
-// template entity from the reporter's full spec is DEFERRED (migration 0256, see the Templates section note) —
-// the fixed rows stay DERIVED at runtime per R44. Content now edits the versioned company/role Home
-// settings; the Card Library and legacy workbench layout sections retain their existing owners.
-const SECTIONS = ['library', 'templates', 'content', 'preview'] as const;
+// Dashboard Management IA (item c393827d): a left-nav split of the admin surface. Since the old dashboard was retired
+// (owner decision, 12 Nov 2026) the page configures My Home (/me/home, /me/calendar) only: the Card Library's
+// employee and manager cards, and Content, the versioned company/role Home settings. The never-built Templates
+// section and the Preview of the old dashboard's rows are gone. A `?section=templates` or `?section=preview`
+// address falls back to the library.
+const SECTIONS = ['library', 'content'] as const;
+// Cards offered only to the retired HR-admin dashboard are hidden, not deleted: their rows stay in the database.
+const SHOWN_AUDIENCES = DASHBOARD_CARD_AUDIENCES.filter((r) => r !== 'hr_admin');
+const isShownCard = (c: DashboardCardRow) => c.audience.some((r) => r !== 'hr_admin');
 type Section = (typeof SECTIONS)[number];
 const isSection = (v: string | undefined): v is Section => !!v && (SECTIONS as readonly string[]).includes(v);
 const isCardType = (v: string | undefined): v is DashboardCardType =>
@@ -62,7 +65,7 @@ export default async function DashboardCardConfigPage({
   const typeFilter = isCardType(sp.type) ? sp.type : '';
   const statusFilter = sp.status === 'active' || sp.status === 'inactive' ? sp.status : '';
 
-  const cards = await listCards(s);
+  const cards = (await listCards(s)).filter(isShownCard);
   const editing: DashboardCardRow | null = edit ? cards.find((c) => c.id === edit) ?? null : null;
   const showForm = Boolean(editing || newParam);
 
@@ -95,46 +98,12 @@ export default async function DashboardCardConfigPage({
   const listQs = listAddress.toString();
   const returnFields = <input type="hidden" name="returnTo" value={listQs} />;
 
-  // Derived fixed-row template (R44 → 2806443b): a card is pinned to the full-width fixed second row ONLY
-  // when lib/dashboard-layout FIXED_ROW_KEYS names it — the same shared rule the employee customizer uses,
-  // so the Templates explainer and the Preview show the SAME partition employees get. That list is EMPTY
-  // since a00c4f64 took the Leave Calendar off the dashboard, so the preview's row 2 is empty too.
-  const isPinned = (c: DashboardCardRow) => isFixedRowKey(c.cardKey);
-  // The Templates/Preview sections show the default EMPLOYEE dashboard (their long-standing meaning), so
-  // manager/hr_admin-only cards (audience, 9606c59f) are filtered out of the projection.
-  const activeDefault = cards
-    .filter((c) => c.status === 'active' && c.defaultDisplay && c.audience.includes('employee'))
-    .sort((a, b) => a.displayOrder - b.displayOrder);
-  const previewRow2 = activeDefault.filter(isPinned);
-  // Shortcut-typed cards form their own row on the employee dashboard (3d2bc793) — same derived-membership
-  // rule as the pin — so they must come OUT of the top-row projection or this preview would lie about
-  // where an HR admin's default-display shortcut card lands.
-  const previewShortcuts = activeDefault
-    .filter((c) => !isPinned(c) && c.cardType === 'shortcut')
-    .slice(0, MAX_SHORTCUTS);
-  const previewRow1All = activeDefault.filter((c) => !isPinned(c) && c.cardType !== 'shortcut');
-  const previewRow1 = previewRow1All.slice(0, MAX_FIRST_ROW);
-  const previewOverflowCount = previewRow1All.length - previewRow1.length;
-
   const yesNo = (v: boolean) => (v ? t('yes') : t('no'));
 
   const navLinkCls = (active: boolean) =>
     `block rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
       active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
     }`;
-
-  const previewTile = (c: DashboardCardRow, pinned: boolean) => (
-    <div
-      key={c.id}
-      className="flex flex-col gap-1 rounded-lg border border-border bg-card p-3 text-xs shadow-sm"
-    >
-      <span className="font-medium text-foreground">{c.name}</span>
-      <div className="flex items-center gap-1.5">
-        <Badge variant="default">{t(`type.${c.cardType}`)}</Badge>
-        {pinned && <Badge variant="success">{tm('pinnedBadge')}</Badge>}
-      </div>
-    </div>
-  );
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -146,14 +115,8 @@ export default async function DashboardCardConfigPage({
           <Link href={`${PAGE}?section=library`} className={navLinkCls(section === 'library')}>
             {tm('navLibrary')}
           </Link>
-          <Link href={`${PAGE}?section=templates`} className={navLinkCls(section === 'templates')}>
-            {tm('navTemplates')}
-          </Link>
           <Link href={`${PAGE}?section=content`} className={navLinkCls(section === 'content')}>
             {tm('navContent')}
-          </Link>
-          <Link href={`${PAGE}?section=preview`} className={navLinkCls(section === 'preview')}>
-            {tm('navPreview')}
           </Link>
         </nav>
 
@@ -253,7 +216,7 @@ export default async function DashboardCardConfigPage({
                           </td>
                           <td className="px-4 py-2.5">
                             <div className="flex flex-wrap gap-1">
-                              {c.audience.map((r) => (
+                              {c.audience.filter((r) => r !== 'hr_admin').map((r) => (
                                 <Badge key={r} variant="default">
                                   {t(`audience.${r}`)}
                                 </Badge>
@@ -407,12 +370,14 @@ export default async function DashboardCardConfigPage({
                       <span className="text-xs text-muted-foreground">{t('fieldHrefHint')}</span>
                     </label>
 
-                    {/* Audience (9606c59f): which role dashboards offer this card. Unchecking everything
-                        falls back to Employee in the service (a card must target at least one role). */}
+                    {/* Audience (9606c59f): which roles are offered this card. Unchecking everything falls back to
+                        Employee in the service (a card must target at least one role). The retired HR-admin audience
+                        is not offered; a card that already has it keeps it on save (the hidden field below). */}
                     <fieldset className="sm:col-span-2 flex flex-col gap-2">
                       <span className="text-sm font-medium">{t('fieldAudience')}</span>
                       <div className="flex flex-wrap gap-x-6 gap-y-2">
-                        {DASHBOARD_CARD_AUDIENCES.map((r) => (
+                        {editing?.audience.includes('hr_admin') && <input type="hidden" name="audience" value="hr_admin" />}
+                        {SHOWN_AUDIENCES.map((r) => (
                           <label key={r} className="flex items-center gap-2">
                             <input
                               type="checkbox"
@@ -477,100 +442,10 @@ export default async function DashboardCardConfigPage({
             </>
           )}
 
-          {section === 'templates' && (
-            <Card className="p-5 space-y-5">
-              <SectionHeader title={tm('templatesTitle')} />
-              <p className="text-sm text-muted-foreground">{tm('templatesIntro')}</p>
-
-              <div className="space-y-4">
-                <div className="rounded-lg border border-border p-4">
-                  <h3 className="text-sm font-semibold">{tm('templateRow1', { max: MAX_FIRST_ROW })}</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {tm('templateRow1Desc', { max: MAX_FIRST_ROW })}
-                  </p>
-                  {previewRow1.length > 0 && (
-                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      {previewRow1.map((c) => previewTile(c, false))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="rounded-lg border border-border p-4">
-                  <h3 className="text-sm font-semibold">{tm('templateShortcuts', { max: MAX_SHORTCUTS })}</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {tm('templateShortcutsDesc', { max: MAX_SHORTCUTS })}
-                  </p>
-                  {previewShortcuts.length > 0 && (
-                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      {previewShortcuts.map((c) => previewTile(c, false))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="rounded-lg border border-border p-4">
-                  <h3 className="text-sm font-semibold">{tm('templateRow2')}</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">{tm('templateRow2Desc')}</p>
-                  {previewRow2.length > 0 && (
-                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      {previewRow2.map((c) => previewTile(c, true))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="rounded-lg border border-border p-4">
-                  <h3 className="text-sm font-semibold">{tm('templateRow3')}</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">{tm('templateRow3Desc')}</p>
-                </div>
-              </div>
-
-              <p className="rounded-lg border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-                {tm('templateDerivedNote')}
-              </p>
-            </Card>
-          )}
-
           {section === 'content' && (
             <HomeConfigurationPanel session={s} selection={{companyId:sp.homeCompanyId,role:sp.homeRole,before:sp.homeBeforeOrdinal,version:sp.homeVersion}}/>
           )}
 
-          {section === 'preview' && (
-            <Card className="p-5 space-y-4">
-              <SectionHeader title={tm('previewTitle')} />
-              <p className="text-sm text-muted-foreground">{tm('previewIntro')}</p>
-
-              {activeDefault.length === 0 ? (
-                <p className="rounded-lg border border-border px-4 py-8 text-center text-sm text-muted-foreground">
-                  {tm('previewEmpty')}
-                </p>
-              ) : (
-                <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
-                  <div>
-                    <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      {tm('previewRow1')}
-                    </p>
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      {previewRow1.map((c) => previewTile(c, false))}
-                    </div>
-                    {previewOverflowCount > 0 && (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        {tm('previewOverflow', { count: previewOverflowCount })}
-                      </p>
-                    )}
-                  </div>
-                  {previewRow2.length > 0 && (
-                    <div>
-                      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        {tm('previewRow2')}
-                      </p>
-                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                        {previewRow2.map((c) => previewTile(c, true))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </Card>
-          )}
         </div>
       </div>
     </div>

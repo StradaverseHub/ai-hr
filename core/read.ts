@@ -6687,23 +6687,6 @@ export function dashboardStats(ctx: SessionContext, companyIds?: string[]) {
   });
 }
 
-/** Per-company active headcount across the group — the consolidation breakdown (RLS-scoped). */
-export function groupBreakdown(ctx: SessionContext) {
-  return withTenant(ctx, (tx) =>
-    tx
-      .select({
-        id: company.id,
-        name: company.legalName,
-        parentId: sql<string | null>`app.company_organisation_current_parent(${company.id})`,
-        headcount: sql<number>`(count(${employment.id}) filter (where ${employment.terminatedOn} is null))::int`,
-      })
-      .from(company)
-      .leftJoin(employment, eq(employment.companyId, company.id))
-      .groupBy(company.id, company.legalName)
-      .orderBy(company.legalName),
-  );
-}
-
 const RECENT_ACTIVITY_WINDOW_DAYS = 30;
 
 /**

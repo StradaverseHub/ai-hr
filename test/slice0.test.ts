@@ -65,7 +65,7 @@ import {
   transferEmployee,
 } from '../core/org';
 import { decideLeave, InsufficientLeaveBalanceError, openLeaveYear, requestLeave } from '../core/leave';
-import { dashboardStats, groupBreakdown, listEmployees, listEmployeesPage, reportingLinesFor } from '../core/read';
+import { dashboardStats, listEmployees, listEmployeesPage, reportingLinesFor } from '../core/read';
 import {
   archiveDepartment,
   assignRole,
@@ -848,10 +848,6 @@ describe('Slice C — consolidation (group vs per-company)', () => {
     expect(childStats.headcount).toBe(1);
     expect(childStats.companies).toBe(RESOLVED);
 
-    // Per-company breakdown.
-    const bd = await groupBreakdown(a);
-    expect(bd.find((r) => r.id === parent)?.headcount).toBe(1);
-    expect(bd.find((r) => r.id === child)?.headcount).toBe(1);
   });
 });
 

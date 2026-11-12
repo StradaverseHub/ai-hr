@@ -2752,7 +2752,8 @@
       "comingUpPartial": "Some items could not be loaded just now.",
       "otherWork": "{count, plural, one {# other item is waiting for you} other {# other items are waiting for you}}",
       "seeAllWork": "See all {count} in Tasks"
-    }
+    },
+    "workspaceTitle": "Your workspace"
   },
   "why": {
     "link": "Why?",

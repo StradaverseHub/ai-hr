@@ -185,7 +185,6 @@ describe('drift guard — no surface renders the obsolete statuses', () => {
   const read = (rel: string) => fs.readFileSync(path.resolve(__dirname, '..', rel), 'utf8');
   const DIRECTORY = read('app/personnel/page.tsx');
   const PROFILE = read('app/personnel/[employmentId]/page.tsx');
-  const DASHBOARD = read('app/page.tsx');
   const UI = read('components/ui.tsx');
 
   it('the staff directory derives status and never badges a raw/legacy value', () => {
@@ -200,11 +199,6 @@ describe('drift guard — no surface renders the obsolete statuses', () => {
     expect(PROFILE).toContain('deriveEmploymentStatus');
     expect(PROFILE).not.toMatch(/on_leave|offboarding/);
     expect(PROFILE).not.toMatch(/StatusBadge\s+status=\{[^}]*'terminated'/);
-  });
-
-  it('the dashboard Onboarding card derives status instead of showing raw assignment.status', () => {
-    expect(DASHBOARD).toContain('deriveEmploymentStatus');
-    expect(DASHBOARD).not.toMatch(/StatusBadge\s+status=\{h\.status\}/);
   });
 
   // 9cbf5e0d — the two surfaces that were still reading the legacy stored enum. Source-level, because the

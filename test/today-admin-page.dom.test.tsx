@@ -314,9 +314,15 @@ describe('Manager Today',()=>{
   expect(new Set(S.recommendCalls.map(ids=>ids.join(',')))).toEqual(new Set(['l1,l2,l3,l9']));
  });
 
- it('offers the team workbench, mounts the Performance block, and keeps the manager\'s own record beside the team',async()=>{
+ it('offers the team pages under Your workspace, mounts the Performance block, and keeps the manager\'s own record beside the team',async()=>{
   const view=await show('manager',false,{employmentId:'emp-own'});
-  expect(view.container.querySelector('[data-today-workbench]')?.getAttribute('href')).toBe('/?workspace=team&employmentId=emp-own');
+  // The team workbench is retired (12 Nov 2026): its link now points at the team's own pages.
+  expect(view.container.querySelector('[data-today-workbench]')).toBeNull();
+  const workspace=view.container.querySelector('[data-today-workspace]')!;
+  expect(workspace.getAttribute('aria-label')).toBe('Your workspace');
+  const hrefs=[...workspace.querySelectorAll('a')].map(link=>link.getAttribute('href'));
+  expect(hrefs.slice(0,2)).toEqual(['/manage/my-team','/approvals']);
+  expect(hrefs.filter(href=>href?.includes('workspace='))).toEqual([]);
   expect(view.container.querySelector('[data-today-performance] [data-performance-home]')).not.toBeNull();
   expect(S.ownCalls).toContain('emp-own');
   const team=view.panel('today-team-coming-up')!;

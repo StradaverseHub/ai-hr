@@ -2752,7 +2752,8 @@
       "comingUpPartial": "部分事项暂时无法加载。",
       "otherWork": "{count, plural, other {另有 # 项事项在等待您}}",
       "seeAllWork": "在任务中查看全部 {count} 项"
-    }
+    },
+    "workspaceTitle": "您的工作区"
   },
   "why": {
     "link": "为什么？",

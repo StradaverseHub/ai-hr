@@ -9,7 +9,7 @@ import { WorkspaceConversation } from './assistant/workspace-conversation';
 
 /**
  * Atelier round 1 — Home's ask box. It is the EXISTING assistant (ADR-0082), not a new one: the form posts
- * through the shared in-place conversation. The server records and reauthorizes each answer. app/dashboard-atelier.tsx renders this only when mayUseAssistant() allows the viewer, so a
+ * through the shared in-place conversation. The server records and reauthorizes each answer. The retired Atelier Home (app/dashboard-atelier.tsx) rendered this only when mayUseAssistant() allowed the viewer, so a
  * person without the module or a grant never meets a box that cannot answer.
  *
  * The suggestion chips only FILL the box; nothing is sent until the person presses Ask.
