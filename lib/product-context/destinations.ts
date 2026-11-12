@@ -161,6 +161,7 @@ export const NATIVE_SCOPE_ONLY_PAGES:ReadonlySet<string>=new Set([
  '/admin/rewards/access/view-as',
  '/admin/rewards/bonus-matrices',
  '/admin/rewards/change-log',
+ '/admin/rewards/limit-controls',
  '/admin/rewards/pat-inputs',
  '/admin/rewards/plans',
  '/admin/rewards/review-setup',

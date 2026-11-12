@@ -296,6 +296,7 @@ const webNotificationRecipients:NotificationRecipientReaders<Tx>={
   rewardPoolChanged:(tx,event)=>rewardPoolNotificationRecipients(tx,event.aggregateId),
   rewardApproved:(tx, ev) => rewardNotificationRecipients(tx, ev.aggregateId, 'approved'),
   rewardConfigChanged:(tx,event)=>rewardConfigChangeRecipients(tx,event.aggregateId),
+  rewardLimitsReapplied:(tx,event)=>rewardPoolNotificationRecipients(tx,event.aggregateId),
   leaveSubmitted:async (tx, ev) => {
       if (!ev.subjectEmploymentId) return [];
       const hr = await hrAdminsForCompany(tx, ev.subjectEmploymentId);

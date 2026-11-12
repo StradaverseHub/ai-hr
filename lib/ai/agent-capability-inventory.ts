@@ -160,6 +160,9 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/admin/rewards/libraries/actions.ts":{
   "decideLibraryAction":"backlog:approve","importLibraryAction":"internal:session_and_presentation","restoreLibraryAction":"backlog:approve","saveLibraryAction":"backlog:approve",
  },
+ "app/admin/rewards/limit-controls/actions.ts":{
+  "previewLimitSaveAction":"internal:session_and_presentation","previewReapplyAction":"internal:session_and_presentation","reapplyAction":"backlog:approve","saveLimitAction":"backlog:approve",
+ },
  "app/admin/rewards/pat-inputs/actions.ts":{
   "previewPatBatchAction":"internal:session_and_presentation","previewPatImportAction":"internal:session_and_presentation","savePatBatchAction":"backlog:approve",
  },

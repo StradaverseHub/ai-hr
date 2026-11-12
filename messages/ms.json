@@ -589,7 +589,8 @@
     "myPayrollReadiness": "Kesediaan gaji saya",
     "attendanceFormulaBuilder": "Formula kehadiran",
     "rewardsReviewSetup": "Persediaan Semakan",
-    "rewardsChangeLog": "Log perubahan"
+    "rewardsChangeLog": "Log perubahan",
+    "rewardsLimitControls": "Kawalan Had"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -24545,7 +24546,9 @@
       "companyArchived": "Diarkibkan",
       "selectedSummary": "Syarikat dan unit perniagaan dipilih",
       "membershipChanged": "Keahlian organisasi berubah; semak pilihan ini.",
-      "noMembership": "Tiada penetapan unit perniagaan semasa dalam Pengurusan Kakitangan."
+      "noMembership": "Tiada penetapan unit perniagaan semasa dalam Pengurusan Kakitangan.",
+      "limitControlsNote": "Kumpulan kenaikan gaji dan had bayaran sekali gus diurus dalam Kawalan Had untuk tahun ganjaran.",
+      "limitControlsLink": "Buka Kawalan Had"
     },
     "returnedTo": {
       "bu": "Returned to BU CEO",
@@ -37038,7 +37041,7 @@
       "SAL-03": "Dengan kenaikan pangkat, kenaikan {limit}% atau lebih memerlukan semakan.",
       "SAL-01": "Gaji asas baharu tidak boleh kurang daripada gaji asas semasa.",
       "SAL-04": "Gaji melebihi maksimum atau masih di bawah minimum ditunjukkan untuk semakan.",
-      "BUD-01": "Bonus ialah pencapaian PAT × {targetMonths} bulan sasaran × gaji layak; melebihi 100% menghalang dan di bawah {minimum}% memberi amaran.",
+      "BUD-01": "Bonus ialah pencapaian PAT × {targetMonths} bulan sasaran × gaji layak; melebihi {cap}% menghalang dan di bawah {minimum}% memberi amaran.",
       "BUD-02": "Bonus mengikut gred × prestasi × pengganda unit × prorata. Perubahan individu ialah pengecualian.",
       "BUD-03": "Bayaran dibundarkan ke bawah; bonus melebihi {months} bulan ialah pengecualian.",
       "BUD-05": "Bayaran sekali gus menggunakan {share}% baki, dibundarkan ke bawah kepada MYR {step}; had {cap}. MYR 0 ditahan.",
@@ -37055,6 +37058,20 @@
       "UPL-01": "Anugerah dimuat naik mesti mempunyai pekerja syarikat sah, gred aktif, amaun tidak negatif dan tiada pengurangan gaji.",
       "UPL-02": "Kelayakan umum hanya memberi amaran untuk anugerah dimuat naik, termasuk had masuk {cutoff} dan perubahan gaji {from} hingga {to}.",
       "ARCH-01": "Gred pekerja berbeza daripada gred jawatan yang diluluskan. Semak pemetaan atau cadangkan perubahan gred bertarikh; gred pekerja yang direkodkan kekal."
+    },
+    "plainHeading": "Apa yang dilakukan setiap peraturan",
+    "plainLegend": "Semakan pada ulasan memberitahu anda apa yang perlu dibetulkan dan sama ada ia menghalang penghantaran. Group Rewards mengurus had di sebaliknya.",
+    "limitVersion": "Ulasan ini menggunakan Kawalan Had versi {version}.",
+    "plain": {
+      "POOL-01": "Kenaikan merit mengikut matriks bakat dan julat gaji dan mesti kekal dalam kumpulan merit.",
+      "PRO-01": "Kenaikan pangkat menaikkan seseorang beberapa gred yang terhad dan dibiayai daripada kumpulan kenaikan pangkatnya sendiri.",
+      "POOL-04": "Pekerja STAR dan SSTAR yang dibayar jauh di bawah julat mereka boleh menerima kenaikan susulan dan tambahan ke minimum julat, dalam kumpulan pelarasan khas.",
+      "POOL-10": "JG H mempunyai kumpulan merit, kenaikan pangkat dan pelarasan khas sendiri.",
+      "SAL-02": "Kenaikan besar tanpa kenaikan pangkat memerlukan sebab.",
+      "SAL-03": "Kenaikan besar dengan kenaikan pangkat memerlukan sebab.",
+      "BUD-01": "Kumpulan bonus mengikut pencapaian PAT dan bulan sasaran. Perbelanjaan melebihi kumpulan menghalang penghantaran; penggunaan yang terlalu sedikit memberi amaran.",
+      "BUD-03": "Bayaran bonus dibundarkan ke bawah. Bonus individu yang luar biasa tinggi memerlukan sebab.",
+      "BUD-05": "Bayaran sekali gus berkongsi baki bonus yang tinggal. RM 0 bermaksud ditahan; amaun individu yang berbeza memerlukan sebab."
     }
   },
   "rewardAccessPolicy": {
@@ -37290,7 +37307,7 @@
     "bonusSpread": "Taburan bulan bonus",
     "bonusSpreadHelp": "Bilangan kakitangan yang layak mengikut bilangan bulan gaji pokok yang dibayar sebagai bonus.",
     "poolByUnit": "Penggunaan peruntukan mengikut unit",
-    "poolHelp": "Penyerahan melebihi 100% hanya dibenarkan untuk unit yang mendapat pengecualian.",
+    "poolHelp": "Perbelanjaan melebihi kumpulan tidak boleh dihantar kecuali unit mendapat pengecualian.",
     "bonusByGradeBand": "Bulan bonus mengikut kumpulan gred",
     "breakdown": "Pecahan mengikut",
     "bonusFootnote": "Bulan bonus mengambil kira pengganda atau faktor cawangan serta pelarasan prorata. Jumlah bayaran merangkumi bayaran sekali gus. Angka peruntukan dan PAT direkodkan pada peringkat unit.",
@@ -38650,5 +38667,120 @@
     "previous": "Sebelumnya",
     "next": "Seterusnya",
     "exportTruncated": "Hanya 5,000 perubahan pertama disertakan. Kecilkan penapis untuk mengeksport selebihnya."
+  },
+  "rewardLimits": {
+    "description": "Had dan ambang bagi setiap tahun ganjaran. Setiap semakan dalam ulasan, penasihat AI dan Analitik Ganjaran menggunakan nilai bagi tahun ganjaran ulasan itu.",
+    "noAccess": "Anda tidak mempunyai akses",
+    "noAccessHelp": "Kawalan Had tersedia untuk Group Rewards, CTRO dan EC.",
+    "year": "Tahun ganjaran",
+    "show": "Tunjuk",
+    "viewOnly": "Anda boleh melihat had ini. Hanya Group Rewards boleh mengubahnya.",
+    "versionLine": "Versi {version} digunakan untuk {year}.",
+    "baselineLine": "Belum ada versi disimpan untuk {year}. Ini ialah nilai standard; menyimpan akan mencipta versi 1.",
+    "typeHelp": "Sekat menghalang penghantaran. Pengecualian dan Amaran dibawa bersama ulasan dan memerlukan sebab sebelum dihantar. Nota hanya untuk makluman.",
+    "columns": {
+      "limit": "Had",
+      "value": "Nilai",
+      "type": "Jenis",
+      "appliesTo": "Terpakai kepada",
+      "lastChanged": "Terakhir diubah oleh / tarikh"
+    },
+    "areas": {
+      "pools": "Kumpulan kenaikan gaji",
+      "person": "Kenaikan gaji setiap orang",
+      "bonus": "Bonus",
+      "lump": "Bayaran sekali gus",
+      "exemption": "Pengecualian",
+      "advisor": "Penasihat AI"
+    },
+    "labels": {
+      "pool_standard_merit": "Kumpulan merit (% gaji layak)",
+      "pool_standard_promotion": "Kumpulan kenaikan pangkat (% gaji layak)",
+      "pool_standard_special": "Kumpulan pelarasan khas (% gaji layak)",
+      "pool_h_merit": "Kumpulan merit (% gaji layak)",
+      "pool_h_promotion": "Kumpulan kenaikan pangkat (% gaji layak)",
+      "pool_h_special": "Kumpulan pelarasan khas (% gaji layak)",
+      "pool_separate": "Kumpulan tidak boleh membiayai satu sama lain atau syarikat lain",
+      "increase_withoutPromotion": "Jumlah kenaikan tanpa kenaikan pangkat melebihi",
+      "increase_withPromotion": "Jumlah kenaikan dengan kenaikan pangkat pada atau melebihi",
+      "promotion_increment": "Kenaikan bagi kenaikan pangkat",
+      "promotion_maxGrades": "Maksimum gred naik",
+      "promotion_maxGrade": "Gred tertinggi selepas kenaikan pangkat",
+      "catchUp_crFloor": "Lantai CR susulan untuk STAR/SSTAR",
+      "salary_noReduction": "Tiada pengurangan gaji",
+      "bonus_poolCap": "Had kumpulan bonus",
+      "bonus_underUse": "Amaran penggunaan rendah di bawah",
+      "bonus_individualCeiling": "Siling bonus individu melebihi",
+      "bonus_rounding": "Pembundaran bayaran (bundar ke bawah)",
+      "bonus_individualMultiplier": "Pendarab individu berbeza daripada unit",
+      "lump_share": "Bahagian baki yang tinggal",
+      "lump_step": "Langkah pembundaran",
+      "lump_cap": "Had setiap orang",
+      "lump_aboveSuggestion": "Amaun unit melebihi cadangan",
+      "lump_individualAmendment": "Pindaan individu",
+      "exemption_budgetCapsOnly": "Syarikat dikecualikan: had bajet sahaja, dengan sebab",
+      "advisor_override": "Ambang pindaan",
+      "advisor_longWithoutIncrease": "Lama tanpa kenaikan",
+      "advisor_peerGap": "Jurang gaji rakan setara"
+    },
+    "types": {
+      "block": "Sekat",
+      "exception": "Pengecualian",
+      "warning": "Amaran",
+      "note": "Nota"
+    },
+    "appliesTo": {
+      "standard": "Pelan standard",
+      "h": "Pelan JG H",
+      "all": "Semua pelan"
+    },
+    "units": {
+      "percent": "%",
+      "points": "mata peratusan",
+      "ratio": "CR",
+      "months": "bulan",
+      "myr": "RM",
+      "grades": "gred",
+      "grade": "JG",
+      "years": "tahun"
+    },
+    "fixed": "Tetap",
+    "fixedHelp": "Ditetapkan untuk melindungi gaji; tidak boleh diubah.",
+    "none": "Tiada",
+    "standardValue": "Nilai standard",
+    "changedBy": "{name} · {date}",
+    "unknownPerson": "Tidak diketahui",
+    "valueFor": "Nilai untuk {limit}",
+    "typeFor": "Jenis untuk {limit}",
+    "reviewSave": "Semak sebelum menyimpan",
+    "save": "Simpan versi baharu",
+    "discard": "Buang perubahan",
+    "saved": "Disimpan sebagai versi {version}.",
+    "errors": {
+      "system": "Had tidak dapat disimpan. Perubahan anda masih ada; cuba lagi."
+    },
+    "reviewsHeading": "Ulasan dalam tahun ganjaran ini",
+    "reviewsHelp": "Ulasan Draf menggunakan versi semasa. Ulasan yang telah melepasi Draf mengekalkan versi semasa ia dihantar. Jika anda menggunakan versi semasa padanya, semakannya dijalankan semula dan pelulus semasanya dimaklumkan.",
+    "reviewColumns": {
+      "review": "Ulasan",
+      "stage": "Peringkat",
+      "versionUsed": "Had digunakan"
+    },
+    "select": "Pilih",
+    "selectReview": "Pilih {review}",
+    "baseline": "Nilai standard (sebelum Kawalan Had)",
+    "currentVersion": "Semasa (versi {version})",
+    "version": "Versi {version}",
+    "apply": "Gunakan versi {version} pada ulasan yang dipilih",
+    "applyConfirm": "Gunakan dan maklumkan pelulus",
+    "applied": "{count, plural, one {Digunakan pada # ulasan.} other {Digunakan pada # ulasan.}}",
+    "noReviews": "Belum ada ulasan menggunakan tahun ganjaran ini.",
+    "reviewsTruncated": "Hanya 200 ulasan pertama disenaraikan.",
+    "exemptionsHeading": "Pengecualian had bajet",
+    "exemptionsHelp": "Pengecualian hanya melonggarkan had bajet (kumpulan kenaikan gaji dan had kumpulan bonus). Ia direkodkan bersama sebabnya pada persediaan ulasan.",
+    "noExemptions": "Tiada ulasan dalam tahun ganjaran ini mempunyai pengecualian had bajet.",
+    "historyHeading": "Sejarah versi",
+    "noVersions": "Belum ada versi.",
+    "changeLogLink": "Lihat setiap perubahan dalam log perubahan"
   }
 }

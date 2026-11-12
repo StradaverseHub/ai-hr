@@ -589,7 +589,8 @@
     "myPayrollReadiness": "Mức sẵn sàng cho kỳ lương của tôi",
     "attendanceFormulaBuilder": "Công thức chấm công",
     "rewardsReviewSetup": "Thiết lập đánh giá",
-    "rewardsChangeLog": "Nhật ký thay đổi"
+    "rewardsChangeLog": "Nhật ký thay đổi",
+    "rewardsLimitControls": "Kiểm soát giới hạn"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -24545,7 +24546,9 @@
       "companyArchived": "Đã lưu trữ",
       "selectedSummary": "Công ty và đơn vị kinh doanh đã chọn",
       "membershipChanged": "Quan hệ tổ chức đã đổi; hãy kiểm tra lựa chọn.",
-      "noMembership": "Không có đơn vị kinh doanh hiện tại trong Quản lý nhân sự."
+      "noMembership": "Không có đơn vị kinh doanh hiện tại trong Quản lý nhân sự.",
+      "limitControlsNote": "Quỹ tăng lương và giới hạn khoản thưởng một lần được quản lý trong Kiểm soát giới hạn của năm thưởng.",
+      "limitControlsLink": "Mở Kiểm soát giới hạn"
     },
     "returnedTo": {
       "bu": "Returned to BU CEO",
@@ -37038,7 +37041,7 @@
       "SAL-03": "Có thăng chức: tăng từ {limit}% trở lên cần xem xét.",
       "SAL-01": "Lương cơ bản mới không được thấp hơn lương hiện tại.",
       "SAL-04": "Lương trên tối đa hoặc vẫn dưới tối thiểu được đánh dấu để xem xét.",
-      "BUD-01": "Quỹ thưởng = tỷ lệ PAT × {targetMonths} tháng mục tiêu × quỹ lương hợp lệ; trên 100% bị chặn, dưới {minimum}% cảnh báo.",
+      "BUD-01": "Quỹ thưởng = tỷ lệ PAT × {targetMonths} tháng mục tiêu × quỹ lương hợp lệ; trên {cap}% bị chặn, dưới {minimum}% cảnh báo.",
       "BUD-02": "Thưởng theo bậc × hiệu suất × hệ số đơn vị × tỷ lệ thời gian. Điều chỉnh cá nhân là ngoại lệ.",
       "BUD-03": "Làm tròn tiền thưởng xuống; trên {months} tháng là ngoại lệ.",
       "BUD-05": "Khoản một lần dùng {share}% số dư, làm tròn xuống MYR {step}; trần {cap}. MYR 0 là không chi.",
@@ -37055,6 +37058,20 @@
       "UPL-01": "Thưởng tải lên cần nhân viên đúng công ty, bậc đang dùng, số tiền không âm và không giảm lương.",
       "UPL-02": "Điều kiện chung chỉ cảnh báo cho thưởng tải lên, gồm ngày vào {cutoff} và đổi lương {from} đến {to}.",
       "ARCH-01": "Bậc nhân viên khác bậc vị trí đã duyệt. Xem xét ánh xạ hoặc đề xuất biến động bậc có ngày hiệu lực; bậc nhân viên đã ghi vẫn giữ nguyên."
+    },
+    "plainHeading": "Mỗi quy tắc làm gì",
+    "plainLegend": "Các kiểm tra trong đợt xét cho biết bạn cần sửa gì và có chặn việc gửi hay không. Group Rewards quản lý các giới hạn phía sau.",
+    "limitVersion": "Đợt xét này dùng Kiểm soát giới hạn phiên bản {version}.",
+    "plain": {
+      "POOL-01": "Tăng lương theo thành tích dựa trên ma trận nhân tài và khung lương, và phải nằm trong quỹ thành tích.",
+      "PRO-01": "Thăng chức nâng một số bậc có giới hạn và được chi từ quỹ thăng chức riêng.",
+      "POOL-04": "Nhân viên STAR và SSTAR có lương thấp hơn nhiều so với khung có thể được điều chỉnh bắt kịp và bù lên mức tối thiểu của khung, trong quỹ điều chỉnh đặc biệt.",
+      "POOL-10": "JG H có quỹ thành tích, thăng chức và điều chỉnh đặc biệt riêng.",
+      "SAL-02": "Mức tăng lớn không kèm thăng chức cần có lý do.",
+      "SAL-03": "Mức tăng lớn kèm thăng chức cần có lý do.",
+      "BUD-01": "Quỹ thưởng dựa trên mức đạt PAT và số tháng mục tiêu. Chi vượt quỹ sẽ chặn việc gửi; dùng quá ít sẽ hiện cảnh báo.",
+      "BUD-03": "Khoản thưởng được làm tròn xuống. Thưởng cá nhân cao bất thường cần có lý do.",
+      "BUD-05": "Khoản thưởng một lần chia phần số dư thưởng còn lại. RM 0 nghĩa là tạm giữ; số tiền cá nhân khác cần có lý do."
     }
   },
   "rewardAccessPolicy": {
@@ -37290,7 +37307,7 @@
     "bonusSpread": "Phân bố số tháng lương thưởng",
     "bonusSpreadHelp": "Phân nhóm nhân viên đủ điều kiện theo số tháng lương cơ bản được thưởng.",
     "poolByUnit": "Mức sử dụng quỹ thưởng theo đơn vị",
-    "poolHelp": "Đơn vị sử dụng quá 100% quỹ không thể gửi duyệt, trừ khi được miễn áp dụng giới hạn.",
+    "poolHelp": "Đơn vị chi vượt quỹ không thể gửi duyệt, trừ khi được miễn áp dụng giới hạn.",
     "bonusByGradeBand": "Số tháng lương thưởng theo nhóm cấp bậc",
     "breakdown": "Phân tích theo",
     "bonusFootnote": "Số tháng lương thưởng đã tính hệ số thưởng hoặc hệ số chi nhánh và tỷ lệ theo thời gian làm việc. Tổng chi trả bao gồm các khoản trả một lần. Số liệu quỹ thưởng và lợi nhuận sau thuế (PAT) được quản lý theo đơn vị.",
@@ -38650,5 +38667,120 @@
     "previous": "Trước",
     "next": "Tiếp",
     "exportTruncated": "Chỉ gồm 5.000 thay đổi đầu tiên. Thu hẹp bộ lọc để xuất phần còn lại."
+  },
+  "rewardLimits": {
+    "description": "Giới hạn và ngưỡng cho từng năm thưởng. Mọi kiểm tra trong đợt xét, cố vấn AI và Phân tích thưởng đều dùng giá trị của năm thưởng của đợt xét.",
+    "noAccess": "Bạn không có quyền truy cập",
+    "noAccessHelp": "Kiểm soát giới hạn dành cho Group Rewards, CTRO và EC.",
+    "year": "Năm thưởng",
+    "show": "Hiển thị",
+    "viewOnly": "Bạn có thể xem các giới hạn này. Chỉ Group Rewards mới có thể thay đổi.",
+    "versionLine": "Phiên bản {version} đang được dùng cho năm {year}.",
+    "baselineLine": "Chưa có phiên bản nào được lưu cho năm {year}. Đây là giá trị chuẩn; lưu sẽ tạo phiên bản 1.",
+    "typeHelp": "Chặn: ngăn việc gửi. Ngoại lệ và Cảnh báo đi kèm đợt xét và cần lý do trước khi gửi. Ghi chú chỉ để tham khảo.",
+    "columns": {
+      "limit": "Giới hạn",
+      "value": "Giá trị",
+      "type": "Loại",
+      "appliesTo": "Áp dụng cho",
+      "lastChanged": "Người / ngày thay đổi gần nhất"
+    },
+    "areas": {
+      "pools": "Quỹ tăng lương",
+      "person": "Tăng lương mỗi người",
+      "bonus": "Thưởng",
+      "lump": "Thưởng một lần",
+      "exemption": "Miễn trừ",
+      "advisor": "Cố vấn AI"
+    },
+    "labels": {
+      "pool_standard_merit": "Quỹ thành tích (% quỹ lương hợp lệ)",
+      "pool_standard_promotion": "Quỹ thăng chức (% quỹ lương hợp lệ)",
+      "pool_standard_special": "Quỹ điều chỉnh đặc biệt (% quỹ lương hợp lệ)",
+      "pool_h_merit": "Quỹ thành tích (% quỹ lương hợp lệ)",
+      "pool_h_promotion": "Quỹ thăng chức (% quỹ lương hợp lệ)",
+      "pool_h_special": "Quỹ điều chỉnh đặc biệt (% quỹ lương hợp lệ)",
+      "pool_separate": "Các quỹ không được bù cho nhau hoặc cho công ty khác",
+      "increase_withoutPromotion": "Tổng mức tăng không thăng chức vượt quá",
+      "increase_withPromotion": "Tổng mức tăng có thăng chức từ",
+      "promotion_increment": "Mức tăng khi thăng chức",
+      "promotion_maxGrades": "Số bậc tăng tối đa",
+      "promotion_maxGrade": "Bậc cao nhất sau thăng chức",
+      "catchUp_crFloor": "Ngưỡng CR bắt kịp cho STAR/SSTAR",
+      "salary_noReduction": "Không giảm lương",
+      "bonus_poolCap": "Trần quỹ thưởng",
+      "bonus_underUse": "Cảnh báo dùng thiếu dưới",
+      "bonus_individualCeiling": "Trần thưởng cá nhân vượt quá",
+      "bonus_rounding": "Làm tròn khoản chi (làm tròn xuống)",
+      "bonus_individualMultiplier": "Hệ số cá nhân khác với đơn vị",
+      "lump_share": "Tỷ lệ số dư còn lại",
+      "lump_step": "Bước làm tròn",
+      "lump_cap": "Trần mỗi người",
+      "lump_aboveSuggestion": "Số tiền đơn vị cao hơn đề xuất",
+      "lump_individualAmendment": "Điều chỉnh cá nhân",
+      "exemption_budgetCapsOnly": "Công ty được miễn trừ: chỉ trần ngân sách, kèm lý do",
+      "advisor_override": "Ngưỡng điều chỉnh",
+      "advisor_longWithoutIncrease": "Lâu không được tăng lương",
+      "advisor_peerGap": "Chênh lệch lương với đồng cấp"
+    },
+    "types": {
+      "block": "Chặn",
+      "exception": "Ngoại lệ",
+      "warning": "Cảnh báo",
+      "note": "Ghi chú"
+    },
+    "appliesTo": {
+      "standard": "Gói chuẩn",
+      "h": "Gói JG H",
+      "all": "Tất cả các gói"
+    },
+    "units": {
+      "percent": "%",
+      "points": "điểm phần trăm",
+      "ratio": "CR",
+      "months": "tháng",
+      "myr": "RM",
+      "grades": "bậc",
+      "grade": "JG",
+      "years": "năm"
+    },
+    "fixed": "Cố định",
+    "fixedHelp": "Cố định để bảo vệ lương; không thể thay đổi.",
+    "none": "Không có",
+    "standardValue": "Giá trị chuẩn",
+    "changedBy": "{name} · {date}",
+    "unknownPerson": "Không rõ",
+    "valueFor": "Giá trị cho {limit}",
+    "typeFor": "Loại cho {limit}",
+    "reviewSave": "Xem lại trước khi lưu",
+    "save": "Lưu phiên bản mới",
+    "discard": "Bỏ thay đổi",
+    "saved": "Đã lưu thành phiên bản {version}.",
+    "errors": {
+      "system": "Không thể lưu giới hạn. Thay đổi của bạn vẫn còn; hãy thử lại."
+    },
+    "reviewsHeading": "Các đợt xét trong năm thưởng này",
+    "reviewsHelp": "Đợt xét ở trạng thái Nháp dùng phiên bản hiện tại. Đợt xét đã qua Nháp giữ phiên bản khi được gửi. Nếu bạn áp dụng phiên bản hiện tại, các kiểm tra sẽ chạy lại và người phê duyệt hiện tại được thông báo.",
+    "reviewColumns": {
+      "review": "Đợt xét",
+      "stage": "Giai đoạn",
+      "versionUsed": "Giới hạn đang dùng"
+    },
+    "select": "Chọn",
+    "selectReview": "Chọn {review}",
+    "baseline": "Giá trị chuẩn (trước Kiểm soát giới hạn)",
+    "currentVersion": "Hiện tại (phiên bản {version})",
+    "version": "Phiên bản {version}",
+    "apply": "Áp dụng phiên bản {version} cho các đợt xét đã chọn",
+    "applyConfirm": "Áp dụng và thông báo người phê duyệt",
+    "applied": "{count, plural, other {Đã áp dụng cho # đợt xét.}}",
+    "noReviews": "Chưa có đợt xét nào dùng năm thưởng này.",
+    "reviewsTruncated": "Chỉ liệt kê 200 đợt xét đầu tiên.",
+    "exemptionsHeading": "Miễn trừ trần ngân sách",
+    "exemptionsHelp": "Miễn trừ chỉ nới lỏng trần ngân sách (quỹ tăng lương và trần quỹ thưởng). Miễn trừ được ghi kèm lý do trong phần thiết lập của đợt xét.",
+    "noExemptions": "Không có đợt xét nào trong năm thưởng này được miễn trừ trần ngân sách.",
+    "historyHeading": "Lịch sử phiên bản",
+    "noVersions": "Chưa có phiên bản.",
+    "changeLogLink": "Xem mọi thay đổi trong nhật ký thay đổi"
   }
 }
