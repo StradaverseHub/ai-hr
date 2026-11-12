@@ -515,3 +515,18 @@ and 11 DOM/static files / 100 tests passed, including every Recruitment file and
 | 43172447462 | Selected tests (54 files, incl. recruitment-pools, recruitment-blocked-list, the sidebar, shell, navigation, access and invitation suites touched by the merge) | PASS: 674 tests |
 
 origin/alpha later moved one commit ahead of main (69e30634e, no migrations); it is not merged here.
+
+## Slice 14 — Custom candidate and job fields (commit 774b1783c)
+
+Local: after one review round, one combined run of every recruitment file and the gate suites passed 616/616 (39
+files). Rendered on a rebuilt render database (841 migrations): a candidate field "Religion" refused with the
+explanation; a job field "Medical insurance" accepted; a single-choice field with three options and a restricted text
+field defined; values saved on a candidate (the restricted one in its own table); the board filter by "Night shift"
+narrowed to Offer (1); the hiring manager saw the open value and neither the restricted field's name nor its value.
+
+| Run | Job | Result |
+| --- | --- | --- |
+| 43182970215 | Whole-repo type check | PASS |
+| 43182970215 | Production build | PASS |
+| 43182970215 | Selected tests (64 files) | 58 PASS; FAIL: the known 6 AI files (53 tests) |
+| 43182986638 | Selected tests (56 files, incl. recruitment-custom-fields and -rules) | PASS: 717 tests |
