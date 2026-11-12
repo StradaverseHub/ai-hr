@@ -50,7 +50,7 @@ export type PayrollComparisonExecution={filters:ReturnType<typeof payrollCompari
   result:ComparisonResult;companyIds:string[];sourceRevisions:{id:string;version:number;runId:string}[];contextUnavailable:boolean;
   /** Ready-company comparison (Reconciliation, the comparison report, its export and HR remarks): which companies the
    * rows and totals cover and why each other company with payroll is left out. Null for an all-or-nothing caller. */
-  inclusion:PayrollComparisonInclusion|null};
+  inclusion?:PayrollComparisonInclusion|null};
 
 /** `readyCompanies`: compare every company in scope that is ready for both months and list the others with their
  * reasons, instead of refusing the whole comparison when one company is not ready. Companies that have never run
