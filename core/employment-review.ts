@@ -12,7 +12,7 @@ import type {AssignedApprovalMetadata} from '../lib/assigned-work';
  * RLS (employment_review, mirrors resignation_request) scopes who can read/write; stage authorization
  * (manager-only stage 1, admin-only stage 2, never-self) lives here.
  */
-import { and, desc, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {assertWorkforceEmploymentTx} from './workforce-access';
 import {acquireBoundedAdvisoryLockTx,lockAccessConfigurationTx} from './access-configuration-lock';
@@ -201,8 +201,9 @@ export async function startReview(
 export async function probationOwnsLegacyReviewTx(tx:Tx,employmentId:string):Promise<boolean>{const[row]=await tx.execute<{owned:boolean}>(sql`select app.probation_owns_legacy(${employmentId}::uuid) as owned`);return row?.owned===true;}
 async function assertLegacyReviewOwnerTx(tx:Tx,review:{employmentId:string;reviewType:string}){if(review.reviewType==='probation'&&await probationOwnsLegacyReviewTx(tx,review.employmentId))throw new ReviewError('This employment is owned by the Probation module. Use its current review and approval route.');}
 
-/** The startReview body, usable inside an existing transaction (the sweep reuses it). */
-async function startReviewTx(
+/** The startReview body, usable inside an existing transaction (the sweep reuses it, and so does the probation
+ * loop's request-only act, core/loops/act-probation.ts, in its own attributed transaction). */
+export async function startReviewTx(
   tx: Tx,
   ctx: SessionContext,
   p: { employmentId: string; auto?: boolean },
@@ -226,7 +227,8 @@ async function startReviewTx(
   // Pre-insert SELECT for ANY existing review — open OR completed — for this (employment, type). v1 has no
   // legitimate re-trigger: the due_date derives from the unchanged *_end_date, so a completed review must
   // block re-opening, otherwise the sweep re-opens a fresh duplicate every cron run (H5). The partial-unique
-  // index only forbids two OPEN rows, so this SELECT is the real gate for the completed case.
+  // index only forbids two OPEN rows, so this SELECT is the real gate for the completed case. A cancelled
+  // review (the undo of the AI Centre's opening, cancelLoopOpenedReviewTx) does not count: it can be reviewed again.
   const [existing] = await tx
     .select({ id: employmentReview.id })
     .from(employmentReview)
@@ -234,6 +236,7 @@ async function startReviewTx(
       and(
         eq(employmentReview.employmentId, p.employmentId),
         eq(employmentReview.reviewType, window.reviewType),
+        ne(employmentReview.status, 'cancelled'),
       ),
     )
     .limit(1);
@@ -273,6 +276,11 @@ async function startReviewTx(
     payload: { reviewType: window.reviewType, auto: p.auto ?? false },
   });
   return { reviewId: row.id, reviewType: window.reviewType, dueDate: window.dueDate };
+}
+
+/** The manager a review opened now would be routed to (the same reader startReviewTx uses), or null when none. */
+export function reviewManagerTx(tx: Tx, tenantId: string, employmentId: string): Promise<string | null> {
+  return currentAdminManager(tx, tenantId, employmentId);
 }
 
 /** Stage 1 — the manager submits their evaluation; advances pending_manager → pending_hr. */
@@ -374,6 +382,40 @@ export async function decideReview(
     return { status: 'completed' as const, decision: p.decision };
   };
   return outerTx ? run(outerTx) : withTenant(ctx,run);
+}
+
+/**
+ * Cancel a probation review the AI Centre's probation loop opened, as the undo of that automatic step (owner decision,
+ * 13 November 2026). Narrow on purpose: HR's authority to decide the employment's review, the move of a review still
+ * open (with the manager or with HR) to `cancelled`, and its audit event, in the caller's one transaction. It refuses
+ * any review the loop did not open itself, through an applied action of the probation loop that is still inside its
+ * undo window and not yet undone (core/loops/undo.ts is its only caller, and records the undo in the same transaction).
+ * A cancelled review no longer counts as the employment's one review (startReviewTx and sweepDueReviews), so the
+ * probation can be reviewed again. Nothing about the employment changes.
+ */
+export async function cancelLoopOpenedReviewTx(tx: Tx, ctx: SessionContext, p: { reviewId: string; loopActionId: string }) {
+  await lockAccessConfigurationTx(tx, ctx.tenantId);
+  const [rev] = await tx.select().from(employmentReview).where(eq(employmentReview.id, p.reviewId)).limit(1).for('update');
+  if (!rev) throw new ReviewError('Review not found (or not visible).');
+  const [opened] = await tx.execute<{ ok: boolean }>(sql`select exists(select 1 from public.teras_loop_action a
+    where a.id=${p.loopActionId}::uuid and a.tenant_id=${ctx.tenantId}::uuid and a.worker_id='loop_probation_ending'
+      and a.state='applied' and a.owner_ref=${rev.id}::uuid and a.employment_id=${rev.employmentId}::uuid and now()<=a.undo_until
+      and not exists(select 1 from public.teras_loop_action_undo u where u.action_id=a.id)) as ok`);
+  if (opened?.ok !== true) throw new ReviewError('Only a review the AI Centre opened can be cancelled this way, within its undo window.');
+  if (rev.reviewType !== 'probation' || (rev.status !== 'pending_manager' && rev.status !== 'pending_hr')) {
+    throw new ReviewError('This review is no longer open.');
+  }
+  await assertHrReviewAuthorityTx(tx, ctx, rev.employmentId);
+  await tx.update(employmentReview).set({ status: 'cancelled' }).where(eq(employmentReview.id, rev.id));
+  return appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'employment-review',
+    aggregateId: rev.id,
+    eventType: 'employment-review.cancelled',
+    actor: actorOf(ctx),
+    subjectEmploymentId: rev.employmentId,
+    payload: { reviewType: rev.reviewType, loopActionId: p.loopActionId },
+  }, { returnId: true });
 }
 
 async function isPersonOfEmployment(tx: Tx, employmentId: string, personId: string): Promise<boolean> {
@@ -688,7 +730,7 @@ export async function sweepDueReviews(
           .limit(1);
         if (resign) continue;
 
-        // Gate on "no review at all for this type" — open OR completed. due_date derives from the unchanged
+        // Gate on "no review at all for this type" — open OR completed (a cancelled one does not count). due_date derives from the unchanged
         // *_end_date, so a completed review keeps dueDate <= today; gating only on OPEN reviews would re-open a
         // fresh duplicate every cron run forever (H5). v1 has no legitimate re-trigger, so one review per
         // (employment, type) is the lifetime cap.
@@ -699,6 +741,7 @@ export async function sweepDueReviews(
             and(
               eq(employmentReview.employmentId, r.employmentId),
               eq(employmentReview.reviewType, window.reviewType),
+              ne(employmentReview.status, 'cancelled'),
             ),
           )
           .limit(1);

@@ -1077,7 +1077,9 @@
           "condition_other_clocking": "当天有其他打卡记录",
           "condition_inactive": "雇佣关系已结束",
           "would_create_overtime": "该修正会产生加班",
-          "approval_routed": "考勤审批需走审批流程"
+          "approval_routed": "考勤审批需走审批流程",
+          "condition_record_changed": "记录在执行前已发生变化",
+          "condition_no_manager": "记录中该员工没有经理"
         },
         "status": {
           "fixed": "已修正 · 可撤销至 {date}",
@@ -1090,12 +1092,19 @@
           "withdrawnEmployee": "应员工要求撤回",
           "withdrawnHr": "被 HR 撤回",
           "sentOpen": "已发送 · 可在 {date} 前撤回",
-          "sentClosed": "已发送"
+          "sentClosed": "已发送",
+          "opened": "已开启 · 由经理处理",
+          "openedOpen": "已开启 · 可在 {date} 前取消",
+          "cancelledHr": "评估已由人力资源取消"
         },
         "undo": "撤销",
         "notSent": "未发送：{reason}",
         "sent": "已发送请求，需填写 {count, plural, other {# 项资料}}",
-        "withdraw": "撤回"
+        "withdraw": "撤回",
+        "passportSent": "已请员工更新护照，护照将于 {date} 到期",
+        "probationOpened": "已开启试用期评估并发送给经理，截止日期 {date}",
+        "notOpened": "未开启：{reason}",
+        "cancelReview": "取消评估"
       },
       "limits": {
         "title": "它绝不能越过的界限",
@@ -1110,7 +1119,9 @@
         "requestOnly": "只发送请求；绝不更改记录",
         "requestActive": "绝不向雇佣关系已结束的人发送请求",
         "perNightRequests": "{company}：每晚最多 {count, plural, other {# 个请求}}，每个请求可在 {days} 天内撤回",
-        "level3": "在“执行并审核”级别，HR 审核每周样本，而不是每一项操作。"
+        "level3": "在“执行并审核”级别，HR 审核每周样本，而不是每一项操作。",
+        "passportRequestOnly": "只发送更新请求；从不更改护照记录",
+        "probationRequestOnly": "只开启评估并发送给经理；从不确认、延长或终止雇佣"
       },
       "owner": {
         "suspended": "已暂停：其负责人不再拥有 HR 权限。",

@@ -149,6 +149,8 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:4560,when:1793330004860,tag:'5160_sweep_swing_thresholds'},
  // Manager Today team minimum (draft 9770), allocated 13 November 2026 as 5161 (docs/MIGRATION-ALLOCATION.md).
  {idx:4561,when:1793330004861,tag:'5161_leave_team_minimum_present'},
+ // Probation and passport loops act as request-only steps: draft 9780, allocated 13 November 2026 as 5162 (docs/MIGRATION-ALLOCATION.md).
+ {idx:4562,when:1793330004862,tag:'5162_teras_loop_request_acts'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -159,6 +161,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5130_pay_formula_ai_draft_job':'842cf4996cdb4f3d0d8f26fcc205e774d5937f0d612122dafe2b5254e16e84ce',
  '5160_sweep_swing_thresholds':'5217e41181c030728ee879b45cc683c39bc9d7b9c7aed44c4c4abe88a230ee48',
  '5161_leave_team_minimum_present':'fa4c016e8aa6d259e8ec31bec4809c88b46f50dfd157d9ddaf251568623a4660',
+ '5162_teras_loop_request_acts':'1b92edf3fe85d66954e50f5677bc1cf5122f8fe92faf22db636181c5ed8503f8',
  '4800_ai_shared_leave_groups_read':'774dce41ba113549ec5415586d104b8d5b7712934216f2beb4d9aa0e9f00ffc5',
  '4601_last_login_event_index':'868e30d4a2840d4939a46f303ce999b2e041ae3cb6823eb8b712179ccf7d5788',
  '4600_attendance_clock_policy_group_scope':'b30a62bec597f53266232abe569a040a9a421eaa2239eac232d0e44041352be6',

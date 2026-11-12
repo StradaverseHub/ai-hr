@@ -9,7 +9,7 @@
  *  3. Demote, as the agent principal: for each company above Prepare, more than 1% of the last 7 days' actions undone or
  *     changed by people moves the loop back to Prepare there, with the corrections recorded (core/loops/levels.ts).
  *  4. Act, for each company still above Prepare: on open cases the loop has never acted on, oldest first, each
- *     condition is read under the sponsor (core/loops/act-clock-outs.ts, act-requests.ts), the attempt is recorded as the agent
+ *     condition is read under the sponsor (core/loops/act-requests.ts, act-passports.ts, act-probation.ts), the attempt is recorded as the agent
  *     principal under a per-company lock that re-reads the level and counts tonight's actions against the company's
  *     limit, then the owner applies it under the sponsor, attributed to the loop (core/loops/attribution.ts), and the result is
  *     recorded. A condition that fails leaves the
@@ -30,6 +30,8 @@ import {userNameTx} from './attribution';
 import {loopAttribution,type LoopAttribution} from '../../lib/ai-centre/loop-attribution';
 import {LoopActRefused} from './act-clock-outs';
 import {REQUEST_ACT_VERSION,applyRequest,evaluateRequest,requestCandidate,requestFacts,sentRecordOf} from './act-requests';
+import {PASSPORT_ACT_VERSION,applyPassport,evaluatePassport,passportCandidate,passportFacts} from './act-passports';
+import {PROBATION_ACT_VERSION,applyProbation,evaluateProbation,openedRecordOf,probationCandidate,probationFacts} from './act-probation';
 
 const DAY_MS=86_400_000;
 /** An "applying" action older than this belongs to a run that did not finish. */
@@ -41,23 +43,40 @@ type CaseRow=Readonly<{id:string;companyId:string;employmentId:string|null;facts
 type Item=Readonly<{caseId:string;employmentId:string;facts:LoopActionFacts;data:unknown}>;
 type Evaluation=Readonly<{ok:boolean;reason:LoopActionReason|null;checks:readonly LoopActionCheck[]}>;
 type ApplyInput=Readonly<{item:Item;actionId:string;undoUntil:Date;principalId:string;workerId:LoopId;attribution:LoopAttribution;limits:LoopLimits}>;
-/** One loop's automatic step, as the autonomy step drives it. */
-type Actor=Readonly<{version:string;
+/** One loop's automatic step, as the autonomy step drives it. `evaluate` may answer null: not now, and nothing is
+ * recorded, so the case keeps its one attempt. `dateKey` is the case fact its oldest cases are taken first by. */
+export type LoopActStep=Readonly<{version:string;dateKey?:string;
  candidate:(row:CaseRow)=>Item|null;
- evaluate:(sponsor:SessionContext,item:Item,limits:LoopLimits)=>Promise<Evaluation>;
+ evaluate:(sponsor:SessionContext,item:Item,limits:LoopLimits)=>Promise<Evaluation|null>;
  apply:(sponsor:SessionContext,p:ApplyInput)=>Promise<Readonly<{ownerRef:string;facts:LoopActionFacts}>>;
  recordOf:(sponsor:SessionContext,actionId:string)=>Promise<Readonly<{ownerRef:string;at:Date;facts:LoopActionFacts}>|null>;
  observe:((sponsor:SessionContext,standing:readonly Readonly<{id:string;employmentId:string;facts:LoopActionFacts}>[])=>Promise<Map<string,string|null>>)|null;
  /** The case's facts once the work is done (the case closes), or null to leave the case open for the person. */
  closeFacts:((item:Item,facts:LoopFacts)=>LoopFacts)|null}>;
 
-const ACTORS:Partial<Record<LoopId,Actor>>={
+const ACTORS:Partial<Record<LoopId,LoopActStep>>={
  loop_missing_employee_data:{version:REQUEST_ACT_VERSION,
   candidate:row=>{const data=requestCandidate(row);return data?{caseId:data.caseId,employmentId:data.employmentId,data,facts:requestFacts(data)}:null;},
   evaluate:(sponsor,item)=>evaluateRequest(sponsor,item.data as Parameters<typeof evaluateRequest>[1]),
   apply:async(sponsor,p)=>{const result=await applyRequest(sponsor,{item:p.item.data as Parameters<typeof applyRequest>[1]['item'],actionId:p.actionId,
    undoUntil:p.undoUntil,workerId:p.workerId,attribution:p.attribution});return {ownerRef:result.ownerRef,facts:p.item.facts};},
   recordOf:async(sponsor,actionId)=>{const record=await sentRecordOf(sponsor,actionId);return record?{ownerRef:record.ownerRef,at:record.at,facts:{}}:null;},
+  observe:null,closeFacts:null},
+ // Owner, 11 November 2026: the passports loop sends the employee the renewal request (core/loops/act-passports.ts).
+ loop_document_expiry:{version:PASSPORT_ACT_VERSION,dateKey:'expiresOn',
+  candidate:row=>{const data=passportCandidate(row);return data?{caseId:data.caseId,employmentId:data.employmentId,data,facts:passportFacts(data)}:null;},
+  evaluate:(sponsor,item)=>evaluatePassport(sponsor,item.data as Parameters<typeof evaluatePassport>[1]),
+  apply:async(sponsor,p)=>{const result=await applyPassport(sponsor,{item:p.item.data as Parameters<typeof applyPassport>[1]['item'],actionId:p.actionId,
+   undoUntil:p.undoUntil,workerId:p.workerId,attribution:p.attribution});return {ownerRef:result.ownerRef,facts:p.item.facts};},
+  recordOf:async(sponsor,actionId)=>{const record=await sentRecordOf(sponsor,actionId);return record?{ownerRef:record.ownerRef,at:record.at,facts:{}}:null;},
+  observe:null,closeFacts:null},
+ // Owner, 11 November 2026: the probation ending loop opens the review and routes it to the manager with its due date;
+ // it decides nothing (core/loops/act-probation.ts). Legacy-path reviews only (owner, 13 November 2026).
+ loop_probation_ending:{version:PROBATION_ACT_VERSION,dateKey:'endDate',
+  candidate:row=>{const data=probationCandidate(row);return data?{caseId:data.caseId,employmentId:data.employmentId,data,facts:probationFacts(data)}:null;},
+  evaluate:(sponsor,item)=>evaluateProbation(sponsor,item.data as Parameters<typeof evaluateProbation>[1]),
+  apply:async(sponsor,p)=>applyProbation(sponsor,{item:p.item.data as Parameters<typeof applyProbation>[1]['item'],actionId:p.actionId,workerId:p.workerId,attribution:p.attribution}),
+  recordOf:async(sponsor,actionId)=>{const record=await openedRecordOf(sponsor,actionId);return record?{ownerRef:record.ownerRef,at:record.at,facts:{}}:null;},
   observe:null,closeFacts:null},
 };
 /** The loops with an automatic step built (core/loops/autonomy.ts declares which may have one). */
@@ -78,7 +97,7 @@ export async function runLoopAutonomy(p:AutonomyRunInput):Promise<AutonomyRunSum
  try{return await autonomyStep(p,actor);}catch{return NONE;}
 }
 
-async function autonomyStep(p:AutonomyRunInput,actor:Actor):Promise<AutonomyRunSummary>{
+async function autonomyStep(p:AutonomyRunInput,actor:LoopActStep):Promise<AutonomyRunSummary>{
  const now=p.now??new Date(),scope=[...p.companies];
  if(!scope.length)return NONE;
  const {agent,sponsor,tenantId,workerId}=p;
@@ -134,7 +153,7 @@ async function autonomyStep(p:AutonomyRunInput,actor:Actor):Promise<AutonomyRunS
   const open=await withTenant(agent,tx=>tx.select({id:terasLoopCase.id,companyId:terasLoopCase.companyId,employmentId:terasLoopCase.employmentId,facts:terasLoopCase.facts})
    .from(terasLoopCase).leftJoin(terasLoopAction,and(eq(terasLoopAction.tenantId,terasLoopCase.tenantId),eq(terasLoopAction.caseId,terasLoopCase.id)))
    .where(and(eq(terasLoopCase.tenantId,tenantId),eq(terasLoopCase.workerId,workerId),eq(terasLoopCase.companyId,companyId),eq(terasLoopCase.state,'open'),
-    isNull(terasLoopAction.id))).orderBy(sql`${terasLoopCase.facts}->>'date'`,asc(terasLoopCase.subjectKey)).limit(CANDIDATE_LIMIT));
+    isNull(terasLoopAction.id))).orderBy(sql`${terasLoopCase.facts}->>${actor.dateKey??'date'}::text`,asc(terasLoopCase.subjectKey)).limit(CANDIDATE_LIMIT));
   for(const row of open){
    const item=actor.candidate(row);if(!item)continue;
    const evaluation=await actor.evaluate(sponsor,item,limits).catch(()=>null);
@@ -158,7 +177,7 @@ async function autonomyStep(p:AutonomyRunInput,actor:Actor):Promise<AutonomyRunS
    if(!evaluation.ok){notApplied++;continue;}
    const attribution=loopAttribution({workerId,principalId:p.principalId,actionId:recorded,employmentId:item.employmentId,sponsorUserId:p.sponsorUserId,
     sponsorName,askedBy:null,askedByUserId:null,askedByName:null});
-   let reason:LoopActionReason|null=null,result:Awaited<ReturnType<Actor['apply']>>|null=null;
+   let reason:LoopActionReason|null=null,result:Awaited<ReturnType<LoopActStep['apply']>>|null=null;
    try{result=await actor.apply(sponsor,{item,actionId:recorded,undoUntil,principalId:p.principalId,workerId,attribution,limits});}
    catch(error){reason=error instanceof LoopActRefused?error.reason:'owner_refused';}
    const at=new Date();

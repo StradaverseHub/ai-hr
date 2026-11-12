@@ -216,6 +216,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5160_sweep_swing_thresholds',
    // Manager Today team minimum (draft 9770), allocated 13 November 2026 as 5161.
    '5161_leave_team_minimum_present',
+   // Probation and passport loops act as request-only steps (13 November 2026): draft 9780 allocated as 5162, widened CHECKs only.
+   '5162_teras_loop_request_acts',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);

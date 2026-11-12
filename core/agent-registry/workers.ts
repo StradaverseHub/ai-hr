@@ -191,7 +191,9 @@ const DECLARATIONS:readonly WorkerDeclaration[]=[
   owners:['core/loops/probation-ending.ts#detectProbationEnding','core/employment-review.ts#probationDecisionFacts'],
   trigger:LOOP_NIGHTLY,readScope:['employment_profile','pending_approval'],effect:'prepare',
   authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_probation_ending'},stop:{honoured:true},
-  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'},autonomy:{ceiling:1,act:null}},
+  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'},
+  // Owner, 11 and 13 November 2026: a request-only step at Level 2 at most; it decides nothing.
+  autonomy:{ceiling:2,act:{does:'Opens the probation review and sends it to the manager with its due date; decides nothing and changes no employment record',owner:'core/loops/act-probation.ts#applyProbation',undo:'HR cancels the review it opened; the probation can be reviewed again'}}},
  // AI v2 P2-2a: the Pre-salary loop absorbs the payroll inputs loop (same id): every input check from the start of the
  // period to the cut-off, at each company's own interval.
  {id:'loop_payroll_inputs',label:'Pre-salary loop',family:'preparer',
@@ -215,7 +217,9 @@ const DECLARATIONS:readonly WorkerDeclaration[]=[
   owners:['core/loops/document-expiry.ts#detectDocumentExpiry','core/automatic-followups.ts#followupItemsTx'],
   trigger:LOOP_NIGHTLY,readScope:['followup_item'],effect:'prepare',
   authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_document_expiry'},stop:{honoured:true},
-  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'},autonomy:{ceiling:1,act:null}},
+  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'},
+  // Owner, 11 November 2026: a request-only step at Level 2 at most.
+  autonomy:{ceiling:2,act:{does:'Sends the employee the request to renew their passport; changes no record',owner:'core/loops/act-passports.ts#applyPassport',undo:'HR withdraws the request; the employee is told'}}},
  // AI v2 P2-2a (migration 0964): the Salary payroll loop, from cut-off to close. Prepare only in every company: it checks
  // each run and prepares it for payroll HR; a person runs, approves and closes payroll.
  {id:'loop_salary_payroll',label:'Salary payroll loop',family:'preparer',
