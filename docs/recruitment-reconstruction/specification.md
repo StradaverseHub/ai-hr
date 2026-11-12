@@ -991,3 +991,83 @@ Pending (EV-052…EV-054). AI HR builds the same request-and-feedback loop on it
     forced RLS and grants with none to PUBLIC; the AI Centre read is counts only.
 81. Rendered: sending one and several cards with the move; the hiring manager's To screen list and feedback; the
     board filter and statuses; the application's Screening section; the to-do and update.
+
+## Slice 12 — Background checks (owner: "build another slice", 2026-11-12; EV-023, EV-055, EV-056)
+
+Moka connects background-check providers (none connected in the observed tenant) and otherwise lets HR add a
+manual background check on the offer tab: a name, a free-text result and a report file up to 50 MB (EV-023, EV-055,
+EV-056). Background-check reports can contain criminal-record, credit and other sensitive personal data. AI HR builds
+the manual record only, with structured status and outcome, the candidate's authorisation recorded first, and the
+report and details restricted to the people who run the check. There is no provider connection (D-043).
+
+### Actors and access
+
+- Recruitment administrators and the job's recruiter and assistants: manage the company's check types, record checks,
+  read every detail, upload and download the report.
+- Hiring managers of the job: see each check's type, status and outcome only — never the summary, provider reference
+  or report (D-045).
+- Interviewers, approvers, referrers and anyone else: nothing, including that a check exists.
+
+### Check types (settings)
+
+- Company list maintained by administrators: name (unique, ≤80), description (≤500), enabled. Defaults offered on
+  first use: Employment history, Education, Professional licence, Identity, Criminal record, Credit. A type in use can
+  be disabled, not deleted.
+
+### Recording a check
+
+- On an active application whose current stage is at or after the job's first Offer-type stage, or is the seeded
+  Background check stage (identified by its fixed system key, not its editable name): "Add background
+  check" with one or more enabled types, the provider (free text, ≤120, e.g. the external firm), and an optional
+  provider reference (≤120).
+- **Authorisation first** (D-044): a check starts as Awaiting authorisation. It moves to In progress only after the
+  recorder confirms the candidate's written authorisation (date, method: signed form / e-mail / online form, and an
+  optional authorisation file with slice 5 file rules). The authorisation is kept with the check.
+- Status: Awaiting authorisation → In progress → Completed or Cancelled (with a reason). Completed needs an outcome:
+  Clear, Concerns found, or Could not verify, an optional summary (≤2,000) and an optional report file (PDF or Word,
+  10 MB, slice 5 type checks). Completed and Cancelled are final; a new check can be added.
+- Every status change, upload and download appends an audit event with ids only — never the summary, outcome text,
+  provider reference or file name.
+- The offer approval and hire hand-off (slice 3) do not depend on checks in this slice; HR decides (D-046).
+
+### Where it shows
+
+- Application page: a Background checks section (operators and administrators see everything; hiring managers see
+  type, status and outcome).
+- Candidates board: a small status marker on cards for operators and administrators (In progress, Concerns found).
+- Tasks (slice 9): a personal to-do for the recorder while a check they recorded waits for authorisation or has been
+  In progress for more than 14 Kuala Lumpur days.
+- Reports: counts by status on Reports › Overview, for administrators only. The AI Centre read is unchanged in this
+  slice (D-047); never outcomes for a named candidate.
+- Restricted with the summary and report: the provider name, provider reference, cancellation reason and the
+  authorisation method and file. The card marker shows one state per card (Concerns found before In progress).
+- Removing a candidate cancels their open checks with the reason "candidate removed" (stored without personal data)
+  and deletes the restricted details and files.
+
+### Privacy
+
+- Slice 5 removal deletes the candidate's checks' summaries, references, authorisation files and reports and keeps
+  only type, status, outcome category and dates on the anonymised application. Company setup deletion covers the new
+  tables. Background-check data is never copied to the employee record at hire (D-046).
+
+### Data
+
+- One migration in the recruitment block (4412): check type, check, check-type link, and file side tables with
+  forced RLS, explicit grants, none to PUBLIC; summary, provider reference and report bytes readable only by operators
+  and administrators (separate table or column privileges); guards for the status machine, authorisation-first and
+  who may write.
+
+### Slice 12 acceptance cases
+
+82. Only administrators manage check types; only operators and administrators record, change and read checks in full
+    (service and database); hiring managers read type, status and outcome only; everyone else reads nothing.
+83. A check cannot reach In progress without a recorded authorisation; Completed needs an outcome; Completed and
+    Cancelled are final; checks only on active applications at or after Offer (or a background-check stage).
+84. Summary, provider reference, authorisation file and report are absent for hiring managers, interviewers and others
+    in service results, page data and direct database reads (sentinel check); downloads are audited without file names.
+85. The recorder's to-do appears while awaiting authorisation and after 14 Kuala Lumpur days in progress, and not
+    otherwise; the day boundary uses Kuala Lumpur dates.
+86. Slice 5 removal leaves no summary, reference, file name or file bytes; company setup deletion covers the new
+    tables; every new table has forced RLS and grants with none to PUBLIC; the AI Centre read is counts only.
+87. Rendered: settings types; adding a check, recording authorisation, completing with an outcome and report; the
+    hiring manager's restricted view; the card marker and to-do.

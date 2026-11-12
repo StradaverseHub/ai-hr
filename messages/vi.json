@@ -14642,7 +14642,9 @@
       "recruitmentFeedback": "Gửi đánh giá phỏng vấn",
       "recruitmentAgencyReview": "Xem xét hồ sơ từ công ty tuyển dụng",
       "recruitmentContractExpiry": "Hợp đồng công ty tuyển dụng sắp hết hạn",
-      "recruitmentScreening": "Sàng lọc ứng viên"
+      "recruitmentScreening": "Sàng lọc ứng viên",
+      "recruitmentBackgroundCheckAuthorisation": "Xin phép thẩm tra lý lịch",
+      "recruitmentBackgroundCheckOverdue": "Theo dõi đợt thẩm tra lý lịch"
     },
     "tasksEmpty": "Không có mục nào cần bạn xử lý",
     "title": "Thông báo",
@@ -14651,7 +14653,9 @@
     "taskAction": {
       "recruitmentAgencyReview": "Xem xét hồ sơ",
       "recruitmentContractExpiry": "Mở hợp đồng",
-      "recruitmentScreening": "Gửi ý kiến"
+      "recruitmentScreening": "Gửi ý kiến",
+      "recruitmentBackgroundCheckAuthorisation": "Mở thẩm tra",
+      "recruitmentBackgroundCheckOverdue": "Mở thẩm tra"
     }
   },
   "approvalHistory": {
@@ -37274,7 +37278,13 @@
       "no_hiring_manager": "Vị trí này chưa có quản lý tuyển dụng. Hãy thêm một người ở thẻ Nhóm của vị trí trước.",
       "screening_closed": "Yêu cầu sàng lọc này đã bị rút lại hoặc đã được trả lời.",
       "not_your_request": "Chỉ quản lý tuyển dụng nhận yêu cầu này mới có thể trả lời.",
-      "mixed_jobs": "Hãy chọn ứng viên của từng vị trí một."
+      "mixed_jobs": "Hãy chọn ứng viên của từng vị trí một.",
+      "check_stage": "Chỉ có thể thêm thẩm tra lý lịch từ giai đoạn Đề nghị tuyển dụng của vị trí trở đi, hoặc ở giai đoạn thẩm tra lý lịch.",
+      "check_closed": "Đợt thẩm tra lý lịch này đã hoàn tất hoặc đã hủy. Hãy thêm một đợt thẩm tra mới.",
+      "check_state": "Đợt thẩm tra lý lịch này không ở đúng bước cho thao tác đó. Hãy tải lại trang và thử lại.",
+      "authorisation_required": "Hãy ghi nhận sự cho phép bằng văn bản của ứng viên trước khi bắt đầu thẩm tra.",
+      "check_type_unavailable": "Hãy chọn các loại thẩm tra đang bật của công ty này.",
+      "type_in_use": "Loại thẩm tra này đang được sử dụng. Hãy tắt nó thay vì xóa."
     },
     "overview": {
       "purpose": "Công việc tuyển dụng hôm nay tại các công ty mà bạn quản lý tuyển dụng.",
@@ -37530,7 +37540,8 @@
         "tags": "Thẻ",
         "referrals": "Giới thiệu",
         "careers": "Trang tuyển dụng",
-        "agencies": "Công ty tuyển dụng"
+        "agencies": "Công ty tuyển dụng",
+        "checks": "Thẩm tra lý lịch"
       },
       "iv": {
         "rulesTitle": "Quy tắc đánh giá",
@@ -38226,7 +38237,15 @@
       "showingRecruiters": "Đang hiển thị {shown} trên {total} chuyên viên tuyển dụng.",
       "teamAdminOnly": "Bảng Nhóm chỉ dành cho quản trị viên tuyển dụng.",
       "requisitionsHidden": "Số liệu yêu cầu tuyển dụng chỉ hiển thị khi mọi công ty được chọn, hoặc công ty của vị trí được chọn, đều do bạn quản trị.",
-      "teamCredit": "Công việc được ghi nhận cho chuyên viên tuyển dụng hiện tại của từng vị trí. “Qua giai đoạn đầu” tính các lần chuyển, loại và tuyển ra khỏi giai đoạn mà hồ sơ bắt đầu."
+      "teamCredit": "Công việc được ghi nhận cho chuyên viên tuyển dụng hiện tại của từng vị trí. “Qua giai đoạn đầu” tính các lần chuyển, loại và tuyển ra khỏi giai đoạn mà hồ sơ bắt đầu.",
+      "checksTitle": "Thẩm tra lý lịch",
+      "checksNote": "Số đợt thẩm tra theo trạng thái hôm nay, tại các công ty bạn quản trị. Chỉ hiển thị số lượng.",
+      "checks": {
+        "awaiting_authorisation": "Chờ cho phép",
+        "in_progress": "Đang thực hiện",
+        "completed": "Hoàn tất",
+        "cancelled": "Đã hủy"
+      }
     },
     "referral": {
       "source": "Giới thiệu từ nhân viên",
@@ -38328,7 +38347,9 @@
         "agencyReview": "Hồ sơ từ công ty tuyển dụng cần xem xét",
         "contractExpiry": "Hợp đồng công ty tuyển dụng sắp hết hạn",
         "screening": "Hồ sơ cần sàng lọc",
-        "screeningFor": "Sàng lọc {candidate} cho {job}"
+        "screeningFor": "Sàng lọc {candidate} cho {job}",
+        "backgroundCheckAuthorisation": "Thẩm tra lý lịch đang chờ ứng viên cho phép",
+        "backgroundCheckOverdue": "Thẩm tra lý lịch đang thực hiện hơn 14 ngày"
       },
       "update": {
         "requisitionApproved": "Yêu cầu tuyển dụng đã được phê duyệt",
@@ -38585,6 +38606,114 @@
       "closedAt": "Đã đóng lúc {time}",
       "reviewersUnavailable": "Không thể tải danh sách quản lý tuyển dụng lúc này. Hãy tải lại trang để thử lại.",
       "countWindow": "Số đếm và bộ lọc tính trên {count} ứng viên gần nhất ở giai đoạn này."
+    },
+    "checks": {
+      "tab": "Thẩm tra lý lịch",
+      "purpose": "Ghi nhận các đợt thẩm tra lý lịch do đơn vị bên ngoài thực hiện cho ứng viên này. Cần có sự cho phép bằng văn bản của ứng viên trước khi bắt đầu.",
+      "restrictedNote": "Bạn thấy loại, trạng thái và kết quả của từng đợt thẩm tra. Chi tiết và báo cáo do nhà tuyển dụng giữ.",
+      "stageNote": "Có thể thêm thẩm tra lý lịch khi ứng viên đến giai đoạn Đề nghị tuyển dụng hoặc giai đoạn thẩm tra lý lịch.",
+      "noTypes": "Công ty này chưa có loại thẩm tra lý lịch nào.",
+      "noTypesLink": "Thêm loại trong Cài đặt",
+      "add": "Thêm thẩm tra lý lịch",
+      "types": "Các nội dung cần thẩm tra",
+      "required": "bắt buộc",
+      "provider": "Đơn vị thẩm tra",
+      "providerHint": "Công ty thực hiện thẩm tra",
+      "reference": "Mã tham chiếu của đơn vị (không bắt buộc)",
+      "addNote": "Đợt thẩm tra bắt đầu ở trạng thái Chờ cho phép. Không có gì được gửi đến đơn vị thẩm tra hay ứng viên.",
+      "addButton": "Thêm thẩm tra",
+      "none": "Chưa có đợt thẩm tra lý lịch nào.",
+      "noGate": "Đề nghị tuyển dụng và việc tuyển không phải chờ thẩm tra lý lịch. Kết quả thẩm tra không bao giờ được sao chép vào hồ sơ nhân viên.",
+      "untyped": "Thẩm tra lý lịch",
+      "addedOn": "Thêm ngày {date}",
+      "startedOn": "bắt đầu {date}",
+      "completedOn": "hoàn tất {date}",
+      "cancelledOn": "hủy {date}",
+      "overdue": "Đang thực hiện hơn 14 ngày",
+      "status": {
+        "awaiting_authorisation": "Chờ cho phép",
+        "in_progress": "Đang thực hiện",
+        "completed": "Hoàn tất",
+        "cancelled": "Đã hủy"
+      },
+      "outcome": {
+        "clear": "Không có vấn đề",
+        "concerns_found": "Phát hiện vấn đề",
+        "could_not_verify": "Không xác minh được"
+      },
+      "recordedBy": "Người ghi nhận",
+      "unnamedUser": "Người dùng",
+      "authorisation": "Sự cho phép của ứng viên",
+      "authorisationLine": "{date} qua {method} · do {by} ghi nhận lúc {at}",
+      "authorisationMissing": "Chưa ghi nhận",
+      "method": {
+        "signed_form": "biểu mẫu có chữ ký",
+        "email": "e-mail",
+        "online_form": "biểu mẫu trực tuyến"
+      },
+      "summary": "Tóm tắt",
+      "cancelReason": "Lý do hủy",
+      "files": "Tệp",
+      "fileKind": {
+        "authorisation": "Giấy cho phép",
+        "report": "Báo cáo"
+      },
+      "kb": "{kb} KB",
+      "authoriseTitle": "Ghi nhận sự cho phép của ứng viên",
+      "authoriseNote": "Xác nhận ứng viên đã cho phép bằng văn bản cho đợt thẩm tra này. Chỉ sau đó mới có thể bắt đầu thẩm tra.",
+      "authorisedOn": "Ngày cho phép",
+      "methodLabel": "Hình thức cho phép",
+      "authorisationFile": "Tệp cho phép (không bắt buộc)",
+      "authorisationFileRules": "PDF, Word, JPG hoặc PNG, tối đa 10 MB.",
+      "permission": "Ứng viên đã cho phép chúng tôi lưu tệp này.",
+      "startNow": "Bắt đầu thẩm tra ngay",
+      "authoriseButton": "Ghi nhận sự cho phép",
+      "start": "Bắt đầu thẩm tra",
+      "completeTitle": "Hoàn tất thẩm tra",
+      "outcomeLabel": "Kết quả",
+      "summaryOptional": "Tóm tắt (không bắt buộc)",
+      "report": "Báo cáo (không bắt buộc)",
+      "reportRules": "PDF hoặc Word, tối đa 10 MB.",
+      "finalNote": "Không thể thay đổi đợt thẩm tra đã hoàn tất. Hãy thêm đợt mới nếu cần thêm.",
+      "completeButton": "Hoàn tất thẩm tra",
+      "cancelTitle": "Hủy thẩm tra",
+      "cancelButton": "Hủy thẩm tra",
+      "addedNotice": "Đã thêm thẩm tra lý lịch.",
+      "authorisedNotice": "Đã ghi nhận sự cho phép.",
+      "startedNotice": "Đã bắt đầu thẩm tra lý lịch.",
+      "completedNotice": "Đã hoàn tất thẩm tra lý lịch.",
+      "cancelledNotice": "Đã hủy thẩm tra lý lịch.",
+      "marker": {
+        "in_progress": "Đang thẩm tra lý lịch",
+        "concerns_found": "Thẩm tra lý lịch: phát hiện vấn đề"
+      },
+      "settings": {
+        "note": "Các loại thẩm tra lý lịch mà nhà tuyển dụng có thể ghi nhận. Việc thẩm tra do đơn vị bên ngoài thực hiện; AI HR lưu hồ sơ. Loại đang được dùng có thể tắt nhưng không thể xóa.",
+        "defaultsTitle": "Bắt đầu với các loại thông dụng",
+        "defaultsNote": "Thêm sáu loại này ngay. Sau đó bạn có thể đổi tên, tắt hoặc xóa.",
+        "defaults": {
+          "employment_history": "Quá trình làm việc",
+          "education": "Học vấn",
+          "professional_licence": "Chứng chỉ hành nghề",
+          "identity": "Danh tính",
+          "criminal_record": "Lý lịch tư pháp",
+          "credit": "Tín dụng"
+        },
+        "addDefaults": "Thêm các loại này",
+        "name": "Tên",
+        "description": "Mô tả (không bắt buộc)",
+        "enabled": "Đang bật",
+        "save": "Lưu",
+        "used": "{n, plural, =0 {Chưa được dùng} other {Được dùng trong # đợt thẩm tra}}",
+        "changed": "Do {by} thay đổi lúc {at}",
+        "unnamedUser": "Người dùng",
+        "delete": "Xóa",
+        "inUseNote": "Đang được dùng: hãy tắt thay vì xóa.",
+        "newType": "Loại thẩm tra mới",
+        "required": "bắt buộc",
+        "addType": "Thêm loại"
+      },
+      "systemCancelled": "Đã tự động hủy khi dữ liệu cá nhân của ứng viên bị xóa."
     }
   },
   "careersPublic": {

@@ -15,12 +15,18 @@ export const TASK_TABS = ['todo', ...TASK_CATEGORIES] as const;
 export type TaskTab = (typeof TASK_TABS)[number];
 
 /** Things waiting for the viewer's action. */
-export const TODO_KINDS = ['requisitionApproval', 'offerApproval', 'feedback', 'agencyReview', 'contractExpiry', 'screening', 'toSchedule', 'toScreen'] as const;
+export const TODO_KINDS = [
+  'requisitionApproval', 'offerApproval', 'feedback', 'agencyReview', 'contractExpiry', 'screening', 'backgroundCheckAuthorisation', 'backgroundCheckOverdue',
+  'toSchedule', 'toScreen',
+] as const;
 export type TodoKind = (typeof TODO_KINDS)[number];
 /** The viewer's personal to-dos (approval steps, feedback due; slice 10: an agency submission waiting for the
  *  administrator's review, and the HR contact's contract expiry; slice 11: a screening request waiting for the hiring
- *  manager's feedback): the bell, My tasks and the Overview's To do tab. */
-export const PERSONAL_TODO_KINDS = ['requisitionApproval', 'offerApproval', 'feedback', 'agencyReview', 'contractExpiry', 'screening'] as const;
+ *  manager's feedback; slice 12: the recorder's background check waiting for the candidate's authorisation, and one In
+ *  progress for more than 14 Kuala Lumpur days): the bell, My tasks and the Overview's To do tab. */
+export const PERSONAL_TODO_KINDS = [
+  'requisitionApproval', 'offerApproval', 'feedback', 'agencyReview', 'contractExpiry', 'screening', 'backgroundCheckAuthorisation', 'backgroundCheckOverdue',
+] as const;
 export type PersonalTodoKind = (typeof PERSONAL_TODO_KINDS)[number];
 /** Per-job counts: only on the Overview's To do tab, loaded after the page (D-035). */
 export const JOB_TODO_KINDS = ['toSchedule', 'toScreen'] as const;
@@ -75,6 +81,8 @@ export type RecruitmentTodo = {
   step: { position: number; steps: number } | null;
   /** Contract expiry: the contract's end date (Kuala Lumpur calendar day). */
   endsOn?: string | null;
+  /** Background checks: the application the check is on (the page where the recorder acts). */
+  applicationId?: string | null;
   /** ISO instant: when the item became the viewer's (the step was reached, the interview started, the latest arrival). */
   at: string;
   /** The page where the viewer acts. */
@@ -142,7 +150,7 @@ export function countText(n: number, cap: number = UNREAD_CAP): string {
 }
 
 /** Where each to-do is acted on. */
-export function todoHref(kind: TodoKind, ids: { id: string; jobId?: string | null; stageId?: string | null }): string {
+export function todoHref(kind: TodoKind, ids: { id: string; jobId?: string | null; stageId?: string | null; applicationId?: string | null }): string {
   switch (kind) {
     case 'requisitionApproval':
     case 'offerApproval':
@@ -155,6 +163,9 @@ export function todoHref(kind: TodoKind, ids: { id: string; jobId?: string | nul
       return `/recruitment/settings/agencies/contracts/${encodeURIComponent(ids.id)}`;
     case 'screening':
       return `/recruitment/screening#request-${encodeURIComponent(ids.id)}`;
+    case 'backgroundCheckAuthorisation':
+    case 'backgroundCheckOverdue':
+      return `/recruitment/applications/${encodeURIComponent(ids.applicationId ?? '')}?tab=checks#check-${encodeURIComponent(ids.id)}`;
     case 'toSchedule':
     case 'toScreen': {
       const q = new URLSearchParams({ job: ids.jobId ?? ids.id, ...(ids.stageId ? { tab: ids.stageId } : {}) });
@@ -175,6 +186,8 @@ const BELL_KIND: Record<PersonalTodoKind, RecruitmentTaskKind> = {
   agencyReview: 'recruitmentAgencyReview',
   contractExpiry: 'recruitmentContractExpiry',
   screening: 'recruitmentScreening',
+  backgroundCheckAuthorisation: 'recruitmentBackgroundCheckAuthorisation',
+  backgroundCheckOverdue: 'recruitmentBackgroundCheckOverdue',
 };
 export function isPersonalTodo(item: RecruitmentTodo): item is RecruitmentTodo & { kind: PersonalTodoKind } {
   return (PERSONAL_TODO_KINDS as readonly string[]).includes(item.kind);

@@ -14642,7 +14642,9 @@
       "recruitmentFeedback": "Give interview feedback",
       "recruitmentAgencyReview": "Review agency submission",
       "recruitmentContractExpiry": "Agency contract ending soon",
-      "recruitmentScreening": "Screen a candidate"
+      "recruitmentScreening": "Screen a candidate",
+      "recruitmentBackgroundCheckAuthorisation": "Get authorisation for a background check",
+      "recruitmentBackgroundCheckOverdue": "Follow up a background check"
     },
     "tasksEmpty": "Nothing needs your action",
     "title": "Notifications",
@@ -14651,7 +14653,9 @@
     "taskAction": {
       "recruitmentAgencyReview": "Review submission",
       "recruitmentContractExpiry": "Open contract",
-      "recruitmentScreening": "Give feedback"
+      "recruitmentScreening": "Give feedback",
+      "recruitmentBackgroundCheckAuthorisation": "Open check",
+      "recruitmentBackgroundCheckOverdue": "Open check"
     }
   },
   "approvalHistory": {
@@ -37274,7 +37278,13 @@
       "no_hiring_manager": "This job has no hiring manager yet. Add one on the job's Team tab first.",
       "screening_closed": "This screening request was withdrawn or already answered.",
       "not_your_request": "Only the hiring manager it was sent to can answer this screening request.",
-      "mixed_jobs": "Choose candidates of one job at a time."
+      "mixed_jobs": "Choose candidates of one job at a time.",
+      "check_stage": "Background checks can be added from the job's Offer stage onwards, or at a background-check stage.",
+      "check_closed": "This background check is completed or cancelled. Add a new check instead.",
+      "check_state": "This background check is not at the right step for that action. Refresh the page and try again.",
+      "authorisation_required": "Record the candidate's written authorisation before the check starts.",
+      "check_type_unavailable": "Choose enabled check types of this company.",
+      "type_in_use": "This check type is used by a check. Disable it instead."
     },
     "overview": {
       "purpose": "Today's hiring work across the companies whose recruitment you manage.",
@@ -37530,7 +37540,8 @@
         "tags": "Tags",
         "referrals": "Referrals",
         "careers": "Careers page",
-        "agencies": "Agencies"
+        "agencies": "Agencies",
+        "checks": "Background checks"
       },
       "iv": {
         "rulesTitle": "Feedback rules",
@@ -38226,7 +38237,15 @@
       "showingRecruiters": "Showing {shown} of {total} recruiters.",
       "teamAdminOnly": "The Team dashboard is for recruitment administrators.",
       "requisitionsHidden": "Requisition figures appear only when every selected company, or the chosen job's company, is one you administer.",
-      "teamCredit": "Work is credited to each job's current recruiter. “Moved past first stage” counts moves, rejections and hires out of the stage an application started in."
+      "teamCredit": "Work is credited to each job's current recruiter. “Moved past first stage” counts moves, rejections and hires out of the stage an application started in.",
+      "checksTitle": "Background checks",
+      "checksNote": "Checks by status today, in the companies you administer. Counts only.",
+      "checks": {
+        "awaiting_authorisation": "Awaiting authorisation",
+        "in_progress": "In progress",
+        "completed": "Completed",
+        "cancelled": "Cancelled"
+      }
     },
     "referral": {
       "source": "Employee referral",
@@ -38328,7 +38347,9 @@
         "agencyReview": "Agency submission to review",
         "contractExpiry": "Agency contract ending soon",
         "screening": "Résumé to screen",
-        "screeningFor": "Screen {candidate} for {job}"
+        "screeningFor": "Screen {candidate} for {job}",
+        "backgroundCheckAuthorisation": "Background check waiting for the candidate's authorisation",
+        "backgroundCheckOverdue": "Background check in progress for more than 14 days"
       },
       "update": {
         "requisitionApproved": "Job requisition approved",
@@ -38585,6 +38606,114 @@
       "closedAt": "Closed on {time}",
       "reviewersUnavailable": "The hiring managers couldn't be loaded just now. Refresh to try again.",
       "countWindow": "Counts and the filter cover the {count} most recent candidates in this stage."
+    },
+    "checks": {
+      "tab": "Background checks",
+      "purpose": "Record background checks that an outside provider runs for this candidate. Get the candidate's written authorisation before a check starts.",
+      "restrictedNote": "You see each check's type, status and outcome. The details and reports stay with the recruiter.",
+      "stageNote": "Background checks can be added once the candidate reaches the Offer stage or a background-check stage.",
+      "noTypes": "This company has no background check types yet.",
+      "noTypesLink": "Add types in Settings",
+      "add": "Add background check",
+      "types": "Checks to run",
+      "required": "required",
+      "provider": "Provider",
+      "providerHint": "The firm that runs the check",
+      "reference": "Provider reference (optional)",
+      "addNote": "The check starts as Awaiting authorisation. Nothing is sent to the provider or the candidate.",
+      "addButton": "Add check",
+      "none": "No background checks yet.",
+      "noGate": "Offers and hiring do not wait for background checks. Check results are never copied to the employee record.",
+      "untyped": "Background check",
+      "addedOn": "Added {date}",
+      "startedOn": "started {date}",
+      "completedOn": "completed {date}",
+      "cancelledOn": "cancelled {date}",
+      "overdue": "In progress for more than 14 days",
+      "status": {
+        "awaiting_authorisation": "Awaiting authorisation",
+        "in_progress": "In progress",
+        "completed": "Completed",
+        "cancelled": "Cancelled"
+      },
+      "outcome": {
+        "clear": "Clear",
+        "concerns_found": "Concerns found",
+        "could_not_verify": "Could not verify"
+      },
+      "recordedBy": "Recorded by",
+      "unnamedUser": "User",
+      "authorisation": "Candidate's authorisation",
+      "authorisationLine": "{date} by {method} · recorded by {by} on {at}",
+      "authorisationMissing": "Not recorded yet",
+      "method": {
+        "signed_form": "signed form",
+        "email": "e-mail",
+        "online_form": "online form"
+      },
+      "summary": "Summary",
+      "cancelReason": "Reason for cancelling",
+      "files": "Files",
+      "fileKind": {
+        "authorisation": "Authorisation",
+        "report": "Report"
+      },
+      "kb": "{kb} KB",
+      "authoriseTitle": "Record the candidate's authorisation",
+      "authoriseNote": "Confirm the candidate gave written permission for this check. The check can start only after this.",
+      "authorisedOn": "Date given",
+      "methodLabel": "How it was given",
+      "authorisationFile": "Authorisation file (optional)",
+      "authorisationFileRules": "PDF, Word, JPG or PNG, up to 10 MB.",
+      "permission": "The candidate permitted us to store this file.",
+      "startNow": "Start the check now",
+      "authoriseButton": "Record authorisation",
+      "start": "Start check",
+      "completeTitle": "Complete the check",
+      "outcomeLabel": "Outcome",
+      "summaryOptional": "Summary (optional)",
+      "report": "Report (optional)",
+      "reportRules": "PDF or Word, up to 10 MB.",
+      "finalNote": "A completed check cannot be changed. Add a new check if more is needed.",
+      "completeButton": "Complete check",
+      "cancelTitle": "Cancel the check",
+      "cancelButton": "Cancel check",
+      "addedNotice": "Background check added.",
+      "authorisedNotice": "Authorisation recorded.",
+      "startedNotice": "Background check started.",
+      "completedNotice": "Background check completed.",
+      "cancelledNotice": "Background check cancelled.",
+      "marker": {
+        "in_progress": "Background check in progress",
+        "concerns_found": "Background check: concerns found"
+      },
+      "settings": {
+        "note": "The kinds of background check your recruiters can record. Checks are run by an outside provider; AI HR keeps the record. A type that is in use can be disabled but not deleted.",
+        "defaultsTitle": "Start with the usual types",
+        "defaultsNote": "Add these six types now. You can rename, disable or delete them afterwards.",
+        "defaults": {
+          "employment_history": "Employment history",
+          "education": "Education",
+          "professional_licence": "Professional licence",
+          "identity": "Identity",
+          "criminal_record": "Criminal record",
+          "credit": "Credit"
+        },
+        "addDefaults": "Add these types",
+        "name": "Name",
+        "description": "Description (optional)",
+        "enabled": "Enabled",
+        "save": "Save",
+        "used": "{n, plural, =0 {Not used yet} one {Used by # check} other {Used by # checks}}",
+        "changed": "Changed by {by} on {at}",
+        "unnamedUser": "User",
+        "delete": "Delete",
+        "inUseNote": "In use: disable it instead of deleting.",
+        "newType": "New check type",
+        "required": "required",
+        "addType": "Add type"
+      },
+      "systemCancelled": "Cancelled automatically when the candidate's personal data was removed."
     }
   },
   "careersPublic": {

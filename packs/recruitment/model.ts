@@ -76,6 +76,10 @@ export const RECRUITMENT_ERROR_CODES = [
   // Slice 11: a chosen reviewer is not a hiring manager of the job; the job has no hiring manager to send to; the screening
   // request was withdrawn or already answered; only the named reviewer answers; one selection spans several jobs.
   'not_hiring_manager', 'no_hiring_manager', 'screening_closed', 'not_your_request', 'mixed_jobs',
+  // Slice 12: a background check is added only at or after the job's Offer stage (or a background-check stage); the check is
+  // completed or cancelled (final); the action does not fit the check's status; the authorisation must be recorded first; a
+  // chosen type is disabled or not the company's; a type in use cannot be deleted.
+  'check_stage', 'check_closed', 'check_state', 'authorisation_required', 'check_type_unavailable', 'type_in_use',
 ] as const;
 export type RecruitmentErrorCode = (typeof RECRUITMENT_ERROR_CODES)[number];
 

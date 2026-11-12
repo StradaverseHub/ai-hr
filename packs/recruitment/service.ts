@@ -138,6 +138,28 @@ export {
   parseAssignmentFilter, closesRequest, validateSendInput, validateAnswerInput, assignmentStatus, statusCounts, requestState,
 } from './screening-model';
 export type { ScreeningResult, AssignmentStatus, ScreeningCloseReason, RequestState, StatusRequest, StatusAnswer } from './screening-model';
+// Slice 12 — background checks: the company's check types (administrators), adding a check, the candidate's authorisation
+// first, start, complete with an outcome and report, cancel; the application's section (full for the job's operators and
+// administrators, type/status/outcome/dates for its hiring managers), audited downloads and counts by status for the reports.
+// The board's markers come with candidateBoard; the recorder's to-dos with the slice 9 tasks.
+export {
+  backgroundCheckTypes, saveBackgroundCheckType, deleteBackgroundCheckType, addDefaultBackgroundCheckTypes, addBackgroundCheck,
+  recordBackgroundCheckAuthorisation, startBackgroundCheck, completeBackgroundCheck, cancelBackgroundCheck, getBackgroundCheckFile,
+  applicationBackgroundChecks, backgroundCheckCounts,
+} from './background-checks';
+export type {
+  BackgroundCheckTypeRow, BackgroundCheckTypes, CheckFileInput, BackgroundCheckFileView, BackgroundCheckRestricted, BackgroundCheckView,
+  ApplicationBackgroundChecks, BackgroundCheckCounts,
+} from './background-checks';
+export {
+  CHECK_STATUSES, CHECK_OUTCOMES, AUTHORISATION_METHODS, CHECK_FILE_KINDS, CHECK_TRANSITIONS, DEFAULT_CHECK_TYPES, CHECK_TYPE_NAME_MAX,
+  CHECK_TYPE_DESCRIPTION_MAX, CHECK_PROVIDER_MAX, CHECK_REFERENCE_MAX, CHECK_SUMMARY_MAX, CHECK_CANCEL_REASON_MAX, CHECK_TYPES_PER_CHECK_MAX,
+  CHECK_OVERDUE_DAYS, CHECK_FILE_MAX_BYTES, AUTHORISATION_FILE_ACCEPT, REPORT_FILE_ACCEPT, canMoveCheck, isFinalCheck, checkOverdue, overdueFrom,
+  checkStageAllowed, checkMarker, checkStatusCounts, validateCheckTypeInput, validateAddCheckInput, validateAuthorisationInput, validateCompleteInput,
+  validateCancelInput,
+} from './background-check-model';
+// (Slice 10 already exports a CheckOutcome — the agency check's; the background check outcome is BackgroundCheckOutcome here.)
+export type { CheckStatus, CheckOutcome as BackgroundCheckOutcome, AuthorisationMethod, CheckFileKind, CheckMarker, CheckStagePosition } from './background-check-model';
 export {
   RecruitmentError, RECRUITMENT_ERROR_CODES, JOB_STATUSES, JOB_STATUS_TRANSITIONS, JOB_MEMBER_ROLES, POSITION_ATTRIBUTES, RECRUITMENT_TYPES,
   JOB_EMPLOYMENT_TYPES, RECRUITMENT_STAGE_TYPES, canChangeJobStatus, jobTab,

@@ -5,8 +5,10 @@ import { requireModule } from '@/lib/authz';
 import { scopedSession } from '@/lib/scope';
 import { ErrorBanner, PageHeader, btnGhost, btnPrimary } from '@/components/ui';
 import { DateField } from '@/components/ui/date-field';
+import { StatCells } from '@/components/ui/stat-cells';
 import {
-  ReportTooSlowError, recruitmentInterviewsReport, recruitmentOverviewReport, recruitmentPositionsReport, recruitmentTeamReport,
+  ReportTooSlowError, backgroundCheckCounts, recruitmentInterviewsReport, recruitmentOverviewReport, recruitmentPositionsReport, recruitmentTeamReport,
+  CHECK_STATUSES,
   type InterviewsReport, type OverviewReport, type PositionsReport, type ReportFilterInput, type ReportScope, type TeamReport,
 } from '@/packs/recruitment/service';
 import { RecruitmentTabs, SubTabs, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../shared';
@@ -62,6 +64,12 @@ export default async function RecruitmentReportsPage({ searchParams }: { searchP
     return `/recruitment/reports${q.size ? `?${q}` : ''}`;
   };
   const formCompanies = scope?.companies ?? access.reportCompanies;
+  // Slice 12: background checks by status NOW, for administrators on the Overview — counts only (the selected company, or every
+  // company they administer here); never an outcome or a candidate.
+  const adminIds = access.adminCompanies.map((c) => c.id);
+  const checkCompanies = scope?.companyId ? adminIds.filter((id) => id === scope.companyId) : adminIds;
+  const checkCounts = view === 'overview' && checkCompanies.length ? await backgroundCheckCounts(s, checkCompanies) : [];
+  const checkTotals = Object.fromEntries(CHECK_STATUSES.map((st) => [st, checkCounts.reduce((n, c) => n + c.counts[st], 0)])) as Record<(typeof CHECK_STATUSES)[number], number>;
   const views = VIEWS.filter((v) => v !== 'team' || (scope ? scope.teamAvailable : access.isAdmin));
   const label = 'flex flex-col gap-1.5 text-xs font-medium text-muted-foreground';
   return (
@@ -102,6 +110,13 @@ export default async function RecruitmentReportsPage({ searchParams }: { searchP
         </p>
       </form>
       {loaded?.view === 'overview' && <OverviewView data={loaded.data} locale={locale} />}
+      {view === 'overview' && checkCounts.length > 0 && (
+        <section aria-labelledby="check-counts-title" className="space-y-2">
+          <h2 id="check-counts-title" className="text-base font-semibold">{t('checksTitle')}</h2>
+          <p className="text-sm text-muted-foreground">{t('checksNote')}</p>
+          <StatCells cells={CHECK_STATUSES.map((st) => ({ label: t(`checks.${st}`), value: new Intl.NumberFormat(locale).format(checkTotals[st]) }))} />
+        </section>
+      )}
       {loaded?.view === 'positions' && <PositionsView data={loaded.data} locale={locale} />}
       {loaded?.view === 'interviews' && <InterviewsView data={loaded.data} locale={locale} />}
       {loaded?.view === 'team' && <TeamView data={loaded.data} />}

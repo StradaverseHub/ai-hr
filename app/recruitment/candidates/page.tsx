@@ -6,7 +6,7 @@ import { ErrorBanner, Field, PageHeader, btnGhost, btnPrimary } from '@/componen
 import { cn } from '@/lib/utils';
 import { applicationHistory, candidateBoard, ASSIGNMENT_STATUSES, SCREENING_STATUS_WINDOW, CANDIDATE_SOURCES, ID_TYPES, RecruitmentError, type ApplicationHistoryRow } from '@/packs/recruitment/service';
 import { moveApplicationAction, rejectApplicationAction } from '../actions';
-import { NoRecruitmentCompany, Notice, RecruitmentTabs, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../shared';
+import { NoRecruitmentCompany, Notice, Pill, RecruitmentTabs, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../shared';
 import { RejectDialog } from './reject-dialog';
 import { AddApplicationForm } from './add-application-form';
 import { AgencyReviewList, AgencySubmissionPanel } from './agency-panel';
@@ -26,8 +26,8 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
   const access = await recruitmentViewerAccess(s, scopeIds);
   const companies = access.companies;
   const sp = await searchParams;
-  const [t, nav, locale, tc, ts] = await Promise.all([getTranslations('recruitment.candidates'), getTranslations('nav'), getLocale(), getTranslations('recruitment.cand'),
-    getTranslations('recruitment.screening')]);
+  const [t, nav, locale, tc, ts, tk] = await Promise.all([getTranslations('recruitment.candidates'), getTranslations('nav'), getLocale(), getTranslations('recruitment.cand'),
+    getTranslations('recruitment.screening'), getTranslations('recruitment.checks')]);
   const board = await candidateBoard(s, companies.map((c) => c.id), { jobId: sp.job, tab: sp.tab, tagId: sp.tag, screening: sp.screening });
   const selectedTab = board.tabs.find((x) => x.key === sp.tab) ?? board.tabs[0];
   const query = (next: Record<string, string | undefined>) => {
@@ -132,6 +132,13 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
                           <ul aria-label={tc('tags')} className="mt-1 flex flex-wrap gap-1">
                             {card.tags.map((tag) => <li key={tag.id} className="rounded-full border border-border px-2 py-0.5 text-xs">{tag.name}</li>)}
                           </ul>
+                        )}
+                        {card.backgroundCheck && (
+                          <p className="mt-1">
+                            <Link href={`/recruitment/applications/${card.id}?tab=checks`} className="inline-flex">
+                              <Pill tone={card.backgroundCheck === 'concerns_found' ? 'bad' : 'info'}>{tk(`marker.${card.backgroundCheck}`)}</Pill>
+                            </Link>
+                          </p>
                         )}
                       </div>
                       <dl className="grid grid-cols-2 gap-2 text-xs">

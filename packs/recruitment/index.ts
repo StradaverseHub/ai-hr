@@ -46,6 +46,11 @@
  *   applications to the job's hiring managers (optionally moving them to the next stage in the same transaction); each reviewer
  *   answers Advance, Reject or Pending on the To screen page; the board shows each card's derived assignment status and filters
  *   by it (4411). One fixed form (D-040); reviewers are hiring managers only (D-041).
+ * - Background checks (slice 12, ./background-checks and ./background-check-model): administrators keep the company's check
+ *   types under Settings › Background checks; the job's recruiter, assistants and administrators record checks run outside AI
+ *   HR (D-043) at or after the Offer stage — the candidate's authorisation first (D-044), then In progress, Completed with an
+ *   outcome or Cancelled; the summary, provider, reference and files sit in operator-only tables, and hiring managers see
+ *   types, status and outcome (D-045). Checks gate nothing and are never copied to an employee (D-046) (4412).
  * - Team access (slice 2): a job's recruiter, assistants, hiring managers and interviewers reach that job's data through
  *   database predicates (4402); the menu shows for team members, interviewers and pending approvers.
  */
@@ -116,6 +121,12 @@ export const recruitmentPack: ModulePack = {
     // Slice 11 (4411)
     { table: 'recruitment_screening_request', note: 'a hiring manager asked to screen an application: sender, time, note, how it closed' },
     { table: 'recruitment_screening_answer', note: 'the reviewer\'s screening answers (Advance, Reject or Pending, comment), append-only' },
+    // Slice 12 (4412)
+    { table: 'recruitment_background_check_type', note: 'the company\'s background check types (administrators); a type in use is disabled, not deleted' },
+    { table: 'recruitment_background_check', note: 'background checks on applications: status, outcome, recorder and status dates' },
+    { table: 'recruitment_background_check_type_link', note: 'the types of a background check, fixed when it is added' },
+    { table: 'recruitment_background_check_detail', note: 'provider, reference, authorisation, summary, cancellation reason: the job\'s operators and administrators only' },
+    { table: 'recruitment_background_check_file', note: 'authorisation files and reports (bytes): the job\'s operators and administrators only' },
   ],
 };
 registerPack(recruitmentPack);

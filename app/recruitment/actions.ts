@@ -25,6 +25,8 @@ import {
   removeAgencyContractFile, removeAgencyContractUser, saveAgency, saveAgencyConsultant, saveAgencyContract, saveAgencyTag, updateAgencyAssignment,
   uploadAgencyContractFile, CONTRACT_FILE_MAX_BYTES, removeAgencySubmissionData,
   answerScreening, reassignScreening, sendForScreening, withdrawScreening,
+  addBackgroundCheck, addDefaultBackgroundCheckTypes, cancelBackgroundCheck, completeBackgroundCheck, deleteBackgroundCheckType,
+  recordBackgroundCheckAuthorisation, saveBackgroundCheckType, startBackgroundCheck, CHECK_FILE_MAX_BYTES, type CheckFileInput,
 } from '@/packs/recruitment/service';
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
@@ -561,4 +563,56 @@ export async function answerScreeningAction(f: FormData) {
   const url = back(f, '/recruitment/screening');
   return run(url, (s) => answerScreening(s, str(f, 'requestId'), { result: str(f, 'result'), comment: String(f.get('comment') ?? '') }),
     withParam(url, 'notice', 'screening-answered'));
+}
+
+// ── Slice 12: background checks ─────────────────────────────────────────────────────────────────────────────────
+const checkPage = (f: FormData) => back(f, `/recruitment/applications/${encodeURIComponent(str(f, 'applicationId'))}?tab=checks`);
+const checkSettings = (f: FormData) => back(f, '/recruitment/settings?section=checks');
+/** An optional file from the form (none chosen: undefined). The browser-declared type is never trusted: the service reads the
+ *  file's own bytes (core/employee-documents) and checks the size again. */
+async function optionalFile(f: FormData, field: string): Promise<CheckFileInput | undefined> {
+  const file = f.get(field);
+  if (!(file instanceof File) || file.size === 0) return undefined;
+  if (file.size > CHECK_FILE_MAX_BYTES) throw new RecruitmentError('file_too_large');
+  return { fileName: file.name, content: Buffer.from(await file.arrayBuffer()), permissionConfirmed: f.get(`${field}Permission`) === 'on' };
+}
+/** Settings › Background checks: add or change a type (administrators). */
+export async function saveBackgroundCheckTypeAction(f: FormData) {
+  return run(checkSettings(f), (s) => saveBackgroundCheckType(s, {
+    id: str(f, 'typeId') || undefined, companyId: str(f, 'companyId'), name: str(f, 'name'), description: String(f.get('description') ?? ''),
+    // The edit form sends its checkbox with a marker (an unticked box sends nothing); a new type starts enabled.
+    enabled: f.get('enabledField') === '1' ? f.get('enabled') === 'on' : true,
+  }));
+}
+export async function deleteBackgroundCheckTypeAction(f: FormData) {
+  return run(checkSettings(f), (s) => deleteBackgroundCheckType(s, str(f, 'typeId')));
+}
+/** "Add these types": the six defaults offered to a company with none. */
+export async function addDefaultBackgroundCheckTypesAction(f: FormData) {
+  return run(checkSettings(f), (s) => addDefaultBackgroundCheckTypes(s, str(f, 'companyId')));
+}
+/** "Add background check" on an application. */
+export async function addBackgroundCheckAction(f: FormData) {
+  return run(checkPage(f), (s) => addBackgroundCheck(s, {
+    applicationId: str(f, 'applicationId'), typeIds: f.getAll('typeIds').map(String), provider: str(f, 'provider'), providerReference: str(f, 'providerReference'),
+  }), withParam(checkPage(f), 'notice', 'check-added'));
+}
+/** The candidate's written authorisation, an optional authorisation file, and optionally starting the check. */
+export async function recordBackgroundCheckAuthorisationAction(f: FormData) {
+  return run(checkPage(f), async (s) => recordBackgroundCheckAuthorisation(s, str(f, 'checkId'), {
+    authorisedOn: str(f, 'authorisedOn'), method: str(f, 'method'), providerReference: str(f, 'providerReference'), start: f.get('start') === 'on',
+  }, await optionalFile(f, 'file')), withParam(checkPage(f), 'notice', 'check-authorised'));
+}
+export async function startBackgroundCheckAction(f: FormData) {
+  return run(checkPage(f), (s) => startBackgroundCheck(s, str(f, 'checkId')), withParam(checkPage(f), 'notice', 'check-started'));
+}
+/** Complete with an outcome, an optional summary and an optional report. */
+export async function completeBackgroundCheckAction(f: FormData) {
+  return run(checkPage(f), async (s) => completeBackgroundCheck(s, str(f, 'checkId'), {
+    outcome: str(f, 'outcome'), summary: String(f.get('summary') ?? ''), providerReference: str(f, 'providerReference'),
+  }, await optionalFile(f, 'report')), withParam(checkPage(f), 'notice', 'check-completed'));
+}
+export async function cancelBackgroundCheckAction(f: FormData) {
+  return run(checkPage(f), (s) => cancelBackgroundCheck(s, str(f, 'checkId'), { reason: String(f.get('reason') ?? '') }),
+    withParam(checkPage(f), 'notice', 'check-cancelled'));
 }

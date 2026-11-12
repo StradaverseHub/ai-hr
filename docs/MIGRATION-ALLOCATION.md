@@ -1,3 +1,21 @@
+# Recruitment slice 12 — 12 November 2026 MYT (unapplied)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after its slice 11 entry,
+`4412_recruitment_background_checks` at idx 3812 / when 1793330004112. A read-only survey of the
+already-fetched refs (7,516 refs, 575 distinct committed journal blobs; no new fetch), 315 registered
+worktrees (298 readable journals) and 397 committed allocation-document blobs found no claim of this
+name, position or timestamp and no `4412_` migration file. Peers above this block still exist (the
+peer timestamp maximum is 1793330099990; `origin/main` ends at when 1793330004790 and `origin/alpha`
+at 1793330004827), so whichever lands later must be checked against the applied watermark; a lower
+timestamp can be silently skipped. 4412 adds five tables (`recruitment_background_check_type`,
+`recruitment_background_check`, `recruitment_background_check_type_link`, and the operator-only
+`recruitment_background_check_detail` and `recruitment_background_check_file`), their guards, the
+invoker stage-rule and candidate-lock helpers, owner-bound removal and company-delete policies on the
+new tables, and restates `app.recruitment_destroy_candidate` and `app.recruitment_delete_company_setup`
+(4411 bodies) with added steps only; 4400–4411 are unapplied outside throwaway databases and CI.
+Recheck peer claims, the published baseline and the ordered applied ledger before admission. The
+reservation grants no installation authority.
+
 # Recruitment slice 11 — 11 November 2026 MYT (unapplied)
 
 Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after its slice 10 entry,

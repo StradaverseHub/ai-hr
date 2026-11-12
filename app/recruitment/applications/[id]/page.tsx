@@ -6,7 +6,7 @@ import { scopedSession } from '@/lib/scope';
 import { ErrorBanner, Field, Input, PageHeader, btnGhost, btnPrimary } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import {
-  applicationAgency, applicationCareers, applicationHire, applicationHistory, applicationInterviews, applicationOffer, applicationReferral, applicationScreening, candidateProfile, interviewFormOptions, CANDIDATE_RESPONSES, INTERVIEW_TYPES,
+  applicationAgency, applicationBackgroundChecks, applicationCareers, applicationHire, applicationHistory, applicationInterviews, applicationOffer, applicationReferral, applicationScreening, candidateProfile, interviewFormOptions, CANDIDATE_RESPONSES, INTERVIEW_TYPES,
   OFFER_SEND_CHANNELS, RecruitmentError, type ApplicationHire, type InterviewFormOptions, type InterviewStatus, type OfferView,
 } from '@/packs/recruitment/service';
 import {
@@ -17,8 +17,9 @@ import { Notice, Pill, SubTabs, klDate, klDateTime, recruitmentErrorText, recrui
 import { pgSqlState } from '@/lib/db-error';
 import { CandidateSection } from './candidate-section';
 import { ScreeningSection } from './screening-section';
+import { BackgroundChecksSection } from './background-checks-section';
 
-type Tab = 'candidate' | 'screening' | 'interviews' | 'offer' | 'history';
+type Tab = 'candidate' | 'screening' | 'interviews' | 'offer' | 'checks' | 'history';
 const STATUS_TONE: Record<InterviewStatus, 'neutral' | 'info' | 'good' | 'warn' | 'bad'> = {
   scheduled: 'info', in_progress: 'info', awaiting_feedback: 'warn', feedback_complete: 'good', cancelled: 'neutral',
 };
@@ -44,7 +45,7 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
     throw e;
   }
   const soft = async <T,>(work: Promise<T>): Promise<T | null> => work.catch((e) => { if (e instanceof RecruitmentError) return null; throw e; });
-  const [offer, history, hire, options, profile, referral, careers, agency, screening] = await Promise.all([
+  const [offer, history, hire, options, profile, referral, careers, agency, screening, checks] = await Promise.all([
     soft(applicationOffer(s, id)), soft(applicationHistory(s, id)), soft(applicationHire(s, id)),
     interviews.canSchedule ? soft(interviewFormOptions(s, id)) : Promise.resolve(null), soft(candidateProfile(s, id)), soft(applicationReferral(s, id)),
     soft(applicationCareers(s, id)), soft(applicationAgency(s, id)),
@@ -53,9 +54,15 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
       if (!(e instanceof RecruitmentError)) console.error('recruitment screening section failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
       return null;
     }),
+    // Background checks likewise: an interviewer (refused) or a database failure leaves the page without the tab.
+    applicationBackgroundChecks(s, id).catch((e) => {
+      if (!(e instanceof RecruitmentError)) console.error('recruitment background checks section failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+      return null;
+    }),
   ]);
   const reviewer = !!offer;
   const tab: Tab = sp.tab === 'offer' && reviewer ? 'offer' : sp.tab === 'history' && history ? 'history' : sp.tab === 'screening' && screening ? 'screening'
+    : sp.tab === 'checks' && checks ? 'checks'
     : sp.tab === 'interviews' || !profile ? 'interviews' : 'candidate';
   const [t, locale] = await Promise.all([getTranslations('recruitment'), getLocale()]);
   const here = `/recruitment/applications/${id}?tab=${tab}`;
@@ -67,7 +74,9 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
       <PageHeader title={profile?.removed ? t('cand.removedLabel') : interviews.candidateName} description={<>{interviews.jobTitle} · {stateText}</>}
         back={{ href: '/recruitment/candidates', label: t('app.back') }} />
       <Notice text={sp.notice === 'saved' ? t('candidates.savedNotice') : sp.notice === 'screening-sent' ? t('screening.sentNotice')
-        : sp.notice === 'screening-answered' ? t('screening.answeredNotice') : undefined} />
+        : sp.notice === 'screening-answered' ? t('screening.answeredNotice') : sp.notice === 'check-added' ? t('checks.addedNotice')
+          : sp.notice === 'check-authorised' ? t('checks.authorisedNotice') : sp.notice === 'check-started' ? t('checks.startedNotice')
+            : sp.notice === 'check-completed' ? t('checks.completedNotice') : sp.notice === 'check-cancelled' ? t('checks.cancelledNotice') : undefined} />
       <ErrorBanner message={errorText} />
       {referral && (
         <section aria-labelledby="referral-title" className="space-y-1 rounded-xl border border-border bg-card p-4 text-sm">
@@ -98,6 +107,7 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
         ...(screening ? [{ key: 'screening', href: `/recruitment/applications/${id}?tab=screening`, text: t('screening.tab'), current: tab === 'screening' }] : []),
         { key: 'interviews', href: `/recruitment/applications/${id}?tab=interviews`, text: t('app.tabInterviews'), current: tab === 'interviews' },
         ...(reviewer ? [{ key: 'offer', href: `/recruitment/applications/${id}?tab=offer`, text: t('app.tabOffer'), current: tab === 'offer' }] : []),
+        ...(checks ? [{ key: 'checks', href: `/recruitment/applications/${id}?tab=checks`, text: t('checks.tab'), current: tab === 'checks' }] : []),
         ...(history ? [{ key: 'history', href: `/recruitment/applications/${id}?tab=history`, text: t('app.tabHistory'), current: tab === 'history' }] : []),
       ]} />
 
@@ -165,6 +175,8 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
       )}
 
       {tab === 'offer' && offer && <OfferSection offer={offer} applicationId={id} here={here} t={t} locale={locale} />}
+
+      {tab === 'checks' && checks && <BackgroundChecksSection checks={checks} here={here} locale={locale} isAdmin={access.isAdmin} />}
 
       {tab === 'history' && history && (
         <ol className="space-y-2 rounded-xl border border-border bg-card p-4 text-sm">

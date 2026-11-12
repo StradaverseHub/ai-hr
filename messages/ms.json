@@ -14642,7 +14642,9 @@
       "recruitmentFeedback": "Beri maklum balas temu duga",
       "recruitmentAgencyReview": "Semak penyerahan agensi",
       "recruitmentContractExpiry": "Kontrak agensi hampir tamat",
-      "recruitmentScreening": "Saring calon"
+      "recruitmentScreening": "Saring calon",
+      "recruitmentBackgroundCheckAuthorisation": "Dapatkan kebenaran untuk semakan latar belakang",
+      "recruitmentBackgroundCheckOverdue": "Susuli semakan latar belakang"
     },
     "tasksEmpty": "Tiada apa-apa memerlukan tindakan anda",
     "title": "Pemberitahuan",
@@ -14651,7 +14653,9 @@
     "taskAction": {
       "recruitmentAgencyReview": "Semak penyerahan",
       "recruitmentContractExpiry": "Buka kontrak",
-      "recruitmentScreening": "Beri maklum balas"
+      "recruitmentScreening": "Beri maklum balas",
+      "recruitmentBackgroundCheckAuthorisation": "Buka semakan",
+      "recruitmentBackgroundCheckOverdue": "Buka semakan"
     }
   },
   "approvalHistory": {
@@ -37274,7 +37278,13 @@
       "no_hiring_manager": "Jawatan ini belum mempunyai pengurus pengambilan. Tambah seorang di tab Pasukan jawatan dahulu.",
       "screening_closed": "Permintaan saringan ini telah ditarik balik atau sudah dijawab.",
       "not_your_request": "Hanya pengurus pengambilan yang menerimanya boleh menjawab permintaan saringan ini.",
-      "mixed_jobs": "Pilih calon bagi satu jawatan pada satu masa."
+      "mixed_jobs": "Pilih calon bagi satu jawatan pada satu masa.",
+      "check_stage": "Semakan latar belakang boleh ditambah mulai peringkat Tawaran kerja ini, atau pada peringkat semakan latar belakang.",
+      "check_closed": "Semakan latar belakang ini telah selesai atau dibatalkan. Tambah semakan baharu.",
+      "check_state": "Semakan latar belakang ini tidak berada pada langkah yang betul untuk tindakan itu. Muat semula halaman dan cuba lagi.",
+      "authorisation_required": "Rekodkan kebenaran bertulis calon sebelum semakan bermula.",
+      "check_type_unavailable": "Pilih jenis semakan syarikat ini yang didayakan.",
+      "type_in_use": "Jenis semakan ini digunakan oleh satu semakan. Nyahdayakannya sahaja."
     },
     "overview": {
       "purpose": "Kerja pengambilan hari ini merentas syarikat yang pengambilannya anda uruskan.",
@@ -37530,7 +37540,8 @@
         "tags": "Tag",
         "referrals": "Rujukan",
         "careers": "Halaman kerjaya",
-        "agencies": "Agensi"
+        "agencies": "Agensi",
+        "checks": "Semakan latar belakang"
       },
       "iv": {
         "rulesTitle": "Peraturan maklum balas",
@@ -38226,7 +38237,15 @@
       "showingRecruiters": "Menunjukkan {shown} daripada {total} perekrut.",
       "teamAdminOnly": "Papan pemuka Pasukan adalah untuk pentadbir pengambilan.",
       "requisitionsHidden": "Angka permintaan jawatan dipaparkan hanya apabila setiap syarikat yang dipilih, atau syarikat bagi jawatan yang dipilih, ialah syarikat yang anda tadbir.",
-      "teamCredit": "Kerja dikreditkan kepada perekrut semasa bagi setiap jawatan. “Melepasi peringkat pertama” mengira pemindahan, penolakan dan pengambilan keluar dari peringkat permulaan sesuatu permohonan."
+      "teamCredit": "Kerja dikreditkan kepada perekrut semasa bagi setiap jawatan. “Melepasi peringkat pertama” mengira pemindahan, penolakan dan pengambilan keluar dari peringkat permulaan sesuatu permohonan.",
+      "checksTitle": "Semakan latar belakang",
+      "checksNote": "Semakan mengikut status hari ini, dalam syarikat yang anda tadbir. Kiraan sahaja.",
+      "checks": {
+        "awaiting_authorisation": "Menunggu kebenaran",
+        "in_progress": "Sedang berjalan",
+        "completed": "Selesai",
+        "cancelled": "Dibatalkan"
+      }
     },
     "referral": {
       "source": "Rujukan pekerja",
@@ -38328,7 +38347,9 @@
         "agencyReview": "Penyerahan agensi untuk disemak",
         "contractExpiry": "Kontrak agensi hampir tamat",
         "screening": "Resume untuk disaring",
-        "screeningFor": "Saring {candidate} untuk {job}"
+        "screeningFor": "Saring {candidate} untuk {job}",
+        "backgroundCheckAuthorisation": "Semakan latar belakang menunggu kebenaran calon",
+        "backgroundCheckOverdue": "Semakan latar belakang sedang berjalan lebih daripada 14 hari"
       },
       "update": {
         "requisitionApproved": "Permintaan jawatan diluluskan",
@@ -38585,6 +38606,114 @@
       "closedAt": "Ditutup pada {time}",
       "reviewersUnavailable": "Pengurus pengambilan tidak dapat dimuatkan sekarang. Muat semula untuk mencuba lagi.",
       "countWindow": "Kiraan dan penapis meliputi {count} calon terkini di peringkat ini."
+    },
+    "checks": {
+      "tab": "Semakan latar belakang",
+      "purpose": "Rekodkan semakan latar belakang yang dijalankan oleh pembekal luar untuk calon ini. Dapatkan kebenaran bertulis calon sebelum semakan bermula.",
+      "restrictedNote": "Anda melihat jenis, status dan keputusan setiap semakan. Butiran dan laporan kekal dengan perekrut.",
+      "stageNote": "Semakan latar belakang boleh ditambah apabila calon sampai ke peringkat Tawaran atau peringkat semakan latar belakang.",
+      "noTypes": "Syarikat ini belum mempunyai jenis semakan latar belakang.",
+      "noTypesLink": "Tambah jenis dalam Tetapan",
+      "add": "Tambah semakan latar belakang",
+      "types": "Semakan yang perlu dijalankan",
+      "required": "wajib",
+      "provider": "Pembekal",
+      "providerHint": "Firma yang menjalankan semakan",
+      "reference": "Rujukan pembekal (pilihan)",
+      "addNote": "Semakan bermula sebagai Menunggu kebenaran. Tiada apa-apa dihantar kepada pembekal atau calon.",
+      "addButton": "Tambah semakan",
+      "none": "Belum ada semakan latar belakang.",
+      "noGate": "Tawaran dan pengambilan tidak menunggu semakan latar belakang. Keputusan semakan tidak pernah disalin ke rekod pekerja.",
+      "untyped": "Semakan latar belakang",
+      "addedOn": "Ditambah {date}",
+      "startedOn": "dimulakan {date}",
+      "completedOn": "diselesaikan {date}",
+      "cancelledOn": "dibatalkan {date}",
+      "overdue": "Sedang berjalan lebih daripada 14 hari",
+      "status": {
+        "awaiting_authorisation": "Menunggu kebenaran",
+        "in_progress": "Sedang berjalan",
+        "completed": "Selesai",
+        "cancelled": "Dibatalkan"
+      },
+      "outcome": {
+        "clear": "Bersih",
+        "concerns_found": "Ada kebimbangan",
+        "could_not_verify": "Tidak dapat disahkan"
+      },
+      "recordedBy": "Direkodkan oleh",
+      "unnamedUser": "Pengguna",
+      "authorisation": "Kebenaran calon",
+      "authorisationLine": "{date} melalui {method} · direkodkan oleh {by} pada {at}",
+      "authorisationMissing": "Belum direkodkan",
+      "method": {
+        "signed_form": "borang bertandatangan",
+        "email": "e-mel",
+        "online_form": "borang dalam talian"
+      },
+      "summary": "Ringkasan",
+      "cancelReason": "Sebab pembatalan",
+      "files": "Fail",
+      "fileKind": {
+        "authorisation": "Kebenaran",
+        "report": "Laporan"
+      },
+      "kb": "{kb} KB",
+      "authoriseTitle": "Rekodkan kebenaran calon",
+      "authoriseNote": "Sahkan calon memberi kebenaran bertulis untuk semakan ini. Semakan hanya boleh bermula selepas ini.",
+      "authorisedOn": "Tarikh diberi",
+      "methodLabel": "Cara diberi",
+      "authorisationFile": "Fail kebenaran (pilihan)",
+      "authorisationFileRules": "PDF, Word, JPG atau PNG, sehingga 10 MB.",
+      "permission": "Calon membenarkan kami menyimpan fail ini.",
+      "startNow": "Mulakan semakan sekarang",
+      "authoriseButton": "Rekodkan kebenaran",
+      "start": "Mulakan semakan",
+      "completeTitle": "Selesaikan semakan",
+      "outcomeLabel": "Keputusan",
+      "summaryOptional": "Ringkasan (pilihan)",
+      "report": "Laporan (pilihan)",
+      "reportRules": "PDF atau Word, sehingga 10 MB.",
+      "finalNote": "Semakan yang selesai tidak boleh diubah. Tambah semakan baharu jika perlu lagi.",
+      "completeButton": "Selesaikan semakan",
+      "cancelTitle": "Batalkan semakan",
+      "cancelButton": "Batalkan semakan",
+      "addedNotice": "Semakan latar belakang ditambah.",
+      "authorisedNotice": "Kebenaran direkodkan.",
+      "startedNotice": "Semakan latar belakang dimulakan.",
+      "completedNotice": "Semakan latar belakang diselesaikan.",
+      "cancelledNotice": "Semakan latar belakang dibatalkan.",
+      "marker": {
+        "in_progress": "Semakan latar belakang sedang berjalan",
+        "concerns_found": "Semakan latar belakang: ada kebimbangan"
+      },
+      "settings": {
+        "note": "Jenis semakan latar belakang yang boleh direkodkan oleh perekrut anda. Semakan dijalankan oleh pembekal luar; AI HR menyimpan rekodnya. Jenis yang sedang digunakan boleh dinyahdayakan tetapi tidak boleh dipadam.",
+        "defaultsTitle": "Mulakan dengan jenis biasa",
+        "defaultsNote": "Tambah enam jenis ini sekarang. Anda boleh menamakan semula, menyahdayakan atau memadamnya kemudian.",
+        "defaults": {
+          "employment_history": "Sejarah pekerjaan",
+          "education": "Pendidikan",
+          "professional_licence": "Lesen profesional",
+          "identity": "Identiti",
+          "criminal_record": "Rekod jenayah",
+          "credit": "Kredit"
+        },
+        "addDefaults": "Tambah jenis ini",
+        "name": "Nama",
+        "description": "Penerangan (pilihan)",
+        "enabled": "Didayakan",
+        "save": "Simpan",
+        "used": "{n, plural, =0 {Belum digunakan} other {Digunakan oleh # semakan}}",
+        "changed": "Diubah oleh {by} pada {at}",
+        "unnamedUser": "Pengguna",
+        "delete": "Padam",
+        "inUseNote": "Sedang digunakan: nyahdayakan, jangan padam.",
+        "newType": "Jenis semakan baharu",
+        "required": "wajib",
+        "addType": "Tambah jenis"
+      },
+      "systemCancelled": "Dibatalkan secara automatik apabila data peribadi calon dipadamkan."
     }
   },
   "careersPublic": {

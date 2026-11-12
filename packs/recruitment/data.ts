@@ -36,6 +36,7 @@ import {
 } from './schema';
 import { DEFAULT_EVALUATION_FORM, DEFAULT_OFFER_FIELDS } from './hiring-model';
 import { ASSIGNMENT_STATUSES, SCREENING_LIST_LIMIT, SCREENING_STATUS_WINDOW, parseAssignmentFilter, type AssignmentStatus } from './screening-model';
+import { checkMarker, type CheckMarker, type CheckOutcome, type CheckStatus } from './background-check-model';
 import {
   CANDIDATE_SOURCES, DEFAULT_REPEAT_WINDOW_MONTHS, ID_TYPES, normEmail, normIdNumber, normMobile, normName, repeatApplicationBlocked,
   type CandidateSource, type IdType,
@@ -682,6 +683,8 @@ export type ApplicationCard = {
   candidateId: string; tags: { id: string; name: string }[]; removed: boolean;
   /** Slice 11: the screening assignment status, for the job's operators and administrators only (null for anyone else). */
   screeningStatus: AssignmentStatus | null;
+  /** Slice 12: a background check marker (Concerns found, else In progress), for the job's operators and administrators only. */
+  backgroundCheck: CheckMarker | null;
 };
 export type CandidateBoard = {
   tabs: StageTab[]; cards: ApplicationCard[];
@@ -807,6 +810,12 @@ export async function candidateBoard(s: SessionContext, companyIds: readonly str
     for (const r of rows) {
       if (!access.has(r.job_id)) access.set(r.job_id, await jobLevelTx(tx, r.company_id, r.job_id));
     }
+    // Slice 12: background check markers for the cards whose job the viewer operates — ONE query over the shown cards through
+    // the check's application index, reading only status and outcome (never the restricted details).
+    const checkCards = rows.filter((r) => access.get(r.job_id)?.operate).map((r) => r.id);
+    const checkRows = checkCards.length ? await tx.execute<{ application_id: string; status: CheckStatus; outcome: CheckOutcome | null }>(sql`
+      select application_id, status, outcome from recruitment_background_check
+      where application_id = any(${uuidArray(checkCards)}::uuid[]) and (status = 'in_progress' or (status = 'completed' and outcome = 'concerns_found'))`) : [];
     const cardTags = rows.length ? await tx.execute<{ candidate_id: string; id: string; name: string }>(sql`
       select ct.candidate_id, t.id, t.name from recruitment_candidate_tag ct join recruitment_tag t on t.id = ct.tag_id
       where ct.candidate_id = any(${uuidArray([...new Set(rows.map((r) => r.candidate_id))])}::uuid[]) order by t.name`) : [];
@@ -841,6 +850,7 @@ export async function candidateBoard(s: SessionContext, companyIds: readonly str
         candidateId: r.candidate_id, removed: r.removed,
         tags: cardTags.filter((x) => x.candidate_id === r.candidate_id).map((x) => ({ id: x.id, name: x.name })),
         screeningStatus: statusOf.get(r.id) ?? null,
+        backgroundCheck: access.get(r.job_id)?.operate ? checkMarker(checkRows.filter((x) => x.application_id === r.id)) : null,
       })),
     };
   });

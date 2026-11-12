@@ -1,6 +1,6 @@
 /**
  * The Recruitment pack's satellite tables (ADR-0080 D5/D11) as the service reads and writes them. The DDL,
- * keys, row security, grants and guards are owned by db/migrations/4401_recruitment_core.sql and 4402–4411; these
+ * keys, row security, grants and guards are owned by db/migrations/4401_recruitment_core.sql and 4402–4412; these
  * declarations carry no references or checks of their own so they can never disagree with it.
  */
 import { boolean, customType, date, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
@@ -13,6 +13,7 @@ import type { TaskCategory } from './tasks-model';
 import type { CandidateFileKind, CandidateSource, ConsentMethod, ConsentStatus, EducationLevel, EntryKind, IdType } from './privacy-model';
 import type { ConsultantStatus, ContractAccess, ContractStatus, ContractType, MatchKind, SubmissionOutcome } from './agency-model';
 import type { ScreeningCloseReason, ScreeningResult } from './screening-model';
+import type { AuthorisationMethod, CheckFileKind, CheckOutcome, CheckStatus } from './background-check-model';
 
 const ts = (name: string) => timestamp(name, { withTimezone: true });
 const audit = {
@@ -736,4 +737,83 @@ export const recruitmentScreeningAnswer = pgTable('recruitment_screening_answer'
   comment: text('comment'),
   answeredAt: ts('answered_at').notNull().defaultNow(),
   answeredByUserId: uuid('answered_by_user_id').notNull(),
+});
+
+// ── Slice 12 (db/migrations/4412_recruitment_background_checks.sql) ───────────────────────────────────────────
+
+/** The company's background check types (administrators write; the company's job teams read the names). */
+export const recruitmentBackgroundCheckType = pgTable('recruitment_background_check_type', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  name: text('name').notNull(),
+  description: text('description'),
+  enabled: boolean('enabled').notNull().default(true),
+  seedKey: text('seed_key'),
+  ...audit,
+});
+
+/** One background check on one application: status, outcome, recorder and status dates (the job's reviewers read it). */
+export const recruitmentBackgroundCheck = pgTable('recruitment_background_check', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  jobId: uuid('job_id').notNull(),
+  applicationId: uuid('application_id').notNull(),
+  status: text('status').$type<CheckStatus>().notNull().default('awaiting_authorisation'),
+  outcome: text('outcome').$type<CheckOutcome>(),
+  createdAt: ts('created_at').notNull().defaultNow(),
+  createdByUserId: uuid('created_by_user_id').notNull(),
+  startedAt: ts('started_at'),
+  completedAt: ts('completed_at'),
+  cancelledAt: ts('cancelled_at'),
+  statusChangedAt: ts('status_changed_at').notNull().defaultNow(),
+  statusChangedByUserId: uuid('status_changed_by_user_id').notNull(),
+});
+
+/** The types of a check, fixed when it is added. */
+export const recruitmentBackgroundCheckTypeLink = pgTable('recruitment_background_check_type_link', {
+  checkId: uuid('check_id').notNull(),
+  typeId: uuid('type_id').notNull(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  jobId: uuid('job_id').notNull(),
+  applicationId: uuid('application_id').notNull(),
+});
+
+/** RESTRICTED (the job's operators and administrators): provider, reference, authorisation, summary, cancellation reason. */
+export const recruitmentBackgroundCheckDetail = pgTable('recruitment_background_check_detail', {
+  checkId: uuid('check_id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  jobId: uuid('job_id').notNull(),
+  applicationId: uuid('application_id').notNull(),
+  provider: text('provider').notNull(),
+  providerReference: text('provider_reference'),
+  authorisedOn: date('authorised_on', { mode: 'string' }),
+  authorisationMethod: text('authorisation_method').$type<AuthorisationMethod>(),
+  authorisationRecordedAt: ts('authorisation_recorded_at'),
+  authorisationRecordedByUserId: uuid('authorisation_recorded_by_user_id'),
+  summary: text('summary'),
+  cancelReason: text('cancel_reason'),
+  updatedAt: ts('updated_at').notNull().defaultNow(),
+  updatedByUserId: uuid('updated_by_user_id').notNull(),
+});
+
+/** RESTRICTED: the authorisation file and the report (bytes), at most one of each per check. */
+export const recruitmentBackgroundCheckFile = pgTable('recruitment_background_check_file', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  jobId: uuid('job_id').notNull(),
+  applicationId: uuid('application_id').notNull(),
+  checkId: uuid('check_id').notNull(),
+  kind: text('kind').$type<CheckFileKind>().notNull(),
+  fileName: text('file_name').notNull(),
+  mimeType: text('mime_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  content: bytea('content').notNull(),
+  permissionConfirmed: boolean('permission_confirmed').notNull(),
+  uploadedAt: ts('uploaded_at').notNull().defaultNow(),
+  uploadedByUserId: uuid('uploaded_by_user_id').notNull(),
 });

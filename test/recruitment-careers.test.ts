@@ -10,7 +10,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
-import { sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { appUser, company, employment, jobGrade, person, roleAssignment } from '../db/schema';
 import { pgSqlState } from '../lib/db-error';
@@ -262,7 +262,8 @@ describe('case 47 — publishing rules and who may change the page or a job\'s f
 describe('case 48 — the public data and pages carry no salary, team, count, stage or candidate field', () => {
   it('keeps sentinels on the job and on existing applications out of the HTML and the public data', async () => {
     await site();
-    await owner.db.update(jobGrade).set({ name: `${SENTINEL} grade` });
+    // Only this test's own grade in its own tenant (an unscoped update collides on job_grade_name_uq when other files share the database).
+    await owner.db.update(jobGrade).set({ name: `${SENTINEL} grade` }).where(and(eq(jobGrade.tenantId, base.tenantId), eq(jobGrade.id, gradeId)));
     await owner.db.execute(sql`update department set name = ${`${SENTINEL} department`} where id = ${base.deptA}::uuid`);
     const recruiter = await login(`${SENTINEL} Recruiter`);
     const jobId = await publicJob({ title: 'Fictional public job', departmentId: base.deptA, recruiterUserId: recruiter.userId });

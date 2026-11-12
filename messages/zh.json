@@ -14642,7 +14642,9 @@
       "recruitmentFeedback": "提交面试反馈",
       "recruitmentAgencyReview": "审核机构推荐",
       "recruitmentContractExpiry": "机构合同即将到期",
-      "recruitmentScreening": "筛选候选人"
+      "recruitmentScreening": "筛选候选人",
+      "recruitmentBackgroundCheckAuthorisation": "取得背景调查授权",
+      "recruitmentBackgroundCheckOverdue": "跟进背景调查"
     },
     "tasksEmpty": "没有需要您处理的事项",
     "title": "通知",
@@ -14651,7 +14653,9 @@
     "taskAction": {
       "recruitmentAgencyReview": "审核推荐",
       "recruitmentContractExpiry": "打开合同",
-      "recruitmentScreening": "提交反馈"
+      "recruitmentScreening": "提交反馈",
+      "recruitmentBackgroundCheckAuthorisation": "打开调查",
+      "recruitmentBackgroundCheckOverdue": "打开调查"
     }
   },
   "approvalHistory": {
@@ -37274,7 +37278,13 @@
       "no_hiring_manager": "该职位还没有用人经理。请先在职位的团队标签页中添加。",
       "screening_closed": "该筛选请求已撤回或已答复。",
       "not_your_request": "只有收到该筛选请求的用人经理才能答复。",
-      "mixed_jobs": "请每次只选择同一职位的候选人。"
+      "mixed_jobs": "请每次只选择同一职位的候选人。",
+      "check_stage": "背景调查可从该职位的录用阶段起添加，或在背景调查阶段添加。",
+      "check_closed": "此背景调查已完成或已取消。请改为添加新的调查。",
+      "check_state": "此背景调查目前不处于可执行该操作的步骤。请刷新页面后重试。",
+      "authorisation_required": "调查开始前，请先记录候选人的书面授权。",
+      "check_type_unavailable": "请选择本公司已启用的调查类型。",
+      "type_in_use": "此调查类型已被调查使用。请改为停用。"
     },
     "overview": {
       "purpose": "您所管理招聘的各公司今天的招聘工作。",
@@ -37530,7 +37540,8 @@
         "tags": "标签",
         "referrals": "推荐",
         "careers": "招聘页面",
-        "agencies": "猎头机构"
+        "agencies": "猎头机构",
+        "checks": "背景调查"
       },
       "iv": {
         "rulesTitle": "反馈规则",
@@ -38226,7 +38237,15 @@
       "showingRecruiters": "显示 {total} 位招聘专员中的 {shown} 位。",
       "teamAdminOnly": "团队看板仅供招聘管理员使用。",
       "requisitionsHidden": "只有当所选的每家公司（或所选职位所属的公司）都由您管理时，才会显示招聘需求数据。",
-      "teamCredit": "工作量计入每个职位当前的招聘专员。“通过第一阶段”统计申请从其起始阶段移出、被淘汰或被录用的次数。"
+      "teamCredit": "工作量计入每个职位当前的招聘专员。“通过第一阶段”统计申请从其起始阶段移出、被淘汰或被录用的次数。",
+      "checksTitle": "背景调查",
+      "checksNote": "您管理的公司中，今日按状态统计的调查数量。仅显示数量。",
+      "checks": {
+        "awaiting_authorisation": "等待授权",
+        "in_progress": "进行中",
+        "completed": "已完成",
+        "cancelled": "已取消"
+      }
     },
     "referral": {
       "source": "员工推荐",
@@ -38328,7 +38347,9 @@
         "agencyReview": "待审核的机构推荐",
         "contractExpiry": "机构合同即将到期",
         "screening": "待筛选的简历",
-        "screeningFor": "为{job}筛选{candidate}"
+        "screeningFor": "为{job}筛选{candidate}",
+        "backgroundCheckAuthorisation": "背景调查等待候选人授权",
+        "backgroundCheckOverdue": "背景调查进行中已超过 14 天"
       },
       "update": {
         "requisitionApproved": "招聘需求已获批准",
@@ -38585,6 +38606,114 @@
       "closedAt": "于{time}关闭",
       "reviewersUnavailable": "暂时无法加载用人经理，请刷新后重试。",
       "countWindow": "计数和筛选涵盖此阶段最近的{count}位候选人。"
+    },
+    "checks": {
+      "tab": "背景调查",
+      "purpose": "记录由外部机构为该候选人进行的背景调查。调查开始前须取得候选人的书面授权。",
+      "restrictedNote": "您可以看到每项调查的类型、状态和结果。详细信息和报告仅由招聘人员保管。",
+      "stageNote": "候选人进入录用阶段或背景调查阶段后，才能添加背景调查。",
+      "noTypes": "本公司尚未设置背景调查类型。",
+      "noTypesLink": "在设置中添加类型",
+      "add": "添加背景调查",
+      "types": "要进行的调查",
+      "required": "必填",
+      "provider": "调查机构",
+      "providerHint": "负责调查的机构",
+      "reference": "机构参考编号（可选）",
+      "addNote": "调查以“等待授权”状态开始。系统不会向调查机构或候选人发送任何内容。",
+      "addButton": "添加调查",
+      "none": "尚无背景调查。",
+      "noGate": "录用和入职不等待背景调查。调查结果绝不会复制到员工档案。",
+      "untyped": "背景调查",
+      "addedOn": "添加于 {date}",
+      "startedOn": "开始于 {date}",
+      "completedOn": "完成于 {date}",
+      "cancelledOn": "取消于 {date}",
+      "overdue": "进行中已超过 14 天",
+      "status": {
+        "awaiting_authorisation": "等待授权",
+        "in_progress": "进行中",
+        "completed": "已完成",
+        "cancelled": "已取消"
+      },
+      "outcome": {
+        "clear": "无异常",
+        "concerns_found": "发现问题",
+        "could_not_verify": "无法核实"
+      },
+      "recordedBy": "记录人",
+      "unnamedUser": "用户",
+      "authorisation": "候选人授权",
+      "authorisationLine": "{date}，方式：{method} · 由 {by} 于 {at} 记录",
+      "authorisationMissing": "尚未记录",
+      "method": {
+        "signed_form": "签署表格",
+        "email": "电子邮件",
+        "online_form": "在线表格"
+      },
+      "summary": "摘要",
+      "cancelReason": "取消原因",
+      "files": "文件",
+      "fileKind": {
+        "authorisation": "授权书",
+        "report": "报告"
+      },
+      "kb": "{kb} KB",
+      "authoriseTitle": "记录候选人授权",
+      "authoriseNote": "确认候选人已书面同意进行此项调查。记录后调查才能开始。",
+      "authorisedOn": "授权日期",
+      "methodLabel": "授权方式",
+      "authorisationFile": "授权文件（可选）",
+      "authorisationFileRules": "PDF、Word、JPG 或 PNG，最大 10 MB。",
+      "permission": "候选人已允许我们保存此文件。",
+      "startNow": "立即开始调查",
+      "authoriseButton": "记录授权",
+      "start": "开始调查",
+      "completeTitle": "完成调查",
+      "outcomeLabel": "结果",
+      "summaryOptional": "摘要（可选）",
+      "report": "报告（可选）",
+      "reportRules": "PDF 或 Word，最大 10 MB。",
+      "finalNote": "已完成的调查无法更改。如需更多调查，请添加新的调查。",
+      "completeButton": "完成调查",
+      "cancelTitle": "取消调查",
+      "cancelButton": "取消调查",
+      "addedNotice": "已添加背景调查。",
+      "authorisedNotice": "已记录授权。",
+      "startedNotice": "背景调查已开始。",
+      "completedNotice": "背景调查已完成。",
+      "cancelledNotice": "背景调查已取消。",
+      "marker": {
+        "in_progress": "背景调查进行中",
+        "concerns_found": "背景调查：发现问题"
+      },
+      "settings": {
+        "note": "招聘人员可以记录的背景调查类型。调查由外部机构进行，AI HR 仅保存记录。正在使用的类型可以停用，但不能删除。",
+        "defaultsTitle": "从常用类型开始",
+        "defaultsNote": "立即添加这六种类型。之后可以重命名、停用或删除。",
+        "defaults": {
+          "employment_history": "工作经历",
+          "education": "学历",
+          "professional_licence": "专业执照",
+          "identity": "身份",
+          "criminal_record": "犯罪记录",
+          "credit": "信用"
+        },
+        "addDefaults": "添加这些类型",
+        "name": "名称",
+        "description": "说明（可选）",
+        "enabled": "已启用",
+        "save": "保存",
+        "used": "{n, plural, =0 {尚未使用} other {已被 # 项调查使用}}",
+        "changed": "由 {by} 于 {at} 更改",
+        "unnamedUser": "用户",
+        "delete": "删除",
+        "inUseNote": "使用中：请停用而不是删除。",
+        "newType": "新调查类型",
+        "required": "必填",
+        "addType": "添加类型"
+      },
+      "systemCancelled": "候选人的个人数据被删除时已自动取消。"
     }
   },
   "careersPublic": {
