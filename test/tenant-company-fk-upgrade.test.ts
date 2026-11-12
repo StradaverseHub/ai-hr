@@ -555,28 +555,88 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const isCombinedPolicy=(row:(typeof afterPerformancePrivileges.policies)[number])=>combinedPolicies.some(policy=>policy.schemaname===row.schemaname&&policy.tablename===row.tablename&&policy.policyname===row.policyname);
   expect(afterPerformancePrivileges.policies.filter(isCombinedPolicy).map(row=>({...row,qual:digest(row.qual),with_check:digest(row.with_check)}))).toEqual(combinedPolicies);
   for(const rel of Object.keys(combinedRelations))expect(beforePerformancePrivileges.relations.some(row=>row.rel===rel),rel).toBe(false);
+  // Board release block 5400-5560 (12 November 2026, docs/MIGRATION-ALLOCATION.md): the seven new tables, the 44 row
+  // policies it adds (qual/with_check as md5 digests, the migration owner written OWNER) and the one it retires
+  // (5400 drops the second-person PAT confirmation policy). Nothing else in the privilege graph may change.
+  const boardRelations:Record<string,{rls:boolean;force:boolean;acl:string|null}>={
+   'lc_v9_email_hold':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=arw/OWNER}'},
+   'reward_config_change':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   'reward_limit_version':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
+   'reward_offcycle_year':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   'reward_role_permission_request':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=arw/OWNER}'},
+   'reward_role_permission_version':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
+   'reward_unit_limit_pin':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+  };
+  const boardPolicyRow=(row:(typeof afterPerformancePrivileges.policies)[number])=>({...row,roles:ownerAcl(row.roles),qual:digest(row.qual),with_check:digest(row.with_check)});
+  const boardPolicies=[
+   {schemaname:'public',tablename:'lc_v9_email_hold',policyname:'v9_email_hold_insert',permissive:'PERMISSIVE',roles:'{public}',cmd:'INSERT',qual:null,with_check:'943f46d6c51979e6a3e15d49c833cfd3'},
+   {schemaname:'public',tablename:'lc_v9_email_hold',policyname:'v9_email_hold_read',permissive:'PERMISSIVE',roles:'{public}',cmd:'SELECT',qual:'a891360032acbd07afa1f1c6e6c5be0a',with_check:null},
+   {schemaname:'public',tablename:'lc_v9_email_hold',policyname:'v9_email_hold_release',permissive:'PERMISSIVE',roles:'{public}',cmd:'UPDATE',qual:'943f46d6c51979e6a3e15d49c833cfd3',with_check:'63096f37cc862794aecf97d68e8a8239'},
+   {schemaname:'public',tablename:'lc_v9_email_hold',policyname:'v9_email_hold_storage_owner',permissive:'PERMISSIVE',roles:'{OWNER}',cmd:'ALL',qual:'b326b5062b2f0e69046810717534cb09',with_check:'b326b5062b2f0e69046810717534cb09'},
+   {schemaname:'public',tablename:'reward_config_change',policyname:'reward_config_change_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'59492f3697ba1af7263dfebcdb7c1b78',with_check:'59492f3697ba1af7263dfebcdb7c1b78'},
+   {schemaname:'public',tablename:'reward_config_change',policyname:'reward_config_change_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'b0652841b761793f00814566b72e654b',with_check:null},
+   {schemaname:'public',tablename:'reward_library',policyname:'reward_library_role_level_insert',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'3db9f2711a716af4114c1d2de6f36690'},
+   {schemaname:'public',tablename:'reward_library',policyname:'reward_library_role_level_read',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'9e5d27cf872cd899d911a7f32e4cc4af',with_check:null},
+   {schemaname:'public',tablename:'reward_library',policyname:'reward_library_role_level_update',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'UPDATE',qual:'3db9f2711a716af4114c1d2de6f36690',with_check:'3db9f2711a716af4114c1d2de6f36690'},
+   {schemaname:'public',tablename:'reward_library_version',policyname:'reward_library_version_role_level_insert',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'19469ece367ce5db1b948c904a930afe'},
+   {schemaname:'public',tablename:'reward_library_version',policyname:'reward_library_version_role_level_read',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'3dd971f5ee9fd9894fcddae5d59219d7',with_check:null},
+   {schemaname:'public',tablename:'reward_library_version',policyname:'reward_library_version_role_level_update',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'UPDATE',qual:'19469ece367ce5db1b948c904a930afe',with_check:'19469ece367ce5db1b948c904a930afe'},
+   {schemaname:'public',tablename:'reward_limit_version',policyname:'reward_limit_version_insert',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'dc8abe21091318ab10c2bbd508ce87f7'},
+   {schemaname:'public',tablename:'reward_limit_version',policyname:'reward_limit_version_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'59492f3697ba1af7263dfebcdb7c1b78',with_check:'59492f3697ba1af7263dfebcdb7c1b78'},
+   {schemaname:'public',tablename:'reward_limit_version',policyname:'reward_limit_version_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'f793da3071cf53b7718d88009b667c30',with_check:null},
+   {schemaname:'public',tablename:'reward_offcycle_year',policyname:'reward_offcycle_year_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'59492f3697ba1af7263dfebcdb7c1b78',with_check:'59492f3697ba1af7263dfebcdb7c1b78'},
+   {schemaname:'public',tablename:'reward_offcycle_year',policyname:'reward_offcycle_year_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'59492f3697ba1af7263dfebcdb7c1b78',with_check:null},
+   {schemaname:'public',tablename:'reward_pat_version',policyname:'reward_pat_edit',permissive:'PERMISSIVE',roles:'{public}',cmd:'UPDATE',qual:'4a6390221289b7a5b68ed462f1ae654d',with_check:'6e4e6815b3f76a0a02dfc631d884d4a6'},
+   {schemaname:'public',tablename:'reward_pat_version',policyname:'reward_pat_role_level_insert',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'fb82f1d410f5a0cc23172d46a47934b4'},
+   {schemaname:'public',tablename:'reward_pat_version',policyname:'reward_pat_role_level_update',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'UPDATE',qual:'fb82f1d410f5a0cc23172d46a47934b4',with_check:'fb82f1d410f5a0cc23172d46a47934b4'},
+   {schemaname:'public',tablename:'reward_plan_setup',policyname:'reward_plan_setup_role_level_insert',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'eb77a6877e57fb4ed5e1105c04f429d8'},
+   {schemaname:'public',tablename:'reward_plan_setup',policyname:'reward_plan_setup_role_level_update',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'UPDATE',qual:'eb77a6877e57fb4ed5e1105c04f429d8',with_check:'eb77a6877e57fb4ed5e1105c04f429d8'},
+   {schemaname:'public',tablename:'reward_role_permission',policyname:'reward_role_permission_immediate_write',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'ALL',qual:'936f1d956dcd8547eb9e662eee9f286c',with_check:'6f8317317731342637ca575bdd15bda7'},
+   {schemaname:'public',tablename:'reward_role_permission',policyname:'reward_role_permission_not_own_delete',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'DELETE',qual:'5160b252615da4b17341fc336d0cabd4',with_check:null},
+   {schemaname:'public',tablename:'reward_role_permission',policyname:'reward_role_permission_not_own_insert',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'5160b252615da4b17341fc336d0cabd4'},
+   {schemaname:'public',tablename:'reward_role_permission',policyname:'reward_role_permission_not_own_update',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'UPDATE',qual:'5160b252615da4b17341fc336d0cabd4',with_check:'5160b252615da4b17341fc336d0cabd4'},
+   {schemaname:'public',tablename:'reward_role_permission_request',policyname:'reward_role_permission_request_decide',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'UPDATE',qual:'1829518e556fb0c57877c207e96d879c',with_check:'353ed469b3fc79962a302ab434cd15cf'},
+   {schemaname:'public',tablename:'reward_role_permission_request',policyname:'reward_role_permission_request_insert',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'4efd5fd19e4d4b5eca40d71dbbb1db47'},
+   {schemaname:'public',tablename:'reward_role_permission_request',policyname:'reward_role_permission_request_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'59492f3697ba1af7263dfebcdb7c1b78',with_check:'59492f3697ba1af7263dfebcdb7c1b78'},
+   {schemaname:'public',tablename:'reward_role_permission_request',policyname:'reward_role_permission_request_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'6b7e9d58809ee4629186960da8e36764',with_check:null},
+   {schemaname:'public',tablename:'reward_role_permission_request',policyname:'reward_view_as_insert',permissive:'RESTRICTIVE',roles:'{public}',cmd:'INSERT',qual:null,with_check:'64d386c9dfb279b22c2b1b0801e4fe32'},
+   {schemaname:'public',tablename:'reward_role_permission_request',policyname:'reward_view_as_update',permissive:'RESTRICTIVE',roles:'{public}',cmd:'UPDATE',qual:'64d386c9dfb279b22c2b1b0801e4fe32',with_check:'64d386c9dfb279b22c2b1b0801e4fe32'},
+   {schemaname:'public',tablename:'reward_role_permission_version',policyname:'reward_role_permission_version_insert',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'c0dcbcb0a01de2cf0e3b99d7cf3893c8'},
+   {schemaname:'public',tablename:'reward_role_permission_version',policyname:'reward_role_permission_version_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'59492f3697ba1af7263dfebcdb7c1b78',with_check:'59492f3697ba1af7263dfebcdb7c1b78'},
+   {schemaname:'public',tablename:'reward_role_permission_version',policyname:'reward_role_permission_version_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'6b7e9d58809ee4629186960da8e36764',with_check:null},
+   {schemaname:'public',tablename:'reward_role_permission_version',policyname:'reward_view_as_insert',permissive:'RESTRICTIVE',roles:'{public}',cmd:'INSERT',qual:null,with_check:'64d386c9dfb279b22c2b1b0801e4fe32'},
+   {schemaname:'public',tablename:'reward_senior_award',policyname:'reward_senior_award_role_level_delete',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'DELETE',qual:'8868c5bc470186e1b41c27776e90fd3e',with_check:null},
+   {schemaname:'public',tablename:'reward_senior_award',policyname:'reward_senior_award_role_level_insert',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'8868c5bc470186e1b41c27776e90fd3e'},
+   {schemaname:'public',tablename:'reward_senior_award',policyname:'reward_senior_award_role_level_read',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'ad6fe465015b65b7e97e25dc80363599',with_check:null},
+   {schemaname:'public',tablename:'reward_senior_award',policyname:'reward_senior_award_role_level_update',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'UPDATE',qual:'8868c5bc470186e1b41c27776e90fd3e',with_check:'8868c5bc470186e1b41c27776e90fd3e'},
+   {schemaname:'public',tablename:'reward_senior_evidence',policyname:'reward_senior_evidence_role_level_insert',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'8868c5bc470186e1b41c27776e90fd3e'},
+   {schemaname:'public',tablename:'reward_senior_evidence',policyname:'reward_senior_evidence_role_level_read',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'ad6fe465015b65b7e97e25dc80363599',with_check:null},
+   {schemaname:'public',tablename:'reward_unit_limit_pin',policyname:'reward_unit_limit_pin_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'59492f3697ba1af7263dfebcdb7c1b78',with_check:'59492f3697ba1af7263dfebcdb7c1b78'},
+   {schemaname:'public',tablename:'reward_unit_limit_pin',policyname:'reward_unit_limit_pin_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'f793da3071cf53b7718d88009b667c30',with_check:null},
+  ];
+  const boardRetiredPolicies=[
+   {schemaname:'public',tablename:'reward_pat_version',policyname:'reward_pat_check',permissive:'PERMISSIVE',roles:'{public}',cmd:'UPDATE',qual:'c66ab0b91608107f679757a4c4f058a5',with_check:'48c95b77271b4a3fb728d587ca687b6e'},
+  ];
+  const samePolicy=(a:{schemaname:string;tablename:string;policyname:string},b:{schemaname:string;tablename:string;policyname:string})=>a.schemaname===b.schemaname&&a.tablename===b.tablename&&a.policyname===b.policyname;
+  const isBoardPolicy=(row:(typeof afterPerformancePrivileges.policies)[number])=>boardPolicies.some(policy=>samePolicy(policy,row));
+  const isBoardRetiredPolicy=(row:(typeof afterPerformancePrivileges.policies)[number])=>boardRetiredPolicies.some(policy=>samePolicy(policy,row));
+  expect(Object.fromEntries(afterPerformancePrivileges.relations.filter(row=>Object.hasOwn(boardRelations,row.rel)).map(row=>[row.rel,{rls:row.rls,force:row.force,acl:ownerAcl(row.acl)}]))).toEqual(boardRelations);
+  for(const rel of Object.keys(boardRelations))expect(beforePerformancePrivileges.relations.some(row=>row.rel===rel),rel).toBe(false);
+  expect(afterPerformancePrivileges.columns.filter(row=>Object.hasOwn(boardRelations,row.rel))).toEqual([]);
+  expect(afterPerformancePrivileges.policies.filter(isBoardPolicy).map(boardPolicyRow)).toEqual(boardPolicies);
+  expect(beforePerformancePrivileges.policies.filter(isBoardPolicy)).toEqual([]);
+  expect(beforePerformancePrivileges.policies.filter(isBoardRetiredPolicy).map(boardPolicyRow)).toEqual(boardRetiredPolicies);
+  expect(afterPerformancePrivileges.policies.filter(isBoardRetiredPolicy)).toEqual([]);
   const terminalComparable={
-   relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==receiptTable&&!sealTables.includes(row.rel)&&!isCombinedRelation(row.rel)).map(row=>
+   relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==receiptTable&&!sealTables.includes(row.rel)&&!isCombinedRelation(row.rel)&&!Object.hasOwn(boardRelations,row.rel)).map(row=>
     row.rel===clockTable?{...row,acl:beforeClockTable?.acl}:row),
    columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable&&row.rel!==clockTable&&!isCombinedRelation(row.rel)),
    functions:afterPerformancePrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
-   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)).map(row=>
+   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isBoardPolicy(row)).map(row=>
     isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:
      isAssignmentPolicy(row)?{...row,qual:expectedAssignmentQuals[0]}:row),
   };
-  {
-   const keyOf={relations:(r:Record<string,unknown>)=>String(r.rel),columns:(r:Record<string,unknown>)=>r.rel+'.'+r.col,functions:(r:Record<string,unknown>)=>String(r.fn),
-    policies:(r:Record<string,unknown>)=>r.schemaname+'.'+r.tablename+'.'+r.policyname};
-   const delta:Record<string,unknown>={};
-   for(const kind of ['relations','columns','functions','policies'] as const){
-    const before=new Map((beforePerformancePrivileges[kind] as Record<string,unknown>[]).map(r=>[keyOf[kind](r),JSON.stringify(r)]));
-    const after=new Map((terminalComparable[kind] as Record<string,unknown>[]).map(r=>[keyOf[kind](r),JSON.stringify(r)]));
-    delta[kind]={added:[...after].filter(([k])=>!before.has(k)).map(([,v])=>JSON.parse(v)),removed:[...before].filter(([k])=>!after.has(k)).map(([,v])=>JSON.parse(v)),
-     changed:[...after].filter(([k,v])=>before.has(k)&&before.get(k)!==v).map(([k,v])=>({before:JSON.parse(before.get(k)!),after:JSON.parse(v)}))};
-   }
-   console.log('[board-release-delta]'+JSON.stringify(delta));
-  }
-  expect(terminalComparable).toEqual(beforePerformancePrivileges);
+  expect(terminalComparable).toEqual({...beforePerformancePrivileges,policies:beforePerformancePrivileges.policies.filter(row=>!isBoardRetiredPolicy(row))});
   const complete=await ledger();expect(complete).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);expect(complete.slice(0,671)).toEqual(afterLedger);
   expect(complete.slice(0,performanceStart)).toEqual(beforePerformanceLedger);
   expect(complete.slice(671).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(APPROVED_UPGRADE_TAIL.map(entry=>({hash:hash(readFileSync('db/migrations/'+entry.tag+'.sql')),created_at:String(entry.when)})));
