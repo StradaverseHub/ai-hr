@@ -24,6 +24,13 @@ entries byte-for-byte and appends the block after them. The earlier entries belo
 | `4411_recruitment_screening` | idx 3811 | when 1793330004111 | `5211_recruitment_screening` | idx 4611 | when 1793330004911 |
 | `4412_recruitment_background_checks` | idx 3812 | when 1793330004112 | `5212_recruitment_background_checks` | idx 4612 | when 1793330004912 |
 | `4413_recruitment_talent_pools_blocked_list` | idx 3813 | when 1793330004113 | `5213_recruitment_talent_pools_blocked_list` | idx 4613 | when 1793330004913 |
+| (new) | | | `5214_recruitment_consume_invitation_access_lock` | idx 4614 | when 1793330004914 |
+
+`5214` is new: `5201` restates `app.consume_invitation` from its 0611 body (adding `recruiting_partner` to guard
+A), and main's `5000_access_reader_writer_core` has since restated the same function with the exclusive Access lock.
+Now that `5201` applies after `5000` it would drop that lock, so `5214` restates `5000`'s definition byte-for-byte
+except guard A's role list. No other function, constraint or table the block restates was changed by main's
+migrations after the branch's base `f07f32dcd`.
 
 Survey (read-only, after `git fetch origin main alpha`): 4,140 remote refs (2,904 distinct commits, 449 distinct
 committed journal blobs, 365 distinct committed allocation-document blobs) and the working trees of all 289 registered

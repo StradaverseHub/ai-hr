@@ -90,7 +90,8 @@ refusals with an attempt cap, 20 attempts a day). The migration renumber warning
 
 `origin/main` (`2a2495919`) is merged into this branch, and the block moved above main's watermark with unchanged SQL
 bytes: `44NN_<name>` → `52NN_<name>`, idx 38NN → 46NN, when 17933300041NN → 17933300049NN (NN = 00–13; for example
-`4401_recruitment_core` is now `5201_recruitment_core`). Earlier sections and
+`4401_recruitment_core` is now `5201_recruitment_core`). New `5214_recruitment_consume_invitation_access_lock`
+keeps main's Access lock in `app.consume_invitation` (5000) with the recruiting partner in guard A. Earlier sections and
 the other files in this folder keep the old numbers as history; the full mapping is the top entry of
 `docs/MIGRATION-ALLOCATION.md`. A local database migrated with the old numbers must be rebuilt, not upgraded.
 

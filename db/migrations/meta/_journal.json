@@ -5874,6 +5874,13 @@
       "when": 1793330004913,
       "tag": "5213_recruitment_talent_pools_blocked_list",
       "breakpoints": true
+    },
+    {
+      "idx": 4614,
+      "version": "7",
+      "when": 1793330004914,
+      "tag": "5214_recruitment_consume_invitation_access_lock",
+      "breakpoints": true
     }
   ]
 }
