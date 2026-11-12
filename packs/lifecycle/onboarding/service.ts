@@ -1608,9 +1608,10 @@ export async function onboardingFulfilmentGroupTx(ctx: SessionContext, tx: Tx): 
 }
 /** d1e26f81 — claim, handedAt and card are read-only provenance for offboarding's "Provided by" and card pair. */
 export type OnboardingHolding = { caseId: string; requestId: string; requestNumber: string; itemId: string; catalogueId: string; name: string; kind: 'system' | 'device'; group: string; claim: string | null; handedAt: string | null; card: boolean };
-async function holdingAuthorityTx(ctx: SessionContext, tx: Tx, companyId: string) {
-    if (!ctx.userId) {
+async function holdingAuthorityTx(ctx: SessionContext, tx: Tx, companyId: string, storageOwnerRead = false) {
+    if (storageOwnerRead && !ctx.userId) {
         // d1e26f81 — the release back-fill reads provenance as the storage owner, as readSettlementTx allows.
+        // Reads only: recording a recovery always needs a signed-in Company HR user or the assigned team member.
         const [owner] = await tx.execute<{ ok: boolean }>(sql`select current_user='ai_hr_owner' OR EXISTS(select 1 from pg_roles where rolname=current_user and rolsuper) as ok`);
         if (owner?.ok) return;
     }
@@ -1619,12 +1620,12 @@ async function holdingAuthorityTx(ctx: SessionContext, tx: Tx, companyId: string
 }
 /** Catalogue identity/presentation stays with the Native owner; exits select existing IDs. */
 export async function onboardingReturnCatalogueTx(ctx:SessionContext,tx:Tx,companyId:string):Promise<{id:string;name:string;kind:'system'|'device';group:string;active:boolean;card:boolean;companies:string[]}[]> {
-    await holdingAuthorityTx(ctx,tx,companyId);
+    await holdingAuthorityTx(ctx,tx,companyId,true);
     return (await configTx(tx,ctx)).config.catalogue.map(item=>({id:item.id,name:item.name,kind:item.type,group:item.team,active:item.active,card:item.card,companies:[...(item.rules.company??[])]}));
 }
 /** Issuance stays on the original handed requisition; names are never used to link a person or item. */
 export async function onboardingHoldingsTx(ctx: SessionContext, tx: Tx, employmentId: string, companyId: string): Promise<OnboardingHolding[]> {
-    await holdingAuthorityTx(ctx, tx, companyId);
+    await holdingAuthorityTx(ctx, tx, companyId, true);
     const source = await tx.select().from(cases).where(and(eq(cases.tenantId, ctx.tenantId), eq(cases.companyId, companyId), eq(cases.employmentId, employmentId))).orderBy(asc(cases.id));
     return source.flatMap(row => row.data.requisitions.flatMap(request => request.items.filter(item => !item.recovery && (item.state === 'handed' && !!request.handedAt || item.revokeNeeded)).map(item => ({ caseId: row.id, requestId: request.id, requestNumber: request.number, itemId: item.id, catalogueId:item.catalogueId, name: item.name, kind: item.type, group: item.team, claim: item.claim ?? null, handedAt: request.handedAt ?? null, card: !!item.card }))));
 }

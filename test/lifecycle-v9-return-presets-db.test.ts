@@ -11,7 +11,7 @@ import { hireEmployee } from '../core/org';
 import { resolveEntitlementsTx } from '../core/entitlements';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { addDays, type Case } from '../lib/lifecycle-v9-model';
-import { v9Setup, v9Workspace, v9SaveConfig, v9CreateOffboarding, v9Command, v9CaseDetail, v9BackfillReturnPresets, registerAsset, onboardingContext, onboardingSaveConfig, onboardingAssignmentLoadsTx } from '../packs/lifecycle/service';
+import { v9Setup, v9Workspace, v9SaveConfig, v9CreateOffboarding, v9Command, v9CaseDetail, v9BackfillReturnPresets, registerAsset, onboardingContext, onboardingSaveConfig, onboardingAssignmentLoadsTx, onboardingHoldingsTx, onboardingRecoverHoldingTx } from '../packs/lifecycle/service';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 
 let base: Base, admin: SessionContext, alex: string, bea: string, otherCompany: string;
@@ -177,5 +177,12 @@ describe('release back-fill', () => {
     expect(await v9BackfillReturnPresets(ctx, owner, { apply: true })).toEqual({ cases: 0, items: 0, assigned: 0, updated: 0, failed: 0 });
     expect((await detail(id)).case.revision).toBe(after.revision);
     await expect(v9BackfillReturnPresets(admin, owner, { apply: true })).rejects.toThrow('storage owner');
+  });
+  it('lets the storage owner read issued-item provenance without a user, but never record a recovery that way', async () => {
+    const subject = await leaver('Fictional Provenance Leaver');
+    const ctx: SessionContext = { tenantId: base.tenantId, roles: ['hr_admin'], entitlements: await owner.db.transaction(tx => resolveEntitlementsTx(tx, base.tenantId)) };
+    expect(await owner.withTenant(ctx, tx => onboardingHoldingsTx(ctx, tx, subject.employmentId, base.companyId))).toEqual([]);
+    const source = { caseId: randomUUID(), requestId: randomUUID(), itemId: randomUUID() };
+    await expect(owner.withTenant(ctx, tx => onboardingRecoverHoldingTx(ctx, tx, subject.employmentId, base.companyId, source, randomUUID(), 'Fictional recovery without a user'))).rejects.toThrow('Company HR access is required');
   });
 });
