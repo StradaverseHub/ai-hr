@@ -379,7 +379,7 @@ describe('One net-swing threshold — what the evaluator reads, and that it agre
     expect(own).toMatchObject({ params: { netSwingPct: 30 }, source: 'configured' });
 
     // The scheduled sweep's carrier (no user): row security hides the setting, so it reads the threshold through the
-    // narrow reader (migration 9760 app.sweep_swing_thresholds) and judges by the company's own 30% too.
+    // narrow reader (migration 5160 app.sweep_swing_thresholds) and judges by the company's own 30% too.
     const sweep: SessionContext = { tenantId: b.tenantId, roles: ['hr_admin'], entitlements: a.entitlements };
     await evaluateBatchAnomalies(sweep, { batchId: may });
     expect((await swingFindings(may)).has(employmentId)).toBe(false);

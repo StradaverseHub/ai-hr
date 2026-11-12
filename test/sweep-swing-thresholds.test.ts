@@ -1,6 +1,6 @@
 /**
  * The scheduled anomaly sweep judges each company by its OWN net-swing threshold (owner follow-on to the 11 November
- * 2026 interim; draft migration 9760 app.sweep_swing_thresholds). The sweep runs with no login, so row security hides the
+ * 2026 interim; migration 5160 app.sweep_swing_thresholds). The sweep runs with no login, so row security hides the
  * Salary payroll loop setting from it; the narrow reader returns the threshold of each requested company's latest setting
  * version, for the session's own tenant, to a system session only, and nothing else.
  *

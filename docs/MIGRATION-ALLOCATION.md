@@ -3337,14 +3337,17 @@ It adds one read-only STABLE SECURITY DEFINER function, `app.import_log_actor_fa
 `ai_hr_app` only; no table, column, policy, grant on data or existing function changes. This entry carries no
 deployment authority.
 
-## Sweep net-swing thresholds — 13 November 2026 (unallocated draft)
+## Sweep net-swing thresholds — 13 November 2026, allocated 13 November 2026
 
-Branch `claude/sweep-threshold-20261113` (base `origin/alpha` at `3a11d916e`) journals `9760_sweep_swing_thresholds` at
-idx 9760 and when 1793330099760 as an UNALLOCATED DRAFT from the coordinator-provided 9760–9769 block (9770–9779 belong
-to another builder's draft). It adds one read-only STABLE SECURITY DEFINER function, `app.sweep_swing_thresholds(uuid[])`,
-with EXECUTE for `ai_hr_app` only: for the requested companies (1–500) of the session's own tenant, and only to a system
-session (no login, no agent principal), the net-swing threshold of each company's latest Salary payroll loop setting
-version, and nothing else. No table, column, policy, grant on data, existing function or data change. The approved
-upgrade tail pin (`test/helpers/approved-upgrade.ts`) and `test/tenant-company-fk-upgrade.test.ts` carry the draft;
-reassign the final tag, idx and `when` above the freshly verified ledger at integration. This entry carries no
-allocation or deployment authority.
+Branch `claude/sweep-threshold-20261113` (base `origin/alpha` at `3a11d916e`) drafted `9760_sweep_swing_thresholds`
+(idx 9760, when 1793330099760) from the coordinator-provided 9760–9769 block. Allocated 13 Nov 2026 as
+`5160_sweep_swing_thresholds`, idx 4560, when 1793330004860, keeping the shared offset (tag 51NN, idx 45NN, when …48NN)
+and sitting above the Irwin branches' 5140–5150 holds. 5161–5169 are reserved for the other two ainative follow-ons.
+SQL bytes are unchanged from the draft (SHA-256 `5217e41181c030728ee879b45cc683c39bc9d7b9c7aed44c4c4abe88a230ee48`; the
+file's own header still reads "DRAFT, UNALLOCATED", kept so the bytes do not move). It adds one read-only STABLE SECURITY
+DEFINER function, `app.sweep_swing_thresholds(uuid[])`, with EXECUTE for `ai_hr_app` only: for the requested companies
+(1–500) of the session's own tenant, and only to a system session (no login, no agent principal), the net-swing
+threshold of each company's latest Salary payroll loop setting version, and nothing else. No table, column, policy,
+grant on data, existing function or data change. The approved upgrade tail pin (`test/helpers/approved-upgrade.ts`)
+and `test/tenant-company-fk-upgrade.test.ts` carry the allocated tag. Recheck peer claims and the installed ledger at
+admission; this entry carries no deployment authority.
