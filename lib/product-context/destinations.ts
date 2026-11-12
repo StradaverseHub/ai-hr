@@ -180,6 +180,9 @@ export const NATIVE_SCOPE_ONLY_PAGES:ReadonlySet<string>=new Set([
  '/recruitment/talent-pool',
  '/recruitment/approvals',
  '/recruitment/reports',
+ // Recruitment slice 11 — To screen lists a hiring manager's own screening requests; being a hiring manager of a
+ // job is a per-job team membership, not a role or tenant-wide module.
+ '/recruitment/screening',
  // Recruitment slice 7 — referrals admit a person by their own active employment in a company with Recruitment
  // (app.recruitment_referral_eligible); no role or tenant-wide module says who that is.
  '/me/referrals',

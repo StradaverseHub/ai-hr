@@ -432,3 +432,34 @@ which passed 8/8 after it was narrowed. Bell timing with 201 companies: 9.4 ms (
 
 The 6 failing files and 53 tests are the known set waiting for the owner's re-recorded provider-data approval. No
 recruitment test failed.
+
+## Slice 11 — Resume screening by hiring managers (commit e688e200b)
+
+### Local checks (private Postgres, port 55440)
+
+After one independent review round and a confirmation round: `recruitment-screening` 16 tests and the rules test
+pass; the slice's wider set of 31 files passed 518 of 519, the one failure being a pre-existing agencies sentinel that
+matched digits inside a random UUID — fixed in the same commit (whole-value sentinel checks in three files, 52/52 on
+three runs). Bell timing: 18.7 ms for a hiring manager with 60 open and 620 auto-closed requests, 7–9 ms for others.
+
+### Rendered (case 81; local dev server, fictional data)
+
+- As an administrator: two applications sent to the job's hiring manager with "Also move to Recruiter's Screening";
+  Application Review went 15→13 and Recruiter's Screening 0→2.
+- As the hiring manager: "To screen 2" with the note, two bell to-dos; Advance closed one, Pending kept the other open
+  with the earlier answer shown; the bell went to 1.
+- As the administrator: board filter Awaiting feedback 1, Latest feedback positive 1 with matching card statuses; the
+  application's Screening tab shows the status, sender, note, answer and comment, and "Ask more hiring managers".
+
+### GitHub Actions focused runs (commit e688e200b, 2026-11-12)
+
+Dispatched after the shared GitHub API limit reset.
+
+| Run | Job | Result |
+| --- | --- | --- |
+| 43065918930 | Whole-repo type check (three compilers) | PASS |
+| 43065918930 | Production build (`linux-build`) | PASS |
+| 43065918930 | Selected tests (64 files) | 58 PASS; FAIL: the known 6 AI files (9 + 44 tests) |
+| 43065938273 | Selected tests (23 files, incl. recruitment-screening, recruitment-tasks, the Home, mobile and notification suites) | 22 PASS; 1 FAIL: `setup-copilot-destinations` — the new `/recruitment/screening` page was missing from the pages that need their own access check (lib/product-context/destinations.ts). Fixed in the next commit; the test passes locally (5/5) |
+
+No recruitment test failed on GitHub.
