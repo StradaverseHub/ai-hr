@@ -2,6 +2,7 @@
  * All policy edits are confined to this test worker's disposable database. */
 import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
+import {CURRENT_VISIBILITY,REVIEWED_VISIBILITY_PREDECESSOR} from './helpers/reviewed-visibility';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
@@ -189,7 +190,7 @@ it('replays the real append on populated predecessor data with exact native befo
   const before=await authority(f);
   // Apply actual migration bytes, not a rewritten test replacement or fabricated ledger: 3001, then the later
   // reviewed 5054 rewrite of the same policy.
-  await owner.client.begin(async tx=>{await tx.unsafe(migration);await tx.unsafe(partnerMigration);});
+  await owner.client.begin(async tx=>{await tx.unsafe(REVIEWED_VISIBILITY_PREDECESSOR);await tx.unsafe(migration);await tx.unsafe(partnerMigration);await tx.unsafe(CURRENT_VISIBILITY);});
   expect(await installedPolicy()).toEqual(installed);
   expect(await securitySnapshot()).toEqual(metadata);
   const after=await authority(f);expect(after).toEqual(before);
@@ -200,6 +201,7 @@ it('replays the real append on populated predecessor data with exact native befo
 it.each(['using','with-check','roles','function-settings'] as const)('refuses unexpected %s drift and rolls the whole rehearsal back',async drift=>{
  const installed=await installedPolicy(),metadata=await securitySnapshot(),previous=predecessorQual(installed.qual);
  await expect(owner.client.begin(async tx=>{
+  await tx.unsafe(REVIEWED_VISIBILITY_PREDECESSOR);
   await tx.unsafe('ALTER POLICY employment_rls ON public.employment USING ('+previous+')');
   if(drift==='using')await tx.unsafe('ALTER POLICY employment_rls ON public.employment USING (false)');
   if(drift==='with-check')await tx.unsafe('ALTER POLICY employment_rls ON public.employment WITH CHECK (false)');

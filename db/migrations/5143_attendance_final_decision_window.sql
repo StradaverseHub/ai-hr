@@ -61,8 +61,8 @@ GRANT EXECUTE ON FUNCTION app.attendance_workflow_open_final_window(uuid) TO ai_
 -- Replaces 0109: one leading branch for the proven window; every other arm is byte-for-byte the 0109 body.
 CREATE OR REPLACE FUNCTION app.can_see_employment(emp_id uuid) RETURNS boolean
   LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
-  SELECT (coalesce(current_setting('app.attendance_workflow_effect', true), '') <> ''
-      AND emp_id = app.attendance_effect_window_employment())
+  SELECT coalesce(coalesce(current_setting('app.attendance_workflow_effect', true), '') <> ''
+      AND emp_id = app.attendance_effect_window_employment(), false)
     OR EXISTS (
       SELECT 1 FROM employment e
       WHERE e.id = emp_id AND e.tenant_id = app.current_tenant_id() AND app.is_admin_for(e.company_id)
