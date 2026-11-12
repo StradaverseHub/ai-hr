@@ -327,6 +327,31 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    }
    return qualifiers;
   });
+  // daa76ed4/96a54ed2 (5141-5142): this lane's new and replaced policies, each compared with PostgreSQL's own rendering
+  // of the reviewed expression (parsed on the same table and discarded), never with a hand-typed digest.
+  const ownerRead="tenant_id=app.current_tenant_id() AND request_id::text=current_setting('app.attendance_workflow_escalating',true) AND current_user=pg_catalog.pg_get_userbyid((SELECT p.proowner FROM pg_catalog.pg_proc p WHERE p.oid='app.attendance_workflow_escalate(uuid,date)'::regprocedure))";
+  const lanePolicies:{table:string;name:string;cmd:'SELECT'|'INSERT';using:string|null;check:string|null;replaces:boolean}[]=[
+   {table:'attendance_workflow_escalation',name:'attendance_workflow_escalation_read',cmd:'SELECT',replaces:false,check:null,
+    using:"tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.attendance_workflow_request w WHERE w.id=request_id AND w.tenant_id=app.current_tenant_id() AND app.attendance_workflow_v3_read(w.correction_id))"},
+   {table:'attendance_workflow_participant_decision',name:'attendance_workflow_escalation_owner_read',cmd:'SELECT',replaces:false,check:null,using:ownerRead},
+   {table:'attendance_workflow_participant_reassignment',name:'attendance_workflow_escalation_owner_read',cmd:'SELECT',replaces:false,check:null,using:ownerRead},
+   {table:'attendance_workflow_participant_decision',name:'attendance_workflow_v3_participant_insert',cmd:'INSERT',replaces:true,using:null,
+    check:"tenant_id=app.current_tenant_id() AND actual_user_id=app.current_user_id() AND EXISTS(SELECT 1 FROM public.attendance_workflow_request w WHERE w.id=request_id AND w.tenant_id=app.current_tenant_id() AND (app.attendance_workflow_v3_decision_slot(w.correction_id) IS NOT NULL OR (acting_mode='on_behalf' AND app.attendance_workflow_on_behalf_slot(w.correction_id,(assigned->>'employmentId')::uuid)->>'slot'=participant_slot)))"},
+  ];
+  const laneRendered=await storage.client.begin(async tx=>{
+   const out:{qual:string|null;with_check:string|null}[]=[];
+   for(const policy of lanePolicies){
+    await tx.unsafe(`create policy lane_reference on public.${policy.table} for ${policy.cmd}${policy.using?` using (${policy.using})`:''}${policy.check?` with check (${policy.check})`:''}`);
+    const [row]=await tx<{qual:string|null;with_check:string|null}[]>`select qual,with_check from pg_policies where schemaname='public' and tablename=${policy.table} and policyname='lane_reference'`;
+    out.push(row);await tx.unsafe(`drop policy lane_reference on public.${policy.table}`);
+   }
+   return out;
+  });
+  const isLanePolicy=(row:(typeof beforePerformancePrivileges.policies)[number])=>row.schemaname==='public'&&lanePolicies.some(policy=>policy.table===row.tablename&&policy.name===row.policyname);
+  for(const [index,policy] of lanePolicies.entries()){
+   const [row]=afterPerformancePrivileges.policies.filter(candidate=>candidate.schemaname==='public'&&candidate.tablename===policy.table&&candidate.policyname===policy.name);
+   expect(row,policy.name).toMatchObject({permissive:'PERMISSIVE',roles:'{public}',cmd:policy.cmd,qual:laneRendered[index].qual,with_check:laneRendered[index].with_check});
+  }
   const isClaimPolicy=(row:(typeof beforePerformancePrivileges.policies)[number])=>row.schemaname==='public'&&row.tablename==='claim_request'&&row.policyname==='claim_request_rls';
   expect(beforePerformancePrivileges.policies.find(isClaimPolicy)?.qual).toBe(expectedClaimQuals[0]);
   expect(afterPerformancePrivileges.policies.find(isClaimPolicy)?.qual).toBe(expectedClaimQuals[1]);
@@ -438,6 +463,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const combinedRelations:Record<string,{rls:boolean;force:boolean;acl:string|null}>={
    // Board window 4 (5124): stored Preview Assignment snapshots, append-only and forced RLS.
    'attendance_workflow_preview':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
+   // daa76ed4 (5141): immutable escalation history, read-only to the application role.
+   'attendance_workflow_escalation':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
    'app.access_administrator_assert_pending':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
    'app.access_administrator_guard':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
    'app.access_capability_publication':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
@@ -519,10 +546,10 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
     row.rel===clockTable?{...row,acl:beforeClockTable?.acl}:row),
    columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable&&row.rel!==clockTable&&!isCombinedRelation(row.rel)),
    functions:afterPerformancePrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
-   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)).map(row=>
+   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isLanePolicy(row)).map(row=>
     isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:
      isAssignmentPolicy(row)?{...row,qual:expectedAssignmentQuals[0]}:row),
-  }).toEqual(beforePerformancePrivileges);
+  }).toEqual({...beforePerformancePrivileges,policies:beforePerformancePrivileges.policies.filter(row=>!isLanePolicy(row))});
   const complete=await ledger();expect(complete).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);expect(complete.slice(0,671)).toEqual(afterLedger);
   expect(complete.slice(0,performanceStart)).toEqual(beforePerformanceLedger);
   expect(complete.slice(671).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(APPROVED_UPGRADE_TAIL.map(entry=>({hash:hash(readFileSync('db/migrations/'+entry.tag+'.sql')),created_at:String(entry.when)})));

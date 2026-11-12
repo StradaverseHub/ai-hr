@@ -87,7 +87,6 @@ describe('cross-company approvers within the Organization Code',()=>{
    expect(await statusOf(id)).toBe('pending');
    await decide(aHr,id,1,'1:0');
    expect(await statusOf(id)).toBe('approved');
-   await owner.db.update(schema.attendanceWorkflowTemplate).set({supersededAt:new Date()}).where(eq(schema.attendanceWorkflowTemplate.lineageId,saved.lineageId));
   }
  });
  it('a final approval by an approver without calculation access keeps the existing HR handoff',async()=>{
