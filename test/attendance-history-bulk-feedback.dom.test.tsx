@@ -9,7 +9,7 @@ vi.mock('../app/attendance/application-history/actions',()=>({attendanceHistoryB
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh})}));
 vi.mock('next/link',()=>({default:({children,...props}:React.ComponentProps<'a'>)=><a {...props}>{children}</a>}));
 import {AttendanceHistoryTable} from '../components/attendance-history-table';
-const row:AttendanceHistoryRow={id:'request-a',employmentId:'employee-a',employee:'Fictional employee',employeeCode:'0007',companyId:'company-a',company:'Fictional company',attendanceDate:'2024-01-02',submittedAt:'2024-01-02T03:00:00Z',status:'pending',applicationType:'irregularity',requestKind:'short',selectable:true,currentStage:1,currentParticipantSlot:'slot-a',stages:null,templateName:null};
+const row:AttendanceHistoryRow={id:'request-a',employmentId:'employee-a',employee:'Fictional employee',employeeCode:'0007',companyId:'company-a',company:'Fictional company',attendanceDate:'2024-01-02',submittedAt:'2024-01-02T03:00:00Z',status:'pending',applicationType:'irregularity',requestKind:'short_hours',selectable:true,currentStage:1,currentParticipantSlot:'slot-a',stages:null,templateName:null};
 beforeEach(()=>{vi.clearAllMocks();});
 function show(){render(<NextIntlClientProvider locale="en" messages={messages}><AttendanceHistoryTable rows={[row]} returnTo="/attendance/application-history"/></NextIntlClientProvider>);}
 function open(){fireEvent.click(screen.getByRole('checkbox',{name:messages.attendanceHistory.selectPage}));const trigger=screen.getByRole('button',{name:messages.attendanceHistory.approveSelected});fireEvent.click(trigger);return trigger;}

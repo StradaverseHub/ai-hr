@@ -16,7 +16,7 @@ import vi from '../messages/vi.json';
 const locales = { en, ms, zh, ta, th, vi } as const;
 const copy = Object.fromEntries(['dateLabel', 'anotherHelp', 'checkIn', 'checkOut', 'required', 'reason', 'reasonPlaceholder', 'remark', 'remarkPlaceholder', 'attachment', 'attachmentHelp', 'goesTo', 'originalKept', 'submit'].map(key => [key, `Fictional ${key}`])) as CorrectionCopy;
 const show = (onBehalfOf?: string | null) => render(<NextIntlClientProvider locale="en" messages={en}>
-  <CorrectionForm copy={copy} approver="Fictional approver" submitAction={async () => undefined} section="other" requestKind="other" day={null} minDate="2026-11-01" maxDate="2026-11-11" onBehalfOf={onBehalfOf} />
+  <CorrectionForm copy={copy} approver="Fictional approver" submitAction={async () => undefined} section="other" requestKind="other" day={null} minDate="2026-11-01" maxDate="2026-11-11" behalfEmploymentId={onBehalfOf} />
 </NextIntlClientProvider>);
 afterEach(cleanup);
 

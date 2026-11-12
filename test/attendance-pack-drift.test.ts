@@ -58,6 +58,11 @@ const BOUNDARIES = [
   'core/attendance-clocking-import',
   // Import Clocking Data as a background job (draft 5045): pack implementation beside the import it runs.
   'core/attendance-clocking-import-job',
+  // 96a54ed2 — Request / Approve On Behalf: the subject search, permission keys and on-behalf submission route.
+  // Pack implementation published through packs/attendance/service (which re-exports it), so a BOUNDARY: outside
+  // callers use the facade. Importing the facade from inside a module the facade re-exports would be a cycle.
+  'core/attendance-on-behalf',
+  'core/attendance-on-behalf-permission',
 ];
 
 /** The pack surface (see packs/attendance/index.ts header): wiring/facade, implementation, routes. */
@@ -85,6 +90,8 @@ const ALWAYS_ALLOWED = [
   'core/clocking-location.ts',
   'core/attendance-clocking-import.ts', // r424 — pack implementation; imports core/attendance directly
   'core/attendance-clocking-import-job.ts', // draft 5045 — the import's background job; imports the import directly
+  'core/attendance-on-behalf.ts', // 96a54ed2 — pack implementation re-exported by the facade; imports attendance/workflow directly
+  'core/attendance-on-behalf-permission.ts', // 96a54ed2 — the on-behalf permission keys, read by attendance-workflow
   'app/attendance/', // module routes: records/daily/individual/import/ot-report + R63–R65 clock portal
   'app/admin/attendance/', // shift-settings screen (shared shift library page under the Attendance nav)
   'app/admin/attendance-policy/', // policy + rule library + device admin

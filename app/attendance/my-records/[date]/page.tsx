@@ -50,6 +50,8 @@ export default async function MyAttendanceDayPage({
   const workflowProblem = parseAttendanceLevelProblemToken(sp.workflowProblem);
   const workflowRefusal = ATTENDANCE_SUBMISSION_REASONS.find(reason=>reason===sp.workflowRefusal);
   const workflowText = await getTranslations('attendanceWorkflow');
+  // The "Goes to" label is the shared request-form key, which lives in `me` (not `attendance`).
+  const meText = await getTranslations('me');
 
   const dateRe = /^\d{4}-\d{2}-\d{2}$/;
   if (!dateRe.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date) {
@@ -273,7 +275,7 @@ export default async function MyAttendanceDayPage({
             </label>
             <Button type="submit" variant="outline" size="sm" disabled={route?.available===false}>{t('myDaySubmit')}</Button>
           </fieldset>
-          {approver&&<div className="mt-3"><Field label={t('otGoesToLabel')} value={approver} /></div>}
+          {approver&&<div className="mt-3"><Field label={meText('otGoesToLabel')} value={approver} /></div>}
           <p className="mt-3 text-[11px] text-muted-foreground">{t('myDayApprovalNote')}</p>
         </form>
       </Card>

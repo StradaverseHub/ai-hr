@@ -418,6 +418,24 @@
       "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
     },
     {
+      "id": "shell.attendanceRequestOnBehalfManager",
+      "sourceOwner": "packs/attendance/index.ts",
+      "sourceKey": "shell-slot:attendanceRequestOnBehalfManager",
+      "declaredHref": "/attendance/on-behalf/request",
+      "status": "uncovered",
+      "owner": "packs/attendance/index.ts",
+      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+    },
+    {
+      "id": "shell.attendanceApproveOnBehalfManager",
+      "sourceOwner": "packs/attendance/index.ts",
+      "sourceKey": "shell-slot:attendanceApproveOnBehalfManager",
+      "declaredHref": "/attendance/on-behalf/approve",
+      "status": "uncovered",
+      "owner": "packs/attendance/index.ts",
+      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+    },
+    {
       "id": "shell.organization",
       "sourceOwner": "lib/navigation/shell-inventory.ts",
       "sourceKey": "shell-slot:organization",
@@ -638,6 +656,24 @@
       "sourceOwner": "packs/attendance/index.ts",
       "sourceKey": "shell-slot:applicationHistory",
       "declaredHref": "/attendance/application-history",
+      "status": "uncovered",
+      "owner": "packs/attendance/index.ts",
+      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+    },
+    {
+      "id": "shell.attendanceRequestOnBehalfAdministration",
+      "sourceOwner": "packs/attendance/index.ts",
+      "sourceKey": "shell-slot:attendanceRequestOnBehalfAdministration",
+      "declaredHref": "/attendance/on-behalf/request",
+      "status": "uncovered",
+      "owner": "packs/attendance/index.ts",
+      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+    },
+    {
+      "id": "shell.attendanceApproveOnBehalfAdministration",
+      "sourceOwner": "packs/attendance/index.ts",
+      "sourceKey": "shell-slot:attendanceApproveOnBehalfAdministration",
+      "declaredHref": "/attendance/on-behalf/approve",
       "status": "uncovered",
       "owner": "packs/attendance/index.ts",
       "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."

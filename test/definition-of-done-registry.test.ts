@@ -25,7 +25,9 @@ import {definitionOfDoneInputs} from './definition-of-done-inputs';
 // linkable pages and their entries closed: lowered to the counts after it (351/340/232/4/334 before, 349/338/231/4/332 after).
 // Re-baselined at integration of the Irwin combined release (82748f92, 2026-11-12): +1 entry (page:/admin/settings/people,
 // semantic+corpus; its guide gap is closed). The card hub needs a registered People Settings read (a migration) before it closes.
-const CEILING={entries:350,semantic:339,guide:231,readiness:4,corpus:333} as const;
+// Re-baselined at integration of Irwin batch B (96a54ed2, 2026-11-12): +2 entries (page:/attendance/on-behalf/request and
+// /approve, semantic+corpus; their guide gaps are closed). Acting on behalf is a human-only HR action with no semantic read yet.
+const CEILING={entries:352,semantic:341,guide:231,readiness:4,corpus:335} as const;
 
 const allowed=():Map<string,string[]>=>{const map=new Map<string,string[]>();
  for(const [signature,keys] of Object.entries(DEFINITION_OF_DONE_GAPS))for(const key of keys){

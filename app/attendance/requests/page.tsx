@@ -288,7 +288,7 @@ export default async function AttendanceIrregularityPage({
               approver={approver}
               workflowFingerprint={workflowFingerprint}
               submitAction={myRequestCorrection}
-              onBehalfOf={onBehalf?.employmentId ?? null}
+              behalfEmploymentId={onBehalf?.employmentId ?? null}
               section="other"
               requestKind="other"
               day={null}
@@ -348,7 +348,7 @@ export default async function AttendanceIrregularityPage({
               approver={approver}
               workflowFingerprint={workflowFingerprint}
               submitAction={myRequestCorrection}
-              onBehalfOf={onBehalf?.employmentId ?? null}
+              behalfEmploymentId={onBehalf?.employmentId ?? null}
               /* OFF THE DAY, NOT THE TAB. With one mixed list the open filter no longer implies the
                  kind, and taking it from `section` would file an `all` request under a section that is
                  not one — the r227 lesson, which was about exactly this. */
@@ -547,7 +547,7 @@ function ExceptionTable({
                       approver={request.approver}
                       workflowFingerprint={request.workflowFingerprint}
                       submitAction={request.submitAction}
-                      onBehalfOf={request.onBehalfOf}
+                      behalfEmploymentId={request.onBehalfOf}
                       section={d.section}
                       requestKind={KIND_OF_SECTION[d.section]}
                       day={{

@@ -16,6 +16,10 @@ Fixed-shift employees normally use their regular assignment; roster exceptions h
 
 For a missed or incorrect punch, use the attendance request/correction workflow. For incorrect schedule configuration, correct the schedule or assignment with the intended dates. Use [Recompute attendance](/attendance/recompute) when an authorized historical recalculation is needed, and review its affected dates and result. Editing configuration alone is not proof that stored attendance or an existing payroll run has changed.
 
+## Request or approve on behalf
+
+HR administrators, and superiors for people beneath them in their own reporting line, can act for someone else when they hold the matching permission. Open [Request On Behalf](/attendance/on-behalf/request), choose the employee, then file an attendance request or an overtime plan for them; it follows that employee's own approval workflow. Open [Approve On Behalf](/attendance/on-behalf/approve), choose the designated approver and decide the requests waiting at their level; each decision is recorded as made on that approver's behalf. Each screen lists only the people you may act for, and every request and decision is checked again when it is saved.
+
 ## Import clocking files
 
 Open [File mappings](/admin/attendance/file-mappings) to define the device file's columns, date/time interpretation and employee/card mapping. Then open [Attendance import](/attendance/import), preview the file and resolve errors before committing. [Import logs](/attendance/import/logs) record the outcome. Check card assignments and avoid blindly re-uploading a file after an uncertain result.
