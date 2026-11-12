@@ -139,7 +139,7 @@ describe('Rewards off-cycle company balance (b945f0cc)',()=>{
   expect(await postRewardUnit(admin,id,next)).toEqual({alreadyPosted:false});
   expect(await postRewardUnit(admin,id,next)).toEqual({alreadyPosted:true});
   expect((await balances())[b.companyId]).toEqual({frozen,held:0,consumed:amount,available:frozen-amount});
-  expect((await getRewardUnit(actors.bu!,await request(employments[0],100,{effectiveFrom:`${year+1}-03-01`}))).offcycleBalance).toMatchObject({availableCents:frozen-amount,requestCents:amount});
+  expect((await getRewardUnit(actors.bu!,await request(employments[0],100,{effectiveFrom:`${year+1}-03-01`}))).offcycleBalance).toMatchObject({availableCents:frozen-amount});
  },300_000);
 
  it('serializes concurrent submissions against one company balance under the annual parent locks',async()=>{

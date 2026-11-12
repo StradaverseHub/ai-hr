@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireModule } from '@/lib/authz';
-import { getSession } from '@/lib/session';
+import { scopedSession } from '@/lib/scope';
 import { Field, PageHeader, inputCls, tableWrapCls, tbodyCls, thCls, theadCls } from '@/components/ui';
 import { RewardSubmit } from '@/app/rewards/submit-button';
 import { rewardReviewSetupList, type RewardSetupListFilters } from '@/packs/rewards/service';
@@ -16,7 +16,7 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  */
 export default async function ReviewSetupList({ searchParams }: { searchParams: Promise<Search> }) {
   await requireModule('rewards');
-  const s = await getSession(), sp = await searchParams;
+  const { s } = await scopedSession(), sp = await searchParams;
   const t = await getTranslations('rewardsPreparation'), nav = await getTranslations('nav');
   const filters: RewardSetupListFilters & { page: number } = { ...(sp.cycle && uuid.test(sp.cycle) ? { cycle: sp.cycle } : {}), ...(sp.unit && uuid.test(sp.unit) ? { unit: sp.unit } : {}),
     ...(sp.status === 'preparing' || sp.status === 'ready' || sp.status === 'released' ? { status: sp.status as RewardSetupListFilters['status'] } : {}), page: Math.max(0, Math.min(10000, Math.trunc(Number(sp.page) || 0))) };

@@ -75,7 +75,9 @@ const idSchema = z.uuid();
 // retained data, not an alternative label for the same unit once a review has been created.
 const businessUnitDisplayName = sql<string>`coalesce(nullif(trim(${businessUnit.label}),''),${businessUnit.code})`;
 const moneyToCents = (v: string) => Math.round(Number(v) * 100);
-export const rewardReviewDigest = (unit: typeof rewardUnit.$inferSelect, entries: RewardEntry[]) => createHash('sha256').update(JSON.stringify({ policy: unit.policy, kind: unit.kind, parentUnitId: unit.parentUnitId, offcycle: unit.offcycle,uploadedAwardDigest:unit.uploadedAwardDigest, entries: [...entries].sort((a, b) => a.id.localeCompare(b.id)).map(e => ({ id: e.id, source: e.source, facts: e.facts, recommendation: e.recommendation })) })).digest('hex');
+// b945f0cc: the recorded year-end exclusion is an outcome of the final approval, not a reviewed input.
+const digestOffcycle = (details: typeof rewardUnit.$inferSelect['offcycle']) => { if (!details) return details; const { yearEndExclusion: _exclusion, ...reviewed } = details; return reviewed; };
+export const rewardReviewDigest = (unit: typeof rewardUnit.$inferSelect, entries: RewardEntry[]) => createHash('sha256').update(JSON.stringify({ policy: unit.policy, kind: unit.kind, parentUnitId: unit.parentUnitId, offcycle: digestOffcycle(unit.offcycle),uploadedAwardDigest:unit.uploadedAwardDigest, entries: [...entries].sort((a, b) => a.id.localeCompare(b.id)).map(e => ({ id: e.id, source: e.source, facts: e.facts, recommendation: e.recommendation })) })).digest('hex');
 const digest=rewardReviewDigest;
 
 async function rolesFor(tx: Tx, unitId: string): Promise<RewardRole[]> {
@@ -1234,7 +1236,8 @@ export async function decideRewardUnitTx(tx: Tx, ctx: SessionContext, unitId: st
     // Board b945f0cc: a submitted off-cycle request keeps the Limit Controls version it was checked with.
     if (action === 'submit' && unit.kind !== 'annual' && unit.status === 'draft') await pinRewardOffcycleLimitsOnSubmitTx(tx, unitId, await rewardOffcycleLimitsTx(tx, unit));
     // An approved effective date between 1 October and 31 December is recorded as that year's year-end exclusion.
-    const offcycleDetails = unit.kind !== 'annual' && unit.offcycle ? { ...unit.offcycle, yearEndExclusion: next === 'approved' ? offcycleYearEndExclusion(unit.policy.effectiveFrom) : null } : null;
+    const exclusion = next === 'approved' ? offcycleYearEndExclusion(unit.policy.effectiveFrom) : null;
+    const offcycleDetails = unit.kind !== 'annual' && unit.offcycle ? { ...digestOffcycle(unit.offcycle)!, ...(exclusion ? { yearEndExclusion: exclusion } : {}) } : null;
     await tx.insert(rewardDecision).values({ tenantId: ctx.tenantId, unitId, actorId: ctx.userId!, revision, action, fromStage: unit.status, toStage: next, reason, digest: hash });
     await tx.update(rewardUnit).set({ status: next, approvedDigest: ['return', 'reject', 'withdraw'].includes(action) ? null : hash, ...(action === 'return' ? { revision: revision + 1 } : {}), ...(unit.kind !== 'annual' ? { reservedCents: { standard: calculated.budgets.standard.used[0], h: calculated.budgets.h.used[0] }, offcycle: offcycleDetails } : {}), updatedAt: new Date() }).where(eq(rewardUnit.id, unitId));
     await stamp(tx, ctx, unitId, next === 'approved' ? 'approved' : 'routed', { from: unit.status, to: next, revision });
@@ -1810,7 +1813,7 @@ export type RewardBoardRow = {
  * the Executive plan consumes no pool. The full board adds detail metadata separately.
  */
 type BoardSummaryInput = Pick<ReviewProjection, 'flags' | 'budgets' | 'roles' | 'route' | 'canEdit' | 'posting' | 'uploaded' | 'capabilities'> & {
-  rows: readonly Omit<ReviewProjection['rows'][number], 'crBeforeBp' | 'crAfterBp' | 'totalIncreaseBp'>[];
+  rows: readonly Omit<ReviewProjection['rows'][number], 'crBeforeBp' | 'crAfterBp' | 'rangeBefore' | 'rangeAfter' | 'totalIncreaseBp'>[];
   unit: Pick<ReviewProjection['unit'], 'kind' | 'status'>;
 };
 /** Shared summary arithmetic and stage authority: never a second implementation of review truth. */
