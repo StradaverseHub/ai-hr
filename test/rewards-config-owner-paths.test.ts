@@ -166,3 +166,34 @@ it('narrows CTRO and HR Admin through the Role permissions grid: View only reads
  expect((await withTenant(c,tx=>tx.execute<{level:string}>(sql`select app.reward_actor_page_level('salary.view') as level`)))[0].level).toBe('view');
  expect((await withTenant(hr,tx=>tx.execute<{level:string}>(sql`select app.reward_actor_page_level('pat.manage') as level`)))[0].level).toBe('full');
 },120_000);
+
+/** Migration 5600 (restricted-owner audit): on an installation the owner-owned definers run as the restricted
+ * ai_hr_owner, which may execute only what it owns, what is granted to PUBLIC or to it, and the DBA prerequisite's
+ * app.reward_setup_allowed. CI builds this database as a superuser, so a call into a purpose-owned function fails
+ * only on a real installation (5580's review creator called two of them). Every app.* function a board-block owner
+ * definer names must be executable by ai_hr_owner. */
+it('lets ai_hr_owner execute every function the board owner definers call',async()=>{
+ const prerequisite=new Set(['app.reward_setup_allowed(uuid,text)']);
+ const definers=await owner.db.execute<{fn:string;src:string}>(sql`select p.oid::regprocedure::text as fn,p.prosrc as src from pg_proc p
+  where p.pronamespace='app'::regnamespace and p.prosecdef and p.proowner=(select proowner from pg_proc where oid='app.reward_config_editor(uuid)'::regprocedure)
+   and (p.proname like 'reward\\_config\\_%' or p.proname like 'reward\\_limit\\_%' or p.proname like 'reward\\_offcycle\\_%'
+    or p.proname in('reward_actor_holds_role','reward_access_self_change_guard','reward_unit_limit_version'))
+  union all select p.oid::regprocedure::text,p.prosrc from pg_proc p where p.oid='app.reward_config_snapshot_pay_change_kind(uuid)'::regprocedure`);
+ expect(definers.map(d=>d.fn)).toEqual(expect.arrayContaining(['app.reward_config_create_planned_unit(uuid,uuid,uuid)','app.reward_config_architecture_for_source(uuid,uuid,uuid,date)','app.reward_config_editor(uuid)']));
+ const refused:string[]=[];
+ for(const d of definers){
+  const names=[...new Set([...d.src.matchAll(/app\.([a-z_][a-z0-9_]*)\(/g)].map(m=>m[1]))];
+  if(!names.length)continue;
+  // The migration owner owns its own functions (here the superuser that built the database, on an installation
+  // ai_hr_owner); anything else needs an EXECUTE grant ai_hr_owner holds.
+  const callees=await owner.db.execute<{fn:string;ok:boolean}>(sql`select p.oid::regprocedure::text as fn,
+    p.proowner=(select proowner from pg_proc where oid='app.reward_config_editor(uuid)'::regprocedure) or has_function_privilege('ai_hr_owner',p.oid,'EXECUTE') as ok
+   from pg_proc p where p.pronamespace='app'::regnamespace and p.proname=any(${names}::text[])`);
+  for(const c of callees)if(!c.ok&&!prerequisite.has(c.fn))refused.push(`${d.fn} -> ${c.fn}`);
+ }
+ expect(refused).toEqual([]);
+ // The purpose-owned originals stay installed and untouched.
+ const purpose=await owner.db.execute<{fn:string;owner:string}>(sql`select p.oid::regprocedure::text as fn,pg_get_userbyid(p.proowner)::text as owner from pg_proc p
+  where p.oid in('app.reward_architecture_for_source(uuid,uuid,uuid,date)'::regprocedure,'app.reward_snapshot_pay_change_kind(uuid)'::regprocedure) order by 1`);
+ expect(purpose).toEqual([{fn:'app.reward_architecture_for_source(uuid,uuid,uuid,date)',owner:'ai_hr_reward_setup_reader'},{fn:'app.reward_snapshot_pay_change_kind(uuid)',owner:'ai_hr_reward_setup_reader'}]);
+});
