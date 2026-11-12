@@ -94,10 +94,11 @@ export * from '../../core/payroll-tax-basis';
 
 export * from '../../core/payroll-employment-eligibility';
 export {draftPayFormula} from '../../core/pay-formula-ai';
+export {startPayFormulaDraftJob,readPayFormulaDraftJob,discardPayFormulaDraftJob} from '../../core/pay-formula-ai-job';
 
 export {tryLockPayrollHistoryReadTx} from '../../core/payroll-history-lock';
 
 export {payFormulaPermittedDraftFieldsTx} from '../../core/pay-formula-personnel';
 
-export {previewIndividualTxnInput} from './individual-calculation';
+export {previewIndividualTxnInput,priceIndividualTxnInputTx} from './individual-calculation';
 export { payComponentCompanyChoices, PayComponentCompanyError } from '../../core/pay-component-company';

@@ -17,19 +17,18 @@ vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{chil
 vi.mock('../app/assistant/launcher-actions',()=>({askFromWorkspaceAction:state.workspace,askFromLauncherAction:state.launcher}));
 import {WorkspaceConversation} from '../components/assistant/workspace-conversation';
 import {AssistantLauncher} from '../components/assistant/assistant-launcher';
-import {AtelierAskBox} from '../components/atelier-ask-box';
 import {ThinkingIndicator} from '../components/assistant/thinking-indicator';
-type Surface='Assistant'|'Dashboard'|'Floating messenger';
-const surfaces=['Assistant','Dashboard','Floating messenger'] as const;
+// The old dashboard's Atelier ask box was retired with it on 12 Nov 2026.
+type Surface='Assistant'|'Floating messenger';
+const surfaces=['Assistant','Floating messenger'] as const;
 function show(surface:Surface){
  render(<NextIntlClientProvider locale="en" messages={enWithAiCentre}>{surface==='Assistant'
   ?<WorkspaceConversation tasks={[]} fileImport={false}/>
-  :surface==='Dashboard'?<AtelierAskBox label="Your question" placeholder="Ask about your work" submitLabel="Ask" suggestions={[]}/>
   :<AssistantLauncher position="bottom-right" hiddenAreas={[]}/>}</NextIntlClientProvider>);
  if(surface==='Floating messenger')fireEvent.click(screen.getByRole('button',{name:enWithAiCentre.aiCentre.launcher.open.replace('{name}',enWithAiCentre.aiCentre.genericName)}));
  const box=screen.getByRole('textbox') as HTMLTextAreaElement;
  fireEvent.change(box,{target:{value:'What is my leave balance?'}});
- fireEvent.click(screen.getByRole('button',{name:surface==='Floating messenger'?en.assistant.launcher.send:surface==='Dashboard'?'Ask':en.assistant.ask}));
+ fireEvent.click(screen.getByRole('button',{name:surface==='Floating messenger'?en.assistant.launcher.send:en.assistant.ask}));
  return{box,log:screen.getByRole('log')};
 }
 function deferred(){
@@ -70,7 +69,7 @@ describe('honest visible thinking state',()=>{
     if(outcome==='success')expect(within(log).getByText('You have 12 days of annual leave left.')).toBeInTheDocument();
     else expect(within(log).getByRole('alert')).toHaveTextContent(outcome==='refusal'?'Please try again.':surface==='Floating messenger'?en.assistant.launcher.failed:en.assistant.err_provider_error);
     expect(log).not.toHaveTextContent('PRIVATE provider details');
-    if(outcome==='success'){expect(box.readOnly).toBe(false);expect(box).not.toBeDisabled();}else{const sendName=surface==='Floating messenger'?en.assistant.launcher.send:surface==='Dashboard'?'Ask':en.assistant.ask;expect(screen.getByRole('button',{name:sendName})).toBeDisabled();fireEvent.click(screen.getByRole('button',{name:en.assistant.workspace.chat.new}));expect(screen.getByRole('textbox')).not.toBeDisabled();expect((screen.getByRole('textbox') as HTMLTextAreaElement).readOnly).toBe(false);}
+    if(outcome==='success'){expect(box.readOnly).toBe(false);expect(box).not.toBeDisabled();}else{const sendName=surface==='Floating messenger'?en.assistant.launcher.send:en.assistant.ask;expect(screen.getByRole('button',{name:sendName})).toBeDisabled();fireEvent.click(screen.getByRole('button',{name:en.assistant.workspace.chat.new}));expect(screen.getByRole('textbox')).not.toBeDisabled();expect((screen.getByRole('textbox') as HTMLTextAreaElement).readOnly).toBe(false);}
    }finally{await act(async()=>request.finish());}
   });
  }

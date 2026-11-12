@@ -86,7 +86,7 @@ export type DashboardCardChoice = {
   displayOrder: number;
   /**
    * OPTIONAL so every existing caller keeps compiling; supplied in practice by both real sources (the
-   * tenant's dashboard_card_config rows and BUILTIN_ROLE_DASHBOARD_CARDS). The normaliser needs it only to
+   * tenant's dashboard_card_config rows and BUILTIN_DASHBOARD_CARDS). The normaliser needs it only to
    * enforce the MAX_SHORTCUTS cap (feedback 3d2bc793) — with it absent no card counts as a shortcut and
    * the cap is inert, which is the correct behaviour for a caller that does not model card types.
    */
@@ -96,91 +96,20 @@ export type DashboardCardChoice = {
 /** The persisted per-user layout: which cards are shown, and the full ordering of available cards. */
 export type DashboardLayout = { selected: string[]; order: string[] };
 
-// ───────────────────────── Two-dimensional widget grid (feedback dashgrid → 2806443b) ─────────────────────────
-//
-// v3 turned the single-column customiser into a 2-D grid; feedback 2806443b reshapes it into THREE areas:
-// a draggable FIRST ROW (`row1`) of up to MAX_FIRST_ROW summary cards, a FIXED SECOND ROW (`row2`) of
-// full-width cards, and a flexible THIRD AREA (`row3`) below it where every remaining selected card
-// lands. Shortcut/action cards (incl. pendingTasks) are not pinned — they are ordinary removable cards.
-//
-// a00c4f64 emptied FIXED_ROW_KEYS: the Leave Calendar was the only full-width card and it moved to its
-// own screen. The three-area split is unchanged and row2 simply comes back empty, which both grids
-// already handled (they render the fixed row only when it has members).
-//
-// Row membership is DERIVED from FIXED_ROW_KEYS, NOT persisted — the stored shape stays `{ selected,
-// order }` and every existing saved layout keeps loading unchanged (back-compat: a legacy layout simply
-// partitions into the three areas on read). DESIGN DECISION: pinning (position) is deliberately NOT
-// derived from the `mandatory` flag — mandatory is per-tenant HR-editable policy governing REMOVABILITY,
-// and HR flagging a summary card mandatory must not yank it out of row 1 into the full-width row. Grey
-// drop-zone outlines + widget auto-resize are DEFERRED.
-
-/** Maximum widgets across the draggable first row (the "top row"); extra selected cards land in row 3. */
-export const MAX_FIRST_ROW = 4;
-
-/**
- * The cardKeys pinned to the full-width fixed second row (feedback 2806443b). The single pin rule
- * consumed by BOTH the employee customizer and the admin settings page — position is a product rule
- * keyed on the cardKey; removability is the separate per-tenant `mandatory` flag.
- *
- * EMPTY since a00c4f64: the Leave Calendar was the only pinned key, and it left the dashboard for its
- * own screen (/leave/tracker, "Team Leave Tracker"). The constant and the rule STAY — every consumer
- * derives row membership from it and both grids already render nothing for an empty fixed row, so the
- * next card that has to span the full width is a one-line change here rather than a re-plumb.
- */
-export const FIXED_ROW_KEYS: readonly string[] = [];
-const FIXED_ROW = new Set<string>(FIXED_ROW_KEYS);
-
-/** Is `key` pinned to the full-width fixed second row? */
-export function isFixedRowKey(key: string): boolean {
-  return FIXED_ROW.has(key);
-}
+// The old dashboard's widget grid (feedback dashgrid → 2806443b: a top row, a pinned full-width row and an area
+// below, with the row split in partitionDashboardRows) was retired with the customizer that drew it (owner decision,
+// 12 Nov 2026). The stored shape stays `{ selected, order }`, and every saved layout is still normalised below.
 
 // ───────────────────────── The Shortcuts section (feedback 3d2bc793) ─────────────────────────
 //
-// Shortcut cards were ordinary cards: adding one dropped it wherever the flat order happened to put it —
-// usually alone below the Leave Calendar — and there was no cap and no section to speak of. They now
-// gather into their OWN row of mini cards between the top row and the pinned calendar, holding up to
-// MAX_SHORTCUTS of them in an order the employee sets.
-//
-// Same rule as the pinned row: membership is DERIVED (from the card's HR-configured `cardType`), never
-// persisted. The stored shape is still `{ selected, order }`, so a layout saved before this change loads
+// Shortcut cards are capped at MAX_SHORTCUTS (normalizeDashboardLayout enforces it on every read and write).
+// Membership is DERIVED (from the card's HR-configured `cardType`), never persisted. The stored shape is still `{ selected, order }`, so a layout saved before this change loads
 // unchanged and every non-shortcut card keeps exactly the position it had — only cards HR typed as
 // 'shortcut' move, which is the point. 'action' cards (Pending Tasks) are deliberately NOT shortcuts:
 // they render a bespoke server node in the top row and must stay there.
 
 /** Maximum shortcut mini cards an employee may show in the Shortcuts section. */
 export const MAX_SHORTCUTS = 4;
-
-/** A layout split into the top row, the Shortcuts row, the fixed (pinned) row, and the third area below. */
-export type DashboardRows = { row1: string[]; shortcuts: string[]; row2: string[]; row3: string[] };
-
-/**
- * Split a normalised layout's SELECTED cards, preserving the layout's order: `row2` = the pinned cards
- * (`pinned` names them — FIXED_ROW_KEYS in production, empty since a00c4f64), `shortcuts` = the cards
- * `shortcuts` names (the tenant's 'shortcut'-typed cards), `row1` = the first MAX_FIRST_ROW remaining
- * cards, `row3` = every remaining card. Pure / framework-free so both the server page and the
- * client customize island can call it. `shortcuts` defaults to empty, which reproduces the pre-3d2bc793
- * three-way split exactly.
- */
-export function partitionDashboardRows(
-  layout: DashboardLayout,
-  pinned: Iterable<string>,
-  shortcuts: Iterable<string> = [],
-): DashboardRows {
-  const pinnedSet = new Set(pinned);
-  const shortcutSet = new Set(shortcuts);
-  const row1: string[] = [];
-  const row2: string[] = [];
-  const row3: string[] = [];
-  const shortcutRow: string[] = [];
-  for (const key of layout.selected) {
-    if (pinnedSet.has(key)) row2.push(key);
-    else if (shortcutSet.has(key)) shortcutRow.push(key);
-    else if (row1.length < MAX_FIRST_ROW) row1.push(key);
-    else row3.push(key);
-  }
-  return { row1, shortcuts: shortcutRow, row2, row3 };
-}
 
 /**
  * Built-in default card catalog — the flattened R39 set, used as a safe fallback when a tenant has NO
@@ -358,10 +287,9 @@ export function normalizeDashboardLayout(raw: unknown, cards: readonly Dashboard
 //
 // Managers and HR Admins get the SAME Customize Dashboard experience employees have. Two pure additions:
 //
-//  1. A per-ROLE built-in fallback catalog (`BUILTIN_ROLE_DASHBOARD_CARDS`): the manager/admin dashboard
-//     sections card-wrapped, used when a tenant has no dashboard_card_config rows for the role — the same
-//     never-render-blank guarantee employees have. `BUILTIN_DASHBOARD_CARDS` above deliberately STAYS the
-//     employee set (its long-standing meaning; existing callers and saved layouts are untouched).
+ //  1. A per-ROLE built-in fallback catalog for the manager/admin dashboards. RETIRED with the old dashboard
+//     (owner decision, 12 Nov 2026): no screen draws those dashboards any more. `BUILTIN_DASHBOARD_CARDS` above
+//     STAYS the employee set.
 //
 //  2. A per-ROLE stored layout shape: `app_user.dashboard_layout` evolves from one flat
 //     `{ selected, order }` to `{ employee?: {…}, manager?: {…}, hr_admin?: {…} }` so a person who wears
@@ -443,57 +371,3 @@ export function removeRoleLayout(
   }
   return Object.keys(out).length > 0 ? out : null;
 }
-
-const builtinCard = (key: string): BuiltinDashboardCard => BUILTIN_DASHBOARD_CARDS.find((c) => c.cardKey === key)!;
-
-/** The card-wrapped manager dashboard sections (9606c59f) — mirrors the 0299 seed. */
-const BUILTIN_MANAGER_CARDS: BuiltinDashboardCard[] = [
-  // a00c4f64: href follows the calendar to /leave/tracker. It was the in-page anchor '#planned-absences',
-  // which now scrolls to nothing — see the same repoint in lib/dashboard-cards CARD_META and migration 0404.
-  { cardKey: 'teamAwayToday', name: 'Team Away Today', cardType: 'information', href: '/leave/tracker', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 1 },
-  { cardKey: 'approvalRequests', name: 'Approval Requests', cardType: 'action', href: '/approvals', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 2 },
-  { cardKey: 'upcomingReminders', name: 'Upcoming Reminders', cardType: 'information', href: '#upcoming-events', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 3 },
-];
-
-/** The card-wrapped HR-admin dashboard sections (9606c59f) — mirrors the 0299 seed. */
-const BUILTIN_HR_ADMIN_CARDS: BuiltinDashboardCard[] = [
-  { cardKey: 'headcount', name: 'Headcount', cardType: 'information', href: '/personnel', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 1 },
-  { cardKey: 'pendingLeave', name: 'Pending Leave', cardType: 'information', href: '/leave', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 2 },
-  { cardKey: 'companies', name: 'Companies', cardType: 'information', href: '/admin/organization', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 3 },
-  // display_order 4 used to TIE with plannedAbsences; a00c4f64 removed that row, so 4 is this card's alone.
-  { cardKey: 'latestPayroll', name: 'Latest Payroll', cardType: 'information', href: '/payroll', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 4 },
-];
-
-/** Sections shared with the employee dashboard, plus the wrapped attendance breakdown (manager + admin). */
-const BUILTIN_ATTENDANCE_OVERVIEW: BuiltinDashboardCard = { cardKey: 'attendanceOverview', name: 'Attendance Overview', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 8 };
-
-/**
- * Built-in default card catalog PER ROLE — the same never-render-blank fallback employees have, for every
- * role: used when a tenant has no active dashboard_card_config rows for that role (e.g. provisioned after
- * the 0299 seed migration ran). Mirrors the 0212 + 0296 + 0299 + 0391 seeds as amended by 0404 (which
- * deleted the shared plannedAbsences row from all three roles); employee IS `BUILTIN_DASHBOARD_CARDS`.
- */
-export const BUILTIN_ROLE_DASHBOARD_CARDS: Record<DashboardLayoutRole, BuiltinDashboardCard[]> = {
-  employee: BUILTIN_DASHBOARD_CARDS,
-  manager: [
-    ...BUILTIN_MANAGER_CARDS,
-    builtinCard('upcomingEvents'),
-    builtinCard('recentlyJoined'),
-    builtinCard('recentActivity'),
-    BUILTIN_ATTENDANCE_OVERVIEW,
-    // 6e122302 — every role gets the notice card, because a notice targets an EMPLOYMENT and a manager or
-    // an HR admin is an employee who receives announcements like anyone else. Giving it to the employee
-    // dashboard alone would hide from managers the notices they were personally sent.
-    builtinCard('noticeBoard'),
-  ],
-  hr_admin: [
-    ...BUILTIN_HR_ADMIN_CARDS,
-    builtinCard('upcomingEvents'),
-    builtinCard('recentlyJoined'),
-    builtinCard('recentActivity'),
-    BUILTIN_ATTENDANCE_OVERVIEW,
-    { cardKey: 'headcountByCompany', name: 'Headcount by Company', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 9 },
-    { cardKey: 'latestPayrollRun', name: 'Latest Payroll Run', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 10 },
-    builtinCard('noticeBoard'),
-  ],
-};

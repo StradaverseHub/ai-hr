@@ -47,6 +47,17 @@ describe('bounded formula authoring proposals',()=>{
   expect(()=>payFormulaDraftRequest.parse({requirement:'Use Basic',disclosureAccepted:true,permittedFields:{profile:['fullName'],employee:[]}})).toThrow();
   expect(sent.requirement).toBe(attack);expect(args.system).toContain('untrusted data');
  });
+ it('tells the model a company code is compared through companyCode and companyId only with a locally chosen UUID',()=>{
+  const args=payFormulaDraftPrompt({requirement:'Overtime with fixed allowances for company ACME only',disclosureAccepted:true,permittedFields:{profile:['companyCode','companyId'],employee:[]}});
+  expect(args.system).toContain('{#EmployeeProfile}("companyCode") = "ACME"');
+  expect(args.system).toContain('compare companyId and other internal-ID fields only with the stable permitted UUID selected locally, never with a code or name');
+  expect(args.system).toContain('use {#MISSING:Company} for the unresolved literal and ask the author to select it from the local permitted list. No private list is supplied to you.');
+  expect(JSON.parse(args.prompt).fields.profile).toEqual({companyCode:'string',companyId:'string'});
+ });
+ it('refuses a model draft that compares companyId with a company code, and keeps a companyCode draft',()=>{
+  expect(()=>adjudicatePayFormulaDraft(proposal('If {#EmployeeProfile}("companyId") = "ACME" Then\nReturn 1\nElse\nReturn 0\nEnd If'))).toThrow('invalid_output');
+  expect(adjudicatePayFormulaDraft(proposal('If {#EmployeeProfile}("companyCode") = "ACME" Then\nReturn 1\nElse\nReturn 0\nEnd If'),{profile:['companyCode'],employee:[]})).toMatchObject({valid:true});
+ });
 });
 describe('requested overtime boundaries',()=>{
  const source='If {#EmployeeInformation}("nationality") = "Malaysia" And {#Basic} <= 4000 Then\nReturn ({#Basic} + {#FixedAllowances}) / 26 / 8 * 2 * {#Input}\nElse\nReturn 0\nEnd If';

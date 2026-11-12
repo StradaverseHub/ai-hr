@@ -141,6 +141,10 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:4526,when:1793330004826,tag:'5126_contract_internship_end_dates'},
  // 8d02748a readable import log references, renumbered 5127 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
  {idx:4527,when:1793330004827,tag:'5127_import_log_actor_labels'},
+ // Payroll history effective reads, allocated above production's 5127 and PR 240's 5128 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
+ {idx:4529,when:1793330004829,tag:'5129_payroll_history_effective_reads'},
+ // Background AI Formula Generator draft job (12 November 2026), allocated above 5129 (docs/MIGRATION-ALLOCATION.md).
+ {idx:4530,when:1793330004830,tag:'5130_pay_formula_ai_draft_job'},
  // 60f1fdcd Rewards direct configuration (DRAFT block 5400–5419; the integrator renumbers at admission).
  {idx:4800,when:1793330005100,tag:'5400_rewards_direct_configuration'},
  // 4de410ed/356ae8c1 Rewards dashboard preparation notices (DRAFT block 5420–5439).
@@ -163,6 +167,8 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5124_attendance_workflow_skipped_levels':'849dba4bf7c3aa39e45eb7f463ef24301a2eea3b10a781cf39858aa218635c6d',
  '5123_import_history_kind':'2da28686e0f48790491ed9677813be1fae9a71f1e9fbbe1c9b51786f401420e7',
  '5127_import_log_actor_labels':'1f90bf32091400f2ec667a8538802248a90bb1336c869a8b8faad349b2530ce2',
+ '5129_payroll_history_effective_reads':'2df235f08c69d3547847e6bd8a3cafb1f774bc051ec51b2c2fcf50d8d07596e7',
+ '5130_pay_formula_ai_draft_job':'842cf4996cdb4f3d0d8f26fcc205e774d5937f0d612122dafe2b5254e16e84ce',
  '5400_rewards_direct_configuration':'0e55f9de5d62ef07719a876ae208d9206ebc43d716c3bbdba02094a3cb997c6e',
  '5500_rewards_limit_controls':'3a710dc0103dd39b50c734243fd7f2691d6f08dbfb5d94d388d7664eb7ef93b0',
  '5520_rewards_role_permission_grid':'e603208c9cb9ada2e35a7338ede22637dcf886c5763912e5273adce0fd7ce172',

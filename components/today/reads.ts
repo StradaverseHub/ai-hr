@@ -39,23 +39,13 @@ import {recordReadiness} from '@/core/record-readiness';
 import {DIGEST_PAGES,latestDailyDigest} from '@/core/digest/daily-digest';
 import {workerRunGate} from '@/core/agent-registry/controls';
 import {RECOMMENDER_WORKER} from '@/core/recommenders/leave-decision';
-import {summariseOutcomeRecords,type OutcomeSummary} from '@/core/outcome-record/summary';
-import {complianceWorklist} from '@/core/reporting';
-import {openExceptionsAcrossRuns} from '@/core/payroll-anomaly';
-import {readEmployeeHomeTimeOff} from '@/core/employee-home-time-off';
-import {HomeAccessError,readEmployeeHomePayHints} from '@/core/employee-home';
-import {readHomeTeamCalendar,readHomeTeamCalendarAndManagers} from '@/core/employee-home-sharing';
-import {reportingLinesFor} from '@/core/read';
 import {readLoopCards,type LoopCard} from '@/core/loops/cards';
-import {addHrDays,windowStart,type TodayAudience} from '@/lib/today/audience';
-import {managerAbsences,type AwayRange} from '@/lib/today/coming-up';
+import {type TodayAudience} from '@/lib/today/audience';
 import {countWaitingLetterRequests} from '@/core/letter-requests';
 import {readNeedsYouBundle,type NeedsYouAnswer,type NeedsYouBundle} from '@/core/needs-you-bundle';
 
 type Settled<T>={ok:true;value:T}|{ok:false;error:unknown};
 async function settle<T>(read:()=>Promise<T>):Promise<Settled<T>>{try{return{ok:true,value:await read()};}catch(error){return{ok:false,error};}}
-/** The person has no own employment to show (none, or several and none chosen yet): not a failure. */
-const noOwnSubject=(result:Settled<unknown>|null)=>result!==null&&!result.ok&&result.error instanceof HomeAccessError;
 
 /** A module this section depends on, read with the throwing check (test/module-catalog-drift.test.ts keeps the quiet
  * readers to pages in app/). An entitlement snapshot that could not be resolved is an incident, not a plan change: the
@@ -203,86 +193,5 @@ async function readNeedsYouOwners(s:SessionContext,p:Readonly<{scopeIds:readonly
  return Object.freeze({tasks:list,taskTotal:tasks.ok?tasks.value.total:0,claimTotal:tasks.ok?tasks.value.claimTotal:0,recommender,prepared:detailed,findings,loops:merged.loops,taskLoops:merged.taskLoops,failed});
 }
 
-// ── Done for you ────────────────────────────────────────────────────────────────────────────────────────────
-/** One read-only snapshot for this section's own identity (db/shared-read.ts); each owner keeps its result. */
-export function readDoneForYou(s:SessionContext,p:Readonly<{scopeIds:readonly string[];today:string}>):Promise<Settled<OutcomeSummary>>{
- return withSharedReadSnapshot(s,()=>readDoneForYouOwners(s,p),undefined,requestReadScope());
-}
-async function readDoneForYouOwners(s:SessionContext,p:Readonly<{scopeIds:readonly string[];today:string}>):Promise<Settled<OutcomeSummary>>{
- return settle(()=>summariseOutcomeRecords(s,{since:windowStart(p.today),companyIds:p.scopeIds}));
-}
-
-// ── Watching (administrators) ───────────────────────────────────────────────────────────────────────────────
-/** At most this many companies in scope are checked for deadlines on one view, four at a time, as the daily
- * digest does (DIGEST_COMPANY_LIMIT): each check reads that company's employments. */
-export const WATCH_COMPANY_LIMIT=20;
-const COMPANY_CONCURRENCY=4;
-export type WatchingData=Readonly<{
- deadlines:Readonly<{overdue:number;dueSoon:number;checked:number;inScope:number}>|null;
- exceptions:Readonly<{total:number;blocking:number}>|null;
- failed:boolean;
-}>;
-
-/** One read-only snapshot for this section's own identity (db/shared-read.ts); each owner keeps its result. */
-export function readWatching(s:SessionContext,p:Readonly<{scopeIds:readonly string[];today:string}>):Promise<WatchingData>{
- return withSharedReadSnapshot(s,()=>readWatchingOwners(s,p),undefined,requestReadScope());
-}
-async function readWatchingOwners(s:SessionContext,p:Readonly<{scopeIds:readonly string[];today:string}>):Promise<WatchingData>{
- const modules=moduleChecks(s),payroll=modules.on('payroll'),companies=p.scopeIds.slice(0,WATCH_COMPANY_LIMIT);
- const deadlineRead=payroll?settle(async()=>{
-  const lists:Awaited<ReturnType<typeof complianceWorklist>>[]=[];
-  for(let i=0;i<companies.length;i+=COMPANY_CONCURRENCY)
-   lists.push(...await Promise.all(companies.slice(i,i+COMPANY_CONCURRENCY).map(companyId=>complianceWorklist(s,{companyId,today:p.today}))));
-  const items=lists.flat();
-  return {overdue:items.filter(item=>item.status==='overdue').length,dueSoon:items.filter(item=>item.status==='due_soon').length,checked:companies.length,inScope:p.scopeIds.length};
- }):null;
- const [deadlines,exceptions]=await Promise.all([
-  deadlineRead,
-  // Today fix d: the same read, with the same arguments, as Operations › Exceptions, so its counts are that page's.
-  payroll?settle(()=>openExceptionsAcrossRuns(s)):null,
- ]);
- return Object.freeze({
-  deadlines:deadlines?.ok&&deadlines.value.overdue+deadlines.value.dueSoon>0?Object.freeze(deadlines.value):null,
-  exceptions:exceptions?.ok&&exceptions.value.total>0?Object.freeze({total:exceptions.value.total,blocking:exceptions.value.blocking}):null,
-  failed:modules.failed()||[deadlines,exceptions].some(result=>result!==null&&!result.ok),
- });
-}
-
-// ── At a glance (personal) ──────────────────────────────────────────────────────────────────────────────────
 /** The Home team calendar's look-ahead for "Coming up": today and the next 13 days. */
 export const COMING_UP_DAYS=14;
-export type GlanceData=Readonly<{
- balances:readonly Readonly<{id:string;name:string;available:number|null}>[]|null;
- payslip:Readonly<{id:string;period:string}>|null|undefined;
- away:readonly AwayRange[]|null;
- failed:boolean;
-}>;
-
-/** One read-only snapshot for this section's own identity (db/shared-read.ts); each owner keeps its result. */
-export function readAtAGlance(s:SessionContext,p:Readonly<{employmentId?:string;locale:string;today:string}>):Promise<GlanceData>{
- return withSharedReadSnapshot(s,()=>readAtAGlanceOwners(s,p),undefined,requestReadScope());
-}
-async function readAtAGlanceOwners(s:SessionContext,p:Readonly<{employmentId?:string;locale:string;today:string}>):Promise<GlanceData>{
- const modules=moduleChecks(s),payroll=modules.on('payroll');
- const [timeOff,pay]=await Promise.all([
-  settle(()=>readEmployeeHomeTimeOff(s,p.employmentId,p.locale)),
-  payroll?settle(()=>readEmployeeHomePayHints(s,p.employmentId)):null,
- ]);
- const subject=timeOff.ok?timeOff.value.employmentId:pay?.ok?pay.value.employmentId:null;
- const away=subject?await settle(async()=>{
-  const to=addHrDays(p.today,COMING_UP_DAYS-1);
-  // The calendar and the managers' ids in one statement (decision 13); anything it cannot answer reads both owners.
-  const bundled=await (async()=>readHomeTeamCalendarAndManagers(s,subject,p.today,to))().catch(()=>null);
-  if(bundled)return managerAbsences(bundled.managerEmploymentIds,bundled.calendar.days);
-  const [lines,calendar]=await Promise.all([reportingLinesFor(s,subject),readHomeTeamCalendar(s,subject,p.today,to)]);
-  return managerAbsences(lines.managers.map(line=>line.employmentId),calendar.days);
- }):null;
- const latest=pay?.ok?pay.value.payslips[0]:undefined;
- return Object.freeze({
-  balances:timeOff.ok?timeOff.value.balances.map(row=>Object.freeze({id:row.id,name:row.name,available:row.available})):null,
-  // undefined: payroll is not in use, so no payslip line at all; null: none released yet.
-  payslip:pay===null?undefined:pay.ok?(latest?Object.freeze({id:latest.id,period:latest.period}):null):undefined,
-  away:away?.ok?away.value:null,
-  failed:modules.failed()||(!timeOff.ok&&!noOwnSubject(timeOff))||(pay!==null&&!pay.ok&&!noOwnSubject(pay))||(away!==null&&!away.ok),
- });
-}

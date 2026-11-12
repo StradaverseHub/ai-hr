@@ -17,11 +17,16 @@ import {
   DuplicateCardKeyError,
   getCard,
   listCards,
-  listDashboardCards,
   setStatus,
   updateCard,
+  type DashboardCardAudience,
 } from '../core/dashboard-card-config';
 import { adminCtx, closeAll, eventTypesFor, latestEventPayload, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+
+/** The Card Library's active cards for one audience, from listCards (the screen's own read), in its order. The old
+ * dashboard's per-role reader (listDashboardCards) was retired with it on 12 Nov 2026; the rows stay in the library. */
+const audienceCards = async (ctx: Parameters<typeof listCards>[0], role: DashboardCardAudience) =>
+  (await listCards(ctx)).filter((c) => c.status === 'active' && c.audience.includes(role));
 
 let b: Base;
 
@@ -183,7 +188,7 @@ describe('Dashboard Card Master — audience (role dimension, 9606c59f)', () => 
     expect((await getCard(a, id))?.audience).toEqual(['employee']);
   });
 
-  it('listDashboardCards filters by role AND active status', async () => {
+  it('the Card Library read keeps each audience\'s active cards apart', async () => {
     const a = adminCtx(b);
     await createCard(a, { cardKey: 'empCard', name: 'Emp', audience: ['employee'], displayOrder: 1 });
     await createCard(a, { cardKey: 'mgrCard', name: 'Mgr', audience: ['manager'], displayOrder: 2 });
@@ -191,9 +196,9 @@ describe('Dashboard Card Master — audience (role dimension, 9606c59f)', () => 
     const { id: offId } = await createCard(a, { cardKey: 'mgrOff', name: 'Mgr Off', audience: ['manager'], displayOrder: 4 });
     await setStatus(a, { id: offId, status: 'inactive' });
 
-    expect((await listDashboardCards(a, 'employee')).map((c) => c.cardKey)).toEqual(['empCard', 'sharedCard']);
-    expect((await listDashboardCards(a, 'manager')).map((c) => c.cardKey)).toEqual(['mgrCard', 'sharedCard']);
-    expect((await listDashboardCards(a, 'hr_admin')).map((c) => c.cardKey)).toEqual(['sharedCard']);
+    expect((await audienceCards(a, 'employee')).map((c) => c.cardKey)).toEqual(['empCard', 'sharedCard']);
+    expect((await audienceCards(a, 'manager')).map((c) => c.cardKey)).toEqual(['mgrCard', 'sharedCard']);
+    expect((await audienceCards(a, 'hr_admin')).map((c) => c.cardKey)).toEqual(['sharedCard']);
   });
 
   it('audience rides along in the dashboard-card-config.* event payloads', async () => {
@@ -259,7 +264,7 @@ describe('Dashboard Card Master — migration seed', () => {
 
     const a = adminCtx(b);
     // Role filtering off the seeded audiences (display order, then name):
-    expect((await listDashboardCards(a, 'employee')).map((c) => c.cardKey)).toEqual([
+    expect((await audienceCards(a, 'employee')).map((c) => c.cardKey)).toEqual([
       'leaveBalance',
       'nextHoliday',
       'pendingTasks',
@@ -268,7 +273,7 @@ describe('Dashboard Card Master — migration seed', () => {
       'recentlyJoined',
       'recentActivity',
     ]);
-    expect((await listDashboardCards(a, 'manager')).map((c) => c.cardKey)).toEqual([
+    expect((await audienceCards(a, 'manager')).map((c) => c.cardKey)).toEqual([
       'teamAwayToday',
       'approvalRequests',
       'upcomingReminders',
@@ -278,7 +283,7 @@ describe('Dashboard Card Master — migration seed', () => {
       'recentActivity',
       'attendanceOverview',
     ]);
-    expect((await listDashboardCards(a, 'hr_admin')).map((c) => c.cardKey)).toEqual([
+    expect((await audienceCards(a, 'hr_admin')).map((c) => c.cardKey)).toEqual([
       'headcount',
       'pendingLeave',
       'companies',

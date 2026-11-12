@@ -6,13 +6,14 @@ import {calendarDaysBetween} from '@/lib/hr-date-calendar';
 import {formatPayPeriodMonth,todayInKualaLumpur} from '@/lib/hr-date';
 import {PAYROLL_READINESS_HREF} from '@/lib/pre-salary/items';
 import {withTodayOrigin} from '@/lib/ai-centre/inbox-origin';
+import {assignedApprovalHref} from '@/lib/assigned-approval-focus';
 import {ADMIN_ASK_PROMPTS,DECISIONS_SHOWN,NEEDS_SHOWN,TASKS_HREF,needsTag,readinessShares,type NeedsEntry} from '@/lib/today/admin';
 import {nextStepsFrom,paydayView} from '@/lib/today/employee';
 import {Panel,PanelLink,PanelNote,hrDay} from '../employee/panel';
 import {AskChips,type AskChip} from '../employee/ask-chips';
 import {stepTitle} from '../employee/panels';
 import {moduleState,readAskAllowed,readOwnContext,readOwnPassportCards,readOwnPayHints,readOwnReadiness} from '../employee/reads';
-import {readAdminNeeds,readExceptions,readHandled,readManagerQueue,readNeeds,readReadiness} from './reads';
+import {readAdminNeeds,readExceptions,readHandled,readManagerQueue,readNeeds,readReadiness,readTeamAttendanceToday,readTeamReminders} from './reads';
 import {DecisionRecommendation,RecommendationNote} from './recommendation';
 
 /** HR administrator and manager Today's panels (owner-approved AdminToday.dc.html and ManagerToday.dc.html). Each is its
@@ -269,7 +270,10 @@ export async function TeamComingUpPanel(p:RoleContext){
  const [t,data,own]=await Promise.all([getTranslations('today.manager'),attempt(()=>readNeeds(p.session,p.scopeKey,p.today,p.locale)),
   attempt(()=>readOwnContext(p.session,undefined))]);
  const employmentId=own.ok?own.value.identity.selectedEmploymentId:null;
- const readiness=employmentId&&own.ok&&moduleState(p.session,'payroll',own.value.companyId)==='on'?await attempt(()=>readOwnReadiness(p.session,employmentId,p.locale,p.today)):null;
+ // The retired dashboard's Upcoming Reminders (12 Nov 2026): this manager's review deadlines and own public holidays.
+ const [readiness,reminders]=await Promise.all([
+  employmentId&&own.ok&&moduleState(p.session,'payroll',own.value.companyId)==='on'?attempt(()=>readOwnReadiness(p.session,employmentId,p.locale,p.today)):Promise.resolve(null),
+  employmentId?attempt(()=>readTeamReminders(p.session,employmentId,p.today)):Promise.resolve(null)]);
  const cutOff=readiness?.ok?readiness.value?.period.cutOff??null:null;
  const probation=(data.ok?data.value.loops:[]).flatMap(card=>card.kind==='probation'?[card]:[]).sort((a,b)=>a.endDate.localeCompare(b.endDate));
  const prepared=data.ok?data.value.prepared.length:0;
@@ -277,13 +281,38 @@ export async function TeamComingUpPanel(p:RoleContext){
   ...probation.map(card=>({key:`probation:${card.caseId}`,href:card.href,text:card.name?t('probation',{name:card.name,date:hrDay(p.locale,card.endDate,'day')}):t('probationUnnamed',{date:hrDay(p.locale,card.endDate,'day')})})),
   ...(cutOff&&cutOff>=p.today?[{key:'cutoff',text:t('cutOff',{date:hrDay(p.locale,cutOff,'day')})}]:[]),
   ...(prepared>0?[{key:'prepared',text:t('preparedNote',{count:prepared}),href:'/assistant/approvals'}]:[]),
+  ...(reminders?.ok?reminders.value.reviews.map(review=>({key:`review:${review.id}`,href:assignedApprovalHref({kind:'managerReview',id:review.id}),
+   text:review.name?t('reviewDue',{name:review.name,date:hrDay(p.locale,review.dueDate,'day')}):t('reviewDueUnnamed',{date:hrDay(p.locale,review.dueDate,'day')})})):[]),
+  ...(reminders?.ok?reminders.value.holidays.map(day=>({key:`holiday:${day.date}`,
+   text:day.name?t('holiday',{name:day.name,date:hrDay(p.locale,day.date,'day')}):t('holidayUnnamed',{date:hrDay(p.locale,day.date,'day')})})):[]),
  ];
  return <Panel id="today-team-coming-up" title={t('comingUpTitle')}>
   {lines.length===0?<p className="m-0 text-sm text-muted-foreground">{t('comingUpEmpty')}</p>:
   <ul className="m-0 flex list-none flex-col gap-2.5 p-0 text-[0.8125rem]">
    {lines.map(line=><li key={line.key} data-today-team-line={line.key.split(':')[0]}>{line.href?<Link href={line.href} className="hover:underline">{line.text}</Link>:line.text}</li>)}
   </ul>}
-  {(!data.ok||(data.ok&&data.value.failed))&&<PanelNote>{t('comingUpPartial')}</PanelNote>}
+  {(!data.ok||(data.ok&&data.value.failed)||(reminders!==null&&(!reminders.ok||reminders.value.failed)))&&<PanelNote>{t('comingUpPartial')}</PanelNote>}
+ </Panel>;
+}
+
+// ── Your team today (manager, side) ────────────────────────────────────────────────────────────────────────────
+/** The retired dashboard's attendance card, ported (owner decision, 12 Nov 2026): today's present, late, half-day and
+ * absent counts for the manager's own reports only. Not drawn when the attendance module is not in use. */
+export async function TeamTodayPanel(p:RoleContext){
+ const counts=await readTeamAttendanceToday(p.session,p.scopeKey,p.today);
+ if(!counts)return null;
+ const [t,tStatus]=await Promise.all([getTranslations('today.manager'),getTranslations('me.attStatus')]);
+ const cells=[['present',counts.present],['late',counts.late],['half_day',counts.halfDay],['absent',counts.absent]] as const;
+ const total=cells.reduce((sum,[,n])=>sum+n,0);
+ return <Panel id="today-team-today" title={t('teamTodayTitle')}>
+  {total===0?<p className="m-0 text-sm text-muted-foreground">{t('teamTodayEmpty')}</p>:
+  <dl data-today-team-attendance className="m-0 grid grid-cols-2 gap-x-4 gap-y-2">
+   {cells.map(([status,n])=><div key={status} data-today-team-status={status} className="flex flex-col">
+    <dt className="text-[0.8125rem] text-muted-foreground">{tStatus(status)}</dt>
+    <dd className="m-0 text-lg font-semibold tabular-nums">{n}</dd>
+   </div>)}
+  </dl>}
+  <PanelLink href="/manage/my-team">{t('teamTodayOpen')}</PanelLink>
  </Panel>;
 }
 

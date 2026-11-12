@@ -13,7 +13,7 @@ import {resolveServerTree} from './helpers/server-tree';
 
 const fx=vi.hoisted(()=>{
  class FixtureHomeAccessError extends Error{constructor(readonly code:string){super(code);this.name='HomeAccessError';}}
- return {FixtureHomeAccessError,state:{} as {own:unknown;ownError:unknown;moduleError:unknown;waiting:{items:unknown[];total:number};waitingCalls:number;throwPanel:string|null}};
+ return {FixtureHomeAccessError,state:{} as {own:unknown;ownError:unknown;moduleError:unknown;waiting:{items:unknown[];total:number};waitingCalls:number;throwPanel:string|null;notices:unknown}};
 });
 const S=fx.state;
 
@@ -38,6 +38,7 @@ vi.mock('@/components/today/employee/reads',()=>({
  readOwnTimeOff:async()=>({balances:[],canApply:true}),readOwnCalendar:async()=>({days:[]}),readOwnWeek:async()=>[],
  readOwnRequests:async()=>({requests:[],failed:false}),readManagersAway:async()=>[],
  readWaitingForYou:async()=>{S.waitingCalls++;return S.waiting;},
+ readOwnNotices:async()=>S.notices,
 }));
 vi.mock('@/components/today/employee/panels',async()=>{
  const actual=await vi.importActual<Record<string,unknown>>('../components/today/employee/panels');
@@ -57,7 +58,8 @@ const UNAVAILABLE="We couldn't load your page just now. Please try again in a mo
 
 beforeEach(()=>{
  Object.assign(S,{own:{identity:{selectedEmploymentId:'emp-own',role:'employee',employmentState:'selected',employments:[]},companyId:'co-a'},
-  ownError:null,moduleError:null,waiting:{items:[],total:0},waitingCalls:0,throwPanel:null});
+  ownError:null,moduleError:null,waiting:{items:[],total:0},waitingCalls:0,throwPanel:null,
+  notices:{version:1,employmentId:'emp-own',total:0,unread:0,acknowledgementRequired:0,items:[]}});
 });
 afterEach(cleanup);
 
@@ -94,6 +96,33 @@ describe('Employee Today: work assigned to the person',()=>{
   const view=await show();
   expect([...view.panel('today-requests')!.querySelectorAll('[data-today-requests-all] a')].map(link=>[text(link),link.getAttribute('href')]))
    .toEqual([['Leave','/leave'],['Claims','/claims'],['Letters','/me/letters']]);
+ });
+});
+
+describe('Employee Today: the Notice Board and the team cards ported from the retired dashboard',()=>{
+ it('lists the newest notices, marks unread ones in words, and links each and the full board',async()=>{
+  S.notices={version:1,employmentId:'emp-own',total:2,unread:1,acknowledgementRequired:0,items:[
+   {id:'n1',title:'Fictional office closure',summary:'',category:null,pinned:true,requiresAcknowledgement:false,publishedAt:null,publishedBy:null,firstViewedAt:null,acknowledgedAt:null},
+   {id:'n2',title:'Fictional town hall',summary:'',category:null,pinned:false,requiresAcknowledgement:false,publishedAt:null,publishedBy:null,firstViewedAt:'2026-11-10T02:00:00Z',acknowledgedAt:null}]};
+  const view=await show();
+  const board=view.panel('today-notices')!;
+  expect(board).not.toBeNull();
+  expect([...board.querySelectorAll('[data-today-notice] a')].map(link=>[text(link),link.getAttribute('href')])).toEqual([
+   ['Fictional office closure','/notices/n1'],['Fictional town hall','/notices/n2']]);
+  expect(board.querySelector('[data-today-notices-unread]')?.getAttribute('data-today-notices-unread')).toBe('1');
+  expect(text(board.querySelector('[data-today-notice="n1"]'))).toContain('New');
+  expect(text(board.querySelector('[data-today-notice="n2"]'))).not.toContain('New');
+  expect(within(board as HTMLElement).getByRole('link',{name:'View all notices'}).getAttribute('href')).toBe('/notices');
+ });
+ it('says so when there is no notice',async()=>{
+  const view=await show();
+  expect(text(view.panel('today-notices'))).toContain('No notices right now.');
+ });
+ it('never shows an employee the team attendance counts or the team links',async()=>{
+  const view=await show();
+  expect(view.panel('today-team-today')).toBeNull();
+  expect(view.container.querySelector('[data-today-team-attendance]')).toBeNull();
+  expect(view.container.querySelector('[data-today-workspace]')).toBeNull();
  });
 });
 

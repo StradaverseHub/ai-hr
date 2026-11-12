@@ -271,11 +271,10 @@ describe('ec991c2a — which surface asks for which answer, pinned across both f
   it('the employee-facing call sites are EXPLICIT, so the default can never silently change meaning', () => {
     // The item is explicit that an inherited default is how this defect comes back. Both self-service
     // balance reads state the answer they want rather than relying on `leaveBalances`' default.
+    // The old dashboard's own leave card was the second such caller; it was retired with the dashboard (12 Nov 2026).
     expect(read('../app/leave/page.tsx')).toContain('includeArchived: false');
-    expect(read('../app/page.tsx')).toContain('includeArchived: false');
-    // …and neither of them opts out of the archived gate.
+    // …and it does not opt out of the archived gate.
     expect(read('../app/leave/page.tsx')).not.toContain('includeArchived: true');
-    expect(read('../app/page.tsx')).not.toContain('includeArchived: true');
   });
 
   it('the shared-pool summer is the ONE self-service caller that opts out, and says why', () => {

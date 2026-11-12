@@ -9,17 +9,14 @@ import { actorOf, appendEvent } from '../db/events';
 import { encryptSecret, isSecretStorable, keyLast4 } from '../lib/ai/crypto';
 import { readOpenRouterOptions, type OpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
 import { OpenRouterModel, OpenRouterTransportConfiguration } from '../lib/ai/providers/openrouter-transport';
-import { assertProviderProtocolEvaluation, runProviderProtocolEvaluation, type ProviderProtocolSummary } from '../lib/ai/provider-protocol';
+import { assertProviderProtocolEvaluation, ProviderProtocolFailure, runProviderProtocolEvaluation, type ProviderProtocolSummary } from '../lib/ai/provider-protocol';
 import { openProviderEvaluationReceipt, sealProviderEvaluationReceipt } from '../lib/ai/provider-evaluation-receipt';
 import { currentAiProviderAdminTx, currentAiProviderPresentationAdminTx } from './ai-provider-authority';
 import { bindStrictAiSpendRoot, governedAiConfig } from './ai-governance';
 import { resolveAiProviderCandidateSnapshotTx } from './ai-provider-snapshot';
 
-export class AiProviderReadinessError extends Error {
-  constructor(readonly code: 'consent_required' | 'candidate_required' | 'probe_failed' | 'receipt_required' | 'unavailable') {
-    super('The AI provider evaluation could not be confirmed.'); this.name = 'AiProviderReadinessError';
-  }
-}
+import { AiProviderReadinessError } from '../lib/ai/provider-readiness-error';
+export { AiProviderReadinessError } from '../lib/ai/provider-readiness-error';
 const unavailable = (): never => { throw new AiProviderReadinessError('unavailable'); };
 const captured = (ctx: SessionContext) => ({ ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) });
 async function authority(tx: Tx, ctx: SessionContext) {
@@ -99,8 +96,15 @@ async function evaluateProviderCandidateActivity(ctx: SessionContext, input: Pro
   const cfg = bindStrictAiSpendRoot(governedAiConfig(ctx, snapshot, 'provider_evaluation'),
     { rootTaskId: snapshot.candidate.id, kind: 'evaluation' });
   let summary: ProviderProtocolSummary;
-  try { summary = await runProviderProtocolEvaluation(cfg); assertProviderProtocolEvaluation(summary, cfg); }
-  catch { throw new AiProviderReadinessError('probe_failed'); }
+  // Name only which fixed call failed and how far it got; the refusal itself stays a non-enumerable typed value.
+  const model = OpenRouterModel.safeParse(cfg.model).success ? cfg.model : null;
+  try { summary = await runProviderProtocolEvaluation(cfg); }
+  catch (error) {
+    const failure = error instanceof ProviderProtocolFailure ? error : null;
+    throw new AiProviderReadinessError('probe_failed', { stage: failure?.stage ?? 'draft', origin: failure?.origin ?? 'local', model, refusal: failure?.refusal });
+  }
+  try { assertProviderProtocolEvaluation(summary, cfg); }
+  catch { throw new AiProviderReadinessError('probe_failed', { stage: 'summary', origin: 'local', model }); }
   return withTenant(ctx, async tx => {
     await authority(tx, ctx);
     const current = await resolveAiProviderCandidateSnapshotTx(tx, ctx, 'openrouter');

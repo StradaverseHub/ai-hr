@@ -3,7 +3,7 @@ import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
 import {analyzePayFormula,type FormulaProgram} from '../lib/pay-formula-language';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
-import {PAY_FORMULA_PERSONNEL_ADAPTERS,PAY_FORMULA_PERSONNEL_INVENTORY,PAY_FORMULA_LEGACY_PERSONNEL_FIELDS,PAY_FORMULA_PERSONNEL_REGISTRY_VERSION,PAY_FORMULA_PERSONNEL_PROVIDER_VERSION,personnelFormulaAdapter,type PersonnelFormulaRegistration,type PersonnelFormulaLibraryField} from '../lib/pay-formula-personnel';
+import {PAY_FORMULA_PERSONNEL_ADAPTERS,PAY_FORMULA_PERSONNEL_INVENTORY,PAY_FORMULA_LEGACY_PERSONNEL_FIELDS,PAY_FORMULA_PERSONNEL_REGISTRY_VERSION,PAY_FORMULA_PERSONNEL_PROVIDER_VERSION,PAY_FORMULA_SHARED_FIELD_LABELS,personnelFormulaAdapter,type PersonnelFormulaRegistration,type PersonnelFormulaLibraryField} from '../lib/pay-formula-personnel';
 import {resolvePayrollPermission} from './payroll';
 import {businessUnit,department,position} from '../db/schema';
 import {visibleLabelIdsCondition} from './system-labels';
@@ -34,8 +34,10 @@ export async function personnelFormulaLibraryTx(tx:Tx,ctx:SessionContext,compani
  const selects=personnelIds.length?listSources.filter(source=>!registrations.some(row=>row.sourceKey===source.key&&!row.enabled)).map(source=>sql`select ${source.key} as "sourceKey",${source.table.id}::text as value,${source.name}||' · '||${source.table.id}::text as label from ${source.table} where ${source.table.tenantId}=${ctx.tenantId}::uuid and ${source.table.archivedAt} is null and ${visibleLabelIdsCondition(source.table,source.kind,personnelIds)}`):[];
  // With no Personnel field permission, no label catalogue SELECT is issued at all.
  const catalogs=selects.length?await tx.execute<{sourceKey:string;value:string;label:string}>(sql`${sql.join(selects,sql` union all `)} order by "sourceKey",label`):[];
- return PAY_FORMULA_PERSONNEL_INVENTORY.map(field=>{
-  const adapter=PAY_FORMULA_PERSONNEL_ADAPTERS.find(a=>a.fieldId===field.fieldId),legacy=Object.entries(PAY_FORMULA_LEGACY_PERSONNEL_FIELDS[field.group]).find(([,id])=>id===field.fieldId),registration=adapter?registrations.find(row=>row.sourceKey===adapter.key):undefined;
+ // One Personnel field can back several typed adapters (the company's internal ID, legal name and
+ // code). Each adapter is its own library entry so authors can find the one they mean.
+ return PAY_FORMULA_PERSONNEL_INVENTORY.flatMap(field=>{const shared=PAY_FORMULA_PERSONNEL_ADAPTERS.filter(a=>a.fieldId===field.fieldId);return (shared.length?shared:[undefined]).map(adapter=>({adapter,field:shared.length>1&&adapter&&PAY_FORMULA_SHARED_FIELD_LABELS[adapter.key]?{...field,label:PAY_FORMULA_SHARED_FIELD_LABELS[adapter.key],labelKey:'payFormula.fields.'+adapter.key}:field}));}).map(({adapter,field})=>{
+  const legacy=Object.entries(PAY_FORMULA_LEGACY_PERSONNEL_FIELDS[field.group]).find(([,id])=>id===field.fieldId),registration=adapter?registrations.find(row=>row.sourceKey===adapter.key):undefined;
   const supported=!!adapter||!!legacy,permitted=permissions.get(field.sensitivity)===true,enabled=registration?.enabled!==false;
   const key=adapter?.key??legacy?.[0]??field.fieldId,sourceType=adapter?.type??(field.type==='date'?'date':'string');
   const unavailableReason=field.unavailableReason??(!supported?'adapter':!permitted?'permission':!enabled?'disabled':null);
