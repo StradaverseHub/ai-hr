@@ -10,6 +10,7 @@
 import { useState, useTransition, useId, useRef, useEffect } from 'react';
 import { readOpenRouterOptions, type OpenRouterOptions } from '@/lib/ai/providers/openrouter-configuration';
 import { useFormatter,useTranslations } from 'next-intl';
+import { providerFailureMessage, readProviderFailureView, type ProviderFailureView } from '@/app/admin/ai/provider-failure-copy';
 import type {ProviderProtocolSummary} from '@/lib/ai/provider-protocol';
 import { toast } from 'sonner';
 import { CheckCircle2, Loader2, PlugZap, Trash2 } from 'lucide-react';
@@ -53,11 +54,14 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
   const [consent, setConsent] = useState(false);
   const [evaluation, setEvaluation] = useState<{ receipt: string; expiresAt: string; candidateId: string; candidateVersion: string; summary:ProviderProtocolSummary } | null>(null);
   const [evaluationFailed, setEvaluationFailed] = useState(false);
+  // A re-validated closed failure view; copy is chosen here from fixed keys (never server, provider or error text).
+  const [evaluationReason, setEvaluationReason] = useState<ProviderFailureView | null>(null);
+  const translate=t as unknown as (key:string,values?:Record<string,string>)=>string;
   const [receiptClock,setReceiptClock]=useState(()=>Date.now());
   useEffect(()=>{setReceiptClock(Date.now());if(!evaluation)return;const expiry=Date.parse(evaluation.expiresAt);if(!Number.isFinite(expiry))return;const timer=setTimeout(()=>setReceiptClock(Date.now()),Math.min(2147483647,Math.max(0,expiry-Date.now()+1)));return()=>clearTimeout(timer);},[evaluation?.receipt,evaluation?.expiresAt]);
   const evaluationSequence=useRef(0),metadataSequence=useRef(0),evaluationFlight=useRef(false),metadataFlight=useRef(false),alive=useRef(true);
   useEffect(()=>{alive.current=true;return()=>{alive.current=false;evaluationSequence.current++;metadataSequence.current++;};},[]);
-  function invalidateEvaluation(){evaluationSequence.current++;metadataSequence.current++;setEvaluation(null);setEvaluationFailed(false);}
+  function invalidateEvaluation(){evaluationSequence.current++;metadataSequence.current++;setEvaluation(null);setEvaluationFailed(false);setEvaluationReason(null);}
 
   const router=p.provider==='openrouter', gateway=p.provider==='ai_gateway', routeId=useId();
   // 0661: a general gateway's https address; re-checked on save and before every call.
@@ -76,7 +80,8 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
     startTest(async()=>{
       try{const res=await testConnectionAction({provider:p.provider,model,apiKey:key,...(router?{providerOptions:options}:{}),...(gatewayOptions?{providerOptions:gatewayOptions}:{})});
         if(!alive.current||sequence!==metadataSequence.current)return;
-        if(res.ok===true)toast.success(t(router?'metadataOk':'testOk'));else toast.error(t('testFail'));
+        // Only a re-validated closed failure view selects copy here; returned server strings are never shown.
+        if(res.ok===true)toast.success(t(router?'metadataOk':'testOk'));else{const failure=readProviderFailureView(res.failure);toast.error(failure?providerFailureMessage(translate,failure,'testFail'):t('testFail'));}
       }catch{if(alive.current&&sequence===metadataSequence.current)toast.error(t('commandFailed'));}
       finally{metadataFlight.current=false;}
     });
@@ -88,11 +93,11 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
   function onEvaluate() {
     if(evaluationFlight.current||!savedCandidateUnchanged||!accountReview||!consent||!p.candidateId||!p.candidateVersion)return;
     evaluationFlight.current=true;const sequence=++evaluationSequence.current,candidateId=p.candidateId,candidateVersion=p.candidateVersion;
-    setEvaluation(null);setEvaluationFailed(false);
+    setEvaluation(null);setEvaluationFailed(false);setEvaluationReason(null);
     startEvaluation(async()=>{
       try{const result=await evaluateProviderCandidateAction({accountReview:true,consent:true,candidateId,candidateVersion});
         if(!alive.current||sequence!==evaluationSequence.current)return;
-        if(result.ok&&result.candidateId===candidateId&&result.candidateVersion===candidateVersion)setEvaluation({receipt:result.receipt,expiresAt:result.expiresAt,candidateId,candidateVersion,summary:result.summary});else setEvaluationFailed(true);
+        if(result.ok&&result.candidateId===candidateId&&result.candidateVersion===candidateVersion)setEvaluation({receipt:result.receipt,expiresAt:result.expiresAt,candidateId,candidateVersion,summary:result.summary});else{setEvaluationReason(result.ok?null:readProviderFailureView(result.failure));setEvaluationFailed(true);}
       }catch{if(alive.current&&sequence===evaluationSequence.current)setEvaluationFailed(true);}
       finally{evaluationFlight.current=false;}
     });
@@ -200,7 +205,7 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
           {evaluating && <Loader2 aria-hidden="true" className="size-3.5 animate-spin motion-reduce:animate-none"/>}{t(evaluating?'evaluationRunning':'evaluationRun')}
         </Button>
         <div role="status" aria-live="polite" className="text-sm">
-          {evaluationFailed ? t('evaluationFailed') : evaluation ? t(receiptCurrent?'evaluationVerified':'evaluationExpired') : null}
+          {evaluationFailed ? (evaluationReason ? providerFailureMessage(translate,evaluationReason,'evaluationFailed') : t('evaluationFailed')) : evaluation ? t(receiptCurrent?'evaluationVerified':'evaluationExpired') : null}
         </div>
         <form action={setActiveProviderAction}>
           <input type="hidden" name="provider" value="openrouter"/>

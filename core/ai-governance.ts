@@ -30,6 +30,7 @@ import {captureStrictAiSpendRoot,requiresAiTaskRoot,type StrictAiSpendRoot} from
 export type {StrictAiSpendRoot} from '../lib/ai/spend-allocation';
 import {aiSpendAdmissionStep,resolveAiSpendPolicyTx,resolveReviewedAiSpendCapabilityTx,withReviewedAiSpendDispatch} from './ai-spend-capability';
 import {aiSpendConfigurationDigest,createAiSpendReceiptScope} from '../lib/ai/spend-receipt';
+import {AiAdmissionRefusal,admissionStep} from '../lib/ai/admission-refusal';
 import {currentAgentActionScope} from './agent-action-pause-scope';
 
 /** Reuse the gateway's fresh setting/platform-kill resolution for deterministic action checks. */
@@ -120,32 +121,32 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
   const capturedRequest=Object.freeze({operation:request.operation,reservedTokens:request.reservedTokens,
    ...(request.inputDigest===undefined?{}:{inputDigest:request.inputDigest})});
   if(!['draft','conversation','image'].includes(capturedRequest.operation)||!Number.isSafeInteger(capturedRequest.reservedTokens)||capturedRequest.reservedTokens<0||capturedRequest.reservedTokens>1000000000||
-   (capturedRequest.inputDigest!==undefined&&!/^[a-f0-9]{64}$/.test(capturedRequest.inputDigest)))throw new AiGatewayError('The prepared AI request could not be confirmed.');
+   (capturedRequest.inputDigest!==undefined&&!/^[a-f0-9]{64}$/.test(capturedRequest.inputDigest)))throw new AiAdmissionRefusal('request_invalid','The prepared AI request could not be confirmed.');
   const preparedAdmission=await withTenant(ctx,async tx=>{
-   await assertCurrentAiProviderSnapshotTx(tx,ctx,snapshot,outgoing);
-   const generation=await assertAiCentreRunningTx(tx,ctx);
+   // Each untyped refusal below names its step with a closed code (lib/ai/admission-refusal); type and message are unchanged.
+   await admissionStep('provider_configuration_changed',()=>assertCurrentAiProviderSnapshotTx(tx,ctx,snapshot,outgoing));
+   const generation=await admissionStep('ai_controls_unavailable',()=>assertAiCentreRunningTx(tx,ctx));
    if(check)try{await check(tx,capturedRequest);}catch(error){
     if(error instanceof AiAllowanceError||error instanceof AiPrivacyGateError)throw error;
-    throw new AiGatewayError('The current AI source access could not be confirmed.');
+    throw new AiAdmissionRefusal('source_check_failed','The current AI source access could not be confirmed.');
    }
-   assertAiProviderSnapshot(snapshot,ctx);
-   assertAiProviderSnapshotFeature(snapshot,feature);
+   await admissionStep('provider_configuration_changed',()=>{assertAiProviderSnapshot(snapshot,ctx);assertAiProviderSnapshotFeature(snapshot,feature);});
    assertProviderPrivacyRequest(outgoing,capturedRequest.operation,capturedRequest.inputDigest,feature);
    const nativeRootRequired=requiresAiTaskRoot(feature)||spendRoot!==undefined;
-   if(nativeRootRequired&&!spendRoot)throw new AiGatewayError('The autonomous AI spend root could not be confirmed.');
+   if(nativeRootRequired&&!spendRoot)throw new AiAdmissionRefusal('spend_root_required','The autonomous AI spend root could not be confirmed.');
    // Every admission checks ALL applicable monetary scopes under the actual ai-control interval.
    // No configured USD cap promises no USD ceiling, not a pause/auth/token/concurrency bypass.
    // Any finite dimension still requires the unchanged reviewed carrier and reservation contract.
    const moneyPolicy=await resolveAiSpendPolicyTx(tx,ctx,feature,spendRoot);
    const envelope=moneyPolicy.requiresMonetaryCeiling?await resolveReviewedAiSpendCapabilityTx(tx,ctx,outgoing,capturedRequest):null;
-   if(envelope&&(!ctx.userId||envelope.requestDigest!==capturedRequest.inputDigest))throw new AiGatewayError('The exact AI spend request could not be confirmed.');
+   if(envelope&&(!ctx.userId||envelope.requestDigest!==capturedRequest.inputDigest))throw new AiAdmissionRefusal('spend_request_mismatch','The exact AI spend request could not be confirmed.');
    const forcedPause=await forcedPauseTx(tx,ctx,feature);
    // Admission and spend SQL refusals leave as typed AI refusals, never as driver text (SQL plus parameters).
    const rows=await aiSpendAdmissionStep(()=>tx.execute<{run_id:string;allowed:boolean;blocked_reason:string|null}>(sql`select * from app.ai_admit(${feature},${capturedRequest.operation},${cfg.provider},${cfg.model},${capturedRequest.reservedTokens}::bigint,${forcedPause})`));
-   if(rows[0]?.allowed&&envelope&&spendRoot)await aiSpendAdmissionStep(()=>tx.execute(sql`select app.ai_spend_reserve(${rows[0].run_id}::uuid,${spendRoot.rootTaskId}::uuid,${spendRoot.kind},${envelope.capabilityDigest},${envelope.requestDigest},${envelope.reservedNanos}::bigint,${aiSpendConfigurationDigest(outgoing)})`));
+   if(rows[0]?.allowed&&envelope&&spendRoot)await aiSpendAdmissionStep(()=>tx.execute(sql`select app.ai_spend_reserve(${rows[0].run_id}::uuid,${spendRoot.rootTaskId}::uuid,${spendRoot.kind},${envelope.capabilityDigest},${envelope.requestDigest},${envelope.reservedNanos}::bigint,${aiSpendConfigurationDigest(outgoing)})`),undefined,'spend_reservation_unavailable');
    // Root custody and real run association are mandatory even without monetary certification.
    // Unknown unpriced history persists; a later finite cap cannot retrospectively count it as zero.
-   if(rows[0]?.allowed)await aiSpendAdmissionStep(()=>tx.execute(sql`select app.ai_spend_record_admission(${rows[0].run_id}::uuid,${spendRoot?.rootTaskId??null}::uuid,${spendRoot?.kind??null},${capturedRequest.inputDigest??null},${aiSpendConfigurationDigest(outgoing)})`));
+   if(rows[0]?.allowed)await aiSpendAdmissionStep(()=>tx.execute(sql`select app.ai_spend_record_admission(${rows[0].run_id}::uuid,${spendRoot?.rootTaskId??null}::uuid,${spendRoot?.kind??null},${capturedRequest.inputDigest??null},${aiSpendConfigurationDigest(outgoing)})`),undefined,'admission_custody');
    if(rows[0]?.allowed&&lifecycle?.admitted)await lifecycle.admitted(tx,Object.freeze({runId:rows[0].run_id,request:capturedRequest}));
    return{rows,envelope,generation};
   });
@@ -153,7 +154,7 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
   if(!admission?.allowed){
    const reason=admission?.blocked_reason;
    if(reason==='paused'||reason==='daily_limit'||reason==='monthly_limit'||reason==='concurrent_limit')throw new AiAllowanceError(reason);
-   throw new AiGatewayError('The AI request could not be admitted.');
+   throw new AiAdmissionRefusal('admission_refused','The AI request could not be admitted.');
   }
   let actual:number|null=null;
   const accounting=createAiRunAccounting(cfg.provider);
