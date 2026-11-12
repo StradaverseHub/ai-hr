@@ -46,8 +46,10 @@ async function heldRolesTx(tx:Tx):Promise<RewardAccessRole[]>{
  const rows=await tx.execute<{role:RewardAccessRole}>(sql`select r as role from unnest(${sql.raw(`ARRAY[${rewardAccessRoles.map(r=>`'${r}'`).join(',')}]`)}::text[]) r where app.reward_actor_holds_role(r)`);
  return rows.map(r=>r.role);
 }
-async function matrixTx(tx:Tx,lock=false):Promise<RewardPermissionMatrix>{
- const rows=await tx.execute<{role:RewardAccessRole;capability:RewardCapability;level:RewardLevel|null;allowed:boolean}>(sql`select role,capability,level,allowed from reward_role_permission where tenant_id=app.current_tenant_id() order by role,capability ${lock?sql`for update`:sql``}`);
+/** The saved matrix. Writers serialise on the tenant's role-permission advisory lock instead of row locks: SELECT ...
+ * FOR UPDATE would apply the UPDATE row policies (the self rule) and hide the rows of roles the editor holds. */
+async function matrixTx(tx:Tx):Promise<RewardPermissionMatrix>{
+ const rows=await tx.execute<{role:RewardAccessRole;capability:RewardCapability;level:RewardLevel|null;allowed:boolean}>(sql`select role,capability,level,allowed from reward_role_permission where tenant_id=app.current_tenant_id() order by role,capability`);
  const matrix:RewardPermissionMatrix={};
  for(const r of rows){const level=r.level??(r.allowed?rewardDefaultLevel(r.role,r.capability):'none');if(level!==rewardDefaultLevel(r.role,r.capability))matrix[rewardCellKey(r.role,r.capability)]=level;}
  return matrix;
@@ -153,7 +155,7 @@ export async function saveRewardRolePermissionBatch(ctx:SessionContext,raw:unkno
  try{return await withRewardsTenant(ctx,async tx=>{
   await assertRewardWritableTx(tx);await lockTx(tx);
   const a=await authorityTx(tx);if(!a.immediate&&!a.seat)throw new RewardRolePermissionError('forbidden','Role permissions are not available to you.');
-  const [matrix,revision,held]=[await matrixTx(tx,true),await revisionTx(tx),await heldRolesTx(tx)];
+  const [matrix,revision,held]=[await matrixTx(tx),await revisionTx(tx),await heldRolesTx(tx)];
   if(revision!==input.baseRevision)throw new RewardRolePermissionError('stale','The role permissions changed since you opened them. Reload to see the latest.');
   const changes=normalise(input,matrix,held),summary=rewardRolePermissionSummary(changes);
   const reason=assertRewardConfigReviewed(summary,{reason:input.reason,digest:input.digest});
@@ -170,13 +172,13 @@ export async function decideRewardRolePermissionRequest(ctx:SessionContext,raw:u
  try{return await withRewardsTenant(ctx,async tx=>{
   await assertRewardWritableTx(tx);await lockTx(tx);
   const a=await authorityTx(tx);if(!a.immediate)throw new RewardRolePermissionError('forbidden','Only Group Rewards, HR Admin or CTRO can decide role permission changes.');
-  const [q]=await tx.execute<{id:string;changes:RewardPermissionChange[];baseRevision:number;reason:string;requestedBy:string;status:string}>(sql`select id,changes,base_revision as "baseRevision",reason,requested_by as "requestedBy",status from reward_role_permission_request where id=${p.requestId}::uuid and tenant_id=app.current_tenant_id() for update`);
+  const [q]=await tx.execute<{id:string;changes:RewardPermissionChange[];baseRevision:number;reason:string;requestedBy:string;status:string}>(sql`select id,changes,base_revision as "baseRevision",reason,requested_by as "requestedBy",status from reward_role_permission_request where id=${p.requestId}::uuid and tenant_id=app.current_tenant_id()`);
   if(!q)throw new RewardRolePermissionError('forbidden','This request is not available.');
   if(q.status!=='pending')throw new RewardRolePermissionError('decided','This request was already decided.');
   if(q.requestedBy===ctx.userId)throw new RewardRolePermissionError('forbidden','An independent checker must decide this request.');
   const decide=(status:'applied'|'rejected'|'lapsed',applied:number|null)=>tx.execute(sql`update reward_role_permission_request set status=${status},decided_by=app.current_user_id(),decided_at=now(),decision_reason=${p.reason.trim()||null},applied_revision=${applied} where id=${q.id}::uuid`);
   if(!p.approve){if(p.reason.trim().length<10)throw new RewardRolePermissionError('reason','Give a reason of at least 10 characters.');await decide('rejected',null);return{status:'rejected' as const};}
-  const [matrix,revision,held]=[await matrixTx(tx,true),await revisionTx(tx),await heldRolesTx(tx)];
+  const [matrix,revision,held]=[await matrixTx(tx),await revisionTx(tx),await heldRolesTx(tx)];
   if(revision!==q.baseRevision){await decide('lapsed',null);return{status:'lapsed' as const};}
   const changes=normalise(rewardRolePermissionBatchSchema.parse({baseRevision:revision,changes:q.changes.map(c=>({role:c.role,capability:c.capability,after:c.after})),reason:q.reason}),matrix,held);
   const summary=rewardRolePermissionSummary(changes);
