@@ -227,7 +227,7 @@ describe('Overtime Setting → Payroll and TOIL (fictional fixtures, 71 companie
     const read = await withTenant(ctx, tx => readOvertimeCalculationTx(tx, ctx, { employmentId: w.employmentId, date }));
     expect(read?.calculation).toMatchObject({ bindingKind: 'attendanceGroupPolicy', outcome: 'refused', transferable: false });
     const [dayRow] = await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId, w.employmentId), eq(s.attendance.attendanceDate, date)));
-    expect((dayRow.calcTrace as Record<string, { status?: string }>).overtimePattern?.status, 'known zero, not a hold').toBe('recorded');
+    expect((dayRow.calcTrace as unknown as Record<string, { status?: string }>).overtimePattern?.status, 'known zero, not a hold').toBe('recorded');
     const evidence = await owner.db.select().from(s.attendanceOvertimeCalculationEvidence).where(eq(s.attendanceOvertimeCalculationEvidence.calculationId, read!.calculation!.id));
     expect((evidence[0].evidence as Record<string, unknown>).policyFinancialDurationContract).toMatchObject({ state: 'none', reason: 'manualApproval' });
     const batch = await createBatch(ctx, { companyId: b.companyId, payPeriod: date.slice(0, 7) });

@@ -290,7 +290,9 @@ describe('dated-policy raw writer routing',()=>{
   await capturedClock(f.employmentId,day(1));
   const saved=await row(f.employmentId,day(1));
   expect(saved).toMatchObject({checkInAt:'09:00:00',checkOutAt:'20:00:00'});
-  expect(saved.calcTrace?.overtimePattern).toEqual({status:'refused',reason:'sourceUnavailable'});
+  // 2f803985 round 2: this fixture's policy is disabled (Manual), a complete known zero — recorded, not a
+  // Payroll hold — while every raw punch below is kept.
+  expect(saved.calcTrace?.overtimePattern).toMatchObject({status:'recorded'});
   const punches=await owner.db.select().from(s.attendancePunch).where(eq(s.attendancePunch.attendanceId,saved.id)).orderBy(asc(s.attendancePunch.punchAt),asc(s.attendancePunch.id));
   expect(punches.map(punch=>({time:punch.punchAt,direction:punch.direction}))).toEqual([{time:'09:00:00',direction:'in'},{time:'20:00:00',direction:'out'}]);
   expect(await detected(f.employmentId,day(1))).toBe(true);
@@ -418,7 +420,7 @@ describe('dated-policy raw writer routing',()=>{
   expect(snapshot.policyApprovalInput?.requests.find(row=>row.id===request.id)?.submissionContract).toMatchObject({state:'recorded',correctionId:request.id,
    tenantId:b.tenantId,employmentId:f.employmentId,date:day(1),companyId:b.companyId,kind:'epoch',visibleEpoch:storedPolicy.activationEpoch,recordedAt:receipt.recordedAt.toISOString()});
   expect(await detected(f.employmentId,day(1))).toBe(true);
-  expect((await row(f.employmentId,day(1))).calcTrace?.overtimePattern).toEqual({status:'refused',reason:'sourceUnavailable'});
+  expect((await row(f.employmentId,day(1))).calcTrace?.overtimePattern,'2f803985: disabled (Manual) policy is a recorded known zero').toMatchObject({status:'recorded'});
  });
  it('serializes a concurrent submission after the actual policy commit instead of inferring from timestamps',async()=>{
   const f=await fixture();let release!:()=>void,inserted!:()=>void,rejected!:(error:unknown)=>void;
@@ -490,7 +492,7 @@ describe('dated-policy raw writer routing',()=>{
   await capturedClock(f.employmentId,day(3));expect(await detected(f.employmentId,day(3))).toBe(true);
   const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(3)}));
   expect(snapshot.attendanceGroupPolicy?.id).toBe(next.id);
-  expect((await row(f.employmentId,day(3))).calcTrace?.overtimePattern).toEqual({status:'refused',reason:'sourceUnavailable'});
+  expect((await row(f.employmentId,day(3))).calcTrace?.overtimePattern,'2f803985: disabled (Manual) policy is a recorded known zero').toMatchObject({status:'recorded'});
   expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
  });
  it('reasserts an already approved scalar plan without turning it into policy execution evidence',async()=>{
@@ -509,7 +511,7 @@ describe('dated-policy raw writer routing',()=>{
    createdAt:again.createdAt.toISOString(),decidedAt:again.decidedAt!.toISOString(),appliedAt:null,
    method:again.otApprovalMethod,decidedByEmploymentId:again.decidedByEmploymentId,
    plannedWindow:{authority:'auditOnly',startLabel:'18:00:00',endLabel:'20:00:00'}}]});
-  expect((await row(f.employmentId,day(1))).calcTrace?.overtimePattern).toEqual({status:'refused',reason:'sourceUnavailable'});
+  expect((await row(f.employmentId,day(1))).calcTrace?.overtimePattern,'2f803985: disabled (Manual) policy is a recorded known zero').toMatchObject({status:'recorded'});
   expect(await covered(f.employmentId,day(1))).toMatchObject([{coverage:'calculation',outcome:'refused'}]);
   const calculations=await owner.db.select().from(s.attendanceOvertimeCalculation).orderBy(asc(s.attendanceOvertimeCalculation.sourceId),asc(s.attendanceOvertimeCalculation.ordinal));
   expect(calculations.length).toBeGreaterThan(1);

@@ -263,13 +263,16 @@ and independent financial replay still remain required before release.
 
 ## Required implementation and evidence
 
-- [ ] Map each approved control to its stored owner, execution consumer, preview and immutable trace.
-- [ ] Add the policy-execution discriminator, part/reference constraints, explicit app grants and RLS;
-  preserve the original single-pattern contract and all recorded rows.
-- [ ] Connect pairing/grace, eligibility, approval receipts and the ordered interval/duration pipeline.
-- [ ] Connect per-date bindings, formula replay, parent aggregate and overlapping-coverage refusal.
-- [ ] Verify Payroll/TOIL settlement, floor/base-day semantics, cutoffs, concurrency, retry and both
-  presentation modes with the same underlying contributions.
+- [x] Map each approved control to its stored owner, execution consumer, preview and immutable trace.
+  (2f803985 round 2: Schedule Group Overtime Setting section → dated revisions → shared duration owner.)
+- [x] Add the policy-execution discriminator, part/reference constraints, explicit app grants and RLS;
+  preserve the original single-pattern contract and all recorded rows. (0590.)
+- [x] Connect pairing/grace, eligibility, approval receipts and the ordered interval/duration pipeline.
+  (Order revised by 2f803985: method before lateness offset, rounding last.)
+- [x] Connect per-date bindings, formula replay, parent aggregate and overlapping-coverage refusal.
+- [x] Verify Payroll/TOIL settlement, floor/base-day semantics, cutoffs, concurrency, retry and both
+  presentation modes with the same underlying contributions. (Focused CI: policy storage/settlement suites
+  and test/overtime-setting-2f803985-payroll.test.ts; the full gate is still the release authority.)
 - [ ] Demonstrate unchanged legacy results, frozen manual workflows, all new boundaries, financial
   denials and unknown-evidence refusals; finish six-locale/mobile/keyboard/light/dark app journeys.
 - [ ] Finish migration rehearsals, strict TypeScript, the required authentic gate, official release and
