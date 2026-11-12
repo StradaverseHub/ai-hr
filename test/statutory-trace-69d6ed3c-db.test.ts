@@ -280,7 +280,7 @@ describe('69d6ed3c — closed months stay exactly as they are', () => {
 });
 
 describe('69d6ed3c — open multi-run months processed before the fix show Reprocess Required', () => {
-  const URL = process.env.TEST_MIGRATION_DATABASE_URL!;
+  const OWNER = owner.db;
   async function preFixMonth() {
     await upsertPayComponent(a, TRANSPORT());
     await upsertPayComponent(a, item('B1', 'Ex gratia', { includedInEpf: false, includedInSocsoEis: false, pcbRemunerationType: 'additional' }));
@@ -305,12 +305,12 @@ describe('69d6ed3c — open multi-run months processed before the fix show Repro
     await setup();
     const { e, reg, run1, run2 } = await preFixMonth();
 
-    const report = await runMultiRunEpfRecalcMark(URL, { apply: false });
+    const report = await runMultiRunEpfRecalcMark(OWNER, { apply: false });
     expect(report.targets.map((t) => t.batchId)).toEqual([run2.batchId]);
     expect(report.targets[0].employmentIds).toEqual([e.employmentId]);
     expect((await batchRow(run2.batchId)).needsRecalcAt, 'report only').toBeNull();
 
-    const applied = await runMultiRunEpfRecalcMark(URL, { apply: true });
+    const applied = await runMultiRunEpfRecalcMark(OWNER, { apply: true });
     expect(applied.marked).toBe(1);
     const marked = await batchRow(run2.batchId);
     expect(marked.needsRecalcAt).not.toBeNull();
@@ -322,21 +322,21 @@ describe('69d6ed3c — open multi-run months processed before the fix show Repro
     expect(events[0].payload).toMatchObject({ changeCategory: 'statutory', addedEmploymentIds: [e.employmentId] });
 
     // Idempotent: running it again adds nothing and records nothing.
-    expect((await runMultiRunEpfRecalcMark(URL, { apply: true })).marked).toBe(0);
+    expect((await runMultiRunEpfRecalcMark(OWNER, { apply: true })).marked).toBe(0);
 
     // Reprocessing the LATER run alone corrects it — the earlier run need not be reprocessed first.
     await reprocessSelectedEmployees(a, { batchId: run2.batchId, employmentIds: [e.employmentId], reason: 'EPF multi-run correction' });
     const s2 = statOf(await slipOf(run2.batchId, e.employmentId));
     expect([s2.epfEmployee, s2.epfEmployer]).toEqual([88, 104]);
     expect((await batchRow(run2.batchId)).needsRecalcAt, 'the reprocess clears the mark').toBeNull();
-    expect((await runMultiRunEpfRecalcMark(URL, { apply: false })).targets).toEqual([]);
+    expect((await runMultiRunEpfRecalcMark(OWNER, { apply: false })).targets).toEqual([]);
   });
 
   it('a closed run is never marked', async () => {
     await setup();
     const { run2 } = await preFixMonth();
     await closeBatch(a, { batchId: run2.batchId });
-    expect((await runMultiRunEpfRecalcMark(URL, { apply: true })).targets).toEqual([]);
+    expect((await runMultiRunEpfRecalcMark(OWNER, { apply: true })).targets).toEqual([]);
     expect((await batchRow(run2.batchId)).needsRecalcAt).toBeNull();
   });
 
@@ -353,6 +353,6 @@ describe('69d6ed3c — open multi-run months processed before the fix show Repro
       await generatePayslips(a, { batchId: run.batchId });
     }
     await owner.db.update(schema.payslip).set({ statutory: sql`${schema.payslip.statutory} - 'statutoryTrace'` }).where(eq(schema.payslip.employmentId, e.employmentId));
-    expect((await runMultiRunEpfRecalcMark(URL, { apply: false })).targets).toEqual([]);
+    expect((await runMultiRunEpfRecalcMark(OWNER, { apply: false })).targets).toEqual([]);
   });
 });

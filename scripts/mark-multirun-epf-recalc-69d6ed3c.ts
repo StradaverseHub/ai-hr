@@ -25,7 +25,7 @@
  * lines (core/statutory-trace.ts `readEarlierRunLiability`), so the order of reprocessing does not matter.
  */
 import { sql } from 'drizzle-orm';
-import { createDb } from '../db/client';
+import { createDb, type Db } from '../db/client';
 
 export type MultiRunRecalcTarget = { tenantId: string; companyId: string; batchId: string; payPeriod: string; runSeq: number; employmentIds: string[] };
 export type MultiRunRecalcReport = { apply: boolean; targets: MultiRunRecalcTarget[]; marked: number };
@@ -33,10 +33,10 @@ export type MultiRunRecalcReport = { apply: boolean; targets: MultiRunRecalcTarg
 /** An earlier slip, before the trace, paying additional pay on a line whose EPF box was not ticked. */
 const NON_EPF_ADDITIONAL = sql`jsonb_path_exists(q.statutory, '$.componentLines[*] ? (@.epf == false).buckets[*] ? (@.bucket == "bonus" && @.amount > 0)')`;
 
-export async function runMultiRunEpfRecalcMark(url: string, opts: { apply: boolean } = { apply: false }): Promise<MultiRunRecalcReport> {
-  const owner = createDb(url);
-  try {
-    const rows = await owner.db.execute<{ tenant_id: string; company_id: string; batch_id: string; pay_period: string; run_seq: number; employment_ids: string[] }>(sql`
+/** `db` is an OWNER-role connection; the caller owns its lifetime (the CLI below opens and closes one). */
+export async function runMultiRunEpfRecalcMark(db: Db, opts: { apply: boolean } = { apply: false }): Promise<MultiRunRecalcReport> {
+  {
+    const rows = await db.execute<{ tenant_id: string; company_id: string; batch_id: string; pay_period: string; run_seq: number; employment_ids: string[] }>(sql`
       SELECT b.tenant_id, b.company_id, b.id AS batch_id, b.pay_period, b.run_seq,
              jsonb_agg(DISTINCT p.employment_id ORDER BY p.employment_id) AS employment_ids
         FROM payroll_batch b
@@ -58,7 +58,7 @@ export async function runMultiRunEpfRecalcMark(url: string, opts: { apply: boole
     let marked = 0;
     if (opts.apply && targets.length) {
       const payload = JSON.stringify(targets.map((t) => ({ batch_id: t.batchId, ids: t.employmentIds })));
-      await owner.db.transaction(async (tx) => {
+      await db.transaction(async (tx) => {
         // Merge into the existing set (never drop an employment someone else marked), keep the first mark's
         // instant, and record the same `payroll-batch.recalc-required` event the in-app writer records,
         // category 'statutory', references only.
@@ -91,8 +91,6 @@ export async function runMultiRunEpfRecalcMark(url: string, opts: { apply: boole
       });
     }
     return { apply: opts.apply, targets, marked };
-  } finally {
-    await owner.client.end();
   }
 }
 
@@ -102,11 +100,13 @@ if (process.argv[1]?.endsWith('mark-multirun-epf-recalc-69d6ed3c.ts')) {
     console.error('mark-multirun-epf-recalc-69d6ed3c requires MIGRATION_DATABASE_URL (owner role).');
     process.exit(1);
   }
-  runMultiRunEpfRecalcMark(url, { apply: process.argv.includes('--apply') })
-    .then((r) => {
+  const owner = createDb(url);
+  runMultiRunEpfRecalcMark(owner.db, { apply: process.argv.includes('--apply') })
+    .then(async (r) => {
       console.log(r.apply ? 'Marked Reprocess Required:' : 'Would mark Reprocess Required (report only):');
       for (const t of r.targets) console.log(`  company ${t.companyId} ${t.payPeriod} run #${t.runSeq} (${t.batchId}): ${t.employmentIds.length} employee(s)`);
       console.log(r.apply ? `Wrote ${r.marked} run(s).` : 'Nothing was written. Re-run with --apply to write.');
+      await owner.client.end();
       process.exit(0);
     })
     .catch((e) => { console.error(e); process.exit(1); });
