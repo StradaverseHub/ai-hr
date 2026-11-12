@@ -7,7 +7,7 @@
  */
 import type { PackTaskItem, RecruitmentTaskKind } from '../../lib/assigned-work';
 
-/** The update categories, each with its own read marker (db/migrations/4409_recruitment_tasks.sql). */
+/** The update categories, each with its own read marker (db/migrations/5209_recruitment_tasks.sql). */
 export const TASK_CATEGORIES = ['requisitions', 'offers', 'interviews', 'applications'] as const;
 export type TaskCategory = (typeof TASK_CATEGORIES)[number];
 /** The Overview Tasks panel's tabs: the live to-do list, then one tab per update category. */

@@ -9,10 +9,10 @@
  *   types, status, outcome and dates       — also the job's hiring managers (D-045);
  *   anything else                          — nobody (an interviewer, approver or referrer gets "forbidden", which the
  *                                            application page turns into no Background checks tab at all).
- * A check the removal of the candidate's personal data cancelled shows as Cancelled with `systemCancelled` (4412).
- * Every entry point runs inside `withRecruitmentTenant` as the caller, under the caller's own row security (4412): the
+ * A check the removal of the candidate's personal data cancelled shows as Cancelled with `systemCancelled` (5212).
+ * Every entry point runs inside `withRecruitmentTenant` as the caller, under the caller's own row security (5212): the
  * restricted details and files are in tables whose only policies admit the job's operators and administrators, so a
- * hiring manager's read cannot return them whatever this code asks. The service checks first for a clear refusal; the 4412
+ * hiring manager's read cannot return them whatever this code asks. The service checks first for a clear refusal; the 5212
  * guards refuse the same again (status machine, authorisation first, outcome to complete, final states, the stage rule).
  * Audit events carry ids, status codes and the file kind — never a summary, outcome, provider, reference or file name.
  * Read paths write nothing (they work in read-only transactions). Dates come from lib/hr-date (Kuala Lumpur).

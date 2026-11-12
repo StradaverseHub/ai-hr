@@ -6,8 +6,8 @@
  *      before any SQL runs (ADR-0077 D3);
  *   2. asks the database whether the caller may do this to the company or job it touches: administration
  *      (app.can_admin_recruitment_for: HR administrators and the company-scoped Recruiting Partner) or, since slice 2,
- *      the caller's per-job team role (app.can_operate_recruitment_job / app.can_review_recruitment_job, 4402);
- *   3. applies the pure rules in ./model, and the 4401–4404 guards refuse the same illegal states again.
+ *      the caller's per-job team role (app.can_operate_recruitment_job / app.can_review_recruitment_job, 5202);
+ *   3. applies the pure rules in ./model, and the 5201–5204 guards refuse the same illegal states again.
  * Row security narrows every read to what the caller may see: a team member's rows are their own jobs' and the
  * applications they interview.
  * Nothing here calls a model: every number on these screens is a count query. The AI Centre reads only
@@ -58,14 +58,14 @@ export async function assertCompanyTx(tx: Tx, companyId: string): Promise<void> 
   const [row] = await tx.execute<{ ok: boolean }>(sql`select app.can_admin_recruitment_for(${companyId}::uuid) as ok`);
   if (row?.ok !== true) throw new RecruitmentError('forbidden');
 }
-/** Refuse unless the caller administers recruitment for the company OR is on one of its job teams / interviews (4402). */
+/** Refuse unless the caller administers recruitment for the company OR is on one of its job teams / interviews (5202). */
 export async function assertSeeCompanyTx(tx: Tx, companyId: string): Promise<void> {
   if (!isUuid(companyId)) throw new RecruitmentError('forbidden');
   const [row] = await tx.execute<{ ok: boolean }>(sql`select app.can_see_recruitment_company(${companyId}::uuid) as ok`);
   if (row?.ok !== true) throw new RecruitmentError('forbidden');
 }
 export type JobLevel = 'read' | 'review' | 'operate';
-/** The caller's access to one job, from the database predicates (4402). */
+/** The caller's access to one job, from the database predicates (5202). */
 export async function jobLevelTx(tx: Tx, companyId: string, jobId: string, applicationId?: string): Promise<{ admin: boolean; operate: boolean; review: boolean; read: boolean }> {
   const [row] = await tx.execute<{ admin: boolean; operate: boolean; review: boolean; interviews: boolean }>(sql`
     select app.can_admin_recruitment_for(${companyId}::uuid) as admin, app.can_operate_recruitment_job(${companyId}::uuid, ${jobId}::uuid) as operate,
@@ -113,12 +113,12 @@ export async function recruitmentViewer(s: SessionContext, scopeIds: readonly st
       from company c
       where c.tenant_id = ${s.tenantId}::uuid and c.id = any(${uuidArray(ids)}::uuid[]) and c.archived_at is null
       order by c.legal_name, c.id`) : [];
-    // A step waits for the caller when the item's pending position names them (4403/4404 keep the round on the row).
+    // A step waits for the caller when the item's pending position names them (5203/5204 keep the round on the row).
     const [pending] = await tx.execute<{ n: number }>(sql`select
       (select count(*)::int from recruitment_offer o where o.tenant_id = ${s.tenantId}::uuid and o.status = 'pending' and o.approver_user_ids[o.pending_position] = app.current_user_id())
       + (select count(*)::int from recruitment_requisition r where r.tenant_id = ${s.tenantId}::uuid and r.approval_status = 'pending' and r.approver_user_ids[r.pending_position] = app.current_user_id()) as n`);
     // Slice 11: the caller's own open screening requests in the companies they may see (administered or on a team) — the To
-    // screen list's scope and cap. Requests close by themselves when the application or the reviewer leaves (4411), so no
+    // screen list's scope and cap. Requests close by themselves when the application or the reviewer leaves (5211), so no
     // application join is needed; the reviewer's own index bounds the read.
     const seen = rows.filter((r) => r.admin || r.team).map((r) => r.id);
     const [screening] = seen.length ? await tx.execute<{ n: number }>(sql`select count(*)::int as n from (select 1 from recruitment_screening_request q
@@ -237,7 +237,7 @@ export async function ensureRecruitmentDefaults(s: SessionContext, companyIds: r
 // ── Reads shared by several screens ─────────────────────────────────────────────────────────────────────
 
 export type UserLabel = { id: string; name: string; active: boolean; employed: boolean };
-/** Names of the company's people and recruitment administrators — for administrators and the company's job teams (4402). */
+/** Names of the company's people and recruitment administrators — for administrators and the company's job teams (5202). */
 export async function userLabelsTx(tx: Tx, companyId: string): Promise<Map<string, UserLabel>> {
   const rows = await tx.execute<{ app_user_id: string; full_name: string; active: boolean; employed: boolean }>(
     sql`select * from app.recruitment_people_labels(${companyId}::uuid)`);
@@ -372,7 +372,7 @@ export type JobList = {
 export async function listJobs(s: SessionContext, companyIds: readonly string[], filters: JobListFilters = {}): Promise<JobList> {
   if (!companyIds.length) return { rows: [], counts: { opening: 0, closed: 0 }, departments: [], recruiters: [] };
   return withRecruitmentTenant(s, async (tx) => {
-    // Administrators list every job of the company; a team member's row security lists only their own jobs (4402).
+    // Administrators list every job of the company; a team member's row security lists only their own jobs (5202).
     for (const id of companyIds) await assertSeeCompanyTx(tx, id);
     const ids = uuidArray(companyIds);
     const title = filters.title?.trim() ? `%${filters.title.trim().replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
@@ -525,7 +525,7 @@ export async function createJob(s: SessionContext, input: JobInput & { recruiter
   });
 }
 
-/** The job, if the caller may see it, checked at `level`: 'admin' administers the company; the others are per-job (4402). */
+/** The job, if the caller may see it, checked at `level`: 'admin' administers the company; the others are per-job (5202). */
 export async function jobTx(tx: Tx, s: SessionContext, jobId: string, level: 'admin' | JobLevel = 'admin') {
   if (!isUuid(jobId)) throw new RecruitmentError('not_found');
   const [job] = await tx.select().from(recruitmentJobOpening)
@@ -736,7 +736,7 @@ export async function candidateBoard(s: SessionContext, companyIds: readonly str
   if (!companyIds.length) return { tabs: [], cards: [], jobs: [], reasons: [], nextStage: {}, moveTargets: {}, tagOptions: [], screening: null };
   return withRecruitmentTenant(s, async (tx) => {
     // Administrators see the company's pipeline; a team member's row security narrows it to their jobs' applications
-    // and the applications they interview (4402). Every count below runs under the same row security.
+    // and the applications they interview (5202). Every count below runs under the same row security.
     for (const id of companyIds) await assertSeeCompanyTx(tx, id);
     const ids = uuidArray(companyIds);
     const jobs = await tx.execute<{ id: string; title: string; job_number: string; status: JobStatus; company_id: string; process_id: string }>(sql`
@@ -903,7 +903,7 @@ export async function earlierApplicationsTx(tx: Tx, candidateIds: readonly strin
 
 /**
  * Refuse a repeated application (slice 5): the same candidate and job while an earlier application is active
- * (duplicate_application) or closed within the company's window (repeat_application). The 4405 guard refuses the
+ * (duplicate_application) or closed within the company's window (repeat_application). The 5205 guard refuses the
  * same again. Another job is always allowed.
  */
 export async function assertNotRepeatedTx(tx: Tx, companyId: string, candidateId: string, jobId: string): Promise<void> {
@@ -913,7 +913,7 @@ export async function assertNotRepeatedTx(tx: Tx, companyId: string, candidateId
 }
 
 /**
- * Insert an application, mapping the 4405 repeated-application guard's refusal (SQLSTATE 23505: a concurrent add of the
+ * Insert an application, mapping the 5205 repeated-application guard's refusal (SQLSTATE 23505: a concurrent add of the
  * same candidate to the same job got there first) to duplicate_application. Shared with the talent pool's "Add to job".
  */
 export async function insertApplicationTx(tx: Tx, values: typeof recruitmentApplication.$inferInsert): Promise<string> {
@@ -1101,14 +1101,14 @@ export async function addApplication(s: SessionContext, input: AddApplicationInp
 
 /**
  * Slice 13: refuse while the application has an open blocked-list mark ("Needs an administrator's review"). The yes/no comes
- * from app.recruitment_application_needs_review, which answers only for an application the caller may read; the 4413 guards
+ * from app.recruitment_application_needs_review, which answers only for an application the caller may read; the 5213 guards
  * refuse the same move, offer step or hire for any caller (reviewRefusal maps their refusal).
  */
 export async function assertNoReviewMarkTx(tx: Tx, applicationId: string): Promise<void> {
   const [row] = await tx.execute<{ marked: boolean }>(sql`select app.recruitment_application_needs_review(${applicationId}::uuid) as marked`);
   if (row?.marked === true) throw new RecruitmentError('needs_review');
 }
-/** The 4413 review-mark guard's refusal (RAISE … CONSTRAINT recruitment_application_needs_review) as needs_review. */
+/** The 5213 review-mark guard's refusal (RAISE … CONSTRAINT recruitment_application_needs_review) as needs_review. */
 export const reviewRefusal = (e: unknown): never => {
   let cur = e as { constraint_name?: unknown; cause?: unknown } | null | undefined;
   for (let i = 0; cur && typeof cur === 'object' && i < 4; i++, cur = cur.cause as typeof cur) {
@@ -1148,7 +1148,7 @@ export async function moveApplicationTx(tx: Tx, s: SessionContext, applicationId
   // Move forward: the job's reviewers (hiring manager included). Move to a chosen stage: its operators.
   const chosen = !(targetStageId == null || targetStageId === '');
   const { app, processId } = await applicationTx(tx, s, applicationId, chosen ? 'operate' : 'review');
-  // Slice 13: a blocked-list mark holds the application where it is until an administrator resolves it (4413 refuses too).
+  // Slice 13: a blocked-list mark holds the application where it is until an administrator resolves it (5213 refuses too).
   await assertNoReviewMarkTx(tx, app.id);
   const stages = await processStagesTx(tx, processId);
   const plan = targetStageId == null || targetStageId === ''

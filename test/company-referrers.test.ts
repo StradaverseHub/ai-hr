@@ -959,7 +959,7 @@ describe('§4 only an administrator for the company can delete it', () => {
 
   it('the function is SECURITY DEFINER with a pinned search_path, and only the app role may execute it', async () => {
     const fns = [...new Set(COMPANY_REFERRERS.flatMap((r) => (r.deleteFunction ? [r.deleteFunction] : [])))];
-    // 4401 added the Recruitment setup remover (stages, processes and archive reasons, which the app role
+    // 5201 added the Recruitment setup remover (stages, processes and archive reasons, which the app role
     // cannot DELETE); it is held to exactly the same definer/search_path/execute contract.
     expect(fns).toEqual(['app.delete_unused_usage_snapshots', 'app.recruitment_delete_company_setup']);
     const rows = (await owner.db.execute(sql`

@@ -4,10 +4,10 @@
  *
  * Two audiences:
  *   - HR (withRecruitmentTenant): the company's careers page settings, its publish switch and privacy notice versions,
- *     and each job's "Show on careers page" switch (recruitment administrators only; 4408 refuses anybody else again);
+ *     and each job's "Show on careers page" switch (recruitment administrators only; 5208 refuses anybody else again);
  *     the careers application (source, message, arrival) on an application page for the job's reviewers.
  *   - The VISITOR (anonymous): the careers page, one job and the application form. No session exists, so these calls
- *     use the app role's plain connection and reach the data ONLY through 4408's three SECURITY DEFINER functions, which
+ *     use the app role's plain connection and reach the data ONLY through 5208's three SECURITY DEFINER functions, which
  *     take the address and job id (plus the form) and return only the public fields. Every unavailable page or job is the
  *     same null ("not found"); every well-formed accepted, repeated or honeypot submission is the same "received".
  * Nothing here sends a message (D-029), calls a model or scores a candidate.
@@ -145,7 +145,7 @@ export async function setCareersPublished(s: SessionContext, companyId: unknown,
   });
 }
 
-/** A job's "Show on careers page" switch: recruitment administrators of the job's company only (4408 refuses again). */
+/** A job's "Show on careers page" switch: recruitment administrators of the job's company only (5208 refuses again). */
 export async function setJobCareersPage(s: SessionContext, jobId: string, on: unknown): Promise<void> {
   const value = on === true || on === 'on' || on === 'true';
   const user = actorId(s);

@@ -10,7 +10,7 @@ import {
   validateConsentInput, validateDestruction, validateEntryInput, validatePrivacySettings, validateProfileInput, validateRestrictedInput,
 } from '../packs/recruitment/privacy-model';
 
-describe('normalisers (ASCII case folding, mirrored by app.recruitment_norm_* in 4405)', () => {
+describe('normalisers (ASCII case folding, mirrored by app.recruitment_norm_* in 5205)', () => {
   it('folds spacing and case, keeps digits only, and upper-cases ID numbers without separators', () => {
     expect(normName('  Fictional   Aisyah\tBINTI  Rahman ')).toBe('fictional aisyah binti rahman');
     expect(normEmail(' Fictional.One@Example.TEST ')).toBe('fictional.one@example.test');

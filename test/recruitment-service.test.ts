@@ -259,8 +259,8 @@ describe('case 8 — users without access cannot read or move applications', () 
         (select count(*)::int from information_schema.role_table_grants g where g.table_name = c.relname and g.grantee = 'PUBLIC') as public_grants
       from pg_class c join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'recruitment\\_%' order by c.relname`);
-    // Slices 2–4 (4402–4404) add fourteen tables, slice 5 (4405) seven, slice 7 (4407) one, slice 8 (4408) three, slice 9
-    // (4409) one, slice 10 (4410) nine, slice 11 (4411) two, slice 12 (4412) five and slice 13 (4413) seven; test/recruitment-slices-service.test.ts,
+    // Slices 2–4 (5202–5204) add fourteen tables, slice 5 (5205) seven, slice 7 (5207) one, slice 8 (5208) three, slice 9
+    // (5209) one, slice 10 (5210) nine, slice 11 (5211) two, slice 12 (5212) five and slice 13 (5213) seven; test/recruitment-slices-service.test.ts,
     // test/recruitment-candidate-privacy.test.ts, test/recruitment-referrals.test.ts, test/recruitment-careers.test.ts,
     // test/recruitment-tasks.test.ts, test/recruitment-agencies.test.ts, test/recruitment-screening.test.ts, test/recruitment-pools.test.ts and
     // test/recruitment-blocked-list.test.ts check them in detail.

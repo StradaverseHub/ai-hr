@@ -1,7 +1,7 @@
 /**
  * Recruitment slice 7 pure rules (no database): the refer form's validation, the protection-period setting and the coarse
  * status a referrer sees on My referrals (packs/recruitment/referral-model.ts). The database enforces the same limits in
- * db/migrations/4407_recruitment_referrals.sql; test/recruitment-referrals.test.ts proves that half.
+ * db/migrations/5207_recruitment_referrals.sql; test/recruitment-referrals.test.ts proves that half.
  */
 import { describe, expect, it } from 'vitest';
 import {

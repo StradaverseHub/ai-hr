@@ -3,7 +3,7 @@
  * clock, no model.
  *
  * packs/recruitment/pools.ts and packs/recruitment/blocked-list.ts read under the viewer's own row security and hand rows to
- * these helpers; nothing here decides who may see or do what (the database does, 4413). Pools nest two levels and share with
+ * these helpers; nothing here decides who may see or do what (the database does, 5213). Pools nest two levels and share with
  * all recruiters or listed users (D-050); the blocked list marks matching applications for an administrator's review (D-049).
  */
 import { RecruitmentError, isUuid } from './model';
@@ -65,7 +65,7 @@ export type PoolRow = { id: string; parentId: string | null; name: string };
 export type PoolNode<T extends PoolRow> = T & { children: T[] };
 /**
  * The pool list as a two-level tree: top-level pools by name, each with its sub-pools by name. A sub-pool whose pool the
- * viewer cannot see does not happen (a sub-pool follows its pool's sharing, 4413); one would be listed at the top level.
+ * viewer cannot see does not happen (a sub-pool follows its pool's sharing, 5213); one would be listed at the top level.
  */
 export function poolTree<T extends PoolRow>(rows: readonly T[]): PoolNode<T>[] {
   const byName = (a: T, b: T) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }) || a.id.localeCompare(b.id);

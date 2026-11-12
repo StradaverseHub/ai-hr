@@ -687,7 +687,7 @@ describe('case 79 — the reviewer\'s to-do and the recruiter\'s update', () => 
     const t = await team();
     const stage = (await stagesOf(t.jobId))[0].id;
     // Volume through the owner (past the guards): 680 applications; hm1 asked on all of them; 3,000 open requests of 25 other
-    // reviewers; then 620 of hm1's applications are archived for real (the 4411 trigger closes their requests).
+    // reviewers; then 620 of hm1's applications are archived for real (the 5211 trigger closes their requests).
     await owner.client.begin(async (tx) => {
       await tx`set local session_replication_role = replica`;
       await tx`insert into recruitment_candidate (id, tenant_id, company_id, full_name, created_by_user_id, updated_by_user_id)
@@ -705,7 +705,7 @@ describe('case 79 — the reviewer\'s to-do and the recruiter\'s update', () => 
     });
     const [reason] = (await recruitmentSettings(admin, base.companyId)).reasons;
     await owner.client.begin(async (tx) => {
-      // Not replica: the application guard and the 4411 closing trigger run, as for an archive through the service.
+      // Not replica: the application guard and the 5211 closing trigger run, as for an archive through the service.
       await tx`update recruitment_application set state = 'archived', archive_reason_id = ${reason.id}::uuid, stage_left_at_archive = current_stage_id
         where id in (select ('00000000-0000-4000-9000-' || lpad(g::text, 12, '0'))::uuid from generate_series(61, 680) g)`;
       await tx`analyze recruitment_screening_request`;

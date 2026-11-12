@@ -86,6 +86,14 @@ protection period (4407, idx 3807). The whole-repo type check is fixed on this b
 compiler split (cherry-picked). Decisions D-020…D-024 wait for the owner (no rewards, no notifications, generic
 refusals with an attempt cap, 20 attempts a day). The migration renumber warning above now covers 4400–4407.
 
+## Update — main merged, migrations renumbered (2026-11-12)
+
+`origin/main` (`2a2495919`) is merged into this branch, and the block moved above main's watermark with unchanged SQL
+bytes: `44NN_<name>` → `52NN_<name>`, idx 38NN → 46NN, when 17933300041NN → 17933300049NN (NN = 00–13; for example
+`4401_recruitment_core` is now `5201_recruitment_core`). Earlier sections and
+the other files in this folder keep the old numbers as history; the full mapping is the top entry of
+`docs/MIGRATION-ALLOCATION.md`. A local database migrated with the old numbers must be rebuilt, not upgraded.
+
 ## Next actions, in order (original plan)
 
 1. Resolve B-001: the owner signs in to a Moka **test tenant** in the built-in browser pane. Then use read-only observation (`read_page`, screenshots, network list) per role and journey, recording EV-0xx entries.

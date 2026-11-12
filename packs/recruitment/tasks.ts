@@ -3,7 +3,7 @@
  * outside the pack ONLY through ./service.
  *
  * Everything here is COMPUTED LIVE from the current recruitment records (D-031). Every read runs inside
- * `withRecruitmentTenant` as the viewer, under the viewer's own row security (4401–4408): there is no definer function
+ * `withRecruitmentTenant` as the viewer, under the viewer's own row security (5201–5208): there is no definer function
  * and no owner read, so a to-do or an update can only name a job, requisition, offer or candidate the viewer could open
  * on the HR pages already, and it disappears the moment the action is done, the viewer loses access or the candidate is
  * removed (the candidate's name is then not read; the page shows the neutral label). The audience filters below
@@ -11,7 +11,7 @@
  * requester) only NARROW what row security returns; they never widen it.
  *
  * The only stored state is the viewer's own "read up to" time per company and update category
- * (public.recruitment_task_read_marker, 4409, D-032).
+ * (public.recruitment_task_read_marker, 5209, D-032).
  *
  * Cost. The bell provider (`pendingRecruitmentTasks`) runs on every authenticated render (and My tasks): it reads only the
  * viewer's personal to-dos, starting from the viewer's own rows through indexes, under a BELL_TIMEOUT_MS statement
@@ -142,7 +142,7 @@ async function personalTodosTx(tx: Tx, s: SessionContext, scope: readonly string
     union all
     -- Slice 11: the viewer's OPEN screening requests, through the reviewer's own index; row security admits them only while the
     -- viewer is a hiring manager of the job. Gone once answered with Advance or Reject, withdrawn, or closed by itself when the
-    -- application is archived or hired or the reviewer leaves the job's hiring managers (4411). The note is not read.
+    -- application is archived or hired or the reviewer leaves the job's hiring managers (5211). The note is not read.
     (select 'screening', q.id, q.company_id, q.job_id, j.title, j.job_number,
        case when c.destroyed_at is null then c.full_name end, coalesce(c.destroyed_at is not null, false), null, null, null, q.sent_at, null, null, null
      from recruitment_screening_request q
@@ -156,7 +156,7 @@ async function personalTodosTx(tx: Tx, s: SessionContext, scope: readonly string
     -- when the check was added. The inner read walks the recorder's partial index in order and keeps a row only while the
     -- viewer still operates its job (the predicate is evaluated on each row the walk reaches, inside the LIMIT), so checks on
     -- jobs the recorder no longer runs are skipped and never crowd out real ones; the walk stops at TODO_LIMIT kept rows. A
-    -- removed candidate's open checks were cancelled by the removal (4412), so they are not in the index at all. Only those
+    -- removed candidate's open checks were cancelled by the removal (5212), so they are not in the index at all. Only those
     -- few rows are then joined (one primary-key probe each). Only the check's own columns are read — never its restricted
     -- details.
     (select 'backgroundCheckAuthorisation', b.id, b.company_id, b.job_id, j.title, j.job_number, c.full_name, false, null, null, null, b.created_at, null, null,
@@ -395,7 +395,7 @@ function updateSource(s: SessionContext, category: TaskCategory, companies: read
   }
 }
 
-/** The companies of `companyIds` whose recruitment the viewer may see (4402), in the order given. */
+/** The companies of `companyIds` whose recruitment the viewer may see (5202), in the order given. */
 async function visibleCompaniesTx(tx: Tx, companyIds: readonly string[]): Promise<string[]> {
   if (!companyIds.length) return [];
   const rows = await tx.execute<{ id: string }>(sql`select c.id from unnest(${uuidArray(companyIds)}::uuid[]) with ordinality c(id, n)

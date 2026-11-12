@@ -1,3 +1,40 @@
+# Recruitment block renumbered — 12 November 2026 MYT (unapplied)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` merged `origin/main` at `2a2495919` (`origin/alpha` was the same
+commit at fetch). Main's journal ends at idx 4527 / when 1793330004827 (`5127_import_log_actor_labels`), so the
+Recruitment block's earlier reservations below (`4400`–`4413` at idx 3800–3813 / when 1793330004100–1793330004113)
+sat below the applied watermark of every installation that has main's later entries: drizzle compares each entry's
+`when` with the latest applied `created_at` and silently skips a lower one. The block is renumbered above main's
+maximum, in its original order, with every SQL file's bytes unchanged (`git mv` only); the journal keeps main's
+entries byte-for-byte and appends the block after them. The earlier entries below are history and are not rewritten.
+
+| Old file | Old idx | Old when | New file | New idx | New when |
+| --- | --- | --- | --- | --- | --- |
+| `4400_recruiting_partner_role` | idx 3800 | when 1793330004100 | `5200_recruiting_partner_role` | idx 4600 | when 1793330004900 |
+| `4401_recruitment_core` | idx 3801 | when 1793330004101 | `5201_recruitment_core` | idx 4601 | when 1793330004901 |
+| `4402_recruitment_team_interviews` | idx 3802 | when 1793330004102 | `5202_recruitment_team_interviews` | idx 4602 | when 1793330004902 |
+| `4403_recruitment_offers_hire_handoff` | idx 3803 | when 1793330004103 | `5203_recruitment_offers_hire_handoff` | idx 4603 | when 1793330004903 |
+| `4404_recruitment_requisitions` | idx 3804 | when 1793330004104 | `5204_recruitment_requisitions` | idx 4604 | when 1793330004904 |
+| `4405_recruitment_candidate_privacy` | idx 3805 | when 1793330004105 | `5205_recruitment_candidate_privacy` | idx 4605 | when 1793330004905 |
+| `4406_recruitment_report_indexes` | idx 3806 | when 1793330004106 | `5206_recruitment_report_indexes` | idx 4606 | when 1793330004906 |
+| `4407_recruitment_referrals` | idx 3807 | when 1793330004107 | `5207_recruitment_referrals` | idx 4607 | when 1793330004907 |
+| `4408_recruitment_careers_page` | idx 3808 | when 1793330004108 | `5208_recruitment_careers_page` | idx 4608 | when 1793330004908 |
+| `4409_recruitment_tasks` | idx 3809 | when 1793330004109 | `5209_recruitment_tasks` | idx 4609 | when 1793330004909 |
+| `4410_recruitment_agencies` | idx 3810 | when 1793330004110 | `5210_recruitment_agencies` | idx 4610 | when 1793330004910 |
+| `4411_recruitment_screening` | idx 3811 | when 1793330004111 | `5211_recruitment_screening` | idx 4611 | when 1793330004911 |
+| `4412_recruitment_background_checks` | idx 3812 | when 1793330004112 | `5212_recruitment_background_checks` | idx 4612 | when 1793330004912 |
+| `4413_recruitment_talent_pools_blocked_list` | idx 3813 | when 1793330004113 | `5213_recruitment_talent_pools_blocked_list` | idx 4613 | when 1793330004913 |
+
+Survey (read-only, after `git fetch origin main alpha`): 4,140 remote refs (2,904 distinct commits, 449 distinct
+committed journal blobs, 365 distinct committed allocation-document blobs) and the working trees of all 289 registered
+worktrees. No ref or worktree has a `52NN_` migration file, a journal entry at idx 4600–4699 or when
+1793330004900–1793330004999, or an allocation claim on them; allocation documents mention 1793330004999 only as the
+upper end of a free range. `test/migration-installed-watermark.test.ts` reserves 5100–5112 and 5122 (when up to
+1793330004822) above staging's watermark 1793330004790; this block sits above those and above main's maximum. The
+block is unapplied outside throwaway and CI databases and the branch author's local render database (which must be
+rebuilt, not upgraded: its ledger holds the old timestamps). Recheck peer claims and the ordered applied ledger of the
+target before admission. The renumber grants no installation authority.
+
 # Recruitment slice 13 — 12 November 2026 MYT (unapplied)
 
 Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after its slice 12 entry,

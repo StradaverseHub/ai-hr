@@ -2,7 +2,7 @@
  * Recruitment slice 10 rules — agencies and headhunters. Pure, deterministic and client-safe: no database, no clock, no
  * model. Dates are Kuala Lumpur calendar days (yyyy-mm-dd) handed in by the caller from lib/hr-date.
  *
- * db/migrations/4410_recruitment_agencies.sql enforces the same rules independently (usability on the Kuala Lumpur date,
+ * db/migrations/5210_recruitment_agencies.sql enforces the same rules independently (usability on the Kuala Lumpur date,
  * the submission date, the outcome of the duplicate and protection check). Nothing here calculates a fee (D-037): the fee
  * rate is a percentage people type and read.
  */
@@ -41,7 +41,7 @@ export const CONTRACT_EXPIRY_NOTICE_DAYS = 30;
 export const CONTRACT_FILE_MAX_BYTES = CANDIDATE_FILE_MAX_BYTES;
 export const CONTRACT_FILE_ACCEPT = '.pdf,application/pdf';
 /** At most this many agency submission ATTEMPTS (stored, refused, repeated or over the limit) per recorder per Kuala Lumpur
- *  date; the database counts them (4410), so refusals cannot be used to probe without bound. */
+ *  date; the database counts them (5210), so refusals cannot be used to probe without bound. */
 export const AGENCY_DAILY_LIMIT = 50;
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;

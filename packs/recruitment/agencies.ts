@@ -7,7 +7,7 @@
  * RECORDED BY HR on the agency's behalf by the job's recruiter and assistants (and administrators). Nobody at the agency
  * signs in and nothing is sent to anybody.
  *
- * Every entry point runs inside `withRecruitmentTenant` as the caller, under the caller's own row security (4410). The
+ * Every entry point runs inside `withRecruitmentTenant` as the caller, under the caller's own row security (5210). The
  * ONE cross-candidate read is app.recruitment_agency_submission_check (a definer that answers an outcome, and match ids
  * to administrators only); the database's submission guard computes that outcome again, so the service's answer is
  * never trusted. The fee rate and the contract file are read from recruitment_agency_contract_terms, whose only policy
@@ -479,7 +479,7 @@ export async function jobAgencyContracts(s: SessionContext, jobId: string): Prom
   });
 }
 
-/** Release a job to a contract usable today by the actor (administrators and the job's recruiter; 4410 refuses again). */
+/** Release a job to a contract usable today by the actor (administrators and the job's recruiter; 5210 refuses again). */
 export async function assignAgencyContract(s: SessionContext, jobId: string, contractId: unknown, requirements?: unknown): Promise<{ id: string }> {
   if (!isUuid(contractId)) throw new RecruitmentError('contract_unavailable');
   const req = validateRequirements(requirements);
@@ -552,7 +552,7 @@ export async function agencySubmissionOptions(s: SessionContext, jobId: string):
   });
 }
 
-/** The cross-candidate check (4410): the outcome, and match ids for an administrator only. Takes the identity locks and
+/** The cross-candidate check (5210): the outcome, and match ids for an administrator only. Takes the identity locks and
  *  always counts as one of the caller's daily attempts. */
 async function checkTx(tx: Tx, jobId: string, contractId: string, v: Pick<ValidSubmission, 'fullName' | 'email' | 'mobile' | 'idNumber'>) {
   const [row] = await tx.execute<{ outcome: CheckOutcome; match_ids: string[] | null }>(sql`
@@ -561,7 +561,7 @@ async function checkTx(tx: Tx, jobId: string, contractId: string, v: Pick<ValidS
   return { outcome: row.outcome, matchIds: row.match_ids };
 }
 
-/** The same company + identity keys as the check (4407/4408/4410), for a write that does not run the check. */
+/** The same company + identity keys as the check (5207/5208/5210), for a write that does not run the check. */
 async function lockIdentityTx(tx: Tx, s: SessionContext, companyId: string, v: { email: string | null; mobile: string | null; idNumber: string | null }) {
   const email = normEmail(v.email); const mobile = normMobile(v.mobile); const id = normIdNumber(v.idNumber);
   const prefix = `recruitment-referral:${s.tenantId}:${companyId}:`;
@@ -868,7 +868,7 @@ export async function rejectAgencySubmission(s: SessionContext, submissionId: un
 }
 
 /**
- * Remove the personal data of a REFUSED or REJECTED submission (administrators; 4410 app.recruitment_clear_agency_submission):
+ * Remove the personal data of a REFUSED or REJECTED submission (administrators; 5210 app.recruitment_clear_agency_submission):
  * name, contacts, ID number, salaries, comments, the review reason and any held résumé. Job, contract, consultant, dates and
  * outcome stay. Needs the explicit confirmation. An event records it without personal data.
  */
@@ -913,7 +913,7 @@ export async function agencySubmissionsDue(s: SessionContext, companyId: string,
 
 export type ApplicationAgency = { agencyName: string; contractName: string | null; consultantName: string | null; submittedOn: string | null; comments: string | null };
 /** The agency behind an application, for its readers: the agency name; contract, consultant, date and comments for the
- *  job's operators and administrators only (4410 app.recruitment_application_agency). Null when not from an agency. */
+ *  job's operators and administrators only (5210 app.recruitment_application_agency). Null when not from an agency. */
 export async function applicationAgency(s: SessionContext, applicationId: unknown): Promise<ApplicationAgency | null> {
   if (!isUuid(applicationId)) return null;
   return withRecruitmentTenant(s, async (tx) => {

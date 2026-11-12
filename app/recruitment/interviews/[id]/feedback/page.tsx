@@ -10,7 +10,7 @@ import { recruitmentErrorText, recruitmentViewerAccess, textareaCls } from '../.
 /**
  * Recruitment › Interview feedback. Only a named interviewer opens it, and only for their OWN scorecard: each
  * criterion is rated 1–5 with optional notes (≤ 500 words), then the overall result and an overview. Once the
- * company's edit lock applies, submitted feedback is shown read-only. The service and the 4402 guard refuse the same.
+ * company's edit lock applies, submitted feedback is shown read-only. The service and the 5202 guard refuse the same.
  */
 export default async function InterviewFeedbackPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ problem?: string }> }) {
   await requireModule('recruitment');

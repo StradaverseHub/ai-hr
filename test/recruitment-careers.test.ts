@@ -31,21 +31,21 @@ const careersPublicPage = async (...a: Parameters<typeof pageRead>) => { const r
 const careersPublicJob = async (...a: Parameters<typeof jobRead>) => { const r = await jobRead(...a); if (r === 'limited') throw new Error('read budget'); return r; };
 /** Reviewed SECURITY DEFINER functions that read job openings or careers sites/notices (see the residual-risk guard). */
 const REVIEWED_DEFINERS: string[] = [
-  // 4410: each reads one job opening by id in the caller's tenant (the check refuses unless the caller operates that job;
+  // 5210: each reads one job opening by id in the caller's tenant (the check refuses unless the caller operates that job;
   // the submission guard checks the job's status for a row the caller may write).
   'app.recruitment_agency_check(uuid,uuid,text,text,text,text,uuid,boolean)',
-  // 4408: the careers functions themselves — each returns only the spec's public fields.
+  // 5208: the careers functions themselves — each returns only the spec's public fields.
   'app.recruitment_careers_job(text,uuid)',
   'app.recruitment_careers_page(text,text,text,text,integer)',
   'app.recruitment_careers_published(uuid,uuid)',
   'app.recruitment_careers_site_at(text)',
   'app.recruitment_careers_submit(text,uuid,text,text,text,text,text,integer,boolean,text,text,bytea)',
-  // 4401–4405/4408: deletes only the caller's tenant + company setup (checks job openings exist there first).
+  // 5201–5205/5208: deletes only the caller's tenant + company setup (checks job openings exist there first).
   'app.recruitment_delete_company_setup(uuid)',
   'app.recruitment_guard_agency_submission()',
-  // 4411: reads one job opening by id in the caller's tenant, and returns only hiring-manager user ids to the job's operators.
+  // 5211: reads one job opening by id in the caller's tenant, and returns only hiring-manager user ids to the job's operators.
   'app.recruitment_job_hiring_managers(uuid)',
-  // 4407: every job read filters by the caller's tenant (and the referral marker's companies, or the referrer's own rows).
+  // 5207: every job read filters by the caller's tenant (and the referral marker's companies, or the referrer's own rows).
   'app.recruitment_my_referrals()',
   'app.recruitment_referral_portal(uuid)',
   'app.recruitment_submit_referral(uuid,text,text,text,text,boolean,text,text,bytea)',
@@ -956,7 +956,7 @@ describe('a source that has used its hourly submissions is refused before its bo
 
 describe('residual-risk guard: owner-run functions that can see public careers rows', () => {
   it('pins every SECURITY DEFINER function that reads job openings, careers sites or careers notices, so a new one forces a review', async () => {
-    // The owner-only public policies (4408) expose every column of an Open job flagged for a published careers page, and
+    // The owner-only public policies (5208) expose every column of an Open job flagged for a published careers page, and
     // the published sites and their notices, to any code running as the owner. Each function listed here was reviewed
     // to filter by tenant and company itself (or to be a careers function returning only public fields). Adding one
     // fails this test: review it for that before adding it to the list.

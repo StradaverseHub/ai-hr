@@ -1,7 +1,7 @@
 /**
  * Recruitment slice 5 — candidate records and privacy. Reached from outside the pack ONLY through ./service.
  *
- * Every entry point runs inside `withRecruitmentTenant` and re-asks the database (4405 predicates) who the caller is to
+ * Every entry point runs inside `withRecruitmentTenant` and re-asks the database (5205 predicates) who the caller is to
  * THIS candidate:
  *   read the profile and resume          — anyone who may read one of the candidate's applications;
  *   tags                                 — read by reviewers (administrators, recruiter, assistant, hiring manager),
@@ -46,7 +46,7 @@ const PROFILE_COLUMNS = {
   source: recruitmentCandidate.source, destroyedAt: recruitmentCandidate.destroyedAt,
 };
 
-/** The candidate, if the caller may see them (row security), and the caller's candidate-level access (4405 predicates). */
+/** The candidate, if the caller may see them (row security), and the caller's candidate-level access (5205 predicates). */
 async function candidateTx(tx: Tx, s: SessionContext, candidateId: unknown) {
   if (!isUuid(candidateId)) throw new RecruitmentError('not_found');
   const [c] = await tx.select(PROFILE_COLUMNS).from(recruitmentCandidate)
@@ -162,7 +162,7 @@ export async function destroyCandidates(s: SessionContext, companyId: unknown, c
     const settings = await privacySettingsTx(tx, companyId);
     // Take every candidate's lock (exclusive, in a fixed order so two removals never deadlock) BEFORE any retention
     // check: a consent or file written concurrently either commits first and is seen below, or waits and then finds the
-    // record removed (the 4405 guards take the same lock shared). Never row FOR SHARE: that is filtered by update policies.
+    // record removed (the 5205 guards take the same lock shared). Never row FOR SHARE: that is filtered by update policies.
     const ids = [...v.ids].sort();
     for (const id of ids) await tx.execute(sql`select pg_advisory_xact_lock(app.recruitment_candidate_lock_key(${s.tenantId}::uuid, ${id}::uuid))`);
     for (const id of ids) {

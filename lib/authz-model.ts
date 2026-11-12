@@ -118,7 +118,7 @@ export function isOnehrOnlyPerformanceAdmin(s: SessionContext): boolean {
 
 /**
  * ADR-0049 §2 — who administers Recruitment: the admin roles and the company-scoped Recruiting Partner. The TS
- * mirror of app.can_admin_recruitment_for (4401), a UX gate only: the recruitment service re-asks the database
+ * mirror of app.can_admin_recruitment_for (5201), a UX gate only: the recruitment service re-asks the database
  * per company, and row security on every recruitment table is the backstop. Hiring managers and interviewers
  * are per-job team memberships, not grants, and are deliberately absent. Resolved against `s.grants`.
  */

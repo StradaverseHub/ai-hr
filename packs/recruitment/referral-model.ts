@@ -1,7 +1,7 @@
 /**
  * Recruitment slice 7 rules — employee referrals. Pure, deterministic and client-safe: no database, no clock, no model.
  *
- * db/migrations/4407_recruitment_referrals.sql enforces the same limits independently (the reason length, the agreement,
+ * db/migrations/5207_recruitment_referrals.sql enforces the same limits independently (the reason length, the agreement,
  * e-mail or mobile, the daily limit and the protection period); this file turns form text into a referral and an
  * application's state into the coarse status a referrer may see. Nothing here calculates a reward (D-021).
  */

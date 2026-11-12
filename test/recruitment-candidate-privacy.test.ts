@@ -536,7 +536,7 @@ describe('case 26 — destruction', () => {
     // No sentinel anywhere in any recruitment table (rows as text; file bytes searched as bytes) or in any event.
     const tables = await owner.db.execute<{ relname: string }>(sql`select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'recruitment\\_%' order by c.relname`);
-    expect(tables.length).toBe(58); // slice 7 (4407) adds recruitment_referral; slice 8 (4408) the careers site, notice and application; slice 9 (4409) the read markers; slice 10 (4410) nine agency tables; slice 11 (4411) two screening tables; slice 12 (4412) five background check tables; slice 13 (4413) seven pool and blocked-list tables
+    expect(tables.length).toBe(58); // slice 7 (5207) adds recruitment_referral; slice 8 (5208) the careers site, notice and application; slice 9 (5209) the read markers; slice 10 (5210) nine agency tables; slice 11 (5211) two screening tables; slice 12 (5212) five background check tables; slice 13 (5213) seven pool and blocked-list tables
     for (const { relname } of tables) {
       const [hit] = await owner.db.execute<{ n: number }>(sql`select count(*)::int as n from ${sql.identifier(relname)} r where to_jsonb(r.*)::text ilike ${`%${SENTINEL}%`}`);
       expect(hit.n, `${relname} still holds personal data`).toBe(0);
@@ -581,7 +581,7 @@ describe('case 26 — destruction waits for a concurrent write to the same candi
     expect((await dueForDestruction(admin, base.companyId)).due.map((d) => d.candidateId)).toEqual([t.candY]);
     let settled = false;
     let destroy!: Promise<string>;
-    // An in-flight consent write to Y: its guard takes the candidate lock shared (as every 4405 guard does) and holds it
+    // An in-flight consent write to Y: its guard takes the candidate lock shared (as every 5205 guard does) and holds it
     // until it commits. The removal starts while it is in flight and must wait for it, then see it.
     await owner.client.begin(async (tx) => {
       await tx`select set_config('app.user_id', ${t.recruiter.userId!}, true), set_config('app.tenant_id', ${base.tenantId}, true)`;

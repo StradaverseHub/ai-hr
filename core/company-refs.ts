@@ -315,10 +315,10 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'lc_staff', column: 'company_id', disposition: 'other', note: 'A user named as Onboarding & IT module staff for this company (ADR-0095). Access is removed deliberately, never as a side effect.' },
   { table: 'it_asset', column: 'company_id', disposition: 'other', note: 'An IT asset registered to this company (ADR-0095), with its holder history. The register is a record of who held what.' },
 
-  // ADR-0080 D10 — Recruitment (4401). Jobs and candidates are hiring history: a company with either refuses.
+  // ADR-0080 D10 — Recruitment (5201). Jobs and candidates are hiring history: a company with either refuses.
   { table: 'recruitment_job_opening', column: 'company_id', disposition: 'other', note: 'A job opening with its MJ number, team and applications. Close it; the history stays with the company.' },
   { table: 'recruitment_candidate', column: 'company_id', disposition: 'other', note: 'A candidate who applied to this company, and their application history.' },
-  // 4404 — a job requisition (HC number, vacancies, approval history) is hiring history like a job opening.
+  // 5204 — a job requisition (HC number, vacancies, approval history) is hiring history like a job opening.
   { table: 'recruitment_requisition', column: 'company_id', disposition: 'other', note: 'A job requisition with its HC number, approvals and associated jobs. Complete or cancel it; the history stays with the company.' },
 
   // ── config: deleted with the company, in this order ──────────────────────────────────────────────────
@@ -363,23 +363,23 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
     note: 'Nightly platform usage. All-zero rows (five on ABC Comapny) are deleted and counted on company.deleted — the plan\'s decision; migration 0511\'s function removes exactly those. A non-zero row is evidence and refuses. Composite key with tenant_id.',
   },
 
-  // Recruitment setup (4401): editable defaults seeded when Recruitment is first opened. Removed by one definer
+  // Recruitment setup (5201): editable defaults seeded when Recruitment is first opened. Removed by one definer
   // function (the app role has no DELETE here and default reasons refuse deletion), only when no job opening or
   // candidate exists — those refuse the delete first, above.
-  // 4402/4403 — further setup the same function removes first: approval flows, the offer-field set, the settings row
+  // 5202/5203 — further setup the same function removes first: approval flows, the offer-field set, the settings row
   // and evaluation forms. Only interviews, scorecards and offers point at forms and fields, and those need a job opening.
-  // 4405 — the tag catalogue, removed first (tags before their groups). A candidate's tags need a candidate, which refuses above.
+  // 5205 — the tag catalogue, removed first (tags before their groups). A candidate's tags need a candidate, which refuses above.
   { table: 'recruitment_tag', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s manual candidate tags. Before their groups; only a candidate (which refuses the delete) carries one.' },
   { table: 'recruitment_tag_group', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s candidate tag groups. After the tags that belong to them.' },
   { table: 'recruitment_approval_step', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s offer and requisition approval flows (ordered approvers).' },
   { table: 'recruitment_offer_field', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s offer-field set. Offer values point at it only through an offer, which needs a job opening.' },
   { table: 'recruitment_company_setting', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s recruitment settings row (feedback visibility and lock, offer validity and automation).' },
-  // 4408 — the careers page and its privacy notice versions. A consent naming a version needs a candidate, which refuses above.
+  // 5208 — the careers page and its privacy notice versions. A consent naming a version needs a candidate, which refuses above.
   { table: 'recruitment_careers_site', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s public careers page settings (address, display name, headline, introduction, published).' },
   { table: 'recruitment_careers_notice', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s careers privacy notice versions. Only a consent (which needs a candidate) names one.' },
-  // 4409 — users' "read up to" times for the company's recruitment updates: per-user display state, no candidate data.
+  // 5209 — users' "read up to" times for the company's recruitment updates: per-user display state, no candidate data.
   { table: 'recruitment_task_read_marker', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Users\' own "read up to" times for the company\'s recruitment updates. Nothing references them.' },
-  // 4410 — the agency setup, children first: tag links, consultants and contracts (their terms and access lists cascade), then
+  // 5210 — the agency setup, children first: tag links, consultants and contracts (their terms and access lists cascade), then
   // agencies and agency tags. Assignments and submissions point at contracts and consultants only through a job opening,
   // which refuses the delete above.
   { table: 'recruitment_agency_tag_link', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Tags on the company\'s agencies. Before the agencies and the tags they join.' },
@@ -387,18 +387,18 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'recruitment_agency_contract', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Agency contracts, with their fee terms and access lists (ON DELETE CASCADE). Before their agencies.' },
   { table: 'recruitment_agency', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s agencies (headhunters, RPO providers). After their contracts and tag links.' },
   { table: 'recruitment_agency_tag', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s agency tags. After the tag links that use them.' },
-  // 4411 — screening requests and their answers (answers first). Both need an application, whose job opening refuses the delete
+  // 5211 — screening requests and their answers (answers first). Both need an application, whose job opening refuses the delete
   // above, so the remover finds none; they are declared so every company table is covered.
   { table: 'recruitment_screening_answer', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Hiring managers\' screening answers. Before the requests they answer; only exist with an application, whose job opening refuses the delete first.' },
   { table: 'recruitment_screening_request', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Screening requests sent to hiring managers. After their answers; only exist with an application, whose job opening refuses the delete first.' },
-  // 4412 — background checks, children first (files, details, type links, checks), then the company's check types. All but the
+  // 5212 — background checks, children first (files, details, type links, checks), then the company's check types. All but the
   // types need an application, whose job opening refuses the delete above; the types are real company setup.
   { table: 'recruitment_background_check_file', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Background check authorisation files and reports. Before their checks; only exist with an application, whose job opening refuses the delete first.' },
   { table: 'recruitment_background_check_detail', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Restricted background check details (provider, reference, authorisation, summary). Before their checks; only exist with an application.' },
   { table: 'recruitment_background_check_type_link', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The types of a background check. Before the checks and the types they join; only exist with an application.' },
   { table: 'recruitment_background_check', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Background checks on applications. After their files, details and type links; only exist with an application, whose job opening refuses the delete first.' },
   { table: 'recruitment_background_check_type', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s background check types (administrators). After the type links that use them.' },
-  // 4413 — the blocked list (history, review marks, restricted values, entries: each needs a candidate, which refuses the delete
+  // 5213 — the blocked list (history, review marks, restricted values, entries: each needs a candidate, which refuses the delete
   // above), then the custom talent pools (memberships need a candidate too; shares, sub-pools and pools are company setup).
   { table: 'recruitment_blocked_history', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Blocked-list history (ids, action, actor, time). Before the entries; only exists with a candidate, which refuses the delete first.' },
   { table: 'recruitment_application_review_mark', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Blocked-list review marks on applications. Before the entries; only exist with an application, whose job opening refuses the delete first.' },
@@ -486,7 +486,7 @@ export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
   { table: 'recruitment_offer_value', column: 'field_id', references: 'recruitment_offer_field', effect: 'blocks', note: 'An offer value keeps its field.' },
   { table: 'recruitment_tag', column: 'group_id', references: 'recruitment_tag_group', effect: 'blocks', note: 'A tag keeps its group; the company delete removes tags before groups.' },
   { table: 'recruitment_candidate_tag', column: 'tag_id', references: 'recruitment_tag', effect: 'blocks', note: 'A candidate keeps their tags; a candidate refuses the company delete first.' },
-  // 4410 — inside the agency setup (deleted in order by app.recruitment_delete_company_setup) and from job-side rows, which need
+  // 5210 — inside the agency setup (deleted in order by app.recruitment_delete_company_setup) and from job-side rows, which need
   // a job opening and so refuse the delete first.
   { table: 'recruitment_agency_tag_link', column: 'agency_id', references: 'recruitment_agency', effect: 'blocks', note: 'A tag link keeps its agency; the company delete removes links first.' },
   { table: 'recruitment_agency_tag_link', column: 'tag_id', references: 'recruitment_agency_tag', effect: 'blocks', note: 'A tag in use is kept; the company delete removes links before tags.' },
@@ -497,15 +497,15 @@ export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
   { table: 'recruitment_job_agency_contract', column: 'contract_id', references: 'recruitment_agency_contract', effect: 'blocks', note: 'A job released to a contract keeps it; a job opening refuses the company delete first.' },
   { table: 'recruitment_agency_submission', column: 'contract_id', references: 'recruitment_agency_contract', effect: 'blocks', note: 'An agency submission keeps its contract; it needs a job opening, which refuses the company delete first.' },
   { table: 'recruitment_agency_submission', column: 'consultant_id', references: 'recruitment_agency_consultant', effect: 'blocks', note: 'An agency submission keeps its consultant; it needs a job opening, which refuses the company delete first.' },
-  // 4411 — an answer keeps its request; the company delete removes answers before requests.
+  // 5211 — an answer keeps its request; the company delete removes answers before requests.
   { table: 'recruitment_screening_answer', column: 'request_id', references: 'recruitment_screening_request', effect: 'blocks', note: 'A screening answer keeps its request; the company delete removes answers first.' },
-  // 4412 — a background check's files, details and type links keep their check; a type link keeps its type. The company delete
+  // 5212 — a background check's files, details and type links keep their check; a type link keeps its type. The company delete
   // removes the children first.
   { table: 'recruitment_background_check_file', column: 'check_id', references: 'recruitment_background_check', effect: 'blocks', note: 'A background check file keeps its check; the company delete removes files first.' },
   { table: 'recruitment_background_check_detail', column: 'check_id', references: 'recruitment_background_check', effect: 'blocks', note: 'A background check\'s details keep their check; the company delete removes details first.' },
   { table: 'recruitment_background_check_type_link', column: 'check_id', references: 'recruitment_background_check', effect: 'blocks', note: 'A background check keeps its types; the company delete removes the links first.' },
   { table: 'recruitment_background_check_type_link', column: 'type_id', references: 'recruitment_background_check_type', effect: 'blocks', note: 'A type in use is kept (disable it instead); the company delete removes the links before the types.' },
-  // 4413 — blocked-list children keep their entry; pool memberships and shares go with their pool (ON DELETE CASCADE); a sub-pool
+  // 5213 — blocked-list children keep their entry; pool memberships and shares go with their pool (ON DELETE CASCADE); a sub-pool
   // keeps its parent (the company delete removes sub-pools first).
   { table: 'recruitment_blocked_history', column: 'entry_id', references: 'recruitment_blocked_entry', effect: 'blocks', note: 'Blocked-list history keeps its entry; the company delete removes history first.' },
   { table: 'recruitment_application_review_mark', column: 'entry_id', references: 'recruitment_blocked_entry', effect: 'blocks', note: 'A review mark keeps its entry; the company delete removes marks first.' },

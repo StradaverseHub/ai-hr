@@ -75,7 +75,7 @@ export {
 } from './referral-model';
 export type { ReferralStatus, ReferralRefusal, ReferralProgress } from './referral-model';
 // Slice 8 — the public careers page and online applications: HR's settings, notice versions and job switch; the
-// anonymous page, job and submission (through 4408's definer functions only); the careers record on an application.
+// anonymous page, job and submission (through 5208's definer functions only); the careers record on an application.
 export {
   careersSettings, updateCareersSettings, setCareersPublished, setJobCareersPage, jobCareersStatus, applicationCareers, careersPublicPage,
   careersPublicJob, submitCareersApplication, careersClientLimited,
@@ -92,7 +92,7 @@ export {
 } from './careers-model';
 export type { CareersPublishRequirement, CareersFormField, CareersFieldError, CareersOutcome, CareersApplicationInput, CareersSettingsInput } from './careers-model';
 // Slice 9 — recruitment tasks and updates: the live to-do list (also the bell's recruitment tasks), the live updates per
-// category, unread counts against the viewer's own read markers (4409) and "Mark all as read".
+// category, unread counts against the viewer's own read markers (5209) and "Mark all as read".
 export { recruitmentTodos, recruitmentJobTodos, recruitmentUpdates, recruitmentUnreadCounts, markRecruitmentTasksRead, pendingRecruitmentTasks } from './tasks';
 export type { RecruitmentUpdatesPage, RecruitmentJobTodos } from './tasks';
 export {

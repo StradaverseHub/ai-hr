@@ -5,7 +5,7 @@
  * Every entry point runs inside `withRecruitmentTenant` and re-asks the database for the caller's authority:
  *   schedule / cancel / candidate response — operators of the job (recruiter, assistant, administrators);
  *   read an application's interviews        — anyone who may read the application (reviewers and its interviewers);
- *   write feedback                          — only the named interviewer, for themselves (4402 guard and policy);
+ *   write feedback                          — only the named interviewer, for themselves (5202 guard and policy);
  *   read a scorecard                        — its author, the job's reviewers and administrators, and other interviewers
  *                                             of the application only when the company makes scorecards shared.
  * Totals are sums of whole-number ratings (./hiring-model sectionTotals). No model is involved.
@@ -207,7 +207,7 @@ async function interviewCardsTx(tx: Tx, s: SessionContext, where: ReturnType<typ
     if (!positionsByProcess.has(r.process_id)) positionsByProcess.set(r.process_id, await stagePositionsTx(tx, r.process_id));
     const labels = await labelsByCompany(r.company_id);
     const mine = cards.filter((c) => c.interview_id === r.id);
-    // An interviewer who is not a reviewer sees only their own interviewer row (4402 policy); the scorecards they
+    // An interviewer who is not a reviewer sees only their own interviewer row (5202 policy); the scorecards they
     // may read show their authors too, so the list is the union of both.
     const userIds = [...new Set([...interviewers.filter((v) => v.interview_id === r.id).map((v) => v.app_user_id), ...mine.map((c) => c.interviewer_user_id)])];
     const views: InterviewerView[] = userIds.map((uid) => {
@@ -360,7 +360,7 @@ export async function scorecardForm(s: SessionContext, interviewId: unknown): Pr
 
 /**
  * Submit (or, where the company's edit lock allows, edit) the viewer's own feedback. Validated against the
- * interview's form; the 4402 guard refuses another author, a cancelled interview and a locked edit independently.
+ * interview's form; the 5202 guard refuses another author, a cancelled interview and a locked edit independently.
  */
 export async function submitScorecard(s: SessionContext, interviewId: unknown, input: ScorecardInput): Promise<void> {
   const user = actorId(s);
@@ -464,7 +464,7 @@ export async function updateInterviewSettings(s: SessionContext, companyId: unkn
   });
 }
 
-/** Create (no id) or edit an evaluation form. A form an interview uses keeps its questions (4402 guard). */
+/** Create (no id) or edit an evaluation form. A form an interview uses keeps its questions (5202 guard). */
 export async function saveEvaluationForm(s: SessionContext, input: { id?: unknown; companyId?: unknown; name?: unknown; source?: unknown; isDefault?: unknown; enabled?: unknown }): Promise<void> {
   const name = typeof input.name === 'string' ? input.name.trim() : '';
   if (!name || name.length > 120) throw new RecruitmentError('missing_fields', ['name']);

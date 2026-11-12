@@ -3,7 +3,7 @@
  *
  * Two audiences:
  *   - the REFERRER (any signed-in person with an active employment in a company with Recruitment): the portal, the refer
- *     form and My referrals. They hold no grant or policy on any recruitment table; every call goes through a 4407
+ *     form and My referrals. They hold no grant or policy on any recruitment table; every call goes through a 5207
  *     SECURITY DEFINER function (app.recruitment_referral_portal / _submit_referral / _my_referrals / _referral_eligible)
  *     that checks the caller's own employment and returns only what the spec allows. The gate is the HR one
  *     (withRecruitmentTenant, a tenant-wide grant), so a referral only lands where HR can see, switch off and remove it.
@@ -151,7 +151,7 @@ export async function myReferrals(s: SessionContext): Promise<MyReferralRow[]> {
 
 // ── HR ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
-/** A job's "Show on the referral portal" setting: recruitment administrators of the job's company only (4407 refuses again). */
+/** A job's "Show on the referral portal" setting: recruitment administrators of the job's company only (5207 refuses again). */
 export async function setJobReferralPortal(s: SessionContext, jobId: string, on: unknown): Promise<void> {
   const value = on === true || on === 'on' || on === 'true';
   const user = actorId(s);

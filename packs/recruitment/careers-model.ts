@@ -2,7 +2,7 @@
  * Recruitment slice 8 rules — the public careers page and online applications. Pure, deterministic and client-safe:
  * no database, no clock, no model.
  *
- * db/migrations/4408_recruitment_careers_page.sql enforces the same limits independently (the address format and
+ * db/migrations/5208_recruitment_careers_page.sql enforces the same limits independently (the address format and
  * uniqueness, the field lengths, publishing only with an address, a display name and a notice, the application fields,
  * the per-client and per-company limits). This file turns HR's settings form and a visitor's application form into
  * values, and names what is missing or wrong per field. A field message depends only on what was typed.

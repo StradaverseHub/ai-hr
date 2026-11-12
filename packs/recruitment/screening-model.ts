@@ -3,7 +3,7 @@
  * clock, no model.
  *
  * packs/recruitment/screening.ts reads requests and answers under the viewer's own row security and hands them to these
- * helpers; nothing here decides who may see or do what (the database does, 4411). One fixed company form (D-040): the
+ * helpers; nothing here decides who may see or do what (the database does, 5211). One fixed company form (D-040): the
  * result Advance, Reject or Pending, and an optional comment. Reviewers are the job's hiring managers (D-041).
  */
 import { RecruitmentError } from './model';
@@ -15,7 +15,7 @@ export type ScreeningResult = (typeof SCREENING_RESULTS)[number];
 export const ASSIGNMENT_STATUSES = ['not_assigned', 'awaiting', 'positive', 'negative'] as const;
 export type AssignmentStatus = (typeof ASSIGNMENT_STATUSES)[number];
 /** How a request closed: its reviewer's Advance or Reject; withdrawn by an operator; or by itself, because the application was
- *  archived or hired, or the reviewer stopped being a hiring manager of the job (4411, D-042). */
+ *  archived or hired, or the reviewer stopped being a hiring manager of the job (5211, D-042). */
 export const SCREENING_CLOSE_REASONS = ['answered', 'withdrawn', 'application_closed', 'reviewer_removed'] as const;
 export type ScreeningCloseReason = (typeof SCREENING_CLOSE_REASONS)[number];
 
