@@ -50,7 +50,7 @@ import {readPersonnelListExportDetails} from '../core/personnel-list-export-deta
 import {withPersonnelRead} from '../core/personnel-read-bounds';
 import {defaultMasterColumn,type EmployeeMasterSpec} from '../lib/employee-master-report';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
-import {readAtAGlance,readDoneForYou,readNeedsYou} from '../components/today/reads';
+import {readNeedsYou} from '../components/today/reads';
 import {todayAudience} from '../lib/today/audience';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -123,7 +123,6 @@ it('reads the shell bell, Home, the worker gate, Personnel movement history and 
   {attendance:false,claims:false,performance:false,rewards:false},{deferClaimPreview:true})));
  const gate=await workerRunGate(ctx,RECOMMENDER_WORKER);
  const audience=todayAudience(ctx),needsYou=await readNeedsYou(ctx,{scopeIds:[b.companyId],audience,today,locale:'en'});
- const doneForYou=await readDoneForYou(ctx,{scopeIds:[b.companyId],today}),glance=await readAtAGlance(ctx,{locale:'en',today});
  const history=await movementHistory(ctx,subject.employmentId),hired=history[0];
  if(!hired)throw Error('Missing fictional movement history');
  const documents=await movementAttachments(ctx,subject.employmentId,hired.id),corrections=await informationCorrectionHistory(ctx,subject.employmentId);
@@ -148,7 +147,7 @@ it('reads the shell bell, Home, the worker gate, Personnel movement history and 
  expect(bell.items.filter(item=>item.kind==='profile')).toHaveLength(3);
  expect(needsYou.tasks.filter(task=>task.kind==='profile')).toHaveLength(3);
  expect(typeof gate.run).toBe('boolean');
- expect(doneForYou).toBeDefined();expect(glance).toBeDefined();
+ 
  expect(documents).toEqual([]);expect(Array.isArray(corrections)).toBe(true);expect(resignation).toBeDefined();
  expect(correctionOptions.companies.map(row=>row.id)).toContain(b.companyId);
  expect(correctionForm.before).toMatchObject({companyId:b.companyId,hiredOn:today});

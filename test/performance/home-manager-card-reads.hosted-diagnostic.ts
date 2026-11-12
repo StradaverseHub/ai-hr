@@ -273,8 +273,6 @@ async function todayReaders(today:string){
   const modules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')};
   return {
    needsYou:()=>reads.readNeedsYou(ctx,{scopeIds,audience,today,locale:'en'}).then(value=>({failed:value.failed,tasks:value.tasks.length,taskTotal:value.taskTotal,loops:value.loops.length})),
-   doneForYou:()=>reads.readDoneForYou(ctx,{scopeIds,today}).then(value=>value.ok?{ok:true}:{ok:false,error:errorFact(value.error)}),
-   atAGlance:()=>reads.readAtAGlance(ctx,{locale:'en',today}).then(value=>({failed:value.failed})),
    beforePayroll:()=>readMyPayrollReadiness(ctx,{scopeIds,locale:'en',today,includeApprovals:false}).then(value=>({present:value!==null,failed:value?.failed??null,items:value?.items.length??null})),
    'needs.pendingTaskSummary':()=>inbox.pendingTaskSummary(ctx,scopeIds,modules).then(value=>({items:value.items.length,total:value.total})),
    'needs.loopCards':()=>loops.readLoopCards(ctx,{scopeIds,admin:false}).then(value=>({cards:value.length})),
@@ -927,8 +925,6 @@ async function preambleEquivalence(subject:string,actor:Actor,month:string,compa
  const today=todayInKualaLumpur(),scopeIds=(await allowedCompanies(actor.ctx)).map(company=>company.id);
  const full:Record<string,()=>Promise<unknown>>={
   needsYou:()=>sectionReads.readNeedsYou(actor.ctx,{scopeIds,audience:todayAudience(actor.ctx),today,locale:'en',now:Date.parse(today+'T12:00:00+08:00')}),
-  doneForYou:()=>sectionReads.readDoneForYou(actor.ctx,{scopeIds,today}),
-  atAGlance:()=>sectionReads.readAtAGlance(actor.ctx,{locale:'en',today}),
   beforePayroll:()=>readMyPayrollReadiness(actor.ctx,{scopeIds,locale:'en',today,includeApprovals:false}),
   ...await fullPageOwners(actor.ctx,scopeIds),
  };
@@ -1134,8 +1130,6 @@ async function cardsSectionsEquivalence(subject:string,actor:Actor,today:string,
   noticeBoardCategory:()=>homeNotices.readOwnNoticeBoard(ctx,id,{category:'Policy'}),
   noticeBoardSecondPage:()=>homeNotices.readOwnNoticeBoard(ctx,id,{page:2,pageSize:1}),
   needsYou:()=>reads.readNeedsYou(ctx,{scopeIds,audience,today,locale:'en',now:noon}),
-  atAGlance:()=>reads.readAtAGlance(ctx,{locale:'en',today}),
-  atAGlanceEmployment:()=>reads.readAtAGlance(ctx,{locale:'en',today,employmentId:id}),
   assignedPerformance:()=>performanceService.hasAssignedPerformanceWork(ctx,scopeIds),
   assignedPerformanceAccount:()=>performanceService.hasAssignedPerformanceWork(ctx,undefined),
   ownLeaveIndex:()=>reviews.readHomeOwnLeaveReviewIndex(ctx),
@@ -1545,9 +1539,6 @@ it('completes every manager Home card and Today section read without a handled f
   const scopeIds=(await allowedCompanies(actor.ctx)).map(company=>company.id);
   const full:Record<string,()=>Promise<unknown>>={
    needsYou:()=>sectionReads.readNeedsYou(actor.ctx,{scopeIds,audience:todayAudience(actor.ctx),today,locale:'en',now:Date.parse(today+'T12:00:00+08:00')}),
-   doneForYou:()=>sectionReads.readDoneForYou(actor.ctx,{scopeIds,today}),
-   atAGlance:()=>sectionReads.readAtAGlance(actor.ctx,{locale:'en',today}),
-   watching:()=>sectionReads.readWatching(actor.ctx,{scopeIds,today}),
    beforePayroll:()=>readMyPayrollReadiness(actor.ctx,{scopeIds,locale:'en',today,includeApprovals:false}),
    beforePayrollWithApprovals:()=>readMyPayrollReadiness(actor.ctx,{scopeIds,locale:'en',today,approvalPreview:true}),
    // The remaining page owners, as the page composes them, with their complete values.

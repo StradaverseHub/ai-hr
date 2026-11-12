@@ -12,7 +12,8 @@
  *     can render them as clickable links.
  *  6. Unknown / disabled cards in a saved layout are dropped; the HR default (mandatory + default-display)
  *     is used when nothing is saved; a legacy order-only array still loads.
- *  7. End-to-end persistence against a REAL tenant card config, incl. mandatory force-inclusion.
+ *  7. The REAL tenant card config read, normalised the way every write is (incl. mandatory force-inclusion). The
+ *     old dashboard's own save path was retired on 12 Nov 2026; My Home writes normalise through the same rule.
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -23,7 +24,6 @@ import {
   normalizeDashboardLayout,
   type DashboardCardChoice,
 } from '../lib/dashboard-layout';
-import { getDashboardLayout, setDashboardLayout } from '../core/dashboard-prefs';
 import { listDashboardCards, listEmployeeDashboardCards } from '../core/dashboard-card-config';
 import { closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -151,7 +151,7 @@ async function seedCards(rows: Array<Record<string, unknown>>): Promise<void> {
   );
 }
 
-describe('dashboard cards — end-to-end read + persistence', () => {
+describe('dashboard cards — end-to-end read + normalisation', () => {
   beforeAll(async () => {
     await migrateTestDb();
   });
@@ -187,8 +187,7 @@ describe('dashboard cards — end-to-end read + persistence', () => {
     const ctx = await newEmployeeCtx();
     const cards = await listEmployeeDashboardCards(ctx);
     // The client tries to save with the mandatory card removed; the data layer forces it back in.
-    await setDashboardLayout(ctx, { selected: ['nextHoliday'], order: ['nextHoliday'] }, cards);
-    const layout = await getDashboardLayout(ctx, cards);
+    const layout = normalizeDashboardLayout({ selected: ['nextHoliday'], order: ['nextHoliday'] }, cards);
     expect(layout.selected).toContain('leaveBalance');
   });
 
@@ -199,8 +198,7 @@ describe('dashboard cards — end-to-end read + persistence', () => {
     ]);
     const ctx = await newEmployeeCtx();
     const cards = await listEmployeeDashboardCards(ctx);
-    await setDashboardLayout(ctx, { selected: ['leaveBalance'], order: ['leaveBalance'] }, cards);
-    const layout = await getDashboardLayout(ctx, cards);
+    const layout = normalizeDashboardLayout({ selected: ['leaveBalance'], order: ['leaveBalance'] }, cards);
     expect(layout.selected).toEqual(['leaveBalance']);
     expect(layout.selected).not.toContain('nextHoliday');
   });
@@ -230,13 +228,10 @@ describe('dashboard cards — end-to-end read + persistence', () => {
     ]);
     // A save can never smuggle an out-of-role card in: normalisation against the role catalog drops it.
     const mgrCards = await listDashboardCards(ctx, 'manager');
-    await setDashboardLayout(
-      ctx,
+    const layout = normalizeDashboardLayout(
       { selected: ['teamAwayToday', 'headcountByCompany'], order: ['teamAwayToday', 'headcountByCompany'] },
       mgrCards,
-      'manager',
     );
-    const layout = await getDashboardLayout(ctx, mgrCards, 'manager');
     expect(layout.selected).toEqual(['teamAwayToday', 'sharedSection']); // hr_admin-only card dropped; mandatory card kept
   });
 });

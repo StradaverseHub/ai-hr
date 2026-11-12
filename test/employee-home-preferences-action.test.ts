@@ -1,12 +1,12 @@
 import {randomUUID} from 'node:crypto';
-import {eq} from 'drizzle-orm';
+import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {SessionContext} from '../db/client';
 import {appUser,person} from '../db/schema';
-import {getEmployeeHomePreferences,getDashboardLayout,setDashboardLayout} from '../core/dashboard-prefs';
+import {getEmployeeHomePreferences} from '../core/dashboard-prefs';
 import {listEmployeeHomeCards,listCards,setStatus,seedEmployeeHomeCardCatalog} from '../core/dashboard-card-config';
 import {defaultEmployeeHomePreferences,EMPLOYEE_HOME_CARDS} from '../lib/employee-home';
-import {BUILTIN_ROLE_DASHBOARD_CARDS} from '../lib/dashboard-layout';
+import {withTenant} from '../db/client';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base,CALLER:SessionContext;
 const locale=vi.hoisted(()=>vi.fn());
@@ -25,20 +25,26 @@ function form(){
  for(const key of [...EMPLOYEE_HOME_CARDS].reverse())f.append('cardOrder',key);
  f.append('hiddenCard','team');return f;
 }
+/** A retired manager-dashboard slot, written as the old customizer stored it (12 Nov 2026: no screen writes it now). */
+const MANAGER_SLOT={selected:['teamAwayToday'],order:['teamAwayToday']};
+async function storedLayout(){
+ const [row]=await owner.db.select({layout:appUser.dashboardLayout}).from(appUser).where(eq(appUser.id,CALLER.userId!));
+ return row.layout as Record<string,unknown>|null;
+}
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{vi.clearAllMocks();await resetDb();b=await seedBase();CALLER=await login();await owner.db.transaction(tx=>seedEmployeeHomeCardCatalog(tx,b.tenantId));});
 describe('Home preference form writes through the current own-account owner',()=>{
  it('saves and reopens the rendered choices without changing another login or another role',async()=>{
   const other=await login();
-  await setDashboardLayout(CALLER,{selected:['teamAwayToday'],order:['teamAwayToday']},BUILTIN_ROLE_DASHBOARD_CARDS.manager,'manager');
+  await withTenant(CALLER,tx=>tx.execute(sql`select app.dashboard_layout_set(${JSON.stringify({manager:MANAGER_SLOT})}::jsonb)`));
   await expect(saveHomePreferencesAction({error:null},form())).rejects.toThrow('confirmed-redirect:/me/home?saved=1');
   const cards=await listEmployeeHomeCards(CALLER);
   expect(await getEmployeeHomePreferences(CALLER,cards)).toEqual({...defaultEmployeeHomePreferences(),timeZone:'Asia/Tokyo',weekStartsOn:0,cardOrder:[...EMPLOYEE_HOME_CARDS].reverse(),hiddenCards:['team']});
   expect(await getEmployeeHomePreferences(other,cards)).toEqual(defaultEmployeeHomePreferences());
-  expect((await getDashboardLayout(CALLER,BUILTIN_ROLE_DASHBOARD_CARDS.manager,'manager')).selected).toEqual(['teamAwayToday']);
+  expect((await storedLayout())?.manager).toEqual(MANAGER_SLOT);
   expect((locale.mock.calls[0][0] as FormData).get('locale')).toBe('ms');
   const reset=new FormData();reset.set('command','reset');await expect(saveHomePreferencesAction({error:null},reset)).rejects.toThrow('confirmed-redirect:/me/home?saved=1');
   expect(await getEmployeeHomePreferences(CALLER,cards)).toEqual(defaultEmployeeHomePreferences());
-  expect((await getDashboardLayout(CALLER,BUILTIN_ROLE_DASHBOARD_CARDS.manager,'manager')).selected).toEqual(['teamAwayToday']);
+  expect((await storedLayout())?.manager).toEqual(MANAGER_SLOT);
   expect(locale).toHaveBeenCalledOnce();
  });
  it('refuses posted identity, duplicate fields, incomplete order, invalid language/timezone and mandatory hiding',async()=>{
