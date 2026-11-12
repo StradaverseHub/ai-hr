@@ -41,4 +41,18 @@ export async function setupLock(tx:Tx,ctx:SessionContext,key='configuration'){aw
 export async function setupEvent(tx:Tx,ctx:SessionContext,action:string,id:string|null,payload:unknown){await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'rewards-setup',aggregateId:id??randomUUID(),eventType:'rewards-setup.'+action,actor:actorOf(ctx),payload});}
 export async function setupCompanyEligible(tx:Tx,companyId:string,year:number){const[r]=await tx.execute<{ok:boolean}>(sql`select app.reward_setup_company_eligible(${companyId}::uuid,${year}) as ok`);if(!r?.ok)throw new RewardSetupError('invalid','Choose an active legal employer included in this reward year.');}
 /** Human independence uses the principal's current stored link, never a caller-supplied person claim. */
-export async function setupPersonTx(tx:Tx){const [r]=await tx.execute<{personId:string|null}>(sql`select person_id as "personId" from app_user where id=app.current_user_id() and tenant_id=app.current_tenant_id() and archived_at is null`);if(!r?.personId)throw new RewardSetupError('forbidden','A person-backed Group Rewards account is required.');return r.personId;}
+export async function setupPersonTx(tx:Tx){const [r]=await tx.execute<{personId:string|null}>(sql`select person_id as "personId" from app_user where id=app.current_user_id() and tenant_id=app.current_tenant_id() and archived_at is null`);if(!r?.personId)throw new RewardSetupError('forbidden','A person-backed Rewards configuration account is required.');return r.personId;}
+/** Board 60f1fdcd: the Rewards configuration editor (Group Rewards, CTRO or HR Admin over the company; a null company
+ * is a group-wide item and needs group-wide authority). app.reward_config_editor is the database owner of this rule. */
+export async function configAuthority(tx:Tx,companyId:string|null){
+ const[r]=await tx.execute<{allowed:boolean}>(sql`select app.reward_config_editor(${companyId}::uuid) as allowed`);if(!r?.allowed)throw new RewardSetupError('forbidden','This Rewards configuration is not available to you.');
+}
+/** Reading Salary Structures and Bonus Matrices: the library viewers (Group Rewards and CTRO) and the group-wide editors. */
+export async function configLibraryView(tx:Tx){
+ const[r]=await tx.execute<{allowed:boolean}>(sql`select app.reward_config_library_viewer() as allowed`);if(!r?.allowed)throw new RewardSetupError('forbidden','This Rewards configuration is not available to you.');
+}
+/** The configuration editor of at least one company or of the group: list views then show only their companies. */
+export async function configAnyAuthority(tx:Tx){
+ const[r]=await tx.execute<{allowed:boolean}>(sql`select app.reward_config_editor_anywhere() as allowed`);if(!r?.allowed)throw new RewardSetupError('forbidden','This Rewards configuration is not available to you.');
+}
+export async function configCompanyEligible(tx:Tx,companyId:string,year:number){const[r]=await tx.execute<{ok:boolean}>(sql`select app.reward_config_company_eligible(${companyId}::uuid,${year}) as ok`);if(!r?.ok)throw new RewardSetupError('invalid','Choose an active legal employer included in this reward year.');}

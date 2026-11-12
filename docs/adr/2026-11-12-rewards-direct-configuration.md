@@ -1,7 +1,8 @@
 # Rewards configuration is saved directly by its accountable editors (board 60f1fdcd)
 
-Date: 12 November 2026. Status: accepted by the board item owner (plan approved on item 60f1fdcd); source on branch
-`claude/board-rewards-governance-20261112`, not installed. Applies with board item 2103041d (PAT Inputs grid).
+Date: 12 November 2026. Status: accepted by the board item owner (plan approved on item 60f1fdcd); source on branches
+`claude/board-rewards-governance-20261112` and `claude/board-rewards-governance-owner-fns-20261112` (migration 5580), not
+installed. Applies with board item 2103041d (PAT Inputs grid).
 
 ## Decision
 
@@ -24,7 +25,7 @@ Control comes from three things instead of a second person:
    named reviewees record their entries and row security never returns a row about the reader's own entry. The page
    `/admin/rewards/change-log` filters and exports it to Excel (formula-safe cells, bounded, audited).
 3. **A notice to co-administrators.** Each save emits one `rewards-config.changed` event; the recipients are the other
-   current Group Rewards and CTRO holders for the change's companies, never the editor's own person.
+   current Group Rewards, CTRO and HR Admin holders for the change's companies, never the editor's own person.
 
 Versions are never overwritten. Restoring a salary structure or bonus matrix version copies its values into a new
 draft; restoring PAT figures loads an earlier version into the grid as edits that save as a new version. Reviews that
@@ -68,18 +69,57 @@ dropped CHECKs, the PAT update policy and `app.reward_setup_immutable` / `app.re
 (`app.reward_pat_confirm_apply`) is unchanged: a PAT Draft is stored as the existing `pending` working version and
 "make active" is its pending→confirmed transition, so repricing is byte-identical.
 
-Three rules sit inside purpose-owned definers the migration owner cannot replace and are therefore **still enforced**
-until the owner chooses a route (an installation-DBA prerequisite like `deploy/runner-control/release-rewards-roles-*`,
-or new owner-owned replacements with their own row-security grants):
+Three rules sat inside purpose-owned definers the migration owner cannot replace. On 12 November 2026 the owner chose
+**option 2** for them: new functions owned by the migration owner, with their own row-security policies and grants,
+replace the application paths; the purpose-owned functions stay installed byte for byte and are no longer called by
+those paths. Migration 5580 (draft block 5580–5599, branch `claude/board-rewards-governance-owner-fns-20261112`):
 
-1. **CTRO and HR Admin edit access.** `app.reward_setup_allowed` (owned by `ai_hr_reward_setup_reader`) admits only
-   Group Rewards for `manage`, and the purpose-owned setup definers (plan commit, review creation, PAT application,
-   access policy events) call it. The Rewards Access grid defaults are therefore unchanged; widening them before the
-   database predicate would offer actions the database refuses.
-2. **Review creation by the plan's activator.** `app.reward_create_planned_unit` (4100) still requires a creator other
-   than the person who made the plan active.
-3. **Uploaded awards activated by their uploader.** `app.reward_uploaded_binding` (2208) still requires a different
-   Group Rewards checker.
+1. **CTRO and HR Admin edit Salary Structures, Bonus Matrices and company PAT.** `app.reward_config_editor(company)` is
+   Group Rewards (the unchanged `app.reward_setup_allowed`), CTRO (whole-group grant, setup grant, or a review seat in
+   the company) or HR Admin over the company (`role_assignment` checked against the session grants). A null company is
+   a group-wide item and needs group-wide authority, so a company-scoped HR Admin is refused on structures and
+   matrices but edits PAT for the companies they look after. Viewing as someone never edits. Permissive policies on
+   `reward_library`, `reward_library_version`, `reward_pat_version` and the library revision audit admit the editor;
+   the four write triggers that called purpose-owned guards (`reward_library_input_guard`,
+   `reward_library_capture_revision`, `reward_pat_input_guard`, `reward_pat_confirm_apply`) are re-pointed at owner
+   copies with the editor predicate. The PAT repricing chain (`app.reward_config_pat_affected_units`,
+   `…_apply_confirmed_pat`, `…_reprice_draft_pat`) is the installed body with only the authority test and names
+   changed. The page readers (grade choices, companies, company structure, PAT history, library usage and lock) have
+   owner copies too, used through `packs/rewards/setup-config-query-port.ts`. The Rewards Access grid shows Group
+   Rewards, CTRO and HR Admin as Full on these three rows only.
+2. **Reviews from an active plan, by whoever made it active.** `app.reward_config_create_planned_unit` is the 2205
+   creator with the 4100 lock order and without the activator exclusion. Its authority stays **Group Rewards**: the
+   creator takes the review's Group Rewards seat, which also sees EC-confidential people, so CTRO and HR Admin do not
+   create reviews. As the owner of `employment` and `person` it reads only committed rows (`import_pending_attempt_id IS
+   NULL`), as the staged-import policies do for the purpose reader. The annual-admission guard
+   (`app.reward_policy_binding_guard`, owner-owned) admits this owner writer only while the call runs (its transaction
+   id in a local setting, and the owner role, which the application role cannot assume); every snapshot and binding
+   check is unchanged.
+3. **The uploader makes their own uploaded awards active.** The 2208 binding triggers are re-pointed at
+   `app.reward_config_uploaded_binding` (runs as the writer, so the purpose-owned validation and editable-lines checks
+   keep their callers' rights) and `app.reward_config_uploaded_binding_check` (owner; reads the whole-file rows and
+   computes the same digest). Only the uploader-versus-checker rule is gone: the unchanged current upload, valid awards,
+   refresh and BU-stage rules stay, and the review route still needs the current version to be active.
+
+Owner copies read forced tables through row security. Where the purpose reader had its own policy, an owner policy with
+the same predicate and the editor in place of Group Rewards is added; none is wider than the caller's own
+configuration authority. The change-log writer and reader and the notice recipients use the editor predicate; notices
+also reach HR Admins over the change's companies (group-wide HR Admins for group-wide items), never the editor.
+
+Still not in this change, and still Group Rewards only: the Shared Rewards Configuration plan (its commit definer
+`app.reward_setup_policy_commit` and the plan tables), Senior plan and budget-cap exemption (`reward_governance`
+policies), Review Set-up release (`app.reward_preparation_view` names a Group Rewards doer), uploaded-award uploads
+themselves and Limit Controls. Each would need the same treatment.
+
+**Composition with the Role permissions grid (board db14e49c, migration 5520).** That migration is not on this branch
+and installs before this one. Its owner `app.reward_setup_page_allowed` overlaps `app.reward_config_editor`; this
+migration keeps its `role_permission` branch of `app.reward_config_change_record` (behind `to_regprocedure`). Its
+restrictive application-role policies on `reward_library`, `reward_library_version`, `reward_pat_version` and
+`reward_plan_setup` read `app.reward_actor_page_level`, which considers only Group Rewards, CTRO and EC and whose
+catalogue gives CTRO View only on structures and matrices and HR Admin nothing. When both are installed the integrator
+must give CTRO and HR Admin Full on `salary.view`, `bonus.view` and `pat.manage` in `packs/rewards/access-policy-model.ts`
+and `app.reward_role_default_level`, and include `hr_admin` in `app.reward_actor_page_level`; otherwise those
+restrictive policies refuse what this migration admits.
 
 Version restore for the Shared Rewards Configuration and the Rewards Access permission grid is also not in this change
 (the permission grid is rebuilt by board item db14e49c, which builds on this module).

@@ -13,8 +13,10 @@ export type PermissionLevel='full'|'step'|'view'|'none'|'never'|'always'|'fixed'
 export function rolePermission(role:RewardAccessRole,capability:RewardCapability):PermissionLevel {
  const r=role==='proxy_bg'?'bg':role;
  if(capability==='own.never')return'never';if(capability==='audit.always')return'always';if(capability==='scope'||capability==='route')return'fixed';
- if(['cycles.view','plans.manage','pat.manage','access.manage','senior.manage','data.check','snapshot.refresh'].includes(capability))return r==='gr'?'full':'none';
- if(capability==='salary.view'||capability==='bonus.view')return r==='gr'?'full':r==='ctro'?'view':'none';
+ if(['cycles.view','plans.manage','access.manage','senior.manage','data.check','snapshot.refresh'].includes(capability))return r==='gr'?'full':'none';
+ // Board 60f1fdcd: Group Rewards, CTRO and HR Admin edit Salary Structures, Bonus Matrices and company PAT; the database
+ // enforces it (app.reward_config_editor, migration 5580). Group-wide items still need group-wide authority.
+ if(capability==='salary.view'||capability==='bonus.view'||capability==='pat.manage')return ['gr','ctro','hr_admin'].includes(r)?'full':'none';
  if(capability==='restricted.view')return ['gr','ctro','ec'].includes(r)?'view':'none';
  if(['review.view','analytics.view','approvals.view','rules.view'].includes(capability))return r==='hr_admin'?'none':'view';
  if(capability==='cases.decide')return r==='bu'?'step':r==='pbp'?'view':r==='gr'?'full':'none';

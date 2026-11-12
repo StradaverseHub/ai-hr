@@ -99,13 +99,14 @@ describe('approved Rewards review SQL custody',()=>{
   expect(failed).toHaveLength(1);
   expect(failed[0].payload).toEqual({entryId,outcome:'provider-unavailable'});
  });
- it('whole upload versions stay immutable and a doer cannot check their own upload',async()=>{await uploadFixtureMetadata();const raw={employmentId,incrementType:'merit',incrementBp:1000,newBasicCents:null,newGrade:null,bonusCents:10000,lumpCents:0,remarks:'Fictional external basis'};
+ it('whole upload versions stay immutable and only the unchanged current upload can be made active',async()=>{await uploadFixtureMetadata();const raw={employmentId,incrementType:'merit',incrementBp:1000,newBasicCents:null,newGrade:null,bonusCents:10000,lumpCents:0,remarks:'Fictional external basis'};
  // A real Payroll change makes this snapshot stale; saving must fail atomically.
  await owner.db.update(schema.compensation).set({basicSalary:'5100.00'}).where(eq(schema.compensation.employmentId,employmentId));
  await expect(saveUploadedRewards(gr,unitId,[raw],1,'Fictional checked external award')).rejects.toThrow(/source changed/);expect((await owner.db.execute(sql`select * from reward_uploaded_version where unit_id=${unitId}::uuid`))).toHaveLength(0);
  await withTenant(gr,async tx=>{await tx.execute(sql`insert into reward_uploaded_version(tenant_id,unit_id,version,rows,digest,uploaded_by,reason) values(${b.tenantId}::uuid,${unitId}::uuid,1,${JSON.stringify([raw])}::jsonb,${'a'.repeat(64)},${gr.userId}::uuid,'Fictional immutable upload record')`);await tx.execute(sql`update reward_uploaded_review set current_version=1 where unit_id=${unitId}::uuid`);});
  await denied(withTenant(gr,tx=>tx.execute(sql`select rows from reward_uploaded_version where unit_id=${unitId}::uuid`)));await denied(withTenant(checker,tx=>tx.execute(sql`select rows from reward_uploaded_version where unit_id=${unitId}::uuid`)));
- await expect(confirmUploadedRewards(gr,unitId,1,'I checked my own file')).rejects.toThrow(/different/);expect(await withTenant(gr,tx=>tx.execute(sql`update reward_uploaded_version set reason='Tamper old version' where unit_id=${unitId}::uuid returning id`))).toHaveLength(0);
+ // Board 60f1fdcd: the uploader may make their own upload active, but only the unchanged current file (no award rows match it here).
+ await expect(confirmUploadedRewards(gr,unitId,1,'I checked my own file')).rejects.toThrow();expect((await owner.db.execute<{checked_by:string|null}>(sql`select checked_by from reward_uploaded_review where unit_id=${unitId}::uuid`))[0].checked_by).toBeNull();expect(await withTenant(gr,tx=>tx.execute(sql`update reward_uploaded_version set reason='Tamper old version' where unit_id=${unitId}::uuid returning id`))).toHaveLength(0);
  expect((await owner.db.execute<{reason:string}>(sql`select reason from reward_uploaded_version where unit_id=${unitId}::uuid`))[0].reason).toBe('Fictional immutable upload record');
  });
 
@@ -146,11 +147,12 @@ describe('approved Rewards review SQL custody',()=>{
   await saveUploadedRewards(doer,uploadedId,[award],1,'Original independently prepared company upload',undefined,preview.digest);
   await dispatchNotificationsFromSweep({tenantId:b.tenantId,roles:['hr_admin'],entitlements:gr.entitlements},owner);
   const checks=await owner.db.select().from(schema.notification).where(eq(schema.notification.recipientEmploymentId,checkerEmployment.id));expect(checks.some(n=>n.linkPath===`/rewards/${uploadedId}/uploaded`)).toBe(true);
-  await expect(confirmUploadedRewards(doer,uploadedId,2,'Doer attempted self confirmation')).rejects.toThrow(/different/);
-  const aliasLogin=await createAppUser(b.tenantId,maker.personId,'employee');const alias={...doer,userId:aliasLogin};await owner.db.insert(schema.rewardMember).values({tenantId:b.tenantId,unitId:uploadedId,userId:aliasLogin,role:'gr'});await expect(confirmUploadedRewards(alias,uploadedId,2,'Same person attempted alternate login approval')).rejects.toThrow(/different/);
   expect(await withTenant(buCtx,tx=>tx.execute(sql`update reward_unit set status='bg',approved_digest=${'a'.repeat(64)} where id=${uploadedId}::uuid returning id`))).toEqual([]);
   const [withheld]=await owner.db.select({status:schema.rewardUnit.status,digest:schema.rewardUnit.approvedDigest}).from(schema.rewardUnit).where(eq(schema.rewardUnit.id,uploadedId));expect(withheld).toEqual({status:'draft',digest:null});
-  await confirmUploadedRewards(checker,uploadedId,2,'Independent reviewer checked source and totals');
+  // Board 60f1fdcd: the uploader makes their own upload active; no second person is needed.
+  await confirmUploadedRewards(doer,uploadedId,2,'Uploader made the checked company upload active');
+  const [activated]=await owner.db.execute<{checked_by:string;checked_version:number;current_version:number}>(sql`select checked_by,checked_version,current_version from reward_uploaded_review where unit_id=${uploadedId}::uuid`);
+  expect(activated.checked_by).toBe(doer.userId);expect(activated.current_version).toBeGreaterThan(0);expect(activated.checked_version).toBe(activated.current_version);
   await refreshUploadedRewardSources(doer,uploadedId,2,'Rebuild dated sources before replacing the award file');
   await expect(getRewardUnit(buCtx,uploadedId)).rejects.toThrow(/independent/);
   await expect(withTenant(doer,tx=>tx.execute(sql`update reward_uploaded_review set refresh_required=false where unit_id=${uploadedId}::uuid`))).rejects.toThrow();

@@ -113,7 +113,7 @@ export function rewardNavigation(ctx: SessionContext) {
   return withRewardsTenant(ctx, async tx => {
     const [pages] = await tx.execute<{
       review: boolean; analytics: boolean; approvals: boolean; rules: boolean; promotions: boolean;
-      manage: boolean; libraries: boolean; access: boolean; bootstrap: boolean; setup: boolean; limits: boolean;
+      manage: boolean; libraries: boolean; pat: boolean; access: boolean; bootstrap: boolean; setup: boolean; limits: boolean;
     }>(sql`
       with visible_units as (
         select id, company_id, kind from reward_unit
@@ -128,7 +128,8 @@ export function rewardNavigation(ctx: SessionContext) {
           and app.reward_capability(u.id, 'review.view')
           and 'gr' in (select app.reward_roles(u.id))) as promotions,
         app.reward_setup_allowed(null, 'manage') as manage,
-        app.reward_setup_allowed(null, 'library_view') as libraries,
+        app.reward_config_library_viewer() as libraries,
+        app.reward_config_editor_anywhere() as pat,
         app.is_group_admin() as bootstrap,
         -- 70d5e7c5: Review Set-up for Group Rewards (edit), CTRO and EC (view) on an annual review.
         exists(select 1 from visible_units u where u.kind = 'annual'
@@ -145,10 +146,10 @@ export function rewardNavigation(ctx: SessionContext) {
       ...(pages.promotions ? ['/rewards/promotions'] : []),
       ...(pages.manage ? ['/admin/rewards/shared'] : []),
       ...(pages.libraries ? ['/admin/rewards/salary-structures', '/admin/rewards/bonus-matrices'] : []),
-      ...(pages.manage ? ['/admin/rewards/pat-inputs'] : []),
+      ...(pages.pat ? ['/admin/rewards/pat-inputs'] : []),
       ...(pages.limits ? ['/admin/rewards/limit-controls'] : []),
       ...(pages.setup ? ['/admin/rewards/review-setup'] : []),
-      ...(pages.manage || pages.libraries ? ['/admin/rewards/change-log'] : []),
+      ...(pages.manage || pages.libraries || pages.pat ? ['/admin/rewards/change-log'] : []),
       ...(pages.access || pages.bootstrap ? ['/admin/rewards/access'] : []),
     ];
   });

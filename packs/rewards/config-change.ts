@@ -73,7 +73,7 @@ function logRead<T>(ctx:SessionContext,read:(tx:Tx)=>Promise<T>){
 export async function rewardConfigChangeLog(ctx:SessionContext,raw:RewardConfigLogFilter){
  const f=rewardConfigLogFilterSchema.parse(raw);
  return logRead(ctx,async tx=>{
-  const [access]=await tx.execute<{allowed:boolean}>(sql`select (app.reward_setup_allowed(null,'library_view') or exists(select 1 from company x where x.tenant_id=app.current_tenant_id() and app.reward_setup_allowed(x.id,'manage'))) as allowed`);
+  const [access]=await tx.execute<{allowed:boolean}>(sql`select (app.reward_config_library_viewer() or app.reward_config_editor_anywhere()) as allowed`);
   if(!access?.allowed)throw new Error('The Rewards change log is not available to you.');
   const rows=await logRowsTx(tx,f,REWARD_CONFIG_LOG_PAGE+1,(f.page-1)*REWARD_CONFIG_LOG_PAGE);
   return{rows:rows.slice(0,REWARD_CONFIG_LOG_PAGE),page:f.page,hasMore:rows.length>REWARD_CONFIG_LOG_PAGE};
@@ -83,7 +83,7 @@ export async function rewardConfigChangeLog(ctx:SessionContext,raw:RewardConfigL
 export async function rewardConfigChangeExport(ctx:SessionContext,raw:RewardConfigLogFilter){
  const f=rewardConfigLogFilterSchema.parse({...raw,page:1});
  return logRead(ctx,async tx=>{
-  const [access]=await tx.execute<{allowed:boolean}>(sql`select (app.reward_setup_allowed(null,'library_view') or exists(select 1 from company x where x.tenant_id=app.current_tenant_id() and app.reward_setup_allowed(x.id,'manage'))) as allowed`);
+  const [access]=await tx.execute<{allowed:boolean}>(sql`select (app.reward_config_library_viewer() or app.reward_config_editor_anywhere()) as allowed`);
   if(!access?.allowed)throw new Error('The Rewards change log is not available to you.');
   const rows=await logRowsTx(tx,f,REWARD_CONFIG_EXPORT_LIMIT+1,0);
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'rewards-config',aggregateId:ctx.userId!,eventType:'rewards-config.exported',actor:actorOf(ctx),payload:{rows:Math.min(rows.length,REWARD_CONFIG_EXPORT_LIMIT),filter:{...f,actor:f.actor?'(text)':undefined}}});
@@ -97,5 +97,5 @@ export async function rewardConfigItemHistoryTx(tx:Tx,area:RewardConfigArea,item
 
 /** Company choices for the change-log filter: the companies the reader configures, one set-wise statement. */
 export async function rewardConfigLogCompanies(ctx:SessionContext){
- return logRead(ctx,async tx=>[...await tx.execute<{id:string;name:string}>(sql`select x.id,x.legal_name as name from company x where x.tenant_id=app.current_tenant_id() and x.archived_at is null and app.reward_setup_allowed(x.id,'manage') order by x.legal_name,x.id limit 1000`)]);
+ return logRead(ctx,async tx=>[...await tx.execute<{id:string;name:string}>(sql`select x.id,x.legal_name as name from company x where x.tenant_id=app.current_tenant_id() and x.archived_at is null and app.reward_config_editor(x.id) order by x.legal_name,x.id limit 1000`)]);
 }

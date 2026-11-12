@@ -12,7 +12,7 @@ import {emptyFacts,emptyRecommendation} from '../packs/rewards/model';
 import {approveRewardSetupPlan,createNewRewardPlan,createRewardPlanReviews,previewNewRewardPlan,previewRewardPlanCreation,rewardApprovedPlanReviewSummaries,rewardPlanSettings,saveRewardPlanSettings,submitRewardSetupPlan} from '../packs/rewards/plan-configuration';
 import {rewardPatInputs,proposeRewardPat,confirmRewardPat} from '../packs/rewards/pat-inputs';
 import {rewardLibraries,rewardLibraryHistory,rewardLibraryForExport,saveRewardLibrary,submitRewardLibrary,confirmRewardLibrary} from '../packs/rewards/libraries';
-import {createApprovedRewardUnit,setupChecker,setupCompanyStructureFixture,setupGrades} from './rewards-setup-fixture';
+import {createApprovedRewardPlan,createApprovedRewardUnit,setupChecker,setupCompanyStructureFixture,setupGrades} from './rewards-setup-fixture';
 let b:Base;let bu:string;let workforceCapabilities:{id:string;supported:boolean;bindings:unknown}[]=[];
 beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'rewards','active');const [unit]=await owner.db.insert(businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'SETUP-BU',name:'Setup Business unit'}).returning();bu=unit.id;workforceCapabilities=[...await owner.db.execute<{id:string;supported:boolean;bindings:unknown}>(sql`select id,supported,bindings from access_capability where id in('workforce.view','workforce.maintain')`)];const [grade]=await owner.db.insert(jobGrade).values({tenantId:b.tenantId,code:'12',name:'Setup grade 12',rank:12}).returning();const seeded=await hireEmployee(adminCtx(b),{person:{fullName:'Fictional eligible employee',primaryEmail:randomUUID()+'@setup.test'},companyId:b.companyId,departmentId:b.deptA,businessUnitId:bu,gradeId:grade.id,employeeCode:'PAT-BASIS',employmentType:'full_time',hiredOn:'2024-01-01'});await owner.db.update(employment).set({confirmationDate:'2024-04-01'}).where(eq(employment.id,seeded.employmentId));await setCompensation(adminCtx(b),{employmentId:seeded.employmentId,basicSalary:5000,effectiveFrom:'2024-01-01'});await setCompensation(adminCtx(b),{employmentId:seeded.employmentId,basicSalary:5200,effectiveFrom:'2026-02-01',movement:{type:'promotion'}});await setupCompanyStructureFixture(adminCtx(b),[{companyId:b.companyId,businessUnitId:bu}],'2026-01-01');await owner.db.execute(sql`update access_capability set supported=false,bindings='[]'::jsonb where id in('workforce.view','workforce.maintain')`);});afterEach(async()=>{for(const c of workforceCapabilities)await owner.db.execute(sql`update access_capability set supported=${c.supported},bindings=${JSON.stringify(c.bindings)}::jsonb where id=${c.id}`);});afterAll(closeAll);
 it('rejects the legacy standard-settings creation bypass before creating anyreview',async()=>{await expect(createRewardUnit(adminCtx(b),{name:'Forbidden fallback',year:2026,companyId:b.companyId,businessUnitId:bu,snapshotDate:'2026-01-01'})).rejects.toThrow(/approved/);const[r]=await owner.db.execute(sql`select count(*)::int as n from reward_unit where tenant_id=${b.tenantId}::uuid`);expect(r.n).toBe(0);});
@@ -24,7 +24,7 @@ it('does not promote a company-scoped GR grant into global library authority',as
 
 it('matches SQL pool repricing to the canonical engine double floor including losses and zero Actual',async()=>{for(const [payroll,target,actual,months]of [[101,3,2,15000],[100003,999,1000,23300],[1000000,100,0,20000],[1000000,100,-10,20000],[999999999,777,333,10900]]){const [r]=await withTenant(adminCtx(b),tx=>tx.execute<{pool:string}>(sql`select app.reward_pat_pool_from_payroll(${payroll}::bigint,${JSON.stringify({targetCents:target,forecastCents:1,actualCents:actual,targetMonthsBp:months})}::jsonb)::text as pool`));expect(Number(r.pool)).toBe(ratio(ratio(payroll,Math.max(0,actual),target),months,10000));}});
 async function realSetupActor(role:'gr'|'ctro',linkedPersonId?:string){const personId=linkedPersonId??(await owner.db.insert(person).values({tenantId:b.tenantId,fullName:'Fictional Rewards '+role,primaryEmail:randomUUID()+'@setup.test'}).returning())[0].id,userId=await createAppUser(b.tenantId,personId,'employee');await owner.db.execute(sql`insert into reward_setup_grant(tenant_id,user_id,role,valid_from,created_by,reason) values(${b.tenantId}::uuid,${userId}::uuid,${role},'2000-01-01',${b.adminUserId}::uuid,'Explicit fictional setup authority')`);return{...adminCtx(b),userId,personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};}
-it('runs the real GR-only library, checked plan, dated roster and atomic draft PAT journey while CTRO only views and exports',async()=>{
+it('runs the real library, plan, dated roster and atomic draft PAT journey while CTRO views and exports',async()=>{
  const maker=await realSetupActor('gr'),checker=await realSetupActor('gr'),ctro=await realSetupActor('ctro'),grades=await setupGrades(maker),reason='Fictional values independently checked';
  const [admin]=await withTenant(maker,tx=>tx.execute<{allowed:boolean}>(sql`select app.reward_admin(${b.companyId}::uuid) as allowed`));expect(admin.allowed).toBe(false);
  const salaryRaw={libraryId:null,versionId:null,expectedLock:0,name:'Scoped test Salary',year:2026,tags:[],groupDefault:false,previousLibraryId:null,data:{kind:'salary',rows:grades.map(g=>({...g,minimumCents:g.grade==='23'?null:300000,midpointCents:g.grade==='23'?null:500000,maximumCents:g.grade==='23'?null:700000}))},reason};
@@ -36,7 +36,8 @@ it('runs the real GR-only library, checked plan, dated roster and atomic draft P
  expect(history[2]).toMatchObject({actorId:maker.userId,reason:'Fictional midpoint adjustment',before:salaryRaw.data,after:revised});
  await expect(withTenant(maker,tx=>tx.execute(sql`delete from reward_library_revision_audit where version_id=${salary}::uuid`))).rejects.toMatchObject({cause:{code:'42501'}});
  const bonus=await saveRewardLibrary(maker,{...salaryRaw,name:'Scoped test Bonus',data:{kind:'bonus',type:'standard',rows:grades.map(g=>({...g,months:[0,10000,20000,25000,30000]})),segments:[]}});await submitRewardLibrary(maker,bonus,1);await confirmRewardLibrary(checker,bonus,2);
- expect((await rewardLibraryForExport(ctro,salary)).state).toBe('confirmed');await expect(saveRewardLibrary(ctro,{...salaryRaw,name:'Unauthorized salary copy'})).rejects.toThrow(/not available/);await expect(rewardPatInputs(ctro,2026)).rejects.toThrow(/not available/);
+ expect((await rewardLibraryForExport(ctro,salary)).state).toBe('confirmed');// Board 60f1fdcd: CTRO is a configuration editor now (test/rewards-config-owner-paths.test.ts covers its saves).
+ expect(Array.isArray(await rewardPatInputs(ctro,2026))).toBe(true);
  expect(await withTenant(ctro,tx=>tx.execute(sql`select inputs from reward_pat_version where tenant_id=${b.tenantId}::uuid`))).toHaveLength(0);
  const pat=await proposeRewardPat(maker,{companyId:b.companyId,year:2026,expectedRevision:0,inputs:{targetCents:100,forecastCents:null,actualCents:100,targetMonthsBp:20000},reason});await confirmRewardPat(checker,pat);
  const raw={year:2026,name:'Scoped test annual',snapshotDate:'2026-01-01',companyIds:[b.companyId],salaryVersionId:salary,bonusVersionId:bonus,branchAcknowledged:false},preview=await previewNewRewardPlan(maker,raw);expect(preview.rows.map(r=>r.status)).toEqual(['ready']);
@@ -48,12 +49,11 @@ it('runs the real GR-only library, checked plan, dated roster and atomic draft P
  const creation=await previewRewardPlanCreation(maker,plan);
  expect(creation.mayCreate).toBe(true);
  expect(creation.rows.map(row=>[row.companyId,row.status])).toEqual([[b.companyId,'ready']]);
- expect((await previewRewardPlanCreation(checkerAlias,plan)).mayCreate).toBe(false);
- for(const actor of [checker,checkerAlias]){
-  await expect(createRewardPlanReviews(actor,plan,creation.digest)).rejects.toThrow(/different/);
-  await expect(withTenant(actor,tx=>tx.execute(sql`select app.reward_create_planned_unit(${plan}::uuid,${b.companyId}::uuid,${bu}::uuid)`)))
-   .rejects.toMatchObject({cause:{code:'42501',message:expect.stringMatching(/different Group Rewards user/)}});
- }
+ // Board 60f1fdcd: the person who made the plan active may create its reviews (through the owner-owned creator, see
+ // test/rewards-config-owner-paths.test.ts). The installed 4100 entry point is unchanged and no longer called.
+ expect((await previewRewardPlanCreation(checkerAlias,plan)).mayCreate).toBe(true);
+ await expect(withTenant(checker,tx=>tx.execute(sql`select app.reward_create_planned_unit(${plan}::uuid,${b.companyId}::uuid,${bu}::uuid)`)))
+  .rejects.toMatchObject({cause:{code:'42501',message:expect.stringMatching(/different Group Rewards user/)}});
  await expect(withTenant(maker,tx=>tx.execute(sql`select app.reward_create_planned_unit_bound(${plan}::uuid,${b.companyId}::uuid,${bu}::uuid)`)))
   .rejects.toMatchObject({cause:{code:'42501'}});
  await expect(createRewardPlanReviews(maker,plan,'stale')).rejects.toThrow(/preview changed/);
@@ -92,6 +92,29 @@ it('runs the real GR-only library, checked plan, dated roster and atomic draft P
  await expect(withTenant(maker,tx=>tx.execute(sql`select * from reward_pat_basis where unit_id=${id}::uuid`))).rejects.toThrow();
  const alias=await realSetupActor('gr',maker.personId),settings=await rewardPlanSettings(maker,plan),successor=await saveRewardPlanSettings(maker,{versionId:plan,sourceRevision:settings.source.revision,setupRevision:settings.setup.revision,name:settings.source.name,policy:settings.policy,successor:true,reason});await submitRewardSetupPlan(maker,successor,1);await approveRewardSetupPlan(alias,successor,2);const [successorState]=await owner.db.execute<{state:string}>(sql`select state from reward_plan_setup where version_id=${successor}::uuid`);expect(successorState.state).toBe('approved');
 },30000);
+it('lets the person who made the plan active create its reviews, and keeps review creation with Group Rewards (board 60f1fdcd)',async()=>{
+ const raw={name:'Activator creates',year:2026,companyId:b.companyId,businessUnitId:bu,snapshotDate:'2026-01-01'};
+ const plan=await createApprovedRewardPlan(adminCtx(b),raw);
+ const [setup]=await owner.db.execute<{approved_by:string;approved_by_person_id:string}>(sql`select approved_by,approved_by_person_id from reward_plan_setup where version_id=${plan.versionId}::uuid`);
+ const activator={...adminCtx(b),userId:setup.approved_by,personId:setup.approved_by_person_id,roles:['hr_admin'],grants:[{role:'hr_admin' as const,companyId:null}]};
+ // A CTRO configuration editor is not Group Rewards: the creator takes the review's Group Rewards seat.
+ const ctro=await realSetupActor('ctro');
+ await expect(createRewardUnit(ctro,{...raw,name:plan.name,approvedPlanVersionId:plan.versionId})).rejects.toThrow();
+ expect((await previewRewardPlanCreation(activator,plan.versionId)).mayCreate).toBe(true);
+ const id=await createRewardUnit(activator,{...raw,name:plan.name,approvedPlanVersionId:plan.versionId});
+ const [unit]=await owner.db.execute<{created_by:string;status:string;policy_group_version_id:string}>(sql`select created_by,status,policy_group_version_id from reward_unit where id=${id}::uuid`);
+ expect(unit).toEqual({created_by:activator.userId,status:'draft',policy_group_version_id:plan.versionId});
+ expect(await owner.db.execute<{user_id:string;role:string}>(sql`select user_id,role from reward_member where unit_id=${id}::uuid`)).toEqual([{user_id:activator.userId,role:'gr'}]);
+ const entries=await owner.db.execute<{code:string}>(sql`select source->>'employeeCode' as code from reward_entry where unit_id=${id}::uuid`);
+ expect(entries.map(e=>e.code)).toEqual(['PAT-BASIS']);
+ const [event]=await owner.db.execute<{actor_id:string}>(sql`select actor_id from domain_event where aggregate_id=${id}::uuid and event_type='reward-unit.approved-plan-admitted'`);
+ expect(event.actor_id).toBe(activator.userId);
+ // The installed 4100 entry point is unchanged (purpose-owned) and still refuses the activator; the application no longer calls it.
+ await expect(withTenant(activator,tx=>tx.execute(sql`select app.reward_create_planned_unit(${plan.versionId}::uuid,${b.companyId}::uuid,${bu}::uuid)`)))
+  .rejects.toMatchObject({cause:{code:'42501',message:expect.stringMatching(/different Group Rewards user/)}});
+ // The owner-owned creator is not a back door into the annual-admission guard: a raw insert is still refused.
+ await expect(withTenant(activator,tx=>tx.execute(sql`insert into reward_unit(tenant_id,created_by,cycle_id,company_id,business_unit_id,policy,policy_group_version_id,snapshot_date) select tenant_id,created_by,cycle_id,company_id,business_unit_id,policy,policy_group_version_id,snapshot_date from reward_unit where id=${id}::uuid`))).rejects.toThrow();
+},60_000);
 it('lets a second account of the same person make PAT and library versions active (board 60f1fdcd)',async()=>{const maker=await realSetupActor('gr'),alias=await realSetupActor('gr',maker.personId),checker=await realSetupActor('gr'),reason='Checked alternate account identity',pat=await proposeRewardPat(maker,{companyId:b.companyId,year:2026,expectedRevision:0,inputs:{targetCents:100,forecastCents:90,actualCents:0,targetMonthsBp:20000},reason});void checker;await confirmRewardPat(alias,pat);const [made]=await owner.db.execute(sql`select state,confirmed_by from reward_pat_version where id=${pat}::uuid`);expect(made).toEqual({state:'confirmed',confirmed_by:alias.userId});const grades=await setupGrades(maker),salary=await saveRewardLibrary(maker,{libraryId:null,versionId:null,expectedLock:0,name:'Independent human salary',year:2026,tags:[],groupDefault:false,previousLibraryId:null,data:{kind:'salary',rows:grades.map(g=>({...g,minimumCents:g.grade==='23'?null:10000,midpointCents:g.grade==='23'?null:20000,maximumCents:g.grade==='23'?null:30000}))},reason});await submitRewardLibrary(maker,salary,1);await confirmRewardLibrary(alias,salary,2);const [library]=await owner.db.execute(sql`select state,confirmed_by from reward_library_version where id=${salary}::uuid`);expect(library).toEqual({state:'confirmed',confirmed_by:alias.userId});});
 
 it('refuses setup-policy audit impersonation by an ordinary runtime GR session',async()=>{

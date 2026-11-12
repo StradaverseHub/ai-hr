@@ -5818,6 +5818,13 @@
       "when": 1793330005240,
       "tag": "5540_rewards_offcycle_company_balance",
       "breakpoints": true
+    },
+    {
+      "idx": 4980,
+      "version": "7",
+      "when": 1793330005280,
+      "tag": "5580_rewards_config_owner_paths",
+      "breakpoints": true
     }
   ]
 }
