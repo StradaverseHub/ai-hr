@@ -127,8 +127,11 @@ async function openList({focusOnly=false}={}){
  // focusOnly: the box itself may be under an open side menu, where a pointer cannot reach it (Tab can).
  if(focusOnly)combobox().focus();else await userEvent.click(combobox());
  await userEvent.keyboard('irwi');
- const list=await screen.findByRole('listbox',{name:en.people.switcher.resultsLabel});
- await waitFor(()=>expect(within(list).getAllByRole('option')).toHaveLength(suggestions.length+1));
+ const list=await screen.findByRole('listbox',{name:en.people.switcher.resultsLabel},{timeout:5000});
+ // The suggestions arrive after the box's 200ms typing pause and the (mocked) read. Testing Library's default
+ // 1s wait is too tight on a loaded CI runner: full gate 43221284271 (Firefox, Monolith) had the list open
+ // with only the "Show all" row when it gave up. The wait is longer; what must arrive is unchanged (all 8 + 1).
+ await waitFor(()=>expect(within(list).getAllByRole('option'),`still waiting: "${list.querySelector('[role="status"]')?.textContent??''}"`).toHaveLength(suggestions.length+1),{timeout:5000});
  await frame();
  return list;
 }
