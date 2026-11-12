@@ -244,10 +244,17 @@ export function epf(
   additional = 0,
   cfg: StatutoryRuleset['epf'] = DEFAULT_MY_STATUTORY.epf,
   election?: EpfElection,
+  /** Item 69d6ed3c — statutory trace v1. When given, records WHICH lookup this call made (the row, or the
+   *  formula) from the same statements that produce the amounts. Never read by the arithmetic. */
+  sink?: EpfLookupSink,
 ) {
-  if (election?.mode === 'exempt') return { employee: 0, employer: 0 };
+  if (election?.mode === 'exempt') {
+    if (sink) sink.lookup = { method: 'exempt', base: round2(Math.max(0, wage) + Math.max(0, additional)), scheduleEmployee: 0, scheduleEmployer: 0 };
+    return { employee: 0, employer: 0 };
+  }
   if (election?.mode === 'topup_percentage') {
-    const { employee, employer } = epfTopupWorking(wage, additional, cfg, election);
+    const { employee, employer, actualWage } = epfTopupWorking(wage, additional, cfg, election);
+    if (sink) sink.lookup = { method: 'election_working', base: actualWage, scheduleEmployee: employee.amount, scheduleEmployer: employer.amount };
     return { employee: employee.amount, employer: employer.amount };
   }
 
@@ -262,14 +269,23 @@ export function epf(
   // narrow case, not a demonstrated bug, and it costs one multiplication.)
   const base = round2(Math.max(0, wage) + Math.max(0, additional));
   const working = epfEnteredRateWorking(wage, additional, cfg, election);
-  if (working) return { employee: working.employee.amount, employer: working.employer.amount };
+  if (working) {
+    if (sink) sink.lookup = { method: 'election_working', base: working.actualWage, scheduleEmployee: working.employee.amount, scheduleEmployer: working.employer.amount };
+    return { employee: working.employee.amount, employer: working.employer.amount };
+  }
   const statEmployerRate = base <= cfg.employerThreshold ? cfg.employerRateLow : cfg.employerRateHigh;
 
   // Statutory floor: exact Third Schedule band (incl. the NIL first band), or the percentage rounded
   // up where the schedule ends (> RM20,000).
-  const band = base <= scheduleMax ? bandFor(partA, base) : null;
+  const banded = base <= scheduleMax ? bandWithRow(partA, base) : null;
+  const band = banded ? banded.row : null;
   let employee = band ? band.employee : ceilRinggit(base * cfg.employeeRate);
   let employer = band ? band.employer : ceilRinggit(base * statEmployerRate);
+  if (sink) {
+    sink.lookup = banded
+      ? { method: 'schedule_row', base, band: banded.band, scheduleEmployee: employee, scheduleEmployer: employer }
+      : { method: 'schedule_formula', base, employeeRate: cfg.employeeRate, employerRate: statEmployerRate, scheduleEmployee: employee, scheduleEmployer: employer };
+  }
 
   // i-Topup / voluntary excess can only RAISE a side above the statutory floor. `resolveEpfRates`
   // floors the elected rate at statutory, and the schedule amount is itself ≥ the statutory percentage
@@ -278,6 +294,9 @@ export function epf(
     const { employeeRate, employerRate } = resolveEpfRates(base, cfg, election);
     if (election?.employeeRate != null) employee = Math.max(employee, ceilRinggit(base * employeeRate));
     if (election?.employerRate != null) employer = Math.max(employer, ceilRinggit(base * employerRate));
+    if (sink?.lookup && (employee !== sink.lookup.scheduleEmployee || employer !== sink.lookup.scheduleEmployer)) {
+      sink.lookup.raisedByElection = true;
+    }
   }
 
   // Item 70b14723 — THE TYPED AMOUNT REPLACES THE SCHEDULE READING, per side, last. `max` is deliberately
@@ -295,6 +314,98 @@ export function epf(
 }
 
 export type EpfCitizenship = 'citizen' | 'pr' | 'non_citizen';
+
+// ══ Item 69d6ed3c — STATUTORY TRACE v1: THE WORKING, RECORDED BY THE CALCULATION THAT PRODUCED IT ══
+//
+// The request: "the explanation must be generated from the actual statutory calculation results — do not
+// independently calculate a different explanation amount". So nothing below is a second calculation. Each
+// calculator that looks a figure up (`epf`, `epfContributionByRule`, `socsoLookup`, `eisLookup`) is handed
+// an OPTIONAL sink and writes into it, from the very statements that produce its amounts, which table row
+// (or which formula) it used. No sink ⇒ the calculators behave exactly as before, which is how every
+// existing caller and golden test stays byte-identical. `statutory()` builds the trace only when the
+// kernel asks for it (`opts.trace`), so the result of every other caller has no new key.
+//
+// The trace is display evidence. It is not a DELTA_KEY, not a STATUTORY_LINE_KEY, and no money is ever
+// read back out of it except the two per-run figures the kernel stamps for later same-month runs.
+
+/** One schedule row as the lookup used it. `from` is the row below's ceiling plus one sen (0 for the first
+ *  row). `aboveTable` marks a wage past the last row, which the schedule charges at that last row. */
+export type StatutoryTraceBand = { from: number; upTo: number; aboveTable?: true };
+
+export type EpfTraceMethod =
+  | 'schedule_row'       // a Third Schedule row (Part A, or Part E on the normal wage)
+  | 'schedule_formula'   // past the end of the schedule (> RM20,000): the percentage, rounded up to RM1
+  | 'flat_rate'          // non-citizen / PR 60+: the flat percentage on each stream, rounded up to RM1
+  | 'no_contribution'    // age 75+
+  | 'exempt'             // the employee's EPF category is Exempt
+  | 'election_working';  // an entered-rate / i-Topup category: the full working is `epfWorking`
+
+export type EpfLookupTrace = {
+  method: EpfTraceMethod;
+  /** The wage the lookup was made on. */
+  base: number;
+  band?: StatutoryTraceBand;
+  employeeRate?: number;
+  employerRate?: number;
+  /** What the rule produced on this lookup, before any election raise or typed amount. */
+  scheduleEmployee: number;
+  scheduleEmployer: number;
+  /** A voluntary-excess election raised a side above the schedule figure. */
+  raisedByElection?: true;
+};
+type EpfLookupSink = { lookup?: EpfLookupTrace };
+type EpfRuleSink = EpfLookupSink & {
+  part?: 'A' | 'E' | null;
+  normalOnly?: EpfLookupTrace;
+  /** Part E: the bonus is charged its own employer percentage beside the normal-wage row. */
+  bonusEmployer?: { rate: number; amount: number };
+  /** Flat rate: each stream is rounded separately, so both legs are recorded. */
+  flatLegs?: { normal: { employee: number; employer: number }; bonus: { employee: number; employer: number } };
+  notApplicable?: 'age_75_plus' | 'exempt';
+  manualEmployee?: true;
+  manualEmployer?: true;
+};
+
+export type EpfTraceV1 = EpfLookupTrace & Omit<EpfRuleSink, 'lookup'> & {
+  mode: EpfMode;
+  age: number | null;
+  citizenship: EpfCitizenship;
+  /** The normal-wage stream and the additional (bonus) stream the EPF call received. */
+  normalWage: number;
+  bonusWage: number;
+  /** The final figures — exactly `epfEmployee` / `epfEmployer` of the same result. */
+  employee: number;
+  employer: number;
+  /** Kₜ, the employee EPF attributable to the bonus stream (the PCB relief split). */
+  employeeOnBonus: number;
+};
+export type SocsoNotApplicableReason = 'not_subject' | 'category_none';
+export type SkbbkNotApplicableReason = 'not_subject' | 'not_in_ruleset';
+export type EisNotApplicableReason = 'age_60_plus' | 'non_citizen' | 'category_none' | 'not_eligible';
+export type ScheduleTraceV1<R extends string> = {
+  wage: number;
+  /** Absent when not applicable: a wage range the employee was not charged on would mislead. */
+  band?: StatutoryTraceBand;
+  scheduleEmployee?: number;
+  scheduleEmployer?: number;
+  employee: number;
+  employer: number;
+  notApplicable?: R;
+};
+export type StatutoryTraceV1 = {
+  version: 1;
+  rulesetVersion: string;
+  epf: EpfTraceV1;
+  socso: ScheduleTraceV1<SocsoNotApplicableReason> & { category: 1 | 2 };
+  skbbk: ScheduleTraceV1<SkbbkNotApplicableReason>;
+  eis: ScheduleTraceV1<EisNotApplicableReason>;
+};
+/** What the kernel passes to ask for the trace: the not-applicable reasons only it can name, derived once
+ *  from the same expressions that set `subjectToSocso` / `eisEligible`. */
+export type StatutoryTraceRequest = {
+  socsoNotApplicable?: SocsoNotApplicableReason;
+  eisNotApplicable?: EisNotApplicableReason;
+};
 
 type EpfSelection = { age?: number | null; citizenship?: EpfCitizenship; wageMonth?: string };
 type EpfWorkingSide =
@@ -456,11 +567,13 @@ function epfEnteredRateWorking(
 
 /** Flat-rate EPF side (non-citizen 2%/2%), round up to RM1; respects exempt / i-Topup excess and the
  *  b6dbadc5 additive top-up (2% + increment). */
-function epfFlatSide(base: number, statRate: number, electedRate: number | null | undefined, mode: string): number {
-  if (mode === 'exempt' || statRate === 0 || base <= 0) return 0;
+/** Item 69d6ed3c — returns the rate it applied beside the amount, so the trace names the rate the amount
+ *  actually came from (this was `epfFlatSide`, which returned the amount alone). */
+function epfFlatSideRate(base: number, statRate: number, electedRate: number | null | undefined, mode: string) {
+  if (mode === 'exempt' || statRate === 0 || base <= 0) return { amount: 0, rate: mode === 'exempt' ? 0 : statRate };
   const rate = mode === 'voluntary_excess' && electedRate != null ? Math.max(electedRate, statRate)
     : statRate;
-  return ceilRinggit(base * rate);
+  return { amount: ceilRinggit(base * rate), rate };
 }
 
 /**
@@ -484,10 +597,15 @@ export function epfContribution(
 
 function epfContributionWithWorking(
   wage: number, additional: number, cfg: StatutoryRuleset['epf'], election?: EpfElection, sel?: EpfSelection,
+  sink?: EpfRuleSink,
 ) {
   if (election?.mode === 'topup_percentage') {
     const working = epfTopupWorking(wage, additional, cfg, election, sel);
     const normal = additional > 0 ? epfTopupWorking(wage, 0, cfg, election, sel) : working;
+    if (sink) {
+      sink.part = working.schedulePart === 'A' || working.schedulePart === 'E' ? working.schedulePart : null;
+      sink.lookup = { method: 'election_working', base: working.actualWage, scheduleEmployee: working.employee.amount, scheduleEmployer: working.employer.amount };
+    }
     return {
       working,
       contribution: {
@@ -499,6 +617,11 @@ function epfContributionWithWorking(
   const working = epfEnteredRateWorking(wage, additional, cfg, election, sel);
   if (working) {
     const normal = additional > 0 ? epfEnteredRateWorking(wage, 0, cfg, election, sel)! : working;
+    if (sink) {
+      const part = 'schedulePart' in working.employer ? working.employer.schedulePart : null;
+      sink.part = part === 'A' || part === 'E' ? part : null;
+      sink.lookup = { method: 'election_working', base: working.actualWage, scheduleEmployee: working.employee.amount, scheduleEmployer: working.employer.amount };
+    }
     return {
       working,
       contribution: {
@@ -507,7 +630,7 @@ function epfContributionWithWorking(
       },
     };
   }
-  const byRule = epfContributionByRule(wage, additional, cfg, election, sel);
+  const byRule = epfContributionByRule(wage, additional, cfg, election, sel, sink);
   // ── Item 70b14723 — THE TYPED AMOUNT, APPLIED ACROSS EVERY RULE BRANCH ──────────────────────────────
   // `epf()` already substitutes for the Part A path (citizen/PR under 60), which is why the Kₜ difference
   // below comes out at 0 through the SAME function rather than by a rule written here. This covers the
@@ -523,6 +646,8 @@ function epfContributionWithWorking(
   const mEmployee = manualEpfSide(election, 'employeeAmount');
   const mEmployer = manualEpfSide(election, 'employerAmount');
   if (mEmployee == null && mEmployer == null) return { contribution: byRule };
+  if (sink && mEmployee != null) sink.manualEmployee = true;
+  if (sink && mEmployer != null) sink.manualEmployer = true;
   return { contribution: {
     employee: mEmployee ?? byRule.employee,
     employer: mEmployer ?? byRule.employer,
@@ -543,6 +668,7 @@ function epfContributionByRule(
   cfg: StatutoryRuleset['epf'] = DEFAULT_MY_STATUTORY.epf,
   election?: EpfElection,
   sel?: { age?: number | null; citizenship?: EpfCitizenship },
+  sink?: EpfRuleSink,
 ): { employee: number; employer: number; employeeOnBonus: number } {
   const age = sel?.age ?? null;
   const citizenship = sel?.citizenship ?? 'citizen';
@@ -550,38 +676,76 @@ function epfContributionByRule(
   const bonus = Math.max(0, additional);
 
   // b6dbadc5 — no top-up here either: from 75 there is no EPF contribution to add a top-up to.
-  if (age != null && age >= EPF_NO_CONTRIB_AGE) return { employee: 0, employer: 0, employeeOnBonus: 0 };
+  if (age != null && age >= EPF_NO_CONTRIB_AGE) {
+    if (sink) {
+      sink.part = null;
+      sink.notApplicable = 'age_75_plus';
+      sink.lookup = { method: 'no_contribution', base: round2(Math.max(0, wage) + bonus), scheduleEmployee: 0, scheduleEmployer: 0 };
+    }
+    return { employee: 0, employer: 0, employeeOnBonus: 0 };
+  }
   const senior = age != null && age >= EPF_SENIOR_AGE;
 
   // Non-citizen (and PR aged 60+): flat 2% / 2%, round up to RM1, on wage and bonus alike.
   if (citizenship === 'non_citizen' || (citizenship === 'pr' && senior)) {
     const eeRate = cfg.nonCitizenEmployeeRate ?? 0.02;
     const erRate = cfg.nonCitizenEmployerRate ?? 0.02;
-    const employeeOnBonus = epfFlatSide(bonus, eeRate, election?.employeeRate, mode);
-    return {
-      employee: epfFlatSide(wage, eeRate, election?.employeeRate, mode) + employeeOnBonus,
-      employer: epfFlatSide(wage, erRate, election?.employerRate, mode) + epfFlatSide(bonus, erRate, election?.employerRate, mode),
+    const eeNormal = epfFlatSideRate(wage, eeRate, election?.employeeRate, mode);
+    const eeBonus = epfFlatSideRate(bonus, eeRate, election?.employeeRate, mode);
+    const erNormal = epfFlatSideRate(wage, erRate, election?.employerRate, mode);
+    const erBonus = epfFlatSideRate(bonus, erRate, election?.employerRate, mode);
+    const employeeOnBonus = eeBonus.amount;
+    const out = {
+      employee: eeNormal.amount + employeeOnBonus,
+      employer: erNormal.amount + erBonus.amount,
       employeeOnBonus,
     };
+    if (sink) {
+      sink.part = null;
+      if (mode === 'exempt') sink.notApplicable = 'exempt';
+      sink.lookup = mode === 'exempt'
+        ? { method: 'exempt', base: round2(Math.max(0, wage) + bonus), scheduleEmployee: 0, scheduleEmployer: 0 }
+        : { method: 'flat_rate', base: round2(Math.max(0, wage) + bonus), employeeRate: eeNormal.rate, employerRate: erNormal.rate, scheduleEmployee: out.employee, scheduleEmployer: out.employer };
+      sink.flatLegs = { normal: { employee: eeNormal.amount, employer: erNormal.amount }, bonus: { employee: eeBonus.amount, employer: erBonus.amount } };
+    }
+    return out;
   }
 
   // Malaysian citizen 60–<75: Part E (employee 0%, employer 4% banded; bonus employer 4%).
   if (citizenship === 'citizen' && senior) {
-    if (mode === 'exempt') return { employee: 0, employer: 0, employeeOnBonus: 0 };
+    if (mode === 'exempt') {
+      if (sink) {
+        sink.part = 'E';
+        sink.notApplicable = 'exempt';
+        sink.lookup = { method: 'exempt', base: round2(Math.max(0, wage) + bonus), scheduleEmployee: 0, scheduleEmployer: 0 };
+      }
+      return { employee: 0, employer: 0, employeeOnBonus: 0 };
+    }
     const partE = cfg.partE ?? MY_EPF_THIRD_SCHEDULE_PART_E;
     const scheduleMax = cfg.scheduleMax ?? EPF_SCHEDULE_MAX;
     const erRate = cfg.seniorEmployerRate ?? 0.04;
-    const band = wage <= scheduleMax ? bandFor(partE, wage) : null;
+    const banded = wage <= scheduleMax ? bandWithRow(partE, wage) : null;
+    const band = banded ? banded.row : null;
     const wageEmployer = band ? band.employer : ceilRinggit(wage * erRate);
+    const bonusEmployer = bonus > 0 ? ceilRinggit(bonus * erRate) : 0;
+    if (sink) {
+      sink.part = 'E';
+      sink.lookup = banded
+        ? { method: 'schedule_row', base: wage, band: banded.band, scheduleEmployee: 0, scheduleEmployer: wageEmployer }
+        : { method: 'schedule_formula', base: wage, employeeRate: 0, employerRate: erRate, scheduleEmployee: 0, scheduleEmployer: wageEmployer };
+      if (bonus > 0) sink.bonusEmployer = { rate: erRate, amount: bonusEmployer };
+    }
     return {
       employee: 0,
-      employer: wageEmployer + (bonus > 0 ? ceilRinggit(bonus * erRate) : 0),
+      employer: wageEmployer + bonusEmployer,
       employeeOnBonus: 0,
     };
   }
 
   // Citizen / PR < 60: standard Part A — ONE combined-month lookup (bdf7d248).
-  const e = epf(wage, bonus, cfg, election);
+  if (sink) sink.part = 'A';
+  const combinedSink: EpfLookupSink | undefined = sink ? {} : undefined;
+  const e = epf(wage, bonus, cfg, election, combinedSink);
   // Kₜ, the employee EPF attributable to the additional remuneration, for the PCB relief split. Under
   // the combined lookup there is no separate "percentage of the bonus" to report: the bonus leg is the
   // DIFFERENCE between the month's lookup and the same lookup on the normal wage alone. Derived from
@@ -590,7 +754,13 @@ function epfContributionByRule(
   // annual EPF relief cap. `max(0, …)` is defence only: the Part A employee column is monotonic in the
   // base, so a larger base never yields a smaller employee amount. (The EMPLOYER column is NOT
   // monotonic — it steps DOWN from 13% to 12% at RM5,000 — but the employer side has no Kₜ leg.)
-  const wageOnly = bonus > 0 ? epf(wage, 0, cfg, election) : e;
+  const normalSink: EpfLookupSink | undefined = sink && bonus > 0 ? {} : undefined;
+  const wageOnly = bonus > 0 ? epf(wage, 0, cfg, election, normalSink) : e;
+  if (sink) {
+    sink.lookup = combinedSink?.lookup;
+    if (normalSink?.lookup) sink.normalOnly = normalSink.lookup;
+    if (combinedSink?.lookup?.method === 'exempt') sink.notApplicable = 'exempt';
+  }
   return {
     employee: e.employee,
     employer: e.employer,
@@ -652,20 +822,40 @@ function bandFor(bands: ContribBand[], wage: number): ContribBand {
   return bands.find((b) => wage <= b.upTo) ?? bands[bands.length - 1];
 }
 
+/** Item 69d6ed3c — `bandFor`, plus the row it returned described as a wage range for the trace. The row IS
+ *  `bandFor`'s answer; the range is read off the table around it, never derived from the amounts. */
+function bandWithRow<B extends ContribBand>(bands: B[], wage: number): { row: B; band: StatutoryTraceBand } {
+  const row = bandFor(bands, wage) as B;
+  const i = bands.indexOf(row);
+  const from = i > 0 ? round2(bands[i - 1].upTo + 0.01) : 0;
+  return { row, band: { from, upTo: row.upTo, ...(wage > row.upTo ? { aboveTable: true as const } : {}) } };
+}
+
 /** SOCSO — exact Act 4 schedule amounts (verified to the RM6,000 ceiling). Category 1 =
  *  Employment Injury + Invalidity (< 60); Category 2 = Employment Injury only, employer-only
  *  (age 60+). */
 export function socso(wage: number, category: 1 | 2 = 1, cfg: StatutoryRuleset['socso'] = DEFAULT_MY_STATUTORY.socso) {
-  const band = bandFor(category === 2 ? cfg.category2 : cfg.category1, wage) as SocsoBand;
+  const { employer, employee, skbbk } = socsoLookup(wage, category, cfg);
+  return { employer, employee, skbbk };
+}
+/** `socso()` with the row it read (item 69d6ed3c). `socso()` is this function minus the trace fields. */
+function socsoLookup(wage: number, category: 1 | 2, cfg: StatutoryRuleset['socso']) {
+  const { row, band: range } = bandWithRow(category === 2 ? cfg.category2 : cfg.category1, wage);
+  const band = row as SocsoBand;
   // SKBBK (Lindung 24 Jam, eff 1 Jun 2026) — employee-paid leg on top of the standard SOCSO; 0 for any
   // pre-2026.3 ruleset/DB override that lacks the column.
-  return { employer: band.employer, employee: band.employee, skbbk: band.skbbk ?? 0 };
+  return { employer: band.employer, employee: band.employee, skbbk: band.skbbk ?? 0, skbbkInRuleset: band.skbbk != null, range };
 }
 
 /** EIS — exact Act 800 Second Schedule amounts (verified to the RM6,000 ceiling). */
 export function eis(wage: number, cfg: StatutoryRuleset['eis'] = DEFAULT_MY_STATUTORY.eis) {
-  const band = bandFor(cfg.bands, wage);
-  return { employer: band.employer, employee: band.employee };
+  const { employer, employee } = eisLookup(wage, cfg);
+  return { employer, employee };
+}
+/** `eis()` with the row it read (item 69d6ed3c). */
+function eisLookup(wage: number, cfg: StatutoryRuleset['eis']) {
+  const { row, band: range } = bandWithRow(cfg.bands, wage);
+  return { employer: row.employer, employee: row.employee, range };
 }
 
 /** Annual tax on chargeable income P: the (M, R, B) band that contains P; category selects B.
@@ -1529,6 +1719,9 @@ export function statutory(
     pcbAdditionalOverride?: number;
     /** PCB-only taxable normal remuneration; never an agency/cash wage. */
     pcbNonCashNormal?: NonCashAmounts;
+    /** Item 69d6ed3c — ask for `statutoryTrace` v1 on the result. Absent ⇒ no trace key at all, so every
+     *  caller that does not ask gets a byte-identical result. Read by no arithmetic. */
+    trace?: StatutoryTraceRequest;
   },
   /** The active statutory ruleset (ADR-0019); defaults to the verified built-in set. */
   rules: StatutoryRuleset = DEFAULT_MY_STATUTORY,
@@ -1567,14 +1760,16 @@ export function statutory(
   const pcbWage = round2(pcbCashWage + (benefit?.bik ?? 0) + (benefit?.vola ?? 0));
   // EPF by age + citizenship (Part A / Part E senior / non-citizen 2%/2%; #95). Bonus IS subject to
   // EPF; overtime is NOT.
+  const epfSink: EpfRuleSink | undefined = opts?.trace ? {} : undefined;
   const { contribution: eC, working } = epfContributionWithWorking(epfWage, epfAdditional, rules.epf, opts?.epfElection, {
     age: opts?.epfAge,
     citizenship: opts?.epfCitizenship,
     wageMonth: opts?.epfWageMonth,
-  });
+  }, epfSink);
   const epfTrace = working ? { epfWorking: working } : {};
   const e = { employee: eC.employee, employer: eC.employer };
-  const sRaw = socso(socsoWage, opts?.socsoCategory ?? 1, rules.socso); // bonus excluded; overtime included
+  const socsoCategory = opts?.socsoCategory ?? 1;
+  const sRaw = socsoLookup(socsoWage, socsoCategory, rules.socso); // bonus excluded; overtime included
   // Item 5a461b99 — "Subject to SOCSO" gates the SOCSO Injury/Invalidity legs; "Subject to SKBBK" gates the
   // (independent) SKBBK leg. Both default on so existing behaviour is byte-identical. Unchecked ⇒ 0 in the
   // reported figure (the employee is exempt), not merely undeducted (that is the separate employer-bears case).
@@ -1586,16 +1781,47 @@ export function statutory(
     skbbk: skbbkOn ? sRaw.skbbk : 0,
   };
   const eisOn = opts?.eisEligible ?? true;
-  const i = eisOn ? eis(socsoWage, rules.eis) : { employer: 0, employee: 0 }; // bonus excluded; OT included
+  const eisRow = eisOn ? eisLookup(socsoWage, rules.eis) : null;
+  const i = eisRow ? { employer: eisRow.employer, employee: eisRow.employee } : { employer: 0, employee: 0 }; // bonus excluded; OT included
   // EPF relief split: the employee share on the bonus (Kₜ). 0 for seniors (Part E, no employee share);
   // the flat rate on the bonus for a non-citizen; and for citizens < 60 (bdf7d248) the DIFFERENCE
   // between the combined-month Third Schedule lookup and the same lookup on the normal wage alone, so
   // `e.employee − epfOnBonus` below is exactly the normal-wage schedule amount K₁ is taken from.
   const epfOnBonus = eC.employeeOnBonus;
+  // Item 69d6ed3c — the trace, assembled from the figures above and the rows their lookups recorded. Every
+  // amount in it is a variable this function already returns; nothing here looks anything up again.
+  const { lookup: epfLookup, ...epfRuleTrace } = epfSink ?? {};
+  const traceOut: { statutoryTrace?: StatutoryTraceV1 } = opts?.trace && epfLookup ? { statutoryTrace: {
+    version: 1,
+    rulesetVersion: rules.version,
+    epf: {
+      ...epfLookup,
+      ...epfRuleTrace,
+      part: epfRuleTrace.part ?? null,
+      mode: opts.epfElection?.mode ?? 'auto',
+      age: opts.epfAge ?? null,
+      citizenship: opts.epfCitizenship ?? 'citizen',
+      normalWage: epfWage,
+      bonusWage: epfAdditional,
+      employee: e.employee,
+      employer: e.employer,
+      employeeOnBonus: epfOnBonus,
+    },
+    socso: socsoOn
+      ? { category: socsoCategory, wage: socsoWage, band: sRaw.range, scheduleEmployee: sRaw.employee, scheduleEmployer: sRaw.employer, employee: s.employee, employer: s.employer }
+      : { category: socsoCategory, wage: socsoWage, employee: 0, employer: 0, notApplicable: opts.trace.socsoNotApplicable ?? 'not_subject' },
+    skbbk: skbbkOn && sRaw.skbbkInRuleset
+      ? { wage: socsoWage, band: sRaw.range, scheduleEmployee: sRaw.skbbk, scheduleEmployer: 0, employee: s.skbbk, employer: 0 }
+      : { wage: socsoWage, employee: 0, employer: 0, notApplicable: !skbbkOn ? 'not_subject' : 'not_in_ruleset' },
+    eis: eisRow
+      ? { wage: socsoWage, band: eisRow.range, scheduleEmployee: eisRow.employee, scheduleEmployer: eisRow.employer, employee: i.employee, employer: i.employer }
+      : { wage: socsoWage, employee: 0, employer: 0, notApplicable: opts.trace.eisNotApplicable ?? 'not_eligible' },
+  } } : {};
   // None is explicit non-applicability, not a tax rate or a fourth mathematical category.
   if(opts?.taxCircumstance && !readSavedTaxCircumstance(opts.taxCircumstance))throw new StatutoryRulesetMalformedError('Invalid tax circumstance snapshot');
   if(opts?.taxCircumstance?.applicable===false)return {
     ...epfTrace,
+    ...traceOut,
     epfEmployee:e.employee,epfEmployer:e.employer,socsoEmployee:s.employee,socsoEmployer:s.employer,
     socsoSkbbk:s.skbbk,eisEmployee:i.employee,eisEmployer:i.employer,
     pcb:0,pcbBonus:0,pcbNormalPreZakat:0,
@@ -1613,6 +1839,7 @@ export function statutory(
     const pcbBonusOnly = rm10Floor(ceil5sen(trunc2(pcbAdditional * flatRate)));
     return {
       ...epfTrace,
+      ...traceOut,
       epfEmployee: e.employee,
       epfEmployer: e.employer,
       socsoEmployee: s.employee,
@@ -1660,6 +1887,7 @@ export function statutory(
   });
   return {
     ...epfTrace,
+    ...traceOut,
     epfEmployee: e.employee,
     epfEmployer: e.employer,
     socsoEmployee: s.employee,

@@ -22,10 +22,14 @@
  */
 
 import { useEffect, useRef, useState, useTransition } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { Columns3, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui';
-import { useFitToView } from '@/components/ui/fit-to-view';
+import { AnchoredPanel, useAnchoredPanel } from '@/components/ui/anchored-panel';
+
+/** The panel's width: 20rem, or the window less a 1rem margin on a phone (the old `w-[min(20rem,90vw)]`). */
+const pickerWidth = () => Math.min(320, Math.max(0, window.innerWidth - 16));
 
 export type EmployeeColumnChoice = {
   key: string;
@@ -63,9 +67,17 @@ export function ColumnPicker({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const panelRef = useRef<HTMLDivElement>(null);
-  // Opened near the bottom of the window, the panel opens upwards or shrinks to fit (components/ui/fit-to-view.ts).
-  useFitToView(open, panelRef);
+  const trigger = useRef<HTMLButtonElement>(null);
+  // aa045103 round 2 — the panel is portaled to <body> and `position: fixed` (components/ui/anchored-panel.tsx),
+  // end-aligned under the button. Inside the sticky page header it was capped by that header's stacking context
+  // (z-index 20: the Monolith top bar and the Atelier rail flyout drew over it) and clipped by <main>. The hook
+  // re-places it on scroll and resize, opens it upwards near the bottom and caps its height to the room left.
+  // The hook's own Escape releases the anchor before it calls onClose.
+  const { at, anchorTo, release } = useAnchoredPanel({ open, onClose: () => setOpen(false), width: pickerWidth, flipHeight: 420, gap: 4, align: 'end' });
+  const close = () => {
+    setOpen(false);
+    release();
+  };
   const [pending, startTransition] = useTransition();
   const [order, setOrder] = useState<EmployeeColumnChoice[]>(columns);
   const [on, setOn] = useState<string[]>(selected);
@@ -79,14 +91,7 @@ export function ColumnPicker({
     // The two arrays are rebuilt by the server on every render, so compare by VALUE, not identity.
   }, [columns.map((c) => c.key).join(','), selected.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [open]);
+  // Escape is the anchored panel's own listener (it releases the anchor and calls onClose above).
 
   const moveTo = (from: number, to: number) => {
     if (from === to || from < 0 || to < 0 || from >= order.length || to >= order.length) return;
@@ -125,7 +130,12 @@ export function ColumnPicker({
     <div className="relative">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        ref={trigger}
+        onClick={() => {
+          if (open) return close();
+          if (trigger.current) anchorTo(trigger.current);
+          setOpen(true);
+        }}
         aria-expanded={open}
         aria-haspopup="dialog"
         data-tour="people-columns"
@@ -134,14 +144,14 @@ export function ColumnPicker({
         <Columns3 className="size-4 text-muted-foreground" aria-hidden />
         {labels.title}
       </button>
-      {open && (
+      {open && typeof document !== 'undefined' && createPortal(
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div
-            ref={panelRef}
+          <div className="fixed inset-0 z-40" onClick={close} />
+          <AnchoredPanel
+            at={at}
             role="dialog"
             aria-label={labels.title}
-            className="absolute right-0 z-50 mt-1 flex w-[min(20rem,90vw)] flex-col origin-top-right rounded-lg border border-border bg-popover text-popover-foreground shadow-lg transition duration-150 ease-snappy starting:scale-95 starting:opacity-0"
+            className="flex w-[min(20rem,90vw)] flex-col origin-top-right overflow-hidden p-0 text-popover-foreground transition duration-150 ease-snappy starting:scale-95 starting:opacity-0"
           >
             <p className="border-b border-border px-4 py-2.5 text-xs text-muted-foreground">{labels.hint}</p>
             <ul className="max-h-[50vh] min-h-0 overflow-y-auto py-1">
@@ -216,8 +226,9 @@ export function ColumnPicker({
                 {labels.apply}
               </Button>
             </div>
-          </div>
-        </>
+          </AnchoredPanel>
+        </>,
+        document.body,
       )}
     </div>
   );

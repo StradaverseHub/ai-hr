@@ -6,6 +6,12 @@
  * the same end-aligned rule (left = trigger.right − 288), which opens over the sidebar from a narrow first
  * column.
  *
+ * Round 2 (the reporter refuted the first build: the list was still covered by the top menu bar): the list is
+ * now PORTALED to <body> and `position: fixed` through components/ui/anchored-panel.tsx, so neither the sticky
+ * page header's stacking context nor <main>'s overflow box can cover or clip it. That it is truly topmost is a
+ * real-browser question: test/personnel-search-dropdown-topmost.browser.test.tsx probes it with
+ * elementFromPoint in all three themes. This file pins the placement maths and the combobox contract.
+ *
  * jsdom has no layout, so each case installs the rects it is about: a content area (<main>, overflow auto)
  * that starts right of a 240px sidebar, and a box / trigger inside it. Every assertion is "never left of the
  * box / trigger / content edge, never past the content's right edge".
@@ -47,18 +53,69 @@ const openList=async()=>{
 };
 const boxWrapper=(el:HTMLElement)=>el.querySelector(':scope > input[role="combobox"]')?el:null;
 
-it('opens the suggestion list from the box LEFT edge, never right-anchored, at its preferred 24rem when there is room',async()=>{
+it('portals the suggestion list to <body> as a fixed panel opening from the box LEFT edge, at its preferred 24rem when there is room',async()=>{
+ Object.defineProperty(window,'innerHeight',{configurable:true,value:900});
  // Desktop: sidebar 0–240, content 240–1280, the box at the content's left edge (as when the header wraps).
  layout({left:240,right:1280},el=>boxWrapper(el)?{left:256,right:544}:null);
  mountSearch();
  const list=await openList();
- expect(list).toHaveClass('absolute','left-0','min-w-full');
- expect(list.className).not.toMatch(/(^|\s)right-0(\s|$)/);
+ // Out of the sticky header and out of <main>: a direct child of <body>, fixed and on the top layer.
+ expect(list.parentElement).toBe(document.body);
+ expect(document.querySelector('main')!.contains(list)).toBe(false);
+ expect(list).toHaveClass('fixed','z-50');
+ expect(list.className).not.toMatch(/(^|\s)(absolute|right-0)(\s|$)/);
+ expect(list.style.left).toBe('256px');
+ expect(list.style.top).toBe('140px'); // the box bottom (136) + a 4px gap, opening downwards
+ expect(list.style.transform).toBe('');
  expect(list.style.width).toBe(SUGGESTION_LIST_WIDTH+'px');
+ expect(Number.parseFloat(list.style.maxHeight)).toBeLessThanOrEqual(384);
  // Keyboard and aria are unchanged by the fix.
  expect(box()).toHaveAttribute('aria-controls',list.id);
+ expect(list).toHaveAttribute('role','listbox');
  fireEvent.keyDown(box(),{key:'ArrowDown'});
  expect(box()).toHaveAttribute('aria-activedescendant',screen.getAllByRole('option')[0].id);
+ expect(screen.getAllByRole('option')[0].id.startsWith(list.id)).toBe(true);
+ // Enter on the active option applies that person's Employee ID and closes the list.
+ fireEvent.keyDown(box(),{key:'Enter'});
+ expect(box()).toHaveValue('EMP-0001');
+ expect(screen.queryByRole('listbox')).toBeNull();
+});
+
+it('a click on a portaled option applies the term; focus moving into the list does not close it; Escape does',async()=>{
+ layout({left:240,right:1280},el=>boxWrapper(el)?{left:256,right:544}:null);
+ mountSearch();
+ let list=await openList();
+ // Focus landing INSIDE the portaled list is not a blur of the combobox (it is outside the box in the DOM).
+ fireEvent.blur(box(),{relatedTarget:list});
+ expect(screen.getByRole('listbox')).toBe(list);
+ // A blur to anywhere else closes it.
+ fireEvent.blur(box(),{relatedTarget:document.body});
+ expect(screen.queryByRole('listbox')).toBeNull();
+ fireEvent.focus(box());
+ list=await screen.findByRole('listbox');
+ fireEvent.keyDown(box(),{key:'Escape'});
+ expect(screen.queryByRole('listbox')).toBeNull();
+ fireEvent.change(box(),{target:{value:'irwin'}});
+ list=await screen.findByRole('listbox');
+ await waitFor(()=>expect(screen.getAllByRole('option')).toHaveLength(3));
+ const option=screen.getAllByRole('option')[1];
+ // mousedown keeps focus in the box (default prevented), then the click picks.
+ expect(fireEvent.mouseDown(option)).toBe(false);
+ expect(fireEvent.mouseDown(list)).toBe(false);
+ fireEvent.click(option);
+ expect(box()).toHaveValue('EMP-0002');
+ expect(screen.queryByRole('listbox')).toBeNull();
+});
+
+it('opens UPWARDS and caps its height to the room left when the box sits near the bottom of the window',async()=>{
+ Object.defineProperty(window,'innerHeight',{configurable:true,value:560});
+ layout({left:240,right:1280},el=>boxWrapper(el)?{left:256,right:544,top:480,bottom:516}:null);
+ mountSearch();
+ const list=await openList();
+ expect(list.style.transform).toBe('translateY(-100%)');
+ expect(list.style.top).toBe('476px'); // box top − 4px gap; the panel's bottom edge sits there
+ expect(Number.parseFloat(list.style.maxHeight)).toBeLessThanOrEqual(480-4-8);
+ Object.defineProperty(window,'innerHeight',{configurable:true,value:900});
 });
 
 it('narrows to the room left in the content area, but never below the box width', async()=>{
@@ -113,8 +170,8 @@ it('startAlignedLeft and visibleHorizontalBounds clamp to the clipping ancestor,
  expect(visibleHorizontalBounds(container.querySelector('#anchor') as HTMLElement)).toEqual({left:240,right:1024});
 });
 
-it('with no layout box to measure (a static capture), the list keeps the box width instead of a guessed 24rem',async()=>{
+it('with no layout box to measure (a static capture), the list carries no guessed inline width',async()=>{
  mountSearch();
  const list=await openList();
- expect(list.style.width).toBe('');expect(list).toHaveClass('left-0','w-full','min-w-full');
+ expect(list.style.width).toBe('');expect(list.parentElement).toBe(document.body);
 });

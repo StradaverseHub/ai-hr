@@ -42,7 +42,15 @@ import { cn } from '@/lib/utils';
  * left between the anchor and the window edge it opens towards: a panel taller than that scrolls inside itself
  * instead of running off the screen, where a fixed box can never be scrolled into view.
  */
-export type AnchoredPlacement = { top: number; left: number; flip: boolean; maxHeight?: number };
+export type AnchoredPlacement = { top: number; left: number; flip: boolean; maxHeight?: number; width?: number };
+
+/**
+ * aa045103 · a panel whose width follows its anchor (the Personnel search suggestions: at least the box's
+ * width). Measured on every place, so a scroll, a resize or the sidebar collapsing re-measures it with the
+ * position. A value of 0 or less means "no layout to measure" (jsdom, a hidden ancestor): the placement then
+ * carries no width and the panel keeps its own class width.
+ */
+export type AnchoredPanelWidth = number | ((anchor: HTMLElement, rect: DOMRect) => number);
 
 /** The panel's width in px. 360 = the `w-[22.5rem]` the attendance panel has always rendered at. */
 export const ANCHORED_PANEL_WIDTH = 360;
@@ -74,9 +82,14 @@ export function visibleHorizontalBounds(el: HTMLElement): { left: number; right:
 /**
  * aa045103 · a START-aligned panel's left edge: the trigger's own left edge, moved left only as far as the
  * panel needs to fit before the visible right edge, and never past the visible left edge (the sidebar).
+ *
+ * Round 2: never further left than "right edges meet" for a trigger that is itself in view. The 8px gutter
+ * is for a panel WIDER than its trigger; a box-width list under a box that already ends at the content's
+ * right edge would otherwise start 8px left of the box it belongs to.
  */
-export function startAlignedLeft(rect: { left: number }, bounds: { left: number; right: number }, width: number, edge = 8): number {
-  return Math.max(bounds.left, Math.min(rect.left, bounds.right - width - edge));
+export function startAlignedLeft(rect: { left: number; right?: number }, bounds: { left: number; right: number }, width: number, edge = 8): number {
+  const fit = rect.right === undefined ? bounds.right - width - edge : Math.max(bounds.right - width - edge, Math.min(rect.right, bounds.right) - width);
+  return Math.max(bounds.left, Math.min(rect.left, fit));
 }
 
 /**
@@ -100,7 +113,8 @@ export function useAnchoredPanel({
 }: {
   open: boolean;
   onClose: () => void;
-  width?: number;
+  /** A fixed width in px, or a measure of the anchor (see AnchoredPanelWidth); pass a STABLE function. */
+  width?: AnchoredPanelWidth;
   flipHeight?: number;
   gap?: number;
   /**
@@ -128,14 +142,17 @@ export function useAnchoredPanel({
   const place = useCallback(
     (el: HTMLElement) => {
       const r = el.getBoundingClientRect();
+      const measured = typeof width === 'function' ? width(el, r) : null;
+      const w = measured != null && measured > 0 ? measured : typeof width === 'number' ? width : ANCHORED_PANEL_WIDTH;
       const flip = r.bottom + flipHeight > window.innerHeight && r.top > flipHeight;
       setAt({
         top: flip ? r.top - gap : r.bottom + gap,
         left: align === 'start'
-          ? startAlignedLeft(r, visibleHorizontalBounds(el), width)
-          : Math.min(Math.max(8, r.right - width), window.innerWidth - width - 8),
+          ? startAlignedLeft(r, visibleHorizontalBounds(el), w)
+          : Math.min(Math.max(8, r.right - w), window.innerWidth - w - 8),
         flip,
         maxHeight: Math.max(160, (flip ? r.top : window.innerHeight - r.bottom) - gap - 8),
+        ...(measured != null && measured > 0 ? { width: measured } : {}),
       });
     },
     [width, flipHeight, gap, align],
@@ -207,7 +224,7 @@ export function AnchoredPanel({
       id={id}
       role={role}
       className={cn(PANEL_CLS, className)}
-      style={{ top: at.top, left: at.left, maxHeight: at.maxHeight, transform: at.flip ? 'translateY(-100%)' : undefined }}
+      style={{ top: at.top, left: at.left, maxHeight: at.maxHeight, width: at.width, transform: at.flip ? 'translateY(-100%)' : undefined }}
       {...rest}
     >
       {children}
