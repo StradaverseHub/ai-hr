@@ -462,3 +462,55 @@ The Overtime Setting screen, its writer and "Manual means no payable attendance 
 ADR's release gate. They ship only once policy execution, approval receipts and payroll/TOIL acceptance with
 financial replay are complete. Until then the Schedule Group Overtime tab states that the setting is pending,
 and every group's overtime keeps its current behaviour.
+
+## Board item 2f803985, 12 November 2026 (round 2): Overtime Setting with execution and Payroll
+
+The reporter refuted the first release (only a "pending" note; Monday–Sunday dropdowns beside the rotation).
+Plan revision 2 ships the screen, the writer, the calculation order and the Payroll/TOIL link together.
+
+- **Screen.** Add and Edit Schedule Group carry the full Overtime Setting section
+  (`components/schedule-overtime-setting.tsx`): the four applicability ticks, Offset Overtime by Lateness with
+  its dependent Show Lateness Exception After Offset (shown only with the offset), Manual/Auto with its
+  dependent Auto Overtime Approval Method, Round Up/Down and 15/30/45 minutes, the companies (All companies by
+  default) and the start date. Add Schedule lost the seven weekday dropdowns and the old bands; the first dated
+  rotation is ticked by default and is the only Day Type + Shift setup. The complete legacy edit form keeps its
+  band editor so it can never post an empty ladder.
+- **Writer.** `saveScheduleGroupOvertimeSetting` (core/attendance-overtime-setting.ts) appends one future-dated
+  revision per in-scope company in one transaction with set-based statements (one scope read, one history read
+  with DISTINCT ON, one pattern check, one multi-row insert, one event batch), under the Access/profile barrier,
+  overtime configuration lock and leave-dependency lock, with an optimistic token over every company's latest
+  ordinal. Clock pairing/grace and day minimum/maximum carry forward per company. Mapping: Intersect =
+  `intersect`, Actual Hours = `actual`, Approved Overtime = `preApproved`.
+- **Formula binding (discrepancy with the plan's build note).** The note said an enabled policy's per-day
+  `patternVersionId` defaults from the group's legacy-bound version. Policy parts accept only activated
+  *formula* versions bound to the employer (0590 part guard), so a legacy-band version cannot price a policy
+  part. Auto therefore asks for an activated Overtime Pattern per day type, offers only patterns active for every
+  chosen company, and the writer refuses otherwise. Manual needs no pattern.
+- **Manual.** Stored as a policy whose overtime is not enabled. The duration owner already returns zero for it;
+  the financial duration contract records a complete `none` outcome (`manualApproval`) without clocks, plan or
+  formula. The pre-existing manual-receipt workflow for `approval:'manual'` with `enabled:true` is untouched
+  (no Schedule Group save writes that combination).
+- **Known zero.** A new `none` state of the financial duration contract (also `noPayableOvertime`, when the
+  evidenced Auto calculation selects zero) marks the day `recorded`, so Payroll treats it as covered with no
+  attendance overtime instead of holding the run on `sourceUnavailable`. Intersect and Approved Overtime on a day
+  with no overtime request (or only rejected/cancelled ones) use a known empty approved plan
+  (`attendancePolicyPlanNotRequested`) with approval `notRequired`; a pending or approved request never takes
+  that branch. Unknown evidence (incomplete clocks, missing receipts) still refuses.
+- **Order.** For Auto the duration owner now applies breaks/eligibility, then the approval method, then the
+  lateness offset, then the midnight split and rounding last (`finalizePolicyOvertimeDuration`). This replaces
+  point 4's offset-before-method order. Frozen Manual-receipt workflows keep their recorded order. One existing
+  pure regression changed accordingly (Intersect 30 then 15 late now pays 15, not 30).
+- **Lateness exception.** With Show Lateness Exception After Offset on, the recorded day marker carries
+  `latenessAfterOffset` and the employee exception list adds the remaining minutes beside the unchanged Late In.
+- **Fast path.** The import no-op check's tenant-wide policy kill is narrowed to policies of the days' derived
+  group (or any group when a day carries none), of any employer the employments have had, starting on or before
+  the batch's last date.
+- **Not recalculated.** Revisions are future-dated only; earlier days, clockings, lateness and past payroll
+  are untouched. Policy-routed proposals recorded under the previous order (test data only; no installation
+  had a Schedule Group writer) read back as stale rather than being rewritten.
+
+Evidence: `test/overtime-setting-2f803985-calculation.test.ts` (every request example through the shared
+duration owner, save/load per field, conditionals, known-zero outcomes), `test/overtime-setting-2f803985-payroll.test.ts`
+(71-company writer; Auto split 10 PM–2 AM transferred as RM 36.00 on each date and paid RM 72.00; TOIL; Manual
+pays no attendance overtime without holding Payroll; Intersect with no request), `test/schedule-overtime-setting.dom.test.tsx`
+(six locales) and `test/r301-schedule-general.test.ts` (no weekday dropdowns, rotation ticked, setting on Add).

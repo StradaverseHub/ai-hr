@@ -24,8 +24,9 @@ describe('shared dated-policy duration proposal',()=>{
   // 60 actual eligible − 15 unioned break − (30 measured late − 10 already unpaid) = 25.
   expect(result).toMatchObject({authority:'proposalOnly',lateOffsetMinutes:20,payableMinutes:25,intervalBasis:'actual',classes:[{eligibleMinutes:25,payableMinutes:25}]});
   expect(result.parts[0].intervals).toEqual([{from:1115,to:1140}]);expect(f).toEqual(before);
+  // 2f803985 plan revision 2: eligibility, then the approval method, then the lateness offset.
   expect(result.selectionSteps).toEqual([{kind:'breaks',basis:'actual',before:60,after:45},
-   {kind:'lateOffset',before:45,after:25,requested:20,applied:20},{kind:'method',method:'actual',before:25,after:25}]);
+   {kind:'method',method:'actual',before:45,after:45},{kind:'lateOffset',before:45,after:25,requested:20,applied:20}]);
  });
  it('finalizes Manual approved positions once after the same actual break and late selection',()=>{
   const f=fixture();f.policy.overtime.approval='manual';f.approval='approved';f.policy.overtime.offsetLateness=true;
@@ -88,11 +89,13 @@ describe('shared dated-policy duration proposal',()=>{
   expect(result.payableMinutes).toBe(requestedWinner?requestedCount:40);
   expect(result.parts.reduce((sum,part)=>sum+part.allocatedPayableMinutes,0)).toBe(result.payableMinutes);
  });
- it('applies one actual lateness offset before intersecting the approved window',()=>{
+ it('intersects the approved window first and then applies the one lateness offset (2f803985 order)',()=>{
   const f=fixture();f.policy.overtime.offsetLateness=true;f.method='intersect';f.policy.overtime.autoMethod='intersect';
   f.lateOffsetIntervals=[{from:500,to:515}];f.eligiblePlannedIntervals=[{from:1110,to:1170}];
-  const result=calculated(f);expect(result.lateOffsetMinutes).toBe(15);expect(result.payableMinutes).toBe(30);
-  expect(result.parts[0].intervals).toEqual([{from:1110,to:1140}]);
+  // Actual 18:00–19:00 ∩ approved 18:30–19:30 = 30 minutes; 15 late minutes then leave 15.
+  const result=calculated(f);expect(result.lateOffsetMinutes).toBe(15);expect(result.payableMinutes).toBe(15);
+  expect(result.parts[0].intervals).toEqual([{from:1125,to:1140}]);
+  expect(result.selectionSteps.map(step=>step.kind)).toEqual(['breaks','method','lateOffset']);
  });
  it('requires an established worked day and evidenced plan for Pre-Approved, keeping planned coverage distinct from actual work',()=>{
   const f=fixture();f.method='preApproved';f.policy.overtime.autoMethod='preApproved';f.eligibleActualIntervals=[];f.workedIntervals=[];

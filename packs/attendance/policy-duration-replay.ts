@@ -112,6 +112,9 @@ export function attendancePolicyIndependentRecordedApprovalStatus(snapshot:Indep
   const overtime=policy.policy.overtime;
   if(!overtime.enabled||overtime.approval==='auto'&&overtime.autoMethod==='actual')return 'notRequired';
   const proposal=snapshot.policyExecutionProposal;
+  // 2f803985: no overtime request on the day — the known empty plan needs no approval.
+  if(overtime.approval==='auto'&&proposal?.state==='proposed'&&proposal.planEvidence?.references.length===0
+   &&attendancePolicyIndependentDurationReplay(snapshot).state==='known')return 'notRequired';
   if(attendancePolicyIndependentDurationReplay(snapshot).state==='known'&&proposal?.state==='proposed'
    &&(overtime.approval==='manual'?proposal.manualEvidence!==undefined:proposal.planEvidence!==undefined))return 'approved';
   const approvals=snapshot.policyApprovalInput;

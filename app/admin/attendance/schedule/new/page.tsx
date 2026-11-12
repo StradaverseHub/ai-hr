@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import { isGroupAdmin } from '@/lib/authz';
 import { scopedAdmin } from '@/lib/scope';
 import { scheduleClockCompanies } from '../clock-policy-options';
+import { scheduleOvertimeSettingProps } from '../overtime-setting-props';
 import { listAttendanceRules } from '@/core/attendance-rule';
 import { listShiftsForTenant } from '@/core/roster';
 import { workingShiftSchedule } from '@/packs/attendance/service';
@@ -56,7 +57,7 @@ export default async function AddScheduleGroupPage({
   const tr = await getTranslations('admin.attendanceRule');
   const sp = await searchParams;
 
-  const [rules, shifts, clockCompanies] = await Promise.all([listAttendanceRules(s), isGroupAdmin(s)?listShiftsForTenant(s):[], scheduleClockCompanies(s,scopeIds)]);
+  const [rules, shifts, clockCompanies, overtimeSetting] = await Promise.all([listAttendanceRules(s), isGroupAdmin(s)?listShiftsForTenant(s):[], scheduleClockCompanies(s,scopeIds), scheduleOvertimeSettingProps(s,null,true)]);
 
   const shiftById=new Map(shifts.map(shift=>[shift.id,shift]));
   const choices=ruleShiftChoices(shifts,rules,null).map(choice=>{
@@ -84,6 +85,7 @@ export default async function AddScheduleGroupPage({
         error={sp.error}
         initialSection={resolveSection(sp.section)}
         clockCompanies={clockCompanies}
+        overtimeSetting={overtimeSetting}
         canEditShared={isGroupAdmin(s)}
         cancel={{ href: SCHEDULE, label: tr('cancel') }}
       />

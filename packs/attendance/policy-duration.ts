@@ -80,20 +80,42 @@ export function deriveAttendancePolicyDurationProposal(input:PolicyDurationPropo
   if(input.eligiblePlannedIntervals===null)return refuse('plannedEvidenceUnavailable');
   planned=subtract(input.eligiblePlannedIntervals,breaks,bound);
  }
- const selection=selectAttendancePolicyCandidate({eligibleIntervals:input.method==='preApproved'?input.eligiblePlannedIntervals!:actual,
-  unpaidIntervals:breaks,lateOffsetIntervals:input.lateOffsetIntervals,offsetLateness:policy.overtime.offsetLateness,periodMinutes:bound});
- if(selection.state!=='known')return refuse(selection.reason);
- const {candidate,afterOffset,lateMinutes}=selection;
- const methodSelected=input.method==='intersect'?intersect(afterOffset.intervals,planned!,bound):afterOffset.intervals;
- const selected=input.manualApprovedIntervals===undefined?methodSelected:union(input.manualApprovedIntervals,bound);
- if(input.manualApprovedIntervals!==undefined&&(policy.overtime.approval!=='manual'||input.approval!=='approved'
-  ||subtract(selected,methodSelected,bound).length))throw Error('Manual approved positions require complete eligible captured coverage.');
- const selectionSteps:PolicyDurationSelectionStep[]=[
-  {kind:'breaks',basis:input.method==='preApproved'?'approvedPlan':'actual',
-   before:minutes(input.method==='preApproved'?input.eligiblePlannedIntervals!:actual,bound),after:minutes(candidate,bound)},
-  {kind:'lateOffset',before:minutes(candidate,bound),after:minutes(afterOffset.intervals,bound),requested:lateMinutes,applied:afterOffset.removedMinutes},
-  {kind:'method',method:input.method,before:minutes(afterOffset.intervals,bound),after:minutes(selected,bound)},
- ];
+ const basis=input.method==='preApproved'?input.eligiblePlannedIntervals!:actual;
+ const breakStep:PolicyDurationSelectionStep={kind:'breaks',basis:input.method==='preApproved'?'approvedPlan':'actual',
+  before:minutes(basis,bound),after:minutes(subtract(basis,breaks,bound),bound)};
+ let selected:AttendancePolicyInterval[],methodSelected:AttendancePolicyInterval[],removedLateMinutes:number;
+ let selectionSteps:PolicyDurationSelectionStep[];
+ if(policy.overtime.approval==='manual'){
+  // Frozen Manual workflows keep their recorded order: their approved positions were chosen
+  // from the offset actual coverage, so the offset is consumed once before that subset check.
+  const selection=selectAttendancePolicyCandidate({eligibleIntervals:basis,unpaidIntervals:breaks,
+   lateOffsetIntervals:input.lateOffsetIntervals,offsetLateness:policy.overtime.offsetLateness,periodMinutes:bound});
+  if(selection.state!=='known')return refuse(selection.reason);
+  const {candidate,afterOffset,lateMinutes}=selection;
+  methodSelected=input.method==='intersect'?intersect(afterOffset.intervals,planned!,bound):afterOffset.intervals;
+  selected=input.manualApprovedIntervals===undefined?methodSelected:union(input.manualApprovedIntervals,bound);
+  if(input.manualApprovedIntervals!==undefined&&(input.approval!=='approved'
+   ||subtract(selected,methodSelected,bound).length))throw Error('Manual approved positions require complete eligible captured coverage.');
+  removedLateMinutes=afterOffset.removedMinutes;
+  selectionSteps=[breakStep,
+   {kind:'lateOffset',before:minutes(candidate,bound),after:minutes(afterOffset.intervals,bound),requested:lateMinutes,applied:afterOffset.removedMinutes},
+   {kind:'method',method:input.method,before:minutes(afterOffset.intervals,bound),after:minutes(selected,bound)}];
+ }else{
+  if(input.manualApprovedIntervals!==undefined)throw Error('Manual approved positions require complete eligible captured coverage.');
+  // 2f803985 (approved plan revision 2): eligibility, then the approval method, then the lateness
+  // offset, then the midnight split and rounding below. The method chooses the eligible OT
+  // (Intersect keeps actual work inside the approved plan; Approved Overtime uses the plan);
+  // the offset then consumes measured lateness from the earliest of those selected minutes.
+  const candidate=subtract(basis,breaks,bound);
+  methodSelected=input.method==='intersect'?intersect(candidate,planned!,bound):candidate;
+  const selection=selectAttendancePolicyCandidate({eligibleIntervals:methodSelected,unpaidIntervals:breaks,
+   lateOffsetIntervals:input.lateOffsetIntervals,offsetLateness:policy.overtime.offsetLateness,periodMinutes:bound});
+  if(selection.state!=='known')return refuse(selection.reason);
+  selected=selection.afterOffset.intervals;removedLateMinutes=selection.afterOffset.removedMinutes;
+  selectionSteps=[breakStep,
+   {kind:'method',method:input.method,before:minutes(candidate,bound),after:minutes(methodSelected,bound)},
+   {kind:'lateOffset',before:minutes(methodSelected,bound),after:minutes(selected,bound),requested:selection.lateMinutes,applied:removedLateMinutes}];
+ }
  const partition=(intervals:readonly AttendancePolicyInterval[])=>partitionAttendancePolicyWork({sourceDate:input.sourceDate,companyId:input.companyId,
   periodMinutes:bound,splitAtMidnight:policy.overtime.splitAtMidnight,intervals,calendar:input.calendar});
  const grouped=partition(selected);
@@ -134,7 +156,7 @@ export function deriveAttendancePolicyDurationProposal(input:PolicyDurationPropo
  const payableMinutes=classes.reduce((sum,row)=>sum+row.payableMinutes,0);
  if(payableMinutes>bound)return refuse('durationLimitExceeded');
  for(const part of parts)part.allocations.sort((a,b)=>a.from-b.from||a.to-b.to);
- return {status:'calculated',authority:'proposalOnly',intervalBasis:input.method==='preApproved'?'approvedPlan':'actual',lateOffsetMinutes:afterOffset.removedMinutes,
+ return {status:'calculated',authority:'proposalOnly',intervalBasis:input.method==='preApproved'?'approvedPlan':'actual',lateOffsetMinutes:removedLateMinutes,
   selectionSteps,parts,classes,payableMinutes};
 }
 
@@ -155,4 +177,16 @@ export function deriveAttendancePolicyClockDurationProposal(input:PolicyClockDur
  const eligibleActualIntervals=workedIntervals===null||input.actualEligibilityWindows===null?null:
   intersect(workedIntervals,input.actualEligibilityWindows,input.periodMinutes);
  return {authority:'proposalOnly',clockEvidence,duration:deriveAttendancePolicyDurationProposal({...input,workedIntervals,eligibleActualIntervals})};
+}
+
+/** 2f803985 — Show Lateness Exception After Offset. The lateness the overtime offset could not absorb
+ * (20 late against 10 eligible leaves 10). Recorded lateness and clocks are unchanged; this is only the
+ * remaining figure the exception reports. Null when the setting is off or the proposal is not calculated. */
+export function attendancePolicyLatenessAfterOffset(policy:AttendanceGroupPolicy,duration:PolicyDurationProposal|undefined):
+ {lateMinutes:number;offsetMinutes:number;remainingMinutes:number}|null{
+ if(!policy.overtime.enabled||!policy.overtime.offsetLateness||policy.overtime.showLatenessExceptionAfterOffset!==true
+  ||duration?.status!=='calculated')return null;
+ const step=duration.selectionSteps.find(row=>row.kind==='lateOffset');
+ if(!step||step.kind!=='lateOffset')return null;
+ return {lateMinutes:step.requested,offsetMinutes:step.applied,remainingMinutes:Math.max(0,step.requested-step.applied)};
 }
