@@ -145,7 +145,7 @@ describe('Approve On Behalf',()=>{
   expect((await requestOf(ordered.id)).currentStage).toBe(0);
  });
  it('refuses the applicant, the designated approver, a non-holder and a superior outside the approver\'s line',async()=>{
-  const f=await routed(({a})=>[level([named(a)]),level([superior(1)])]);
+  const f=await routed(({a,b})=>[level([named(a)]),level([named(b)])]);
   await expect(decideFor(f.employee,f.a,f.id,0,'0:0')).rejects.toThrow();
   await expect(decideFor(f.a,f.a,f.id,0,'0:0')).rejects.toThrow();
   const stranger=await actor('Fictional unrelated manager',{role:'manager'});

@@ -103,6 +103,9 @@ function onBehalfParam(formData: FormData): string | null {
   return /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(raw) ? raw.toLowerCase() : null;
 }
 
+/** 96a54ed2 — the one Attendance submission owner, for the caller themselves or (re-checked) for a chosen employee. */
+const requestAttendanceCorrectionFor = (onBehalfOf: string | null) => onBehalfOf ? requestAttendanceCorrectionOnBehalf : requestAttendanceCorrection;
+
 /** Resolve the caller's own employment from the session — never from a form field. */
 async function resolveMe() {
   const s = await getSession();
@@ -590,7 +593,7 @@ export async function myRequestCorrection(formData: FormData) {
     if (hasFile) {
       assertAttendanceAttachmentAcceptable(file);
     }
-    const { correctionId } = await (onBehalfOf ? requestAttendanceCorrectionOnBehalf : requestAttendanceCorrection)(s, {
+    const { correctionId } = await requestAttendanceCorrectionFor(onBehalfOf)(s, {
       workflowFingerprint: String(formData.get('workflowFingerprint') ?? '') || undefined,
       employmentId,
       date,
@@ -742,7 +745,7 @@ export async function myRequestOvertime(formData: FormData) {
     if (hasFile) {
       assertAttendanceAttachmentAcceptable(file);
     }
-    const { correctionId } = await (onBehalfOf ? requestAttendanceCorrectionOnBehalf : requestAttendanceCorrection)(s, {
+    const { correctionId } = await requestAttendanceCorrectionFor(onBehalfOf)(s, {
       workflowFingerprint: String(formData.get('workflowFingerprint') ?? '') || undefined,
       employmentId,
       date,

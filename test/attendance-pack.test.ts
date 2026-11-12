@@ -1014,6 +1014,9 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
       // only: the key stays `attendanceImport` (LABEL_KEY_EXEMPT above).
       '/attendance/import': 'Import Clocking Data',
       '/attendance/application-history': 'Application History',
+      // 96a54ed2 — the same labels their Manage twins carry.
+      '/attendance/on-behalf/request': 'Request On Behalf',
+      '/attendance/on-behalf/approve': 'Approve On Behalf',
       // 4509d2b8 — '/admin/holidays': 'Holidays' used to lead this oracle. The row moved to System
       // Settings; nav.holidays is NOT removed (it labels the row at its new home and the lib/permissions.ts
       // 'holidays' column), it is simply no longer one of THIS node's rows.
