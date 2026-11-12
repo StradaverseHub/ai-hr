@@ -78,7 +78,8 @@ describe('Role permissions catalogue',()=>{
   const v1=applyRewardPermissionChanges({},[{role:'ctro',capability:'bonus.view',after:'none'},{role:'bu',capability:'review.view',after:'view'}]);
   expect(v1).toEqual({'ctro:bonus.view':'none'});
   const v2=applyRewardPermissionChanges(v1,[{role:'ctro',capability:'bonus.view',after:'view'},{role:'gr',capability:'salary.view',after:'view'}]);
-  expect(v2).toEqual({'gr:salary.view':'view'});
+  // CTRO's Bonus Matrices default is Full (5600), so View only is a narrowing that is stored.
+  expect(v2).toEqual({'ctro:bonus.view':'view','gr:salary.view':'view'});
   expect(compareRewardPermissionMatrices(v1,v2)).toEqual([{role:'gr',capability:'salary.view',before:'full',after:'view'},{role:'ctro',capability:'bonus.view',before:'none',after:'view'}]);
   expect(effectiveRewardLevel('ctro','limits.view','full')).toBe('view');
   expect(rewardLockedOverrides({'bu:review.decide':'none','ctro:bonus.view':'none'})).toEqual([{role:'bu',capability:'review.decide',level:'none'}]);

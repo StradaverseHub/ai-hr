@@ -573,8 +573,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const isCombinedPolicy=(row:(typeof afterPerformancePrivileges.policies)[number])=>combinedPolicies.some(policy=>policy.schemaname===row.schemaname&&policy.tablename===row.tablename&&policy.policyname===row.policyname);
   expect(afterPerformancePrivileges.policies.filter(isCombinedPolicy).map(row=>({...row,qual:digest(row.qual),with_check:digest(row.with_check)}))).toEqual(combinedPolicies);
   for(const rel of Object.keys(combinedRelations))expect(beforePerformancePrivileges.relations.some(row=>row.rel===rel),rel).toBe(false);
-  // Board release block 5400-5560 (12 November 2026, docs/MIGRATION-ALLOCATION.md): the seven new tables, the 44 row
-  // policies it adds (qual/with_check as md5 digests, the migration owner written OWNER) and the one it retires
+  // Board release block 5400-5600 (12-13 November 2026, docs/MIGRATION-ALLOCATION.md): the seven new tables, the 66 row
+  // policies it adds (5580's configuration-editor and owner policies and 5600's owner policies included) (qual/with_check as md5 digests, the migration owner written OWNER) and the one it retires
   // (5400 drops the second-person PAT confirmation policy). Nothing else in the privilege graph may change.
   const boardRelations:Record<string,{rls:boolean;force:boolean;acl:string|null}>={
    'lc_v9_email_hold':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=arw/OWNER}'},
@@ -587,15 +587,28 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   };
   const boardPolicyRow=(row:(typeof afterPerformancePrivileges.policies)[number])=>({...row,roles:ownerAcl(row.roles),qual:digest(row.qual),with_check:digest(row.with_check)});
   const boardPolicies=[
+   {schemaname:'public',tablename:'company_registration_classification',policyname:'company_registration_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'SELECT',qual:'TBD',with_check:null},
+   {schemaname:'public',tablename:'job_architecture_catalogue_revision',policyname:'reward_config_architecture_catalogue',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'SELECT',qual:'TBD',with_check:null},
+   {schemaname:'public',tablename:'job_architecture_position_revision',policyname:'reward_config_architecture_position',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'SELECT',qual:'TBD',with_check:null},
    {schemaname:'public',tablename:'lc_v9_email_hold',policyname:'v9_email_hold_insert',permissive:'PERMISSIVE',roles:'{public}',cmd:'INSERT',qual:null,with_check:'943f46d6c51979e6a3e15d49c833cfd3'},
    {schemaname:'public',tablename:'lc_v9_email_hold',policyname:'v9_email_hold_read',permissive:'PERMISSIVE',roles:'{public}',cmd:'SELECT',qual:'a891360032acbd07afa1f1c6e6c5be0a',with_check:null},
    {schemaname:'public',tablename:'lc_v9_email_hold',policyname:'v9_email_hold_release',permissive:'PERMISSIVE',roles:'{public}',cmd:'UPDATE',qual:'943f46d6c51979e6a3e15d49c833cfd3',with_check:'63096f37cc862794aecf97d68e8a8239'},
    {schemaname:'public',tablename:'lc_v9_email_hold',policyname:'v9_email_hold_storage_owner',permissive:'PERMISSIVE',roles:'{OWNER}',cmd:'ALL',qual:'b326b5062b2f0e69046810717534cb09',with_check:'b326b5062b2f0e69046810717534cb09'},
    {schemaname:'public',tablename:'reward_config_change',policyname:'reward_config_change_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'59492f3697ba1af7263dfebcdb7c1b78',with_check:'59492f3697ba1af7263dfebcdb7c1b78'},
    {schemaname:'public',tablename:'reward_config_change',policyname:'reward_config_change_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'b0652841b761793f00814566b72e654b',with_check:null},
+   {schemaname:'public',tablename:'reward_governance',policyname:'reward_pat_draft_governance_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'TBD',with_check:'TBD'},
+   {schemaname:'public',tablename:'reward_governance_history',policyname:'reward_pat_draft_history_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'INSERT',qual:null,with_check:'TBD'},
+   {schemaname:'public',tablename:'reward_governance_public',policyname:'reward_pat_draft_public_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'TBD',with_check:'TBD'},
+   {schemaname:'public',tablename:'reward_library',policyname:'reward_library_config_insert',permissive:'PERMISSIVE',roles:'{public}',cmd:'INSERT',qual:null,with_check:'TBD'},
+   {schemaname:'public',tablename:'reward_library',policyname:'reward_library_config_read',permissive:'PERMISSIVE',roles:'{public}',cmd:'SELECT',qual:'TBD',with_check:null},
    {schemaname:'public',tablename:'reward_library',policyname:'reward_library_role_level_insert',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'3db9f2711a716af4114c1d2de6f36690'},
    {schemaname:'public',tablename:'reward_library',policyname:'reward_library_role_level_read',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'9e5d27cf872cd899d911a7f32e4cc4af',with_check:null},
    {schemaname:'public',tablename:'reward_library',policyname:'reward_library_role_level_update',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'UPDATE',qual:'3db9f2711a716af4114c1d2de6f36690',with_check:'3db9f2711a716af4114c1d2de6f36690'},
+   {schemaname:'public',tablename:'reward_library_revision_audit',policyname:'reward_library_revision_audit_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'INSERT',qual:null,with_check:'TBD'},
+   {schemaname:'public',tablename:'reward_library_revision_audit',policyname:'reward_library_revision_audit_config_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'TBD',with_check:null},
+   {schemaname:'public',tablename:'reward_library_version',policyname:'reward_library_version_config_insert',permissive:'PERMISSIVE',roles:'{public}',cmd:'INSERT',qual:null,with_check:'TBD'},
+   {schemaname:'public',tablename:'reward_library_version',policyname:'reward_library_version_config_read',permissive:'PERMISSIVE',roles:'{public}',cmd:'SELECT',qual:'TBD',with_check:null},
+   {schemaname:'public',tablename:'reward_library_version',policyname:'reward_library_version_config_update',permissive:'PERMISSIVE',roles:'{public}',cmd:'UPDATE',qual:'TBD',with_check:'TBD'},
    {schemaname:'public',tablename:'reward_library_version',policyname:'reward_library_version_role_level_insert',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'19469ece367ce5db1b948c904a930afe'},
    {schemaname:'public',tablename:'reward_library_version',policyname:'reward_library_version_role_level_read',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'3dd971f5ee9fd9894fcddae5d59219d7',with_check:null},
    {schemaname:'public',tablename:'reward_library_version',policyname:'reward_library_version_role_level_update',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'UPDATE',qual:'19469ece367ce5db1b948c904a930afe',with_check:'19469ece367ce5db1b948c904a930afe'},
@@ -604,9 +617,14 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {schemaname:'public',tablename:'reward_limit_version',policyname:'reward_limit_version_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'f793da3071cf53b7718d88009b667c30',with_check:null},
    {schemaname:'public',tablename:'reward_offcycle_year',policyname:'reward_offcycle_year_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'59492f3697ba1af7263dfebcdb7c1b78',with_check:'59492f3697ba1af7263dfebcdb7c1b78'},
    {schemaname:'public',tablename:'reward_offcycle_year',policyname:'reward_offcycle_year_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'59492f3697ba1af7263dfebcdb7c1b78',with_check:null},
+   {schemaname:'public',tablename:'reward_pat_basis',policyname:'reward_pat_basis_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'TBD',with_check:'TBD'},
+   {schemaname:'public',tablename:'reward_pat_version',policyname:'reward_pat_config_edit',permissive:'PERMISSIVE',roles:'{public}',cmd:'UPDATE',qual:'TBD',with_check:'TBD'},
+   {schemaname:'public',tablename:'reward_pat_version',policyname:'reward_pat_config_insert',permissive:'PERMISSIVE',roles:'{public}',cmd:'INSERT',qual:null,with_check:'TBD'},
+   {schemaname:'public',tablename:'reward_pat_version',policyname:'reward_pat_config_read',permissive:'PERMISSIVE',roles:'{public}',cmd:'SELECT',qual:'TBD',with_check:null},
    {schemaname:'public',tablename:'reward_pat_version',policyname:'reward_pat_edit',permissive:'PERMISSIVE',roles:'{public}',cmd:'UPDATE',qual:'4a6390221289b7a5b68ed462f1ae654d',with_check:'6e4e6815b3f76a0a02dfc631d884d4a6'},
    {schemaname:'public',tablename:'reward_pat_version',policyname:'reward_pat_role_level_insert',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'fb82f1d410f5a0cc23172d46a47934b4'},
    {schemaname:'public',tablename:'reward_pat_version',policyname:'reward_pat_role_level_update',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'UPDATE',qual:'fb82f1d410f5a0cc23172d46a47934b4',with_check:'fb82f1d410f5a0cc23172d46a47934b4'},
+   {schemaname:'public',tablename:'reward_plan_company',policyname:'reward_plan_company_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'SELECT',qual:'TBD',with_check:null},
    {schemaname:'public',tablename:'reward_plan_setup',policyname:'reward_plan_setup_role_level_insert',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'eb77a6877e57fb4ed5e1105c04f429d8'},
    {schemaname:'public',tablename:'reward_plan_setup',policyname:'reward_plan_setup_role_level_update',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'UPDATE',qual:'eb77a6877e57fb4ed5e1105c04f429d8',with_check:'eb77a6877e57fb4ed5e1105c04f429d8'},
    {schemaname:'public',tablename:'reward_role_permission',policyname:'reward_role_permission_immediate_write',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'ALL',qual:'936f1d956dcd8547eb9e662eee9f286c',with_check:'6f8317317731342637ca575bdd15bda7'},
@@ -629,8 +647,12 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {schemaname:'public',tablename:'reward_senior_award',policyname:'reward_senior_award_role_level_update',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'UPDATE',qual:'8868c5bc470186e1b41c27776e90fd3e',with_check:'8868c5bc470186e1b41c27776e90fd3e'},
    {schemaname:'public',tablename:'reward_senior_evidence',policyname:'reward_senior_evidence_role_level_insert',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'8868c5bc470186e1b41c27776e90fd3e'},
    {schemaname:'public',tablename:'reward_senior_evidence',policyname:'reward_senior_evidence_role_level_read',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'ad6fe465015b65b7e97e25dc80363599',with_check:null},
+   {schemaname:'public',tablename:'reward_setup_grant',policyname:'reward_setup_grant_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'SELECT',qual:'TBD',with_check:null},
+   {schemaname:'public',tablename:'reward_snapshot_comp_movement',policyname:'reward_config_snapshot_pay_change',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'SELECT',qual:'TBD',with_check:null},
    {schemaname:'public',tablename:'reward_unit_limit_pin',policyname:'reward_unit_limit_pin_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'59492f3697ba1af7263dfebcdb7c1b78',with_check:'59492f3697ba1af7263dfebcdb7c1b78'},
    {schemaname:'public',tablename:'reward_unit_limit_pin',policyname:'reward_unit_limit_pin_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'f793da3071cf53b7718d88009b667c30',with_check:null},
+   {schemaname:'public',tablename:'reward_unit_setup',policyname:'reward_unit_setup_pat_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'TBD',with_check:'TBD'},
+   {schemaname:'public',tablename:'reward_uploaded_award',policyname:'reward_uploaded_award_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'SELECT',qual:'TBD',with_check:null},
   ];
   const boardRetiredPolicies=[
    {schemaname:'public',tablename:'reward_pat_version',policyname:'reward_pat_check',permissive:'PERMISSIVE',roles:'{public}',cmd:'UPDATE',qual:'c66ab0b91608107f679757a4c4f058a5',with_check:'48c95b77271b4a3fb728d587ca687b6e'},

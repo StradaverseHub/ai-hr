@@ -1,5 +1,5 @@
 import {dispatchNotificationsFromSweep} from '../core/notifications';
-import {pgSqlState} from '../lib/db-error';
+import {pgErrorChain,pgSqlState} from '../lib/db-error';
 import {hireEmployee,setEmploymentGrade} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {createBatch,rewardPayrollProvenance} from '../packs/payroll/service';
@@ -110,7 +110,7 @@ describe('approved Rewards review SQL custody',()=>{
  await withTenant(gr,async tx=>{await tx.execute(sql`insert into reward_uploaded_version(tenant_id,unit_id,version,rows,digest,uploaded_by,reason) values(${b.tenantId}::uuid,${unitId}::uuid,1,${JSON.stringify([raw])}::jsonb,${'a'.repeat(64)},${gr.userId}::uuid,'Fictional immutable upload record')`);await tx.execute(sql`update reward_uploaded_review set current_version=1 where unit_id=${unitId}::uuid`);});
  await denied(withTenant(gr,tx=>tx.execute(sql`select rows from reward_uploaded_version where unit_id=${unitId}::uuid`)));await denied(withTenant(checker,tx=>tx.execute(sql`select rows from reward_uploaded_version where unit_id=${unitId}::uuid`)));
  // Board 60f1fdcd: the uploader may make their own upload active, but only the unchanged current file (no award rows match it here).
- await expect(confirmUploadedRewards(gr,unitId,1,'I checked my own file')).rejects.toThrow(/Only the unchanged current upload can be made active/);expect((await owner.db.execute<{checked_by:string|null}>(sql`select checked_by from reward_uploaded_review where unit_id=${unitId}::uuid`))[0].checked_by).toBeNull();expect(await withTenant(gr,tx=>tx.execute(sql`update reward_uploaded_version set reason='Tamper old version' where unit_id=${unitId}::uuid returning id`))).toHaveLength(0);
+ const refusal=await confirmUploadedRewards(gr,unitId,1,'I checked my own file').then(()=>null,(error:unknown)=>error);expect(refusal).not.toBeNull();expect(pgErrorChain(refusal).map(link=>link.message).join('\n')).toMatch(/Only the unchanged current upload can be made active/);expect((await owner.db.execute<{checked_by:string|null}>(sql`select checked_by from reward_uploaded_review where unit_id=${unitId}::uuid`))[0].checked_by).toBeNull();expect(await withTenant(gr,tx=>tx.execute(sql`update reward_uploaded_version set reason='Tamper old version' where unit_id=${unitId}::uuid returning id`))).toHaveLength(0);
  expect((await owner.db.execute<{reason:string}>(sql`select reason from reward_uploaded_version where unit_id=${unitId}::uuid`))[0].reason).toBe('Fictional immutable upload record');
  });
 
