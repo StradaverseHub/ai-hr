@@ -5789,9 +5789,37 @@
       "version": "7",
       "when": 1793330004830,
       "tag": "5130_pay_formula_ai_draft_job",
-        "breakpoints": true
-      },
-      {
+      "breakpoints": true
+    },
+    {
+      "idx": 4540,
+      "version": "7",
+      "when": 1793330004840,
+      "tag": "5140_attendance_workflow_cross_company_pending",
+      "breakpoints": true
+    },
+    {
+      "idx": 4541,
+      "version": "7",
+      "when": 1793330004841,
+      "tag": "5141_attendance_workflow_escalation",
+      "breakpoints": true
+    },
+    {
+      "idx": 4542,
+      "version": "7",
+      "when": 1793330004842,
+      "tag": "5142_attendance_on_behalf",
+      "breakpoints": true
+    },
+    {
+      "idx": 4543,
+      "version": "7",
+      "when": 1793330004843,
+      "tag": "5143_attendance_final_decision_window",
+      "breakpoints": true
+    },
+    {
       "idx": 4550,
       "version": "7",
       "when": 1793330004850,

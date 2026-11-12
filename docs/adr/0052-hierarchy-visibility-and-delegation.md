@@ -49,3 +49,21 @@ Replacement crediting and unrouted attendance reuse the request-bound manager ca
 Inbox and Assistant projections return only person id, display name, employee code and company for an otherwise authorised request. They do not grant Personnel or balance visibility. A closed event SELECT policy permits the caller to reconcile only their own decision events, including the existing routed-attendance path. Approval history adds replacement-leave outcomes and non-final attendance stage decisions without duplicating final effects. Its inherited coarse admin branch is clamped to the subject company; an admin grant somewhere must not expose another company’s history. The recursive manager walk and remaining history projection stay unchanged.
 
 Only the existing leave-cancellation and attendance-OT request notices fan out to active stand-ins. Claims and replacement leave gain no new notice kind. `withApprovalDelegatesTx` also fans out WP13 overdue claim, replacement-leave and delegate-capable attendance reminders on this candidate. Frozen v3/v4 participant routes keep their exact outstanding participants. The full WP8 positive delegation cells are required on the same candidate. Mobile routing, native translation review and authenticated rendered journeys remain follow-ups. This amendment establishes no test, merge, installation or release claim. Final migration allocation happens at integration freeze above the live ledger.
+
+## Amendment to D3 — Attendance Request On Behalf and Approve On Behalf (board 96a54ed2), 12 November 2026
+
+Owner-approved plan, revision 1. "See ≠ decide" still holds for every other module; Attendance adds two explicit,
+permission-keyed exceptions for routing versions 3 and 4 (migration 5142). A caller holding
+`attendance.request_on_behalf` / `attendance.approve_on_behalf` (defaults hr_admin, super_admin, manager; per-company
+overrides on the existing permissions screen) may act for an employee who is in a company they administer as HR, or who
+is beneath one of their own employments in the administrative reporting line (the same company-clamped walk as D1–D3).
+A superior never acts for their own manager, a peer or another team. Request On Behalf files through the unchanged
+Attendance owner for that employee (their workflow, Schedule Group and rules); the database stamps the live caller as
+the submitter only for the authorised employment in that transaction. Approve On Behalf decides only the designated
+approver's outstanding frozen slot (`app.attendance_workflow_on_behalf_slot`), recorded with acting_mode `on_behalf`:
+the designated approver stays in `assigned`, the caller is the actual actor. The applicant, the designated approver,
+the person who filed on the employee's behalf and anyone who already decided a level of that application are refused;
+Any One, Everyone and Sequential rules and level advancement are the existing owners'. The filer may never decide the
+application by any routing version. Visibility is not widened: the decision still needs the caller's existing
+calculation visibility for a final effect. The other pre-existing non-self Attendance writers (Individual Attendance,
+unclocked-work attestation, offline claim review, Assistant) are unchanged by this amendment.

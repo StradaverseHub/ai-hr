@@ -63,6 +63,7 @@ export type ApprovalHistoryActionKey =
   | 'approved'
   | 'rejected'
   | 'stepApproved'
+  | 'escalated'
   | 'perDayDecision'
   | 'confirmed'
   | 'extended'
@@ -71,6 +72,8 @@ export type ApprovalHistoryActionKey =
 /** Derive the display-label key for one history row. resignation.ACCEPTED reads as Approved;
  *  employment-review.decided maps its ReviewDecision (confirm/extend/terminate) to its own label. */
 export function actionKeyOf(eventType: string, payload: unknown): ApprovalHistoryActionKey {
+  // daa76ed4: a system move to the next level after the escalation period — never an approval.
+  if(eventType==='attendance-workflow.stage.escalated')return 'escalated';
   if(eventType==='attendance-workflow.stage.decided'||eventType==='attendance-workflow.participant.decided')return (payload as {decision?:string}|null)?.decision==='rejected'?'rejected':'stepApproved';
   if (eventType === 'leave-request.step.approved') return 'stepApproved';
   if (eventType === 'leave-request.date.decided') return 'perDayDecision';

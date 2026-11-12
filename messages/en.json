@@ -587,7 +587,9 @@
     "privateCases": "Private cases",
     "probationTracker": "Probation tracker",
     "myPayrollReadiness": "My payroll readiness",
-    "attendanceFormulaBuilder": "Attendance formulas"
+    "attendanceFormulaBuilder": "Attendance formulas",
+    "attendanceRequestOnBehalf": "Request On Behalf",
+    "attendanceApproveOnBehalf": "Approve On Behalf"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -11965,7 +11967,9 @@
         "jobArchitecture": "Job Architecture access depends on your current Architecture assignment and company scope.",
         "rewardsAccess": "Effective Rewards assignments and scoped HR administrator authority determine access; a platform role alone does not grant every action.",
         "myPrivateCases": "Only the signed-in person’s own private cases. Privileged roles do not widen it; administrators cannot read others’ cases here.",
-        "privateCaseHandling": "Reachable by everyone, but shows cases only to the designated case handlers of the case’s company (or the group administrator when no eligible handler remains), never to the author or anyone the author left out. A role grants nothing here."
+        "privateCaseHandling": "Reachable by everyone, but shows cases only to the designated case handlers of the case’s company (or the group administrator when no eligible handler remains), never to the author or anyone the author left out. A role grants nothing here.",
+        "attendanceRequestOnBehalf": "Lists only employees in companies you administer as HR, or people beneath you in your own reporting line, when you hold attendance.request_on_behalf. The request follows the employee's own workflow.",
+        "attendanceApproveOnBehalf": "Lists only approvers in companies you administer as HR, or people beneath you in your own reporting line, when you hold attendance.approve_on_behalf. Decisions are recorded as on behalf of the designated approver."
       },
       "scopedTo": "Scoped to {company} and its sub-companies",
       "screen": {
@@ -15179,7 +15183,8 @@
       "perDayDecision": "Per-day decision",
       "confirmed": "Confirmed",
       "extended": "Extended",
-      "terminated": "Terminated"
+      "terminated": "Terminated",
+      "escalated": "Escalated"
     }
   },
   "payrollConfig": {
@@ -27628,7 +27633,13 @@
       "unusedDeleteImpact": "Delete this unused workflow for {company}? All unused versions will be permanently removed. This cannot be undone.",
       "usedCannotDelete": "This workflow has already been used by approval transactions and cannot be deleted. Please archive it instead.",
       "archived": "Workflow archived. Existing applications and history are preserved.",
-      "archivedList": "Archived workflows"
+      "archivedList": "Archived workflows",
+      "escalationLegend": "Escalation Approval – Auto Route to Next Level if No Approval / Rejection After [Day]",
+      "escalationEnable": "Enable Escalation Approval",
+      "escalationDays": "Escalation Period (Days)",
+      "escalationHelp": "Calendar days, counted from the day after the request reaches this level. A nightly check moves it to the next level; it is never approved or rejected automatically.",
+      "escalationInvalid": "Enter a whole number of days from 1 to 365.",
+      "escalationFinal": "Final level – no further escalation"
     },
     "chooseCompanies": "Choose companies",
     "searchCompanies": "Search permitted companies",
@@ -27735,7 +27746,8 @@
         "hr_unavailable": "No HR administrator can approve for this employee.",
         "selected_unavailable": "The selected approver is inactive, has no unique usable login, or is outside the permitted company scope. Replace the selection.",
         "login_unusable": "The approver has no unique usable login for this employee's company. Ask HR to correct their login."
-      }
+      },
+      "pendingActivation": "Account not activated yet – requests will wait for this approver"
     }
   },
   "attendanceHistory": {
@@ -27818,7 +27830,8 @@
     "modes": {
       "assigned": "Assigned approver",
       "delegate": "Valid delegate",
-      "administrator": "HR on behalf"
+      "administrator": "HR on behalf",
+      "on_behalf": "Acted on behalf of the designated approver"
     },
     "invalidFilters": "The filters could not be applied. Check the dates and selected values, then try again.",
     "stageRecorded": "Approval stage recorded",
@@ -27958,7 +27971,15 @@
     },
     "skippedNoSuperior": "Skipped automatically - No further Direct Superior available ({sources})",
     "skippedDecidedAt": "Decided when the application was submitted, {date}",
-    "skippedLabel": "Not required"
+    "skippedLabel": "Not required",
+    "awaitingActivation": "Waiting for account activation",
+    "escalatedStage": "Escalated",
+    "escalatedMoved": "No approval or rejection within {days} day(s). Moved automatically to Level {level}.",
+    "escalatedWaitedFor": "Waited for",
+    "escalatedBy": "Automatic escalation by the system",
+    "submittedOnBehalfBy": "Submitted on behalf by {name}",
+    "approvedOnBehalf": "Approved On Behalf",
+    "rejectedOnBehalf": "Rejected On Behalf"
   },
   "scheduleDrafts": {
     "staleLadder": "The overtime bands or rates changed in General. Your draft is still here. Reload this page before saving overtime settings. Reloading discards unsaved changes only after confirmation.",
@@ -38412,5 +38433,37 @@
     "on": "On",
     "off": "Off",
     "payrollNote": "Payroll receives the final overtime figures from this setting, the same way it receives overtime today."
+  },
+  "attendanceOnBehalf": {
+    "requestTitle": "Request On Behalf",
+    "requestHelp": "Choose the employee, then file Attendance Irregularity or Self Overtime for them on the usual screens. The request follows their own workflow and approvers.",
+    "approveTitle": "Approve On Behalf",
+    "approveHelp": "Choose the designated approver whose pending attendance requests you need to handle.",
+    "approveListHelp": "Requests waiting for {name} that you may decide on their behalf.",
+    "searchLabel": "Search by Employee ID or name",
+    "searchPlaceholder": "e.g. EMP-0123 or a name",
+    "search": "Search",
+    "results": "Employees you may act for",
+    "noResults": "No employee you may act for matches this search.",
+    "noPermission": "Your role does not have this permission. Ask an administrator if you need it.",
+    "choose": "Select",
+    "employeeName": "Employee",
+    "employeeId": "Employee ID",
+    "company": "Company",
+    "department": "Department",
+    "changeEmployee": "Change employee",
+    "chooseCategory": "What would you like to file?",
+    "irregularity": "Attendance Irregularity",
+    "irregularityHelp": "Missing or wrong clock times, short hours or absence, for the employee's own days.",
+    "selfOvertime": "Self Overtime",
+    "selfOvertimeHelp": "Plan or claim overtime under the employee's own Schedule Group and overtime rules.",
+    "banner": "Submitting on behalf of {name}",
+    "pendingTitle": "Pending approval requests",
+    "pendingEmpty": "Nothing is waiting for this approver that you may decide.",
+    "approveOnBehalf": "Approve On Behalf",
+    "rejectOnBehalf": "Reject On Behalf",
+    "approveAudit": "History keeps the chosen person as the designated approver and records you as the person who acted.",
+    "previous": "Previous",
+    "next": "Next"
   }
 }

@@ -29,7 +29,7 @@ export default async function AttendanceWorkflowPreviewHistoryPage({ params, sea
     const level = employee.levels[index];
     if (!level) return '—';
     if (level.state === 'skipped') return <span className="italic text-muted-foreground">{p('notRequired')}</span>;
-    return level.approvers.map(actor => actor.kind === 'hr_admin' ? t('hr') : person(actor.name, actor.employeeCode)).join(' / ');
+    return <>{level.approvers.map(actor => actor.kind === 'hr_admin' ? t('hr') : person(actor.name, actor.employeeCode)).join(' / ')}{level.approvers.some(actor => actor.pendingActivation) && <span className="block text-xs text-muted-foreground">{p('pendingActivation')}</span>}</>;
   };
   return <div className={pageWideCls + ' space-y-5'}>
     <PageHeader title={p('title')} description={`${row.code} · ${row.name} · ${t(`types.${row.applicationType}`)}`} back={{ href: `${workflowRoot}/${lineageId}`, label: p('backToWorkflow') }}/>

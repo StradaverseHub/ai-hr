@@ -3,7 +3,10 @@ import {z} from 'zod';
 import {attendanceLevelName,validateAttendanceWorkflow,type AttendanceWorkflowInput} from './attendance-workflow';
 import {ATTENDANCE_V3_LIMITS,AttendanceLevelError,parseAttendanceV3Route,resolveAttendanceV3Route,type AttendanceV3Source,type AttendanceV3Identity,type AttendanceV3Resolver,type AttendanceV3Participant,type AttendanceV3ParticipantDecision,type AttendanceV3LevelProgress} from './attendance-workflow-v3';
 export type AttendanceV4Mode='any_one'|'all_required'|'sequential';
-export type AttendanceV4Level={name:string;mode:AttendanceV4Mode;sources:AttendanceV3Source[];hrAlternative:boolean};
+/** escalateAfterDays: optional Escalation Approval period, whole calendar days 1-365 (5141). The final level never escalates. */
+export type AttendanceV4Level={name:string;mode:AttendanceV4Mode;sources:AttendanceV3Source[];hrAlternative:boolean;escalateAfterDays?:number};
+export const ATTENDANCE_ESCALATION_DAYS={min:1,max:365} as const;
+export function validAttendanceEscalationDays(value:unknown):value is number{return typeof value==='number'&&Number.isInteger(value)&&value>=ATTENDANCE_ESCALATION_DAYS.min&&value<=ATTENDANCE_ESCALATION_DAYS.max;}
 export type AttendanceCcSource=AttendanceV3Source|{kind:'custom_email';addresses:string[]};
 export type AttendanceV4Route={routingVersion:4;stages:AttendanceV4Level[];cc:AttendanceCcSource[]};
 export type AttendanceV4WorkflowInput=Omit<AttendanceWorkflowInput,'routingVersion'|'stages'>&AttendanceV4Route;
@@ -30,7 +33,8 @@ export function parseAttendanceV4Route(raw:unknown):AttendanceV4Route {
  if(!object(raw)||!exact(raw,['routingVersion','stages','cc'])||raw.routingVersion!==4||!Array.isArray(raw.stages)||raw.stages.length<1||raw.stages.length>ATTENDANCE_V3_LIMITS.levels)fail(null);
  const employmentIds=new Set<string>();let total=0;
  const stages=raw.stages.map((entry,index):AttendanceV4Level=>{
-  if(!object(entry)||!exact(entry,['name','mode','sources','hrAlternative'])||typeof entry.name!=='string'||entry.name.length>100||typeof entry.hrAlternative!=='boolean')fail(index,'invalid_level');
+  const escalates=object(entry)&&Object.hasOwn(entry,'escalateAfterDays');
+  if(!object(entry)||!exact(entry,escalates?['name','mode','sources','hrAlternative','escalateAfterDays']:['name','mode','sources','hrAlternative'])||typeof entry.name!=='string'||entry.name.length>100||typeof entry.hrAlternative!=='boolean'||escalates&&(!validAttendanceEscalationDays(entry.escalateAfterDays)||index===(raw.stages as unknown[]).length-1))fail(index,'invalid_level');
   if(!['any_one','all_required','sequential'].includes(String(entry.mode)))fail(index,'invalid_mode');
   if(!Array.isArray(entry.sources)||!entry.sources.length||entry.sources.length>ATTENDANCE_V3_LIMITS.participantsPerLevel)fail(index,'invalid_source');
   const sources=entry.sources.map(value=>source(value,index));
@@ -41,7 +45,7 @@ export function parseAttendanceV4Route(raw:unknown):AttendanceV4Route {
    if(item.kind==='specific_employee')for(const id of item.employmentIds){if(employmentIds.has(id))fail(index,'duplicate_employment');employmentIds.add(id);}
   }
   total+=count;if(count>ATTENDANCE_V3_LIMITS.participantsPerLevel||total>ATTENDANCE_V3_LIMITS.participantsPerWorkflow)fail(index,'too_many_participants');
-  return {name:attendanceLevelName(index),mode:entry.mode as AttendanceV4Mode,sources,hrAlternative:entry.hrAlternative};
+  return {name:attendanceLevelName(index),mode:entry.mode as AttendanceV4Mode,sources,hrAlternative:entry.hrAlternative,...(escalates?{escalateAfterDays:entry.escalateAfterDays as number}:{})};
  });
  if(!Array.isArray(raw.cc)||raw.cc.length>20)throw new AttendanceCcError('invalidCc');
  let recipients=0;

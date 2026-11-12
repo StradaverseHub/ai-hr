@@ -5,7 +5,7 @@ import {useTranslations} from 'next-intl';
 import {Button,inputCls} from '@/components/ui';
 import {attendanceLevelName} from '@/lib/attendance-workflow';
 import {attendanceLevelProblemMessageKey,type AttendanceLevelProblem,type AttendanceV3Source} from '@/lib/attendance-workflow-v3';
-import {nextAttendanceSuperiorDepth,type AttendanceCcSource,type AttendanceV4Level} from '@/lib/attendance-workflow-v4';
+import {ATTENDANCE_ESCALATION_DAYS,nextAttendanceSuperiorDepth,validAttendanceEscalationDays,type AttendanceCcSource,type AttendanceV4Level} from '@/lib/attendance-workflow-v4';
 type Employee={id:string;name:string;employeeCode?:string|null};
 export const emptyAttendanceV4Level=(index:number,previous:readonly AttendanceV4Level[]=[]):AttendanceV4Level=>({name:attendanceLevelName(index),mode:'any_one',sources:[{kind:'direct_manager',depth:nextAttendanceSuperiorDepth(previous)}],hrAlternative:false});
 function SourceFields({id,source,employees,onChange,allowCustom=false}:{id:string;source:AttendanceCcSource;employees:Employee[];onChange:(source:AttendanceCcSource)=>void;allowCustom?:boolean}) {
@@ -21,10 +21,24 @@ function SourceFields({id,source,employees,onChange,allowCustom=false}:{id:strin
 
  </div>}</div>;
 }
+const withoutEscalation=(level:AttendanceV4Level):AttendanceV4Level=>{const {escalateAfterDays:_days,...rest}=level;return rest;};
+/** Escalation Approval for one non-final level. An invalid days value is kept so the server refuses it with the level. */
+function EscalationFields({id,level,onChange}:{id:string;level:AttendanceV4Level;onChange:(level:AttendanceV4Level)=>void}) {
+ const v4=useTranslations('attendanceWorkflow.v4'),enabled=level.escalateAfterDays!==undefined;
+ const [text,setText]=useState(enabled?String(level.escalateAfterDays):'3');
+ const invalid=enabled&&!validAttendanceEscalationDays(level.escalateAfterDays);
+ return <fieldset className="min-w-0 space-y-2 rounded-md bg-muted/40 p-3"><legend className="mb-1 text-sm font-medium">{v4('escalationLegend')}</legend>
+  <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={enabled} onChange={e=>{if(!e.target.checked){onChange(withoutEscalation(level));return;}const days=/^[0-9]{1,3}$/.test(text)?Number(text):0;onChange({...level,escalateAfterDays:days});}}/><span>{v4('escalationEnable')}</span></label>
+  <label className="block text-sm" htmlFor={`${id}-days`}>{v4('escalationDays')}</label>
+  <input id={`${id}-days`} type="number" inputMode="numeric" min={ATTENDANCE_ESCALATION_DAYS.min} max={ATTENDANCE_ESCALATION_DAYS.max} step={1} disabled={!enabled} aria-invalid={invalid||undefined} aria-describedby={`${id}-days-help`} className={`${inputCls} max-w-32`} value={text} onChange={e=>{setText(e.target.value);if(enabled)onChange({...level,escalateAfterDays:/^[0-9]{1,3}$/.test(e.target.value)?Number(e.target.value):0});}}/>
+  <p id={`${id}-days-help`} className={invalid?'text-xs text-destructive':'text-xs text-muted-foreground'}>{invalid?v4('escalationInvalid'):v4('escalationHelp')}</p>
+ </fieldset>;
+}
 export function AttendanceStageEditorV4({stages,employees,problems,onChange}:{stages:AttendanceV4Level[];employees:Employee[];problems:readonly AttendanceLevelProblem[];onChange:(levels:AttendanceV4Level[])=>void}) {
  const t=useTranslations('attendanceWorkflow'),v3=useTranslations('attendanceWorkflow.v3'),v4=useTranslations('attendanceWorkflow.v4'),summary=useRef<HTMLDivElement>(null);
  useEffect(()=>{if(problems.length)summary.current?.focus();},[problems]);
- const update=(levels:AttendanceV4Level[])=>onChange(levels.map((level,index)=>({...level,name:attendanceLevelName(index)})));
+ // The final level never escalates; moving or removing levels drops a now-final level's setting.
+ const update=(levels:AttendanceV4Level[])=>onChange(levels.map((level,index)=>index===levels.length-1?{...withoutEscalation(level),name:attendanceLevelName(index)}:{...level,name:attendanceLevelName(index)}));
  const patch=(index:number,level:AttendanceV4Level)=>update(stages.map((old,i)=>i===index?level:old));
  const move=(from:number,to:number)=>{const levels=[...stages];[levels[from],levels[to]]=[levels[to],levels[from]];update(levels);};
  return <div className="space-y-4"><p className="text-sm text-muted-foreground">{v4('levelHelp')}</p>{problems.length>0&&<div role="alert" tabIndex={-1} ref={summary} className="space-y-2 rounded-md border border-destructive p-3 text-sm text-destructive"><p>{v3('summary')}</p>{problems.map((problem,i)=><p key={i}>{problem.levelIndex==null?'':`${t('stageNumber',{number:problem.levelIndex+1})}: `}{v3(attendanceLevelProblemMessageKey(problem))}</p>)}</div>}
@@ -33,6 +47,7 @@ export function AttendanceStageEditorV4({stages,employees,problems,onChange}:{st
  <ol className="divide-y divide-border">{level.sources.map((source,sourceIndex)=><li key={sourceIndex} className="space-y-3 py-4"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm font-medium">{v4('sourceNumber',{number:sourceIndex+1})}</span><div className="flex flex-wrap gap-2"><Button type="button" variant="secondary" disabled={sourceIndex===0} onClick={()=>{const sources=[...level.sources];[sources[sourceIndex-1],sources[sourceIndex]]=[sources[sourceIndex],sources[sourceIndex-1]];patch(index,{...level,sources});}}>{t('moveUp')}</Button><Button type="button" variant="secondary" disabled={sourceIndex===level.sources.length-1} onClick={()=>{const sources=[...level.sources];[sources[sourceIndex+1],sources[sourceIndex]]=[sources[sourceIndex],sources[sourceIndex+1]];patch(index,{...level,sources});}}>{v3('moveDown')}</Button><Button type="button" variant="secondary" disabled={level.sources.length===1} onClick={()=>patch(index,{...level,sources:level.sources.filter((_,i)=>i!==sourceIndex),hrAlternative:false})}>{t('remove')}</Button></div></div><SourceFields key={`${sourceIndex}-${source.kind}`} id={`v4-${index}-${sourceIndex}`} source={source} employees={employees} onChange={next=>patch(index,{...level,sources:level.sources.map((old,i)=>i===sourceIndex?next as AttendanceV3Source:old),hrAlternative:false})}/></li>)}</ol>
  <Button type="button" variant="secondary" disabled={level.sources.length>=20} onClick={()=>patch(index,{...level,sources:[...level.sources,{kind:'direct_manager',depth:nextAttendanceSuperiorDepth(stages.slice(0,index))}],hrAlternative:false})}>{v4('addSource')}</Button>
  {level.sources.length===1&&level.sources[0].kind==='direct_manager'&&<label className="flex gap-2 text-sm"><input type="checkbox" checked={level.hrAlternative} onChange={e=>patch(index,{...level,hrAlternative:e.target.checked})}/>{v3('hrAlternative')}</label>}
+ {index<stages.length-1?<EscalationFields key={`escalation-${index}-${stages.length}`} id={`v4-escalation-${index}`} level={level} onChange={next=>patch(index,next)}/>:<p className="text-sm text-muted-foreground">{v4('escalationFinal')}</p>}
  </li>)}</ol><p className="text-xs text-muted-foreground">{v3('limits')}</p><Button type="button" variant="secondary" disabled={stages.length>=10} onClick={()=>update([...stages,emptyAttendanceV4Level(stages.length,stages)])}>{t('addStage')}</Button></div>;
 }
 export function AttendanceCcEditor({sources,employees,onChange}:{sources:AttendanceCcSource[];employees:Employee[];onChange:(sources:AttendanceCcSource[])=>void}) {

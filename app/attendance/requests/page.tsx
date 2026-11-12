@@ -1,7 +1,7 @@
 import type { AttendanceSubmissionAction } from '@/components/attendance-submission-form';
-import { ownAttendanceSubmissionRoute } from '@/packs/attendance/service';
+import { attendanceOnBehalfSubject, attendanceSubmissionRouteOnBehalf, ownAttendanceSubmissionRoute } from '@/packs/attendance/service';
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { CalendarPlus } from 'lucide-react';
 import { getSession } from '@/lib/session';
@@ -20,6 +20,7 @@ import {
 } from '@/components/ui';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { myRequestCorrection } from '@/app/me/actions';
+import { OnBehalfBanner } from '@/app/attendance/on-behalf/banner';
 import { CorrectionDialog, CorrectionForm, LeaveInsteadNote, type CorrectionCopy } from './correction-form';
 import {
   KIND_OF_SECTION,
@@ -107,6 +108,8 @@ export default async function AttendanceIrregularityPage({
     section?: string;
     /** The day whose Fix panel is open (YYYY-MM-DD). */
     fix?: string;
+    /** 96a54ed2 Request On Behalf: the chosen employee (Attendance › Request On Behalf). */
+    onBehalfOf?: string;
   }>;
 }) {
   const t = await getTranslations('me');
@@ -118,7 +121,11 @@ export default async function AttendanceIrregularityPage({
   if (parseSection(sp.section) === 'overtime') redirect('/attendance/plan-ot');
 
   const s = await getSession();
-  const me = await myEmployment(s);
+  // 96a54ed2 — Request On Behalf opens THIS screen for a chosen employee: their records, their workflow and rules,
+  // under a banner. The service decides whether the caller may act for them; an unauthorised choice is a 404.
+  const onBehalf = sp.onBehalfOf ? await attendanceOnBehalfSubject(s, 'request', sp.onBehalfOf) : null;
+  if (sp.onBehalfOf && !onBehalf) notFound();
+  const me = onBehalf ?? await myEmployment(s);
 
   if (!me) {
     return (
@@ -144,7 +151,7 @@ export default async function AttendanceIrregularityPage({
     // Read for ONE thing now: which dates already have a request waiting. The list itself moved to
     // /attendance/request-status; what stays here is the marker on the row, which is a different statement.
     myAttendanceCorrections(s, me.employmentId, { limit: 200 }),
-    ownAttendanceSubmissionRoute(s, me.employmentId, 'irregularity'),
+    onBehalf ? attendanceSubmissionRouteOnBehalf(s, me.employmentId, 'irregularity') : ownAttendanceSubmissionRoute(s, me.employmentId, 'irregularity'),
   ]);
   const routeCopy = await getTranslations('attendanceWorkflow');
   const approver = route.available ? route.firstApprovers.map(actor => actor.kind === 'hr_admin' ? routeCopy('hr') : actor.name).join(', ') : routeCopy(`submissionRefusals.${route.reason}`);
@@ -199,6 +206,7 @@ export default async function AttendanceIrregularityPage({
     q.set('section', next.section ?? section);
     const fix = next.fix === undefined ? sp.fix : next.fix;
     if (fix) q.set('fix', fix);
+    if (onBehalf) q.set('onBehalfOf', onBehalf.employmentId);
     return `/attendance/requests?${q.toString()}`;
   };
 
@@ -240,6 +248,7 @@ export default async function AttendanceIrregularityPage({
     submitAction: myRequestCorrection,
     minDate: from,
     maxDate: to,
+    onBehalfOf: onBehalf?.employmentId ?? null,
   };
 
   return (
@@ -279,6 +288,7 @@ export default async function AttendanceIrregularityPage({
               approver={approver}
               workflowFingerprint={workflowFingerprint}
               submitAction={myRequestCorrection}
+              onBehalfOf={onBehalf?.employmentId ?? null}
               section="other"
               requestKind="other"
               day={null}
@@ -289,6 +299,7 @@ export default async function AttendanceIrregularityPage({
         }
       />
 
+      {onBehalf && <OnBehalfBanner name={onBehalf.name} employeeCode={onBehalf.employeeCode} />}
       <ErrorBanner message={sp.error} />
 
       {/* ── The three exception sections ──────────────────────────────────────────────────────────── */}
@@ -337,6 +348,7 @@ export default async function AttendanceIrregularityPage({
               approver={approver}
               workflowFingerprint={workflowFingerprint}
               submitAction={myRequestCorrection}
+              onBehalfOf={onBehalf?.employmentId ?? null}
               /* OFF THE DAY, NOT THE TAB. With one mixed list the open filter no longer implies the
                  kind, and taking it from `section` would file an `all` request under a section that is
                  not one — the r227 lesson, which was about exactly this. */
@@ -430,6 +442,7 @@ type CorrectionRequest = {
   submitAction: AttendanceSubmissionAction;
   minDate: string;
   maxDate: string;
+  onBehalfOf: string | null;
 };
 
 /**
@@ -534,6 +547,7 @@ function ExceptionTable({
                       approver={request.approver}
                       workflowFingerprint={request.workflowFingerprint}
                       submitAction={request.submitAction}
+                      onBehalfOf={request.onBehalfOf}
                       section={d.section}
                       requestKind={KIND_OF_SECTION[d.section]}
                       day={{

@@ -75,6 +75,7 @@ export function CorrectionForm({
   maxDate,
   cancel,
   onSubmitted,
+  onBehalfOf,
 }: {
   copy: CorrectionCopy;
   approver: string;
@@ -94,10 +95,13 @@ export function CorrectionForm({
    *  outside a `Dialog.Root`, and the inline `?fix=` panel has no dialog around it. */
   cancel?: ReactNode;
   onSubmitted?: () => void;
+  /** 96a54ed2 Request On Behalf: the chosen employee. The action and service re-check the caller may act for them. */
+  onBehalfOf?: string | null;
 }) {
   return (
     <AttendanceSubmissionForm action={submitAction} onSubmitted={onSubmitted} className="space-y-2.5 p-4">
       {workflowFingerprint&&<input type="hidden" name="workflowFingerprint" value={workflowFingerprint} />}
+      {onBehalfOf&&<input type="hidden" name="onBehalfOf" value={onBehalfOf} />}
       <input type="hidden" name="section" value={section} />
       <input type="hidden" name="requestKind" value={requestKind} />
       {day ? (

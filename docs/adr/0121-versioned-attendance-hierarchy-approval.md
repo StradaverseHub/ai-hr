@@ -140,3 +140,71 @@ foreign-tenant actors remain refused. The worklist exposes only an RLS-scoped pr
 existing Approvals row links the file; file content is fetched on demand. This adds a SELECT policy,
 not an employment grant or an attachment-writing capability. Existing upload, update, delete and
 post-decision upload restrictions remain unchanged.
+
+## Amendment — cross-company and pending-activation approvers, Escalation Approval (board daa76ed4), 12 November 2026
+
+Owner-approved plan, revision 1. Applies to routing versions 3 and 4; version 1/2 resolution and decision authority
+keep their company fences unchanged.
+
+The Organization Code is the tenant. A Direct Superior or named approver may be employed in any company of the tenant
+(migration 5140): resolution walks `app.attendance_workflow_hierarchy_v5` without the subject-company fence, and a login
+is usable when it is the person's only unarchived, unblocked account holding any tenant role. Another tenant is never
+reachable. Decision access stays request-bound (`attendance_workflow_v3_read` / `v3_assigned_allowed`):
+`app.can_see_employment` is unchanged, so an approver in another company sees the requests assigned to them and their
+attachments, but not the employee's Personnel record, pay or colleagues, and neither does their company's HR. The
+existing calculation handoff above still applies: a final approval (or an OT-bearing final rejection) by an approver
+who lacks the subject's calculation visibility rolls back with the finite HR handoff, exactly as for a same-company
+named approver. Widening that visibility, or substituting a calculation identity for v3/v4, remains out of scope and
+needs a separate owner decision.
+
+An approver whose person has no account in the tenant (an invitation or manual enrollment creates none) is "pending
+activation": it is frozen with a null login and `pendingActivation: true`. An archived, blocked, role-less or duplicate
+account remains a configuration problem. The request keeps its submission date, applicant, level and Pending status.
+Once that person's single usable login exists it alone may act for the slot (assigned mode); delegation from that
+employment is unchanged. Duplicate-login checks skip null logins. Preview shows an information note, and History
+shows "Waiting for account activation". A CC recipient without an account is left out (CC is notification-only).
+
+Escalation Approval (migration 5141) is an optional per-level `escalateAfterDays` (whole calendar days 1–365) on v4
+levels other than the last; it is frozen into the resolved stage only when configured, so earlier templates and
+requests resolve and decide byte-identically. A stage clock trigger sets `stage_reached_at` and the HR-local
+`escalate_on` (date reached + days + 1) whenever the current level changes; the final frozen level never has one. The
+nightly `review:sweep` runner pages due requests in bounded indexed batches and calls the system-only
+`app.attendance_workflow_escalate`, which takes the decision guard's lock order, re-checks pending status, the level,
+absence of a completion decision or rejection and the due date, records one immutable
+`attendance_workflow_escalation` row per (request, level) and advances `current_stage`. The request guards admit that
+advance only with a same-transaction escalation row. Escalation never approves or rejects, never passes the final
+level, ignores withdrawn/cancelled requests (their due date is cleared), and keeps partial Everyone/Sequential
+approvals as evidence while marking the level "Escalated". An approver who decided an escalated level still cannot
+act on a later level of the same request. The next level's frozen participants are notified, re-checked at dispatch.
+
+## Amendment — Request On Behalf and Approve On Behalf (board 96a54ed2), 12 November 2026
+
+See ADR-0052 (amended D3) for who may act for whom. For routing versions 3 and 4 the participant ledger accepts a
+fourth acting mode, `on_behalf`, only through `app.attendance_workflow_on_behalf_allowed` (authority without the
+outstanding test, so the same-transaction completion can re-prove it) and `app.attendance_workflow_on_behalf_slot`
+(the outstanding slot of one designated employment at the current level). Completion, advance, effect and request
+guards re-prove an on_behalf participant row through the same predicate. A pending-activation designated approver is
+covered (their employment must be active; a login is not). `attendance_correction.submitted_by_*` (NULL = the employee
+filed it) is stamped by the database and immutable; the filer holds no slot of that application, is refused by the
+v1/v2/v3/v4 decision guards, and History reads "Submitted on behalf by <name>" and "Approved/Rejected On Behalf".
+Approve On Behalf is not offered for v1/v2 routes, which keep their existing reasoned HR administrator mode.
+
+## Amendment — request-bound final-decision read window (owner decision, 12 November 2026)
+
+Owner decision (2026-11-12, board daa76ed4): a legitimately assigned v3/v4 participant who lacks the subject's
+calculation visibility — notably a cross-company approver in the same tenant — gives the final approval, or an
+OT-bearing final rejection, themselves. This replaces the HR handoff for that case; the handoff remains only where the
+window cannot be proven (for example the approver lost the assignment). Personnel visibility is not widened in general.
+Migration 5143 adds one leading branch to `app.can_see_employment` and merges one id into `app.visible_employment_ids`:
+exactly the subject employment of exactly one correction, and only while `app.attendance_effect_window_employment()`
+proves, on every call, that the request hint names that v3/v4 correction of the current tenant, that the live caller
+wrote the request-ending participant decision (final-level approval or a rejection) in this very transaction (active
+write: it closes at commit and at a released or rolled-back savepoint), that the request is at that level with no
+completion yet or advanced past it by the caller's same-transaction completion with the same outcome, and that the
+correction is pending or decided by this transaction. The hint itself is untrusted: a forged hint without those rows
+yields nothing; the decision path installs it only through `app.attendance_workflow_open_final_window`, which
+restores the previous hint when the window cannot be proven. The proof answers re-entrant calls (the participant
+table's own read policy) with NULL. With no hint installed the branch costs one transaction-local setting read.
+The TypeScript runs only the fixed Attendance effect inside the window, returns the status, then clears the hint and
+re-checks that the caller is back to their normal visibility before the transaction may commit. This supersedes the
+earlier statements in this ADR that a participant without calculation visibility always receives the HR handoff.

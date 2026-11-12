@@ -102,6 +102,11 @@ export const PAYROLL_PERMISSION_KEYS = [
   // way to reach it. Widening that page is a separate decision about who may read every statutory report
   // for a company, and it was deliberately not smuggled into this one.
   'payroll.statutory_file',
+  // 96a54ed2 — file an Attendance Irregularity / Self Overtime application for another employee, and decide a
+  // pending attendance approval for its designated approver. Enforced in core/attendance-on-behalf.ts together with
+  // HR company scope or the caller's own reporting line; the key alone never reaches an employee outside them.
+  'attendance.request_on_behalf',
+  'attendance.approve_on_behalf',
 ] as const;
 
 export type PayrollPermissionKey = (typeof PAYROLL_PERMISSION_KEYS)[number];
@@ -143,6 +148,10 @@ export const PAYROLL_PERMISSION_DEFAULTS: Record<PayrollPermissionKey, readonly 
   // A customer whose returns are lodged by an outsourced bureau grants the key to `payroll_partner` for
   // that company (after reading the shipped limit recorded against the key above).
   'payroll.statutory_file': ['hr_admin', 'super_admin'],
+  // 96a54ed2 — the approved plan switches both on for HR administrators, Super Admins and Managers; each company may
+  // change it per role here. A manager still acts only for people beneath them in their own reporting line.
+  'attendance.request_on_behalf': ['hr_admin', 'super_admin', 'manager'],
+  'attendance.approve_on_behalf': ['hr_admin', 'super_admin', 'manager'],
 } as const;
 
 export function isPayrollPermissionKey(v: string): v is PayrollPermissionKey {

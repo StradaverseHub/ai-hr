@@ -72,7 +72,9 @@ describe('automatic skip when the reporting chain has genuinely ended (decided a
   const inactiveChild=await actor('Fictional inactive-chain A'),inactiveMid=await actor('Fictional inactive-chain B'),inactiveTop=await actor('Fictional inactive-chain C');
   await reports(inactiveChild,inactiveMid);await reports(inactiveMid,inactiveTop);
   await owner.db.update(schema.employment).set({terminatedOn:'2021-01-01'}).where(eq(schema.employment.id,inactiveTop.employmentId));
-  const loginChild=await actor('Fictional login-chain A'),loginMid=await actor('Fictional login-chain B'),loginTop=await actor('Fictional login-chain C',{login:false});
+  // daa76ed4: a superior with no account at all is pending activation and routes; an archived account is a real problem.
+  const loginChild=await actor('Fictional login-chain A'),loginMid=await actor('Fictional login-chain B'),loginTop=await actor('Fictional login-chain C');
+  await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,loginTop.userId!));
   await reports(loginChild,loginMid);await reports(loginMid,loginTop);
   await saveAttendanceWorkflow(adminCtx(base),workflow([lone,inactiveChild,loginChild],[level([superior(1)]),level([superior(2)]),level([superior(3)])]));
   for(const applicant of [lone,inactiveChild,loginChild]){
@@ -194,7 +196,8 @@ describe('Save no longer resolves every employee; Preview Assignment is stored',
  });
  it('stores matching employees and distinct Direct Superior warnings with the approver, and flags an older version',async()=>{
   const ok=await actor('Fictional routed employee'),okBoss=await actor('Fictional routed superior');await reports(ok,okBoss);
-  const noLogin=await actor('Fictional employee whose superior has no login'),loginless=await actor('Fictional superior without login',{login:false});await reports(noLogin,loginless);
+  const noLogin=await actor('Fictional employee whose superior has no login'),loginless=await actor('Fictional superior without login');await reports(noLogin,loginless);
+  await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,loginless.userId!));
   const inactive=await actor('Fictional employee whose superior left'),gone=await actor('Fictional departed superior');await reports(inactive,gone);
   await owner.db.update(schema.employment).set({terminatedOn:'2021-01-01'}).where(eq(schema.employment.id,gone.employmentId));
   const lone=await actor('Fictional employee without superior');
@@ -236,7 +239,8 @@ describe('Save no longer resolves every employee; Preview Assignment is stored',
   expect(await withTenant(plain.ctx,tx=>tx.select().from(schema.attendanceWorkflowPreview))).toEqual([]);
  });
  it('the Direct Superior diagnostic answers only an administrator of the subject company',async()=>{
-  const a=await actor('Fictional diagnosed employee'),b=await actor('Fictional diagnosed superior',{login:false});await reports(a,b);
+  const a=await actor('Fictional diagnosed employee'),b=await actor('Fictional diagnosed superior');await reports(a,b);
+  await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,b.userId!));
   const query=(ctx:SessionContext)=>withTenant(ctx,tx=>tx.execute<{level_number:number;problem:string|null;full_name:string|null}>(sql`select level_number,problem,full_name from app.attendance_workflow_superior_diagnostic(${a.employmentId}::uuid,2)`));
   expect((await query(adminCtx(base))).map(row=>({...row}))).toEqual([{level_number:1,problem:'no_login',full_name:'Fictional diagnosed superior'}]);
   expect(await query(a.ctx)).toHaveLength(0);

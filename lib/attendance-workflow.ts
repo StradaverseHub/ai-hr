@@ -19,7 +19,10 @@ export type AttendanceResolvedApprover = {
     employmentId: string | null;
     /** Version 2 freezes distinct employment/person/login identities at submission. */
     personId?: string;
-    userId?: string;
+    /** Null when the approver had no account yet at submission (5140); their activated login then acts. */
+    userId?: string | null;
+    /** Frozen at submission: the approver's account was pending activation. */
+    pendingActivation?: boolean;
     hierarchyDepth?: number;
     name: string;
 };
@@ -30,6 +33,8 @@ export type AttendanceResolvedStage = {
     sources?: import('./attendance-workflow-v3').AttendanceV3Source[];
     source?: import('./attendance-workflow-v3').AttendanceV3Source;
     hrAlternative?: boolean;
+    /** v4: frozen Escalation Approval period in calendar days (never acted on for the final level). */
+    escalateAfterDays?: number;
 };
 /** One AND group: every chosen field must match; any value within a field matches. */
 export type AttendanceCriteriaGroup = {

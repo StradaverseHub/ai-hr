@@ -208,7 +208,7 @@ function routingOf(flow: Workflow, status: string): AttendanceApplicationDetailV
       level: index + 1, name: stage.name ?? '',
       status: decision ? decision.decision : status === 'pending' ? (index === flow.currentStage ? 'waiting' : 'not_reached') : 'not_required',
       approvers: approvers.slice(0, 20),
-      decision: decision ? { actorName: decision.actualActorName, actingMode: decision.actingMode, decidedAt: iso(decision.decidedAt)!, remarks: decision.remarks ?? null } : null,
+      decision: decision ? { actorName: decision.actualActorName, actingMode: decision.actingMode === 'on_behalf' ? 'administrator' : decision.actingMode, /* 96a54ed2: the mobile v2 contract is unchanged this round */ decidedAt: iso(decision.decidedAt)!, remarks: decision.remarks ?? null } : null,
     };
   });
   return { templateName: flow.templateName, templateVersion: flow.templateVersion, currentLevel: status === 'pending' ? flow.currentStage + 1 : null, levels: levels.slice(0, 20) };
