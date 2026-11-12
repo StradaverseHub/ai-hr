@@ -35,7 +35,7 @@ export async function readV9Workflow(caseId:string,workflowId:string) {
 }
 
 /** Server dry run: real recipients and addresses for a test case; nothing is sent or saved. */
-export async function planV9Workflow(caseId: string, workflow: unknown) {
+export async function previewV9WorkflowPlan(caseId: string, workflow: unknown) {
   try { return { ok: true as const, plan: await v9PlanWorkflow(await requireModule('lifecycle'), caseId, workflow) }; }
   catch (error) { return { ok: false as const, error: error instanceof Error && error.name === 'V9Error' ? error.message : 'The dry run could not be prepared. Try again.' }; }
 }
