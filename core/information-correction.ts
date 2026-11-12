@@ -32,14 +32,20 @@ async function administratorTx(tx:Tx,ctx:SessionContext,companyId:string){
  const [gate]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() and app.is_admin_for(${companyId}::uuid) as ok`);
  if(!ctx.userId||!gate?.ok)fail('You do not have permission to correct this company.');
 }
-async function stateTx(tx:Tx,ctx:SessionContext,id:string){
+type StateMode='read'|'write';
+/** 'read' is the form load and the review (inside withAccessDisplayRead): the same authority checks and values,
+ * without the leave-dependency, statutory-owner and row locks that a correction holds until it commits. The save
+ * repeats every check in 'write' mode and compares the fingerprint. */
+async function stateTx(tx:Tx,ctx:SessionContext,id:string,mode:StateMode='write'){
+ const write=mode==='write';
  await assertWorkforceEmploymentTx(tx,ctx,id,'maintain');
- await lockLeaveDependenciesTx(tx,ctx.tenantId,[id]);
- await lockEmploymentStatutoryOwnerTx(tx,id);
- const [emp]=await tx.select().from(employment).where(and(eq(employment.id,id),eq(employment.tenantId,ctx.tenantId))).for('update');
+ if(write){await lockLeaveDependenciesTx(tx,ctx.tenantId,[id]);await lockEmploymentStatutoryOwnerTx(tx,id);}
+ const employmentRow=tx.select().from(employment).where(and(eq(employment.id,id),eq(employment.tenantId,ctx.tenantId)));
+ const [emp]=write?await employmentRow.for('update'):await employmentRow;
  if(!emp)fail('Employee record is unavailable.');
  await administratorTx(tx,ctx,emp.companyId);
- const assignments=await tx.select().from(assignment).where(and(eq(assignment.employmentId,id),isNull(assignment.supersededAt))).orderBy(asc(assignment.validFrom)).for('update');
+ const assignmentRows=tx.select().from(assignment).where(and(eq(assignment.employmentId,id),isNull(assignment.supersededAt))).orderBy(asc(assignment.validFrom));
+ const assignments=write?await assignmentRows.for('update'):await assignmentRows;
  const current=assignments.filter(a=>a.validTo===null);
  if(current.length!==1||current[0].validFrom>todayInKualaLumpur())fail('A unique current assignment is required. Review Employment Movement.');
  if(current[0].companyId&&current[0].companyId!==emp.companyId)fail('Current company and dated assignment disagree. Reconcile the employment history before correcting information.');
@@ -109,12 +115,13 @@ function ownerFailure(error:unknown,field:InformationField):never{
 /** Extended fields need the owners' Access/leave configuration locks; take them before any row lock. */
 const OWNER_FIELDS=new Set<string>([...INFORMATION_LABEL_FIELDS,...INFORMATION_PERIOD_FIELDS,'managerEmploymentId']);
 export const informationChangesUseOwners=(changes:InformationChanges)=>Object.keys(changes).some(field=>OWNER_FIELDS.has(field));
-/** Loading the form may expose invalid legacy values so the user can correct them. */
+/** Loading the form may expose invalid legacy values so the user can correct them. A read: the 'maintain' check
+ * joins the Access lock shared (withAccessDisplayRead, SCALE rule 1) and no row is locked. */
 export function readInformationCorrection(ctx:SessionContext,employmentId:string){
- return withTenant(ctx,async tx=>{
-  const state=await stateTx(tx,ctx,employmentId),before=values(state),beforeLabels=await labelsTx(tx,before);
+ return withAccessDisplayRead(()=>withTenant(ctx,async tx=>{
+  const state=await stateTx(tx,ctx,employmentId,'read'),before=values(state),beforeLabels=await labelsTx(tx,before);
   return {effectiveOn:todayInKualaLumpur(),before,beforeLabels};
- });
+ }));
 }
 async function validateTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stateTx>>,changes:InformationChanges,extended:boolean){
  const before=values(s),after={...before};
@@ -216,14 +223,17 @@ async function validateExtendedTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<
   if(await wouldCreateAdminCycle(tx,s.emp.id,id,today))fail('Direct Superior: this would create a reporting loop.');
  }
 }
-async function previewTx(tx:Tx,ctx:SessionContext,input:{employmentId:string;changes:InformationChanges;reason:string},extended=false){
+async function previewTx(tx:Tx,ctx:SessionContext,input:{employmentId:string;changes:InformationChanges;reason:string},extended=false,mode:StateMode='write'){
  const reason=typeof input.reason==='string'?input.reason.trim():'';
  if(reason.length<3||reason.length>1000)fail('Provide a correction reason between 3 and 1,000 characters.');
- const state=await stateTx(tx,ctx,input.employmentId),v=await validateTx(tx,ctx,state,input.changes,extended);
+ const write=mode==='write';
+ const state=await stateTx(tx,ctx,input.employmentId,mode),v=await validateTx(tx,ctx,state,input.changes,extended);
  if(INFORMATION_ALL_FIELDS.some(f=>v.before[f]!==v.after[f])){const [history]=await tx.execute<{ready:boolean}>(sql`select app.information_payroll_ready(${state.emp.id}::uuid) as ready`);if(!history?.ready)fail('Original historical information cannot be verified after intervening changes. Ask the payroll administrator to reconcile the historical document evidence before correcting this record.');}
- const companyRefs=await tx.select({id:company.id,label:company.companyLabel,registration:company.registrationNo,name:company.legalName,country:company.country,currency:company.currency,archivedAt:company.archivedAt}).from(company).where(inArray(company.id,[v.before.companyId!,v.after.companyId!])).orderBy(asc(company.id)).for('share');
+ const companyRows=tx.select({id:company.id,label:company.companyLabel,registration:company.registrationNo,name:company.legalName,country:company.country,currency:company.currency,archivedAt:company.archivedAt}).from(company).where(inArray(company.id,[v.before.companyId!,v.after.companyId!])).orderBy(asc(company.id));
+ const companyRefs=write?await companyRows.for('share'):await companyRows;
  const gradeIds=[...new Set([v.before.gradeId,v.after.gradeId].filter((id):id is string=>!!id))];
- const gradeRefs=gradeIds.length?await tx.select({id:jobGrade.id,code:jobGrade.code,name:jobGrade.name,archivedAt:jobGrade.archivedAt}).from(jobGrade).where(inArray(jobGrade.id,gradeIds)).orderBy(asc(jobGrade.id)).for('share'):[];
+ const gradeRows=tx.select({id:jobGrade.id,code:jobGrade.code,name:jobGrade.name,archivedAt:jobGrade.archivedAt}).from(jobGrade).where(inArray(jobGrade.id,gradeIds)).orderBy(asc(jobGrade.id));
+ const gradeRefs=gradeIds.length?(write?await gradeRows.for('share'):await gradeRows):[];
  const effectiveOn=todayInKualaLumpur();
  const organisation=await deriveCompanyOrganisationTx(tx,ctx,{companyId:v.after.companyId!,asOf:effectiveOn});
  const beforeLabels=await labelsTx(tx,v.before),afterLabels=await labelsTx(tx,v.after);
@@ -236,9 +246,10 @@ async function previewTx(tx:Tx,ctx:SessionContext,input:{employmentId:string;cha
 }
 class InformationRehearsal extends Error{constructor(readonly preview:InformationPreview){super('information_preview_rollback');}}
 /** Excel previews of the further details rehearse the owners' writes and roll back, so every refusal the save
- * would meet (closed payroll, reporting loop, catalog) is shown as a row error before confirmation. */
+ * would meet (closed payroll, reporting loop, catalog) is shown as a row error before confirmation. Every other
+ * review is a read: shared Access lock and no row locks (withAccessDisplayRead, SCALE rule 1). */
 export async function previewInformationCorrection(ctx:SessionContext,input:{employmentId:string;changes:InformationChanges;reason:string},options:{extended?:boolean}={}){
- if(!options.extended||!informationChangesUseOwners(input.changes))return withTenant(ctx,async tx=>(await previewTx(tx,ctx,input,!!options.extended)).preview);
+ if(!options.extended||!informationChangesUseOwners(input.changes))return withAccessDisplayRead(()=>withTenant(ctx,async tx=>(await previewTx(tx,ctx,input,!!options.extended,'read')).preview));
  try{await withTenant(ctx,async tx=>{
   await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
   const {state,preview}=await previewTx(tx,ctx,input,true);

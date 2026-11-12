@@ -9,9 +9,13 @@
  *  - the guard: an independent pg_locks sampler watches the tenant's Access key while the shell bell, the Home
  *    sections, the worker gate, the Personnel movement and correction reads (history and options), an Employee Master run and the Personnel
  *    export details read a populated tenant, and no exclusive hold may appear. Any SQL owner on these paths that took
- *    the exclusive lock of its own would show here too.
+ *    the exclusive lock of its own would show here too;
+ *  - the information-correction form and its review (12 November 2026): their Workforce 'maintain' check took the
+ *    exclusive lock because the SQL workforce barrier ignored the display read. They now hold it shared, give the
+ *    review the save accepts, and the save itself stays exclusive.
  */
 import {randomUUID} from 'node:crypto';
+import {eq} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async()=>(key:string)=>key}));
 import postgres from 'postgres';
@@ -26,7 +30,8 @@ import {RECOMMENDER_WORKER} from '../core/recommenders/leave-decision';
 import {pendingTaskSummary} from '../core/approvals-inbox';
 import {hireEmployee} from '../core/org';
 import {movementAttachments,movementHistory,resignationInformation} from '../core/movement';
-import {informationCorrectionHistory,informationCorrectionOptions} from '../core/information-correction';
+import {correctInformationTx,informationCorrectionHistory,informationCorrectionOptions,previewInformationCorrection,readInformationCorrection} from '../core/information-correction';
+import {costAllocationReferences} from '../core/cost-allocation-import';
 import {runEmployeeMasterReport} from '../core/employee-master-reports';
 import {grantAssistant} from '../core/assistant-grant';
 import {prepareOwnLeaveReviewTx,reopenOwnLeaveReviewTx} from '../core/assistant-actions/own-leave-store';
@@ -113,6 +118,13 @@ it('reads the shell bell, Home, the worker gate, Personnel movement history and 
  const documents=await movementAttachments(ctx,subject.employmentId,hired.id),corrections=await informationCorrectionHistory(ctx,subject.employmentId);
  // The correction form's, template's and import preview's options (organisation catalogue and labels).
  const correctionOptions=await informationCorrectionOptions(ctx);
+ // The correction form itself, its review and an import row's review (the Workforce 'maintain' check).
+ const earlier=new Date(today+'T00:00:00Z');earlier.setUTCDate(earlier.getUTCDate()-1);
+ const correctionInput={employmentId:subject.employmentId,changes:{hiredOn:earlier.toISOString().slice(0,10)},reason:'Fictional signed offer date'};
+ const correctionForm=await readInformationCorrection(ctx,subject.employmentId),correctionReview=await previewInformationCorrection(ctx,correctionInput),
+  correctionImportReview=await previewInformationCorrection(ctx,correctionInput,{extended:true});
+ // The cost allocation import's per-company reference read.
+ const allocationReferences=await costAllocationReferences(ctx,b.companyId);
  const resignation=await resignationInformation(ctx,subject.employmentId);
  const master=await runEmployeeMasterReport(ctx,[b.companyId],{spec});
  // The Personnel export's details, in one read-only snapshot as the export route reads them.
@@ -128,6 +140,9 @@ it('reads the shell bell, Home, the worker gate, Personnel movement history and 
  expect(doneForYou).toBeDefined();expect(glance).toBeDefined();
  expect(documents).toEqual([]);expect(Array.isArray(corrections)).toBe(true);expect(resignation).toBeDefined();
  expect(correctionOptions.companies.map(row=>row.id)).toContain(b.companyId);
+ expect(correctionForm.before).toMatchObject({companyId:b.companyId,hiredOn:today});
+ expect(correctionReview).toMatchObject({employmentId:subject.employmentId,changed:['hiredOn'],before:correctionForm.before});
+ expect(correctionImportReview).toEqual(correctionReview);expect(Array.isArray(allocationReferences)).toBe(true);
  expect(master.result.totalRows).toBeGreaterThanOrEqual(3);
  expect(exported.fields.length).toBeGreaterThan(0);expect(exported.cells.size).toBe(3);
 },120_000);
@@ -163,4 +178,29 @@ it('reopens a Home prepared-leave card under the shared lock with the same revie
  expect(locks.exclusive).toEqual([]);
  expect(needsYou.prepared.map(item=>item.actionId)).toEqual([prepared.review.actionId]);
  expect(needsYou.prepared[0]).toMatchObject({leave:{days:1}});
+},120_000);
+
+it('opens and reviews an information correction under the shared lock with the review its save accepts, and the save stays exclusive',async()=>{
+ const b=await seedBase(),ctx=admin(b);
+ const subject=await hireEmployee(adminCtx(b),{person:{fullName:'Fictional correction subject',primaryEmail:randomUUID()+'@example.invalid'},
+  companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2025-01-15'});
+ const input={employmentId:subject.employmentId,changes:{hiredOn:'2025-01-10'},reason:'Fictional signed offer date'};
+ // Strict mode: a shared holder that asks for the exclusive lock in TypeScript fails loudly instead of upgrading.
+ vi.stubEnv('AIHR_ACCESS_LOCK_STRICT','on');
+ const stop=accessLockSampler(b.tenantId);
+ const opened=await readInformationCorrection(ctx,subject.employmentId);
+ const manual=await previewInformationCorrection(ctx,input),imported=await previewInformationCorrection(ctx,input,{extended:true});
+ const locks=await stop();
+ console.log('[access-lock-information-correction]',JSON.stringify({exclusive:locks.exclusive,shared:locks.shared}));
+ expect(locks.exclusive).toEqual([]);
+ expect(locks.shared).toBeGreaterThan(0);
+ expect(opened.before).toMatchObject({companyId:b.companyId,hiredOn:'2025-01-15',employmentType:'full_time'});
+ expect(manual).toMatchObject({changed:['hiredOn'],before:opened.before,beforeLabels:opened.beforeLabels,after:{hiredOn:'2025-01-10'}});
+ expect(imported).toEqual(manual);
+ // The save repeats the review in its own transaction under the exclusive lock and accepts the shared review's fingerprint.
+ const saved=await withTenant(ctx,async tx=>({result:await correctInformationTx(tx,ctx,{...input,fingerprint:manual.fingerprint,method:'manual'}),mode:await heldMode(tx,b.tenantId)}));
+ expect(saved.mode).toBe('X');
+ expect(saved.result).toEqual({preview:manual,changed:true});
+ const [stored]=await owner.db.select({hiredOn:schema.employment.hiredOn}).from(schema.employment).where(eq(schema.employment.id,subject.employmentId));
+ expect(stored?.hiredOn).toBe('2025-01-10');
 },120_000);

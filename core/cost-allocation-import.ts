@@ -5,6 +5,7 @@ import {z} from 'zod';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {company,costCenter,employment,employmentCostAllocationHead,employmentCostAllocationSet as allocationSet,employmentCostAllocationRow as allocationRow} from '../db/schema';
 import {assertWorkforceCompanyTx,workforceEmploymentPredicate} from './workforce-access';
+import {withAccessDisplayRead} from './access-configuration-lock';
 import {lockLabelCriteriaTx,visibleLabelIdsCondition} from './system-labels';
 import {provenCompanyDatesTx} from './employment-company';
 import {prepareCostAllocationsTx,saveEmploymentCostAllocations} from './employment-cost-allocations';
@@ -32,7 +33,8 @@ export async function costAllocationReferencesTx(tx:Tx,ctx:SessionContext,compan
  z.uuid().parse(companyId);await assertWorkforceCompanyTx(tx,ctx,companyId,'maintain');const[live]=await tx.select({id:company.id}).from(company).where(and(eq(company.id,companyId),isNull(company.archivedAt)));if(!live)throw new CostAllocationError('scope');
  return tx.select({companyId:sql<string>`${companyId}`,id:costCenter.id,code:costCenter.code,label:costCenter.label}).from(costCenter).where(and(isNull(costCenter.archivedAt),visibleLabelIdsCondition(costCenter,'cost_center',[companyId]))).orderBy(asc(costCenter.code),asc(costCenter.id));
 }
-export function costAllocationReferences(ctx:SessionContext,companyId:string){return withTenant(ctx,tx=>costAllocationReferencesTx(tx,ctx,companyId));}
+/** A read: its 'maintain' check joins the Access lock shared (withAccessDisplayRead, SCALE rule 1). */
+export function costAllocationReferences(ctx:SessionContext,companyId:string){return withAccessDisplayRead(()=>withTenant(ctx,tx=>costAllocationReferencesTx(tx,ctx,companyId)));}
 /** One template for every company the actor may maintain (c4055300); no company is chosen first. */
 export function costAllocationWorkbookReferences(ctx:SessionContext):Promise<AllocationWorkbookReferences>{
  return withTenant(ctx,async tx=>{

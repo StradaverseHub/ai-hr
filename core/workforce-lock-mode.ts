@@ -23,8 +23,12 @@ export async function joinAccessConfigurationTx(tx:Tx,tenantId:string):Promise<'
 }
 
 /** The SQL workforce barrier in the mode this transaction holds: shared for a shared holder, otherwise the
- * exclusive editor barrier (which also pins the policy generation and configuration rows) as before. */
+ * exclusive editor barrier (which also pins the policy generation and configuration rows) as before.
+ * Inside a display read (withAccessDisplayRead) a transaction that holds nothing yet first takes the shared lock
+ * with the bounded wait, so a form or preview's 'maintain' check joins shared, as joinAccessConfigurationTx does
+ * for 'view' (information correction, 12 November 2026, SCALE rule 1). Outside a display read nothing changes. */
 export async function joinWorkforceBarrierTx(tx:Tx,tenantId:string):Promise<void>{
+ if(inAccessDisplayRead()&&await accessLockModeHeldTx(tx,tenantId)===null)await lockAccessConfigurationTx(tx,tenantId);
  await tx.execute(sql`select case when app.access_lock_mode_held(${tenantId}::uuid)='S'
   then app.access_workforce_write_lock() else app.access_configuration_write_lock() end`);
 }

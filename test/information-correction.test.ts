@@ -10,6 +10,7 @@ import {createMovementEvent,movementHistory,movementDetail,reverseMovementEvent}
 import {withTenant} from '../db/client';
 import * as schema from '../db/schema';
 import {readInformationCorrection,previewInformationCorrection,correctInformation,informationCorrectionHistory,informationCorrectionOptions} from '../core/information-correction';
+import {WorkforceAccessError} from '../core/workforce-access';
 import {previewInformationUpload,confirmInformationUpload} from '../core/information-correction-import';
 import {openLeaveYear,accrueEarnedLeave,reprojectEntitlementForEmployment} from '../core/leave';
 import {reconcileInformationSnapshots} from '../scripts/reconcile-information-snapshots';
@@ -179,6 +180,28 @@ describe('8550b282 information-only corrections',()=>{
  it('refuses a normal employee and another tenant',async()=>{
   const id=await fixture();await expect(previewInformationCorrection({...ctx(),roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]},{employmentId:id,changes:{},reason:'Inspect information'})).rejects.toThrow();
   await expect(previewInformationCorrection({...ctx(),tenantId:randomUUID()},{employmentId:id,changes:{},reason:'Inspect information'})).rejects.toThrow();
+  // The form load and an import row's review refuse them too (both are shared-lock reads since 12 November 2026).
+  await expect(readInformationCorrection({...ctx(),roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]},id)).rejects.toThrow();
+  await expect(readInformationCorrection({...ctx(),tenantId:randomUUID()},id)).rejects.toThrow();
+  await expect(previewInformationCorrection({...ctx(),roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]},{employmentId:id,changes:{},reason:'Inspect information'},{extended:true})).rejects.toThrow();
+ });
+ it('refuses another company administrator on the form, the review and the save alike, and shows a company administrator the same form',async()=>{
+  const id=await fixture();const [other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional other company',companyLabel:'OTHER'}).returning();
+  const scoped=async(companyId:string,name:string)=>{
+   const [p]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:name,primaryEmail:randomUUID()+'@example.test'}).returning();
+   const userId=await createAppUser(b.tenantId,p.id,'hr_admin');await owner.db.update(schema.roleAssignment).set({companyId}).where(eq(schema.roleAssignment.appUserId,userId));
+   return {...ctx(),userId,personId:p.id,grants:[{role:'hr_admin',companyId}]};
+  };
+  const outsider=await scoped(other.id,'Fictional other company administrator'),insider=await scoped(b.companyId,'Fictional company administrator');
+  const input={employmentId:id,changes:{hiredOn:'2025-01-10'},reason:'Correct signed offer date'};
+  await expect(readInformationCorrection(outsider,id)).rejects.toThrow(WorkforceAccessError);
+  await expect(previewInformationCorrection(outsider,input)).rejects.toThrow(WorkforceAccessError);
+  await expect(previewInformationCorrection(outsider,input,{extended:true})).rejects.toThrow(WorkforceAccessError);
+  await expect(correctInformation(outsider,{...input,fingerprint:'0'.repeat(64),method:'manual'})).rejects.toThrow(WorkforceAccessError);
+  // The company's own administrator sees exactly what a group administrator sees, and nothing was written.
+  expect(await readInformationCorrection(insider,id)).toEqual(await readInformationCorrection(ctx(),id));
+  expect(await previewInformationCorrection(insider,input)).toEqual(await previewInformationCorrection(ctx(),input));
+  expect((await owner.db.select().from(schema.employment).where(eq(schema.employment.id,id)))[0].hiredOn).toBe('2025-01-15');expect(await informationCorrectionHistory(ctx(),id)).toHaveLength(0);
  });
  it('requires compatible destination organisation dimensions for Company',async()=>{
   const id=await fixture();const [co]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Destination',companyLabel:'DEST'}).returning();

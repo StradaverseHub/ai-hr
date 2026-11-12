@@ -9,7 +9,7 @@ import {getEmploymentCostAllocations,previewEmploymentCostAllocations,saveEmploy
 import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {assertWorkforceEmploymentTx,WorkforceAccessError} from '../core/workforce-access';
 import {pgSqlState} from '../lib/db-error';
-import {previewCostAllocationImport,costAllocationWorkbookReferences,previewCostAllocationUpload,confirmCostAllocationUpload} from '../core/cost-allocation-import';
+import {previewCostAllocationImport,costAllocationReferences,costAllocationWorkbookReferences,previewCostAllocationUpload,confirmCostAllocationUpload} from '../core/cost-allocation-import';
 import {toCsv} from '../lib/csv';
 import {ALLOCATION_COLUMNS} from '../lib/employment-cost-allocation';
 const allocationCsv=(records:Record<string,string>[])=>Buffer.from(toCsv([[...ALLOCATION_COLUMNS],...records.map(r=>ALLOCATION_COLUMNS.map(k=>r[k]??''))]));
@@ -172,6 +172,10 @@ describe('Effective-dated employment cost allocation owner',()=>{
   const scoped={...a,userId,personId:p.id,grants:[{role:'hr_admin',companyId:b.companyId}]};
   const refs=await costAllocationWorkbookReferences(scoped);expect(refs.companies).toEqual([{code:'ACME',name:'Acme Sdn Bhd'}]);expect(refs.costCenters.some(r=>r.code==='ALLOC-A'&&r.companyCode==='ACME')).toBe(true);expect(JSON.stringify(refs)).not.toMatch(/HIDDEN-CODE|Hidden cost centre|Hidden catalogue company/);
   const all=await costAllocationWorkbookReferences(a);expect(all.companies.map(c=>c.name).sort()).toEqual(['Acme Sdn Bhd','Hidden catalogue company']);expect(all.costCenters.find(r=>r.code==='HIDDEN-CODE')?.companyCode).toBe('Hidden catalogue company');
+  // The per-company reference read (a shared-lock read since 12 November 2026): the same refusal and the same rows.
+  await expect(costAllocationReferences(scoped,other.id)).rejects.toThrow(WorkforceAccessError);
+  const own=await costAllocationReferences(scoped,b.companyId);expect(own.map(r=>r.code)).toEqual(refs.costCenters.map(r=>r.code));
+  expect(own).toEqual(await costAllocationReferences(a,b.companyId));
  });
  it('resolves lowercase existing Employee IDs and Company Codes through the canonical normalizers',async()=>{
   const records=[{company_code:' acme ',employee_code:' alloc01 ',effective_date:today,operation:'Replace',cost_center_code:'ALLOC-A',percentage:'100'}];
