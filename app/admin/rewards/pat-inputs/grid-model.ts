@@ -19,7 +19,7 @@ export function parsePatValue(key:FieldKey,raw:string):number|null|'invalid'{
 /** One row's figures and the problems the service would refuse, so the grid can mark them before saving. */
 export function patRowState(base:PatInput,edits:Partial<Record<FieldKey,string>>|undefined){
  const values={...base},invalid=new Set<FieldKey>();
- for(const key of FIELDS){const raw=edits?.[key];if(raw===undefined)continue;const parsed=parsePatValue(key,raw);if(parsed==='invalid')invalid.add(key);else values[key]=parsed;}
+ for(const key of FIELDS){const raw=edits?.[key];if(raw===undefined)continue;const parsed=parsePatValue(key,raw);if(parsed==='invalid')invalid.add(key);else if(key==='targetMonthsBp'){if(parsed!==null)values.targetMonthsBp=parsed;}else values[key]=parsed;}
  if(values.targetCents!==null&&values.targetCents<=0)invalid.add('targetCents');
  if(values.targetCents===null&&(values.actualCents!==null||values.forecastCents!==null))invalid.add('targetCents');
  if(values.targetMonthsBp>100_000||values.targetMonthsBp%100!==0)invalid.add('targetMonthsBp');

@@ -54,7 +54,7 @@ export function ReviewBeforeSavingDialog({open,summary,digest,onClose,onConfirm,
  open:boolean;summary:RewardConfigSummary|null;digest:string|null;onClose:()=>void;onConfirm:(reason:string,digest:string)=>void;submitLabel:string;pending?:boolean;error?:string;
 }){
  const t=useTranslations('rewardConfig'),dialog=useRef<HTMLDialogElement>(null),reason=useRef<HTMLTextAreaElement>(null);
- useEffect(()=>{const d=dialog.current;if(!d)return;if(open&&!d.open)d.showModal();if(!open&&d.open)d.close();},[open]);
+ useEffect(()=>{const d=dialog.current;if(!d)return;if(open&&!d.open){if(typeof d.showModal==='function')d.showModal();else d.setAttribute('open','');}if(!open&&d.open){if(typeof d.close==='function')d.close();else d.removeAttribute('open');}},[open]);
  return<dialog ref={dialog} onClose={onClose} aria-labelledby="reward-review-dialog-title" className="m-0 h-full max-h-none w-full max-w-none overflow-auto bg-card p-0 text-foreground backdrop:bg-black/40 sm:m-auto sm:h-auto sm:max-h-[90vh] sm:max-w-2xl sm:rounded-lg">
   {summary&&digest&&<form className="space-y-5 p-5" onSubmit={event=>{event.preventDefault();onConfirm(reason.current?.value??'',digest);}}>
    <header className="space-y-1"><h2 id="reward-review-dialog-title" className="text-lg font-semibold">{t('title')}</h2><p className="text-sm text-muted-foreground">{summary.itemLabel}</p></header>

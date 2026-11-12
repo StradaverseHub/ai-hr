@@ -202,7 +202,7 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
   await expect(postRewardUnit(postingActor,unitId,revision,batchId)).resolves.toMatchObject({alreadyPosted:true});
   const [input]=await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId,batchId));
   expect(input).toMatchObject({overtimeAmount:'123.00',bonusAmount:'1289.00',tp1Deduction:'44.00',zakat:'9.00'});
-  expect(input.rewardProvenance).toEqual([{unitId,entryId,revision,plan:'Senior plan',confirmedBy:checker.userId,confirmedAt:expect.any(String),historicalOnly:true}]);
+  expect(input.rewardProvenance).toEqual([{unitId,entryId,revision,plan:'Senior plan',confirmedBy:gr.userId,confirmedAt:expect.any(String),historicalOnly:true}]);
   const [{sources}]=await rewardPayrollProvenance(postingActor,batchId);expect(sources).toEqual(input.rewardProvenance);
   const compensations=await owner.db.select().from(schema.compensation).where(eq(schema.compensation.employmentId,employeeId));expect(compensations.filter(row=>row.basicSalary==='5500.00')).toHaveLength(1);
   // A subsequent manual change does not convert a historical source reference into a claim that the

@@ -78,7 +78,8 @@ it('saves a PAT batch as a draft, makes it active by the same editor, and rolls 
  const next={...inputs,actualCents:1_100_000};
  const preview=await previewRewardPatBatch(maker,{year,mode:'active',reason:'Preview only, not saved.',rows:[{companyId:b.companyId,expectedRevision:1,inputs:next}]});
  expect(preview.summary.highImpact).toEqual([]);
- expect(preview.summary.lines.map(l=>[l.key.split(':').pop(),l.before,l.after])).toEqual([['actualCents',null,'11000.00']]);
+ // Making it active compares with the Active figures (none yet), so every entered value is listed.
+ expect(preview.summary.lines.map(l=>[l.key.split(':').pop(),l.before,l.after])).toEqual([['actualCents',null,'11000.00'],['forecastCents',null,'9000.00'],['targetCents',null,'10000.00'],['targetMonthsBp',null,'2.00']]);
  await saveRewardPatBatch(maker,{year,mode:'active',reason:'Actual PAT confirmed for the year',summaryDigest:preview.digest,rows:[{companyId:b.companyId,expectedRevision:1,inputs:next}]});
  const [active]=await owner.db.execute<{revision:number;state:string;confirmed_by:string;created_by:string;inputs:typeof next}>(sql`select revision,state,confirmed_by,created_by,inputs from reward_pat_version where company_id=${b.companyId}::uuid and year=${year}`);
  expect(active).toEqual({revision:1,state:'confirmed',confirmed_by:maker.userId,created_by:maker.userId,inputs:next});
@@ -118,11 +119,11 @@ it('refuses an immediate access change that adds the actor and allows removing t
  const insert=(after:unknown,before:unknown)=>owner.db.execute<{id:string}>(sql`insert into reward_access_request(tenant_id,changes,unit_revisions,before_members,people_fingerprints,requested_by) values(${b.tenantId}::uuid,${JSON.stringify([{unitId:randomUUID(),revision:1,before,after}])}::jsonb,'{}'::jsonb,'{}'::jsonb,'{}'::jsonb,${maker.userId}::uuid) returning id`);
  const apply=(id:string)=>owner.db.execute(sql`update reward_access_request set status='applied_no_second_approval',decided_at=now() where id=${id}::uuid`);
  const [self]=await insert({userId:maker.userId,role:'gr'},null);
- await expect(apply(self.id)).rejects.toThrow(/own Rewards access/);
+ await expect(apply(self.id)).rejects.toMatchObject({cause:{code:'42501',message:expect.stringMatching(/own Rewards access/)}});
  const [sameperson]=await insert({userId:alias,role:'bu'},null);
- await expect(apply(sameperson.id)).rejects.toThrow(/own Rewards access/);
+ await expect(apply(sameperson.id)).rejects.toMatchObject({cause:{code:'42501',message:expect.stringMatching(/own Rewards access/)}});
  const [lengthen]=await insert({userId:maker.userId,role:'gr',validTo:'2030-12-31'},{userId:maker.userId,role:'gr',validTo:'2026-12-31'});
- await expect(apply(lengthen.id)).rejects.toThrow(/own Rewards access/);
+ await expect(apply(lengthen.id)).rejects.toMatchObject({cause:{code:'42501',message:expect.stringMatching(/own Rewards access/)}});
  const [removal]=await insert(null,{userId:maker.userId,role:'gr'});
  await apply(removal.id);
  const [other]=await insert({userId:b.adminUserId,role:'bu'},null);

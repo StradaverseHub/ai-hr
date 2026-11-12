@@ -664,7 +664,7 @@ async function snapshotEmployees(tx: Tx, ctx: SessionContext, unit: typeof rewar
 
 export type PlannedRewardUnitInput={name?:string;year:number;companyId:string;businessUnitId:string;cycleId?:string;snapshotDate:string;sharedPolicyVersionId?:string;approvedPlanVersionId?:string};
 export async function createRewardUnit(ctx:SessionContext,raw:PlannedRewardUnitInput){
- if(!raw.approvedPlanVersionId)throw new RewardError('Create unit reviews from an active Shared Rewards Configuration.');
+ if(!raw.approvedPlanVersionId)throw new RewardError('Create unit reviews from an approved (active) Shared Rewards Configuration.');
  return withRewardsTenant(ctx,tx=>createRewardUnitTx(tx,ctx,raw));
 }
 /** Internal transaction seam used by approved bulk creation; SQL rechecks all authority and frozen bindings. */

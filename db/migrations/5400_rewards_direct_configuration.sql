@@ -285,8 +285,8 @@ RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public
 DECLARE t uuid:=app.current_tenant_id();actor uuid:=app.current_user_id();actor_person uuid;result uuid;companies uuid[]:=coalesce(p_companies,'{}');allowed boolean;
 BEGIN
  IF t IS NULL OR actor IS NULL OR NOT coalesce(app.reward_not_viewing_as(),false) THEN RAISE EXCEPTION 'Rewards configuration change log writer required' USING ERRCODE='42501'; END IF;
+ -- The actor's PERSON is recorded when the login has one; an account without a person is still the actor.
  SELECT person_id INTO actor_person FROM public.app_user WHERE id=actor AND tenant_id=t AND archived_at IS NULL;
- IF actor_person IS NULL THEN RAISE EXCEPTION 'A person-backed Rewards configuration account is required' USING ERRCODE='42501'; END IF;
  IF EXISTS(SELECT 1 FROM unnest(companies) c WHERE NOT EXISTS(SELECT 1 FROM public.company x WHERE x.id=c AND x.tenant_id=t)) THEN RAISE EXCEPTION 'Rewards configuration companies must be in this tenant' USING ERRCODE='42501'; END IF;
  IF p_area='access' THEN
   -- An access row records the actor's own access request that was applied without a second approval.
