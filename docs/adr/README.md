@@ -178,6 +178,7 @@ Read only records relevant to the task. A newer decision supersedes an older one
 - [ADR-0173 — A protected case route for sensitive matters (proposed; provisional number)](0173-protected-private-case-route.md)
 - [ADR-0174 — Company references stay inside their tenant: tenant-isolation hardening, PR #218 (proposed)](0174-company-tenant-integrity.md)
 - [ADR-0175 — Payroll history learning: deterministic baselines, evidence first (proposed)](0175-payroll-history-learning.md)
+- [ADR-0176 — First-time-right releases with bounded recovery and single binding (accepted 4 Nov 2026; provisional number)](0176-first-time-right-releases.md)
 - [Proposal — Entra sign-in and cloud/hybrid workforce provisioning](entra-workforce-integration-proposal.md) (design only; unnumbered pending integration)
 
 - [ADR-0172: Subject-owned, content-bound document signing](0172-subject-owned-content-bound-signing.md)
