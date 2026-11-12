@@ -47,7 +47,8 @@ const sweep=async(now?:Date)=>runDueDailyDigests({tenantId:b.tenantId,principalI
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{
  await resetDb();b=await seedBase();other=await seedBase();
- const [second]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional Second Company Sdn Bhd',parentCompanyId:b.companyId}).returning({id:schema.company.id});
+ // A sibling, not a subsidiary: an administrator of a parent company also administers its subsidiaries.
+ const [second]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional Second Company Sdn Bhd'}).returning({id:schema.company.id});
  secondCompanyId=second.id;
  group=await persona(b,'Fictional Group Administrator',[{role:'hr_admin',companyId:null}]);
  companyAdmin=await persona(b,'Fictional Company Administrator',[{role:'hr_admin',companyId:b.companyId}]);
