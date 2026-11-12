@@ -33,6 +33,8 @@ import {
   recruitmentCandidateTag, recruitmentCompanySetting, recruitmentTag, recruitmentTagGroup,
 } from './schema';
 import { actorId, assertCompanyTx, assertJobLevelTx, userLabelsTx } from './data';
+import { recordCustomFieldsTx, saveRecordCustomValuesTx, type CustomFieldView } from './custom-field-store';
+import type { RawCustomValues } from './custom-field-model';
 
 const iso = (d: Date | string) => new Date(d).toISOString();
 const candidateEvent = (tx: Tx, s: SessionContext, candidateId: string, eventType: string, payload: Record<string, unknown>) =>
@@ -216,6 +218,9 @@ export type CandidateProfile = {
   consent: { current: ConsentState; history: ConsentEntryView[] } | null;
   /** Administrators only: when the retention period ends (null = never: active or hired) and whether it has. */
   retention: { dueOn: string | null; ended: boolean } | null;
+  /** Slice 14: the company's enabled custom candidate fields after the fixed profile, in order, with this candidate's values.
+   *  Restricted fields (and their values) only for administrators and the candidate's job operators. */
+  custom: CustomFieldView[];
   can: { edit: boolean; admin: boolean; review: boolean };
 };
 
@@ -274,10 +279,11 @@ export async function candidateProfile(s: SessionContext, applicationId: unknown
       const dueOn = row ? dueOf(row, await privacySettingsTx(tx, c.companyId)) : null;
       retention = { dueOn, ended: retentionEnded(dueOn, today) };
     }
+    const custom = c.destroyedAt ? [] : await recordCustomFieldsTx(tx, s, 'candidate', { id: c.id, companyId: c.companyId }, access.operate);
     return {
       candidateId: c.id, companyId: c.companyId, removed: !!c.destroyedAt, fullName: c.fullName, email: c.email, phone: c.phone, location: c.location,
       currentCompany: c.currentCompany, currentTitle: c.currentTitle, highestEducation: c.highestEducation ?? null, noticePeriod: c.noticePeriod,
-      source: c.source ?? null, entries, restricted, consent, retention,
+      source: c.source ?? null, entries, restricted, consent, retention, custom,
       files: files.map((f) => ({ ...f, uploadedAt: iso(f.uploadedAt), uploadedBy: f.uploadedBy ? who(f.uploadedBy) : null, byApplicant: f.uploadedBy === null })),
       tags: tags ? tags.map((t) => ({ id: t.id, name: t.name, groupName: t.group_name, enabled: t.enabled })) : null,
       tagOptions: tagOptions.map((t) => ({ id: t.id, name: t.name, groupName: t.group_name })),
@@ -286,18 +292,23 @@ export async function candidateProfile(s: SessionContext, applicationId: unknown
   });
 }
 
-/** Edit the candidate's profile (administrators and the candidate's job operators). */
-export async function updateCandidateProfile(s: SessionContext, candidateId: unknown, input: Record<string, unknown>): Promise<void> {
+/**
+ * Edit the candidate's profile (administrators and the candidate's job operators). Slice 14: with `custom` (the form carried
+ * the custom fields), the custom values are checked and saved in the same transaction — all or nothing.
+ */
+export async function updateCandidateProfile(s: SessionContext, candidateId: unknown, input: Record<string, unknown>, custom?: RawCustomValues): Promise<void> {
   const v = validateProfileInput(input);
   if (!v.ok) throw new RecruitmentError(v.code, v.fields);
   const user = actorId(s);
   await withRecruitmentTenant(s, async (tx) => {
     const c = await operatedCandidateTx(tx, s, candidateId);
     const changed = (Object.keys(v.value) as (keyof typeof v.value)[]).filter((k) => (c[k] ?? null) !== v.value[k]);
-    if (!changed.length) return;
-    await tx.update(recruitmentCandidate).set({ ...v.value, updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentCandidate.id, c.id));
-    // Field NAMES only: the values are personal data.
-    await candidateEvent(tx, s, c.id, 'recruitment-candidate.profile-updated', { companyId: c.companyId, fields: changed });
+    if (changed.length) {
+      await tx.update(recruitmentCandidate).set({ ...v.value, updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentCandidate.id, c.id));
+      // Field NAMES only: the values are personal data.
+      await candidateEvent(tx, s, c.id, 'recruitment-candidate.profile-updated', { companyId: c.companyId, fields: changed });
+    }
+    if (custom) await saveRecordCustomValuesTx(tx, s, 'candidate', { id: c.id, companyId: c.companyId }, custom);
   });
 }
 

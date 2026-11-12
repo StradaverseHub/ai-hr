@@ -13,8 +13,9 @@ import { AddApplicationForm } from './add-application-form';
 import { AgencyReviewList, AgencySubmissionPanel } from './agency-panel';
 import { SCREENING_SEND_FORM, ScreeningSendPanel } from './screening-panel';
 import { ScreeningStatusPill } from '../screening-ui';
+import { CustomFilterSelect } from '../custom-fields-ui';
 
-type Search = { job?: string; tab?: string; tag?: string; application?: string; problem?: string; notice?: string; screening?: string; send?: string; held?: string };
+type Search = { job?: string; tab?: string; tag?: string; application?: string; problem?: string; notice?: string; screening?: string; send?: string; held?: string; cf?: string };
 
 /**
  * Recruitment › Candidates: the pipeline by stage, with live counts, Move forward, Reject and Add application.
@@ -30,13 +31,13 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
   const [t, nav, locale, tc, ts, tk, tp] = await Promise.all([getTranslations('recruitment.candidates'), getTranslations('nav'), getLocale(), getTranslations('recruitment.cand'),
     getTranslations('recruitment.screening'), getTranslations('recruitment.checks'), getTranslations('recruitment.pools')]);
   const [board, choices] = await Promise.all([
-    candidateBoard(s, companies.map((c) => c.id), { jobId: sp.job, tab: sp.tab, tagId: sp.tag, screening: sp.screening }),
+    candidateBoard(s, companies.map((c) => c.id), { jobId: sp.job, tab: sp.tab, tagId: sp.tag, screening: sp.screening, custom: sp.cf }),
     // Slice 13: the pools the viewer can see (operators and administrators), for "Add to pool" on the cards they operate.
     poolChoices(s, access.poolCompanies.map((c) => c.id)),
   ]);
   const selectedTab = board.tabs.find((x) => x.key === sp.tab) ?? board.tabs[0];
   const query = (next: Record<string, string | undefined>) => {
-    const q = new URLSearchParams(Object.entries({ job: sp.job, tag: sp.tag, tab: selectedTab?.key, screening: board.screening?.filter ?? undefined, ...next })
+    const q = new URLSearchParams(Object.entries({ job: sp.job, tag: sp.tag, cf: board.customFilter ?? undefined, tab: selectedTab?.key, screening: board.screening?.filter ?? undefined, ...next })
       .filter((e): e is [string, string] => !!e[1]));
     return `/recruitment/candidates${q.size ? `?${q}` : ''}`;
   };
@@ -83,6 +84,7 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
                   </select>
                 </Field>
               )}
+              <CustomFilterSelect choices={board.customFilters} value={board.customFilter} locale={locale} />
               <button type="submit" className={btnGhost}>{t('apply')}</button>
             </form>
             <nav aria-label={t('stages')} className="flex flex-wrap gap-2">

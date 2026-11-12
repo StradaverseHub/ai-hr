@@ -56,6 +56,11 @@
  *   candidates they operate in pools they can see. Administrators add and remove blocked-list entries with a reason through
  *   5213's owner-run functions; every channel's new matching application is marked at commit and cannot move, get an offer or
  *   be hired until an administrator resolves the mark (D-049). Reasons are for administrators only (5213).
+ * - Custom candidate and job fields (slice 14, ./custom-fields, ./custom-field-store and ./custom-field-model): administrators define
+ *   fields per company and record kind under Settings › Custom fields (labels in six locales, eight types, options, required,
+ *   restricted for candidates, order, enable/disable); a fixed word list refuses sensitive categories (D-052). Values are typed,
+ *   one row per record and field, filled on the candidate profile and the job form and shown after the fixed fields; restricted
+ *   candidate values sit in an operator-only table; the board, talent pool and job list filter by one choice or yes/no field (5215).
  * - Team access (slice 2): a job's recruiter, assistants, hiring managers and interviewers reach that job's data through
  *   database predicates (5202); the menu shows for team members, interviewers and pending approvers.
  */
@@ -140,6 +145,12 @@ export const recruitmentPack: ModulePack = {
     { table: 'recruitment_blocked_entry_restricted', note: 'blocked-list reasons and normalised identity values: recruitment administrators only' },
     { table: 'recruitment_blocked_history', note: 'blocked-list history: ids, action, actor and time, never a reason or identity value' },
     { table: 'recruitment_application_review_mark', note: '"Needs an administrator\'s review" marks from the blocked list; hold moves, offers and hire' },
+    // Slice 14 (5215)
+    { table: 'recruitment_custom_field', note: 'custom candidate and job fields: labels per locale, type, required, restricted, enabled, position' },
+    { table: 'recruitment_custom_field_option', note: 'options of a custom choice field; an option in use is disabled, not deleted' },
+    { table: 'recruitment_candidate_custom_value', note: 'a candidate\'s typed custom values (non-restricted fields), read with the candidate' },
+    { table: 'recruitment_candidate_custom_restricted', note: 'a candidate\'s restricted custom values: administrators and the candidate\'s job operators only' },
+    { table: 'recruitment_job_custom_value', note: 'a job\'s typed custom values, read with the job' },
   ],
 };
 registerPack(recruitmentPack);

@@ -9,12 +9,15 @@ import {
   saveCandidateRestrictedAction, updateCandidateProfileAction, uploadCandidateFileAction,
 } from '../../actions';
 import { Pill, klDate, klDateTime, selectCls } from '../../shared';
+import { CustomFieldInputs, CustomFieldValues } from '../../custom-fields-ui';
 
 /**
  * Application › Candidate (slice 5): the candidate record as the viewer may see it — the service and row security decide
  * every part. Hiring managers and interviewers read the profile and the resume; tags are hidden from interviewers;
  * restricted values, other attachments and consent are for administrators and the candidate's job operators only; the
- * "Retention period ended" marker is for administrators. Nothing here infers anything about the candidate.
+ * "Retention period ended" marker is for administrators. Slice 14: the company's custom candidate fields follow the fixed
+ * profile (restricted ones only for administrators and the candidate's job operators). Nothing here infers anything about the
+ * candidate.
  */
 export async function CandidateSection({ profile: p, applicationId, here, locale }: { profile: CandidateProfile; applicationId: string; here: string; locale: string }) {
   const t = await getTranslations('recruitment.cand');
@@ -68,6 +71,7 @@ export async function CandidateSection({ profile: p, applicationId, here, locale
                 </select>
               </Field>
             </div>
+            <CustomFieldInputs fields={p.custom} locale={locale} />
             <p className="text-xs text-muted-foreground">{t('notCollected')}</p>
             <button type="submit" className={btnPrimary}>{t('saveProfile')}</button>
           </form>
@@ -80,6 +84,7 @@ export async function CandidateSection({ profile: p, applicationId, here, locale
             ] as const).map(([label, value]) => <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd>{value || '—'}</dd></div>)}
           </dl>
         )}
+        {!p.can.edit && <CustomFieldValues fields={p.custom} locale={locale} />}
       </section>
 
       <section className={card} aria-labelledby="cand-entries">

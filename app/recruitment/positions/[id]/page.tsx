@@ -10,6 +10,7 @@ import { getJob, jobCareersStatus, JOB_MEMBER_ROLES, JOB_STATUS_TRANSITIONS, Rec
 import { addJobMemberAction, changeJobStatusAction, removeJobMemberAction, setJobCareersPageAction, setJobReferralPortalAction, updateJobAction } from '../../actions';
 import { Notice, klDate, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../../shared';
 import { JobInfoFields } from '../job-fields';
+import { CustomFieldInputs, CustomFieldValues } from '../../custom-fields-ui';
 import { AgencyAssignmentSection } from '../agency-section';
 
 type Tab = 'info' | 'settings' | 'team';
@@ -35,12 +36,11 @@ export default async function RecruitmentPositionPage({ params, searchParams }: 
   const tab: Tab = sp.tab === 'settings' || sp.tab === 'team' ? sp.tab : 'info';
   const [t, status] = await Promise.all([getTranslations('recruitment.job'), getTranslations('recruitment.status')]);
   const { job, options } = detail;
-  if (!detail.manage || !options) return <TeamJobView detail={detail} s={s} />;
+  const locale = await getLocale();
+  if (!detail.manage || !options) return <TeamJobView detail={detail} s={s} locale={locale} />;
   const here = `/recruitment/positions/${job.id}${tab === 'info' ? '' : `?tab=${tab}`}`;
   // Administrators only (this view is the manage view); a refusal hides the section rather than showing a wrong state.
-  const [careers, locale] = tab === 'settings'
-    ? await Promise.all([jobCareersStatus(s, job.id).catch((e) => { if (e instanceof RecruitmentError) return null; throw e; }), getLocale()])
-    : [null, 'en'];
+  const careers = tab === 'settings' ? await jobCareersStatus(s, job.id).catch((e) => { if (e instanceof RecruitmentError) return null; throw e; }) : null;
   const hidden = (name: string, value: string | null | undefined) => <input type="hidden" name={name} value={value ?? ''} />;
   const notice = sp.notice === 'created' ? t('createdNotice') : sp.notice === 'saved' ? t('savedNotice') : undefined;
   return (
@@ -77,6 +77,7 @@ export default async function RecruitmentPositionPage({ params, searchParams }: 
           {tab === 'info' ? (
             <>
               <JobInfoFields options={options} values={job} />
+              <CustomFieldInputs fields={detail.custom} locale={locale} />
               {hidden('processId', job.processId)}
               {job.autoArchiveAfterReject && hidden('autoArchiveAfterReject', 'on')}
             </>
@@ -204,7 +205,7 @@ export default async function RecruitmentPositionPage({ params, searchParams }: 
 
 /** A job-team member's read-only view of their job: its information and pipeline counts; for the job's recruiter and
  *  assistants also the agency contracts it is released to (the recruiter assigns them, slice 10). */
-async function TeamJobView({ detail, s }: { detail: JobDetail; s: SessionContext }) {
+async function TeamJobView({ detail, s, locale }: { detail: JobDetail; s: SessionContext; locale: string }) {
   const [t, status] = await Promise.all([getTranslations('recruitment.job'), getTranslations('recruitment.status')]);
   const { job } = detail;
   return (
@@ -221,6 +222,7 @@ async function TeamJobView({ detail, s }: { detail: JobDetail; s: SessionContext
           <div><dt className="text-xs text-muted-foreground">{t('positionAttribute')}</dt><dd>{t(`positionAttributes.${job.positionAttribute}`)}</dd></div>
         </dl>
         {job.description && <p className="whitespace-pre-wrap">{job.description}</p>}
+        <CustomFieldValues fields={detail.custom} locale={locale} />
       </section>
       <section className="space-y-2 rounded-xl border border-border bg-card p-4">
         <h2 className="text-sm font-semibold">{t('pipeline')}</h2>

@@ -10,9 +10,10 @@ import {
 } from '@/packs/recruitment/service';
 import { addPoolCandidateToJobAction, removeCandidateFromPoolAction, unblockCandidateAction } from '../actions';
 import { AddToPool } from '../pool-ui';
+import { CustomFilterSelect } from '../custom-fields-ui';
 import { NoRecruitmentCompany, Notice, Pill, RecruitmentTabs, klDate, klDateTime, recruitmentErrorText, recruitmentViewerAccess, selectCls, textareaCls } from '../shared';
 
-type Search = { pool?: string; job?: string; reason?: string; since?: string; tag?: string; problem?: string; notice?: string };
+type Search = { pool?: string; job?: string; reason?: string; since?: string; tag?: string; problem?: string; notice?: string; cf?: string };
 type T = Awaited<ReturnType<typeof getTranslations<'recruitment.pools'>>>;
 
 /**
@@ -113,15 +114,15 @@ async function PublicPool({ s, companyIds, poolIds, sp, t, tp, tc, locale }: {
   tp: T; tc: Awaited<ReturnType<typeof getTranslations<'recruitment.cand'>>>; locale: string;
 }) {
   const [pool, choices]: [TalentPool, Awaited<ReturnType<typeof poolChoices>>] = await Promise.all([
-    talentPool(s, companyIds, { jobId: sp.job, reasonId: sp.reason, since: sp.since, tagId: sp.tag }), poolChoices(s, poolIds)]);
-  const here = `/recruitment/talent-pool?${new URLSearchParams(Object.entries({ job: sp.job ?? '', reason: sp.reason ?? '', since: sp.since ?? '', tag: sp.tag ?? '' }).filter(([, v]) => v))}`;
+    talentPool(s, companyIds, { jobId: sp.job, reasonId: sp.reason, since: sp.since, tagId: sp.tag, custom: sp.cf }), poolChoices(s, poolIds)]);
+  const here = `/recruitment/talent-pool?${new URLSearchParams(Object.entries({ job: sp.job ?? '', reason: sp.reason ?? '', since: sp.since ?? '', tag: sp.tag ?? '', cf: pool.customFilter ?? '' }).filter(([, v]) => v))}`;
   return (
     <>
       <dl className="grid grid-cols-2 gap-3 sm:max-w-md">
         <div className="rounded-xl border border-border bg-card px-4 py-3"><dt className="text-xs text-muted-foreground">{t('today')}</dt><dd className="text-2xl font-semibold tabular-nums">{pool.totals.today}</dd></div>
         <div className="rounded-xl border border-border bg-card px-4 py-3"><dt className="text-xs text-muted-foreground">{t('total')}</dt><dd className="text-2xl font-semibold tabular-nums">{pool.totals.total}</dd></div>
       </dl>
-      <form method="get" className="grid gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-5">
+      <form method="get" className={cn('grid gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-2', pool.customFilters.length ? 'lg:grid-cols-6' : 'lg:grid-cols-5')}>
         <input type="hidden" name="pool" value="public" />
         <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">{t('filterPosition')}
           <select name="job" defaultValue={sp.job ?? ''} className={selectCls}>
@@ -140,6 +141,7 @@ async function PublicPool({ s, companyIds, poolIds, sp, t, tp, tc, locale }: {
             <option value="">{tc('anyTag')}</option>
             {pool.tags.map((g) => <option key={g.id} value={g.id}>{g.groupName} · {g.name}</option>)}
           </select></label>
+        <CustomFilterSelect choices={pool.customFilters} value={pool.customFilter} locale={locale} className="min-w-0" />
         <div className="flex items-end gap-2">
           <button type="submit" className={btnPrimary}>{t('apply')}</button>
           <Link href="/recruitment/talent-pool" className={btnGhost}>{t('reset')}</Link>

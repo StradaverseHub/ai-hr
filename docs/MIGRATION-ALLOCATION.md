@@ -1,3 +1,18 @@
+# Recruitment slice 14 — 12 November 2026 MYT (unapplied)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after the renumbered block's `5214` entry,
+`5215_recruitment_custom_fields` at idx 4615 / when 1793330004915. A read-only survey of the already-fetched refs (7,525 refs,
+4,150 distinct commits, 575 distinct committed journal blobs; no new fetch), the working trees of all 187 registered worktrees
+(all journals readable) and 397 committed allocation-document blobs found no `5215_` migration file and no claim of this name,
+position or timestamp. `origin/main` and `origin/alpha` end at idx 4527 / when 1793330004827, below this block; recheck the
+target's applied watermark before admission (a lower timestamp can be silently skipped). 5215 adds five tables
+(`recruitment_custom_field`, `recruitment_custom_field_option`, `recruitment_candidate_custom_value`, the operator-only
+`recruitment_candidate_custom_restricted` and `recruitment_job_custom_value`), their guards and owner-bound removal and
+company-delete policies, and restates `app.recruitment_destroy_candidate` and `app.recruitment_delete_company_setup` (5213
+bodies byte for byte) with added steps only. 5200–5214 are unapplied outside throwaway databases, CI and the branch author's
+local render database. Recheck peer claims, the published baseline and the ordered applied ledger before admission. The
+reservation grants no installation authority.
+
 # Recruitment block renumbered — 12 November 2026 MYT (unapplied)
 
 Branch `claude/rea-web-app-reconstruction-2c12ee` merged `origin/main` at `2a2495919` (`origin/alpha` was the same

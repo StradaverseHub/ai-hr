@@ -39,6 +39,10 @@ import { ASSIGNMENT_STATUSES, SCREENING_LIST_LIMIT, SCREENING_STATUS_WINDOW, par
 import { checkMarker, type CheckMarker, type CheckOutcome, type CheckStatus } from './background-check-model';
 import { poolLabels } from './pool-model';
 import {
+  customFilterChoicesTx, customFilterSql, newRecordCustomFieldsTx, recordCustomFieldsTx, saveRecordCustomValuesTx, type CustomFieldView, type CustomFilterChoice,
+} from './custom-field-store';
+import { customFilterKey, type RawCustomValues } from './custom-field-model';
+import {
   CANDIDATE_SOURCES, DEFAULT_REPEAT_WINDOW_MONTHS, ID_TYPES, normEmail, normIdNumber, normMobile, normName, repeatApplicationBlocked,
   type CandidateSource, type IdType,
 } from './privacy-model';
@@ -357,7 +361,11 @@ export async function recruitmentPipelineCounts(
 
 // ── Positions (job openings) ─────────────────────────────────────────────────────────────────────────
 
-export type JobListFilters = { tab?: 'opening' | 'closed'; title?: string; jobNumber?: string; departmentId?: string; recruiterUserId?: string };
+export type JobListFilters = {
+  tab?: 'opening' | 'closed'; title?: string; jobNumber?: string; departmentId?: string; recruiterUserId?: string;
+  /** Slice 14: one custom job field and answer, `<field id>:<option id|yes|no>`. */
+  custom?: string;
+};
 export type JobListRow = {
   id: string; jobNumber: string; title: string; status: JobStatus; companyId: string; companyName: string;
   departmentName: string | null; workLocation: string; recruiterUserId: string | null; recruiterName: string | null;
@@ -367,10 +375,12 @@ export type JobList = {
   rows: JobListRow[]; counts: { opening: number; closed: number };
   /** Filter choices: the departments and recruiters that appear on any job in view. */
   departments: { id: string; name: string }[]; recruiters: { id: string; name: string }[];
+  /** Slice 14: the custom job fields the list may filter by (enabled, not restricted, choice or yes/no), and the filter applied. */
+  customFilters: CustomFilterChoice[]; customFilter: string | null;
 };
 
 export async function listJobs(s: SessionContext, companyIds: readonly string[], filters: JobListFilters = {}): Promise<JobList> {
-  if (!companyIds.length) return { rows: [], counts: { opening: 0, closed: 0 }, departments: [], recruiters: [] };
+  if (!companyIds.length) return { rows: [], counts: { opening: 0, closed: 0 }, departments: [], recruiters: [], customFilters: [], customFilter: null };
   return withRecruitmentTenant(s, async (tx) => {
     // Administrators list every job of the company; a team member's row security lists only their own jobs (5202).
     for (const id of companyIds) await assertSeeCompanyTx(tx, id);
@@ -379,11 +389,14 @@ export async function listJobs(s: SessionContext, companyIds: readonly string[],
     const number = filters.jobNumber?.trim() ? filters.jobNumber.trim().toUpperCase() : null;
     const department = filters.departmentId && isUuid(filters.departmentId) ? filters.departmentId : null;
     const recruiter = filters.recruiterUserId && isUuid(filters.recruiterUserId) ? filters.recruiterUserId : null;
+    const customFilters = await customFilterChoicesTx(tx, s, companyIds, 'job');
+    const custom = customFilterSql(customFilters, filters.custom, 'job', sql`j.id`);
     const where = sql`j.tenant_id = ${s.tenantId}::uuid and j.company_id = any(${ids}::uuid[])
       and (${title}::text is null or j.title ilike ${title}::text)
       and (${number}::text is null or j.job_number = ${number}::text)
       and (${department}::uuid is null or j.department_id = ${department}::uuid)
-      and (${recruiter}::uuid is null or exists (select 1 from recruitment_job_member m where m.job_id = j.id and m.member_role = 'recruiter' and m.app_user_id = ${recruiter}::uuid))`;
+      and (${recruiter}::uuid is null or exists (select 1 from recruitment_job_member m where m.job_id = j.id and m.member_role = 'recruiter' and m.app_user_id = ${recruiter}::uuid))
+      ${custom.condition}`;
     const [counts] = await tx.execute<{ opening: number; closed: number }>(sql`
       select count(*) filter (where j.status <> 'closed')::int as opening, count(*) filter (where j.status = 'closed')::int as closed
       from recruitment_job_opening j where ${where}`);
@@ -412,6 +425,7 @@ export async function listJobs(s: SessionContext, companyIds: readonly string[],
       select distinct m.app_user_id as id from recruitment_job_member m
       where m.tenant_id = ${s.tenantId}::uuid and m.company_id = any(${ids}::uuid[]) and m.member_role = 'recruiter'`);
     return {
+      customFilters, customFilter: custom.filter ? customFilterKey(custom.filter) : null,
       departments: [...departments],
       recruiters: recruiterIds.map((r) => ({ id: r.id, name: labels.get(r.id)?.name ?? '' })).sort((a, b) => a.name.localeCompare(b.name)),
       counts: counts ?? { opening: 0, closed: 0 },
@@ -432,6 +446,8 @@ export type JobFormOptions = {
   departments: { id: string; name: string }[];
   businessUnits: { id: string; name: string }[];
   users: UserLabel[];
+  /** Slice 14: the company's enabled custom job fields, in order (no values: a new job). */
+  customFields: CustomFieldView[];
 };
 
 /** Everything a job form for `companyId` offers. Seeds the company's defaults first. */
@@ -456,7 +472,8 @@ async function jobFormOptionsTx(tx: Tx, s: SessionContext, companyId: string): P
     select b.id, b.name from business_unit b where b.tenant_id = ${s.tenantId}::uuid and b.archived_at is null
       and (b.company_id = ${companyId}::uuid or b.is_global) order by b.name`);
   const users = [...(await userLabelsTx(tx, companyId)).values()].filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name));
-  return { companyId, processes, grades: [...grades], departments: [...departments], businessUnits: [...businessUnits], users };
+  const customFields = await newRecordCustomFieldsTx(tx, s, 'job', companyId);
+  return { companyId, processes, grades: [...grades], departments: [...departments], businessUnits: [...businessUnits], users, customFields };
 }
 
 /** Grades must be live grades of this tenant offered to the company. */
@@ -490,7 +507,7 @@ function validJob(input: JobInput): ValidJob {
 }
 
 /** Create a job opening. Required fields are refused here whatever the form sent; the number is allocated in SQL. */
-export async function createJob(s: SessionContext, input: JobInput & { recruiterUserId?: unknown; requisitionId?: unknown }): Promise<{ id: string; jobNumber: string }> {
+export async function createJob(s: SessionContext, input: JobInput & { recruiterUserId?: unknown; requisitionId?: unknown; custom?: RawCustomValues }): Promise<{ id: string; jobNumber: string }> {
   const job = validJob(input);
   const user = actorId(s);
   return withRecruitmentTenant(s, async (tx) => {
@@ -521,6 +538,8 @@ export async function createJob(s: SessionContext, input: JobInput & { recruiter
       tenantId: s.tenantId, aggregateType: 'recruitment-job', aggregateId: row.id, eventType: 'recruitment-job.created', actor: actorOf(s),
       payload: { companyId: job.companyId, jobNumber: row.jobNumber, processId, requisitionId },
     });
+    // Slice 14: the custom job fields of the form, checked (type, range, options, required) and saved with the job — all or nothing.
+    if (input.custom) await saveRecordCustomValuesTx(tx, s, 'job', { id: row.id, companyId: job.companyId }, input.custom);
     return row;
   });
 }
@@ -552,6 +571,8 @@ export type JobDetail = {
   manage: boolean;
   /** The requisition this job belongs to (slice 4), if any. */
   requisition: { id: string; reqNumber: string; title: string } | null;
+  /** Slice 14: the company's enabled custom job fields, in order, with this job's values (anyone who may read the job). */
+  custom: CustomFieldView[];
 };
 
 export async function getJob(s: SessionContext, jobId: string): Promise<JobDetail> {
@@ -577,8 +598,9 @@ export async function getJob(s: SessionContext, jobId: string): Promise<JobDetai
       stageId: st.stageId, name: st.name, enabled: st.enabled, position: st.position,
       active: counts.filter((c) => c.stage_id === st.stageId && c.state === 'active').reduce((n, c) => n + c.n, 0),
     }));
+    const custom = await recordCustomFieldsTx(tx, s, 'job', { id: job.id, companyId: job.companyId }, false);
     return {
-      job, companyName: company?.name ?? '', hasApplications: counts.length > 0, options, stages, manage,
+      job, companyName: company?.name ?? '', hasApplications: counts.length > 0, options, stages, manage, custom,
       requisition: requisition ? { id: requisition.id, reqNumber: requisition.req_number, title: requisition.title } : null,
       hired: counts.filter((c) => c.state === 'hired').reduce((n, c) => n + c.n, 0),
       archived: counts.filter((c) => c.state === 'archived').reduce((n, c) => n + c.n, 0),
@@ -592,7 +614,7 @@ export async function getJob(s: SessionContext, jobId: string): Promise<JobDetai
  * refused once the job has an application — and that refusal is AUDITED: it is recorded as its own domain
  * event in a committed transaction before the error reaches the caller.
  */
-export async function updateJob(s: SessionContext, jobId: string, input: JobInput): Promise<void> {
+export async function updateJob(s: SessionContext, jobId: string, input: JobInput & { custom?: RawCustomValues }): Promise<void> {
   const user = actorId(s);
   const refused = await withRecruitmentTenant(s, async (tx) => {
     const current = await jobTx(tx, s, jobId);
@@ -620,6 +642,8 @@ export async function updateJob(s: SessionContext, jobId: string, input: JobInpu
       tenantId: s.tenantId, aggregateType: 'recruitment-job', aggregateId: current.id, eventType: 'recruitment-job.updated', actor: actorOf(s),
       payload: { companyId: current.companyId, processId, processChanged: processId !== current.processId },
     });
+    // Slice 14: the Job info form carries the custom job fields (the settings form does not, and leaves them as they are).
+    if (input.custom) await saveRecordCustomValuesTx(tx, s, 'job', { id: current.id, companyId: current.companyId }, input.custom);
     return false;
   });
   if (refused) throw new RecruitmentError('process_locked');
@@ -699,6 +723,9 @@ export type CandidateBoard = {
   tabs: StageTab[]; cards: ApplicationCard[];
   /** Slice 5: tags the viewer may filter by (enabled or not: a disabled tag still finds its candidates). */
   tagOptions: { id: string; name: string; groupName: string }[];
+  /** Slice 14: the custom candidate fields the board may filter by (enabled, not restricted, choice or yes/no), and the filter
+   *  applied (it narrows the tab counts and the cards alike). */
+  customFilters: CustomFilterChoice[]; customFilter: string | null;
   /** The jobs in view; `canOperate` marks those the viewer may add applications to (slice 2). */
   jobs: { id: string; title: string; jobNumber: string; status: JobStatus; companyId: string; canOperate: boolean }[];
   reasons: { id: string; internal: string; external: string; companyId: string }[];
@@ -732,8 +759,8 @@ export const screeningStatusSql = sql`(case
  * process of the companies in view, ordered by position), each with its live count of ACTIVE applications,
  * followed by the Hired and Archived buckets.
  */
-export async function candidateBoard(s: SessionContext, companyIds: readonly string[], filter: { jobId?: string; tab?: string; tagId?: string; screening?: string } = {}): Promise<CandidateBoard> {
-  if (!companyIds.length) return { tabs: [], cards: [], jobs: [], reasons: [], nextStage: {}, moveTargets: {}, tagOptions: [], screening: null };
+export async function candidateBoard(s: SessionContext, companyIds: readonly string[], filter: { jobId?: string; tab?: string; tagId?: string; screening?: string; custom?: string } = {}): Promise<CandidateBoard> {
+  if (!companyIds.length) return { tabs: [], cards: [], jobs: [], reasons: [], nextStage: {}, moveTargets: {}, tagOptions: [], screening: null, customFilters: [], customFilter: null };
   return withRecruitmentTenant(s, async (tx) => {
     // Administrators see the company's pipeline; a team member's row security narrows it to their jobs' applications
     // and the applications they interview (5202). Every count below runs under the same row security.
@@ -751,8 +778,12 @@ export async function candidateBoard(s: SessionContext, companyIds: readonly str
     // Slice 5: the tag filter reads recruitment_candidate_tag under row security, so it finds nothing for a viewer who
     // may not see the candidate's tags (an interviewer).
     const tagId = filter.tagId && isUuid(filter.tagId) ? filter.tagId : null;
+    // Slice 14: one custom candidate field and answer; the open values table under the viewer's row security (anyone who reads
+    // the candidate reads their open values; restricted fields are not offered).
+    const customFilters = await customFilterChoicesTx(tx, s, companyIds, 'candidate');
+    const custom = customFilterSql(customFilters, filter.custom, 'candidate', sql`a.candidate_id`);
     const jobFilter = sql`${job ? sql`and a.job_id = ${job.id}::uuid` : sql``} ${tagId ? sql`and exists (select 1 from recruitment_candidate_tag ct
-      where ct.candidate_id = a.candidate_id and ct.tag_id = ${tagId}::uuid)` : sql``}`;
+      where ct.candidate_id = a.candidate_id and ct.tag_id = ${tagId}::uuid)` : sql``} ${custom.condition}`;
     const counts = await tx.execute<{ stage_id: string; state: ApplicationState; n: number }>(sql`
       select a.current_stage_id as stage_id, a.state, count(*)::int as n from recruitment_application a
       where a.tenant_id = ${s.tenantId}::uuid and a.company_id = any(${ids}::uuid[]) ${jobFilter} group by 1, 2`);
@@ -854,7 +885,7 @@ export async function candidateBoard(s: SessionContext, companyIds: readonly str
       moveTargets[r.id] = access.get(r.job_id)?.operate ? stages.filter((x) => x.enabled && x.stageId !== r.stage_id).map((x) => ({ stageId: x.stageId, name: x.name })) : [];
     }
     return {
-      tabs, nextStage, moveTargets, reasons: [...reasons],
+      tabs, nextStage, moveTargets, reasons: [...reasons], customFilters, customFilter: custom.filter ? customFilterKey(custom.filter) : null,
       screening: screeningOn ? {
         counts: Object.fromEntries(ASSIGNMENT_STATUSES.map((k) => [k, statuses.filter((c) => c.status === k).length])) as Record<AssignmentStatus, number>,
         filter: screeningFilter, capped: window.length > SCREENING_STATUS_WINDOW,

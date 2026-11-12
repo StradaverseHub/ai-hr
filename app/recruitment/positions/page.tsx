@@ -1,13 +1,14 @@
 import Link from 'next/link';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { requireModule } from '@/lib/authz';
 import { scopedSession } from '@/lib/scope';
 import { ErrorBanner, Input, PageHeader, StatusBadge, btnGhost, btnPrimary, tableWrapCls, tbodyCls, thCls, theadCls } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { listJobs } from '@/packs/recruitment/service';
 import { NoRecruitmentCompany, RecruitmentTabs, SubTabs, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../shared';
+import { CustomFilterSelect } from '../custom-fields-ui';
 
-type Search = { tab?: string; title?: string; jobNumber?: string; department?: string; recruiter?: string; problem?: string };
+type Search = { tab?: string; title?: string; jobNumber?: string; department?: string; recruiter?: string; problem?: string; cf?: string };
 
 /**
  * Recruitment › Positions: Opening (Open + On hold) and Closed, with filters. Administrators see every job of their
@@ -20,13 +21,14 @@ export default async function RecruitmentPositionsPage({ searchParams }: { searc
   const companies = access.companies;
   const sp = await searchParams;
   const tab = sp.tab === 'closed' ? 'closed' : 'opening';
-  const [t, nav, list] = await Promise.all([
+  const [t, nav, list, locale] = await Promise.all([
     getTranslations('recruitment.positions'), getTranslations('nav'),
-    listJobs(s, companies.map((c) => c.id), { tab, title: sp.title, jobNumber: sp.jobNumber, departmentId: sp.department, recruiterUserId: sp.recruiter }),
+    listJobs(s, companies.map((c) => c.id), { tab, title: sp.title, jobNumber: sp.jobNumber, departmentId: sp.department, recruiterUserId: sp.recruiter, custom: sp.cf }),
+    getLocale(),
   ]);
   const status = await getTranslations('recruitment.status');
   const keep = (next: Record<string, string>) => {
-    const q = new URLSearchParams(Object.entries({ title: sp.title ?? '', jobNumber: sp.jobNumber ?? '', department: sp.department ?? '', recruiter: sp.recruiter ?? '', ...next }).filter(([, v]) => v));
+    const q = new URLSearchParams(Object.entries({ title: sp.title ?? '', jobNumber: sp.jobNumber ?? '', department: sp.department ?? '', recruiter: sp.recruiter ?? '', cf: list.customFilter ?? '', ...next }).filter(([, v]) => v));
     return `/recruitment/positions${q.size ? `?${q}` : ''}`;
   };
   return (
@@ -49,7 +51,7 @@ export default async function RecruitmentPositionsPage({ searchParams }: { searc
               </Link>
             ))}
           </div>
-          <form method="get" className="grid gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-5">
+          <form method="get" className={cn('grid gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-2', list.customFilters.length ? 'lg:grid-cols-6' : 'lg:grid-cols-5')}>
             {tab === 'closed' && <input type="hidden" name="tab" value="closed" />}
             <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">{t('filterTitle')}
               <Input name="title" defaultValue={sp.title ?? ''} /></label>
@@ -65,6 +67,7 @@ export default async function RecruitmentPositionsPage({ searchParams }: { searc
                 <option value="">{t('any')}</option>
                 {list.recruiters.map((r) => <option key={r.id} value={r.id}>{r.name || t('unnamedUser')}</option>)}
               </select></label>
+            <CustomFilterSelect choices={list.customFilters} value={list.customFilter} locale={locale} className="min-w-0" />
             <div className="flex items-end gap-2">
               <button type="submit" className={btnPrimary}>{t('apply')}</button>
               <Link href={tab === 'closed' ? '/recruitment/positions?tab=closed' : '/recruitment/positions'} className={btnGhost}>{t('reset')}</Link>

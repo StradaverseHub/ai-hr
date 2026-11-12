@@ -1,12 +1,13 @@
 import Link from 'next/link';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { requireModule } from '@/lib/authz';
 import { scopedSession } from '@/lib/scope';
 import { ErrorBanner, Field, PageHeader, btnGhost, btnPrimary } from '@/components/ui';
-import { jobFormOptions, requisitionJobPrefill, POSITION_ATTRIBUTES, RecruitmentError } from '@/packs/recruitment/service';
+import { jobFormOptions, labelFor, requisitionJobPrefill, POSITION_ATTRIBUTES, RecruitmentError } from '@/packs/recruitment/service';
 import { createJobAction } from '../../actions';
 import { NoRecruitmentCompany, pickCompany, recruitmentAccess, recruitmentErrorText, selectCls } from '../../shared';
 import { JobInfoFields } from '../job-fields';
+import { CustomFieldInputs } from '../../custom-fields-ui';
 
 /**
  * Recruitment › Positions › New position. The company is chosen first; every list below is that company's.
@@ -23,13 +24,19 @@ export default async function NewRecruitmentPositionPage({ searchParams }: { sea
   const company = pickCompany(companies, prefill?.companyId ?? sp.company);
   const back = { href: '/recruitment/positions', label: t('backToPositions') };
   if (!company) return <div className="w-full space-y-5"><PageHeader title={t('newTitle')} back={back} /><NoRecruitmentCompany /></div>;
-  const options = await jobFormOptions(s, company.id);
-  const missing = (sp.fields ?? '').split(',').filter(Boolean);
+  const [options, locale] = await Promise.all([jobFormOptions(s, company.id), getLocale()]);
+  // Slice 14: a refused custom field comes back as `cf.<field id>` and is named by its label.
+  const fieldName = (f: string) => {
+    if (!f.startsWith('cf.')) return t(`fieldNames.${f}`);
+    const custom = options.customFields.find((c) => `cf.${c.id}` === f);
+    return custom ? labelFor(custom.labels, locale) : null;
+  };
+  const missing = (sp.fields ?? '').split(',').filter(Boolean).map(fieldName).filter((x): x is string => !!x);
   const error = await recruitmentErrorText(sp.problem);
   return (
     <div className="mx-auto w-full max-w-4xl space-y-5">
       <PageHeader title={t('newTitle')} description={t('newPurpose')} back={back} />
-      <ErrorBanner message={error && missing.length ? `${error} ${missing.map((f) => t(`fieldNames.${f}`)).join(', ')}` : error} />
+      <ErrorBanner message={error && missing.length ? `${error} ${missing.join(', ')}` : error} />
       {companies.length > 1 && !prefill && (
         <form method="get" className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-card p-4">
           <Field label={t('company')} required requiredAriaLabel={t('required')} className="min-w-64">
@@ -47,6 +54,7 @@ export default async function NewRecruitmentPositionPage({ searchParams }: { sea
         <section className="space-y-4 rounded-xl border border-border bg-card p-4">
           <h2 className="text-sm font-semibold">{t('infoSection')} <span className="font-normal text-muted-foreground">· {company.name}</span></h2>
           <JobInfoFields options={options} values={prefill?.values} />
+          <CustomFieldInputs fields={options.customFields} locale={locale} />
         </section>
         <section className="grid gap-4 rounded-xl border border-border bg-card p-4 sm:grid-cols-2">
           <h2 className="text-sm font-semibold sm:col-span-2">{t('settingsSection')}</h2>

@@ -88,6 +88,12 @@ export const RECRUITMENT_ERROR_CODES = [
   'blocked_entry_has_open_marks',
   // …"Not the same person" does not apply to the listed person's own marks (only removing the entry resolves those).
   'own_entry_mark',
+  // Slice 14: a field's name or help text names a sensitive category (D-052); a field with values keeps its type and restricted
+  // setting and cannot be deleted; an option in use cannot be deleted (disable it); a required custom field is empty; a custom
+  // value does not fit its field (type, range, decimals or options); the company already has the most fields or options.
+  'sensitive_field', 'field_in_use', 'option_in_use', 'custom_field_required', 'custom_value_invalid', 'custom_field_limit',
+  // …a required choice field needs an enabled option (making it required, disabling or deleting its last enabled option).
+  'required_needs_option',
 ] as const;
 export type RecruitmentErrorCode = (typeof RECRUITMENT_ERROR_CODES)[number];
 

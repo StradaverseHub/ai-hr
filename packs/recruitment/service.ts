@@ -176,6 +176,26 @@ export {
   blockedIdentityMatch, reviewView,
 } from './pool-model';
 export type { PoolSharing, ReviewResolution, BlockedHistoryAction, MarkClearedKind, ReviewView, PoolKey, PoolNode, Identity } from './pool-model';
+// Slice 14 — custom candidate and job fields: Settings › Custom fields (administrators: fields of each type with labels in six
+// locales, options, order, enable and disable; the sensitive-category word list refuses fields by name, D-052); the values are
+// filled on the candidate profile and the job form (candidateProfile/updateCandidateProfile, jobFormOptions/getJob/createJob/
+// updateJob) and filter the board, the talent pool and the job list (candidateBoard, talentPool, listJobs).
+export {
+  customFieldSettings, saveCustomField, deleteCustomField, moveCustomField, saveCustomFieldOption, deleteCustomFieldOption, moveCustomFieldOption,
+  parseCustomFieldKind,
+} from './custom-fields';
+export type { CustomFieldSettings, CustomFieldRow, CustomOptionRow } from './custom-fields';
+export type { CustomFieldView, CustomOptionView, CustomFilterChoice } from './custom-field-store';
+export {
+  CUSTOM_FIELD_KINDS, CUSTOM_FIELD_TYPES, CHOICE_TYPES, FILTER_TYPES, CUSTOM_FIELD_LOCALES, CUSTOM_LABEL_MAX, CUSTOM_HELP_MAX, CUSTOM_SHORT_TEXT_MAX,
+  CUSTOM_LONG_TEXT_MAX, CUSTOM_DECIMALS_MAX, CUSTOM_FIELDS_MAX, CUSTOM_FIELDS_TOTAL_MAX, CUSTOM_OPTIONS_MAX, CUSTOM_FORM_MARKER, SENSITIVE_CATEGORIES, SENSITIVE_WORDS,
+  customInputName, sensitiveCategory, validateCustomFieldInput, validateCustomOptionInput, labelFor, validateCustomValues, customValuesFromForm, sameValue,
+  formValue, parseCustomFilter, customFilterKey, moveInOrder, decimalText, compareDecimal, answerable, stripIgnorable,
+} from './custom-field-model';
+export type {
+  CustomFieldKind, CustomFieldType, CustomFieldLocale, CustomLabels, SensitiveCategory, CustomFieldInput, CustomOptionInput, ValidCustomField, FieldRule,
+  TypedValue, RawCustomValues, CustomFilter,
+} from './custom-field-model';
 export {
   RecruitmentError, RECRUITMENT_ERROR_CODES, JOB_STATUSES, JOB_STATUS_TRANSITIONS, JOB_MEMBER_ROLES, POSITION_ATTRIBUTES, RECRUITMENT_TYPES,
   JOB_EMPLOYMENT_TYPES, RECRUITMENT_STAGE_TYPES, canChangeJobStatus, jobTab,

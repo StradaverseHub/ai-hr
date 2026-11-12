@@ -1185,9 +1185,10 @@ profile and job form from slices 1 and 5.
   disabled, not deleted), yes or no. File and image fields are not added: slice 5 files cover documents (D-051).
 - A field's type cannot change once any record has a value; disabling hides it from forms and lists but keeps
   values. Deleting is allowed only for a field with no values.
-- Fields that would collect sensitive personal data are refused by name and help text for the categories slice 5
-  excludes (race, religion, health, pregnancy, criminal record, family details), with a plain explanation; this is a
-  deterministic word list, not a model (D-052).
+- Candidate fields that would collect sensitive personal data are refused by label, help text and option for the
+  categories slice 5 excludes (race, religion, health, pregnancy, criminal record, family details), with a plain
+  explanation; this is a deterministic phrase list, not a model (D-052). Job fields are not checked. Restricted field
+  definitions are visible only to administrators and operators.
 
 ### Filling and showing
 
@@ -1219,3 +1220,50 @@ profile and job form from slices 1 and 5.
      PUBLIC; the AI Centre read is unchanged.
 101. Rendered: defining fields of several types; filling them on a candidate and a job; a restricted field hidden from
      a hiring manager; a filter.
+
+## Slice 15 — Position templates (owner: group 1, 2026-11-12; EV-062)
+
+Moka keeps position templates (template name, job title, associated functional types, department) used to create
+requisitions and positions, and can auto-fill a title and description from an industry JD library (EV-062). AI HR adds
+company position templates that pre-fill the new-position form; there is no industry JD library (D-054).
+
+### Actors and access
+
+- Recruitment administrators: create, edit, disable and delete templates for their company; turn the feature on or off
+  for the company (Settings › Position templates).
+- Anyone who may create a position in a company (slice 1) may start from that company's enabled templates. Templates
+  hold no personal data.
+
+### Template content
+
+- Name (unique in the company, ≤120), job title, job description, work location, employment type, recruitment type,
+  job levels, business unit and department (when the company uses them), the default recruitment process, the
+  interview plan (rounds and scorecard templates, slice 2), and values for enabled custom job fields (slice 14).
+  Every field is optional except the name and the title.
+- A template is a starting point: "New position from template" opens the normal new-position form pre-filled; the
+  user edits anything before saving, and every normal position rule applies on save. The position does not stay
+  linked; later template edits never change existing positions. The position records which template it came from
+  (for reporting), and that is all.
+- Requisitions (slice 4): "Create job" from an approved requisition may also start from a template; requisition
+  values (title, vacancies, department) win over the template's where both exist.
+- A template whose process, levels, department, business unit, scorecard template or custom field option has since
+  been disabled or removed still opens; the missing parts are left empty with a plain note.
+
+### Data
+
+- One migration: template and template custom-value tables (forced RLS, explicit grants, none to PUBLIC), a nullable
+  `created_from_template_id` on job openings, a company setting for the feature; administrator-only writes in the
+  database; company setup deletion covers the new tables (restated from the latest body plus steps).
+
+### Slice 15 acceptance cases
+
+102. Only administrators manage templates and the setting (service and database); users who may create positions see
+     only their company's enabled templates; nobody else sees any.
+103. "New position from template" pre-fills every stored field; saving creates a normal position validated by the
+     normal rules; later template edits leave the position unchanged; the position records its template.
+104. Disabled or removed references are left empty with a note, never copied; custom field values follow slice 14
+     validation.
+105. Requisition "Create job" with a template merges values with the requisition's winning.
+106. Company setup deletion covers the new tables; forced RLS and grants with none to PUBLIC.
+107. Rendered: creating a template; creating a position from it and editing before saving; a template with a disabled
+     reference.

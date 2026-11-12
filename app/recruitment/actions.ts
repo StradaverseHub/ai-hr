@@ -28,6 +28,8 @@ import {
   addBackgroundCheck, addDefaultBackgroundCheckTypes, cancelBackgroundCheck, completeBackgroundCheck, deleteBackgroundCheckType,
   recordBackgroundCheckAuthorisation, saveBackgroundCheckType, startBackgroundCheck, CHECK_FILE_MAX_BYTES, type CheckFileInput,
   addCandidateToPool, blockCandidate, deletePool, removeCandidateFromPool, resolveReviewMark, savePool, unblockCandidate,
+  customValuesFromForm, deleteCustomField, deleteCustomFieldOption, moveCustomField, moveCustomFieldOption, saveCustomField, saveCustomFieldOption,
+  CUSTOM_FIELD_LOCALES,
 } from '@/packs/recruitment/service';
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
@@ -57,6 +59,8 @@ async function run<R>(url: string, work: (s: Awaited<ReturnType<typeof getSessio
 }
 
 const jobFields = (f: FormData) => ({
+  // Slice 14: the custom job fields, when the form carried them (Job info and New position; not the settings form).
+  custom: customValuesFromForm(f),
   title: str(f, 'title'), description: String(f.get('description') ?? ''), jobGradeIds: f.getAll('jobGradeIds').map(String),
   workLocation: str(f, 'workLocation'), recruitmentType: str(f, 'recruitmentType'), employmentType: str(f, 'employmentType'),
   businessUnitId: str(f, 'businessUnitId'), departmentId: str(f, 'departmentId'), processId: str(f, 'processId'),
@@ -325,7 +329,7 @@ export async function updateCandidateProfileAction(f: FormData) {
   return run(candidatePage(f), (s) => updateCandidateProfile(s, str(f, 'candidateId'), {
     fullName: str(f, 'fullName'), email: str(f, 'email'), phone: str(f, 'phone'), location: str(f, 'location'), currentCompany: str(f, 'currentCompany'),
     currentTitle: str(f, 'currentTitle'), highestEducation: str(f, 'highestEducation'), noticePeriod: str(f, 'noticePeriod'), source: str(f, 'source'),
-  }));
+  }, customValuesFromForm(f)));
 }
 export async function saveCandidateRestrictedAction(f: FormData) {
   return run(candidatePage(f), (s) => saveCandidateRestricted(s, str(f, 'candidateId'), {
@@ -656,4 +660,36 @@ export async function unblockCandidateAction(f: FormData) {
 export async function resolveReviewMarkAction(f: FormData) {
   const url = back(f, '/recruitment/candidates');
   return run(url, (s) => resolveReviewMark(s, str(f, 'markId'), str(f, 'resolution'), String(f.get('reason') ?? '')), withParam(url, 'notice', 'review-resolved'));
+}
+
+// ── Slice 14: custom candidate and job fields ───────────────────────────────────────────────────────────────────
+const fieldSettingsPage = (f: FormData) => back(f, '/recruitment/settings?section=fields');
+const labelInputs = (f: FormData) => Object.fromEntries(CUSTOM_FIELD_LOCALES.map((l) => [`label_${l}`, str(f, `label_${l}`)]));
+/** Settings › Custom fields: create a field (company and record kind) or edit one (labels, help text, type, flags, number settings). */
+export async function saveCustomFieldAction(f: FormData) {
+  return run(fieldSettingsPage(f), (s) => saveCustomField(s, {
+    id: str(f, 'fieldId') || undefined, companyId: str(f, 'companyId'), kind: str(f, 'kind'), ...labelInputs(f),
+    // A field with values sends no type (its select is locked); the service keeps the stored one.
+    ...(f.has('type') ? { type: str(f, 'type') } : {}),
+    helpText: str(f, 'helpText'), required: f.get('required') === 'on', restricted: f.get('restricted') === 'on', enabled: f.get('enabled') === 'on',
+    numberMin: str(f, 'numberMin'), numberMax: str(f, 'numberMax'), numberDecimals: str(f, 'numberDecimals'),
+  }));
+}
+export async function deleteCustomFieldAction(f: FormData) {
+  return run(fieldSettingsPage(f), (s) => deleteCustomField(s, str(f, 'fieldId')));
+}
+export async function moveCustomFieldAction(f: FormData) {
+  return run(fieldSettingsPage(f), (s) => moveCustomField(s, str(f, 'fieldId'), str(f, 'direction')));
+}
+/** An option of a choice field: add (field) or edit (option): labels and enabled. */
+export async function saveCustomFieldOptionAction(f: FormData) {
+  return run(fieldSettingsPage(f), (s) => saveCustomFieldOption(s, {
+    id: str(f, 'optionId') || undefined, fieldId: str(f, 'fieldId'), ...labelInputs(f), enabled: f.get('enabled') === 'on',
+  }));
+}
+export async function deleteCustomFieldOptionAction(f: FormData) {
+  return run(fieldSettingsPage(f), (s) => deleteCustomFieldOption(s, str(f, 'optionId')));
+}
+export async function moveCustomFieldOptionAction(f: FormData) {
+  return run(fieldSettingsPage(f), (s) => moveCustomFieldOption(s, str(f, 'optionId'), str(f, 'direction')));
 }

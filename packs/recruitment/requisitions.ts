@@ -30,6 +30,8 @@ import {
 } from './data';
 import { repeatApplicationBlocked } from './privacy-model';
 import { poolLabels } from './pool-model';
+import { customFilterChoicesTx, customFilterSql, type CustomFilterChoice } from './custom-field-store';
+import { customFilterKey } from './custom-field-model';
 import { approvalFlowTx, myPendingOfferApprovalsTx, type PendingOfferApproval } from './offers';
 
 const reqEvent = (tx: Tx, s: SessionContext, aggregateId: string, eventType: string, payload: Record<string, unknown>) =>
@@ -410,7 +412,9 @@ export async function myApprovals(s: SessionContext): Promise<MyApprovals> {
 
 // ── Talent pool ──────────────────────────────────────────────────────────────────────────────────────────
 
-export type PoolFilters = { jobId?: string; reasonId?: string; since?: string; tagId?: string };
+export type PoolFilters = { jobId?: string; reasonId?: string; since?: string; tagId?: string;
+  /** Slice 14: one custom candidate field and answer, `<field id>:<option id|yes|no>`. */
+  custom?: string };
 export type PoolCard = {
   applicationId: string; candidateId: string; candidateName: string; email: string | null; phone: string | null; companyId: string;
   /** Slice 5: the candidate's tags, and whether their personal data has been removed (then nothing can be added). */
@@ -425,6 +429,8 @@ export type TalentPool = {
   cards: PoolCard[]; totals: { today: number; total: number };
   jobs: { id: string; title: string; jobNumber: string }[]; reasons: { id: string; internal: string }[];
   tags: { id: string; name: string; groupName: string }[];
+  /** Slice 14: the custom candidate fields the pool may filter by, and the filter applied (the totals stay the pool's own). */
+  customFilters: CustomFilterChoice[]; customFilter: string | null;
 };
 
 /**
@@ -432,7 +438,7 @@ export type TalentPool = {
  * the archive reason. Totals: archived today (Kuala Lumpur) and all pool entries, both count queries.
  */
 export async function talentPool(s: SessionContext, companyIds: readonly string[], filters: PoolFilters = {}): Promise<TalentPool> {
-  if (!companyIds.length) return { cards: [], totals: { today: 0, total: 0 }, jobs: [], reasons: [], tags: [] };
+  if (!companyIds.length) return { cards: [], totals: { today: 0, total: 0 }, jobs: [], reasons: [], tags: [], customFilters: [], customFilter: null };
   const today = todayInKualaLumpur();
   return withRecruitmentTenant(s, async (tx) => {
     for (const id of companyIds) await assertCompanyTx(tx, id);
@@ -441,6 +447,8 @@ export async function talentPool(s: SessionContext, companyIds: readonly string[
     const reason = filters.reasonId && isUuid(filters.reasonId) ? filters.reasonId : null;
     const since = filters.since && /^\d{4}-\d{2}-\d{2}$/.test(filters.since) ? filters.since : null;
     const tag = filters.tagId && isUuid(filters.tagId) ? filters.tagId : null;
+    const customFilters = await customFilterChoicesTx(tx, s, companyIds, 'candidate');
+    const custom = customFilterSql(customFilters, filters.custom, 'candidate', sql`p.candidate_id`);
     const pool = sql`(select distinct on (a.candidate_id) a.* from recruitment_application a
       where a.tenant_id = ${s.tenantId}::uuid and a.company_id = any(${ids}::uuid[]) and a.state = 'archived'
       order by a.candidate_id, a.state_changed_at desc, a.id desc)`;
@@ -461,6 +469,7 @@ export async function talentPool(s: SessionContext, companyIds: readonly string[
       where (${job}::uuid is null or p.job_id = ${job}::uuid) and (${reason}::uuid is null or p.archive_reason_id = ${reason}::uuid)
         and (${since}::date is null or (p.state_changed_at at time zone 'Asia/Kuala_Lumpur')::date >= ${since}::date)
         and (${tag}::uuid is null or exists (select 1 from recruitment_candidate_tag ct where ct.candidate_id = p.candidate_id and ct.tag_id = ${tag}::uuid))
+        ${custom.condition}
       order by p.state_changed_at desc, p.id limit 200`);
     const open = await tx.execute<{ id: string; title: string; job_number: string; company_id: string }>(sql`
       select j.id, j.title, j.job_number, j.company_id from recruitment_job_opening j
@@ -501,6 +510,7 @@ export async function talentPool(s: SessionContext, companyIds: readonly string[
       })),
       jobs: jobs.map((j) => ({ id: j.id, title: j.title, jobNumber: j.job_number })), reasons: [...reasons],
       tags: tags.map((t) => ({ id: t.id, name: t.name, groupName: t.group_name })),
+      customFilters, customFilter: custom.filter ? customFilterKey(custom.filter) : null,
     };
   });
 }

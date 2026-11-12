@@ -5881,6 +5881,13 @@
       "when": 1793330004914,
       "tag": "5214_recruitment_consume_invitation_access_lock",
       "breakpoints": true
+    },
+    {
+      "idx": 4615,
+      "version": "7",
+      "when": 1793330004915,
+      "tag": "5215_recruitment_custom_fields",
+      "breakpoints": true
     }
   ]
 }
