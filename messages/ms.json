@@ -24807,7 +24807,9 @@
         "approveTitle": "Luluskan semakan ini?",
         "approveHelp": "Kelulusan anda direkodkan bersama sebab anda, dan semakan beralih ke peringkat seterusnya.",
         "returnTitle": "Kembalikan semakan ini kepada draf?",
-        "returnHelp": "Semakan kembali kepada CEO BU untuk diubah. Sebab anda ditunjukkan kepada mereka, dan setiap kelulusan bermula semula."
+        "returnHelp": "Semakan kembali kepada CEO BU untuk diubah. Sebab anda ditunjukkan kepada mereka, dan setiap kelulusan bermula semula.",
+        "fixBlocks": "{count, plural, other {Betulkan # perkara sekatan dahulu}}",
+        "cancel": "Batal"
       },
       "person": {
         "close": "Tutup",
@@ -24815,7 +24817,95 @@
         "next": "Seterusnya",
         "position": "{index} daripada {total}",
         "openRecord": "Buka rekod penuh untuk menyunting",
-        "noFlags": "Tiada perkara untuk orang ini."
+        "noFlags": "Tiada perkara untuk orang ini.",
+        "notes": "Nota",
+        "noNote": "Tiada nota.",
+        "saveNote": "Simpan nota",
+        "noteSaved": "Nota disimpan.",
+        "businessCase": "Kes perniagaan kenaikan pangkat dan keputusan kes",
+        "noBusinessCase": "Belum ada kes perniagaan ditulis."
+      },
+      "flagsCount": "Perkara ({count})",
+      "flagsHelp": "Sekatan dahulu. Setiap perkara menyatakan apa yang perlu dibetulkan dan di mana.",
+      "goToPerson": "Pergi ke orang",
+      "openSetup": "Buka persediaan",
+      "overdue": "lewat",
+      "budgetDetails": "Butiran bajet",
+      "reference": "Rujukan",
+      "status": {
+        "draft": "Draf",
+        "returned": "Dikembalikan",
+        "submitted": "Dihantar"
+      },
+      "save": {
+        "saving": "Menyimpan…",
+        "saved": "Semua perubahan disimpan",
+        "failed": "Tidak disimpan.",
+        "retry": "Cuba lagi",
+        "stale": "Semakan ini telah diubah dalam sesi lain. Muat semula untuk melihat angka terkini sebelum menyunting lagi.",
+        "reload": "Muat semula"
+      },
+      "tiles": {
+        "salary": "Kenaikan gaji",
+        "bonus": "Bonus",
+        "multiplier": "Pengganda unit yang digunakan",
+        "change": "Ubah",
+        "perPerson": "Setiap orang",
+        "people": "Orang",
+        "total": "Jumlah"
+      },
+      "filters": {
+        "label": "Penapis pantas",
+        "all": "Semua",
+        "flags": "Ada perkara",
+        "talent": "Bakat",
+        "performance": "Prestasi",
+        "flagCode": "Menunjukkan orang dengan perkara {code}."
+      },
+      "grid": {
+        "columns": "Lajur",
+        "jg": "JG",
+        "merit": "Merit %",
+        "total": "Jumlah %",
+        "newBasic": "Gaji pokok baharu",
+        "amount": "Amaun",
+        "multiplier": "Pengganda bonus",
+        "monthsValue": "{months} bulan",
+        "totalRow": "Jumlah · {count, plural, other {# orang}}",
+        "rowFlags": "{count, plural, other {# perkara}} untuk {name}",
+        "pages": "Halaman",
+        "pageOf": "Halaman {page} daripada {pages} · {total} orang",
+        "group": {
+          "employee": "Pekerja",
+          "payNow": "Gaji kini",
+          "salary": "Kenaikan gaji",
+          "bonus": "Bonus"
+        },
+        "column": {
+          "talent": "Bakat",
+          "performance": "Prestasi",
+          "currentBasic": "Gaji pokok semasa",
+          "crBefore": "CR",
+          "special": "Pelarasan khas %",
+          "crAfter": "CR selepas",
+          "months": "Bulan",
+          "lump": "Bayaran sekali gus"
+        }
+      },
+      "cell": {
+        "reset": "Set semula",
+        "noPromotion": "Tiada kenaikan pangkat",
+        "toGrade": "Ke JG {grade}",
+        "unavailable": "Orang ini tidak tersedia kepada anda.",
+        "notEditable": "Nilai ini tidak boleh diubah di sini pada peringkat ini.",
+        "stale": "Semakan ini berubah dalam sesi lain. Muat semula sebelum menyimpan.",
+        "invalid": {
+          "percent": "Masukkan peratusan dengan sehingga dua tempat perpuluhan.",
+          "multiplier": "Masukkan pengganda seperti 1.25.",
+          "amount": "Masukkan amaun dalam MYR dengan sehingga dua tempat perpuluhan.",
+          "grade": "Pilih gred jawatan.",
+          "note": "Hadkan nota kepada 2,000 aksara atau kurang."
+        }
       }
     },
     "sharedGovernance": {
@@ -25048,6 +25138,38 @@
       "unassigned": "Belum ditetapkan dalam Pengurusan Pekerja",
       "hierarchyHelp": "Kumpulan perniagaan → unit perniagaan → syarikat. Syarikat dengan beberapa unit dipaparkan sekali bersama semua pilihan unitnya.",
       "preserved": "Liputan tersimpan sedia ada dikekalkan"
+    },
+    "flagText": {
+      "dataUnverified": "Group Rewards masih perlu mengesahkan klasifikasi dan penarafan orang ini.",
+      "salaryRecord": "Orang ini memerlukan rekod gaji bulanan semasa dalam MYR.",
+      "noRange": "Tiada julat gaji ditetapkan untuk gred jawatan ini.",
+      "noBonusMonths": "Tiada bulan bonus ditetapkan untuk gred jawatan ini.",
+      "caseDecision": "Rekodkan keputusan CEO BU dan PBP tentang kes ER atau PIP orang ini.",
+      "caseReason": "Berikan sebab bagi keputusan kes ER atau PIP.",
+      "promotionSteps": "Kenaikan pangkat mesti naik satu hingga tiga gred jawatan.",
+      "promotionCase": "Tulis kes perniagaan sekurang-kurangnya 30 aksara untuk kenaikan pangkat ini.",
+      "promotionIneligible": "Orang ini tidak layak untuk kenaikan pangkat dalam semakan tahunan.",
+      "meritChanged": "Merit berbeza daripada matriks merit.",
+      "promotionChanged": "Kenaikan pangkat berbeza daripada 10% standard.",
+      "specialChanged": "Pelarasan khas berbeza daripada amaun yang dikira.",
+      "largeIncrease": "Jumlah kenaikan melebihi had semakan individu.",
+      "aboveRange": "Gaji pokok baharu melebihi maksimum julat.",
+      "bonusChanged": "Pengganda bonus berbeza daripada pengganda unit.",
+      "lumpAboveBudget": "Bayaran sekali gus unit melebihi apa yang boleh ditampung oleh baki bajet bonus.",
+      "lumpWithheld": "Bayaran sekali gus unit ditahan (MYR 0).",
+      "lumpChanged": "Bayaran sekali gus berbeza daripada amaun unit. MYR 0 bermaksud ditahan.",
+      "poolOver": "{plan}: {part} melebihi kumpulan wangnya.",
+      "bonusOver": "{plan}: bonus melebihi had bajet 100%.",
+      "bonusUnder": "{plan}: kurang daripada 80% bajet bonus digunakan.",
+      "branchRating": "Tetapkan penarafan cawangan dan faktor segmen bonus untuk orang ini.",
+      "patMissing": "PAT dan sasaran unit belum dimasukkan, jadi kumpulan wang bonus tidak dapat dikira.",
+      "salaryReduction": "Semakan gaji tidak boleh menurunkan gaji pokok.",
+      "restricted": "Rekod terhad perlu disemak oleh penyemak yang diberi kuasa.",
+      "parts": {
+        "merit": "merit",
+        "promotion": "kenaikan pangkat",
+        "special": "pelarasan khas"
+      }
     }
   },
   "identityEmail": {

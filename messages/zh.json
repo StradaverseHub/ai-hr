@@ -24807,7 +24807,9 @@
         "approveTitle": "批准此审核？",
         "approveHelp": "您的批准及原因将被记录，审核进入下一阶段。",
         "returnTitle": "将此审核退回草稿？",
-        "returnHelp": "审核将退回给业务单位总裁修改。对方可以看到您的原因，所有审批将重新开始。"
+        "returnHelp": "审核将退回给业务单位总裁修改。对方可以看到您的原因，所有审批将重新开始。",
+        "fixBlocks": "请先处理 {count} 项阻止项",
+        "cancel": "取消"
       },
       "person": {
         "close": "关闭",
@@ -24815,7 +24817,95 @@
         "next": "下一位",
         "position": "第 {index} / {total} 位",
         "openRecord": "打开完整记录进行编辑",
-        "noFlags": "此人没有待查事项。"
+        "noFlags": "此人没有待查事项。",
+        "notes": "备注",
+        "noNote": "暂无备注。",
+        "saveNote": "保存备注",
+        "noteSaved": "备注已保存。",
+        "businessCase": "晋升业务理由和个案决定",
+        "noBusinessCase": "尚未填写业务理由。"
+      },
+      "flagsCount": "待查事项（{count}）",
+      "flagsHelp": "阻止项在前。每一项都说明要修正什么、在哪里修正。",
+      "goToPerson": "查看此人",
+      "openSetup": "打开设置",
+      "overdue": "已逾期",
+      "budgetDetails": "预算详情",
+      "reference": "参考",
+      "status": {
+        "draft": "草稿",
+        "returned": "已退回",
+        "submitted": "已提交"
+      },
+      "save": {
+        "saving": "正在保存…",
+        "saved": "所有更改已保存",
+        "failed": "未保存。",
+        "retry": "重试",
+        "stale": "此审核已在另一会话中更改。请重新加载以查看最新数据后再编辑。",
+        "reload": "重新加载"
+      },
+      "tiles": {
+        "salary": "加薪",
+        "bonus": "奖金",
+        "multiplier": "已应用的单位乘数",
+        "change": "更改",
+        "perPerson": "每人",
+        "people": "人数",
+        "total": "合计"
+      },
+      "filters": {
+        "label": "快速筛选",
+        "all": "全部",
+        "flags": "有待查事项",
+        "talent": "人才评级",
+        "performance": "绩效评级",
+        "flagCode": "显示有待查事项 {code} 的人员。"
+      },
+      "grid": {
+        "columns": "列",
+        "jg": "职级",
+        "merit": "绩效加薪 %",
+        "total": "合计 %",
+        "newBasic": "新基本工资",
+        "amount": "金额",
+        "multiplier": "奖金乘数",
+        "monthsValue": "{months} 个月",
+        "totalRow": "合计 · {count} 人",
+        "rowFlags": "{name} 有 {count} 项待查事项",
+        "pages": "页码",
+        "pageOf": "第 {page} 页，共 {pages} 页 · {total} 人",
+        "group": {
+          "employee": "员工",
+          "payNow": "当前薪资",
+          "salary": "加薪",
+          "bonus": "奖金"
+        },
+        "column": {
+          "talent": "人才评级",
+          "performance": "绩效评级",
+          "currentBasic": "当前基本工资",
+          "crBefore": "CR",
+          "special": "特别调整 %",
+          "crAfter": "调整后 CR",
+          "months": "月数",
+          "lump": "一次性奖励"
+        }
+      },
+      "cell": {
+        "reset": "重置",
+        "noPromotion": "不晋升",
+        "toGrade": "升至职级 {grade}",
+        "unavailable": "您无法查看此人。",
+        "notEditable": "在此阶段无法在这里更改此数值。",
+        "stale": "此审核已在另一会话中更改。请重新加载后再保存。",
+        "invalid": {
+          "percent": "请输入最多两位小数的百分比。",
+          "multiplier": "请输入乘数，例如 1.25。",
+          "amount": "请输入最多两位小数的 MYR 金额。",
+          "grade": "请选择职级。",
+          "note": "备注请保持在 2,000 个字符以内。"
+        }
       }
     },
     "sharedGovernance": {
@@ -25048,6 +25138,38 @@
       "unassigned": "尚未在人员管理中设置",
       "hierarchyHelp": "业务集团 → 业务单位 → 公司。属于多个单位的公司只显示一次，并在条目内列出所有单位选项。",
       "preserved": "保留现有已保存范围"
+    },
+    "flagText": {
+      "dataUnverified": "集团薪酬仍需核实此人的分类和评级。",
+      "salaryRecord": "此人需要一条有效的 MYR 月薪记录。",
+      "noRange": "此职级尚未设置薪资范围。",
+      "noBonusMonths": "此职级尚未设置奖金月数。",
+      "caseDecision": "请记录业务单位总裁和 PBP 对此人 ER 或 PIP 个案的决定。",
+      "caseReason": "请填写 ER 或 PIP 个案决定的原因。",
+      "promotionSteps": "晋升必须提升一至三个职级。",
+      "promotionCase": "请为此晋升填写至少 30 个字符的业务理由。",
+      "promotionIneligible": "此人不符合年度审核的晋升资格。",
+      "meritChanged": "绩效加薪与绩效矩阵不同。",
+      "promotionChanged": "晋升加薪与标准的 10% 不同。",
+      "specialChanged": "特别调整与计算金额不同。",
+      "largeIncrease": "总加薪超过个人审核阈值。",
+      "aboveRange": "新基本工资高于薪资范围上限。",
+      "bonusChanged": "奖金乘数与单位乘数不同。",
+      "lumpAboveBudget": "单位一次性奖励超过剩余奖金预算可支持的金额。",
+      "lumpWithheld": "单位一次性奖励已暂停发放（MYR 0）。",
+      "lumpChanged": "一次性奖励与单位金额不同。MYR 0 表示暂停发放。",
+      "poolOver": "{plan}：{part}超出其预算池。",
+      "bonusOver": "{plan}：奖金超出 100% 预算上限。",
+      "bonusUnder": "{plan}：奖金预算使用不足 80%。",
+      "branchRating": "请为此人设置分行评级和奖金分部系数。",
+      "patMissing": "尚未输入单位 PAT 和目标，因此无法计算奖金池。",
+      "salaryReduction": "薪资审核不能降低基本工资。",
+      "restricted": "受限记录需要由获授权的审核人审核。",
+      "parts": {
+        "merit": "绩效加薪",
+        "promotion": "晋升加薪",
+        "special": "特别调整"
+      }
     }
   },
   "identityEmail": {

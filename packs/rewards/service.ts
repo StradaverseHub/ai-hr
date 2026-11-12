@@ -64,6 +64,8 @@ export async function rewardCoverageForUnits(ctx: SessionContext, unitIds: strin
 
 export { calculateRewards } from './engine';
 export { defaultPolicy } from './model';
+/** 37f82412 — Group Rewards, CTRO and EC see the full review; every other seat gets the simplified approver view. */
+export const rewardFullView = (roles: readonly RewardRole[]) => roles.some(role => role === 'gr' || role === 'ctro' || role === 'ec');
 export class RewardError extends Error { constructor(message: string) { super(message); this.name = 'RewardError'; } }
 const idSchema = z.uuid();
 // Match the canonical catalogue display used by setup and shared policy targets. Legacy name is
@@ -410,18 +412,28 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string,ca
       .leftJoin(appUser, eq(appUser.id, domainEvent.actorId)).leftJoin(person, and(eq(person.id, appUser.personId), visibleSeatHolder))
       .where(and(eq(domainEvent.aggregateType, 'reward-unit'), eq(domainEvent.aggregateId, unitId), eq(domainEvent.eventType, 'reward-unit.lump-updated'))).orderBy(desc(domainEvent.occurredAt)).limit(1) : [];
     const [libraryBinding]=await tx.execute<{bound:boolean}>(sql`select exists(select 1 from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid) as bound`);
+    const fullView = rewardFullView(roles);
     const analytics = includeAnalytics ? await analyticsRowsTx(tx, ctx, {
       unit, roles, rows: calculated.rows, flags, state, effectivePolicy, publicState, uploaded: !!uploadedReview?.present,
     }) : null;
     return { ...(analytics ? { analytics } : {}), libraryBound:libraryBinding?.bound??false,...(caps?{capabilities:{...caps.value,snapshotRefresh:!uploadedReview?.present&&caps.value.snapshotRefresh}}:{}),uploaded:uploadedReview?.present??false,uploadedSummary:uploadedReview?.present?{people:visible.filter(row=>entries.some(e=>e.id===row.id&&e.uploadedAward!==null)).length,incrementCents:visible.reduce((n,e)=>n+e.newBasicCents-e.source.basicCents,0),bonusCents:visible.reduce((n,e)=>n+e.bonusCents,0),lumpCents:visible.reduce((n,e)=>n+e.lumpCents,0)}:null,unit:{...unit,policy:redactPatPolicy(effectivePolicy,roles)}, poolStatus:publicState?.status??'legacy',seniorAmountsVisible:maySeeSeniorAmounts(roles), cycle, route, due, payrollDue, name: bu?.name ?? 'Business unit', companyName: co?.name ?? '', roles, members, decisions, returned,
-      rows: visible.map(e=>{const {uploadedAward:_award,groupEcDirectReport:_groupEc,...safe}=e as typeof e&{uploadedAward?:unknown;groupEcDirectReport?:boolean};return safe;}), flags, hiddenCount: entries.length - visible.length,
+      // 37f82412: pay position before and after (basis points of the approved midpoint), worked out here so
+      // the screen never does pay arithmetic. Null where the figures are hidden or no midpoint is configured.
+      rows: visible.map(e=>{const {uploadedAward:_award,groupEcDirectReport:_groupEc,...safe}=e as typeof e&{uploadedAward?:unknown;groupEcDirectReport?:boolean};
+        const hiddenSenior=!maySeeSeniorAmounts(roles)&&isSeniorPlanMember(unit.policy,e.facts,e.source.grade);
+        const midpoint=unit.policy.ranges?.[e.recommendation.promotionGrade??e.source.grade]?.[1];
+        const position=(cents:number)=>hiddenSenior||!midpoint?null:ratio(cents,10000,midpoint,'nearest');
+        return {...safe,crBeforeBp:position(e.source.basicCents),crAfterBp:position(e.newBasicCents),totalIncreaseBp:hiddenSenior?null:e.meritBp+e.promotionBp+e.specialBp};}), flags, hiddenCount: entries.length - visible.length,
       budgets: { standard: calculated.budgets.standard, h: calculated.budgets.h },
       bonusCounts: { standard: bonusCounts('standard'), h: bonusCounts('h') },
       payWindow: { standard: payWindow('standard'), h: payWindow('h') },
       lumpDecision: unit.policy.lumpUnitCents === 0 ? { at: lumpDecision ? todayInKualaLumpur(new Date(lumpDecision.at)) : null, actorName: lumpDecision?.actorName ?? null, reason: unit.policy.lumpReason ?? null } : null,
-      ec: roles.some(r => ['gr', 'ctro', 'ec'].includes(r)) ? { count: ecRows.length, referenceCents: Math.round(ecRows.reduce((v, e) => v + e.source.basicCents, 0) * .07), incrementCents: ecRows.reduce((v, e) => v + e.newBasicCents - e.source.basicCents, 0), bonusCents: ecRows.reduce((v, e) => v + e.bonusCents + e.lumpCents, 0) } : null,
+      // 37f82412: one flag decides the simplified approver view (BU CEO, BG CEO, proxy, PBP). The approver
+      // projection leaves out the calculation workings, so hiding them is not only a screen choice.
+      fullView,
+      ec: fullView ? { count: ecRows.length, referenceCents: Math.round(ecRows.reduce((v, e) => v + e.source.basicCents, 0) * .07), incrementCents: ecRows.reduce((v, e) => v + e.newBasicCents - e.source.basicCents, 0), bonusCents: ecRows.reduce((v, e) => v + e.bonusCents + e.lumpCents, 0) } : null,
       suggestedLumpCents: calculated.suggestedLumpCents, lumpUnitCents: calculated.lumpUnitCents,
-      suggestedMultiplierBp: calculated.suggestedMultiplierBp, suggestion: (roles.includes('gr')&&'suggestion' in calculated ? calculated.suggestion : null) as RewardMultiplierSuggestion | null, lumpWorking: calculated.lumpWorking,
+      suggestedMultiplierBp: calculated.suggestedMultiplierBp, suggestion: (roles.includes('gr')&&'suggestion' in calculated ? calculated.suggestion : null) as RewardMultiplierSuggestion | null, lumpWorking: fullView ? calculated.lumpWorking : [],
       approvalStageEdit: !!groupScope?.wholeGroup && !uploadedReview?.present &&
         !!caps?.value.figuresEdit && ['gr','ctro','ec'].includes(unit.status) && roles.includes(unit.status as RewardRole),
       canEdit, canConfigure: roles.includes('gr') && unit.status === 'draft' && unit.kind === 'annual',
@@ -864,7 +876,7 @@ export async function setRewardMember(ctx: SessionContext, unitId: string, revis
 
 const confidentialityFloorMessage = 'This person is marked confidential from their reporting line in People. Group Rewards can make the marking stricter, never lower.';
 export async function saveRewardEntry(ctx: SessionContext, unitId: string, revision: number, entryId: string, recommendation: unknown, facts?: unknown) {
-  idSchema.parse(entryId); const rec = recommendationSchema.parse(recommendation);
+  idSchema.parse(entryId); let rec = recommendationSchema.parse(recommendation);
   const validatedFacts = facts === undefined ? undefined : factsSchema.parse(facts);
   return withRewardsTenant(ctx, async tx => {
     const { unit, roles, entries } = await load(tx, unitId, true); assertRevision(unit, revision);
@@ -872,7 +884,10 @@ export async function saveRewardEntry(ctx: SessionContext, unitId: string, revis
       select exists(select 1 from app.reward_current_group_roles()) as "wholeGroup",
         app.reward_group_figures_stage_allowed(${unitId}::uuid) as "stageAllowed"
     `);
-    const approvalStageEdit = scope?.wholeGroup && ['gr','ctro','ec'].includes(unit.status)
+    // 37f82412: the BG CEO may also change recommendations while the annual review is at the BG CEO step,
+    // under the same submitted-digest check as the whole-group approval-step edit below.
+    const bgStageEdit = unit.kind === 'annual' && unit.status === 'bg' && roles.includes('bg');
+    const approvalStageEdit = bgStageEdit || scope?.wholeGroup && ['gr','ctro','ec'].includes(unit.status)
       && roles.includes(unit.status as RewardRole) && scope.stageAllowed;
     if (scope?.wholeGroup && !scope.stageAllowed) throw new RewardError('You can edit figures only at your approval step.');
     if (!approvalStageEdit) assertUnlocked(unit);
@@ -883,13 +898,15 @@ export async function saveRewardEntry(ctx: SessionContext, unitId: string, revis
     const entry = entries.find(e => e.id === entryId);
     if((await tx.execute<{uploaded:boolean}>(sql`select exists(select 1 from reward_uploaded_review where unit_id=${unitId}::uuid) as uploaded`))[0]?.uploaded)throw new RewardError('Use the Uploaded awards adjustment form to change this amount with a reason.');
     if (!entry || !visibleEntry(entry, roles, ctx.personId)) throw new RewardError('This reward record is not available to you.');
+    // 37f82412: forms that do not carry the person-panel note keep the one already saved.
+    if (rec.note === undefined && entry.recommendation.note !== undefined) rec = { ...rec, note: entry.recommendation.note };
     if (approvalStageEdit && validatedFacts && !isDeepStrictEqual(validatedFacts, entry.facts)) {
       throw new RewardError('Only the recommendation can change at this approval step.');
     }
     const canEC = entry.facts.confidentiality === 'ec' && roles.some(r => ['gr', 'ctro', 'ec'].includes(r));
     if (!canEditStage(unit.status, roles) && !(unit.kind !== 'annual' && roles.includes('bg')) && !canEC) throw new RewardError('You cannot edit this reward recommendation.');
     if (entry.facts.confidentiality !== 'ec' && rec.bonusCents != null) throw new RewardError('Use the bonus multiplier for a standard or JG H employee.');
-    if(rec.reason!==entry.recommendation.reason)await assertRewardCapabilityTx(tx,unitId,'notes.add');
+    if(rec.reason!==entry.recommendation.reason||(rec.note??'')!==(entry.recommendation.note??''))await assertRewardCapabilityTx(tx,unitId,'notes.add');
     if(validatedFacts&&(validatedFacts.erDecision!==entry.facts.erDecision||validatedFacts.pipDecision!==entry.facts.pipDecision||validatedFacts.caseReason!==entry.facts.caseReason))await assertRewardCapabilityTx(tx,unitId,'cases.decide');
     if (validatedFacts && !roles.includes('gr')) {
       const { erDecision: _er, pipDecision: _pip, caseReason: _reason, ...oldClassification } = entry.facts;
@@ -1723,7 +1740,8 @@ export type RewardBoardRow = {
  * visibility and hidden-record blocks. Money is summed only from visible pooled plans (standard/JG H);
  * the Executive plan consumes no pool. The full board adds detail metadata separately.
  */
-type BoardSummaryInput = Pick<ReviewProjection, 'rows' | 'flags' | 'budgets' | 'roles' | 'route' | 'canEdit' | 'posting' | 'uploaded' | 'capabilities'> & {
+type BoardSummaryInput = Pick<ReviewProjection, 'flags' | 'budgets' | 'roles' | 'route' | 'canEdit' | 'posting' | 'uploaded' | 'capabilities'> & {
+  rows: readonly Omit<ReviewProjection['rows'][number], 'crBeforeBp' | 'crAfterBp' | 'totalIncreaseBp'>[];
   unit: Pick<ReviewProjection['unit'], 'kind' | 'status'>;
 };
 /** Shared summary arithmetic and stage authority: never a second implementation of review truth. */

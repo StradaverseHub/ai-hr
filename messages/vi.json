@@ -24807,7 +24807,9 @@
         "approveTitle": "Phê duyệt bản xét duyệt này?",
         "approveHelp": "Phê duyệt của bạn được ghi lại cùng lý do và bản xét duyệt chuyển sang giai đoạn tiếp theo.",
         "returnTitle": "Trả bản xét duyệt này về bản nháp?",
-        "returnHelp": "Bản xét duyệt quay lại CEO đơn vị kinh doanh để sửa. Họ sẽ thấy lý do của bạn và mọi phê duyệt bắt đầu lại."
+        "returnHelp": "Bản xét duyệt quay lại CEO đơn vị kinh doanh để sửa. Họ sẽ thấy lý do của bạn và mọi phê duyệt bắt đầu lại.",
+        "fixBlocks": "Hãy xử lý {count} mục chặn trước",
+        "cancel": "Hủy"
       },
       "person": {
         "close": "Đóng",
@@ -24815,7 +24817,95 @@
         "next": "Tiếp",
         "position": "{index} / {total}",
         "openRecord": "Mở hồ sơ đầy đủ để chỉnh sửa",
-        "noFlags": "Người này không có điểm cần xem."
+        "noFlags": "Người này không có điểm cần xem.",
+        "notes": "Ghi chú",
+        "noNote": "Không có ghi chú.",
+        "saveNote": "Lưu ghi chú",
+        "noteSaved": "Đã lưu ghi chú.",
+        "businessCase": "Lý do kinh doanh cho thăng chức và quyết định hồ sơ",
+        "noBusinessCase": "Chưa có lý do kinh doanh."
+      },
+      "flagsCount": "Cảnh báo ({count})",
+      "flagsHelp": "Mục chặn hiển thị trước. Mỗi mục cho biết cần sửa gì và ở đâu.",
+      "goToPerson": "Đến người này",
+      "openSetup": "Mở thiết lập",
+      "overdue": "quá hạn",
+      "budgetDetails": "Chi tiết ngân sách",
+      "reference": "Tham khảo",
+      "status": {
+        "draft": "Bản nháp",
+        "returned": "Đã trả lại",
+        "submitted": "Đã gửi"
+      },
+      "save": {
+        "saving": "Đang lưu…",
+        "saved": "Đã lưu mọi thay đổi",
+        "failed": "Chưa lưu.",
+        "retry": "Thử lại",
+        "stale": "Đánh giá này đã được thay đổi trong một phiên khác. Hãy tải lại để xem số liệu mới nhất trước khi chỉnh sửa tiếp.",
+        "reload": "Tải lại"
+      },
+      "tiles": {
+        "salary": "Tăng lương",
+        "bonus": "Thưởng",
+        "multiplier": "Hệ số đơn vị đang áp dụng",
+        "change": "Thay đổi",
+        "perPerson": "Mỗi người",
+        "people": "Số người",
+        "total": "Tổng"
+      },
+      "filters": {
+        "label": "Bộ lọc nhanh",
+        "all": "Tất cả",
+        "flags": "Có cảnh báo",
+        "talent": "Tài năng",
+        "performance": "Hiệu suất",
+        "flagCode": "Đang hiển thị những người có cảnh báo {code}."
+      },
+      "grid": {
+        "columns": "Cột",
+        "jg": "JG",
+        "merit": "Tăng theo thành tích %",
+        "total": "Tổng %",
+        "newBasic": "Lương cơ bản mới",
+        "amount": "Số tiền",
+        "multiplier": "Hệ số thưởng",
+        "monthsValue": "{months} tháng",
+        "totalRow": "Tổng · {count} người",
+        "rowFlags": "{count} cảnh báo cho {name}",
+        "pages": "Trang",
+        "pageOf": "Trang {page}/{pages} · {total} người",
+        "group": {
+          "employee": "Nhân viên",
+          "payNow": "Lương hiện tại",
+          "salary": "Tăng lương",
+          "bonus": "Thưởng"
+        },
+        "column": {
+          "talent": "Tài năng",
+          "performance": "Hiệu suất",
+          "currentBasic": "Lương cơ bản hiện tại",
+          "crBefore": "CR",
+          "special": "Điều chỉnh đặc biệt %",
+          "crAfter": "CR sau",
+          "months": "Tháng",
+          "lump": "Khoản trọn gói"
+        }
+      },
+      "cell": {
+        "reset": "Đặt lại",
+        "noPromotion": "Không thăng chức",
+        "toGrade": "Lên JG {grade}",
+        "unavailable": "Bạn không xem được người này.",
+        "notEditable": "Không thể thay đổi giá trị này ở đây tại bước này.",
+        "stale": "Đánh giá này đã thay đổi trong một phiên khác. Hãy tải lại trước khi lưu.",
+        "invalid": {
+          "percent": "Nhập tỷ lệ phần trăm với tối đa hai chữ số thập phân.",
+          "multiplier": "Nhập hệ số, ví dụ 1.25.",
+          "amount": "Nhập số tiền bằng MYR với tối đa hai chữ số thập phân.",
+          "grade": "Chọn một bậc công việc.",
+          "note": "Giữ ghi chú trong tối đa 2.000 ký tự."
+        }
       }
     },
     "sharedGovernance": {
@@ -25048,6 +25138,38 @@
       "unassigned": "Chưa thiết lập trong Quản lý nhân sự",
       "hierarchyHelp": "Nhóm kinh doanh → đơn vị kinh doanh → công ty. Công ty thuộc nhiều đơn vị chỉ xuất hiện một lần với tất cả lựa chọn đơn vị trong mục đó.",
       "preserved": "Giữ nguyên phạm vi đã lưu"
+    },
+    "flagText": {
+      "dataUnverified": "Group Rewards vẫn cần xác minh phân loại và xếp loại của người này.",
+      "salaryRecord": "Người này cần một bản ghi lương tháng hiện hành bằng MYR.",
+      "noRange": "Chưa thiết lập khung lương cho bậc công việc này.",
+      "noBonusMonths": "Chưa thiết lập số tháng thưởng cho bậc công việc này.",
+      "caseDecision": "Ghi nhận quyết định của CEO BU và PBP về hồ sơ ER hoặc PIP của người này.",
+      "caseReason": "Nêu lý do cho quyết định hồ sơ ER hoặc PIP.",
+      "promotionSteps": "Thăng chức phải tăng từ một đến ba bậc công việc.",
+      "promotionCase": "Viết lý do kinh doanh ít nhất 30 ký tự cho lần thăng chức này.",
+      "promotionIneligible": "Người này không đủ điều kiện thăng chức trong đánh giá thường niên.",
+      "meritChanged": "Mức tăng theo thành tích khác với ma trận thành tích.",
+      "promotionChanged": "Mức tăng do thăng chức khác với mức chuẩn 10%.",
+      "specialChanged": "Điều chỉnh đặc biệt khác với số tiền đã tính.",
+      "largeIncrease": "Tổng mức tăng vượt ngưỡng xem xét cá nhân.",
+      "aboveRange": "Lương cơ bản mới cao hơn mức tối đa của khung.",
+      "bonusChanged": "Hệ số thưởng khác với hệ số đơn vị.",
+      "lumpAboveBudget": "Khoản trọn gói của đơn vị vượt quá mức ngân sách thưởng còn lại cho phép.",
+      "lumpWithheld": "Khoản trọn gói của đơn vị đang tạm giữ (MYR 0).",
+      "lumpChanged": "Khoản trọn gói khác với số tiền của đơn vị. MYR 0 nghĩa là tạm giữ.",
+      "poolOver": "{plan}: {part} vượt quỹ của mình.",
+      "bonusOver": "{plan}: thưởng vượt mức trần ngân sách 100%.",
+      "bonusUnder": "{plan}: mới dùng dưới 80% ngân sách thưởng.",
+      "branchRating": "Thiết lập xếp loại chi nhánh và hệ số phân khúc thưởng cho người này.",
+      "patMissing": "Chưa nhập PAT và mục tiêu của đơn vị nên chưa thể tính quỹ thưởng.",
+      "salaryReduction": "Đánh giá lương không được giảm lương cơ bản.",
+      "restricted": "Hồ sơ bị hạn chế cần được người đánh giá có thẩm quyền xem xét.",
+      "parts": {
+        "merit": "tăng theo thành tích",
+        "promotion": "tăng do thăng chức",
+        "special": "điều chỉnh đặc biệt"
+      }
     }
   },
   "identityEmail": {

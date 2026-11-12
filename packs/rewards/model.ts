@@ -42,6 +42,8 @@ export type Recommendation = {
   meritBp: number | null; promotionGrade: string | null; promotionBp: number | null; specialBp: number | null;
   multiplierBp: number | null; bonusCents: number | null; lumpCents: number | null; reason: string;
   currentRoleSummary: string; proposedRoleSummary: string;
+  /** 37f82412 — a short reviewer note shown in the person panel beside the business case. Absent on older entries. */
+  note?: string;
 };
 export const policySchema: z.ZodType<RewardPolicy> = z.object({
   year: z.number().int().min(2000).max(2200),
@@ -84,12 +86,15 @@ export const factsSchema: z.ZodType<RewardFacts> = z.object({
   segment: z.string().trim().max(80), branch: z.string().trim().max(100),
   reviewed: z.boolean(),
 }).strict();
+/** 37f82412 — the person-panel note length cap. */
+export const REWARD_NOTE_MAX = 2000;
 export const recommendationSchema: z.ZodType<Recommendation> = z.object({
   meritBp: bpSchema.nullable(), promotionGrade: z.string().trim().max(30).nullable(),
   promotionBp: bpSchema.nullable(), specialBp: bpSchema.nullable(),
   multiplierBp: bpSchema.nullable(), bonusCents: centsSchema.nullable(), lumpCents: centsSchema.nullable(),
   reason: z.string().trim().max(4000),
   currentRoleSummary: z.string().trim().max(8000).default(''), proposedRoleSummary: z.string().trim().max(8000).default(''),
+  note: z.string().trim().max(REWARD_NOTE_MAX).optional(),
 }).strict();
 /** 328ebe84 — a negative increase or award is a salary reduction attempt, not a technical range error. */
 const reductionFields = ['meritBp', 'promotionBp', 'specialBp', 'bonusCents', 'lumpCents'];

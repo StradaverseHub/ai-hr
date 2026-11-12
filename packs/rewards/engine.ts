@@ -19,6 +19,9 @@ export type CalculatedEntry = RewardEntry & {
   incrementReason: string; bonusReason: string; meritBp: number; promotionBp: number; specialBp: number;
   meritCents: number; promotionCents: number; specialCents: number; newBasicCents: number;
   bonusCents: number; standardBonusCents: number; lumpCents: number; bonusMultiplierBp: number;
+  /** 37f82412 — the bonus months this person is awarded, in basis points of a month: the bonus matrix months
+   *  for their grade and rating times their applied multiplier (before pro-rating for a part year). Display only. */
+  bonusMonthsBp: number;
   /** 8ad87ae8 — the latest basic-salary change inside the exclusion window, and whether Group Rewards kept the
    *  person eligible anyway. `bonusBasicCents` is the basic the bonus is worked on: the adjusted basic after
    *  such a change, otherwise the snapshot basic. */
@@ -90,7 +93,7 @@ export function calculateRewards(entries: RewardEntry[], input: RewardPolicy, co
     }
     if (!left && r.meritBp != null && r.meritBp !== meritDefault && plan !== 'ec') add('exception', 'POOL-05', 'Individual merit differs from the matrix.', e.id);
     if (!left && r.promotionBp != null && r.promotionBp !== 1000 && r.promotionGrade) add('exception', 'POOL-05', 'Promotion differs from the standard 10%.', e.id);
-    return { ...e, facts: f, recommendation: r, activeInReview:!left, plan, incrementEligible, bonusEligible, lumpEligible: !left && !bonusEligible && !senior && plan !== 'ec' && !f.erCase, incrementReason, bonusReason, meritBp, promotionBp, specialBp: 0, payChange: windowChange && { on: windowChange.on, kind: windowChange.kind }, payWindowKept: kept && !!windowChange, bonusBasicCents: payChange ? payChange.basicCents : s.basicCents, meritCents: increase(s.basicCents, meritBp), promotionCents: increase(s.basicCents, promotionBp), specialCents: 0, newBasicCents: s.basicCents, bonusCents: 0, standardBonusCents: 0, lumpCents: 0, bonusMultiplierBp: 0 };
+    return { ...e, facts: f, recommendation: r, activeInReview:!left, plan, incrementEligible, bonusEligible, lumpEligible: !left && !bonusEligible && !senior && plan !== 'ec' && !f.erCase, incrementReason, bonusReason, meritBp, promotionBp, specialBp: 0, payChange: windowChange && { on: windowChange.on, kind: windowChange.kind }, payWindowKept: kept && !!windowChange, bonusBasicCents: payChange ? payChange.basicCents : s.basicCents, meritCents: increase(s.basicCents, meritBp), promotionCents: increase(s.basicCents, promotionBp), specialCents: 0, newBasicCents: s.basicCents, bonusCents: 0, standardBonusCents: 0, lumpCents: 0, bonusMultiplierBp: 0, bonusMonthsBp: 0 };
   });
   const budgets = { standard: blankBudget(), h: blankBudget(), ec: blankBudget() };
   const inPool = (x: CalculatedEntry) => x.incrementEligible || ['Nil increment rating', 'PIP confirmed or awaiting decision'].includes(x.incrementReason) && !(x.facts.pipCase && x.facts.pipDecision === 'pending');
@@ -144,6 +147,7 @@ export function calculateRewards(entries: RewardEntry[], input: RewardPolicy, co
     x.standardBonusCents = Math.floor(ratio(bonusBase(x), multiplier, 10000) / 100) * 100;
     x.bonusMultiplierBp = policy.bonusStructure==='branch'&&policy.branchRatings[x.facts.branch]==='UA'?0:r.multiplierBp ?? multiplier;
     x.bonusCents = !x.activeInReview ? 0 : x.plan === 'ec' && r.bonusCents != null ? r.bonusCents : Math.floor(ratio(bonusBase(x), x.bonusMultiplierBp, 10000) / 100) * 100;
+    x.bonusMonthsBp = x.activeInReview && x.bonusEligible && x.facts.performance ? ratio(policy.bonusMatrix[x.source.grade]?.[performances.indexOf(x.facts.performance)] ?? 0, x.bonusMultiplierBp, 10000, 'nearest') : 0;
     if (r.multiplierBp != null && r.multiplierBp !== multiplier && x.bonusEligible && x.plan !== 'ec') add('exception', 'BUD-02', 'Individual bonus differs from the unit multiplier.', x.id);
   }
   const lumpWorking = (['standard', 'h'] as const).flatMap(plan => {
@@ -178,7 +182,7 @@ export function calculateRewards(entries: RewardEntry[], input: RewardPolicy, co
   }
   for(const row of rows.filter(row=>isSeniorPlanMember(policy,row.facts,row.source.grade))) {
     // Offline-confirmed Senior awards never enter any standard budget or token calculation.
-    row.meritBp=0;row.promotionBp=0;row.specialBp=0;row.meritCents=0;row.promotionCents=0;row.specialCents=0;row.standardBonusCents=0;row.lumpCents=0;
+    row.meritBp=0;row.promotionBp=0;row.specialBp=0;row.bonusMonthsBp=0;row.meritCents=0;row.promotionCents=0;row.specialCents=0;row.standardBonusCents=0;row.lumpCents=0;
     const award=controls.seniorAwards?.[row.id];
     row.newBasicCents=!row.activeInReview?row.source.basicCents:award?.newBasicCents??row.source.basicCents;
     row.bonusCents=!row.activeInReview?0:award?.bonusCents??0;

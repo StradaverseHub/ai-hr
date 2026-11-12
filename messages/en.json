@@ -24807,7 +24807,9 @@
         "approveTitle": "Approve this review?",
         "approveHelp": "Your approval is recorded with your reason, and the review moves to the next stage.",
         "returnTitle": "Return this review to draft?",
-        "returnHelp": "The review goes back to the BU CEO to change. Your reason is shown to them, and every approval starts again."
+        "returnHelp": "The review goes back to the BU CEO to change. Your reason is shown to them, and every approval starts again.",
+        "fixBlocks": "{count, plural, one {Fix # blocking flag first} other {Fix # blocking flags first}}",
+        "cancel": "Cancel"
       },
       "person": {
         "close": "Close",
@@ -24815,7 +24817,95 @@
         "next": "Next",
         "position": "{index} of {total}",
         "openRecord": "Open full record to edit",
-        "noFlags": "No flags for this person."
+        "noFlags": "No flags for this person.",
+        "notes": "Notes",
+        "noNote": "No notes.",
+        "saveNote": "Save note",
+        "noteSaved": "Note saved.",
+        "businessCase": "Promotion business case and case decisions",
+        "noBusinessCase": "No business case written yet."
+      },
+      "flagsCount": "Flags ({count})",
+      "flagsHelp": "Blockers first. Each flag says what to fix and where.",
+      "goToPerson": "Go to person",
+      "openSetup": "Open set-up",
+      "overdue": "overdue",
+      "budgetDetails": "Budget details",
+      "reference": "Reference",
+      "status": {
+        "draft": "Draft",
+        "returned": "Returned",
+        "submitted": "Submitted"
+      },
+      "save": {
+        "saving": "Saving…",
+        "saved": "All changes saved",
+        "failed": "Not saved.",
+        "retry": "Retry",
+        "stale": "This review was changed in another session. Reload to see the latest figures before you edit again.",
+        "reload": "Reload"
+      },
+      "tiles": {
+        "salary": "Salary increase",
+        "bonus": "Bonus",
+        "multiplier": "Unit multiplier applied",
+        "change": "Change",
+        "perPerson": "Per person",
+        "people": "People",
+        "total": "Total"
+      },
+      "filters": {
+        "label": "Quick filters",
+        "all": "All",
+        "flags": "Has flags",
+        "talent": "Talent",
+        "performance": "Performance",
+        "flagCode": "Showing people with flag {code}."
+      },
+      "grid": {
+        "columns": "Columns",
+        "jg": "JG",
+        "merit": "Merit %",
+        "total": "Total %",
+        "newBasic": "New basic",
+        "amount": "Amount",
+        "multiplier": "Bonus multiplier",
+        "monthsValue": "{months} months",
+        "totalRow": "Total · {count, plural, one {# person} other {# people}}",
+        "rowFlags": "{count, plural, one {# flag} other {# flags}} for {name}",
+        "pages": "Pages",
+        "pageOf": "Page {page} of {pages} · {total} people",
+        "group": {
+          "employee": "Employee",
+          "payNow": "Pay now",
+          "salary": "Salary increase",
+          "bonus": "Bonus"
+        },
+        "column": {
+          "talent": "Talent",
+          "performance": "Performance",
+          "currentBasic": "Current basic",
+          "crBefore": "CR",
+          "special": "Special adj. %",
+          "crAfter": "CR after",
+          "months": "Months",
+          "lump": "Lump sum"
+        }
+      },
+      "cell": {
+        "reset": "Reset",
+        "noPromotion": "No promotion",
+        "toGrade": "To JG {grade}",
+        "unavailable": "This person is not available to you.",
+        "notEditable": "This value cannot be changed here at this step.",
+        "stale": "This review changed in another session. Reload before saving.",
+        "invalid": {
+          "percent": "Enter a percentage with up to two decimal places.",
+          "multiplier": "Enter a multiplier such as 1.25.",
+          "amount": "Enter an amount in MYR with up to two decimal places.",
+          "grade": "Choose a job grade.",
+          "note": "Keep the note to 2,000 characters or fewer."
+        }
       }
     },
     "sharedGovernance": {
@@ -25048,6 +25138,38 @@
       "unassigned": "Not set up in People Management",
       "hierarchyHelp": "Business group → business unit → company. A company with multiple unit memberships appears once, with all its unit choices inside its entry.",
       "preserved": "Existing saved coverage retained"
+    },
+    "flagText": {
+      "dataUnverified": "Group Rewards still needs to verify this person's classification and ratings.",
+      "salaryRecord": "This person needs a current monthly salary record in MYR.",
+      "noRange": "No salary range is set up for this job grade.",
+      "noBonusMonths": "No bonus months are set up for this job grade.",
+      "caseDecision": "Record the BU CEO and PBP decision on this person's ER or PIP case.",
+      "caseReason": "Give a reason for the ER or PIP case decision.",
+      "promotionSteps": "A promotion must move up one to three job grades.",
+      "promotionCase": "Write a business case of at least 30 characters for this promotion.",
+      "promotionIneligible": "This person is not eligible for a promotion in the annual review.",
+      "meritChanged": "Merit differs from the merit matrix.",
+      "promotionChanged": "The promotion increase differs from the standard 10%.",
+      "specialChanged": "The special adjustment differs from the calculated amount.",
+      "largeIncrease": "The total increase is above the individual review threshold.",
+      "aboveRange": "The new basic salary is above the range maximum.",
+      "bonusChanged": "The bonus multiplier differs from the unit multiplier.",
+      "lumpAboveBudget": "The unit lump sum is more than the remaining bonus budget supports.",
+      "lumpWithheld": "The unit lump sum is withheld (MYR 0).",
+      "lumpChanged": "The lump sum differs from the unit amount. MYR 0 means withheld.",
+      "poolOver": "{plan}: {part} is over its pool.",
+      "bonusOver": "{plan}: bonus is over the 100% budget cap.",
+      "bonusUnder": "{plan}: less than 80% of the bonus budget is used.",
+      "branchRating": "Set the branch rating and bonus segment factor for this person.",
+      "patMissing": "The unit PAT and target are not entered yet, so the bonus pool cannot be worked out.",
+      "salaryReduction": "A salary review cannot lower basic salary.",
+      "restricted": "A restricted record needs review by its authorised reviewer.",
+      "parts": {
+        "merit": "merit",
+        "promotion": "promotion",
+        "special": "special adjustment"
+      }
     }
   },
   "identityEmail": {
