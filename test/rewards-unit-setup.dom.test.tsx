@@ -8,7 +8,7 @@ import {resolveServerTree} from './helpers/server-tree';
 import {emptyRewardPreparation} from '../packs/rewards/preparation-model';
 // 70d5e7c5 — Configuration › Review Set-up for one review: checklist, one step at a time, release bar.
 const copies={en,ms,zh,ta,th,vi:viCopy};
-const state=vi.hoisted(()=>({locale:'en' as keyof typeof copies,canEdit:true,isGr:true,required:true,outsideYear:false,checks:true,steps:{} as Record<string,unknown>}));
+const state=vi.hoisted(()=>({locale:'en' as keyof typeof copies,canEdit:true,isGr:true,required:true,outsideYear:false,checks:true,steps:{} as Record<string,unknown>,previews:0}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()}),redirect:vi.fn()}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations:async(namespace:'rewards')=>createTranslator({locale:state.locale,messages:copies[state.locale],namespace})}));
@@ -25,10 +25,12 @@ vi.mock('../packs/rewards/service',()=>({
   access:{required:state.required,setupVisible:true,isGr:state.isGr,independentChecker:false,actorNames:{'person-doer':'Fictional Doer'},history:[{id:'h1',kind:'preparation-confirm',reason:'Group Rewards preparation confirm',actorName:'Fictional Doer',at:'2026-11-01T02:00:00Z'}],applied:{salary:{name:'Fictional salary structure',version:2,confirmed:true},bonus:{name:'Fictional bonus matrix',version:3,confirmed:true}},origin:{name:'Fictional shared configuration',revision:4}}}),
  getRewardUnitGovernance:async()=>({available:true,unitId:'unit',revision:8,isGr:state.isGr,canEdit:state.canEdit,canAmounts:true,inputs:{forecastCents:10000000,actualCents:11000000,targetCents:10000000,multiplierBp:10000,branchRatings:{},targetMonthsBp:20000},legacyInputs:null,pools:{standard:200000,h:50000},poolStatus:'final',branches:[],history:[],selection:{confirmedBy:null},exemption:null,senior:[],companyPatBound:false}),
  getRewardSeniorMembership:async()=>({unitId:'unit',revision:8,canEdit:true,mode:'named-members',rows:[]}),
+ // 60f1fdcd: the release preview is the server-computed "Review before saving" summary; only asked for once every step is done.
+ previewRewardPreparationRelease:async()=>{state.previews++;return{summary:{area:'preparation',itemLabel:'Release to BU CEO · Fictional Company 2026',lines:[{key:'state',label:'Unit set-up',before:'Preparing',after:'Released to BU CEO'}],changedCount:1,affected:[{reviewId:'unit',label:'Fictional Company 2026',stage:'draft',consequence:'released-to-bu'}],highImpact:['release-review']},digest:'d'.repeat(64)};},
  getRewardUnit:async()=>({companyName:'Fictional Company',name:'Fictional Unit',cycle:{name:'2026 Annual Compensation Review'},unit:{policy:{blockedFrom:'2026-10-01',blockedTo:'2026-12-31',payWindowKeep:{}}},rows:[]}),
 }));
 import SetupPage from '../app/admin/rewards/review-setup/[unitId]/page';
-afterEach(()=>{cleanup();Object.assign(state,{locale:'en',canEdit:true,isGr:true,required:true,outsideYear:false,checks:true,steps:{}});});
+afterEach(()=>{cleanup();Object.assign(state,{locale:'en',canEdit:true,isGr:true,required:true,outsideYear:false,checks:true,steps:{},previews:0});});
 async function show(searchParams:Record<string,string>={}){const tree=await resolveServerTree(await SetupPage({params:Promise.resolve({unitId:'unit'}),searchParams:Promise.resolve(searchParams)}));return render(<NextIntlClientProvider locale={state.locale} messages={copies[state.locale]} onError={error=>{throw error;}}>{tree}</NextIntlClientProvider>);}
 describe('Review Set-up detail (70d5e7c5)',()=>{
  it.each(Object.keys(copies) as (keyof typeof copies)[])('lists six numbered steps and opens one at a time in %s',async locale=>{
@@ -36,13 +38,13 @@ describe('Review Set-up detail (70d5e7c5)',()=>{
   const checklist=within(screen.getByRole('navigation',{name:copy.checklist}));
   expect(checklist.getAllByRole('link')).toHaveLength(6);
   expect(checklist.getByRole('link',{name:new RegExp(copy.steps.snapshot)}).getAttribute('aria-current')).toBe('step');
-  // Only the open step offers its confirm button; the release by the same person stays unavailable.
+  // Only the open step offers its confirm button; release stays unavailable until every step is done.
   expect(screen.getAllByRole('button',{name:copy.confirm})).toHaveLength(1);
   expect(screen.getByRole('button',{name:copy.release})).toBeDisabled();
   expect(screen.queryByText(/predates preparation history/)).toBeNull();
   await captureAiReviewScreenshots(aiReviewDomHtml(view.container),locale,'rewards-review-setup');
  },60000);
- it('says why release is unavailable, step first, then the expected date and the checker',async()=>{
+ it('says why release is unavailable, step first, then the expected date',async()=>{
   state.checks=false;await show();
   expect(screen.getByRole('status').textContent).toBe('Step 1: the employee snapshot has changes to review');
   cleanup();state.checks=true;state.steps={snapshot:{basis:'a'.repeat(64),actorId:'u',actorPersonId:'person-doer',at:'2026-11-01T02:00:00Z'},data:{basis:'a'.repeat(64),actorId:'u',actorPersonId:'person-doer',at:'2026-11-01T02:00:00Z'},excluded:{basis:'a'.repeat(64),actorId:'u',actorPersonId:'person-doer',at:'2026-11-01T02:00:00Z'},senior:{basis:'a'.repeat(64),actorId:'u',actorPersonId:'person-doer',at:'2026-11-01T02:00:00Z'},budget:{basis:'a'.repeat(64),actorId:'u',actorPersonId:'person-doer',at:'2026-11-01T02:00:00Z'},applied:{basis:'b'.repeat(64),actorId:'u',actorPersonId:'person-doer',at:'2026-11-01T02:00:00Z'}};
@@ -51,6 +53,29 @@ describe('Review Set-up detail (70d5e7c5)',()=>{
   expect(screen.getByRole('status').textContent).toBe('Step 6: not confirmed yet');
   expect(screen.getAllByText('Fictional Doer').length).toBeGreaterThan(0);
   expect(screen.getByText('Fictional salary structure · Version 2')).toBeTruthy();
+ });
+ it('releases directly with the Review before saving summary and a reason once every step is done (60f1fdcd)',async()=>{
+  const proof={basis:'a'.repeat(64),actorId:'u',actorPersonId:'person-doer',at:'2026-11-01T02:00:00Z'};
+  state.steps={snapshot:proof,data:proof,excluded:proof,senior:proof,budget:proof,applied:proof};
+  await show({step:'applied'});
+  expect(state.previews).toBe(1);
+  expect(screen.getByRole('status').textContent).toBe(en.rewardsPreparation.ready);
+  expect(screen.getByRole('button',{name:en.rewardsPreparation.release})).toBeEnabled();
+  const form=document.querySelector('input[name="summaryDigest"]')!.closest('form')!;
+  expect((form.querySelector('input[name="summaryDigest"]') as HTMLInputElement).value).toBe('d'.repeat(64));
+  expect((form.querySelector('input[name="kind"]') as HTMLInputElement).value).toBe('release');
+  expect((form.querySelector('input[name="returnStep"]') as HTMLInputElement).value).toBe('applied');
+  const reason=form.querySelector('textarea[name="reason"]') as HTMLTextAreaElement;expect(reason.required).toBe(true);expect(reason.minLength).toBe(10);
+  expect(within(form).getByText(en.rewardConfig.highImpact['release-review'])).toBeTruthy();
+  expect(within(form).getByText('Released to BU CEO')).toBeTruthy();
+  // No second-person checker: the same Group Rewards user who confirmed the steps may release.
+  expect(document.body.textContent).not.toContain(en.rewardsPreparation.independent);
+ });
+ it('does not ask for a release summary while a step is open or for a read-only viewer',async()=>{
+  await show();expect(state.previews).toBe(0);cleanup();
+  const proof={basis:'a'.repeat(64),actorId:'u',actorPersonId:'person-doer',at:'2026-11-01T02:00:00Z'};
+  state.steps={snapshot:proof,data:proof,excluded:proof,senior:proof,budget:proof,applied:proof};state.canEdit=false;state.isGr=false;
+  await show();expect(state.previews).toBe(0);expect(screen.getByRole('button',{name:en.rewardsPreparation.release})).toBeDisabled();
  });
  it('flags an exclusion window outside the review year as blocking',async()=>{
   state.outsideYear=true;await show({step:'excluded'});

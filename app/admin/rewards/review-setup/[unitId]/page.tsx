@@ -5,7 +5,7 @@ import { scopedSession } from '@/lib/scope';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { formatMoney } from '@/lib/money';
 import { Card, ErrorBanner, Field, PageHeader, inputCls } from '@/components/ui';
-import { getRewardPreparationChecklist, getRewardSeniorMembership, getRewardUnit, getRewardUnitGovernance, RewardError } from '@/packs/rewards/service';
+import { getRewardPreparationChecklist, getRewardSeniorMembership, getRewardUnit, getRewardUnitGovernance, previewRewardPreparationRelease, RewardError } from '@/packs/rewards/service';
 import { REWARD_PREPARATION_STEPS, type RewardPreparationStep } from '@/packs/rewards/preparation-model';
 import { RewardSubmit } from '@/app/rewards/submit-button';
 import { preparationAction } from '@/app/rewards/preparation-actions';
@@ -14,7 +14,7 @@ import { SourceRefresh } from '@/app/rewards/[unitId]/source-refresh';
 import { PayWindowExcluded } from '@/app/rewards/[unitId]/pay-window';
 import { UnitGovernance } from '@/app/rewards/[unitId]/unit-governance';
 import { SeniorMembership } from '@/app/rewards/[unitId]/senior-membership';
-import { ReleaseChecker } from './release-checker';
+import { ReviewBeforeSaving } from '@/app/admin/rewards/review-before-saving';
 
 type Step = RewardPreparationStep | 'history';
 const steps = REWARD_PREPARATION_STEPS;
@@ -43,6 +43,9 @@ export default async function ReviewSetupDetail({ params, searchParams }: { para
   const reasonFor = (x: RewardPreparationStep) => checks && !checks[x] ? t(x === 'excluded' && value.exclusionWindow.outsideYear ? 'reasons.window' : `reasons.${x}`) : t('reasons.unconfirmed');
   const blocker = access.required ? steps.find(x => !done(x)) : undefined;
   const firstBlocker = blocker ? t('blockedStep', { step: steps.indexOf(blocker) + 1, reason: reasonFor(blocker) }) : null;
+  // 60f1fdcd: Group Rewards releases directly (no second-person checker). The release shows the server-computed
+  // "Review before saving" summary and asks for a reason; the command refuses when the summary digest changed.
+  const releaseReview = access.required && !released && canEdit && !firstBlocker && preparation.expectedRelease ? await previewRewardPreparationRelease(s, unitId) : null;
   const time = (iso: string) => new Intl.DateTimeFormat(locale, { timeZone: 'Asia/Kuala_Lumpur', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso));
   const day = (iso: string) => new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`));
   const money = (cents: number | null) => cents === null ? t('notSet') : formatMoney(cents / 100, 'MYR');
@@ -98,7 +101,10 @@ export default async function ReviewSetupDetail({ params, searchParams }: { para
     {access.required && <Card className="space-y-4 p-5">
       {editable ? <form action={preparationAction} className="flex flex-wrap items-end gap-3">{fields(step)}<input type="hidden" name="kind" value="expected" /><Field label={t('expected')}><input name="expectedRelease" type="date" required defaultValue={preparation.expectedRelease ?? ''} className={inputCls} /></Field><RewardSubmit variant="secondary">{t('saveExpected')}</RewardSubmit></form>
         : <p className="text-sm">{t('expected')}: {preparation.expectedRelease ?? t('notSet')}</p>}
-      {!released && <ReleaseChecker fields={fields(step)} canEdit={canEdit} firstBlocker={firstBlocker} expectedRelease={preparation.expectedRelease} independentChecker={access.independentChecker} />}
+      {!released && <div className="flex flex-wrap items-center gap-3">
+        {releaseReview ? <ReviewBeforeSaving summary={releaseReview.summary} digest={releaseReview.digest} action={preparationAction} triggerLabel={t('release')} submitLabel={t('release')}>{fields(step)}<input type="hidden" name="kind" value="release" /></ReviewBeforeSaving> : <RewardSubmit disabled>{t('release')}</RewardSubmit>}
+        <p role="status" className="text-sm text-muted-foreground">{firstBlocker ?? (!preparation.expectedRelease ? t('setExpected') : t('ready'))}</p>
+      </div>}
       {released && <p role="status" className="text-sm">{t('released', { date: preparation.releasedAt?.slice(0, 10) ?? '' })}</p>}
       {value.canReopen && (released || value.needsReopen) && <form action={preparationAction} className="space-y-3">{fields(step)}<input type="hidden" name="kind" value="reopen" /><Field label={t('changeReason')}><textarea name="reason" required minLength={10} maxLength={2000} className={inputCls} /></Field><RewardSubmit variant="secondary">{t('requestChange')}</RewardSubmit></form>}
     </Card>}
