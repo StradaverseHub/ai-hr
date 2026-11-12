@@ -588,6 +588,7 @@
     "probationTracker": "ติดตามทดลองงาน",
     "myPayrollReadiness": "ความพร้อมสำหรับเงินเดือนของฉัน",
     "attendanceFormulaBuilder": "สูตรเวลาทำงาน",
+    "rewardsReviewSetup": "การตั้งค่าการพิจารณา",
     "rewardsChangeLog": "บันทึกการเปลี่ยนแปลง"
   },
   "dashboard": {
@@ -24268,7 +24269,7 @@
     "lumpSum": "เงินก้อน",
     "lumpHelp": "One suggested amount per BU, funded from the remaining bonus balance. The lower amount across the standard and JG H plans applies to both. Individual changes require exception review. Zero means withheld.",
     "suggested": "Suggested",
-    "unitAmount": "Unit amount (RM)",
+    "unitAmount": "Unit amount (MYR)",
     "automatic": "Automatic",
     "saveAmount": "Save unit amount",
     "showWorking": "Show calculation",
@@ -24349,7 +24350,7 @@
     "ruleBonus": "Bonus utilisation equals standard bonus plus individual increases, less individual reductions, plus lump sums. Spending above 100% blocks approval, including positive spending against a zero budget. Less than 80% utilisation raises a warning.",
     "ruleEC": "EC direct reports have their own discretionary plan. Only Group Rewards, CTRO and Executive Chairman may see their line items. The 7% salary reference is advisory and does not block.",
     "ruleExemption": "A documented BU exemption lifts budget caps only. Eligibility, individual review thresholds and the approval route still apply.",
-    "ruleLump": "Lump-sum tokens apply outside the standard bonus run, excluding ER cases, senior leadership and EC direct reports. The default suggestion uses the full remaining balance, rounded down in RM 50 steps. Group Rewards may configure the balance share, optional cap and rounding.",
+    "ruleLump": "Lump-sum tokens apply outside the standard bonus run, excluding ER cases, senior leadership and EC direct reports. The default suggestion uses the full remaining balance, rounded down in MYR 50 steps. Group Rewards may configure the balance share, optional cap and rounding.",
     "rulePrivacy": "A user cannot view their own reward. BU CEOs cannot view BG CEO direct reports. The prototype’s inclusion of BG direct reports in unit totals is preserved; those totals may permit inference for small groups.",
     "ruleApproval": "Every unit follows the named approval route. Any change requires a return to draft and invalidates previous approvals. All checks are calculated on the full roster, including records hidden from the reviewer.",
     "rulePosting": "Rewards never calculates statutory deductions. Approved awards enter the existing salary and payroll services. Salary snapshots are checked again at posting; a failed employee or payroll write rolls back the whole unit.",
@@ -24653,7 +24654,7 @@
       "sendResult": "{sent} sent · {skipped} skipped (blocking) · {refused} refused (changed since you opened the page)",
       "refusedItem": "{name}: {message}",
       "decided": "Decision recorded.",
-      "footer": "Salary increase is the monthly total in RM (RM/mo) for the standard and JG H plans, against the salary increase pool. Bonus is the total in RM, including lump sums, against the bonus budget. Totals count only the records you are allowed to see. Open a row to see its review."
+      "footer": "Salary increase is the monthly total in MYR (MYR/mo) for the standard and JG H plans, against the salary increase pool. Bonus is the total in MYR, including lump sums, against the bonus budget. Totals count only the records you are allowed to see. Open a row to see its review."
     },
     "calendar": {
       "title": "Reward calendar",
@@ -24715,7 +24716,7 @@
       "auto": "ใช้จำนวนที่แนะนำ ({amount})",
       "autoHelp": "เปลี่ยนตามคำแนะนำหากงบประมาณเปลี่ยน",
       "set": "กำหนดจำนวน",
-      "setHelp": "จำนวนคงที่อย่างน้อย RM 0.01 สำหรับทุกคนที่มีสิทธิ์ใน BU นี้",
+      "setHelp": "จำนวนคงที่อย่างน้อย MYR 0.01 สำหรับทุกคนที่มีสิทธิ์ใน BU นี้",
       "withhold": "ระงับสำหรับ BU นี้",
       "withholdHelp": "ไม่มีผู้ใดใน BU นี้ได้รับเงินก้อน",
       "aboveSuggestion": "จำนวนนี้เกินกว่างบประมาณคงเหลือรองรับได้ (แนะนำ {amount})",
@@ -24808,7 +24809,9 @@
         "approveTitle": "อนุมัติการทบทวนนี้หรือไม่",
         "approveHelp": "การอนุมัติของคุณจะถูกบันทึกพร้อมเหตุผล และการทบทวนจะไปยังขั้นตอนถัดไป",
         "returnTitle": "ส่งการทบทวนนี้คืนเป็นฉบับร่างหรือไม่",
-        "returnHelp": "การทบทวนจะกลับไปยัง CEO หน่วยธุรกิจเพื่อแก้ไข พวกเขาจะเห็นเหตุผลของคุณ และการอนุมัติทั้งหมดจะเริ่มใหม่"
+        "returnHelp": "การทบทวนจะกลับไปยัง CEO หน่วยธุรกิจเพื่อแก้ไข พวกเขาจะเห็นเหตุผลของคุณ และการอนุมัติทั้งหมดจะเริ่มใหม่",
+        "fixBlocks": "แก้ไขรายการที่ขัดขวาง {count} รายการก่อน",
+        "cancel": "ยกเลิก"
       },
       "person": {
         "close": "ปิด",
@@ -24816,7 +24819,95 @@
         "next": "ถัดไป",
         "position": "{index} จาก {total}",
         "openRecord": "เปิดบันทึกฉบับเต็มเพื่อแก้ไข",
-        "noFlags": "ไม่มีประเด็นสำหรับบุคคลนี้"
+        "noFlags": "ไม่มีประเด็นสำหรับบุคคลนี้",
+        "notes": "บันทึก",
+        "noNote": "ไม่มีบันทึก",
+        "saveNote": "บันทึกโน้ต",
+        "noteSaved": "บันทึกโน้ตแล้ว",
+        "businessCase": "เหตุผลทางธุรกิจของการเลื่อนตำแหน่งและผลการตัดสินกรณี",
+        "noBusinessCase": "ยังไม่มีการเขียนเหตุผลทางธุรกิจ"
+      },
+      "flagsCount": "ข้อสังเกต ({count})",
+      "flagsHelp": "รายการที่ขัดขวางแสดงก่อน แต่ละรายการบอกว่าต้องแก้อะไรและที่ใด",
+      "goToPerson": "ไปที่บุคคลนี้",
+      "openSetup": "เปิดการตั้งค่า",
+      "overdue": "เกินกำหนด",
+      "budgetDetails": "รายละเอียดงบประมาณ",
+      "reference": "ข้อมูลอ้างอิง",
+      "status": {
+        "draft": "ฉบับร่าง",
+        "returned": "ส่งกลับแล้ว",
+        "submitted": "ส่งแล้ว"
+      },
+      "save": {
+        "saving": "กำลังบันทึก…",
+        "saved": "บันทึกการเปลี่ยนแปลงทั้งหมดแล้ว",
+        "failed": "ยังไม่ได้บันทึก",
+        "retry": "ลองอีกครั้ง",
+        "stale": "การพิจารณานี้ถูกเปลี่ยนในเซสชันอื่น โหลดใหม่เพื่อดูตัวเลขล่าสุดก่อนแก้ไขอีกครั้ง",
+        "reload": "โหลดใหม่"
+      },
+      "tiles": {
+        "salary": "การขึ้นเงินเดือน",
+        "bonus": "โบนัส",
+        "multiplier": "ตัวคูณหน่วยที่ใช้",
+        "change": "เปลี่ยน",
+        "perPerson": "ต่อคน",
+        "people": "จำนวนคน",
+        "total": "รวม"
+      },
+      "filters": {
+        "label": "ตัวกรองด่วน",
+        "all": "ทั้งหมด",
+        "flags": "มีข้อสังเกต",
+        "talent": "ระดับความสามารถ",
+        "performance": "ผลการปฏิบัติงาน",
+        "flagCode": "แสดงบุคคลที่มีข้อสังเกต {code}"
+      },
+      "grid": {
+        "columns": "คอลัมน์",
+        "jg": "JG",
+        "merit": "ขึ้นตามผลงาน %",
+        "total": "รวม %",
+        "newBasic": "เงินเดือนพื้นฐานใหม่",
+        "amount": "จำนวนเงิน",
+        "multiplier": "ตัวคูณโบนัส",
+        "monthsValue": "{months} เดือน",
+        "totalRow": "รวม · {count} คน",
+        "rowFlags": "{count} ข้อสังเกตสำหรับ {name}",
+        "pages": "หน้า",
+        "pageOf": "หน้า {page} จาก {pages} · {total} คน",
+        "group": {
+          "employee": "พนักงาน",
+          "payNow": "ค่าจ้างปัจจุบัน",
+          "salary": "การขึ้นเงินเดือน",
+          "bonus": "โบนัส"
+        },
+        "column": {
+          "talent": "ระดับความสามารถ",
+          "performance": "ผลการปฏิบัติงาน",
+          "currentBasic": "เงินเดือนพื้นฐานปัจจุบัน",
+          "crBefore": "CR",
+          "special": "ปรับพิเศษ %",
+          "crAfter": "CR หลังปรับ",
+          "months": "เดือน",
+          "lump": "เงินก้อน"
+        }
+      },
+      "cell": {
+        "reset": "รีเซ็ต",
+        "noPromotion": "ไม่เลื่อนตำแหน่ง",
+        "toGrade": "เป็น JG {grade}",
+        "unavailable": "คุณไม่สามารถดูบุคคลนี้ได้",
+        "notEditable": "ไม่สามารถเปลี่ยนค่านี้ที่นี่ในขั้นตอนนี้",
+        "stale": "การพิจารณานี้เปลี่ยนในเซสชันอื่น โหลดใหม่ก่อนบันทึก",
+        "invalid": {
+          "percent": "ป้อนเปอร์เซ็นต์ที่มีทศนิยมไม่เกินสองตำแหน่ง",
+          "multiplier": "ป้อนตัวคูณ เช่น 1.25",
+          "amount": "ป้อนจำนวนเงินเป็น MYR ที่มีทศนิยมไม่เกินสองตำแหน่ง",
+          "grade": "เลือกระดับงาน",
+          "note": "บันทึกต้องไม่เกิน 2,000 ตัวอักษร"
+        }
       }
     },
     "sharedGovernance": {
@@ -24964,7 +25055,8 @@
         "exemptionConfirmed": "ยืนยันข้อยกเว้นแล้ว",
         "awardProposed": "บันทึกจำนวนเงินระดับอาวุโสแล้ว",
         "awardConfirmed": "ยืนยันยอดผู้บริหารแล้ว"
-      }
+      },
+      "confirmSenior": "ยืนยันการเลือกแผน Senior"
     },
     "policyGrids": {
       "validation": {
@@ -25049,6 +25141,38 @@
       "unassigned": "ยังไม่ได้ตั้งค่าใน People Management",
       "hierarchyHelp": "กลุ่มธุรกิจ → หน่วยธุรกิจ → บริษัท บริษัทที่อยู่หลายหน่วยจะแสดงครั้งเดียวพร้อมตัวเลือกหน่วยทั้งหมดภายในรายการ",
       "preserved": "คงขอบเขตที่บันทึกไว้"
+    },
+    "flagText": {
+      "dataUnverified": "Group Rewards ยังต้องตรวจสอบการจัดประเภทและการประเมินของบุคคลนี้",
+      "salaryRecord": "บุคคลนี้ต้องมีข้อมูลเงินเดือนรายเดือนปัจจุบันเป็น MYR",
+      "noRange": "ยังไม่ได้ตั้งช่วงเงินเดือนสำหรับระดับงานนี้",
+      "noBonusMonths": "ยังไม่ได้ตั้งจำนวนเดือนโบนัสสำหรับระดับงานนี้",
+      "caseDecision": "บันทึกการตัดสินใจของ BU CEO และ PBP สำหรับกรณี ER หรือ PIP ของบุคคลนี้",
+      "caseReason": "ระบุเหตุผลของการตัดสินกรณี ER หรือ PIP",
+      "promotionSteps": "การเลื่อนตำแหน่งต้องขึ้นหนึ่งถึงสามระดับงาน",
+      "promotionCase": "เขียนเหตุผลทางธุรกิจอย่างน้อย 30 ตัวอักษรสำหรับการเลื่อนตำแหน่งนี้",
+      "promotionIneligible": "บุคคลนี้ไม่มีสิทธิ์เลื่อนตำแหน่งในการพิจารณาประจำปี",
+      "meritChanged": "การขึ้นตามผลงานต่างจากตารางผลงาน",
+      "promotionChanged": "การขึ้นจากการเลื่อนตำแหน่งต่างจาก 10% มาตรฐาน",
+      "specialChanged": "การปรับพิเศษต่างจากจำนวนที่คำนวณได้",
+      "largeIncrease": "การขึ้นรวมสูงกว่าเกณฑ์การพิจารณารายบุคคล",
+      "aboveRange": "เงินเดือนพื้นฐานใหม่สูงกว่าค่าสูงสุดของช่วง",
+      "bonusChanged": "ตัวคูณโบนัสต่างจากตัวคูณหน่วย",
+      "lumpAboveBudget": "เงินก้อนของหน่วยสูงกว่าที่งบโบนัสที่เหลือรองรับได้",
+      "lumpWithheld": "เงินก้อนของหน่วยถูกระงับ (MYR 0)",
+      "lumpChanged": "เงินก้อนต่างจากจำนวนของหน่วย MYR 0 หมายถึงระงับ",
+      "poolOver": "{plan}: {part} เกินกองทุนของตน",
+      "bonusOver": "{plan}: โบนัสเกินเพดานงบประมาณ 100%",
+      "bonusUnder": "{plan}: ใช้งบโบนัสไม่ถึง 80%",
+      "branchRating": "ตั้งการประเมินสาขาและปัจจัยกลุ่มโบนัสสำหรับบุคคลนี้",
+      "patMissing": "ยังไม่ได้ป้อน PAT และเป้าหมายของหน่วย จึงยังคำนวณกองทุนโบนัสไม่ได้",
+      "salaryReduction": "การพิจารณาเงินเดือนไม่สามารถลดเงินเดือนพื้นฐานได้",
+      "restricted": "ข้อมูลที่ถูกจำกัดต้องได้รับการพิจารณาโดยผู้พิจารณาที่ได้รับอนุญาต",
+      "parts": {
+        "merit": "การขึ้นตามผลงาน",
+        "promotion": "การขึ้นจากการเลื่อนตำแหน่ง",
+        "special": "การปรับพิเศษ"
+      }
     }
   },
   "identityEmail": {
@@ -37516,7 +37640,6 @@
     "edit": "แก้ไขสิทธิ์"
   },
   "rewardsPreparation": {
-    "notRecorded": "ไม่มีบันทึก",
     "sourceChanged": "หลักฐานต้นทางเปลี่ยน ต้องตรวจสอบการเตรียมอีกครั้ง",
     "system": "ระบบ",
     "sharedConfiguration": "การตั้งค่าร่วม",
@@ -37526,7 +37649,6 @@
     "viewApplied": "ดูการตั้งค่าที่ใช้",
     "title": "ตั้งค่าหน่วยงาน",
     "description": "เตรียมและเผยแพร่การทบทวนไปยัง CEO ของ BU",
-    "tabs": "ส่วนการทบทวนหน่วยงาน",
     "review": "ทบทวน",
     "setup": "ตั้งค่าหน่วยงาน",
     "checklist": "เตรียมการทบทวนนี้",
@@ -37535,8 +37657,6 @@
     "saveExpected": "บันทึกวันที่เปิด",
     "notSet": "ยังไม่กำหนด",
     "readOnly": "คุณดูการตั้งค่าได้ เฉพาะ Group Rewards เท่านั้นที่แก้ไขได้",
-    "legacy": "การทบทวนนี้มีก่อนประวัติการเตรียม ขั้นตอนที่บันทึกไว้จะคงอยู่ การทบทวนประจำปีใหม่ใช้การเผยแพร่ที่บันทึกไว้",
-    "openStep": "เปิดขั้นตอน",
     "done": "เสร็จแล้ว",
     "pending": "รอยืนยัน",
     "notStarted": "ยังไม่เริ่ม",
@@ -37582,6 +37702,64 @@
       "senior": "เลือกสมาชิกและบันทึกรายชื่อสมาชิกแผนระดับอาวุโส",
       "budget": "PAT และจำนวนเดือนเป้าหมายมาจาก PAT Inputs การปรับค่าและการยกเว้นต้องมีอนุมัติที่บันทึกไว้",
       "applied": "รุ่นที่ยืนยันแล้วของการตั้งค่าร่วม โครงสร้างเงินเดือน และตารางโบนัส"
+    },
+    "blockedStep": "ขั้นตอน {step}: {reason}",
+    "reasons": {
+      "snapshot": "ภาพรวมพนักงานมีการเปลี่ยนแปลงที่ต้องตรวจสอบ",
+      "data": "บางคนยังต้องมีผลการประเมินที่ตรวจสอบแล้ว หรือยังมีรายการที่สงสัยว่าซ้ำ",
+      "excluded": "ภาพรวมมีการเปลี่ยนแปลงที่ต้องตรวจสอบก่อนรายชื่อยกเว้นจะเป็นฉบับสุดท้าย",
+      "window": "ช่วงเวลายกเว้นอยู่นอกปีที่พิจารณา",
+      "senior": "การเลือกแผน Senior ยังไม่ได้รับการยืนยัน",
+      "budget": "ข้อมูลงบประมาณยังไม่ใช่ฉบับสุดท้าย",
+      "applied": "ยังไม่ได้ใช้โครงสร้างเงินเดือนหรือตารางโบนัส",
+      "unconfirmed": "ยังไม่ได้ยืนยัน"
+    },
+    "window": {
+      "dates": "ช่วงเวลายกเว้น: {from} – {to}",
+      "outside": "ช่วงเวลายกเว้นนี้อยู่นอกปีที่พิจารณา {year} โปรดแก้ไขก่อนเผยแพร่",
+      "fix": "แก้ไขในการกำหนดค่า",
+      "outsideShort": "ช่วงยกเว้นอยู่นอกปีที่พิจารณา"
+    },
+    "detail": {
+      "title": "การตั้งค่าการพิจารณา",
+      "openReview": "เปิดการพิจารณา",
+      "back": "การตั้งค่าการพิจารณาทั้งหมด",
+      "patReadOnly": "PAT และจำนวนเดือนโบนัสเป้าหมายเป็นแบบอ่านอย่างเดียวที่นี่ โดยมาจาก",
+      "noHistory": "ยังไม่มีการบันทึกการเปลี่ยนแปลงการตั้งค่า",
+      "beforeTrackingHelp": "การพิจารณานี้ส่งถึง BU CEO ก่อนเริ่มติดตามขั้นตอน ขั้นตอนจึงแสดงว่าเสร็จก่อนเริ่มติดตาม และตัวเลขไม่เปลี่ยนแปลง"
+    },
+    "beforeTracking": "เสร็จก่อนเริ่มติดตาม",
+    "list": {
+      "noAccess": "คุณไม่มีสิทธิ์เข้าถึงการตั้งค่าการพิจารณา",
+      "help": "เตรียมการพิจารณาของแต่ละหน่วย แล้วเผยแพร่ให้ BU CEO",
+      "viewHelp": "คุณดูความคืบหน้าการตั้งค่าได้ การแก้ไขสงวนไว้สำหรับ Group Rewards",
+      "cycle": "รอบ",
+      "unit": "หน่วยธุรกิจ",
+      "status": "สถานะ",
+      "all": "ทั้งหมด",
+      "filter": "กรอง",
+      "statuses": {
+        "preparing": "กำลังเตรียม",
+        "ready": "พร้อมเผยแพร่",
+        "released": "เผยแพร่แล้ว"
+      },
+      "columns": {
+        "company": "บริษัท",
+        "unit": "หน่วยธุรกิจ",
+        "cycle": "รอบ",
+        "snapshot": "วันที่ภาพรวม",
+        "progress": "ความคืบหน้าการตั้งค่า",
+        "status": "สถานะ",
+        "expected": "วันที่คาดว่าจะเผยแพร่",
+        "updatedBy": "อัปเดตล่าสุดโดย"
+      },
+      "beforeTracking": "เสร็จก่อนเริ่มติดตาม",
+      "progress": "เสร็จ {done} จาก {total} ขั้นตอน",
+      "empty": "ไม่มีการพิจารณาของหน่วยที่ตรงกับตัวกรองนี้",
+      "pages": "หน้า",
+      "previous": "ก่อนหน้า",
+      "next": "ถัดไป",
+      "pageOf": "หน้า {page} จาก {pages} · {total} การพิจารณา"
     },
     "summaryChanged": "การทบทวนนี้มีการเปลี่ยนแปลง ตรวจดูสรุปอีกครั้งก่อนเผยแพร่"
   },

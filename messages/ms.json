@@ -588,6 +588,7 @@
     "probationTracker": "Penjejak percubaan",
     "myPayrollReadiness": "Kesediaan gaji saya",
     "attendanceFormulaBuilder": "Formula kehadiran",
+    "rewardsReviewSetup": "Persediaan Semakan",
     "rewardsChangeLog": "Log perubahan"
   },
   "dashboard": {
@@ -24268,7 +24269,7 @@
     "lumpSum": "Bayaran sekali gus",
     "lumpHelp": "One suggested amount per BU, funded from the remaining bonus balance. The lower amount across the standard and JG H plans applies to both. Individual changes require exception review. Zero means withheld.",
     "suggested": "Suggested",
-    "unitAmount": "Unit amount (RM)",
+    "unitAmount": "Unit amount (MYR)",
     "automatic": "Automatic",
     "saveAmount": "Save unit amount",
     "showWorking": "Show calculation",
@@ -24349,7 +24350,7 @@
     "ruleBonus": "Bonus utilisation equals standard bonus plus individual increases, less individual reductions, plus lump sums. Spending above 100% blocks approval, including positive spending against a zero budget. Less than 80% utilisation raises a warning.",
     "ruleEC": "EC direct reports have their own discretionary plan. Only Group Rewards, CTRO and Executive Chairman may see their line items. The 7% salary reference is advisory and does not block.",
     "ruleExemption": "A documented BU exemption lifts budget caps only. Eligibility, individual review thresholds and the approval route still apply.",
-    "ruleLump": "Lump-sum tokens apply outside the standard bonus run, excluding ER cases, senior leadership and EC direct reports. The default suggestion uses the full remaining balance, rounded down in RM 50 steps. Group Rewards may configure the balance share, optional cap and rounding.",
+    "ruleLump": "Lump-sum tokens apply outside the standard bonus run, excluding ER cases, senior leadership and EC direct reports. The default suggestion uses the full remaining balance, rounded down in MYR 50 steps. Group Rewards may configure the balance share, optional cap and rounding.",
     "rulePrivacy": "A user cannot view their own reward. BU CEOs cannot view BG CEO direct reports. The prototype’s inclusion of BG direct reports in unit totals is preserved; those totals may permit inference for small groups.",
     "ruleApproval": "Every unit follows the named approval route. Any change requires a return to draft and invalidates previous approvals. All checks are calculated on the full roster, including records hidden from the reviewer.",
     "rulePosting": "Rewards never calculates statutory deductions. Approved awards enter the existing salary and payroll services. Salary snapshots are checked again at posting; a failed employee or payroll write rolls back the whole unit.",
@@ -24653,7 +24654,7 @@
       "sendResult": "{sent} sent · {skipped} skipped (blocking) · {refused} refused (changed since you opened the page)",
       "refusedItem": "{name}: {message}",
       "decided": "Decision recorded.",
-      "footer": "Salary increase is the monthly total in RM (RM/mo) for the standard and JG H plans, against the salary increase pool. Bonus is the total in RM, including lump sums, against the bonus budget. Totals count only the records you are allowed to see. Open a row to see its review."
+      "footer": "Salary increase is the monthly total in MYR (MYR/mo) for the standard and JG H plans, against the salary increase pool. Bonus is the total in MYR, including lump sums, against the bonus budget. Totals count only the records you are allowed to see. Open a row to see its review."
     },
     "calendar": {
       "title": "Reward calendar",
@@ -24715,7 +24716,7 @@
       "auto": "Guna jumlah dicadangkan ({amount})",
       "autoHelp": "Mengikut cadangan jika bajet berubah.",
       "set": "Tetapkan jumlah",
-      "setHelp": "Jumlah tetap sekurang-kurangnya RM 0.01 untuk semua yang layak dalam BU ini.",
+      "setHelp": "Jumlah tetap sekurang-kurangnya MYR 0.01 untuk semua yang layak dalam BU ini.",
       "withhold": "Tahan untuk BU ini",
       "withholdHelp": "Tiada sesiapa dalam BU ini menerima token sekaligus.",
       "aboveSuggestion": "Jumlah ini melebihi apa yang disokong oleh baki bajet (cadangan {amount}).",
@@ -24808,7 +24809,9 @@
         "approveTitle": "Luluskan semakan ini?",
         "approveHelp": "Kelulusan anda direkodkan bersama sebab anda, dan semakan beralih ke peringkat seterusnya.",
         "returnTitle": "Kembalikan semakan ini kepada draf?",
-        "returnHelp": "Semakan kembali kepada CEO BU untuk diubah. Sebab anda ditunjukkan kepada mereka, dan setiap kelulusan bermula semula."
+        "returnHelp": "Semakan kembali kepada CEO BU untuk diubah. Sebab anda ditunjukkan kepada mereka, dan setiap kelulusan bermula semula.",
+        "fixBlocks": "{count, plural, other {Betulkan # perkara sekatan dahulu}}",
+        "cancel": "Batal"
       },
       "person": {
         "close": "Tutup",
@@ -24816,7 +24819,95 @@
         "next": "Seterusnya",
         "position": "{index} daripada {total}",
         "openRecord": "Buka rekod penuh untuk menyunting",
-        "noFlags": "Tiada perkara untuk orang ini."
+        "noFlags": "Tiada perkara untuk orang ini.",
+        "notes": "Nota",
+        "noNote": "Tiada nota.",
+        "saveNote": "Simpan nota",
+        "noteSaved": "Nota disimpan.",
+        "businessCase": "Kes perniagaan kenaikan pangkat dan keputusan kes",
+        "noBusinessCase": "Belum ada kes perniagaan ditulis."
+      },
+      "flagsCount": "Perkara ({count})",
+      "flagsHelp": "Sekatan dahulu. Setiap perkara menyatakan apa yang perlu dibetulkan dan di mana.",
+      "goToPerson": "Pergi ke orang",
+      "openSetup": "Buka persediaan",
+      "overdue": "lewat",
+      "budgetDetails": "Butiran bajet",
+      "reference": "Rujukan",
+      "status": {
+        "draft": "Draf",
+        "returned": "Dikembalikan",
+        "submitted": "Dihantar"
+      },
+      "save": {
+        "saving": "Menyimpan…",
+        "saved": "Semua perubahan disimpan",
+        "failed": "Tidak disimpan.",
+        "retry": "Cuba lagi",
+        "stale": "Semakan ini telah diubah dalam sesi lain. Muat semula untuk melihat angka terkini sebelum menyunting lagi.",
+        "reload": "Muat semula"
+      },
+      "tiles": {
+        "salary": "Kenaikan gaji",
+        "bonus": "Bonus",
+        "multiplier": "Pengganda unit yang digunakan",
+        "change": "Ubah",
+        "perPerson": "Setiap orang",
+        "people": "Orang",
+        "total": "Jumlah"
+      },
+      "filters": {
+        "label": "Penapis pantas",
+        "all": "Semua",
+        "flags": "Ada perkara",
+        "talent": "Bakat",
+        "performance": "Prestasi",
+        "flagCode": "Menunjukkan orang dengan perkara {code}."
+      },
+      "grid": {
+        "columns": "Lajur",
+        "jg": "JG",
+        "merit": "Merit %",
+        "total": "Jumlah %",
+        "newBasic": "Gaji pokok baharu",
+        "amount": "Amaun",
+        "multiplier": "Pengganda bonus",
+        "monthsValue": "{months} bulan",
+        "totalRow": "Jumlah · {count, plural, other {# orang}}",
+        "rowFlags": "{count, plural, other {# perkara}} untuk {name}",
+        "pages": "Halaman",
+        "pageOf": "Halaman {page} daripada {pages} · {total} orang",
+        "group": {
+          "employee": "Pekerja",
+          "payNow": "Gaji kini",
+          "salary": "Kenaikan gaji",
+          "bonus": "Bonus"
+        },
+        "column": {
+          "talent": "Bakat",
+          "performance": "Prestasi",
+          "currentBasic": "Gaji pokok semasa",
+          "crBefore": "CR",
+          "special": "Pelarasan khas %",
+          "crAfter": "CR selepas",
+          "months": "Bulan",
+          "lump": "Bayaran sekali gus"
+        }
+      },
+      "cell": {
+        "reset": "Set semula",
+        "noPromotion": "Tiada kenaikan pangkat",
+        "toGrade": "Ke JG {grade}",
+        "unavailable": "Orang ini tidak tersedia kepada anda.",
+        "notEditable": "Nilai ini tidak boleh diubah di sini pada peringkat ini.",
+        "stale": "Semakan ini berubah dalam sesi lain. Muat semula sebelum menyimpan.",
+        "invalid": {
+          "percent": "Masukkan peratusan dengan sehingga dua tempat perpuluhan.",
+          "multiplier": "Masukkan pengganda seperti 1.25.",
+          "amount": "Masukkan amaun dalam MYR dengan sehingga dua tempat perpuluhan.",
+          "grade": "Pilih gred jawatan.",
+          "note": "Hadkan nota kepada 2,000 aksara atau kurang."
+        }
       }
     },
     "sharedGovernance": {
@@ -24964,7 +25055,8 @@
         "exemptionConfirmed": "Pengecualian disahkan",
         "awardProposed": "Amaun Senior disimpan",
         "awardConfirmed": "Amaun Senior disahkan"
-      }
+      },
+      "confirmSenior": "Sahkan pilihan pelan Senior"
     },
     "policyGrids": {
       "validation": {
@@ -25049,6 +25141,38 @@
       "unassigned": "Belum ditetapkan dalam Pengurusan Pekerja",
       "hierarchyHelp": "Kumpulan perniagaan → unit perniagaan → syarikat. Syarikat dengan beberapa unit dipaparkan sekali bersama semua pilihan unitnya.",
       "preserved": "Liputan tersimpan sedia ada dikekalkan"
+    },
+    "flagText": {
+      "dataUnverified": "Group Rewards masih perlu mengesahkan klasifikasi dan penarafan orang ini.",
+      "salaryRecord": "Orang ini memerlukan rekod gaji bulanan semasa dalam MYR.",
+      "noRange": "Tiada julat gaji ditetapkan untuk gred jawatan ini.",
+      "noBonusMonths": "Tiada bulan bonus ditetapkan untuk gred jawatan ini.",
+      "caseDecision": "Rekodkan keputusan CEO BU dan PBP tentang kes ER atau PIP orang ini.",
+      "caseReason": "Berikan sebab bagi keputusan kes ER atau PIP.",
+      "promotionSteps": "Kenaikan pangkat mesti naik satu hingga tiga gred jawatan.",
+      "promotionCase": "Tulis kes perniagaan sekurang-kurangnya 30 aksara untuk kenaikan pangkat ini.",
+      "promotionIneligible": "Orang ini tidak layak untuk kenaikan pangkat dalam semakan tahunan.",
+      "meritChanged": "Merit berbeza daripada matriks merit.",
+      "promotionChanged": "Kenaikan pangkat berbeza daripada 10% standard.",
+      "specialChanged": "Pelarasan khas berbeza daripada amaun yang dikira.",
+      "largeIncrease": "Jumlah kenaikan melebihi had semakan individu.",
+      "aboveRange": "Gaji pokok baharu melebihi maksimum julat.",
+      "bonusChanged": "Pengganda bonus berbeza daripada pengganda unit.",
+      "lumpAboveBudget": "Bayaran sekali gus unit melebihi apa yang boleh ditampung oleh baki bajet bonus.",
+      "lumpWithheld": "Bayaran sekali gus unit ditahan (MYR 0).",
+      "lumpChanged": "Bayaran sekali gus berbeza daripada amaun unit. MYR 0 bermaksud ditahan.",
+      "poolOver": "{plan}: {part} melebihi kumpulan wangnya.",
+      "bonusOver": "{plan}: bonus melebihi had bajet 100%.",
+      "bonusUnder": "{plan}: kurang daripada 80% bajet bonus digunakan.",
+      "branchRating": "Tetapkan penarafan cawangan dan faktor segmen bonus untuk orang ini.",
+      "patMissing": "PAT dan sasaran unit belum dimasukkan, jadi kumpulan wang bonus tidak dapat dikira.",
+      "salaryReduction": "Semakan gaji tidak boleh menurunkan gaji pokok.",
+      "restricted": "Rekod terhad perlu disemak oleh penyemak yang diberi kuasa.",
+      "parts": {
+        "merit": "merit",
+        "promotion": "kenaikan pangkat",
+        "special": "pelarasan khas"
+      }
     }
   },
   "identityEmail": {
@@ -37516,7 +37640,6 @@
     "edit": "Edit pemberian"
   },
   "rewardsPreparation": {
-    "notRecorded": "Tidak direkodkan",
     "sourceChanged": "Bukti sumber berubah; persediaan perlu disemak semula.",
     "system": "Sistem",
     "sharedConfiguration": "Konfigurasi bersama",
@@ -37526,7 +37649,6 @@
     "viewApplied": "Lihat tetapan digunakan",
     "title": "Persediaan unit",
     "description": "Sediakan dan lepaskan semakan kepada CEO BU.",
-    "tabs": "Bahagian semakan unit",
     "review": "Semakan",
     "setup": "Persediaan unit",
     "checklist": "Sediakan semakan ini",
@@ -37535,8 +37657,6 @@
     "saveExpected": "Simpan tarikh keluaran",
     "notSet": "Belum ditetapkan",
     "readOnly": "Anda boleh melihat persediaan ini. Hanya Group Rewards boleh mengedit.",
-    "legacy": "Semakan ini lebih awal daripada sejarah penyediaan. Aliran kerja yang direkodkan dikekalkan; semakan tahunan baharu menggunakan pelepasan yang direkodkan.",
-    "openStep": "Buka langkah",
     "done": "Selesai",
     "pending": "Menunggu pengesahan",
     "notStarted": "Belum bermula",
@@ -37582,6 +37702,64 @@
       "senior": "Pilih ahli dan simpan keahlian pelan Senior.",
       "budget": "PAT dan bulan sasaran daripada Input PAT. Penggantian dan pengecualian memerlukan kelulusan direkodkan.",
       "applied": "Versi konfigurasi bersama, struktur gaji dan matriks bonus yang disahkan."
+    },
+    "blockedStep": "Langkah {step}: {reason}",
+    "reasons": {
+      "snapshot": "petikan pekerja mempunyai perubahan untuk disemak",
+      "data": "sesetengah orang masih memerlukan penarafan yang disahkan, atau ada pendua yang disyaki",
+      "excluded": "petikan mempunyai perubahan untuk disemak sebelum senarai pengecualian muktamad",
+      "window": "tempoh pengecualian berada di luar tahun semakan",
+      "senior": "pilihan pelan Senior belum disahkan",
+      "budget": "input bajet belum muktamad",
+      "applied": "tiada struktur gaji atau matriks bonus digunakan",
+      "unconfirmed": "belum disahkan"
+    },
+    "window": {
+      "dates": "Tempoh pengecualian: {from} – {to}",
+      "outside": "Tempoh pengecualian ini berada di luar tahun semakan {year}. Betulkan sebelum dilepaskan.",
+      "fix": "Betulkan dalam konfigurasi",
+      "outsideShort": "Tempoh pengecualian di luar tahun semakan"
+    },
+    "detail": {
+      "title": "Persediaan semakan",
+      "openReview": "Buka semakan",
+      "back": "Semua persediaan semakan",
+      "patReadOnly": "PAT dan bulan bonus sasaran hanya boleh dibaca di sini. Ia datang daripada",
+      "noHistory": "Belum ada perubahan persediaan direkodkan.",
+      "beforeTrackingHelp": "Semakan ini telah dihantar kepada CEO BU sebelum penjejakan langkah bermula. Langkahnya ditunjukkan sebagai selesai sebelum penjejakan bermula, dan angkanya tidak berubah."
+    },
+    "beforeTracking": "Selesai sebelum penjejakan bermula",
+    "list": {
+      "noAccess": "Anda tidak mempunyai akses kepada Persediaan Semakan.",
+      "help": "Sediakan setiap semakan unit, kemudian lepaskan kepada CEO BU.",
+      "viewHelp": "Anda boleh melihat kemajuan persediaan. Penyuntingan dikhaskan untuk Group Rewards.",
+      "cycle": "Kitaran",
+      "unit": "Unit Perniagaan",
+      "status": "Status",
+      "all": "Semua",
+      "filter": "Tapis",
+      "statuses": {
+        "preparing": "Sedang disediakan",
+        "ready": "Sedia untuk dilepaskan",
+        "released": "Dilepaskan"
+      },
+      "columns": {
+        "company": "Syarikat",
+        "unit": "Unit Perniagaan",
+        "cycle": "Kitaran",
+        "snapshot": "Tarikh petikan",
+        "progress": "Kemajuan persediaan",
+        "status": "Status",
+        "expected": "Tarikh jangkaan pelepasan",
+        "updatedBy": "Dikemas kini terakhir oleh"
+      },
+      "beforeTracking": "Selesai sebelum penjejakan bermula",
+      "progress": "{done} daripada {total} langkah selesai",
+      "empty": "Tiada semakan unit sepadan dengan penapis ini.",
+      "pages": "Halaman",
+      "previous": "Sebelumnya",
+      "next": "Seterusnya",
+      "pageOf": "Halaman {page} daripada {pages} · {total} semakan"
     },
     "summaryChanged": "Semakan ini telah berubah. Semak ringkasan sekali lagi sebelum melepaskan."
   },

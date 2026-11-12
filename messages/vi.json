@@ -588,6 +588,7 @@
     "probationTracker": "Theo dõi thử việc",
     "myPayrollReadiness": "Mức sẵn sàng cho kỳ lương của tôi",
     "attendanceFormulaBuilder": "Công thức chấm công",
+    "rewardsReviewSetup": "Thiết lập đánh giá",
     "rewardsChangeLog": "Nhật ký thay đổi"
   },
   "dashboard": {
@@ -24268,7 +24269,7 @@
     "lumpSum": "Thưởng một lần",
     "lumpHelp": "One suggested amount per BU, funded from the remaining bonus balance. The lower amount across the standard and JG H plans applies to both. Individual changes require exception review. Zero means withheld.",
     "suggested": "Suggested",
-    "unitAmount": "Unit amount (RM)",
+    "unitAmount": "Unit amount (MYR)",
     "automatic": "Automatic",
     "saveAmount": "Save unit amount",
     "showWorking": "Show calculation",
@@ -24349,7 +24350,7 @@
     "ruleBonus": "Bonus utilisation equals standard bonus plus individual increases, less individual reductions, plus lump sums. Spending above 100% blocks approval, including positive spending against a zero budget. Less than 80% utilisation raises a warning.",
     "ruleEC": "EC direct reports have their own discretionary plan. Only Group Rewards, CTRO and Executive Chairman may see their line items. The 7% salary reference is advisory and does not block.",
     "ruleExemption": "A documented BU exemption lifts budget caps only. Eligibility, individual review thresholds and the approval route still apply.",
-    "ruleLump": "Lump-sum tokens apply outside the standard bonus run, excluding ER cases, senior leadership and EC direct reports. The default suggestion uses the full remaining balance, rounded down in RM 50 steps. Group Rewards may configure the balance share, optional cap and rounding.",
+    "ruleLump": "Lump-sum tokens apply outside the standard bonus run, excluding ER cases, senior leadership and EC direct reports. The default suggestion uses the full remaining balance, rounded down in MYR 50 steps. Group Rewards may configure the balance share, optional cap and rounding.",
     "rulePrivacy": "A user cannot view their own reward. BU CEOs cannot view BG CEO direct reports. The prototype’s inclusion of BG direct reports in unit totals is preserved; those totals may permit inference for small groups.",
     "ruleApproval": "Every unit follows the named approval route. Any change requires a return to draft and invalidates previous approvals. All checks are calculated on the full roster, including records hidden from the reviewer.",
     "rulePosting": "Rewards never calculates statutory deductions. Approved awards enter the existing salary and payroll services. Salary snapshots are checked again at posting; a failed employee or payroll write rolls back the whole unit.",
@@ -24653,7 +24654,7 @@
       "sendResult": "{sent} sent · {skipped} skipped (blocking) · {refused} refused (changed since you opened the page)",
       "refusedItem": "{name}: {message}",
       "decided": "Decision recorded.",
-      "footer": "Salary increase is the monthly total in RM (RM/mo) for the standard and JG H plans, against the salary increase pool. Bonus is the total in RM, including lump sums, against the bonus budget. Totals count only the records you are allowed to see. Open a row to see its review."
+      "footer": "Salary increase is the monthly total in MYR (MYR/mo) for the standard and JG H plans, against the salary increase pool. Bonus is the total in MYR, including lump sums, against the bonus budget. Totals count only the records you are allowed to see. Open a row to see its review."
     },
     "calendar": {
       "title": "Reward calendar",
@@ -24715,7 +24716,7 @@
       "auto": "Dùng số tiền đề xuất ({amount})",
       "autoHelp": "Theo đề xuất nếu ngân sách thay đổi.",
       "set": "Đặt số tiền",
-      "setHelp": "Số tiền cố định tối thiểu RM 0.01 cho mọi người đủ điều kiện trong BU này.",
+      "setHelp": "Số tiền cố định tối thiểu MYR 0.01 cho mọi người đủ điều kiện trong BU này.",
       "withhold": "Không chi cho BU này",
       "withholdHelp": "Không ai trong BU này nhận khoản thưởng một lần.",
       "aboveSuggestion": "Số tiền này vượt mức ngân sách còn lại cho phép (đề xuất {amount}).",
@@ -24808,7 +24809,9 @@
         "approveTitle": "Phê duyệt bản xét duyệt này?",
         "approveHelp": "Phê duyệt của bạn được ghi lại cùng lý do và bản xét duyệt chuyển sang giai đoạn tiếp theo.",
         "returnTitle": "Trả bản xét duyệt này về bản nháp?",
-        "returnHelp": "Bản xét duyệt quay lại CEO đơn vị kinh doanh để sửa. Họ sẽ thấy lý do của bạn và mọi phê duyệt bắt đầu lại."
+        "returnHelp": "Bản xét duyệt quay lại CEO đơn vị kinh doanh để sửa. Họ sẽ thấy lý do của bạn và mọi phê duyệt bắt đầu lại.",
+        "fixBlocks": "Hãy xử lý {count} mục chặn trước",
+        "cancel": "Hủy"
       },
       "person": {
         "close": "Đóng",
@@ -24816,7 +24819,95 @@
         "next": "Tiếp",
         "position": "{index} / {total}",
         "openRecord": "Mở hồ sơ đầy đủ để chỉnh sửa",
-        "noFlags": "Người này không có điểm cần xem."
+        "noFlags": "Người này không có điểm cần xem.",
+        "notes": "Ghi chú",
+        "noNote": "Không có ghi chú.",
+        "saveNote": "Lưu ghi chú",
+        "noteSaved": "Đã lưu ghi chú.",
+        "businessCase": "Lý do kinh doanh cho thăng chức và quyết định hồ sơ",
+        "noBusinessCase": "Chưa có lý do kinh doanh."
+      },
+      "flagsCount": "Cảnh báo ({count})",
+      "flagsHelp": "Mục chặn hiển thị trước. Mỗi mục cho biết cần sửa gì và ở đâu.",
+      "goToPerson": "Đến người này",
+      "openSetup": "Mở thiết lập",
+      "overdue": "quá hạn",
+      "budgetDetails": "Chi tiết ngân sách",
+      "reference": "Tham khảo",
+      "status": {
+        "draft": "Bản nháp",
+        "returned": "Đã trả lại",
+        "submitted": "Đã gửi"
+      },
+      "save": {
+        "saving": "Đang lưu…",
+        "saved": "Đã lưu mọi thay đổi",
+        "failed": "Chưa lưu.",
+        "retry": "Thử lại",
+        "stale": "Đánh giá này đã được thay đổi trong một phiên khác. Hãy tải lại để xem số liệu mới nhất trước khi chỉnh sửa tiếp.",
+        "reload": "Tải lại"
+      },
+      "tiles": {
+        "salary": "Tăng lương",
+        "bonus": "Thưởng",
+        "multiplier": "Hệ số đơn vị đang áp dụng",
+        "change": "Thay đổi",
+        "perPerson": "Mỗi người",
+        "people": "Số người",
+        "total": "Tổng"
+      },
+      "filters": {
+        "label": "Bộ lọc nhanh",
+        "all": "Tất cả",
+        "flags": "Có cảnh báo",
+        "talent": "Tài năng",
+        "performance": "Hiệu suất",
+        "flagCode": "Đang hiển thị những người có cảnh báo {code}."
+      },
+      "grid": {
+        "columns": "Cột",
+        "jg": "JG",
+        "merit": "Tăng theo thành tích %",
+        "total": "Tổng %",
+        "newBasic": "Lương cơ bản mới",
+        "amount": "Số tiền",
+        "multiplier": "Hệ số thưởng",
+        "monthsValue": "{months} tháng",
+        "totalRow": "Tổng · {count} người",
+        "rowFlags": "{count} cảnh báo cho {name}",
+        "pages": "Trang",
+        "pageOf": "Trang {page}/{pages} · {total} người",
+        "group": {
+          "employee": "Nhân viên",
+          "payNow": "Lương hiện tại",
+          "salary": "Tăng lương",
+          "bonus": "Thưởng"
+        },
+        "column": {
+          "talent": "Tài năng",
+          "performance": "Hiệu suất",
+          "currentBasic": "Lương cơ bản hiện tại",
+          "crBefore": "CR",
+          "special": "Điều chỉnh đặc biệt %",
+          "crAfter": "CR sau",
+          "months": "Tháng",
+          "lump": "Khoản trọn gói"
+        }
+      },
+      "cell": {
+        "reset": "Đặt lại",
+        "noPromotion": "Không thăng chức",
+        "toGrade": "Lên JG {grade}",
+        "unavailable": "Bạn không xem được người này.",
+        "notEditable": "Không thể thay đổi giá trị này ở đây tại bước này.",
+        "stale": "Đánh giá này đã thay đổi trong một phiên khác. Hãy tải lại trước khi lưu.",
+        "invalid": {
+          "percent": "Nhập tỷ lệ phần trăm với tối đa hai chữ số thập phân.",
+          "multiplier": "Nhập hệ số, ví dụ 1.25.",
+          "amount": "Nhập số tiền bằng MYR với tối đa hai chữ số thập phân.",
+          "grade": "Chọn một bậc công việc.",
+          "note": "Giữ ghi chú trong tối đa 2.000 ký tự."
+        }
       }
     },
     "sharedGovernance": {
@@ -24964,7 +25055,8 @@
         "exemptionConfirmed": "Đã xác nhận miễn trừ",
         "awardProposed": "Đã lưu số tiền cấp cao",
         "awardConfirmed": "Đã xác nhận số tiền cấp cao"
-      }
+      },
+      "confirmSenior": "Xác nhận lựa chọn kế hoạch Senior"
     },
     "policyGrids": {
       "validation": {
@@ -25049,6 +25141,38 @@
       "unassigned": "Chưa thiết lập trong Quản lý nhân sự",
       "hierarchyHelp": "Nhóm kinh doanh → đơn vị kinh doanh → công ty. Công ty thuộc nhiều đơn vị chỉ xuất hiện một lần với tất cả lựa chọn đơn vị trong mục đó.",
       "preserved": "Giữ nguyên phạm vi đã lưu"
+    },
+    "flagText": {
+      "dataUnverified": "Group Rewards vẫn cần xác minh phân loại và xếp loại của người này.",
+      "salaryRecord": "Người này cần một bản ghi lương tháng hiện hành bằng MYR.",
+      "noRange": "Chưa thiết lập khung lương cho bậc công việc này.",
+      "noBonusMonths": "Chưa thiết lập số tháng thưởng cho bậc công việc này.",
+      "caseDecision": "Ghi nhận quyết định của CEO BU và PBP về hồ sơ ER hoặc PIP của người này.",
+      "caseReason": "Nêu lý do cho quyết định hồ sơ ER hoặc PIP.",
+      "promotionSteps": "Thăng chức phải tăng từ một đến ba bậc công việc.",
+      "promotionCase": "Viết lý do kinh doanh ít nhất 30 ký tự cho lần thăng chức này.",
+      "promotionIneligible": "Người này không đủ điều kiện thăng chức trong đánh giá thường niên.",
+      "meritChanged": "Mức tăng theo thành tích khác với ma trận thành tích.",
+      "promotionChanged": "Mức tăng do thăng chức khác với mức chuẩn 10%.",
+      "specialChanged": "Điều chỉnh đặc biệt khác với số tiền đã tính.",
+      "largeIncrease": "Tổng mức tăng vượt ngưỡng xem xét cá nhân.",
+      "aboveRange": "Lương cơ bản mới cao hơn mức tối đa của khung.",
+      "bonusChanged": "Hệ số thưởng khác với hệ số đơn vị.",
+      "lumpAboveBudget": "Khoản trọn gói của đơn vị vượt quá mức ngân sách thưởng còn lại cho phép.",
+      "lumpWithheld": "Khoản trọn gói của đơn vị đang tạm giữ (MYR 0).",
+      "lumpChanged": "Khoản trọn gói khác với số tiền của đơn vị. MYR 0 nghĩa là tạm giữ.",
+      "poolOver": "{plan}: {part} vượt quỹ của mình.",
+      "bonusOver": "{plan}: thưởng vượt mức trần ngân sách 100%.",
+      "bonusUnder": "{plan}: mới dùng dưới 80% ngân sách thưởng.",
+      "branchRating": "Thiết lập xếp loại chi nhánh và hệ số phân khúc thưởng cho người này.",
+      "patMissing": "Chưa nhập PAT và mục tiêu của đơn vị nên chưa thể tính quỹ thưởng.",
+      "salaryReduction": "Đánh giá lương không được giảm lương cơ bản.",
+      "restricted": "Hồ sơ bị hạn chế cần được người đánh giá có thẩm quyền xem xét.",
+      "parts": {
+        "merit": "tăng theo thành tích",
+        "promotion": "tăng do thăng chức",
+        "special": "điều chỉnh đặc biệt"
+      }
     }
   },
   "identityEmail": {
@@ -37516,7 +37640,6 @@
     "edit": "Sửa quyền"
   },
   "rewardsPreparation": {
-    "notRecorded": "Chưa ghi nhận",
     "sourceChanged": "Dữ liệu nguồn đã thay đổi; cần kiểm tra lại việc chuẩn bị.",
     "system": "Hệ thống",
     "sharedConfiguration": "Cấu hình chung",
@@ -37526,7 +37649,6 @@
     "viewApplied": "Xem thiết lập đã áp dụng",
     "title": "Thiết lập đơn vị",
     "description": "Chuẩn bị và phát hành đợt đánh giá cho CEO đơn vị kinh doanh.",
-    "tabs": "Các phần đánh giá đơn vị",
     "review": "Đánh giá",
     "setup": "Thiết lập đơn vị",
     "checklist": "Chuẩn bị đánh giá này",
@@ -37535,8 +37657,6 @@
     "saveExpected": "Lưu ngày phát hành",
     "notSet": "Chưa đặt",
     "readOnly": "Bạn có thể xem thiết lập. Chỉ Group Rewards được chỉnh sửa.",
-    "legacy": "Đợt đánh giá này có trước lịch sử chuẩn bị. Quy trình đã ghi được giữ nguyên; các đợt đánh giá hằng năm mới dùng việc phát hành có ghi nhận.",
-    "openStep": "Mở bước",
     "done": "Hoàn tất",
     "pending": "Chờ xác nhận",
     "notStarted": "Chưa bắt đầu",
@@ -37582,6 +37702,64 @@
       "senior": "Chọn thành viên và lưu danh sách thành viên kế hoạch cấp cao.",
       "budget": "PAT và số tháng mục tiêu lấy từ PAT Inputs. Giá trị ghi đè và miễn trừ cần phê duyệt được lưu.",
       "applied": "Các phiên bản đã xác nhận của cấu hình chung, cơ cấu lương và ma trận thưởng."
+    },
+    "blockedStep": "Bước {step}: {reason}",
+    "reasons": {
+      "snapshot": "ảnh chụp nhân viên có thay đổi cần xem xét",
+      "data": "một số người vẫn cần xếp loại đã xác minh, hoặc còn một bản ghi nghi trùng",
+      "excluded": "ảnh chụp có thay đổi cần xem xét trước khi danh sách loại trừ hoàn tất",
+      "window": "khoảng thời gian loại trừ nằm ngoài năm đánh giá",
+      "senior": "lựa chọn kế hoạch Senior chưa được xác nhận",
+      "budget": "dữ liệu ngân sách chưa phải bản cuối",
+      "applied": "chưa áp dụng cơ cấu lương hoặc ma trận thưởng",
+      "unconfirmed": "chưa được xác nhận"
+    },
+    "window": {
+      "dates": "Khoảng thời gian loại trừ: {from} – {to}",
+      "outside": "Khoảng thời gian loại trừ này nằm ngoài năm đánh giá {year}. Hãy sửa trước khi phát hành.",
+      "fix": "Sửa trong cấu hình",
+      "outsideShort": "Khoảng loại trừ nằm ngoài năm đánh giá"
+    },
+    "detail": {
+      "title": "Thiết lập đánh giá",
+      "openReview": "Mở đánh giá",
+      "back": "Tất cả thiết lập đánh giá",
+      "patReadOnly": "PAT và số tháng thưởng mục tiêu chỉ đọc ở đây. Chúng lấy từ",
+      "noHistory": "Chưa ghi nhận thay đổi thiết lập nào.",
+      "beforeTrackingHelp": "Đánh giá này đã đến CEO BU trước khi bắt đầu theo dõi từng bước. Các bước được hiển thị là đã xong trước khi theo dõi, và số liệu không thay đổi."
+    },
+    "beforeTracking": "Đã xong trước khi bắt đầu theo dõi",
+    "list": {
+      "noAccess": "Bạn không có quyền truy cập Thiết lập đánh giá.",
+      "help": "Chuẩn bị từng đánh giá đơn vị, rồi phát hành cho CEO BU.",
+      "viewHelp": "Bạn có thể xem tiến độ thiết lập. Chỉ Group Rewards được chỉnh sửa.",
+      "cycle": "Chu kỳ",
+      "unit": "Đơn vị kinh doanh",
+      "status": "Trạng thái",
+      "all": "Tất cả",
+      "filter": "Lọc",
+      "statuses": {
+        "preparing": "Đang chuẩn bị",
+        "ready": "Sẵn sàng phát hành",
+        "released": "Đã phát hành"
+      },
+      "columns": {
+        "company": "Công ty",
+        "unit": "Đơn vị kinh doanh",
+        "cycle": "Chu kỳ",
+        "snapshot": "Ngày chụp dữ liệu",
+        "progress": "Tiến độ thiết lập",
+        "status": "Trạng thái",
+        "expected": "Ngày dự kiến phát hành",
+        "updatedBy": "Cập nhật lần cuối bởi"
+      },
+      "beforeTracking": "Đã xong trước khi bắt đầu theo dõi",
+      "progress": "Đã xong {done}/{total} bước",
+      "empty": "Không có đánh giá đơn vị nào khớp bộ lọc.",
+      "pages": "Trang",
+      "previous": "Trước",
+      "next": "Sau",
+      "pageOf": "Trang {page}/{pages} · {total} đánh giá"
     },
     "summaryChanged": "Đợt đánh giá này đã thay đổi. Hãy xem lại tóm tắt trước khi phát hành."
   },

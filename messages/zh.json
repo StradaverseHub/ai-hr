@@ -588,6 +588,7 @@
     "probationTracker": "试用期跟踪",
     "myPayrollReadiness": "我的发薪准备",
     "attendanceFormulaBuilder": "考勤公式",
+    "rewardsReviewSetup": "审核设置",
     "rewardsChangeLog": "变更日志"
   },
   "dashboard": {
@@ -24268,7 +24269,7 @@
     "lumpSum": "一次性奖励",
     "lumpHelp": "One suggested amount per BU, funded from the remaining bonus balance. The lower amount across the standard and JG H plans applies to both. Individual changes require exception review. Zero means withheld.",
     "suggested": "Suggested",
-    "unitAmount": "Unit amount (RM)",
+    "unitAmount": "Unit amount (MYR)",
     "automatic": "Automatic",
     "saveAmount": "Save unit amount",
     "showWorking": "Show calculation",
@@ -24349,7 +24350,7 @@
     "ruleBonus": "Bonus utilisation equals standard bonus plus individual increases, less individual reductions, plus lump sums. Spending above 100% blocks approval, including positive spending against a zero budget. Less than 80% utilisation raises a warning.",
     "ruleEC": "EC direct reports have their own discretionary plan. Only Group Rewards, CTRO and Executive Chairman may see their line items. The 7% salary reference is advisory and does not block.",
     "ruleExemption": "A documented BU exemption lifts budget caps only. Eligibility, individual review thresholds and the approval route still apply.",
-    "ruleLump": "Lump-sum tokens apply outside the standard bonus run, excluding ER cases, senior leadership and EC direct reports. The default suggestion uses the full remaining balance, rounded down in RM 50 steps. Group Rewards may configure the balance share, optional cap and rounding.",
+    "ruleLump": "Lump-sum tokens apply outside the standard bonus run, excluding ER cases, senior leadership and EC direct reports. The default suggestion uses the full remaining balance, rounded down in MYR 50 steps. Group Rewards may configure the balance share, optional cap and rounding.",
     "rulePrivacy": "A user cannot view their own reward. BU CEOs cannot view BG CEO direct reports. The prototype’s inclusion of BG direct reports in unit totals is preserved; those totals may permit inference for small groups.",
     "ruleApproval": "Every unit follows the named approval route. Any change requires a return to draft and invalidates previous approvals. All checks are calculated on the full roster, including records hidden from the reviewer.",
     "rulePosting": "Rewards never calculates statutory deductions. Approved awards enter the existing salary and payroll services. Salary snapshots are checked again at posting; a failed employee or payroll write rolls back the whole unit.",
@@ -24653,7 +24654,7 @@
       "sendResult": "{sent} sent · {skipped} skipped (blocking) · {refused} refused (changed since you opened the page)",
       "refusedItem": "{name}: {message}",
       "decided": "Decision recorded.",
-      "footer": "Salary increase is the monthly total in RM (RM/mo) for the standard and JG H plans, against the salary increase pool. Bonus is the total in RM, including lump sums, against the bonus budget. Totals count only the records you are allowed to see. Open a row to see its review."
+      "footer": "Salary increase is the monthly total in MYR (MYR/mo) for the standard and JG H plans, against the salary increase pool. Bonus is the total in MYR, including lump sums, against the bonus budget. Totals count only the records you are allowed to see. Open a row to see its review."
     },
     "calendar": {
       "title": "Reward calendar",
@@ -24715,7 +24716,7 @@
       "auto": "使用建议金额（{amount}）",
       "autoHelp": "预算变化时随建议金额调整。",
       "set": "设定金额",
-      "setHelp": "为本业务单位所有符合资格者设定至少 RM 0.01 的固定金额。",
+      "setHelp": "为本业务单位所有符合资格者设定至少 MYR 0.01 的固定金额。",
       "withhold": "本业务单位不发放",
       "withholdHelp": "本业务单位无人获得一次性奖励。",
       "aboveSuggestion": "该金额超出剩余预算可支持的金额（建议 {amount}）。",
@@ -24808,7 +24809,9 @@
         "approveTitle": "批准此审核？",
         "approveHelp": "您的批准及原因将被记录，审核进入下一阶段。",
         "returnTitle": "将此审核退回草稿？",
-        "returnHelp": "审核将退回给业务单位总裁修改。对方可以看到您的原因，所有审批将重新开始。"
+        "returnHelp": "审核将退回给业务单位总裁修改。对方可以看到您的原因，所有审批将重新开始。",
+        "fixBlocks": "请先处理 {count} 项阻止项",
+        "cancel": "取消"
       },
       "person": {
         "close": "关闭",
@@ -24816,7 +24819,95 @@
         "next": "下一位",
         "position": "第 {index} / {total} 位",
         "openRecord": "打开完整记录进行编辑",
-        "noFlags": "此人没有待查事项。"
+        "noFlags": "此人没有待查事项。",
+        "notes": "备注",
+        "noNote": "暂无备注。",
+        "saveNote": "保存备注",
+        "noteSaved": "备注已保存。",
+        "businessCase": "晋升业务理由和个案决定",
+        "noBusinessCase": "尚未填写业务理由。"
+      },
+      "flagsCount": "待查事项（{count}）",
+      "flagsHelp": "阻止项在前。每一项都说明要修正什么、在哪里修正。",
+      "goToPerson": "查看此人",
+      "openSetup": "打开设置",
+      "overdue": "已逾期",
+      "budgetDetails": "预算详情",
+      "reference": "参考",
+      "status": {
+        "draft": "草稿",
+        "returned": "已退回",
+        "submitted": "已提交"
+      },
+      "save": {
+        "saving": "正在保存…",
+        "saved": "所有更改已保存",
+        "failed": "未保存。",
+        "retry": "重试",
+        "stale": "此审核已在另一会话中更改。请重新加载以查看最新数据后再编辑。",
+        "reload": "重新加载"
+      },
+      "tiles": {
+        "salary": "加薪",
+        "bonus": "奖金",
+        "multiplier": "已应用的单位乘数",
+        "change": "更改",
+        "perPerson": "每人",
+        "people": "人数",
+        "total": "合计"
+      },
+      "filters": {
+        "label": "快速筛选",
+        "all": "全部",
+        "flags": "有待查事项",
+        "talent": "人才评级",
+        "performance": "绩效评级",
+        "flagCode": "显示有待查事项 {code} 的人员。"
+      },
+      "grid": {
+        "columns": "列",
+        "jg": "职级",
+        "merit": "绩效加薪 %",
+        "total": "合计 %",
+        "newBasic": "新基本工资",
+        "amount": "金额",
+        "multiplier": "奖金乘数",
+        "monthsValue": "{months} 个月",
+        "totalRow": "合计 · {count} 人",
+        "rowFlags": "{name} 有 {count} 项待查事项",
+        "pages": "页码",
+        "pageOf": "第 {page} 页，共 {pages} 页 · {total} 人",
+        "group": {
+          "employee": "员工",
+          "payNow": "当前薪资",
+          "salary": "加薪",
+          "bonus": "奖金"
+        },
+        "column": {
+          "talent": "人才评级",
+          "performance": "绩效评级",
+          "currentBasic": "当前基本工资",
+          "crBefore": "CR",
+          "special": "特别调整 %",
+          "crAfter": "调整后 CR",
+          "months": "月数",
+          "lump": "一次性奖励"
+        }
+      },
+      "cell": {
+        "reset": "重置",
+        "noPromotion": "不晋升",
+        "toGrade": "升至职级 {grade}",
+        "unavailable": "您无法查看此人。",
+        "notEditable": "在此阶段无法在这里更改此数值。",
+        "stale": "此审核已在另一会话中更改。请重新加载后再保存。",
+        "invalid": {
+          "percent": "请输入最多两位小数的百分比。",
+          "multiplier": "请输入乘数，例如 1.25。",
+          "amount": "请输入最多两位小数的 MYR 金额。",
+          "grade": "请选择职级。",
+          "note": "备注请保持在 2,000 个字符以内。"
+        }
       }
     },
     "sharedGovernance": {
@@ -24964,7 +25055,8 @@
         "exemptionConfirmed": "豁免已确认",
         "awardProposed": "已保存高级人员金额",
         "awardConfirmed": "高管金额已确认"
-      }
+      },
+      "confirmSenior": "确认高级计划人选"
     },
     "policyGrids": {
       "validation": {
@@ -25049,6 +25141,38 @@
       "unassigned": "尚未在人员管理中设置",
       "hierarchyHelp": "业务集团 → 业务单位 → 公司。属于多个单位的公司只显示一次，并在条目内列出所有单位选项。",
       "preserved": "保留现有已保存范围"
+    },
+    "flagText": {
+      "dataUnverified": "集团薪酬仍需核实此人的分类和评级。",
+      "salaryRecord": "此人需要一条有效的 MYR 月薪记录。",
+      "noRange": "此职级尚未设置薪资范围。",
+      "noBonusMonths": "此职级尚未设置奖金月数。",
+      "caseDecision": "请记录业务单位总裁和 PBP 对此人 ER 或 PIP 个案的决定。",
+      "caseReason": "请填写 ER 或 PIP 个案决定的原因。",
+      "promotionSteps": "晋升必须提升一至三个职级。",
+      "promotionCase": "请为此晋升填写至少 30 个字符的业务理由。",
+      "promotionIneligible": "此人不符合年度审核的晋升资格。",
+      "meritChanged": "绩效加薪与绩效矩阵不同。",
+      "promotionChanged": "晋升加薪与标准的 10% 不同。",
+      "specialChanged": "特别调整与计算金额不同。",
+      "largeIncrease": "总加薪超过个人审核阈值。",
+      "aboveRange": "新基本工资高于薪资范围上限。",
+      "bonusChanged": "奖金乘数与单位乘数不同。",
+      "lumpAboveBudget": "单位一次性奖励超过剩余奖金预算可支持的金额。",
+      "lumpWithheld": "单位一次性奖励已暂停发放（MYR 0）。",
+      "lumpChanged": "一次性奖励与单位金额不同。MYR 0 表示暂停发放。",
+      "poolOver": "{plan}：{part}超出其预算池。",
+      "bonusOver": "{plan}：奖金超出 100% 预算上限。",
+      "bonusUnder": "{plan}：奖金预算使用不足 80%。",
+      "branchRating": "请为此人设置分行评级和奖金分部系数。",
+      "patMissing": "尚未输入单位 PAT 和目标，因此无法计算奖金池。",
+      "salaryReduction": "薪资审核不能降低基本工资。",
+      "restricted": "受限记录需要由获授权的审核人审核。",
+      "parts": {
+        "merit": "绩效加薪",
+        "promotion": "晋升加薪",
+        "special": "特别调整"
+      }
     }
   },
   "identityEmail": {
@@ -37516,7 +37640,6 @@
     "edit": "编辑授权"
   },
   "rewardsPreparation": {
-    "notRecorded": "未记录",
     "sourceChanged": "源数据已更改，须重新核查准备工作。",
     "system": "系统",
     "sharedConfiguration": "共享配置",
@@ -37526,7 +37649,6 @@
     "viewApplied": "查看已应用设置",
     "title": "单位设置",
     "description": "准备评审并发布给业务单元 CEO。",
-    "tabs": "单位评审部分",
     "review": "评审",
     "setup": "单位设置",
     "checklist": "准备本次评审",
@@ -37535,8 +37657,6 @@
     "saveExpected": "保存发布日期",
     "notSet": "未设置",
     "readOnly": "您可查看此设置。仅集团薪酬团队可编辑。",
-    "legacy": "此评审早于准备历史记录。其已记录的流程将保留；新的年度评审使用已记录的发布流程。",
-    "openStep": "打开步骤",
     "done": "已完成",
     "pending": "待确认",
     "notStarted": "未开始",
@@ -37582,6 +37702,64 @@
       "senior": "选择成员并保存高级计划成员名单。",
       "budget": "PAT及目标月数来自PAT输入。覆盖值及豁免须有已记录的审批。",
       "applied": "已确认的共享配置、薪资结构及奖金矩阵版本。"
+    },
+    "blockedStep": "第 {step} 步：{reason}",
+    "reasons": {
+      "snapshot": "员工快照有待审阅的变更",
+      "data": "部分人员的评级仍需核实，或存在疑似重复记录",
+      "excluded": "快照有待审阅的变更，排除名单尚未最终确定",
+      "window": "排除期不在审核年度内",
+      "senior": "高级计划人选尚未确认",
+      "budget": "预算输入尚未最终确定",
+      "applied": "未应用薪资结构或奖金矩阵",
+      "unconfirmed": "尚未确认"
+    },
+    "window": {
+      "dates": "排除期：{from} – {to}",
+      "outside": "此排除期不在 {year} 审核年度内。请在发布前修正。",
+      "fix": "在配置中修正",
+      "outsideShort": "排除期不在审核年度内"
+    },
+    "detail": {
+      "title": "审核设置",
+      "openReview": "打开审核",
+      "back": "所有审核设置",
+      "patReadOnly": "PAT 和目标奖金月数在此处为只读，来源于",
+      "noHistory": "尚无设置变更记录。",
+      "beforeTrackingHelp": "此审核在开始步骤跟踪之前已交给业务单位总裁。其步骤显示为跟踪开始前已完成，数据未改变。"
+    },
+    "beforeTracking": "跟踪开始前已完成",
+    "list": {
+      "noAccess": "您无权访问审核设置。",
+      "help": "准备每个单位审核，然后发布给业务单位总裁。",
+      "viewHelp": "您可以查看设置进度。只有集团薪酬可以编辑。",
+      "cycle": "周期",
+      "unit": "业务单位",
+      "status": "状态",
+      "all": "全部",
+      "filter": "筛选",
+      "statuses": {
+        "preparing": "准备中",
+        "ready": "可发布",
+        "released": "已发布"
+      },
+      "columns": {
+        "company": "公司",
+        "unit": "业务单位",
+        "cycle": "周期",
+        "snapshot": "快照日期",
+        "progress": "设置进度",
+        "status": "状态",
+        "expected": "预计发布日期",
+        "updatedBy": "最后更新人"
+      },
+      "beforeTracking": "跟踪开始前已完成",
+      "progress": "已完成 {done}/{total} 步",
+      "empty": "没有符合这些筛选条件的单位审核。",
+      "pages": "页码",
+      "previous": "上一页",
+      "next": "下一页",
+      "pageOf": "第 {page} 页，共 {pages} 页 · {total} 个审核"
     },
     "summaryChanged": "此评审已发生变化。发布前请重新查看摘要。"
   },
