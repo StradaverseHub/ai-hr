@@ -271,10 +271,10 @@ describe('Manager Today: the team cards ported from the retired dashboard',()=>{
   const team=view.panel('today-team-coming-up')!;
   const lines=[...team.querySelectorAll('[data-today-team-line]')];
   expect(lines.map(line=>line.getAttribute('data-today-team-line'))).toEqual(['cutoff','review','holiday','holiday']);
-  expect(text(lines[1])).toBe('Review for Daniel Fictional due 20 Nov');
+  expect(text(lines[1])).toBe('Review for Daniel Fictional due Nov 20');
   expect(lines[1].querySelector('a')?.getAttribute('href')).toContain('/approvals?category=managerReviews&task=managerReview&requestId=11111111-2222-3333-4444-555555555555');
-  expect(text(lines[2])).toBe('Fictional Day, a public holiday, on 26 Nov');
-  expect(text(lines[3])).toBe('A public holiday on 1 Dec');
+  expect(text(lines[2])).toBe('Fictional Day, a public holiday, on Nov 26');
+  expect(text(lines[3])).toBe('A public holiday on Dec 1');
  });
  it('gives an administrator neither the team attendance nor the team reminders',async()=>{
   const view=await show('admin');

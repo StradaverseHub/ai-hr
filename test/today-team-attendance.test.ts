@@ -14,42 +14,58 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import type {SessionContext} from '../db/client';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {teamAttendanceToday} from '../packs/attendance/service';
-import {closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {hireEmployee,setReportingLine} from '../core/org';
+import {createCompany,createDepartment} from '../core/admin';
+import {attendance as attendanceTable} from '../db/schema';
+import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 
-const COMPANIES=70,EMPLOYMENTS=1000;
+const COMPANIES=70,EMPLOYMENTS=1000,TEAM=16;
 const STATUSES=['present','late','half_day','absent'] as const;
 const statusOf=(n:number)=>STATUSES[n%4];
-let b:Base,today:string,companyIds:string[],employmentIds:string[],personIds:string[];
+let b:Base,today:string,second:string,companyIds:string[],employmentIds:string[],personIds:string[];
 
-/** Employment n (1-based) is in company (n-1)%70. */
-const companyOf=(n:number)=>companyIds[(n-1)%COMPANIES];
+/** Team member n (2..16) works in the seeded company when even, in the second company when odd; the manager (1) in
+ * the seeded company. The other 984 employments are spread over all 70 companies. */
+const companyOf=(n:number)=>n<=TEAM?(n%2===0||n===1?b.companyId:second):companyIds[(n-1)%COMPANIES];
 async function fixture(){
  b=await seedBase();today=todayInKualaLumpur();
+ const admin=adminCtx(b);
+ second=(await createCompany(admin,{legalName:'Fictional Second Team Sdn Bhd'})).id;
+ const secondDept=await createDepartment(admin,{companyId:second,name:'Fictional Second Department'});
+ // The team, through the canonical hire and reporting-line owners (as the My Team suites build it).
+ const team:{personId:string;employmentId:string}[]=[];
+ for(let n=1;n<=TEAM;n++){
+  const inSecond=companyOf(n)===second;
+  team.push(await hireEmployee(admin,{person:{fullName:'Fictional team '+String(n).padStart(4,'0'),primaryEmail:randomUUID()+'@example.invalid'},
+   companyId:inSecond?second:b.companyId,departmentId:inSecond?secondDept.id:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01'}));
+ }
+ for(let n=2;n<=11;n++)await setReportingLine(admin,{subordinateEmploymentId:team[n-1].employmentId,managerEmploymentId:team[0].employmentId,lineType:'administrative',validFrom:'2026-01-01'});
+ for(let n=12;n<=16;n++)await setReportingLine(admin,{subordinateEmploymentId:team[n-1].employmentId,managerEmploymentId:team[1].employmentId,lineType:'administrative',validFrom:'2026-01-01'});
+ // The rest of the group, in bulk: 68 more companies and 984 more employments.
  const cp=randomUUID().slice(0,24),pp=randomUUID().slice(0,24),ep=randomUUID().slice(0,24);
  const id=(prefix:string,n:number)=>prefix+String(n).padStart(12,'0');
- companyIds=[b.companyId,...Array.from({length:COMPANIES-1},(_,i)=>id(cp,i+1))];
- personIds=Array.from({length:EMPLOYMENTS},(_,i)=>id(pp,i+1));employmentIds=Array.from({length:EMPLOYMENTS},(_,i)=>id(ep,i+1));
+ companyIds=[b.companyId,second,...Array.from({length:COMPANIES-2},(_,i)=>id(cp,i+1))];
+ const rest=EMPLOYMENTS-TEAM;
  await owner.client.begin(async tx=>{
   await tx`insert into company(id,tenant_id,legal_name) select (${cp}||lpad(n::text,12,'0'))::uuid,${b.tenantId}::uuid,'Fictional Group '||lpad(n::text,3,'0')||' Sdn Bhd'
-   from generate_series(1,${COMPANIES-1}::integer)n`;
-  await tx`insert into person(id,tenant_id,full_name,primary_email) select (${pp}||lpad(n::text,12,'0'))::uuid,${b.tenantId}::uuid,'Fictional team '||lpad(n::text,4,'0'),
-   ${pp}||n::text||'@example.invalid' from generate_series(1,${EMPLOYMENTS}::integer)n`;
+   from generate_series(1,${COMPANIES-2}::integer)n`;
+  await tx`insert into person(id,tenant_id,full_name,primary_email) select (${pp}||lpad(n::text,12,'0'))::uuid,${b.tenantId}::uuid,'Fictional group '||lpad(n::text,4,'0'),
+   ${pp}||n::text||'@example.invalid' from generate_series(${TEAM+1}::integer,${EMPLOYMENTS}::integer)n`;
   await tx`insert into employment(id,tenant_id,person_id,company_id,employee_code,hired_on)
    select (${ep}||lpad(n::text,12,'0'))::uuid,${b.tenantId}::uuid,(${pp}||lpad(n::text,12,'0'))::uuid,
-    (${JSON.stringify(companyIds)}::jsonb->>((n-1)%${COMPANIES}))::uuid,'TEAM'||lpad(n::text,4,'0'),'2026-01-01'::date from generate_series(1,${EMPLOYMENTS}::integer)n`;
-  await tx`insert into attendance(tenant_id,employment_id,attendance_date,status,day_type)
-   select ${b.tenantId}::uuid,(${ep}||lpad(n::text,12,'0'))::uuid,${today}::date,
-    (array['present','late','half_day','absent'])[1+(n%4)]::attendance_status,'workday' from generate_series(1,${EMPLOYMENTS}::integer)n`;
+    (${JSON.stringify(companyIds)}::jsonb->>((n-1)%${COMPANIES}))::uuid,'GROUP'||lpad(n::text,4,'0'),'2026-01-01'::date from generate_series(${TEAM+1}::integer,${EMPLOYMENTS}::integer)n`;
  });
- // Employment 1 manages 2..11 directly; employment 2 manages 12..16, so 1's team is 2..16 (15 people).
- const line=(manager:number,subordinate:number)=>({tenantId:b.tenantId,managerEmploymentId:employmentIds[manager-1],
-  subordinateEmploymentId:employmentIds[subordinate-1],lineType:'administrative' as const,validFrom:'2026-01-01'});
- const {reportingLine}=await import('../db/schema');
- await owner.db.insert(reportingLine).values([...Array.from({length:10},(_,i)=>line(1,i+2)),...Array.from({length:5},(_,i)=>line(2,i+12))]);
+ personIds=[...team.map(row=>row.personId),...Array.from({length:rest},(_,i)=>id(pp,TEAM+1+i))];
+ employmentIds=[...team.map(row=>row.employmentId),...Array.from({length:rest},(_,i)=>id(ep,TEAM+1+i))];
+ // Everyone has an attendance row today; employment n is recorded statusOf(n).
+ await owner.db.insert(attendanceTable).values(employmentIds.map((employmentId,i)=>({tenantId:b.tenantId,employmentId,attendanceDate:today,
+  status:statusOf(i+1),dayType:'workday' as const})));
+ const [{count}]=await owner.client`select count(*)::int as count from employment where tenant_id=${b.tenantId}::uuid` as unknown as {count:number}[];
+ expect(count).toBe(EMPLOYMENTS);
 }
 async function login(n:number,role:'employee'|'manager'):Promise<SessionContext>{
  const userId=await createAppUser(b.tenantId,personIds[n-1],role);
- return {tenantId:b.tenantId,userId,personId:personIds[n-1],roles:[role],grants:[{role,companyId:null}]} as SessionContext;
+ return {...await entitledCtx(b,[role]),userId,personId:personIds[n-1],roles:[role],grants:[{role,companyId:null}]};
 }
 /** The old dashboard's count (one row per status for the day), applied to a given population, from the fixture alone. */
 function expected(members:readonly number[]){

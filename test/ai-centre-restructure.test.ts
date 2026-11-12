@@ -25,7 +25,10 @@ describe('one place per fact',()=>{
  });
 
  it('Today fix d: Today counts exceptions with the same read and arguments as Exceptions',()=>{
-  expect(code('components/today/reads.ts')).toContain('openExceptionsAcrossRuns(s)');
+  // The earlier Today's Watching section that read openExceptionsAcrossRuns was retired with the old dashboard (12 Nov
+  // 2026); Admin Today counts the exceptions through the administrator read for the companies in view.
+  expect(code('components/today/reads.ts')).not.toContain('openExceptionsAcrossRuns');
+  expect(code('components/today/admin/reads.ts')).toContain('readAdminExceptionCounts(s,{scopeIds:scopeOf(key)})');
   // Since the AI-native batch Exceptions reads the same population grouped in the database (its reader names the
   // same three predicates and inner joins; test/payroll-exceptions-groups.test.ts proves the counts equal on a group-sized
   // fixture), and its page no longer lists the capped rows itself.
