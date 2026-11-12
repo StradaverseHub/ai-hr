@@ -920,7 +920,9 @@ export async function saveRewardEntry(ctx: SessionContext, unitId: string, revis
     if(advice){const {rewardAdvisorSettingTx,advisorFingerprintTx}=await import('./advisor');const setting=await rewardAdvisorSettingTx(tx,unitId);if(setting.settings.enabled&&unit.status==='draft'&&advice.sourceDigest===await advisorFingerprintTx(tx,unitId)){if(advisorNeedsOverrideReason(rec,advice.recommendation,setting.settings.overrideThresholdBp)&&rec.reason.trim().length<10)throw new RewardError('Explain the difference from the advisor suggestion in at least 10 characters.');await tx.execute(sql`update reward_advisor_suggestion set status='adjusted',decided_by=app.current_user_id(),decided_at=now(),decision_reason=${rec.reason},final_recommendation=${JSON.stringify(rec)}::jsonb where id=${advice.id}::uuid`);}}
     await tx.update(rewardEntry).set({ recommendation: rec, ...(validatedFacts ? { facts: validatedFacts } : {}), updatedAt: new Date() }).where(eq(rewardEntry.id, entryId));
     if (approvalStageEdit) {
-      const revised = entries.map(row => row.id === entry.id ? { ...row, recommendation: rec } : row);
+      // Digest the entries as stored: jsonb reorders object keys, so the in-memory recommendation would not
+      // hash the same as the row the next approval reads back.
+      const revised = await tx.select().from(rewardEntry).where(eq(rewardEntry.unitId, unitId)).orderBy(asc(rewardEntry.id));
       await tx.update(rewardUnit).set({
         revision: unit.revision + 1, approvedDigest: digest(unit, revised), updatedAt: new Date(),
       }).where(eq(rewardUnit.id, unitId));

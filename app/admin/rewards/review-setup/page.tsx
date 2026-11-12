@@ -4,7 +4,7 @@ import { requireModule } from '@/lib/authz';
 import { getSession } from '@/lib/session';
 import { Field, PageHeader, inputCls, tableWrapCls, tbodyCls, thCls, theadCls } from '@/components/ui';
 import { RewardSubmit } from '@/app/rewards/submit-button';
-import { rewardReviewSetupList } from '@/packs/rewards/service';
+import { rewardReviewSetupList, type RewardSetupListFilters } from '@/packs/rewards/service';
 import { REWARD_PREPARATION_STEPS } from '@/packs/rewards/preparation-model';
 
 type Search = { cycle?: string; unit?: string; status?: string; page?: string };
@@ -18,8 +18,8 @@ export default async function ReviewSetupList({ searchParams }: { searchParams: 
   await requireModule('rewards');
   const s = await getSession(), sp = await searchParams;
   const t = await getTranslations('rewardsPreparation'), nav = await getTranslations('nav');
-  const filters = { ...(sp.cycle && uuid.test(sp.cycle) ? { cycle: sp.cycle } : {}), ...(sp.unit && uuid.test(sp.unit) ? { unit: sp.unit } : {}),
-    ...(sp.status === 'preparing' || sp.status === 'ready' || sp.status === 'released' ? { status: sp.status } : {}), page: Math.max(0, Math.min(10000, Math.trunc(Number(sp.page) || 0))) };
+  const filters: RewardSetupListFilters & { page: number } = { ...(sp.cycle && uuid.test(sp.cycle) ? { cycle: sp.cycle } : {}), ...(sp.unit && uuid.test(sp.unit) ? { unit: sp.unit } : {}),
+    ...(sp.status === 'preparing' || sp.status === 'ready' || sp.status === 'released' ? { status: sp.status as RewardSetupListFilters['status'] } : {}), page: Math.max(0, Math.min(10000, Math.trunc(Number(sp.page) || 0))) };
   const list = await rewardReviewSetupList(s, filters);
   if (!list.allowed) return <div className="space-y-3"><PageHeader title={nav('rewardsReviewSetup')} /><p role="status">{t('list.noAccess')}</p></div>;
   const pages = Math.max(1, Math.ceil(list.total / list.pageSize));
