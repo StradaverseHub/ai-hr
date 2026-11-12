@@ -33,6 +33,17 @@ export function canActOnBehalf(ctx: SessionContext, purpose: AttendanceOnBehalfP
   return withTenant(ctx, async tx => (await permittedCompaniesTx(tx, ctx, purpose)).length > 0, { readOnlySnapshot: true });
 }
 
+/** Which on-behalf keys the caller holds anywhere, both purposes in one read-only transaction (the AI offer of the
+ *  Request/Approve On Behalf reads; every read and action still re-checks its own subject). */
+export function attendanceOnBehalfPurposesHeld(ctx: SessionContext): Promise<ReadonlySet<AttendanceOnBehalfPurpose>> {
+  if (!ctx.userId || !ctx.personId) return Promise.resolve(new Set());
+  return withTenant(ctx, async tx => {
+    const held = new Set<AttendanceOnBehalfPurpose>();
+    for (const purpose of ['request', 'approve'] as const) if ((await permittedCompaniesTx(tx, ctx, purpose)).length) held.add(purpose);
+    return held;
+  }, { readOnlySnapshot: true });
+}
+
 /** The caller's administrative downline, once, set-based: mirrors app.is_admin_report_of (company-clamped, active). */
 const downline = (personId: string) => sql`with recursive me as (
     select e.id,e.company_id from employment e where e.person_id=${personId}::uuid and e.tenant_id=app.current_tenant_id() and e.terminated_on is null

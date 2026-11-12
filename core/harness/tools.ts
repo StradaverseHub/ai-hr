@@ -41,7 +41,7 @@ import {actionCatalogueFor} from '../product-context/actions';
 import {linkablePathsFor} from '../../lib/product-context/destinations';
 import {visibleModuleCodes} from '../../lib/nav-entitlements';
 import {contextToolSpecs,readInputSchema,TERAS_READS,terasToolSpecs} from '../semantic-model/generate';
-import {FOLDED_READS,TOPIC_TOOLS,topicRead,topicToolSpec} from '../semantic-model/topic-tools';
+import {FOLDED_READS,TOPIC_TOOLS,topicRead,topicToolSpecFor} from '../semantic-model/topic-tools';
 import {terasCapabilitiesFor,type TerasCapability} from '../explainers/capabilities';
 import {SEMANTIC_ACTIONS,SEMANTIC_READS} from '../semantic-model/entities';
 import type {EntityId} from '../semantic-model/types';
@@ -278,7 +278,7 @@ export function topicBindings(ctx:SessionContext,permitted:readonly TerasCapabil
  return TOPIC_TOOLS.flatMap((tool):ToolBinding[]=>{
   const runners=new Map(permitted.flatMap(capability=>{const folded=FOLDED_READS.get(capability.name);return folded&&folded.tool===tool.name?[[folded.topic,capability] as const]:[];}));
   if(!runners.size)return [];
-  return [{name:tool.name,kind:'read',entity:null,spec:topicToolSpec(tool.name)!,identifierInputs:[],
+  return [{name:tool.name,kind:'read',entity:null,spec:topicToolSpecFor(tool.name,new Set(runners.keys()))!,identifierInputs:[],
    entityOf:input=>topicRead(tool.name,input.topic)?.entity??null,
    async run(input){
     const read=topicRead(tool.name,input.topic),capability=runners.get(String(input.topic));

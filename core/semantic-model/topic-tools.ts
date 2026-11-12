@@ -18,7 +18,11 @@ import type {SemanticRead} from './types';
 
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
 
-export type TopicToolDeclaration=Readonly<{name:string;purpose:string;topics:readonly Readonly<{topic:string;read:string}>[]}>;
+export type TopicToolDeclaration=Readonly<{name:string;purpose:string;topics:readonly Readonly<{topic:string;read:string}>[];
+ /** 96a54ed2: offer only the caller's permitted topics. When a caller is permitted some but not all of them, the tool's
+  * description lists only those topics, under this neutral purpose, and its topic enum names only them; a caller permitted
+  * every topic gets the full declaration exactly as before. */
+ scopedPurpose?:string}>;
 export const TOPIC_TOOLS:readonly TopicToolDeclaration[]=freeze([
  // The administrators' operations reads: AI v2 W8's loops overview and the five Phase 2 administrator reads.
  {name:'operations_status',
@@ -32,7 +36,9 @@ export const TOPIC_TOOLS:readonly TopicToolDeclaration[]=freeze([
    {topic:'shared_leave_groups',read:'shared_leave_groups'},
    // 96a54ed2: the Request On Behalf and Approve On Behalf pages (Attendance), managers and administrators holding the
    // on-behalf permission key; their own entities and kit entries, no new tool. Spec v30 lists the topics.
-   {topic:'attendance_on_behalf_subjects',read:'attendance_on_behalf_subjects'},{topic:'attendance_on_behalf_approvers',read:'attendance_on_behalf_approvers'}]},
+   {topic:'attendance_on_behalf_subjects',read:'attendance_on_behalf_subjects'},{topic:'attendance_on_behalf_approvers',read:'attendance_on_behalf_approvers'}],
+  // 96a54ed2: a manager is offered only the on-behalf topics whose key they hold, so they never see another topic listed.
+  scopedPurpose:'What this person may look up for their own work, one topic per call, each as its own page shows it. Pick the topic the question is about; call again with another topic for another. Topics:'},
  // The "Why?" explainers: ADR-0170 step 4's three and AI v2 W5's two, all under the explainers worker switch.
  {name:'explain_why',
   purpose:'Why one of the asking person\'s own figures is what it is, from its native owner\'s own working, one topic per call. Pick the topic the question is about; quote its figures exactly and name only the causes it lists. Topics:',
@@ -79,3 +85,17 @@ export function topicToolSpecs():readonly AiToolSpec[]{
  return specs;
 }
 export const topicToolSpec=(name:string):AiToolSpec|undefined=>topicToolSpecs().find(spec=>spec.name===name);
+const scopedSpecs=new Map<string,AiToolSpec>();
+/** The spec offered to a caller permitted `permitted` of the tool's topics: the full spec when the tool lists none to scope
+ * or every topic is permitted; otherwise (a tool with a scopedPurpose) only the permitted topics, in declaration order. */
+export function topicToolSpecFor(name:string,permitted:ReadonlySet<string>):AiToolSpec|undefined{
+ const tool=TOPIC_TOOLS.find(item=>item.name===name);if(!tool)return undefined;
+ const topics=tool.topics.filter(row=>permitted.has(row.topic));
+ if(!tool.scopedPurpose||topics.length===tool.topics.length||!topics.length)return topicToolSpec(name);
+ const key=name+'\u0000'+topics.map(row=>row.topic).join(',');
+ let spec=scopedSpecs.get(key);
+ if(!spec){const scoped:TopicToolDeclaration={name,purpose:tool.scopedPurpose,topics};
+  spec=freeze({name,description:[scoped.purpose,...topics.map(row=>{const read=readOf(row.read);return `[${row.topic}] ${describeRead(read,terasEntity(read.entity))}`;})].join(' '),
+   inputSchema:topicToolInputSchema(scoped)});scopedSpecs.set(key,spec);}
+ return spec;
+}

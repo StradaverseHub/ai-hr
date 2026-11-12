@@ -142,6 +142,35 @@ describe('who is refused',()=>{
  },60000);
 });
 
+describe('what operations_status offers',()=>{
+ const offered=async(ctx:SessionContext)=>(await nativeToolProvider(ctx,{companyId:base.companyId,locale:'en'},true)).bindings.find(row=>row.name==='operations_status');
+ const topicsOf=(spec:{description:string;inputSchema:unknown})=>({
+  listed:[...spec.description.matchAll(/\[([a-z_]+)\]/g)].map(match=>match[1]),
+  callable:(spec.inputSchema as {properties:{topic:{enum:string[]}}}).properties.topic.enum});
+ it('offers an employee nothing, and a manager only the on-behalf topics whose keys they hold',async()=>{
+  const employee=await actor('Fictional Offer Employee'),manager=await actor('Fictional Offer Manager',{role:'manager'});
+  expect(await offered(employee.ctx)).toBeUndefined();
+  const both=await offered(manager.ctx);
+  expect(topicsOf(both!.spec)).toEqual({listed:['attendance_on_behalf_subjects','attendance_on_behalf_approvers'],callable:['attendance_on_behalf_subjects','attendance_on_behalf_approvers']});
+  expect(both!.spec.description).not.toMatch(/Administrators only|AI Centre|shared leave|payroll/i);
+  // Every administrators' topic stays refused, before any runner, even when named directly.
+  for(const topic of ['loops','payroll_cycle','salary_payroll','payroll_loop_settings','payroll_audit','ai_quality','payroll_learning','shared_leave_groups'])
+   expect(await both!.run({topic}),topic).toMatchObject({ok:false,refusal:'not_permitted'});
+  // Without the approve key, only the request topic; without either key, no tool at all.
+  await owner.db.insert(schema.payrollPermissionGrant).values({tenantId:base.tenantId,permissionKey:'attendance.approve_on_behalf',role:'manager',allowed:false,companyId:null});
+  expect(topicsOf((await offered(manager.ctx))!.spec)).toEqual({listed:['attendance_on_behalf_subjects'],callable:['attendance_on_behalf_subjects']});
+  await owner.db.insert(schema.payrollPermissionGrant).values({tenantId:base.tenantId,permissionKey:'attendance.request_on_behalf',role:'manager',allowed:false,companyId:null});
+  expect(await offered(manager.ctx)).toBeUndefined();
+ },60000);
+ it('offers an administrator holding every topic the full, unchanged declaration',async()=>{
+  const hr=await actor('Fictional Offer Group HR',{role:'hr_admin',roleCompanyId:null});
+  for(const code of ['payroll'])await setModule(base.tenantId,code,'active');
+  const ctx={...hr.ctx,entitlements:(await entitledCtx(base,['hr_admin'])).entitlements} as SessionContext;
+  const spec=(await offered(ctx))!.spec;
+  expect(topicsOf(spec).callable).toEqual(expect.arrayContaining(['loops','shared_leave_groups','attendance_on_behalf_subjects','attendance_on_behalf_approvers']));
+ },60000);
+});
+
 describe('an in-scope caller',()=>{
  it('gets the same people, in the same order, as the page lists them, with only the declared fields',async()=>{
   const other=await company('Fictional Second Company');

@@ -77,6 +77,7 @@ async function fixture(){
  return{group,scoped,first:first.name,second:SECOND};
 }
 
+const ON_BEHALF=['attendance_on_behalf_subjects','attendance_on_behalf_approvers'];
 describe('the payroll-cycle loop reads',()=>{
  it('repeat their owners\' vocabularies exactly',()=>{
   expect([...PRE_SALARY_CHECK_KEYS]).toEqual([...PRE_SALARY_CHECKS]);
@@ -94,10 +95,20 @@ describe('the payroll-cycle loop reads',()=>{
     expect(offered,name).not.toContain(name);
     expect(await read(name,ctx),name).toMatchObject({ok:false,refusal:'not_permitted'});
    }
-   // Spec v23: the four are operations_status topics; with no administrator topic the tool is not bound.
+   // Spec v23: the four are operations_status topics. An employee is not offered the tool at all. Spec v30 (96a54ed2): a
+   // manager holding the on-behalf keys (the default) is offered it for those two topics ONLY: no payroll topic is listed in
+   // its description or topic list, and calling one reads nothing.
    const {result,model}=await turn(ctx,'Is this month\'s payroll on track?',[{calls:[{name:'operations_status',args:{topic:'payroll_cycle'}}]},{final:{reply:'That is for your HR administrator.',mode:'answer'}}]);
-   for(const name of ['operations_status',...READS])expect(model.requests[0].tools.map(tool=>tool.name)).not.toContain(name);
-   expect(result.trace.calls).toEqual([expect.objectContaining({tool:'operations_status',status:'not_offered'})]);expect(result.reads).toEqual([]);
+   const tools=model.requests[0].tools;for(const name of READS)expect(tools.map(tool=>tool.name)).not.toContain(name);
+   const operations=tools.find(tool=>tool.name==='operations_status');
+   if(ctx===employee){expect(operations).toBeUndefined();expect(result.trace.calls).toEqual([expect.objectContaining({tool:'operations_status',status:'not_offered'})]);}
+   else{
+    expect((operations!.inputSchema as {properties:{topic:{enum:string[]}}}).properties.topic.enum).toEqual(ON_BEHALF);
+    for(const topic of ['payroll_cycle','salary_payroll','payroll_loop_settings','payroll_audit'])expect(operations!.description).not.toContain(`[${topic}]`);
+    expect([...operations!.description.matchAll(/\[([a-z_]+)\]/g)].map(match=>match[1])).toEqual(ON_BEHALF);
+    expect(result.trace.calls).toEqual([expect.objectContaining({tool:'operations_status',status:expect.stringMatching(/^(refused|invalid_input)$/)})]);
+   }
+   expect(result.reads).toEqual([]);
   }
  },60000);
 
