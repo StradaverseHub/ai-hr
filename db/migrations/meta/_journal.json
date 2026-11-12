@@ -5790,6 +5790,13 @@
       "when": 1793330004830,
       "tag": "5130_pay_formula_ai_draft_job",
       "breakpoints": true
+    },
+    {
+      "idx": 9760,
+      "version": "7",
+      "when": 1793330099760,
+      "tag": "9760_sweep_swing_thresholds",
+      "breakpoints": true
     }
   ]
 }

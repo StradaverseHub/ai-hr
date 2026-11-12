@@ -150,19 +150,32 @@ export type ThresholdProvenance = {
  * The company's ONE net-swing threshold (its Salary payroll loop setting) and its exclusions: one bounded read for the
  * batch's company, plus one statement asking whether the caller may read that setting at all.
  *
- * ROW SECURITY (owner-accepted interim, 11 November 2026). teras_payroll_loop_setting is readable only by an agent
- * principal or a user who administers the company (migration 2005, policy teras_payroll_loop_setting_read). The scheduled
- * sweep (no user) and a payroll partner see no row, which is indistinguishable from "never set". So `readable` is asked
- * with the policy's OWN predicate, and when it is false the 15% default is used WITH NO EXCLUSIONS and that is said on the
- * disclosure and on every finding — never presented as the company's choice or as the shipped default. The follow-on
- * migration (a narrow reader for the evaluator) is a separate item.
+ * ROW SECURITY. teras_payroll_loop_setting is readable only by an agent principal or a user who administers the company
+ * (migration 2005, policy teras_payroll_loop_setting_read). So `readable` is asked with the policy's OWN predicate.
+ *
+ * THE SCHEDULED SWEEP (no login, no agent; scripts/anomaly-sweep.ts) cannot see the row, so the same statement also asks
+ * app.sweep_swing_thresholds (migration 9760, a narrow reader that answers only such a system session): the company's
+ * threshold and nothing else. The sweep judges by that threshold WITHOUT the company's exclusions (the reader does not
+ * disclose them; fail safe, a stricter flag, never a looser one), and a company with no setting is the 15% default as
+ * for anyone else. (Owner, 12 November 2026: the sweep uses each company's own threshold.)
+ *
+ * A login that may not read the setting (a payroll partner) still sees no row, which is indistinguishable from "never
+ * set": the 15% default is used WITH NO EXCLUSIONS and that is said on the disclosure and on every finding — never
+ * presented as the company's choice or as the shipped default.
  *
  * FAIL SAFE: a setting that cannot be used (absent, malformed, out of range) is the 15% default, never "no check". A
  * database error fails the caller's transaction like every other read of an evaluation.
  */
 async function swingSettingTx(tx: Tx, tenantId: string, companyId: string): Promise<{ thresholdBp: number; exclusions: readonly string[]; configured: boolean; readable: boolean }> {
   const [access] = (await tx.execute(sql`select (app.current_agent_principal() is not null
-      or (app.current_user_id() is not null and app.is_admin_for(${companyId}::uuid) is true)) as readable`)) as unknown as { readable: boolean | null }[];
+      or (app.current_user_id() is not null and app.is_admin_for(${companyId}::uuid) is true)) as readable,
+    app.current_user_id() is null and app.current_agent_principal() is null as system,
+    (select t.threshold_bp from app.sweep_swing_thresholds(array[${companyId}::uuid]) t) as system_threshold_bp`)) as unknown as
+    { readable: boolean | null; system: boolean | null; system_threshold_bp: number | null }[];
+  if (access?.system === true) {
+    const thresholdBp = swingThresholdOrDefault(access.system_threshold_bp);
+    return { thresholdBp, exclusions: [], configured: thresholdBp !== DEFAULT_SWING_THRESHOLD_BP, readable: true };
+  }
   const readable = access?.readable === true;
   if (!readable) return { thresholdBp: DEFAULT_SWING_THRESHOLD_BP, exclusions: [], configured: false, readable };
   try {
