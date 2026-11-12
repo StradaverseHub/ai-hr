@@ -103,7 +103,7 @@ describe('the payroll-cycle loop reads',()=>{
    const operations=tools.find(tool=>tool.name==='operations_status');
    if(ctx===employee){expect(operations).toBeUndefined();expect(result.trace.calls).toEqual([expect.objectContaining({tool:'operations_status',status:'not_offered'})]);}
    else{
-    expect((operations!.inputSchema as {properties:{topic:{enum:string[]}}}).properties.topic.enum).toEqual(ON_BEHALF);
+    expect((operations!.parameters as {properties:{topic:{enum:string[]}}}).properties.topic.enum).toEqual(ON_BEHALF);
     for(const topic of ['payroll_cycle','salary_payroll','payroll_loop_settings','payroll_audit'])expect(operations!.description).not.toContain(`[${topic}]`);
     expect([...operations!.description.matchAll(/\[([a-z_]+)\]/g)].map(match=>match[1])).toEqual(ON_BEHALF);
     expect(result.trace.calls).toEqual([expect.objectContaining({tool:'operations_status',status:expect.stringMatching(/^(refused|invalid_input)$/)})]);
