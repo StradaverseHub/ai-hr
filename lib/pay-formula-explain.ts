@@ -3,7 +3,7 @@
 import type {FormulaExpression,FormulaProgram,FormulaStatement} from './pay-formula-language';
 
 export type FormulaExplanationRow = { depth: number; text: string };
-type FormulaExplanationTranslation = (key: string, values?: FormulaExplanationLine['values']) => string;
+type FormulaExplanationTranslation = ((key: string, values?: FormulaExplanationLine['values']) => string) & { has?(key: string): boolean };
 
 export type FormulaExplanationKey='declare'|'assign'|'if'|'elseIf'|'otherwise'|'return'|'explain';
 export type FormulaExplanationLine={depth:number;key:FormulaExplanationKey;values:{name?:string;expression?:string;condition?:string}};
@@ -63,6 +63,9 @@ export function describePayFormula(program: FormulaProgram, t: FormulaExplanatio
  const words: FormulaExplanationWords = {
   and: t('explain.and'), or: t('explain.or'), not: t('explain.not'),
   true: t('true'), false: t('false'), variable: code => t('functions.' + code),
+  // A Personnel field is named by its translated label (for example companyCode → "Company code"), so the
+  // explanation says which company value is compared rather than repeating the source key.
+  argument: (code, value) => (code === 'EmployeeProfile' || code === 'EmployeeInformation') && t.has?.('fields.' + value) ? t('fields.' + value) : undefined,
  };
  return explainPayFormula(program, words).map(({ depth, key, values }) => ({
   depth,

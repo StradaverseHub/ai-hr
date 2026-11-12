@@ -2385,6 +2385,7 @@
           "no_data_rows": "请在标题下方添加至少一行事件。",
           "movement_catalog_too_large": "事件类型列表超出本导入支持的范围，请使用单独的新建事件。",
           "movement_reference_catalog_too_large": "参考列表超出本导入支持的范围，请在人事资料中进行这些更改。",
+          "movement_template_too_large": "公司和取值列表过多，模板过大，无法生成。未生成任何文件。请联系支持人员。",
           "movement_history_too_large": "此员工的历史超出导入检查范围，请在人事资料中记录事件。",
           "change_refused": "变更被拒绝，此员工的更改均未保存。",
           "workbook_key_unavailable": "尚未配置工作簿签名。请联系系统管理员；仍可使用 CSV。",
@@ -2528,6 +2529,7 @@
           "referenceValues": "每家公司允许的值",
           "colValue": "变更后应填写的值",
           "colLabel": "含义",
+          "allCompanies": "所有公司",
           "screenHint": "所有调动类型和公司共用一个模板。每个变更的字段填写一行；公司、员工、日期和事件类型相同的行构成一项调动。",
           "downloadTemplate": "下载模板",
           "history": "导入历史",
@@ -12138,6 +12140,39 @@
       "evaluationSaveFirst": "请先保存更改再评估。",
       "evaluationExpired": "评估已过期或候选配置已更改。请重新评估。",
       "commandFailed": "AI 设置遇到一点小状况。请检查权限和已保存的设置，然后重试。",
+      "failure": {
+        "call_draft": "第一个测试请求（文本回复）",
+        "call_tool_call": "第二个测试请求（工具调用）",
+        "call_tool_result": "第三个测试请求（工具结果）",
+        "probe_local": "{call}在发送任何内容给提供商之前已在此处被拦下。{reason}",
+        "probe_provider": "{call}已发送，但提供商调用失败。请在 OpenRouter 中检查 API 密钥、额度余额、模型名称和允许的路由，然后重新评估。",
+        "probe_response": "提供商回复了{call}，但格式不符合要求。该模型或路由可能不支持精确回复或工具调用。请尝试其他模型或路由。",
+        "probe_summary": "无法确认此已保存候选配置的测试结果。请重新评估。",
+        "consent_required": "运行评估前，请勾选两项确认。",
+        "candidate_required": "自本页面加载以来，已保存的候选配置已更改。请刷新页面，检查已保存的模型，然后重新评估。",
+        "receipt_required": "使用前请重新评估已保存的候选配置。上一次评估缺失、已过期或属于较早的保存。",
+        "unavailable": "无法确认您的管理员权限或已保存的 AI 设置。请刷新页面后重试。",
+        "not_admin": "只有当前的集团级管理员才能更改 AI 提供商设置。",
+        "secret_unavailable": "在服务器上设置 AI_CONFIG_SECRET 之前，无法存储 API 密钥。",
+        "evaluate_first": "请先保存 OpenRouter 候选配置并完成评估，然后选择“使用此提供商”。",
+        "key_required": "请输入 API 密钥以设置此提供商。",
+        "config_invalid": "无法按所填内容保存这些 AI 设置。请检查提供商、模型、密钥和路由后重试。",
+        "activation_unavailable": "无法启用已评估的候选配置。请刷新页面，重新评估后再启用。",
+        "connection_failed": "无法使用这些设置连接到提供商。",
+        "paused": "AI 已停止，或此 AI 功能已在 AI Centre 中关闭。请重新开启后再试。",
+        "daily_limit": "已达到每日 AI 请求额度。请明天再试，或在 AI Centre 中提高额度。",
+        "monthly_limit": "每月 AI 令牌额度已用完。请在 AI Centre 中提高额度，或等到下个月。",
+        "concurrent_limit": "所有 AI 请求名额都在使用中。请在正在运行的请求完成后再试。",
+        "spend_control": "某项美元支出限额拦下了此请求。请在 AI Centre 中查看 AI 支出限额和记录，然后重试。",
+        "spend_capability": "已设置美元支出限额，但此服务器没有该模型和路由的已审核价格记录。请移除美元限额，或请平台运维人员配置已审核的支出控制。",
+        "spend_root": "无法将此请求关联到已保存候选配置的支出记录。请刷新页面并重新评估。",
+        "privacy_review": "此 AI 请求需要本版本中已批准的数据保护审核。请联系平台运维人员。",
+        "privacy_source": "无法确认此 AI 请求的受保护输入。请重试。",
+        "configuration_changed": "运行期间，已保存的 AI 设置或您的权限发生了变化。请刷新页面后重试。",
+        "controls": "无法确认 AI Centre 的控制状态。请检查 AI 是否在 AI Centre 中运行，然后重试。",
+        "admission": "安全检查在发送任何内容之前拒绝了此 AI 请求，且未记录任何用量。请重试；如果反复出现，请将本次尝试的时间告知平台运维人员。",
+        "database": "数据库暂时无法完成此项检查。请稍后再试。"
+      },
       "evaluationElapsed": "评估耗时：{value} 毫秒",
       "evaluationReportedUsage": "报告了令牌用量的调用：3 次中的 {count} 次",
       "evaluationCredits": "报告的账户点数：{value}",
@@ -32176,6 +32211,23 @@
       "stalePayroll": "薪资需要重新计算",
       "itemNotRecorded": "历史结果中未记录所选薪资项目"
     },
+    "inclusion": {
+      "coverage": "本次比较包含的公司",
+      "comparing": "正在比较 {total} 家有薪资记录的公司中的 {included} 家。行和合计仅涵盖这些公司。",
+      "comparedCompanies": "已比较的公司",
+      "notIncluded": "未包含",
+      "notIncludedHelp": "在两个月的薪资就绪之前，这些公司不计入行和合计。",
+      "reasons": {
+        "missingPayroll": "{month, date, ::MMMMyyyy} 没有薪资运行",
+        "previousNotClosed": "{month, date, ::MMMMyyyy} 尚未关闭",
+        "stalePayroll": "{month, date, ::MMMMyyyy} 需要重新处理",
+        "draftPayroll": "{month, date, ::MMMMyyyy} 仍是草稿"
+      },
+      "neverRan": "此范围内有 {count, plural, other {# 家公司}}从未运行过薪资，未被包含。",
+      "neverRanShort": "从未运行薪资",
+      "emptyNoneReady": "这些月份没有可比较的公司。请查看“未包含”了解每家公司需要完成的事项。",
+      "emptyNoPayroll": "此范围内尚无公司运行过薪资。"
+    },
     "basis": "来源：已保存的实付薪资结果。组织资料按当前期间实付结果中最后记录的雇主归属日期确定；仅在没有当前结果时采用上一期间的记录日期。名称采用当前获授权查看的标签。已生效证据的优先顺序为：已核实的雇主调动、入职、已记录的离职，以及最近一次改变薪资的加薪、晋升或降职；其余记录标为尚未解释。这些标签不能证明全部金额差异的原因。",
     "remarks": {
       "disabled": "自动解释已关闭。",
@@ -34362,7 +34414,10 @@
       "dateOfBirth": "出生日期",
       "gender": "性别",
       "nationality": "国籍",
-      "maritalStatus": "婚姻状况"
+      "maritalStatus": "婚姻状况",
+      "companyId": "公司内部 ID",
+      "companyName": "公司法定名称",
+      "companyCode": "公司代码"
     },
     "parameter": {
       "payItem": "薪资项目",
@@ -34526,7 +34581,10 @@
       "missing_return": "有些情况没有给出金额。请添加带有 Return 的 Else，例如 Return 0。",
       "division_by_zero": "这里除以 0，薪资无法进行此计算。请更改除数。",
       "possible_zero_divisor": "这里除以 {name}。如果它为 0，该员工的薪资将因计算错误而停止。建议先检查是否为 0。",
-      "blocked": "请修正“保存前检查”中列出的问题。"
+      "blocked": "请修正“保存前检查”中列出的问题。",
+      "internal_id_comparedCompany": "companyId 是公司的内部 ID，因此永远不会等于“{value}”。公司代码请使用 companyCode，法定名称请使用 companyName。",
+      "internal_id_compared": "{name} 是内部 ID，因此永远不会等于“{value}”。请从该字段的允许值列表中选择。",
+      "internal_id_comparedSuggest": "{name} 是内部 ID，因此永远不会等于“{value}”。请从该字段的允许值列表中选择，或使用 {suggestion}。"
     },
     "testArea": {
       "title": "公式测试与结果",
@@ -34610,9 +34668,24 @@
         "dateOfBirth": "出生日期",
         "gender": "性别",
         "nationality": "国籍",
-        "maritalStatus": "婚姻状况"
+        "maritalStatus": "婚姻状况",
+        "companyId": "公司内部 ID",
+        "companyName": "公司法定名称",
+        "companyCode": "公司代码"
       },
-      "conditions": "已验证的条件"
+      "conditions": "已验证的条件",
+      "busy": "您之前的描述仍在起草中。请等待其完成（最多 {seconds} 秒）后再试。",
+      "reasons": {
+        "timeout": "AI 服务商未在 {seconds} 秒内回复，因此未生成草稿。请重试。",
+        "provider_unavailable": "无法连接 AI 服务商，或其未返回可用的回复。请稍后重试。",
+        "invalid_draft": "AI 回复未通过公式检查，因此不予显示。请换一种描述方式后重试。",
+        "paused": "AI 公式起草已暂停。仍可手动编辑。",
+        "daily_limit": "已达到每日 AI 请求额度。仍可手动编辑。",
+        "monthly_limit": "已达到每月 AI 额度。仍可手动编辑。",
+        "concurrent_limit": "所有 AI 请求名额均在使用中。请稍后重试。",
+        "access_changed": "生成草稿期间，您的访问权限或公式设置发生了变化。请重试。",
+        "interrupted": "由于服务重新启动，起草在完成前已停止。请重试。"
+      }
     }
   },
   "payrollTaxBasis": {

@@ -13,6 +13,7 @@ import {assertPayComponentCompaniesTx} from '../../core/pay-component-company';
 import type {PayRule} from '../../core/pay-rule';
 import {loadSavedFormulaProgramTx} from '../../core/pay-formula';
 import {simulatePayFormulaTx} from '../../core/pay-formula-runtime';
+import {isPayFormulaQuantityUnit,payFormulaKeyedInput} from '../../lib/pay-formula-input';
 
 export type IndividualCalculationMethod='amount'|'formula';
 export type IndividualCalculationInput={componentId:string|null;employmentId:string;companyId:string;payPeriod:string;txnDate:string;quantity:number|null;unit:string|null;amount:number;cycleId?:string|null;batchId?:string|null;method:IndividualCalculationMethod};
@@ -33,7 +34,7 @@ export async function priceIndividualTxnInputTx(tx:Tx,ctx:SessionContext,p:Indiv
   if(!Number.isFinite(p.amount)||p.amount<=0)throw new PayFormulaError('Enter a positive transaction amount.');
   return {amount:p.amount,calculationMethod:'amount' as const};
  }
- if(!['qty','hours','days','units'].includes(p.unit??'')||!Number.isFinite(p.quantity)||!(p.quantity!>0))throw new PayFormulaError('Enter a positive quantity, hours, days or units.');
+ if(!isPayFormulaQuantityUnit(p.unit)||!Number.isFinite(p.quantity)||!(p.quantity!>0))throw new PayFormulaError('Enter a positive quantity, hours, days or units.');
  if(Number(p.quantity!.toFixed(2))!==p.quantity)throw new PayFormulaError('Enter a quantity with at most two decimal places.');
  let cycleId=p.cycleId??null;
  if(p.batchId){
@@ -47,7 +48,7 @@ export async function priceIndividualTxnInputTx(tx:Tx,ctx:SessionContext,p:Indiv
  const formula=await loadSavedFormulaProgramTx(tx,ctx,item.rule.formulaId,p.companyId);
  // The selected payroll month owns payroll sources; retain an out-of-month work date on the ledger.
  const end=new Date(Date.UTC(Number(p.payPeriod.slice(0,4)),Number(p.payPeriod.slice(5)),0)).toISOString().slice(0,10);
- const result=await simulatePayFormulaTx(tx,ctx,formula,{companyId:p.companyId,employmentId:p.employmentId,period:p.payPeriod,asOf:p.txnDate.startsWith(p.payPeriod+'-')?p.txnDate:end,cycleId,currentCode:item.code,input:String(p.quantity),...(p.batchId?{batchId:p.batchId}:{})});
+ const result=await simulatePayFormulaTx(tx,ctx,formula,{companyId:p.companyId,employmentId:p.employmentId,period:p.payPeriod,asOf:p.txnDate.startsWith(p.payPeriod+'-')?p.txnDate:end,cycleId,currentCode:item.code,input:payFormulaKeyedInput({amount:p.amount,quantity:p.quantity,unit:p.unit,calculationMethod:'formula'}).value!,...(p.batchId?{batchId:p.batchId}:{})});
  if(!result.passed||result.amount==null)throw new PayFormulaError(result.error??'The saved formula could not calculate this transaction.');
  const amount=Number(result.amount);if(!Number.isFinite(amount)||amount<=0)throw new PayFormulaError('The formula must produce a positive transaction amount.');
  return {amount,calculationMethod:'formula' as const,formulaId:formula.id,formulaRevisionId:formula.revisionId};
@@ -121,31 +122,39 @@ export async function repriceIndividualLedgerTx(tx:Tx,ctx:SessionContext,p:{batc
  if(!p.employmentIds.length)return out;
  const rows=await tx.select({id:payrollIndividualTxn.id,employmentId:payrollIndividualTxn.employmentId,componentId:payrollIndividualTxn.componentId,txnDate:payrollIndividualTxn.txnDate,
   quantity:payrollIndividualTxn.quantity,unit:payrollIndividualTxn.unit,amount:payrollIndividualTxn.amount,pricingSource:payrollIndividualTxn.pricingSource,pricingRef:payrollIndividualTxn.pricingRef,
-  intendedCycleId:payrollIndividualTxn.intendedCycleId,code:payComponent.code,name:payComponent.name,ruleHash:ruleHashSql})
+  intendedCycleId:payrollIndividualTxn.intendedCycleId,code:payComponent.code,name:payComponent.name,rule:payComponent.rule,ruleHash:ruleHashSql})
   .from(payrollIndividualTxn).innerJoin(payComponent,eq(payComponent.id,payrollIndividualTxn.componentId))
   .where(and(eq(payrollIndividualTxn.batchId,p.batch.id),or(isNull(payrollIndividualTxn.consumedBatchId),eq(payrollIndividualTxn.consumedBatchId,p.batch.id)),
    inArray(payrollIndividualTxn.employmentId,[...p.employmentIds]),isNotNull(payrollIndividualTxn.pricingSource)))
   .orderBy(asc(payrollIndividualTxn.employmentId),asc(payrollIndividualTxn.txnDate),asc(payrollIndividualTxn.id));
  if(!rows.length)return out;
  const failures=new Map<string,{row:typeof rows[number];dates:string[];reason:PayItemRepriceReason;detail:string|null}>();
- const changes:{row:typeof rows[number];amount:string;ref:string}[]=[];
+ type Source=Exclude<IndividualTxnPricingMarker['pricingSource'],null>;
+ const changes:{row:typeof rows[number];amount:string;ref:string;source:Source}[]=[];
  for(const row of rows){
   const quantity=row.quantity==null?null:Number(row.quantity);
-  let priced:{amount:number;ref:string}|{reason:PayItemRepriceReason;detail:string|null};
-  if(row.pricingSource==='pay_item_rule'){
+  let priced:{amount:number;ref:string;source:Source}|{reason:PayItemRepriceReason;detail:string|null};
+  // The Pay Item that priced this legacy row has since been linked to a saved Formula Builder formula. Its stored
+  // amount is a price, not an input: re-price it from the keyed Hours, Days or Quantity exactly as entry prices a
+  // Formula Builder item, and record what entry records (method 'formula', 'saved_formula', the formula revision).
+  const linked=row.pricingSource==='pay_item_rule'&&(row.rule as PayRule|null)?.kind==='formula_builder';
+  if(row.pricingSource==='pay_item_rule'&&!linked){
    try{
     const d=await deriveIndividualTxnAmountTx(tx,ctx,{componentId:row.componentId!,employmentId:row.employmentId,companyId:p.batch.companyId,payPeriod:p.batch.payPeriod,quantity,unit:row.unit,effectiveDate:row.txnDate});
     priced=!d.derived?{reason:'no_longer_calculates',detail:null}:d.zeroDivisor?{reason:'zero_divisor',detail:null}
-     :!(Number(ledgerMoney(d.amount))>0)?{reason:'not_positive',detail:null}:{amount:d.amount,ref:'rule:'+row.ruleHash};
+     :!(Number(ledgerMoney(d.amount))>0)?{reason:'not_positive',detail:null}:{amount:d.amount,ref:'rule:'+row.ruleHash,source:'pay_item_rule'};
    }catch(e){
     if(!(e instanceof Error)||isDatabaseError(e))throw e;
     priced=e instanceof TxnQuantityRequiredError?{reason:'input_missing',detail:null}:{reason:'formula_failed',detail:e.message};
    }
+  }else if(linked&&payFormulaKeyedInput({amount:row.amount,quantity:row.quantity,unit:row.unit,calculationMethod:null,pricingSource:row.pricingSource}).value==null){
+   priced={reason:'input_missing',detail:null};
   }else{
    try{
     const r=await priceIndividualTxnInputTx(tx,ctx,{componentId:row.componentId,employmentId:row.employmentId,companyId:p.batch.companyId,payPeriod:p.batch.payPeriod,txnDate:row.txnDate,
      quantity,unit:row.unit,amount:Number(row.amount),cycleId:p.batch.payrollCycleId??row.intendedCycleId,batchId:p.batch.id,method:'formula'});
-    priced={amount:r.amount,ref:'formulaRevisionId' in r&&r.formulaRevisionId?r.formulaRevisionId:row.pricingRef!};
+    const ref='formulaRevisionId' in r&&r.formulaRevisionId?r.formulaRevisionId:linked?null:row.pricingRef!;
+    priced=ref?{amount:r.amount,ref,source:'saved_formula'}:{reason:'formula_failed',detail:null};
    }catch(e){
     if(!(e instanceof PayFormulaError))throw e;
     priced={reason:'formula_failed',detail:e.message};
@@ -157,14 +166,18 @@ export async function repriceIndividualLedgerTx(tx:Tx,ctx:SessionContext,p:{batc
    continue;
   }
   const amount=ledgerMoney(priced.amount);
-  if(amount!==ledgerMoney(Number(row.amount))||priced.ref!==row.pricingRef)changes.push({row,amount,ref:priced.ref});
+  if(amount!==ledgerMoney(Number(row.amount))||priced.ref!==row.pricingRef||priced.source!==row.pricingSource)changes.push({row,amount,ref:priced.ref,source:priced.source});
  }
  if(failures.size){const f=[...failures.values()][0];throw new PayItemFormulaRepriceError(f.row.employmentId,f.row.componentId!,f.row.code,f.row.name,f.dates,f.reason,f.detail);}
  const pricedAt=new Date();
- for(const {row,amount,ref} of changes){
-  await tx.update(payrollIndividualTxn).set({amount,pricingRef:ref,pricedAt}).where(eq(payrollIndividualTxn.id,row.id));
+ for(const {row,amount,ref,source} of changes){
+  const relinked=source!==row.pricingSource;
+  // A relinked row takes entry's Formula Builder marker in the same statement (the marker check pairs
+  // 'saved_formula' with method 'formula'); every other row keeps its method and source.
+  await tx.update(payrollIndividualTxn).set({amount,pricingRef:ref,pricedAt,...(relinked?{pricingSource:source,calculationMethod:'formula' as const}:{})}).where(eq(payrollIndividualTxn.id,row.id));
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-individual-txn',aggregateId:row.id,eventType:'payroll.individual-txn.repriced',actor:actorOf(ctx),subjectEmploymentId:row.employmentId,
-   payload:{batchId:p.batch.id,componentId:row.componentId,pricingSource:row.pricingSource,previousPricingRef:row.pricingRef,pricingRef:ref,reason:ref!==row.pricingRef?'formula-updated':'inputs-changed'}});
+   payload:{batchId:p.batch.id,componentId:row.componentId,pricingSource:source,previousPricingRef:row.pricingRef,pricingRef:ref,
+    ...(relinked?{previousPricingSource:row.pricingSource,calculationMethod:'formula',reason:'formula-builder-linked'}:{reason:ref!==row.pricingRef?'formula-updated':'inputs-changed'})}});
   if(amount===ledgerMoney(Number(row.amount)))continue;
   const items=out.get(row.employmentId)??[];out.set(row.employmentId,items);
   let item=items.find(i=>i.componentId===row.componentId);

@@ -239,11 +239,14 @@ describe('Payroll comparison consumes generated paid results under the saved rep
     const f = await fixture();
     const unclosed = await run(f.report.id);
     expect(unclosed.result.available).toBe(false);
-    expect(unclosed.result.issues.map(issue => issue.code)).toEqual(expect.arrayContaining(['previousNotClosed', 'draftPayroll']));
+    // Ready-company comparison (12 November 2026): the company's reasons are listed in the inclusion, not as result issues.
+    expect(unclosed.inclusion?.includedCompanyIds).toEqual([]);
+    expect(unclosed.inclusion?.excluded[0].reasons.map(reason => reason.code)).toEqual(expect.arrayContaining(['previousNotClosed', 'draftPayroll']));
+    expect(unclosed.result.issues).toEqual([]);
     expect(unclosed.result.rows).toEqual([]); expect(unclosed.result.summary).toBeNull();
     await closeBatch(ctx, { batchId: f.previous.batchId });
     const draft = await run(f.report.id);
-    expect(draft.result.issues.map(issue => issue.code)).toEqual(['draftPayroll']);
+    expect(draft.inclusion?.excluded[0].reasons.map(reason => reason.code)).toEqual(['draftPayroll']);
     expect(draft.result.rows).toEqual([]); expect(draft.result.summary).toBeNull();
     await generatePayslips(ctx, { batchId: f.current.batchId });
     expect((await run(f.report.id)).result).toMatchObject({ available: true, provisional: true });
@@ -252,7 +255,7 @@ describe('Payroll comparison consumes generated paid results under the saved rep
       kind: 'earning', txnDate: currentPeriod + '-01', amount: 1,
     });
     const stale = await run(f.report.id, 'export');
-    expect(stale.result.available).toBe(false); expect(stale.result.issues.map(issue => issue.code)).toContain('stalePayroll');
+    expect(stale.result.available).toBe(false); expect(stale.inclusion?.excluded[0].reasons.map(reason => reason.code)).toContain('stalePayroll');
     expect(stale.result.rows).toEqual([]); expect(stale.result.summary).toBeNull();
   });
 

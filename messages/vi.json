@@ -2385,6 +2385,7 @@
           "no_data_rows": "Thêm ít nhất một dòng sự kiện bên dưới tiêu đề.",
           "movement_catalog_too_large": "Danh sách loại sự kiện vượt kích thước nhập được hỗ trợ. Hãy dùng từng Sự kiện mới.",
           "movement_reference_catalog_too_large": "Danh sách tham chiếu vượt kích thước nhập được hỗ trợ. Hãy dùng Nhân sự để thay đổi.",
+          "movement_template_too_large": "Mẫu quá lớn để tạo cho số lượng công ty và danh sách giá trị này. Không có tệp nào được tạo. Hãy liên hệ bộ phận hỗ trợ.",
           "movement_history_too_large": "Lịch sử nhân viên vượt giới hạn kiểm tra nhập. Hãy ghi sự kiện trong Nhân sự.",
           "change_refused": "Thay đổi bị từ chối. Không lưu thay đổi nào của nhân viên này.",
           "workbook_key_unavailable": "Chưa cấu hình ký sổ làm việc. Hãy liên hệ quản trị viên hệ thống; bạn vẫn có thể dùng CSV.",
@@ -2528,6 +2529,7 @@
           "referenceValues": "Giá trị được phép cho từng công ty",
           "colValue": "Giá trị nhập vào Sau",
           "colLabel": "Ý nghĩa",
+          "allCompanies": "Tất cả công ty",
           "screenHint": "Một mẫu cho mọi loại biến động và mọi công ty. Nhập một dòng cho mỗi trường thay đổi; các dòng cùng công ty, nhân viên, ngày và loại sự kiện là một biến động.",
           "downloadTemplate": "Tải mẫu",
           "history": "Lịch sử nhập",
@@ -12138,6 +12140,39 @@
       "evaluationSaveFirst": "Lưu thay đổi trước khi đánh giá.",
       "evaluationExpired": "Đánh giá đã hết hạn hoặc cấu hình đã thay đổi. Hãy đánh giá lại.",
       "commandFailed": "Cài đặt AI hơi trục trặc. Hãy kiểm tra quyền và cài đặt đã lưu rồi thử lại.",
+      "failure": {
+        "call_draft": "yêu cầu thử nghiệm thứ nhất (trả lời bằng văn bản)",
+        "call_tool_call": "yêu cầu thử nghiệm thứ hai (gọi công cụ)",
+        "call_tool_result": "yêu cầu thử nghiệm thứ ba (kết quả công cụ)",
+        "probe_local": "{call} đã bị dừng tại đây trước khi gửi bất cứ thứ gì tới nhà cung cấp. {reason}",
+        "probe_provider": "{call} đã được gửi, nhưng lệnh gọi tới nhà cung cấp thất bại. Hãy kiểm tra khóa API, số dư tín dụng, tên mô hình và tuyến được phép trong OpenRouter rồi đánh giá lại.",
+        "probe_response": "Nhà cung cấp đã trả lời {call}, nhưng không đúng định dạng yêu cầu. Mô hình hoặc tuyến này có thể không hỗ trợ trả lời chính xác hoặc gọi công cụ. Hãy thử mô hình hoặc tuyến khác.",
+        "probe_summary": "Không thể xác nhận kết quả thử nghiệm cho ứng viên đã lưu này. Hãy đánh giá lại.",
+        "consent_required": "Hãy đánh dấu cả hai mục xác nhận trước khi chạy đánh giá.",
+        "candidate_required": "Ứng viên đã lưu đã thay đổi kể từ khi tải trang này. Hãy tải lại trang, kiểm tra mô hình đã lưu rồi đánh giá lại.",
+        "receipt_required": "Hãy đánh giá lại ứng viên đã lưu trước khi sử dụng. Lần đánh giá gần nhất không có, đã hết hạn hoặc thuộc về lần lưu trước.",
+        "unavailable": "Không thể xác nhận quyền quản trị của bạn hoặc cài đặt AI đã lưu. Hãy tải lại trang và thử lại.",
+        "not_admin": "Chỉ quản trị viên toàn nhóm hiện tại mới có thể thay đổi cài đặt nhà cung cấp AI.",
+        "secret_unavailable": "Không thể lưu khóa API cho đến khi AI_CONFIG_SECRET được đặt trên máy chủ.",
+        "evaluate_first": "Hãy lưu ứng viên OpenRouter, đánh giá, rồi chọn Dùng nhà cung cấp này.",
+        "key_required": "Nhập khóa API để thiết lập nhà cung cấp này.",
+        "config_invalid": "Không thể lưu các cài đặt AI này như đã nhập. Hãy kiểm tra nhà cung cấp, mô hình, khóa và tuyến rồi thử lại.",
+        "activation_unavailable": "Không thể kích hoạt ứng viên đã đánh giá. Hãy tải lại trang, đánh giá lại rồi kích hoạt.",
+        "connection_failed": "Không thể kết nối tới nhà cung cấp với các cài đặt này.",
+        "paused": "AI đang dừng, hoặc chức năng AI này đã bị tắt trong AI Centre. Hãy bật lại rồi thử lại.",
+        "daily_limit": "Đã đạt hạn mức yêu cầu AI hằng ngày. Hãy thử lại vào ngày mai hoặc tăng hạn mức trong AI Centre.",
+        "monthly_limit": "Hạn mức token AI hằng tháng đã hết. Hãy tăng hạn mức trong AI Centre hoặc chờ sang tháng sau.",
+        "concurrent_limit": "Tất cả các lượt yêu cầu AI đang được sử dụng. Hãy thử lại khi một yêu cầu đang chạy hoàn tất.",
+        "spend_control": "Một giới hạn chi tiêu USD đã dừng yêu cầu này. Hãy xem lại giới hạn và lịch sử chi tiêu AI trong AI Centre rồi thử lại.",
+        "spend_capability": "Có giới hạn chi tiêu USD đang áp dụng, nhưng máy chủ này không có bản ghi giá đã được thẩm định cho mô hình và tuyến này. Hãy gỡ giới hạn USD hoặc nhờ người vận hành nền tảng thiết lập kiểm soát chi tiêu đã thẩm định.",
+        "spend_root": "Không thể liên kết yêu cầu này với bản ghi chi tiêu của ứng viên đã lưu. Hãy tải lại trang và đánh giá lại.",
+        "privacy_review": "Yêu cầu AI này cần một bản thẩm định bảo vệ dữ liệu đã được phê duyệt trong phiên bản này. Hãy liên hệ người vận hành nền tảng.",
+        "privacy_source": "Không thể xác nhận dữ liệu đầu vào được bảo vệ cho yêu cầu AI này. Hãy thử lại.",
+        "configuration_changed": "Cài đặt AI đã lưu hoặc quyền của bạn đã thay đổi trong khi thao tác đang chạy. Hãy tải lại trang và thử lại.",
+        "controls": "Không thể xác nhận các điều khiển của AI Centre. Hãy kiểm tra AI đang chạy trong AI Centre rồi thử lại.",
+        "admission": "Các bước kiểm tra an toàn đã từ chối yêu cầu AI này trước khi gửi bất cứ thứ gì và không ghi nhận mức sử dụng nào. Hãy thử lại; nếu vẫn lặp lại, hãy báo thời điểm của lần thử này cho người vận hành nền tảng.",
+        "database": "Cơ sở dữ liệu chưa thể hoàn tất bước kiểm tra này lúc này. Hãy thử lại sau giây lát."
+      },
       "evaluationElapsed": "Thời gian đánh giá: {value} ms",
       "evaluationReportedUsage": "Cuộc gọi có báo cáo token: {count} trên 3",
       "evaluationCredits": "Tín dụng tài khoản đã báo cáo: {value}",
@@ -32176,6 +32211,23 @@
       "stalePayroll": "Cần tính lại lương",
       "itemNotRecorded": "Kết quả lịch sử không ghi nhận khoản lương đã chọn"
     },
+    "inclusion": {
+      "coverage": "Các công ty trong phép so sánh này",
+      "comparing": "Đang so sánh {included} trên {total} công ty có bảng lương. Các dòng và tổng chỉ bao gồm những công ty này.",
+      "comparedCompanies": "Công ty được so sánh",
+      "notIncluded": "Không bao gồm",
+      "notIncludedHelp": "Các công ty này không được tính vào các dòng và tổng cho đến khi bảng lương của cả hai tháng sẵn sàng.",
+      "reasons": {
+        "missingPayroll": "Không có kỳ chạy lương trong {month, date, ::MMMMyyyy}",
+        "previousNotClosed": "{month, date, ::MMMMyyyy} chưa được đóng",
+        "stalePayroll": "{month, date, ::MMMMyyyy} cần xử lý lại",
+        "draftPayroll": "{month, date, ::MMMMyyyy} vẫn là bản nháp"
+      },
+      "neverRan": "{count, plural, other {# công ty}} trong phạm vi này chưa từng chạy lương và không được bao gồm.",
+      "neverRanShort": "Chưa từng chạy lương",
+      "emptyNoneReady": "Không có công ty nào sẵn sàng để so sánh cho các tháng này. Xem mục Không bao gồm để biết mỗi công ty cần gì.",
+      "emptyNoPayroll": "Chưa có công ty nào trong phạm vi này chạy lương."
+    },
     "basis": "Nguồn: kết quả lương đã trả được lưu. Thông tin tổ chức theo ngày thuộc đơn vị trả lương cuối cùng được ghi trong kết quả hiện tại; dùng kết quả kỳ trước khi không có kết quả hiện tại. Hiển thị tên hiện tại theo quyền truy cập. Thứ tự bằng chứng đã có hiệu lực: chuyển đơn vị trả lương đã xác minh, tuyển mới, nghỉ việc đã ghi nhận, rồi lần tăng lương/thăng chức/giáng chức có thay đổi lương gần nhất; các dòng còn lại chưa được giải thích. Nhãn không chứng minh nguyên nhân của toàn bộ chênh lệch tiền.",
     "remarks": {
       "disabled": "Đã tắt giải thích tự động.",
@@ -34362,7 +34414,10 @@
       "dateOfBirth": "Ngày sinh",
       "gender": "Giới tính",
       "nationality": "Quốc tịch",
-      "maritalStatus": "Tình trạng hôn nhân"
+      "maritalStatus": "Tình trạng hôn nhân",
+      "companyId": "ID nội bộ của công ty",
+      "companyName": "Tên pháp lý của công ty",
+      "companyCode": "Mã công ty"
     },
     "parameter": {
       "payItem": "Khoản lương",
@@ -34526,7 +34581,10 @@
       "missing_return": "Một số trường hợp không cho ra số tiền. Hãy thêm Else với Return, ví dụ Return 0.",
       "division_by_zero": "Phép này chia cho 0, điều mà bảng lương không thể thực hiện. Hãy đổi số chia.",
       "possible_zero_divisor": "Phép này chia cho {name}. Nếu giá trị đó bằng 0, việc tính lương sẽ dừng với lỗi tính toán cho nhân viên đó. Hãy cân nhắc kiểm tra giá trị 0 trước.",
-      "blocked": "Hãy sửa các vấn đề được liệt kê trong Kiểm tra trước khi lưu."
+      "blocked": "Hãy sửa các vấn đề được liệt kê trong Kiểm tra trước khi lưu.",
+      "internal_id_comparedCompany": "companyId là ID nội bộ của công ty, nên không bao giờ bằng \"{value}\". Dùng companyCode cho mã công ty, hoặc companyName cho tên pháp lý.",
+      "internal_id_compared": "{name} là ID nội bộ, nên không bao giờ bằng \"{value}\". Hãy chọn một giá trị trong danh sách giá trị được phép của trường này.",
+      "internal_id_comparedSuggest": "{name} là ID nội bộ, nên không bao giờ bằng \"{value}\". Hãy chọn một giá trị trong danh sách giá trị được phép của trường này, hoặc dùng {suggestion}."
     },
     "testArea": {
       "title": "Kiểm thử & Kết quả công thức",
@@ -34610,9 +34668,24 @@
         "dateOfBirth": "Ngày sinh",
         "gender": "Giới tính",
         "nationality": "Quốc tịch",
-        "maritalStatus": "Tình trạng hôn nhân"
+        "maritalStatus": "Tình trạng hôn nhân",
+        "companyId": "ID nội bộ của công ty",
+        "companyName": "Tên pháp lý của công ty",
+        "companyCode": "Mã công ty"
       },
-      "conditions": "Điều kiện đã xác thực"
+      "conditions": "Điều kiện đã xác thực",
+      "busy": "Mô tả trước đó của bạn vẫn đang được soạn. Hãy đợi đến khi xong (tối đa {seconds} giây) rồi thử lại.",
+      "reasons": {
+        "timeout": "Nhà cung cấp AI không phản hồi trong {seconds} giây nên chưa có bản nháp. Hãy thử lại.",
+        "provider_unavailable": "Không thể kết nối nhà cung cấp AI hoặc không nhận được phản hồi dùng được. Hãy thử lại sau.",
+        "invalid_draft": "Phản hồi của AI không vượt qua bước kiểm tra công thức nên không được hiển thị. Hãy diễn đạt lại mô tả rồi thử lại.",
+        "paused": "Tính năng soạn công thức bằng AI đang tạm dừng. Bạn vẫn có thể chỉnh sửa thủ công.",
+        "daily_limit": "Đã đạt hạn mức yêu cầu AI trong ngày. Bạn vẫn có thể chỉnh sửa thủ công.",
+        "monthly_limit": "Đã đạt hạn mức AI trong tháng. Bạn vẫn có thể chỉnh sửa thủ công.",
+        "concurrent_limit": "Tất cả lượt yêu cầu AI đang được sử dụng. Hãy thử lại sau giây lát.",
+        "access_changed": "Quyền truy cập hoặc cài đặt công thức của bạn đã thay đổi trong lúc soạn bản nháp. Hãy thử lại.",
+        "interrupted": "Việc soạn đã dừng trước khi xong vì dịch vụ được khởi động lại. Hãy thử lại."
+      }
     }
   },
   "payrollTaxBasis": {

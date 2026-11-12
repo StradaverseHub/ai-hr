@@ -2,6 +2,7 @@ import {personnelGroupingReadinessTx} from './personnel-quality';
 import {payrollEmploymentPredicate,outstandingPaymentPredicate,payrollCompensationEffectiveOn,payrollEmploymentEnd,payrollRunContextsTx,type PayrollEligibilityRun} from './payroll-employment-eligibility';
 import {PayrollTaxBasisError} from '../lib/payroll-tax-basis';
 import {readPayrollComponentInputsTx,readPayrollIndividualLedgerTx,readPayrollAttendanceHoursTx} from './payroll-formula-inputs';
+import {payFormulaRowInputs} from '../lib/pay-formula-input';
 import {repriceIndividualLedgerTx,PayItemFormulaRepriceError,type RepricedPayItem} from '../packs/payroll/individual-calculation';
 import { captureRunInputsAtProcessingTx } from './payroll-audit/inputs';
 import {eligibleWorkingDays,payrollIncrementBasic,payrollRateBasic,payrollRoundAmount as roundAmount} from '../lib/payroll-basic';
@@ -5526,7 +5527,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       if(linked?.present)throw new Error('Formula Builder requires Typed Pay Items. Enable the module before calculating this payroll run.');
     }
     type CompRow = {
-      code: string; name: string; kind: string; amount: number; rounding: string; formulaInput?:string;
+      code: string; name: string; kind: string; amount: number; rounding: string; formulaInput?:string; currentInput?:string|null;
       epf: boolean; socso: boolean; pcb: boolean; hrdf: boolean; nonPayable: boolean; prorates: boolean;
       // 1.2.1 Fixed Transaction — per-employee override of the catalog `prorates` flag (null = inherit). A
       // one-off batch component has no override, so this is null there too (⇒ catalog flag, unchanged).
@@ -5572,7 +5573,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     if (typedComponents && empIds.length) {
       const push = (map: Map<string, CompRow[]>, r: { employmentId: string; amount: string; prorateOverride?: boolean | null } & Omit<CompRow, 'amount' | 'prorateOverride'>) => {
         const list = map.get(r.employmentId) ?? [];
-        list.push({ ...r, formulaInput:r.amount, amount: Number(r.amount), prorateOverride: r.prorateOverride ?? null });
+        // lib/pay-formula-input.ts owns {#Input}: a recurring or batch Pay Item's input is its saved amount.
+        list.push({ ...r, ...payFormulaRowInputs({ amount: r.amount }), amount: Number(r.amount), prorateOverride: r.prorateOverride ?? null });
         map.set(r.employmentId, list);
       };
       const {recurring:rec,batch:bat}=await readPayrollComponentInputsTx(tx,{employmentIds:empIds,periodStart,periodEnd,batchId:p.batchId});
@@ -5671,7 +5673,9 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
                 name: t.compName ?? t.compCode,
                 kind: t.compKind ?? t.kind,
                 amount: amt,
-                formulaInput:t.amount,
+                // {#Input} from the one owner: the keyed quantity of a row whose amount was priced from it (formula
+                // method or a `pay_item_rule` marker), otherwise the saved raw input. {#PayItemInput} keeps the amount.
+                ...payFormulaRowInputs(t),
                 rounding: t.calculationMethod!=null?'none':t.compRounding ?? 'none',
                 epf: t.compEpf ?? false,
                 socso: t.compSocso ?? false,

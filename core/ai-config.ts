@@ -36,13 +36,15 @@ import {
 } from '../lib/ai';
 import { encryptSecret, keyLast4 } from '../lib/ai/crypto';
 import { currentAiProviderAdminTx, currentAiProviderPresentationAdminTx } from './ai-provider-authority';
-import { activateOpenRouterCandidateTx, providerCandidatesPresentationTx, providerCandidatesTx, removeOpenRouterCandidateTx, saveOpenRouterCandidateTx } from './ai-provider-readiness';
+import { activateOpenRouterCandidateTx, AiProviderReadinessError, providerCandidatesPresentationTx, providerCandidatesTx, removeOpenRouterCandidateTx, saveOpenRouterCandidateTx } from './ai-provider-readiness';
 import { readOpenRouterOptions, type OpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
 import { readGatewayOptions } from '../lib/ai/providers/gateway-options';
 import { OpenRouterModel } from '../lib/ai/providers/openrouter-transport';
 
+/** `reason` is a closed code for operator copy; the message is never shown (it is not a disclosure boundary). */
+export type AiConfigRefusal = 'not_admin' | 'secret_unavailable' | 'evaluate_first' | 'key_required' | 'receipt_required' | 'activation_unavailable' | 'invalid';
 export class AiConfigError extends Error {
-  constructor(message: string) {
+  constructor(message: string, readonly reason: AiConfigRefusal = 'invalid') {
     super(message);
     this.name = 'AiConfigError';
   }
@@ -52,14 +54,14 @@ const isAdminCtx = (ctx: SessionContext) =>
   (ctx.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
 
 function assertAdmin(ctx: SessionContext) {
-  if (!isAdminCtx(ctx)) throw new AiConfigError('Only an admin can manage AI configuration.');
+  if (!isAdminCtx(ctx)) throw new AiConfigError('Only an admin can manage AI configuration.', 'not_admin');
 }
 
 /** Tenant-wide key/routing configuration requires fresh group-wide authority, not a stale page
  * role or one company's HR grant. Existing RLS and withheld ciphertext grants still apply. */
 async function assertConfigurationAdminTx(tx: Tx, ctx: SessionContext) {
   assertAdmin(ctx);
-  if(!(await currentAiProviderAdminTx(tx,ctx)))throw new AiConfigError('Only a current group-wide administrator can manage AI configuration.');
+  if(!(await currentAiProviderAdminTx(tx,ctx)))throw new AiConfigError('Only a current group-wide administrator can manage AI configuration.', 'not_admin');
 }
 
 function routingOptions(value:unknown):OpenRouterOptions {
@@ -107,7 +109,7 @@ export function getAiConfigView(ctx: SessionContext): Promise<AiConfigView> {
 export async function readAiConfigPresentationTx(tx: Tx, ctx: SessionContext): Promise<AiConfigView> {
   assertAdmin(ctx);
   if (!(await currentAiProviderPresentationAdminTx(tx, ctx))) {
-    throw new AiConfigError('Only a current group-wide administrator can manage AI configuration.');
+    throw new AiConfigError('Only a current group-wide administrator can manage AI configuration.', 'not_admin');
   }
   // Explicit column list — the ciphertext is not even granted to the app role, but be unambiguous.
   const rows = await tx
@@ -211,7 +213,7 @@ export async function saveAiProviderConfig(
       .limit(1);
 
     if (p.provider === 'openrouter') {
-      if (p.makeActive) throw new AiConfigError('Save the OpenRouter candidate first, evaluate it, then choose Use this provider.');
+      if (p.makeActive) throw new AiConfigError('Save the OpenRouter candidate first, evaluate it, then choose Use this provider.', 'evaluate_first');
       const candidate = (await providerCandidatesTx(tx, ctx))[0];
       const providerOptions = routingOptions(p.providerOptions === undefined ? candidate?.providerOptions ?? existing?.providerOptions : p.providerOptions);
       const rowId = await saveOpenRouterCandidateTx(tx, ctx, { model, apiKey, providerOptions });
@@ -230,11 +232,11 @@ export async function saveAiProviderConfig(
     let cipherFields: { apiKeyCiphertext: string; keyLast4: string } | null = null;
     if (apiKey) {
       if (!isSecretStorable()) {
-        throw new AiConfigError('Key storage is disabled — set AI_CONFIG_SECRET on the server to store keys.');
+        throw new AiConfigError('Key storage is disabled — set AI_CONFIG_SECRET on the server to store keys.', 'secret_unavailable');
       }
       cipherFields = { apiKeyCiphertext: encryptSecret(apiKey, ctx.tenantId), keyLast4: keyLast4(apiKey) };
     } else if (!existing) {
-      throw new AiConfigError('An API key is required to configure a new provider.');
+      throw new AiConfigError('An API key is required to configure a new provider.', 'key_required');
     }
 
     let rowId: string;
@@ -284,7 +286,8 @@ export async function setActiveProvider(ctx: SessionContext, p: { provider: stri
     if (p.provider === 'openrouter') {
       let promoted: { rowId: string; evaluationId: string };
       try { promoted = await activateOpenRouterCandidateTx(tx, ctx, p.evaluationReceipt); }
-      catch { throw new AiConfigError('A current evaluated OpenRouter candidate and account-policy review are required.'); }
+      catch (error) { throw new AiConfigError('A current evaluated OpenRouter candidate and account-policy review are required.',
+        error instanceof AiProviderReadinessError && error.code === 'receipt_required' ? 'receipt_required' : 'activation_unavailable'); }
       await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'ai-provider-config', aggregateId: promoted.rowId,
         eventType: 'ai-provider-config.activated', actor: actorOf(ctx), payload: { provider: p.provider, evaluationId: promoted.evaluationId,
           protocolSuiteVersion: 1, accountReviewVersion: 1 } });

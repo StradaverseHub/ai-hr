@@ -20,10 +20,32 @@ const binding = (cfg: ResolvedAiConfig) => createHash('sha256').update(JSON.stri
 ])).digest('hex');
 const validUsage = (value: AiUsage) => [value.inputTokens, value.outputTokens, value.cachedInputTokens].every(n => Number.isSafeInteger(n) && n >= 0);
 
+/** Which of the three fixed calls failed, and how far it got: `local` = refused before admission (no model run,
+ * nothing sent); `provider` = admitted and handed to the provider call, which failed (the transport logs its phase);
+ * `response` = the provider answered but the answer did not satisfy the fixed protocol. No content is retained. */
+export type ProviderProtocolStage = 'draft' | 'tool_call' | 'tool_result';
+export type ProviderProtocolOrigin = 'local' | 'provider' | 'response';
+type Progress = { stage: ProviderProtocolStage; dispatched: boolean; answered: boolean };
+/** Same generic type and message as before. The original refusal is held non-enumerably for code-only
+ * classification by the caller; its message, cause and any provider text are never copied or serialized. */
+export class ProviderProtocolFailure extends AiGatewayError {
+  declare readonly refusal: unknown;
+  constructor(readonly stage: ProviderProtocolStage, readonly origin: ProviderProtocolOrigin, refusal: unknown) {
+    super('The provider protocol evaluation could not be confirmed.');
+    Object.defineProperty(this, 'refusal', { value: refusal, enumerable: false });
+  }
+}
+
 /** Only actual completed calls with exact nonce/text/tool correlations produce an issued result.
  * This narrowly evaluates protocol behaviour on these inputs/bounds, not all task quality or privacy.
+ * Any failure leaves as ProviderProtocolFailure naming only the failing call and how far it got.
  */
 export async function runProviderProtocolEvaluation(configuration: ResolvedAiConfig): Promise<ProviderProtocolSummary> {
+  const progress: Progress = { stage: 'draft', dispatched: false, answered: false };
+  try { return await evaluateProviderProtocol(configuration, progress); }
+  catch (error) { throw new ProviderProtocolFailure(progress.stage, progress.answered ? 'response' : progress.dispatched ? 'provider' : 'local', error); }
+}
+async function evaluateProviderProtocol(configuration: ResolvedAiConfig, progress: Progress): Promise<ProviderProtocolSummary> {
   // Retain the actual issued configuration identity for canonical derivations. Captured display
   // parameters alone cannot issue privacy/source authority.
   if (configuration.provider !== 'openrouter' || !configuration.governance) return unavailable();
@@ -32,28 +54,29 @@ export async function runProviderProtocolEvaluation(configuration: ResolvedAiCon
   const inTime = () => { if (performance.now() - started >= PROVIDER_PROTOCOL_LIMITS.totalMs) return unavailable(); };
   let usage:AiUsage[]=[],accounting=createAiRunAccounting(configuration.provider);
   const cfg=withAiRunObserver(configuration,{
-    beforeCall(){if(performance.now()-started>=PROVIDER_PROTOCOL_LIMITS.totalMs)return unavailable();},
+    beforeCall(){if(performance.now()-started>=PROVIDER_PROTOCOL_LIMITS.totalMs)return unavailable();progress.dispatched=true;},
     usage(value){usage.push({...value});},observation(value){accounting.observe(value);},
     settled(){const actual=usage.length===1&&validUsage(usage[0])?usage[0]:null;observations.push(actual);const receipt=accounting.snapshot(actual?actual.inputTokens+actual.outputTokens+actual.cachedInputTokens:null);charges.push(receipt.providerObservationStatus==='reported'?receipt.openrouterAccountCostCredits:null);},
   });
+  const next=(stage:ProviderProtocolStage)=>{progress.stage=stage;progress.dispatched=false;progress.answered=false;};
   async function preparedCall(id:string,source:unknown){inTime();usage=[];accounting=createAiRunAccounting(configuration.provider);return preparePrivateAiTask(cfg,id,async()=>source);}
   const marker = `eval_${randomUUID()}`;
   const system = ['This is a synthetic integration protocol test. There are no people, accounts or HR records in this test.'];
-  const echoTask=await preparedCall('synthetic_protocol_echo_v1',{marker});let echo:string;
-  try{if(echoTask.operation!=='draft')return unavailable();echo=await generateDraft(echoTask.configuration,echoTask.args as GenerateArgs);}finally{echoTask.dispose();}
+  next('draft');const echoTask=await preparedCall('synthetic_protocol_echo_v1',{marker});let echo:string;
+  try{if(echoTask.operation!=='draft')return unavailable();echo=await generateDraft(echoTask.configuration,echoTask.args as GenerateArgs);progress.answered=true;}finally{echoTask.dispose();}
   inTime(); if (echo !== marker) return unavailable();
   const tool: AiToolSpec = { name: 'integration_echo', description: 'Synthetic integration fixture only. Return the supplied marker through the tool; this tool has no side effects.',
     inputSchema: { type: 'object', properties: { marker: { type: 'string', enum: [marker] } }, required: ['marker'], additionalProperties: false } };
   const question = `Call integration_echo exactly once with marker ${marker}. Do not answer in text yet.`;
-  const firstTask=await preparedCall('synthetic_protocol_tools_v1',{marker,stage:'first',callId:null});let first:Awaited<ReturnType<typeof converse>>;
-  try{if(firstTask.operation!=='conversation')return unavailable();first=await converse(firstTask.configuration,firstTask.args as ConverseArgs);}finally{firstTask.dispose();}
+  next('tool_call');const firstTask=await preparedCall('synthetic_protocol_tools_v1',{marker,stage:'first',callId:null});let first:Awaited<ReturnType<typeof converse>>;
+  try{if(firstTask.operation!=='conversation')return unavailable();first=await converse(firstTask.configuration,firstTask.args as ConverseArgs);progress.answered=true;}finally{firstTask.dispose();}
   inTime();
   const call = first.toolCalls[0];
   if (first.stop !== 'tool_use' || first.toolCalls.length !== 1 || !call || call.name !== tool.name || !/^[\x21-\x7e]{1,200}$/.test(call.id) ||
       !call.input || typeof call.input !== 'object' || Array.isArray(call.input) || Object.keys(call.input).length !== 1 ||
       !Object.prototype.hasOwnProperty.call(call.input, 'marker') || (call.input as Record<string, unknown>).marker !== marker) return unavailable();
-  const finalTask=await preparedCall('synthetic_protocol_tools_v1',{marker,stage:'final',callId:call.id});let final:Awaited<ReturnType<typeof converse>>;
-  try{if(finalTask.operation!=='conversation')return unavailable();final=await converse(finalTask.configuration,finalTask.args as ConverseArgs);}finally{finalTask.dispose();}
+  next('tool_result');const finalTask=await preparedCall('synthetic_protocol_tools_v1',{marker,stage:'final',callId:call.id});let final:Awaited<ReturnType<typeof converse>>;
+  try{if(finalTask.operation!=='conversation')return unavailable();final=await converse(finalTask.configuration,finalTask.args as ConverseArgs);progress.answered=true;}finally{finalTask.dispose();}
   inTime(); if (final.stop !== 'end' || final.toolCalls.length || final.text.trim() !== marker || observations.length !== 3) return unavailable();
   const known = observations.filter((value): value is AiUsage => value !== null), allKnown = known.length === 3;
   const credits=charges.every(value=>value!==null)?charges.reduce<number>((sum,value)=>sum+value!,0):null;

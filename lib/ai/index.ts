@@ -81,10 +81,17 @@ export async function generateDraft(cfg: ResolvedAiConfig, args: GenerateArgs): 
    return withProviderEgressDispatch(cfg,{operation:'draft',inputDigest},()=>generateDraftTransport(cfg,{...args,onUsage:record,onObservation:cfg.provider==='openrouter'?observe:undefined}),assertPrivacy);
   });
 }
+/** Per-call ceiling for request-path drafts: a request never waits on a model longer than this. */
+export const REQUEST_DRAFT_TIMEOUT_CAP_MS=22_000;
+/** Per-call ceiling for drafts produced after the request returned (GenerateArgs.background). Within the
+ *  OpenRouter transport's own 120 s bound; admission and reservations carry no clock (ai_admit). */
+export const BACKGROUND_DRAFT_TIMEOUT_CAP_MS=120_000;
 async function generateDraftTransport(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
   const adapter=adapterFor(cfg.provider);
+  const {background,...transportArgs}=args;args=transportArgs;
   if(args.timeoutMs==null&&!args.signal){const text=await adapter.generate(cfg,args);if(!text)throw new AiGatewayError('No draft was produced — please try again.');return text;}
-  const controller=new AbortController(),abort=()=>controller.abort(),timeoutMs=Math.min(22000,Math.max(1,Number.isFinite(args.timeoutMs)?args.timeoutMs!:22000));
+  const cap=background===true?BACKGROUND_DRAFT_TIMEOUT_CAP_MS:REQUEST_DRAFT_TIMEOUT_CAP_MS;
+  const controller=new AbortController(),abort=()=>controller.abort(),timeoutMs=Math.min(cap,Math.max(1,Number.isFinite(args.timeoutMs)?args.timeoutMs!:REQUEST_DRAFT_TIMEOUT_CAP_MS));
   if(args.signal?.aborted){args.onUsage?.({inputTokens:0,outputTokens:0,cachedInputTokens:0});throw new AiGatewayError('Drafting was cancelled.');}
   args.signal?.addEventListener('abort',abort,{once:true});const timer=setTimeout(abort,timeoutMs);
   try{const text=await adapter.generate(cfg,{...args,signal:controller.signal,timeoutMs});if(!text)throw new AiGatewayError('No draft was produced — please try again.');return text;}
