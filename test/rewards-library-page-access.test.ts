@@ -42,10 +42,10 @@ async function held(tenantId:string,kind:'access'|'history',signal:AbortSignal,r
  finally{release();signal.removeEventListener('abort',abort);await writer;}
 }
 
-it('describes actual GR and CTRO access in RR/RO without an event or financial disclosure',async()=>{
+it('describes actual GR and CTRO (both configuration editors, board 60f1fdcd) access in RR/RO without an event or financial disclosure',async()=>{
  const f=await fixture(),before=await audit(f.b.tenantId),modes:{isolation:string;readonly:string;role:string}[]=[];budgets(modes);
  expect(await rewardLibraryPageAccess(f.gr.ctx)).toEqual({canManage:true});
- expect(await rewardLibraryPageAccess(f.ctro.ctx)).toEqual({canManage:false});
+ expect(await rewardLibraryPageAccess(f.ctro.ctx)).toEqual({canManage:true});
  await expect(rewardLibraryPageAccess(adminCtx(f.b))).rejects.toThrow(/not available/);
  expect(modes).toHaveLength(3);expect(modes.every(mode=>mode.isolation==='repeatable read'&&mode.readonly==='on'&&mode.role==='ai_hr_app')).toBe(true);
  expect(await audit(f.b.tenantId)).toEqual(before);
@@ -54,7 +54,7 @@ it('describes actual GR and CTRO access in RR/RO without an event or financial d
 it('finishes preflight while real Access and audit-chain writers remain held; the audited read still refuses and rolls back',async context=>{
  const f=await fixture(),before=await audit(f.b.tenantId);budgets();
  for(const kind of ['access','history'] as const)await held(f.b.tenantId,kind,context.signal,async pid=>{
-  expect(await rewardLibraryPageAccess(f.gr.ctx)).toEqual({canManage:true});expect(await rewardLibraryPageAccess(f.ctro.ctx)).toEqual({canManage:false});
+  expect(await rewardLibraryPageAccess(f.gr.ctx)).toEqual({canManage:true});expect(await rewardLibraryPageAccess(f.ctro.ctx)).toEqual({canManage:true});
   const [proof]=await owner.client`select exists(select 1 from pg_locks where pid=${pid} and locktype='advisory' and granted) as held`;if(!proof)throw Error('Missing actual held-lock proof');expect(proof.held).toBe(true);
   // Behind the audit-chain key the refusal now comes from the commit-time seal, not the insert.
   expect(pgSqlState(await rewardLibraries(f.gr.ctx,'salary').then(()=>undefined,(error:unknown)=>error))).toBe('55P03');

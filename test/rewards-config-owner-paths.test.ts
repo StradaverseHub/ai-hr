@@ -44,7 +44,7 @@ async function employee(base:Base,name:string):Promise<Actor>{
 const salaryData=(grades:{gradeId:string;grade:string}[],scale=1)=>({kind:'salary' as const,rows:grades.map(g=>({...g,minimumCents:g.grade==='23'?null:10000*scale,midpointCents:g.grade==='23'?null:20000*scale,maximumCents:g.grade==='23'?null:30000*scale}))});
 const salaryRaw=(name:string,grades:{gradeId:string;grade:string}[],scale=1)=>({libraryId:null,versionId:null,expectedLock:0,name,year:2026,tags:[],groupDefault:false,previousLibraryId:null,data:salaryData(grades,scale),reason:'Board 60f1fdcd owner-path library save',mode:'active' as const});
 const pat={targetCents:1_000_000,forecastCents:null,actualCents:900_000,targetMonthsBp:20000};
-const jobOf=async(userId:string)=>(await owner.db.execute<{id:string}>(sql`select e.id from employment e join app_user u on u.person_id=e.person_id and u.tenant_id=e.tenant_id where u.id=${userId}::uuid`))[0].id;
+const jobOf=async(userId:string|undefined)=>(await owner.db.execute<{id:string}>(sql`select e.id from employment e join app_user u on u.person_id=e.person_id and u.tenant_id=e.tenant_id where u.id=${userId!}::uuid`))[0].id;
 
 it('shows CTRO and HR Admin as Full on Salary Structures, Bonus Matrices and PAT Inputs, and leaves other pages unchanged',()=>{
  for(const capability of ['salary.view','bonus.view','pat.manage'] as const)for(const role of ['gr','ctro','hr_admin'] as const)expect(rolePermission(role,capability)).toBe('full');

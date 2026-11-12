@@ -61,8 +61,10 @@ CREATE FUNCTION app.reward_config_editor_anywhere() RETURNS boolean LANGUAGE sql
   OR EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=app.current_tenant_id() AND r.app_user_id=app.current_user_id() AND r.role::text='hr_admin'
    AND app.has_role_for('hr_admin',r.company_id)))
 $$;
+-- Row-security predicates: the policies below apply to every role that reads these tables (purpose readers included),
+-- so every role may evaluate them. They answer only about the current principal.
 REVOKE ALL ON FUNCTION app.reward_config_editor(uuid),app.reward_config_library_viewer(),app.reward_config_viewer(uuid),app.reward_config_editor_anywhere() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.reward_config_editor(uuid),app.reward_config_library_viewer(),app.reward_config_viewer(uuid),app.reward_config_editor_anywhere() TO ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.reward_config_editor(uuid),app.reward_config_library_viewer(),app.reward_config_viewer(uuid),app.reward_config_editor_anywhere() TO PUBLIC;
 --> statement-breakpoint
 
 -- 2. The change log, its readers and the notice recipients use the editor predicate. Notices also reach HR Admins
