@@ -7,7 +7,7 @@
  *              (core/loops/autonomy-cards.ts autoFixed), in the web's card order; a record gap is labelled with the web
  *              card's own words (controlTower.readinessScreen.gap) in the caller's language, or left out
  *   steps      nextStepsFrom(the Before payroll checklist, the passport cards), as the Next step panel; a missed
- *              clock-out whose one-tap Confirm card is already a reminder is not sent twice
+ *              clock-out whose one-tap Confirm card, or a passport whose card, is already a reminder is not sent twice
  *   hours      weekHours over the attendance owner's own week (attendance in use)
  *   payday     paydayView over the payroll owner's next payment and the checklist's cut-off (payroll in use): a date,
  *              never an amount
@@ -126,10 +126,12 @@ export async function readOwnTodayV2(s:SessionContext,employmentId:string,locale
    if(!ready.ok&&!cards.ok)throw new Error('No step source could be read');
    const items=ready.ok?ready.value?.items??[]:[];
    const passports=cards.ok?cards.value.flatMap(card=>card.kind==='passport'?[card]:[]):[];
-   // A missed clock-out whose Confirm card is already a reminder is that card, not a second step.
-   const confirmCase=new Map(items.flatMap(item=>item.action.kind==='confirm'&&item.action.card==='clockOut'?[[item.key,item.action.caseId] as const]:[]));
-   const onReminders=new Set(shown.status==='ok'?shown.items.flatMap(item=>item.kind==='clockOut'?[item.caseId]:[]):[]);
-   const kept=nextStepsFrom(items,passports).filter(step=>{const caseId=confirmCase.get(step.key);return !(caseId&&onReminders.has(caseId));});
+   // A missed clock-out whose Confirm card is already a reminder, or a passport whose card is, is that card, not a
+   // second step.
+   const onReminders=new Set(shown.status==='ok'?shown.items.flatMap(item=>item.kind==='clockOut'||item.kind==='passport'?[`${item.kind}:${item.caseId}`]:[]):[]);
+   const kept=nextStepsFrom(
+    items.filter(item=>!(item.action.kind==='confirm'&&item.action.card==='clockOut'&&onReminders.has(`clockOut:${item.action.caseId}`))),
+    passports.filter(card=>!onReminders.has(`passport:${card.caseId}`)));
    const sent:TodayStep[]=kept.filter(step=>STEP_KINDS.has(step.kind)).slice(0,TODAY_STEP_LIMIT).map(step=>({
     key:step.key,kind:step.kind as TodayStep['kind'],due:step.due,date:step.date,endDate:step.endDate??null,label:step.label??null,decider:step.decider,destination:stepDestination(step)}));
    // As the Next step panel: a source that failed, or a checklist group it could not read, is never all clear.
