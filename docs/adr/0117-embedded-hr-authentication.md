@@ -127,3 +127,21 @@ is deleted and audited once as expired when the next locked read, sign-in or res
 Audit events carry times, actor and the administrator's reason only, never passwords, links or codes.
 Temporary-password issuance keeps policy, history, single-use and session revocation unchanged; its
 reason becomes optional. Password Policy settings are not changed by either action.
+
+## Account actions need strictly higher authority — 10 November 2026
+
+Security Center account actions (suspend, reactivate, expiry, temporary password, authenticator pause
+and its early end, and reset email) previously admitted any group administrator for every target. A
+tenant-wide HR administrator could therefore set a temporary password and an authenticator pause on a
+super administrator, and any administrator could act on their own account. Migration 4902 adds
+`app.account_actions_admitted` and `app.account_action_subject`, which keep every read-admission proof
+from 2106 and additionally:
+
+- refuse the actor's own account;
+- rank super_admin 3, tenant-wide hr_admin 2, company-scoped hr_admin 1 and all other roles 0, and
+  admit an action only when the target's highest role ranks strictly below the actor's;
+- never admit an authenticator pause for a target holding hr_admin or super_admin at any scope.
+
+Reading an account summary or history is unchanged. The Users list and account page offer only admitted
+actions. Super administrators therefore cannot reset one another in the product; they use self-service
+recovery or the installation operator route. Payroll and performance partner roles rank 0.

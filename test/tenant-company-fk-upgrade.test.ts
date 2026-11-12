@@ -203,6 +203,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5126_contract_internship_end_dates',
    // Board item 8d02748a, renumbered at the Irwin board integration onto release candidate 3.
    '5127_import_log_actor_labels',
+   // PR 240 Security Center account-action authority, renumbered 5128.
+   '5128_account_action_authority',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -261,6 +263,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.access_lock_assert_strict(uuid,text,text)','app.access_lock_mode_held(uuid)','app.access_profile_policy_read_lock()',
    'app.access_profile_policy_value_lock()','app.access_workforce_employment_permitted(uuid,uuid,timestamp with time zone,uuid,uuid[])','app.access_workforce_list_facts()',
    'app.access_workforce_list_rows_for_ids(uuid[])','app.access_workforce_permitted_companies(text)','app.access_workforce_picker_facts(uuid[])',
+   // PR 240 (5128): account actions need strictly higher authority and never target the actor.
+   'app.account_action_subject(uuid,text,text)','app.account_actions_admitted(uuid,text)',
    'app.ai_centre_mandate_bound_tenant()','app.ai_centre_mandate_write_order()','app.assistant_rewards_calendar_presentation_choices_v1()',
    'app.assistant_rewards_cancel_presentation_choices_v1()','app.assistant_rewards_return_presentation_choices_v1()','app.attendance_clock_policy_history(uuid,uuid)',
    'app.attendance_frozen_actor_identity_keys(jsonb,text)','app.attendance_pending_visible_headers(uuid)',

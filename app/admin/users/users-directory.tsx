@@ -22,7 +22,7 @@ type Props = {
   companies: { id: string; name: string }[];
   roleOptions: string[];
   assistantGrantedIds: string[];
-  accounts?:Record<string,{username:string;status:string;activeUntil:string|null;exemptionUntil?:number|null}>;
+  accounts?:Record<string,{username:string;status:string;activeUntil:string|null;exemptionUntil?:number|null;actions?:readonly string[]}>;
   /** Latest successful sign-in per app user (ISO instant), from the app-user.logged-in audit events. */
   lastSignIns?:Record<string,string>;
   /** False when sign-in is not owned by the embedded HR login (another provider is selected). */
@@ -110,8 +110,8 @@ export function UsersDirectory({ rows, groupAdmin, includeArchived, companies, r
     const actions=u.status==='preparing'?<a href="/admin/users/create" className={rowAction}>{t('resumeActivation')}</a>
       :u.status==='pending'?(groupAdmin&&u.personId?<><a href={`/admin/users/create?activate=${u.personId}`} className={rowAction}>{d('setUsernamePassword')}</a><a href={`/admin/users/invite?activate=${u.personId}`} className={rowAction}>{d('sendInvitation')}</a></>:<span className="text-muted-foreground">—</span>)
       :state==='active'&&u.appUserId?(account&&account.status==='active'?<>
-        <ResetPasswordDialog userId={u.appUserId} name={name(u)} username={account.username} triggerClassName={rowAction}/>
-        <AuthenticatorControlDialog userId={u.appUserId} name={name(u)} exemptionUntil={paused} triggerClassName={rowAction}/>{toggle}</>
+        {account.actions?.includes('temporary-password')&&<ResetPasswordDialog userId={u.appUserId} name={name(u)} username={account.username} triggerClassName={rowAction}/>}
+        {(account.actions?.includes('recovery-exemption')||(paused&&account.actions?.includes('recovery-exemption-cancel')))&&<AuthenticatorControlDialog userId={u.appUserId} name={name(u)} exemptionUntil={paused} triggerClassName={rowAction}/>}{toggle}</>
         :<>{toggle}<p className="max-w-56 text-left text-xs text-muted-foreground md:ml-auto md:text-right">{d(managedSignIn?'unavailableScope':'unavailableProvider')}</p></>)
       :toggle;
     return <>

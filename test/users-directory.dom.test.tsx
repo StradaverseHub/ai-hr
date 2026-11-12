@@ -34,7 +34,7 @@ describe('user directory filtering, grouping and focused access editing',()=>{
   const rows=[user('Aina Rahman',{employeeCode:'E0012',roles:[{id:'e',role:'employee',companyId:'acme',company:'Acme'}]}),user('Daniel Tan',{employeeCode:'E0027',roles:[{id:'h1',role:'hr_admin',companyId:'acme',company:'Acme'},{id:'h2',role:'hr_admin',companyId:'beta',company:'Beta'}]}),
    user('Priya Nair',{employeeCode:'E0031'}),user('Lim Wei Jie',{appUserId:null,status:'pending',employeeCode:'E0044'}),user('Outside Scope',{employeeCode:'E0050'})];
   render(<NextIntlClientProvider locale="en" messages={en}><UsersDirectory rows={rows} groupAdmin={true} includeArchived={false} companies={[{id:'acme',name:'Acme'},{id:'beta',name:'Beta'}]} roleOptions={['employee']} assistantGrantedIds={[]}
-   accounts={{'user-Aina Rahman':{username:'aina.r',status:'active',activeUntil:null},'user-Daniel Tan':{username:'daniel.t',status:'active',activeUntil:'2026-12-31',exemptionUntil:Date.UTC(2026,10,12,9,0)},'user-Priya Nair':{username:'priya.n',status:'active',activeUntil:null}}}
+   accounts={{'user-Aina Rahman':{username:'aina.r',status:'active',activeUntil:null,actions:['suspend','reactivate','expiry','temporary-password','recovery-exemption','recovery-exemption-cancel','reset-email']},'user-Daniel Tan':{username:'daniel.t',status:'active',activeUntil:'2026-12-31',exemptionUntil:Date.UTC(2026,10,12,9,0),actions:[]},'user-Priya Nair':{username:'priya.n',status:'active',activeUntil:null,actions:['suspend','reactivate','expiry','temporary-password','recovery-exemption','recovery-exemption-cancel','reset-email']}}}
    lastSignIns={{'user-Aina Rahman':'2026-11-10T01:30:00.000Z','user-Daniel Tan':'2026-11-07T10:02:00.000Z'}}/></NextIntlClientProvider>);
   expect([...document.querySelectorAll('thead th')].map(th=>th.textContent)).toEqual(['Employee Name','Employee ID','Username','Email Address','Account Status','Role','Company Scope','Last Login','Actions']);
   const byName=(text:string)=>[...document.querySelectorAll('[data-directory-row]')].find(el=>el.querySelector('th')?.textContent?.includes(text)) as HTMLElement;
@@ -44,6 +44,8 @@ describe('user directory filtering, grouping and focused access editing',()=>{
   const daniel=byName('Daniel Tan');
   expect(within(daniel).getByText('07-Nov-2026 18:02')).toBeTruthy();expect(within(daniel).getByText('Active until 31-Dec-2026')).toBeTruthy();
   expect(within(daniel).getByText('Authenticator paused until 12-Nov-2026 17:00')).toBeTruthy();
+  // A peer administrator: the database admits no account action, so only Edit (access) remains (4902).
+  expect(within(daniel).getAllByRole('button').map(b=>b.textContent)).toEqual(['Edit']);
   expect(within(daniel).getByText('hr admin')).toBeTruthy();expect(within(daniel).getByText('Acme, Beta')).toBeTruthy();
   expect(within(byName('Priya Nair')).getAllByText('Never Logged In').length).toBeGreaterThan(0);
   const pending=byName('Lim Wei Jie');
@@ -62,7 +64,7 @@ describe('user directory filtering, grouping and focused access editing',()=>{
   expect(screen.getByText(en.admin.users.directory.unavailableProvider)).toBeTruthy();expect(screen.queryByRole('button',{name:'Reset Password'})).toBeNull();
  });
  it('opens Reset Password and Authenticator Control from the employee row',async()=>{
-  render(<NextIntlClientProvider locale="en" messages={en}><UsersDirectory rows={[user('Aina Rahman')]} accounts={{'user-Aina Rahman':{username:'aina.r',status:'active',activeUntil:null}}} groupAdmin={true} includeArchived={false} companies={[]} roleOptions={[]} assistantGrantedIds={[]}/></NextIntlClientProvider>);
+  render(<NextIntlClientProvider locale="en" messages={en}><UsersDirectory rows={[user('Aina Rahman')]} accounts={{'user-Aina Rahman':{username:'aina.r',status:'active',activeUntil:null,actions:['suspend','reactivate','expiry','temporary-password','recovery-exemption','recovery-exemption-cancel','reset-email']}}} groupAdmin={true} includeArchived={false} companies={[]} roleOptions={[]} assistantGrantedIds={[]}/></NextIntlClientProvider>);
   fireEvent.click(screen.getByRole('button',{name:'Reset Password'}));
   const reset=await screen.findByRole('dialog',{name:'Reset Password'});
   expect(within(reset).getByDisplayValue('Aina Rahman')).toBeTruthy();expect(within(reset).getByDisplayValue('aina.r')).toBeTruthy();

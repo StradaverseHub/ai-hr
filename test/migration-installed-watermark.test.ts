@@ -17,7 +17,7 @@
  *
  * RESERVED records numbers other sessions hold above staging's watermark (release coordinator, 12 November 2026;
  * tag 51NN, when 17933300048NN): the Irwin release's 5100, 5101, 5102 and 5110-5112 (when 1793330004800-1793330004812)
- * and PR 240's 5122 (when 1793330004822). The Irwin release may reach staging before this one and raise its watermark
+ * and PR 240's 5128 (when 1793330004828; moved from 5102, above staging's 5127). The Irwin release may reach staging before this one and raise its watermark
  * to 1793330004812, so every other pending entry is journalled above it. No other entry takes a reserved number or
  * `when`, and a reserved migration merged here keeps its reserved `when`.
  */
@@ -34,7 +34,7 @@ const INSTALLED:Installed[]=[
 type Reserved={number:number;owner:string;first:boolean;when:number};
 const RESERVED:readonly Reserved[]=[
  ...[5100,5101,5102,5110,5111,5112].map(number=>({number,owner:'the Irwin release',first:true})),
- {number:5122,owner:'PR 240',first:false},
+ {number:5128,owner:'PR 240',first:false},
 ].map(reserved=>({...reserved,when:1793330004800+(reserved.number-5100)}));
 const sha256=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex');
 const entries=(JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:Entry[]}).entries;

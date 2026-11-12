@@ -1,3 +1,34 @@
+# Security Center account-action authority (PR 240) renumbered above staging — 12 November 2026 MYT (unapplied, renumbered)
+
+Staging now has every migration through `5127_import_log_actor_labels` (idx 4527 / when 1793330004827), installed from
+alpha `69de131ecec4d132cf456d695f68337edff032e7`. PR 240's unapplied `5102_account_action_authority` (idx 4502 / when
+1793330004802; reserved as `5122` / when 1793330004822 in the sections below) sits under that watermark and would be
+skipped there silently (docs/SCALE-AND-RELEASE-RULES.md rule 11). Owner-approved on 12 November 2026, it moves to
+`5128_account_action_authority` at idx 4528 / when 1793330004828, keeping the shared offset (tag 51NN, idx 45NN, when
+…48NN). The SQL bytes are unchanged (SHA256 `16f2188970a3ae2002b3aa067677ec89f7b338151c96476355efc3b24725a7cf`; the
+file does not name its own tag) and were never applied anywhere. Recheck peer claims and the installed ledger at
+admission; this grants no installation authority.
+
+# Security Center account-action authority (PR 240) — 12 November 2026 MYT (unapplied, renumbered)
+
+Main now ends with the combined release block (`5000`–`5090`, idx 4400–4490, when 1793330004700–1793330004790), so
+the unapplied `4902_account_action_authority` (idx 4302 / when 1793330004602) would be silently skipped after it.
+It moves to `5102_account_action_authority` at idx 4502 / when 1793330004802, the slot reserved for PR 240 beside
+board windows 3 and 4 (`5100`, `5101`). The SQL bytes are unchanged and were never applied anywhere; the migration
+only creates two new functions. If windows 3 and 4 reach main first, this entry stays last; if PR 240 lands first,
+their journal entries must still be appended in timestamp order, which `check-migration-order.mjs` enforces.
+Recheck peer claims and the installed ledger at admission; this grants no installation authority.
+
+# Security Center account-action authority — 10 November 2026 MYT (unapplied)
+
+PR 240 (branch claude/fix-account-action-privilege) moves its unapplied reservation
+`4502_account_action_authority` to `4902_account_action_authority` at idx 4302 / when
+1793330004602, because main now ends at 4800 (idx 4200 / when 1793330004500) and a
+lower timestamp would be silently skipped after it. The 4502 bytes were never applied
+anywhere. A survey of main and the 150 most recently updated origin heads found no
+claim at idx 4302 or between when 1793330004500 and 1793330009820; 4900 and 4901 are
+reserved the same day for the rebased ccd3a65c and 4452ba3c board releases. Recheck
+peer claims and the installed ledger at admission; this grants no installation authority.
 # Irwin board items combined release rebased onto release candidate 3 — 12 November 2026 MYT (unapplied, renumbered)
 
 Branch `claude/irwin-board-combined-20261112` merges `origin/alpha` at `05c4aa0348700a08de6723e88a67f2cbd43689d4`

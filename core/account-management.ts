@@ -21,34 +21,50 @@ function authSql(tx:Tx):AuthSql {
   return tx.execute(sql.join(parts.map(part=>/^\$\d+$/.test(part)?sql`${values[Number(part.slice(1))-1]}`:sql.raw(part)),sql``));
  }} as unknown as AuthSql;
 }
-async function withAccount<T>(ctx:SessionContext,userId:string,operation:(tx:Tx,auth:AuthSql,c:Credential)=>Promise<T>):Promise<T>{
+const accountCommandTypes=['suspend','reactivate','expiry','temporary-password','recovery-exemption','recovery-exemption-cancel','reset-email'] as const;
+export type AccountCommandType=typeof accountCommandTypes[number];
+/** Reads admit through 2106's scope proof; an action additionally needs strictly higher authority (4902). */
+function admission(userId:string,issuer:string,action?:AccountCommandType){
+ return action?sql`select app.account_action_subject(${userId}::uuid,${issuer},${action}) subject`
+  :sql`select app.account_management_subject(${userId}::uuid,${issuer}) subject`;
+}
+/** The actions the database admits for this actor and target: none for self, peers and higher roles. */
+async function admittedActions(tx:Tx,userId:string,issuer:string):Promise<AccountCommandType[]>{
+ const [row]=await tx.execute(sql`select app.account_actions_admitted(${userId}::uuid,${issuer}) actions`) as unknown as {actions:string[]|null}[];
+ return accountCommandTypes.filter(type=>row?.actions?.includes(type));
+}
+async function withAccount<T>(ctx:SessionContext,userId:string,operation:(tx:Tx,auth:AuthSql,c:Credential)=>Promise<T>,action?:AccountCommandType):Promise<T>{
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  if(!internalSelected()||!ctx.userId||!isAdmin(ctx)||! /^[0-9a-f-]{36}$/i.test(userId))throw Error('forbidden');
+ // Nobody acts on their own account here; the database refuses it too, this keeps the error early and plain.
+ if(action&&userId.toLowerCase()===ctx.userId.toLowerCase())throw Error('forbidden');
  return withTenant(ctx,async tx=>{
   const issuer=internalIssuer(ctx.tenantId);
-  const [identity]=await tx.execute(sql`select app.account_management_subject(${userId}::uuid,${issuer}) subject`) as unknown as {subject:string}[];
+  const [identity]=await tx.execute(admission(userId,issuer,action)) as unknown as {subject:string|null}[];
   if(!identity?.subject)throw Error('forbidden');
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'internal-auth:'+identity.subject},0))`);
   // Re-admit after acquiring the same serialization lock as login/recovery and session refresh.
-  await tx.execute(sql`select app.account_management_subject(${userId}::uuid,${issuer})`);
+  const [again]=await tx.execute(admission(userId,issuer,action)) as unknown as {subject:string|null}[];
+  if(again?.subject!==identity.subject)throw Error('forbidden');
   const auth=authSql(tx),c=await readRecord<Credential>(auth,`credential:${identity.subject}`,true);
   if(!c||c.subject!==identity.subject||c.tenantId!==ctx.tenantId||c.issuer!==issuer)throw Error('forbidden');
   return operation(tx,auth,c);
  });
 }
-export type AccountSummary={name?:string|null;username:string;email:string;status:'active'|'suspended'|'expired'|'preparing';activeUntil:string|null;mustChange:boolean;temporaryPasswordExpiresAt:number|null;exemptionUntil:number|null};
+export type AccountSummary={name?:string|null;username:string;email:string;status:'active'|'suspended'|'expired'|'preparing';activeUntil:string|null;mustChange:boolean;temporaryPasswordExpiresAt:number|null;exemptionUntil:number|null;actions:AccountCommandType[]};
 const accountStatus=(c:Credential):AccountSummary['status']=>!c.enabled?'preparing':c.suspended?'suspended':!accountAvailable(c)?'expired':'active';
 /** The read settles an ended authenticator pause (deleted and audited once as expired) under the account lock. */
 export function readManagedAccount(ctx:SessionContext,userId:string){return withAccount(ctx,userId,async(tx,auth,c):Promise<AccountSummary>=>{
  const exemption=await settleRecoveryExemption(auth,c);
  const [person]=await tx.execute(sql`select p.full_name from app_user au left join person p on p.id=au.person_id and p.tenant_id=au.tenant_id where au.id=${userId}::uuid and au.tenant_id=${ctx.tenantId}::uuid`) as unknown as {full_name:string|null}[];
- return {name:person?.full_name??null,username:c.username,email:c.email,status:accountStatus(c),activeUntil:c.accountActiveUntil??null,mustChange:c.mustChange,temporaryPasswordExpiresAt:c.temporaryPasswordExpiresAt??null,exemptionUntil:exemption?.expiresAt??null};
+ const actions=userId.toLowerCase()===ctx.userId?.toLowerCase()?[]:await admittedActions(tx,userId,internalIssuer(ctx.tenantId));
+ return {actions,name:person?.full_name??null,username:c.username,email:c.email,status:accountStatus(c),activeUntil:c.accountActiveUntil??null,mustChange:c.mustChange,temporaryPasswordExpiresAt:c.temporaryPasswordExpiresAt??null,exemptionUntil:exemption?.expiresAt??null};
 });}
 /** A policy-conforming candidate for the Reset Password dialog. Nothing is stored or audited; the admin may edit it. */
 export function generateManagedAccountPassword(ctx:SessionContext,userId:string){return withAccount(ctx,userId,async(_tx,auth,c)=>{
  if(!c.enabled||!accountAvailable(c))throw Error('invalid');
  return generateTemporaryPassword(auth,c);
-});}
+},'temporary-password');}
 export type AccountCommand=
  |{type:'suspend'|'reactivate';reason:string}
  |{type:'expiry';reason:string;activeUntil:string|null}
@@ -62,7 +78,7 @@ const OPTIONAL_REASON=new Set(['temporary-password','recovery-exemption-cancel']
 export async function manageAccount(ctx:SessionContext,userId:string,command:AccountCommand){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  command=structuredClone(command);
- if(!['suspend','reactivate','expiry','temporary-password','recovery-exemption','recovery-exemption-cancel','reset-email'].includes(command.type))throw Error('invalid');
+ if(!(accountCommandTypes as readonly string[]).includes(command.type))throw Error('invalid');
  if(command.reason!==undefined&&typeof command.reason!=='string')throw Error('invalid');
  const reason=(command.reason??'').trim();
  if((reason.length>0||!OPTIONAL_REASON.has(command.type))&&(reason.length<5||reason.length>500))throw Error('invalid');
@@ -106,7 +122,7 @@ export async function manageAccount(ctx:SessionContext,userId:string,command:Acc
   metadata.afterStatus=c.suspended?'suspended':accountAvailable(c)?'active':'expired';
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'app-user',aggregateId:userId,eventType:`app-user.account-${command.type}`,actor:actorOf(ctx),payload:metadata});
   return {password,organization:c.organization,username:c.username};
- });
+ },command.type);
  let delivery:'sent'|'failed'|'skipped'|'uncertain'|undefined;
  if(command.type==='reset-email'){
   delivery='uncertain';
@@ -115,7 +131,7 @@ export async function manageAccount(ctx:SessionContext,userId:string,command:Acc
  return {password:result.password,delivery};
 }
 
-export type ManagedDirectoryAccount=Pick<AccountSummary,'username'|'status'|'activeUntil'|'exemptionUntil'>;
+export type ManagedDirectoryAccount=Pick<AccountSummary,'username'|'status'|'activeUntil'|'exemptionUntil'|'actions'>;
 /** Batched directory projection. A denied identity has no metadata and no account action link.
  * Read-only: an ended authenticator pause shows as required here and is settled by the next locked read. */
 export async function readManagedAccountDirectory(ctx:SessionContext,userIds:string[]){
@@ -129,7 +145,8 @@ export async function readManagedAccountDirectory(ctx:SessionContext,userIds:str
    const c=await readRecord<Credential>(auth,`credential:${identity.subject}`);
    if(!c||c.subject!==identity.subject||c.tenantId!==ctx.tenantId||c.issuer!==issuer)continue;
    const exemption=await readRecord<RecoveryExemption>(auth,recoveryExemptionKey(c.subject));
-   result[id]={username:c.username,status:accountStatus(c),activeUntil:c.accountActiveUntil??null,exemptionUntil:exemption&&recoveryExemptionActive(exemption,now)?exemption.expiresAt:null};
+   const actions=id.toLowerCase()===ctx.userId!.toLowerCase()?[]:await admittedActions(tx,id,issuer);
+   result[id]={username:c.username,status:accountStatus(c),activeUntil:c.accountActiveUntil??null,exemptionUntil:exemption&&recoveryExemptionActive(exemption,now)?exemption.expiresAt:null,actions};
   }
   return result;
  });

@@ -141,9 +141,12 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:4526,when:1793330004826,tag:'5126_contract_internship_end_dates'},
  // 8d02748a readable import log references, renumbered 5127 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
  {idx:4527,when:1793330004827,tag:'5127_import_log_actor_labels'},
+ // PR 240 Security Center account-action authority, renumbered 5128 above staging's 5127 watermark (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
+ {idx:4528,when:1793330004828,tag:'5128_account_action_authority'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5128_account_action_authority':'16f2188970a3ae2002b3aa067677ec89f7b338151c96476355efc3b24725a7cf',
  '5124_attendance_workflow_skipped_levels':'849dba4bf7c3aa39e45eb7f463ef24301a2eea3b10a781cf39858aa218635c6d',
  '5123_import_history_kind':'2da28686e0f48790491ed9677813be1fae9a71f1e9fbbe1c9b51786f401420e7',
  '5127_import_log_actor_labels':'1f90bf32091400f2ec667a8538802248a90bb1336c869a8b8faad349b2530ce2',

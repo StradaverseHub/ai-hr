@@ -20,8 +20,8 @@ export default async function AccountPage({params}:{params:Promise<{userId:strin
  <div><dt className="text-sm text-muted-foreground">{t('status')}</dt><dd>{t(account.status)}</dd></div>
  <div><dt className="text-sm text-muted-foreground">{t('activeUntil')}</dt><dd>{formatDmy(account.activeUntil)}</dd></div>
  <div className="sm:col-span-2 lg:col-span-4"><dt className="text-sm text-muted-foreground">{t('authenticator.requirement')}</dt><dd>{account.exemptionUntil?t('pausedUntil',{until:formatDmyTime(new Date(account.exemptionUntil))}):t('authenticator.statusRequired')}</dd></div></dl>
- {account.status==='active'&&<div className="flex flex-wrap gap-2"><ResetPasswordDialog userId={userId} name={name} username={account.username} triggerClassName={action}/><AuthenticatorControlDialog userId={userId} name={name} exemptionUntil={account.exemptionUntil} triggerClassName={action}/></div>}
- <AccountControls userId={userId}/>
+ {account.status==='active'&&account.actions.length>0&&<div className="flex flex-wrap gap-2">{account.actions.includes('temporary-password')&&<ResetPasswordDialog userId={userId} name={name} username={account.username} triggerClassName={action}/>}{(account.actions.includes('recovery-exemption')||(account.exemptionUntil&&account.actions.includes('recovery-exemption-cancel')))&&<AuthenticatorControlDialog userId={userId} name={name} exemptionUntil={account.exemptionUntil} triggerClassName={action}/>}</div>}
+ <AccountControls userId={userId} allowed={account.actions}/>
  <section className="space-y-3"><h2 className="font-medium">{t('history')}</h2><ul className="divide-y divide-border rounded-lg border border-border">{history.map((event,index)=>{
   const until=event.expires_at&&/^\d+$/.test(event.expires_at)?formatDmyTime(new Date(Number(event.expires_at))):'';
   const text=h(historyLabelKey(event.event_type),{until});
