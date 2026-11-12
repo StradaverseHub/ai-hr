@@ -1,8 +1,9 @@
 'use client';
 import {useEffect,useId,useLayoutEffect,useRef,useState} from 'react';
+import {createPortal} from 'react-dom';
 import {useTranslations} from 'next-intl';
 import {inputCls} from '@/components/ui';
-import {visibleHorizontalBounds} from '@/components/ui/anchored-panel';
+import {AnchoredPanel,useAnchoredPanel,visibleHorizontalBounds} from '@/components/ui/anchored-panel';
 import type {PersonnelPrivateCriteria} from '@/lib/personnel-list-controls';
 import {PersonnelFilterFeedback,usePersonnelAutoFilter} from './auto-filter';
 import {PrivateCriteriaFields} from './private-filter-fields';
@@ -22,6 +23,10 @@ export const SUGGESTION_LIST_WIDTH = 384;
 export function suggestionListWidth(box: {left: number; width: number}, bounds: {right: number}, preferred = SUGGESTION_LIST_WIDTH, edge = 8): number {
   return Math.round(Math.max(box.width, Math.min(preferred, bounds.right - box.left - edge)));
 }
+/** The list's tallest extent (the old `max-h-96`); the anchored panel lowers it to the room on screen. */
+export const SUGGESTION_LIST_MAX_HEIGHT = 384;
+/** No layout box (jsdom, a hidden ancestor) measures 0: the panel then keeps its own class width. */
+const measureListWidth = (el: HTMLElement, rect: DOMRect) => rect.width ? suggestionListWidth(rect, visibleHorizontalBounds(el)) : 0;
 
 /**
  * eaa7697c — the visible "Search employee ID or name…" box beside Filter on the Personnel listing.
@@ -91,24 +96,25 @@ export function PersonnelListSearch({parameters, pageSize, privateCriteria = emp
   // Options: each suggestion, then "Show all matches in the list" (applies the typed words).
   const optionCount = rows.length + (word ? 1 : 0);
   const optionId = (index: number) => `${listId}-option-${index}`;
-  // Measured before paint while the list is open, and again on resize (the sidebar collapsing resizes it too).
-  const [listWidth, setListWidth] = useState<number | null>(null);
+  // aa045103 round 2 — THE LIST IS PORTALED TO <body> AND `position: fixed` (components/ui/anchored-panel.tsx).
+  // Inside the page header it was capped by the sticky header's own stacking context (z-index 20, so the
+  // Monolith top bar at z-30 and the Atelier rail flyout drew over it) and clipped by <main>'s overflow box
+  // (sidebar edge, short windows). On <body> at z-50 nothing in the page can cover it. The hook re-places it on
+  // every (capture-phase) scroll and resize, opens it upwards when there is no room below and caps its height
+  // to the room left; the width is re-measured with the position. Placed before paint, so it never flashes.
+  const close = () => { setOpen(false); setActive(-1); };
+  const {at, anchorTo, release} = useAnchoredPanel({open: showList, onClose: close, width: measureListWidth, flipHeight: 400, gap: 4, align: 'start'});
   useLayoutEffect(() => {
-    if (!showList) return;
-    const measure = () => {
-      const el = box.current;
-      const rect = el?.getBoundingClientRect();
-      // No layout box (jsdom, a hidden ancestor): nothing to measure, so the list keeps the box's own width.
-      if (!el || !rect?.width) { setListWidth(null); return; }
-      setListWidth(suggestionListWidth(rect, visibleHorizontalBounds(el)));
-    };
-    measure();
-    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null;
-    const shell = box.current?.closest('main');
+    const el = box.current;
+    if (!showList || !el) { release(); return; }
+    anchorTo(el);
+    // The sidebar collapsing resizes <main> without a window resize: re-place on that too.
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => anchorTo(el)) : null;
+    const shell = el.closest('main');
     if (observer && shell) observer.observe(shell);
-    window.addEventListener('resize', measure);
-    return () => { observer?.disconnect(); window.removeEventListener('resize', measure); };
-  }, [showList]);
+    return () => observer?.disconnect();
+  }, [showList, anchorTo, release]);
+  const placement = at && {...at, maxHeight: Math.min(SUGGESTION_LIST_MAX_HEIGHT, at.maxHeight ?? SUGGESTION_LIST_MAX_HEIGHT)};
 
   const apply = () => {
     const form = input.current?.form;
@@ -146,7 +152,11 @@ export function PersonnelListSearch({parameters, pageSize, privateCriteria = emp
         <input key={key} type="hidden" name={key} value={value}/>)}
       <PrivateCriteriaFields criteria={privateCriteria} exclude={['term']}/>
     </div>
-    <div ref={box} className="relative" onBlur={event => { if (!box.current?.contains(event.relatedTarget as Node | null)) setOpen(false); }}>
+    {/* React bubbles the portaled list's focus events here too; focus moving INTO the list is not a blur. */}
+    <div ref={box} className="relative" onBlur={event => {
+      const next = event.relatedTarget as Node | null;
+      if (!box.current?.contains(next) && !document.getElementById(listId)?.contains(next)) setOpen(false);
+    }}>
       <input ref={input} type="search" name="term" defaultValue={privateCriteria.term} maxLength={200} autoComplete="off"
         role="combobox" aria-autocomplete="list" aria-expanded={showList} aria-controls={showList ? listId : undefined}
         aria-activedescendant={showList && active >= 0 ? optionId(active) : undefined} aria-busy={loading}
@@ -163,10 +173,11 @@ export function PersonnelListSearch({parameters, pageSize, privateCriteria = emp
         // Same steps as the profile switcher: the header actions group is `shrink-0`, so a fixed width
         // here would scroll the page sideways on a phone.
         className={`${inputCls} h-9 w-52 sm:w-64 md:w-72`}/>
-      {showList && <div id={listId} role="listbox" aria-label={t('resultsLabel')}
-        // LEFT-anchored and at least the box's width; the measured width keeps it inside the content area.
-        style={listWidth ? {width: listWidth} : undefined}
-        className="absolute left-0 z-50 mt-1 max-h-96 w-full min-w-full overflow-y-auto rounded-md border border-border bg-popover py-1 text-popover-foreground shadow-lg">
+      {showList && typeof document !== 'undefined' && createPortal(<AnchoredPanel at={placement} id={listId} role="listbox" aria-label={t('resultsLabel')}
+        // LEFT-anchored at the box and at least its width; the measured width keeps it inside the content area.
+        // mousedown on the list's own chrome (heading, padding) keeps focus in the box, like the options do.
+        onMouseDown={event => event.preventDefault()}
+        className="max-h-96 rounded-md p-0 py-1 text-popover-foreground">
         <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground" aria-hidden>{t('matchingHeading')}</p>
         {rows.length === 0 && <p role="status" className="px-3 py-3 text-sm text-muted-foreground">{loading ? common('loading') : current?.failed ? t('loadFailed') : t('noMatches')}</p>}
         {rows.map((row, index) => <div key={row.employmentId} id={optionId(index)} role="option" aria-selected={index === active}
@@ -181,7 +192,7 @@ export function PersonnelListSearch({parameters, pageSize, privateCriteria = emp
           className={`mt-1 cursor-pointer border-t border-border px-3 py-2 text-sm font-medium text-primary ${active === rows.length ? 'bg-muted' : ''}`}>
           {current && !current.failed && rows.length > 0 && rows.length < SWITCHER_RESULT_CAP ? t('showAll', {count: rows.length}) : t('showAllMore')}
         </div>
-      </div>}
+      </AnchoredPanel>, document.body)}
     </div>
     <PersonnelFilterFeedback formId="personnel-list-search"/>
   </form>;
