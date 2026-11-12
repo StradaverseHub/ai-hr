@@ -259,7 +259,7 @@ async function todayReaders(today:string){
  const own=await import('../../core/employee-today-reads');
  const attendance=await import('../../packs/attendance/service');
  const notices=await import('../../core/employee-home-notices');
- const reviews=await import('../../core/employment-review');
+ const employmentReviews=await import('../../core/employment-review');
  const {addCalendarDays}=await import('../../lib/hr-date-calendar');
  const {todayAudience}=await import('../../lib/today/audience');
  const {readMyPayrollReadiness}=await import('../../core/pre-salary/person-items');
@@ -285,11 +285,15 @@ async function todayReaders(today:string){
   return {
    needsYou:()=>reads.readNeedsYou(ctx,{scopeIds,audience,today,locale:'en'}).then(value=>({failed:value.failed,tasks:value.tasks.length,taskTotal:value.taskTotal,loops:value.loops.length})),
    teamAttendance:()=>inPage(ctx,()=>attendance.teamAttendanceToday(ctx,{date:today,scopeIds})).then(value=>({total:value.present+value.late+value.halfDay+value.absent})),
-   notices:()=>ownEmployment(ctx).then(id=>id?notices.readEmployeeHomeNotices(ctx,id).then(value=>({items:value.items.length,unread:value.unread})):'none'),
+   notices:()=>ownEmployment(ctx).then(async id=>{
+    if(!id)return 'none';
+    const value=await notices.readEmployeeHomeNotices(ctx,id);
+    return {items:value.items.length,unread:value.unread};
+   }),
    reminders:()=>ownEmployment(ctx).then(async id=>{
     if(!id)return 'none';
     const last=addCalendarDays(today,29),months=[...new Set([today.slice(0,7),last.slice(0,7)])];
-    const [queue,calendars]=await Promise.all([inPage(ctx,()=>reviews.pendingManagerReviewsFor(ctx,id)),Promise.all(months.map(month=>own.readOwnCalendar(ctx,id,month)))]);
+    const [queue,calendars]=await Promise.all([inPage(ctx,()=>employmentReviews.pendingManagerReviewsFor(ctx,id)),Promise.all(months.map(month=>own.readOwnCalendar(ctx,id,month)))]);
     return {reviews:queue.filter(row=>row.dueDate&&row.dueDate<=last).length,days:calendars.reduce((sum,month)=>sum+month.days.length,0)};
    }),
    beforePayroll:()=>readMyPayrollReadiness(ctx,{scopeIds,locale:'en',today,includeApprovals:false}).then(value=>({present:value!==null,failed:value?.failed??null,items:value?.items.length??null})),

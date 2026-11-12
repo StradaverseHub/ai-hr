@@ -388,10 +388,9 @@ describe('4a1abc4a · the two day SENTENCES print the same figure as the tables'
     });
 
   it('print exactly two decimals, in every locale', () => {
-    // The reported fault: the dashboard said "12.5 days remaining" while the balance grid said "12.50".
+    // The reported fault: the dashboard said "12.5 days remaining" while the balance grid said "12.50". That card was
+    // retired with the old dashboard (12 Nov 2026); the leave duration sentence keeps the rule.
     for (const loc of LOCALES) {
-      expect(say(loc, 'dashboard', 'daysRemaining', 12.5), loc).toContain('12.50');
-      expect(say(loc, 'dashboard', 'daysRemaining', 12), loc).toContain('12.00');
       expect(say(loc, 'leave', 'durationLine', 1), loc).toContain('1.00');
     }
   });
