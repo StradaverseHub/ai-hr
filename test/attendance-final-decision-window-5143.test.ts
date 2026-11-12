@@ -143,15 +143,17 @@ describe('request-bound final decision window',()=>{
  it('a same-company approver never opens the window; a cross-company approval opens it once and it cannot reopen',async()=>{
   const f=await pair('irregularity');
   const spent=async()=>(await owner.client`select count(*)::int as n from app.attendance_final_window_spent`)[0].n;
+  // The spent record outlives a test's database reset (owner-only app table), so compare counts, not absolutes.
+  const before=await spent();
   await approve(f.localBoss,f.localId);
-  expect(await spent()).toBe(0);
+  expect(await spent()).toBe(before);
   const reopened=await withTenant(f.crossBoss.ctx,async tx=>{
    await decideAttendanceCorrection(f.crossBoss.ctx,{correctionId:f.crossId,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'},tx);
    const [row]=await tx.execute<{ok:boolean;visible:boolean}>(sql`select app.attendance_workflow_open_final_window(${f.crossId}::uuid) as ok,app.can_see_employment(${f.crossApplicant.employmentId}::uuid) as visible`);
    return row;
   });
   expect(reopened).toEqual({ok:false,visible:false});
-  expect(await spent()).toBe(1);
+  expect(await spent()).toBe(before+1);
  });
  it('refuses the window for a final level that is not yet complete',async()=>{
   const b=await company('Fictional Everyone company');
