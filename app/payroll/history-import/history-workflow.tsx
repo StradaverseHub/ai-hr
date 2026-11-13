@@ -69,6 +69,7 @@ export function HistoryWorkflow({codes}:{codes:Code[]}){
    <RevisionPreview key={preview.attemptId} plan={preview.plan} selection={done||!replaceable.length?undefined:{ticked,toggle:key=>setTicked(prev=>{const next=new Set(prev);if(!next.delete(key))next.add(key);return next;}),
     toggleAll:on=>setTicked(on?new Set(replaceable.map(historyRecordKey)):new Set())}}/>
    {jobId&&<HistoryJobPanel jobId={jobId} onFinished={finished}/>}
+   {!done&&preview.plan.rows.some(row=>row.otherCompany)&&<div className="space-y-1 rounded-lg border border-amber-500/40 bg-amber-50/40 p-4 text-sm dark:bg-amber-500/5"><p className="font-medium">{t('otherCompanyTitle')}</p><ul className="list-disc space-y-1 pl-5">{preview.plan.rows.filter(row=>row.otherCompany).map(row=><li key={historyRecordKey(row)}>{t('otherCompanyRow',{employee:row.employeeNo,name:row.employeeName??'',period:row.period,company:row.companyName})}</li>)}</ul></div>}
    {done?<p role="status" className="rounded-lg border border-primary/30 bg-primary/5 p-4 text-sm">{t('success')}{skipped>0&&<> {t('successSkipped',{count:skipped})}</>}</p>:<div className="space-y-3 border-t pt-4"><p className="text-sm text-muted-foreground">{t('atomicHint')}</p>
     {replaceable.length>0&&<div className="space-y-3 rounded-lg border border-amber-500/40 bg-amber-50/40 p-4 text-sm dark:bg-amber-500/5">
      {ticked.size===0?<p>{t('tickHint')}</p>:<>

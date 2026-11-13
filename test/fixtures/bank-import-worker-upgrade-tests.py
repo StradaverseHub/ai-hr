@@ -1268,4 +1268,176 @@ class ProductionUpdateTests(unittest.TestCase):
             f.fault=None;record=f.rollback();self.assertEqual(record['fromState'],'previous-quarantined')
             self.assertEqual(f.unit.read_bytes(),install.service_unit(f.previous).encode());self.assertEqual(f.state['ActiveState'],'active')
 
+
+WORKBOOK_SECRET='fictional-workbook-key-5Tq'
+ADDED_KEYS={'MOVEMENT_IMPORT_WORKBOOK_KEY':WORKBOOK_SECRET,'MOVEMENT_IMPORT_WORKBOOK_KEY_ID':'fictional-key-id-1'}
+
+class StagingEnvironmentRebindTests(unittest.TestCase):
+    """--previous-worker-env-sha256: a reviewed key was added to the protected environment after the last activation."""
+    STAGING={'DATABASE_URL':'postgresql://ai_hr_app:'+APP_SECRET+'@127.0.0.1:5432/ai_hr','MIGRATION_DATABASE_URL':'postgresql://ai_hr_owner:'+OWNER_SECRET+'@127.0.0.1:5432/ai_hr'}
+    @staticmethod
+    def v2(values):return ''.join(key+'='+json.dumps(values[key],ensure_ascii=False)+'\n' for key in sorted(values))
+    def fixture(self,tmp,added=None,raw=None):
+        f=UpgradeFlowFixture(Path(tmp));f.base.ENV_KEYS=install.ENV_KEYS;f.base.database_config=install.database_config
+        f.env.write_text(self.v2(self.STAGING));f.previous_env_hash=update.digest(f.env.read_bytes())
+        f.old_receipt['selectedEnvironmentSha256']=f.previous_env_hash;(f.old_release/'worker-install-v2.json').write_text(json.dumps(f.old_receipt))
+        # The operator appends the reviewed keys after the activation that wrote the receipt.
+        f.env.write_text(raw if raw is not None else self.v2(self.STAGING)+self.v2(ADDED_KEYS if added is None else added))
+        f.env_hash=update.digest(f.env.read_bytes());return f
+    def assert_untouched(self,f,error=None):
+        self.assertFalse(f.operation.exists());self.assertFalse(any(isinstance(event,list) and 'kill' in event for event in f.events))
+        self.assertEqual(f.unit.read_text(),f.service_unit(f.previous_worker));self.assertEqual(json.loads((f.old_release/'worker-install-v2.json').read_text()),f.old_receipt)
+        if error is not None:
+            text=''.join(traceback.format_exception(error))
+            for secret in (APP_SECRET,OWNER_SECRET,WORKBOOK_SECRET):self.assertNotIn(secret,text)
+            for key in ADDED_KEYS:self.assertNotIn(key,str(error))
+    def test_omitted_argument_keeps_the_drain_record_shape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=UpgradeFlowFixture(Path(tmp));f.invoke('drain')
+            identity=json.loads((f.operation/'drained.json').read_text())['identity'];self.assertNotIn('previous_worker_env_sha256',identity)
+            self.assertEqual(len(identity),11);f.web=f.source;f.invoke('activate')
+    def test_omitted_argument_with_a_changed_environment_still_refuses(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=self.fixture(tmp)
+            with self.assertRaisesRegex(ValueError,'prior managed installation receipt differs') as caught:f.invoke('drain')
+            self.assert_untouched(f,caught.exception)
+    def test_matching_previous_pin_drains_and_activates_with_the_current_environment_receipt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=self.fixture(tmp);before=f.env.read_bytes();rebind={'previous-worker-env-sha256':f.previous_env_hash}
+            f.invoke('drain',rebind)
+            identity=json.loads((f.operation/'drained.json').read_text())['identity']
+            self.assertEqual(identity['previous_worker_env_sha256'],f.previous_env_hash);self.assertEqual(identity['worker_env_sha256'],f.env_hash)
+            self.assertTrue(any(isinstance(event,list) and 'kill' in event for event in f.events))
+            f.web=f.source;f.invoke('activate',rebind)
+            accepted=json.loads((f.app/'releases'/f.source/'worker-install-v2.json').read_text())
+            self.assertEqual(accepted['selectedEnvironmentSha256'],f.env_hash);self.assertEqual(f.env.read_bytes(),before)
+            self.assertEqual(f.unit.read_text(),f.service_unit(f.source));self.assertEqual(json.loads((f.old_release/'worker-install-v2.json').read_text()),f.old_receipt)
+    def test_wrong_malformed_or_redundant_previous_pin_refuses_before_any_change(self):
+        for case in ['wrong','current-as-previous','malformed','short','adopt']:
+            with self.subTest(case=case),tempfile.TemporaryDirectory() as tmp:
+                f=self.fixture(tmp);phase='drain'
+                value={'wrong':'c'*64,'current-as-previous':f.env_hash,'malformed':f.previous_env_hash.upper(),'short':f.previous_env_hash[:63],'adopt':f.previous_env_hash}[case]
+                message={'wrong':'receipt differs','current-as-previous':'environment is unchanged','adopt':'not part of adopt-stopped'}.get(case,'digests required')
+                overrides={'previous-worker-env-sha256':value}
+                if case=='adopt':phase='adopt-stopped';overrides.update({'previous-web-source':None,'previous-web-build':None,'unit-sha256':None,'observed-unit-sha256':f.unit_hash})
+                if case=='current-as-previous':f.old_receipt['selectedEnvironmentSha256']=f.env_hash;(f.old_release/'worker-install-v2.json').write_text(json.dumps(f.old_receipt))
+                if case=='adopt':
+                    # adopt-stopped takes neither the managed pins nor the previous environment pin.
+                    original=f.args;f.args=lambda phase,o=None:(lambda argv:argv[:1]+[part for i in range(1,len(argv),2) if argv[i+1] is not None for part in argv[i:i+2]])(original(phase,o))
+                with self.assertRaisesRegex(ValueError,message) as caught:f.invoke(phase,overrides)
+                self.assert_untouched(f,caught.exception)
+    def test_activate_refuses_a_previous_pin_that_differs_from_the_drain_record(self):
+        for case in ['omitted','different']:
+            with self.subTest(case=case),tempfile.TemporaryDirectory() as tmp:
+                f=self.fixture(tmp);f.invoke('drain',{'previous-worker-env-sha256':f.previous_env_hash});f.web=f.source
+                overrides={} if case=='omitted' else {'previous-worker-env-sha256':'c'*64}
+                with self.assertRaisesRegex(ValueError,'exact drain record required'):f.invoke('activate',overrides)
+                self.assertEqual(f.unit.read_text(),f.service_unit(f.previous_worker));self.assertFalse((f.operation/'activated.json').exists())
+                self.assertFalse((f.app/'releases'/f.source).exists())
+    def test_previous_pin_still_requires_the_reviewed_closed_environment(self):
+        cases={'unreviewed-key':(None,self.v2(self.STAGING)+'PORT="3000"\n','unreviewed key'),
+               'unquoted-value':(None,self.v2(self.STAGING)+'MOVEMENT_IMPORT_WORKBOOK_KEY='+WORKBOOK_SECRET+'\n','unreviewed syntax'),
+               'repeated-key':(None,self.v2(self.STAGING)+self.v2({'DATABASE_URL':self.STAGING['DATABASE_URL']}),'repeats a key'),
+               'control-character':(None,self.v2(self.STAGING)+self.v2({'MOVEMENT_IMPORT_WORKBOOK_KEY':WORKBOOK_SECRET+'\u0007'}),'unreviewed value'),
+               'remote-database':(None,self.v2({**self.STAGING,'DATABASE_URL':'postgresql://ai_hr_app:'+APP_SECRET+'@db.internal.invalid:5432/ai_hr'})+self.v2(ADDED_KEYS),'approved staging database'),
+               'wrong-role':(None,self.v2({**self.STAGING,'MIGRATION_DATABASE_URL':'postgresql://ai_hr_app:'+OWNER_SECRET+'@127.0.0.1:5432/ai_hr'})+self.v2(ADDED_KEYS),'approved staging database'),
+               'bad-port':(None,self.v2({**self.STAGING,'DATABASE_URL':'postgresql://ai_hr_app:'+APP_SECRET+'@127.0.0.1:x'+APP_SECRET+'/ai_hr'})+self.v2(ADDED_KEYS),'approved staging database'),
+               'missing-database':(None,self.v2({'MIGRATION_DATABASE_URL':self.STAGING['MIGRATION_DATABASE_URL'],**ADDED_KEYS}),'lacks a database URL')}
+        for case,(added,raw,message) in cases.items():
+            with self.subTest(case=case),tempfile.TemporaryDirectory() as tmp:
+                f=self.fixture(tmp,added,raw)
+                with self.assertRaisesRegex(ValueError,message) as caught:f.invoke('drain',{'previous-worker-env-sha256':f.previous_env_hash})
+                self.assert_untouched(f,caught.exception)
+
+class ProductionEnvironmentRebindTests(unittest.TestCase):
+    def fixture(self,tmp,restarted=True):
+        f=ProductionUpdateFixture(Path(tmp).resolve());f.previous_env_hash=f.env_hash
+        # The operator appends the reviewed keys after the activation that wrote the previous receipt.
+        f.values={**f.values,**ADDED_KEYS};f.write_env(f.render(f.values))
+        if restarted:f.process('123',f.previous_release)  # The running worker was restarted and loaded the edited file.
+        return f
+    def rebind(self,f,value=None):return {'previous-worker-env-sha256':value or f.previous_env_hash}
+    def assert_no_secret(self,f,error=None):
+        texts=[f.stdout,f.stderr]+([''.join(traceback.format_exception(error))] if error is not None else [])
+        for text in texts:
+            for secret in (APP_SECRET,OWNER_SECRET,WORKBOOK_SECRET):self.assertNotIn(secret,text)
+    def assert_refused_before_any_change(self,f,env_bytes,error):
+        self.assertEqual(f.mutations(),[]);self.assertEqual(f.signals(),[]);self.assertFalse((f.app/'upgrades').exists());self.assertFalse(f.release.exists())
+        self.assertEqual(f.unit.read_bytes(),install.service_unit(f.previous).encode());self.assertEqual(f.state['MainPID'],'123')
+        self.assertEqual(f.env.read_bytes(),env_bytes);self.assertEqual(json.loads(f.receipt_path.read_text()),f.previous_receipt);self.assert_no_secret(f,error)
+    def test_omitted_argument_with_a_changed_environment_still_refuses(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=self.fixture(tmp);env_bytes=f.env.read_bytes()
+            with self.assertRaisesRegex(ValueError,'prior managed installation receipt differs') as caught:f.drain()
+            self.assert_refused_before_any_change(f,env_bytes,caught.exception)
+    def test_matching_previous_pin_drains_activates_and_the_new_receipt_records_the_current_environment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=self.fixture(tmp);env_bytes=f.env.read_bytes();f.drain(self.rebind(f))
+            record=json.loads((f.operation/'drained.json').read_text())
+            self.assertEqual(record['identity']['previous_worker_env_sha256'],f.previous_env_hash);self.assertEqual(record['identity']['worker_env_sha256'],f.env_hash)
+            self.assertEqual(f.mutations(),[SIGTERM_DRAIN])
+            f.install_new_web();accepted=f.activate(self.rebind(f))
+            self.assertEqual(accepted['selectedEnvironmentSha256'],f.env_hash);self.assertEqual(json.loads((f.release/'worker-install-v2.json').read_text()),accepted)
+            self.assertEqual(f.env.read_bytes(),env_bytes);self.assertEqual(json.loads(f.receipt_path.read_text()),f.previous_receipt);self.assert_no_secret(f)
+            # A later update from the new release needs no previous pin: its receipt records the current environment.
+            with patch.object(install,'command',side_effect=f.command):
+                _,receipt=production.managed_release(f.base,update,f.source,accepted['unitSha256'],f.env_hash)
+            self.assertEqual(receipt,accepted)
+    def test_a_worker_still_running_on_the_environment_before_the_edit_refuses(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=self.fixture(tmp,restarted=False);env_bytes=f.env.read_bytes()
+            with self.assertRaisesRegex(ValueError,'live worker environment differs') as caught:f.drain(self.rebind(f))
+            self.assert_refused_before_any_change(f,env_bytes,caught.exception)
+    def test_wrong_malformed_or_redundant_previous_pin_refuses_before_any_change(self):
+        for case in ['wrong','current-as-previous','malformed','short']:
+            with self.subTest(case=case),tempfile.TemporaryDirectory() as tmp:
+                f=self.fixture(tmp);env_bytes=f.env.read_bytes()
+                value={'wrong':'c'*64,'current-as-previous':f.env_hash,'malformed':f.previous_env_hash.upper(),'short':f.previous_env_hash[:63]}[case]
+                message={'wrong':'receipt differs','current-as-previous':'environment is unchanged'}.get(case,'digests required')
+                with self.assertRaisesRegex(ValueError,message) as caught:f.drain(self.rebind(f,value))
+                self.assert_refused_before_any_change(f,env_bytes,caught.exception)
+    def test_previous_pin_still_requires_the_reviewed_environment(self):
+        for case in ['unreviewed-key','plain-remote-database','current-pin']:
+            with self.subTest(case=case),tempfile.TemporaryDirectory() as tmp:
+                f=self.fixture(tmp);overrides=self.rebind(f)
+                if case=='unreviewed-key':f.write_env(f.render(f.values)+'PORT=3000\n')
+                if case=='plain-remote-database':f.write_env(f.render({**f.values,'DATABASE_URL':f.values['DATABASE_URL'].replace('?sslmode=verify-full','')}))
+                if case=='current-pin':overrides['worker-env-sha256']='d'*64
+                env_bytes=f.env.read_bytes()
+                with self.assertRaises(ValueError) as caught:f.drain(overrides)
+                self.assert_refused_before_any_change(f,env_bytes,caught.exception)
+    def test_activate_refuses_a_previous_pin_that_differs_from_the_drain_record(self):
+        for case in ['omitted','different']:
+            with self.subTest(case=case),tempfile.TemporaryDirectory() as tmp:
+                f=self.fixture(tmp);f.drain(self.rebind(f));f.install_new_web()
+                overrides={'previous-worker-env-sha256':None} if case=='omitted' else self.rebind(f,'c'*64)
+                with self.assertRaisesRegex(ValueError,'exact production drain record required'):f.activate(overrides)
+                self.assertEqual(f.unit.read_bytes(),install.service_unit(f.previous).encode());self.assertFalse(f.release.exists())
+                self.assertFalse(any(event==['/usr/bin/systemctl','daemon-reload'] for event in f.events));self.assertEqual(f.mutations(),[SIGTERM_DRAIN])
+    def test_rollback_accepts_the_recorded_previous_pin_and_refuses_a_mismatch(self):
+        for case in ['omitted','different','recorded']:
+            with self.subTest(case=case),tempfile.TemporaryDirectory() as tmp:
+                f=self.fixture(tmp);env_bytes=f.env.read_bytes();f.drain(self.rebind(f));f.install_new_web();f.activate(self.rebind(f));f.roll_web_back()
+                before=len(f.mutations());unit=f.unit.read_bytes()
+                if case!='recorded':
+                    with self.assertRaisesRegex(ValueError,'drained previous release') as caught:f.rollback({} if case=='omitted' else self.rebind(f,'c'*64))
+                    self.assertEqual(f.mutations()[before:],[]);self.assertEqual(f.unit.read_bytes(),unit);self.assert_no_secret(f,caught.exception)
+                    self.assertFalse(any(p.name.startswith('rollback-') for p in f.operation.iterdir()));continue
+                record=f.rollback(self.rebind(f))
+                self.assertEqual(record['fromState'],'updated');self.assertEqual(record['selectedEnvironmentSha256'],f.env_hash)
+                self.assertEqual(f.unit.read_bytes(),install.service_unit(f.previous).encode());self.assertEqual(f.state['WorkingDirectory'],str(f.previous_release))
+                self.assertEqual(f.state['ActiveState'],'active');self.assertEqual(f.env.read_bytes(),env_bytes)
+                self.assertEqual(json.loads(f.receipt_path.read_text()),f.previous_receipt);self.assert_no_secret(f)
+                # The re-activated release's receipt still records the earlier environment: a later update pins it again.
+                with patch.object(install,'command',side_effect=f.command):
+                    _,receipt=production.managed_release(f.base,update,f.previous,f.unit_hash,f.env_hash,f.previous_env_hash)
+                self.assertEqual(receipt,f.previous_receipt)
+    def test_rollback_of_an_unchanged_environment_update_refuses_a_previous_pin(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=ProductionUpdateFixture(Path(tmp).resolve());f.drain();f.install_new_web();f.activate();f.roll_web_back();before=len(f.mutations())
+            # Omitted, the drain record keeps exactly the update pins it had before the argument existed.
+            self.assertEqual(sorted(json.loads((f.operation/'drained.json').read_text())['identity']),sorted(n.replace('-','_') for n in production.UPDATE_ARGS))
+            with self.assertRaisesRegex(ValueError,'drained previous release'):f.rollback({'previous-worker-env-sha256':'c'*64})
+            self.assertEqual(f.mutations()[before:],[])
+
 unittest.main()

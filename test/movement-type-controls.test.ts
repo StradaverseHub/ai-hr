@@ -43,8 +43,8 @@ import {
 } from '../core/movement-type';
 import { MovementTypeControlError, movementTypeControls, movementTypeControlsForSettings } from '../core/movement-type-controls';
 import { saveTerminationReason } from '../core/termination-reason-catalog';
-import { movementImportTypes, previewMovementImport } from '../core/movement-import';
-import { movementWorkbookCatalogue } from '../lib/movement-workbook.server';
+import { movementImportTypes, movementImportTypesForCheck, previewMovementImport } from '../core/movement-import';
+import { movementWorkbookCatalogue, movementWorkbookCatalogueCurrent } from '../lib/movement-workbook.server';
 import { toCsv } from '../lib/csv';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import type { MovementFieldRule } from '../lib/movement-field-rules';
@@ -542,5 +542,26 @@ describe('1d58019a Step 2 — permissions, isolation, audit and the workbook fin
 
     const termination = (await movementImportTypes(adminCtx(b))).find((t) => t.code === 'termination')!;
     expect(termination.reasons?.map((r) => [r.code, r.label])).toEqual([['misconduct', 'Gross Misconduct']]);
+  });
+
+  it('a reason ADDED after a workbook was downloaded keeps that workbook current; a renamed one does not', async () => {
+    const before = await movementImportTypesForCheck(adminCtx(b));
+    const signed = movementWorkbookCatalogue({ types: before.types });
+    const downloadedAt = new Date(Date.now() - 1000).toISOString();
+    expect(before.types).toEqual(await movementImportTypes(adminCtx(b)));
+    const { code } = await saveTerminationReason(adminCtx(b), { label: 'Better Offer', category: 'voluntary' });
+    const after = await movementImportTypesForCheck(adminCtx(b));
+    expect(after.types.find((t) => t.code === 'termination')!.reasons!.map((r) => r.code)).toContain(code);
+    expect(movementWorkbookCatalogue({ types: after.types })).not.toBe(signed);
+    expect(Date.parse(after.reasonCreatedAt[code])).toBeGreaterThan(Date.parse(downloadedAt));
+    expect(movementWorkbookCatalogueCurrent(signed, downloadedAt, after.types, after.reasonCreatedAt)).toBe(true);
+    // A download made after the reason existed does not get to drop it.
+    expect(movementWorkbookCatalogueCurrent(signed, new Date(Date.now() + 60_000).toISOString(), after.types, after.reasonCreatedAt)).toBe(false);
+    await saveTerminationReason(adminCtx(b), { code, label: 'Better Offer Elsewhere' });
+    const renamed = await movementImportTypesForCheck(adminCtx(b));
+    expect(movementWorkbookCatalogueCurrent(signed, downloadedAt, renamed.types, renamed.reasonCreatedAt)).toBe(true);
+    await saveTerminationReason(adminCtx(b), { code: 'misconduct', label: 'Gross Misconduct' });
+    const changed = await movementImportTypesForCheck(adminCtx(b));
+    expect(movementWorkbookCatalogueCurrent(signed, downloadedAt, changed.types, changed.reasonCreatedAt)).toBe(false);
   });
 });

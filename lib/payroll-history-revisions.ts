@@ -14,6 +14,8 @@ export type HistoryRevisionRow = {
  /** d28501b8 r2 — who the row is, what the overwrite would replace, and what has already gone out from it.
   *  `warnings` must be acknowledged before a replacement is applied; they never block it. */
  employeeName?:string|null;overwriteSource?:'processed'|'imported'|null;expectedOrdinaryPayslipId?:string|null;warnings?:string[];
+ /** Board 154511c4 — the employee's dated history puts them in another company for this month (shown, not blocking). */
+ otherCompany?:boolean;
 };
 /** The identity a replacement is ticked by on the screen and confirmed by on the server. */
 export const historyRecordKey=(row:Pick<HistoryRevisionRow,'companyId'|'employmentId'|'period'|'cycleId'>)=>[row.companyId,row.employmentId,row.period,row.cycleId].join(':');

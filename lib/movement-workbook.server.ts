@@ -40,6 +40,23 @@ function business(value:unknown){const s=value==null?'':String(value);if(s.lengt
  * 1d58019a Step 2 — each type also carries its controls (offered termination reasons with their names, and
  * Field Controls), so a changed reason catalogue or rule is a changed catalogue too. */
 export function movementWorkbookCatalogue(catalog:Pick<MovementImportCatalog,'types'>){return createHash('sha256').update(JSON.stringify({version:2,types:catalog.types})).digest('hex');}
+/** When each tenant termination reason row was created (ISO), keyed by code. Read with the types it describes. */
+export type MovementReasonCreatedAt=Record<string,string>;
+/**
+ * Whether a workbook signed to `signed` at `downloadedAt` still describes the current catalogue. Exact match, or
+ * the current catalogue with only tenant-created reasons added after the download removed hashes to the signed
+ * value: that proves the only change since the download is new reasons (an old row cannot mean something else).
+ * A renamed, removed, reordered, reactivated or re-scoped reason, an overridden built-in reason, a changed
+ * type or a changed Field Control still differs and still needs a new download.
+ */
+export function movementWorkbookCatalogueCurrent(signed:string,downloadedAt:string,types:MovementWorkbookType[],reasonCreatedAt?:MovementReasonCreatedAt){
+ if(signed===movementWorkbookCatalogue({types}))return true;
+ const since=Date.parse(downloadedAt);if(!reasonCreatedAt||!Number.isFinite(since))return false;
+ const added=(code:string,builtIn:boolean)=>{if(builtIn)return false;const at=Date.parse(reasonCreatedAt[code]??'');return Number.isFinite(at)&&at>since;};
+ let removed=false;
+ const before=types.map(t=>{if(!t.reasons)return t;const kept=t.reasons.filter(r=>!added(r.code,r.builtIn));if(kept.length===t.reasons.length)return t;removed=true;return{...t,reasons:kept};});
+ return removed&&signed===movementWorkbookCatalogue({types:before});
+}
 const col=(n:number)=>{let s='';for(n++;n;n=Math.floor((n-1)/26))s=String.fromCharCode(65+(n-1)%26)+s;return s;};
 const ALLOWED_SHEETS=Object.keys(MOVEMENT_WORKBOOK_SHEET_ROWS);
 export type MovementTemplateCompany={code:string;name:string;catalog:MovementImportCatalog;companyId:string};
@@ -224,7 +241,7 @@ function inspect(bytes:Buffer){
 }
 const DATE_COLUMNS=new Set([3,6,7]);
 /** Reads the Movements sheet rows of a signed template. Throws a finite workbook_* code on refusal. */
-export async function readMovementWorkbookRows(bytes:Buffer,p:{tenantId:string;types:MovementWorkbookType[]}):Promise<MovementSheetRow[]>{
+export async function readMovementWorkbookRows(bytes:Buffer,p:{tenantId:string;types:MovementWorkbookType[];reasonCreatedAt?:MovementReasonCreatedAt}):Promise<MovementSheetRow[]>{
  if(!bytes.length)throw new Error('empty_file');
  inspect(bytes);const XLSX=await import('xlsx');let wb:import('xlsx').WorkBook;
  try{wb=XLSX.read(bytes,{type:'buffer',cellFormula:true,cellDates:false,cellNF:true,sheetRows:SHEETJS_ROWS});}catch{throw new Error('workbook_damaged');}
@@ -239,7 +256,7 @@ export async function readMovementWorkbookRows(bytes:Buffer,p:{tenantId:string;t
  const raw=XLSX.utils.sheet_to_json<unknown[]>(metaSheet,{header:1,raw:true,blankrows:false});if(raw.length>100||raw.some(r=>r.length!==1||typeof r[0]!=='string'))throw new Error('workbook_metadata_invalid');
  let parsed:unknown;try{parsed=JSON.parse(raw.map(r=>r[0]).join(''));}catch{throw new Error('workbook_metadata_invalid');}
  const metadata=verifyMovementTemplate(parsed,p.tenantId);
- if(metadata.catalogue!==movementWorkbookCatalogue({types:p.types}))throw new Error('workbook_catalogue_changed');
+ if(!movementWorkbookCatalogueCurrent(metadata.catalogue,metadata.downloadedAt,p.types,p.reasonCreatedAt))throw new Error('workbook_catalogue_changed');
  for(const name of wb.SheetNames){const sheet=wb.Sheets[name];if(Object.values(sheet).some(c=>c&&typeof c==='object'&&'f'in c&&c.f))throw new Error('formula_input');if(!ALLOWED_SHEETS.includes(name)&&Object.values(sheet).some(c=>c&&typeof c==='object'&&'v'in c&&String(c.v??'').trim()))throw new Error('workbook_unexpected_sheet');}
  const sheet=wb.Sheets[MOVEMENT_SHEET],range=XLSX.utils.decode_range(sheet['!ref']??'A1');
  // 646355e5 slice C — a version 3 template has the first eight columns; its rows read as Create.
@@ -266,7 +283,7 @@ export function readMovementCsvRows(text:string,resolvers:PersonnelLabelResolver
 }
 export const MOVEMENT_FILE_CODES=['file_too_large','empty_file','invalid_file','workbook_damaged','workbook_too_large','workbook_old_layout','workbook_columns_changed','workbook_metadata_invalid','workbook_catalogue_changed','workbook_structure_invalid','workbook_password_not_supported','workbook_unexpected_sheet','workbook_key_unavailable','formula_input','malformed_csv'] as const;
 /** Reads an uploaded file (signed .xlsx template or the same columns as UTF-8 .csv) into movement records. */
-export async function readMovementSource(name:string,content:Buffer,p:{tenantId:string;types:MovementWorkbookType[];resolve:PersonnelLabelResolver}):Promise<{records:MovementImportRecord[];fileErrors:string[]}>{
+export async function readMovementSource(name:string,content:Buffer,p:{tenantId:string;types:MovementWorkbookType[];reasonCreatedAt?:MovementReasonCreatedAt;resolve:PersonnelLabelResolver}):Promise<{records:MovementImportRecord[];fileErrors:string[]}>{
  const resolvers=[p.resolve,...personnelImportLabelResolvers];
  const lower=name.toLowerCase();let rows:MovementSheetRow[];
  try{

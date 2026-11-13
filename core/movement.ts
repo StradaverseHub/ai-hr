@@ -91,6 +91,9 @@ import {
   type MovementDocumentUpload,
 } from './movement-attachments';
 import { movementFieldRuleViolations, type MovementFieldRule, type MovementFieldRuleViolation } from '../lib/movement-field-rules';
+// Board 154511c4 — history recorded backwards from the current record. Its event projects a movement row and
+// its row replacements join the hire correction's in the chain Roll Back follows.
+import { MOVEMENT_HISTORY_EVENT, MOVEMENT_HISTORY_REVERTED_EVENT, isAssignmentReplacementEvent, reverseHistoryMovementTx } from './movement-history';
 // c063eea9 — the hire-details correction. It owns its event and the trace the Hired row wears; this module
 // loads the event (it projects no row of its own) and follows its row replacements when rolling back.
 import {
@@ -216,6 +219,8 @@ export type MovementHistoryRow = {
   canReverse: boolean;
   /** The recorded command type; a voluntary termination may display as Resignation. */
   correctionKind?: string;
+  /** Board 154511c4 — recorded as history (it rewrote the period before its date, not the period after). */
+  history?: boolean;
   /** A CLOSED payroll run relied on this movement's window. 646355e5 — corrections are allowed after HR
    *  acknowledges that closed payroll stays as issued; the screen asks for that confirmation. */
   payrollLocked: boolean;
@@ -460,6 +465,10 @@ const MOVEMENT_EVENT_TYPES = [
   // movement's rollback acts on the corrected row rather than on the superseded original.
   HIRE_CORRECTED_EVENT,
   'employment.information.corrected',
+  // Board 154511c4 — a history movement (projects its row) and its rollback (no row; its replacements keep
+  // the Roll Back chain whole).
+  MOVEMENT_HISTORY_EVENT,
+  MOVEMENT_HISTORY_REVERTED_EVENT,
 ];
 
 /* 30325fc1 — EXTENDED_PROBATION_FIELDS / RESIGNATION_FIELDS were DELETED here. They were the field groups
@@ -495,6 +504,8 @@ type ProjectedRow = Pick<MovementHistoryRow, 'id' | 'kind' | 'effectiveDate' | '
    *  keying time and frozen into the scheduled event. Drives the same-field conflict test. Empty for
    *  movements that were never scheduled (they applied on save; nothing can overtake them). */
   fields: string[];
+  /** Board 154511c4 — recorded as history: it rewrote the period before its date. */
+  history?: boolean;
 };
 
 /** A movement kind the tag may legitimately name (guards a tampered/unknown tag from becoming a label). */
@@ -969,6 +980,22 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
         // c063eea9 — no row: the trace is attached to the Hired row by the callers that render it.
         break;
 
+      case MOVEMENT_HISTORY_EVENT:
+        // Board 154511c4 — a movement recorded as history: one row on its effective date, marked as history.
+        rows.push({
+          ...base,
+          kind: knownKind(p.type) ? String(p.type) : String(p.kind ?? 'orgAssignmentChange'),
+          effectiveDate: String(p.effectiveDate ?? occDate),
+          endDate: null,
+          remarks: (p.remarks as string | null) ?? null,
+          history: true,
+        });
+        break;
+
+      case MOVEMENT_HISTORY_REVERTED_EVENT:
+        // No row: the reversal event marks the history row; this one only carries the restored rows.
+        break;
+
       case 'employment.movement.reversed':
         // 66a63bd6 — marks the referenced row as rolled back. Deliberately projects NO row of its own:
         // one movement, one line in the history, with its correction shown on it.
@@ -1098,7 +1125,7 @@ export async function movementReportFactsTx(tx: Tx, tenantId: string, employment
     const attributedGrades=new Set(gradeRows.flatMap(row=>groupOf(row).map(event=>event.id)));
     const gradeKnown=gradeEvents.every(event=>event.eventType==='employment.information.corrected'||attributedGrades.has(event.id));
     const gradeBaseline=gradeEvents.length?((gradeEvents[0].payload??{}) as {before?:string|null}).before??null:emp.gradeId;
-    const hireCorrections=projected.events.filter(event=>event.eventType===HIRE_CORRECTED_EVENT).map(event=>event.payload);
+    const hireCorrections=projected.events.filter(event=>isAssignmentReplacementEvent(event.eventType,HIRE_CORRECTED_EVENT)).map(event=>event.payload);
     const salaryChanged=(row:ProjectedRow)=>groupOf(row).some(event=>{
       if(event.eventType!=='compensation.set')return false;
       const current=compById.get(liveIncarnationOf(event.aggregateId,hireCorrections));
@@ -1162,6 +1189,8 @@ const REVERSIBLE_EVENT_TYPES = new Set([
   'employment.terminated',
   'employment.blacklisted',
   'employment.blacklist.cleared',
+  // Board 154511c4 — undone by reverseHistoryMovementTx while every row it inserted is still live.
+  MOVEMENT_HISTORY_EVENT,
 ]);
 
 /**
@@ -1175,7 +1204,8 @@ const REVERSIBLE_EVENT_TYPES = new Set([
  */
 const STATE_CHANGING_EVENT_TYPES = new Set(
   [...REVERSIBLE_EVENT_TYPES].filter(
-    (t) => t !== 'employment.movement.recorded' && t !== 'employment.movement.scheduled',
+    // A history movement rewrites only the period before its date; later movements never replay over it.
+    (t) => t !== 'employment.movement.recorded' && t !== 'employment.movement.scheduled' && t !== MOVEMENT_HISTORY_EVENT,
   ),
 );
 
@@ -1280,6 +1310,9 @@ function correctabilityOf(row: ProjectedRow, group: RawEvent[], isLatest: boolea
       (e.eventType !== 'employment.info.updated' || infoLegIsFlatOnly(e, behaviour)),
   );
   const canReverse = supported && !row.reversed;
+  // Board 154511c4 — a history movement is corrected by deleting it and recording it again (the import's
+  // Update does exactly that); the in-place edit replays forward writers and would change the wrong side.
+  if (row.history) return { canReverse, canEdit: false, stateChanging };
   const canEdit = canReverse && (!stateChanging || ((isComparisonKind(behaviour) || ['resignation','termination','probationExtension','joinDateChange','groupJoinDateCorrection','blacklist'].includes(behaviour)) && isLatest));
   return { canReverse, canEdit, stateChanging };
 }
@@ -1341,6 +1374,11 @@ function flatValueAtSequence(
  * employment that never transferred has no events here and falls through to the current id — byte-identical
  * to the old behaviour for every existing record.
  */
+/** Board 154511c4 — the employee's dated company was rewritten in place (a history movement, or a company
+ * correction applied from the join date): read the company from the dated version, not the sequence replay. */
+const hasDatedCompanyHistory = (events: RawEvent[]): boolean =>
+  events.some((e) => e.eventType === MOVEMENT_HISTORY_EVENT || (e.eventType === 'employment.information.corrected' && (e.payload as { fromJoinDate?: boolean } | null)?.fromJoinDate === true));
+
 const isCompanyReplayEvent = (e: RawEvent): boolean =>
   e.eventType === 'employment.information.corrected' ||
   e.eventType === 'employment.company.transferred' ||
@@ -1405,12 +1443,16 @@ function companyIdsInPlay(companyEvents: RawEvent[], currentCompanyId: string): 
  */
 async function placementColumnsTx(tx: Tx, employmentId: string, companyId: string, events: RawEvent[]) {
   const companyEvents = events.filter(isCompanyReplayEvent);
-  const companyNames = await companyNamesTx(tx, companyIdsInPlay(companyEvents, companyId));
+  // Board 154511c4 — a history movement rewrites the dated company of the period before its date, which the
+  // sequence replay cannot see (it is recorded later than the movements it precedes). For an employee with one,
+  // the company comes from the dated assignment version, like Department and Position already do.
+  const datedCompany = hasDatedCompanyHistory(events);
 
   const asgRows = await tx
     .select({
       validFrom: assignment.validFrom,
       validTo: assignment.validTo,
+      companyId: assignment.companyId,
       department: department.name,
       position: position.title,
     })
@@ -1439,11 +1481,13 @@ async function placementColumnsTx(tx: Tx, employmentId: string, companyId: strin
 
   const infoEvents = events.filter((e) => e.eventType === 'employment.info.updated');
 
+  const companyNames = await companyNamesTx(tx, [...new Set([...companyIdsInPlay(companyEvents, companyId), ...(datedCompany ? asgRows.map((a) => a.companyId).filter((id): id is string => !!id) : [])])]);
+
   return (asOf: string, seqBound: number) => {
     const asg = asgRows.filter((a) => a.validFrom <= asOf && (a.validTo == null || a.validTo > asOf)).pop() ?? null;
     const comp = compRows.filter((c) => c.validFrom <= asOf && (c.validTo == null || c.validTo > asOf)).pop() ?? null;
     return {
-      company: companyNames.get(companyIdAtSequence(companyEvents, seqBound, true, companyId)) ?? null,
+      company: companyNames.get((datedCompany ? asg?.companyId : null) ?? companyIdAtSequence(companyEvents, seqBound, true, companyId)) ?? null,
       division: flatValueAtSequence(infoEvents, 'orgDivision', seqBound, empRow?.orgDivision ?? null),
       // e6a144d4 — the same flat-column replay as `division` one line up; `orgSection` is already in
       // MOVEMENT_FLAT_FIELDS, so a movement that moved Section has the before/after in its own event.
@@ -1634,6 +1678,7 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
         remarks: r.remarks,
         reversed: r.reversed,
         correctionKind:recordedMovementKind(r,g),
+        ...(r.history?{history:true}:{}),
         canEdit: c.canEdit && !terminal,
         canReverse: c.canReverse && !terminal,
         payrollLocked: locked,
@@ -1692,10 +1737,9 @@ async function snapshotAt(
    * sides, which is a Before/After view of a company move that omits the company move.
    */
   companyEvents: RawEvent[] = [],
+  /** Board 154511c4 — the employee has a history movement: read the company from the dated version (see placementColumnsTx). */
+  datedCompany = false,
 ): Promise<MovementSnapshot> {
-  const companyNames = await companyNamesTx(tx, companyIdsInPlay(companyEvents, emp.companyId));
-  const companyName =
-    companyNames.get(companyIdAtSequence(companyEvents, seqBound, inclusive, emp.companyId)) ?? null;
 
   const asgRows = await tx
     .select({
@@ -1705,6 +1749,7 @@ async function snapshotAt(
       department: department.name,
       position: position.title,
       businessUnit: businessUnit.name,
+      companyId: assignment.companyId,
     })
     .from(assignment)
     .leftJoin(department, eq(department.id, assignment.departmentId))
@@ -1714,6 +1759,10 @@ async function snapshotAt(
     .orderBy(asc(assignment.validFrom));
   const asg =
     asgRows.filter((a) => a.validFrom <= asOf && (a.validTo == null || a.validTo > asOf)).pop() ?? null;
+  const datedCompanyId = datedCompany ? asg?.companyId ?? null : null;
+  const companyNames = await companyNamesTx(tx, [...companyIdsInPlay(companyEvents, emp.companyId), ...(datedCompanyId ? [datedCompanyId] : [])]);
+  const companyName =
+    companyNames.get(datedCompanyId ?? companyIdAtSequence(companyEvents, seqBound, inclusive, emp.companyId)) ?? null;
 
   const rlRows = await tx
     .select({
@@ -1964,11 +2013,11 @@ async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:str
     const beforeBound = Math.min(...seqs);
 
     const correctionView=await personnelCorrectionViewTx(tx,events,rows);
-    const after = correctionView.apply(row.id,await snapshotAt(tx, emp, row.effectiveDate, gradeEvents, afterBound, true, companyEvents));
+    const after = correctionView.apply(row.id,await snapshotAt(tx, emp, row.effectiveDate, gradeEvents, afterBound, true, companyEvents, hasDatedCompanyHistory(events)));
     const before =
       row.kind === 'hired'
         ? null
-        : correctionView.apply(row.id+':before',await snapshotAt(tx, emp, dayBefore(row.effectiveDate), gradeEvents, beforeBound, false, companyEvents));
+        : correctionView.apply(row.id+':before',await snapshotAt(tx, emp, dayBefore(row.effectiveDate), gradeEvents, beforeBound, false, companyEvents, hasDatedCompanyHistory(events)));
 
     return {
       row: {
@@ -4262,6 +4311,11 @@ async function reverseLegTx(
       // the whole rollback.
       return;
 
+    case MOVEMENT_HISTORY_EVENT:
+      // Board 154511c4 — restore the period before the date, refused once a later write replaced it.
+      await reverseHistoryMovementTx(tx, ctx, { id: e.id, payload: e.payload, subjectEmploymentId: employmentId });
+      return;
+
     case 'employment.movement.scheduled':
       // 941c9dac — the scheduling event never wrote anything itself. Cancelling a PENDING movement is
       // therefore the reversal event alone, and that is also what stops the sweep picking it up (the
@@ -4319,6 +4373,12 @@ export async function movementCorrectionBaseTx(tx: Tx, ctx: SessionContext, empl
   const status = statusOf(row);
   const plain: CreateMovementInput = { employmentId, kind: recordedKind, effectiveDate: row.effectiveDate, endDate: row.endDate, remarks: row.remarks };
   let input: CreateMovementInput | null = null;
+  // Board 154511c4 — a history movement is corrected by deleting it and recording it again with its recorded
+  // Before / After overlaid (core/movement-import.ts); it has no forward input to replay.
+  if (row.history) {
+    const p = (events.find((e) => e.id === row.id)?.payload ?? {}) as { before?: Record<string, string | null>; after?: Record<string, string | null> };
+    return { id: row.id, kind: recordedKind, displayKind: row.kind, behaviour, effectiveDate: row.effectiveDate, status, reversed: !!row.reversed, scheduled: row.scheduled, input, recorded: plain, history: { before: p.before ?? {}, after: p.after ?? {} } };
+  }
   if (behaviour && row.kind !== 'hired' && !row.reversed && status !== 'superseded') {
     // A pending movement wrote nothing: its values are the saved intent, read exactly as the Edit retains them.
     if (row.scheduled && status === 'pending') {
@@ -4348,7 +4408,7 @@ export async function movementCorrectionBaseTx(tx: Tx, ctx: SessionContext, empl
   }
   // `recorded` is the bare movement (type, dates, remarks) for kinds whose effect IS their date (Join Date
   // Change, Probation Extension …); an import revert re-records a deleted movement from `input ?? recorded`.
-  return { id: row.id, kind: recordedKind, displayKind:row.kind, behaviour, effectiveDate: row.effectiveDate, status, reversed: !!row.reversed, scheduled: row.scheduled, input, recorded: plain };
+  return { id: row.id, kind: recordedKind, displayKind:row.kind, behaviour, effectiveDate: row.effectiveDate, status, reversed: !!row.reversed, scheduled: row.scheduled, input, recorded: plain, history: null as { before: Record<string, string | null>; after: Record<string, string | null> } | null };
 }
 
 /** The rollback guards, shared by the rollback and by read-only eligibility checks. */
@@ -4437,7 +4497,7 @@ async function reverseMovementTx(
   const snapshotCount = closedPayrollPeriods.length ? await preserveClosedPayrollDocumentsTx(tx, employmentId) : null;
   // Undo the newest leg first: within one movement a later leg can sit on top of an earlier one.
   const tag: MovementTag = { type: row.kind, groupId: randomUUID(), secondary: true };
-  const hireCorrections = events.filter((x) => x.eventType === HIRE_CORRECTED_EVENT).map((x) => x.payload);
+  const hireCorrections = events.filter((x) => isAssignmentReplacementEvent(x.eventType, HIRE_CORRECTED_EVENT)).map((x) => x.payload);
   for (const e of [...group].sort((a, b) => b.sequence - a.sequence)) {
     await reverseLegTx(tx, ctx, employmentId, e, tag, hireCorrections, reason);
   }
