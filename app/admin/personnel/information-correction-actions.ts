@@ -26,12 +26,12 @@ export async function informationContextAction(employmentId: string) {
   });
 }
 
-export async function previewInformationAction(input: { employmentId: string; changes: InformationChanges; reason: string }) {
+export async function previewInformationAction(input: { employmentId: string; changes: InformationChanges; reason: string; fromJoinDate?: boolean }) {
   const ctx = await requireAdmin();
-  return withCorrectionFeedback(() => previewInformationCorrection(ctx, input));
+  return withCorrectionFeedback(() => previewInformationCorrection(ctx, { employmentId: input.employmentId, changes: input.changes, reason: input.reason, fromJoinDate: input.fromJoinDate === true }));
 }
 
-export async function saveInformationAction(input: { employmentId: string; changes: InformationChanges; reason: string; fingerprint: string }) {
+export async function saveInformationAction(input: { employmentId: string; changes: InformationChanges; reason: string; fingerprint: string; fromJoinDate?: boolean }) {
   const ctx = await requireAdmin();
   return withCorrectionFeedback(async () => {
     const result = await correctInformation(ctx, {
@@ -40,6 +40,7 @@ export async function saveInformationAction(input: { employmentId: string; chang
       reason: input.reason,
       fingerprint: input.fingerprint,
       method: 'manual',
+      fromJoinDate: input.fromJoinDate === true,
     });
     revalidatePath('/admin/personnel');
     revalidatePath('/admin/personnel/' + input.employmentId);

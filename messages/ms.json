@@ -1900,7 +1900,8 @@
         },
         "payrollClosedBadge": "Gaji ditutup: {periods}",
         "informationCorrected": "Maklumat dibetulkan",
-        "informationNeedsReview": "Pembetulan perlu disemak"
+        "informationNeedsReview": "Pembetulan perlu disemak",
+        "historyBadge": "Sejarah"
       },
       "salaryCurrency": "Mata wang",
       "emergency": {
@@ -2444,7 +2445,24 @@
           "movement_field_not_editable": "Medan ini tidak boleh disunting untuk jenis peristiwa ini.",
           "movement_field_must_change": "Jenis peristiwa ini memerlukan medan ini diubah.",
           "movement_document_required": "Perubahan ini memerlukan dokumen sokongan, yang tidak boleh dibawa oleh import. Rekodkan pergerakan ini di tab Pergerakan.",
-          "movement_document_not_enabled": "Jenis peristiwa ini tidak menerima dokumen sokongan untuk medan ini."
+          "movement_document_not_enabled": "Jenis peristiwa ini tidak menerima dokumen sokongan untuk medan ini.",
+          "movement_before_current_record": "Tarikh ini lebih awal daripada rekod syarikat dan jawatan semasa pekerja, yang bermula pada %date%. Gunakan tarikh pada atau selepas %date%, atau batalkan dahulu perubahan yang mewujudkan rekod itu.",
+          "movement_already_in_company": "Pekerja sudah berada dalam syarikat ini pada tarikh ini.",
+          "movement_label_other_company": "Nilai ini tidak boleh digunakan dalam syarikat pekerja pada tarikh ini. Pilih nilai yang tersedia untuk syarikat itu",
+          "movement_backdated_reason_required": "Pergerakan ini bertarikh sebelum pergerakan kemudian. Masukkan Catatan yang menerangkan sebab ia disisipkan.",
+          "movement_before_join_date": "Tarikh ini sebelum Tarikh Sertai Kumpulan pekerja. Betulkan tarikh sertai dahulu, atau gunakan tarikh yang lebih lewat.",
+          "movement_history_fields": "Sejarah hanya boleh direkodkan untuk Syarikat, Jabatan, Jawatan, Unit Perniagaan dan Lokasi Kerja, dengan nilai Sebelum bagi setiap satu.",
+          "movement_history_before_required": "Masukkan nilai Sebelum bagi setiap medan yang ditetapkan oleh baris sejarah ini.",
+          "movement_history_future": "Sejarah hanya boleh direkodkan untuk tarikh sehingga hari ini.",
+          "movement_history_no_period": "Pekerja tiada tempoh yang direkodkan sebelum tarikh ini.",
+          "movement_history_after_mismatch": "Untuk merekod sejarah, Selepas mesti sepadan dengan rekod pada tarikh ini",
+          "movement_history_earlier_change": "Medan ini sudah berubah pada %date%, sebelum tarikh ini. Rekod sejarah dari tarikh itu, atau betulkan perubahan itu dahulu.",
+          "movement_history_no_change": "Nilai Sebelum sudah direkodkan sebelum tarikh ini. Tiada apa yang perlu diubah.",
+          "movement_history_splits_movement": "Pergerakan yang direkodkan pada %date% meliputi tarikh ini. Rekod sejarah sebelum %date%, atau padam pergerakan itu dahulu.",
+          "movement_history_payroll_company": "Gaji bagi %detail% telah ditutup di bawah syarikat lain. Buka semula gaji itu atau semak syarikat Sebelum.",
+          "movement_history_overtaken": "Pergerakan sejarah atau pembetulan kemudian telah mengubah tempoh ini. Padam perubahan itu dahulu.",
+          "history_closed_payroll": "Gaji yang ditutup meliputi %detail%. Ia kekal seperti yang dikeluarkan; hanya rekod pekerjaan berubah.",
+          "movement_history_change_on_date": "Perubahan pada medan ini sudah direkodkan pada tarikh ini. Betulkan atau padam perubahan itu."
         },
         "v2": {
           "type": "Jenis Pergerakan",
@@ -2556,7 +2574,8 @@
           "closedPayrollTitle": "Sesetengah pembetulan mengubah pergerakan di sebalik gaji yang telah ditutup ({periods}).",
           "closedPayrollBody": "Pembetulan ini mengemas kini rekod pekerja dan pemprosesan akan datang. Gaji yang ditutup, slip gaji yang telah dikeluarkan dan penyerahan berkanun mengekalkan angka muktamad dan tidak akan dikira semula. Tanpa pengesahan ini, pekerja berkenaan tidak disimpan.",
           "closedPayrollAcknowledge": "Saya faham bahawa gaji yang telah ditutup tidak akan berubah."
-        }
+        },
+        "historyRow": "Direkodkan sebagai sejarah: {from} hingga {to} mengambil nilai Sebelum. Rekod dari {date} tidak berubah."
       },
       "headerAssistance": {
         "title": "Semak tajuk lajur",
@@ -3504,7 +3523,13 @@
       "effective": "Proses akan datang menggunakan maklumat dibetulkan mulai {date}.",
       "templateFields": "Medan yang dibetulkan oleh templat ini (medan baharu diserlahkan). Sel kosong mengekalkan nilai sedia ada.",
       "templateFieldsLabel": "Medan yang dibetulkan oleh templat ini",
-      "ownersNote": "Gaji Pokok dan tarikh peletakan jawatan dibetulkan pada peristiwa yang merekodkannya: gunakan import Pergerakan dengan Tindakan \"Update\". Kaedah Pembayaran terdapat dalam import Bank dan Berkanun."
+      "ownersNote": "Gaji Pokok dan tarikh peletakan jawatan dibetulkan pada peristiwa yang merekodkannya: gunakan import Pergerakan dengan Tindakan \"Update\". Kaedah Pembayaran terdapat dalam import Bank dan Berkanun.",
+      "fromJoinDate": "Pekerja berada dalam syarikat ini sejak tarikh sertai (betulkan seluruh sejarah, bukan sahaja mulai hari ini). Hanya apabila pekerja berada dalam satu syarikat sepanjang masa; ubah syarikat sahaja dalam pembetulan ini.",
+      "warnings": {
+        "companyFromToday": "Syarikat berubah mulai {date}. Sebelum tarikh itu pekerja kekal dalam syarikat semasa. Jika pekerja sentiasa berada dalam syarikat baharu, tandakan “sejak tarikh sertai”; untuk merekod tempoh lebih awal dalam syarikat lain, importnya sebagai pergerakan sejarah.",
+        "companyFromJoinDate": "Syarikat berubah bagi seluruh sejarah, mulai {date}.",
+        "historyBeforeJoinDate": "Sejarah bertarikh pekerja bermula pada {date}, sebelum Tarikh Sertai Kumpulan. Semak tarikh sertai serta rekod syarikat dan jawatan pertama."
+      }
     }
   },
   "leave": {
@@ -10266,7 +10291,9 @@
         "backgroundHelp": "Anda boleh meninggalkan halaman ini. Tiada sesiapa melihat perubahan ini sehingga semuanya disimpan bersama, dan anda akan menerima notis apabila selesai.",
         "waiting": "Menunggu perkhidmatan latar belakang. Permintaan anda telah disimpan; jangan hantar semula.",
         "workerUnavailable": "Perkhidmatan latar belakang belum berjalan. Permintaan anda telah disimpan dan akan bermula secara automatik sebaik sahaja ia berjalan."
-      }
+      },
+      "otherCompanyTitle": "Semak baris ini: mengikut sejarah pekerjaan, pekerja berada dalam syarikat lain pada bulan ini",
+      "otherCompanyRow": "{employee} {name} · {period}: direkodkan di bawah {company}, tetapi sejarah pekerja menunjukkan syarikat lain bagi bulan ini. Semak Kod Syarikat atau Sejarah Pekerjaan pekerja."
     },
     "individualImport": {
       "submitWorkbook": "Muat naik buku kerja",

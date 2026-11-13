@@ -1900,7 +1900,8 @@
         },
         "payrollClosedBadge": "Đã khóa lương: {periods}",
         "informationCorrected": "Thông tin đã được sửa",
-        "informationNeedsReview": "Cần xem xét bản sửa đổi"
+        "informationNeedsReview": "Cần xem xét bản sửa đổi",
+        "historyBadge": "Lịch sử"
       },
       "salaryCurrency": "Tiền tệ",
       "emergency": {
@@ -2444,7 +2445,24 @@
           "movement_field_not_editable": "Không thể sửa trường này cho loại sự kiện này.",
           "movement_field_must_change": "Loại sự kiện này yêu cầu trường này phải thay đổi.",
           "movement_document_required": "Thay đổi này cần tài liệu hỗ trợ, mà tệp nhập không thể mang theo. Hãy ghi nhận biến động này ở thẻ Biến động.",
-          "movement_document_not_enabled": "Loại sự kiện này không nhận tài liệu hỗ trợ cho trường này."
+          "movement_document_not_enabled": "Loại sự kiện này không nhận tài liệu hỗ trợ cho trường này.",
+          "movement_before_current_record": "Ngày này sớm hơn hồ sơ công ty và vị trí hiện tại của nhân viên, bắt đầu từ %date%. Hãy dùng ngày từ %date% trở đi, hoặc hủy trước thay đổi đã tạo hồ sơ đó.",
+          "movement_already_in_company": "Nhân viên đã thuộc công ty này vào ngày này.",
+          "movement_label_other_company": "Không thể dùng giá trị này cho công ty của nhân viên vào ngày này. Hãy chọn giá trị có sẵn cho công ty đó",
+          "movement_backdated_reason_required": "Biến động này có ngày trước các biến động sau đó. Hãy nhập Ghi chú giải thích lý do chèn vào.",
+          "movement_before_join_date": "Ngày này trước Ngày gia nhập tập đoàn của nhân viên. Hãy sửa ngày gia nhập trước, hoặc dùng ngày muộn hơn.",
+          "movement_history_fields": "Chỉ có thể ghi lịch sử cho Công ty, Phòng ban, Vị trí, Đơn vị kinh doanh và Địa điểm làm việc, kèm giá trị Trước cho mỗi mục.",
+          "movement_history_before_required": "Hãy nhập giá trị Trước cho mọi trường mà dòng lịch sử này thiết lập.",
+          "movement_history_future": "Chỉ có thể ghi lịch sử cho ngày đến hôm nay.",
+          "movement_history_no_period": "Nhân viên không có giai đoạn nào được ghi nhận trước ngày này.",
+          "movement_history_after_mismatch": "Để ghi lịch sử, giá trị Sau phải khớp với hồ sơ vào ngày này",
+          "movement_history_earlier_change": "Trường này đã thay đổi vào %date%, trước ngày này. Hãy ghi lịch sử từ ngày đó, hoặc sửa thay đổi đó trước.",
+          "movement_history_no_change": "Các giá trị Trước đã có trong hồ sơ trước ngày này. Không có gì để thay đổi.",
+          "movement_history_splits_movement": "Một biến động ghi nhận vào %date% bao gồm ngày này. Hãy ghi lịch sử trước %date%, hoặc xóa biến động đó trước.",
+          "movement_history_payroll_company": "Bảng lương cho %detail% đã được đóng dưới một công ty khác. Hãy mở lại bảng lương đó hoặc kiểm tra công ty Trước.",
+          "movement_history_overtaken": "Một biến động lịch sử hoặc chỉnh sửa sau đó đã thay đổi giai đoạn này. Hãy xóa thay đổi đó trước.",
+          "history_closed_payroll": "Bảng lương đã đóng bao gồm %detail%. Bảng lương giữ nguyên như đã phát hành; chỉ hồ sơ tuyển dụng thay đổi.",
+          "movement_history_change_on_date": "Một thay đổi cho trường này đã được ghi nhận vào ngày này. Hãy sửa hoặc xóa thay đổi đó."
         },
         "v2": {
           "type": "Loại Biến động",
@@ -2556,7 +2574,8 @@
           "closedPayrollTitle": "Một số chỉnh sửa thay đổi biến động thuộc kỳ lương đã đóng ({periods}).",
           "closedPayrollBody": "Các chỉnh sửa này cập nhật hồ sơ nhân viên và việc xử lý về sau. Bảng lương đã đóng, phiếu lương đã phát hành và các tờ khai theo luật định giữ nguyên số liệu đã chốt và sẽ không được tính lại. Nếu không xác nhận, các nhân viên liên quan sẽ không được lưu.",
           "closedPayrollAcknowledge": "Tôi hiểu rằng bảng lương đã đóng sẽ không thay đổi."
-        }
+        },
+        "historyRow": "Ghi nhận là lịch sử: {from} đến {to} nhận các giá trị Trước. Hồ sơ từ {date} không thay đổi."
       },
       "headerAssistance": {
         "title": "Kiểm tra tiêu đề cột",
@@ -3504,7 +3523,13 @@
       "effective": "Xử lý trong tương lai sử dụng thông tin đã sửa từ {date}.",
       "templateFields": "Các trường mẫu này sửa được (trường mới được làm nổi bật). Ô trống giữ nguyên giá trị hiện có.",
       "templateFieldsLabel": "Các trường mẫu này sửa được",
-      "ownersNote": "Lương cơ bản và các ngày nghỉ việc được sửa trên sự kiện đã ghi nhận chúng: dùng nhập Biến động với Action \"Update\". Phương thức thanh toán nằm trong nhập Ngân hàng và Pháp định."
+      "ownersNote": "Lương cơ bản và các ngày nghỉ việc được sửa trên sự kiện đã ghi nhận chúng: dùng nhập Biến động với Action \"Update\". Phương thức thanh toán nằm trong nhập Ngân hàng và Pháp định.",
+      "fromJoinDate": "Nhân viên thuộc công ty này từ ngày gia nhập (sửa toàn bộ lịch sử, không chỉ từ hôm nay). Chỉ áp dụng khi nhân viên luôn ở một công ty; chỉ thay đổi công ty trong lần sửa này.",
+      "warnings": {
+        "companyFromToday": "Công ty thay đổi từ {date}. Trước ngày đó nhân viên vẫn thuộc công ty hiện tại. Nếu nhân viên luôn ở công ty mới, hãy chọn “từ ngày gia nhập”; để ghi một giai đoạn trước đó ở công ty khác, hãy nhập nó như một biến động lịch sử.",
+        "companyFromJoinDate": "Công ty thay đổi cho toàn bộ lịch sử, từ {date}.",
+        "historyBeforeJoinDate": "Lịch sử theo ngày của nhân viên bắt đầu từ {date}, trước Ngày gia nhập tập đoàn. Hãy kiểm tra ngày gia nhập và hồ sơ công ty, vị trí đầu tiên."
+      }
     }
   },
   "leave": {
@@ -10266,7 +10291,9 @@
         "backgroundHelp": "Bạn có thể rời khỏi trang này. Không ai nhìn thấy các thay đổi này cho đến khi tất cả được ghi nhận cùng lúc, và bạn sẽ nhận được thông báo khi hoàn tất.",
         "waiting": "Đang chờ dịch vụ nền. Yêu cầu của bạn đã được lưu; đừng gửi lại.",
         "workerUnavailable": "Dịch vụ nền chưa chạy. Yêu cầu của bạn đã được lưu và sẽ tự động bắt đầu ngay khi dịch vụ chạy."
-      }
+      },
+      "otherCompanyTitle": "Kiểm tra các dòng này: theo lịch sử tuyển dụng, nhân viên thuộc công ty khác trong tháng này",
+      "otherCompanyRow": "{employee} {name} · {period}: được ghi nhận dưới {company}, nhưng lịch sử của nhân viên cho thấy công ty khác trong tháng này. Hãy kiểm tra Mã công ty hoặc Lịch sử tuyển dụng của nhân viên."
     },
     "individualImport": {
       "submitWorkbook": "Tải lên sổ làm việc",
