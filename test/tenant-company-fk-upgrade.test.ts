@@ -240,6 +240,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5580_rewards_config_owner_paths',
    '5600_rewards_config_editor_role_levels',
    '5620_rewards_config_grants_creator_lock',
+   // Gate repair (13 November 2026): the ADR-0174 composite key for 5460's lc_v9_email_hold.
+   '5640_lifecycle_v9_email_hold_company_tenant',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);

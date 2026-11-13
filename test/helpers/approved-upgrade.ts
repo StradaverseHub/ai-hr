@@ -183,6 +183,8 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5000,when:1793330005300,tag:'5600_rewards_config_editor_role_levels'},
  // 5580/5600 loose ends: predicate EXECUTE off PUBLIC and the creator's company-year lock (board release, 13 Nov 2026).
  {idx:5020,when:1793330005320,tag:'5620_rewards_config_grants_creator_lock'},
+ // ADR-0174 composite company/tenant key for the 5460 email-hold projection (board release gate repair, 13 Nov 2026).
+ {idx:5040,when:1793330005340,tag:'5640_lifecycle_v9_email_hold_company_tenant'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -212,6 +214,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5580_rewards_config_owner_paths':'cf51650518408e4c4e5cc22823924b6fbcff130820be63887ba951f5520e60cd',
  '5600_rewards_config_editor_role_levels':'06a383842db72810be80aa8b276fe10e66236328afe8d4c28651b3d147792aff',
  '5620_rewards_config_grants_creator_lock':'8e322e3dd748f0295456595001e28b418e87a810a80577c821056abd1528538a',
+ '5640_lifecycle_v9_email_hold_company_tenant':'66d191aaee14e910480bd7ce7240bd23a76f02e57c66f1c129f40b2562e7d6c7',
  '4800_ai_shared_leave_groups_read':'774dce41ba113549ec5415586d104b8d5b7712934216f2beb4d9aa0e9f00ffc5',
  '4601_last_login_event_index':'868e30d4a2840d4939a46f303ce999b2e041ae3cb6823eb8b712179ccf7d5788',
  '4600_attendance_clock_policy_group_scope':'b30a62bec597f53266232abe569a040a9a421eaa2239eac232d0e44041352be6',

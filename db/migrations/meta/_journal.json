@@ -5937,6 +5937,13 @@
       "when": 1793330005320,
       "tag": "5620_rewards_config_grants_creator_lock",
       "breakpoints": true
+    },
+    {
+      "idx": 5040,
+      "version": "7",
+      "when": 1793330005340,
+      "tag": "5640_lifecycle_v9_email_hold_company_tenant",
+      "breakpoints": true
     }
   ]
 }
