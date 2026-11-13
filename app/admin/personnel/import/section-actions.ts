@@ -38,11 +38,13 @@ function assertSection(section: string) {
 }
 
 /** Dry-run validation for one section file. Returns a per-row verdict; writes nothing. */
-export async function validateSectionAction(section: string, csv: string): Promise<SectionImportPreview> {
+export async function validateSectionAction(section: string, csv: string,
+  /** Board d3ba1e9f — the workbook's Excel rows, so the preview names rows as Excel numbers them (labels only). */
+  excelRows?: unknown): Promise<SectionImportPreview> {
   const s = await requireAdmin();
   if(section==='bank_statutory')throw new Error('Reload the importer to validate this file in the background.');
   const { records,warnings } = parseSection(section,csv);
-  const preview=await validateSectionImport(s, { section: assertSection(section), records });
+  const preview=await validateSectionImport(s, { section: assertSection(section), records, excelRows });
   for(const row of preview.rows)row.warnings.push(...warnings);
   return preview;
 }

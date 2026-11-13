@@ -78,6 +78,7 @@ const SURFACES:Readonly<Record<string,Surface>>={
  'app/admin/personnel/import/employee/upload/route.ts':'employee_records',
  'app/admin/personnel/import/history/[attemptId]/page.tsx':support('Shared personnel import history and revert.'),
  'app/admin/personnel/import/history/[attemptId]/error-report/route.ts':support('Shared personnel import history and revert.'),
+ 'app/admin/personnel/import/history/[attemptId]/error-log/route.ts':support('Error Log download of an Import History entry (board d3ba1e9f); each kind\'s source keeps its page\'s visibility.'),
  'app/admin/personnel/import/history/[attemptId]/source/route.ts':support('Shared personnel import history and revert.'),
  'app/admin/personnel/import/history/actions.ts':support('Shared personnel import history and revert.'),
  'app/admin/personnel/import/history/employee-import-error-report.tsx':support('Shared personnel import history views.'),

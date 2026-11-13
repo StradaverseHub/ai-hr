@@ -3431,7 +3431,7 @@
         "csvFile": "文件名",
         "csvStatus": "最终状态",
         "csvStage": "发现于",
-        "rowsHint": "行号按文件中的员工行计数，与导入预览一致。",
+        "rowsHint": "行号与 Excel 中显示的行号一致（包括标题行）。",
         "truncated": "显示前 {shown} 行，共 {total} 行。下载错误报告以查看全部。"
       }
     },
@@ -38376,6 +38376,32 @@
     "actorWithId": "{name}（{employeeId}）",
     "actorUnlinked": "管理员登录账号（无员工记录 · 账号结尾 {suffix}）",
     "actorUnavailable": "不可用的用户"
+  },
+  "importErrorLogEmployee": {
+    "problemsTitle": "需要更正的问题",
+    "missingColumn": "工作表中缺少此必填列。",
+    "thisField": "此列",
+    "downloadFailed": "无法生成错误日志。请重试。",
+    "correction": {
+      "reference": "请从“参考”工作表中选择{field}。",
+      "date": "请按 YYYY-MM-DD 格式或以 Excel 日期输入日期。",
+      "month": "请按 YYYY-MM 格式输入月份。",
+      "required": "请填写{field}，此项为必填。",
+      "requiredForContract": "请填写此列 - 合同员工必须填写。",
+      "duplicateInFile": "此值在文件中出现多次 - 只保留一行。",
+      "duplicateEmployeeId": "此员工编号在文件中出现多次 - 只保留一行。",
+      "duplicateInSystem": "此值已被其他员工使用 - 请输入其他值，或删除此行。",
+      "number": "请输入数字（仅数字，不含货币符号）。",
+      "choice": "请从“说明”或“参考”工作表列出的值中选择一个。",
+      "yesNo": "请输入 Yes 或 No。",
+      "email": "请输入完整的电子邮件地址，例如 name@company.com。",
+      "notOnEmployeeSheet": "请将此员工添加到员工工作表，或更正员工编号。",
+      "employeeNotFound": "请检查员工编号。如需添加新员工，请先使用“全部 - 新员工”。",
+      "missingColumn": "请使用当前模板添加“{field}”列，然后重新上传。",
+      "wrongSection": "请删除该列，或使用其所属的模板导入。",
+      "system": "请重试。如果问题持续出现，请将支持参考编号提供给您的管理员。",
+      "uploadAgain": "请更正导致导入停止的行，然后重新上传整个文件。"
+    }
   },
   "scheduleOvertimeSetting": {
     "title": "加班设置",

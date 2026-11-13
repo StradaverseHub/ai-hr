@@ -9,7 +9,7 @@ import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {pgSqlState} from '../lib/db-error';
 import {publicErrorMessage} from '../lib/public-error';
-import type {ImportRecord} from '../lib/import-schema';
+import type {ImportIssue,ImportRecord} from '../lib/import-schema';
 import type {ImportSection,SectionImportResult} from '../lib/import-sections';
 import {SECTION_IMPORT_KIND} from '../lib/section-import-job';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
@@ -22,7 +22,8 @@ export const SECTION_IMPORT_CHUNK_BUDGET_MS=Number(process.env.SECTION_IMPORT_CH
 /** Child-relief refreshes per finalize unit (each is one short transaction of its own, as before). */
 const RELIEF_BATCH=25;
 export type SectionImportJobInput={section:ImportSection;records:ImportRecord[];fileName:string};
-type Rejected={rowNum:number;employeeCode:string;employeeName:string;errors:string[]};
+/** `issues` (board d3ba1e9f): each problem with its column and reason code, for the Error Log. */
+type Rejected={rowNum:number;employeeCode:string;employeeName:string;errors:string[];issues?:ImportIssue[]};
 export type SectionStoredPlan={section:ImportSection;total?:number;companyId?:string|null;rejected?:Rejected[];reliefFrom?:number;warnings?:string[];result?:SectionImportResult};
 type StepResult={wrote:boolean;personId:string;dependent:boolean};
 const inputOf=(job:BulkJobRow)=>job.input as SectionImportJobInput;
@@ -90,7 +91,8 @@ export const sectionImportJobHandler:BulkJobHandler<SectionRowNomination>={
    where job_id=${job.id}::uuid and state='applied' and (result->>'wrote')::boolean and (result->>'dependent')::boolean and seq>=${from} order by seq limit ${RELIEF_BATCH}`));
   if(relief.length){
    const warnings=[...(plan.warnings??[])];
-   for(const row of relief){try{await syncChildReliefFromFamily(ctx,row.person_id);}catch{warnings.push(`Row ${row.row_num} was saved; review the child-relief refresh on Personnel.`);}}
+   // The job keeps no workbook layout, so the row is named as data row + 1 (the Excel row when no blank rows).
+   for(const row of relief){try{await syncChildReliefFromFamily(ctx,row.person_id);}catch{warnings.push(`Row ${Number(row.row_num)+1} was saved; review the child-relief refresh on Personnel.`);}}
    await withTenant(ctx,async tx=>{await unit.fenceTx(tx);await unit.set(tx,{plan:{...plan,reliefFrom:relief.at(-1)!.seq+1,warnings}});});
    return'more';
   }
