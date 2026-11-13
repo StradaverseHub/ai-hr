@@ -212,8 +212,10 @@ export async function rewriteCompanyFromStartTx(tx:Tx,ctx:SessionContext,employm
  await tx.execute(sql`select id from assignment where employment_id=${employmentId}::uuid and superseded_at is null for update`);
  const versions=await historyVersionsTx(tx,employmentId);
  if(!versions.length)throw new MovementHistoryError('movement_history_no_period');
- const changed=versions.find(v=>v.companyId!==null&&v.companyId!==from);
- if(changed)throw new MovementHistoryError('movement_history_earlier_change:'+changed.validFrom);
+ // Name the date the company changes, not the start of the history.
+ const changeAt=versions.findIndex((v,i)=>i>0&&v.companyId!==versions[i-1].companyId);
+ if(changeAt>0)throw new MovementHistoryError('movement_history_earlier_change:'+versions[changeAt].validFrom);
+ if(versions.some(v=>v.companyId!==null&&v.companyId!==from))throw new MovementHistoryError('movement_history_earlier_change:'+versions[0].validFrom);
  const spanFrom=versions[0].validFrom;
  const closed=await closedPayrollInSpanTx(tx,employmentId,spanFrom,'9999-12-31');
  const contradicted=[...new Set(closed.filter(r=>r.companyId!==null&&r.companyId!==to).map(r=>r.period))];
