@@ -234,6 +234,26 @@ the current template, atomic replacement, `daemon-reload`, start, three stable l
 digest, and a later managed `drain` can validate it. A failure after replacement enters the same protected
 quarantine. The mode never signals, kills, restores or deletes the prior worker, its release or any record.
 
+### Hung worker during a web release
+
+With `AIHR_IMPORT_WORKER_REQUIRED=1` (staging), `deploy/deploy.sh` ends with `scripts/check-import-worker.ts` and fails
+the deploy if any bulk-job kind has no live heartbeat. The CI web build has already been activated and the service
+restarted by then. A worker that is running but hung, with a stale heartbeat, therefore fails an otherwise complete
+web release. The drain → web → activate order above does not help, because `drain` and the upgrade helper need a
+successful web deploy record.
+
+- **Before the web deploy:** run the check with the pinned runtime:
+  `cd /opt/ai-hr && /opt/node22/bin/node --env-file=.env.production --import tsx scripts/check-import-worker.ts`.
+  If the managed worker is running but its heartbeat is stale, diagnose it and restart that existing unit
+  (`sudo systemctl restart aihr-bank-import`) under the held lease. Repeat the check before deploying.
+  A restart keeps the unit, release and receipts unchanged. It is not a worker upgrade.
+- **If the deploy already failed at that check** (deploy record `failed` at phase `ci-build-health`): restore the
+  worker the same way, then complete the web arrival with `operator-release.mjs resume-arrival`
+  ([policy](../../docs/CI-STAGING-VERIFICATION-POLICY.md#resume-after-activation--aihr-resume-arrivalv1)). Do not
+  hand-write `deploy-state.sh finish`. Run the worker upgrade helper only after that arrival.
+- If the new release adds a bulk-job kind the old worker cannot serve, a restart cannot pass the check. That is a worker
+  upgrade, not a hung worker. Plan the drain/activate sequence before the web deploy instead.
+
 ## Production first activation (`production-first-install`)
 
 `bank_import_worker_production_v1.py` is the reviewed route for the first worker activation on the customer
