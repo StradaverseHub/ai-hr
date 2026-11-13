@@ -3535,6 +3535,27 @@
       }
     }
   },
+  "importErrorLogMovement": {
+    "correction": {
+      "date": "请按 DD-MMM-YYYY 格式（例如 06-Jan-2026）或以 Excel 日期输入日期。",
+      "required": "请填写此字段——此事件类型要求填写。",
+      "chooseCompany": "请从 Reference 工作表中选择公司编号。",
+      "eventType": "请从下拉列表中选择一个有效的事件类型。",
+      "chooseReference": "请从下拉列表或 Reference 工作表中选择一个值。",
+      "employeeId": "请对照人事记录核对此行的员工编号和公司编号。",
+      "systemField": "请选择此事件类型可以变更的系统字段（见 Reference 工作表），或删除该行。",
+      "duplicateField": "同一异动的每个系统字段只保留一行。",
+      "number": "请输入数字（仅数字，不含货币符号）。",
+      "noFormula": "请直接输入值本身，不要使用公式。",
+      "movementId": "请从该员工的异动历史中复制异动事件编号。",
+      "before": "请将员工记录中的当前值填入“变更前”，或下载新模板。",
+      "otherRows": "请更正该员工的其他行，然后重新上传整个文件。",
+      "recheck": "请重新上传文件，以便根据当前记录重新检查。",
+      "template": "请下载最新的异动模板，将您的行复制进去，然后重新上传。",
+      "splitFile": "请将文件拆分为较小的文件（每个最多 200 行、50 名员工、每名员工 20 行），然后逐一上传。",
+      "saveStopped": "此员工的任何内容均未保存。请更正问题，然后重新导入此员工。"
+    }
+  },
   "leave": {
     "myAbsenceTitle": "我的休假",
     "inquiryMovedToTracker": "员工资料、员工假期余额和员工假期记录现在从团队休假追踪进入；本页只显示你自己的假期。",

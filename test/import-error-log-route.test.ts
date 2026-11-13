@@ -21,7 +21,7 @@ vi.mock('next-intl/server', async () => {
 });
 vi.mock('@/core/import-error-log-registry', () => ({
   importErrorLogEntry: h.entry,
-  importErrorLogSourceFor: (entry: { kind: string | null; source: string }) => (entry.kind === 'movement' ? undefined : h.source),
+  importErrorLogSourceFor: (entry: { kind: string | null; source: string }) => (entry.kind === null && entry.source === 'attempt' ? undefined : h.source),
 }));
 const { GET } = await import('../app/admin/personnel/import/history/[attemptId]/error-log/route');
 
@@ -44,7 +44,7 @@ describe('Import History Error Log download', () => {
   it('answers 404 for an entry the viewer cannot see, a kind without a source, or a source that refuses', async () => {
     h.entry.mockResolvedValue(null);
     expect((await call()).status).toBe(404);
-    h.entry.mockResolvedValue({ kind: 'movement', source: 'attempt', sourceName: 'm.xlsx' });
+    h.entry.mockResolvedValue({ kind: null, source: 'attempt', sourceName: 'm.xlsx' });
     expect((await call()).status).toBe(404);
     h.entry.mockResolvedValue({ kind: 'profile', source: 'run', sourceName: 'p.xlsx' });
     h.source.mockResolvedValue(null);

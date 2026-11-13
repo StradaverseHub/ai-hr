@@ -3535,6 +3535,27 @@
       }
     }
   },
+  "importErrorLogMovement": {
+    "correction": {
+      "date": "Masukkan tarikh sebagai DD-MMM-YYYY (contohnya 06-Jan-2026) atau sebagai tarikh Excel.",
+      "required": "Isi medan ini - jenis peristiwa ini memerlukannya.",
+      "chooseCompany": "Pilih ID Syarikat daripada helaian Reference.",
+      "eventType": "Pilih Jenis Peristiwa yang aktif daripada senarai juntai bawah.",
+      "chooseReference": "Pilih nilai daripada senarai juntai bawah atau helaian Reference.",
+      "employeeId": "Semak ID Pekerja dan ID Syarikat pada baris ini dengan rekod Personnel.",
+      "systemField": "Pilih Medan Sistem yang boleh diubah oleh jenis peristiwa ini (lihat helaian Reference), atau buang baris itu.",
+      "duplicateField": "Simpan satu baris sahaja bagi setiap Medan Sistem untuk satu pergerakan.",
+      "number": "Masukkan nombor (digit sahaja, tanpa simbol mata wang).",
+      "noFormula": "Taip nilai itu sendiri, bukan formula.",
+      "movementId": "Salin ID Peristiwa Pergerakan daripada sejarah Pergerakan pekerja.",
+      "before": "Masukkan nilai yang kini ada dalam rekod pekerja sebagai Sebelum, atau muat turun templat baharu.",
+      "otherRows": "Betulkan baris lain bagi pekerja ini, kemudian muat naik semula keseluruhan fail.",
+      "recheck": "Muat naik fail sekali lagi supaya ia disemak berdasarkan rekod semasa.",
+      "template": "Muat turun templat Pergerakan terkini, salin baris anda ke dalamnya dan muat naik semula.",
+      "splitFile": "Pecahkan fail kepada fail yang lebih kecil (paling banyak 200 baris, 50 pekerja dan 20 baris bagi setiap pekerja) dan muat naik setiap satu.",
+      "saveStopped": "Tiada apa-apa yang disimpan untuk pekerja ini. Betulkan masalah itu, kemudian import pekerja ini sekali lagi."
+    }
+  },
   "leave": {
     "myAbsenceTitle": "Cuti Saya",
     "inquiryMovedToTracker": "Butiran Pekerja, Baki Cuti Pekerja dan Rekod Cuti Pekerja kini dibuka dari Penjejak Cuti Pasukan; halaman ini menunjukkan cuti anda sendiri sahaja.",

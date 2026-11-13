@@ -3535,6 +3535,27 @@
       }
     }
   },
+  "importErrorLogMovement": {
+    "correction": {
+      "date": "Enter the date as DD-MMM-YYYY (for example 06-Jan-2026) or as an Excel date.",
+      "required": "Fill in this field - this event type requires it.",
+      "chooseCompany": "Choose a Company ID from the Reference sheet.",
+      "eventType": "Choose an active Event Type from the drop-down list.",
+      "chooseReference": "Choose a value from the drop-down list or the Reference sheet.",
+      "employeeId": "Check the Employee ID and the Company ID on this row against Personnel.",
+      "systemField": "Choose a System Field that this event type can change (see the Reference sheet), or remove that row.",
+      "duplicateField": "Keep one row for each System Field of a movement.",
+      "number": "Enter a number (digits only, no currency sign).",
+      "noFormula": "Type the value itself, not a formula.",
+      "movementId": "Copy the Movement Event ID from the employee’s Movement history.",
+      "before": "Enter the value now on the employee’s record as Before, or download a new template.",
+      "otherRows": "Correct the other rows of this employee, then upload the whole file again.",
+      "recheck": "Upload the file again so it is checked against the current records.",
+      "template": "Download the current Movement template, copy your rows into it and upload it again.",
+      "splitFile": "Split the file into smaller files (at most 200 rows, 50 employees and 20 rows per employee) and upload each one.",
+      "saveStopped": "Nothing was saved for this employee. Correct the problem, then import this employee again."
+    }
+  },
   "leave": {
     "myAbsenceTitle": "My Leave",
     "inquiryMovedToTracker": "Employee Details, Employee Balances and Employee Leave Record now open from Team Leave Tracker; this page shows your own leave only.",

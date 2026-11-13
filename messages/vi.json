@@ -3535,6 +3535,27 @@
       }
     }
   },
+  "importErrorLogMovement": {
+    "correction": {
+      "date": "Nhập ngày theo định dạng DD-MMM-YYYY (ví dụ 06-Jan-2026) hoặc dưới dạng ngày Excel.",
+      "required": "Điền trường này - loại sự kiện này bắt buộc phải có.",
+      "chooseCompany": "Chọn Mã công ty từ trang Reference.",
+      "eventType": "Chọn một Loại sự kiện đang hoạt động từ danh sách thả xuống.",
+      "chooseReference": "Chọn một giá trị từ danh sách thả xuống hoặc trang Reference.",
+      "employeeId": "Đối chiếu Mã nhân viên và Mã công ty trên dòng này với hồ sơ Personnel.",
+      "systemField": "Chọn một Trường hệ thống mà loại sự kiện này có thể thay đổi (xem trang Reference), hoặc xóa dòng đó.",
+      "duplicateField": "Chỉ giữ một dòng cho mỗi Trường hệ thống của một biến động.",
+      "number": "Nhập một số (chỉ chữ số, không có ký hiệu tiền tệ).",
+      "noFormula": "Nhập chính giá trị, không dùng công thức.",
+      "movementId": "Sao chép Mã sự kiện biến động từ lịch sử Biến động của nhân viên.",
+      "before": "Nhập giá trị hiện có trong hồ sơ nhân viên vào cột Trước, hoặc tải mẫu mới.",
+      "otherRows": "Sửa các dòng khác của nhân viên này, rồi tải lên lại toàn bộ tệp.",
+      "recheck": "Tải tệp lên lại để tệp được kiểm tra theo dữ liệu hiện tại.",
+      "template": "Tải mẫu Biến động hiện tại, sao chép các dòng của bạn vào đó và tải lên lại.",
+      "splitFile": "Chia tệp thành các tệp nhỏ hơn (tối đa 200 dòng, 50 nhân viên và 20 dòng cho mỗi nhân viên) rồi tải lên từng tệp.",
+      "saveStopped": "Không có gì được lưu cho nhân viên này. Sửa lỗi, rồi nhập lại nhân viên này."
+    }
+  },
   "leave": {
     "myAbsenceTitle": "Nghỉ phép của tôi",
     "inquiryMovedToTracker": "Thông tin nhân viên, Số dư phép của nhân viên và Hồ sơ nghỉ phép của nhân viên nay mở từ Theo dõi nghỉ phép của nhóm; trang này chỉ hiển thị phép của bạn.",
