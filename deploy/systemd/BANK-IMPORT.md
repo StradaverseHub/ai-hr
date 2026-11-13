@@ -15,7 +15,10 @@ its separately authorized installation; this document and the service template d
    do not cancel a live database transaction or assume a browser timeout rolled it back.
 3. Provision a dedicated `aihr-import` OS account and a root-owned, protected `/etc/aihr/import-worker.env`.
    It contains the approved app-role `DATABASE_URL` and the queue physical owner's
-   `MIGRATION_DATABASE_URL`, including this installation's TLS options. Keep owner credentials out of
+   `MIGRATION_DATABASE_URL`, including this installation's TLS options, plus the web process's exact
+   `MOVEMENT_IMPORT_WORKBOOK_KEY` and `MOVEMENT_IMPORT_WORKBOOK_KEY_ID` (the worker checks uploaded
+   Movement workbooks; without them every Movement Excel check fails with "Workbook signing is not
+   configured", and different values reject every downloaded template). Keep owner credentials out of
    the web service. The worker uses the owner connection only for queue discovery, coordination and
    terminal operational failure; canonical HR changes always use the app-role connection and the
    submitting actor's database-captured grants, checked against current access on every transaction.

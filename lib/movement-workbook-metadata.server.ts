@@ -9,6 +9,8 @@ function key(){
  const bytes=Buffer.from(raw,'base64url');if(bytes.length!==32||bytes.toString('base64url')!==raw)throw new Error('workbook_key_unavailable');
  return {bytes,id};
 }
+/** True when this process can sign and verify movement workbooks. The import worker checks uploaded workbooks, so it needs the same key as the web process. */
+export function movementWorkbookKeyReady(){try{key();return true;}catch{return false;}}
 function mac(purpose:string,value:unknown){return createHmac('sha256',key().bytes).update('aihr:movement-workbook:v2:'+purpose+'\0').update(JSON.stringify(value)).digest('base64url');}
 function same(a:string,b:string){const x=Buffer.from(a),y=Buffer.from(b);return x.length===y.length&&timingSafeEqual(x,y);}
 function payload(m:Omit<MovementWorkbookMetadata,'signature'>){return {version:m.version,keyId:m.keyId,companyName:m.companyName,companyReference:m.companyReference,downloadedAt:m.downloadedAt,catalogue:m.catalogue,sheets:m.sheets.map(s=>({sheet:s.sheet,code:s.code,behaviour:s.behaviour,columns:s.columns,captions:s.captions,annotationCaption:s.annotationCaption,identities:s.identities??[]}))};}
