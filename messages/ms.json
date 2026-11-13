@@ -1796,7 +1796,10 @@
           "endDateRequiredIntern": "Diperlukan kerana Jenis Pekerja baharu ialah Pelatih. Latihan mesti tamat selepas tarikh berkuat kuasa.",
           "mustChangeRefused": "{field} mesti diubah untuk jenis peristiwa ini. Masukkan nilai baharu.",
           "documentOptional": "Dokumen sokongan (pilihan)",
-          "documentRequired": "Dokumen sokongan (wajib apabila ini berubah)"
+          "documentRequired": "Dokumen sokongan (wajib apabila ini berubah)",
+          "recordHistory": "Rekod sejarah: masukkan apa yang dimiliki pekerja sebelum tarikh berkuat kuasa. Rekod mulai tarikh berkuat kuasa tidak berubah.",
+          "recordHistoryHint": "Pilih hanya yang berbeza sebelum tarikh berkuat kuasa; biarkan selebihnya kosong. Tempoh lebih awal, hingga tarikh sertai, mengambil nilai ini.",
+          "historyUnchanged": "Tidak direkodkan"
         },
         "edit": "Sunting",
         "delete": "Padam",
@@ -1903,7 +1906,8 @@
         },
         "payrollClosedBadge": "Gaji ditutup: {periods}",
         "informationCorrected": "Maklumat dibetulkan",
-        "informationNeedsReview": "Pembetulan perlu disemak"
+        "informationNeedsReview": "Pembetulan perlu disemak",
+        "historyBadge": "Sejarah"
       },
       "salaryCurrency": "Mata wang",
       "emergency": {
@@ -2447,7 +2451,24 @@
           "movement_field_not_editable": "Medan ini tidak boleh disunting untuk jenis peristiwa ini.",
           "movement_field_must_change": "Jenis peristiwa ini memerlukan medan ini diubah.",
           "movement_document_required": "Perubahan ini memerlukan dokumen sokongan, yang tidak boleh dibawa oleh import. Rekodkan pergerakan ini di tab Pergerakan.",
-          "movement_document_not_enabled": "Jenis peristiwa ini tidak menerima dokumen sokongan untuk medan ini."
+          "movement_document_not_enabled": "Jenis peristiwa ini tidak menerima dokumen sokongan untuk medan ini.",
+          "movement_before_current_record": "Tarikh ini lebih awal daripada rekod syarikat dan jawatan semasa pekerja, yang bermula pada %date%. Gunakan tarikh pada atau selepas %date%, atau batalkan dahulu perubahan yang mewujudkan rekod itu.",
+          "movement_already_in_company": "Pekerja sudah berada dalam syarikat ini pada tarikh ini.",
+          "movement_label_other_company": "Nilai ini tidak boleh digunakan dalam syarikat pekerja pada tarikh ini. Pilih nilai yang tersedia untuk syarikat itu",
+          "movement_backdated_reason_required": "Pergerakan ini bertarikh sebelum pergerakan kemudian. Masukkan Catatan yang menerangkan sebab ia disisipkan.",
+          "movement_before_join_date": "Tarikh ini sebelum Tarikh Sertai Kumpulan pekerja. Betulkan tarikh sertai dahulu, atau gunakan tarikh yang lebih lewat.",
+          "movement_history_fields": "Sejarah hanya boleh direkodkan untuk Syarikat, Jabatan, Jawatan, Unit Perniagaan dan Lokasi Kerja, dengan nilai Sebelum bagi setiap satu.",
+          "movement_history_before_required": "Masukkan nilai Sebelum bagi setiap medan yang ditetapkan oleh baris sejarah ini.",
+          "movement_history_future": "Sejarah hanya boleh direkodkan untuk tarikh sehingga hari ini.",
+          "movement_history_no_period": "Pekerja tiada tempoh yang direkodkan sebelum tarikh ini.",
+          "movement_history_after_mismatch": "Untuk merekod sejarah, Selepas mesti sepadan dengan rekod pada tarikh ini",
+          "movement_history_earlier_change": "Medan ini sudah berubah pada %date%, sebelum tarikh ini. Rekod sejarah dari tarikh itu, atau betulkan perubahan itu dahulu.",
+          "movement_history_no_change": "Nilai Sebelum sudah direkodkan sebelum tarikh ini. Tiada apa yang perlu diubah.",
+          "movement_history_splits_movement": "Pergerakan yang direkodkan pada %date% meliputi tarikh ini. Rekod sejarah sebelum %date%, atau padam pergerakan itu dahulu.",
+          "movement_history_payroll_company": "Gaji bagi %detail% telah ditutup di bawah syarikat lain. Buka semula gaji itu atau semak syarikat Sebelum.",
+          "movement_history_overtaken": "Pergerakan sejarah atau pembetulan kemudian telah mengubah tempoh ini. Padam perubahan itu dahulu.",
+          "history_closed_payroll": "Gaji yang ditutup meliputi %detail%. Ia kekal seperti yang dikeluarkan; hanya rekod pekerjaan berubah.",
+          "movement_history_change_on_date": "Perubahan pada medan ini sudah direkodkan pada tarikh ini. Betulkan atau padam perubahan itu."
         },
         "v2": {
           "type": "Jenis Pergerakan",
@@ -2559,7 +2580,8 @@
           "closedPayrollTitle": "Sesetengah pembetulan mengubah pergerakan di sebalik gaji yang telah ditutup ({periods}).",
           "closedPayrollBody": "Pembetulan ini mengemas kini rekod pekerja dan pemprosesan akan datang. Gaji yang ditutup, slip gaji yang telah dikeluarkan dan penyerahan berkanun mengekalkan angka muktamad dan tidak akan dikira semula. Tanpa pengesahan ini, pekerja berkenaan tidak disimpan.",
           "closedPayrollAcknowledge": "Saya faham bahawa gaji yang telah ditutup tidak akan berubah."
-        }
+        },
+        "historyRow": "Direkodkan sebagai sejarah: {from} hingga {to} mengambil nilai Sebelum. Rekod dari {date} tidak berubah."
       },
       "headerAssistance": {
         "title": "Semak tajuk lajur",
@@ -3507,7 +3529,13 @@
       "effective": "Proses akan datang menggunakan maklumat dibetulkan mulai {date}.",
       "templateFields": "Medan yang dibetulkan oleh templat ini (medan baharu diserlahkan). Sel kosong mengekalkan nilai sedia ada.",
       "templateFieldsLabel": "Medan yang dibetulkan oleh templat ini",
-      "ownersNote": "Gaji Pokok dan tarikh peletakan jawatan dibetulkan pada peristiwa yang merekodkannya: gunakan import Pergerakan dengan Tindakan \"Update\". Kaedah Pembayaran terdapat dalam import Bank dan Berkanun."
+      "ownersNote": "Gaji Pokok dan tarikh peletakan jawatan dibetulkan pada peristiwa yang merekodkannya: gunakan import Pergerakan dengan Tindakan \"Update\". Kaedah Pembayaran terdapat dalam import Bank dan Berkanun.",
+      "fromJoinDate": "Pekerja berada dalam syarikat ini sejak tarikh sertai (betulkan seluruh sejarah, bukan sahaja mulai hari ini). Hanya apabila pekerja berada dalam satu syarikat sepanjang masa; ubah syarikat sahaja dalam pembetulan ini.",
+      "warnings": {
+        "companyFromToday": "Syarikat berubah mulai {date}. Sebelum tarikh itu pekerja kekal dalam syarikat semasa. Jika pekerja sentiasa berada dalam syarikat baharu, tandakan “sejak tarikh sertai”; untuk merekod tempoh lebih awal dalam syarikat lain, importnya sebagai pergerakan sejarah.",
+        "companyFromJoinDate": "Syarikat berubah bagi seluruh sejarah, mulai {date}.",
+        "historyStartAligned": "Rekod bertarikh pekerja (syarikat dan jawatan, gaji, garis pelaporan) bermula pada {from}. Menyimpan akan mengalihkan permulaannya ke Tarikh Sertai Kumpulan, {date}."
+      }
     }
   },
   "leave": {
@@ -8810,17 +8838,27 @@
       "traceColSettings": "Tetapan item gaji",
       "traceColTreatment": "Layanan",
       "traceColEpfWages": "Upah KWSP",
-      "traceColSocsoWages": "Upah PERKESO / SIP",
+      "traceColSocsoWages": "Upah PERKESO",
+      "traceColSkbbkWages": "Upah SKBBK",
+      "traceColEisWages": "Upah SIP",
       "traceYes": "Ya",
       "traceNo": "Tidak",
       "traceEpfSettings": "KWSP: {epf} · KWSP Bonus 2012: {bonus2012}",
+      "traceSocsoSetting": "PERKESO/SIP: {socso}",
       "traceSocsoSettings": "PERKESO/SIP: {socso} · KWSP Bonus 2012: {bonus2012}",
       "traceTreatEpfNormal": "Upah KWSP biasa",
       "traceTreatEpfBonus2012": "Upah bonus (KWSP Bonus 2012)",
       "traceTreatEpfAdditional": "Upah tambahan",
       "traceTreatEpfExcluded": "Tidak termasuk dalam KWSP",
-      "traceTreatSocsoIncluded": "Termasuk dalam upah PERKESO / SIP",
-      "traceTreatSocsoExcluded": "Tidak termasuk dalam PERKESO / SIP",
+      "traceTreatSocsoIncluded": "Termasuk dalam upah PERKESO",
+      "traceTreatSocsoExcluded": "Tidak termasuk dalam PERKESO",
+      "traceTreatSocsoExcludedBonus2012": "Tidak termasuk dalam PERKESO: bonus di bawah KWSP Bonus 2012",
+      "traceTreatSkbbkIncluded": "Termasuk dalam upah SKBBK",
+      "traceTreatSkbbkExcluded": "Tidak termasuk dalam SKBBK",
+      "traceTreatSkbbkExcludedBonus2012": "Tidak termasuk dalam SKBBK: bonus di bawah KWSP Bonus 2012",
+      "traceTreatEisIncluded": "Termasuk dalam upah SIP",
+      "traceTreatEisExcluded": "Tidak termasuk dalam SIP",
+      "traceTreatEisExcludedBonus2012": "Tidak termasuk dalam SIP: bonus di bawah KWSP Bonus 2012",
       "traceLineBasic": "Gaji Pokok",
       "traceLineUnpaid": "Cuti tanpa gaji dan ketidakhadiran",
       "traceLineRegularOvertime": "Kerja lebih masa yang dibayar dalam larian biasa",
@@ -8829,8 +8867,9 @@
       "traceLineItem": "Item gaji",
       "traceEpfNormalTotal": "Jumlah upah KWSP biasa",
       "traceEpfBonusTotal": "Jumlah upah KWSP bonus dan tambahan",
-      "traceSocsoTotal": "Jumlah upah PERKESO / SIP",
-      "traceSameWageAsSocso": "Menggunakan upah yang sama seperti PERKESO, disenaraikan dalam bahagian PERKESO.",
+      "traceSocsoTotal": "Jumlah upah yang dikenakan caruman PERKESO",
+      "traceSkbbkTotal": "Jumlah upah yang dikenakan caruman SKBBK",
+      "traceEisTotal": "Jumlah upah yang dikenakan caruman SIP",
       "traceClassification": "Klasifikasi berkanun",
       "traceEpfClassification": "{citizenship}, {age}",
       "traceCitizen": "Warganegara Malaysia",
@@ -8840,6 +8879,10 @@
       "traceAge60": "umur 60 hingga 74",
       "traceAge75": "umur 75 dan ke atas",
       "traceAgeUnknown": "umur tidak direkodkan (dianggap bawah 60)",
+      "traceSchemeClassification": "{citizenship}, {age}",
+      "traceSchemeAgeUnder18": "bawah umur 18",
+      "traceSchemeAge18To59": "umur 18 hingga 59",
+      "traceSchemeAge60": "umur 60 dan ke atas",
       "traceSchedule": "Jadual caruman",
       "traceEpfPartA": "Jadual Ketiga KWSP, Bahagian A",
       "traceEpfPartE": "Jadual Ketiga KWSP, Bahagian E",
@@ -8880,6 +8923,9 @@
       "traceSocsoCategory": "Kategori PERKESO",
       "traceSocsoCategory1": "Kategori Pertama: bencana pekerjaan dan keilatan",
       "traceSocsoCategory2": "Kategori Kedua: bencana pekerjaan sahaja (dibayar majikan)",
+      "traceEisEligibility": "Kelayakan SIP",
+      "traceEisEligible": "Layak: warganegara Malaysia atau penduduk tetap berumur bawah 60 tahun",
+      "traceEisIneligible": "Tidak layak (sebab di bawah)",
       "traceWageBasis": "Upah yang digunakan",
       "traceTableSocso": "Jadual PERKESO Akta 4, julat upah yang digunakan",
       "traceTableSkbbk": "Jadual SKBBK (Lindung 24 Jam), julat upah yang digunakan",
@@ -10251,7 +10297,9 @@
         "backgroundHelp": "Anda boleh meninggalkan halaman ini. Tiada sesiapa melihat perubahan ini sehingga semuanya disimpan bersama, dan anda akan menerima notis apabila selesai.",
         "waiting": "Menunggu perkhidmatan latar belakang. Permintaan anda telah disimpan; jangan hantar semula.",
         "workerUnavailable": "Perkhidmatan latar belakang belum berjalan. Permintaan anda telah disimpan dan akan bermula secara automatik sebaik sahaja ia berjalan."
-      }
+      },
+      "otherCompanyTitle": "Semak baris ini: mengikut sejarah pekerjaan, pekerja berada dalam syarikat lain pada bulan ini",
+      "otherCompanyRow": "{employee} {name} · {period}: direkodkan di bawah {company}, tetapi sejarah pekerja menunjukkan syarikat lain bagi bulan ini. Semak Kod Syarikat atau Sejarah Pekerjaan pekerja."
     },
     "individualImport": {
       "submitWorkbook": "Muat naik buku kerja",

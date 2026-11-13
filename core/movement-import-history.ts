@@ -6,7 +6,7 @@
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {createImportAttemptTx,importAttemptEventsTx,importAttemptItemsTx,lockImportAttemptTx,recordImportEventTx,recordImportFailure,recordImportItemTx,sealImportPlan,ImportHistoryError,type ImportAttemptItemRow,type ImportRevertHandler} from './import-history';
-import {commitMovementImport,previewMovementImport,movementImportTypes,movementImportStateTx,type MovementCommitInput,type MovementImportItemState} from './movement-import';
+import {commitMovementImport,previewMovementImport,movementImportTypesForCheck,movementImportStateTx,type MovementCommitInput,type MovementImportItemState} from './movement-import';
 import {createMovementEventTx,editMovementEventTx,movementCorrectionBaseTx,movementHistoryTx,movementLedgerMarkerTx,movementReversalBlockerTx,reverseMovementForImportTx,type CreateMovementInput} from './movement';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {readMovementSource,movementWorkbookCatalogue} from '../lib/movement-workbook.server';
@@ -24,8 +24,8 @@ export type MovementImportPlan=ImportPlanBase&{kind:'movement';inputHash:string;
 const sha=(content:Buffer)=>createHash('sha256').update(content).digest('hex');
 type Words={resolve:PersonnelLabelResolver};
 export async function sourceRecords(ctx:SessionContext,name:string,content:Buffer,words:Words){
- const types=await movementImportTypes(ctx);
- const parsed=await readMovementSource(name,content,{tenantId:ctx.tenantId,types,resolve:words.resolve});
+ const {types,reasonCreatedAt}=await movementImportTypesForCheck(ctx);
+ const parsed=await readMovementSource(name,content,{tenantId:ctx.tenantId,types,reasonCreatedAt,resolve:words.resolve});
  return{...parsed,catalogueHash:movementWorkbookCatalogue({types}),sourceHash:sha(content)};
 }
 /** Checks an uploaded file and records it as an import attempt with the original bytes. Nothing is saved. */

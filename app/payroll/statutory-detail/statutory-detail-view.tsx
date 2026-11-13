@@ -50,7 +50,7 @@ import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { epfWorkingRows } from './epf-working';
 import { hrdfCalculationLine, hrdfWorkingRows } from './hrdf-working';
-import { epfTraceItemRows, epfTraceRows, runTraceRows, scheduleTraceRows, socsoTraceItemRows, type TraceItemRow } from './statutory-trace';
+import { epfTraceItemRows, epfTraceRows, runTraceRows, scheduleTraceItemRows, scheduleTraceRows, scheduleTraceWageHeading, type TraceItemRow } from './statutory-trace';
 import { Card } from '@/components/ui';
 import { formatMoney } from '@/lib/money';
 // `isSetByHand` is the derivation's OWN predicate over `provenance` — imported rather than re-spelled as
@@ -448,14 +448,11 @@ export async function StatutoryDetailView({
                   headings={[t('traceColItem'), t('traceColAmount'), t('traceColSettings'), t('traceColTreatment'), t('traceColEpfWages')]}
                 />
               )}
-              {i.key === 'socso' && (
+              {(i.key === 'socso' || i.key === 'skbbk' || i.key === 'eis') && (
                 <TraceItemTable
-                  rows={socsoTraceItemRows(explanation.trace, t, rm)}
-                  headings={[t('traceColItem'), t('traceColAmount'), t('traceColSettings'), t('traceColTreatment'), t('traceColSocsoWages')]}
+                  rows={scheduleTraceItemRows(explanation.trace, i.key, t, rm)}
+                  headings={[t('traceColItem'), t('traceColAmount'), t('traceColSettings'), t('traceColTreatment'), scheduleTraceWageHeading(i.key, t)]}
                 />
-              )}
-              {(i.key === 'skbbk' || i.key === 'eis') && (
-                <p className="text-xs text-muted-foreground">{t('traceSameWageAsSocso')}</p>
               )}
               <div>
                 {(i.key === 'epf'

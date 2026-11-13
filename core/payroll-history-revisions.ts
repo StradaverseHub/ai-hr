@@ -1,7 +1,7 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {and,asc,desc,eq,getTableColumns,inArray,isNull,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {company,employment,person,payrollCycle,payrollBatch,payPeriod,payslip,
+import {assignment,company,employment,person,payrollCycle,payrollBatch,payPeriod,payslip,
  payrollHistoryImportAttempt as attempt,payrollHistoryImportRecord as record,payrollHistoryImportSnapshot as snapshot,
  payrollHistoryImportRevision as revision,payrollHistoryImportEvent as historyEvent} from '../db/schema';
 import {actorOf,appendEvent} from '../db/events';
@@ -194,6 +194,15 @@ async function planRowsWithFacts(tx:Tx,ctx:SessionContext,records:PayrollHistory
  const keys:PlanKey[]=[];
  for(const {group,result} of prepared)for(const month of result.preview.months){const resolved=result.months.find(m=>m.month.key===month.key);if(resolved)keys.push({companyId:group.company.id,employmentId:resolved.employmentId,period:month.period,cycleId:group.cycle.id});}
  facts.records=await planRecordFactsTx(tx,keys);
+ // Board 154511c4 — each employee's dated company, read once for the whole plan, so a month recorded under a
+ // company the employee was not in (by their employment history) is pointed out before the import.
+ const placementIds=[...new Set(keys.map(key=>key.employmentId))];
+ const placements=placementIds.length?await tx.select({employmentId:assignment.employmentId,validFrom:assignment.validFrom,validTo:assignment.validTo,companyId:assignment.companyId}).from(assignment).where(and(inArray(assignment.employmentId,placementIds),isNull(assignment.supersededAt))):[];
+ const inCompanyDuring=(employmentId:string,companyId:string,period:string)=>{
+  const first=period+'-01',[y,m]=period.split('-').map(Number),last=new Date(Date.UTC(y,m,0)).toISOString().slice(0,10);
+  const spans=placements.filter(p=>p.employmentId===employmentId&&p.companyId!==null&&p.validFrom<=last&&(p.validTo===null||p.validTo>first));
+  return !spans.length||spans.some(p=>p.companyId===companyId);
+ };
  const f=facts.records;
  const nameOf=new Map(f.names.map(r=>[r.id,r.name])),recordOf=new Map(f.records.map(r=>[planKey(r),r])),latestOf=new Map(f.latest.map(r=>[r.recordId,r])),firstOf=new Map(f.first.map(r=>[r.recordId,r]));
  const snapshotOf=new Map(f.snapshots.map(r=>[r.id,r])),periodOf=new Map(f.periods),targetOf=new Map(f.targets.map(r=>[r.payslipId,r])),downstreamOf=new Map(f.downstream);
@@ -226,6 +235,7 @@ async function planRowsWithFacts(tx:Tx,ctx:SessionContext,records:PayrollHistory
     operation:resolved&&!reasons.length?'create':'invalid',reasons,recordId:null,expectedRevisionId:null,expectedSnapshotId:null,values,beforeValues:null,valueHash:values?hash(canonical(values)):null,
     overwrite:true,codes:month.codes,protected:false,employeeName:resolved?nameOf.get(resolved.employmentId)??null:null,
     overwriteSource:null,expectedOrdinaryPayslipId:null,warnings:[]};
+   if(resolved&&/^\d{4}-\d{2}$/.test(row.period)&&!inCompanyDuring(row.employmentId,row.companyId,row.period))row.otherCompany=true;
    if(resolved){
     const existing=recordOf.get(planKey(row));
     const latest=existing?latestOf.get(existing.id):undefined;

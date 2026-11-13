@@ -10,6 +10,7 @@ import {runIndividualImportTick} from '../core/individual-import-worker';
 import {retireBulkJobWorker,runBulkJobTick} from '../core/bulk-job-worker';
 import {BULK_JOB_HANDLERS} from '../core/bulk-job-handlers';
 import {client} from '../db/client';
+import {movementWorkbookKeyReady} from '../lib/movement-workbook-metadata.server';
 const url=process.env.MIGRATION_DATABASE_URL;
 if(!url)throw new Error('MIGRATION_DATABASE_URL is required by the import worker.');
 const owner=postgres(url,{max:1,onnotice:()=>{}});
@@ -17,6 +18,8 @@ const owner=postgres(url,{max:1,onnotice:()=>{}});
 const bulkPauseMs=Number(process.env.BULK_JOB_PAUSE_MS??25);
 let stopping=false;process.on('SIGTERM',()=>{stopping=true;});process.on('SIGINT',()=>{stopping=true;});
 async function main(){
+ // Other imports keep running; only Movement workbook checks fail, so warn loudly instead of refusing to start.
+ if(!movementWorkbookKeyReady())console.error('Import worker: MOVEMENT_IMPORT_WORKBOOK_KEY/_ID are missing or invalid in its environment. Movement Excel imports will fail with "Workbook signing is not configured" until the web process values are copied into /etc/aihr/import-worker.env.');
  try{do{
   const bankWorked=await runBankImportTick(owner);
   const individualWorked=await runIndividualImportTick(owner,freshImportContext);

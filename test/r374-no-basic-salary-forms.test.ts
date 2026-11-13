@@ -862,7 +862,8 @@ describe('§6 the Movement screen reaches the same refusal, and it is now legibl
       const name=body.match(/^export async function (\w+)/)?.[1];
       return name?Array.from(body.matchAll(/await compensationErrorMessage\(e\)/g),()=>name):[];
     });
-    expect(writers).toEqual(['createMovementEventAction','createMovementEventAction',
+    // Board 154511c4 — the third createMovementEventAction entry is New Event's Record history refusal path.
+    expect(writers).toEqual(['createMovementEventAction','createMovementEventAction','createMovementEventAction',
       'editMovementEventAction','editMovementEventAction','setCompensationAction','editCompensationAction']);
   });
 

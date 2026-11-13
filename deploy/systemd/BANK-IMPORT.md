@@ -15,7 +15,10 @@ its separately authorized installation; this document and the service template d
    do not cancel a live database transaction or assume a browser timeout rolled it back.
 3. Provision a dedicated `aihr-import` OS account and a root-owned, protected `/etc/aihr/import-worker.env`.
    It contains the approved app-role `DATABASE_URL` and the queue physical owner's
-   `MIGRATION_DATABASE_URL`, including this installation's TLS options. Keep owner credentials out of
+   `MIGRATION_DATABASE_URL`, including this installation's TLS options, plus the web process's exact
+   `MOVEMENT_IMPORT_WORKBOOK_KEY` and `MOVEMENT_IMPORT_WORKBOOK_KEY_ID` (the worker checks uploaded
+   Movement workbooks; without them every Movement Excel check fails with "Workbook signing is not
+   configured", and different values reject every downloaded template). Keep owner credentials out of
    the web service. The worker uses the owner connection only for queue discovery, coordination and
    terminal operational failure; canonical HR changes always use the app-role connection and the
    submitting actor's database-captured grants, checked against current access on every transaction.
@@ -170,6 +173,24 @@ or process exit is unconfirmed, it reports uncertainty and requires administrato
 recovery; it never claims a completed stop or accepted release. An incomplete
 activation cannot be retried by deleting records or overwriting an immutable path.
 
+### A reviewed key added after the last activation (`--previous-worker-env-sha256`)
+
+`--worker-env-sha256` is always the root-read sha256 of the current `/etc/aihr/import-worker.env`. Normally the
+previous release's `worker-install-v2.json` records the same value as `selectedEnvironmentSha256`, and the helper
+refuses with "prior managed installation receipt differs" when it does not. If an operator added a reviewed key
+(one in `installer_v2` `ENV_KEYS`, for example `MOVEMENT_IMPORT_WORKBOOK_KEY` and `MOVEMENT_IMPORT_WORKBOOK_KEY_ID`)
+after that activation, pass the receipt's value as `--previous-worker-env-sha256 <64 hex>` to `drain` and `activate`
+(staging) or `production-drain`, `production-activate` and `production-rollback`. Read it from the receipt on the
+host. Never pass a digest you have not read there. Omitted, nothing changes. Given, the receipt must record exactly that
+value, the current file must still equal `--worker-env-sha256`, and the two must differ. The current file must also
+pass the closed environment checks: the installer's one `KEY=<JSON string>` line per key, reviewed keys, approved
+database roles and root-protected TLS files on staging, and the `production-first-install` checks on production.
+The drain record binds the argument. Activation and rollback refuse a different value or a missing one. The new
+receipt records the current environment, so the next update needs no `--previous-worker-env-sha256`. The helper still compares a
+running worker's live environment with the current file, so a worker started before the edit refuses ("live worker
+environment differs") and needs separate operator review; the helper never restarts it. `adopt-stopped` does not
+accept the argument.
+
 ### Adopting a cleanly stopped worker without a managed receipt (`adopt-stopped`)
 
 Use `adopt-stopped` only on staging, and only when the installed worker came from a procedure before
@@ -305,6 +326,7 @@ Read these pins on production as root before the window and pass them unchanged 
 | `--previous-worker-source` | `systemctl show -p WorkingDirectory --value aihr-bank-import`: the managed release directory name |
 | `--unit-sha256` | `sha256sum /etc/systemd/system/aihr-bank-import.service`; equals that release receipt's `unitSha256` |
 | `--worker-env-sha256` | `sha256sum /etc/aihr/import-worker.env`; equals that receipt's `selectedEnvironmentSha256` |
+| `--previous-worker-env-sha256` (optional) | that receipt's `selectedEnvironmentSha256`, only when a reviewed key was added to the file after it (see above) |
 | `--existing-uid` | `id -u aihr-import` |
 | `--previous-web-source`, `--previous-web-build` | the installed web release and `/opt/ai-hr/.next/BUILD_ID` before the window |
 | `--source`, `--build-id` | the new release; `--release-manifest` must name both |
@@ -391,9 +413,10 @@ cd / && sudo python3 -I -B /ROOT-PROTECTED/production-helper.py production-rollb
 ```
 
 It refuses, before it writes anything, unless all of these hold:
-- `/opt/aihr-import/upgrades/<from>/drained.json` is a production drain record naming `--to-source`, `--to-unit-sha256`
-  and `--worker-env-sha256`;
-- the previous release keeps its production receipt for that source, unit template and environment;
+- `/opt/aihr-import/upgrades/<from>/drained.json` is a production drain record naming `--to-source`, `--to-unit-sha256`,
+  `--worker-env-sha256` and `--previous-worker-env-sha256` when the drain had it (absent otherwise);
+- the previous release keeps its production receipt for that source, unit template and environment (the
+  `--previous-worker-env-sha256` value when given, otherwise `--worker-env-sha256`);
 - every entry of the previous release is owned like its root-protected directory and is neither group- nor
   other-writable nor set-id;
 - `--web-build` is the build recorded for `--web-source`: the previous receipt's `webBuildId`, or the drain record's
