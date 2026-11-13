@@ -10272,7 +10272,9 @@
         "backgroundHelp": "Bạn có thể rời khỏi trang này. Không ai nhìn thấy các thay đổi này cho đến khi tất cả được ghi nhận cùng lúc, và bạn sẽ nhận được thông báo khi hoàn tất.",
         "waiting": "Đang chờ dịch vụ nền. Yêu cầu của bạn đã được lưu; đừng gửi lại.",
         "workerUnavailable": "Dịch vụ nền chưa chạy. Yêu cầu của bạn đã được lưu và sẽ tự động bắt đầu ngay khi dịch vụ chạy."
-      }
+      },
+      "otherCompanyTitle": "Kiểm tra các dòng này: theo lịch sử tuyển dụng, nhân viên thuộc công ty khác trong tháng này",
+      "otherCompanyRow": "{employee} {name} · {period}: được ghi nhận dưới {company}, nhưng lịch sử của nhân viên cho thấy công ty khác trong tháng này. Hãy kiểm tra Mã công ty hoặc Lịch sử tuyển dụng của nhân viên."
     },
     "individualImport": {
       "submitWorkbook": "Tải lên sổ làm việc",

@@ -10272,7 +10272,9 @@
         "backgroundHelp": "Anda boleh meninggalkan halaman ini. Tiada sesiapa melihat perubahan ini sehingga semuanya disimpan bersama, dan anda akan menerima notis apabila selesai.",
         "waiting": "Menunggu perkhidmatan latar belakang. Permintaan anda telah disimpan; jangan hantar semula.",
         "workerUnavailable": "Perkhidmatan latar belakang belum berjalan. Permintaan anda telah disimpan dan akan bermula secara automatik sebaik sahaja ia berjalan."
-      }
+      },
+      "otherCompanyTitle": "Semak baris ini: mengikut sejarah pekerjaan, pekerja berada dalam syarikat lain pada bulan ini",
+      "otherCompanyRow": "{employee} {name} · {period}: direkodkan di bawah {company}, tetapi sejarah pekerja menunjukkan syarikat lain bagi bulan ini. Semak Kod Syarikat atau Sejarah Pekerjaan pekerja."
     },
     "individualImport": {
       "submitWorkbook": "Muat naik buku kerja",

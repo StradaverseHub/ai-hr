@@ -10272,7 +10272,9 @@
         "backgroundHelp": "您可以离开此页面。在所有更改一起提交之前，任何人都看不到这些更改；完成后您会收到通知。",
         "waiting": "正在等待后台服务。您的请求已保存，请勿重复提交。",
         "workerUnavailable": "后台服务尚未运行。您的请求已保存，服务运行后将自动开始。"
-      }
+      },
+      "otherCompanyTitle": "请检查以下行：根据员工的雇佣历史，该月员工属于另一家公司",
+      "otherCompanyRow": "{employee} {name} · {period}：记录于 {company}，但员工历史显示该月属于另一家公司。请检查公司代码或员工的雇佣历史。"
     },
     "individualImport": {
       "submitWorkbook": "上传工作簿",
