@@ -256,7 +256,10 @@ export async function alignHistoryStartTx(tx:Tx,employmentId:string,start:string
   if(!row||row.validFrom===start)return false;
   if(start>row.validFrom){
    if(row.validTo!==null&&row.validTo<=start)throw new MovementHistoryError('movement_history_earlier_change:'+row.validTo);
-   const closed=await closedPayrollInSpanTx(tx,employmentId,row.validFrom,start);
+   // Only a closed month that ends before the new start contradicts it (the employee was paid for a month they
+   // were not employed in); a later start inside a paid month keeps that payroll true, as issued (8550b282).
+   const monthEnd=(period:string)=>{const [y,m]=period.split('-').map(Number);return new Date(Date.UTC(y,m,0)).toISOString().slice(0,10);};
+   const closed=(await closedPayrollInSpanTx(tx,employmentId,row.validFrom,start)).filter(r=>monthEnd(r.period)<start);
    if(closed.length)throw new MovementHistoryError('movement_history_payroll_company:'+[...new Set(closed.map(r=>r.period))].join(', '));
   }
   return true;

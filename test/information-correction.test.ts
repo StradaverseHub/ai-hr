@@ -1,6 +1,6 @@
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {randomUUID} from 'node:crypto';
-import {and,eq,sql} from 'drizzle-orm';
+import {and,eq,isNull,sql} from 'drizzle-orm';
 import * as XLSX from 'xlsx';
 import {adminCtx,createAppUser,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {hireEmployee,setEmploymentGrade} from '../core/org';
@@ -76,7 +76,9 @@ describe('8550b282 information-only corrections',()=>{
   expect(await document(after!)).toEqual(pdfBefore);
   expect(await eaStatement(ctx(),{employmentId:id,companyId:b.companyId,year:'2025'})).toEqual(eaBefore);
   const register=await listPayrollRegisterAcross(ctx(),{companyIds:[b.companyId],year:2025});expect(register.length).toBe(1);expect(register[0]).toMatchObject({jobGrade:null,employmentType:'full_time',net:'2660.00'});
-  const versions=await owner.db.select().from(schema.assignment).where(eq(schema.assignment.employmentId,id));expect(versions).toHaveLength(2);expect(versions.find(a=>a.validTo===null)).toMatchObject({validFrom:todayInKualaLumpur(),employmentType:'part_time'});
+  // Board 154511c4 — the first dated record now starts on the corrected Group Join Date (it is superseded and
+  // re-inserted), so the live history is that record from 2025-01-01 plus the type change from today.
+  const versions=await owner.db.select().from(schema.assignment).where(and(eq(schema.assignment.employmentId,id),isNull(schema.assignment.supersededAt)));expect(versions).toHaveLength(2);expect(versions.find(a=>a.validTo===null)).toMatchObject({validFrom:todayInKualaLumpur(),employmentType:'part_time'});expect(versions.find(a=>a.validTo!==null)).toMatchObject({validFrom:'2025-01-01',employmentType:'full_time'});
   const history=await informationCorrectionHistory(ctx(),id);expect(history).toHaveLength(1);expect(history[0].actorId).toBe(ctx().userId);expect(history[0].payload).toMatchObject({method:'manual',reason:'Correct signed employment record',before:{hiredOn:'2025-01-15'},after:{hiredOn:'2025-01-01'}});
  });
  it('preserves the first snapshot through repeated corrections and refuses stale reviews',async()=>{
