@@ -29,7 +29,7 @@ import {allocationCompanyCode,matchAllocationCompany} from './cost-allocation-im
 import {recordImportItemTx} from './import-history';
 import {isComparisonKind,movementNeedsEntitlementReprojection} from './movement-kinds';
 import {resolveMovementEventTypeTx,activeMovementEventTypeChoicesTx,lockMovementTypeCatalogueTx} from './movement-type';
-import {lockEmploymentStatutoryOwnerTx} from './org';
+import {lockEmploymentStatutoryOwnerTx,AssignmentBeforeCurrentStartError,EmploymentAlreadyInCompanyError,CrossCompanyError,DestinationCompanyNotAdministered} from './org';
 import {deriveEmploymentStatus} from './employment-status';
 import {visibleLabelIdsCondition} from './system-labels';
 import {reprojectEntitlementForEmployment} from '../packs/leave/service';
@@ -316,9 +316,23 @@ async function fingerprintTx(tx:Tx,ctx:SessionContext,id:string,companyId:string
  const organisation=[];for(const record of records){const asOf=recordDay(record);if(/^\d{4}-\d{2}-\d{2}$/.test(asOf))for(const destination of [...destinations].sort())organisation.push(await organisationTagsTx(tx,ctx,{companyId:destination,asOf},reads));}
  return digest({organisation:organisation.filter(tags=>tags.status!=='legacy'),tenant:ctx.tenantId,user:ctx.userId??null,inputHash,selection:employeeSelection,emp,assignments,salaries,lines,events,catalogs,references,blacklistDay:records.some(row=>row.importVersion===2&&source.types.find(t=>t.code===row.cells.kind)?.behaviour==='blacklist')?todayInKualaLumpur():null});
 }
+/** Writer refusals that reach an import row as English sentences, mapped to finite row codes so the row says
+ * what is wrong and on which date (production 13 Nov 2026: these all showed the generic "could not be applied"). */
+const CROSS_COMPANY_FIELD:Record<string,string>={department:'departmentId',position:'positionId','business-unit':'businessUnitId',location:'locationId'};
+export function movementWriterRefusalCode(error:unknown):string|null{
+ if(error instanceof AssignmentBeforeCurrentStartError)return 'movement_before_current_record:'+error.currentStart;
+ if(error instanceof EmploymentAlreadyInCompanyError)return 'movement_already_in_company';
+ if(error instanceof CrossCompanyError)return CROSS_COMPANY_FIELD[error.entity]?'movement_label_other_company:'+CROSS_COMPANY_FIELD[error.entity]:'movement_label_other_company';
+ if(error instanceof DestinationCompanyNotAdministered)return 'company_not_available';
+ if(error instanceof MovementNoChangeError)return 'movement_has_no_changes';
+ if(error instanceof MovementReasonRequiredError)return 'movement_backdated_reason_required';
+ if(error instanceof Error&&error.message==='Use Historical Hire to record dates before the current Group Join Date.')return 'movement_before_join_date';
+ return null;
+}
 function message(error:unknown){
  // Drizzle wraps driver errors; its outer message contains SQL and bound values even when only
  // cause carries the PostgreSQL code. Never put that text in a preview or downloadable row report.
+ const coded=movementWriterRefusalCode(error);if(coded)return coded;
  if(error instanceof Error&&error.message.startsWith('movement_sequence_'))return 'change_refused';
  if(!(error instanceof Error)||['code','query','params','cause'].some(key=>key in error)||error.name==='DrizzleQueryError')return 'change_refused';
  return error.message.slice(0,1000);

@@ -2444,7 +2444,12 @@
           "movement_field_not_editable": "Medan ini tidak boleh disunting untuk jenis peristiwa ini.",
           "movement_field_must_change": "Jenis peristiwa ini memerlukan medan ini diubah.",
           "movement_document_required": "Perubahan ini memerlukan dokumen sokongan, yang tidak boleh dibawa oleh import. Rekodkan pergerakan ini di tab Pergerakan.",
-          "movement_document_not_enabled": "Jenis peristiwa ini tidak menerima dokumen sokongan untuk medan ini."
+          "movement_document_not_enabled": "Jenis peristiwa ini tidak menerima dokumen sokongan untuk medan ini.",
+          "movement_before_current_record": "Tarikh ini lebih awal daripada rekod syarikat dan jawatan semasa pekerja, yang bermula pada %date%. Gunakan tarikh pada atau selepas %date%, atau batalkan dahulu perubahan yang mewujudkan rekod itu.",
+          "movement_already_in_company": "Pekerja sudah berada dalam syarikat ini pada tarikh ini.",
+          "movement_label_other_company": "Nilai ini tidak boleh digunakan dalam syarikat pekerja pada tarikh ini. Pilih nilai yang tersedia untuk syarikat itu",
+          "movement_backdated_reason_required": "Pergerakan ini bertarikh sebelum pergerakan kemudian. Masukkan Catatan yang menerangkan sebab ia disisipkan.",
+          "movement_before_join_date": "Tarikh ini sebelum Tarikh Sertai Kumpulan pekerja. Betulkan tarikh sertai dahulu, atau gunakan tarikh yang lebih lewat."
         },
         "v2": {
           "type": "Jenis Pergerakan",

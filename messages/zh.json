@@ -2444,7 +2444,12 @@
           "movement_field_not_editable": "此事件类型不允许编辑此字段。",
           "movement_field_must_change": "此事件类型要求更改此字段。",
           "movement_document_required": "此更改需要证明文件，而导入无法附带文件。请改在“变动”标签页中记录此变动。",
-          "movement_document_not_enabled": "此事件类型不接受此字段的证明文件。"
+          "movement_document_not_enabled": "此事件类型不接受此字段的证明文件。",
+          "movement_before_current_record": "此日期早于员工当前的公司和职位记录（自 %date% 起）。请使用 %date% 或之后的日期，或先撤销产生该记录的更改。",
+          "movement_already_in_company": "该员工在此日期已属于此公司。",
+          "movement_label_other_company": "此值在该日期不能用于员工所属公司。请选择该公司可用的值",
+          "movement_backdated_reason_required": "此异动的日期早于之后的异动。请在备注中说明插入原因。",
+          "movement_before_join_date": "此日期早于员工的集团入职日期。请先更正入职日期，或使用较晚的日期。"
         },
         "v2": {
           "type": "人事异动类型",

@@ -2444,7 +2444,12 @@
           "movement_field_not_editable": "This field cannot be edited for this event type.",
           "movement_field_must_change": "This event type requires this field to change.",
           "movement_document_required": "This change needs a supporting document, which an import cannot carry. Record this movement on the Movement tab instead.",
-          "movement_document_not_enabled": "This event type does not take a supporting document for this field."
+          "movement_document_not_enabled": "This event type does not take a supporting document for this field.",
+          "movement_before_current_record": "This date is earlier than the employee’s current company and position record, which starts on %date%. Use a date on or after %date%, or reverse the change that created that record first.",
+          "movement_already_in_company": "The employee is already in this company on this date.",
+          "movement_label_other_company": "This value cannot be used in the employee’s company on this date. Choose a value available to that company",
+          "movement_backdated_reason_required": "This movement is dated before later movements. Enter Remarks explaining why it is being inserted.",
+          "movement_before_join_date": "This date is before the employee’s Group Join Date. Correct the join date first, or use a later date."
         },
         "v2": {
           "type": "Movement type",

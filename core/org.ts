@@ -93,9 +93,26 @@ export type EmploymentTypeValue = (typeof employmentTypeEnum.enumValues)[number]
  *  server-side guard (positions & cost-centers carry company_id; departments carry it via hierarchy).
  *  job_grade is tenant-wide (no company_id) so it is intentionally NOT checked. */
 export class CrossCompanyError extends Error {
-  constructor(entity: 'position' | 'cost-center' | 'department' | 'location' | 'business-unit' | 'employment') {
+  constructor(readonly entity: 'position' | 'cost-center' | 'department' | 'location' | 'business-unit' | 'employment') {
     super(`The selected ${entity} does not belong to the hiring company`);
     this.name = 'CrossCompanyError';
+  }
+}
+
+/** A dated assignment change earlier than the version in force. Carries that version's start date so the
+ *  Movement import can say which record blocks it (production 13 Nov 2026: the generic refusal hid it). */
+export class AssignmentBeforeCurrentStartError extends Error {
+  constructor(readonly currentStart: string) {
+    super('Effective date cannot be before the current assignment start date');
+    this.name = 'AssignmentBeforeCurrentStartError';
+  }
+}
+
+/** A company move to the company the employee is already in. */
+export class EmploymentAlreadyInCompanyError extends Error {
+  constructor() {
+    super('The employee is already in this company.');
+    this.name = 'EmploymentAlreadyInCompanyError';
   }
 }
 
@@ -2192,7 +2209,7 @@ export async function setEmploymentAssignment(
     if (!cur) throw new Error('No open assignment to change');
     // Effective date cannot predate the current version's start (would invert the dated range).
     if (p.effectiveDate < cur.validFrom) {
-      throw new Error('Effective date cannot be before the current assignment start date');
+      throw new AssignmentBeforeCurrentStartError(cur.validFrom);
     }
 
     const nextDepartmentId = p.departmentId ?? cur.departmentId;
@@ -2459,7 +2476,7 @@ export async function changeEmploymentCompany(
       .for('no key update');
     if (!emp) throw new Error('Employment not found');
     // No-op guard: moving to the same company is not a change.
-    if (emp.companyId === p.newCompanyId) throw new Error('The employee is already in this company.');
+    if (emp.companyId === p.newCompanyId) throw new EmploymentAlreadyInCompanyError();
     await assertCostAllocationTransferTx(tx,p.employmentId,emp.hiredOn);
     // Destination must be a live (non-archived) company in this tenant.
     const [dest] = await tx
@@ -2676,7 +2693,7 @@ export async function transferEmploymentCompanyTx(
     .limit(1)
     .for('no key update');
   if (!emp) throw new Error('Employment not found');
-  if (emp.companyId === p.newCompanyId) throw new Error('The employee is already in this company.');
+  if (emp.companyId === p.newCompanyId) throw new EmploymentAlreadyInCompanyError();
     await assertCostAllocationTransferTx(tx,p.employmentId,p.effectiveDate);
 
   // Destination must be a live (non-archived) company in this tenant.

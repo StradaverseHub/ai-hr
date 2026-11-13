@@ -2444,7 +2444,12 @@
           "movement_field_not_editable": "Không thể sửa trường này cho loại sự kiện này.",
           "movement_field_must_change": "Loại sự kiện này yêu cầu trường này phải thay đổi.",
           "movement_document_required": "Thay đổi này cần tài liệu hỗ trợ, mà tệp nhập không thể mang theo. Hãy ghi nhận biến động này ở thẻ Biến động.",
-          "movement_document_not_enabled": "Loại sự kiện này không nhận tài liệu hỗ trợ cho trường này."
+          "movement_document_not_enabled": "Loại sự kiện này không nhận tài liệu hỗ trợ cho trường này.",
+          "movement_before_current_record": "Ngày này sớm hơn hồ sơ công ty và vị trí hiện tại của nhân viên, bắt đầu từ %date%. Hãy dùng ngày từ %date% trở đi, hoặc hủy trước thay đổi đã tạo hồ sơ đó.",
+          "movement_already_in_company": "Nhân viên đã thuộc công ty này vào ngày này.",
+          "movement_label_other_company": "Không thể dùng giá trị này cho công ty của nhân viên vào ngày này. Hãy chọn giá trị có sẵn cho công ty đó",
+          "movement_backdated_reason_required": "Biến động này có ngày trước các biến động sau đó. Hãy nhập Ghi chú giải thích lý do chèn vào.",
+          "movement_before_join_date": "Ngày này trước Ngày gia nhập tập đoàn của nhân viên. Hãy sửa ngày gia nhập trước, hoặc dùng ngày muộn hơn."
         },
         "v2": {
           "type": "Loại Biến động",
