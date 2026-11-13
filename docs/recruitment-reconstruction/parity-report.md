@@ -603,3 +603,17 @@ same room and time could be booked for another candidate. No server errors.
 | 43357144173 | Selected tests (60 files) | 55 PASS; FAIL: 5 of the known 6 AI files (44 tests) |
 | 43357183960 | Selected tests (60 files) | 59 PASS; FAIL: the sixth known AI file, provider-analysis-policy (9 tests) |
 | 43359497572 | Selected tests (12 files, incl. interview set-up, waiting, import and export) | PASS: 111 tests |
+
+## Merge of origin/main (7282034468) after slice 18 — commit 463e24dd3
+
+Main's migrations 5129–5162 (idx 4529–4562) sit below the recruitment block 5200–5219 (idx 4600–4619); no function or
+table is defined on both sides. Conflicts were additive only (messages merged key by key with identical key sets in all
+six locales, the journal as a union in idx order, the allocation document, the regenerated AI manifests).
+
+| Run | Job | Result |
+| --- | --- | --- |
+| 43407132693 | Whole-repo type check | PASS |
+| 43407132693 | Production build | PASS |
+| 43407132693 | Selected tests (60 files) | 55 PASS; FAIL: 5 of the known 6 AI files (44 tests) |
+| 43407179173 | Selected tests (60 files) | 59 PASS; FAIL: the sixth known AI file, provider-analysis-policy (9 tests) |
+| 43409436035 | Selected tests (12 files) | PASS: 111 tests |
