@@ -1692,6 +1692,22 @@ export function statutory(
     /** Money inside `additional` that IS SOCSO/EIS-liable (an 'additional'-stream item ticked subject-to-SOCSO/EIS —
      *  the overtime-classified-as-additional case). The only carve-out that ADDS a contribution. */
     socsoWageExtra?: number;
+    // ── 2026-11-13 owner decisions A/B — THE EPF STREAM IS DECIDED BY THE EPF TICKS ALONE ─────────────
+    // The PCB remuneration type ('normal' | 'additional') is a PCB-only classification (Y1 vs Yt). EPF has
+    // normal wages only, except money on an item ticked "EPF Bonus 2012". And a pay item's PCB exemption
+    // (pcb_exemption_code) is an INCOME-TAX exemption only: the exempt slice is paid outside `wage` and
+    // `additional` (the kernel's untaxed cash bucket) but EPF / SOCSO / EIS / SKBBK still follow the item's
+    // own ticks on the WHOLE amount. These four numbers carry that money into the agency bases WITHOUT
+    // touching `pcbWage` / `pcbAdditional`. ALL DEFAULT 0 ⇒ byte-identical for every existing caller.
+    /** Money inside `additional` that IS EPF NORMAL wages (an 'additional'-classified item ticked EPF and not
+     *  EPF Bonus 2012). The kernel also lists it in `epfAdditionalExcluded`, so it moves streams, never doubles. */
+    epfWageExtra?: number;
+    /** PCB-exempt money (in neither `wage` nor `additional`) that IS EPF normal wages (ticked EPF, not EPF Bonus 2012). */
+    exemptEpfWage?: number;
+    /** PCB-exempt money that IS EPF bonus wages (ticked EPF Bonus 2012). */
+    exemptEpfAdditional?: number;
+    /** PCB-exempt money that IS SOCSO/EIS/SKBBK wages (ticked SOCSO/EIS, not EPF Bonus 2012). */
+    exemptSocsoWage?: number;
     // ── Feedback 2333b7fb (r193) — DEDUCTION-SIDE BASE REDUCTIONS ─────────────────────────────────────
     // The r187 carve-outs above all describe money that is INSIDE `wage`/`additional` and must be taken
     // back out of one agency's base. These four describe money that is NOT inside `wage` at all: a
@@ -1735,17 +1751,29 @@ export function statutory(
   // the same way. `pcbWageDeduction` IS applied to `pcbWage`, and that asymmetry with r187 is the whole
   // point: an earning is remuneration that WAS received, a ticked deduction is wage that was NOT. Read
   // the opts doc block before changing either half.
+  // 2026-11-13 — the EPF-stream and PCB-exemption extras (see the opts block) join the agency bases here and
+  // NOWHERE ELSE: `pcbWage` / `pcbAdditional` below never read them, so PCB and the Y1/Yt split are unchanged.
   const epfWage = Math.max(
     0,
-    round2(wage - Math.max(0, opts?.epfWageExcluded ?? 0) - Math.max(0, opts?.epfWageDeduction ?? 0)),
+    round2(
+      wage -
+        Math.max(0, opts?.epfWageExcluded ?? 0) -
+        Math.max(0, opts?.epfWageDeduction ?? 0) +
+        Math.max(0, opts?.epfWageExtra ?? 0) +
+        Math.max(0, opts?.exemptEpfWage ?? 0),
+    ),
   );
-  const epfAdditional = Math.max(0, round2(additional - Math.max(0, opts?.epfAdditionalExcluded ?? 0)));
+  const epfAdditional = Math.max(
+    0,
+    round2(additional - Math.max(0, opts?.epfAdditionalExcluded ?? 0) + Math.max(0, opts?.exemptEpfAdditional ?? 0)),
+  );
   const socsoWage = Math.max(
     0,
     round2(
       cashWage -
         Math.max(0, opts?.socsoWageExcluded ?? 0) +
-        Math.max(0, opts?.socsoWageExtra ?? 0) -
+        Math.max(0, opts?.socsoWageExtra ?? 0) +
+        Math.max(0, opts?.exemptSocsoWage ?? 0) -
         Math.max(0, opts?.socsoWageDeduction ?? 0),
     ),
   );
