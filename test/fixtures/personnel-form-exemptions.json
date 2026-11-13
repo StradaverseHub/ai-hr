@@ -854,6 +854,14 @@
       "hidden": false,
       "occurrences": 2,
       "reason": "Finite choice between the existing operational workflow and information-only correction; it controls presentation and never submits an employee fact."
+    },
+    {
+      "tag": "input",
+      "name": "informationCorrectionFromJoinDate",
+      "context": "InformationForm",
+      "hidden": false,
+      "occurrences": 1,
+      "reason": "Board 154511c4: chooses whether a company-only correction applies to the whole dated history (from the join date) or from today; it selects the correction's scope and never submits an employee fact itself."
     }
   ],
   "app/admin/personnel/[employmentId]/movement-history-actions.tsx": [
