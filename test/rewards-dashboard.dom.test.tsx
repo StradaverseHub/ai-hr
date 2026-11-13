@@ -19,7 +19,7 @@ const figures=aggregateRewardDashboardFigures([
  {company:'Fictional Alpha',budgets:{standard:plan([10000,2000,3000],[50000,10000,10000],130000,200000),h:plan([0,0,0],[0,0,0],0,0)}},
  {company:'Fictional Beta',budgets:{standard:plan([30000,0,0],[20000,0,0],0,0),h:plan([0,0,0],[0,0,0],0,0)}},
 ]);
-const value={kind:'annual',year:2026,choice:{version:2,kind:'annual',period:'monthly',businessUnit:BU,companies:[]},canSelectAll:false,
+const value={kind:'annual',year:2026,years:[2026],choice:{version:2,kind:'annual',period:'monthly',businessUnit:BU,companies:[],year:2026},canSelectAll:false,
  businessUnits:[{id:BU,label:'CHCE'}],
  companies:[{id:C1,label:'Fictional Alpha',headcount:12,blocked:false,preparing:false},{id:C2,label:'Fictional Beta',headcount:1,blocked:true,preparing:false},{id:C3,label:'Fictional Gamma',headcount:null,blocked:false,preparing:true}],
  context:{businessUnit:'CHCE',companies:2,cycle:'2026 Annual Compensation Review',cycleVaries:false,snapshot:'2026-11-04',snapshotVaries:false},
@@ -73,7 +73,7 @@ describe('Reviewing Team Rewards dashboard',()=>{
   const select=screen.getByRole('combobox',{name:en.rewards.unit}) as HTMLSelectElement;
   expect([...select.options].map(o=>o.textContent)).toEqual([d.allBusinessUnits,'CHCE','Second unit']);
   await act(async()=>{fireEvent.change(select,{target:{value:'all'}});});
-  expect(save).toHaveBeenCalledWith({period:'monthly',businessUnit:'all',companies:[]});
+  expect(save).toHaveBeenCalledWith({period:'monthly',businessUnit:'all',companies:[],year:2026});
  });
  it('applies pill and salary display changes immediately and saves them in the order they were made',async()=>{
   let release!:()=>void;save.mockImplementationOnce(()=>new Promise<void>(resolve=>{release=resolve;}));
@@ -82,19 +82,47 @@ describe('Reviewing Team Rewards dashboard',()=>{
   await act(async()=>{fireEvent.click(within(group).getByRole('button',{name:/Fictional Alpha/}));});
   await act(async()=>{fireEvent.click(within(group).getByRole('button',{name:/Fictional Beta/}));});
   // The second change waits for the first save; the pills already show both choices.
-  expect(save).toHaveBeenCalledTimes(1);expect(save).toHaveBeenNthCalledWith(1,{period:'monthly',businessUnit:BU,companies:[C1]});
+  expect(save).toHaveBeenCalledTimes(1);expect(save).toHaveBeenNthCalledWith(1,{period:'monthly',businessUnit:BU,companies:[C1],year:2026});
   expect(within(group).getByRole('button',{name:/Fictional Beta/})).toHaveAttribute('aria-pressed','true');
   await act(async()=>{release();});
-  expect(save).toHaveBeenCalledTimes(2);expect(save).toHaveBeenNthCalledWith(2,{period:'monthly',businessUnit:BU,companies:[C1,C2]});
+  expect(save).toHaveBeenCalledTimes(2);expect(save).toHaveBeenNthCalledWith(2,{period:'monthly',businessUnit:BU,companies:[C1,C2],year:2026});
   await act(async()=>{fireEvent.click(within(screen.getByRole('group',{name:d.salaryPeriod})).getByRole('button',{name:d.annual}));});
-  expect(save).toHaveBeenNthCalledWith(3,{period:'annual',businessUnit:BU,companies:[C1,C2]});
+  expect(save).toHaveBeenNthCalledWith(3,{period:'annual',businessUnit:BU,companies:[C1,C2],year:2026});
   await act(async()=>{fireEvent.click(within(group).getByRole('button',{name:d.allCompanies}));});
-  expect(save).toHaveBeenNthCalledWith(4,{period:'annual',businessUnit:BU,companies:[]});
+  expect(save).toHaveBeenNthCalledWith(4,{period:'annual',businessUnit:BU,companies:[],year:2026});
  });
  it('reports a failed save without discarding the visible choice',async()=>{
   save.mockRejectedValueOnce(new Error('offline'));show(value);
   await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Fictional Alpha/}));});
   expect(screen.getByRole('alert').textContent).toBe(d.saveFailed);
+ });
+ it('shows no Review year picker when the viewer has one review year (81a7b286)',()=>{
+  show(value);
+  expect(screen.queryByRole('combobox',{name:d.reviewYear})).toBeNull();expect(screen.queryByText(d.reviewYear)).toBeNull();
+ });
+ it('offers a Review year picker above the bars, latest first, and saves the picked year with the rest of the choice (81a7b286)',async()=>{
+  const twoYears={...value,years:[2026,2025]} as RewardDashboard;
+  const view=show(twoYears);
+  const select=screen.getByRole('combobox',{name:d.reviewYear}) as HTMLSelectElement;
+  expect([...select.options].map(o=>o.textContent)).toEqual(['2026','2025']);expect(select.value).toBe('2026');
+  // The picker sits in the filters, before the budget boxes.
+  const salary=screen.getByRole('heading',{level:2,name:d.salary});
+  expect(select.compareDocumentPosition(salary)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  await act(async()=>{fireEvent.change(select,{target:{value:'2025'}});});
+  expect(save).toHaveBeenCalledWith({period:'monthly',businessUnit:BU,companies:[],year:2025});
+  // The server's 2025 projection: its own bars, company buttons and context line; Waiting on you is unchanged.
+  const earlier={...twoYears,year:2025,choice:{...value.choice,year:2025},
+   companies:[{id:C1,label:'Fictional Alpha',headcount:9,blocked:false,preparing:false}],
+   context:{businessUnit:'CHCE',companies:1,cycle:'2025 Annual Compensation Review',cycleVaries:false,snapshot:'2025-11-03',snapshotVaries:false},
+   figures:aggregateRewardDashboardFigures([{company:'Fictional Alpha',budgets:{standard:plan([20000,0,0],[40000,0,0],50000,100000),h:plan([0,0,0],[0,0,0],0,0)}}]),preparing:[]} as unknown as RewardDashboard;
+  view.rerender(<NextIntlClientProvider locale="en" messages={en}><RewardsDashboard value={earlier}/></NextIntlClientProvider>);
+  expect((screen.getByRole('combobox',{name:d.reviewYear}) as HTMLSelectElement).value).toBe('2025');
+  expect(screen.getByTestId('reward-dashboard-context').textContent).toBe('Showing: CHCE · 1 company · 2025 Annual Compensation Review · Snapshot 3 Nov 2025');
+  const box=screen.getByRole('heading',{level:2,name:d.salary}).closest('div.min-w-0') as HTMLElement;
+  expect(within(box).getByText('MYR 200.00 / MYR 400.00 · 50.0%')).toBeTruthy();expect(within(box).queryByText(/Over its own pool/)).toBeNull();
+  expect(within(screen.getByRole('group',{name:d.companies})).getAllByRole('button').map(p=>p.textContent)).toEqual([d.allCompanies,'Fictional Alpha9 people']);
+  const waiting=screen.getByRole('heading',{name:'Waiting on you · 1'}).closest('div.min-w-0') as HTMLElement;
+  expect(within(waiting).getByRole('link',{name:'Fictional Alpha · CHCE'})).toHaveAttribute('href','/rewards/w1');
  });
  it('names companies withheld for restricted records and shows no redacted figures',()=>{
   show({...value,figures:null,context:{...value.context!,companies:1},excluded:[{company:'Fictional Alpha',reason:'restricted'}],preparing:[]});

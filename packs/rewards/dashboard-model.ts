@@ -15,12 +15,16 @@ export const REWARD_DASHBOARD_ALL='all';
 const MAX_COMPANIES=500;
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Saved presentation choice. `companies: []` means All companies in the chosen Business unit. */
-export type RewardDashboardPreference={version:2;kind:RewardDashboardKind;period:'monthly'|'annual';businessUnit:string;companies:string[]};
+/**
+ * Saved presentation choice. `companies: []` means All companies in the chosen Business unit. 81a7b286: `year` is the
+ * review year picked for the budget bars; absent means the latest year. It is re-checked against live scope on every read.
+ */
+export type RewardDashboardPreference={version:2;kind:RewardDashboardKind;period:'monthly'|'annual';businessUnit:string;companies:string[];year?:number};
 /** A review the viewer may see on the dashboard, released or still being prepared. */
 export type RewardDashboardScopeUnit={id:string;businessUnitId:string;companyId:string};
 
-type Decoded={kind:RewardDashboardKind;period:'monthly'|'annual';businessUnit:string|null;companies:string[];legacyUnit:string|null};
+type Decoded={kind:RewardDashboardKind;period:'monthly'|'annual';businessUnit:string|null;companies:string[];legacyUnit:string|null;year:number|null};
+const MIN_YEAR=1900,MAX_YEAR=9999;
 /**
  * Structural decode of a stored or submitted preference. Accepts the current shape and the earlier
  * single-review shape `{scope:<unit id>|'all',period}`; anything else falls back to defaults.
@@ -33,17 +37,33 @@ export function decodeRewardDashboardPreference(raw:unknown):Decoded{
  if(value.version===2){
   const businessUnit=value.businessUnit===REWARD_DASHBOARD_ALL?REWARD_DASHBOARD_ALL:id(value.businessUnit);
   const list=Array.isArray(value.companies)?value.companies.slice(0,MAX_COMPANIES).map(id).filter((v):v is string=>!!v):[];
-  return {kind,period,businessUnit,companies:[...new Set(list)].sort(),legacyUnit:null};
+  const year=typeof value.year==='number'&&Number.isInteger(value.year)&&value.year>=MIN_YEAR&&value.year<=MAX_YEAR?value.year:null;
+  return {kind,period,businessUnit,companies:[...new Set(list)].sort(),legacyUnit:null,year};
  }
  // Earlier single-review preference: a review id, or All for Group Rewards, CTRO and EC.
- if(value.scope===REWARD_DASHBOARD_ALL)return {kind,period,businessUnit:REWARD_DASHBOARD_ALL,companies:[],legacyUnit:null};
- return {kind,period,businessUnit:null,companies:[],legacyUnit:id(value.scope)};
+ if(value.scope===REWARD_DASHBOARD_ALL)return {kind,period,businessUnit:REWARD_DASHBOARD_ALL,companies:[],legacyUnit:null,year:null};
+ return {kind,period,businessUnit:null,companies:[],legacyUnit:id(value.scope),year:null};
 }
 
 /** The bounded, structurally valid value that is stored. Scope is re-checked on every read. */
 export function storedRewardDashboardPreference(raw:unknown):RewardDashboardPreference{
  const d=decodeRewardDashboardPreference(raw);
- return {version:2,kind:d.kind,period:d.period,businessUnit:d.businessUnit??'',companies:d.companies};
+ return {version:2,kind:d.kind,period:d.period,businessUnit:d.businessUnit??'',companies:d.companies,...(d.year===null?{}:{year:d.year})};
+}
+
+/**
+ * 81a7b286: the review years offered by the year picker, latest first. They are the years with a released review the
+ * viewer may see, plus the latest year in scope while it is still being prepared, so its "being prepared" notice stays
+ * the default view. Years the viewer has no review in never appear.
+ */
+export function rewardDashboardYears(units:readonly {year:number;released:boolean}[]):number[]{
+ const latest=units.reduce<number|null>((max,unit)=>max===null||unit.year>max?unit.year:max,null);
+ return [...new Set(units.filter(unit=>unit.released||unit.year===latest).map(unit=>unit.year))].sort((a,b)=>b-a);
+}
+/** The picked year when it is one of `years`, otherwise the latest. Null only when there is no year at all. */
+export function rewardDashboardYear(raw:unknown,years:readonly number[]):number|null{
+ const picked=decodeRewardDashboardPreference(raw).year;
+ return picked!==null&&years.includes(picked)?picked:years[0]??null;
 }
 
 /**

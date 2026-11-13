@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {aggregateRewardDashboardFigures,decodeRewardDashboardPreference,inRewardDashboardSelection,rewardDashboardCommon,rewardDashboardPreference,rewardSalaryDisplay,storedRewardDashboardPreference,toggleRewardDashboardCompany,type RewardDashboardFigureUnit} from '../packs/rewards/dashboard-model';
+import {aggregateRewardDashboardFigures,decodeRewardDashboardPreference,inRewardDashboardSelection,rewardDashboardCommon,rewardDashboardPreference,rewardDashboardYear,rewardDashboardYears,rewardSalaryDisplay,storedRewardDashboardPreference,toggleRewardDashboardCompany,type RewardDashboardFigureUnit} from '../packs/rewards/dashboard-model';
 
 const BU1='11111111-1111-4111-8111-111111111111',BU2='22222222-2222-4222-8222-222222222222';
 const C1='aaaaaaaa-0000-4000-8000-000000000001',C2='aaaaaaaa-0000-4000-8000-000000000002',C3='aaaaaaaa-0000-4000-8000-000000000003';
@@ -28,7 +28,7 @@ describe('Rewards dashboard preference (356ae8c1)',()=>{
  });
  it('stores only a bounded structural value',()=>{
   expect(storedRewardDashboardPreference({version:2,period:'weekly',businessUnit:'<script>',companies:[C2,'x',C2,C1.toUpperCase(),{}]})).toEqual({version:2,kind:'annual',period:'monthly',businessUnit:'',companies:[C1,C2]});
-  expect(decodeRewardDashboardPreference(null)).toEqual({kind:'annual',period:'monthly',businessUnit:null,companies:[],legacyUnit:null});
+  expect(decodeRewardDashboardPreference(null)).toEqual({kind:'annual',period:'monthly',businessUnit:null,companies:[],legacyUnit:null,year:null});
   expect(decodeRewardDashboardPreference({version:2,companies:Array.from({length:900},()=>C1)}).companies).toEqual([C1]);
  });
  it('toggles company pills and returns to All companies',()=>{
@@ -40,6 +40,33 @@ describe('Rewards dashboard preference (356ae8c1)',()=>{
   expect(inRewardDashboardSelection({businessUnit:BU1,companies:[]},units[1])).toBe(true);
   expect(inRewardDashboardSelection({businessUnit:BU1,companies:[C1]},units[1])).toBe(false);
   expect(inRewardDashboardSelection({businessUnit:'all',companies:[]},units[2])).toBe(true);
+ });
+});
+
+describe('Rewards dashboard review year picker (81a7b286)',()=>{
+ const reviews=[{year:2026,released:true},{year:2024,released:true},{year:2026,released:false},{year:2025,released:true},{year:2023,released:false}];
+ it('offers the released review years latest first and defaults to the latest',()=>{
+  // 2023 only has a review still being prepared, so it is not offered.
+  expect(rewardDashboardYears(reviews)).toEqual([2026,2025,2024]);
+  expect(rewardDashboardYear(null,[2026,2025,2024])).toBe(2026);
+  expect(rewardDashboardYear({version:2,businessUnit:BU1},[2026,2025,2024])).toBe(2026);
+  expect(rewardDashboardYear({version:2,year:2025},[2026,2025,2024])).toBe(2025);
+ });
+ it('keeps the latest year while it is still being prepared so its notice stays the default view',()=>{
+  expect(rewardDashboardYears([{year:2027,released:false},{year:2026,released:true}])).toEqual([2027,2026]);
+  expect(rewardDashboardYear(null,[2027,2026])).toBe(2027);
+  expect(rewardDashboardYears([{year:2026,released:false}])).toEqual([2026]);
+  expect(rewardDashboardYears([])).toEqual([]);expect(rewardDashboardYear({version:2,year:2026},[])).toBeNull();
+ });
+ it('falls back to the latest year for a year outside the viewer\'s years or a malformed value',()=>{
+  for(const year of [2023,2019,2025.5,'2025',-1,99999,Number.NaN,null,{}])expect(rewardDashboardYear({version:2,year},[2026,2025,2024])).toBe(2026);
+  // The earlier single-review shape carries no year.
+  expect(rewardDashboardYear({scope:U1,year:2025},[2026,2025])).toBe(2026);
+ });
+ it('stores the picked year only as a bounded whole year',()=>{
+  expect(storedRewardDashboardPreference({version:2,period:'annual',businessUnit:BU1,companies:[],year:2025})).toEqual({version:2,kind:'annual',period:'annual',businessUnit:BU1,companies:[],year:2025});
+  expect(storedRewardDashboardPreference({version:2,period:'annual',businessUnit:BU1,companies:[],year:'2025; drop'})).toEqual({version:2,kind:'annual',period:'annual',businessUnit:BU1,companies:[]});
+  expect(storedRewardDashboardPreference({version:2,year:123456})).not.toHaveProperty('year');
  });
 });
 
