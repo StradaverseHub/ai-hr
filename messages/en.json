@@ -8893,7 +8893,7 @@
       "traceSocsoCategory1": "First Category: employment injury and invalidity",
       "traceSocsoCategory2": "Second Category: employment injury only (employer pays)",
       "traceEisEligibility": "EIS eligibility",
-      "traceEisEligible": "Eligible: Malaysian citizen or permanent resident aged 18 to 59",
+      "traceEisEligible": "Eligible: Malaysian citizen or permanent resident below age 60",
       "traceEisIneligible": "Not eligible (reason below)",
       "traceWageBasis": "Wages used",
       "traceTableSocso": "PERKESO Act 4 table, wage range used",
