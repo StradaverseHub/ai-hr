@@ -1,14 +1,14 @@
 {
   "purpose": "Production upgrade rehearsal inputs. Repository and owner-supplied identities only; no host, credential or production data.",
   "baseline": {
-    "installedSource": "b7c0393aa3c7606a33dd15103426e5c535324065",
-    "installedSourceRecord": "Owner-approved read-only production check relayed 12 Nov 2026: BUILD_ID fJibwqJehk36PFrtzLelT, code-only hotfix installed 8 Nov; release tag prod-2026-11-08.1.",
-    "ledgerEntries": 697,
-    "ledgerWatermark": 1793330001700,
+    "installedSource": "0cbe5fecbc94b4c1a10b16f48cd1cbb4aa8abf2b",
+    "installedSourceRecord": "Read-only production check 13 Nov 2026: BUILD_ID 42xPVWL5Odx53kKIC485G, release prod-2026-11-12.2 installed 12 Nov; ledger 827 / 1793330004830 / 5fb94afa (12 Nov H.1).",
+    "ledgerEntries": 827,
+    "ledgerWatermark": 1793330004830,
     "ledgerDigestFormat": "sha256 of the ledger rows ordered by id, each 'hash created_at', joined by a single newline, no trailing newline",
-    "expectedLedgerDigest": "8073fd5df4eb76068c01192d61628cfdb2a300b5050a3e06d872eaaa3a9ddf04",
-    "populatorSource": "2dcb7fbe7c83849f96f4f6efb5d274f119d07cf2",
-    "populatorSourceReason": "prod-2026-11-06.1, whose journal is exactly the 697-entry ledger. The installed b7c0393aa code expects 704 entries, so it cannot populate a 697-entry schema faithfully.",
+    "expectedLedgerDigest": "5fb94afae9cb6b442a10d9183fbbb7ddcfbcdb5f121e17d6d68b7bb87948efec",
+    "populatorSource": "0cbe5fecbc94b4c1a10b16f48cd1cbb4aa8abf2b",
+    "populatorSourceReason": "prod-2026-11-12.2 is installed and its journal is exactly the 827-entry ledger.",
     "productionRoles": [
       "ai_hr_app",
       "ai_hr_architecture_grade_guard",
