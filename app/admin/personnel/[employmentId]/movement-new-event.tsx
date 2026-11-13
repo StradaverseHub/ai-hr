@@ -367,6 +367,9 @@ export function MovementNewEvent({
       ? { field, included: true, editable: true, mustChange: true, document: typeRules?.find((r) => r.field === field)?.document ?? 'none' }
       : typeRules?.find((r) => r.field === field) ?? defaultMovementFieldRule(field);
   const [ruleError, setRuleError] = useState<string | null>(null);
+  // Board 154511c4 — "Record history": HR enters what the employee had BEFORE the effective date; the record on
+  // the date stays as it is (core/movement-history-command.ts). New comparison movements only.
+  const [historyMode, setHistoryMode] = useState(false);
 
   /** One comparison row: the field label, the read-only current value, and the editable new value. */
   const row = (field: MovementRuleField, key: string, label: string, currentDisplay: string | null, control: React.ReactNode) => {
@@ -454,6 +457,20 @@ export function MovementNewEvent({
   );
 
   // The requested field order, top to bottom (feedback 08913328).
+  /** Board 154511c4 — one Before choice of "Record history" (blank = not recorded). */
+  const historySelect = (field: 'companyId' | 'departmentId' | 'positionId' | 'businessUnitId' | 'locationId', options: MovementOption[]) => (
+    <label key={field} className="block space-y-1 text-sm">
+      <span className="text-xs font-medium text-muted-foreground">{label(movementField(field))}</span>
+      <select name={`history.${field}`} defaultValue="" className={inputCls}>
+        <option value="">{t('form.historyUnchanged')}</option>
+        {options.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
   const comparisonRows: React.ReactNode[] = [
     /**
      * b7b22514 — THE ONE PLACE COMPANY IS EDITABLE, and only on this one event type. Everywhere else it
@@ -576,6 +593,8 @@ export function MovementNewEvent({
       ref={form=>{if(saved&&form&&!initialFields.current)initialFields.current=new Map(Array.from(new FormData(form).entries()).filter((entry):entry is [string,string]=>typeof entry[1]==='string'));}}
       onSubmit={event=>{
         if(pagePending){event.preventDefault();return;}
+        // A history entry changes nothing from its date onward, so Required to Change does not apply to it.
+        if (historyMode) return;
         // 1d58019a Step 2 — Required to Change, checked before the round trip (the server checks it too).
         if (!typeRules) return;
         const data = new FormData(event.currentTarget);
@@ -786,7 +805,26 @@ export function MovementNewEvent({
         )}
       </div>
 
-      {isComparison && (
+      {isComparison && !edit && !saved && (
+        <div className="space-y-3 border-t border-border px-4 py-3">
+          <label className="flex items-start gap-2 text-sm">
+            <input name="recordHistory" type="checkbox" value="1" className="mt-1" checked={historyMode} onChange={(e) => setHistoryMode(e.target.checked)} />
+            <span>{t('form.recordHistory')}</span>
+          </label>
+          {historyMode && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {historySelect('companyId', companies?.length ? companies : [{ id: current.companyId, name: current.companyName ?? '' }])}
+              {historySelect('departmentId', departments)}
+              {historySelect('positionId', positions)}
+              {derivedOrganisation.data?.status === 'legacy' && !derivedOrganisation.data.managed ? historySelect('businessUnitId', businessUnits) : null}
+              {historySelect('locationId', locations)}
+              <p className="text-xs text-muted-foreground sm:col-span-2">{t('form.recordHistoryHint')}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {isComparison && !historyMode && (
         <div className="border-t border-border">
           <div className="hidden bg-muted/50 px-4 py-2 text-xs uppercase tracking-wide text-muted-foreground sm:grid sm:grid-cols-[11rem_minmax(0,1fr)_minmax(0,1fr)] sm:gap-4">
             <div className="font-medium">{t('detail.field')}</div>

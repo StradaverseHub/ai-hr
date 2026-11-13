@@ -1793,7 +1793,10 @@
           "endDateRequiredIntern": "Diperlukan kerana Jenis Pekerja baharu ialah Pelatih. Latihan mesti tamat selepas tarikh berkuat kuasa.",
           "mustChangeRefused": "{field} mesti diubah untuk jenis peristiwa ini. Masukkan nilai baharu.",
           "documentOptional": "Dokumen sokongan (pilihan)",
-          "documentRequired": "Dokumen sokongan (wajib apabila ini berubah)"
+          "documentRequired": "Dokumen sokongan (wajib apabila ini berubah)",
+          "recordHistory": "Rekod sejarah: masukkan apa yang dimiliki pekerja sebelum tarikh berkuat kuasa. Rekod mulai tarikh berkuat kuasa tidak berubah.",
+          "recordHistoryHint": "Pilih hanya yang berbeza sebelum tarikh berkuat kuasa; biarkan selebihnya kosong. Tempoh lebih awal, hingga tarikh sertai, mengambil nilai ini.",
+          "historyUnchanged": "Tidak direkodkan"
         },
         "edit": "Sunting",
         "delete": "Padam",
@@ -3528,7 +3531,7 @@
       "warnings": {
         "companyFromToday": "Syarikat berubah mulai {date}. Sebelum tarikh itu pekerja kekal dalam syarikat semasa. Jika pekerja sentiasa berada dalam syarikat baharu, tandakan “sejak tarikh sertai”; untuk merekod tempoh lebih awal dalam syarikat lain, importnya sebagai pergerakan sejarah.",
         "companyFromJoinDate": "Syarikat berubah bagi seluruh sejarah, mulai {date}.",
-        "historyBeforeJoinDate": "Sejarah bertarikh pekerja bermula pada {date}, sebelum Tarikh Sertai Kumpulan. Semak tarikh sertai serta rekod syarikat dan jawatan pertama."
+        "historyStartAligned": "Rekod bertarikh pekerja (syarikat dan jawatan, gaji, garis pelaporan) bermula pada {from}. Menyimpan akan mengalihkan permulaannya ke Tarikh Sertai Kumpulan, {date}."
       }
     }
   },

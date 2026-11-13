@@ -1793,7 +1793,10 @@
           "endDateRequiredIntern": "因为新的员工类型为实习，所以必填。实习结束日期必须晚于生效日期。",
           "mustChangeRefused": "此事件类型要求更改{field}。请输入新值。",
           "documentOptional": "证明文件（可选）",
-          "documentRequired": "证明文件（更改此项时必需）"
+          "documentRequired": "证明文件（更改此项时必需）",
+          "recordHistory": "记录历史：填写员工在生效日期之前的情况。生效日期起的记录不变。",
+          "recordHistoryHint": "只选择生效日期之前不同的项目，其余留空。之前的期间（直至入职日期）将采用这些值。",
+          "historyUnchanged": "不记录"
         },
         "edit": "编辑",
         "delete": "删除",
@@ -3528,7 +3531,7 @@
       "warnings": {
         "companyFromToday": "公司自 {date} 起更改。在此日期之前，员工仍属当前公司。如员工一直在新公司，请勾选“自入职日起”；如需记录较早在其他公司的期间，请以历史异动导入。",
         "companyFromJoinDate": "公司将对整个历史更改，自 {date} 起。",
-        "historyBeforeJoinDate": "员工的日期历史始于 {date}，早于集团入职日期。请检查入职日期以及第一条公司和职位记录。"
+        "historyStartAligned": "员工的日期记录（公司和职位、薪资、汇报关系）始于 {from}。保存后，其起始日期将移至集团入职日期 {date}。"
       }
     }
   },

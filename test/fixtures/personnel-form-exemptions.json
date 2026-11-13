@@ -537,6 +537,22 @@
       "hidden": false,
       "occurrences": 1,
       "reason": "646355e5 (ADR-0164) closed-payroll acknowledgement on a movement correction: an instruction to the correction service (MovementClosedPayrollAcknowledgementError), not a Personnel fact. The checkbox shipped with 646355e5 without an exemption entry."
+    },
+    {
+      "tag": "input",
+      "context": "MovementNewEvent",
+      "name": "recordHistory",
+      "hidden": false,
+      "occurrences": 1,
+      "reason": "Board 154511c4: chooses that this New Event records what the employee had before its effective date (history) instead of a change from that date; an instruction to the history writer, not a Personnel fact."
+    },
+    {
+      "tag": "select",
+      "context": "historySelect",
+      "nameExpression": "`history.${field}`",
+      "hidden": false,
+      "occurrences": 1,
+      "reason": "Board 154511c4: the Before value of a history entry for a dated placement field; core/movement-history.ts validates it against the record on the effective date and writes the period before it."
     }
   ],
   "app/admin/personnel/[employmentId]/hire-correction-form.tsx": [

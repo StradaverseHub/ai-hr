@@ -24,10 +24,12 @@ export type InformationValues=Record<InformationField,string|null>;
 export type InformationChanges=Partial<Record<InformationField,string>>;
 /** Board 154511c4 — what the review warns about: from which date the company changes, and a dated history that
  * starts before the (new) Group Join Date. */
-export type InformationWarning={code:'companyFromToday'|'companyFromJoinDate'|'historyBeforeJoinDate';date:string};
+export type InformationWarning={code:'companyFromToday'|'companyFromJoinDate'|'historyStartAligned';date:string;from?:string};
 export type InformationPreview={effectiveOn:string;employmentId:string;employeeCode:string;name:string;fingerprint:string;before:InformationValues;after:InformationValues;beforeLabels:InformationValues;afterLabels:InformationValues;reason:string;changed:InformationField[];
  /** Board 154511c4 — the company correction applies to the whole dated history (the employee was always in it). */
- fromJoinDate?:true;warnings?:InformationWarning[]};
+ fromJoinDate?:true;warnings?:InformationWarning[];
+ /** Board 154511c4 — saving moves the start of the dated records (company/position, salary, reporting line) to the Group Join Date. */
+ alignStart?:{from:string;to:string}};
 export type InformationOptions={companies:{id:string;code:string;name:string}[];grades:{id:string;code:string;name:string}[];employmentTypes:string[];organisation?:{companyId:string;companyCode:string;kind:'department'|'position'|'business_unit';id:string;code:string;name:string}[];labels?:{field:typeof INFORMATION_LABEL_FIELDS[number];value:string;label:string}[]};
 /** Version 1 (five facts) stays readable so an old file's ignored Business Unit never starts writing. */
 export const INFORMATION_HEADERS=['Company Code','Employee ID','Employee Name','New Company Code','Group Join Date','Join Date','Job Grade','Employment Type','Correction Reason'] as const;

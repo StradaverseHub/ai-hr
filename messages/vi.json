@@ -1793,7 +1793,10 @@
           "endDateRequiredIntern": "Bắt buộc vì Loại nhân viên mới là Thực tập. Kỳ thực tập phải kết thúc sau ngày hiệu lực.",
           "mustChangeRefused": "Loại sự kiện này yêu cầu {field} phải thay đổi. Hãy nhập giá trị mới.",
           "documentOptional": "Tài liệu hỗ trợ (tùy chọn)",
-          "documentRequired": "Tài liệu hỗ trợ (bắt buộc khi trường này thay đổi)"
+          "documentRequired": "Tài liệu hỗ trợ (bắt buộc khi trường này thay đổi)",
+          "recordHistory": "Ghi lịch sử: nhập những gì nhân viên có trước ngày hiệu lực. Hồ sơ từ ngày hiệu lực trở đi không thay đổi.",
+          "recordHistoryHint": "Chỉ chọn những gì khác trước ngày hiệu lực; để trống phần còn lại. Giai đoạn trước đó, đến ngày gia nhập, sẽ nhận các giá trị này.",
+          "historyUnchanged": "Không ghi nhận"
         },
         "edit": "Sửa",
         "delete": "Xóa",
@@ -3528,7 +3531,7 @@
       "warnings": {
         "companyFromToday": "Công ty thay đổi từ {date}. Trước ngày đó nhân viên vẫn thuộc công ty hiện tại. Nếu nhân viên luôn ở công ty mới, hãy chọn “từ ngày gia nhập”; để ghi một giai đoạn trước đó ở công ty khác, hãy nhập nó như một biến động lịch sử.",
         "companyFromJoinDate": "Công ty thay đổi cho toàn bộ lịch sử, từ {date}.",
-        "historyBeforeJoinDate": "Lịch sử theo ngày của nhân viên bắt đầu từ {date}, trước Ngày gia nhập tập đoàn. Hãy kiểm tra ngày gia nhập và hồ sơ công ty, vị trí đầu tiên."
+        "historyStartAligned": "Các hồ sơ theo ngày của nhân viên (công ty và vị trí, lương, tuyến báo cáo) bắt đầu từ {from}. Lưu sẽ dời ngày bắt đầu về Ngày gia nhập tập đoàn, {date}."
       }
     }
   },

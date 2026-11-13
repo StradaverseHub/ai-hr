@@ -18,7 +18,7 @@ import {withAccessDisplayRead} from './access-configuration-lock';
 import {allocationCompanyCode} from './cost-allocation-import';
 import {labelCompanyIdsSql,labelUsableByCompany,visibleLabelIdsCondition} from './system-labels';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {rewriteCompanyFromStartTx,MovementHistoryError} from './movement-history';
+import {rewriteCompanyFromStartTx,alignHistoryStartTx,MovementHistoryError} from './movement-history';
 import {contractPeriodIssues} from '../lib/contract-period';
 import {isCalendarDate} from '../lib/calendar-date';
 import {PERSONNEL_EMPLOYMENT_TYPES} from '../lib/personnel-choice-vocabulary';
@@ -27,6 +27,13 @@ const correctionActor=alias(person,'correction_actor'),correctionAccount=alias(a
 export const INFORMATION_CORRECTED_EVENT='employment.information.corrected';
 export class InformationCorrectionError extends Error {constructor(message:string){super(message);this.name='InformationCorrectionError';}}
 function fail(message:string):never {throw new InformationCorrectionError(message);}
+/** Aligning the dated records to a later Group Join Date, refused in this screen's own words. */
+function alignMessage(code:string){
+ const [kind,...rest]=code.split(':'),detail=rest.join(':');
+ if(kind==='movement_history_earlier_change')return `A change recorded on ${detail} is before the new Group Join Date. Correct or roll back that change first, or use an earlier join date.`;
+ if(kind==='movement_history_payroll_company')return `Payroll for ${detail} was closed before the new Group Join Date. Reopen that payroll, or use an earlier join date.`;
+ return 'The employee\'s dated records could not be aligned to the Group Join Date.';
+}
 /** The from-the-join-date refusals (core/movement-history.ts codes) in this screen's own words. */
 function fromJoinDateMessage(code:string){
  const [kind,...rest]=code.split(':'),detail=rest.join(':');
@@ -254,11 +261,13 @@ async function previewTx(tx:Tx,ctx:SessionContext,input:{employmentId:string;cha
  const live=await tx.select({validFrom:assignment.validFrom}).from(assignment).where(and(eq(assignment.employmentId,state.emp.id),isNull(assignment.supersededAt))).orderBy(asc(assignment.validFrom)).limit(1);
  const warnings:InformationWarning[]=[];
  if(changed.includes('companyId'))warnings.push(fromJoinDate?{code:'companyFromJoinDate',date:live[0]?.validFrom??v.after.hiredOn!}:{code:'companyFromToday',date:effectiveOn});
- if(live[0]&&v.after.hiredOn&&live[0].validFrom<v.after.hiredOn)warnings.push({code:'historyBeforeJoinDate',date:live[0].validFrom});
+ // Board 154511c4 — the dated records start on the Group Join Date; saving aligns them when they do not.
+ const alignStart=live[0]&&v.after.hiredOn&&live[0].validFrom!==v.after.hiredOn?{from:live[0].validFrom,to:v.after.hiredOn}:undefined;
+ if(alignStart)warnings.push({code:'historyStartAligned',date:alignStart.to,from:alignStart.from});
  // Five-fact corrections keep their original fingerprint; the further details also bind the displayed labels.
  const extendedChange=changed.some(f=>!(INFORMATION_FIELDS as readonly string[]).includes(f));
- const fingerprint=hash({state:state.fingerprint,companies:companyRefs,grades:gradeRefs,effectiveOn,...(organisation.status==='legacy'?{}:{organisation}),...(extendedChange?{labels:[beforeLabels,afterLabels]}:{}),...(fromJoinDate?{fromJoinDate:true}:{})});
- const preview:InformationPreview={effectiveOn,employmentId:state.emp.id,employeeCode:state.emp.employeeCode??'',name:state.name,fingerprint,before:v.before,after:v.after,beforeLabels,afterLabels,reason,changed,...(fromJoinDate?{fromJoinDate:true as const}:{}),...(warnings.length?{warnings}:{})};
+ const fingerprint=hash({state:state.fingerprint,companies:companyRefs,grades:gradeRefs,effectiveOn,...(organisation.status==='legacy'?{}:{organisation}),...(extendedChange?{labels:[beforeLabels,afterLabels]}:{}),...(fromJoinDate?{fromJoinDate:true}:{}),...(alignStart?{alignStart}:{})});
+ const preview:InformationPreview={effectiveOn,employmentId:state.emp.id,employeeCode:state.emp.employeeCode??'',name:state.name,fingerprint,before:v.before,after:v.after,beforeLabels,afterLabels,reason,changed,...(fromJoinDate?{fromJoinDate:true as const}:{}),...(warnings.length?{warnings}:{}),...(alignStart?{alignStart}:{})};
  return {state,preview};
 }
 class InformationRehearsal extends Error{constructor(readonly preview:InformationPreview){super('information_preview_rollback');}}
@@ -282,7 +291,7 @@ export async function correctInformationTx(tx:Tx,ctx:SessionContext,input:{emplo
  if(extended&&informationChangesUseOwners(input.changes)){await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);}
  const {state:s,preview:p}=await previewTx(tx,ctx,input,extended);
  if(input.fingerprint!==p.fingerprint)fail('The employee changed after your review. Review the correction again.');
- if(!p.changed.length)return {preview:p,changed:false};
+ if(!p.changed.length&&!p.alignStart)return {preview:p,changed:false};
  await applyTx(tx,ctx,s,p,input);
  return {preview:p,changed:true};
 }
@@ -312,6 +321,12 @@ async function applyTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stat
  const contractStartDate=p.after.employmentType==='contract'&&(p.changed.includes('employmentType')||p.changed.includes('contractEndDate'))?(s.emp.contractStartDate??p.after.joinDate??p.after.hiredOn):s.emp.contractStartDate;
  const internshipProvisional=p.changed.includes('internshipEndDate')&&p.after.internshipEndDate&&s.emp.provisionalEndOn!=null&&s.emp.provisionalEndOn===s.emp.internshipEndDate?{provisionalEndOn:p.after.internshipEndDate}:{};
  await tx.update(employment).set({companyId:p.after.companyId!,hiredOn:p.after.hiredOn!,joinDate:p.after.joinDate,gradeId:p.after.gradeId,contractStartDate,contractEndDate:p.after.contractEndDate,internshipEndDate:p.after.internshipEndDate,...internshipProvisional}).where(eq(employment.id,s.emp.id));
+ // Board 154511c4 — the dated records start on the (corrected) Group Join Date.
+ let aligned:Awaited<ReturnType<typeof alignHistoryStartTx>>|null=null;
+ if(p.alignStart){
+  try{aligned=await alignHistoryStartTx(tx,s.emp.id,p.alignStart.to);}
+  catch(error){if(error instanceof MovementHistoryError)fail(alignMessage(error.message));throw error;}
+ }
  // ccd3a65c — labels, periods and Confirmation Date through their owner, untagged: no movement row is
  // projected, the catalog, date-order and closed-payroll checks apply, and employment.info.updated records it.
  const info=p.changed.filter(field=>(INFORMATION_LABEL_FIELDS as readonly string[]).includes(field)||(INFORMATION_PERIOD_FIELDS as readonly string[]).includes(field));
@@ -325,7 +340,7 @@ async function applyTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stat
   try{await writeReportingLine(ctx,{subordinateEmploymentId:s.emp.id,managerEmploymentId:p.after.managerEmploymentId!,lineType:'administrative',validFrom:effectiveOn},tx);}
   catch(error){ownerFailure(error,'managerEmploymentId');}
  }
- await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:s.emp.id,eventType:INFORMATION_CORRECTED_EVENT,actor:actorOf(ctx),subjectEmploymentId:s.emp.id,payload:{...(fromStart?{fromJoinDate:true,spanFrom:fromStart.spanFrom,assignment:fromStart.replaced}:{}),employeeCode:p.employeeCode,before:p.before,after:p.after,beforeLabels:p.beforeLabels,afterLabels:p.afterLabels,fields:p.changed,reason:p.reason,effectiveOn,method:input.method,batchId:input.batchId??null,filename:input.filename??null,snapshotCount:preserved.count,assignmentVersionId,previousAssignmentId:s.current.id}});
+ await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:s.emp.id,eventType:INFORMATION_CORRECTED_EVENT,actor:actorOf(ctx),subjectEmploymentId:s.emp.id,payload:{...(fromStart?{fromJoinDate:true,spanFrom:fromStart.spanFrom}:{}),...(fromStart||aligned?{assignment:[...fromStart?.replaced??[],...aligned?.replaced??[]]}:{}),...(aligned?{alignedStart:p.alignStart,aligned:aligned.aligned}:{}),employeeCode:p.employeeCode,before:p.before,after:p.after,beforeLabels:p.beforeLabels,afterLabels:p.afterLabels,fields:p.changed,reason:p.reason,effectiveOn,method:input.method,batchId:input.batchId??null,filename:input.filename??null,snapshotCount:preserved.count,assignmentVersionId,previousAssignmentId:s.current.id}});
  await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:s.emp.id,companyId:p.after.companyId!,asOf:effectiveOn,trigger:'correction'});
 }
 export function correctInformation(ctx:SessionContext,input:Parameters<typeof correctInformationTx>[2]){return withTenant(ctx,tx=>correctInformationTx(tx,ctx,input));}

@@ -29,7 +29,7 @@
 import {and,asc,eq,inArray,isNull,sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
 import {appendEvent,actorOf} from '../db/events';
-import {assignment,domainEvent,location,payrollBatch,payslip} from '../db/schema';
+import {assignment,compensation,domainEvent,location,payrollBatch,payslip,reportingLine} from '../db/schema';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {labelUsableByCompany} from './system-labels';
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx} from './workforce-access';
@@ -234,4 +234,56 @@ export async function rewriteCompanyFromStartTx(tx:Tx,ctx:SessionContext,employm
   replaced.push({supersededId:id,replacementId:inserted.id});
  }
  return{spanFrom,replaced,currentId:replaced[replaced.length-1]?.replacementId??null};
+}
+
+/**
+ * Board 154511c4 (production 13 Nov 2026, employee 101475) — the dated records start on the Group Join Date.
+ * When Correct information moves the join date, the FIRST live company/position version, salary revision and
+ * reporting lines start on it too: earlier, so the months from the join date are covered; later, only when no
+ * recorded change or closed payroll lies in the dropped period. Rows are superseded and re-inserted (never
+ * updated in place); the replacements are recorded in the shape Roll Back follows.
+ */
+export type StartAlignment={from:string;to:string};
+export async function historyStartTx(tx:Tx,employmentId:string){
+ const [first]=await tx.select({validFrom:assignment.validFrom}).from(assignment).where(and(eq(assignment.employmentId,employmentId),isNull(assignment.supersededAt))).orderBy(asc(assignment.validFrom)).limit(1);
+ return first?.validFrom??null;
+}
+export async function alignHistoryStartTx(tx:Tx,employmentId:string,start:string){
+ await tx.execute(sql`select id from assignment where employment_id=${employmentId}::uuid and superseded_at is null for update`);
+ const replaced:{supersededId:string;replacementId:string}[]=[],aligned:{supersededId:string;replacementId:string}[]=[];
+ const firstOf=<T extends {validFrom:string;validTo:string|null}>(rows:T[])=>[...rows].sort((a,b)=>a.validFrom.localeCompare(b.validFrom))[0];
+ const check=async(row:{validFrom:string;validTo:string|null}|undefined)=>{
+  if(!row||row.validFrom===start)return false;
+  if(start>row.validFrom){
+   if(row.validTo!==null&&row.validTo<=start)throw new MovementHistoryError('movement_history_earlier_change:'+row.validTo);
+   const closed=await closedPayrollInSpanTx(tx,employmentId,row.validFrom,start);
+   if(closed.length)throw new MovementHistoryError('movement_history_payroll_company:'+[...new Set(closed.map(r=>r.period))].join(', '));
+  }
+  return true;
+ };
+ const now=new Date();
+ const asg=firstOf(await tx.select().from(assignment).where(and(eq(assignment.employmentId,employmentId),isNull(assignment.supersededAt))));
+ if(await check(asg)){
+  const {id,createdAt:_c,recordedAt:_r,supersededAt:_s,...copy}=asg;
+  await tx.update(assignment).set({supersededAt:now}).where(eq(assignment.id,id));
+  const [row]=await tx.insert(assignment).values({...copy,validFrom:start}).returning({id:assignment.id});
+  replaced.push({supersededId:id,replacementId:row.id});
+ }
+ const pay=firstOf(await tx.select().from(compensation).where(and(eq(compensation.employmentId,employmentId),isNull(compensation.supersededAt))));
+ if(await check(pay)){
+  const {id,createdAt:_c,recordedAt:_r,supersededAt:_s,updatedAt:_u,...copy}=pay;
+  await tx.update(compensation).set({supersededAt:now}).where(eq(compensation.id,id));
+  const [row]=await tx.insert(compensation).values({...copy,validFrom:start}).returning({id:compensation.id});
+  aligned.push({supersededId:id,replacementId:row.id});
+ }
+ const lines=await tx.select().from(reportingLine).where(and(eq(reportingLine.subordinateEmploymentId,employmentId),isNull(reportingLine.supersededAt)));
+ for(const lineType of [...new Set(lines.map(l=>l.lineType))]){
+  const line=firstOf(lines.filter(l=>l.lineType===lineType));
+  if(!await check(line))continue;
+  const {id,createdAt:_c,recordedAt:_r,supersededAt:_s,...copy}=line;
+  await tx.update(reportingLine).set({supersededAt:now}).where(eq(reportingLine.id,id));
+  const [row]=await tx.insert(reportingLine).values({...copy,validFrom:start}).returning({id:reportingLine.id});
+  aligned.push({supersededId:id,replacementId:row.id});
+ }
+ return{replaced,aligned};
 }
