@@ -14,7 +14,7 @@ import {EMPLOYMENT_TEST_RECORD_EVENT,lockMovementImportReferenceAdmissionTx} fro
 import {movementImportRulesTx,recheckMovementManagerEvidenceTx,type MovementManagerEvidence} from './movement-import-rules';
 import {and,asc,eq,gt,inArray,isNull,lte,ne,or,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {assignment,businessUnit,company,compensation,department,domainEvent,employment,jobGrade,location,person,position,profileOption,reportingLine} from '../db/schema';
+import {assignment,businessUnit,company,compensation,department,domainEvent,employment,jobGrade,location,person,position,profileOption,reportingLine,terminationReason} from '../db/schema';
 import {isAdmin} from '../lib/authz-model';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {movementRecordLimits} from '../lib/movement-type-csv';
@@ -955,6 +955,15 @@ export async function movementImportTemplateData(ctx:SessionContext){
 /** The tenant's active movement types (the catalogue a template is signed to). */
 export async function movementImportTypes(ctx:SessionContext){
  return withMovementImportPresentation(ctx,async(tx,captured)=>(await activeMovementEventTypeChoicesTx(tx,captured.tenantId)).map(importType));
+}
+/** The types an uploaded workbook is checked against, with when each tenant termination reason row was created
+ * (one bounded read in the same snapshot), so a workbook downloaded before a reason was ADDED stays usable. */
+export async function movementImportTypesForCheck(ctx:SessionContext){
+ return withMovementImportPresentation(ctx,async(tx,captured)=>{
+  const types=(await activeMovementEventTypeChoicesTx(tx,captured.tenantId)).map(importType);
+  const rows=await tx.select({code:terminationReason.code,createdAt:terminationReason.createdAt}).from(terminationReason).where(eq(terminationReason.tenantId,captured.tenantId));
+  return{types,reasonCreatedAt:Object.fromEntries(rows.map(r=>[r.code,new Date(r.createdAt).toISOString()]))};
+ });
 }
 export type MovementImportFilters={departmentIds?:string[];businessUnitIds?:string[];gradeIds?:string[];locationIds?:string[];probationOnly?:boolean};
 /** Server-only download projection. Internal identities never leave this owner in workbook metadata. */
