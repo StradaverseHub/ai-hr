@@ -27,7 +27,7 @@ async function collect(runId,dir,{reuse=false,prefetchDirectory,includeRaw=false
   const path=join(dir,a.name+'.zip'),bytes=readCiArchive(a,path);verifyArtifactBytes(a,bytes);archives.set(a.name,bytes);
   const binary=a.name===BUILD_ARTIFACT,destination=join(temporary??dir,a.name);
   const extractor=binary?'./build-transport-extract.py':a.name==='focused-development-evidence'?(repairPackets?'./repair-recovery-extract.py':'./focused-recovery-extract.py'):'./extract-artifact.py';
-  if(!reuse||!binary)execFileSync('python3',[fileURLToPath(new URL(extractor,import.meta.url)),path,destination,...(binary?[a.digest.slice(7)]:[])],{timeout:60000,stdio:'pipe'});
+  if(!reuse||!binary)execFileSync('python3',[fileURLToPath(new URL(extractor,import.meta.url)),path,destination,...(binary?[a.digest.slice(7)]:repairPackets==='six-metadata-v1'?['--six-metadata-profile']:[])],{timeout:60000,stdio:'pipe'});
   if(!binary){const raw=new Map(readdirSync(destination).map(name=>[name,readFileSync(join(destination,name))]));parsed.set(a.name,new Map([...raw].map(([name,bytes])=>[name,JSON.parse(bytes)])));if(includeRaw)rawParsed.set(a.name,raw);}
  }}finally{if(temporary)rmSync(temporary,{recursive:true,force:true});}
  return {run,jobs,artifacts,archives,parsed,...(includeRaw?{rawParsed}: {})};

@@ -4,6 +4,7 @@ import {execFileSync} from 'node:child_process';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {randomUUID} from 'node:crypto';
+import {SIX_METADATA_PROFILE,SIX_METADATA_BRANCH,SIX_METADATA_ALIASES,SIX_QUEUE_ONLY_IDS,validateSixMetadataDelta,validateSixQueueOnlyCancellation} from './board-six-metadata-recovery.mjs';
 import {isDeepStrictEqual} from 'node:util';
 import {createPlan,hash} from './plan.mjs';
 import {requiredEvidence} from './manifest.mjs';
@@ -40,34 +41,45 @@ export function validateRepairDelta({cwd,original,candidate}){
  execFileSync('git',['merge-base','--is-ancestor',original,candidate],{cwd,stdio:'ignore'});
  const records=git(cwd,'diff','--name-status','--no-renames',original,candidate).split('\n').filter(Boolean);
  assert(records.length>0&&records.length<=64,'Bounded nonempty repair delta required');
+ if(original===SIX_METADATA_PROFILE.original||candidate===SIX_METADATA_PROFILE.candidate){
+  const facts={kind:SIX_METADATA_PROFILE.kind,original,candidate,baseTree:git(cwd,'rev-parse',original+'^{tree}'),headTree:git(cwd,'rev-parse',candidate+'^{tree}'),diffSha256:hash(git(cwd,'diff','--binary','--no-ext-diff','--full-index','--no-color','--no-textconv','--diff-algorithm=myers','--no-indent-heuristic','--unified=3','--src-prefix=a/','--dst-prefix=b/',original,candidate)),changed:records.map(line=>{const [status,path,...extra]=line.split('\t');assert(status==='M'&&extra.length===0,'Metadata repair must only modify six existing files');return path;}).sort()};
+  return {...facts,metadataProfile:validateSixMetadataDelta(facts)};
+ }
  const changed=records.map(line=>{const [status,path,...extra]=line.split('\t');assert(status==='M'&&extra.length===0&&/^(app|components|core|lib|packs)\/[A-Za-z0-9_./()\[\]-]+\.(ts|tsx)$/.test(path),'Only existing product TypeScript repairs supported');
   assert(!/^lib\/(identity\/|permissions\.|authz\.|session\.|scope\.|request-origin\.)/.test(path)&&!/^core\/(auth|admin|permissions|tenant)(\.|-|s\/)/.test(path),'Security-owner repair needs broader independent coverage');return path;}).sort();
  // Explicitly bind all unchanged non-product inputs, including tests, SQL, workflows and package locks.
  return {changed,baseTree:git(cwd,'rev-parse',original+'^{tree}'),headTree:git(cwd,'rev-parse',candidate+'^{tree}'),diffSha256:hash(git(cwd,'diff','--binary','--no-ext-diff',original,candidate))};
 }
-export function validateLatestRepairHistory({source,rows,candidateBranch,focusedRunIds,buildRunId}){
+export function validateLatestRepairHistory({source,rows,candidateBranch,focusedRunIds,buildRunId,queueOnlyCancellations=[]}){
  const after=source.run.updated_at,known=new Set([...focusedRunIds,buildRunId]);
  assert(Number.isFinite(Date.parse(after))&&Array.isArray(rows)&&rows.length<=8000,'Invalid or unbounded repair history');
  assert(source.run.display_title?.startsWith('Alpha CI · '),'Original workflow title must identify its frozen branch');
  const titles=new Set([source.run.display_title,`Alpha CI · ${candidateBranch}`,`Canonical build only · ${candidateBranch}`,`Focused only · ${candidateBranch}`]);
  // An overlapping run may start before the original completes and fail afterwards. Creation-time
  // filtering alone would silently discard that later failure. Bind completion/update history too.
+ const metadata=source.run.head_sha===SIX_METADATA_PROFILE.original&&candidateBranch===SIX_METADATA_BRANCH;
+ if(metadata)for(const b of SIX_METADATA_ALIASES)titles.add(`Focused only · ${b}`);
+ assert(metadata||queueOnlyCancellations.length===0,'Queue exception is limited to exact metadata recovery');
+ if(metadata){assert(queueOnlyCancellations.length===SIX_QUEUE_ONLY_IDS.length,'Complete queue cancellation observations required');for(const q of queueOnlyCancellations)validateSixQueueOnlyCancellation(q);assert(isDeepStrictEqual(queueOnlyCancellations.map(q=>q.run.id).sort((a,b)=>a-b),SIX_QUEUE_ONLY_IDS),'Queue inventory differs');}
+ const queueIds=new Set(queueOnlyCancellations.map(q=>q.run.id));
  const matching=new Map();
  for(const r of rows){if(r.id===source.run.id||!titles.has(r.display_title))continue;
   assert(Number.isSafeInteger(r.id)&&r.id>0&&Number.isFinite(Date.parse(r.created_at))&&Number.isFinite(Date.parse(r.updated_at))&&Date.parse(r.updated_at)>=Date.parse(r.created_at)&&['queued','in_progress','waiting','requested','pending','completed'].includes(r.status),'Malformed relevant history execution');
   const record={id:r.id,display_title:r.display_title,controller:r.head_sha,status:r.status,conclusion:r.conclusion,attempt:r.run_attempt,createdAt:r.created_at,updatedAt:r.updated_at};
   assert(!matching.has(r.id)||isDeepStrictEqual(matching.get(r.id),record),'Conflicting history API snapshots; retry after stabilization');matching.set(r.id,record);
  }
- const relevant=[...matching.values()].filter(r=>r.status!=='completed'||Date.parse(r.updatedAt)>=Date.parse(after));
+ const relevant=[...matching.values()].filter(r=>!queueIds.has(r.id)&&(r.status!=='completed'||Date.parse(r.updatedAt)>=Date.parse(after)));
+ for(const q of queueOnlyCancellations)assert(matching.get(q.run.id)?.conclusion==='cancelled','Queue observation absent from complete authenticated history');
  assert(relevant.length===known.size&&relevant.every(r=>known.has(r.id)&&r.status==='completed'&&r.conclusion==='success'&&r.attempt===1),'Unaccounted, pending, failed or superseding repair execution');
- return {kind:'AUTHENTICATED_COMPLETE_REPAIR_HISTORY',sourceRunId:source.run.id,after,runIds:relevant.map(r=>r.id).sort((a,b)=>a-b),metadataFingerprint:hash(relevant.sort((a,b)=>a.id-b.id))};
+ return {kind:'AUTHENTICATED_COMPLETE_REPAIR_HISTORY',sourceRunId:source.run.id,after,runIds:relevant.map(r=>r.id).sort((a,b)=>a-b),metadataFingerprint:hash(relevant.sort((a,b)=>a.id-b.id)),...(metadata?{queueOnlyCancellations:queueOnlyCancellations.map(validateSixQueueOnlyCancellation)}:{})};
 }
 function latestHistory({source,focusedWorkflowId,candidateBranch,focusedRunIds,buildRunId}){
  const since=new Date(Date.parse(source.run.created_at)-86400000).toISOString(),query='created='+encodeURIComponent('>='+since);
  const rows=[...pages(`actions/workflows/${WORKFLOW_ID}/runs?${query}`,'workflow_runs'),...pages(`actions/workflows/${focusedWorkflowId}/runs?${query}`,'workflow_runs')];
  // Active executions must not disappear merely because they were queued before the lookback.
  for(const status of ['queued','in_progress','waiting','requested','pending'])rows.push(...pages(`actions/runs?status=${status}`,'workflow_runs').filter(r=>[WORKFLOW_ID,focusedWorkflowId].includes(r.workflow_id)));
- return validateLatestRepairHistory({source,rows,candidateBranch,focusedRunIds,buildRunId});
+ const queueOnlyCancellations=source.run.head_sha===SIX_METADATA_PROFILE.original&&candidateBranch===SIX_METADATA_BRANCH?SIX_QUEUE_ONLY_IDS.map(id=>{const m=metadata(id);return {run:m.run,jobs:m.jobs};}):[];
+ return validateLatestRepairHistory({source,rows,candidateBranch,focusedRunIds,buildRunId,queueOnlyCancellations});
 }
 export async function verifyRepairedCi({candidatePath,originalPath,runId,baseline,focusedRunIds,buildRunId,candidateBranch,evidenceDirectory,reuse=false}){
  candidatePath=resolve(candidatePath);originalPath=resolve(originalPath);runId=Number(runId);buildRunId=Number(buildRunId);
@@ -99,6 +111,7 @@ export async function verifyRepairedCi({candidatePath,originalPath,runId,baselin
  assert(source.jobs.find(j=>j.name==='verify')?.conclusion==='failure','Original dependent verifier must remain failed');
  const plan=planAt(candidatePath,{controller,baseline,runtime:archived.runtime}),impactContext=reconstructRepairImpact({cwd:candidatePath,base:original,head:candidate,controller:verificationController});
  assert(isDeepStrictEqual(delta.changed,impactContext.plan.changed),'Reconstructed impact omitted repair paths');
+ if(delta.metadataProfile)impactContext.metadataProfile=delta.metadataProfile;
  const disposition=repairDisposition({sourcePlan,plan,assessment,impactContext,verificationController});
  assert(plan.units.filter(u=>disposition.fresh.includes(u.id)).every(u=>u.kind==='nodb'||u.kind==='db'),'Affected browser coverage needs a validated replacement route; cannot retain it');
  assert(plan.units.filter(u=>disposition.fresh.includes(u.id)).every(u=>!u.pdfTools),'Affected PDF tooling unit needs its full source-bound environment proof');
@@ -106,7 +119,7 @@ export async function verifyRepairedCi({candidatePath,originalPath,runId,baselin
  const focused=[];
  for(const id of focusedRunIds.slice().sort((a,b)=>a-b)){
   const m=metadata(id),authenticated=validateRepairFocusedMetadata({...m,expected:{runId:id,controller,workflowId:workflow.id,after:source.run.updated_at}});
-  const f=await collectRecoveryEvidence(id,join(dir,'focused-'+id),{reuse,repairPackets:true}),artifact=f.artifacts[0],packet=f.parsed.get(artifact.name);
+  const f=await collectRecoveryEvidence(id,join(dir,'focused-'+id),{reuse,repairPackets:delta.metadataProfile?'six-metadata-v1':true}),artifact=f.artifacts[0],packet=f.parsed.get(artifact.name);
   assert(isDeepStrictEqual(m,facts(f)),'Focused metadata changed during download');
   const report=packet.get('focused.json'),database=report?.groups?.DB?.length>0,resultName=database?'db.vitest.json':'nodb.vitest.json';
   assert(isDeepStrictEqual([...packet.keys()].sort(),[resultName,'focused.json'].sort()),'Exact homogeneous focused packet required');

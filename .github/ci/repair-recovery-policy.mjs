@@ -1,5 +1,6 @@
 /** Cross-source v2 accounting. API/archive/source authentication belongs to the adapter. */
 import assert from 'node:assert/strict';
+import {METADATA_RECOVERY_POLICY,validateSixMetadataContext,validateSixMetadataCertificate,validateSixRecordedCaseIdentity} from './board-six-metadata-recovery.mjs';
 import {isDeepStrictEqual} from 'node:util';
 import {relative} from 'node:path';
 import {hash,requiredEvidence} from './manifest.mjs';
@@ -54,12 +55,14 @@ export function repairDisposition({sourcePlan,plan,assessment,impactContext,veri
  same(impact.classifications.map(c=>c.path).sort(),impact.changed.slice().sort(),'Incomplete changed-path classifications');
  assert(Array.isArray(impact.run)&&impact.run.every(p=>plan.suite.includes(p))&&new Set(impact.run).size===impact.run.length&&typeof impact.browser==='boolean','Invalid affected test coverage');
  if(impact.tier==='impact')assert(impact.reasons.length===0&&!['high','unknown'].includes(impact.risk)&&impact.classifications.every(c=>!['high','unknown'].includes(c.risk)&&Array.isArray(c.uncertainties)&&c.uncertainties.length===0),'Impact tier contradicts full invalidation');
- const passed=new Map(assessment.reusable.map(x=>[x.id,x])),selected=new Set(impact.run),fresh=[],retained=[];
+ const metadataProfile=impactContext.metadataProfile??null;
+ const selectedFiles=metadataProfile?validateSixMetadataContext({profile:metadataProfile,sourcePlan,plan,impactContext}):impact.run;
+ const passed=new Map(assessment.reusable.map(x=>[x.id,x])),selected=new Set(selectedFiles),fresh=[],retained=[];
  for(const u of plan.units){
-  const affected=impact.tier==='full'||!passed.has(u.id)||u.files.some(p=>selected.has(p))||(u.kind==='browser'&&(impact.browser||impact.changed.some(p=>/\.(tsx|css)$/.test(p)||p.startsWith('public/'))));
+  const affected=(!metadataProfile&&impact.tier==='full')||!passed.has(u.id)||u.files.some(p=>selected.has(p))||(!metadataProfile&&u.kind==='browser'&&(impact.browser||impact.changed.some(p=>/\.(tsx|css)$/.test(p)||p.startsWith('public/'))));
   (affected?fresh:retained).push(u.id);
  }
- return {fresh,retained,impactFingerprint:fingerprint,sourceInputsFingerprint:impactContext.sourceInputsFingerprint};
+ return {fresh,retained,impactFingerprint:fingerprint,sourceInputsFingerprint:impactContext.sourceInputsFingerprint,...(metadataProfile?{metadataProfile}:{} )};
 }
 function caseInventory(result,files,cwd,{passing}){
  assert(Array.isArray(result?.testResults)&&result.testResults.length===files.length,'Complete assertion inventory required');
@@ -116,14 +119,15 @@ export function verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun,repor
   same(report.files,u.files,'Original process coverage changed');const originals=new Map();
   for(const batch of report.batches??[]){const files=(batch.result?.testResults??[]).map(f=>relative(report.cwd,f.name).split('\\').join('/'));assert(files.length>0&&files.every(p=>u.files.includes(p)),'Original batch has foreign coverage');const names=caseInventory(batch.result,files,report.cwd,{passing:false});for(const [path,cases] of names){assert(!originals.has(path),'Duplicate original assertion file');originals.set(path,cases);}}
   assert(originals.size===u.files.length,'Original failed/affected process did not enumerate every file');let count=0;const files=[];
-  for(const path of u.files){const replacement=replacements.get(path);assert(replacement,'Missing failed/affected file: '+path);same(replacement.cases,originals.get(path),'Dropped/changed original assertions');count+=replacement.cases.length;files.push({path,...replacement});}
+  for(const path of u.files){const replacement=replacements.get(path);assert(replacement,'Missing failed/affected file: '+path);let recordedCaseIdentity=null;if(disposition.metadataProfile&&!isDeepStrictEqual(replacement.cases,originals.get(path)))recordedCaseIdentity=validateSixRecordedCaseIdentity({path,originalCases:originals.get(path),replacementCases:replacement.cases,originalRunId:sourceRun.id,replacementRunId:replacement.runId,originalSha:sourcePlan.sha,candidate:plan.sha});else same(replacement.cases,originals.get(path),'Dropped/changed original assertions');count+=replacement.cases.length;files.push({path,...replacement,...(recordedCaseIdentity?{recordedCaseIdentity}:{})});}
   tests+=count;units.push({id:u.id,kind:'repaired-source',originalReportHash:hash(report),tests:count,files});
  }
  assert(replacements.size===plan.units.filter(u=>fresh.has(u.id)).reduce((n,u)=>n+u.files.length,0),'Incomplete or excessive replacement coverage');
- return {kind:'AUTHENTICATED_CROSS_SOURCE_RECOVERY',recoveryPolicy:REPAIR_RECOVERY_POLICY,policyVersion:plan.policyVersion,sha:plan.sha,controller:plan.controller,verificationController,verificationDiagnostic,reviewedController,pendingReview:reviewedController===null,releaseAuthorized:false,baseline:plan.migrationBase,runId:buildRun.id,originalRunId:sourceRun.id,originalSha:sourcePlan.sha,originalConclusion:sourceRun.conclusion,originalFingerprint:sourcePlan.fingerprint,candidateFingerprint:plan.fingerprint,disposition,originalFailureObservations:assessment.observations,focusedSources,compilers,history,units,suiteFiles:plan.suite.length,browserFiles:plan.units.filter(u=>u.kind==='browser').reduce((n,u)=>n+u.files.length,0),tests};
+ return {kind:'AUTHENTICATED_CROSS_SOURCE_RECOVERY',recoveryPolicy:disposition.metadataProfile?METADATA_RECOVERY_POLICY:REPAIR_RECOVERY_POLICY,policyVersion:plan.policyVersion,sha:plan.sha,controller:plan.controller,verificationController,verificationDiagnostic,reviewedController,pendingReview:reviewedController===null,releaseAuthorized:false,baseline:plan.migrationBase,runId:buildRun.id,originalRunId:sourceRun.id,originalSha:sourcePlan.sha,originalConclusion:sourceRun.conclusion,originalFingerprint:sourcePlan.fingerprint,candidateFingerprint:plan.fingerprint,disposition,originalFailureObservations:assessment.observations,focusedSources,compilers,history,units,suiteFiles:plan.suite.length,browserFiles:plan.units.filter(u=>u.kind==='browser').reduce((n,u)=>n+u.files.length,0),tests};
 }
 export function validateRepairGrantEvidence(evidence,run){
- const c=evidence.recovery;assert(c?.kind==='AUTHENTICATED_CROSS_SOURCE_RECOVERY'&&c.recoveryPolicy===REPAIR_RECOVERY_POLICY&&c.originalConclusion==='failure'&&c.originalSha!==c.sha&&c.originalRunId!==c.runId&&evidence.fingerprint===hash(c),'Cross-source recovery certificate required');
+ const c=evidence.recovery;assert(c?.kind==='AUTHENTICATED_CROSS_SOURCE_RECOVERY'&&[REPAIR_RECOVERY_POLICY,METADATA_RECOVERY_POLICY].includes(c.recoveryPolicy)&&c.originalConclusion==='failure'&&c.originalSha!==c.sha&&c.originalRunId!==c.runId&&evidence.fingerprint===hash(c),'Cross-source recovery certificate required');
+ if(c.recoveryPolicy===METADATA_RECOVERY_POLICY)validateSixMetadataCertificate(c);
  assert(c.pendingReview===false&&c.reviewedController===c.verificationController&&c.releaseAuthorized===false,'Pending-review diagnostic cannot authorize an installation grant');
  for(const key of ['sha','controller','verificationController','baseline','runId','policyVersion','suiteFiles','browserFiles','tests'])same(evidence[key],c[key],'Recovery grant identity differs: '+key);
  assert(run.id===c.runId&&run.head_sha===c.controller&&run.conclusion==='success'&&run.status==='completed'&&run.run_attempt===1&&c.verificationDiagnostic?.controller===c.verificationController&&id(c.verificationDiagnostic.runId)&&c.compilers?.length>0&&c.focusedSources?.length>0&&c.units?.some(u=>u.kind==='repaired-source'),'Missing replacement build/compiler/controller provenance');return true;
