@@ -457,7 +457,14 @@ describe('69d6ed3c — SOCSO, SKBBK and EIS each explain their own wage, classif
     for (const locale of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
       const ns = JSON.parse(fs.readFileSync(path.join(ROOT, 'messages', `${locale}.json`), 'utf8')).payroll.statutoryDetail;
       expect(ns.traceSameWageAsSocso, locale).toBeUndefined();
-      for (const k of ['traceSkbbkTotal', 'traceEisTotal', 'traceEisEligible', 'traceSchemeAge60', 'traceTreatEisExcludedBonus2012']) expect(ns[k], `${locale}.${k}`).toBeTruthy();
+      // Every key the SOCSO / SKBBK / EIS builders reach through a lookup table, which the coverage scan cannot see.
+      const reached = [
+        ...SCHEMES.flatMap((s) => [s.heading, s.included, s.bonus, s.total]),
+        'traceTreatSocsoExcluded', 'traceTreatSkbbkExcluded', 'traceTreatEisExcluded', 'traceSocsoSetting', 'traceSocsoSettings',
+        'traceSchemeClassification', 'traceSchemeAgeUnder18', 'traceSchemeAge18To59', 'traceSchemeAge60',
+        'traceEisEligibility', 'traceEisEligible', 'traceEisIneligible',
+      ];
+      for (const k of reached) expect(ns[k], `${locale}.${k}`).toBeTruthy();
     }
   });
 });
