@@ -3,6 +3,7 @@ import {requireAdmin} from '@/lib/authz';
 import {importErrorLogEntry,importErrorLogSourceFor} from '@/core/import-error-log-registry';
 import {importProblemWorkbook} from '@/lib/import-problem-workbook';
 import {formatImportBatch} from '@/lib/import-reference';
+import {GET as bankErrorLog} from '../../../bank-statutory/jobs/[jobId]/error-log/route';
 export const runtime='nodejs';
 /**
  * Board d3ba1e9f — the standard Error Log (.xlsx) of any Import History entry (an import attempt or a section run)
@@ -11,7 +12,7 @@ export const runtime='nodejs';
  * cannot see a company sees none of its lines. One bounded read per entry; reads never take the exclusive Access
  * lock. The Summary sheet says when the entry kept only the first problems.
  */
-export async function GET(_request:Request,{params}:{params:Promise<{attemptId:string}>}){
+export async function GET(request:Request,{params}:{params:Promise<{attemptId:string}>}){
  const ctx=await requireAdmin(),{attemptId}=await params;
  const entry=await importErrorLogEntry(ctx,attemptId);
  const source=entry?importErrorLogSourceFor(entry):undefined;
@@ -21,6 +22,8 @@ export async function GET(_request:Request,{params}:{params:Promise<{attemptId:s
  const t={problems:(key:string,values?:Record<string,unknown>)=>root(key as never,values as never),shared:(key:string)=>shared(key as never)};
  const log=await source(ctx,attemptId,t);
  if(!log)return new Response(null,{status:404});
+ // Bank and Statutory keeps only its first lines here; serve the job's complete streamed log (same visibility checks).
+ if(log.bankJobId)return bankErrorLog(request,{params:Promise.resolve({jobId:log.bankJobId})});
  const summary:[string,string|number][]=[
   [t.shared('summary.batch'),formatImportBatch(labels,attemptId)],
   [t.shared('summary.file'),entry.sourceName||kinds('pasted')],

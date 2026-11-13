@@ -8,7 +8,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as XLSX from 'xlsx';
 import ms from '../messages/ms.json';
 
-const h = vi.hoisted(() => ({ admin: vi.fn(), entry: vi.fn(), source: vi.fn(), locale: 'ms' }));
+const h = vi.hoisted(() => ({ admin: vi.fn(), entry: vi.fn(), source: vi.fn(), bank: vi.fn(), locale: 'ms' }));
+vi.mock('../app/admin/personnel/import/bank-statutory/jobs/[jobId]/error-log/route', () => ({ GET: h.bank }));
 vi.mock('@/lib/authz', () => ({ requireAdmin: h.admin }));
 vi.mock('next-intl/server', async () => {
   const { createTranslator } = await import('next-intl');
@@ -29,6 +30,17 @@ const call = () => GET(new Request(`http://fixture.test/admin/personnel/import/h
 beforeEach(() => { vi.resetAllMocks(); h.admin.mockResolvedValue({ tenantId: 't', userId: 'u' }); h.locale = 'ms'; });
 
 describe('Import History Error Log download', () => {
+  it('serves a Bank and Statutory entry from its complete streamed log, not a shortened file, with no redirect', async () => {
+    h.entry.mockResolvedValue({ kind: 'bank_statutory', source: 'attempt', sourceName: 'bank.xlsx' });
+    h.source.mockResolvedValue({ lines: [], total: 5000, truncated: true, bankJobId: '0a0a0a0a-0000-4000-8000-000000000000' });
+    h.bank.mockResolvedValue(new Response('streamed', { status: 200 }));
+    const res = await call();
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('streamed');
+    expect(h.bank).toHaveBeenCalledTimes(1);
+    expect(await h.bank.mock.calls[0][1].params).toEqual({ jobId: '0a0a0a0a-0000-4000-8000-000000000000' });
+  });
+
   it('answers 404 for an entry the viewer cannot see, a kind without a source, or a source that refuses', async () => {
     h.entry.mockResolvedValue(null);
     expect((await call()).status).toBe(404);

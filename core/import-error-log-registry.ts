@@ -20,12 +20,18 @@ import {employeeHistoryProblemLines} from '../lib/employee-import-problems';
 import {sectionRunProblemLines} from '../lib/section-import-problems';
 import {getImportAttempt,getImportRun} from './import-history';
 import {employeeImportErrorReportFor} from './employee-import-history';
+import {bankStatutoryErrorLogFor} from './bank-statutory-error-log';
+import {costAllocationErrorLogFor} from './cost-allocation-error-log';
+import {informationCorrectionErrorLogFor} from './information-correction-error-log';
 
 /** `problems`: the ROOT translator in the request locale (full keys); `shared`: the importProblems translator. */
 export type ImportErrorLogTranslate={problems:(key:string,values?:Record<string,unknown>)=>string;shared:(key:string)=>string};
 /** One kind's Error Log lines for one Import History entry, or null when the viewer may not see it. `total` is the
  *  number of problems the entry recorded; `truncated` says the entry kept only the first of them. */
-export type ImportErrorLogSource=(ctx:SessionContext,attemptId:string,t:ImportErrorLogTranslate)=>Promise<{lines:ImportProblemLine[];total:number;truncated:boolean}|null>;
+/** `bankJobId`: the entry keeps only its first lines because the COMPLETE log is streamed from storage (Bank and
+ *  Statutory). The download route then serves that streamed log itself, not a shortened file. (No redirect: the
+ *  download hook refuses redirects by design.) */
+export type ImportErrorLogSource=(ctx:SessionContext,attemptId:string,t:ImportErrorLogTranslate)=>Promise<{lines:ImportProblemLine[];total:number;truncated:boolean;bankJobId?:string}|null>;
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -53,23 +59,24 @@ export const sectionRunErrorLog:ImportErrorLogSource=async(ctx,runId,t)=>{
  return{lines,total:Math.max(run.failedRows,run.errors.length),truncated:run.errorsTruncated};
 };
 
-/**
- * Import kind -> Error Log source.
- *
- * ── Builder C's kinds go in the marked block below at integration: each exports a function of type
- *    ImportErrorLogSource from its own file (bank/statutory, cost allocations, information correction).
- */
+/** Bank and Statutory: the first page for the entry pages; the complete log is the job's streamed Error Log. */
+export const bankStatutoryErrorLog:ImportErrorLogSource=async(ctx,attemptId,t)=>{
+ const log=await bankStatutoryErrorLogFor(ctx,attemptId,t);
+ if(!log)return null;
+ const {jobId,...rest}=log;
+ return{...rest,bankJobId:jobId};
+};
+
+/** Import kind -> Error Log source. */
 export const IMPORT_ERROR_LOG_SOURCES:Record<ImportErrorLogKind,ImportErrorLogSource>={
  employee_full:employeeFullErrorLog,
  profile:sectionRunErrorLog,
  family:sectionRunErrorLog,
  qualification:sectionRunErrorLog,
  emergency:sectionRunErrorLog,
- // ── BEGIN builder C (board d3ba1e9f part 2): add each kind here AND to IMPORT_ERROR_LOG_KINDS (lib/import-error-log-kinds.ts) ──
- // bank_statutory: bankStatutoryErrorLog,
- // cost_allocations: costAllocationErrorLog,
- // information_correction: informationCorrectionErrorLog,
- // ── END builder C ──
+ bank_statutory:bankStatutoryErrorLog,
+ cost_allocations:costAllocationErrorLogFor,
+ information_correction:informationCorrectionErrorLogFor,
 };
 
 /** The source for an entry: its kind's, or (a run recorded before its type was) the section run source. */

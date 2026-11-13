@@ -8,8 +8,7 @@ import type {ImportHistoryKind} from './import-history';
 
 export const IMPORT_ERROR_LOG_KINDS=[
  'employee_full','profile','family','qualification','emergency',
- // ── BEGIN builder C (board d3ba1e9f part 2): 'bank_statutory','cost_allocations','information_correction' ──
- // ── END builder C ──
+ 'bank_statutory','cost_allocations','information_correction',
 ] as const satisfies readonly ImportHistoryKind[];
 export type ImportErrorLogKind=typeof IMPORT_ERROR_LOG_KINDS[number];
 export const isImportErrorLogKind=(kind:unknown):kind is ImportErrorLogKind=>typeof kind==='string'&&(IMPORT_ERROR_LOG_KINDS as readonly string[]).includes(kind);
