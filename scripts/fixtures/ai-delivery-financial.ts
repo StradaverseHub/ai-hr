@@ -77,13 +77,16 @@ export async function populateAiDeliveryFinancial(c:AiDeliveryFixtureContext):Pr
  const memberships:readonly[RewardRole,typeof c.actors.operator][]=[['bu',c.actors.operator],['bg',c.actors.reviewers[0]],['ctro',c.actors.reviewers[1]],['ec',c.actors.peer],['payroll',c.actors.operator]];
  // Use the actual HR Administrator exemption for fixture-only prerequisite setup.
  // The independent Group Rewards actor still confirms the subsequent governance step.
- const checker=c.actors.manager.ctx,accessAdmin=c.actors.operator.ctx;
- if(!checker.userId||checker.userId===accessAdmin.userId||memberships.some(([,actor])=>actor.userId===checker.userId))return refuse();
+ // Board 60f1fdcd: nobody adds their own Rewards seat, so the operator's own seats are added by another tenant-wide
+ // HR Administrator (the first reviewer) through the same exemption.
+ const checker=c.actors.manager.ctx,accessAdmin=c.actors.operator.ctx,ownSeatAdmin=c.actors.reviewers[0].ctx;
+ if(!checker.userId||checker.userId===accessAdmin.userId||checker.userId===ownSeatAdmin.userId||ownSeatAdmin.userId===accessAdmin.userId||memberships.some(([,actor])=>actor.userId===checker.userId))return refuse();
  async function addFixtureSeat(userId:string,role:RewardRole){
+  const by=userId===accessAdmin.userId?ownSeatAdmin:accessAdmin;
   const input={unitId:rewardId,revision:(await getRewardUnit(admin,rewardId)).unit.revision,before:null,after:{userId,role},reason:'Fictional browser fixture seat reviewed by HR Administration'};
-  const preview=await previewRewardAccessChange(accessAdmin,input);
+  const preview=await previewRewardAccessChange(by,input);
   if(preview.pending)return refuse();
-  const result=await saveRewardAccessChange(accessAdmin,input,preview.digest);
+  const result=await saveRewardAccessChange(by,input,preview.digest);
   if(result.pending||result.status!=='applied_no_second_approval')return refuse();
  }
  await addFixtureSeat(checker.userId,'gr');
