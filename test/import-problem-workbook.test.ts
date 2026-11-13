@@ -33,12 +33,6 @@ describe('shared import problem lines (boards c074c6b8 / d3ba1e9f)', () => {
     expect(sortProblemLines(lines).map(l => [l.sheet ?? '-', l.row])).toEqual([['-', null], ['Employees', 6], ['Employees', 9], ['Family', 3]]);
   });
 
-  it('groups sheetless lines by category in first-appearance order (System Labels)', () => {
-    const l = (category: string, row: number): ImportProblemLine => ({ category, row, problem: 'p', stage: 'check', result: 'refused' });
-    expect(sortProblemLines([l('Departments', 9), l('Positions', 3), l('Departments', 4)]).map(x => [x.category, x.row]))
-      .toEqual([['Departments', 4], ['Departments', 9], ['Positions', 3]]);
-  });
-
   it('shows only informative columns, always row, problem and result', () => {
     expect(importProblemColumns([{ row: 2, problem: 'x', stage: 'check', result: 'refused' }])).toEqual(['row', 'problem', 'stage', 'result']);
     expect(importProblemColumns(lines)).toEqual(['sheet', 'row', 'reference', 'employeeName', 'field', 'value', 'problem', 'correction', 'stage', 'result']);

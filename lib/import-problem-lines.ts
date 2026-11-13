@@ -70,19 +70,16 @@ export function boundProblemValue(value: string | null | undefined): string | un
   return chars.length > IMPORT_PROBLEM_VALUE_MAX ? chars.slice(0, IMPORT_PROBLEM_VALUE_MAX - 1).join('') + '…' : chars.join('');
 }
 
-/** Order lines: whole-file problems first, then by sheet — or by category when a line has no sheet, as
- *  System Labels rows do — in first-appearance order, then Excel row. Stable. */
+/** Order lines: whole-file problems first, then by sheet (first appearance), then Excel row. Stable. */
 export function sortProblemLines(lines: readonly ImportProblemLine[]): ImportProblemLine[] {
-  const group = (l: ImportProblemLine) => l.sheet ?? l.category;
   const sheetOrder = new Map<string, number>();
-  for (const l of lines) { const g = group(l); if (g !== undefined && !sheetOrder.has(g)) sheetOrder.set(g, sheetOrder.size); }
+  for (const l of lines) if (l.sheet !== undefined && !sheetOrder.has(l.sheet)) sheetOrder.set(l.sheet, sheetOrder.size);
   return lines
     .map((line, index) => ({ line, index }))
     .sort((a, b) => {
       const af = a.line.row === null ? 0 : 1, bf = b.line.row === null ? 0 : 1;
       if (af !== bf) return af - bf;
-      const ga = group(a.line), gb = group(b.line);
-      const as = ga === undefined ? -1 : sheetOrder.get(ga)!, bs = gb === undefined ? -1 : sheetOrder.get(gb)!;
+      const as = a.line.sheet === undefined ? -1 : sheetOrder.get(a.line.sheet)!, bs = b.line.sheet === undefined ? -1 : sheetOrder.get(b.line.sheet)!;
       if (as !== bs) return as - bs;
       if ((a.line.row ?? 0) !== (b.line.row ?? 0)) return (a.line.row ?? 0) - (b.line.row ?? 0);
       return a.index - b.index;
