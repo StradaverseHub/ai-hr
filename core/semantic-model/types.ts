@@ -90,7 +90,9 @@ export type EntityId='leave_balance'|'leave_request'|'leave_entitlement'|'public
  /** Payroll history learning (P2): "Learned this cycle", counts only, for payroll administrators (./entities-payroll-learning.ts). */
  |'payroll_learning'
  /** 50d9b809: the shared leave groups on Leave Settings › Shared Leave Groups, configuration only, for administrators (./entities-leave-settings.ts). */
- |'shared_leave_group';
+ |'shared_leave_group'
+ /** 96a54ed2: the Request On Behalf employees and Approve On Behalf approvers lists (./entities-attendance-on-behalf.ts). */
+ |'attendance_on_behalf_subject'|'attendance_on_behalf_approver';
 export type SemanticRelation=Readonly<{to:EntityId;kind:'many_to_one'|'one_to_many';via:string}>;
 
 export type SemanticEntity=Readonly<{id:EntityId;label:string;meaning:string;module:string|null;sensitivity:Sensitivity;

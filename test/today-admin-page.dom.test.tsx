@@ -16,7 +16,7 @@ import {resolveServerTree} from './helpers/server-tree';
 const fx=vi.hoisted(()=>({state:{} as {
  needs:unknown;needsPartial:boolean;needsFail:boolean;readiness:unknown;exceptions:{total:number;blocking:number};handled:unknown;handledFail:boolean;
  queue:unknown;summary:{items:unknown[];approvalCount:number};ask:boolean;own:unknown;ownReadiness:unknown;payHints:unknown;push:ReturnType<typeof vi.fn>;recommendCalls:string[][];views:Map<string,unknown>;
- throwPanel:string|null;ownCalls:unknown[];
+ throwPanel:string|null;ownCalls:unknown[];teamToday:unknown;reminders:unknown;teamTodayCalls:string[];morning:unknown;morningFail:boolean;
 }}));
 const S=fx.state;
 
@@ -49,6 +49,9 @@ vi.mock('@/components/today/admin/reads',async()=>{
   readHandled:async()=>{if(S.handledFail)throw Error('Fixture ledger outage');return S.handled;},
   readNeeds:async()=>S.queue,
   readManagerQueue:async()=>({...managerQueue(S.summary as never),failed:false}),
+  readTeamAttendanceToday:async(_s:unknown,key:string)=>{S.teamTodayCalls.push(key);return S.teamToday;},
+  readTeamReminders:async()=>S.reminders,
+  readMorning:async()=>{if(S.morningFail)throw Error('Fixture morning summary outage');return S.morning;},
  };
 });
 vi.mock('@/components/today/employee/reads',()=>({
@@ -57,11 +60,15 @@ vi.mock('@/components/today/employee/reads',()=>({
  readManagersAway:async()=>[],readOwnCalendar:async()=>({days:[]}),readOwnRequests:async()=>({requests:[],failed:false}),readOwnTimeOff:async()=>({balances:[],canApply:false}),
  readOwnWeek:async()=>[],
 }));
+// The morning summary's start and stop actions (their service is tested in test/mandate-morning-summary.test.ts).
+vi.mock('@/app/today-morning-actions',()=>({startMorningSummaryAction:async()=>{},stopMorningSummaryAction:async()=>{}}));
 // The approvals page's own recommendation read (its own tests: test/approvals-leave-recommendation.dom.test.tsx).
 vi.mock('@/app/approvals/leave-recommendations',()=>({readApprovalRecommendations:async(_s:unknown,ids:readonly string[])=>{
  S.recommendCalls.push([...ids]);return {active:true,views:S.views,deferred:new Set<string>()};}}));
 
 import {AdminTodayPage,ManagerTodayPage} from '../components/today/admin/today-pages';
+// The app's own day formatter for Today lines (components/today/employee/panel.tsx), so the test follows its format.
+import {hrDay} from '../components/today/employee/panel';
 import {ASK_HANDOFF_KEY} from '../lib/today/ask-handoff';
 
 const messages=withAiCentre('en',en);
@@ -93,6 +100,8 @@ beforeEach(()=>{
     {key:'tax_number_missing:emp-own',group:'details',kind:'tax_number_missing',state:'todo',date:null,due:'2026-11-24',action:{href:'/me?tab=bankStatutory'}}]},
   payHints:{nextPayment:{date:'2026-11-27'},payslips:[]},
   push:vi.fn(),recommendCalls:[],views:new Map(),throwPanel:null,ownCalls:[],summary:{items:[],approvalCount:0},
+  teamToday:{date:'2026-11-12',present:7,late:2,halfDay:1,absent:3},reminders:{reviews:[],holidays:[],failed:false},teamTodayCalls:[],
+  morning:{offered:false,stopped:false,mandate:null,prepared:null},morningFail:false,
  });
  window.sessionStorage.clear();
 });
@@ -187,6 +196,62 @@ describe('Administrator Today',()=>{
   expect(text(view.panel('today-watching')!.querySelector('[data-today-watch="exceptions"]'))).toContain('97 payroll exceptions need a look but do not block a run.');
  });
 
+ it('draws the morning summary only when it runs or can be started, with today\'s counts and links and one button',async()=>{
+  // Neither allowed nor running: no panel (the default above).
+  let view=await show('admin');
+  expect(view.panel('today-morning')).toBeNull();
+  cleanup();
+  // Allowed, not started: what it is, and the button that starts it.
+  S.morning={offered:true,stopped:false,mandate:null,prepared:null};
+  view=await show('admin');
+  let morning=view.panel('today-morning')!;
+  expect([...view.container.querySelectorAll('[data-today-panel]')].map(panel=>panel.getAttribute('data-today-panel')))
+   .toEqual(['today-readiness','today-needs','today-handled','today-watching','today-morning','today-own','today-ask-prompts']);
+  expect(text(morning.querySelector('h2'))).toBe('Morning summary');
+  expect(text(morning)).toContain('Each morning, AI Centre counts what waits for you: decisions, setup gaps and statutory deadlines. It is prepared for you only and decides nothing.');
+  expect(text(morning.querySelector('[data-today-morning-start]'))).toBe('Send me a morning summary');
+  expect(morning.querySelector('[data-today-morning-stop]')).toBeNull();
+  cleanup();
+  // Started, nothing prepared yet: when it comes, and the stop button.
+  const mandate={id:'fictional-mandate',validUntil:new Date('2027-02-10T00:00:00Z')};
+  S.morning={offered:true,stopped:false,mandate,prepared:null};
+  view=await show('admin');
+  morning=view.panel('today-morning')!;
+  expect(text(morning.querySelector('[data-today-morning-waiting]'))).toBe('Your first summary is prepared early tomorrow morning.');
+  expect(text(morning.querySelector('[data-today-morning-stop]'))).toBe('Stop my morning summary');
+  expect(morning.querySelector('[data-today-morning-start]')).toBeNull();
+  cleanup();
+  // Today's digest: counts and links only, prepared at 03:05 Malaysia time.
+  const digest={kind:'teras.daily_digest',version:1,asOf:'2026-11-12',approvals:{total:4,byKind:[{kind:'leave',count:3},{kind:'claim',count:1}],page:'/approvals'},
+   setup:{blocked:1,attention:2,companies:3,unknown:0,page:'/payroll/setup?readiness=full'},deadlines:{overdue:1,dueSoon:2,page:'/payroll/statutory-forms'},text:'fixture'};
+  S.morning={offered:true,stopped:false,mandate,prepared:{recordId:'fictional-record',preparedAt:new Date('2026-11-11T19:05:00Z'),digest}};
+  view=await show('admin');
+  morning=view.panel('today-morning')!;
+  const lines=[...morning.querySelectorAll('[data-today-morning-line]')];
+  expect(lines.map(line=>line.getAttribute('data-today-morning-line'))).toEqual(['approvals','setup','deadlines']);
+  expect(lines.map(line=>text(line.querySelector('span')))).toEqual(['4 decisions wait for you','Setup: 1 blocked, 2 need attention','Statutory deadlines: 1 overdue, 2 due within 7 days']);
+  expect(lines.map(line=>line.querySelector('a')!.getAttribute('href'))).toEqual(['/approvals','/payroll/setup?readiness=full','/payroll/statutory-forms']);
+  expect(text(morning)).toContain('Prepared this morning at 3:05');
+  expect(text(morning)).toContain('Only you see this summary. It counts and links; people still make every decision.');
+  expect(text(morning)).not.toContain('fictional');
+  cleanup();
+  // Yesterday's digest is not shown as today's; the stop switch says why nothing comes.
+  S.morning={offered:true,stopped:false,mandate,prepared:{recordId:'fictional-record',preparedAt:new Date('2026-11-10T19:05:00Z'),digest:{...digest,asOf:'2026-11-11'}}};
+  view=await show('admin');
+  expect(view.panel('today-morning')!.querySelector('[data-today-morning-line]')).toBeNull();
+  expect(text(view.panel('today-morning')!.querySelector('[data-today-morning-waiting]'))).toBe('No summary was prepared this morning. It will be tried again tonight.');
+  cleanup();
+  S.morning={offered:false,stopped:true,mandate,prepared:null};
+  view=await show('admin');
+  expect(text(view.panel('today-morning')!.querySelector('[data-today-morning-waiting]'))).toBe('AI activity is stopped, so no summary is prepared until it is resumed.');
+  cleanup();
+  // A failed read stays inside its own panel.
+  S.morningFail=true;
+  view=await show('admin');
+  expect(text(view.panel('today-morning')!.querySelector('[data-today-unavailable]'))).toBe('Your morning summary could not be loaded.');
+  expect(view.panel('today-watching')).not.toBeNull();
+ });
+
  it('shows the administrator their own record: what to send to HR, and the next payday',async()=>{
   let view=await show('admin');
   const own=view.panel('today-own')!;
@@ -241,6 +306,43 @@ describe('Administrator Today, every panel on its own',()=>{
   view=await show('admin',false,{employmentId:'emp-b'});
   expect(S.ownCalls).toContain('emp-b');
   expect(view.panel('today-own')!.querySelector('[data-today-own]')).not.toBeNull();
+ });
+});
+
+describe('Manager Today: the team cards ported from the retired dashboard',()=>{
+ it('shows today\'s attendance for the manager\'s own team, read for the companies in view',async()=>{
+  const view=await show('manager');
+  const team=view.panel('today-team-today')!;
+  expect([...team.querySelectorAll('[data-today-team-status]')].map(cell=>[cell.getAttribute('data-today-team-status'),text(cell.querySelector('dt')),text(cell.querySelector('dd'))]))
+   .toEqual([['present','Present','7'],['late','Late','2'],['half_day','Half day','1'],['absent','Absent','3']]);
+  expect(S.teamTodayCalls).toEqual(['co-a,co-b']);
+  expect(within(team as HTMLElement).getByRole('link',{name:'Open My Team'}).getAttribute('href')).toBe('/manage/my-team');
+ });
+ it('draws no team attendance when the attendance module is off, and says so when nobody is recorded',async()=>{
+  S.teamToday=null;
+  expect((await show('manager')).panel('today-team-today')).toBeNull();
+  cleanup();S.teamToday={date:'2026-11-12',present:0,late:0,halfDay:0,absent:0};
+  const view=await show('manager');
+  expect(view.panel('today-team-today')!.querySelector('[data-today-team-attendance]')).toBeNull();
+  expect(text(view.panel('today-team-today'))).toContain('No attendance is recorded for your team today.');
+ });
+ it('lists the manager\'s review deadlines and public holidays under Coming up',async()=>{
+  S.reminders={failed:false,reviews:[{id:'11111111-2222-3333-4444-555555555555',name:'Daniel Fictional',dueDate:'2026-11-20'}],
+   holidays:[{date:'2026-11-26',name:'Fictional Day'},{date:'2026-12-01',name:null}]};
+  const view=await show('manager');
+  const team=view.panel('today-team-coming-up')!;
+  const lines=[...team.querySelectorAll('[data-today-team-line]')];
+  expect(lines.map(line=>line.getAttribute('data-today-team-line'))).toEqual(['cutoff','review','holiday','holiday']);
+  expect(text(lines[1])).toBe(`Review for Daniel Fictional due ${hrDay('en','2026-11-20','day')}`);
+  expect(lines[1].querySelector('a')?.getAttribute('href')).toContain('/approvals?category=managerReviews&task=managerReview&requestId=11111111-2222-3333-4444-555555555555');
+  expect(text(lines[2])).toBe(`Fictional Day, a public holiday, on ${hrDay('en','2026-11-26','day')}`);
+  expect(text(lines[3])).toBe(`A public holiday on ${hrDay('en','2026-12-01','day')}`);
+ });
+ it('gives an administrator neither the team attendance nor the team reminders',async()=>{
+  const view=await show('admin');
+  expect(view.panel('today-team-today')).toBeNull();
+  expect(view.panel('today-team-coming-up')).toBeNull();
+  expect(S.teamTodayCalls).toEqual([]);
  });
 });
 
@@ -314,9 +416,15 @@ describe('Manager Today',()=>{
   expect(new Set(S.recommendCalls.map(ids=>ids.join(',')))).toEqual(new Set(['l1,l2,l3,l9']));
  });
 
- it('offers the team workbench, mounts the Performance block, and keeps the manager\'s own record beside the team',async()=>{
+ it('offers the team pages under Your workspace, mounts the Performance block, and keeps the manager\'s own record beside the team',async()=>{
   const view=await show('manager',false,{employmentId:'emp-own'});
-  expect(view.container.querySelector('[data-today-workbench]')?.getAttribute('href')).toBe('/?workspace=team&employmentId=emp-own');
+  // The team workbench is retired (12 Nov 2026): its link now points at the team's own pages.
+  expect(view.container.querySelector('[data-today-workbench]')).toBeNull();
+  const workspace=view.container.querySelector('[data-today-workspace]')!;
+  expect(workspace.getAttribute('aria-label')).toBe('Your workspace');
+  const hrefs=[...workspace.querySelectorAll('a')].map(link=>link.getAttribute('href'));
+  expect(hrefs.slice(0,2)).toEqual(['/manage/my-team','/approvals']);
+  expect(hrefs.filter(href=>href?.includes('workspace='))).toEqual([]);
   expect(view.container.querySelector('[data-today-performance] [data-performance-home]')).not.toBeNull();
   expect(S.ownCalls).toContain('emp-own');
   const team=view.panel('today-team-coming-up')!;

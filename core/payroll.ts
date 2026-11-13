@@ -2,6 +2,7 @@ import {personnelGroupingReadinessTx} from './personnel-quality';
 import {payrollEmploymentPredicate,outstandingPaymentPredicate,payrollCompensationEffectiveOn,payrollEmploymentEnd,payrollRunContextsTx,type PayrollEligibilityRun} from './payroll-employment-eligibility';
 import {PayrollTaxBasisError} from '../lib/payroll-tax-basis';
 import {readPayrollComponentInputsTx,readPayrollIndividualLedgerTx,readPayrollAttendanceHoursTx} from './payroll-formula-inputs';
+import {payFormulaRowInputs} from '../lib/pay-formula-input';
 import {repriceIndividualLedgerTx,PayItemFormulaRepriceError,type RepricedPayItem} from '../packs/payroll/individual-calculation';
 import { captureRunInputsAtProcessingTx } from './payroll-audit/inputs';
 import {eligibleWorkingDays,payrollIncrementBasic,payrollRateBasic,payrollRoundAmount as roundAmount} from '../lib/payroll-basic';
@@ -172,6 +173,7 @@ import {
 // statutory base, a stored payslip column, or any EA/CP39/KWSP/PERKESO grouping.
 import { defaultCategoryOfBucket, resolveDisplayCategory, type PayDisplayCategory } from './pay-display-category';
 import { resolveAssignedPolicy, resolveAssignedPoliciesTx } from './payroll-policy';
+import { buildStatutoryTraceLines, readEarlierRunLiability } from './statutory-trace';
 import {
   applyOvertimeCaps,
   applyOvertimeCapsDetailed,
@@ -5308,7 +5310,17 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     const postNumericOptions=['epfWageExcluded','epfAdditionalExcluded','socsoWageExcluded','socsoWageExtra','epfWageDeduction','socsoWageDeduction','pcbWageDeduction'] as const;
     type PostInputs={wages:number;additional:number;overtime:number;lp:number;zakat:number;options:Record<string,number>};
     const postEarlierByEmp=new Map<string,{inputs:PostInputs;paid:Record<string,number>}>();
-    const earlierRunByEmp = new Map<string, { additional: number; overtime: number }>();
+    /**
+     * The month's earlier runs, as later runs need them. `additional` is their GROSS additional pay — still
+     * what PCB's Yt is (every additional ringgit is taxable remuneration). Item 69d6ed3c adds the two agency
+     * carve-outs those runs applied to it: `epfAdditionalExcluded` (the part NOT subject to EPF) and
+     * `socsoWageExtra` (the part that IS SOCSO/EIS wages). Before 69d6ed3c both were dropped, so a later run
+     * charged EPF on an earlier run's bonus even when that pay item was not ticked for EPF, and lost an
+     * earlier run's SOCSO-ticked additional pay from the month's SOCSO wage. Read off each earlier slip's own
+     * trace stamp, or, on a slip from before the trace, off its own componentLines (`readEarlierRunLiability`); a slip with neither keeps the old reading (gross, nothing extra)
+     * and is counted in `unstamped` so the trace can say so.
+     */
+    const earlierRunByEmp = new Map<string, { additional: number; overtime: number; epfAdditionalExcluded: number; socsoWageExtra: number; runs: number; unstamped: number; fromItemLines: number }>();
     const earlierEpfByEmp = new Map<string, { employee: number | null; employer: number | null }>();
     const earlierTaxBasisByEmp = new Map<string,{additionalDelta:number;normal:number|undefined;paidPcb:number;paidBonus:number;corrected:boolean}>();
     const earlierNonCashByEmp = new Map<string,{ownedEntries:NonCashEntry[];regularEntries:NonCashEntry[]|null;ownedEaEntries:NonCashEaEntry[];regularEaEntries:NonCashEaEntry[]|null;legacyRegular:boolean}>();
@@ -5336,6 +5348,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       const correctedEarlier = await readEffectiveTaxBasesTx(tx, ctx, earlier.map(s => s.id));
       for (const r of earlier) {
         // Read what the original payslip charged before applying any tax-input correction.
+        const savedStatutory: unknown = r.statutory;
         const savedEpf = r.statutory as { epfEmployee?: unknown; epfEmployer?: unknown } | null;
         const accumulated = earlierEpfByEmp.get(r.employmentId) ?? { employee: 0, employer: 0 };
         const addSaved = (total: number | null, value: unknown) =>
@@ -5370,8 +5383,19 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           }
           exemptUsedByEmp.set(r.employmentId,used);
         }
-        const cur = earlierRunByEmp.get(r.employmentId) ?? { additional: 0, overtime: 0 };
+        const cur = earlierRunByEmp.get(r.employmentId) ?? { additional: 0, overtime: 0, epfAdditionalExcluded: 0, socsoWageExtra: 0, runs: 0, unstamped: 0, fromItemLines: 0 };
         cur.additional = round2(cur.additional + Number(r.bonus));
+        // 69d6ed3c — what that run itself charged its additional pay on, from ITS OWN stamp (read off the
+        // statutory blob as that run wrote it, before any tax-basis correction replaced `r.statutory`).
+        // A slip from before the trace is read off its own pay item lines (`readEarlierRunLiability`), so
+        // reprocessing this run corrects the month whatever order the runs are reprocessed in.
+        const ownStamp = readEarlierRunLiability(savedStatutory, Number(r.bonus));
+        cur.runs += 1;
+        if (ownStamp) {
+          cur.epfAdditionalExcluded = round2(cur.epfAdditionalExcluded + Math.max(0, round2(Number(r.bonus) - ownStamp.epfAdditional)));
+          cur.socsoWageExtra = round2(cur.socsoWageExtra + ownStamp.socsoWageExtra);
+          if (ownStamp.source === 'component_lines') cur.fromItemLines += 1;
+        } else cur.unstamped += 1;
         const taxBasis = earlierTaxBasisByEmp.get(r.employmentId) ?? {additionalDelta:0,normal:undefined,paidPcb:0,paidBonus:0,corrected:false};
         const paidSource = (r.statutory ?? {}) as {pcb?:number;pcbBonus?:number};
         taxBasis.paidPcb=round2(taxBasis.paidPcb+Number(paidSource.pcb??0));taxBasis.paidBonus=round2(taxBasis.paidBonus+Number(paidSource.pcbBonus??0));
@@ -5526,7 +5550,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       if(linked?.present)throw new Error('Formula Builder requires Typed Pay Items. Enable the module before calculating this payroll run.');
     }
     type CompRow = {
-      code: string; name: string; kind: string; amount: number; rounding: string; formulaInput?:string;
+      code: string; name: string; kind: string; amount: number; rounding: string; formulaInput?:string; currentInput?:string|null;
       epf: boolean; socso: boolean; pcb: boolean; hrdf: boolean; nonPayable: boolean; prorates: boolean;
       // 1.2.1 Fixed Transaction — per-employee override of the catalog `prorates` flag (null = inherit). A
       // one-off batch component has no override, so this is null there too (⇒ catalog flag, unchanged).
@@ -5572,7 +5596,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     if (typedComponents && empIds.length) {
       const push = (map: Map<string, CompRow[]>, r: { employmentId: string; amount: string; prorateOverride?: boolean | null } & Omit<CompRow, 'amount' | 'prorateOverride'>) => {
         const list = map.get(r.employmentId) ?? [];
-        list.push({ ...r, formulaInput:r.amount, amount: Number(r.amount), prorateOverride: r.prorateOverride ?? null });
+        // lib/pay-formula-input.ts owns {#Input}: a recurring or batch Pay Item's input is its saved amount.
+        list.push({ ...r, ...payFormulaRowInputs({ amount: r.amount }), amount: Number(r.amount), prorateOverride: r.prorateOverride ?? null });
         map.set(r.employmentId, list);
       };
       const {recurring:rec,batch:bat}=await readPayrollComponentInputsTx(tx,{employmentIds:empIds,periodStart,periodEnd,batchId:p.batchId});
@@ -5671,7 +5696,9 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
                 name: t.compName ?? t.compCode,
                 kind: t.compKind ?? t.kind,
                 amount: amt,
-                formulaInput:t.amount,
+                // {#Input} from the one owner: the keyed quantity of a row whose amount was priced from it (formula
+                // method or a `pay_item_rule` marker), otherwise the saved raw input. {#PayItemInput} keeps the amount.
+                ...payFormulaRowInputs(t),
                 rounding: t.calculationMethod!=null?'none':t.compRounding ?? 'none',
                 epf: t.compEpf ?? false,
                 socso: t.compSocso ?? false,
@@ -5929,6 +5956,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       hrdfDeductionItems: HrdfWorkingSource[];
       recordLines: PayslipRecordLine[];
       componentLines: PayComponentLine[];
+      /** Item 69d6ed3c — the codes this run folded that carry EPF Bonus 2012, as read, for the trace only. */
+      bonus2012Codes: Set<string>;
       lpDeclared: number; exemptionUsed: Record<string, number>;
       exemptionInformation: PcbExemptionRow[];
       nonCashEntries: NonCashEntry[];
@@ -5982,6 +6011,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           // Nothing to itemise: with typed components off there IS no per-component detail — the figures
           // come from compensation + payroll_input, which is a different shape entirely.
           componentLines: [],
+          bonus2012Codes: new Set<string>(),
           lpDeclared: 0,
           exemptionUsed: {},
           nonCashEntries: [],
@@ -6038,6 +6068,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // bucket's total. That is what makes a breakdown incapable of disagreeing with the figure beside it,
       // which the plan made a precondition of showing one at all.
       const componentLines: PayComponentLine[] = [];
+      const bonus2012Codes = new Set<string>();
       let currentLine: PayComponentLine | null = null;
       /** Record a component's contribution. Enrolled LAZILY: a component that never moves cash (a
        *  record-only BIK) never appears here — it belongs to recordLines and would otherwise be listed
@@ -6200,6 +6231,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
             ? { qty: qrQty, rate: qr.rate, unit: qr.unit }
             : null;
         currentLine = { code: c.code, name: c.name, amount: applied, displayCategory: c.displayCategory ?? null, ...(c.inputQuantity ? { inputQuantity: c.inputQuantity } : {}), buckets: [], epf: c.epf, socso: c.socso, pcb: c.pcb, hrdf: c.hrdf, ...(rateDetail ? { detail: rateDetail } : {}) };
+        if (c.epfBonus2012) bonus2012Codes.add(c.code);
         // Feedback 3c473773 — the box THIS item declares, read for the display tally only.
         currentCategory = c.displayCategory ?? null;
         // ── 711adcd2 — "Add to Unpaid Leave ORP Calculation" ──────────────────────────────────────
@@ -6395,7 +6427,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         else { reimburse = round2(reimburse + applied); contributes('reimburse', applied); } // all-false earning: paid but untaxed
       }
       for(const row of exemptionInformation.values())row.thisMonth=row.table==='lp' && isAdditionalRun ? 0 : round2((exemptionUsed[row.code]??0)+(reusedExemption.get(row.code)??0));
-      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, epfWageExcluded, epfAdditionalExcluded, socsoWageExcluded, socsoWageExtra, epfWageDeduction, epfDeductionItems, socsoWageDeduction, pcbWageDeduction, hrdfWageDeduction, hrdfEarningItems: [...hrdfEarningByCode.values()], hrdfDeductionItems: [...hrdfDeductionByCode.values()], recordLines, componentLines, lpDeclared, exemptionUsed, exemptionInformation:[...exemptionInformation.values()].sort((a,b)=>a.code.localeCompare(b.code)), nonCashEntries, nonCashEaEntries, display, displayMoved, displayOtOutbound, orpUnpaidLeaveExtra };
+      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, epfWageExcluded, epfAdditionalExcluded, socsoWageExcluded, socsoWageExtra, epfWageDeduction, epfDeductionItems, socsoWageDeduction, pcbWageDeduction, hrdfWageDeduction, hrdfEarningItems: [...hrdfEarningByCode.values()], hrdfDeductionItems: [...hrdfDeductionByCode.values()], recordLines, componentLines, bonus2012Codes, lpDeclared, exemptionUsed, exemptionInformation:[...exemptionInformation.values()].sort((a,b)=>a.code.localeCompare(b.code)), nonCashEntries, nonCashEaEntries, display, displayMoved, displayOtOutbound, orpUnpaidLeaveExtra };
     };
 
     /**
@@ -7254,6 +7286,18 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // 'none' also gates SOCSO off (the two are kept in sync by the setter).
         subjectToSocso: socsoCatSel === 'none' ? false : (e.subjectToSocso ?? true),
         subjectToSkbbk: e.subjectToSkbbk ?? true,
+        // Item 69d6ed3c — ask the pack for statutory trace v1, and name the reason a scheme is off from the
+        // SAME terms as `subjectToSocso` / `eisEligible` above (the pack reads a reason only when the scheme
+        // is off). Read by no arithmetic.
+        trace: {
+          socsoNotApplicable: socsoCatSel === 'none' ? ('category_none' as const) : ('not_subject' as const),
+          eisNotApplicable:
+            eisCatSel === 'none' ? ('category_none' as const)
+              : !(e.eisEligible ?? true) ? ('not_eligible' as const)
+                : age != null && age >= 60 ? ('age_60_plus' as const)
+                  : (e.epfCitizenship ?? 'citizen') === 'non_citizen' ? ('non_citizen' as const)
+                    : ('not_eligible' as const),
+        },
         resident: resolvedTaxScheme.scheme !== 'non_resident',
         // Preserve the explicit approved scheme; the country pack alone resolves its formula.
         calculationScheme: resolvedTaxScheme.scheme,
@@ -7354,7 +7398,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // every `computeMonth` below would default to the pre-probe figure. The probe itself passes 0.
         zakatOffsetTotal = round2(effectiveZakat + tp1Rebate);
       }
-      const earlierRun = earlierRunByEmp.get(e.employmentId) ?? { additional: 0, overtime: 0 };
+      const earlierRun = earlierRunByEmp.get(e.employmentId) ?? { additional: 0, overtime: 0, epfAdditionalExcluded: 0, socsoWageExtra: 0, runs: 0, unstamped: 0, fromItemLines: 0 };
       /**
        * ── Item 70b14723 — THE SAME OPTION BAG WITH THE TYPED EPF AMOUNTS REMOVED ─────────────────────
        *
@@ -7407,11 +7451,24 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
        * expression call for call and argument for argument.
        */
       const postOwnInputs:PostInputs={wages:wagesExOt,additional:bonus,overtime:otStat,lp,zakat:zakatOffsetTotal,options:Object.fromEntries(postNumericOptions.map(key=>[key,stOpts[key]]))};
+      /** Item 69d6ed3c — what the `stOpts` charge was struck against, kept for the trace: the computation the
+       *  delta subtracted (when it was one) and the bag of figures it subtracted. Set by `coreFor(stOpts)` only. */
+      const traceHolder: { delta: { kind: 'additional' | 'restate' | 'post_employment'; before: { statutoryTrace?: unknown } | null; charged: Record<string, unknown> } | null } = { delta: null };
+      // 69d6ed3c — THE MULTI-RUN FIX. The month's earlier runs paid `earlierRun.additional` of additional pay,
+      // and that whole figure re-enters `additional` below (PCB taxes all of it). Their OWN agency carve-outs
+      // now come with it: the part not subject to EPF stays out of the EPF base, and the part that was
+      // SOCSO/EIS wages stays in that base, on BOTH sides of the delta. Zero for a run with no earlier runs.
+      const withEarlierCarveOuts = <B extends typeof stOpts>(b: B, own: boolean): B => ({
+        ...b,
+        epfAdditionalExcluded: round2((own ? b.epfAdditionalExcluded : 0) + earlierRun.epfAdditionalExcluded),
+        socsoWageExtra: round2((own ? b.socsoWageExtra : 0) + earlierRun.socsoWageExtra),
+      });
       const coreFor = (bases: typeof stOpts) => {
         if(postEmployment){
           const prior=postEarlierByEmp.get(e.employmentId);
           if(!prior)return computeMonth(bonus,otStat,undefined,bases);
           const options={...bases};for(const key of postNumericOptions)options[key]=round2(options[key]+prior.inputs.options[key]);
+          if (bases === stOpts) traceHolder.delta = { kind: 'post_employment', before: null, charged: prior.paid };
           return deltaStat(pack.payroll.statutory(round2(wagesExOt+prior.inputs.wages),taxProfile,round2(bonus+prior.inputs.additional),round2(otStat+prior.inputs.overtime),{month:pMonth,acc:accByEmp.get(e.employmentId),lpCurrent:round2(lp+prior.inputs.lp),zakatCurrent:round2(zakatOffsetTotal+prior.inputs.zakat)},options,rules),prior.paid);
         }
         // The baseline option bag for either delta: THIS run's additional-stream carve-outs are dropped,
@@ -7421,22 +7478,28 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // one line inside `coreFor` when the expression became a function of `bases`; for `bases === stOpts`
         // it is the identical object the previous `additionalBaseline` const built.)
         const baseline = { ...bases, epfAdditionalExcluded: 0, socsoWageExtra: 0, pcbNonCashNormal: nonCashBefore };
-        const result = isAdditionalRun
-          ? deltaStat(
-              computeMonth(earlierRun.additional + bonus, earlierRun.overtime, undefined, bases),
-              computeMonth(earlierRun.additional, earlierRun.overtime, effectiveZakat, baseline),
-            )
-          : restatesMonth
-            ? deltaStat(
-                computeMonth(earlierRun.additional + bonus, round2(earlierRun.overtime + otStat), undefined, bases),
-                chargedByEarlierRuns(
-                  computeMonth(earlierRun.additional, earlierRun.overtime, effectiveZakat, {...baseline,pcbNonCashNormal:{bik:round2(nonCashBefore.bik+taxableNonCash(en.nonCashEntries.filter(x=>x.source==='recurring')).bik),vola:round2(nonCashBefore.vola+taxableNonCash(en.nonCashEntries.filter(x=>x.source==='recurring')).vola)}}),
-                  computeMonth(0, 0, effectiveZakat, {...baseline,pcbNonCashNormal:taxableNonCash(en.nonCashEntries.filter(x=>x.source==='recurring'))}, false),
-                ),
-              )
-            : computeMonth(bonus, otStat, undefined, bases);
+        // 69d6ed3c — the "now" side carries this run's carve-outs AND the earlier runs'; the "earlier runs"
+        // side carries the earlier runs' alone; the restating run's "no additional at all" month carries none.
+        const nowBases = withEarlierCarveOuts(bases, true);
+        const earlierBaseline = withEarlierCarveOuts(baseline, false);
+        let result;
+        if (isAdditionalRun) {
+          const before = computeMonth(earlierRun.additional, earlierRun.overtime, effectiveZakat, earlierBaseline);
+          if (bases === stOpts) traceHolder.delta = { kind: 'additional', before, charged: before };
+          result = deltaStat(computeMonth(earlierRun.additional + bonus, earlierRun.overtime, undefined, nowBases), before);
+        } else if (restatesMonth) {
+          const before = computeMonth(earlierRun.additional, earlierRun.overtime, effectiveZakat, {...earlierBaseline,pcbNonCashNormal:{bik:round2(nonCashBefore.bik+taxableNonCash(en.nonCashEntries.filter(x=>x.source==='recurring')).bik),vola:round2(nonCashBefore.vola+taxableNonCash(en.nonCashEntries.filter(x=>x.source==='recurring')).vola)}});
+          const charged = chargedByEarlierRuns(
+            before,
+            computeMonth(0, 0, effectiveZakat, {...baseline,pcbNonCashNormal:taxableNonCash(en.nonCashEntries.filter(x=>x.source==='recurring'))}, false),
+          );
+          if (bases === stOpts) traceHolder.delta = { kind: 'restate', before, charged };
+          result = deltaStat(computeMonth(earlierRun.additional + bonus, round2(earlierRun.overtime + otStat), undefined, nowBases), charged);
+        } else {
+          result = computeMonth(bonus, otStat, undefined, bases);
+        }
         if(earlierTaxBasis?.corrected && (isAdditionalRun||restatesMonth)){
-          const cumulative=computeMonth(round2(earlierRun.additional+bonus),isAdditionalRun?earlierRun.overtime:round2(earlierRun.overtime+otStat),undefined,bases);
+          const cumulative=computeMonth(round2(earlierRun.additional+bonus),isAdditionalRun?earlierRun.overtime:round2(earlierRun.overtime+otStat),undefined,nowBases);
           const corrected=deltaStat(cumulative,{pcb:earlierTaxBasis.paidPcb,pcbBonus:earlierTaxBasis.paidBonus});
           return {...result,pcb:corrected.pcb,pcbBonus:corrected.pcbBonus,pcbMeta:corrected.pcbMeta};
         }
@@ -7493,12 +7556,17 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // epfWage / socsoWage / pcbWage), INCLUDING the clamp, so the disclosed base and the charged base
       // cannot disagree — `pcb` gains a Math.max it did not have, matching `pcbWage`'s clamp for the
       // case where a deduction exceeds the month's wage.
+      // 69d6ed3c — on a delta run the earlier runs' own carve-outs are in the charged base too (see
+      // `withEarlierCarveOuts`), summed into the option exactly as the pack received it.
+      const monthDelta = !postEmployment && (isAdditionalRun || restatesMonth);
+      const statEpfAdditionalExcluded = monthDelta ? round2(en.epfAdditionalExcluded + earlierRun.epfAdditionalExcluded) : en.epfAdditionalExcluded;
+      const statSocsoWageExtra = monthDelta ? round2(en.socsoWageExtra + earlierRun.socsoWageExtra) : en.socsoWageExtra;
       const statBases = {
         epf: Math.max(0, round2(wagesExOt - en.epfWageExcluded - en.epfWageDeduction)),
-        epfAdditional: Math.max(0, round2(statAdditional - en.epfAdditionalExcluded)),
+        epfAdditional: Math.max(0, round2(statAdditional - statEpfAdditionalExcluded)),
         socsoEis: Math.max(
           0,
-          round2(wagesExOt + statOvertime - en.socsoWageExcluded + en.socsoWageExtra - en.socsoWageDeduction),
+          round2(wagesExOt + statOvertime - en.socsoWageExcluded + statSocsoWageExtra - en.socsoWageDeduction),
         ),
         pcb: round2((earlierTaxBasis?.corrected && earlierTaxBasis.normal!==undefined ? earlierTaxBasis.normal : Math.max(0, round2(wagesExOt + statOvertime - en.pcbWageDeduction))) + statAdditional + (earlierTaxBasis?.additionalDelta??0) + nonCashCumulative.bik + nonCashCumulative.vola),
         hrdf: isAdditionalRun ? 0 : hrdfBase,
@@ -7727,7 +7795,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           add('Earlier runs in the wage month', priorPost.wages + priorPost.additional
             - priorPost.options.epfWageExcluded - priorPost.options.epfWageDeduction - priorPost.options.epfAdditionalExcluded);
         } else if (isAdditionalRun || restatesMonth) {
-          add('Earlier additional pay in the wage month', earlierRun.additional);
+          // 69d6ed3c — only the part of the earlier runs' additional pay that was subject to EPF.
+          add('Earlier additional pay in the wage month', earlierRun.additional - earlierRun.epfAdditionalExcluded);
         }
         // The pack clamps the normal and additional wage streams separately. Disclose the
         // difference when a deduction exceeds its stream rather than overstating eligible pay.
@@ -7747,6 +7816,79 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           employerThisRun: stComputed.epfEmployer,
           ...(earlierEpf?.employee != null ? { employeeEarlierRuns: earlierEpf.employee } : {}),
           ...(earlierEpf?.employer != null ? { employerEarlierRuns: earlierEpf.employer } : {}),
+        };
+      })() : null;
+
+      // ── Item 69d6ed3c — STATUTORY TRACE v1, STAMPED FROM THE CALCULATION THAT PRODUCED THE AMOUNTS ──
+      //
+      // The pack's own trace (`stCore.statutoryTrace`) is the cumulative computation's: the rows EPF,
+      // SOCSO, SKBBK and EIS were read on. The kernel adds what only it knows — which pay items made up
+      // those wages, with their settings as THIS run read them — and, on a run whose figures are a delta,
+      // the computation it was struck against and the figures it subtracted. `thisRun` is `stCore`'s own
+      // nine lines, i.e. what the payslip carries before any person's Statutory Adjustment; the explanation
+      // refuses to show a trace that does not match the payslip beside it.
+      //
+      // `run.own` is the one part read back as MONEY: a later run in the same month reads this run's
+      // EPF-liable additional pay and its SOCSO/EIS-liable additional pay from here (`readRunStatutoryStamp`).
+      // Additive jsonb key on `payslip.statutory`; not a DELTA_KEY, not in STATUTORY_LINE_KEYS; no DDL.
+      const packTrace = stCore.statutoryTrace;
+      const savedStatutoryTrace = packTrace ? (() => {
+        const delta = traceHolder.delta;
+        const beforeTrace = (delta?.before?.statutoryTrace ?? null) as typeof packTrace | null;
+        const priorPost = postEmployment ? postEarlierByEmp.get(e.employmentId)?.inputs : undefined;
+        const earlierLine = priorPost
+          ? {
+              epfNormal: round2(priorPost.wages - priorPost.options.epfWageExcluded - priorPost.options.epfWageDeduction),
+              epfBonus: round2(priorPost.additional - priorPost.options.epfAdditionalExcluded),
+              socsoEis: round2(priorPost.wages + priorPost.overtime - priorPost.options.socsoWageExcluded + priorPost.options.socsoWageExtra - priorPost.options.socsoWageDeduction),
+            }
+          : monthDelta
+            ? {
+                epfNormal: 0,
+                epfBonus: round2(earlierRun.additional - earlierRun.epfAdditionalExcluded),
+                socsoEis: round2(earlierRun.socsoWageExtra + (restatesMonth ? earlierRun.overtime : 0)),
+              }
+            : undefined;
+        const items = buildStatutoryTraceLines({
+          basic,
+          // A regular run's own lines (with the OT legs already replaced by their allocations); an
+          // additional run's whole re-fold, because its cumulative month's normal wage IS those items.
+          lines: isAdditionalRun ? en.componentLines : stampComponentLines,
+          bonus2012Codes: en.bonus2012Codes,
+          ownOvertimeCharged: !isAdditionalRun,
+          unpaid: unpaidDeduction,
+          regularOvertime: isAdditionalRun ? earlierRun.overtime : 0,
+          earlier: earlierLine,
+          totals: { epfNormal: packTrace.epf.normalWage, epfBonus: packTrace.epf.bonusWage, socsoEis: packTrace.socso.wage },
+        });
+        const lines = (o: Record<string, unknown>) => Object.fromEntries(
+          (['epfEmployee', 'epfEmployer', 'socsoEmployee', 'socsoEmployer', 'socsoSkbbk', 'eisEmployee', 'eisEmployer'] as const)
+            .map((k) => [k, round2(Number(o[k] ?? 0))]),
+        );
+        const scheduleEffectiveFrom = packTrace.epf.method === 'schedule_row' || packTrace.epf.method === 'schedule_formula'
+          ? resolved.components.epf.effectiveFrom ?? undefined : undefined;
+        return {
+          ...packTrace,
+          ...(scheduleEffectiveFrom ? { epfScheduleEffectiveFrom: scheduleEffectiveFrom } : {}),
+          items,
+          run: {
+            kind: delta?.kind ?? ('single' as const),
+            own: {
+              epfAdditional: Math.max(0, round2(bonus - en.epfAdditionalExcluded)),
+              socsoWageExtra: Math.max(0, round2(en.socsoWageExtra)),
+            },
+            ...(monthDelta ? { earlier: {
+              runs: earlierRun.runs,
+              unstamped: earlierRun.unstamped,
+              fromItemLines: earlierRun.fromItemLines,
+              additional: earlierRun.additional,
+              epfAdditional: round2(earlierRun.additional - earlierRun.epfAdditionalExcluded),
+              socsoWageExtra: earlierRun.socsoWageExtra,
+            } } : {}),
+            ...(beforeTrace ? { before: { epf: beforeTrace.epf, socso: beforeTrace.socso, skbbk: beforeTrace.skbbk, eis: beforeTrace.eis } } : {}),
+            ...(delta ? { chargedBefore: lines(delta.charged) } : {}),
+            thisRun: lines(stCore),
+          },
         };
       })() : null;
 
@@ -8053,6 +8195,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // zero-OT slip / additional run, which sets slipOvertime to 0).
         statutory: {
           ...st,
+          ...(savedStatutoryTrace ? { statutoryTrace: savedStatutoryTrace } : {}),
           ...(savedEpfWorking ? { epfWorking: savedEpfWorking } : {}),
           ...(savedHrdfWorking ? { hrdfWorking: savedHrdfWorking } : {}),
           ...(formulaRefsByEmp.has(e.employmentId)?{formulaEvaluations:formulaRefsByEmp.get(e.employmentId)!.filter(ref=>stampComponentLines.some(line=>line.code===ref.componentCode))}:{}),

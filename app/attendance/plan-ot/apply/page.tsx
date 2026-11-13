@@ -14,7 +14,11 @@ import {
   otPlanCalendarMonth,
   type OtPlanCalendarDay,
   ownAttendanceSubmissionRoute,
+  attendanceOnBehalfSubject,
+  attendanceSubmissionRouteOnBehalf,
 } from '@/packs/attendance/service';
+import { notFound } from 'next/navigation';
+import { OnBehalfBanner } from '@/app/attendance/on-behalf/banner';
 import { Button, Card, ErrorBanner, Field, PageHeader, inputCls, pageWideCls } from '@/components/ui';
 import { OtPlanCalendar, type OtCalendarCell, type OtCalendarPlanStatus } from '@/components/ot-plan-calendar';
 import { addMonths, monthDates, monthRange } from '@/lib/roster-month';
@@ -65,13 +69,18 @@ import { PlanOtFields } from './plan-ot-fields';
 export default async function ApplyOtPlanPage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string; error?: string; start?: string; end?: string }>;
+  searchParams: Promise<{ date?: string; error?: string; start?: string; end?: string; onBehalfOf?: string }>;
 }) {
   const t = await getTranslations('me'),tr=await getTranslations('attendance.overtimeRecords');
   const locale = await getLocale();
   const sp = await searchParams;
   const s = await getSession();
-  const me = await myEmployment(s);
+  // 96a54ed2 — Request On Behalf opens THIS screen for a chosen employee: their Schedule Group, overtime settings
+  // and workflow, under a banner. The service decides whether the caller may act for them; otherwise a 404.
+  const onBehalf = sp.onBehalfOf ? await attendanceOnBehalfSubject(s, 'request', sp.onBehalfOf) : null;
+  if (sp.onBehalfOf && !onBehalf) notFound();
+  const behalf = onBehalf ? `&onBehalfOf=${onBehalf.employmentId}` : '';
+  const me = onBehalf ?? await myEmployment(s);
 
   if (!me) {
     // `max-w-md`, not `max-w-2xl`: the screen itself is full width now, and the layout guard reads this
@@ -102,7 +111,7 @@ export default async function ApplyOtPlanPage({
   const [calendar, cap, route, monthPlans, actual] = await Promise.all([
     otPlanCalendarMonth(s, me.employmentId, month),
     otMonthToDateDuration(s, me.employmentId, date),
-    ownAttendanceSubmissionRoute(s, me.employmentId, 'self_overtime'),
+    onBehalf ? attendanceSubmissionRouteOnBehalf(s, me.employmentId, 'self_overtime') : ownAttendanceSubmissionRoute(s, me.employmentId, 'self_overtime'),
     // The month's own plans — the dots on the grid, the counts in the summary, and "what you already
     // filed" on the day card. Windowed rather than `limit`-ed: a heavy month of overtime must not push
     // an older month's dots off the calendar just because the list happened to be capped at 100.
@@ -149,7 +158,7 @@ export default async function ApplyOtPlanPage({
     const target = addMonths(month, direction);
     const len = monthDates(target).length;
     const dayNum = Math.min(Number(date.slice(8)), len);
-    return `/attendance/plan-ot/apply?date=${target}-${String(dayNum).padStart(2, '0')}`;
+    return `/attendance/plan-ot/apply?date=${target}-${String(dayNum).padStart(2, '0')}${behalf}`;
   };
 
   const KIND_LABEL = {
@@ -229,6 +238,7 @@ export default async function ApplyOtPlanPage({
       </div>
       <PageHeader title={t('applyOtPlan')} description={t('overtimeRequestHelp')} />
 
+      {onBehalf && <OnBehalfBanner name={onBehalf.name} employeeCode={onBehalf.employeeCode} />}
       <ErrorBanner message={sp.error} />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
@@ -243,6 +253,7 @@ export default async function ApplyOtPlanPage({
               selected={date}
               today={today}
               dayHrefBase="/attendance/plan-ot/apply"
+              dayHrefSuffix={behalf}
               prevHref={stepHref(-1)}
               nextHref={stepHref(1)}
             />
@@ -410,6 +421,7 @@ export default async function ApplyOtPlanPage({
 
               <Field label={t('otGoesToLabel')}>
                 {route.available&&<input type="hidden" name="workflowFingerprint" value={route.fingerprint} />}
+                {onBehalf&&<input type="hidden" name="onBehalfOf" value={onBehalf.employmentId} />}
                 <div className={`${inputCls} flex items-center bg-muted/40`} role={route.available?undefined:'status'}>{approver}</div>
               </Field>
               {route.available&&<p className="text-[11px] text-muted-foreground">{t('otWorkflowGoesToHelp')}</p>}

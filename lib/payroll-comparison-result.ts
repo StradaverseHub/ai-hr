@@ -88,6 +88,33 @@ export function payrollComparisonAvailability(
   return { runs: selected, issues };
 }
 
+export type PayrollComparisonExclusionReason = { code: 'missingPayroll' | 'draftPayroll' | 'previousNotClosed' | 'stalePayroll'; period: string };
+export type PayrollComparisonInclusion = {
+  /** Companies the rows and totals cover: both months present, previous closed, nothing stale or draft. */
+  includedCompanyIds: string[];
+  /** Every other company with payroll, with each distinct reason (one per code and month), in scope order. */
+  excluded: { companyId: string; company: string; reasons: PayrollComparisonExclusionReason[] }[];
+  /** Companies in scope with any payroll run; the comparison's denominator. */
+  withPayrollCount: number;
+  /** Companies in scope that have never run payroll: left out, not reported as missing. */
+  neverRanCount: number;
+};
+/** Ready companies and the reasons the others are left out, from the same availability rule as the comparison. */
+export function payrollComparisonInclusion(
+  withPayroll: readonly string[], issues: readonly ComparisonIssue[], neverRanCount: number, names: ReadonlyMap<string, string>,
+): PayrollComparisonInclusion {
+  const excluded: PayrollComparisonInclusion['excluded'] = [];
+  for (const companyId of withPayroll) {
+    const reasons: PayrollComparisonExclusionReason[] = [];
+    for (const issue of issues) {
+      if (issue.companyId !== companyId || issue.code === 'itemNotRecorded') continue;
+      if (!reasons.some(reason => reason.code === issue.code && reason.period === issue.period)) reasons.push({ code: issue.code, period: issue.period });
+    }
+    if (reasons.length) excluded.push({ companyId, company: names.get(companyId) ?? companyId, reasons });
+  }
+  return { includedCompanyIds: withPayroll.filter(id => !excluded.some(row => row.companyId === id)), excluded, withPayrollCount: withPayroll.length, neverRanCount };
+}
+
 export function comparePayrollResults(input: {
   definition: PayrollComparisonDefinition; filters: PayrollComparisonFilters;
   companyIds: readonly string[]; runs: readonly ComparisonRun[]; sources: readonly ComparisonSource[];

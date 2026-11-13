@@ -9,18 +9,18 @@ import {TodayAsk} from '../today-ask';
 import {PanelNote,PanelSkeleton} from '../employee/panel';
 import {PanelBoundary} from '../employee/panel-boundary';
 import {readAskAllowed} from '../employee/reads';
-import {AdminAskPanel,AdminHeadline,AdminNeedsPanel,DecidePanel,HandledPanel,ManagerHeadline,OwnRecordPanel,ReadinessPanel,TeamComingUpPanel,WatchingPanel,
+import {AdminAskPanel,AdminHeadline,AdminNeedsPanel,DecidePanel,HandledPanel,ManagerHeadline,MorningSummaryPanel,OwnRecordPanel,ReadinessPanel,TeamComingUpPanel,TeamTodayPanel,WatchingPanel,
  type RoleContext} from './panels';
 import {scopeKey} from './reads';
-import Link from 'next/link';
 import {TodayPerformance} from '../performance-slot';
-import {LINK} from '../employee/panel';
+import {WorkspaceLinks} from '../workspace-links';
 
 /** HR administrator and manager Today (owner decision, 11 Nov 2026; AdminToday.dc.html and ManagerToday.dc.html), at
  * `/`, in place of Today over the old dashboard for these two audiences. app/page.tsx chooses by lib/today/admin.ts
- * todayLayoutFor: an administrator always gets the administrator page (the earlier dashboard opens on its own only at
- * `?workspace=dashboard`); a manager gets the team page unless they ask for the team workbench (`?workspace=team`);
- * anyone holding a partner role who is not an administrator keeps the earlier Today, even if they also manage a team.
+ * todayLayoutFor: an administrator always gets the administrator page and a manager the team page. The old dashboard
+ * and its team workbench are retired (owner decision, 12 Nov 2026): `?workspace=dashboard` and `?workspace=team`
+ * redirect to `/`. Anyone holding a partner role who is not an administrator gets Employee Today, even if they also
+ * manage a team.
  *
  * The greeting and date render at once from the HR date owner. Every panel then streams inside its own Suspense and
  * error boundary, so the slowest or a failing owner holds back or replaces only its own panel; the heading's count
@@ -73,6 +73,8 @@ export async function AdminTodayPage(p:PageProps){
    </div>
    <aside aria-label={t('sideLabel')} className="flex min-w-0 flex-col gap-4">
     {slot('watching',t('watchingTitle'),<WatchingPanel {...c}/>,1)}
+    {/* The administrator's own morning summary (owner decision, 11 Nov 2026): absent unless it runs or can be started. */}
+    {slot('morning',t('morning.title'),<MorningSummaryPanel {...c}/>,1)}
     {slot('own',t('ownTitle'),<OwnRecordPanel {...c} title="own"/>,1)}
     {slot('ask',t('askTitle'),<AdminAskPanel {...c}/>,1)}
    </aside>
@@ -81,14 +83,12 @@ export async function AdminTodayPage(p:PageProps){
 }
 
 export async function ManagerTodayPage(p:PageProps){
- const [t,tAdmin,tHome,top,slot]=await Promise.all([getTranslations('today.manager'),getTranslations('today.admin'),getTranslations('employeeHome'),pageHeader(p,'manager',c=><ManagerHeadline {...c}/>),slots()]);
+ const [t,tAdmin,top,slot]=await Promise.all([getTranslations('today.manager'),getTranslations('today.admin'),pageHeader(p,'manager',c=><ManagerHeadline {...c}/>),slots()]);
  const c=top.c;
  return <div data-today="manager" className="mx-auto w-full max-w-[66rem] min-w-0 space-y-6">
   {p.notice}{top.node}
-  {/* The team workbench (the earlier manager dashboard), on request. */}
-  <nav aria-label={tHome('homeOptions')} className="flex flex-wrap justify-end gap-4">
-   <Link href={'/?'+new URLSearchParams({workspace:'team',...(p.employmentId?{employmentId:p.employmentId}:{})})} data-today-workbench className={LINK}>{tHome('teamWorkbench')}</Link>
-  </nav>
+  {/* Your workspace: the team pages the retired team workbench used to lead to. */}
+  <Suspense fallback={null}><WorkspaceLinks session={p.session} team/></Suspense>
   <TodayPerformance session={p.session} scopeIds={p.scopeIds}/>
   <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_19rem]">
    <div className="flex min-w-0 flex-col gap-6">
@@ -96,6 +96,7 @@ export async function ManagerTodayPage(p:PageProps){
     {slot('own',tAdmin('forYouTitle'),<OwnRecordPanel {...c} title="forYou"/>,1)}
    </div>
    <aside aria-label={t('sideLabel')} className="flex min-w-0 flex-col gap-4">
+    {slot('team-today',t('teamTodayTitle'),<TeamTodayPanel {...c}/>,2)}
     {slot('team',t('comingUpTitle'),<TeamComingUpPanel {...c}/>,2)}
    </aside>
   </div>

@@ -368,7 +368,7 @@ describe('One net-swing threshold — what the evaluator reads, and that it agre
     return { employmentId, may };
   }
 
-  it('the company setting is used when readable; the sweep and a payroll partner say they could not read it and use 15%', async () => {
+  it('the company setting is used by an administrator and by the sweep; a payroll partner says it could not read it and uses 15%', async () => {
     await setThreshold(3000);
     const { employmentId, may } = await moved('4800.00'); // +20%: inside the company's 30%, outside the 15% default
 
@@ -378,15 +378,16 @@ describe('One net-swing threshold — what the evaluator reads, and that it agre
     const own = (await thresholdsInForce(a, { batchId: may })).thresholds.find((t) => t.detectorId === 'net-swing')!;
     expect(own).toMatchObject({ params: { netSwingPct: 30 }, source: 'configured' });
 
-    // The scheduled sweep's carrier (no user): the setting is invisible under row security. 15% is used, no exclusion,
-    // and the finding and the disclosure both say the company's own threshold could not be read.
+    // The scheduled sweep's carrier (no user): row security hides the setting, so it reads the threshold through the
+    // narrow reader (migration 5160 app.sweep_swing_thresholds) and judges by the company's own 30% too.
     const sweep: SessionContext = { tenantId: b.tenantId, roles: ['hr_admin'], entitlements: a.entitlements };
     await evaluateBatchAnomalies(sweep, { batchId: may });
-    expect((await swingFindings(may)).get(employmentId)).toMatchObject({ thresholdPct: 15, thresholdSource: 'default_company_setting_unreadable' });
-    const blind = (await thresholdsInForce(sweep, { batchId: may })).thresholds.find((t) => t.detectorId === 'net-swing')!;
-    expect(blind).toMatchObject({ params: { netSwingPct: 15 }, source: 'unreadable_default' });
+    expect((await swingFindings(may)).has(employmentId)).toBe(false);
+    const swept = (await thresholdsInForce(sweep, { batchId: may })).thresholds.find((t) => t.detectorId === 'net-swing')!;
+    expect(swept).toMatchObject({ params: { netSwingPct: 30 }, source: 'configured' });
 
-    // A payroll partner of this company administers its payroll but not its loop settings: the same, said the same way.
+    // A payroll partner of this company administers its payroll but not its loop settings: row security hides the setting,
+    // the narrow reader answers no login, so 15% with no exclusion, and the finding and the disclosure both say so.
     const [u] = await owner.db.insert(schema.appUser).values({ tenantId: b.tenantId, workosUserId: `user_${randomUUID()}`, personId: null }).returning({ id: schema.appUser.id });
     await owner.db.insert(schema.roleAssignment).values({ tenantId: b.tenantId, appUserId: u.id, companyId: b.companyId, role: 'payroll_partner' });
     const partner: SessionContext = { ...(await entitledCtx(b, ['payroll_partner'])), userId: u.id, personId: null, roles: ['payroll_partner'],

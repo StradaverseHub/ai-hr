@@ -9,6 +9,7 @@ import {createBatch,createAdditionalRun,generatePayslips,upsertPayComponent,setE
 import {saveTp3} from '../core/tp3';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import * as schema from '../db/schema';
+import {withoutVerifiedStatutoryTrace} from './helpers/statutory-trace-evidence';
 // Frozen historical money oracle generated with the original 2026 calculator.
 // Keep its already-past periods stable; the current-year capture test is separate.
 const year=2026;
@@ -147,7 +148,8 @@ describe('r387 complete monetary parity against original calculation',()=>{
     if(!row)throw new Error('Expected the selected employee native payslip');
     // Tax recalculation adds opening-exemption provenance to the saved statutory JSON. Assert it exactly,
     // then compare every remaining native money field against the unchanged golden.
-    const native=row.statutory as Record<string,unknown>;
+    // 69d6ed3c — statutory trace v1 is verified against this payslip's own amounts, then set aside.
+    const native=withoutVerifiedStatutoryTrace(row.statutory as Record<string,unknown>);
     expect(native.taxBasisOpeningExemptionYear).toBe(year);
     expect(native.taxBasisOpeningExemptionUsed).toEqual({PCB_TRA_BUSINESS:5950});
     // c2ea9567 adds the HRD Corp levy working to regular runs only. This company is not HRDF-registered:

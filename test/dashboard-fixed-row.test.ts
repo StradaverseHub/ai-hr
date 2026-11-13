@@ -2,27 +2,22 @@
  * Feedback 2806443b — "Reorganize Employee Dashboard Cards Layout and Update Card Pinning Behavior",
  * as amended by a00c4f64 — "Team Leave Tracker: move the Leave Calendar off the Dashboard".
  *
- * 2806443b made the dashboard three areas: a draggable top row of up to MAX_FIRST_ROW cards, a fixed
- * full-width second row holding ONLY the Leave Calendar (plannedAbsences), and a flexible third area
- * below it. a00c4f64 then MOVED that calendar to its own screen (/leave/tracker), which retires the one
- * thing that was ever pinned and the one card that was ever mandatory.
+ * 2806443b made the dashboard three areas (a top row, a pinned full-width row holding only the Leave Calendar,
+ * and an area below). a00c4f64 moved that calendar to its own screen (/leave/tracker), retiring the one card that
+ * was ever pinned and the one that was ever mandatory. The old dashboard and its row partition were then retired
+ * altogether (owner decision, 12 Nov 2026); what remains is the card catalogue and the normaliser every saved
+ * Home layout still passes through (core/dashboard-prefs.ts).
  *
- * The three-area machinery SURVIVES and is still specified here — `partitionDashboardRows` takes its
- * pinned set as an argument, so the split is tested with an explicit set while FIXED_ROW_KEYS (the
- * PRODUCTION pin list) is separately pinned as empty. Those are two different claims and conflating them
- * is how an emptied constant would silently take the feature with it.
- *
- * Pure specs: FIXED_ROW_KEYS is empty and nothing is pinned in production; the three-way split still
- * works given a pinned set; the builtin default row 1 is unchanged by the move
- * (leaveBalance · nextHoliday · pendingTasks · upcomingEvents); no builtin card is mandatory any more;
- * and a saved layout that still names plannedAbsences drops it on read WITH THE OTHER CARDS' ORDER
- * INTACT — the reason a00c4f64 needs no app_user.dashboard_layout migration.
+ * Pure specs: the builtin default order is unchanged by the move (leaveBalance · nextHoliday · pendingTasks ·
+ * upcomingEvents first); no builtin card is mandatory any more; and a saved layout that still names
+ * plannedAbsences drops it on read WITH THE OTHER CARDS' ORDER INTACT — the reason a00c4f64 needs no
+ * app_user.dashboard_layout migration.
  *
  * DB specs (harness trap: migrateTestDb runs against a template stamped BEFORE seedBase creates tenants,
  * so the 0212 CROSS JOIN seed leaves dashboard_card_config empty here — every spec first executes the
  * 0212 seed INSERT manually, then the later migrations' statements): the 0296 order swap still applies;
  * 0404 deletes the plannedAbsences row for every tenant and repoints teamAwayToday's href; both 0404
- * statements are idempotent; and an employee's saved layout naming the deleted card loads without it.
+ * statements are idempotent; and a layout saved naming the deleted card normalises without it.
  */
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -33,92 +28,18 @@ import type { SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import {
   BUILTIN_DASHBOARD_CARDS,
-  BUILTIN_ROLE_DASHBOARD_CARDS,
-  FIXED_ROW_KEYS,
-  MAX_FIRST_ROW,
-  isFixedRowKey,
   normalizeDashboardLayout,
-  partitionDashboardRows,
   type DashboardCardChoice,
 } from '../lib/dashboard-layout';
-import { getDashboardLayout, setDashboardLayout } from '../core/dashboard-prefs';
-import { listDashboardCards, listEmployeeDashboardCards } from '../core/dashboard-card-config';
+import { listCards, listEmployeeDashboardCards, type DashboardCardAudience } from '../core/dashboard-card-config';
 import { closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
-
-/** Partition a layout with the production pin rule (FIXED_ROW_KEYS via isFixedRowKey). */
-const partition = (selected: string[]) =>
-  partitionDashboardRows({ selected, order: selected }, selected.filter(isFixedRowKey));
-
-describe('FIXED_ROW_KEYS / isFixedRowKey (the single pin rule)', () => {
-  it('pins NOTHING since the Leave Calendar moved to its own screen (a00c4f64)', () => {
-    expect([...FIXED_ROW_KEYS]).toEqual([]);
-    // The calendar was the only member; it is a screen now, not a card.
-    expect(isFixedRowKey('plannedAbsences')).toBe(false);
-    // Pending Tasks (cardType action) and shortcut-style cards were already unpinned by 2806443b.
-    expect(isFixedRowKey('pendingTasks')).toBe(false);
-    expect(isFixedRowKey('leaveBalance')).toBe(false);
-    expect(isFixedRowKey('applyLeave')).toBe(false);
-    expect(isFixedRowKey('recentActivity')).toBe(false);
-  });
-});
-
-describe('partitionDashboardRows — the three-way split still works (2806443b machinery)', () => {
-  // Driven by an EXPLICIT pinned set: the split is the function's contract, independent of whether the
-  // production list currently names anything. `pinnedKey` stands in for the next full-width card.
-  const pinnedKey = 'someFullWidthCard';
-  const partitionWith = (selected: string[]) =>
-    partitionDashboardRows({ selected, order: selected }, selected.filter((k) => k === pinnedKey));
-
-  it('puts pendingTasks in row1, the pinned card alone in row2, and 5th+ cards in row3', () => {
-    const selected = [
-      'leaveBalance',
-      'nextHoliday',
-      'pendingTasks',
-      'upcomingEvents',
-      pinnedKey,
-      'recentlyJoined',
-      'recentActivity',
-    ];
-    const { row1, row2, row3 } = partitionWith(selected);
-    expect(row1).toEqual(['leaveBalance', 'nextHoliday', 'pendingTasks', 'upcomingEvents']);
-    expect(row1.length).toBe(MAX_FIRST_ROW);
-    expect(row2).toEqual([pinnedKey]); // the full-width fixed row
-    expect(row3).toEqual(['recentlyJoined', 'recentActivity']); // 5th+ non-pinned cards land below it
-  });
-
-  it('fewer than MAX_FIRST_ROW non-pinned cards → empty row3', () => {
-    const { row1, row2, row3 } = partitionWith(['leaveBalance', pinnedKey, 'pendingTasks']);
-    expect(row1).toEqual(['leaveBalance', 'pendingTasks']);
-    expect(row2).toEqual([pinnedKey]);
-    expect(row3).toEqual([]);
-  });
-
-  it('with the PRODUCTION pin rule row2 is always empty, and no card is lost to it', () => {
-    // a00c4f64: the only way row2 renders today is a future FIXED_ROW_KEYS entry. Every selected card
-    // must still land in row1/row3 — an emptied pin list must not swallow anything.
-    const selected = ['leaveBalance', 'nextHoliday', 'pendingTasks', 'upcomingEvents', 'recentActivity'];
-    const { row1, row2, row3 } = partition(selected);
-    expect(row2).toEqual([]);
-    expect([...row1, ...row3]).toEqual(selected);
-  });
-
-  it('default builtin layout: row1 = leaveBalance · nextHoliday · pendingTasks · upcomingEvents', () => {
-    const layout = normalizeDashboardLayout(null, BUILTIN_DASHBOARD_CARDS);
-    const { row1, row2, row3 } = partitionDashboardRows(layout, layout.selected.filter(isFixedRowKey));
-    expect(row1).toEqual(['leaveBalance', 'nextHoliday', 'pendingTasks', 'upcomingEvents']);
-    expect(row2).toEqual([]); // the calendar used to sit here
-    expect(row3).toEqual(['recentlyJoined', 'recentActivity', 'noticeBoard']);
-  });
-});
 
 describe('normalizeDashboardLayout against the builtin catalog (a00c4f64 flags)', () => {
   it('the Leave Calendar is out of the catalog and NOTHING is mandatory any more', () => {
     expect(BUILTIN_DASHBOARD_CARDS.find((c) => c.cardKey === 'plannedAbsences')).toBeUndefined();
-    // It was the only mandatory card; with it gone every card on every role catalog is removable.
-    for (const [role, cards] of Object.entries(BUILTIN_ROLE_DASHBOARD_CARDS)) {
-      expect(cards.filter((c) => c.mandatory).map((c) => c.cardKey), `${role} mandatory cards`).toEqual([]);
-      expect(cards.map((c) => c.cardKey), `${role} still lists the calendar`).not.toContain('plannedAbsences');
-    }
+    // It was the only mandatory card; with it gone every builtin card is removable. (The manager and HR-admin
+    // builtin catalogs were retired with the old dashboard on 12 Nov 2026.)
+    expect(BUILTIN_DASHBOARD_CARDS.filter((c) => c.mandatory).map((c) => c.cardKey)).toEqual([]);
     // Display-order swap (0296) is untouched by the move: upcomingEvents 5, recentlyJoined 6.
     expect(BUILTIN_DASHBOARD_CARDS.find((c) => c.cardKey === 'upcomingEvents')!.displayOrder).toBe(5);
     expect(BUILTIN_DASHBOARD_CARDS.find((c) => c.cardKey === 'recentlyJoined')!.displayOrder).toBe(6);
@@ -164,18 +85,15 @@ describe('normalizeDashboardLayout against the builtin catalog (a00c4f64 flags)'
       'plannedAbsences',
     ];
     const layout = normalizeDashboardLayout({ selected: oldSaved, order: oldSaved }, BUILTIN_DASHBOARD_CARDS);
-    const { row1, row2, row3 } = partitionDashboardRows(layout, layout.selected.filter(isFixedRowKey));
-    expect(row2).toEqual([]);
     // pendingTasks is the last card of the flat order (its old fixed spot forced it there) — the
-    // disclosed existing-user behavior; the card has a drag grip to move it up.
-    const flat = [...row1, ...row3];
+    // disclosed existing-user behavior.
+    const flat = layout.selected;
     expect(flat).not.toContain('plannedAbsences');
     expect(flat[flat.length - 1]).toBe('pendingTasks');
     // noticeBoard is not in the saved SELECTION (it shipped later), so it lands in `order` only — an
     // explicit save is a closed set, unlike the legacy array form.
     expect(flat).not.toContain('noticeBoard');
-    expect(row1).toEqual(['leaveBalance', 'nextHoliday', 'recentlyJoined', 'upcomingEvents']);
-    expect(row3).toEqual(['recentActivity', 'pendingTasks']);
+    expect(flat).toEqual(['leaveBalance', 'nextHoliday', 'recentlyJoined', 'upcomingEvents', 'recentActivity', 'pendingTasks']);
   });
 });
 
@@ -254,12 +172,8 @@ describe('0404 data migration — the Leave Calendar leaves the dashboard catalo
     expect(byKey.get('pendingTasks')).toMatchObject({ mandatory: false });
     expect(byKey.get('upcomingEvents')!.displayOrder).toBe(5);
     expect(byKey.get('recentlyJoined')!.displayOrder).toBe(6);
-    // The tenant default therefore partitions to the new arrangement, with an empty fixed row.
-    const layout = normalizeDashboardLayout(null, cards);
-    const rows = partitionDashboardRows(layout, layout.selected.filter(isFixedRowKey));
-    expect(rows.row1).toEqual(['leaveBalance', 'nextHoliday', 'pendingTasks', 'upcomingEvents']);
-    expect(rows.row2).toEqual([]);
-    expect(rows.row3).toEqual(['recentlyJoined', 'recentActivity']);
+    // The tenant default therefore normalises to the new arrangement.
+    expect(normalizeDashboardLayout(null, cards).selected).toEqual(['leaveBalance', 'nextHoliday', 'pendingTasks', 'upcomingEvents', 'recentlyJoined', 'recentActivity']);
   });
 
   it('repoints the Team Away Today href off the dead in-page anchor', async () => {
@@ -298,7 +212,7 @@ describe('0404 data migration — the Leave Calendar leaves the dashboard catalo
     expect(byKey.get('recentlyJoined')!.displayOrder).toBe(6);
   });
 
-  it('a SAVED layout that still names the calendar loads without it, and keeps the rest', async () => {
+  it('a layout saved before the calendar left normalises without it, and keeps the rest', async () => {
     // The DB half of the "no dashboard_layout migration needed" claim: the JSON is written before the
     // card is deleted, and read back after.
     await owner.db.execute(sql.raw(seed0212));
@@ -307,90 +221,65 @@ describe('0404 data migration — the Leave Calendar leaves the dashboard catalo
     const before = await listEmployeeDashboardCards(ctx);
     const keys = before.map((c) => c.cardKey);
     expect(keys).toContain('plannedAbsences');
-    await setDashboardLayout(ctx, { selected: keys, order: keys }, before);
+    const saved = normalizeDashboardLayout({ selected: keys, order: keys }, before);
     // …now the card goes away.
     for (const stmt of stmts0404) await owner.db.execute(sql.raw(stmt));
     const after = await listEmployeeDashboardCards(ctx);
-    const layout = await getDashboardLayout(ctx, after);
+    const layout = normalizeDashboardLayout(saved, after);
     expect(layout.selected).not.toContain('plannedAbsences');
     expect(layout.order).not.toContain('plannedAbsences');
     expect(layout.selected).toEqual(keys.filter((k) => k !== 'plannedAbsences'));
   });
 
-  it('an employee CAN remove Pending Tasks: the removal persists', async () => {
+  it('an employee CAN remove Pending Tasks: the write rule keeps the removal', async () => {
     await runSeedAndMigration();
     const ctx = await newEmployeeCtx();
     const cards = await listEmployeeDashboardCards(ctx);
     const withoutTasks = cards.map((c) => c.cardKey).filter((k) => k !== 'pendingTasks');
-    await setDashboardLayout(ctx, { selected: withoutTasks, order: withoutTasks }, cards);
-    const layout = await getDashboardLayout(ctx, cards);
+    const layout = normalizeDashboardLayout({ selected: withoutTasks, order: withoutTasks }, cards);
     expect(layout.selected).not.toContain('pendingTasks');
   });
 
   // ─────────────────────── manager / hr_admin role parity (9606c59f) ───────────────────────
 
-  const expectManagerRows = (rows: { row1: string[]; row2: string[]; row3: string[] }) => {
-    // Drift guard: the manager DEFAULT arrangement mirrors the old hardcoded manager dashboard — the three
-    // summary cards up top (the 4th slot takes upcomingEvents, the employee-default convention) and the
-    // sections below. a00c4f64 removed the pinned calendar from between them; nothing else moved.
-    expect(rows.row1).toEqual(['teamAwayToday', 'approvalRequests', 'upcomingReminders', 'upcomingEvents']);
-    expect(rows.row2).toEqual([]);
-    // 6e122302 appends noticeBoard at display_order 11 — after everything, so nothing above it moved.
-    expect(rows.row3).toEqual(['recentlyJoined', 'recentActivity', 'attendanceOverview', 'noticeBoard']);
-  };
-  const expectAdminRows = (rows: { row1: string[]; row2: string[]; row3: string[] }) => {
-    // Drift guard: the hr_admin DEFAULT keeps the old top stat row exactly, then the section cards.
-    expect(rows.row1).toEqual(['headcount', 'pendingLeave', 'companies', 'latestPayroll']);
-    expect(rows.row2).toEqual([]);
-    expect(rows.row3).toEqual([
-      'upcomingEvents',
-      'recentlyJoined',
-      'recentActivity',
-      'attendanceOverview',
-      'headcountByCompany',
-      'latestPayrollRun',
-      // 6e122302 — appended at display_order 11, after every pre-existing card.
-      'noticeBoard',
-    ]);
-  };
-  const partitionDefault = (cards: readonly DashboardCardChoice[]) => {
-    const layout = normalizeDashboardLayout(null, cards);
-    return partitionDashboardRows(layout, layout.selected.filter(isFixedRowKey));
-  };
+  // The Card Library's active cards for one audience, as listCards (the screen's own read) returns them. The old
+  // dashboard's per-role reader was retired with it (12 Nov 2026); the seeded rows stay in the library.
+  const audienceCards = async (ctx: SessionContext, role: DashboardCardAudience): Promise<DashboardCardChoice[]> =>
+    (await listCards(ctx)).filter((c) => c.status === 'active' && c.audience.includes(role));
+  const defaultOrder = (cards: readonly DashboardCardChoice[]) => normalizeDashboardLayout(null, cards).selected;
+  // Drift guard: the manager DEFAULT order mirrors the old hardcoded manager dashboard — the three summary cards,
+  // then upcomingEvents and the sections; 6e122302 appended noticeBoard at display_order 11.
+  const MANAGER_DEFAULT = ['teamAwayToday', 'approvalRequests', 'upcomingReminders', 'upcomingEvents', 'recentlyJoined', 'recentActivity', 'attendanceOverview', 'noticeBoard'];
+  // Drift guard: the hr_admin DEFAULT keeps the old top stat row, then the section cards, then noticeBoard.
+  const ADMIN_DEFAULT = ['headcount', 'pendingLeave', 'companies', 'latestPayroll', 'upcomingEvents', 'recentlyJoined', 'recentActivity',
+    'attendanceOverview', 'headcountByCompany', 'latestPayrollRun', 'noticeBoard'];
 
   it('manager/admin DEFAULT parity off the seeded catalog (drift guard vs the old hardcoded order)', async () => {
     await runFullSeedChain();
     const ctx = await newEmployeeCtx();
-    expectManagerRows(partitionDefault(await listDashboardCards(ctx, 'manager')));
-    expectAdminRows(partitionDefault(await listDashboardCards(ctx, 'hr_admin')));
+    expect(defaultOrder(await audienceCards(ctx, 'manager'))).toEqual(MANAGER_DEFAULT);
+    expect(defaultOrder(await audienceCards(ctx, 'hr_admin'))).toEqual(ADMIN_DEFAULT);
   });
 
-  it('the builtin per-role fallback catalogs partition to the SAME defaults as the seeds (no drift)', () => {
-    expectManagerRows(partitionDefault(BUILTIN_ROLE_DASHBOARD_CARDS.manager));
-    expectAdminRows(partitionDefault(BUILTIN_ROLE_DASHBOARD_CARDS.hr_admin));
-    // and the employee builtin keeps its 2806443b arrangement minus the calendar
-    const rows = partitionDefault(BUILTIN_ROLE_DASHBOARD_CARDS.employee);
-    expect(rows.row1).toEqual(['leaveBalance', 'nextHoliday', 'pendingTasks', 'upcomingEvents']);
-    expect(rows.row2).toEqual([]);
-    expect(rows.row3).toEqual(['recentlyJoined', 'recentActivity', 'noticeBoard']);
+  it('the employee builtin catalog keeps its 2806443b arrangement minus the calendar', () => {
+    expect(defaultOrder(BUILTIN_DASHBOARD_CARDS)).toEqual(['leaveBalance', 'nextHoliday', 'pendingTasks', 'upcomingEvents', 'recentlyJoined', 'recentActivity', 'noticeBoard']);
   });
 
   it('the calendar is gone for manager and hr_admin too, not just the employee', async () => {
     await runFullSeedChain();
     const ctx = await newEmployeeCtx();
     for (const role of ['manager', 'hr_admin'] as const) {
-      const cards = await listDashboardCards(ctx, role);
+      const cards = await audienceCards(ctx, role);
       expect(cards.map((c) => c.cardKey), role).not.toContain('plannedAbsences');
     }
   });
 
-  it('an OPTIONAL manager card removal persists (remove works for the new roles too)', async () => {
+  it('an OPTIONAL manager card removal is kept by the write rule (remove works for every role catalog)', async () => {
     await runFullSeedChain();
     const ctx = await newEmployeeCtx();
-    const cards = await listDashboardCards(ctx, 'manager');
+    const cards = await audienceCards(ctx, 'manager');
     const withoutAway = cards.map((c) => c.cardKey).filter((k) => k !== 'teamAwayToday');
-    await setDashboardLayout(ctx, { selected: withoutAway, order: withoutAway }, cards, 'manager');
-    const layout = await getDashboardLayout(ctx, cards, 'manager');
+    const layout = normalizeDashboardLayout({ selected: withoutAway, order: withoutAway }, cards);
     expect(layout.selected).not.toContain('teamAwayToday');
   });
 

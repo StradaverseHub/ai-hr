@@ -561,6 +561,9 @@ export async function previewMovementImport(ctx:SessionContext,p:{companyId?:str
   const held={employee};
   try{
    await withTenant(ctx,async tx=>{
+    // Exclusive on purpose (reviewed 12 November 2026, SCALE rule 1): this check is not a read. It rehearses the real
+    // movement writers in rolled-back savepoints, and rehearseMovementSequenceTx and the owners it composes take the
+    // exclusive lock themselves; rehearsal and commit must hold the same mode (ADR 2026-11-10 movement import job).
     await limits(tx);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     // Throwing is mandatory even after successful rehearsal. withTenant never observes success.
     throw new PreviewRollback(await checkEmployeeTx(tx,ctx,{employee,companyId,code,records,selection,inputHash,catalogueHash:p.catalogueHash,deadline},held));

@@ -9,6 +9,7 @@ import { Badge, Button, Card, EmployeeName, Field, inputCls } from '@/components
 import { CollapsibleEmployeePanel } from '@/components/collapsible-employee-panel';
 import { formatMoney } from '@/lib/money';
 import { isTransactionEffectiveDate } from '@/lib/transaction-effective-date';
+import { payFormulaInputIsKeyedQuantity } from '@/lib/pay-formula-input';
 import {
   createIndividualTxnAction,
   createIndividualTxnDayGridAction,
@@ -1223,7 +1224,9 @@ export function TxnWorkspace({
         item: resolvedItem,
         txnDate: detail.txnDate,
         amount: Number(detail.amount).toString(),
-        quantity: itemByValue.get(resolvedItem)?.formulaBuilder&&detail.calculationMethod==null?Number(detail.amount).toString():detail.quantity != null ? Number(detail.quantity).toString() : '',
+        // lib/pay-formula-input.ts: a method-NULL row's amount is its raw input unless a Pay Item rule priced it from
+        // the keyed quantity (then the quantity is the input, exactly as payroll and re-pricing read it).
+        quantity: itemByValue.get(resolvedItem)?.formulaBuilder&&detail.calculationMethod==null&&!payFormulaInputIsKeyedQuantity(detail)?Number(detail.amount).toString():detail.quantity != null ? Number(detail.quantity).toString() : '',
         // 2da9937a — a row keyed BEFORE its pay item started calculating carries no unit (or the wrong
         // one). The Input Type select is disabled on a calculating item, so leaving the stored value would
         // strand the operator on a form they cannot make valid: the item's required input wins.

@@ -147,6 +147,7 @@ import { setToilPolicy } from '@/core/toil';
 import { createReplacementYearCloseJob, createToilExpiryJob, TOIL_SWEEP_ALREADY_RUNNING } from '@/core/toil-sweep-job';
 import { REPLACEMENT_ELIGIBILITY_CRITERIA, type ReplacementRequestEligibility } from '@/core/replacement-eligibility';
 import { setEncashmentPolicy } from '@/core/leave-encashment';
+import { LeaveTeamMinimumError, setLeaveTeamMinimum } from '@/packs/leave/service';
 import type { ToilAccrualBasis, ToilExpiryAction, ToilExpiryUnit, ToilReplacementLeaveFrom } from '@/db/schema';
 import { upsertCompanyBankProfile, removeCompanyBankProfile, type DisbursementBank } from '@/core/bank-profile';
 import { isMyBankKey, myBankLabel } from '@/lib/my-banks';
@@ -2512,6 +2513,23 @@ export async function setLeaveEncashmentPolicyAction(fd: FormData) {
     // a6fe37fc ROUND 5 (cutover) — RETURNS TO COMPANY RULES. The encashment policy was on Payroll impact
     // and is on Company rules now (IA §2.0.3, F40); returning to the leave TYPE screen would leave the
     // administrator looking at a list that does not contain what they just saved.
+    fail(COMPANY_RULES, e);
+  }
+  ok(COMPANY_RULES);
+}
+
+/** Owner decision 12 November 2026 — one company's "minimum people present" for the leave recommendation, from Company
+ *  rules. The service authorizes (administrator of that company), changes the value and records the audit event in one
+ *  transaction; an empty box clears the minimum. A refusal returns to the same screen in the reader's language. */
+export async function setLeaveTeamMinimumAction(fd: FormData) {
+  const s = await getSession();
+  try {
+    await setLeaveTeamMinimum(s, { companyId: fd.get('companyId'), minimum: fd.get('minimum') ?? '' });
+  } catch (e) {
+    if (e instanceof LeaveTeamMinimumError) {
+      const t = await getTranslations('admin.leaveConfigCompanyRules.teamMinimum.error');
+      fail(COMPANY_RULES, new Error(t(e.code)));
+    }
     fail(COMPANY_RULES, e);
   }
   ok(COMPANY_RULES);

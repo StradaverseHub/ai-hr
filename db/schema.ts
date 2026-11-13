@@ -305,6 +305,10 @@ export const company = pgTable(
     escalationTarget: text('escalation_target').notNull().default('next_level'),
     escalationTargetRole: text('escalation_target_role'),
     escalationUpdatedAt: timestamp('escalation_updated_at', { withTimezone: true }),
+    // Owner decision 12 November 2026 (migration 5161): the fewest people of a team who must be present on any
+    // day, which the approver recommendation's team_coverage check reads. NULL = no minimum (the recommendation is
+    // unchanged). CHECK: NULL or >= 0. Written only by core/leave-team-minimum.ts setLeaveTeamMinimum.
+    leaveTeamMinimumPresent: integer('leave_team_minimum_present'),
     // r79a (4fb8b75a step 3) — two per-company HR defaults RELOCATED off company_payroll_config (migration
     // 0324), where they had nothing to do with payroll. Columns on `company` rather than a new table: the
     // 0287 escalation precedent and the leave_* siblings above (RLS + grant already in place).
@@ -333,6 +337,8 @@ export const company = pgTable(
     check('company_escalation_target_check', sql`${t.escalationTarget} IN ('next_level', 'specific_role')`),
     // r79a (migration 0324) — the DB mirror of core/hiring-defaults.ts's cleaners.
     check('company_probation_months_check', sql`${t.probationMonths} IS NULL OR ${t.probationMonths} > 0`),
+    // Migration 5161 — the team minimum is a whole number of people, or unset.
+    check('company_leave_team_minimum_present_check', sql`${t.leaveTeamMinimumPresent} IS NULL OR ${t.leaveTeamMinimumPresent} >= 0`),
     check(
       'company_review_reminder_days_check',
       sql`${t.reviewReminderDays} IS NULL OR (array_length(${t.reviewReminderDays}, 1) BETWEEN 1 AND 10 AND 1 <= ALL (${t.reviewReminderDays}) AND 365 >= ALL (${t.reviewReminderDays}))`,
@@ -4694,6 +4700,11 @@ export const attendanceCorrection = pgTable(
     decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     createdAt: createdAt(),
+    /** 96a54ed2 (5142): who filed the application on the employee's behalf, stamped by the database from the live
+     *  caller. NULL = the employee filed it themselves (every application before 5142). Immutable. */
+    submittedByUserId: uuid('submitted_by_user_id'),
+    submittedByPersonId: uuid('submitted_by_person_id'),
+    submittedByName: text('submitted_by_name'),
   },
   (t) => [
     index('attendance_correction_employment_idx').on(t.employmentId, t.attendanceDate),
@@ -10899,7 +10910,24 @@ export const attendanceWorkflowRequest = pgTable('attendance_workflow_request', 
     stages: jsonb('stages').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedStage[]>(), currentStage: integer('current_stage').notNull().default(0), createdAt: createdAt(),
     /** v4 only: levels decided "not required" at submission because the reporting chain had ended. */
     skippedLevels: jsonb('skipped_levels').notNull().default([]).$type<import('../lib/attendance-workflow').AttendanceSkippedLevel[]>(),
+    /** Set by the stage-clock trigger (5141) when the current level is reached; NULL on requests submitted before it. */
+    stageReachedAt: timestamp('stage_reached_at', { withTimezone: true }),
+    /** HR-local date the current level escalates (v4 levels with escalateAfterDays, never the final level). */
+    escalateOn: date('escalate_on'),
 }, t => [uniqueIndex('attendance_workflow_request_correction').on(t.correctionId)]);
+/** Immutable automatic escalation history (5141): one row per request level, written only by the system runner. */
+export const attendanceWorkflowEscalation = pgTable('attendance_workflow_escalation', {
+    id: id(), tenantId: tenantId(), requestId: uuid('request_id').notNull().references(() => attendanceWorkflowRequest.id),
+    stageIndex: integer('stage_index').notNull(), nextStageIndex: integer('next_stage_index').notNull(),
+    escalateAfterDays: integer('escalate_after_days').notNull(), stageReachedAt: timestamp('stage_reached_at', { withTimezone: true }).notNull(),
+    dueOn: date('due_on').notNull(),
+    fromParticipants: jsonb('from_participants').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedApprover[]>(),
+    partialDecisions: jsonb('partial_decisions').notNull().default([]).$type<{slot:string;decision:'approved'|'rejected';actualActorName:string;actualPersonId:string;decidedAt:string}[]>(),
+    nextParticipants: jsonb('next_participants').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedApprover[]>(),
+    reason: text('reason').notNull().default('no_decision_within_period').$type<'no_decision_within_period'>(),
+    actor: text('actor').notNull().default('system').$type<'system'>(),
+    escalatedAt: timestamp('escalated_at', { withTimezone: true }).notNull().defaultNow(),
+}, t => [uniqueIndex('attendance_workflow_escalation_once').on(t.requestId, t.stageIndex)]);
 /** Append-only Preview Assignment snapshot of one saved workflow version (admin of every workflow company). */
 export const attendanceWorkflowPreview = pgTable('attendance_workflow_preview', {
     id: id(), tenantId: tenantId(), lineageId: uuid('lineage_id').notNull(), templateId: uuid('template_id').notNull(),
@@ -10915,7 +10943,7 @@ export const attendanceWorkflowDecision = pgTable('attendance_workflow_decision'
     decision: text('decision').notNull().$type<'approved' | 'rejected'>(), assignedKind: text('assigned_kind').notNull(),
     assignedEmploymentId: uuid('assigned_employment_id').references(() => employment.id), actualUserId: text('actual_user_id').notNull(), actualActorName: text('actual_actor_name').notNull(),
     actualPersonId: uuid('actual_person_id').references(() => person.id), actualEmploymentId: uuid('actual_employment_id').references(() => employment.id),
-    actingMode: text('acting_mode').notNull().$type<'assigned' | 'delegate' | 'administrator'>(), remarks: text('remarks'),
+    actingMode: text('acting_mode').notNull().$type<'assigned' | 'delegate' | 'administrator' | 'on_behalf'>(), remarks: text('remarks'),
     previousStatus: text('previous_status').notNull(), resultingStatus: text('resulting_status').notNull(),
     decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
 }, t => [uniqueIndex('attendance_workflow_decision_stage').on(t.requestId, t.stageIndex)]);
@@ -10928,7 +10956,7 @@ export const attendanceWorkflowParticipantDecision = pgTable('attendance_workflo
     decision: text('decision').notNull().$type<'approved' | 'rejected'>(), assigned: jsonb('assigned').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedApprover>(),
     actualUserId: uuid('actual_user_id').notNull().references(() => appUser.id), actualPersonId: uuid('actual_person_id').notNull().references(() => person.id),
     actualEmploymentId: uuid('actual_employment_id').references(() => employment.id), actualActorName: text('actual_actor_name').notNull(),
-    actingMode: text('acting_mode').notNull().$type<'assigned' | 'delegate' | 'administrator'>(), remarks: text('remarks'), decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
+    actingMode: text('acting_mode').notNull().$type<'assigned' | 'delegate' | 'administrator' | 'on_behalf'>(), remarks: text('remarks'), decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
 }, t => [uniqueIndex('attendance_workflow_participant_slot').on(t.requestId, t.stageIndex, t.participantSlot)]);
 export const attendanceWorkflowParticipantReassignment = pgTable('attendance_workflow_participant_reassignment', {
     id: id(), tenantId: tenantId(), requestId: uuid('request_id').notNull().references(() => attendanceWorkflowRequest.id), stageIndex: integer('stage_index').notNull(), participantSlot: text('participant_slot').notNull(),
@@ -11599,7 +11627,9 @@ export const bankImportRow=pgTable('bank_import_row',{
  jobId:uuid('job_id').notNull().references(()=>bankImportJob.id,{onDelete:'cascade'}),ordinal:integer('ordinal').notNull(),record:jsonb('record').notNull(),preview:jsonb('preview'),
  companyId:uuid('company_id').references(()=>company.id),employmentId:uuid('employment_id').references(()=>employment.id),binding:text('binding'),state:text('state').notNull().default('pending'),error:text('error'),
 },t=>[primaryKey({columns:[t.jobId,t.ordinal]}),index('bank_import_row_pending').on(t.jobId,t.state,t.ordinal)]);
-/** Current import amounts for batch dashboards; original closed batch counters stay immutable. */
+/** Current import amounts for batch dashboards; original closed batch counters stay immutable. Readers select the view by
+ * name, so the installed definition governs (5129: each history batch's figures computed once, per reader, without
+ * per-payslip row security); the expressions below only name its columns. */
 const payrollHistoryBatchView=pgView('payroll_history_effective_batch').as(qb=>qb.select({
  ...getTableColumns(payrollBatch),
  totals:sql<unknown>`CASE WHEN ${payrollBatch.historyImportAttemptId} IS NULL THEN ${payrollBatch.totals} ELSE app.payroll_history_batch_totals(${payrollBatch.id}) END`.as('totals'),

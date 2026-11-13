@@ -50,12 +50,17 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   return rows;
  };
  // The combined block adds the staged-import marker column (5010, 5070) to some of these tables. It is null on every
- // row no import staged, and only then is the row compared without it.
+ // row no import staged, and only then is the row compared without it. 5161 (draft 9770) adds the company's team minimum the
+ // same way: unset on every company that predates it.
  const withoutImportMarker=(rows:Record<string,unknown>)=>Object.fromEntries(Object.entries(rows).map(([table,list])=>[table,
   (list as {row:Record<string,unknown>}[]).map(({row})=>{
-   if(!('import_pending_attempt_id' in row))return {row};
-   expect(row.import_pending_attempt_id,table+' staged-import marker').toBeNull();
-   const rest={...row};delete rest.import_pending_attempt_id;return {row:rest};
+   const rest={...row};
+   for(const column of ['import_pending_attempt_id',...(table==='company'?['leave_team_minimum_present']:[])]){
+    if(!(column in rest))continue;
+    expect(rest[column],table+'.'+column+' on a retained row').toBeNull();
+    delete rest[column];
+   }
+   return {row:rest};
   })]));
  // Everything a grant or policy could change, except the one function ACL 2100 deliberately narrows.
  const privileges=async()=>({
@@ -203,6 +208,26 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5126_contract_internship_end_dates',
    // Board item 8d02748a, renumbered at the Irwin board integration onto release candidate 3.
    '5127_import_log_actor_labels',
+   // Payroll history effective reads (12 November 2026), above PR 240's 5128.
+   '5129_payroll_history_effective_reads',
+   // Background AI Formula Generator draft job (12 November 2026), above 5129.
+   '5130_pay_formula_ai_draft_job',
+   // Irwin attendance workflow lane draft (daa76ed4/96a54ed2).
+   '5140_attendance_workflow_cross_company_pending',
+   '5141_attendance_workflow_escalation',
+   '5142_attendance_on_behalf',
+   '5143_attendance_final_decision_window',
+   '5144_attendance_lane_security_review',
+   // 96a54ed2: the AI Centre controls for the two on-behalf reads.
+   '5145_ai_attendance_on_behalf_reads',
+   // Irwin Schedule Group Overtime Setting (2f803985): per-date rounding (function replacement only).
+   '5150_attendance_policy_dated_rounding',
+   // Sweep reads each company's net-swing threshold (draft 9760), allocated 5160 (13 November 2026).
+   '5160_sweep_swing_thresholds',
+   // Manager Today team minimum (draft 9770), allocated 13 November 2026 as 5161.
+   '5161_leave_team_minimum_present',
+   // Probation and passport loops act as request-only steps (13 November 2026): draft 9780 allocated as 5162, widened CHECKs only.
+   '5162_teras_loop_request_acts',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -233,6 +258,12 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const privateFunctions=[
    // Board window 4 (5124): a trigger function, never granted to the application role.
    'app.attendance_workflow_preview_bind()',
+   // daa76ed4/96a54ed2 (5140-5142): the login rule helper and two trigger functions, never granted to the application role.
+   'app.attendance_workflow_approver_login(uuid)','app.attendance_workflow_stage_clock()','app.attendance_correction_submitter_guard()',
+   // 5143: the request-bound final-decision read window proof, called only by the owner-run visibility functions.
+   'app.attendance_effect_window_employment()',
+   // 5144: the window token and proof (owner only).
+   'app.attendance_final_window_token(uuid,uuid)','app.attendance_final_window_prove(uuid)',
    'app._access_bootstrap_eligible(uuid,uuid)','app._access_workforce_list_rows(uuid[])','app._ai_control_context_for_purpose(text,boolean,boolean)',
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()','app._assert_assistant_rewards_presentation_v1(text)',
    'app._assistant_assigned_index_login(uuid,boolean)','app._assistant_presentation_feature_unpaused_v1()','app._assistant_rewards_calendar_choice_payload_v1()',
@@ -248,6 +279,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.import_settle(uuid,uuid,integer)','app.label_import_marker_visible(uuid)','app.leave_ledger_stage_stamp()',
    'app.movement_revert_capture_never_commits()','app.movement_revert_capture_row()','app.notification_event_processing_enqueue()','app.org_structure_statement_lock()',
    'app.payroll_history_row_visible(text,uuid)','app.register_import_release(uuid,boolean)','app.system_label_import_discard_batch(uuid,uuid,uuid,uuid,integer)',
+   // 5129: the set-wise effective-snapshot owner, inlined into app.payroll_history_effective and the batch aggregate.
+   'app.payroll_history_effective_ids(uuid[])',
   ];
   const publicFunctions:string[]=[];
   const addedFunctions=[
@@ -262,10 +295,14 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.access_profile_policy_value_lock()','app.access_workforce_employment_permitted(uuid,uuid,timestamp with time zone,uuid,uuid[])','app.access_workforce_list_facts()',
    'app.access_workforce_list_rows_for_ids(uuid[])','app.access_workforce_permitted_companies(text)','app.access_workforce_picker_facts(uuid[])',
    'app.ai_centre_mandate_bound_tenant()','app.ai_centre_mandate_write_order()','app.assistant_rewards_calendar_presentation_choices_v1()',
-   'app.assistant_rewards_cancel_presentation_choices_v1()','app.assistant_rewards_return_presentation_choices_v1()','app.attendance_clock_policy_history(uuid,uuid)',
+   'app.assistant_rewards_cancel_presentation_choices_v1()','app.assistant_rewards_return_presentation_choices_v1()','app.attendance_clock_policy_history(uuid,uuid)','app.attendance_correction_submitter_guard()','app.attendance_effect_window_employment()','app.attendance_final_window_prove(uuid)','app.attendance_final_window_token(uuid,uuid)',
    'app.attendance_frozen_actor_identity_keys(jsonb,text)','app.attendance_pending_visible_headers(uuid)',
+   // daa76ed4/96a54ed2 (5140-5142): resolution, escalation and on-behalf owners.
+   'app.attendance_workflow_approver_login(uuid)','app.attendance_workflow_close_final_window()','app.attendance_workflow_escalate(uuid,date)','app.attendance_workflow_escalation_due(date,date,uuid,integer)',
+   'app.attendance_workflow_escalation_written(uuid,uuid,integer)','app.attendance_workflow_hierarchy_v5(uuid,integer)',
+   'app.attendance_workflow_on_behalf_allowed(uuid,integer,text)','app.attendance_workflow_on_behalf_slot(uuid,uuid)','app.attendance_workflow_open_final_window(uuid)',
    // Board window 4 (5124): the preview binding trigger (owner only) and the superior diagnostic.
-   'app.attendance_workflow_preview_bind()','app.attendance_workflow_superior_diagnostic(uuid,integer)',
+   'app.attendance_workflow_preview_bind()','app.attendance_workflow_stage_clock()','app.attendance_workflow_superior_diagnostic(uuid,integer)',
    'app.bulk_job_access(uuid)',
    'app.bulk_job_admit()','app.bulk_job_attribution()','app.bulk_job_capability_held(uuid)',
    'app.bulk_job_clear_inputs(uuid,boolean)','app.bulk_job_enqueue(text,uuid,uuid[],text,bytea,jsonb)','app.bulk_job_event_attribution()',
@@ -286,13 +323,14 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.leave_stage_digests(uuid[],uuid[],boolean)','app.leave_stage_release(uuid,uuid)','app.leave_stage_released_ids()',
    'app.may_have_attendance_task_metadata()','app.movement_revert_capture_never_commits()','app.movement_revert_capture_row()','app.notification_event_processing_enqueue()',
    'app.notification_projection_exists(uuid,uuid,text)','app.org_structure_statement_lock()','app.payroll_batch_period_required()',
-   'app.payroll_history_hidden_rows(text)','app.payroll_history_row_visible(text,uuid)','app.payroll_history_stage_busy(uuid)',
+   'app.payroll_history_batch_admin_totals(uuid)','app.payroll_history_batch_visible_totals(uuid)','app.payroll_history_effective_ids(uuid[])',
+   'app.payroll_history_hidden_rows(text)','app.payroll_history_row_visible(text,uuid)','app.payroll_history_self_employment_ids()','app.payroll_history_stage_busy(uuid)',
    'app.payroll_history_stage_open(uuid,uuid,text)','app.payroll_history_stage_release(uuid)','app.payroll_history_stage_stamp()',
    'app.payroll_input_lock_keys(uuid[],uuid)','app.personnel_list_rows_for_ids(date,uuid[],uuid[])','app.personnel_overview_facts(date,uuid[])',
    'app.personnel_overview_filter_fields(date,uuid[])','app.personnel_overview_narrow_rows(date,uuid[])','app.personnel_overview_page_rows(date,uuid[],uuid[])',
    'app.personnel_overview_page_rows_typed(date,uuid[],uuid[])','app.personnel_private_search_entries(text,uuid[])',
    'app.personnel_search_candidates(uuid[],boolean,boolean,text,text,text,text,text[])','app.register_import_release(uuid,boolean)',
-   'app.reward_access_observation_due(uuid)','app.system_label_import_conflicts(uuid)','app.system_label_import_discard_batch(uuid,uuid,uuid,uuid,integer)',
+   'app.reward_access_observation_due(uuid)','app.sweep_swing_thresholds(uuid[])','app.system_label_import_conflicts(uuid)','app.system_label_import_discard_batch(uuid,uuid,uuid,uuid,integer)',
    'app.system_label_import_release_attempt(uuid,uuid)',
   ];
   const beforeFunctions=new Set(beforePerformancePrivileges.functions.map(row=>row.fn));
@@ -317,6 +355,31 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    }
    return qualifiers;
   });
+  // daa76ed4/96a54ed2 (5141-5142): this lane's new and replaced policies, each compared with PostgreSQL's own rendering
+  // of the reviewed expression (parsed on the same table and discarded), never with a hand-typed digest.
+  const ownerRead="tenant_id=app.current_tenant_id() AND request_id::text=current_setting('app.attendance_workflow_escalating',true) AND current_user=pg_catalog.pg_get_userbyid((SELECT p.proowner FROM pg_catalog.pg_proc p WHERE p.oid='app.attendance_workflow_escalate(uuid,date)'::regprocedure))";
+  const lanePolicies:{table:string;name:string;cmd:'SELECT'|'INSERT';using:string|null;check:string|null;replaces:boolean}[]=[
+   {table:'attendance_workflow_escalation',name:'attendance_workflow_escalation_read',cmd:'SELECT',replaces:false,check:null,
+    using:"tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.attendance_workflow_request w WHERE w.id=request_id AND w.tenant_id=app.current_tenant_id() AND app.attendance_workflow_v3_read(w.correction_id))"},
+   {table:'attendance_workflow_participant_decision',name:'attendance_workflow_escalation_owner_read',cmd:'SELECT',replaces:false,check:null,using:ownerRead},
+   {table:'attendance_workflow_participant_reassignment',name:'attendance_workflow_escalation_owner_read',cmd:'SELECT',replaces:false,check:null,using:ownerRead},
+   {table:'attendance_workflow_participant_decision',name:'attendance_workflow_v3_participant_insert',cmd:'INSERT',replaces:true,using:null,
+    check:"tenant_id=app.current_tenant_id() AND actual_user_id=app.current_user_id() AND EXISTS(SELECT 1 FROM public.attendance_workflow_request w WHERE w.id=request_id AND w.tenant_id=app.current_tenant_id() AND (app.attendance_workflow_v3_decision_slot(w.correction_id) IS NOT NULL OR (acting_mode='on_behalf' AND app.attendance_workflow_on_behalf_slot(w.correction_id,(assigned->>'employmentId')::uuid)->>'slot'=participant_slot)))"},
+  ];
+  const laneRendered=await storage.client.begin(async tx=>{
+   const out:{qual:string|null;with_check:string|null}[]=[];
+   for(const policy of lanePolicies){
+    await tx.unsafe(`create policy lane_reference on public.${policy.table} for ${policy.cmd}${policy.using?` using (${policy.using})`:''}${policy.check?` with check (${policy.check})`:''}`);
+    const [row]=await tx<{qual:string|null;with_check:string|null}[]>`select qual,with_check from pg_policies where schemaname='public' and tablename=${policy.table} and policyname='lane_reference'`;
+    out.push(row);await tx.unsafe(`drop policy lane_reference on public.${policy.table}`);
+   }
+   return out;
+  });
+  const isLanePolicy=(row:(typeof beforePerformancePrivileges.policies)[number])=>row.schemaname==='public'&&lanePolicies.some(policy=>policy.table===row.tablename&&policy.name===row.policyname);
+  for(const [index,policy] of lanePolicies.entries()){
+   const [row]=afterPerformancePrivileges.policies.filter(candidate=>candidate.schemaname==='public'&&candidate.tablename===policy.table&&candidate.policyname===policy.name);
+   expect(row,policy.name).toMatchObject({permissive:'PERMISSIVE',roles:'{public}',cmd:policy.cmd,qual:laneRendered[index].qual,with_check:laneRendered[index].with_check});
+  }
   const isClaimPolicy=(row:(typeof beforePerformancePrivileges.policies)[number])=>row.schemaname==='public'&&row.tablename==='claim_request'&&row.policyname==='claim_request_rls';
   expect(beforePerformancePrivileges.policies.find(isClaimPolicy)?.qual).toBe(expectedClaimQuals[0]);
   expect(afterPerformancePrivileges.policies.find(isClaimPolicy)?.qual).toBe(expectedClaimQuals[1]);
@@ -428,6 +491,11 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const combinedRelations:Record<string,{rls:boolean;force:boolean;acl:string|null}>={
    // Board window 4 (5124): stored Preview Assignment snapshots, append-only and forced RLS.
    'attendance_workflow_preview':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
+   // daa76ed4 (5141): immutable escalation history, read-only to the application role.
+   'attendance_workflow_escalation':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   // 5144: owner-only window key and spent-transaction record.
+   'app.attendance_final_window_key':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
+   'app.attendance_final_window_spent':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
    'app.access_administrator_assert_pending':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
    'app.access_administrator_guard':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
    'app.access_capability_publication':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
@@ -447,8 +515,24 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'bulk_job_step':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
    'bulk_job_worker':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
    'payroll_run_group':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
+   // Background AI Formula Generator (5130): one row per login, forced RLS; the app role reads and deletes (own finished
+   // and the tenant's expired rows) and writes only the listed columns below.
+   'pay_formula_ai_draft_job':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=rd/OWNER}'},
   };
   const combinedColumns=[
+   // 5130: INSERT of the admission columns, UPDATE of the outcome columns; tenant_id and user_id are never updated.
+   {rel:'pay_formula_ai_draft_job',col:'deadline_at',acl:'{ai_hr_app=aw/OWNER}'},
+   {rel:'pay_formula_ai_draft_job',col:'expires_at',acl:'{ai_hr_app=aw/OWNER}'},
+   {rel:'pay_formula_ai_draft_job',col:'finished_at',acl:'{ai_hr_app=w/OWNER}'},
+   {rel:'pay_formula_ai_draft_job',col:'id',acl:'{ai_hr_app=aw/OWNER}'},
+   {rel:'pay_formula_ai_draft_job',col:'reason',acl:'{ai_hr_app=w/OWNER}'},
+   {rel:'pay_formula_ai_draft_job',col:'requirement_digest',acl:'{ai_hr_app=aw/OWNER}'},
+   {rel:'pay_formula_ai_draft_job',col:'result',acl:'{ai_hr_app=w/OWNER}'},
+   {rel:'pay_formula_ai_draft_job',col:'started_at',acl:'{ai_hr_app=aw/OWNER}'},
+   {rel:'pay_formula_ai_draft_job',col:'state',acl:'{ai_hr_app=aw/OWNER}'},
+   {rel:'pay_formula_ai_draft_job',col:'tenant_id',acl:'{ai_hr_app=a/OWNER}'},
+   {rel:'pay_formula_ai_draft_job',col:'timeout_ms',acl:'{ai_hr_app=aw/OWNER}'},
+   {rel:'pay_formula_ai_draft_job',col:'user_id',acl:'{ai_hr_app=a/OWNER}'},
    {rel:'payroll_run_group',col:'ended_at',acl:'{ai_hr_app=w/OWNER}'},
    {rel:'payroll_run_group',col:'event_id',acl:'{ai_hr_app=w/OWNER}'},
    {rel:'payroll_run_group',col:'outcomes',acl:'{ai_hr_app=w/OWNER}'},
@@ -483,6 +567,12 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {schemaname:'public',tablename:'label_company_assignment',policyname:'label_company_assignment_import_pending',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'9e82774b0d29ab4d626e9af1fff8806d',with_check:null},
    {schemaname:'public',tablename:'leave_ledger',policyname:'leave_ledger_import_pending',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'ALL',qual:'0f9dd65355006232e921e629437f17ed',with_check:null},
    {schemaname:'public',tablename:'leave_ledger',policyname:'leave_ledger_stage_hidden',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'ALL',qual:'04ae78d4be9a45c73791e800606ae4f3',with_check:'750a56c287292289aa2796686ca07de0'},
+   // 5130: own read/insert/update while the login's roles are current, own finished delete and the tenant's expired delete.
+   {schemaname:'public',tablename:'pay_formula_ai_draft_job',policyname:'pay_formula_ai_draft_job_expired_delete',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'DELETE',qual:'15e7399f642d75240d8949db0ecdd901',with_check:null},
+   {schemaname:'public',tablename:'pay_formula_ai_draft_job',policyname:'pay_formula_ai_draft_job_own_delete',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'DELETE',qual:'58d5af6b910eb37fd003f613bf15a31d',with_check:null},
+   {schemaname:'public',tablename:'pay_formula_ai_draft_job',policyname:'pay_formula_ai_draft_job_own_insert',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'530d1680fe5109e2378b534d6786176d'},
+   {schemaname:'public',tablename:'pay_formula_ai_draft_job',policyname:'pay_formula_ai_draft_job_own_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'1235e2cc02ad2a03cb64db43c0c2be39',with_check:null},
+   {schemaname:'public',tablename:'pay_formula_ai_draft_job',policyname:'pay_formula_ai_draft_job_own_update',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'UPDATE',qual:'1235e2cc02ad2a03cb64db43c0c2be39',with_check:'1235e2cc02ad2a03cb64db43c0c2be39'},
    {schemaname:'public',tablename:'payroll_batch',policyname:'payroll_batch_history_stage',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'6ce658a1711835306c3e9cac03d44dda',with_check:null},
    {schemaname:'public',tablename:'payroll_history_import_record',policyname:'payroll_history_import_record_history_stage',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'b86f613f85d47351b877d5c302dd1f31',with_check:null},
    {schemaname:'public',tablename:'payroll_history_import_revision',policyname:'payroll_history_import_revision_history_stage',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'a9343f694013ea4b56643ee2bc1e5225',with_check:null},
@@ -509,10 +599,10 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
     row.rel===clockTable?{...row,acl:beforeClockTable?.acl}:row),
    columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable&&row.rel!==clockTable&&!isCombinedRelation(row.rel)),
    functions:afterPerformancePrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
-   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)).map(row=>
+   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isLanePolicy(row)).map(row=>
     isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:
      isAssignmentPolicy(row)?{...row,qual:expectedAssignmentQuals[0]}:row),
-  }).toEqual(beforePerformancePrivileges);
+  }).toEqual({...beforePerformancePrivileges,policies:beforePerformancePrivileges.policies.filter(row=>!isLanePolicy(row))});
   const complete=await ledger();expect(complete).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);expect(complete.slice(0,671)).toEqual(afterLedger);
   expect(complete.slice(0,performanceStart)).toEqual(beforePerformanceLedger);
   expect(complete.slice(671).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(APPROVED_UPGRADE_TAIL.map(entry=>({hash:hash(readFileSync('db/migrations/'+entry.tag+'.sql')),created_at:String(entry.when)})));

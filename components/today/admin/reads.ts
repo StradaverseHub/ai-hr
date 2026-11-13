@@ -20,6 +20,11 @@ import {readAdminExceptionCounts,readAdminLoopHandled,readAdminPayrollReadiness,
 import {todayAudience,windowStart} from '@/lib/today/audience';
 import {managerQueue,rankedNeeds,type ManagerQueue,type RankedNeeds} from '@/lib/today/admin';
 import {readNeedsYou,type NeedsYouData} from '../reads';
+import {readOwnCalendar} from '../employee/reads';
+import {pendingManagerReviewsFor} from '@/core/employment-review';
+import {teamAttendanceToday,type TeamAttendanceToday} from '@/packs/attendance/service';
+import {addCalendarDays} from '@/lib/hr-date-calendar';
+import {readMorningSummary,type MorningSummary} from '@/core/digest/own-digest';
 
 const shared=<T,>(s:SessionContext,read:()=>Promise<T>)=>withSharedReadSnapshot(s,read,undefined,requestReadScope());
 type Settled<T>={ok:true;value:T}|{ok:false};
@@ -31,9 +36,10 @@ const scopeOf=(key:string)=>key?key.split(','):[];
 /** Payroll in use: for the tenant (a module check with no company), or for one company. An entitlement snapshot that
  * cannot be resolved is `failed`, never "not in use" (test/module-catalog-drift.test.ts). */
 export type ModuleState='on'|'off'|'failed';
-export function payrollState(s:SessionContext,companyId?:string):ModuleState{
- try{return isModuleEnabled(s,'payroll',companyId)?'on':'off';}catch(error){if(error instanceof EntitlementsResolutionFailedError)return 'failed';throw error;}
+function moduleStateOf(s:SessionContext,code:string,companyId?:string):ModuleState{
+ try{return isModuleEnabled(s,code,companyId)?'on':'off';}catch(error){if(error instanceof EntitlementsResolutionFailedError)return 'failed';throw error;}
 }
+export function payrollState(s:SessionContext,companyId?:string):ModuleState{return moduleStateOf(s,'payroll',companyId);}
 
 /** Needs you's own sources (the approvals queue, prepared reviews, findings and the loops' cards), as the earlier Today
  * read them, for the viewer's audience. */
@@ -103,3 +109,43 @@ export const readHandled=cache((s:SessionContext,key:string,today:string):Promis
  }));
 
 export type {PayrollReadiness,StatutoryDeadlines};
+
+/** The administrator's own morning summary (core/digest/own-digest.ts, owner decision 11 Nov 2026): whether it can be
+ * started, the viewer's own mandate in force and its latest prepared digest, in one statement keyed by the viewer's
+ * login, so it does not grow with the companies in view. */
+export const readMorning=cache((s:SessionContext):Promise<MorningSummary>=>shared(s,()=>readMorningSummary(s)));
+export type {MorningSummary};
+
+// ── Manager Today: the retired dashboard's team cards, ported (owner decision, 12 Nov 2026) ──────────────────────
+/** Today's attendance for the manager's own reports (packs/attendance team-today.ts): one bounded statement. Null when
+ * the attendance module is not in use, so the panel is not drawn; an unresolved entitlement snapshot throws, and the
+ * panel's error boundary says it could not load. */
+export const readTeamAttendanceToday=cache(async(s:SessionContext,key:string,today:string):Promise<TeamAttendanceToday|null>=>{
+ const state=moduleStateOf(s,'attendance');
+ if(state==='off')return null;
+ if(state==='failed')throw Error('Attendance availability could not be resolved.');
+ return shared(s,()=>teamAttendanceToday(s,{date:today,scopeIds:scopeOf(key)}));
+});
+
+/** How far ahead Manager Today's reminders look: today and the next 29 days. */
+export const REMINDER_DAYS=30;
+/** At most this many of each kind of reminder are shown. */
+export const REMINDERS_SHOWN=5;
+export type TeamReminders=Readonly<{reviews:readonly Readonly<{id:string;name:string|null;dueDate:string}>[];
+ holidays:readonly Readonly<{date:string;name:string|null}>[];failed:boolean}>;
+/** The retired dashboard's Upcoming Reminders, as lines: the reviews waiting for this manager's recommendation whose
+ * deadline falls within REMINDER_DAYS (overdue ones included), and the public holidays the manager's own employment
+ * observes in the same days. Both are existing bounded owners: the manager's review queue (core/employment-review.ts,
+ * at most 200 rows, newest first) and the manager's own Home calendar for the one or two months the window spans
+ * (core/employee-home-calendar.ts, resolved for that employment's own holiday group). */
+export const readTeamReminders=cache(async(s:SessionContext,employmentId:string,today:string):Promise<TeamReminders>=>{
+ const last=addCalendarDays(today,REMINDER_DAYS-1);
+ const months=[...new Set([today.slice(0,7),last.slice(0,7)])];
+ const [reviews,calendars]=await Promise.all([settle(()=>shared(s,()=>pendingManagerReviewsFor(s,employmentId))),
+  Promise.all(months.map(month=>settle(()=>readOwnCalendar(s,employmentId,month))))]);
+ const holidays=calendars.flatMap(month=>month.ok?month.value.days:[]).filter(day=>day.date>=today&&day.date<=last)
+  .flatMap(day=>day.entries.flatMap(entry=>entry.kind==='holiday'&&!entry.replacement?[{date:day.date,name:entry.name??null}]:[]));
+ const due=reviews.ok?reviews.value.flatMap(row=>row.dueDate&&row.dueDate<=last?[{id:row.id,name:row.employee??null,dueDate:row.dueDate}]:[]):[];
+ return Object.freeze({reviews:due.sort((a,b)=>a.dueDate.localeCompare(b.dueDate)||a.id.localeCompare(b.id)).slice(0,REMINDERS_SHOWN),
+  holidays:holidays.sort((a,b)=>a.date.localeCompare(b.date)).slice(0,REMINDERS_SHOWN),failed:!reviews.ok||calendars.some(month=>!month.ok)});
+});

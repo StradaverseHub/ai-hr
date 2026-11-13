@@ -757,7 +757,6 @@
       "switchAttestation": "Xác nhận này chỉ áp dụng khi đang dùng nhà cung cấp trực tiếp (Anthropic, OpenAI hoặc Google)."
     },
     "recommendation": {
-      "show": "Xem gợi ý",
       "loading": "Đang kiểm tra…",
       "verdict": {
         "recommend_approve": "Đề xuất phê duyệt: mọi kiểm tra đều đạt",
@@ -803,7 +802,9 @@
           "pass": "Không có ai khác mà bạn thấy được nghỉ vào những ngày này.",
           "fail": "Mức bố trí nhân sự của nhóm thấp hơn mức tối thiểu.",
           "unusual": "Có người khác mà bạn thấy được nghỉ vào một số ngày này.",
-          "missing": "Không thể đọc những ai khác đang nghỉ."
+          "missing": "Không thể đọc những ai khác đang nghỉ.",
+          "passMinimum": "Mỗi ngày của đơn này, nhóm vẫn có ít nhất {minimum} người có mặt.",
+          "failMinimum": "Nếu duyệt đơn này, số người có mặt của nhóm sẽ ít hơn {minimum} người trong {count} ngày: {days}."
         },
         "policy_limits": {
           "pass": "Đáp ứng quy tắc về giấy tờ và ngày của loại nghỉ phép.",
@@ -824,7 +825,9 @@
         "passing": "Đạt mọi kiểm tra ({count})",
         "help": "Chỉ hiển thị các yêu cầu đạt mọi kiểm tra. Chọn chúng, rồi phê duyệt hoặc từ chối sau khi xác nhận. Không có gì được phê duyệt tự động."
       },
-      "openOne": "Xem gợi ý"
+      "openOne": "Xem gợi ý",
+      "teamDay": "{date} ({present} người có mặt)",
+      "teamMoreDays": "{count} ngày khác"
     },
     "digest": {
       "title": "Ngày của bạn",
@@ -1074,7 +1077,9 @@
           "condition_other_clocking": "có lần chấm công khác trong ngày",
           "condition_inactive": "việc làm đã kết thúc",
           "would_create_overtime": "lần sửa sẽ tạo ra giờ làm thêm",
-          "approval_routed": "việc duyệt chấm công đi theo quy trình phê duyệt"
+          "approval_routed": "việc duyệt chấm công đi theo quy trình phê duyệt",
+          "condition_record_changed": "hồ sơ đã thay đổi trước khi thực hiện",
+          "condition_no_manager": "nhân viên chưa có quản lý trong hồ sơ"
         },
         "status": {
           "fixed": "Đã sửa · có thể hoàn tác đến {date}",
@@ -1087,12 +1092,19 @@
           "withdrawnEmployee": "Rút lại theo yêu cầu của nhân viên",
           "withdrawnHr": "Bị HR rút lại",
           "sentOpen": "Đã gửi · có thể rút lại đến {date}",
-          "sentClosed": "Đã gửi"
+          "sentClosed": "Đã gửi",
+          "opened": "Đã mở · quản lý đang xử lý",
+          "openedOpen": "Đã mở · có thể hủy đến {date}",
+          "cancelledHr": "Đánh giá đã bị HR hủy"
         },
         "undo": "Hoàn tác",
         "notSent": "Không gửi: {reason}",
         "sent": "Đã gửi yêu cầu điền {count, plural, other {# thông tin}}",
-        "withdraw": "Rút lại"
+        "withdraw": "Rút lại",
+        "passportSent": "Đã đề nghị nhân viên gia hạn hộ chiếu, hết hạn vào {date}",
+        "probationOpened": "Đã mở đánh giá thử việc và gửi cho quản lý, hạn {date}",
+        "notOpened": "Chưa mở: {reason}",
+        "cancelReview": "Hủy đánh giá"
       },
       "limits": {
         "title": "Những giới hạn không bao giờ được vượt qua",
@@ -1107,7 +1119,9 @@
         "requestOnly": "Chỉ gửi yêu cầu; không bao giờ thay đổi hồ sơ",
         "requestActive": "Không bao giờ gửi yêu cầu cho người đã nghỉ việc",
         "perNightRequests": "{company}: tối đa {count, plural, other {# yêu cầu}} mỗi đêm, mỗi yêu cầu có thể rút lại trong {days} ngày",
-        "level3": "Ở cấp Thực hiện và kiểm tra, HR xem xét mẫu hằng tuần thay vì từng hành động."
+        "level3": "Ở cấp Thực hiện và kiểm tra, HR xem xét mẫu hằng tuần thay vì từng hành động.",
+        "passportRequestOnly": "Chỉ gửi đề nghị gia hạn; không bao giờ thay đổi hồ sơ hộ chiếu",
+        "probationRequestOnly": "Chỉ mở đánh giá và gửi cho quản lý; không bao giờ xác nhận, gia hạn hay chấm dứt hợp đồng lao động"
       },
       "owner": {
         "suspended": "Đã tạm ngưng: người bảo trợ không còn quyền truy cập HR.",
@@ -2344,34 +2358,9 @@
     "suggestClaim": "Gửi yêu cầu hoàn tiền",
     "suggestPay": "Vì sao lương của tôi khác?",
     "suggestLetter": "Lấy thư xác nhận việc làm",
-    "needsYou": "Cần bạn xử lý",
-    "needsYouEmpty": "Hiện không có việc gì cần bạn xử lý.",
-    "readyToConfirm": "Sẵn sàng để bạn xác nhận",
-    "doneForYou": "Đã làm cho bạn",
-    "doneForYouEmpty": "Chưa có việc nào được làm cho bạn trong 7 ngày qua.",
-    "watching": "Đang theo dõi",
-    "watchingEmpty": "Hiện không có gì cần theo dõi.",
-    "atAGlance": "Tổng quan nhanh",
-    "atAGlanceEmpty": "Chưa có gì để hiển thị.",
     "unavailable": "Một số mục không tải được. Trang riêng của chúng vẫn hoạt động.",
-    "loading": "Đang tải Hôm nay",
-    "more": "Thêm",
     "tasks": {
-      "from": "Từ phê duyệt",
-      "received": "Nhận lúc {date}",
-      "open": "Mở",
-      "seeAll": "Xem tất cả {count} mục",
       "review": "Xem xét"
-    },
-    "prepared": {
-      "leaveApply": "Đơn nghỉ phép đã được chuẩn bị cho bạn",
-      "leaveCancel": "Yêu cầu hủy nghỉ phép đã được chuẩn bị cho bạn",
-      "leaveDecision": "Quyết định nghỉ phép đã được chuẩn bị cho bạn",
-      "meta": "Chuẩn bị lúc {date}",
-      "expires": "Hết hạn {date}",
-      "cta": "Xem và xác nhận",
-      "note": "Đã được dịch vụ nghỉ phép kiểm tra. Không có gì được gửi cho đến khi bạn xác nhận.",
-      "awaiting": "Đang chờ bạn xác nhận"
     },
     "findings": {
       "setupTitle": "{count, plural, other {# bước thiết lập cần chú ý}}",
@@ -2402,6 +2391,7 @@
       "clockOutReasonOtherLabel": "Nhập lý do",
       "clockOutActionsLabel": "Xác nhận hoặc chỉnh sửa",
       "clockOutChanged": "Ngày này đã thay đổi kể từ khi thẻ được chuẩn bị nên chưa có gì được gửi. Hãy dùng Chỉnh sửa để kiểm tra trên biểu mẫu.",
+      "clockOutPending": "Yêu cầu chỉnh sửa cho ngày này đang chờ phê duyệt nên không gửi thêm gì nữa.",
       "recordTitle": "{count, plural, other {Hồ sơ của bạn thiếu # thông tin}}",
       "recordNote": "Nhân sự phê duyệt cập nhật của bạn như thường lệ.",
       "recordCta": "Điền",
@@ -2433,35 +2423,6 @@
         "loop_document_expiry": "Hộ chiếu sắp hết hạn",
         "loop_salary_payroll": "Vòng lặp chạy lương"
       }
-    },
-    "done": {
-      "answeredLabel": "Đã trả lời",
-      "checkedLabel": "Đã kiểm tra",
-      "preparedLabel": "Đã chuẩn bị",
-      "answeredOthersTitle": "{count, plural, other {Đã trả lời # câu hỏi của nhân viên}}",
-      "answeredOthersBody": "Trong 7 ngày qua, cho các công ty trong phạm vi hiện tại của bạn. Câu hỏi về vấn đề nhạy cảm được chuyển đến đội ngũ HR của bạn và không được tính ở đây.",
-      "answeredYouTitle": "{count, plural, other {Đã trả lời # câu hỏi của bạn}}",
-      "answeredYouBody": "Trong 7 ngày qua.",
-      "leaveChecksTitle": "{count, plural, other {Đã kiểm tra # đơn nghỉ phép cho bạn}}",
-      "leaveChecksBody": "Số dư, trùng lịch, người thay thế trong nhóm và chính sách, mỗi mục đều do dịch vụ nghỉ phép kiểm tra. Quyết định vẫn là của bạn.",
-      "preparedTitle": "{count, plural, other {Đã chuẩn bị # mục bạn ủy quyền}}",
-      "preparedBody": "Trong 7 ngày qua, bởi các công việc bạn đã ủy quyền."
-    },
-    "watch": {
-      "deadlineLabel": "Hạn chót",
-      "deadlineTitle": "{count, plural, other {# thông báo CP22 hoặc CP22A cần nộp}}",
-      "deadlineOverdue": "{count, plural, other {# đã quá hạn.}}",
-      "deadlineBody": "Đến hạn trong 7 ngày, từ danh sách công việc tuân thủ theo luật định.",
-      "deadlinePartial": "Đã kiểm tra {n} trên {total} công ty đầu tiên trong phạm vi.",
-      "deadlineCta": "Mở biểu mẫu theo luật định",
-      "exceptionsLabel": "Lương",
-      "exceptionsTitle": "{count, plural, other {# ngoại lệ bảng lương đang mở}}",
-      "exceptionsBlocking": "{count, plural, =0 {Không có ngoại lệ nào chặn kỳ tính lương.} other {# ngoại lệ chặn kỳ tính lương.}}",
-      "exceptionsCta": "Mở các ngoại lệ",
-      "expiryLabel": "Sắp hết hạn",
-      "passportTitle": "{count, plural, other {# hộ chiếu đã ghi nhận sẽ hết hạn trong 30 ngày}}",
-      "passportBody": "Hộ chiếu đầu tiên hết hạn vào {date}.",
-      "passportCta": "Mở nhân sự"
     },
     "glance": {
       "balances": "Số dư nghỉ phép",
@@ -2729,6 +2690,28 @@
         "payrollBlocking": "Điều gì đang chặn kỳ lương tháng này?",
         "claimsBeforeCutOff": "Ai chưa gửi yêu cầu hoàn ứng trước ngày chốt?",
         "approvalsWaiting": "Những phê duyệt nào đã chờ hơn 3 ngày?"
+      },
+      "morning": {
+        "title": "Tóm tắt buổi sáng",
+        "intro": "Mỗi sáng, AI Centre đếm những việc đang chờ bạn: các quyết định, thiếu sót trong thiết lập và hạn chót theo luật định. Bản tóm tắt chỉ dành cho bạn và không quyết định điều gì.",
+        "start": "Gửi tóm tắt buổi sáng cho tôi",
+        "stop": "Dừng tóm tắt buổi sáng của tôi",
+        "started": "Tóm tắt buổi sáng của bạn bắt đầu từ sáng mai.",
+        "stoppedToast": "Đã dừng tóm tắt buổi sáng của bạn.",
+        "startFailed": "Không thể bắt đầu tóm tắt buổi sáng. Hãy tải lại trang và thử lại.",
+        "stopFailed": "Không thể dừng tóm tắt buổi sáng. Hãy tải lại trang và thử lại.",
+        "unavailable": "Không thể tải tóm tắt buổi sáng của bạn.",
+        "approvals": "{count, plural, =0 {Không có việc nào chờ bạn quyết định} other {# quyết định đang chờ bạn}}",
+        "setup": "Thiết lập: {blocked} bị chặn, {attention} cần chú ý",
+        "deadlines": "Hạn chót theo luật định: {overdue} quá hạn, {dueSoon} đến hạn trong 7 ngày",
+        "openApprovals": "Xem xét",
+        "openSetup": "Mở thiết lập",
+        "openDeadlines": "Mở biểu mẫu",
+        "preparedAt": "Được chuẩn bị sáng nay lúc {time}.",
+        "first": "Bản tóm tắt đầu tiên của bạn được chuẩn bị vào sáng sớm mai.",
+        "notToday": "Sáng nay chưa có bản tóm tắt nào được chuẩn bị. Hệ thống sẽ thử lại tối nay.",
+        "paused": "Hoạt động AI đang bị dừng, nên sẽ không có bản tóm tắt cho đến khi được tiếp tục.",
+        "forYouOnly": "Chỉ bạn thấy bản tóm tắt này. Nó chỉ đếm và đưa liên kết; mọi quyết định vẫn do con người đưa ra."
       }
     },
     "manager": {
@@ -2751,8 +2734,16 @@
       "comingUpEmpty": "Nhóm của bạn không có gì sắp tới.",
       "comingUpPartial": "Một số mục hiện không tải được.",
       "otherWork": "{count, plural, other {# mục khác đang chờ bạn}}",
-      "seeAllWork": "Xem tất cả {count} mục trong Công việc"
-    }
+      "seeAllWork": "Xem tất cả {count} mục trong Công việc",
+      "teamTodayTitle": "Nhóm của bạn hôm nay",
+      "teamTodayEmpty": "Hôm nay chưa có chấm công nào cho nhóm của bạn.",
+      "teamTodayOpen": "Mở Nhóm của tôi",
+      "reviewDue": "Đánh giá cho {name} đến hạn {date}",
+      "reviewDueUnnamed": "Một đánh giá đến hạn {date}",
+      "holiday": "{name}, ngày lễ, vào {date}",
+      "holidayUnnamed": "Ngày lễ vào {date}"
+    },
+    "workspaceTitle": "Không gian làm việc của bạn"
   },
   "why": {
     "link": "Vì sao?",

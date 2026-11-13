@@ -6,84 +6,46 @@
  * proven employment id, and each owner below repeats its own checks under row-level security.
  *
  * ONE BOUNDED READ PER PANEL. Each reader is memoised for the render (React cache), so a fact two panels show (the
- * Before payroll checklist's due dates and cut-off, the month's Home calendar) is read once. Every reader joins the
- * render's shared read-only snapshot (lib/request-read-scope.ts). The request tracker fans out to three owners and so
- * runs under withBackgroundReadWork (docs/architecture/FUTURE-BUILD-CONTRACT.md). Nothing here writes, computes a
- * balance, an amount or a date: those are each owner's own answers. */
+ * Before payroll checklist's due dates and cut-off, the month's Home calendar) is read once. The own-fact readers are
+ * core/employee-today-reads.ts, which the native Today (core/mobile-today.ts) reads too; this module memoises them.
+ * Every reader joins the render's shared read-only snapshot (lib/request-read-scope.ts). The request tracker fans out
+ * to three owners and so runs under withBackgroundReadWork (docs/architecture/FUTURE-BUILD-CONTRACT.md). Nothing here
+ * writes, computes a balance, an amount or a date: those are each owner's own answers. */
 import {cache} from 'react';
-import {withBackgroundReadWork,withSharedReadSnapshot,withTenant,type SessionContext} from '@/db/client';
-import {requestReadScope} from '@/lib/request-read-scope';
-import {EntitlementsResolutionFailedError,isModuleEnabled} from '@/core/entitlements';
-import {readEmployeeHomeIdentityContextTx,readEmployeeHomePayHints} from '@/core/employee-home';
-import {readMyPayrollReadiness} from '@/core/pre-salary/person-items';
-import {readLoopCards} from '@/core/loops/cards';
+import {withBackgroundReadWork,type SessionContext} from '@/db/client';
+import * as own from '@/core/employee-today-reads';
 import {readEmployeeHomeTimeOff} from '@/core/employee-home-time-off';
-import {readEmployeeHomeCalendar} from '@/core/employee-home-calendar';
-import {readHomeTeamCalendar,readHomeTeamCalendarAndManagers} from '@/core/employee-home-sharing';
-import {listLeaveRequestsPage,reportingLinesFor} from '@/core/read';
+import {listLeaveRequestsPage} from '@/core/read';
 import {listOpenClaimsForEmployment} from '@/packs/claims/service';
-import {attendanceEmploymentRangePage} from '@/packs/attendance/service';
 import {listMyLetterRequests} from '@/core/letter-requests';
 import {mayUseAssistant} from '@/core/assistant-grant';
 import {pendingTaskSummary} from '@/core/approvals-inbox';
-import {parsePageQuery} from '@/lib/pagination';
 import {todayInKualaLumpur} from '@/lib/hr-date';
-import {addCalendarDays} from '@/lib/hr-date-calendar';
-import {managerAbsences} from '@/lib/today/coming-up';
-import {weekOf,type ModuleState,type TrackedRequest} from '@/lib/today/employee';
+import {type TrackedRequest} from '@/lib/today/employee';
 
-const shared=<T,>(s:SessionContext,read:()=>Promise<T>)=>withSharedReadSnapshot(s,read,undefined,requestReadScope());
+const shared=own.sharedOwnRead;
 
-/** A module for the person's own company, with the throwing check (test/module-catalog-drift.test.ts): an entitlement
- * snapshot that cannot be resolved is `failed`, never "not in use". */
-export function moduleState(s:SessionContext,code:string,companyId:string|null):ModuleState{
- try{return isModuleEnabled(s,code,companyId)?'on':'off';}catch(error){if(error instanceof EntitlementsResolutionFailedError)return 'failed';throw error;}
-}
+/** A module for the person's own company: on, off, or failed (the entitlement could not be resolved). */
+export const moduleState=own.moduleState;
+/** The Home team calendar's look-ahead for Coming up: today and the next 13 days. */
+export const COMING_UP_DAYS=own.COMING_UP_DAYS;
 
-/** The person's own selection, role and dated company (the Home identity owner). A foreign or stale selector throws
- * HomeAccessError('employmentUnavailable'); none or several unchosen employments are states, not errors. */
-export const readOwnContext=cache((s:SessionContext,employmentId:string|undefined)=>
- shared(s,()=>withTenant(s,tx=>readEmployeeHomeIdentityContextTx(tx,s,employmentId),{readOnlySnapshot:true})));
-
-/** The person's own Before payroll checklist (core/pre-salary/person-items.ts): items, due dates, the pay period and its
- * cut-off. Their approvals as an approver are not read here: decisions assigned to the person (a named participant, a
- * profile-change assignee, a reviewer, a rewards approver) are shown by the Waiting for your decision panel instead
- * (readWaitingForYou), which counts exactly what the Tasks page lists.
- * null: payroll is not in use. */
-export const readOwnReadiness=cache((s:SessionContext,employmentId:string,locale:string,today:string)=>
- readMyPayrollReadiness(s,{employmentId,locale,today,includeApprovals:false}));
-
+/** The person's own selection, role and dated company (core/employee-today-reads.ts). */
+export const readOwnContext=cache(own.readOwnContext);
+/** The person's own Before payroll checklist, without their approvals as an approver. null: payroll is not in use. */
+export const readOwnReadiness=cache(own.readOwnReadiness);
 /** The passports the documents loop found expiring for the person (their own open cases only). */
-export const readOwnPassportCards=cache(async(s:SessionContext,today:string)=>
- (await shared(s,()=>readLoopCards(s,{scopeIds:[],admin:false,today,employeeOnly:true})))
-  .flatMap(card=>card.kind==='passport'?[card]:[]));
-
+export const readOwnPassportCards=cache(own.readOwnPassportCards);
 /** The payroll owner's own metadata: the next recorded payment date and the latest released payslips. No amount. */
-export const readOwnPayHints=cache((s:SessionContext,employmentId:string)=>shared(s,()=>readEmployeeHomePayHints(s,employmentId)));
-
+export const readOwnPayHints=cache(own.readOwnPayHints);
 /** The leave service's own figures for the person (core/employee-home-time-off.ts). */
 export const readOwnTimeOff=cache((s:SessionContext,employmentId:string,locale:string)=>shared(s,()=>readEmployeeHomeTimeOff(s,employmentId,locale)));
-
-/** The person's own Home calendar for a month: their leave, holidays and recorded paydays (core/employee-home-calendar.ts). */
-export const readOwnCalendar=cache((s:SessionContext,employmentId:string,month:string)=>shared(s,()=>readEmployeeHomeCalendar(s,employmentId,month)));
-
-/** The attendance owner's own day rows for Monday to Sunday of this week: worked and scheduled minutes. */
-export const readOwnWeek=cache(async(s:SessionContext,employmentId:string,today:string)=>{
- const week=weekOf(today);
- const page=await shared(s,()=>attendanceEmploymentRangePage(s,employmentId,week[0],week[6],parsePageQuery({page:'0',size:'25'})));
- return page.dayPage.map(row=>({date:row.date,workedMinutes:row.workedMinutes,scheduledMinutes:row.scheduledMinutes,checkInAt:row.checkInAt,checkOutAt:row.checkOutAt}));
-});
-
-/** The Home team calendar's look-ahead for Coming up: today and the next 13 days. */
-export const COMING_UP_DAYS=14;
+/** The person's own Home calendar for a month: their leave, holidays and recorded paydays. */
+export const readOwnCalendar=cache(own.readOwnCalendar);
+/** The attendance owner's own day rows for Monday to Sunday of this week. */
+export const readOwnWeek=cache(own.readOwnWeek);
 /** The person's managers away in the next COMING_UP_DAYS days, from the Home team calendar (its own sharing policy). */
-export const readManagersAway=cache(async(s:SessionContext,employmentId:string,today:string)=>{
- const to=addCalendarDays(today,COMING_UP_DAYS-1);
- const bundled=await shared(s,()=>readHomeTeamCalendarAndManagers(s,employmentId,today,to)).catch(()=>null);
- if(bundled)return managerAbsences(bundled.managerEmploymentIds,bundled.calendar.days);
- const [lines,calendar]=await shared(s,()=>Promise.all([reportingLinesFor(s,employmentId),readHomeTeamCalendar(s,employmentId,today,to)]));
- return managerAbsences(lines.managers.map(line=>line.employmentId),calendar.days);
-});
+export const readManagersAway=cache(own.readManagersAway);
 
 /** At most this many of each kind of request are read; the tracker shows the first four overall. */
 export const REQUEST_READ_LIMIT=5;
@@ -124,3 +86,7 @@ export const readWaitingForYou=cache((s:SessionContext)=>shared(s,()=>{
  const on=(code:string)=>moduleState(s,code,null)==='on';
  return pendingTaskSummary(s,undefined,{attendance:on('attendance'),claims:on('claims'),performance:on('performance'),rewards:on('rewards')});
 }));
+
+/** The Notice Board, ported from the retired dashboard (owner decision, 12 Nov 2026): the person's newest live notices
+ * with the exact unread count (core/employee-today-reads.ts). */
+export const readOwnNotices=cache(own.readOwnNotices);

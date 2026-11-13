@@ -1,5 +1,8 @@
 /**
- * Customizable employee dashboard layout (feedback 7d9d145d).
+ * Customizable employee dashboard layout (feedback 7d9d145d). The old dashboard and its customizer were retired on
+ * 12 Nov 2026 (owner decision); the stored envelope survives as My Home's own-row preference owner, so this file now
+ * pins the pure envelope helpers and My Home's persistence through the same seam, including that the retired
+ * manager and HR-admin slots are kept, never erased.
  *
  * Covers the expected_function points that are testable off the UI:
  *  - default order renders when no layout is saved (null → DEFAULT_ORDER)
@@ -15,17 +18,12 @@ import { eq, sql } from 'drizzle-orm';
 import type { SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import {
-  getDashboardLayout,
   getEmployeeHomePreferences,
   getEmployeeHomeDisplayPreferences,
   setEmployeeHomePreferences,
   resetEmployeeHomePreferences,
-  resetDashboardLayout,
-  setDashboardLayout,
 } from '../core/dashboard-prefs';
 import {
-  BUILTIN_DASHBOARD_CARDS,
-  BUILTIN_ROLE_DASHBOARD_CARDS,
   DEFAULT_ORDER,
   extractRoleLayout,
   isDefaultOrder,
@@ -34,10 +32,6 @@ import {
   removeRoleLayout,
 } from '../lib/dashboard-layout';
 
-/** The tenant has no dashboard_card_config rows in this suite (created after the 0212 seed), so drive the
- *  persistence tests off the built-in default catalog — the same fallback the live page uses. */
-const CARDS = BUILTIN_DASHBOARD_CARDS;
-const ALL_KEYS = CARDS.map((c) => c.cardKey);
 import { closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
@@ -138,135 +132,6 @@ describe('per-role layout envelope (pure, 9606c59f)', () => {
   });
 });
 
-describe('dashboard-layout persistence (own-row SECURITY DEFINER seam)', () => {
-  it('returns the HR default when nothing is saved (default-display + mandatory cards)', async () => {
-    const ctx = await newEmployeeCtx();
-    const layout = await getDashboardLayout(ctx, CARDS);
-    // Built-in catalog: all cards default-display → all shown, in display order.
-    expect(new Set(layout.selected)).toEqual(new Set(ALL_KEYS));
-    expect(layout.order).toEqual(ALL_KEYS);
-  });
-
-  it('saves a { selected, order } layout that persists and reloads on the next read', async () => {
-    const ctx = await newEmployeeCtx();
-    const selected = ['recentActivity', 'leaveBalance', 'upcomingEvents'];
-    await setDashboardLayout(ctx, { selected, order: selected }, CARDS);
-    const saved = await getDashboardLayout(ctx, CARDS);
-    // selected preserved (order-preserving); order covers every available card exactly once. a00c4f64:
-    // the mandatory Leave Calendar used to be force-appended here — it left the catalogue with the move,
-    // and no card is mandatory any more, so a saved selection is now exactly what was saved.
-    expect(saved.selected).toEqual(selected);
-    expect(new Set(saved.order)).toEqual(new Set(ALL_KEYS));
-    expect(saved.order.slice(0, 3)).toEqual(selected);
-  });
-
-  it('reads a LEGACY order-only array as "everything shown, in that order" (backward compatible)', async () => {
-    const ctx = await newEmployeeCtx();
-    // Write a legacy order-only array straight through the seam (pre-578a2fcf shape, with the "cards" block).
-    // a00c4f64 leaves 'plannedAbsences' in the fixture deliberately: a real legacy array contains it, and
-    // the point is that a key no longer in the catalogue is DROPPED on read — which is why the move needs
-    // no app_user.dashboard_layout migration.
-    await withRawSeam(ctx, ['recentActivity', 'cards', 'plannedAbsences', 'upcomingEvents']);
-    const saved = await getDashboardLayout(ctx, CARDS);
-    expect(new Set(saved.selected)).toEqual(new Set(ALL_KEYS)); // legacy showed everything
-    expect(saved.order).not.toContain('plannedAbsences');
-    // The legacy "cards" block flattened into its three summary cardKeys, in place.
-    expect(saved.order.slice(0, 5)).toEqual([
-      'recentActivity',
-      'leaveBalance',
-      'nextHoliday',
-      'pendingTasks',
-      'upcomingEvents',
-    ]);
-  });
-
-  it('Reset to Default clears the saved layout back to the HR default', async () => {
-    const ctx = await newEmployeeCtx();
-    await setDashboardLayout(ctx, { selected: ['recentActivity'], order: ['recentActivity'] }, CARDS);
-    expect((await getDashboardLayout(ctx, CARDS)).selected).toEqual(['recentActivity']);
-    await resetDashboardLayout(ctx);
-    expect(new Set((await getDashboardLayout(ctx, CARDS)).selected)).toEqual(new Set(ALL_KEYS));
-  });
-
-  it("one employee's layout does not affect another's", async () => {
-    const a = await newEmployeeCtx();
-    const c = await newEmployeeCtx();
-    const selA = ['recentActivity', 'leaveBalance'];
-    await setDashboardLayout(a, { selected: selA, order: selA }, CARDS);
-    // C has saved nothing → still HR default; and saving C must not disturb A.
-    expect(new Set((await getDashboardLayout(c, CARDS)).selected)).toEqual(new Set(ALL_KEYS));
-    const selC = ['upcomingEvents', 'recentlyJoined'];
-    await setDashboardLayout(c, { selected: selC, order: selC }, CARDS);
-    expect((await getDashboardLayout(a, CARDS)).selected).toEqual(selA);
-    expect((await getDashboardLayout(c, CARDS)).selected).toEqual(selC);
-  });
-
-  it('appends NO domain event (deliberate substrate carve-out for a cosmetic UI pref)', async () => {
-    const ctx = await newEmployeeCtx();
-    await setDashboardLayout(ctx, { selected: ['recentActivity'], order: ['recentActivity'] }, CARDS);
-    await resetDashboardLayout(ctx);
-    const rows = (await owner.db.execute(
-      sql`select count(*)::int as n from domain_event
-          where tenant_id = ${b.tenantId} and aggregate_type = 'dashboard-layout'`,
-    )) as unknown as { n: number }[];
-    expect(rows[0]?.n ?? 0).toBe(0);
-  });
-
-  // ─────────────────────── per-ROLE layouts (9606c59f) ───────────────────────
-
-  const MGR_CARDS = BUILTIN_ROLE_DASHBOARD_CARDS.manager;
-
-  it('one person saves independent employee AND manager layouts (promoted keeps both hats)', async () => {
-    const ctx = await newEmployeeCtx();
-    const selEmp = ['recentActivity', 'leaveBalance'];
-    const selMgr = ['upcomingReminders', 'teamAwayToday'];
-    await setDashboardLayout(ctx, { selected: selEmp, order: selEmp }, CARDS, 'employee');
-    await setDashboardLayout(ctx, { selected: selMgr, order: selMgr }, MGR_CARDS, 'manager');
-    // Each role slot round-trips against its own catalog.
-    expect((await getDashboardLayout(ctx, CARDS, 'employee')).selected).toEqual(selEmp);
-    expect((await getDashboardLayout(ctx, MGR_CARDS, 'manager')).selected).toEqual(selMgr);
-    // The hr_admin slot was never saved → its HR default.
-    const adminCards = BUILTIN_ROLE_DASHBOARD_CARDS.hr_admin;
-    expect(new Set((await getDashboardLayout(ctx, adminCards, 'hr_admin')).selected)).toEqual(
-      new Set(adminCards.map((c) => c.cardKey)),
-    );
-  });
-
-  it('a LEGACY flat stored value reads as the EMPLOYEE layout; other roles get their default', async () => {
-    const ctx = await newEmployeeCtx();
-    await withRawSeam(ctx, { selected: ['recentActivity'], order: ['recentActivity'] }); // pre-9606c59f shape
-    expect((await getDashboardLayout(ctx, CARDS, 'employee')).selected).toEqual(['recentActivity']);
-    expect(new Set((await getDashboardLayout(ctx, MGR_CARDS, 'manager')).selected)).toEqual(
-      new Set(MGR_CARDS.map((c) => c.cardKey)),
-    );
-  });
-
-  it('a manager save MIGRATES a legacy flat value into the envelope without losing the employee layout', async () => {
-    const ctx = await newEmployeeCtx();
-    await withRawSeam(ctx, { selected: ['recentActivity'], order: ['recentActivity'] });
-    const selMgr = ['approvalRequests'];
-    await setDashboardLayout(ctx, { selected: selMgr, order: selMgr }, MGR_CARDS, 'manager');
-    expect((await getDashboardLayout(ctx, CARDS, 'employee')).selected).toEqual(['recentActivity']);
-    expect((await getDashboardLayout(ctx, MGR_CARDS, 'manager')).selected).toEqual(['approvalRequests']);
-  });
-
-  it('Reset is per-role: clearing the manager slot leaves the employee layout untouched (and vice versa)', async () => {
-    const ctx = await newEmployeeCtx();
-    const selEmp = ['recentActivity'];
-    const selMgr = ['teamAwayToday'];
-    await setDashboardLayout(ctx, { selected: selEmp, order: selEmp }, CARDS, 'employee');
-    await setDashboardLayout(ctx, { selected: selMgr, order: selMgr }, MGR_CARDS, 'manager');
-    await resetDashboardLayout(ctx, 'manager');
-    expect(new Set((await getDashboardLayout(ctx, MGR_CARDS, 'manager')).selected)).toEqual(
-      new Set(MGR_CARDS.map((c) => c.cardKey)), // back to the manager HR default
-    );
-    expect((await getDashboardLayout(ctx, CARDS, 'employee')).selected).toEqual(['recentActivity']);
-    // Resetting the last remaining slot stores NULL again (the pre-9606c59f reset).
-    await resetDashboardLayout(ctx, 'employee');
-    expect(new Set((await getDashboardLayout(ctx, CARDS, 'employee')).selected)).toEqual(new Set(ALL_KEYS));
-  });
-});
-
 /** Write a raw value straight through the SECURITY DEFINER seam (bypassing normalisation) to simulate a
  *  legacy stored layout. Uses the app-role db under the caller's session GUCs. */
 async function withRawSeam(ctx: SessionContext, raw: unknown): Promise<void> {
@@ -281,6 +146,8 @@ async function withRawSeam(ctx: SessionContext, raw: unknown): Promise<void> {
 import {EMPLOYEE_HOME_CARDS,defaultEmployeeHomePreferences} from '../lib/employee-home';
 const HOME_CARDS=EMPLOYEE_HOME_CARDS.map((cardKey,index)=>({cardKey,employeeSelectable:cardKey!=='summary',
   defaultDisplay:true,mandatory:cardKey==='summary',displayOrder:index}));
+/** A retired manager-dashboard slot as the old customizer stored it. */
+const MANAGER_SLOT={selected:['teamAwayToday'],order:['teamAwayToday']};
 async function rawLayout(ctx:SessionContext){
   const [row]=await owner.db.select({layout:schema.appUser.dashboardLayout}).from(schema.appUser).where(eq(schema.appUser.id,ctx.userId!));
   return row.layout;
@@ -289,7 +156,7 @@ describe('Home cosmetic preferences share the canonical dashboard owner',()=>{
   it('reads old corresponding visibility without losing new cards or rewriting the stored layout',async()=>{
     const ctx=await newEmployeeCtx();
     const legacyCards=['leaveBalance','nextHoliday','upcomingEvents','pendingTasks','noticeBoard'].map((cardKey,index)=>({cardKey,employeeSelectable:true,defaultDisplay:true,mandatory:false,displayOrder:index}));
-    await setDashboardLayout(ctx,{selected:['leaveBalance'],order:legacyCards.map(row=>row.cardKey)},legacyCards,'employee');
+    await withRawSeam(ctx,{employee:{selected:['leaveBalance'],order:legacyCards.map(row=>row.cardKey)}});
     const before=await rawLayout(ctx),preferences=await getEmployeeHomePreferences(ctx,HOME_CARDS);
     expect(preferences.cardOrder).toEqual([...EMPLOYEE_HOME_CARDS]);
     expect(preferences.hiddenCards).toEqual(['calendar','notices','tasks']);
@@ -302,8 +169,7 @@ describe('Home cosmetic preferences share the canonical dashboard owner',()=>{
   });
   it('persists/reopens choices once, keeps another role and login private, and resets only Home',async()=>{
     const ctx=await newEmployeeCtx(),other=await newEmployeeCtx();
-    const managerCards=BUILTIN_ROLE_DASHBOARD_CARDS.manager;
-    await setDashboardLayout(ctx,{selected:['teamAwayToday'],order:['teamAwayToday']},managerCards,'manager');
+    await withRawSeam(ctx,{manager:MANAGER_SLOT});
     const preferences={...defaultEmployeeHomePreferences(),timeZone:'America/New_York',weekStartsOn:0,
       hiddenCards:['tasks'] as const,cardOrder:['calendar',...EMPLOYEE_HOME_CARDS.filter(key=>key!=='calendar')]};
     await setEmployeeHomePreferences(ctx,preferences,HOME_CARDS);
@@ -312,28 +178,37 @@ describe('Home cosmetic preferences share the canonical dashboard owner',()=>{
     expect(raw.homeDisplay).toEqual({version:1,timeZone:'America/New_York',weekStartsOn:0});
     expect(await getEmployeeHomeDisplayPreferences(ctx)).toEqual({timeZone:'America/New_York',weekStartsOn:0});
     expect(raw).not.toHaveProperty('hiddenCards');expect(raw).not.toHaveProperty('cardOrder');
-    expect((await getDashboardLayout(ctx,HOME_CARDS,'employee')).selected).not.toContain('tasks');
-    expect((await getDashboardLayout(ctx,managerCards,'manager')).selected).toEqual(['teamAwayToday']);
+    expect((extractRoleLayout(raw,'employee') as {selected:string[]}).selected).not.toContain('tasks');
+    expect(raw.manager).toEqual(MANAGER_SLOT);
     expect(await getEmployeeHomePreferences(other,HOME_CARDS)).toEqual(defaultEmployeeHomePreferences());
     const {timeZone,weekStartsOn}=defaultEmployeeHomePreferences();
     expect(await getEmployeeHomeDisplayPreferences(other)).toEqual({timeZone,weekStartsOn});
     await resetEmployeeHomePreferences(ctx);
     expect(await getEmployeeHomePreferences(ctx,HOME_CARDS)).toEqual(defaultEmployeeHomePreferences());
-    expect((await getDashboardLayout(ctx,managerCards,'manager')).selected).toEqual(['teamAwayToday']);
+    expect(await rawLayout(ctx)).toEqual({manager:MANAGER_SLOT});
   });
-  it('legacy role actions preserve display preferences and concurrent role/Home writes do not erase each other',async()=>{
-    const ctx=await newEmployeeCtx(),managerCards=BUILTIN_ROLE_DASHBOARD_CARDS.manager;
+  it('keeps the retired manager and HR-admin slots through concurrent Home writes and a Home reset',async()=>{
+    // No screen reads or writes those slots since the old dashboard was retired (12 Nov 2026); their stored values
+    // are kept, not cleared.
+    const ctx=await newEmployeeCtx(),retired={manager:MANAGER_SLOT,hr_admin:{selected:['headcount'],order:['headcount']}};
+    await withRawSeam(ctx,retired);
     const preferences={...defaultEmployeeHomePreferences(),timeZone:'Asia/Tokyo',weekStartsOn:6};
-    await Promise.all([
-      setEmployeeHomePreferences(ctx,preferences,HOME_CARDS),
-      setDashboardLayout(ctx,{selected:['teamAwayToday'],order:['teamAwayToday']},managerCards,'manager'),
-    ]);
-    expect(await getEmployeeHomePreferences(ctx,HOME_CARDS)).toEqual(preferences);
-    expect((await getDashboardLayout(ctx,managerCards,'manager')).selected).toEqual(['teamAwayToday']);
-    await resetDashboardLayout(ctx,'manager');
-    expect(await getEmployeeHomePreferences(ctx,HOME_CARDS)).toEqual(preferences);
-    await setDashboardLayout(ctx,{selected:['summary','calendar'],order:['calendar','summary']},HOME_CARDS,'employee');
-    expect(await getEmployeeHomePreferences(ctx,HOME_CARDS)).toMatchObject({timeZone:'Asia/Tokyo',weekStartsOn:6});
+    await Promise.all([setEmployeeHomePreferences(ctx,preferences,HOME_CARDS),
+      setEmployeeHomePreferences(ctx,{...preferences,weekStartsOn:0},HOME_CARDS)]);
+    expect([0,6]).toContain((await getEmployeeHomePreferences(ctx,HOME_CARDS)).weekStartsOn);
+    expect(await rawLayout(ctx)).toMatchObject(retired);
+    await resetEmployeeHomePreferences(ctx);
+    expect(await rawLayout(ctx)).toEqual(retired);
+  });
+  it('appends NO domain event (deliberate substrate carve-out for a cosmetic UI pref)', async () => {
+    const ctx = await newEmployeeCtx();
+    await setEmployeeHomePreferences(ctx, defaultEmployeeHomePreferences(), HOME_CARDS);
+    await resetEmployeeHomePreferences(ctx);
+    const rows = (await owner.db.execute(
+      sql`select count(*)::int as n from domain_event
+          where tenant_id = ${b.tenantId} and aggregate_type = 'dashboard-layout'`,
+    )) as unknown as { n: number }[];
+    expect(rows[0]?.n ?? 0).toBe(0);
   });
   it('does not grant a disabled card or save invalid timezone, mandatory-card removal or extra identity fields',async()=>{
     const ctx=await newEmployeeCtx(),preferences=defaultEmployeeHomePreferences();
@@ -352,7 +227,5 @@ describe('Home cosmetic preferences share the canonical dashboard owner',()=>{
     expect(await getEmployeeHomeDisplayPreferences(ctx)).toEqual({timeZone,weekStartsOn});
     expect(await getEmployeeHomePreferences(ctx,HOME_CARDS)).toEqual(defaultEmployeeHomePreferences());
     expect(await rawLayout(ctx)).toEqual({homeDisplay:invalid});
-    await setDashboardLayout(ctx,{selected:['teamAwayToday'],order:['teamAwayToday']},BUILTIN_ROLE_DASHBOARD_CARDS.manager,'manager');
-    expect((await rawLayout(ctx) as Record<string,unknown>).homeDisplay).toEqual(invalid);
   });
 });

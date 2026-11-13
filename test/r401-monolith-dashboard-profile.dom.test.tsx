@@ -1,23 +1,16 @@
 /**
- * r401 — Monolith rollout STEP 4, first slice: the Dashboard (app/page.tsx) and My Profile (app/me/page.tsx),
- * rendered for real in jsdom from the PAGE FUNCTIONS themselves, with every read mocked to a fixture.
+ * r401 — Monolith rollout STEP 4: My Profile (app/me/page.tsx), rendered for real in jsdom from the PAGE FUNCTION,
+ * with every read mocked to a fixture, in both themes.
  *
- * What is pinned, and why here:
- *  • Monolith renders the boards' structure (docs/design/monolith/reference/P-Dashboard.dc.html,
- *    P-MyProfile.dc.html): a mono kicker over the h1, stat cells, sections headed `01 · Label` in the user's
- *    order, spec-grid figures, status as WORDS.
- *  • TRUTH OVER THE BOARD: the fixture carries distinctive figures, and every number the Monolith header,
- *    cells and sections print must be one of the fixture's values (or a date/position derived from them). A
- *    board figure with no source — "230 in now", "Day 12 streak" — would surface as a stray number.
- *  • Classic renders today's markup for the same data (PageHeader, StatCards, the attendance bar, the punch
- *    Card), and none of the Monolith-only structure.
- *  • The customizer still lists and renders the chosen cards in Monolith, and its numbering follows the order.
+ * The Dashboard half of this suite pinned the old dashboard (app/page.tsx `?workspace=dashboard`), which was retired
+ * on 12 Nov 2026 (owner decision): `/` now draws the person's own Today, whose routing is pinned in
+ * test/employee-home-landing.test.ts.
  *
  * The theme comes from the one server reader, lib/ui-theme-server.ts (mocked per test), and is ALSO set on
  * <html data-ui-theme> the way the layout writes it.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
 import { NextIntlClientProvider, createTranslator } from 'next-intl';
 import type { ReactNode } from 'react';
 import messages from '../messages/en.json';
@@ -25,47 +18,8 @@ import messages from '../messages/en.json';
 // ── fixture state, read by the mocks ────────────────────────────────────────────────────────────────────
 const fx = vi.hoisted(() => ({
   theme: 'monolith' as 'monolith' | 'classic',
-  admin: true,
-  selected: [] as string[],
-  extraCards: [] as { cardKey: string; name: string; cardType: 'information' | 'action' | 'shortcut'; href: string | null }[],
 }));
-const DAY = 86_400_000;
-const now = new Date();
-const todayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-
-const STATS = {
-  headcount: 417,
-  pendingLeave: 23,
-  companies: 9,
-  departments: 31,
-  latestPayroll: { payPeriod: '2026-09', net: '58213.77', status: 'processed' },
-  attendance: { date: iso(todayMs - DAY), present: 211, late: 17, halfDay: 4, absent: 13 },
-};
-const BREAKDOWN = [
-  { id: 'c1', name: 'Nusantara Holdings', parentId: null, headcount: 260 },
-  { id: 'c2', name: 'Nusantara Retail', parentId: 'c1', headcount: 157 },
-];
-const HIRES = [
-  { employmentId: 'h1', name: 'Marcus Ong', role: 'Engineer', department: 'Engineering', hiredOn: iso(todayMs - 5 * DAY), status: 'active', probationEndsOn: iso(todayMs + 80 * DAY), confirmationDate: null, terminatedOn: null, resignationDate: null, lastWorkingDate: null, blacklisted: false },
-  { employmentId: 'h2', name: 'Nurul Izzati', role: null, department: 'Retail', hiredOn: iso(todayMs - 20 * DAY), status: 'active', probationEndsOn: null, confirmationDate: iso(todayMs - 20 * DAY), terminatedOn: null, resignationDate: null, lastWorkingDate: null, blacklisted: false },
-];
-const EVENTS = [
-  { date: iso(todayMs + 12 * DAY), name: 'Deepavali' },
-  { date: iso(todayMs + 45 * DAY), name: 'Christmas Day' },
-];
-const ACTIVITY = [
-  { eventType: 'leave_request.submitted', aggregateType: 'leave_request', aggregateId: 'x1', actorType: 'USER', actorName: 'Wei Jie Tan', occurredAt: new Date(now.getTime() - 3 * 3_600_000).toISOString() },
-];
-
 vi.mock('@/lib/ui-theme-server', () => ({ currentUiTheme: vi.fn(async () => fx.theme) }));
-// This suite verifies the preserved administrator workbench. Personal Home has separate role/
-// no-assistant and actual-card coverage and must not load its backend graph into this DOM fixture.
-vi.mock('@/components/employee-home/personal-home',()=>({EmployeePersonalHome:()=>{throw Error('Administrator fixture unexpectedly entered personal Home');}}));
-vi.mock('@/core/employee-home',()=>({
-  readEmployeeHomeIdentity:()=>{throw Error('Administrator fixture unexpectedly resolved personal Home identity');},
-  HomeAccessError:class extends Error{constructor(readonly code:string){super(code);}},
-}));
 vi.mock('next-intl/server', async () => {
   const msgs = (await import('../messages/en.json')).default;
   const { createTranslator: ct } = await import('next-intl');
@@ -82,21 +36,9 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('@/db/client', () => ({}));
 vi.mock('@/lib/scope', () => ({ scopedSession: vi.fn(async () => ({ s: { tenantId: 't', roles: [] }, scopeIds: ['c1', 'c2'], allowedCount: 2 })) }));
-vi.mock('@/lib/authz', () => ({ isAdmin: vi.fn(() => fx.admin) }));
+vi.mock('@/lib/authz', () => ({ isAdmin: vi.fn(() => true) }));
 vi.mock('@/lib/session', () => ({ getSession: vi.fn(async () => ({ tenantId: 't', roles: [] })) }));
 vi.mock('@/core/read', () => ({
-  // dashboard
-  awayTodayCount: vi.fn(async () => 0),
-  dashboardStats: vi.fn(async () => STATS),
-  groupBreakdown: vi.fn(async () => BREAKDOWN),
-  leaveBalances: vi.fn(async () => []),
-  listCompanies: vi.fn(async () => []),
-  myEmployment: vi.fn(async () => null),
-  recentActivity: vi.fn(async () => ACTIVITY),
-  recentHires: vi.fn(async () => HIRES),
-  reportingLinesFor: vi.fn(async () => null),
-  upcomingHolidays: vi.fn(async () => EVENTS),
-  // my profile
   myOwnEmploymentSubjects:vi.fn(async()=>[{employmentId:'e1',company:'Nusantara Holdings',employeeCode:'EMP0042'}]),
   myEmployments: vi.fn(async () => [{ employmentId: 'e1', company: 'Nusantara Holdings', position: 'Analyst', department: 'Finance', basic: '7200', allowance: '400' }]),
   myPayslips: vi.fn(async () => PAYSLIPS),
@@ -112,46 +54,6 @@ vi.mock('@/core/entitlements', () => ({
   getSettingOrFallback: vi.fn(() => []),
   getSetting: vi.fn(() => false),
 }));
-vi.mock('@/core/approvals-inbox', () => ({ pendingApprovalsCount: vi.fn(async () => 0) }));
-vi.mock('@/core/dashboard-prefs', () => ({
-  getDashboardLayout: vi.fn(async () => ({ selected: fx.selected, order: fx.selected })),
-}));
-vi.mock('@/core/dashboard-card-config', () => ({
-  listDashboardCards: vi.fn(async () => [
-    ...fx.selected.map((cardKey, i) => ({
-      cardKey,
-      name: `Card ${cardKey}`,
-      cardType: 'information' as const,
-      href: null,
-      employeeSelectable: true,
-      defaultDisplay: true,
-      mandatory: false,
-      displayOrder: i + 1,
-    })),
-    ...fx.extraCards.map((c, i) => ({ ...c, employeeSelectable: true, defaultDisplay: false, mandatory: false, displayOrder: 50 + i })),
-  ]),
-}));
-vi.mock('@/app/dashboard-layout-actions', () => ({ saveDashboardLayoutAction: vi.fn(), resetDashboardLayoutAction: vi.fn() }));
-// WP-A2 — the Performance block slot is an async server component with its own reads and its own DOM suite
-// (test/p1-wpa2-performance-home.dom.test.tsx); this administrator fixture has no open cycle, so it renders nothing.
-vi.mock('@/components/performance-home/performance-home', () => ({ PerformanceHomeSlot: () => null }));
-// The real slot is an async server component (its own reads); stand in with the real card it renders.
-vi.mock('@/components/notice/notice-surfaces', async () => {
-  const { NoticeBoardCard } = await import('../components/notice/notice-board-card');
-  return {
-    NoticeBoardCardSlot: ({ monolith }: { monolith?: boolean }) => (
-      <NoticeBoardCard
-        items={[{ id: 'n1', title: 'Office closure', unread: true }]}
-        unread={1}
-        title="Notice Board"
-        emptyLabel="No notices right now."
-        viewAllLabel="View all notices"
-        newCountLabel="1 new"
-        monolith={monolith ? { unreadWord: 'New' } : undefined}
-      />
-    ),
-  };
-});
 // ── /me only ──
 const PAYSLIPS = [
   { id: 'p1', employmentId:'e1', payPeriod: '2026-08', company: 'Nusantara Holdings', gross: '7600', deductions: '926.95', net: '6673.05', status: 'closed', released: true, runType: 'regular', runSeq: 1 },
@@ -211,14 +113,6 @@ const RECORD = {
   dependents: [],
 };
 
-// W3: Today composes above the dashboard and has its own role tests (test/today-*.dom.test.tsx); here it hands the
-// dashboard through, which resolves inside its Suspense as the streamed page finally shows it.
-vi.mock('@/components/today/today-page', async () => {
-  const React = await import('react');
-  return { TodayPage: ({ more }: { more: ReactNode }) => React.createElement(React.Fragment, null, more) };
-});
-import { resolveServerTree } from './helpers/server-tree';
-import DashboardPage from '../app/page';
 import MePage from '../app/me/page';
 
 const wrap = (ui: ReactNode) =>
@@ -231,154 +125,9 @@ const setTheme = (theme: 'monolith' | 'classic') => {
   fx.theme = theme;
   document.documentElement.setAttribute('data-ui-theme', theme);
 };
-const ADMIN_LAYOUT = [
-  'headcount',
-  'pendingLeave',
-  'companies',
-  'latestPayroll',
-  'attendanceOverview',
-  'headcountByCompany',
-  'latestPayrollRun',
-  'recentlyJoined',
-  'upcomingEvents',
-  'recentActivity',
-  'noticeBoard',
-];
-// Today by audience (11 Nov 2026): an administrator lands on Administrator Today, and the earlier dashboard is drawn on its
-// own only when asked for by name (`?workspace=dashboard`), which is the page these cases draw.
-const renderDashboard = async () => wrap(await resolveServerTree(await DashboardPage({ searchParams: Promise.resolve({ workspace: 'dashboard' }) })));
 const renderMe = async () => wrap(await MePage({ searchParams: Promise.resolve({}) }));
 
-/** Every number printed in `el`, normalised (commas dropped, leading zeros dropped). */
-const numbersIn = (text: string) =>
-  [...text.matchAll(/\d[\d,]*(?:\.\d+)?/g)].map((m) => {
-    const raw = m[0].replace(/,/g, '');
-    return raw.includes('.') ? raw : String(Number(raw));
-  });
-/** Every number in `el`, text node by text node (adjacent elements must not fuse into one figure). */
-const numbersInEl = (el: Element) => {
-  const out: string[] = [];
-  const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-  for (let n = w.nextNode(); n; n = w.nextNode()) out.push(...numbersIn(n.textContent ?? ''));
-  return out;
-};
 const t = createTranslator({ locale: 'en', messages });
-
-beforeEach(() => {
-  fx.admin = true;
-  fx.selected = [...ADMIN_LAYOUT];
-  fx.extraCards = [];
-});
-
-describe('Dashboard — Monolith', () => {
-  beforeEach(() => setTheme('monolith'));
-
-  it('draws the board: a mono kicker over the h1, then the cells, then numbered sections in the user order', async () => {
-    const { container } = await renderDashboard();
-    const header = container.querySelector('[data-mono-header]') as HTMLElement;
-    expect(header, 'the Monolith page header').not.toBeNull();
-    expect(within(header).getByRole('heading', { level: 1 })).toHaveTextContent(t('dashboard.title'));
-    expect(header.querySelector('p')?.textContent).toContain(t('dashboard.overviewAll'));
-
-    const cells = [...container.querySelectorAll('[data-mono-cell]')] as HTMLAnchorElement[];
-    expect(cells.map((c) => c.getAttribute('href'))).toEqual(['/personnel', '/leave', '/admin/organization', '/payroll']);
-    expect(cells[0]).toHaveTextContent(/HEADCOUNT|Headcount/);
-    expect(cells[0].querySelector('b')).toHaveTextContent('417');
-    // Pending leave NEEDS someone → signal-text, and said in words by its label.
-    expect(cells[1].querySelector('b')).toHaveClass('text-signal-text');
-    expect(cells[3].querySelector('b')).toHaveTextContent('RM 58,213.77');
-
-    const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
-    expect(headings).toEqual([
-      `01 · ${t('dashboard.attendance')}`,
-      `02 · ${t('dashboard.headcountByCompany')}`,
-      `03 · ${t('dashboard.latestPayrollRun')}`,
-      `04 · ${t('dashboard.recentlyJoined')}`,
-      `05 · ${t('dashboard.upcomingEvents')}`,
-      `06 · ${t('dashboard.recentActivity')}`,
-      '07 · Notice Board · 1 new',
-    ]);
-  });
-
-  it('prints figures as a spec grid and status as WORDS (never colour alone)', async () => {
-    const { container } = await renderDashboard();
-    const attendance = screen.getByRole('region', { name: `01 · ${t('dashboard.attendance')}` });
-    const kv = attendance.querySelector('[data-kv]') as HTMLElement;
-    expect([...kv.querySelectorAll('dd')].map((d) => d.textContent)).toEqual(['211', '17', '4', '13']);
-    expect(within(kv).getByText('17')).toHaveClass('monolith:text-signal-text');
-    // Recently joined: the derived Employee Status, as a word.
-    const joined = screen.getByRole('region', { name: `04 · ${t('dashboard.recentlyJoined')}` });
-    expect(within(joined).getByText('Marcus Ong')).toBeInTheDocument();
-    const words = [...joined.querySelectorAll('[data-tone]')].map((w) => w.textContent);
-    const labels = Object.values(messages.people.employeeStatus as Record<string, string>);
-    expect(words).toHaveLength(2);
-    for (const w of words) expect(labels, `"${w}" is an Employee Status word`).toContain(w);
-    // Payroll run status is a word, and the notice's unread state is a word too.
-    const run = screen.getByRole('region', { name: `03 · ${t('dashboard.latestPayrollRun')}` });
-    expect(within(run).getByText('processed')).toHaveAttribute('data-tone', 'signal');
-    const notices = screen.getByRole('region', { name: '07 · Notice Board · 1 new' });
-    expect(within(notices).getByText('New')).toHaveAttribute('data-tone', 'signal');
-    // No Classic leftovers in the Monolith tree.
-    expect(container.querySelector('.bg-emerald-500'), 'the Classic attendance bar').toBeNull();
-  });
-
-  it('prints NO figure that is not in the data (truth over the board)', async () => {
-    const { container } = await renderDashboard();
-    const main = container.firstElementChild as HTMLElement;
-    const allowed = new Set<string>();
-    const add = (...xs: (string | number)[]) => xs.forEach((x) => numbersIn(String(x)).forEach((n) => allowed.add(n)));
-    add(JSON.stringify({ STATS, BREAKDOWN, HIRES, EVENTS }));
-    add(STATS.headcount); // breakdown total = 260 + 157
-    add(12, 45, 5, 3, 60); // in 12 / 45 days, joined 5 days / 3 weeks ago, 3h ago
-    for (let i = 1; i <= 7; i++) add(i); // section ordinals
-    add(new Date().getFullYear(), new Date().getDate(), new Date(todayMs + DAY).getUTCDate());
-    for (const e of [...EVENTS.map((x) => x.date), ...HIRES.map((x) => x.hiredOn)]) add(e.slice(8));
-    const shown = numbersInEl(main);
-    expect(shown.length, 'the walk saw the figures at all').toBeGreaterThan(20);
-    const stray = shown.filter((n) => !allowed.has(n));
-    expect(stray, `figures with no source in the fixture: ${stray.join(', ')}`).toEqual([]);
-  });
-
-  it('the customizer still lists and renders the chosen cards, and numbering follows the order', async () => {
-    fx.selected = ['headcount', 'recentActivity', 'attendanceOverview'];
-    fx.extraCards = [{ cardKey: 'upcomingEvents', name: 'Card upcomingEvents', cardType: 'information', href: null }];
-    await renderDashboard();
-    // The user put Recent activity before Attendance → it is section 01.
-    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
-      `01 · ${t('dashboard.recentActivity')}`,
-      `02 · ${t('dashboard.attendance')}`,
-    ]);
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: t('dashboard.customizeDashboard') })));
-    for (const k of fx.selected) expect(screen.getByRole('button', { name: `Reorder Card ${k}` })).toBeInTheDocument();
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: t('dashboard.addCard') })));
-    await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: /Card upcomingEvents/ })));
-    // The added card renders in the board's language, numbered after the others — live, before saving.
-    expect(screen.getByRole('heading', { level: 2, name: `03 · ${t('dashboard.upcomingEvents')}` })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Reorder Card upcomingEvents' })).toBeInTheDocument();
-  });
-});
-
-describe('Dashboard — Classic renders today’s markup for the same data', () => {
-  beforeEach(() => setTheme('classic'));
-
-  it('PageHeader, StatCards, the attendance bar; none of the Monolith structure', async () => {
-    const { container } = await renderDashboard();
-    expect(container.querySelector('[data-mono-header]')).toBeNull();
-    expect(container.querySelector('[data-mono-cell]')).toBeNull();
-    expect(container.querySelector('[data-section]'), 'no Monolith Section').toBeNull();
-    const h1 = screen.getByRole('heading', { level: 1 });
-    expect(h1).toHaveClass('text-xl', 'font-semibold', 'tracking-tight');
-    expect(h1.nextElementSibling).toHaveTextContent(t('dashboard.overviewAll'));
-    // StatCard: the 3xl figure inside a link card.
-    const figure = screen.getByText('417');
-    expect(figure).toHaveClass('mt-2', 'text-3xl', 'font-semibold', 'tracking-tight', 'tabular-nums');
-    expect(figure.closest('a')).toHaveAttribute('href', '/personnel');
-    expect(container.querySelector('.bg-emerald-500'), 'the attendance bar').not.toBeNull();
-    // Classic headings, no index.
-    expect(screen.getByRole('heading', { level: 2, name: t('dashboard.attendance') })).toBeInTheDocument();
-    expect(screen.queryByText(/^0\d · /)).toBeNull();
-  });
-});
 
 describe('My Profile approved Personnel alignment in both themes',()=>{
  it.each(['monolith','classic'] as const)('%s retains own summary and eleven tabs, without Today/clocking',async theme=>{

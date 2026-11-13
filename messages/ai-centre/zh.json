@@ -757,7 +757,6 @@
       "switchAttestation": "此确认仅在启用直连服务商（Anthropic、OpenAI 或 Google）时适用。"
     },
     "recommendation": {
-      "show": "显示建议",
       "loading": "检查中…",
       "verdict": {
         "recommend_approve": "建议批准：所有检查均已通过",
@@ -803,7 +802,9 @@
           "pass": "您可见的其他人在这些日期都没有休假。",
           "fail": "团队人手覆盖低于最低要求。",
           "unusual": "您可见的其他人在其中部分日期休假。",
-          "missing": "无法读取其他休假人员。"
+          "missing": "无法读取其他休假人员。",
+          "passMinimum": "这项申请的每一天，团队中至少有 {minimum} 人在岗。",
+          "failMinimum": "批准此申请后，团队在岗人数将有 {count} 天少于 {minimum} 人：{days}。"
         },
         "policy_limits": {
           "pass": "符合该假期类型的文件和日期规则。",
@@ -824,7 +825,9 @@
         "passing": "通过所有检查（{count}）",
         "help": "仅显示通过所有检查的申请。选择这些申请，然后在确认后批准或拒绝。不会自动批准任何申请。"
       },
-      "openOne": "显示建议"
+      "openOne": "显示建议",
+      "teamDay": "{date}（{present} 人在岗）",
+      "teamMoreDays": "另有 {count} 天"
     },
     "digest": {
       "title": "您的今天",
@@ -1074,7 +1077,9 @@
           "condition_other_clocking": "当天有其他打卡记录",
           "condition_inactive": "雇佣关系已结束",
           "would_create_overtime": "该修正会产生加班",
-          "approval_routed": "考勤审批需走审批流程"
+          "approval_routed": "考勤审批需走审批流程",
+          "condition_record_changed": "记录在执行前已发生变化",
+          "condition_no_manager": "记录中该员工没有经理"
         },
         "status": {
           "fixed": "已修正 · 可撤销至 {date}",
@@ -1087,12 +1092,19 @@
           "withdrawnEmployee": "应员工要求撤回",
           "withdrawnHr": "被 HR 撤回",
           "sentOpen": "已发送 · 可在 {date} 前撤回",
-          "sentClosed": "已发送"
+          "sentClosed": "已发送",
+          "opened": "已开启 · 由经理处理",
+          "openedOpen": "已开启 · 可在 {date} 前取消",
+          "cancelledHr": "评估已由人力资源取消"
         },
         "undo": "撤销",
         "notSent": "未发送：{reason}",
         "sent": "已发送请求，需填写 {count, plural, other {# 项资料}}",
-        "withdraw": "撤回"
+        "withdraw": "撤回",
+        "passportSent": "已请员工更新护照，护照将于 {date} 到期",
+        "probationOpened": "已开启试用期评估并发送给经理，截止日期 {date}",
+        "notOpened": "未开启：{reason}",
+        "cancelReview": "取消评估"
       },
       "limits": {
         "title": "它绝不能越过的界限",
@@ -1107,7 +1119,9 @@
         "requestOnly": "只发送请求；绝不更改记录",
         "requestActive": "绝不向雇佣关系已结束的人发送请求",
         "perNightRequests": "{company}：每晚最多 {count, plural, other {# 个请求}}，每个请求可在 {days} 天内撤回",
-        "level3": "在“执行并审核”级别，HR 审核每周样本，而不是每一项操作。"
+        "level3": "在“执行并审核”级别，HR 审核每周样本，而不是每一项操作。",
+        "passportRequestOnly": "只发送更新请求；从不更改护照记录",
+        "probationRequestOnly": "只开启评估并发送给经理；从不确认、延长或终止雇佣"
       },
       "owner": {
         "suspended": "已暂停：其负责人不再拥有 HR 权限。",
@@ -2344,34 +2358,9 @@
     "suggestClaim": "提交报销",
     "suggestPay": "为什么我的工资不一样？",
     "suggestLetter": "获取在职证明信",
-    "needsYou": "需要您处理",
-    "needsYouEmpty": "目前没有需要您处理的事项。",
-    "readyToConfirm": "待您确认",
-    "doneForYou": "已为您完成",
-    "doneForYouEmpty": "过去 7 天内尚无为您完成的事项。",
-    "watching": "关注中",
-    "watchingEmpty": "目前没有需要关注的事项。",
-    "atAGlance": "一览",
-    "atAGlanceEmpty": "暂无可显示的内容。",
     "unavailable": "部分项目无法加载。其各自的页面仍可正常使用。",
-    "loading": "正在加载今天",
-    "more": "更多",
     "tasks": {
-      "from": "来自审批",
-      "received": "收到于 {date}",
-      "open": "打开",
-      "seeAll": "查看全部 {count} 项",
       "review": "审阅"
-    },
-    "prepared": {
-      "leaveApply": "已为您准备好休假申请",
-      "leaveCancel": "已为您准备好休假取消",
-      "leaveDecision": "已为您准备好休假决定",
-      "meta": "准备于 {date}",
-      "expires": "{date} 过期",
-      "cta": "审阅并确认",
-      "note": "已由休假服务检查。在您确认之前不会提交任何内容。",
-      "awaiting": "等待您确认"
     },
     "findings": {
       "setupTitle": "{count, plural, other {# 个设置阶段需要关注}}",
@@ -2402,6 +2391,7 @@
       "clockOutReasonOtherLabel": "输入原因",
       "clockOutActionsLabel": "确认或编辑",
       "clockOutChanged": "自卡片准备以来这一天的记录已更改，因此没有提交任何内容。请使用“编辑”在表单上核对。",
+      "clockOutPending": "这一天的更正申请已在等待审批，因此没有再次提交。",
       "recordTitle": "{count, plural, other {您的记录缺少 # 项资料}}",
       "recordNote": "人事照常审批您的更新。",
       "recordCta": "填写",
@@ -2433,35 +2423,6 @@
         "loop_document_expiry": "护照即将到期",
         "loop_salary_payroll": "薪资发放循环"
       }
-    },
-    "done": {
-      "answeredLabel": "已回答",
-      "checkedLabel": "已检查",
-      "preparedLabel": "已准备",
-      "answeredOthersTitle": "{count, plural, other {已回答 # 个员工问题}}",
-      "answeredOthersBody": "过去 7 天内，针对您当前范围内的公司。涉及敏感事项的问题会转交您的 HR 团队，不计入此处。",
-      "answeredYouTitle": "{count, plural, other {已回答您的 # 个问题}}",
-      "answeredYouBody": "过去 7 天内。",
-      "leaveChecksTitle": "{count, plural, other {已为您检查 # 项休假申请}}",
-      "leaveChecksBody": "余额、重叠、团队覆盖和政策，均由休假服务检查。决定仍由您作出。",
-      "preparedTitle": "{count, plural, other {已准备 # 项您委托的事项}}",
-      "preparedBody": "过去 7 天内，由您委托的任务完成。"
-    },
-    "watch": {
-      "deadlineLabel": "截止日期",
-      "deadlineTitle": "{count, plural, other {# 份 CP22 或 CP22A 通知需要提交}}",
-      "deadlineOverdue": "{count, plural, other {其中 # 份已逾期。}}",
-      "deadlineBody": "7 天内到期，来自法定合规工作清单。",
-      "deadlinePartial": "已检查范围内前 {n} 家公司（共 {total} 家）。",
-      "deadlineCta": "打开法定表格",
-      "exceptionsLabel": "薪资",
-      "exceptionsTitle": "{count, plural, other {# 个薪资异常尚未处理}}",
-      "exceptionsBlocking": "{count, plural, =0 {没有异常阻止薪资运行。} other {其中 # 个阻止薪资运行。}}",
-      "exceptionsCta": "打开异常",
-      "expiryLabel": "即将到期",
-      "passportTitle": "{count, plural, other {# 本已记录的护照将在 30 天内到期}}",
-      "passportBody": "最早的一本于 {date} 到期。",
-      "passportCta": "打开人员"
     },
     "glance": {
       "balances": "假期余额",
@@ -2729,6 +2690,28 @@
         "payrollBlocking": "是什么阻碍了本月的薪资？",
         "claimsBeforeCutOff": "谁还没有在截止日前提交报销？",
         "approvalsWaiting": "哪些审批已等待超过 3 天？"
+      },
+      "morning": {
+        "title": "晨间摘要",
+        "intro": "每天早上，AI Centre 会统计等待您处理的事项：待决定事项、设置缺口和法定截止日期。摘要仅为您准备，不会做出任何决定。",
+        "start": "每天早上给我发送摘要",
+        "stop": "停止我的晨间摘要",
+        "started": "您的晨间摘要将从明天早上开始。",
+        "stoppedToast": "您的晨间摘要已停止。",
+        "startFailed": "无法开始晨间摘要。请刷新页面后重试。",
+        "stopFailed": "无法停止晨间摘要。请刷新页面后重试。",
+        "unavailable": "无法加载您的晨间摘要。",
+        "approvals": "{count, plural, =0 {没有等待您决定的事项} other {# 项决定等待您处理}}",
+        "setup": "设置：{blocked} 项受阻，{attention} 项需要关注",
+        "deadlines": "法定截止日期：{overdue} 项逾期，{dueSoon} 项将在 7 天内到期",
+        "openApprovals": "审阅",
+        "openSetup": "打开设置",
+        "openDeadlines": "打开表格",
+        "preparedAt": "今天早上 {time} 准备。",
+        "first": "您的第一份摘要将在明天清晨准备好。",
+        "notToday": "今天早上没有准备摘要。今晚会再次尝试。",
+        "paused": "AI 活动已停止，恢复之前不会准备摘要。",
+        "forYouOnly": "只有您能看到此摘要。它只统计并提供链接；所有决定仍由人做出。"
       }
     },
     "manager": {
@@ -2751,8 +2734,16 @@
       "comingUpEmpty": "您的团队近期没有安排。",
       "comingUpPartial": "部分事项暂时无法加载。",
       "otherWork": "{count, plural, other {另有 # 项事项在等待您}}",
-      "seeAllWork": "在任务中查看全部 {count} 项"
-    }
+      "seeAllWork": "在任务中查看全部 {count} 项",
+      "teamTodayTitle": "今天的团队",
+      "teamTodayEmpty": "今天没有记录您团队的出勤。",
+      "teamTodayOpen": "打开我的团队",
+      "reviewDue": "{name} 的评估截止日期为 {date}",
+      "reviewDueUnnamed": "一项评估的截止日期为 {date}",
+      "holiday": "{date}：{name}（公共假期）",
+      "holidayUnnamed": "{date}：公共假期"
+    },
+    "workspaceTitle": "您的工作区"
   },
   "why": {
     "link": "为什么？",

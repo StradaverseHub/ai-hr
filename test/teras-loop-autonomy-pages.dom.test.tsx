@@ -59,7 +59,7 @@ const fx=vi.hoisted(()=>{
 });
 vi.mock('../core/loops/views',()=>({LoopViewRefused:fx.LoopViewRefused,
  loopsOverview:async()=>({rows:['loop_probation_ending','loop_payroll_inputs','loop_missing_employee_data','loop_missed_clock_outs','loop_document_expiry'].map(fx.row),canSwitch:false,windowDays:30}),
- loopDetail:async(_s:unknown,id:string)=>{state.reads.push('detail:'+id);if(!['loop_missed_clock_outs','loop_probation_ending','loop_missing_employee_data'].includes(id))throw new fx.LoopViewRefused('not_found');
+ loopDetail:async(_s:unknown,id:string)=>{state.reads.push('detail:'+id);if(!['loop_missed_clock_outs','loop_probation_ending','loop_payroll_inputs','loop_missing_employee_data'].includes(id))throw new fx.LoopViewRefused('not_found');
   const out=fx.detail(id);if(state.sponsorLost)out.row.lastRun={...out.row.lastRun,status:'sponsor_lost'};return out;}}));
 vi.mock('../core/loops/autonomy-views',()=>({
  // Fixtures represent the reader's effective projection, not its obsolete stored configuration.
@@ -69,7 +69,8 @@ vi.mock('../core/loops/autonomy-views',()=>({
   return[id,[...counts].sort((a,b)=>b[0]-a[0]).map(([level,count])=>({level,count}))];
  })),
  loopAutonomyDetail:async(_s:unknown,id:string)=>{state.reads.push('autonomy:'+id);
-  if(id==='loop_probation_ending')return {workerId:id,maxLevel:1,promotableTo:1,capped:true,hasActor:false,canChange:state.canChange,usesCondition:false,siteExitRecorded:false,windowDays:30,
+  // Payroll inputs (pay) stay capped at Prepare; probation and passports became request-only steps (13 November 2026).
+  if(id==='loop_payroll_inputs')return {workerId:id,maxLevel:1,promotableTo:1,capped:true,hasActor:false,canChange:state.canChange,usesCondition:false,siteExitRecorded:false,windowDays:30,
    companies:[fx.company(A,'Fictional A Sdn Bhd',1),fx.company(B,'Fictional B Sdn Bhd',1)],actions:[],samples:[],figures:{applied:0,corrected:0,undoneByEmployee:0,correctedShare:null}};
   const missed=id==='loop_missed_clock_outs',levelA=missed?Math.min(state.levelA,1):state.levelA;
   return {workerId:id,maxLevel:missed?1:3,promotableTo:missed?1:3,capped:missed,hasActor:!missed,canChange:state.canChange,usesCondition:missed,siteExitRecorded:false,windowDays:30,
@@ -185,7 +186,7 @@ describe('loop pages preserve review-only attendance and the remaining acting lo
  });
  it('other capped loops also stay at Prepare and offer no promotion',async()=>{
   state.session=SESSIONS.groupAdmin;state.canChange=true;
-  const view=wrap('en',await detail('loop_probation_ending'));
+  const view=wrap('en',await detail('loop_payroll_inputs'));
   expect(text(view.container.querySelector('[data-loop-autonomy-help]'))).toBe(messagesFor('en').aiCentre.autonomy.capped);
   expect(view.container.querySelectorAll('[data-loop-level-company] a')).toHaveLength(0);
   expect(view.container.querySelector('[data-loop-actions]')).toBeNull();

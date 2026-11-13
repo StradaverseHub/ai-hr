@@ -141,12 +141,44 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:4526,when:1793330004826,tag:'5126_contract_internship_end_dates'},
  // 8d02748a readable import log references, renumbered 5127 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
  {idx:4527,when:1793330004827,tag:'5127_import_log_actor_labels'},
+ // Payroll history effective reads, allocated above production's 5127 and PR 240's 5128 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
+ {idx:4529,when:1793330004829,tag:'5129_payroll_history_effective_reads'},
+ // Background AI Formula Generator draft job (12 November 2026), allocated above 5129 (docs/MIGRATION-ALLOCATION.md).
+ {idx:4530,when:1793330004830,tag:'5130_pay_formula_ai_draft_job'},
+ // daa76ed4/96a54ed2 Irwin attendance workflow lane draft (block 5140-5149; final numbering at integration).
+ {idx:4540,when:1793330004840,tag:'5140_attendance_workflow_cross_company_pending'},
+ {idx:4541,when:1793330004841,tag:'5141_attendance_workflow_escalation'},
+ {idx:4542,when:1793330004842,tag:'5142_attendance_on_behalf'},
+ {idx:4543,when:1793330004843,tag:'5143_attendance_final_decision_window'},
+ {idx:4544,when:1793330004844,tag:'5144_attendance_lane_security_review'},
+ // 96a54ed2 AI Centre controls for the two on-behalf reads (owner decision, 12 November 2026; coordinator block 5140-5159).
+ {idx:4545,when:1793330004845,tag:'5145_ai_attendance_on_behalf_reads'},
+ // 2f803985 Irwin Schedule Group Overtime Setting: per-date rounding in the policy part payable count (block 5150-5159).
+ {idx:4550,when:1793330004850,tag:'5150_attendance_policy_dated_rounding'},
+ // Sweep reads each company's net-swing threshold (draft 9760), allocated 5160 above the Irwin 5140–5150 holds (docs/MIGRATION-ALLOCATION.md, 13 November 2026).
+ {idx:4560,when:1793330004860,tag:'5160_sweep_swing_thresholds'},
+ // Manager Today team minimum (draft 9770), allocated 13 November 2026 as 5161 (docs/MIGRATION-ALLOCATION.md).
+ {idx:4561,when:1793330004861,tag:'5161_leave_team_minimum_present'},
+ // Probation and passport loops act as request-only steps: draft 9780, allocated 13 November 2026 as 5162 (docs/MIGRATION-ALLOCATION.md).
+ {idx:4562,when:1793330004862,tag:'5162_teras_loop_request_acts'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5150_attendance_policy_dated_rounding':'f1549fefc467398d9701ba5428e238134a8ca248fb645046b4b23877280e3408',
+ '5145_ai_attendance_on_behalf_reads':'45f46d793d836371aebc7d7e20bcea000edef1a6e517367f8deffd59dd2ec9ff',
+ '5144_attendance_lane_security_review':'a8b3b68d4ff8faa0f3f69f62089be537c1c8a7ba4522aefa5c3a5e8d314569ed',
+ '5143_attendance_final_decision_window':'e048acb77ceb8115bebc25365c5f0b7a53a9981c7b2533312c0c460e5f6dca9d',
+ '5142_attendance_on_behalf':'f6e733a3388ff70ffde812ce669b42b6a55decb3951584a8d8d420100d061125',
+ '5141_attendance_workflow_escalation':'b578fbc0588c783b9091ae12753701e5e3322fc3fe53cbae60e5da18ce66ddde',
+ '5140_attendance_workflow_cross_company_pending':'3fbdc8541c9ba5b9b03d7cb3a0e212df1db1b9e196822db575cc186bbb33c4c1',
  '5124_attendance_workflow_skipped_levels':'849dba4bf7c3aa39e45eb7f463ef24301a2eea3b10a781cf39858aa218635c6d',
  '5123_import_history_kind':'2da28686e0f48790491ed9677813be1fae9a71f1e9fbbe1c9b51786f401420e7',
  '5127_import_log_actor_labels':'1f90bf32091400f2ec667a8538802248a90bb1336c869a8b8faad349b2530ce2',
+ '5129_payroll_history_effective_reads':'2df235f08c69d3547847e6bd8a3cafb1f774bc051ec51b2c2fcf50d8d07596e7',
+ '5130_pay_formula_ai_draft_job':'842cf4996cdb4f3d0d8f26fcc205e774d5937f0d612122dafe2b5254e16e84ce',
+ '5160_sweep_swing_thresholds':'5217e41181c030728ee879b45cc683c39bc9d7b9c7aed44c4c4abe88a230ee48',
+ '5161_leave_team_minimum_present':'fa4c016e8aa6d259e8ec31bec4809c88b46f50dfd157d9ddaf251568623a4660',
+ '5162_teras_loop_request_acts':'1b92edf3fe85d66954e50f5677bc1cf5122f8fe92faf22db636181c5ed8503f8',
  '4800_ai_shared_leave_groups_read':'774dce41ba113549ec5415586d104b8d5b7712934216f2beb4d9aa0e9f00ffc5',
  '4601_last_login_event_index':'868e30d4a2840d4939a46f303ce999b2e041ae3cb6823eb8b712179ccf7d5788',
  '4600_attendance_clock_policy_group_scope':'b30a62bec597f53266232abe569a040a9a421eaa2239eac232d0e44041352be6',
@@ -287,6 +319,12 @@ export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;col
  {tag:'5036_leave_type_pending_year_cycle',table:'leave_type',columns:['pending_year_cycle_job_id']},
  {tag:'5051_payroll_processing_job',table:'payroll_batch',columns:['processing_job_id','processing_started_at']},
  {tag:'5125_individual_txn_pricing_marker',table:'payroll_individual_txn',columns:['pricing_source','pricing_ref','priced_at']},
+ // daa76ed4 Escalation Approval stage clock: NULL on every request submitted before it (never escalates).
+ {tag:'5141_attendance_workflow_escalation',table:'attendance_workflow_request',columns:['stage_reached_at','escalate_on']},
+ // 96a54ed2 Request On Behalf: NULL on every application filed before it (the employee filed it).
+ {tag:'5142_attendance_on_behalf',table:'attendance_correction',columns:['submitted_by_user_id','submitted_by_person_id','submitted_by_name']},
+ // 5161 (draft 9770): the team minimum is unset (no minimum) on every company that predates it.
+ {tag:'5161_leave_team_minimum_present',table:'company',columns:['leave_team_minimum_present']},
  ...['department','position','cost_center','business_unit','label_company_assignment','profile_option','job_grade','grade_group','grade_group_member']
   .map(table=>({tag:'5070_system_label_import_staged_job',table,columns:['import_pending_attempt_id']})),
 ]);

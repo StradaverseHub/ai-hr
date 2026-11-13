@@ -5778,6 +5778,90 @@
       "breakpoints": true
     },
     {
+      "idx": 4529,
+      "version": "7",
+      "when": 1793330004829,
+      "tag": "5129_payroll_history_effective_reads",
+      "breakpoints": true
+    },
+    {
+      "idx": 4530,
+      "version": "7",
+      "when": 1793330004830,
+      "tag": "5130_pay_formula_ai_draft_job",
+      "breakpoints": true
+    },
+    {
+      "idx": 4540,
+      "version": "7",
+      "when": 1793330004840,
+      "tag": "5140_attendance_workflow_cross_company_pending",
+      "breakpoints": true
+    },
+    {
+      "idx": 4541,
+      "version": "7",
+      "when": 1793330004841,
+      "tag": "5141_attendance_workflow_escalation",
+      "breakpoints": true
+    },
+    {
+      "idx": 4542,
+      "version": "7",
+      "when": 1793330004842,
+      "tag": "5142_attendance_on_behalf",
+      "breakpoints": true
+    },
+    {
+      "idx": 4543,
+      "version": "7",
+      "when": 1793330004843,
+      "tag": "5143_attendance_final_decision_window",
+      "breakpoints": true
+    },
+    {
+      "idx": 4544,
+      "version": "7",
+      "when": 1793330004844,
+      "tag": "5144_attendance_lane_security_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 4545,
+      "version": "7",
+      "when": 1793330004845,
+      "tag": "5145_ai_attendance_on_behalf_reads",
+      "breakpoints": true
+    },
+    {
+      "idx": 4550,
+      "version": "7",
+      "when": 1793330004850,
+      "tag": "5150_attendance_policy_dated_rounding",
+      "breakpoints": true
+    },
+    {
+      "idx": 4560,
+      "version": "7",
+      "when": 1793330004860,
+      "tag": "5160_sweep_swing_thresholds",
+      "breakpoints": true
+    },
+    {
+      "idx": 4561,
+      "version": "7",
+      "when": 1793330004861,
+      "tag": "5161_leave_team_minimum_present",
+      "breakpoints": true
+    },
+    {
+      "idx": 4562,
+      "version": "7",
+      "when": 1793330004862,
+      "tag": "5162_teras_loop_request_acts",
+      "breakpoints": true
+    },
+    {
       "idx": 4600,
       "version": "7",
       "when": 1793330004900,

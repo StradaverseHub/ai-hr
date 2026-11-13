@@ -1,6 +1,7 @@
 /**
- * Per-user dashboard layout (feedback 7d9d145d; add/remove/shortcut in 578a2fcf; per-ROLE in 9606c59f).
- * The caller's chosen dashboard cards + arrangement, persisted on app_user.dashboard_layout through the
+ * Per-user Home layout (feedback 7d9d145d; add/remove/shortcut in 578a2fcf; per-ROLE in 9606c59f; My Home since
+ * the old dashboard was retired, owner decision 12 Nov 2026). The caller's chosen My Home cards + arrangement and
+ * display settings, persisted on app_user.dashboard_layout through the
  * SECURITY DEFINER app.dashboard_layout_* seam (own-row-only: a user can read/write only their own layout,
  * so RLS stays intact and one person's arrangement never touches another's).
  *
@@ -11,15 +12,18 @@
  * the EMPLOYEE slot, so every pre-existing saved employee layout keeps working unchanged. Each role's slot
  * is normalised on BOTH read and write against the tenant's live ROLE-FILTERED card config, so a legacy
  * value, a partial/tampered slot, or a config that disabled a card can never leave the layout in an
- * invalid state. Reads/writes take the role's active cards (core/dashboard-card-config.listDashboardCards)
+ * invalid state. Reads/writes take the active My Home cards (core/dashboard-card-config.listEmployeeHomeCards)
  * so the pure normaliser stays DB-free.
  *
  * SUBSTRATE CARVE-OUT (deliberate DomainEvent skip): dashboard_layout is a personal, cosmetic UI
  * preference — the same class as app_user.onboarded_at / lastSeenAt. It changes only which cards render on
  * the owner's own screen (within HR's rules), never any HR data or access. It has no audit, replay,
  * agent-context or Self-Improvement value and would be high-churn noise in the event log, so
- * setDashboardLayout / resetDashboardLayout intentionally do NOT append a DomainEvent (per the CLAUDE.md
- * "When NOT to append" rule for per-user UI/pref writes). Do not add one.
+ * setEmployeeHomePreferences / resetEmployeeHomePreferences intentionally do NOT append a DomainEvent (per the
+ * CLAUDE.md "When NOT to append" rule for per-user UI/pref writes). Do not add one.
+ *
+ * The old dashboard's manager and HR-admin slots are no longer read or written by any screen. They are kept, not
+ * cleared: every write here merges into the stored envelope and replaces only the employee slot (and Home display).
  */
 import { sql } from 'drizzle-orm';
 import { EMPLOYEE_HOME_CARDS, defaultEmployeeHomePreferences, readEmployeeHomePreferences,
@@ -33,8 +37,6 @@ import {
   normalizeDashboardLayout,
   removeRoleLayout,
   type DashboardCardChoice,
-  type DashboardLayout,
-  type DashboardLayoutRole,
 } from '../lib/dashboard-layout';
 
 /** Serialize read/merge/write operations for one login, including legacy role-layout actions.
@@ -53,65 +55,6 @@ export function dashboardLayoutGetSql() {
   return sql`select app.dashboard_layout_get() as layout`;
 }
 
-/**
- * The caller's saved, normalised layout for `role` against the given active card set. Always returns a
- * valid layout (never null): with no saved slot it yields the HR default (mandatory + default-display
- * cards shown). A legacy flat value is the employee slot; a legacy order-only array reads as "everything
- * shown, in that order".
- */
-export function getDashboardLayout(
-  ctx: SessionContext,
-  cards: readonly DashboardCardChoice[],
-  role: DashboardLayoutRole = 'employee',
-): Promise<DashboardLayout> {
-  if (!ctx.userId) return Promise.resolve(normalizeDashboardLayout(null, cards)); // no login identity → HR default
-  return withTenant(ctx, async (tx) => {
-    const raw = await readRawLayout(tx);
-    return normalizeDashboardLayout(extractRoleLayout(raw, role), cards);
-  });
-}
-
-/**
- * Persist the caller's chosen cards + order for `role` (normalised against the live role-filtered card
- * config before write). Only the role's slot is replaced — the other roles' saved layouts are preserved.
- */
-export function setDashboardLayout(
-  ctx: SessionContext,
-  layout: unknown,
-  cards: readonly DashboardCardChoice[],
-  role: DashboardLayoutRole = 'employee',
-): Promise<void> {
-  const normalized = normalizeDashboardLayout(layout, cards);
-  return withTenant(ctx, async (tx) => {
-    // Deliberate DomainEvent skip — personal cosmetic UI pref (see file header).
-    await lockPreferences(tx, ctx);
-    const merged = mergeRoleLayout(await readRawLayout(tx), role, normalized);
-    await tx.execute(sql`select app.dashboard_layout_set(${JSON.stringify(merged)}::jsonb)`);
-  });
-}
-
-/**
- * Clear the caller's saved layout for `role` so that dashboard reverts to the HR default (mandatory +
- * default cards). Other roles' saved slots are preserved; when nothing remains the column goes back to
- * NULL — exactly the pre-9606c59f reset.
- */
-export function resetDashboardLayout(
-  ctx: SessionContext,
-  role: DashboardLayoutRole = 'employee',
-): Promise<void> {
-  return withTenant(ctx, async (tx) => {
-    // Deliberate DomainEvent skip — personal cosmetic UI pref (see file header).
-    await lockPreferences(tx, ctx);
-    const remaining = removeRoleLayout(await readRawLayout(tx), role);
-    if (remaining == null) {
-      await tx.execute(sql`select app.dashboard_layout_reset()`);
-    } else {
-      await tx.execute(sql`select app.dashboard_layout_set(${JSON.stringify(remaining)}::jsonb)`);
-    }
-  });
-}
-
-
 function homeDisplayPreferences(raw: unknown) {
   const metadata=raw&&typeof raw==='object'&&!Array.isArray(raw)?(raw as Record<string,unknown>).homeDisplay:null;
   const {timeZone,weekStartsOn}=readEmployeeHomePreferences({
@@ -127,7 +70,7 @@ export function getEmployeeHomeDisplayPreferences(ctx: SessionContext, outerTx?:
   return outerTx ? read(outerTx) : withTenant(ctx, read);
 }
 
-/** Home reads card selection/order from the SAME employee-role layout as the existing dashboard.
+/** Home reads card selection/order from the employee-role layout slot (the one the old employee dashboard used).
  * Only display timezone/week-start are metadata; the business-day clock and permissions stay canonical. */
 export function getEmployeeHomePreferences(ctx: SessionContext, cards: readonly DashboardCardChoice[]): Promise<EmployeeHomePreferences> {
   if (!ctx.userId) return Promise.resolve(defaultEmployeeHomePreferences());
@@ -154,7 +97,7 @@ export function getEmployeeHomePresentation(ctx:SessionContext){
 }
 
 /** Explicit Save replaces the caller's cosmetic Home preferences, preserving other role layouts. The
- * caller supplies the live authorized card catalogue, exactly as setDashboardLayout already requires. */
+ * caller supplies the live authorized card catalogue. */
 export function setEmployeeHomePreferences(ctx: SessionContext, value: unknown, cards: readonly DashboardCardChoice[]): Promise<void> {
   if(!ctx.userId)throw Error('A signed-in user is required to save Home preferences.');
   const preferences=validateEmployeeHomePreferences(value);

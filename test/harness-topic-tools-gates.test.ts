@@ -3,7 +3,8 @@ import {setAiCentreReadControl} from '../core/ai-centre-inventory';
  * capabilities and real module and worker switches on fictional data (core/harness/tools.ts topicBindings,
  * core/explainers/capabilities.ts terasCapabilitiesFor).
  *
- *  - operations_status is bound for administrators only; a topic whose module is off for them (the payroll topics with
+ *  - operations_status is bound for administrators and, from spec v30, managers (its two attendance on-behalf topics,
+ *    team access), every administrators' topic still refusing a manager not_permitted; a topic whose module is off for them (the payroll topics with
  *    Payroll disabled) is refused not_permitted while the others still answer, and answers again once it is on;
  *  - explain_why is bound only while the explainers worker may run, for anyone; a topic whose module is off is refused;
  *  - the conversation wiring withholds explain_why itself while the explainers switch is off.
@@ -57,13 +58,18 @@ describe('AI centre topic-family switches',()=>{
  });
 });
 describe('operations_status',()=>{
- it('is bound for administrators only',async()=>{
+ it('is bound for administrators, and for managers only for the two on-behalf topics',async()=>{
   const employee=await person('Fictional Topic Employee',[{role:'employee',companyId:null}]);
   const manager=await person('Fictional Topic Manager',[{role:'employee',companyId:null},{role:'manager',companyId:null}]);
   const partner=await person('Fictional Topic Payroll',[{role:'employee',companyId:null},{role:'payroll_partner',companyId:base.companyId}]);
   const hr=await person('Fictional Topic Admin',[{role:'hr_admin',companyId:base.companyId}]);
-  for(const ctx of [employee,manager,partner])expect((await bound(ctx)).map(row=>row.name)).not.toContain('operations_status');
+  for(const ctx of [employee,partner])expect((await bound(ctx)).map(row=>row.name)).not.toContain('operations_status');
   expect((await bound(hr)).map(row=>row.name)).toContain('operations_status');
+  // 96a54ed2 (spec v30): a manager is offered operations_status for the on-behalf lists only; every other topic refuses.
+  const managed=await named(manager,'operations_status');
+  for(const topic of ['loops','payroll_cycle','ai_quality','shared_leave_groups'])
+   expect(await managed.run({topic}),topic).toMatchObject({ok:false,refusal:'not_permitted'});
+  expect(await managed.run({topic:'attendance_on_behalf_subjects'})).toMatchObject({ok:true,content:{ok:true,people:[]}});
  },60000);
  it('refuses the payroll topics while Payroll is off for the administrator, answers the others, and answers them again once it is on',async()=>{
   const hr=await person('Fictional Topic Payroll-Off Admin',[{role:'hr_admin',companyId:base.companyId}]);

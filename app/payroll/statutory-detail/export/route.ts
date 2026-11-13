@@ -49,6 +49,7 @@ import {
 import { toXlsxReport, type ReportData } from '@/lib/report-export';
 import { epfWorkingRows } from '../epf-working';
 import { hrdfCalculationLine, hrdfWorkingRows } from '../hrdf-working';
+import { epfTraceItemRows, epfTraceRows, runTraceRows, scheduleTraceItemRows, scheduleTraceRows, scheduleTraceWageHeading, type TraceKey } from '../statutory-trace';
 import { employeeLabel } from '@/lib/employee-code';
 
 /** STATIC keys, exhaustively mapped — the same map the view uses, for the same reason: a computed `t()`
@@ -148,6 +149,25 @@ export async function GET(req: Request) {
       ? [pad([t('hrdfWorkingTitle'), t('hrdfBreakdownNotRecorded')])]
       : [];
 
+  // Item 69d6ed3c — the statutory trace, built by the SAME row builders as the screen, item by item. A
+  // payslip with no trace (processed earlier) or one that does not reconcile carries the screen's note.
+  const trace = explanation?.trace ?? null;
+  const traceKeys: TraceKey[] = ['epf', 'socso', 'skbbk', 'eis'];
+  const traceRows = !explanation
+    ? []
+    : trace
+      ? traceKeys.flatMap((key) => [
+          pad([`${t('traceTitle')} · ${t(ITEM_LABEL[key])}`]),
+          ...(key === 'epf'
+            ? [pad([t('traceColItem'), t('traceColAmount'), t('traceColSettings'), t('traceColTreatment'), t('traceColEpfWages')]),
+               ...epfTraceItemRows(trace, t, money).map((r) => pad([r.code ? `${r.description} (${r.code})` : r.description, r.amount, r.settings, r.treatment, r.contribution]))]
+            : [pad([t('traceColItem'), t('traceColAmount'), t('traceColSettings'), t('traceColTreatment'), scheduleTraceWageHeading(key, t)]),
+               ...scheduleTraceItemRows(trace, key, t, money).map((r) => pad([r.code ? `${r.description} (${r.code})` : r.description, r.amount, r.settings, r.treatment, r.contribution]))]),
+          ...(key === 'epf' ? epfTraceRows(trace, t, money, locale) : scheduleTraceRows(trace, key, t, money)).map((r) => pad([r.label, r.value])),
+          ...runTraceRows(trace, key, t, money).map((r) => pad([r.label, r.value])),
+        ])
+      : [pad([t('traceTitle'), t(explanation.traceStatus === 'invalid' ? 'traceInvalidNote' : 'traceAbsentNote')])];
+
   const data: ReportData = {
     filename: `statutory-explanation-${row?.employeeCode ?? 'employee'}-${row?.payPeriod ?? ''}`.replace(/-$/, ''),
     title: t('title'),
@@ -184,6 +204,7 @@ export async function GET(req: Request) {
           : []),
       ]),
       ...workingRows,
+      ...traceRows,
       ...hrdfRows,
     ],
     layout: {

@@ -8,11 +8,11 @@ import {formatPayPeriodMonth} from '@/lib/hr-date';
 import {calendarDaysBetween} from '@/lib/hr-date-calendar';
 import {PAYROLL_READINESS_HREF} from '@/lib/pre-salary/items';
 import {buildMonthCalendar,CALENDAR_MARKS,type CalendarFact,type CalendarMark} from '@/lib/today/month-calendar';
-import {comingUp,isAllClear,nextStepsFrom,orderRequests,paydayView,trackSteps,waitingDays,weekHours,weekOf,
+import {calendarComingUp,comingUp,isAllClear,nextStepsFrom,orderRequests,paydayView,trackSteps,waitingDays,weekHours,weekOf,
  type ModuleState,type NextStep,type TrackedRequest} from '@/lib/today/employee';
 import {AskChips,type AskChip} from './ask-chips';
 import {BUTTON,EYEBROW,LINK,Panel,PanelLink,PanelNote,hrDay} from './panel';
-import {readAskAllowed,readManagersAway,readOwnCalendar,readOwnPassportCards,readOwnPayHints,readOwnReadiness,readOwnRequests,readOwnTimeOff,readOwnWeek,readWaitingForYou} from './reads';
+import {readAskAllowed,readManagersAway,readOwnCalendar,readOwnPassportCards,readOwnNotices,readOwnPayHints,readOwnReadiness,readOwnRequests,readOwnTimeOff,readOwnWeek,readWaitingForYou} from './reads';
 
 /** Employee Today's panels (owner-approved EmployeeLight.dc.html / EmployeeDashboard.dc.html and AllClear.dc.html).
  * Each is its own async server component, rendered inside its own Suspense and error boundary by today-page.tsx, so a
@@ -237,6 +237,22 @@ function requestDetail(t:T,locale:string,row:TrackedRequest){
 const stepLabel=(t:T,row:TrackedRequest,step:'sent'|'decide'|'outcome')=>step==='sent'?t('request.sent')
  :step==='decide'?t(row.kind==='letter'?'request.withHr':'request.withApprover')
  :row.stage==='declined'?t('request.declined'):t(row.kind==='letter'?'request.ready':row.kind==='claim'?'request.paidWithSalary':'request.approved');
+/** The Notice Board (owner decision, 12 Nov 2026): the newest notices sent to the person, unread ones marked in words,
+ * each opening its own page, and the full board one click away. */
+export async function NoticesPanel(p:PanelContext){
+ const [t,board]=await Promise.all([getTranslations('notices'),readOwnNotices(p.session,p.employmentId)]);
+ return <Panel id="today-notices" className="lg:col-span-12" title={t('cardTitle')}
+  action={board.unread>0?<span data-today-notices-unread={board.unread} className="text-[0.8125rem] font-medium text-primary">{t('cardNewCount',{count:board.unread})}</span>:undefined}>
+  {board.items.length===0?<p className="m-0 text-sm text-muted-foreground">{t('cardEmpty')}</p>:
+  <ul className="m-0 flex list-none flex-col gap-2 p-0">
+   {board.items.map(item=><li key={item.id} data-today-notice={item.id} className="flex items-center justify-between gap-3 text-sm">
+    <Link href={`/notices/${item.id}`} className="min-w-0 truncate hover:underline">{item.title}</Link>
+    {item.firstViewedAt===null&&<span className="shrink-0 text-[0.8125rem] font-medium text-primary">{t('cardUnreadWord')}</span>}
+   </li>)}
+  </ul>}
+  <PanelLink href="/notices">{t('cardViewAll')}</PanelLink>
+ </Panel>;
+}
 export async function RequestsPanel(p:PanelContext){
  const [t,data]=await Promise.all([getTranslations('today.employee'),attempt(()=>readOwnRequests(p.session,p.employmentId,{leave:p.modules.leave==='on',claims:p.modules.claims==='on'}))]);
  const rows=data.ok?orderRequests(data.value.requests):[];
@@ -282,8 +298,7 @@ export async function ComingUpPanel(p:PanelContext){
  const items=comingUp(p.today,{
   cutOff:readiness.ok?readiness.value?.period.cutOff??null:null,
   payday:hints?.ok?hints.value.nextPayment?.date??null:null,
-  leaveDates:days.filter(day=>day.entries.some(entry=>entry.kind==='leave')).map(day=>day.date),
-  holidays:days.flatMap(day=>day.entries.flatMap(entry=>entry.kind==='holiday'&&!entry.replacement?[{date:day.date,name:entry.name}]:[])),
+  ...calendarComingUp(days),
   managerAway:away.ok?away.value:[],
  });
  const text=(item:(typeof items)[number])=>item.kind==='cutoff'?t('upcoming.cutoff'):item.kind==='payday'?t('upcoming.payday')

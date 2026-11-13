@@ -357,14 +357,7 @@ export async function getCard(ctx: SessionContext, id: string): Promise<Dashboar
   return rows.find((r) => r.id === id) ?? null;
 }
 
-/**
- * The ACTIVE dashboard cards the dashboard customizer (feedback 578a2fcf, role-widened by 9606c59f)
- * renders against for ONE role: the flattened, HR-configured catalog that role may show / add / reorder,
- * i.e. listCards filtered to status='active' AND audience ∋ role. When a tenant has NO rows for the role
- * (provisioned after the seed migrations), the caller falls back to lib/dashboard-layout
- * BUILTIN_ROLE_DASHBOARD_CARDS[role], so no dashboard ever renders blank. Read-only → no DomainEvent
- * (substrate skip, per CLAUDE.md "When NOT to append": read operation).
- */
+/** One active card as a layout normaliser consumes it (lib/dashboard-layout DashboardCardChoice plus its labels). */
 export type EmployeeDashboardCard = {
   cardKey: string;
   name: string;
@@ -376,13 +369,16 @@ export type EmployeeDashboardCard = {
   displayOrder: number;
 };
 
-export async function listDashboardCards(
-  ctx: SessionContext,
-  role: DashboardCardAudience,
-): Promise<EmployeeDashboardCard[]> {
+/**
+ * The ACTIVE employee-audience cards of the HR catalog, i.e. listCards filtered to status='active' AND
+ * audience ∋ employee. The old dashboard's per-role reader (listDashboardCards, for the manager and HR-admin
+ * dashboards) was retired with that dashboard (owner decision, 12 Nov 2026); My Home reads its own projection
+ * (listEmployeeHomeCards below). Read-only → no DomainEvent (substrate skip, per CLAUDE.md "When NOT to append").
+ */
+export async function listEmployeeDashboardCards(ctx: SessionContext): Promise<EmployeeDashboardCard[]> {
   const rows = await listCards(ctx);
   return rows
-    .filter((r) => r.status === 'active' && r.audience.includes(role))
+    .filter((r) => r.status === 'active' && r.audience.includes('employee'))
     .map((r) => ({
       cardKey: r.cardKey,
       name: r.name,
@@ -393,11 +389,6 @@ export async function listDashboardCards(
       mandatory: r.mandatory,
       displayOrder: r.displayOrder,
     }));
-}
-
-/** The employee-role projection — kept as the pre-9606c59f name for existing callers/tests. */
-export async function listEmployeeDashboardCards(ctx: SessionContext): Promise<EmployeeDashboardCard[]> {
-  return listDashboardCards(ctx, 'employee');
 }
 
 /** Home consumes the same HR master. Missing defaults remain available for a newly provisioned tenant;

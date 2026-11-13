@@ -34,7 +34,7 @@ import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,
 const TODAY='2026-07-02',PROBATION_ENDS='2026-07-12';
 const LOOPS=['loop_probation_ending','loop_payroll_inputs','loop_missing_employee_data','loop_missed_clock_outs','loop_document_expiry','loop_salary_payroll'];
 /** The highest level each loop may reach (core/loops/autonomy.ts), written out: the six loops in page order. */
-const CEILINGS=['prepare','prepare','act_audit','prepare','prepare','prepare'];
+const CEILINGS=['act','prepare','act_audit','prepare','act','prepare'];
 const UUID=/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 type Login=SessionContext&{userId:string;personId:string;employmentId:string};
 type LoopOut={loop:string;ceiling:string;levels:{company:string;level:string}[];on:boolean;stopped:boolean;running:boolean;lastRun:{at:string;status:string;capped:boolean}|null;openNow:number;waitingNow:number;pausedIn:{company:string}[]};
@@ -91,6 +91,7 @@ async function fixture(){
  return{group,scoped,probationers,firstName:first.name,secondName:'Fictional Loops Second Sdn Bhd'};
 }
 
+const ON_BEHALF=['attendance_on_behalf_subjects','attendance_on_behalf_approvers'];
 describe('loops_overview',()=>{
  it('is offered to administrators only: an employee and a manager get nothing',async()=>{
   const employee=await login(b,'Fictional Loops Employee','employee'),manager=await login(b,'Fictional Loops Manager','manager');
@@ -99,10 +100,20 @@ describe('loops_overview',()=>{
   for(const ctx of [employee,manager]){
    expect((await terasCapabilitiesFor(ctx)).map(row=>row.name)).not.toContain('loops_overview');
    expect(await capability.run(ctx,{},{companyId:b.companyId})).toEqual({ok:false,refusal:'not_permitted',message:'The loops overview is available to administrators only.'});
-   // Spec v23: the loops overview is operations_status's loops topic; with no administrator topic the tool is not bound.
+   // Spec v23: the loops overview is operations_status's loops topic. An employee is not offered the tool at all. Spec v30
+   // (96a54ed2): a manager holding the on-behalf keys (the default) is offered it for those two topics ONLY: the loops topic
+   // is neither listed in its description nor in its topic list, and calling it reads nothing.
    const {result,model}=await turn(ctx,'Which loops are switched on?',[{calls:[{name:'operations_status',args:{topic:'loops'}}]},{final:{reply:'That is for your HR administrator.',mode:'answer'}}]);
-   for(const name of ['operations_status','loops_overview'])expect(model.requests[0].tools.map(tool=>tool.name)).not.toContain(name);
-   expect(result.trace.calls).toEqual([expect.objectContaining({tool:'operations_status',status:'not_offered'})]);expect(result.reads).toEqual([]);
+   const tools=model.requests[0].tools;expect(tools.map(tool=>tool.name)).not.toContain('loops_overview');
+   const operations=tools.find(tool=>tool.name==='operations_status');
+   if(ctx===employee){expect(operations).toBeUndefined();expect(result.trace.calls).toEqual([expect.objectContaining({tool:'operations_status',status:'not_offered'})]);}
+   else{
+    expect((operations!.parameters as {properties:{topic:{enum:string[]}}}).properties.topic.enum).toEqual(ON_BEHALF);
+    expect(operations!.description).not.toContain('[loops]');expect(operations!.description).not.toMatch(/Administrators only/);
+    expect([...operations!.description.matchAll(/\[([a-z_]+)\]/g)].map(match=>match[1])).toEqual(ON_BEHALF);
+    expect(result.trace.calls).toEqual([expect.objectContaining({tool:'operations_status',status:expect.stringMatching(/^(refused|invalid_input)$/)})]);
+   }
+   expect(result.reads).toEqual([]);
   }
  },60000);
 
@@ -117,7 +128,7 @@ describe('loops_overview',()=>{
   for(const id of LOOPS.filter(id=>id!=='loop_missed_clock_outs'))expect(loop(all,id).levels,id).toEqual(both);
   expect(loop(all,'loop_probation_ending')).toMatchObject({on:true,running:true,openNow:2,lastRun:{status:'ran',capped:false},pausedIn:[{company:firstName}]});
   expect(Number.isNaN(Date.parse(loop(all,'loop_probation_ending').lastRun!.at))).toBe(false);
-  expect(loop(all,'loop_document_expiry')).toEqual({loop:'loop_document_expiry',ceiling:'prepare',levels:both,on:false,stopped:false,running:false,lastRun:null,openNow:0,waitingNow:0,pausedIn:[{company:secondName}]});
+  expect(loop(all,'loop_document_expiry')).toEqual({loop:'loop_document_expiry',ceiling:'act',levels:both,on:false,stopped:false,running:false,lastRun:null,openNow:0,waitingNow:0,pausedIn:[{company:secondName}]});
   expect(loop(all,'loop_missed_clock_outs')).toEqual({loop:'loop_missed_clock_outs',ceiling:'prepare',levels:[{company:firstName,level:'prepare'},{company:secondName,level:'watch'}],
    on:false,stopped:false,running:false,lastRun:null,openNow:0,waitingNow:0,pausedIn:[]});
   expect(loop(all,'loop_salary_payroll')).toEqual({loop:'loop_salary_payroll',ceiling:'prepare',levels:both,on:false,stopped:false,running:false,lastRun:null,openNow:0,waitingNow:0,pausedIn:[]});

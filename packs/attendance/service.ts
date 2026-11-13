@@ -16,6 +16,7 @@ export * from './my-calendar';
 export * from '../../core/attendance-allowance';
 export * from '../../core/attendance-calc';
 export * from '../../core/attendance-group-policy';
+export * from '../../core/attendance-overtime-setting';
 export {attendanceClockPolicyGroupHistory, attendanceClockPolicyHistory, lockAttendanceClockPolicyConfigurationTx, saveScheduleGroupClockPolicy} from '../../core/attendance-clock-policy';
 export * from '../../core/attendance-derive';
 export * from '../../core/attendance-device';
@@ -31,6 +32,8 @@ export * from '../../core/attendance-explain';
 export * from '../../core/attendance-clock';
 
 export * from '../../core/attendance-clock-read';
+// Manager Today's "Your team today" counts (owner decision, 12 Nov 2026).
+export * from './team-today';
 export * from '../../core/mobile-clock-attempt';
 export {resolveOwnClockEmployment,OwnClockEmploymentUnavailableError} from '../../core/attendance-clock-subject';
 
@@ -44,6 +47,8 @@ export { ClockDataChangedError, AttendancePayrollClosedError } from '../../core/
 
 export * from '../../core/attendance-rotation';
 export * from '../../core/attendance-workflow';
+// 96a54ed2 Request On Behalf / Approve On Behalf (permission key + HR scope or own reporting line).
+export * from '../../core/attendance-on-behalf';
 export * from '../../core/attendance-application-history';
 
 export * from './day-adjustment';

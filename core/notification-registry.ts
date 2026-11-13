@@ -45,6 +45,7 @@ export type NotificationRecipientReaders<Reader>={
  delegationStarted:NotificationRecipientReader<Reader>;
  delegationEnded:NotificationRecipientReader<Reader>;
  leaveEscalation:NotificationRecipientReader<Reader>;
+ attendanceEscalation:NotificationRecipientReader<Reader>;
  automaticReviewChase:NotificationRecipientReader<Reader>;
  missingClockFollowup:NotificationRecipientReader<Reader>;
  passportFollowup:NotificationRecipientReader<Reader>;
@@ -618,6 +619,20 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
     }),
     recipientPort:'leaveEscalation',recipients:readers.leaveEscalation,
   },
+  // daa76ed4 — Attendance Escalation Approval moved a v4 request to its next level after the configured calendar
+  // days with no decision. The next level's frozen participants are told, re-checked at dispatch: the request must
+  // still be pending at that exact level. The subject is never a recipient.
+  'attendance-workflow.stage.escalated': {recipientAudience:'reader',
+    kind: 'attendance.escalated',
+    category: 'attendance',
+    render: (p) => ({
+      severity: 'action',
+      title: 'Attendance approval escalated to you',
+      body: `An attendance request was not approved or rejected within ${typeof p?.escalateAfterDays === 'number' ? p.escalateAfterDays : ''} day(s) and has moved to your approval level.`,
+      linkPath: '/approvals',
+    }),
+    recipientPort:'attendanceEscalation',recipients:readers.attendanceEscalation,
+  },
   // WP13 (R18) — Automatic-tier chasers run by the tenant's agent principal (core/automatic-chasers.ts). The
   // event carries ids, stage and dates only; the copy is a fixed template (no model, no amount, no name). As for
   // the leave escalation, WHETHER to notify is re-decided here: the item must still be pending at the chased
@@ -693,10 +708,18 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
   },
   // AI v2 Phase 2 P2-1 (core/loops/act-requests.ts): the missing employee data loop, acting within its limits, sent the
   // employee its request to fill in their own details. A count and their own request section only; no record changed.
+  // 13 November 2026 (core/loops/act-passports.ts): the passports loop sends its renewal request as the same event
+  // (request 'passport_renewal'), so the AI Centre stop holds it too: the expiry date and their own profile only.
   'teras-loop.request.sent': {recipientAudience:'subject',
     kind: 'teras-loop.details-requested',
     category: null,
     render: (p) => {
+      if (p?.request === 'passport_renewal') {
+        const expires = typeof p.expiresOn === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.expiresOn) ? p.expiresOn : null;
+        return { severity: 'action', title: 'Please renew your passport',
+          body: `${expires ? `The passport on your record expires on ${expires}.` : 'The passport on your record expires soon.'} Renew it, then send the new details to HR from your profile; HR approves them as usual.`,
+          linkPath: '/me?tab=profile' };
+      }
       const tab = p?.tab === 'bankStatutory' || p?.tab === 'payroll' ? p.tab : 'profile';
       const count = typeof p?.gaps === 'number' && Number.isInteger(p.gaps) && p.gaps > 0 ? p.gaps : null;
       return { severity: 'action', title: 'Please complete your details',
@@ -708,7 +731,9 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
   'teras-loop.request.withdrawn': {recipientAudience:'subject',
     kind: 'teras-loop.details-request-withdrawn',
     category: null,
-    render: () => ({ severity: 'info', title: 'Details request withdrawn', body: 'The request to complete your details was withdrawn. You can ignore it.', linkPath: '/me' }),
+    render: (p) => p?.request === 'passport_renewal'
+      ? { severity: 'info', title: 'Passport renewal request withdrawn', body: 'The request to renew your passport was withdrawn. You can ignore it.', linkPath: '/me' }
+      : { severity: 'info', title: 'Details request withdrawn', body: 'The request to complete your details was withdrawn. You can ignore it.', linkPath: '/me' },
   },
   [EMPLOYEE_LOOP_DIGEST_EVENT]: {recipientAudience:'reader',
     kind:'teras-loop.employee-digest',category:'readiness',

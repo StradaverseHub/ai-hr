@@ -61,7 +61,8 @@ export function FormulaChecks({diagnostics,onSelect}:{diagnostics:readonly Formu
  const message=(d:FormulaDiagnostic)=>{
   if(d.code==='unknown_function'||d.code==='unknown_variable')return t(d.suggestion?'checks.'+d.code+'Suggest':'checks.'+d.code,{name:d.name??'',suggestion:d.suggestion??''});
   if(d.code==='missing_return'||d.code==='division_by_zero')return t('checks.'+d.code);
-  if(d.code==='possible_zero_divisor')return t('checks.possible_zero_divisor',{name:d.name??''});
+  if(d.code==='possible_zero_divisor')return t(d.missingItem?'checks.possible_zero_divisorMissingItem':'checks.possible_zero_divisor',{name:d.name??''});
+  if(d.code==='internal_id_compared')return d.name==='companyId'?t('checks.internal_id_comparedCompany',{value:d.value??''}):t(d.suggestion?'checks.internal_id_comparedSuggest':'checks.internal_id_compared',{name:d.name??'',value:d.value??'',suggestion:d.suggestion??''});
   return d.message;
  };
  return <section aria-labelledby="formula-checks-title" className="space-y-2">

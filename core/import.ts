@@ -6,7 +6,7 @@ import { getPeopleGeneral, readPeopleGeneralTx, occupiedNricsTx } from './people
 import { NRIC_DUPLICATE_MESSAGE, NRIC_FILE_DUPLICATE_MESSAGE } from '../lib/nric-policy-message';
 import {previewCostAllocationImportTx,writeNewEmployeeCostAllocationsTx} from './cost-allocation-import';
 import type {AllocationImportRecords,AllocationImportPreview} from '../lib/cost-allocation-import';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationTx,withAccessDisplayRead} from './access-configuration-lock';
 import {lockLeaveDependencyConfigurationTx,LeaveDependencyUnavailable} from './leave-dependency-lock';
 import {DatabaseAdmissionError} from '../db/admission';
 import {pgSqlState} from '../lib/db-error';
@@ -1339,7 +1339,8 @@ export async function validateEmployeeImport(
     }
   });
   if(p.allocationRecords?.length){
-    preview.allocations=await withTenant(ctx,tx=>previewCostAllocationImportTx(tx,ctx,p.allocationRecords!,resolved.flatMap((row,index)=>row.result.ok?[{companyId:row.hire.companyId,employeeCode:row.hire.employeeCode??'',hiredOn:row.hire.hiredOn,index}]:[])));
+    // A dry run: the allocation review takes the shared Access lock (SCALE rule 1); the commit repeats it exclusively.
+    preview.allocations=await withAccessDisplayRead(()=>withTenant(ctx,tx=>previewCostAllocationImportTx(tx,ctx,p.allocationRecords!,resolved.flatMap((row,index)=>row.result.ok?[{companyId:row.hire.companyId,employeeCode:row.hire.employeeCode??'',hiredOn:row.hire.hiredOn,index}]:[]))));
     for(const group of preview.allocations.groups)if(group.errors.length)preview.fileErrors.push(`Cost Center Allocations · ${group.employeeCode} · ${group.effectiveDate} · rows ${group.rowNums.join(', ')}: ${group.errors.join('; ')}`);
   }
   return preview;

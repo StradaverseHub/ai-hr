@@ -15,7 +15,7 @@ import {previewImportRevertForAttempt,revertImportForAttempt} from '../core/impo
 import {revertImportToOutcome} from './helpers/employee-import-revert';
 import {readBankStatutoryStateTx,bankStatutorySubjectTx} from '../core/bank-statutory-import';
 import {commitBankStatutoryUpload} from '../core/bank-statutory-upload';
-import {listEmployeesPage,listEmployeesForPayrollRun,dashboardStats,listEmployees} from '../core/read';
+import {listEmployeesPage,listEmployeesForPayrollRun,listEmployees} from '../core/read';
 import {headcountSummary} from '../core/analytics';
 import {getTaxSelectionMY} from '../localization/my/tax-selection';
 import {importAttemptStatus} from '../lib/import-history';
@@ -128,7 +128,6 @@ describe('524303d9 · Import History and Revert (void)',()=>{
   const e10=await employmentOf('EV010');
   const listedBefore=await listEmployeesPage(a,{limit:50,offset:0},'workforce');
   expect(listedBefore.rows.map(r=>r.employeeCode).sort()).toEqual(['EV010','EV011']);
-  expect((await dashboardStats(a)).headcount).toBe(2);
   expect((await listEmployeesForPayrollRun(a,b.companyId,'2026-03')).map(r=>r.employeeCode).sort()).toEqual(['EV010','EV011']);
 
   const preview=await previewImportRevertForAttempt(a,attemptId);
@@ -150,7 +149,6 @@ describe('524303d9 · Import History and Revert (void)',()=>{
   // Gone from the people list, the pickers, headcount (dashboard and analytics) and payroll selection.
   expect((await listEmployeesPage(a,{limit:50,offset:0},'workforce')).rows).toEqual([]);
   expect(await listEmployees(a)).toEqual([]);
-  expect((await dashboardStats(a)).headcount).toBe(0);
   expect((await headcountSummary(a,undefined,{asOf:'2026-03-01'})).total).toBe(0);
   expect(await listEmployeesForPayrollRun(a,b.companyId,'2026-03')).toEqual([]);
 

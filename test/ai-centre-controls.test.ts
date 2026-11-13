@@ -185,7 +185,8 @@ describe('individual AI read controls',()=>{
   const rows=await owner.db.execute<{function_key:string}>(sql`select function_key from app.ai_centre_function_kind order by function_key collate "C"`);
   expect(Array.from(rows).map(row=>row.function_key)).toEqual([...aiCentreReadKeys()].sort());
   // 50d9b809: the shared_leave_groups read registered by migration 4800, switchable like every other read.
-  for(const key of ['read:reward_reviews_guidance','read:shared_leave_groups'] as const){
+  // 96a54ed2: the two attendance on-behalf reads registered by migration 5145.
+  for(const key of ['read:reward_reviews_guidance','read:shared_leave_groups','read:attendance_on_behalf_subjects','read:attendance_on_behalf_approvers'] as const){
    expect(await aiCentreReadAllowed(group,key),key).toBe(true);
    await setAiCentreReadControl(group,key,false);
    expect(await aiCentreReadAllowed(group,key),key).toBe(false);

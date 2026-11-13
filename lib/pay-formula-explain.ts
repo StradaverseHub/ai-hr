@@ -1,12 +1,16 @@
 /** Deterministic plain-language explanation of a parsed Pay Formula (no model; ADR-0084). The caller
  * supplies translated words and variable labels; this module only decides structure and order. */
 import type {FormulaExpression,FormulaProgram,FormulaStatement} from './pay-formula-language';
+import type {PayFormulaMissingItem} from './pay-formula-model';
 
 export type FormulaExplanationRow = { depth: number; text: string };
-type FormulaExplanationTranslation = (key: string, values?: FormulaExplanationLine['values']) => string;
+type FormulaExplanationTranslation = ((key: string, values?: FormulaExplanationLine['values']) => string) & { has?(key: string): boolean };
 
-export type FormulaExplanationKey='declare'|'assign'|'if'|'elseIf'|'otherwise'|'return'|'explain';
-export type FormulaExplanationLine={depth:number;key:FormulaExplanationKey;values:{name?:string;expression?:string;condition?:string}};
+export type FormulaExplanationKey='declare'|'assign'|'if'|'elseIf'|'otherwise'|'return'|'explain'|'missingZero';
+export type FormulaExplanationLine={depth:number;key:FormulaExplanationKey;values:{name?:string;expression?:string;condition?:string;items?:string}};
+/** Current-run Pay Item sources that count as 0 when the employee has no row of the item in the run (owner rule,
+ * 13 Nov 2026; core/pay-formula-runtime.ts fromMap). {#AnotherPayItems} is not one of them. */
+export const PAY_FORMULA_ZERO_WHEN_MISSING:ReadonlySet<string>=new Set(['PayItem','PayItemNoProrate','PayItemInput','Accumulation']);
 export type FormulaExplanationWords={
  and:string;or:string;not:string;true:string;false:string;
  /** Translated label for a registry variable/function code. */
@@ -55,7 +59,29 @@ export function explainPayFormula(program:FormulaProgram,words:FormulaExplanatio
   }
  };
  block(program.statements,0);
+ // One closing line names every current-run Pay Item read, in source order, so the rule is visible before a test.
+ const items:string[]=[];
+ const collect=(e:FormulaExpression)=>{switch(e.kind){
+  // BASIC is always in the run (the Personnel basic), so it is never counted as 0.
+  case 'call':{const first=e.args[0];const basic=e.code!=='Accumulation'&&first?.kind==='literal'&&first.value.type==='string'&&first.value.value.trim().toUpperCase()==='BASIC';
+   if(PAY_FORMULA_ZERO_WHEN_MISSING.has(e.code)&&!basic){const text=expression(e);if(!items.includes(text))items.push(text);}e.args.forEach(collect);break;}
+  case 'unary':collect(e.operand);break;
+  case 'binary':collect(e.left);collect(e.right);break;
+ }};
+ const walk=(statements:FormulaStatement[])=>{for(const s of statements){switch(s.kind){
+  case 'declare':case 'assign':case 'return':case 'explain':collect(s.value);break;
+  case 'if':s.branches.forEach(branch=>{collect(branch.condition);walk(branch.body);});walk(s.otherwise);break;
+ }}};
+ walk(program.statements);
+ if(items.length)lines.push({depth:0,key:'missingZero',values:{items:items.join(', ')}});
  return lines;
+}
+type MissingItemTranslation=(key:string,values?:Record<string,string>)=>string;
+/** The localized trace line for a Pay Item a payroll result or test counted as 0. */
+export function describeMissingPayItem(item:PayFormulaMissingItem,t:MissingItemTranslation):string{
+ return item.source==='Accumulation'&&item.group!==undefined
+  ?t('missingMemberZero',{variable:t('functions.Accumulation'),group:item.group,code:item.code})
+  :t('missingItemZero',{variable:t('functions.'+item.source),code:item.code});
 }
 
 /** Localize the read-only projection without exposing the source or syntax tree. */
@@ -63,6 +89,9 @@ export function describePayFormula(program: FormulaProgram, t: FormulaExplanatio
  const words: FormulaExplanationWords = {
   and: t('explain.and'), or: t('explain.or'), not: t('explain.not'),
   true: t('true'), false: t('false'), variable: code => t('functions.' + code),
+  // A Personnel field is named by its translated label (for example companyCode → "Company code"), so the
+  // explanation says which company value is compared rather than repeating the source key.
+  argument: (code, value) => (code === 'EmployeeProfile' || code === 'EmployeeInformation') && t.has?.('fields.' + value) ? t('fields.' + value) : undefined,
  };
  return explainPayFormula(program, words).map(({ depth, key, values }) => ({
   depth,

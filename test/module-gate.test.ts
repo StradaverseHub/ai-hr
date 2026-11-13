@@ -41,7 +41,7 @@ import { listPayrollCycles } from '../core/payroll-cycle';
 import { hireEmployee } from '../core/org';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { listProcessedPayslipsAcross } from '../core/payroll-view';
-import { dashboardStats, listLeaveTypes, myEmployment } from '../core/read';
+import { listLeaveTypes, myEmployment } from '../core/read';
 import { pendingApprovalsCount } from '../core/approvals-inbox';
 import { adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
@@ -207,9 +207,6 @@ describe('r292 — a tenant that declined EVERY optional module still runs the c
     await declineEverySellableModule(b.tenantId);
     const ctx = await entitledCtx(b);
 
-    // The dashboard tile reads `payroll_batch` and attendance rows out of core/read.ts — the shared
-    // kernel read module, which is exactly why core/read.ts is NOT bound to a module.
-    await expect(dashboardStats(ctx, [b.companyId])).resolves.toBeDefined();
     // Leave is core and can never be switched off.
     await expect(listLeaveTypes(ctx, { locale: 'en' })).resolves.toBeDefined();
     // Personnel/ESS spine.

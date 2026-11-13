@@ -58,3 +58,50 @@ amount stays the ledger's figure, and it is now re-priced on an OPEN run.
   `scripts/mark-individual-txn-pricing-792053e5.ts` (open months, rule unchanged since the row was written, input
   present); the rest are listed for HR review. Covered by payroll-reprocess-formula-792053e5.test.ts and
   792053e5-reprocess-formula-presentation.test.ts.
+
+## Amendment — one owner for `{#Input}`; a Pay Item linked to the Formula Builder (12 November 2026)
+
+Production case NORMAL OT (ONOR): a row keyed as 9.00 hours and priced by the item's inline formula (method NULL,
+marker `pay_item_rule`) was processed after the item was linked to a saved Formula Builder formula ending
+`* {#Input}`. Payroll built `{#Input}` from the stored amount, so it paid amount × factor, while entry prices a
+Formula Builder item from the keyed quantity; reprocess refused the row as "no longer calculates".
+
+- `lib/pay-formula-input.ts` is the single owner of a row's own `{#Input}`, used by entry pricing, re-pricing,
+  payroll generation and saved-formula simulation (the formula tester's employee snapshot). The input is the keyed
+  Qty, Hours, Days or Units when the amount is a final figure a pricing owner worked out from it (method `formula`,
+  or marker `pay_item_rule`); otherwise the saved amount (Amount method, recurring and batch Pay Items, and unmarked
+  method-NULL rows, which stay historical raw input). A quantity-input row without a positive quantity in a
+  quantity unit has no input and is refused, never priced from its amount.
+- `{#PayItemInput}("CODE")` of another item keeps its documented saved monetary amount; it is not the same defect.
+- An open run's process or reprocess re-prices a `pay_item_rule` row whose Pay Item now links a Formula Builder
+  formula through `priceIndividualTxnInputTx` (method `formula`), and records entry's marker in the same statement:
+  method `formula`, `saved_formula`, the formula revision. The reference-only `payroll.individual-txn.repriced`
+  event says `reason: 'formula-builder-linked'` with the previous source. Formula failure, a non-positive result and
+  a missing quantity still refuse (`PayItemFormulaRepriceError`); there is no fallback to the old amount.
+- No saved row or payslip is changed by migration or script. `scripts/report-formula-keyed-input-impact.ts` is a
+  read-only report (READ ONLY transactions, named HR administrator, employee code only) of the open-month rows the
+  next process or reprocess will move. Covered by payroll-formula-keyed-input.test.ts and pay-formula-input.test.ts.
+
+## Amendment — a Pay Item the employee does not have in this run counts as 0 (13 November 2026)
+
+Production case NORMAL_OT (ONOR), read-only report of 12 November: 145 October transactions at two companies
+refused at re-price with "Payroll source PayItemInput is unavailable or not permitted", because the formula adds
+`{#PayItemInput}("A0128")` and other allowances that those employees do not have in the run. Owner decision: "A Pay
+Item the employee simply doesn't have in this run counts as 0."
+
+- `core/pay-formula-runtime.ts` (`fromMap`) is the one reader of `{#PayItemInput}`, `{#PayItem}`,
+  `{#PayItemNoProrate}` and Accumulation members, for entry pricing, payroll processing, re-price/reprocess and the
+  formula tester. Checks run in order, each refusing before any 0: an unknown, ambiguous or archived code; a denied
+  source permission; a value in the run is used as before; a code the employee HAS in the run whose value cannot be
+  determined (an input that is not known, or a calculated value not yet resolved) still refuses; only a code with
+  no row at all in the run counts as 0.
+- Each zero-counted read is recorded (`missingItems`: source, code, Accumulation group) on the payroll evaluation
+  evidence and on the test receipt (its `tested` event), and shown as "Pay Item input (A0128): not in this run,
+  counted as 0" after the formula's explanations. "What this formula does" ends with a line naming the Pay Items
+  this rule applies to, and dividing by one of them is a "may be 0" check.
+- `{#AnotherPayItems}` is unchanged: it reads a saved earlier result, which may be an imported payslip whose lines
+  were never a complete Pay Item set, so a missing line there is not evidence of 0.
+- No formula that calculated before calculates differently: the rule only replaces a refusal. The source fingerprint
+  and evaluation payload change only when an item was counted as 0, and `PAY_FORMULA_PROVIDER_VERSION` is unchanged,
+  so saved revisions, passed tests and active formulas need no re-save or re-test. Covered by
+  pay-formula-missing-item-zero.test.ts.

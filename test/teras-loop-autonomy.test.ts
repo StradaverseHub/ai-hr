@@ -118,10 +118,16 @@ beforeEach(async()=>{
 afterEach(()=>{expect(model.calls,'a loop called a model').toBe(0);});
 
 describe('the cap',()=>{
- it('keeps probation, payroll inputs and passports at Prepare in code and in the database, for any company and any writer',async()=>{
+ it('keeps payroll inputs at Prepare in code and in the database, and caps probation and passports at Level 2, for any company and any writer',async()=>{
   const {companyId:second}=await secondCompany();
+  // Owner, 11 November 2026: the request-only steps may reach Level 2 (with the evidence) but never 3. The database
+  // (migration 5162, drafted as 9780) no longer refuses either loop.
+  for(const companyId of [b.companyId,second])for(const workerId of ['loop_probation_ending','loop_document_expiry'] as const){
+   await expect(setLoopLevel(group,{workerId,companyId,toLevel:2,expectedLevel:1,limits:LIMITS})).rejects.toMatchObject({reason:'certificate'});
+   await expect(setLoopLevel(group,{workerId,companyId,toLevel:3,expectedLevel:1,limits:LIMITS})).rejects.toMatchObject({reason:'capped'});
+  }
   // Wave 1 integration: the Phase 2 Salary payroll loop (pay) is held at Prepare the same way.
-  for(const workerId of ['loop_probation_ending','loop_payroll_inputs','loop_document_expiry','loop_salary_payroll'] as const)for(const companyId of [b.companyId,second]){
+  for(const workerId of ['loop_payroll_inputs','loop_salary_payroll'] as const)for(const companyId of [b.companyId,second]){
    for(const toLevel of [2,3])await expect(setLoopLevel(group,{workerId,companyId,toLevel,expectedLevel:1,limits:LIMITS})).rejects.toMatchObject({reason:'capped'});
    const row={tenantId:b.tenantId,workerId,companyId,level:2 as const,changedBy:'administrator' as const,changedByUserId:group.userId};
    expect(await failure(owner.db.insert(terasLoopLevel).values(row))).toMatch(/teras_loop_level_cap/);

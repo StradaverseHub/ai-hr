@@ -12,12 +12,16 @@
  *    the exclusive lock of its own would show here too;
  *  - the information-correction form and its review (12 November 2026): their Workforce 'maintain' check took the
  *    exclusive lock because the SQL workforce barrier ignored the display read. They now hold it shared, give the
- *    review the save accepts, and the save itself stays exclusive.
+ *    review the save accepts, and the save itself stays exclusive;
+ *  - the remaining read paths (12 November 2026): the cost allocation template and import reviews (upload, review and
+ *    the new-joiner sheet of the employee import dry run), the Assistant document choices, the Org module's choices,
+ *    availability and review labels. They answer as their exclusive callers did, and the confirm still accepts them.
  */
 import {randomUUID} from 'node:crypto';
 import {eq} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async()=>(key:string)=>key}));
+vi.mock('server-only',()=>({}));
 import postgres from 'postgres';
 import {sql} from 'drizzle-orm';
 import {withBackgroundReadWork,withSharedReadSnapshot,withTenant,type SessionContext,type Tx} from '../db/client';
@@ -31,7 +35,14 @@ import {pendingTaskSummary} from '../core/approvals-inbox';
 import {hireEmployee} from '../core/org';
 import {movementAttachments,movementHistory,resignationInformation} from '../core/movement';
 import {correctInformationTx,informationCorrectionHistory,informationCorrectionOptions,previewInformationCorrection,readInformationCorrection} from '../core/information-correction';
-import {costAllocationReferences} from '../core/cost-allocation-import';
+import {confirmCostAllocationUpload,costAllocationReferences,costAllocationWorkbookReferences,previewCostAllocationImport,previewCostAllocationImportTx,previewCostAllocationUpload} from '../core/cost-allocation-import';
+import {createCostCenter} from '../core/admin';
+import {addEmployeeDocument} from '../core/employee-documents';
+import {readDocumentMetadataChoices} from '../core/assistant-actions/document-metadata-review-store';
+import {readOrgModuleActionAvailability,readOrgModuleActionChoices} from '../core/assistant-actions/module-action-server';
+import {reviewedReportingLineLabelsTx} from '../core/workforce-commands';
+import {toCsv} from '../lib/csv';
+import {ALLOCATION_COLUMNS} from '../lib/employment-cost-allocation';
 import {runEmployeeMasterReport} from '../core/employee-master-reports';
 import {grantAssistant} from '../core/assistant-grant';
 import {prepareOwnLeaveReviewTx,reopenOwnLeaveReviewTx} from '../core/assistant-actions/own-leave-store';
@@ -39,7 +50,7 @@ import {readPersonnelListExportDetails} from '../core/personnel-list-export-deta
 import {withPersonnelRead} from '../core/personnel-read-bounds';
 import {defaultMasterColumn,type EmployeeMasterSpec} from '../lib/employee-master-report';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
-import {readAtAGlance,readDoneForYou,readNeedsYou} from '../components/today/reads';
+import {readNeedsYou} from '../components/today/reads';
 import {todayAudience} from '../lib/today/audience';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -112,7 +123,6 @@ it('reads the shell bell, Home, the worker gate, Personnel movement history and 
   {attendance:false,claims:false,performance:false,rewards:false},{deferClaimPreview:true})));
  const gate=await workerRunGate(ctx,RECOMMENDER_WORKER);
  const audience=todayAudience(ctx),needsYou=await readNeedsYou(ctx,{scopeIds:[b.companyId],audience,today,locale:'en'});
- const doneForYou=await readDoneForYou(ctx,{scopeIds:[b.companyId],today}),glance=await readAtAGlance(ctx,{locale:'en',today});
  const history=await movementHistory(ctx,subject.employmentId),hired=history[0];
  if(!hired)throw Error('Missing fictional movement history');
  const documents=await movementAttachments(ctx,subject.employmentId,hired.id),corrections=await informationCorrectionHistory(ctx,subject.employmentId);
@@ -137,7 +147,7 @@ it('reads the shell bell, Home, the worker gate, Personnel movement history and 
  expect(bell.items.filter(item=>item.kind==='profile')).toHaveLength(3);
  expect(needsYou.tasks.filter(task=>task.kind==='profile')).toHaveLength(3);
  expect(typeof gate.run).toBe('boolean');
- expect(doneForYou).toBeDefined();expect(glance).toBeDefined();
+ 
  expect(documents).toEqual([]);expect(Array.isArray(corrections)).toBe(true);expect(resignation).toBeDefined();
  expect(correctionOptions.companies.map(row=>row.id)).toContain(b.companyId);
  expect(correctionForm.before).toMatchObject({companyId:b.companyId,hiredOn:today});
@@ -203,4 +213,49 @@ it('opens and reviews an information correction under the shared lock with the r
  expect(saved.result).toEqual({preview:manual,changed:true});
  const [stored]=await owner.db.select({hiredOn:schema.employment.hiredOn}).from(schema.employment).where(eq(schema.employment.id,subject.employmentId));
  expect(stored?.hiredOn).toBe('2025-01-10');
+},120_000);
+
+it('reads the allocation template and reviews, the document and Org choices, the Org section and its labels shared, and the confirm still accepts the review',async()=>{
+ vi.stubEnv('AI_CONFIG_SECRET','fictional-read-lock-custody-passphrase-12345');
+ const b=await seedBase(),a=adminCtx(b),today=todayInKualaLumpur();await setModule(b.tenantId,'assistant','active');
+ await owner.db.update(schema.company).set({companyLabel:'READCO'}).where(eq(schema.company.id,b.companyId));
+ const hire=(name:string,employeeCode:string)=>hireEmployee(a,{person:{fullName:name,primaryEmail:randomUUID()+'@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:today,employeeCode});
+ const target=await hire('Fictional read lock subordinate','READ01'),manager=await hire('Fictional read lock manager','READ02'),hr=await hire('Fictional read lock administrator','READ03');
+ const userId=await createAppUser(b.tenantId,hr.personId,'hr_admin');await grantAssistant(a,{appUserId:userId});
+ const ctx:SessionContext={...await entitledCtx(b),userId,personId:hr.personId,grants:[{role:'hr_admin',companyId:null}]};
+ await createCostCenter(a,{companyId:b.companyId,code:'READ-CC',name:'Fictional read cost centre'});
+ await addEmployeeDocument(a,{employmentId:target.employmentId,title:'Fictional read document',category:null,description:null,fileName:'fictional.txt',mimeType:'text/plain',content:Buffer.from('FICTIONAL READ BYTES')});
+ const records=[{company_code:'READCO',employee_code:'READ01',effective_date:today,operation:'Replace',cost_center_code:'READ-CC',percentage:'100'}];
+ const joiners=[{...records[0],employee_code:'NEWREAD01'}],newEmployees=[{companyId:b.companyId,employeeCode:'NEWREAD01',hiredOn:today,index:0}];
+ const labelsInput={subordinateEmploymentId:target.employmentId,managerEmploymentId:manager.employmentId,previousManagerEmploymentId:null};
+ // The same reads as their command callers make them, outside a display read: still exclusive.
+ const command=await withTenant(ctx,async tx=>({preview:await previewCostAllocationImportTx(tx,ctx,records),mode:await heldMode(tx,b.tenantId)}));
+ const commandJoiners=await withTenant(ctx,tx=>previewCostAllocationImportTx(tx,ctx,joiners,newEmployees));
+ const commandLabels=await withTenant(ctx,async tx=>({labels:await reviewedReportingLineLabelsTx(tx,ctx,labelsInput),mode:await heldMode(tx,b.tenantId)}));
+ expect(command.mode).toBe('X');expect(commandLabels.mode).toBe('X');
+ // Strict mode from here: a shared holder that asks for the exclusive lock in TypeScript fails loudly instead of upgrading.
+ vi.stubEnv('AIHR_ACCESS_LOCK_STRICT','on');
+ const stop=accessLockSampler(b.tenantId);
+ const template=await costAllocationWorkbookReferences(ctx),review=await previewCostAllocationImport(ctx,records);
+ // The employee import dry run's allocation sheet, as validateEmployeeImport reads it.
+ const joinerReview=await withAccessDisplayRead(()=>withTenant(ctx,tx=>previewCostAllocationImportTx(tx,ctx,joiners,newEmployees)));
+ const upload=await previewCostAllocationUpload(ctx,{name:'allocations.csv',content:Buffer.from(toCsv([[...ALLOCATION_COLUMNS],...records.map(r=>ALLOCATION_COLUMNS.map(k=>(r as Record<string,string>)[k]??''))]))});
+ const documents=await readDocumentMetadataChoices(ctx,{query:'Fictional read lock',employmentId:target.employmentId});
+ const orgChoices=await readOrgModuleActionChoices(ctx,{role:'subordinate',query:'Fictional read lock'}),availability=await readOrgModuleActionAvailability(ctx);
+ // A prepared or completed Org review's labels, as the module server's orgLabels reads them.
+ const labels=await withAccessDisplayRead(()=>withTenant(ctx,async tx=>({labels:await reviewedReportingLineLabelsTx(tx,ctx,labelsInput),mode:await heldMode(tx,b.tenantId)})));
+ const locks=await stop();
+ console.log('[access-lock-remaining-reads]',JSON.stringify({exclusive:locks.exclusive,shared:locks.shared}));
+ expect(locks.exclusive).toEqual([]);
+ expect(locks.shared).toBeGreaterThan(0);
+ // Each read answers exactly as its exclusive caller does.
+ expect(template.companies).toEqual([{code:'READCO',name:'Acme Sdn Bhd'}]);expect(template.costCenters.map(row=>row.code)).toContain('READ-CC');
+ expect(review).toEqual(command.preview);expect(review.groups[0]).toMatchObject({employmentId:target.employmentId,errors:[]});expect(review.validCount).toBe(1);
+ expect(joinerReview).toEqual(commandJoiners);expect(joinerReview.groups[0]).toMatchObject({newEmployeeIndex:0,errors:[]});
+ expect(upload.plan.counts).toEqual({total:1,valid:1,invalid:0});
+ expect(documents.kind).toBe('choices');if(documents.kind==='choices')expect(documents.documents).toHaveLength(1);
+ expect(orgChoices.items.map(row=>row.employmentId)).toContain(target.employmentId);expect(availability).toEqual({kind:'available'});
+ expect(labels.mode).toBe('S');expect(labels.labels).toEqual(commandLabels.labels);
+ // The confirm repeats the review under the writer locks, accepts its token and saves.
+ expect(await confirmCostAllocationUpload(ctx,{attemptId:upload.attemptId,previewHash:upload.plan.previewHash})).toMatchObject({succeeded:1,failed:0});
 },120_000);

@@ -113,8 +113,9 @@ describe('388e53c2 · every inbound pointer at /leave/tracker still resolves', (
     // dashboard_card_config carries live per-tenant rows, so a tenant may hold its own href here. The
     // route SURVIVING is what protects them — this move deliberately did not rename it.
     expect(CARD_META.teamAwayToday.href).toBe('/leave/tracker');
-    expect(read('app/page.tsx')).toContain('href="/leave/tracker?calendar=1"');
-    expect(read('lib/dashboard-layout.ts')).toContain("href: '/leave/tracker'");
+    // The old dashboard's card (app/page.tsx) and its builtin catalogue were retired on 12 Nov 2026; Manager Today's
+    // "Your workspace" links open the tracker instead (lib/today/workspace.ts).
+    expect(read('lib/today/workspace.ts')).toContain("href:'/leave/tracker?calendar=1'");
   });
 
   it("a manager's View Calendar deep link from a team member's profile", () => {

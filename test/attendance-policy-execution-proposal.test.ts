@@ -98,29 +98,29 @@ describe('canonical source composition into the shared policy duration proposal'
   expect(attendancePolicySystemEligibleMinutes(f.context,f.work)).toMatchObject({state:'known',minutes:0});
   expect(attendancePolicySystemEligibleMinutes(f.context,undefined)).toMatchObject({state:'unavailable',reason:'workUnavailable'});
  });
- it('uses the selected formula direction and rounds once across two dates without minting extra clock coverage',()=>{
+ it('uses the selected formula direction and rounds each date on its own portion without minting extra clock coverage (2f803985)',()=>{
   const f=fixture(),before=structuredClone(f),result=propose(f.context,f.work,f.formulas);
   expect(result).toMatchObject({state:'proposed',authority:'proposalOnly',policyRevisionId:id(3),duration:{status:'calculated',payableMinutes:60,
-   classes:[{eligibleMinutes:40,payableMinutes:60,unplacedPayableMinutes:20}],parts:[{date,allocatedPayableMinutes:20,allocations:[{from:1420,to:1440}]},{date:next,allocatedPayableMinutes:20,allocations:[{from:1440,to:1460}]}]},
+   classes:[{calendarDate:date,eligibleMinutes:20,payableMinutes:30,unplacedPayableMinutes:10},{calendarDate:next,eligibleMinutes:20,payableMinutes:30,unplacedPayableMinutes:10}],parts:[{date,allocatedPayableMinutes:20,allocations:[{from:1420,to:1440}]},{date:next,allocatedPayableMinutes:20,allocations:[{from:1440,to:1460}]}]},
    formulaParts:[{date,versionId:id(4)},{date:next,versionId:id(4)}]});
   expect(Object.hasOwn(result,'transferable')).toBe(false);expect(f).toEqual(before);
  });
- it('uses the same once-rounded duration for TOIL without cash earning references',()=>{
+ it('uses the same per-date rounded duration for TOIL without cash earning references',()=>{
   const f=fixture(),durationFormula=attendancePolicyDurationFormulaProjection(f.formulas);
   const result=attendancePolicyDurationExecutionProposal(f.context,f.work,durationFormula);
   expect(result).toEqual(propose(f.context,f.work,f.formulas));
   expect(result).toMatchObject({state:'proposed',authority:'proposalOnly',duration:{status:'calculated',payableMinutes:60,
-   classes:[{eligibleMinutes:40,payableMinutes:60,unplacedPayableMinutes:20}]}});
+   classes:[{calendarDate:date,eligibleMinutes:20,payableMinutes:30,unplacedPayableMinutes:10},{calendarDate:next,eligibleMinutes:20,payableMinutes:30,unplacedPayableMinutes:10}]}});
   expect(Object.hasOwn(result,'transferable')).toBe(false);
   f.context.selected.policy.overtime.approval='manual';
   expect(attendancePolicyDurationExecutionProposal(f.context,f.work,durationFormula))
    .toMatchObject({state:'unavailable',reason:'approvalReceiptRequired'});
  });
- it('uses the central latest count choice across the complete class instead of a per-date cap',()=>{
+ it('applies the day maximum to each date\'s portion and uses the central latest count choice within it (2f803985)',()=>{
   const f=fixture();f.context.selected.policy.overtime.days.normal.maximumMinutes=10;
   for(const ref of f.formulas.references)if(ref.state==='known')ref.definition.durationAllocation='latest';
-  expect(propose(f.context,f.work,f.formulas)).toMatchObject({state:'proposed',duration:{payableMinutes:10,
-   parts:[{allocatedPayableMinutes:0,allocations:[]},{allocatedPayableMinutes:10,allocations:[{from:1450,to:1460}]}]}});
+  expect(propose(f.context,f.work,f.formulas)).toMatchObject({state:'proposed',duration:{payableMinutes:20,
+   parts:[{allocatedPayableMinutes:10,allocations:[{from:1430,to:1440}]},{allocatedPayableMinutes:10,allocations:[{from:1450,to:1460}]}]}});
  });
  it('never upgrades an existing approval audit or scalar plan into the missing final-effect receipt',()=>{
   const f=fixture();f.context.selected.policy.overtime.approval='manual';
@@ -161,7 +161,7 @@ describe('complete non-payable proposal materialization',()=>{
   expect(parts).toMatchObject([{sequence:0,calendarDate:date,versionId:id(4),rawMinutes:20,allocatedPayableMinutes:20,sourceIntervals:[{from:1420,to:1440}],durationEvidence:{authority:'proposalOnly'}},
    {sequence:1,calendarDate:next,versionId:id(4),rawMinutes:20,allocatedPayableMinutes:20,sourceIntervals:[{from:1440,to:1460}]}]);
   expect(parts?.reduce((n,row)=>n+row.allocatedPayableMinutes,0)).toBe(40);
-  expect(f.proposal).toMatchObject({duration:{payableMinutes:60,classes:[{unplacedPayableMinutes:20}]}});
+  expect(f.proposal).toMatchObject({duration:{payableMinutes:60,classes:[{unplacedPayableMinutes:10},{unplacedPayableMinutes:10}]}});
   expect(f).toEqual(before);parts![0].sourceIntervals[0].from=0;expect(f).toEqual(before);
   expect(Object.hasOwn(parts![0],'calculationId')).toBe(false);expect(Object.hasOwn(parts![0],'transferable')).toBe(false);
  });
@@ -283,7 +283,7 @@ describe('complete positioned-plan source and shared duration replay',()=>{
   const approvals=approvedPlans(f,[{from:1320,to:1360}]);
   expect(propose(f.context,f.work,f.formulas,approvals,id(8))).toMatchObject({state:'proposed',duration:{status:'calculated',payableMinutes:0,parts:[]}});
   const overlap=approvedPlans(f,[{from:1410,to:1470}]);
-  expect(propose(f.context,f.work,f.formulas,overlap,id(8))).toMatchObject({state:'proposed',duration:{status:'calculated',payableMinutes:60,classes:[{eligibleMinutes:40,unplacedPayableMinutes:20}]}});
+  expect(propose(f.context,f.work,f.formulas,overlap,id(8))).toMatchObject({state:'proposed',duration:{status:'calculated',payableMinutes:60,classes:[{eligibleMinutes:20,unplacedPayableMinutes:10},{eligibleMinutes:20,unplacedPayableMinutes:10}]}});
  });
  it('refuses the whole set for a different tenant or inconsistent submission and final epochs',()=>{
   const f=fixture();f.context.selected.policy.overtime.autoMethod='intersect';

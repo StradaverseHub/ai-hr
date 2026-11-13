@@ -317,6 +317,44 @@ sits above it. The source base is origin/main `f07f32dcd`, ending at 4202 / idx 
 Recheck peer claims, the published baseline and the ordered applied ledger before
 admission. The reservation grants no installation authority.
 
+# Attendance on-behalf AI read controls — 12 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/irwin-batch-b2-20261112` uses `5145_ai_attendance_on_behalf_reads` at idx 4545 / when 1793330004845,
+allocated by the release coordinator from the Irwin block 5140–5159 it holds for this release. Its journal entry sits
+between `5144_attendance_lane_security_review` (when 1793330004844) and `5150_attendance_policy_dated_rounding` (when
+1793330004850), in ascending `when`. One INSERT registering the AI Centre controls `read:attendance_on_behalf_subjects`
+and `read:attendance_on_behalf_approvers` (owner decision of 12 November 2026); no table, privilege or write. Recheck
+the installed watermarks and peer claims at admission; this grants no installation authority.
+
+# Irwin attendance approval-workflow lane (daa76ed4, 96a54ed2) — 12 November 2026 MYT (draft, unapplied)
+
+Branch `claude/irwin-attendance-workflow-20261112` (base `origin/alpha` `f84f4c567`) uses its reserved draft block
+5140–5149 (idx 4540–4549, when 1793330004840–1793330004849, shared offset). `5140_attendance_workflow_cross_company_pending`
+and `5141_attendance_workflow_escalation` (daa76ed4); the on-behalf migration of 96a54ed2 is 5142, the owner-decided final-decision window 5143 and its security-review follow-up 5144. The
+coordinator reconciles final numbering, above every installed watermark, at integration. Never applied anywhere.
+
+# Background AI Formula Generator — 12 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/formula-ai-background-20261112` (base `claude/payroll-ai-rc-20261112` at `e636e8f96`, which journals
+`5129_payroll_history_effective_reads` at idx 4529 / when 1793330004829) allocates `5130_pay_formula_ai_draft_job` at
+idx 4530 / when 1793330004830, keeping the shared offset (tag 51NN, idx 45NN, when …48NN). PR 240 still holds `5128`.
+A survey of every origin head and local worktree on 12 November 2026 found no other claim between 5130 and 5199 (the
+recruitment branch `claude/rea-web-app-reconstruction-2c12ee` holds 5200–5215). One new table with its index, row
+security and grants; no existing object changes. Recheck peer claims and the installed ledger at admission; this
+grants no installation authority.
+
+# Payroll history effective reads — 12 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/payroll-batch-totals-20261112` (base `origin/main` at `2a2495919`, the build installed on production)
+allocates `5129_payroll_history_effective_reads` at idx 4529 / when 1793330004829, keeping the shared offset (tag 51NN,
+idx 45NN, when …48NN). Production's installed watermark is `5127_import_log_actor_labels` (when 1793330004827) and PR
+240 holds `5128_account_action_authority` (when 1793330004828, branch `claude/fix-account-action-privilege`); a survey of
+every origin head and local worktree on 12 November 2026 found no other claim above 5127 (the 9730/9740/9750 drafts are
+the renumbered 5125–5127). Functions and one view only (no table, column, index, policy or data change); every replaced
+object is checked against its reviewed predecessor. If PR 240's 5128 is installed after this entry it would sit below
+this watermark and must move above it first. Recheck peer claims and the installed ledger at admission; this grants no
+installation authority.
+
 # Irwin board items combined release rebased onto release candidate 3 — 12 November 2026 MYT (unapplied, renumbered)
 
 Branch `claude/irwin-board-combined-20261112` merges `origin/alpha` at `05c4aa0348700a08de6723e88a67f2cbd43689d4`
@@ -3633,3 +3671,45 @@ another builder's branch); renumbered the same day to `5127_import_log_actor_lab
 It adds one read-only STABLE SECURITY DEFINER function, `app.import_log_actor_facts(text, uuid[])`, with EXECUTE for
 `ai_hr_app` only; no table, column, policy, grant on data or existing function changes. This entry carries no
 deployment authority.
+
+## Sweep net-swing thresholds — 13 November 2026, allocated 13 November 2026
+
+Branch `claude/sweep-threshold-20261113` (base `origin/alpha` at `3a11d916e`) drafted `9760_sweep_swing_thresholds`
+(idx 9760, when 1793330099760) from the coordinator-provided 9760–9769 block. Allocated 13 Nov 2026 as
+`5160_sweep_swing_thresholds`, idx 4560, when 1793330004860, keeping the shared offset (tag 51NN, idx 45NN, when …48NN)
+and sitting above the Irwin branches' 5140–5150 holds. 5161–5169 are reserved for the other two ainative follow-ons.
+SQL bytes are unchanged from the draft (SHA-256 `5217e41181c030728ee879b45cc683c39bc9d7b9c7aed44c4c4abe88a230ee48`; the
+file's own header still reads "DRAFT, UNALLOCATED", kept so the bytes do not move). It adds one read-only STABLE SECURITY
+DEFINER function, `app.sweep_swing_thresholds(uuid[])`, with EXECUTE for `ai_hr_app` only: for the requested companies
+(1–500) of the session's own tenant, and only to a system session (no login, no agent principal), the net-swing
+threshold of each company's latest Salary payroll loop setting version, and nothing else. No table, column, policy,
+grant on data, existing function or data change. The approved upgrade tail pin (`test/helpers/approved-upgrade.ts`)
+and `test/tenant-company-fk-upgrade.test.ts` carry the allocated tag. Recheck peer claims and the installed ledger at
+admission; this entry carries no deployment authority.
+
+## Manager Today team minimum — 13 November 2026 (allocated 13 Nov 2026 as 5161)
+
+Branch `claude/team-minimum-20261113` (base `origin/alpha` at `3a11d916e`, owner decision 12 November 2026, HANDOFF §5 item 4)
+journals `9770_leave_team_minimum_present` at idx 9770 and when 1793330099770 as an UNALLOCATED DRAFT from the
+coordinator-provided 9770–9779 block (9760–9769 belong to another builder's sweep-threshold draft). It adds one nullable
+integer column to `company`, `leave_team_minimum_present`, and one CHECK (`company_leave_team_minimum_present_check`: NULL
+or >= 0); no default, no backfill, no new table, policy, grant or function (`company` keeps its row security,
+admin-for-company update policy and table-level app grant from 0324). SHA-256
+`fa4c016e8aa6d259e8ec31bec4809c88b46f50dfd157d9ddaf251568623a4660`. The approved upgrade tail pin, its hash and the
+populated null-column proof (`test/helpers/approved-upgrade.ts`, `test/tenant-company-fk-upgrade.test.ts`) carry the draft;
+ALLOCATED by the coordinator on 13 November 2026 as `5161_leave_team_minimum_present`, idx 4561, when 1793330004861 (after the
+sweep-threshold batch's 5160); SQL bytes unchanged (the header comment still records its draft number). This entry carries no
+deployment authority.
+
+## Probation and passport loop request acts — 13 November 2026 (allocated 13 Nov 2026 as 5162)
+
+Branch `claude/probation-passport-acts-20261113` (base `origin/alpha` at `3a11d916e`, which journals
+`5130_pay_formula_ai_draft_job` at idx 4530 / when 1793330004830) drafted `9780_teras_loop_request_acts` (idx 9780 / when 1793330099780, from the coordinator-provided 9780–9789 block);
+it was allocated 13 Nov 2026 as `5162_teras_loop_request_acts`, idx 4562, when 1793330004862, with the SQL bytes unchanged. It widens exactly four
+CHECKs from migration 2004 (`teras_loop_level_cap`, `teras_loop_level_change_cap`, `teras_loop_action_worker_id_check`,
+`teras_loop_sample_review_worker_id_check`) to add `loop_probation_ending` and `loop_document_expiry`, so the owner's
+11 November 2026 request-only acts can be promoted, recorded, undone and counted for demotion. No policy, trigger,
+grant, function, column or row changes; existing rows already satisfy the wider checks. SQL SHA-256
+`1b92edf3fe85d66954e50f5677bc1cf5122f8fe92faf22db636181c5ed8503f8`. The approved upgrade tail pin
+(`test/helpers/approved-upgrade.ts`) and `test/tenant-company-fk-upgrade.test.ts` carry `5162`. Recheck peer claims and
+the installed ledger at admission. This entry carries no deployment authority.

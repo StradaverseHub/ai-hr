@@ -310,7 +310,7 @@ describe('approved digests', () => {
   it('none of the AI centre files is inside the module-agent source scope', () => {
     const files = ['lib/ai-centre/centre-nav.ts', 'lib/ai-centre/worker-families.ts', 'lib/ai-centre/brand.ts', 'components/ai-centre/centre-tabs.tsx',
       'components/ai-centre/proposal-card.tsx', 'components/ai-centre/how-it-works.tsx', 'components/ai-centre/review-shell.tsx', 'components/ai-centre/delegated-jobs.tsx',
-      'components/today/sections.tsx', 'messages/ai-centre/en.json'];
+      'messages/ai-centre/en.json'];
     for (const file of files) expect(isAiSourceFile(file), file).toBe(false);
   });
 });

@@ -757,7 +757,6 @@
       "switchAttestation": "The confirmation applies only while a direct provider (Anthropic, OpenAI or Google) is active."
     },
     "recommendation": {
-      "show": "Show the recommendation",
       "loading": "Checking…",
       "verdict": {
         "recommend_approve": "Recommend approve: every check passed",
@@ -803,7 +802,9 @@
           "pass": "Nobody else you can see is away on these dates.",
           "fail": "Team coverage is below the minimum.",
           "unusual": "Others you can see are away on some of these dates.",
-          "missing": "Who else is away could not be read."
+          "missing": "Who else is away could not be read.",
+          "passMinimum": "At least {minimum, plural, one {# person} other {# people}} of the team stay present on every day of this request.",
+          "failMinimum": "Approving this would leave fewer than {minimum, plural, one {# person} other {# people}} of the team present on {count, plural, one {one day} other {# days}}: {days}."
         },
         "policy_limits": {
           "pass": "The leave type's document and date rules are met.",
@@ -824,7 +825,9 @@
         "passing": "Passes every check ({count})",
         "help": "Showing only requests that pass every check. Select them, then approve or reject them with a confirmation. Nothing is approved automatically."
       },
-      "openOne": "Show the recommendation"
+      "openOne": "Show the recommendation",
+      "teamDay": "{date} ({present} present)",
+      "teamMoreDays": "{count, plural, one {# more day} other {# more days}}"
     },
     "digest": {
       "title": "Your day",
@@ -1074,7 +1077,9 @@
           "condition_other_clocking": "another clocking that day",
           "condition_inactive": "the employment has ended",
           "would_create_overtime": "the fix would have created overtime",
-          "approval_routed": "the attendance approval goes to a workflow"
+          "approval_routed": "the attendance approval goes to a workflow",
+          "condition_record_changed": "the record changed before it could be done",
+          "condition_no_manager": "the employee has no manager on record"
         },
         "status": {
           "fixed": "Fixed · undo until {date}",
@@ -1087,12 +1092,19 @@
           "withdrawnEmployee": "Withdrawn at the employee’s request",
           "withdrawnHr": "Withdrawn by HR",
           "sentOpen": "Sent · can be withdrawn until {date}",
-          "sentClosed": "Sent"
+          "sentClosed": "Sent",
+          "opened": "Opened · with the manager",
+          "openedOpen": "Opened · can be cancelled until {date}",
+          "cancelledHr": "Review cancelled by HR"
         },
         "undo": "Undo",
         "notSent": "Not sent: {reason}",
         "sent": "Request sent to fill in {count, plural, one {# detail} other {# details}}",
-        "withdraw": "Withdraw"
+        "withdraw": "Withdraw",
+        "passportSent": "Asked the employee to renew their passport, which expires on {date}",
+        "probationOpened": "Opened the probation review and sent it to the manager, due {date}",
+        "notOpened": "Not opened: {reason}",
+        "cancelReview": "Cancel review"
       },
       "limits": {
         "title": "Limits it can never cross",
@@ -1107,7 +1119,9 @@
         "requestOnly": "Sends the request only; never changes a record",
         "requestActive": "Never sends a request to someone whose employment has ended",
         "perNightRequests": "{company}: at most {count, plural, one {# request} other {# requests}} a night, each can be withdrawn for {days} days",
-        "level3": "At Act and audit, HR reviews a weekly sample instead of every action."
+        "level3": "At Act and audit, HR reviews a weekly sample instead of every action.",
+        "passportRequestOnly": "Sends the renewal request only; never changes the passport record",
+        "probationRequestOnly": "Opens the review and sends it to the manager only; never confirms, extends or ends employment"
       },
       "owner": {
         "suspended": "Suspended: its sponsor no longer has HR access.",
@@ -2344,34 +2358,9 @@
     "suggestClaim": "Submit a claim",
     "suggestPay": "Why is my pay different?",
     "suggestLetter": "Get an employment letter",
-    "needsYou": "Needs you",
-    "needsYouEmpty": "Nothing needs you right now.",
-    "readyToConfirm": "Ready for you to confirm",
-    "doneForYou": "Done for you",
-    "doneForYouEmpty": "Nothing done for you in the last 7 days yet.",
-    "watching": "Watching",
-    "watchingEmpty": "Nothing to watch right now.",
-    "atAGlance": "At a glance",
-    "atAGlanceEmpty": "Nothing to show yet.",
     "unavailable": "Some items could not be loaded. Their own pages still work.",
-    "loading": "Loading Today",
-    "more": "More",
     "tasks": {
-      "from": "From approvals",
-      "received": "Received {date}",
-      "open": "Open",
-      "seeAll": "See all {count}",
       "review": "Review"
-    },
-    "prepared": {
-      "leaveApply": "Leave application prepared for you",
-      "leaveCancel": "Leave cancellation prepared for you",
-      "leaveDecision": "Leave decision prepared for you",
-      "meta": "Prepared {date}",
-      "expires": "Expires {date}",
-      "cta": "Review and confirm",
-      "note": "Checked by the leave service. Nothing is submitted until you confirm.",
-      "awaiting": "Waiting for your confirmation"
     },
     "findings": {
       "setupTitle": "{count, plural, one {# setup stage needs attention} other {# setup stages need attention}}",
@@ -2402,6 +2391,7 @@
       "clockOutReasonOtherLabel": "Type the reason",
       "clockOutActionsLabel": "Confirm or edit",
       "clockOutChanged": "This day has changed since the card was prepared, so nothing was sent. Use Edit to check it on the form.",
+      "clockOutPending": "A correction for this day is already waiting for approval, so nothing more was sent.",
       "recordTitle": "{count, plural, one {Your record is missing # detail} other {Your record is missing # details}}",
       "recordNote": "HR approves your update as usual.",
       "recordCta": "Fill in",
@@ -2433,35 +2423,6 @@
         "loop_document_expiry": "Passports expiring",
         "loop_salary_payroll": "Salary payroll loop"
       }
-    },
-    "done": {
-      "answeredLabel": "Answered",
-      "checkedLabel": "Checked",
-      "preparedLabel": "Prepared",
-      "answeredOthersTitle": "{count, plural, one {Answered # employee question} other {Answered # employee questions}}",
-      "answeredOthersBody": "In the last 7 days, for the companies in your current scope. Questions on sensitive matters go to your HR team and are not counted here.",
-      "answeredYouTitle": "{count, plural, one {Answered # of your questions} other {Answered # of your questions}}",
-      "answeredYouBody": "In the last 7 days.",
-      "leaveChecksTitle": "{count, plural, one {Checked # leave request for you} other {Checked # leave requests for you}}",
-      "leaveChecksBody": "Balance, overlap, team cover and policy, each checked by the leave service. The decision stayed yours.",
-      "preparedTitle": "{count, plural, one {Prepared # item you delegated} other {Prepared # items you delegated}}",
-      "preparedBody": "In the last 7 days, by the jobs you delegated."
-    },
-    "watch": {
-      "deadlineLabel": "Deadline",
-      "deadlineTitle": "{count, plural, one {# CP22 or CP22A notification needs filing} other {# CP22 or CP22A notifications need filing}}",
-      "deadlineOverdue": "{count, plural, one {# is overdue.} other {# are overdue.}}",
-      "deadlineBody": "Due within 7 days, from the statutory compliance worklist.",
-      "deadlinePartial": "Checked the first {n} of {total} companies in scope.",
-      "deadlineCta": "Open statutory forms",
-      "exceptionsLabel": "Payroll",
-      "exceptionsTitle": "{count, plural, one {# payroll exception is open} other {# payroll exceptions are open}}",
-      "exceptionsBlocking": "{count, plural, =0 {None blocks a payroll run.} one {# blocks a payroll run.} other {# block a payroll run.}}",
-      "exceptionsCta": "Open exceptions",
-      "expiryLabel": "Expiring",
-      "passportTitle": "{count, plural, one {# recorded passport expires within 30 days} other {# recorded passports expire within 30 days}}",
-      "passportBody": "The first expires on {date}.",
-      "passportCta": "Open people"
     },
     "glance": {
       "balances": "Leave balances",
@@ -2729,6 +2690,28 @@
         "payrollBlocking": "What is blocking this month's payroll?",
         "claimsBeforeCutOff": "Who has not sent their claims before the cut-off?",
         "approvalsWaiting": "Which approvals have waited more than 3 days?"
+      },
+      "morning": {
+        "title": "Morning summary",
+        "intro": "Each morning, AI Centre counts what waits for you: decisions, setup gaps and statutory deadlines. It is prepared for you only and decides nothing.",
+        "start": "Send me a morning summary",
+        "stop": "Stop my morning summary",
+        "started": "Your morning summary starts tomorrow morning.",
+        "stoppedToast": "Your morning summary is stopped.",
+        "startFailed": "The morning summary could not be started. Refresh the page and try again.",
+        "stopFailed": "The morning summary could not be stopped. Refresh the page and try again.",
+        "unavailable": "Your morning summary could not be loaded.",
+        "approvals": "{count, plural, =0 {Nothing waits for your decision} one {# decision waits for you} other {# decisions wait for you}}",
+        "setup": "Setup: {blocked} blocked, {attention} need attention",
+        "deadlines": "Statutory deadlines: {overdue} overdue, {dueSoon} due within 7 days",
+        "openApprovals": "Review",
+        "openSetup": "Open setup",
+        "openDeadlines": "Open forms",
+        "preparedAt": "Prepared this morning at {time}.",
+        "first": "Your first summary is prepared early tomorrow morning.",
+        "notToday": "No summary was prepared this morning. It will be tried again tonight.",
+        "paused": "AI activity is stopped, so no summary is prepared until it is resumed.",
+        "forYouOnly": "Only you see this summary. It counts and links; people still make every decision."
       }
     },
     "manager": {
@@ -2751,8 +2734,16 @@
       "comingUpEmpty": "Nothing coming up for your team.",
       "comingUpPartial": "Some items could not be loaded just now.",
       "otherWork": "{count, plural, one {# other item is waiting for you} other {# other items are waiting for you}}",
-      "seeAllWork": "See all {count} in Tasks"
-    }
+      "seeAllWork": "See all {count} in Tasks",
+      "teamTodayTitle": "Your team today",
+      "teamTodayEmpty": "No attendance is recorded for your team today.",
+      "teamTodayOpen": "Open My Team",
+      "reviewDue": "Review for {name} due {date}",
+      "reviewDueUnnamed": "A review is due {date}",
+      "holiday": "{name}, a public holiday, on {date}",
+      "holidayUnnamed": "A public holiday on {date}"
+    },
+    "workspaceTitle": "Your workspace"
   },
   "why": {
     "link": "Why?",

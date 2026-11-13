@@ -638,7 +638,8 @@ class ProductionFixture:
             'worker-env-sha256':self.env_hash,'existing-uid':str(self.uid)}
         values.update(overrides or {})
         return ['production-first-install',*[part for key,value in values.items() if value is not None for part in ('--'+key,value)]]
-    def invoke(self,overrides=None):
+    def invoke(self,overrides=None):return self.call(self.args(overrides))
+    def call(self,argv,extra=()):
         original_fstat=os.fstat;stdout=io.StringIO();stderr=io.StringIO()
         try:
             with ExitStack() as stack:
@@ -656,7 +657,9 @@ class ProductionFixture:
                 stack.enter_context(patch.object(production.grp,'getgrall',side_effect=lambda:list(self.groups)))
                 stack.enter_context(patch.object(update,'unit_or_identity_processes',side_effect=lambda uid:(check(uid==self.uid,'scanned wrong identity'),list(self.live))[1]))
                 stack.enter_context(patch.object(production.time,'sleep'))
-                return production.first_install(self.args(overrides),self.fmt,self.base,update)
+                for item in extra:stack.enter_context(item)
+                # The bundle's entry point: production-first-install dispatches to first_install unchanged.
+                return production.main(argv,self.fmt,self.base,update)
         finally:
             self.stdout+=stdout.getvalue();self.stderr+=stderr.getvalue()
     def mutations(self):return [event for event in self.events if isinstance(event,list) and event[0]=='/usr/bin/systemctl' and any(word in event for word in MUTATING)]
@@ -883,22 +886,34 @@ class ProductionFirstInstallTests(unittest.TestCase):
             self.assertFalse(observed['stopped']);self.assertTrue(observed['quiescenceUnconfirmed'])
             commands=f.mutations();self.assertNotIn(['/usr/bin/systemctl','start','aihr-bank-import.service'],commands)
             self.assertFalse(any('stop' in event for event in commands));self.assertFalse(any('kill' in event for event in commands))
-    def test_production_bundle_is_self_contained_and_exposes_only_first_activation(self):
+    def test_production_bundle_is_self_contained_and_exposes_only_production_phases(self):
         with tempfile.TemporaryDirectory() as tmp:
             output=Path(tmp)/'helper.py'
             result=subprocess.run([sys.executable,'-I','-B',str(ROOT/'scripts/bank-import-worker-production-bundle.py'),str(output)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr);summary=json.loads(result.stdout)
-            self.assertEqual(summary['phases'],['production-first-install']);self.assertFalse(summary['releaseAuthorized']);self.assertFalse(summary['productionAuthorized'])
-            self.assertEqual(summary['helperSha256'],hashlib.sha256(output.read_bytes()).hexdigest())
+            self.assertEqual(summary['phases'],['production-first-install','production-drain','production-activate','production-rollback'])
+            self.assertEqual(tuple(summary['phases']),production.PHASES);self.assertFalse(summary['releaseAuthorized']);self.assertFalse(summary['productionAuthorized'])
+            self.assertEqual(summary['helperSha256'],hashlib.sha256(output.read_bytes()).hexdigest());self.assertEqual(summary['bytes'],len(output.read_bytes()))
             self.assertIn('deploy/systemd/bank_import_worker_production_v1.py',summary['sourceFiles'])
             body=output.read_text();self.assertNotIn('spec_from_file_location',body);self.assertIn('types.ModuleType',body);self.assertEqual(output.stat().st_mode&0o777,0o600)
-            self.assertTrue(body.endswith('production.first_install(sys.argv[1:],fmt,base,update)\n'))
+            self.assertTrue(body.endswith('production.main(sys.argv[1:],fmt,base,update)\n'))
             result=subprocess.run([sys.executable,'-I','-B',str(output),'--help'],capture_output=True,text=True)
-            self.assertEqual(result.returncode,0,result.stderr);self.assertIn('{production-first-install}',result.stdout)
-            for flag in ['--source','--build-id','--web-port','--release-manifest','--release-manifest-sha256','--archive','--archive-sha256','--lock-sha256','--package-sha256','--worker-env-sha256','--existing-uid']:self.assertIn(flag,result.stdout)
-            for staging in ['adopt-stopped','drain','--unit-sha256','--observed-unit-sha256','--previous-worker-source']:self.assertNotIn(staging,result.stdout)
-            for phase in ['drain','activate','adopt-stopped']:
-                refused=subprocess.run([sys.executable,'-I','-B',str(output),phase],capture_output=True,text=True);self.assertEqual(refused.returncode,2)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertIn('{production-first-install,production-drain,production-activate,production-rollback}',result.stdout)
+            flags={'production-first-install':['--source','--build-id','--web-port','--release-manifest','--release-manifest-sha256','--archive','--archive-sha256','--lock-sha256','--package-sha256','--worker-env-sha256','--existing-uid'],
+                   'production-drain':['--'+name for name in production.UPDATE_ARGS],'production-activate':['--'+name for name in production.UPDATE_ARGS],
+                   'production-rollback':['--'+name for name in production.ROLLBACK_ARGS]}
+            for phase,expected in flags.items():
+                result=subprocess.run([sys.executable,'-I','-B',str(output),phase,'--help'],capture_output=True,text=True)
+                self.assertEqual(result.returncode,0,result.stderr)
+                for flag in expected:self.assertIn(flag,result.stdout)
+                for staging in ['adopt-stopped','--observed-unit-sha256']:self.assertNotIn(staging,result.stdout)
+            for phase in ['drain','activate','adopt-stopped','','production-update']:
+                refused=subprocess.run([sys.executable,'-I','-B',str(output),*([phase] if phase else [])],capture_output=True,text=True);self.assertEqual(refused.returncode,2)
+            update_pins=[part for name in production.UPDATE_ARGS for part in ('--'+name,{'web-port':'3000','existing-uid':'998'}.get(name,'a'*64))]
+            for phase in ['production-drain','production-activate']:
+                missing=subprocess.run([sys.executable,'-I','-B',str(output),phase,*update_pins[:-2]],capture_output=True,text=True)
+                self.assertEqual(missing.returncode,2);self.assertIn('--existing-uid',missing.stderr)
             pins=['--source','2'*40,'--build-id','b','--web-port','3000','--release-manifest','/m','--release-manifest-sha256','a'*64,'--archive','/a','--archive-sha256','a'*64,
                   '--lock-sha256','a'*64,'--package-sha256','a'*64,'--worker-env-sha256','a'*64,'--existing-uid','998']
             missing=subprocess.run([sys.executable,'-I','-B',str(output),'production-first-install',*pins[:-2]],capture_output=True,text=True)
@@ -908,5 +923,349 @@ class ProductionFirstInstallTests(unittest.TestCase):
                 self.assertNotEqual(unprivileged.returncode,0);self.assertIn('root must run',unprivileged.stderr)
             duplicate=subprocess.run([sys.executable,'-I','-B',str(ROOT/'scripts/bank-import-worker-production-bundle.py'),str(output)],capture_output=True,text=True)
             self.assertNotEqual(duplicate.returncode,0)
+
+
+# Production update and rollback: an installed managed production release (this morning's production-first-install
+# shape), the customer web check instead of staging deployment records. Simulated layout only; fictional values.
+SIGTERM_DRAIN=['/usr/bin/systemctl','kill','--kill-whom=main','--signal=SIGTERM','aihr-bank-import.service']
+
+class ProductionUpdateFixture(ProductionFixture):
+    """Previous managed release running from its template unit; web on the previous pinned build; new package pinned."""
+    def __init__(self,root,omit_empty=False):
+        super().__init__(root,omit_empty);self.previous='1'*40;self.old_build='Pold_build-0';self.next_pid=455;self.drain_outcome='exit'
+        self.previous_release=self.app/'releases'/self.previous;(self.previous_release/'scripts').mkdir(parents=True)
+        (self.previous_release/'package.json').write_text('previous package');(self.previous_release/'scripts'/'bank-import-runner.ts').write_text('previous runner')
+        self.unit.write_text(install.service_unit(self.previous));self.unit_hash=update.digest(self.unit.read_bytes())
+        self.previous_receipt={'mode':'production-first-install','source':self.previous,'webBuildId':self.old_build,'unitSha256':self.unit_hash,
+            'selectedEnvironmentSha256':self.env_hash,'serviceStable':True,'workerPid':123,'journeyVerified':False}
+        self.receipt_path=self.previous_release/'worker-install-v2.json';self.receipt_path.write_text(json.dumps(self.previous_receipt));self.receipt_path.chmod(0o444)
+        self.state['UnitFileState']='enabled';self.load(self.unit.read_text())
+        self.state.update(ActiveState='active',SubState='running',MainPID='123',ControlGroup='/system.slice/aihr-bank-import.service')
+        self.process('123',self.previous_release)
+        (self.web_app/'.next'/'BUILD_ID').write_text(self.old_build+'\n')
+    def process(self,pid,cwd,values=None):
+        process=self.proc/pid;process.mkdir(exist_ok=True)
+        (process/'status').write_bytes(b'Name:\tnode\nUid:\t'+'\t'.join([str(self.uid)]*4).encode()+b'\n')
+        if (process/'cwd').is_symlink():(process/'cwd').unlink()
+        (process/'cwd').symlink_to(cwd,target_is_directory=True)
+        (process/'cmdline').write_bytes(b'\0'.join([str(self.node).encode(),b'--import',b'tsx',b'scripts/bank-import-runner.ts'])+b'\0')
+        environment={'PATH':'/usr/bin','NODE_ENV':'production','AIHR_DB_PROCESS_ROLE':'worker','AIHR_DB_POOL_MAX':'2',**(values or self.values)}
+        (process/'environ').write_bytes(b''.join((key+'='+value).encode()+b'\0' for key,value in environment.items()))
+    def launch(self):
+        self.next_pid+=1;pid=str(self.next_pid)
+        # A manual start after a clean stop flushes the restart counter (systemd's flush_n_restarts).
+        self.state.update(ActiveState='active',SubState='running',MainPID=pid,NRestarts='0',ControlGroup='/system.slice/aihr-bank-import.service')
+        self.process(pid,Path(self.state['WorkingDirectory']),{**self.values,**({'DATABASE_URL':'postgresql://drifted'} if self.fault=='env-drift' else {})})
+        if self.fault=='restart':self.state['NRestarts']='1'
+        if self.fault=='final-web':self.web['MainPID']='999'
+    def command(self,argv,input=None,env=None,allow_failure=False):
+        if argv[:2]==['/usr/bin/systemctl','kill']:
+            self.events.append(list(argv));check(argv==SIGTERM_DRAIN,'only a SIGTERM to the main process is reviewed')
+            if self.drain_outcome=='exit':self.exit_cleanly()
+            elif self.drain_outcome=='restart':self.state.update(NRestarts='1',MainPID='789')
+            elif self.drain_outcome=='unclean':self.state.update(MainPID='0',ActiveState='inactive',SubState='dead',Result='exit-code',ExecMainStatus='1',ControlGroup='')
+            return SimpleNamespace(stdout='',returncode=0)
+        result=super().command(argv,input,env,allow_failure)
+        if argv[:2]==['/usr/bin/systemctl','stop']:self.state.update(ControlGroup='',Result='success',ExecMainStatus='0')
+        return result
+    def exit_cleanly(self):self.state.update(MainPID='0',ActiveState='inactive',SubState='dead',Result='success',ExecMainStatus='0',ControlGroup='')
+    def install_new_web(self):(self.web_app/'.next'/'BUILD_ID').write_text(self.build+'\n');self.web['MainPID']='654'
+    def roll_web_back(self):(self.web_app/'.next'/'BUILD_ID').write_text(self.old_build+'\n');self.web['MainPID']='655'
+    def update_args(self,phase,overrides=None):
+        values={'previous-worker-source':self.previous,'unit-sha256':self.unit_hash,'previous-web-source':self.previous,'previous-web-build':self.old_build,
+            'source':self.source,'build-id':self.build,'web-port':str(self.port),'release-manifest':str(self.manifest_path),'release-manifest-sha256':self.manifest_hash,
+            'archive':str(self.archive),'archive-sha256':update.digest(self.archive.read_bytes()),'lock-sha256':'a'*64,'package-sha256':'b'*64,
+            'worker-env-sha256':self.env_hash,'existing-uid':str(self.uid)}
+        values.update(overrides or {})
+        return [phase,*[part for key,value in values.items() if value is not None for part in ('--'+key,value)]]
+    def rollback_args(self,overrides=None):
+        values={'from-source':self.source,'to-source':self.previous,'unit-sha256':update.digest(self.unit.read_bytes()),'to-unit-sha256':self.unit_hash,
+            'web-source':self.previous,'web-build':self.old_build,'web-port':str(self.port),'worker-env-sha256':self.env_hash,'existing-uid':str(self.uid)}
+        values.update(overrides or {})
+        return ['production-rollback',*[part for key,value in values.items() if value is not None for part in ('--'+key,value)]]
+    def drain(self,overrides=None,extra=()):return self.call(self.update_args('production-drain',overrides),extra)
+    def activate(self,overrides=None):return self.call(self.update_args('production-activate',overrides))
+    def rollback(self,overrides=None):return self.call(self.rollback_args(overrides))
+    @property
+    def operation(self):return self.app/'upgrades'/self.source
+    def prepared(self):return sorted(path for path in (self.app/'upgrades').iterdir() if path.name.startswith('.production-drain-')) if (self.app/'upgrades').exists() else []
+    def signals(self):return [event for event in self.events if isinstance(event,list) and event[:2]==['/usr/bin/systemctl','kill']]
+
+class ProductionUpdateTests(unittest.TestCase):
+    def fixture(self,tmp,**options):return ProductionUpdateFixture(Path(tmp).resolve(),**options)
+    def assert_previous_intact(self,f,env_bytes):
+        self.assertEqual(f.env.read_bytes(),env_bytes);self.assertEqual(f.env.stat().st_mode&0o777,0o600)
+        self.assertEqual(json.loads(f.receipt_path.read_text()),f.previous_receipt);self.assertEqual((f.previous_release/'package.json').read_text(),'previous package')
+        for prior in PRIOR:self.assertEqual((f.app/'releases'/prior/'package.json').read_text(),'prior '+prior)
+        # The only signal ever sent is the drain's SIGTERM to the main process; no SIGKILL in any command.
+        self.assertTrue(all(event==SIGTERM_DRAIN for event in f.signals()))
+        self.assertFalse(any(item in ('--signal=SIGKILL','--signal=KILL','-9') for event in f.events if isinstance(event,list) for item in event))
+    def assert_refused_before_any_change(self,f,env_bytes,error=None):
+        self.assertEqual(f.mutations(),[]);self.assertEqual(f.signals(),[]);self.assertFalse((f.app/'upgrades').exists())
+        self.assertFalse(f.release.exists());self.assertEqual(f.unit.read_bytes(),install.service_unit(f.previous).encode())
+        self.assertEqual(f.state['MainPID'],'123');self.assert_previous_intact(f,env_bytes)
+        if error is not None:self.assert_no_secret(f,''.join(traceback.format_exception(error)))
+    def assert_no_secret(self,f,*texts):
+        for text in (f.stdout,f.stderr,*texts):self.assertNotIn(APP_SECRET,text);self.assertNotIn(OWNER_SECRET,text)
+    def refuse(self,call):
+        with self.assertRaises((ValueError,OSError)) as caught:call()
+        return caught.exception
+    def test_update_drains_before_the_web_install_and_activates_after_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=self.fixture(tmp);env_bytes=f.env.read_bytes();drained=f.drain()
+            self.assertEqual(f.mutations(),[SIGTERM_DRAIN]);self.assertEqual(drained['drain'],{'pid':123,'state':'drained','alreadyStopped':False,'forcedKill':False})
+            self.assertLess(f.events.index('extract'),f.events.index(SIGTERM_DRAIN));self.assertEqual(f.prepared(),[])
+            record=json.loads((f.operation/'drained.json').read_text());self.assertEqual(record['mode'],'production-drain')
+            self.assertEqual(record['identity']['previous_web_build'],f.old_build);self.assertEqual(record['web']['webSource'],f.previous)
+            self.assertEqual(record['web']['webBuildId'],f.old_build);self.assertTrue((f.operation/'authenticated-worker.zip').exists())
+            self.assertEqual(f.unit.read_bytes(),install.service_unit(f.previous).encode());self.assertEqual(f.state['UnitFileState'],'enabled')
+            self.assertFalse(f.release.exists())
+            f.install_new_web();accepted=f.activate()
+            unit=install.service_unit(f.source).encode();self.assertEqual(f.unit.read_bytes(),unit)
+            self.assertEqual(f.mutations(),[SIGTERM_DRAIN,['/usr/bin/systemctl','daemon-reload'],['/usr/bin/systemctl','start','aihr-bank-import.service']])
+            self.assertEqual(f.state['ActiveState'],'active');self.assertEqual(f.state['UnitFileState'],'enabled');self.assertEqual(f.state['WorkingDirectory'],str(f.release))
+            receipt=json.loads((f.release/'worker-install-v2.json').read_text());self.assertEqual(receipt,accepted)
+            self.assertEqual(receipt,json.loads((f.operation/'activated.json').read_text()));self.assertEqual((f.release/'worker-install-v2.json').stat().st_mode&0o777,0o444)
+            self.assertEqual(receipt['mode'],'production-update');self.assertEqual(receipt['source'],f.source);self.assertEqual(receipt['webBuildId'],f.build)
+            self.assertEqual(receipt['unitSha256'],update.digest(unit));self.assertEqual(receipt['selectedEnvironmentSha256'],update.digest(env_bytes))
+            self.assertEqual(receipt['previousWorkerSource'],f.previous);self.assertEqual(receipt['previousUnitSha256'],f.unit_hash)
+            self.assertEqual(receipt['previousWebSource'],f.previous);self.assertEqual(receipt['previousWebBuildId'],f.old_build)
+            self.assertEqual(receipt['releaseManifestSha256'],f.manifest_hash);self.assertEqual(receipt['workerPid'],456);self.assertFalse(receipt['journeyVerified'])
+            self.assertTrue(f.previous_release.is_dir());self.assert_previous_intact(f,env_bytes);self.assert_no_secret(f,*(p.read_text() for p in f.operation.iterdir() if p.suffix=='.json'))
+            self.assertEqual(len([e for e in f.events if isinstance(e,list) and e[0]==production.PSQL]),2)
+            with self.assertRaises(ValueError):f.activate()
+    def test_a_later_production_drain_validates_the_new_receipt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=self.fixture(tmp);f.drain();f.install_new_web();accepted=f.activate()
+            with patch.object(install,'command',side_effect=f.command):
+                report,receipt=production.managed_release(f.base,update,f.source,accepted['unitSha256'],f.env_hash)
+            self.assertEqual(receipt,accepted);self.assertEqual(report['WorkingDirectory'],str(f.release))
+    def test_drain_after_the_web_install_also_accepts_the_new_pinned_web(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=self.fixture(tmp);f.install_new_web();drained=f.drain()
+            self.assertEqual(drained['web']['webSource'],f.source);self.assertEqual(drained['web']['webBuildId'],f.build)
+            f.activate();self.assertEqual(f.unit.read_bytes(),install.service_unit(f.source).encode())
+    def test_drain_accepts_a_worker_that_restarted_earlier_and_systemd_that_omits_unset_properties(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=self.fixture(tmp,omit_empty=True);f.state['NRestarts']='1';f.drain();f.install_new_web();f.activate()
+            self.assertEqual(f.state['ActiveState'],'active');self.assertEqual(f.state['NRestarts'],'0')
+    def test_refuses_a_wrong_previous_receipt_before_any_change(self):
+        defects=['missing','staging-receipt','adopted-receipt','source','unit','environment','not-stable','web-build','previous-source-pin','not-enabled','drop-in','other-directory']
+        for defect in defects:
+            with self.subTest(defect=defect),tempfile.TemporaryDirectory() as tmp:
+                f=self.fixture(tmp);env_bytes=f.env.read_bytes();overrides={};receipt=dict(f.previous_receipt)
+                if defect=='staging-receipt':receipt.pop('mode')
+                if defect=='adopted-receipt':receipt['mode']='adopt-stopped'
+                if defect=='source':receipt['source']='3'*40
+                if defect=='unit':receipt['unitSha256']='c'*64
+                if defect=='environment':receipt['selectedEnvironmentSha256']='d'*64
+                if defect=='not-stable':receipt['serviceStable']=False
+                if defect=='web-build':receipt['webBuildId']='other-build'
+                if defect=='previous-source-pin':overrides['previous-worker-source']='3'*40
+                if defect=='not-enabled':f.state['UnitFileState']='disabled'
+                if defect=='drop-in':f.state['DropInPaths']='/etc/systemd/system/aihr-bank-import.service.d/override.conf'
+                if defect=='other-directory':f.state['WorkingDirectory']=str(f.app/'releases'/PRIOR[0])
+                f.receipt_path.chmod(0o644)
+                if defect=='missing':f.receipt_path.unlink()
+                else:f.receipt_path.write_text(json.dumps(receipt))
+                f.receipt_path.exists() and f.receipt_path.chmod(0o444);f.previous_receipt=receipt
+                error=self.refuse(lambda:f.drain(overrides))
+                self.assertEqual(f.mutations(),[]);self.assertEqual(f.signals(),[]);self.assertFalse((f.app/'upgrades').exists());self.assertFalse(f.release.exists())
+                self.assertEqual(f.state['MainPID'],'123');self.assertEqual(f.env.read_bytes(),env_bytes);self.assert_no_secret(f,''.join(traceback.format_exception(error)))
+    def test_refuses_a_unit_sha_mismatch_before_any_change(self):
+        for defect in ['pin','bytes','foreign-template','reload-pending']:
+            with self.subTest(defect=defect),tempfile.TemporaryDirectory() as tmp:
+                f=self.fixture(tmp);env_bytes=f.env.read_bytes();overrides={}
+                if defect=='pin':overrides['unit-sha256']='e'*64
+                if defect=='bytes':f.unit.write_text(install.service_unit(f.previous)+'# edited\n')
+                if defect=='foreign-template':f.unit.write_text(install.service_unit(f.source));overrides['unit-sha256']=update.digest(f.unit.read_bytes())
+                if defect=='reload-pending':f.state['NeedDaemonReload']='yes'
+                error=self.refuse(lambda:f.drain(overrides))
+                self.assertEqual(f.mutations(),[]);self.assertEqual(f.signals(),[]);self.assertFalse((f.app/'upgrades').exists());self.assertFalse(f.release.exists())
+                self.assert_previous_intact(f,env_bytes);self.assert_no_secret(f,''.join(traceback.format_exception(error)))
+    def test_refuses_a_web_pin_mismatch_at_drain_and_at_activation(self):
+        defects=['unpinned-build','previous-build-pin','manifest-pin','manifest-build','unhealthy','not-running','web-user','port','web-changes-during-preparation']
+        for defect in defects:
+            with self.subTest(phase='drain',defect=defect),tempfile.TemporaryDirectory() as tmp:
+                f=self.fixture(tmp);env_bytes=f.env.read_bytes();overrides={}
+                if defect=='unpinned-build':(f.web_app/'.next'/'BUILD_ID').write_text('Pother_build\n')
+                if defect=='previous-build-pin':overrides['previous-web-build']='Pother_build'
+                if defect=='manifest-pin':overrides['release-manifest-sha256']='c'*64
+                if defect=='manifest-build':f.write_manifest({'schemaVersion':1,'commit':f.source,'buildId':'Pother_build','platform':'linux','architecture':'x86_64'})
+                if defect=='unhealthy':f.health_status=503
+                if defect=='not-running':f.web.update(ActiveState='inactive',SubState='dead',MainPID='0')
+                if defect=='web-user':f.web['User']='root'
+                if defect=='port':overrides['web-port']='3001'
+                if defect=='web-changes-during-preparation':f.fault='prepare-web'
+                error=self.refuse(lambda:f.drain(overrides))
+                self.assertEqual(f.mutations(),[]);self.assertEqual(f.signals(),[]);self.assertFalse(f.operation.exists());self.assertFalse(f.release.exists())
+                self.assertEqual(f.state['MainPID'],'123');self.assert_previous_intact(f,env_bytes);self.assert_no_secret(f,''.join(traceback.format_exception(error)))
+        for defect in ['web-still-previous','unpinned-build','manifest-pin','unhealthy','web-changes-during-extraction']:
+            with self.subTest(phase='activate',defect=defect),tempfile.TemporaryDirectory() as tmp:
+                f=self.fixture(tmp);env_bytes=f.env.read_bytes();f.drain();overrides={}
+                if defect!='web-still-previous':f.install_new_web()
+                if defect=='unpinned-build':(f.web_app/'.next'/'BUILD_ID').write_text('Pother_build\n')
+                if defect=='manifest-pin':f.write_manifest({'schemaVersion':1,'commit':'3'*40,'buildId':f.build,'platform':'linux','architecture':'x86_64'})
+                if defect=='unhealthy':f.health_status=503
+                if defect=='web-changes-during-extraction':f.web['MainPID']='653';f.fault='prepare-web'
+                with self.assertRaises((ValueError,OSError)):f.activate(overrides)
+                self.assertEqual(f.mutations(),[SIGTERM_DRAIN]);self.assertEqual(f.unit.read_bytes(),install.service_unit(f.previous).encode())
+                self.assertFalse((f.operation/'activated.json').exists());self.assertEqual(f.state['MainPID'],'0');self.assert_previous_intact(f,env_bytes)
+                if defect=='web-changes-during-extraction':
+                    # The extracted release was set aside, not deleted; once the web is stable a second activation re-extracts.
+                    self.assertFalse(f.release.exists());[aside]=[p for p in f.operation.iterdir() if p.name.startswith('refused-release-')]
+                    self.assertTrue((aside/'release'/'package.json').exists());f.fault=None;f.activate()
+                    self.assertEqual(f.unit.read_bytes(),install.service_unit(f.source).encode());self.assertTrue((f.release/'worker-install-v2.json').exists())
+    def test_refuses_the_same_source_and_malformed_pins_before_the_lock(self):
+        cases=[{'source':'1'*40},{'source':'1'*39},{'previous-web-build':'bad build'},{'unit-sha256':'E'*64},{'web-port':'0'},{'existing-uid':'-1'}]
+        for overrides in cases:
+            with self.subTest(overrides=overrides),tempfile.TemporaryDirectory() as tmp:
+                f=self.fixture(tmp);env_bytes=f.env.read_bytes()
+                with self.assertRaises(ValueError) as caught:f.drain(overrides)
+                if overrides.get('source')=='1'*40:self.assertIn('different worker source',str(caught.exception))
+                self.assertFalse((f.root/'install.lock').exists());self.assert_refused_before_any_change(f,env_bytes)
+    def test_refuses_an_unreviewed_environment_or_identity_before_any_change(self):
+        for defect in ['env-pin','env-extra-key','env-world-readable','uid-pin','login-shell','live-process-when-stopped']:
+            with self.subTest(defect=defect),tempfile.TemporaryDirectory() as tmp:
+                f=self.fixture(tmp);overrides={}
+                if defect=='env-pin':overrides['worker-env-sha256']='d'*64
+                if defect=='env-extra-key':f.write_env(f.render(f.values)+'PORT=3000\n',repin=False)
+                if defect=='env-world-readable':f.env.chmod(0o644)
+                if defect=='uid-pin':overrides['existing-uid']='997'
+                if defect=='login-shell':f.identity.pw_shell='/bin/bash'
+                if defect=='live-process-when-stopped':f.exit_cleanly();f.live=[777]
+                env_bytes=f.env.read_bytes();error=self.refuse(lambda:f.drain(overrides))
+                self.assertEqual(f.mutations(),[]);self.assertEqual(f.signals(),[]);self.assertFalse((f.app/'upgrades').exists())
+                self.assertEqual(f.env.read_bytes(),env_bytes);self.assert_no_secret(f,''.join(traceback.format_exception(error)))
+    def test_drain_timeout_never_kills_and_a_later_drain_resumes_from_the_clean_exit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=self.fixture(tmp);env_bytes=f.env.read_bytes();f.drain_outcome='running';clock=iter(range(0,10**6,331))
+            with self.assertRaisesRegex(RuntimeError,'deadline reached; nothing was killed'):
+                f.drain(extra=[patch.object(production.time,'monotonic',side_effect=lambda:next(clock))])
+            self.assertEqual(f.mutations(),[SIGTERM_DRAIN]);self.assertEqual(f.state['MainPID'],'123')
+            self.assertFalse(any(word in event for event in f.mutations() for word in ('stop','disable','daemon-reload','start')))
+            self.assertFalse(f.operation.exists());[prepared]=f.prepared()
+            unfinished=json.loads((prepared/'drain-unfinished.json').read_text());self.assertEqual(unfinished,{'mode':'production-drain','signalled':True,'forcedKill':False,'refusal':'RuntimeError'})
+            self.assertEqual(f.unit.read_bytes(),install.service_unit(f.previous).encode())
+            f.install_new_web()
+            with self.assertRaises((ValueError,OSError)):f.activate()
+            self.assertEqual(f.mutations(),[SIGTERM_DRAIN]);self.assertFalse(f.release.exists())
+            # The runner finishes its tick after the deadline and exits 0; a second production-drain records it without a signal.
+            f.exit_cleanly();f.roll_web_back();drained=f.drain()
+            self.assertEqual(drained['drain'],{'pid':None,'state':'drained','alreadyStopped':True,'forcedKill':False});self.assertEqual(f.signals(),[SIGTERM_DRAIN])
+            self.assertEqual(len(f.prepared()),1);f.install_new_web();f.activate();self.assertEqual(f.state['ActiveState'],'active');self.assert_previous_intact(f,env_bytes)
+    def test_drain_refuses_a_restart_or_unclean_exit_without_escalating(self):
+        for outcome,message in [('restart','restarted during drain'),('unclean','did not exit successfully')]:
+            with self.subTest(outcome=outcome),tempfile.TemporaryDirectory() as tmp:
+                f=self.fixture(tmp);f.drain_outcome=outcome
+                with self.assertRaisesRegex(ValueError,message):f.drain()
+                self.assertEqual(f.mutations(),[SIGTERM_DRAIN]);self.assertFalse(f.operation.exists())
+                self.assertEqual(f.unit.read_bytes(),install.service_unit(f.previous).encode())
+                if outcome=='unclean':
+                    # A non-zero exit is neither running nor cleanly stopped: a second drain refuses without a signal.
+                    with self.assertRaisesRegex(ValueError,'neither running nor cleanly stopped'):f.drain()
+                self.assertEqual(f.signals(),[SIGTERM_DRAIN]);self.assertEqual(len(f.prepared()),1)
+    def test_activation_requires_the_exact_drain_record_and_a_drained_worker(self):
+        for defect in ['no-drain','changed-pin','worker-restarted','foreign-record']:
+            with self.subTest(defect=defect),tempfile.TemporaryDirectory() as tmp:
+                f=self.fixture(tmp);overrides={}
+                if defect!='no-drain':f.drain()
+                f.install_new_web()
+                if defect=='changed-pin':overrides['archive']=str(f.archive)+'.copy';Path(overrides['archive']).write_bytes(f.archive.read_bytes())
+                if defect=='worker-restarted':f.launch()
+                if defect=='foreign-record':
+                    path=f.operation/'drained.json';record=json.loads(path.read_text());record['identity']['previous_web_build']='Pother';path.chmod(0o600);path.write_text(json.dumps(record));path.chmod(0o400)
+                with self.assertRaises((ValueError,OSError)):f.activate(overrides)
+                self.assertEqual(f.unit.read_bytes(),install.service_unit(f.previous).encode());self.assertFalse(f.release.exists())
+                self.assertFalse(any(event==['/usr/bin/systemctl','daemon-reload'] for event in f.events))
+    def test_activation_failure_enters_the_sigkill_free_quarantine(self):
+        for fault in ['reload','start','restart','env-drift','final-web','receipt']:
+            with self.subTest(fault=fault),tempfile.TemporaryDirectory() as tmp:
+                f=self.fixture(tmp);env_bytes=f.env.read_bytes();f.drain();f.install_new_web();f.fault=fault
+                with self.assertRaisesRegex(RuntimeError,'activation failed'):f.activate()
+                text=f.unit.read_text();self.assertIn('Restart=no\nSendSIGKILL=no\n',text);self.assertIn('WorkingDirectory=/opt/aihr-import/releases/'+f.source,text)
+                observed=json.loads((f.operation/'activation-failure-observation.json').read_text())
+                self.assertTrue(observed['stopped']);self.assertTrue(observed['disabled']);self.assertFalse(observed['accepted']);self.assertFalse(observed['forcedKill'])
+                self.assertTrue((f.operation/'activation-failed.json').exists());self.assertFalse((f.operation/'activated.json').exists())
+                self.assertFalse((f.release/'worker-install-v2.json').exists());self.assertTrue((f.release/'package.json').exists())
+                self.assertEqual(f.state['MainPID'],'0');self.assertEqual(f.state['UnitFileState'],'disabled')
+                self.assertIn('workerActivationFailed',f.stderr);self.assert_previous_intact(f,env_bytes);self.assert_no_secret(f)
+                f.fault=None
+                with self.assertRaises(ValueError):f.activate()
+    def rolled_back(self,f,env_bytes,record,from_state):
+        self.assertEqual(f.unit.read_bytes(),install.service_unit(f.previous).encode());self.assertEqual(f.state['WorkingDirectory'],str(f.previous_release))
+        self.assertEqual(f.state['ActiveState'],'active');self.assertEqual(f.state['UnitFileState'],'enabled')
+        self.assertEqual(record['mode'],'production-rollback');self.assertEqual(record['fromState'],from_state);self.assertEqual(record['toSource'],f.previous)
+        self.assertEqual(record['unitSha256'],f.unit_hash);self.assertFalse(record['forcedKill']);self.assertFalse(record['journeyVerified'])
+        [directory]=[p for p in f.operation.iterdir() if p.name.startswith('rollback-'+f.previous+'-')]
+        self.assertEqual(json.loads((directory/'rolled-back.json').read_text()),record);self.assertTrue((directory/'rollback-preflight.json').exists())
+        self.assert_previous_intact(f,env_bytes);self.assertEqual(f.signals(),[SIGTERM_DRAIN])
+        # The original receipt still validates, so a later production update can start from the re-activated release.
+        with patch.object(install,'command',side_effect=f.command):
+            report,receipt=production.managed_release(f.base,update,f.previous,f.unit_hash,f.env_hash)
+        self.assertEqual(receipt,f.previous_receipt);return directory
+    def test_rollback_reactivates_the_previous_release_after_an_accepted_update(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=self.fixture(tmp);env_bytes=f.env.read_bytes();f.drain();f.install_new_web();f.activate();before=len(f.mutations());f.roll_web_back()
+            record=f.rollback()
+            commands=f.mutations()[before:]
+            self.assertEqual(commands,[['/usr/bin/systemctl','daemon-reload'],['/usr/bin/systemctl','disable','aihr-bank-import.service'],
+                ['/usr/bin/systemctl','stop','--no-block','aihr-bank-import.service'],['/usr/bin/systemctl','daemon-reload'],
+                ['/usr/bin/systemctl','start','aihr-bank-import.service'],['/usr/bin/systemctl','enable','aihr-bank-import.service']])
+            directory=self.rolled_back(f,env_bytes,record,'updated')
+            stopped=json.loads((directory/'stop-updated'/'activation-failure-observation.json').read_text())
+            self.assertTrue(stopped['stopped']);self.assertTrue(stopped['disabled']);self.assertFalse(stopped['forcedKill'])
+            self.assertTrue((f.release/'worker-install-v2.json').exists());self.assertTrue((f.operation/'activated.json').exists())
+    def test_rollback_with_the_new_web_still_running_uses_the_drain_record_build(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=self.fixture(tmp);env_bytes=f.env.read_bytes();f.drain();f.install_new_web();f.activate()
+            record=f.rollback({'web-source':f.source,'web-build':f.build})
+            self.assertEqual(record['webSource'],f.source);self.rolled_back(f,env_bytes,record,'updated')
+    def test_rollback_after_a_quarantined_activation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=self.fixture(tmp);env_bytes=f.env.read_bytes();f.drain();f.install_new_web();f.fault='final-web'
+            with self.assertRaisesRegex(RuntimeError,'activation failed'):f.activate()
+            f.fault=None;f.web['MainPID']='654';before=len(f.mutations())
+            record=f.rollback({'web-source':f.source,'web-build':f.build})
+            self.assertEqual(f.mutations()[before:],[['/usr/bin/systemctl','daemon-reload'],['/usr/bin/systemctl','start','aihr-bank-import.service'],['/usr/bin/systemctl','enable','aihr-bank-import.service']])
+            self.rolled_back(f,env_bytes,record,'updated-quarantined')
+    def test_rollback_after_drain_only_restarts_the_unchanged_previous_unit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=self.fixture(tmp);env_bytes=f.env.read_bytes();f.drain();unit=f.unit.read_bytes();before=len(f.mutations())
+            record=f.rollback()
+            self.assertEqual(f.mutations()[before:],[['/usr/bin/systemctl','start','aihr-bank-import.service']]);self.assertEqual(f.unit.read_bytes(),unit)
+            self.rolled_back(f,env_bytes,record,'previous')
+            with self.assertRaisesRegex(ValueError,'already running'):f.rollback()
+    def test_rollback_refuses_unpinned_or_unrecorded_state_before_any_change(self):
+        defects=['to-unit-pin','unit-pin','unrecorded-web','web-build','writable-release','setuid-release','foreign-unit','no-attempt','other-target','env-pin']
+        for defect in defects:
+            with self.subTest(defect=defect),tempfile.TemporaryDirectory() as tmp:
+                f=self.fixture(tmp);f.drain();f.install_new_web();f.activate();f.roll_web_back();overrides={};before=len(f.mutations())
+                unit=f.unit.read_bytes();env_bytes=f.env.read_bytes()
+                if defect=='to-unit-pin':overrides['to-unit-sha256']='c'*64
+                if defect=='unit-pin':overrides['unit-sha256']='c'*64
+                if defect=='unrecorded-web':overrides.update({'web-source':'3'*40})
+                if defect=='web-build':overrides['web-build']=f.build
+                if defect=='writable-release':(f.previous_release/'package.json').chmod(0o666)
+                if defect=='setuid-release':(f.previous_release/'scripts'/'bank-import-runner.ts').chmod(0o4755)
+                if defect=='foreign-unit':f.unit.write_text('foreign unit');unit=f.unit.read_bytes()
+                if defect=='no-attempt':overrides['from-source']='3'*40
+                if defect=='other-target':overrides['to-source']=PRIOR[0]
+                if defect=='env-pin':overrides['worker-env-sha256']='d'*64
+                with self.assertRaises((ValueError,OSError)):f.rollback(overrides)
+                self.assertEqual(f.mutations()[before:],[]);self.assertEqual(f.unit.read_bytes(),unit);self.assertEqual(f.env.read_bytes(),env_bytes)
+                self.assertFalse(any(p.name.startswith('rollback-') for p in f.operation.iterdir()))
+                self.assertEqual(f.state['WorkingDirectory'],str(f.release) if defect!='foreign-unit' else f.state['WorkingDirectory'])
+    def test_rollback_failure_quarantines_the_previous_unit_without_sigkill(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=self.fixture(tmp);env_bytes=f.env.read_bytes();f.drain();f.install_new_web();f.activate();f.roll_web_back();f.fault='env-drift'
+            with self.assertRaisesRegex(RuntimeError,'activation failed'):f.rollback()
+            self.assertEqual(f.unit.read_bytes(),production.quarantine_unit(f.base,f.previous));self.assertEqual(f.state['MainPID'],'0')
+            [directory]=[p for p in f.operation.iterdir() if p.name.startswith('rollback-')]
+            observed=json.loads((directory/'activation-failure-observation.json').read_text());self.assertTrue(observed['stopped']);self.assertFalse(observed['forcedKill'])
+            self.assert_previous_intact(f,env_bytes)
+            # Without new code: a second rollback re-activates the quarantined previous unit once the cause is repaired.
+            f.fault=None;record=f.rollback();self.assertEqual(record['fromState'],'previous-quarantined')
+            self.assertEqual(f.unit.read_bytes(),install.service_unit(f.previous).encode());self.assertEqual(f.state['ActiveState'],'active')
 
 unittest.main()

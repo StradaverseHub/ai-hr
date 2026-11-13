@@ -85,10 +85,20 @@ export function v24OrganisationShapedSpec(){
 
 /** v29's one topic (50d9b809, the Shared Leave Groups page), appended to operations_status. v29 adds no instruction line. */
 export const V29_TOPIC='shared_leave_groups';
-/** The v29 spec with its one topic removed and the version set to 28: v28 exactly, preserving its recorded digest. */
+/** v30's two topics (96a54ed2, the Request On Behalf and Approve On Behalf pages), appended to operations_status. v30 adds
+ * no instruction line. */
+export const V30_TOPICS=['attendance_on_behalf_subjects','attendance_on_behalf_approvers'] as const;
+/** The v30 spec with its two topics removed and the version set to 29: v29 exactly, preserving its recorded digest. */
+export function v29ShapedSpec(){
+ const topicTools={...HARNESS_SPEC.offer.topicTools,operations_status:HARNESS_SPEC.offer.topicTools.operations_status.filter(topic=>!(V30_TOPICS as readonly string[]).includes(topic))};
+ return {...HARNESS_SPEC,version:29,offer:{...HARNESS_SPEC.offer,topicTools}};
+}
+/** The v29 spec with its one topic removed and the version set to 28: v28 exactly, preserving its recorded digest.
+ * 96a54ed2: built from v29, not the current spec. */
 export function v28ShapedSpec(){
- const topicTools={...HARNESS_SPEC.offer.topicTools,operations_status:HARNESS_SPEC.offer.topicTools.operations_status.filter(topic=>topic!==V29_TOPIC)};
- return {...HARNESS_SPEC,version:28,offer:{...HARNESS_SPEC.offer,topicTools}};
+ const v29=v29ShapedSpec();
+ const topicTools={...v29.offer.topicTools,operations_status:v29.offer.topicTools.operations_status.filter(topic=>topic!==V29_TOPIC)};
+ return {...v29,version:28,offer:{...v29.offer,topicTools}};
 }
 /** Recover the exact prior published spec, preserving its original digest. 50d9b809: built from v28, not the current spec. */
 export function v26ShapedSpec(){

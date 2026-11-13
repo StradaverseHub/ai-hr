@@ -74,8 +74,9 @@ describe('the provider tool ceiling',()=>{
   console.info('[tool-ceiling]',JSON.stringify(worst));
   for(const [role,count] of Object.entries(worst))expect(count,role+' worst-case tools per call').toBeLessThanOrEqual(CEILING-HEADROOM);
   // Written out from the bindings each role has (v23): an administrator's 39 less the 5 the operations topics save and the
-  // 4 the explainer topics save; everyone else less the 4.
-  expect(worst).toEqual({employee:23,manager:24,hrAdmin:30,payroll:24,groupAdmin:30});
+  // 4 the explainer topics save; everyone else less the 4. Spec v30 (96a54ed2): a manager is now offered operations_status
+  // for the two on-behalf lists (team access), one tool more; administrators already had it.
+  expect(worst).toEqual({employee:23,manager:25,hrAdmin:30,payroll:24,groupAdmin:30});
   // The administrators carry the most tools; the folded guides are reached through product_guidance, never bound.
   expect(worst.groupAdmin).toBeGreaterThan(worst.employee);
   const {bindings}=await nativeToolProvider(callers.groupAdmin,{companyId:base.companyId,locale:'en'},true);
@@ -83,12 +84,14 @@ describe('the provider tool ceiling',()=>{
   expect(bindings.map(binding=>binding.name)).not.toContain('correction_controls_guidance');
   expect(bindings.map(binding=>binding.name)).not.toContain('organisation_tagging_guidance');
   // v23: every folded read is reached through its topic tool, never bound itself; both topic tools are bound for a group
-  // administrator, explain_why for everyone (the explainers worker is on), operations_status for administrators only.
+  // administrator, explain_why for everyone (the explainers worker is on), operations_status for administrators and, from
+  // v30, managers (the two on-behalf topics; every other topic still refuses them not_permitted).
   for(const read of FOLDED_READS.keys())expect(bindings.map(binding=>binding.name),read).not.toContain(read);
   for(const tool of TOPIC_TOOLS)expect(bindings.map(binding=>binding.name)).toContain(tool.name);
   for(const role of ['employee','manager','payroll'] as const){
    const names=(await nativeToolProvider(callers[role],{companyId:base.companyId,locale:'en'},true)).bindings.map(binding=>binding.name);
-   expect(names,role).toContain('explain_why');expect(names,role).not.toContain('operations_status');
+   expect(names,role).toContain('explain_why');
+   if(role==='manager')expect(names,role).toContain('operations_status');else expect(names,role).not.toContain('operations_status');
   }
  });
 });

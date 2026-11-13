@@ -152,7 +152,10 @@ describe('AI centre catalogue completeness', () => {
       excess: 'MYR 50.00', pcb: 'MYR 12.00', daysWorked: 20, periodDays: 31, others: 2, direction: 'down', pct: 82.3,
       priorNetPay: 'RM 6,386.55', priorAmount: 'RM 200.00', shown: 50,
       // AI-native batch: arguments of the administrator Today page's statutory entry detail and readiness bar.
-      soon: 1, ready: 4 };
+      soon: 1, ready: 4,
+      // Leave team minimum (owner decision, 12 November 2026): the company's minimum people present and, per short day, how
+      // many of the team would be present (aiCentre.recommendation.result.team_coverage.*Minimum and teamDay).
+      minimum: 3, present: 2 };
     for (const key of Object.keys(flat(messages))) t(key as never, values as never);
     expect(errors).toEqual([]);
   });

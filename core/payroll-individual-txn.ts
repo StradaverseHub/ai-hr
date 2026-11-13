@@ -626,6 +626,9 @@ export type IndividualTxnDetail = {
   quantity: string | null;
   unit: string | null;
   calculationMethod?: IndividualCalculationMethod | null;
+  /** 792053e5 pricing marker. Lets Edit tell a priced amount (quantity is the input) from a raw input; see
+   *  lib/pay-formula-input.ts. */
+  pricingSource?: string | null;
   notes: string | null;
   /** c11e81aa — the configured Pay Cycle this row was saved against, or null when it named none. The
    *  Edit form prefills its Pay Cycle from this; attach-on-generate routes the row by it. */
@@ -671,6 +674,7 @@ export function getIndividualTxn(ctx: SessionContext, p: { id: string }): Promis
         quantity: payrollIndividualTxn.quantity,
         unit: payrollIndividualTxn.unit,
         calculationMethod: payrollIndividualTxn.calculationMethod,
+        pricingSource: payrollIndividualTxn.pricingSource,
         notes: payrollIndividualTxn.notes,
         intendedCycleId: payrollIndividualTxn.intendedCycleId,
         batchStatus: payrollBatch.status,

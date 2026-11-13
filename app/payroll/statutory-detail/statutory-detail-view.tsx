@@ -50,6 +50,7 @@ import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { epfWorkingRows } from './epf-working';
 import { hrdfCalculationLine, hrdfWorkingRows } from './hrdf-working';
+import { epfTraceItemRows, epfTraceRows, runTraceRows, scheduleTraceItemRows, scheduleTraceRows, scheduleTraceWageHeading, type TraceItemRow } from './statutory-trace';
 import { Card } from '@/components/ui';
 import { formatMoney } from '@/lib/money';
 // `isSetByHand` is the derivation's OWN predicate over `provenance` — imported rather than re-spelled as
@@ -208,6 +209,45 @@ function Row({ label, value, muted }: { label: string; value: React.ReactNode; m
     </div>
   );
 }
+
+/**
+ * Item 69d6ed3c — the pay items behind one statutory wage, as the run recorded them: amount, the item's own
+ * settings as read, how it was treated, and what it added to the wage. Rows come from ./statutory-trace.ts,
+ * which the Excel export also uses.
+ */
+function TraceItemTable({ rows, headings }: { rows: TraceItemRow[]; headings: [string, string, string, string, string] }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+          <tr className="border-b border-border">
+            <th className="py-1.5 pr-3 font-medium">{headings[0]}</th>
+            <th className="py-1.5 pr-3 text-right font-medium">{headings[1]}</th>
+            <th className="py-1.5 pr-3 font-medium">{headings[2]}</th>
+            <th className="py-1.5 pr-3 font-medium">{headings[3]}</th>
+            <th className="py-1.5 text-right font-medium">{headings[4]}</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border/60">
+          {rows.map((row, index) => (
+            <tr key={index} className={row.emphasis ? 'font-semibold' : undefined}>
+              <td className="py-1.5 pr-3">
+                {row.description}
+                {row.code && <span className="ml-1.5 font-mono text-xs text-muted-foreground">{row.code}</span>}
+              </td>
+              <td className="py-1.5 pr-3 text-right tabular-nums whitespace-nowrap">{row.amount}</td>
+              <td className="py-1.5 pr-3 text-xs text-muted-foreground">{row.settings}</td>
+              <td className="py-1.5 pr-3 text-muted-foreground">{row.treatment}</td>
+              <td className="py-1.5 text-right tabular-nums whitespace-nowrap">{row.contribution}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+const TRACE_KEYS = new Set<StatutoryExplainKey>(['epf', 'socso', 'skbbk', 'eis']);
 
 function Block({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -395,6 +435,43 @@ export async function StatutoryDetailView({
             <Row label={t('fieldAdditionalWage')} value={rm(i.additionalBase)} />
           )}
           <Row label={t('fieldRuleApplied')} value={t(ruleLabelKey(i))} />
+
+          {/* ── Item 69d6ed3c — HOW THE AMOUNT WAS WORKED OUT, as the run recorded it: the pay items in the
+              wage, the schedule row the wage fell in and the amounts that row gives. Shown only when the
+              trace reconciles with this payslip; otherwise the screen says so and recomputes nothing. ── */}
+          {TRACE_KEYS.has(i.key) && explanation.trace && (
+            <div className="mt-3 space-y-3 rounded-lg border border-border p-3" aria-label={t('traceTitle')}>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">{t('traceTitle')}</p>
+              {i.key === 'epf' && (
+                <TraceItemTable
+                  rows={epfTraceItemRows(explanation.trace, t, rm)}
+                  headings={[t('traceColItem'), t('traceColAmount'), t('traceColSettings'), t('traceColTreatment'), t('traceColEpfWages')]}
+                />
+              )}
+              {(i.key === 'socso' || i.key === 'skbbk' || i.key === 'eis') && (
+                <TraceItemTable
+                  rows={scheduleTraceItemRows(explanation.trace, i.key, t, rm)}
+                  headings={[t('traceColItem'), t('traceColAmount'), t('traceColSettings'), t('traceColTreatment'), scheduleTraceWageHeading(i.key, t)]}
+                />
+              )}
+              <div>
+                {(i.key === 'epf'
+                  ? epfTraceRows(explanation.trace, t, rm, locale)
+                  : scheduleTraceRows(explanation.trace, i.key as 'socso' | 'skbbk' | 'eis', t, rm)
+                ).map(({ label, value }, index) => (
+                  <Row key={index} label={label} value={value} />
+                ))}
+                {runTraceRows(explanation.trace, i.key as 'epf' | 'socso' | 'skbbk' | 'eis', t, rm).map(({ label, value }, index) => (
+                  <Row key={`run-${index}`} label={label} value={value} />
+                ))}
+              </div>
+            </div>
+          )}
+          {TRACE_KEYS.has(i.key) && !explanation.trace && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              {t(explanation.traceStatus === 'invalid' ? 'traceInvalidNote' : 'traceAbsentNote')}
+            </p>
+          )}
 
           {/* THE WORKING. Its SHAPE is chosen by the rule, not decorated after the fact — `wage × rate =
               amount` appears ONLY where a percentage really produced the amount. See `workingExpression`
