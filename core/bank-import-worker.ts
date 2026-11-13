@@ -8,6 +8,7 @@ import {client,withTenant,withPoolWork,type SessionContext,type Tx} from '../db/
 import {resolveEntitlementsInTenantTx} from './entitlements';
 import {bankJobTx,type BankImportJobRow} from './bank-import-job';
 import {ImportFileError} from '../lib/import-file';
+import {unexpectedErrorReference} from '../lib/public-error';
 import {PersonnelImportHeaderError} from '../lib/personnel-import-contract';
 import {PersonnelCsvError} from '../lib/personnel-csv';
 import {decodeBankImportSource} from '../lib/bank-import-source.server';
@@ -129,7 +130,9 @@ export async function runBankImportTick(owner:postgres.Sql):Promise<boolean>{
    catch(error){
     if(error instanceof DatabaseAdmissionError)return false;
     const message=error instanceof ImportFileError?(error.code==='FILE_TOO_LARGE'?'The file exceeds the import size or worksheet limits. Use up to 250,000 rows and 128 MiB.':'The file could not be read. Use the Bank & Statutory template and its reference sheets.'):
-     error instanceof PersonnelImportHeaderError||error instanceof PersonnelCsvError?error.message.slice(0,1000):'Import stopped. Rows already saved are retained. Review the result and your access before trying again.';
+     error instanceof PersonnelImportHeaderError||error instanceof PersonnelCsvError?error.message.slice(0,1000):
+     // d3ba1e9f: an unexpected stop carries a short reference (full error in the worker log) for the Error Log.
+     `Import stopped. Rows already saved are retained. Review the result and your access before trying again. Reference ${unexpectedErrorReference(error,'bank import job')}.`;
     // Bounded message only; raw DB failures can contain employee values. Already saved rows stay saved.
     await connection`update bank_import_job set state='failed',error=${message},updated_at=now() where id=${job.id}::uuid`;
    }

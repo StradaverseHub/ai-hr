@@ -1,6 +1,6 @@
 'use client';
 import { ExportDownloadLink } from '@/components/export-download-link';
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import Link from 'next/link';
 import {useTranslations} from 'next-intl';
 import {PersonnelImportValues} from '@/components/personnel-import-values';
@@ -9,18 +9,38 @@ import {Button,Card} from '@/components/ui';
 import {BANK_IMPORT_CHUNK_BYTES,BANK_IMPORT_MAX_BYTES,bankImportActive,bankImportPercent,type BankImportProgress} from '@/lib/bank-import-job';
 import {IMPORT_FILE_ACCEPT} from '@/lib/import-file';
 import type {SectionRowResult} from '@/lib/import-sections';
+import {ImportProblemTable} from '@/components/import-problem-table';
+import {bankImportProblemLines,bankJobProblemLine,bankProblemColumns,type BankProblemRow} from '@/lib/bank-import-problems';
+import {importProblemText} from '@/lib/import-problem-rules';
 const endpoint='/admin/personnel/import/bank-statutory/jobs';
 type Row={ordinal:number;preview:SectionRowResult|null;state:string;error:string|null};
+type Problems={jobId:string;state:string;rows:BankProblemRow[];total:number;error:string|null};
+const SETTLED=['ready','completed','failed','cancelled'];
 async function jsonRequest(url:string,init?:RequestInit){
  const response=await fetch(url,{...init,cache:'no-store'}),payload=await response.json().catch(()=>null);
  if(!response.ok||!payload)throw new Error(payload?.error??'The import connection was interrupted. Reopen progress before retrying.');
  return payload;
 }
 export function BankImportProgress(){
- const t=useTranslations('people.import'),j=useTranslations('people.import.background'),labels=useTranslations();
+ const t=useTranslations('people.import'),j=useTranslations('people.import.background'),labels=useTranslations(),shared=useTranslations('importProblems');
  const fieldLabel=(column:string)=>personnelColumnLabel(column,'employee',(key,fallback)=>labels.has(key)?labels(key):fallback);
  const [job,setJob]=useState<BankImportProgress|null>(null),[jobs,setJobs]=useState<BankImportProgress[]>([]),[rows,setRows]=useState<Row[]>([]),[page,setPage]=useState(0),[checkedAt,setCheckedAt]=useState(0),[error,setError]=useState(''),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[paste,setPaste]=useState(''),[duplicate,setDuplicate]=useState(false);
  const choosing=useRef(false),input=useRef<HTMLInputElement>(null);
+ // d3ba1e9f — the first 200 problem rows once the check (or the import) has settled; the Error Log has them all.
+ const [problems,setProblems]=useState<Problems|null>(null);
+ const settledKey=job&&SETTLED.includes(job.state)?`${job.id}:${job.state}:${job.invalid}:${job.failed}:${job.error??''}`:'';
+ useEffect(()=>{
+  if(!job||!settledKey||(job.invalid+job.failed===0&&!job.error))return;let alive=true;const {id,state}=job;
+  jsonRequest(`${endpoint}/${id}/problems`).then(p=>{if(alive)setProblems({jobId:id,state,rows:p.rows,total:p.total,error:p.error});}).catch(e=>{if(alive)setError(e.message);});
+  return()=>{alive=false;};
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[settledKey]);
+ const problemText=useMemo(()=>importProblemText(labels),[labels]);
+ const shown=problems&&job&&problems.jobId===job.id?problems:null;
+ const fileLine=useMemo(()=>shown?bankJobProblemLine(shown.error,problemText):null,[shown,problemText]);
+ const problemLines=useMemo(()=>shown?[...(fileLine?[fileLine]:[]),...bankImportProblemLines(shown.rows,problemText)]:[],[shown,fileLine,problemText]);
+ // At least one line per remaining row; a row with several problems has several lines in the Error Log.
+ const problemTotal=shown?problemLines.length+Math.max(0,shown.total-new Set(shown.rows.map(r=>r.ordinal)).size):0;
  useEffect(()=>{let alive=true;jsonRequest(endpoint).then(p=>{if(alive){setJobs(p.jobs);setJob(p.jobs.find((v:BankImportProgress)=>bankImportActive(v.state))??p.jobs[0]??null);}}).catch(e=>{if(alive)setError(e.message);}).finally(()=>{if(alive)setLoading(false);});return()=>{alive=false;};},[]);
  useEffect(()=>{
   if(!job?.id)return;let alive=true,timer:ReturnType<typeof setTimeout>;
@@ -69,10 +89,11 @@ export function BankImportProgress(){
    {job.state==='ready'&&<div className="flex flex-wrap gap-3"><Button aria-busy={busy} disabled={busy||job.valid===0} onClick={()=>void command('confirm')}>{j('confirm',{count:job.valid})}</Button><Button aria-busy={busy} variant="secondary" disabled={busy} onClick={()=>void command('cancel')}>{j('cancel')}</Button><p className="w-full text-xs text-muted-foreground">{t('step4Hint')}</p></div>}
    {job.state==='uploading'&&!busy&&<><p className="text-sm">{j('resumeUpload')}</p><Button variant="secondary" onClick={()=>void command('cancel')}>{j('cancel')}</Button></>}
    {job.state==='completed'&&<p role="status" className="text-sm font-medium">{j('result',{saved:job.saved,failed:job.failed+job.invalid})}</p>}
-   {job.error&&<p role="alert" className="text-sm text-red-700 dark:text-red-300">{job.error}</p>}
-   {job.invalid+job.failed>0&&['ready','completed','failed','cancelled'].includes(job.state)&&<ExportDownloadLink href={`${endpoint}/${job.id}/errors`} className="inline-block text-sm text-primary underline">{t('downloadErrors')}</ExportDownloadLink>}
+   {job.error&&<p role="alert" className="text-sm text-red-700 dark:text-red-300">{fileLine?.problem??job.error}{fileLine?.errorReference?` (${fileLine.errorReference})`:''}</p>}
+   {problemLines.length>0&&<ImportProblemTable lines={problemLines} total={problemTotal} columns={bankProblemColumns(!!fileLine?.errorReference)} caption={shared('downloadLog')}/>}
+   {(job.invalid+job.failed>0||!!job.error)&&SETTLED.includes(job.state)&&<ExportDownloadLink href={`${endpoint}/${job.id}/error-log`} className="inline-block text-sm text-primary underline">{shared('downloadLog')}</ExportDownloadLink>}
    {job.attemptId&&<Link href={`/admin/personnel/import/history/${job.attemptId}`} className="inline-block text-sm text-primary underline">{t('viewImportHistoryEntry')}</Link>}
-   {rows.some(r=>r.preview)&&<div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b border-border"><th className="p-2">#</th><th className="p-2">{t('colEmployeeCode')}</th><th className="p-2">{t('colEmployee')}</th><th className="p-2">{t('colChanges')}</th><th className="p-2">{t('colResult')}</th></tr></thead><tbody>{rows.map(row=><tr key={row.ordinal} className="border-b border-border"><td className="p-2 tabular-nums">{row.ordinal}</td><td className="p-2">{row.preview?.employeeCode}</td><td className="p-2">{row.preview?.employeeName}</td><td className="p-2">{row.preview?.changes.map(fieldLabel).join(', ')}<PersonnelImportValues values={row.preview?.proposed} sheet="employee"/></td><td className="p-2">{row.error??(row.preview?.errors.length?row.preview.errors.join('; '):row.state==='applied'?j('saved'):row.state==='unchanged'||row.state==='skipped'?t('verdictSkip'):row.state==='invalid'?t('verdictBlocked'):t('ready'))}</td></tr>)}</tbody></table><div className="mt-3 flex items-center justify-between gap-3"><Button variant="secondary" disabled={page===0} onClick={()=>setPage(p=>p-1)}>{j('previous')}</Button><span className="text-xs">{j('page',{page:page+1,total:Math.max(1,Math.ceil(job.total/100))})}</span><Button variant="secondary" disabled={(page+1)*100>=job.total} onClick={()=>setPage(p=>p+1)}>{j('next')}</Button></div></div>}
+   {rows.some(r=>r.preview)&&<div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b border-border"><th className="p-2">{shared('headers.row')}</th><th className="p-2">{t('colEmployeeCode')}</th><th className="p-2">{t('colEmployee')}</th><th className="p-2">{t('colChanges')}</th><th className="p-2">{t('colResult')}</th></tr></thead><tbody>{rows.map(row=><tr key={row.ordinal} className="border-b border-border"><td className="p-2 tabular-nums">{row.ordinal+1}</td><td className="p-2">{row.preview?.employeeCode}</td><td className="p-2">{row.preview?.employeeName}</td><td className="p-2">{row.preview?.changes.map(fieldLabel).join(', ')}<PersonnelImportValues values={row.preview?.proposed} sheet="employee"/></td><td className="p-2">{row.state==='failed'?shared('result.not_saved'):row.error||row.preview?.errors.length||row.state==='invalid'?t('verdictBlocked'):row.state==='applied'?j('saved'):row.state==='unchanged'||row.state==='skipped'?t('verdictSkip'):t('ready')}</td></tr>)}</tbody></table><div className="mt-3 flex items-center justify-between gap-3"><Button variant="secondary" disabled={page===0} onClick={()=>setPage(p=>p-1)}>{j('previous')}</Button><span className="text-xs">{j('page',{page:page+1,total:Math.max(1,Math.ceil(job.total/100))})}</span><Button variant="secondary" disabled={(page+1)*100>=job.total} onClick={()=>setPage(p=>p+1)}>{j('next')}</Button></div></div>}
   </Card>}
  </div>;
 }
