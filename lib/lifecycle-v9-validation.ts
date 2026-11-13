@@ -18,8 +18,8 @@ const step = z.discriminatedUnion('type', [
   z.object({ id, type: z.literal('doc'), template: z.string().max(120), release: z.boolean() }).strict(),
   z.object({ id, type: z.literal('waitSign'), template: z.string().max(120), by: z.enum(['hr', 'employee']) }).strict(),
   z.object({ id, type: z.literal('waitFile'), slot: z.string().max(120), label: z.string().max(500) }).strict(),
-  z.object({ id, type: z.literal('email'), template: z.string().max(120), to: z.union([role, z.array(role).max(8)]), cc: z.array(role).max(8), recipientReview: z.literal(true).optional() }).strict(),
-  z.object({ id, type: z.literal('notify'), subject: z.string().max(1000), body: text, to: z.union([role, z.array(role).max(8)]), cc: z.array(role).max(8), recipientReview: z.literal(true).optional() }).strict(),
+  z.object({ id, type: z.literal('email'), template: z.string().max(120), to: z.union([role, z.array(role).max(8)]), cc: z.array(role).max(8), recipientReview: z.literal(true).optional(), recipientSetup: z.literal(true).optional() }).strict(),
+  z.object({ id, type: z.literal('notify'), subject: z.string().max(1000), body: text, to: z.union([role, z.array(role).max(8)]), cc: z.array(role).max(8), recipientReview: z.literal(true).optional(), recipientSetup: z.literal(true).optional() }).strict(),
 ]);
 export const v9ConfigSchema = z.object({
   caseForms: z.object({ onb: z.array(v9CaseFieldSchema).max(100).optional(), off: z.array(v9CaseFieldSchema).max(100).optional() }).strict().optional(),
@@ -39,6 +39,8 @@ export function parseV9Config(value: unknown, previous?: Config) {
   // Every template sends as the tenant's single On/Off Boarding sender. Earlier per-name values are rewritten on this save;
   // nothing else in the template changes, so an active template stays active. Stored revisions are history and stay as they were.
   for (const email of config.emails) email.sender = 'noreply';
+  // A step flagged for setup stops being flagged once it has a To recipient.
+  for (const wf of config.workflows) for (const s of wf.steps) if ('to' in s && s.recipientSetup && (Array.isArray(s.to) ? s.to.length : s.to)) delete s.recipientSetup;
   for (const module of ['onb','off'] as const) if (config.caseForms?.[module]) { try { validateV9CaseFields(module, config.caseForms[module]!); } catch (error) { throw new V9Error(error instanceof Error ? error.message : 'Review the case form fields.'); } }
   const unique = (values: string[], what: string) => { if (new Set(values).size !== values.length) throw new V9Error(`Duplicate ${what} identifiers.`); };
   unique(config.groups.map(g => g.id), 'group'); unique(config.checklists.map(g => g.id), 'checklist'); unique(config.templates.map(g => g.id), 'template'); unique(config.emails.map(g => g.id), 'email'); unique(config.workflows.map(g => g.id), 'workflow');
@@ -75,7 +77,8 @@ export function parseV9Config(value: unknown, previous?: Config) {
       // Turning an email off preserves an unchanged live workflow; its next email step holds.
       // A new or edited live workflow still has to select active email definitions.
       const before = previous?.workflows.find(workflow => workflow.id === wf.id);
-      const problems = workflowProblems(wf as Config['workflows'][number], config as Config, { allowInactiveEmail: before?.status === 'published' && v9Equal(before, wf) });
+      // A ready-made step flagged for setup may stay live without a To only as imported or unchanged since.
+      const problems = workflowProblems(wf as Config['workflows'][number], config as Config, { allowInactiveEmail: before?.status === 'published' && v9Equal(before, wf), allowRecipientSetup: !previous || before?.status === 'published' && v9Equal(before, wf) });
       if (problems.length) throw new V9Error(problems.join(' '));
     }
     if (wf.module === 'onb' && ['beforeLWD','afterLWD'].includes(wf.trigger.event) || wf.module === 'off' && ['beforeJoin', 'afterJoin'].includes(wf.trigger.event)) throw new V9Error('Choose a trigger for this module.');

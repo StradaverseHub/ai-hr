@@ -23737,6 +23737,9 @@
       "confirmRestore": "Pulihkan aliran kerja",
       "restored": "{name} telah dipulihkan sebagai draf.",
       "view": "Lihat"
+    },
+    "workflowRecipients": {
+      "setupNeeded": "Pilih penerima Kepada untuk langkah ini. Aliran kerja sedia ada membiarkannya untuk dipilih oleh kumpulan syarikat anda. Sehingga itu, e-mel ini ditahan setiap kali ia dijalankan."
     }
   },
   "clockingFile": {

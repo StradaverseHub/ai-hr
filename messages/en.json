@@ -23737,6 +23737,9 @@
       "confirmRestore": "Restore workflow",
       "restored": "{name} was restored as a draft.",
       "view": "View"
+    },
+    "workflowRecipients": {
+      "setupNeeded": "Choose a To recipient for this step. The ready-made workflow leaves it for your company group to choose. Until then, this email is held whenever it runs."
     }
   },
   "clockingFile": {

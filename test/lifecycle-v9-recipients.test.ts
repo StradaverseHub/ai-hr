@@ -111,7 +111,7 @@ describe('recipients changed for this case', () => {
   });
   it('refuses removed roles, TA in offboarding, empty To, too many choices and a step that already sent', () => {
     const { c, config, environment } = fixture(); config.workflows = [notify(['supervisor'], ['pbp'])];
-    expect(() => M.overrideRecipients(c, config, { workflowId: 'wf', stepId: 'step', to: ['peopleOps'], cc: [] }, environment)).toThrow('GBS People Ops can no longer be chosen');
+    expect(() => M.overrideRecipients(c, config, { workflowId: 'wf', stepId: 'step', to: ['starter'], cc: [] }, environment)).toThrow('Whoever started it can no longer be chosen');
     expect(() => M.overrideRecipients(c, config, { workflowId: 'wf', stepId: 'step', to: ['ta'], cc: [] }, environment)).toThrow('TA is only available for onboarding');
     expect(() => M.overrideRecipients(c, config, { workflowId: 'wf', stepId: 'step', to: [], cc: [] }, environment)).toThrow('at least one To');
     expect(() => M.overrideRecipients(c, config, { workflowId: 'wf', stepId: 'step', to: Array.from({ length: 9 }, (_, index) => `address:p${index}@fictional.invalid` as M.Role), cc: [] }, environment)).toThrow('at most 8');
@@ -141,11 +141,11 @@ describe('dry run', () => {
 
 describe('workflow and template validation', () => {
   it('offers the same list for To and CC with TA only in onboarding', () => {
-    expect(offeredRoles('onb').map(role => roleLabel(role))).toEqual(['Employee (Work email)', 'Employee (Personal email)', 'Line manager', 'TA', 'Task owners', 'HR signatory']);
+    expect(offeredRoles('onb').map(role => roleLabel(role))).toEqual(['Employee (Work email)', 'Employee (Personal email)', 'Line manager', 'TA', 'GBS People Ops', 'Task owners', 'HR signatory']);
     expect(offeredRoles('off')).not.toContain('ta');
   });
   it('refuses adding removed roles and blocks changing a definition until a saved one is replaced', () => {
-    const previous = v9Defaults(); previous.workflows[0].steps = [{ id: 's', type: 'notify', subject: 'Fictional', body: '', to: ['supervisor'], cc: ['pbp'] }]; previous.emails[0].cc = ['peopleOps'];
+    const previous = v9Defaults(); previous.workflows[0].steps = [{ id: 's', type: 'notify', subject: 'Fictional', body: '', to: ['supervisor'], cc: ['pbp'] }]; previous.emails[0].cc = ['pbp'];
     const unchanged = structuredClone(previous);
     expect(() => parseV9Config(unchanged, previous)).not.toThrow();
     const added = structuredClone(previous); added.workflows[1].steps = [{ id: 's2', type: 'notify', subject: 'Fictional', body: '', to: ['starter'], cc: [] }];

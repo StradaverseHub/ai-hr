@@ -67,16 +67,16 @@ it('offers the source signature/manual/post-exit events with date controls only 
   const config:Config=JSON.parse(screen.getByTestId('definition').textContent!);expect(config.workflows.at(-1)?.trigger).toMatchObject({event:'afterLWD',repeat:false});expect(()=>parseV9Config(config)).not.toThrow();
 });
 
-it('offers the board 4a60b3ec recipient list in To and CC, with TA only for onboarding and no removed roles',()=>{
+it('offers the board 4a60b3ec recipient list in To and CC, with GBS People Ops, TA only for onboarding and no removed roles',()=>{
  render(<Harness/>);fireEvent.click(screen.getByRole('button',{name:'New workflow'}));fireEvent.click(screen.getByRole('button',{name:'For Offboarding'}));const drawer=screen.getByRole('dialog',{name:'Edit workflow'});
  fireEvent.click(within(drawer).getByRole('button',{name:'Add a step'}));fireEvent.click(within(drawer).getByRole('button',{name:'Notify someone'}));fireEvent.click(within(drawer).getByRole('button',{name:'To for step 1'}));
  const to=within(within(drawer).getByRole('group',{name:'To for step 1'}));
- expect(to.getAllByRole('checkbox').map(box=>box.closest('label')?.textContent)).toEqual(['Employee (Work email)','Employee (Personal email)','Line manager','Task owners','HR signatory']);
- for(const removed of ['PBP','GBS People Ops','Whoever started it','TA'])expect(to.queryByRole('checkbox',{name:removed})).toBeNull();
+ expect(to.getAllByRole('checkbox').map(box=>box.closest('label')?.textContent)).toEqual(['Employee (Work email)','Employee (Personal email)','Line manager','GBS People Ops','Task owners','HR signatory']);
+ for(const removed of ['PBP','Whoever started it','TA'])expect(to.queryByRole('checkbox',{name:removed})).toBeNull();
  fireEvent.click(to.getByRole('checkbox',{name:'Employee (Personal email)'}));
  fireEvent.click(within(drawer).getByRole('button',{name:'CC for step 1'}));const cc=within(within(drawer).getByRole('group',{name:'CC for step 1'}));
- fireEvent.click(cc.getByRole('checkbox',{name:'HR signatory'}));fireEvent.click(cc.getByRole('checkbox',{name:'Task owners'}));
- const config:Config=JSON.parse(screen.getByTestId('definition').textContent!);expect(config.workflows.at(-1)?.steps[0]).toMatchObject({to:['supervisor','employeePersonal'],cc:['hrSignatory','taskOwners']});expect(()=>parseV9Config(config)).not.toThrow();
+ fireEvent.click(cc.getByRole('checkbox',{name:'HR signatory'}));fireEvent.click(cc.getByRole('checkbox',{name:'Task owners'}));fireEvent.click(cc.getByRole('checkbox',{name:'GBS People Ops'}));
+ const config:Config=JSON.parse(screen.getByTestId('definition').textContent!);expect(config.workflows.at(-1)?.steps[0]).toMatchObject({to:['supervisor','employeePersonal'],cc:['hrSignatory','taskOwners','peopleOps']});expect(()=>parseV9Config(config)).not.toThrow();
 });
 it('offers TA in onboarding To and CC',()=>{
  render(<Harness/>);fireEvent.click(screen.getByRole('button',{name:'New workflow'}));fireEvent.click(screen.getByRole('button',{name:'For Onboarding'}));const drawer=screen.getByRole('dialog',{name:'Edit workflow'});
@@ -119,4 +119,19 @@ it('adds a validated email address as a destination rather than a named person',
   fireEvent.click(picker.getByRole('button', { name: 'Add email address' }));
   const config: Config = JSON.parse(screen.getByTestId('definition').textContent!);
   expect(parseV9Config(config).workflows.at(-1)!.steps[0]).toMatchObject({ to: ['supervisor', 'address:team@fictional.invalid'] });
+});
+
+it('flags the ready-made escalation for setup, keeps its GBS People Ops CC, and clears the flag once a To is chosen', () => {
+  render(<Harness/>);
+  fireEvent.click(screen.getByRole('button', { name: 'Escalate pending tasks 2 days before the last working day' }));
+  const drawer = within(screen.getByRole('dialog', { name: 'Edit workflow' }));
+  expect(drawer.getByRole('alert', { name: '' }).textContent).toBe(messages.lifecycle.workflowRecipients.setupNeeded);
+  expect(drawer.getByRole('button', { name: 'To for step 1' }).textContent).toBe('To: No one');
+  expect(drawer.getByRole('button', { name: 'CC for step 1' }).textContent).toBe('CC: GBS People Ops');
+  fireEvent.click(drawer.getByRole('button', { name: 'To for step 1' }));
+  fireEvent.click(within(drawer.getByRole('group', { name: 'To for step 1' })).getByRole('checkbox', { name: 'Line manager' }));
+  expect(drawer.queryByText(messages.lifecycle.workflowRecipients.setupNeeded)).toBeNull();
+  const config: Config = JSON.parse(screen.getByTestId('definition').textContent!);
+  expect(parseV9Config(config).workflows.find(w => w.id === 'w15')!.steps[0]).toEqual(expect.objectContaining({ to: ['supervisor'], cc: ['peopleOps'] }));
+  expect(parseV9Config(config).workflows.find(w => w.id === 'w15')!.steps[0]).not.toHaveProperty('recipientSetup');
 });

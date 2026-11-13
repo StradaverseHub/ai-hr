@@ -5615,7 +5615,8 @@
         {
           "id": "w8-step-1",
           "type": "notify",
-          "to": "group:g-people",
+          "to": [],
+          "recipientSetup": true,
           "cc": [
             "ta",
             "supervisor"
@@ -5877,8 +5878,11 @@
         {
           "id": "w15-step-1",
           "type": "notify",
-          "to": "group:g-people",
-          "cc": [],
+          "to": [],
+          "recipientSetup": true,
+          "cc": [
+            "peopleOps"
+          ],
           "subject": "{employee.name} may not be cleared by the last working day",
           "body": "Hi,\n\n{employee.name} leaves on {leaver.lastDay} and these items are still open:\n{pending.tasks}\n\nPlease follow up with the owners.\n\nRegards,\nAI HR"
         }

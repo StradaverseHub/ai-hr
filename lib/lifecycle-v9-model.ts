@@ -109,8 +109,8 @@ export type Step =
   | { id: string; type: 'doc'; template: string; release: boolean }
   | { id: string; type: 'waitSign'; template: string; by: 'hr' | 'employee' }
   | { id: string; type: 'waitFile'; slot: string; label: string }
-  | { id: string; type: 'email'; template: string; to: Role | Role[]; cc: Role[]; recipientReview?: true }
-  | { id: string; type: 'notify'; subject: string; body: string; to: Role | Role[]; cc: Role[]; recipientReview?: true };
+  | { id: string; type: 'email'; template: string; to: Role | Role[]; cc: Role[]; recipientReview?: true; recipientSetup?: true }
+  | { id: string; type: 'notify'; subject: string; body: string; to: Role | Role[]; cc: Role[]; recipientReview?: true; recipientSetup?: true };
 export type Workflow = {
   id: string; name: string; module: Module; status: 'draft' | 'published' | 'retired'; trigger: Trigger;
   conditions: { field: RuleField | 'joinWithin'; op: 'is' | 'isNot' | 'lt' | 'gte'; value: string }[];
@@ -124,7 +124,9 @@ export function workflowFinishes(workflow: Pick<Workflow, 'status'> | undefined)
 /** A live workflow with any trigger other than "Started by hand" starts for new cases on its own. */
 export function workflowStartsAutomatically(workflow: Pick<Workflow, 'status' | 'trigger'>): boolean { return workflow.status === 'published' && workflow.trigger.event !== 'manual'; }
 /** Drafts can be incomplete. Activation must be safe and independently validated by the service. */
-export function workflowProblems(workflow: Workflow, config: Pick<Config, 'templates' | 'emails'>, options: { allowInactiveEmail?: boolean } = {}): string[] {
+/** allowRecipientSetup: a ready-made step left without a To recipient for the company group to choose (recipientSetup)
+ * keeps its live state until the workflow is next changed; it is held when it runs, and any change needs a recipient. */
+export function workflowProblems(workflow: Workflow, config: Pick<Config, 'templates' | 'emails'>, options: { allowInactiveEmail?: boolean; allowRecipientSetup?: boolean } = {}): string[] {
   const problems: string[] = [];
   if (!workflow.name.trim()) problems.push('Give this workflow a name.');
   if (!workflow.steps.length) problems.push('Add at least one step.');
@@ -139,7 +141,7 @@ export function workflowProblems(workflow: Workflow, config: Pick<Config, 'templ
     }
     if (step.type === 'waitFile' && !step.slot.trim()) problems.push(prefix + 'choose a file slot.');
     if (step.type === 'notify' && !step.subject.trim()) problems.push(prefix + 'add a subject.');
-    if ('to' in step && !(Array.isArray(step.to) ? step.to.length : step.to)) problems.push(prefix + 'choose a recipient.');
+    if ('to' in step && !(Array.isArray(step.to) ? step.to.length : step.to) && !(options.allowRecipientSetup && step.recipientSetup)) problems.push(prefix + 'choose a recipient.');
   }
   for (const [i, condition] of workflow.conditions.entries()) if (!condition.value.trim() || condition.field === 'joinWithin' && !/^\d+$/.test(condition.value)) problems.push(`Condition ${i + 1}: choose a valid value.`);
   return problems;
@@ -575,7 +577,12 @@ function resolveRole(c: Case, config: Config, role: Role, env: Pick<Environment,
     return owners.length ? { found: owners.map(id => ({ key: id, name: recipientName(id, env) })), reason: null } : { found: [], reason: 'no open task has an owner' };
   }
   if (role === 'pbp') return user(resolvePbp(config, c.facts), 'no PBP is found for this case');
-  if (role === 'peopleOps') { const ids = recipients(c, config, role).filter(env.eligibleUser); return ids.length ? { found: ids.map(id => ({ key: id, name: recipientName(id, env) })), reason: null } : { found: [], reason: 'the GBS People Ops group has no active members' }; }
+  if (role === 'peopleOps') {
+    // The group chosen as the GBS People Ops group in Settings, every active member, looked up when the email goes out.
+    if (!config.groups.some(group => group.id === config.peopleOpsGroup)) return { found: [], reason: 'no GBS People Ops group is chosen in Settings' };
+    const ids = [...new Set(recipients(c, config, role))].filter(env.eligibleUser);
+    return ids.length ? { found: ids.map(id => ({ key: id, name: recipientName(id, env) })), reason: null } : { found: [], reason: 'the GBS People Ops group has no active members' };
+  }
   if (role === 'starter') return user(c.facts.starterUserId ?? c.log.find(log => log.action === 'case.submitted')?.actor.id, 'nobody is recorded as starting the case');
   return { found: [], reason: 'this recipient is unavailable' };
 }
@@ -597,7 +604,8 @@ export function resolveStepRecipients(c: Case, config: Config, roles: { to: Role
     }
   }
   if (out.contact) out.to.sort((a, b) => Number(b.key === out.contact!.email) - Number(a.key === out.contact!.email));
-  if (!out.to.length && !missing.length) missing.push({ role: toRoles(roles.to)[0] ?? 'employeeWork', label: 'To', reason: 'nobody could be found' });
+  if (!roles.to.length) missing.push({ role: 'employeeWork', label: 'To', reason: 'no recipient is chosen for this step' });
+  else if (!out.to.length && !missing.length) missing.push({ role: toRoles(roles.to)[0], label: 'To', reason: 'nobody could be found' });
   return out;
 }
 /** The roles a workflow step uses for this case: a per-case change wins over the workflow. */

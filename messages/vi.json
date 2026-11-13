@@ -23737,6 +23737,9 @@
       "confirmRestore": "Khôi phục quy trình",
       "restored": "Đã khôi phục {name} dưới dạng bản nháp.",
       "view": "Xem"
+    },
+    "workflowRecipients": {
+      "setupNeeded": "Chọn người nhận (Đến) cho bước này. Quy trình có sẵn để trống cho nhóm công ty của bạn tự chọn. Cho đến khi đó, thư này sẽ bị giữ mỗi khi chạy."
     }
   },
   "clockingFile": {

@@ -23737,6 +23737,9 @@
       "confirmRestore": "恢复工作流",
       "restored": "{name} 已恢复为草稿。",
       "view": "查看"
+    },
+    "workflowRecipients": {
+      "setupNeeded": "请为此步骤选择收件人。预设工作流程将其留给您的公司集团自行选择。在此之前，此邮件每次运行时都会被暂停。"
     }
   },
   "clockingFile": {
