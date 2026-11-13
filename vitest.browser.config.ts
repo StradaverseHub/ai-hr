@@ -78,6 +78,16 @@ export default defineConfig({
       'pdf-lib',
       'pdfjs-dist',
       'xlsx',
+      // The workflow email body editor (board 6bdda222), reached from the V9 workspace. @tiptap/react imports the
+      // CommonJS use-sync-external-store shim, which noDiscovery would otherwise serve unbundled ("does not provide
+      // an export named 'useSyncExternalStore'"). The tiptap and ProseMirror entries the editor imports directly are
+      // bundled in the same pass so the editor and its extensions share one ProseMirror instance.
+      '@tiptap/core',
+      '@tiptap/react',
+      '@tiptap/starter-kit',
+      '@tiptap/extension-table',
+      '@tiptap/pm/tables',
+      'dompurify',
     ],
   },
   test: {

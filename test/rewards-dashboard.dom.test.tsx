@@ -1,41 +1,149 @@
 // @vitest-environment jsdom
-import {afterEach,describe,it,expect,vi} from 'vitest';
-import {render,screen,cleanup} from '@testing-library/react';
+import {afterEach,beforeEach,describe,it,expect,vi} from 'vitest';
+import {render,screen,cleanup,fireEvent,act,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viCopy from '../messages/vi.json';
 import {captureAiReviewScreenshots,aiReviewDomHtml} from './helpers/ai-review-screenshots';
 const copies={en,ms,zh,ta,th,vi:viCopy};
 import {RewardsDashboard} from '../app/rewards/dashboard';
+import {aggregateRewardDashboardFigures} from '../packs/rewards/dashboard-model';
 import type {RewardDashboard} from '../packs/rewards/service';
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
-vi.mock('../app/rewards/dashboard-actions',()=>({saveDashboardAction:vi.fn()}));
-const budget={used:[10000,2000,3000],pools:[50000,10000,10000],bonusUsedCents:130000,lumpCents:10000,bonusPoolCents:200000};
-const unit={id:'a',companyId:'co',company:'Fictional Company',name:'Fictional unit',cycle:'Fictional cycle',snapshotDate:'2026-01-01',roles:['bu'],budgets:{standard:budget,h:{...budget,used:[0,0,0],pools:[0,0,0]}},restricted:false,uploaded:false,poolStatus:'final',waiting:false,action:null,due:null,daysUntilDue:null,blocking:0,exceptions:0,setupVisible:false};
-const value={choice:{period:'monthly',scope:'a'},canSelectAll:false,scopes:[{id:'a',label:'Fictional unit'}],units:[unit],waiting:[],emptyReason:null,year:2026} as unknown as RewardDashboard;
+const save=vi.hoisted(()=>vi.fn());
+vi.mock('../app/rewards/dashboard-actions',()=>({saveDashboardAction:save}));
+
+const BU='11111111-1111-4111-8111-111111111111',C1='aaaaaaaa-0000-4000-8000-000000000001',C2='aaaaaaaa-0000-4000-8000-000000000002',C3='aaaaaaaa-0000-4000-8000-000000000003';
+const plan=(used:number[],pools:number[],bonusUsedCents:number,bonusPoolCents:number)=>({used,pools,bonusUsedCents,bonusPoolCents});
+const figures=aggregateRewardDashboardFigures([
+ {company:'Fictional Alpha',budgets:{standard:plan([10000,2000,3000],[50000,10000,10000],130000,200000),h:plan([0,0,0],[0,0,0],0,0)}},
+ {company:'Fictional Beta',budgets:{standard:plan([30000,0,0],[20000,0,0],0,0),h:plan([0,0,0],[0,0,0],0,0)}},
+]);
+const value={kind:'annual',year:2026,years:[2026],choice:{version:2,kind:'annual',period:'monthly',businessUnit:BU,companies:[],year:2026},canSelectAll:false,
+ businessUnits:[{id:BU,label:'CHCE'}],
+ companies:[{id:C1,label:'Fictional Alpha',headcount:12,blocked:false,preparing:false},{id:C2,label:'Fictional Beta',headcount:1,blocked:true,preparing:false},{id:C3,label:'Fictional Gamma',headcount:null,blocked:false,preparing:true}],
+ context:{businessUnit:'CHCE',companies:2,cycle:'2026 Annual Compensation Review',cycleVaries:false,snapshot:'2026-11-04',snapshotVaries:false},
+ figures,excluded:[],preparing:[{unitId:'pending',company:'Fictional Gamma',expectedRelease:'2026-11-30'}],
+ waiting:[{id:'w1',company:'Fictional Alpha',name:'CHCE',due:'2026-12-01',daysUntilDue:19,blocking:1,exceptions:0}],roles:['bu'],emptyReason:null} as unknown as RewardDashboard;
 const show=(v:RewardDashboard)=>render(<NextIntlClientProvider locale="en" messages={en}><RewardsDashboard value={v}/></NextIntlClientProvider>);
+const d=en.rewardDashboard;
+beforeEach(()=>{save.mockReset();save.mockResolvedValue(undefined);});
 afterEach(cleanup);
-describe('short Rewards dashboard',()=>{
- it('shows three tiles, recurring salary and one-off bonus without a personal table',()=>{
-  show(value);expect(screen.getAllByRole('heading',{level:2})).toHaveLength(3);
-  expect(screen.getAllByText(/100.00.*500.00/)).toHaveLength(1);expect(screen.getAllByText(/1,300.00.*2,000.00/)).toHaveLength(2);
-  expect(screen.queryByText(/1,400.00/)).toBeNull();expect(screen.queryByRole('table')).toBeNull();expect(screen.queryByRole('option',{name:en.rewardDashboard.allAssigned})).toBeNull();
+
+describe('Reviewing Team Rewards dashboard',()=>{
+ it('shows one context line and combined bars without names, cycle lines, set-up notes or box Open buttons (81a7b286, 4de410ed)',()=>{
+  const view=show(value);
+  expect(screen.getByTestId('reward-dashboard-context').textContent).toBe('Showing: CHCE · 2 companies · 2026 Annual Compensation Review · Snapshot 4 Nov 2026');
+  const [salary,bonus]=screen.getAllByRole('heading',{level:2}).filter(h=>[d.salary,d.bonus].includes(h.textContent!)).map(h=>h.closest('div.min-w-0') as HTMLElement);
+  for(const box of [salary,bonus]){
+   expect(within(box).queryByRole('link')).toBeNull();
+   expect(within(box).queryByText(/Fictional Alpha ·|2026 Annual Compensation Review|Snapshot/)).toBeNull();
+  }
+  // Standard merit 400.00 / 700.00 combined; Beta is over its own merit pool even though the total is within.
+  expect(within(salary).getByText('MYR 400.00 / MYR 700.00 · 57.1%')).toBeTruthy();
+  expect(within(salary).getByText('MYR 300.00 left')).toBeTruthy();
+  expect(within(salary).getByText('Over its own pool: Fictional Beta')).toBeTruthy();
+  expect(within(salary).getAllByRole('meter')).toHaveLength(6);
+  expect(within(bonus).getByText('MYR 1,300.00 / MYR 2,000.00 · 65.0%')).toBeTruthy();
+  expect(within(bonus).getAllByRole('meter')).toHaveLength(2);
+  expect(view.container.textContent).not.toMatch(/Review missing budget inputs|One-off award|not annualized|Not set/);
+  expect(screen.queryByRole('button',{name:en.rewards.reviewList.apply})).toBeNull();
  });
- it('annualizes salary only and preserves zero pools',()=>{
-  show({...value,choice:{period:'annual',scope:'a'}});expect(screen.getByText(/1,200.00.*6,000.00/)).toBeTruthy();expect(screen.getAllByText(/1,300.00.*2,000.00/)).toHaveLength(2);expect(screen.getAllByText(/0.00.*0.00/).length).toBeGreaterThan(0);
+ it('keeps the Open links in Waiting on you',()=>{
+  show(value);
+  const box=screen.getByRole('heading',{name:'Waiting on you · 1'}).closest('div.min-w-0') as HTMLElement;
+  expect(within(box).getByRole('link',{name:d.open})).toHaveAttribute('href','/rewards/approvals');
+  expect(within(box).getByRole('link',{name:'Fictional Alpha · CHCE'})).toHaveAttribute('href','/rewards/w1');
  });
- it('shows a confidentiality explanation without balances, bars or redacted zero figures',()=>{
-  show({...value,units:[{...value.units[0],restricted:true,budgets:null}]});expect(screen.getAllByText(en.rewardDashboard.restricted)).toHaveLength(2);expect(screen.queryByRole('meter')).toBeNull();expect(screen.queryByText(/100.00/)).toBeNull();
+ it('annualizes salary only, preserves zero pools and leaves bonus a one-off award',()=>{
+  show({...value,choice:{...value.choice,period:'annual'}});
+  expect(screen.getByText('MYR 4,800.00 / MYR 8,400.00 · 57.1%')).toBeTruthy();
+  expect(screen.getByText('MYR 1,300.00 / MYR 2,000.00 · 65.0%')).toBeTruthy();
+  expect(screen.getAllByText('MYR 0.00 / MYR 0.00 · —').length).toBe(4);
+ });
+ it('shows a fixed Business unit for a single-unit reviewer and company pills with headcount and an accessible blocker dot',()=>{
+  show(value);
+  expect(screen.queryByRole('combobox')).toBeNull();expect(screen.getByText('CHCE',{selector:'span.font-medium'})).toBeTruthy();
+  const pills=within(screen.getByRole('group',{name:d.companies})).getAllByRole('button');
+  expect(pills.map(p=>[p.textContent,p.getAttribute('aria-pressed')])).toEqual([[d.allCompanies,'true'],['Fictional Alpha12 people','false'],['Fictional Beta1 person','false'],['Fictional GammaBeing prepared','false']]);
+  expect(within(pills[2]).getByRole('img',{name:d.hasBlockers})).toBeTruthy();expect(within(pills[1]).queryByRole('img')).toBeNull();
+ });
+ it('offers All business units only to Group Rewards, CTRO and EC, and clears companies when the unit changes',async()=>{
+  show({...value,canSelectAll:true,businessUnits:[...value.businessUnits,{id:'22222222-2222-4222-8222-222222222222',label:'Second unit'}],choice:{...value.choice,companies:[C1]}});
+  const select=screen.getByRole('combobox',{name:en.rewards.unit}) as HTMLSelectElement;
+  expect([...select.options].map(o=>o.textContent)).toEqual([d.allBusinessUnits,'CHCE','Second unit']);
+  await act(async()=>{fireEvent.change(select,{target:{value:'all'}});});
+  expect(save).toHaveBeenCalledWith({period:'monthly',businessUnit:'all',companies:[],year:2026});
+ });
+ it('applies pill and salary display changes immediately and saves them in the order they were made',async()=>{
+  let release!:()=>void;save.mockImplementationOnce(()=>new Promise<void>(resolve=>{release=resolve;}));
+  show(value);
+  const group=screen.getByRole('group',{name:d.companies});
+  await act(async()=>{fireEvent.click(within(group).getByRole('button',{name:/Fictional Alpha/}));});
+  await act(async()=>{fireEvent.click(within(group).getByRole('button',{name:/Fictional Beta/}));});
+  // The second change waits for the first save; the pills already show both choices.
+  expect(save).toHaveBeenCalledTimes(1);expect(save).toHaveBeenNthCalledWith(1,{period:'monthly',businessUnit:BU,companies:[C1],year:2026});
+  expect(within(group).getByRole('button',{name:/Fictional Beta/})).toHaveAttribute('aria-pressed','true');
+  await act(async()=>{release();});
+  expect(save).toHaveBeenCalledTimes(2);expect(save).toHaveBeenNthCalledWith(2,{period:'monthly',businessUnit:BU,companies:[C1,C2],year:2026});
+  await act(async()=>{fireEvent.click(within(screen.getByRole('group',{name:d.salaryPeriod})).getByRole('button',{name:d.annual}));});
+  expect(save).toHaveBeenNthCalledWith(3,{period:'annual',businessUnit:BU,companies:[C1,C2],year:2026});
+  await act(async()=>{fireEvent.click(within(group).getByRole('button',{name:d.allCompanies}));});
+  expect(save).toHaveBeenNthCalledWith(4,{period:'annual',businessUnit:BU,companies:[],year:2026});
+ });
+ it('reports a failed save without discarding the visible choice',async()=>{
+  save.mockRejectedValueOnce(new Error('offline'));show(value);
+  await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Fictional Alpha/}));});
+  expect(screen.getByRole('alert').textContent).toBe(d.saveFailed);
+ });
+ it('shows no Review year picker when the viewer has one review year (81a7b286)',()=>{
+  show(value);
+  expect(screen.queryByRole('combobox',{name:d.reviewYear})).toBeNull();expect(screen.queryByText(d.reviewYear)).toBeNull();
+ });
+ it('offers a Review year picker above the bars, latest first, and saves the picked year with the rest of the choice (81a7b286)',async()=>{
+  const twoYears={...value,years:[2026,2025]} as RewardDashboard;
+  const view=show(twoYears);
+  const select=screen.getByRole('combobox',{name:d.reviewYear}) as HTMLSelectElement;
+  expect([...select.options].map(o=>o.textContent)).toEqual(['2026','2025']);expect(select.value).toBe('2026');
+  // The picker sits in the filters, before the budget boxes.
+  const salary=screen.getByRole('heading',{level:2,name:d.salary});
+  expect(select.compareDocumentPosition(salary)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  await act(async()=>{fireEvent.change(select,{target:{value:'2025'}});});
+  expect(save).toHaveBeenCalledWith({period:'monthly',businessUnit:BU,companies:[],year:2025});
+  // The server's 2025 projection: its own bars, company buttons and context line; Waiting on you is unchanged.
+  const earlier={...twoYears,year:2025,choice:{...value.choice,year:2025},
+   companies:[{id:C1,label:'Fictional Alpha',headcount:9,blocked:false,preparing:false}],
+   context:{businessUnit:'CHCE',companies:1,cycle:'2025 Annual Compensation Review',cycleVaries:false,snapshot:'2025-11-03',snapshotVaries:false},
+   figures:aggregateRewardDashboardFigures([{company:'Fictional Alpha',budgets:{standard:plan([20000,0,0],[40000,0,0],50000,100000),h:plan([0,0,0],[0,0,0],0,0)}}]),preparing:[]} as unknown as RewardDashboard;
+  view.rerender(<NextIntlClientProvider locale="en" messages={en}><RewardsDashboard value={earlier}/></NextIntlClientProvider>);
+  expect((screen.getByRole('combobox',{name:d.reviewYear}) as HTMLSelectElement).value).toBe('2025');
+  expect(screen.getByTestId('reward-dashboard-context').textContent).toBe('Showing: CHCE · 1 company · 2025 Annual Compensation Review · Snapshot 3 Nov 2025');
+  const box=screen.getByRole('heading',{level:2,name:d.salary}).closest('div.min-w-0') as HTMLElement;
+  expect(within(box).getByText('MYR 200.00 / MYR 400.00 · 50.0%')).toBeTruthy();expect(within(box).queryByText(/Over its own pool/)).toBeNull();
+  expect(within(screen.getByRole('group',{name:d.companies})).getAllByRole('button').map(p=>p.textContent)).toEqual([d.allCompanies,'Fictional Alpha9 people']);
+  const waiting=screen.getByRole('heading',{name:'Waiting on you · 1'}).closest('div.min-w-0') as HTMLElement;
+  expect(within(waiting).getByRole('link',{name:'Fictional Alpha · CHCE'})).toHaveAttribute('href','/rewards/w1');
+ });
+ it('names companies withheld for restricted records and shows no redacted figures',()=>{
+  show({...value,figures:null,context:{...value.context!,companies:1},excluded:[{company:'Fictional Alpha',reason:'restricted'}],preparing:[]});
+  expect(screen.getByText(/restricted records: Fictional Alpha/)).toBeTruthy();expect(screen.queryByRole('meter')).toBeNull();expect(screen.queryByText(/MYR 100.00/)).toBeNull();
+  expect(screen.queryByRole('group',{name:d.salaryPeriod})).toBeNull();
  });
 });
 
-it.each(Object.keys(copies) as (keyof typeof copies)[])('renders short dashboard in %s at desktop and phone sizes',async locale=>{
+it.each(Object.keys(copies) as (keyof typeof copies)[])('renders the dashboard in %s at desktop and phone sizes',async locale=>{
  const view=render(<NextIntlClientProvider locale={locale} messages={copies[locale]} onError={error=>{throw error;}}><main className="space-y-5 p-5"><h1 className="text-2xl font-semibold">{copies[locale].rewardDashboard.greeting}</h1><RewardsDashboard value={value}/></main></NextIntlClientProvider>);
  await captureAiReviewScreenshots(aiReviewDomHtml(view.container),locale,'rewards-dashboard');
 },60000);
 
-it('keeps a preparing review discoverable without any budget or action figures',async()=>{
- const pending={...value,scopes:[],units:[],waiting:[],notices:[{unitId:'pending',companyId:'co',company:'Fictional Company',unit:'Pending Unit',cycle:'Fictional cycle',expectedRelease:'2026-11-30'}]};
- const view=show(pending);expect(screen.getByText(en.rewardsPreparation.preparing)).toBeTruthy();expect(screen.getByRole('link',{name:en.rewards.openReview})).toHaveAttribute('href','/rewards/pending');expect(screen.queryByRole('meter')).toBeNull();
+it('shows the year-specific preparing message without any budget or action figures before release (4de410ed)',async()=>{
+ const pending={...value,companies:[value.companies[2]],context:null,figures:null,waiting:[],roles:[],preparing:[{unitId:'pending',company:'Fictional Gamma',expectedRelease:'2026-11-30'}]} as RewardDashboard;
+ const view=show(pending);
+ expect(screen.getAllByText('Your 2026 review is being prepared by Group Rewards.').length).toBeGreaterThan(0);
+ expect(screen.getByRole('status').textContent).toBe('Your 2026 review is being prepared by Group Rewards.');
+ expect(screen.getByRole('link',{name:'Fictional Gamma'})).toHaveAttribute('href','/rewards/pending');
+ expect(screen.getByText('Expected release: 30 Nov 2026')).toBeTruthy();
+ expect(screen.queryByRole('meter')).toBeNull();expect(screen.queryByTestId('reward-dashboard-context')).toBeNull();
+ expect(view.container.textContent).not.toMatch(/MYR|people/);
  await captureAiReviewScreenshots(aiReviewDomHtml(view.container),'en','rewards-preparing-notice');
 },60000);

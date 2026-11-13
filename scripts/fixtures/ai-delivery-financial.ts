@@ -15,7 +15,7 @@ import {createClaimType,saveClaimDraft,submitClaim} from '../../packs/claims/ser
 import * as performance from '../../packs/performance/service';
 import {defaultPolicy} from '../../packs/performance/onehr/model';
 import framework from '../../packs/performance/onehr/framework.json';
-import {getRewardUnit,saveRewardEntry,previewRewardAccessChange,saveRewardAccessChange,decideRewardUnit,getRewardUnitGovernance,previewRewardSeniorMembership,saveRewardSeniorMembership,confirmRewardGovernance,refreshRewardPatBasis,refreshRewardSources,saveRewardUnitInputs,getRewardPreparationChecklist,changeRewardPreparation} from '../../packs/rewards/service';
+import {getRewardUnit,saveRewardEntry,previewRewardAccessChange,saveRewardAccessChange,decideRewardUnit,getRewardUnitGovernance,previewRewardSeniorMembership,saveRewardSeniorMembership,confirmRewardGovernance,refreshRewardPatBasis,refreshRewardSources,saveRewardUnitInputs,previewRewardPreparationRelease,getRewardPreparationChecklist,changeRewardPreparation} from '../../packs/rewards/service';
 import {REWARD_PREPARATION_STEPS} from '../../packs/rewards/preparation-model';
 import {REWARD_POLICY_GRADES} from '../../packs/rewards/policy-grid-validation';
 import {approvedRewardFixtures} from './reward-approved';
@@ -77,13 +77,16 @@ export async function populateAiDeliveryFinancial(c:AiDeliveryFixtureContext):Pr
  const memberships:readonly[RewardRole,typeof c.actors.operator][]=[['bu',c.actors.operator],['bg',c.actors.reviewers[0]],['ctro',c.actors.reviewers[1]],['ec',c.actors.peer],['payroll',c.actors.operator]];
  // Use the actual HR Administrator exemption for fixture-only prerequisite setup.
  // The independent Group Rewards actor still confirms the subsequent governance step.
- const checker=c.actors.manager.ctx,accessAdmin=c.actors.operator.ctx;
- if(!checker.userId||checker.userId===accessAdmin.userId||memberships.some(([,actor])=>actor.userId===checker.userId))return refuse();
+ // Board 60f1fdcd: nobody adds their own Rewards seat, so the operator's own seats are added by another tenant-wide
+ // HR Administrator (the first reviewer) through the same exemption.
+ const checker=c.actors.manager.ctx,accessAdmin=c.actors.operator.ctx,ownSeatAdmin=c.actors.reviewers[0].ctx;
+ if(!checker.userId||checker.userId===accessAdmin.userId||checker.userId===ownSeatAdmin.userId||ownSeatAdmin.userId===accessAdmin.userId||memberships.some(([,actor])=>actor.userId===checker.userId))return refuse();
  async function addFixtureSeat(userId:string,role:RewardRole){
+  const by=userId===accessAdmin.userId?ownSeatAdmin:accessAdmin;
   const input={unitId:rewardId,revision:(await getRewardUnit(admin,rewardId)).unit.revision,before:null,after:{userId,role},reason:'Fictional browser fixture seat reviewed by HR Administration'};
-  const preview=await previewRewardAccessChange(accessAdmin,input);
+  const preview=await previewRewardAccessChange(by,input);
   if(preview.pending)return refuse();
-  const result=await saveRewardAccessChange(accessAdmin,input,preview.digest);
+  const result=await saveRewardAccessChange(by,input,preview.digest);
   if(result.pending||result.status!=='applied_no_second_approval')return refuse();
  }
  await addFixtureSeat(checker.userId,'gr');
@@ -101,7 +104,7 @@ export async function populateAiDeliveryFinancial(c:AiDeliveryFixtureContext):Pr
  let preparation=await getRewardPreparationChecklist(admin,rewardId);
  await changeRewardPreparation(admin,rewardId,preparation.revision,{kind:'expected',date:c.today});
  for(const step of REWARD_PREPARATION_STEPS){preparation=await getRewardPreparationChecklist(admin,rewardId);await changeRewardPreparation(admin,rewardId,preparation.revision,{kind:'confirm',step,basis:preparation.basis});}
- preparation=await getRewardPreparationChecklist(checker,rewardId);await changeRewardPreparation(checker,rewardId,preparation.revision,{kind:'release',basis:preparation.basis});
+ preparation=await getRewardPreparationChecklist(checker,rewardId);const release=await previewRewardPreparationRelease(checker,rewardId);await changeRewardPreparation(checker,rewardId,preparation.revision,{kind:'release',basis:preparation.basis,reason:'Fictional browser review released after checking the summary',summaryDigest:release.digest});
  for(const[role,actor]of memberships)if(!(await getRewardUnit(actor.ctx,rewardId)).roles.includes(role))return refuse();
  const operatorReview=await getRewardUnit(c.actors.operator.ctx,rewardId);if(operatorReview.rows.some(row=>row.source.personId===c.actors.operator.personId))return refuse();
  reward=await getRewardUnit(admin,rewardId);const revision=reward.unit.revision;await decideRewardUnit(c.actors.operator.ctx,rewardId,revision,'submit','Fictional human fixture recommendations');

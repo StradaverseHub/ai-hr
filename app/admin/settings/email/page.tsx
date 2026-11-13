@@ -1,4 +1,3 @@
-import { managedEmailSenderProfiles, managedEmailSenderNames } from '@/lib/managed-email-policy';
 import { getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
 import { scopedSession } from '@/lib/scope';
@@ -17,7 +16,7 @@ import {internalSelected} from '@/lib/internal-auth/config';
 import Link from 'next/link';
 import {btnPrimary,btnGhost,Badge} from '@/components/ui';
 import {emailDisplayClock,formatEmailTimestamp} from '@/lib/email-display-clock';
-import { saveEmailDraft, testEmailDraft, activateEmailDraft } from './actions';
+import { saveEmailDraft, testEmailDraft, activateEmailDraft, saveLifecycleSenderName } from './actions';
 import {readAccountEmailRetention,type AccountEmailRetention} from '@/core/account-email-retention';
 import {EmailRetentionForm} from './retention-form';
 
@@ -57,7 +56,7 @@ export default async function IdentityEmailPage({searchParams}:{searchParams:Pro
    <Field label={t('replyTo')} className="sm:col-span-2"><input name="replyTo" type="email" defaultValue={config.replyTo} maxLength={320} className={inputCls}/></Field>
  </>;
  const error=view&&emailFailureCodes.find(c=>c===query.error);
- const success=view&&['save','test','apply','sender'].find(c=>c===query.success);
+ const success=view&&['save','test','apply','sender','senderName'].find(c=>c===query.success);
  return <div className={`${editing?'max-w-4xl':'max-w-7xl'} space-y-6`}>
   <PageHeader title={t('title')} description={t('description')}/>
   {view?<p className="text-sm text-muted-foreground">{t('scope')}</p>:<div role="status" className="space-y-2 rounded-xl border border-border bg-card p-5"><h2 className="font-medium">{t(demoTest?'demoTestTitle':'previewTitle')}</h2><p className="max-w-prose text-sm text-muted-foreground">{t(demoTest?'demoSetup':'restrictedSetup')}</p></div>}
@@ -68,7 +67,9 @@ export default async function IdentityEmailPage({searchParams}:{searchParams:Pro
    {activeConnection&&<p className="break-words font-medium" data-active-connection-name>{activeConnection.name}</p>}
    <p>{view.active?t('activeSummary',{host:view.active.host,port:view.active.port,from:view.active.from}):t('notConfigured')}</p>
   </div></Card>}
-  {view?.supportsLifecycleSenders&&<Card><SectionHeader title={t('lifecycleSenderTitle')}/><div className="space-y-3 p-5 text-sm"><p className="text-muted-foreground">{t('lifecycleSenderHelp')}</p><dl className="space-y-3">{view.lifecycleSenders?.map(sender=><div key={sender.profile}><dt className="font-medium">{managedEmailSenderNames[sender.profile]}</dt><dd className="break-words">{sender.from??t('notConfigured')} · {sender.appliedAt?t('senderConfirmed',{at:formatEmailTimestamp(sender.appliedAt,clock)}):t('senderDefault')}{sender.hasUnappliedChanges&&<p className="text-muted-foreground">{t('senderPending')}</p>}</dd></div>)}</dl></div></Card>}
+  {view?.supportsLifecycleSenders&&<Card><SectionHeader title={t('lifecycleSenderTitle')}/><div className="space-y-3 p-5 text-sm"><p className="text-muted-foreground">{t('lifecycleSenderHelp')}</p>{view.lifecycleSenders?.map(sender=><div key={sender.profile} data-lifecycle-sender className="space-y-3"><dl className="grid gap-2 sm:grid-cols-[12rem_1fr]"><dt className="font-medium">{t('lifecycleSenderOption')}</dt><dd className="break-words"><span data-lifecycle-sender-name>{sender.name??sender.fallbackName??t('notConfigured')}</span> · {sender.from??t('notConfigured')} · {sender.appliedAt?t('senderConfirmed',{at:formatEmailTimestamp(sender.appliedAt,clock)}):t('senderDefault')}{sender.hasUnappliedChanges&&<p className="text-muted-foreground">{t('senderPending')}</p>}{sender.staleBindings.length>0&&<p role="alert" data-stale-lifecycle-bindings className="text-destructive">{t('senderStale')}</p>}</dd></dl>
+   <form action={saveLifecycleSenderName} className="flex flex-wrap items-end gap-3"><Field label={t('lifecycleSenderName')} className="min-w-0 flex-1"><input name="senderName" required maxLength={160} pattern={'[^@<>"]+'} defaultValue={sender.name??''} className={inputCls}/></Field><EmailSubmit type="submit">{t('saveSenderName')}</EmailSubmit></form>
+   <p className="text-muted-foreground">{t('lifecycleSenderNameHelp')}</p></div>)}</div></Card>}
   {named&&!editing&&<section aria-labelledby="saved-smtp-title" className="space-y-4">
    <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="saved-smtp-title" className="text-lg font-semibold">{t('connectionsTitle')}</h2><Link href="/admin/settings/email?connection=new" className={btnPrimary}>{t('newConnection')}</Link></div>
    {!view?.connections?.length?<p className="rounded-xl border border-border p-6 text-sm text-muted-foreground">{t('noConnections')}</p>:<div className="overflow-x-auto rounded-xl border border-border"><table className="w-full text-left text-sm"><thead className="bg-muted/40 text-muted-foreground"><tr>{(['connectionName','host','username','from','security','connectionStatus','lastTest'] as const).map(key=><th key={key} scope="col" className={`px-4 py-3 font-medium ${key==='connectionStatus'?'hidden lg:table-cell':''}`}>{t(key)}</th>)}</tr></thead><tbody className="divide-y divide-border">{view.connections.map(c=><tr key={c.id} className="hover:bg-muted/30"><td className="px-4 py-4"><Link className="font-medium underline-offset-4 hover:underline focus-visible:underline" href={'/admin/settings/email?connection='+encodeURIComponent(c.id)}>{c.name}</Link><div className="mt-2 lg:hidden" data-mobile-connection-state><Badge>{t(c.active?'connectionActive':'connectionSaved')}</Badge>{c.hasUnappliedChanges&&<p data-mobile-pending-changes className="mt-1 text-xs text-muted-foreground">{t('changesPending')}</p>}</div></td><td className="px-4 py-4">{c.config.host}:{c.config.port}</td><td className="px-4 py-4 break-all">{c.config.user||'—'}</td><td className="px-4 py-4 break-all">{c.config.from}</td><td className="px-4 py-4">{t(c.config.security==='starttls'?'starttlsSecurity':'tlsSecurity')}</td><td className="hidden px-4 py-4 lg:table-cell"><Badge>{t(c.active?'connectionActive':'connectionSaved')}</Badge>{c.hasUnappliedChanges&&<p className="mt-1 text-xs text-muted-foreground">{t('changesPending')}</p>}</td><td className="whitespace-nowrap px-4 py-4">{c.testedAt?formatEmailTimestamp(c.testedAt,clock):t('notRecorded')}</td></tr>)}</tbody></table></div>}
@@ -90,7 +91,7 @@ export default async function IdentityEmailPage({searchParams}:{searchParams:Pro
    {view.draft.testedAt&&<form action={activateEmailDraft} className="space-y-4">
     <input type="hidden" name="draftId" value={view.draft.id}/>
     <input type="hidden" name="connectionId" value={view.selectedConnectionId??''}/>
-    {view.supportsLifecycleSenders&&view.selectedConnectionId&&<><Field label={t('applyTarget')}><select name="lifecycleSender" defaultValue="" className={inputCls}><option value="">{t('applyDefault')}</option>{managedEmailSenderProfiles.map(profile=><option key={profile} value={profile}>{managedEmailSenderNames[profile]}</option>)}</select></Field><p className="text-sm text-muted-foreground">{t('senderTargetHelp')}</p></>}
+    {view.supportsLifecycleSenders&&view.selectedConnectionId&&<><Field label={t('applyTarget')}><select name="lifecycleSender" defaultValue="" className={inputCls}><option value="">{t('applyDefault')}</option><option value="noreply">{t('lifecycleSenderOption')}</option></select></Field><p className="text-sm text-muted-foreground">{t('senderTargetHelp')}</p></>}
     <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="received" value="true" required className="mt-1"/>{t('received')}</label>
     {!(view.supportsLifecycleSenders&&view.selectedConnectionId)&&<p className="text-sm text-muted-foreground">{t('activateHelp')}</p>}
     <EmailSubmit type="submit">{t('activate')}</EmailSubmit>

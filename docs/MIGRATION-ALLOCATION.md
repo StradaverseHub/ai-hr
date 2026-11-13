@@ -1,3 +1,56 @@
+# Board release 12 November 2026 — Rewards, dashboard and On/Off Boarding block (unapplied, allocated)
+
+Branch `claude/board-release-20261112` (from `claude/board-rewards-offcycle-20261112` at `f4bcb5de7`, merged with
+`claude/board-rewards-role-permissions-20261112` at `460308486`, `origin/alpha` at `987fe3d10` and, on 13 November,
+`claude/board-rewards-governance-owner-fns-20261112` at `c174bd5da`) allocates the board lanes' migrations as one
+block, tags `5400`–`5640`, using the lanes' draft offset (tag T, idx T − 600, when
+1793330004800 + (T − 5100)). Alpha's newest entries are `5129_payroll_history_effective_reads` and
+`5130_pay_formula_ai_draft_job` (when 1793330004829 / …830), so the block sits strictly above them. On
+13 November 2026 the branch merged `origin/alpha` at `65e23a1e7`, whose Irwin attendance entries `5140`–`5150`
+(when 1793330004840–1793330004850) also sort below the block; the journal keeps alpha's entries as an exact prefix.
+The same day it merged `origin/alpha` at `de15677b0`, whose `5160`–`5162` (when 1793330004860–1793330004862) sort below
+the block as well. `5560` is new at
+this integration: it replaces the owner-owned `app.reward_limit_controls_access()` (from `5500`) so Limit Controls
+follows its Rewards Access Role permissions row; no purpose-owned object is replaced. A scan of every origin head's
+journal on 12 November 2026 found no other claim on tags 5400–5579 or on when 1793330005100–1793330005279; the only
+holders are this block's own lane branches, with the same tag, idx and when (the recruitment branch's 5200–5215 sit
+below it).
+
+| Tag | idx / when | Board items | SHA256 |
+| --- | ---: | --- | --- |
+| `5400_rewards_direct_configuration` | 4800 / 1793330005100 | 60f1fdcd | `0e55f9de5d62ef07719a876ae208d9206ebc43d716c3bbdba02094a3cb997c6e` |
+| `5420_rewards_dashboard_preparation_notices` | 4820 / 1793330005120 | 4de410ed, 356ae8c1 | `b0882911ef0802d34e67408810dfb455e935f25de54ac563460cd4b4755bef96` |
+| `5460_lifecycle_v9_email_recipients` | 4860 / 1793330005160 | 5a8c382c, 4a60b3ec, 6bdda222 | `117d86c07c68c2bc658b4a33e26797bf23b040ad998fa948dbae1ad1307ef3d0` |
+| `5480_offboarding_items_assignment_load` | 4880 / 1793330005180 | d1e26f81 | `d5dc8975f26a9091f1bafd089aa36619b30eaa222b02ab09538ec63397d22ed3` |
+| `5500_rewards_limit_controls` | 4900 / 1793330005200 | fc804e8c | `3a710dc0103dd39b50c734243fd7f2691d6f08dbfb5d94d388d7664eb7ef93b0` |
+| `5520_rewards_role_permission_grid` | 4920 / 1793330005220 | db14e49c | `e603208c9cb9ada2e35a7338ede22637dcf886c5763912e5273adce0fd7ce172` |
+| `5540_rewards_offcycle_company_balance` | 4940 / 1793330005240 | b945f0cc | `25bd51577444f2cea0a0c53a231156f591c6c2f0f0ce56e293aeae9d054850aa` |
+| `5560_rewards_limit_controls_role_level` | 4960 / 1793330005260 | fc804e8c + db14e49c | `04d12b358fb70088e9bd9be95b64aa5014068a80035bafc5a2b605f5a308c619` |
+| `5580_rewards_config_owner_paths` | 4980 / 1793330005280 | 60f1fdcd | `cf51650518408e4c4e5cc22823924b6fbcff130820be63887ba951f5520e60cd` |
+| `5600_rewards_config_editor_role_levels` | 5000 / 1793330005300 | 60f1fdcd + db14e49c | `06a383842db72810be80aa8b276fe10e66236328afe8d4c28651b3d147792aff` |
+| `5620_rewards_config_grants_creator_lock` | 5020 / 1793330005320 | 60f1fdcd | `8e322e3dd748f0295456595001e28b418e87a810a80577c821056abd1528538a` |
+| `5640_lifecycle_v9_email_hold_company_tenant` | 5040 / 1793330005340 | 4a60b3ec, 6bdda222 (gate repair) | `66d191aaee14e910480bd7ce7240bd23a76f02e57c66f1c129f40b2562e7d6c7` |
+
+`5520` replaces `app.reward_config_change_record` (owner function from `5400`) and `5540` then widens the
+`reward_config_change` area CHECK to include `offcycle`; the widened CHECK keeps `role_permission` and `limit`, so both
+compose in journal order. `5580` (board 60f1fdcd owner paths, built on the off-cycle lane without `5520`/`5560`) replaces
+the same writer again and keeps the `role_permission` branch behind `to_regprocedure`. `5600` is new at this
+integration: it replaces only owner-owned functions (`app.reward_role_default_level` and `app.reward_actor_page_level`
+from `5520`, `app.reward_config_create_planned_unit` from `5580`) so the Role permissions grid admits CTRO and HR Admin
+as configuration editors, and adds owner copies and owner policies for the restricted-owner gaps (see
+`docs/adr/2026-11-12-rewards-direct-configuration.md`). The drafts' own block 5580–5599 held no other entry; a scan of
+origin heads on 13 November 2026 found no other claim on tags 5580–5619 or when 1793330005280–1793330005319. `5620`
+(13 November 2026) replaces only the owner-owned `app.reward_config_create_planned_unit` again (its company-year lock
+reads the plan year itself and refuses an invisible plan first) and moves EXECUTE on the five 5580 configuration
+predicates from PUBLIC to the roles that evaluate them; a scan of the 400 most recently updated origin heads that day
+found no other claim on tags 5600–5639 or when 1793330005300–1793330005339. `5640` (13 November 2026, repair after the
+failed full gate 43447570857) adds only the ADR-0174 composite `(company_id, tenant_id)` key, NO ACTION like its
+single-column key, to `lc_v9_email_hold` from `5460`; it replaces no function and changes no grant or policy. A scan of
+the 400 most recently updated origin heads that day found no other claim on tags 5640–5659 or when
+1793330005340–1793330005399. None of these migrations has been applied to any installation. If another migration is
+installed first with a when at or above 1793330005100, this block must move above it before installation. Recheck peer
+claims and the installed ledger at admission; this allocation grants no installation authority.
+
 # Attendance on-behalf AI read controls — 12 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/irwin-batch-b2-20261112` uses `5145_ai_attendance_on_behalf_reads` at idx 4545 / when 1793330004845,

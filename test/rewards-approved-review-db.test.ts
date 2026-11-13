@@ -1,5 +1,5 @@
 import {dispatchNotificationsFromSweep} from '../core/notifications';
-import {pgSqlState} from '../lib/db-error';
+import {pgErrorChain,pgSqlState} from '../lib/db-error';
 import {hireEmployee,setEmploymentGrade} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {createBatch,rewardPayrollProvenance} from '../packs/payroll/service';
@@ -11,7 +11,8 @@ import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {owner,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppUser,closeAll,type Base} from './harness';
 import {getRewardUnit,saveRewardEntry,decideRewardUnit,postRewardUnit,exportRewardReview,readOnlyRewardProjection,refreshRewardPatBasis,rewardApprovalsBoard,rewardsAnalysisSourceTx,cancelRewardReview} from '../packs/rewards/service';
-import {beginRewardViewAs,endRewardViewAs,changeRewardPermission,saveRewardSetupGrant,rewardPermissions,rewardViewAsState,saveRewardPersonalPage} from '../packs/rewards/access-policy';
+import {beginRewardViewAs,endRewardViewAs,saveRewardSetupGrant,rewardViewAsState,saveRewardPersonalPage} from '../packs/rewards/access-policy';
+import {rewardRolePermissionGrid,saveRewardRolePermissionBatch} from '../packs/rewards/role-permission-grid';
 import {createUploadedRewards,uploadedRewards,previewUploadedRewards,saveUploadedRewards,confirmUploadedRewards,adjustUploadedAward,refreshUploadedRewardSources} from '../packs/rewards/uploaded-awards';
 import {emptyFacts,emptyRecommendation} from '../packs/rewards/model';
 import {generateRewardAdvisor,saveRewardAdvisorSettings} from '../packs/rewards/advisor';
@@ -19,6 +20,9 @@ import {defaultAdvisorSettings} from '../packs/rewards/advisor-model';
 import {rewardRulesForReview} from '../packs/rewards/applied-rules';
 import {todayInKualaLumpur} from '../lib/hr-date';
 const today=todayInKualaLumpur(),year=Number(today.slice(0,4));
+/** Board db14e49c: the fixture's HR Admin also holds the Group Rewards seat, so the self rule stops it narrowing
+ * that column; the saved override is seeded directly (the grid command is covered by rewards-role-permission-grid-db). */
+const narrowGroupRewardsReviewPage=(b:Base)=>owner.db.execute(sql`insert into reward_role_permission(tenant_id,role,capability,allowed,level,changed_by,reason) values(${b.tenantId}::uuid,'gr','review.view',false,'none',${b.adminUserId}::uuid,'Fictional narrowed review page')`);
 async function denied(promise:Promise<unknown>){const error=await promise.then(()=>null,error=>error);expect(error).not.toBeNull();expect(pgSqlState(error)).toBe('42501');}
 describe('approved Rewards review SQL custody',()=>{
  let b:Base,gr:SessionContext,checker:SessionContext,unitId:string,entryId:string,employmentId:string;
@@ -46,7 +50,7 @@ describe('approved Rewards review SQL custody',()=>{
  });
  it('read-only View as blocks native writers, direct writes and legacy SECURITY DEFINER helpers until ended',async()=>{await beginRewardViewAs(gr,checker.userId!);await expect(saveRewardEntry(gr,unitId,1,entryId,emptyRecommendation())).rejects.toThrow(/read-only|View as/);expect(await withTenant(gr,tx=>tx.update(schema.rewardEntry).set({recommendation:{...emptyRecommendation(),meritBp:800}}).where(eq(schema.rewardEntry.id,entryId)).returning({id:schema.rewardEntry.id}))).toHaveLength(0);await denied(withTenant(gr,tx=>tx.execute(sql`select app.reward_company_exclusion_change(${b.companyId}::uuid,${year},'Fictional attempted mutation during view',NULL)`)));await endRewardViewAs(gr);expect((await getRewardUnit(gr,unitId)).rows).toHaveLength(1);});
  it('limits scoped Group Rewards to shared View as principals and denies exports from the viewer session',async()=>{
-  expect((await rewardPermissions(checker)).canChange).toBe(false);
+  expect((await rewardRolePermissionGrid(checker)).immediate).toBe(false);
   const [outsider]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional out of scope viewer',primaryEmail:randomUUID()+'@fixture.test'}).returning();
   const outsiderId=await createAppUser(b.tenantId,outsider.id,'employee');
   await denied(withTenant(checker,tx=>tx.execute(sql`select app.reward_view_as_principal(${outsiderId}::uuid)`)));
@@ -57,9 +61,9 @@ describe('approved Rewards review SQL custody',()=>{
   await expect(exportRewardReview(checker,unitId)).rejects.toThrow(/read-only/);
   await endRewardViewAs(checker);
  });
- it('permission overrides narrow the native read owner and fixed own-line protection cannot be changed',async()=>{await expect(changeRewardPermission(gr,{role:'gr',capability:'own.never',allowed:true,reason:'Attempt to weaken own-line confidentiality'})).rejects.toThrow(/fixed/);await changeRewardPermission(gr,{role:'gr',capability:'review.view',allowed:false,reason:'Temporarily suspend this native page capability'});await expect(getRewardUnit(gr,unitId)).rejects.toThrow(/does not permit/);});
+ it('permission overrides narrow the native read owner and fixed own-line protection cannot be changed',async()=>{await expect(saveRewardRolePermissionBatch(gr,{baseRevision:0,changes:[{role:'bu',capability:'own.never',after:'none'}],reason:'Attempt to weaken own-line confidentiality'})).rejects.toMatchObject({code:'invalid'});await narrowGroupRewardsReviewPage(b);await expect(getRewardUnit(gr,unitId)).rejects.toThrow(/does not permit/);});
  it('applies a dated personal page grant only inside an existing seat and company scope',async()=>{
-  await changeRewardPermission(gr,{role:'gr',capability:'review.view',allowed:false,reason:'Test the configured review page restriction'});
+  await narrowGroupRewardsReviewPage(b);
   await expect(getRewardUnit(checker,unitId)).rejects.toThrow(/does not permit/);
   expect((await rewardApprovalsBoard(checker,[b.companyId])).map(row=>row.id)).toContain(unitId);
   const grant={userId:checker.userId!,companyId:b.companyId,capability:'review.view',validFrom:today,validTo:today,active:true,reason:'Allow the existing reviewer to view this company review'};
@@ -99,13 +103,14 @@ describe('approved Rewards review SQL custody',()=>{
   expect(failed).toHaveLength(1);
   expect(failed[0].payload).toEqual({entryId,outcome:'provider-unavailable'});
  });
- it('whole upload versions stay immutable and a doer cannot check their own upload',async()=>{await uploadFixtureMetadata();const raw={employmentId,incrementType:'merit',incrementBp:1000,newBasicCents:null,newGrade:null,bonusCents:10000,lumpCents:0,remarks:'Fictional external basis'};
+ it('whole upload versions stay immutable and only the unchanged current upload can be made active',async()=>{await uploadFixtureMetadata();const raw={employmentId,incrementType:'merit',incrementBp:1000,newBasicCents:null,newGrade:null,bonusCents:10000,lumpCents:0,remarks:'Fictional external basis'};
  // A real Payroll change makes this snapshot stale; saving must fail atomically.
  await owner.db.update(schema.compensation).set({basicSalary:'5100.00'}).where(eq(schema.compensation.employmentId,employmentId));
  await expect(saveUploadedRewards(gr,unitId,[raw],1,'Fictional checked external award')).rejects.toThrow(/source changed/);expect((await owner.db.execute(sql`select * from reward_uploaded_version where unit_id=${unitId}::uuid`))).toHaveLength(0);
  await withTenant(gr,async tx=>{await tx.execute(sql`insert into reward_uploaded_version(tenant_id,unit_id,version,rows,digest,uploaded_by,reason) values(${b.tenantId}::uuid,${unitId}::uuid,1,${JSON.stringify([raw])}::jsonb,${'a'.repeat(64)},${gr.userId}::uuid,'Fictional immutable upload record')`);await tx.execute(sql`update reward_uploaded_review set current_version=1 where unit_id=${unitId}::uuid`);});
  await denied(withTenant(gr,tx=>tx.execute(sql`select rows from reward_uploaded_version where unit_id=${unitId}::uuid`)));await denied(withTenant(checker,tx=>tx.execute(sql`select rows from reward_uploaded_version where unit_id=${unitId}::uuid`)));
- await expect(confirmUploadedRewards(gr,unitId,1,'I checked my own file')).rejects.toThrow(/different/);expect(await withTenant(gr,tx=>tx.execute(sql`update reward_uploaded_version set reason='Tamper old version' where unit_id=${unitId}::uuid returning id`))).toHaveLength(0);
+ // Board 60f1fdcd: the uploader may make their own upload active, but only the unchanged current file (no award rows match it here).
+ const refusal=await confirmUploadedRewards(gr,unitId,1,'I checked my own file').then(()=>null,(error:unknown)=>error);expect(refusal).not.toBeNull();expect(pgErrorChain(refusal).map(link=>link.message).join('\n')).toMatch(/Only the unchanged current upload can be made active/);expect((await owner.db.execute<{checked_by:string|null}>(sql`select checked_by from reward_uploaded_review where unit_id=${unitId}::uuid`))[0].checked_by).toBeNull();expect(await withTenant(gr,tx=>tx.execute(sql`update reward_uploaded_version set reason='Tamper old version' where unit_id=${unitId}::uuid returning id`))).toHaveLength(0);
  expect((await owner.db.execute<{reason:string}>(sql`select reason from reward_uploaded_version where unit_id=${unitId}::uuid`))[0].reason).toBe('Fictional immutable upload record');
  });
 
@@ -146,11 +151,12 @@ describe('approved Rewards review SQL custody',()=>{
   await saveUploadedRewards(doer,uploadedId,[award],1,'Original independently prepared company upload',undefined,preview.digest);
   await dispatchNotificationsFromSweep({tenantId:b.tenantId,roles:['hr_admin'],entitlements:gr.entitlements},owner);
   const checks=await owner.db.select().from(schema.notification).where(eq(schema.notification.recipientEmploymentId,checkerEmployment.id));expect(checks.some(n=>n.linkPath===`/rewards/${uploadedId}/uploaded`)).toBe(true);
-  await expect(confirmUploadedRewards(doer,uploadedId,2,'Doer attempted self confirmation')).rejects.toThrow(/different/);
-  const aliasLogin=await createAppUser(b.tenantId,maker.personId,'employee');const alias={...doer,userId:aliasLogin};await owner.db.insert(schema.rewardMember).values({tenantId:b.tenantId,unitId:uploadedId,userId:aliasLogin,role:'gr'});await expect(confirmUploadedRewards(alias,uploadedId,2,'Same person attempted alternate login approval')).rejects.toThrow(/different/);
   expect(await withTenant(buCtx,tx=>tx.execute(sql`update reward_unit set status='bg',approved_digest=${'a'.repeat(64)} where id=${uploadedId}::uuid returning id`))).toEqual([]);
   const [withheld]=await owner.db.select({status:schema.rewardUnit.status,digest:schema.rewardUnit.approvedDigest}).from(schema.rewardUnit).where(eq(schema.rewardUnit.id,uploadedId));expect(withheld).toEqual({status:'draft',digest:null});
-  await confirmUploadedRewards(checker,uploadedId,2,'Independent reviewer checked source and totals');
+  // Board 60f1fdcd: the uploader makes their own upload active; no second person is needed.
+  await confirmUploadedRewards(doer,uploadedId,2,'Uploader made the checked company upload active');
+  const [activated]=await owner.db.execute<{checked_by:string;checked_version:number;current_version:number}>(sql`select checked_by,checked_version,current_version from reward_uploaded_review where unit_id=${uploadedId}::uuid`);
+  expect(activated.checked_by).toBe(doer.userId);expect(activated.current_version).toBeGreaterThan(0);expect(activated.checked_version).toBe(activated.current_version);
   await refreshUploadedRewardSources(doer,uploadedId,2,'Rebuild dated sources before replacing the award file');
   await expect(getRewardUnit(buCtx,uploadedId)).rejects.toThrow(/independent/);
   await expect(withTenant(doer,tx=>tx.execute(sql`update reward_uploaded_review set refresh_required=false where unit_id=${uploadedId}::uuid`))).rejects.toThrow();

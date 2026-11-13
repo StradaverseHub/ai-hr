@@ -14,9 +14,11 @@ vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...p
 vi.mock('../lib/scope', () => ({ scopedAdmin: ports.scopedAdmin, scopedSession: ports.scopedSession, getScopeIds: ports.scope }));
 vi.mock('../packs/rewards/access-policy', () => ({
   rewardVisibleCompanies: ports.visibleCompanies, rewardNavigation: ports.navigation, rewardAccessPageCompanies: ports.accessCompanies,
-  rewardAccessPageEntry: ports.accessEntry, rewardPermissions: ports.accessPermissions, rewardPersonalPages: ports.accessPersonalPages,
+  rewardAccessPageEntry: ports.accessEntry, rewardPersonalPages: ports.accessPersonalPages,
   rewardSetupEntry: async () => ({ bootstrap: false }),
 }));
+// Board db14e49c: the Role permissions grid has its own owner; these destinations hold no grid authority.
+vi.mock('../packs/rewards/role-permission-grid', () => ({ rewardRolePermissionEntry: async () => ({ reader: false, immediate: false, proposer: false }), rewardRolePermissionGrid: ports.accessPermissions }));
 vi.mock('../packs/rewards/activity', () => ({ rewardReviewActivity: ports.accessActivity }));
 vi.mock('../packs/rewards/group-roles', () => ({ rewardWholeGroupPlans: async () => [], rewardReviewCompanyGroups: async () => ({}), rewardWholeGroupSetupCompanies: async () => [] }));
 vi.mock('../lib/session', () => ({ getSession: ports.session }));
