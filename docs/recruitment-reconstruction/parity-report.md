@@ -595,3 +595,11 @@ second booking of the same room at an overlapping time was refused with the form
 group member, as interviewer, saw both questions as guidance above the criteria, with no answer fields. After the
 render database was rebuilt with the final migration: rejecting an application cancelled its future interview and the
 same room and time could be booked for another candidate. No server errors.
+
+| Run | Job | Result |
+| --- | --- | --- |
+| 43357144173 | Whole-repo type check | PASS |
+| 43357144173 | Production build | PASS |
+| 43357144173 | Selected tests (60 files) | 55 PASS; FAIL: 5 of the known 6 AI files (44 tests) |
+| 43357183960 | Selected tests (60 files) | 59 PASS; FAIL: the sixth known AI file, provider-analysis-policy (9 tests) |
+| 43359497572 | Selected tests (12 files, incl. interview set-up, waiting, import and export) | PASS: 111 tests |
