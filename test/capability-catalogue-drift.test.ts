@@ -103,6 +103,7 @@ const SURFACES:Readonly<Record<string,Surface>>={
  'app/admin/rewards/pat-inputs/actions.ts':support('Company-scoped PAT uploads propose drafts through the native owner. A separate checker confirms them.'),
  'app/admin/settings/system-labels/import-actions.ts':'system_labels',
  'app/admin/settings/system-labels/import/jobs/[jobId]/route.ts':'system_labels',
+ 'app/admin/settings/system-labels/import/jobs/[jobId]/errors/route.ts':'system_labels',
  'app/admin/settings/system-labels/import/jobs/route.ts':'system_labels',
  'app/admin/settings/system-labels/import/route.ts':'system_labels',
  'app/assistant/file-import-actions.ts':support('AI Centre file preparation (core/assistant-import.ts); it imports nothing.'),

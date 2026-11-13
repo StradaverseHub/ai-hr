@@ -216,7 +216,7 @@ describe('Section imports — check, result and run log', () => {
 
 describe('Error Log on Import History entries', () => {
   it('lists this build’s kinds; a run recorded before its type was still offers the log', () => {
-    expect([...IMPORT_ERROR_LOG_KINDS]).toEqual(['employee_full', 'profile', 'family', 'qualification', 'emergency']);
+    expect([...IMPORT_ERROR_LOG_KINDS]).toEqual(['employee_full', 'profile', 'family', 'qualification', 'emergency', 'bank_statutory', 'cost_allocations', 'information_correction']);
     expect(hasImportErrorLog('employee_full')).toBe(true);
     expect(hasImportErrorLog('movement')).toBe(false);
     expect(hasImportErrorLog(null, 'run')).toBe(true);
