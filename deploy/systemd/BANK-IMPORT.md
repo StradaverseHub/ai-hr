@@ -245,7 +245,10 @@ successful web deploy record.
 - **Before the web deploy:** run the check with the pinned runtime:
   `cd /opt/ai-hr && /opt/node22/bin/node --env-file=.env.production --import tsx scripts/check-import-worker.ts`.
   If the managed worker is running but its heartbeat is stale, diagnose it and restart that existing unit
-  (`sudo systemctl restart aihr-bank-import`) under the held lease. Repeat the check before deploying.
+  (`sudo systemctl restart aihr-bank-import`) under the held lease. On staging the deploy user's passwordless sudo
+  covers only `systemctl restart aihr`, so a person with the sudo password runs this in their own terminal
+  (`ssh -t -F /PRIVATE/ssh_config aihr-staging 'sudo systemctl restart aihr-bank-import'`; done this way on
+  13 November 2026). Repeat the check before deploying.
   A restart keeps the unit, release and receipts unchanged. It is not a worker upgrade.
 - **If the deploy already failed at that check** (deploy record `failed` at phase `ci-build-health`): restore the
   worker the same way, then complete the web arrival with `operator-release.mjs resume-arrival`
