@@ -42,6 +42,10 @@ UPDATE_ARGS = ('previous-worker-source', 'unit-sha256', 'previous-web-source', '
                'worker-env-sha256', 'existing-uid')
 ROLLBACK_ARGS = ('from-source', 'to-source', 'unit-sha256', 'to-unit-sha256', 'web-source', 'web-build', 'web-port',
                  'worker-env-sha256', 'existing-uid')
+# Optional for production-drain, production-activate and production-rollback: the environment sha recorded in the previous
+# release's receipt, when an operator added a reviewed key after that activation. Omitted, the receipt must record
+# --worker-env-sha256. The current file always equals --worker-env-sha256.
+PREVIOUS_ENV_ARG = 'previous-worker-env-sha256'
 WEB_SOURCE = Path('/opt/ai-hr')
 WEB_USER = 'aihr'
 PROC = Path('/proc')
@@ -453,6 +457,9 @@ def quarantine_unit(base, source):
 
 def validated_arguments(base, args, sources, builds, digests):
     base.check(os.geteuid() == 0, 'root must run the independently hash-pinned self-contained bundle with Python -I')
+    if args.previous_worker_env_sha256 is not None:
+        digests = (*digests, args.previous_worker_env_sha256)
+        base.check(args.previous_worker_env_sha256 != args.worker_env_sha256, 'omit --previous-worker-env-sha256 when the environment is unchanged')
     for value in sources:
         base.check(re.fullmatch('[a-f0-9]{40}', value) is not None, 'exact sources required')
     for value in builds:
@@ -550,9 +557,9 @@ def window_web(base, args, phase):
     return pinned_web(base, match[0], match[1], args.web_port)
 
 
-def managed_release(base, update, source, unit_sha256, env_sha256):
+def managed_release(base, update, source, unit_sha256, env_sha256, receipt_env_sha256=None):
     """The exact pinned managed production release: receipt, template unit, loaded service and environment pin."""
-    report = update.validate_existing(base, source, unit_sha256, env_sha256)
+    report = update.validate_existing(base, source, unit_sha256, env_sha256, receipt_env_sha256)
     receipt = json.loads(base.read_bounded(base.ROOT / 'releases' / source / 'worker-install-v2.json', 65536))
     base.check(receipt.get('mode') in PRODUCTION_RECEIPTS and isinstance(receipt.get('webBuildId'), str),
                'previous worker receipt is not a managed production installation')
@@ -567,7 +574,8 @@ def update_facts(base, update, args, phase):
     """Read-only. Evaluated before preparation and again immediately before the signal (drain) or unit replacement (activate)."""
     manifest_raw = release_manifest(base, args)
     web = window_web(base, args, phase)
-    report, receipt = managed_release(base, update, args.previous_worker_source, args.unit_sha256, args.worker_env_sha256)
+    report, receipt = managed_release(base, update, args.previous_worker_source, args.unit_sha256, args.worker_env_sha256,
+                                      args.previous_worker_env_sha256)
     if args.previous_web_source == args.previous_worker_source:
         base.check(receipt.get('webBuildId') == args.previous_web_build, 'previous web build differs from the previous worker receipt')
     identity = existing_identity(base, args.existing_uid)
@@ -727,9 +735,13 @@ def update_main(argv, fmt, base, update):
     parser.add_argument('phase', choices=[DRAIN, ACTIVATE])
     for name in UPDATE_ARGS:
         parser.add_argument('--' + name, required=True)
+    parser.add_argument('--' + PREVIOUS_ENV_ARG)
     args = parser.parse_args(argv)
     # Both phases take the identical pins; the drain record binds them and activation refuses any difference.
     pins = {name.replace('-', '_'): getattr(args, name.replace('-', '_')) for name in UPDATE_ARGS}
+    if args.previous_worker_env_sha256 is not None:
+        # Bound only when given, so drain records of unchanged-environment updates keep their exact shape.
+        pins['previous_worker_env_sha256'] = args.previous_worker_env_sha256
     validated_arguments(base, args, (args.previous_worker_source, args.previous_web_source, args.source), (args.previous_web_build, args.build_id),
                         (args.unit_sha256, args.release_manifest_sha256, args.archive_sha256, args.lock_sha256, args.package_sha256,
                          args.worker_env_sha256))
@@ -771,14 +783,18 @@ def rollback_facts(base, update, args, unit_sha256):
     base.check(isinstance(pins, dict) and drained.get('mode') == DRAIN and isinstance(drained.get('drain'), dict) and
                drained['drain'].get('state') == 'drained' and pins.get('source') == args.from_source and
                pins.get('previous_worker_source') == args.to_source and pins.get('unit_sha256') == args.to_unit_sha256 and
-               pins.get('worker_env_sha256') == args.worker_env_sha256, 'rollback must name the drained previous release of this production update')
+               pins.get('worker_env_sha256') == args.worker_env_sha256 and
+               pins.get('previous_worker_env_sha256') == args.previous_worker_env_sha256,
+               'rollback must name the drained previous release of this production update')
     target = base.ROOT / 'releases' / args.to_source
     base.root_protected(target)
     base.root_protected(target / 'worker-install-v2.json', regular=True)
     receipt = json.loads(base.read_bounded(target / 'worker-install-v2.json', 65536))
     base.check(isinstance(receipt, dict) and receipt.get('source') == args.to_source and receipt.get('mode') in PRODUCTION_RECEIPTS and
                receipt.get('unitSha256') == args.to_unit_sha256 == digest(base.service_unit(args.to_source).encode()) and
-               receipt.get('selectedEnvironmentSha256') == args.worker_env_sha256 and receipt.get('serviceStable') is True,
+               receipt.get('selectedEnvironmentSha256') == (args.worker_env_sha256 if args.previous_worker_env_sha256 is None
+                                                            else args.previous_worker_env_sha256) and
+               receipt.get('serviceStable') is True,
                'previous release receipt differs from the pinned managed installation')
     protected_tree(base, target)
     recorded = {args.to_source: receipt.get('webBuildId'), args.from_source: pins.get('build_id')}.get(args.web_source)
@@ -859,6 +875,7 @@ def rollback_main(argv, fmt, base, update):
     parser.add_argument('phase', choices=[ROLLBACK])
     for name in ROLLBACK_ARGS:
         parser.add_argument('--' + name, required=True)
+    parser.add_argument('--' + PREVIOUS_ENV_ARG)
     args = parser.parse_args(argv)
     validated_arguments(base, args, (args.from_source, args.to_source, args.web_source), (args.web_build,),
                         (args.unit_sha256, args.to_unit_sha256, args.worker_env_sha256))

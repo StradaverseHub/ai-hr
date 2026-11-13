@@ -46,7 +46,9 @@ def properties(base):
     return {**base.service_properties(), **dict(line.split('=', 1) for line in extra.splitlines() if '=' in line)}
 
 
-def validate_existing(base, source, unit_hash, env_hash):
+def validate_existing(base, source, unit_hash, env_hash, receipt_env_hash=None):
+    """The current environment always equals env_hash. The prior receipt records env_hash too, unless the operator pins
+    receipt_env_hash (--previous-worker-env-sha256): the reviewed sha recorded before a key was added after activation."""
     release = base.ROOT / 'releases' / source
     for path in (base.UNIT, base.ENV, release / 'worker-install-v2.json'):
         base.root_protected(path, regular=True)
@@ -54,7 +56,8 @@ def validate_existing(base, source, unit_hash, env_hash):
     base.check(digest(base.read_bounded(base.ENV, 1024**2)) == env_hash, 'protected worker environment differs')
     record = json.loads(base.read_bounded(release / 'worker-install-v2.json', 65536))
     base.check(record.get('source') == source and record.get('unitSha256') == unit_hash and
-               record.get('selectedEnvironmentSha256') == env_hash and record.get('serviceStable') is True, 'prior managed installation receipt differs')
+               record.get('selectedEnvironmentSha256') == (env_hash if receipt_env_hash is None else receipt_env_hash) and
+               record.get('serviceStable') is True, 'prior managed installation receipt differs')
     report = properties(base)
     base.validate_service(report, release)
     base.check(report.get('Restart') == 'on-failure' and report.get('NeedDaemonReload') == 'no', 'loaded prior service is not the reviewed configuration')
@@ -128,6 +131,55 @@ def validate_stopped_prior(base, source, unit_hash, env_hash):
     live = unit_or_identity_processes(identity.pw_uid)
     base.check(not live, 'a live process remains for the prior worker unit or identity')
     return {'state': 'stopped', 'forcedKill': False, 'properties': report, 'runtime': runtime, 'livePids': live}
+
+
+def staging_database(base, value, role):
+    """installer_v2's approved local staging database check; parse errors are converted outside the handler so no
+    traceback can carry the URI."""
+    config = None
+    try:
+        config = base.database_config(value, role)
+    except ValueError:
+        pass
+    base.check(config is not None, 'protected worker environment database URI is not the approved staging database (value withheld)')
+    return config
+
+
+def reviewed_environment(base, pinned):
+    """Only with --previous-worker-env-sha256, before anything is written: the changed protected environment keeps
+    installer_v2's closed format (one KEY=<JSON string> line per key, as it writes them), reviewed keys only, the approved
+    staging database roles on one endpoint and root-protected TLS files. Messages never include keys or values."""
+    raw = base.read_bounded(base.ENV, 1024**2)
+    base.check(digest(raw) == pinned, 'protected worker environment differs')
+    try:
+        text = raw.decode('utf-8')
+    except UnicodeDecodeError:
+        text = None
+    base.check(text is not None, 'protected worker environment is not UTF-8')
+    environment = {}
+    for line in text.split('\n'):
+        if line == '':
+            continue
+        key, separator, encoded = line.partition('=')
+        try:
+            value = json.loads(encoded) if separator and re.fullmatch('[A-Z_][A-Z0-9_]*', key) else None
+        except ValueError:
+            value = None
+        base.check(isinstance(value, str) and encoded == json.dumps(value, ensure_ascii=False),
+                   'protected worker environment has unreviewed syntax (values withheld)')
+        base.check(key in base.ENV_KEYS, 'protected worker environment has an unreviewed key (values withheld)')
+        base.check(key not in environment, 'protected worker environment repeats a key')
+        base.check(len(value) <= 65536 and not any(ord(c) < 32 or ord(c) == 127 for c in value),
+                   'protected worker environment has an unreviewed value (values withheld)')
+        environment[key] = value
+    base.check('DATABASE_URL' in environment and 'MIGRATION_DATABASE_URL' in environment, 'protected worker environment lacks a database URL')
+    app = staging_database(base, environment['DATABASE_URL'], 'ai_hr_app')
+    owner = staging_database(base, environment['MIGRATION_DATABASE_URL'], 'ai_hr_owner')
+    base.check((app['PGHOST'], app['PGPORT'], app['PGDATABASE']) == (owner['PGHOST'], owner['PGPORT'], owner['PGDATABASE']),
+               'app and owner URLs must target the same approved staging database')
+    for key in ('NODE_EXTRA_CA_CERTS', 'PGSSLROOTCERT', 'PGSSLCERT', 'PGSSLKEY'):
+        for path in sorted({environment.get(key), app.get(key), owner.get(key)} - {None, ''}):
+            base.root_protected(path, regular=True)
 
 
 def validate_process(base, report, source):
@@ -337,11 +389,14 @@ def upgrade(argv, fmt, base):
     adopted = ('observed-unit-sha256',)
     for name in common + managed + adopted:
         parser.add_argument('--' + name)
+    # Optional, drain/activate only: the env sha the prior receipt records, when a reviewed key was added after activation.
+    parser.add_argument('--previous-worker-env-sha256')
     args = parser.parse_args(argv)
     adopt = args.phase == 'adopt-stopped'
+    rebind = args.previous_worker_env_sha256
     for name in common + (adopted if adopt else managed):
         base.check(getattr(args, name.replace('-', '_')) is not None, '--' + name + ' is required for ' + args.phase)
-    for name in managed if adopt else adopted:
+    for name in (managed + ('previous-worker-env-sha256',)) if adopt else adopted:
         base.check(getattr(args, name.replace('-', '_')) is None, '--' + name + ' is not part of ' + args.phase)
     base.check(os.geteuid() == 0, 'root must run the independently hash-pinned self-contained bundle with Python -I')
     for value in ((args.previous_worker_source, args.source) if adopt else (args.previous_web_source, args.previous_worker_source, args.source)):
@@ -350,8 +405,10 @@ def upgrade(argv, fmt, base):
     for value in ((args.build_id,) if adopt else (args.previous_web_build, args.build_id)):
         base.check(re.fullmatch('[A-Za-z0-9_-]{1,160}', value or ''), 'exact builds required')
     pinned = (args.observed_unit_sha256,) if adopt else (args.unit_sha256,)
-    for value in (args.archive_sha256, args.lock_sha256, args.package_sha256, *pinned, args.worker_env_sha256):
+    for value in (args.archive_sha256, args.lock_sha256, args.package_sha256, *pinned, args.worker_env_sha256,
+                  *(() if rebind is None else (rebind,))):
         base.check(re.fullmatch('[a-f0-9]{64}', value or ''), 'independently authenticated digests required')
+    base.check(rebind != args.worker_env_sha256, 'omit --previous-worker-env-sha256 when the environment is unchanged')
     base.root_protected(base.NODE, regular=True)
     base.check(base.command([str(base.NODE), '--version']).stdout.strip() == 'v22.23.3', 'reviewed worker runtime required')
     lock = base.install_lock_directory() / 'install.lock'
@@ -367,12 +424,17 @@ def upgrade(argv, fmt, base):
         base.root_protected(operations)
         operation = operations / args.source
         identity = {name.replace('-', '_'): getattr(args, name.replace('-', '_')) for name in common + (adopted if adopt else managed)}
+        if rebind is not None:
+            # Bound into the drain record only when given, so records of unchanged-environment updates keep their bytes.
+            identity['previous_worker_env_sha256'] = rebind
         if adopt:
             adopt_stopped(base, fmt, args, operation, identity)
             return
         if args.phase == 'drain':
             state = healthy_web_state(base, args.previous_web_source, args.previous_web_build)
-            report = validate_existing(base, args.previous_worker_source, args.unit_sha256, args.worker_env_sha256)
+            report = validate_existing(base, args.previous_worker_source, args.unit_sha256, args.worker_env_sha256, rebind)
+            if rebind is not None:
+                reviewed_environment(base, args.worker_env_sha256)
             base.check(not operation.exists() and not operation.is_symlink(), 'existing update attempt needs separate recovery review')
             operation.mkdir(mode=0o700)
             archive = operation / 'authenticated-worker.zip'
@@ -381,7 +443,8 @@ def upgrade(argv, fmt, base):
             staged.mkdir(mode=0o700)
             manifest = fmt.extract_archive(archive, staged, args.source, args.lock_sha256, args.package_sha256)
             base.check(healthy_web_state(base, args.previous_web_source, args.previous_web_build) == state, 'web baseline changed before drain')
-            base.check(validate_existing(base, args.previous_worker_source, args.unit_sha256, args.worker_env_sha256) == report, 'worker changed during preparation')
+            base.check(validate_existing(base, args.previous_worker_source, args.unit_sha256, args.worker_env_sha256, rebind) == report,
+                       'worker changed during preparation')
             result = drain(base, report, args.previous_worker_source)
             base.write_new(operation / 'drained.json', fmt.canonical({'identity': identity, 'manifestSha256': fmt.digest(fmt.canonical(manifest)), 'drain': result}), 0o400)
             print(json.dumps({'source': args.source, **result}))
@@ -391,7 +454,9 @@ def upgrade(argv, fmt, base):
         record = json.loads(base.read_bounded(operation / 'drained.json', 65536))
         base.check(record.get('identity') == identity and record.get('drain', {}).get('state') == 'drained', 'exact drain record required')
         state = healthy_web_state(base, args.source, args.build_id)
-        report = validate_existing(base, args.previous_worker_source, args.unit_sha256, args.worker_env_sha256)
+        report = validate_existing(base, args.previous_worker_source, args.unit_sha256, args.worker_env_sha256, rebind)
+        if rebind is not None:
+            reviewed_environment(base, args.worker_env_sha256)
         base.check(report.get('MainPID') == '0' and report.get('ActiveState') == 'inactive', 'prior worker is not drained')
         archive = operation / 'authenticated-worker.zip'
         base.root_protected(archive, regular=True)
