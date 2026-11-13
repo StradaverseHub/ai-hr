@@ -5,7 +5,10 @@ import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {readSystemLabelWorkbook,LABEL_WORKBOOK_MAX_BYTES} from '../lib/system-label-workbook';
 import {SYSTEM_LABEL_IMPORT_ALREADY_RUNNING,type SystemLabelImportProgress,type SystemLabelImportResult} from '../lib/system-label-import-job';
-import {BULK_JOB_ALREADY_RUNNING,BulkJobError,bulkJobTx,bulkJobWorkerStatusTx,enqueueBulkJobTx,listBulkJobsTx,type BulkJobRow} from './bulk-job';
+import {BULK_JOB_ALREADY_RUNNING,BulkJobError,bulkJobId,bulkJobTx,bulkJobWorkerStatusTx,enqueueBulkJobTx,listBulkJobsTx,type BulkJobRow} from './bulk-job';
+import type {BulkJobRowError,BulkJobState} from '../lib/bulk-job';
+import type {LabelImportPreviewRow} from '../lib/system-label-definition';
+import type {SystemLabelImportFailedRow} from '../lib/system-label-import-problems';
 
 export const SYSTEM_LABEL_IMPORT_KIND='system_label_import';
 export class SystemLabelImportJobError extends Error{constructor(message:string,readonly status=400){super(message);}}
@@ -50,3 +53,21 @@ export async function listSystemLabelImportJobs(ctx:SessionContext){return withT
  const worker=rows.some(r=>r.state==='queued')?await bulkJobWorkerStatusTx(tx,SYSTEM_LABEL_IMPORT_KIND):'running';
  return rows.map(row=>systemLabelImportProgress(row,worker));
 });}
+/** Board c074c6b8: what one import's problem list is built from, exactly as the worker stored it (no re-validation:
+ * checking the file again after it was imported would call its own new codes "already exists"). */
+export type SystemLabelImportProblemSource={id:string;state:BulkJobState;blocked:LabelImportPreviewRow[];failed:SystemLabelImportFailedRow[];
+ errors:BulkJobRowError[];error:string|null;
+ /** A completed import released before its refused rows were kept: only its stored English report exists. */
+ legacy:boolean};
+/** One bounded read of the creator's own job row (bulk_job row security), as the progress route reads it. */
+export async function readSystemLabelImportProblems(ctx:SessionContext,id:string):Promise<SystemLabelImportProblemSource>{
+ try{return await withTenant(ctx,async tx=>{
+  const [row]=await tx.execute<{id:string;state:BulkJobState;plan:Record<string,unknown>|null;error:string|null;errors:BulkJobRowError[]|null}>(
+   sql`select id,state,plan,error,errors from bulk_job where id=${bulkJobId(id)}::uuid and kind=${SYSTEM_LABEL_IMPORT_KIND}`);
+  if(!row)throw new BulkJobError('Job unavailable.',404);
+  const plan=(row.plan??{}) as {blocked?:LabelImportPreviewRow[];blockedKept?:boolean;released?:boolean;failed?:SystemLabelImportFailedRow[]};
+  const completed=row.state==='completed',failed=row.state==='failed';
+  return{id:row.id,state:row.state,blocked:completed&&plan.blockedKept?plan.blocked??[]:[],failed:failed?plan.failed??[]:[],
+   errors:failed?row.errors??[]:[],error:failed?row.error:null,legacy:completed&&!plan.blockedKept};
+ });}catch(error){throw kernelError(error);}
+}

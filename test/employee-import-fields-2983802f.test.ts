@@ -484,7 +484,7 @@ describe('2983802f §4 · direct superior is a forward reference', () => {
     expect(preview.rows[1].errors.join(' | ')).toMatch(/Unknown direct_superior "NOBODY"/);
     expect(preview.rows[0].ok, 'row 1 must not be previewed as ready to import').toBe(false);
     expect(preview.rows[0].errors.join(' | ')).toMatch(
-      /direct_superior "S2" is on row 2 of this file, which has errors/,
+      /direct_superior "S2" is on row 3 of this file, which has errors/,
     );
     expect(preview.validCount).toBe(0);
 
@@ -505,8 +505,8 @@ describe('2983802f §4 · direct superior is a forward reference', () => {
     ]);
     const preview = await validateEmployeeImport(a, { companyId: b.companyId, records });
     expect(preview.rows[2].errors.join(' | '), 'row 3 fails on its own department').toMatch(/NoSuchDept/);
-    expect(preview.rows[1].errors.join(' | ')).toMatch(/is on row 3 of this file, which has errors/);
-    expect(preview.rows[0].errors.join(' | ')).toMatch(/is on row 2 of this file, which has errors/);
+    expect(preview.rows[1].errors.join(' | ')).toMatch(/is on row 4 of this file, which has errors/);
+    expect(preview.rows[0].errors.join(' | ')).toMatch(/is on row 3 of this file, which has errors/);
     expect(preview.validCount, 'all three rows are refused').toBe(0);
   });
 

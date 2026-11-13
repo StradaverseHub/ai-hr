@@ -1,7 +1,7 @@
 import {requireAdmin} from '@/lib/authz';
 import {previewCostAllocationUpload} from '@/core/cost-allocation-import';
 import {ImportHistoryError,IMPORT_SOURCE_MAX_BYTES} from '@/core/import-history';
-import {publicErrorMessage} from '@/lib/public-error';
+import {publicErrorMessage,publicUnexpectedErrorMessage} from '@/lib/public-error';
 import {CostAllocationError} from '@/lib/employment-cost-allocation';
 export const runtime='nodejs';
 /** Raw file transport keeps the original bytes for import history and bounds memory before parsing. */
@@ -21,7 +21,7 @@ export async function POST(request:Request){
   return Response.json(result,{headers:{'Cache-Control':'private, no-store'}});
  }catch(error){
   const known=error instanceof ImportHistoryError||error instanceof CostAllocationError;
-  if(!known)console.error('[cost allocation upload]',error);
-  return Response.json({error:known?publicErrorMessage(error):null},{status:400,headers:{'Cache-Control':'private, no-store'}});
+  // d3ba1e9f: an unexpected failure is logged under a short reference that the screen shows (never the raw message).
+  return Response.json({error:known?publicErrorMessage(error):publicUnexpectedErrorMessage(error,'cost allocation upload')},{status:known?400:500,headers:{'Cache-Control':'private, no-store'}});
  }finally{reader.releaseLock();}
 }

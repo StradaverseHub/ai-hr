@@ -1,10 +1,27 @@
 import {describe,it,expect} from 'vitest';
-import {resolveLabelAssignment,labelAppliesToCompany} from '../lib/system-label-assignment';
+import {resolveLabelAssignment,labelAppliesToCompany,LabelAssignmentError} from '../lib/system-label-assignment';
 import {LABEL_IMPORT_DEFINITIONS,LABEL_TEMPLATE_DEFINITIONS} from '../lib/system-label-definition';
 import {buildSystemLabelWorkbook,readSystemLabelWorkbook,buildSystemLabelUploadTemplate,systemLabelErrorWorkbook} from '../lib/system-label-workbook';
 import * as XLSX from 'xlsx';
 const companies=[{id:'a',name:'Example A',writable:true,archived:null},{id:'b',name:'Example B',writable:true,archived:null},{id:'hidden',name:'Private',writable:false,archived:null}];
 describe('System Labels assignment intent',()=>{
+ // Board c074c6b8: each refusal names its exact check and the column it read, without changing reason or message.
+ it.each([
+  [{Criteria:'invalid'},'invalidCriteria','invalidCriteria','Criteria','Criteria must be global or companies.'],
+  [{Company:'missing'},'invalidCompany','companyNotPermitted','Company','Company is unknown, ambiguous, inactive or outside your administrator scope.'],
+  [{'Criteria Companies':'a; missing'},'invalidCompany','companyNotPermitted','Criteria Companies','Company is unknown, ambiguous, inactive or outside your administrator scope.'],
+  [{Criteria:'global',Company:'a'},'invalidCriteriaCompany','globalWithCompanies','Company','Global criteria must leave Company and Criteria Companies blank.'],
+  [{Criteria:'global','Criteria Companies':'a'},'invalidCriteriaCompany','globalWithCompanies','Criteria Companies','Global criteria must leave Company and Criteria Companies blank.'],
+  [{Company:'a','Criteria Companies':'b'},'invalidCriteriaCompany','companyNotInCriteria','Company','Company must be included in Criteria Companies.'],
+  [{Criteria:'companies'},'criteriaCompaniesRequired','criteriaCompaniesRequired','Criteria Companies','Choose at least one company for companies criteria.'],
+ ] as const)('names the check and column of %j',(values,reason,detail,column,message)=>{
+  let thrown:unknown;try{resolveLabelAssignment(values,companies,true);}catch(error){thrown=error;}
+  expect(thrown).toBeInstanceOf(LabelAssignmentError);expect(thrown).toMatchObject({reason,detail,column,message});
+ });
+ it('names the global ownership checks',()=>{
+  expect(()=>resolveLabelAssignment({},companies,false)).toThrow(expect.objectContaining({reason:'globalAdminRequired',detail:'globalAdminRequired',column:'Criteria'}));
+  expect(()=>resolveLabelAssignment({},[],true)).toThrow(expect.objectContaining({reason:'invalidCompany',detail:'noOwnerCompany',column:'Company'}));
+ });
  it('uses all-three-blank as global with deterministic internal ownership',()=>{
   expect(resolveLabelAssignment({},[...companies].reverse(),true)).toEqual({companyId:'a',companyIds:null,criteria:'global'});
   expect(()=>resolveLabelAssignment({},companies,false)).toThrow('group administrator');
@@ -44,7 +61,8 @@ describe('System Labels assignment intent',()=>{
  });
  it('keeps Grade Group names visible in errors when common Code is intentionally blank',()=>{
   const bytes=systemLabelErrorWorkbook([{sheet:'grade_groups',row:3,values:{Code:'',Name:'Fictional preserved group'},outcome:'error',message:'Check assignment',before:null,after:{}}]);
-  const wb=XLSX.read(bytes,{type:'buffer'});expect(wb.Sheets.Errors.C2.v).toBe('Fictional preserved group');
+  // Board c074c6b8: the Reference column (C) of the shared Error Log carries the group name.
+  const wb=XLSX.read(bytes,{type:'buffer'});expect(wb.Sheets.Errors.C1.v).toBe('Reference');expect(wb.Sheets.Errors.C2.v).toBe('Fictional preserved group');
  });
  it('downloads blank upload sheets for all categories with clear global instructions',async()=>{
   const bytes=await buildSystemLabelUploadTemplate({samples:{}}),wb=XLSX.read(bytes,{type:'buffer'});

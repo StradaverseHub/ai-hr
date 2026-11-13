@@ -46,20 +46,25 @@ export {isTransient as isTransientEmployeeImportError};
 class ActivationConflict extends Error{constructor(readonly rows:BulkJobRowError[]){super('Employee data changed before the import could be finished.');}}
 /** Item 1859cce0 — every step ran and at least one was refused while saving: the whole file is discarded. */
 class SaveRefused extends Error{constructor(readonly rows:number[]){super(`Row ${rows.join(', ')} could not be saved.`);}}
+/** Board d3ba1e9f — a recorded Excel row, or the data row + 1 when the step predates it. */
+const excelOrNext=(rowNum:number,excel:string|null|undefined)=>{const n=Number(excel);return Number.isSafeInteger(n)&&n>0?n:rowNum+1;};
 const inputOf=(job:BulkJobRow)=>job.input as EmployeeImportJobInput;
 const planOf=(job:BulkJobRow)=>(job.plan??{companyId:inputOf(job)?.upload.companyId}) as EmployeeImportStoredPlan;
 /** The validated plan travels from prepare to the commit transaction of the same tick (never persisted twice). */
 const prepared=new Map<string,EmployeeImportJobPlan&{parsed:ReturnType<typeof parseEmployeeImportUpload>}>();
 
 /** Rebuilds the map of already applied rows from their committed step results (survives a worker restart). */
+/** `refusedByIndex`: employee index -> the refused row as Excel numbers it (board d3ba1e9f; data row + 1 for plans
+ *  recorded before rows carried it), used only to name that row. */
 type StepEnv={employmentByIndex:Map<number,string>;registerSubjects:Map<string,{employmentId:string;personId:string}>;refusedByIndex:Map<number,number>;refusedCodes:Set<string>};
+const stepExcelRow=(p:Extract<EmployeeImportPlanStep,{kind:'employee'}>)=>{const excel=p.row?.result?.excelRow;return typeof excel==='number'&&excel>0?excel:p.rowNum+1;};
 async function stepEnv(tx:Tx,job:BulkJobRow,cache:Map<string,unknown>){
  let env=cache.get('env') as StepEnv|undefined;
  if(env)return env;
  env={employmentByIndex:new Map(),registerSubjects:new Map(),refusedByIndex:new Map(),refusedCodes:new Set()};
  const rows=await tx.execute<{payload:EmployeeImportPlanStep;result:StepResult}>(sql`select payload,result from bulk_job_step where job_id=${job.id}::uuid and kind='employee' and state='applied'`);
  for(const r of rows){
-  if(r.payload.kind==='employee'&&r.result?.refused){env.refusedByIndex.set(r.payload.index,r.payload.rowNum);if(r.payload.row.hire.employeeCode)env.refusedCodes.add(r.payload.row.hire.employeeCode);continue;}
+  if(r.payload.kind==='employee'&&r.result?.refused){env.refusedByIndex.set(r.payload.index,stepExcelRow(r.payload));if(r.payload.row.hire.employeeCode)env.refusedCodes.add(r.payload.row.hire.employeeCode);continue;}
   if(r.payload.kind!=='employee'||!r.result?.employmentId)continue;env.employmentByIndex.set(r.payload.index,r.result.employmentId);const code=r.payload.row.hire.employeeCode;if(code&&r.result.personId)env.registerSubjects.set(code,{employmentId:r.result.employmentId,personId:r.result.personId});}
  cache.set('env',env);return env;
 }
@@ -88,7 +93,7 @@ export const employeeImportJobHandler:BulkJobHandler<EmployeeImportPlanStep>={
  async prepare(ctx,job){
   const {upload:input}=inputOf(job);
   const parsed=parseEmployeeImportUpload(input);
-  const plan=await prepareEmployeeImportJobPlan(ctx,{companyId:input.companyId,records:parsed.records,dependentRecords:parsed.dependentRecords,registerRecords:parsed.registerRecords,allocationRecords:parsed.allocationRecords,allocationToken:input.allocationToken});
+  const plan=await prepareEmployeeImportJobPlan(ctx,{companyId:input.companyId,records:parsed.records,dependentRecords:parsed.dependentRecords,registerRecords:parsed.registerRecords,allocationRecords:parsed.allocationRecords,allocationToken:input.allocationToken,sourceRows:input.sourceRows});
   prepared.set(job.id,{...plan,parsed});
   const counters={total:plan.total,valid:plan.valid,invalid:plan.invalid};
   const stored:EmployeeImportStoredPlan={companyId:input.companyId,allocationPreview:plan.allocationPreview,rejected:plan.rejected,skipped:plan.total-plan.valid};
@@ -136,7 +141,7 @@ export const employeeImportJobHandler:BulkJobHandler<EmployeeImportPlanStep>={
   }catch(error){
    if(isTransient(error))throw error;
    const message=publicErrorMessage(error).slice(0,1000);
-   if(p.kind==='employee'){env.refusedByIndex.set(p.index,p.rowNum);if(p.row.hire.employeeCode)env.refusedCodes.add(p.row.hire.employeeCode);}
+   if(p.kind==='employee'){env.refusedByIndex.set(p.index,stepExcelRow(p));if(p.row.hire.employeeCode)env.refusedCodes.add(p.row.hire.employeeCode);}
    return{result:{refused:{message,column:ownerRefusalColumn(message)}} satisfies StepResult,counters:{refused:1}};
   }
  },
@@ -145,8 +150,9 @@ export const employeeImportJobHandler:BulkJobHandler<EmployeeImportPlanStep>={
   const plan=planOf(job);
   if(!plan.released){
    // Nothing becomes visible while any row was refused while saving: the failure path discards the whole file.
-   const refused=await withTenant(ctx,tx=>tx.execute<{row_num:number}>(sql`select distinct row_num from bulk_job_step where job_id=${job.id}::uuid and result ? 'refused' order by row_num`));
-   if(refused.length)throw new SaveRefused(refused.map(r=>Number(r.row_num)));
+   const refused=await withTenant(ctx,tx=>tx.execute<{row_num:number;excel_row:string|null}>(sql`select distinct s.row_num,e.payload#>>'{row,result,excelRow}' as excel_row from bulk_job_step s
+    left join bulk_job_step e on e.job_id=s.job_id and e.kind='employee' and e.row_num=s.row_num where s.job_id=${job.id}::uuid and s.result ? 'refused' order by s.row_num`));
+   if(refused.length)throw new SaveRefused([...new Set(refused.map(r=>excelOrNext(Number(r.row_num),r.excel_row)))]);
    await release(ctx,job,unit,plan);return'more';
   }
   if(!plan.settled){
@@ -168,22 +174,24 @@ export const employeeImportJobHandler:BulkJobHandler<EmployeeImportPlanStep>={
  async describeFailure(job,error,step,owner){
   const message=publicErrorMessage(error);
   if(planOf(job).released)return{error:`The employees were imported; finishing the import needs attention: ${message}`};
-  const rows=await owner<{kind:string;row_num:number;email:string|null;code:string|null;company:string|null;name:string|null;refused:{message:string;column?:string}|null}[]>`select kind,row_num,payload->>'email' as email,
-    payload#>>'{row,hire,employeeCode}' as code,payload#>>'{row,hire,companyId}' as company,payload#>>'{row,result,fullName}' as name,result->'refused' as refused
+  const rows=await owner<{kind:string;row_num:number;email:string|null;code:string|null;company:string|null;name:string|null;excel:string|null;refused:{message:string;column?:string}|null}[]>`select kind,row_num,payload->>'email' as email,
+    payload#>>'{row,hire,employeeCode}' as code,payload#>>'{row,hire,companyId}' as company,payload#>>'{row,result,fullName}' as name,payload#>>'{row,result,excelRow}' as excel,result->'refused' as refused
    from bulk_job_step where job_id=${job.id}::uuid order by seq`;
   const employees=new Map(rows.filter(r=>r.kind==='employee').map(r=>[r.row_num,r] as const));
-  const identity=(rowNum:number)=>{const e=employees.get(rowNum);return{rowNum,employeeCode:e?.code??'',fullName:e?.name??'',companyId:e?.company??planOf(job).companyId};};
+  const identity=(rowNum:number)=>{const e=employees.get(rowNum);return{rowNum,excelRow:excelOrNext(rowNum,e?.excel),employeeCode:e?.code??'',fullName:e?.name??'',companyId:e?.company??planOf(job).companyId};};
   const stops:EmployeeImportSaveReportRow[]=[];
   for(const r of rows)if(r.refused)stops.push({...identity(r.row_num),outcome:'stopped',message:r.refused.message,...(r.refused.column?{column:r.refused.column}:{})});
   if(error instanceof ActivationConflict)for(const c of error.rows)stops.push({...identity(c.rowNum),outcome:'stopped',message:c.message,column:'email'});
   else if(!(error instanceof SaveRefused)&&step?.row_num)stops.push({...identity(step.row_num),outcome:'stopped',message,...(ownerRefusalColumn(message)?{column:ownerRefusalColumn(message)}:{})});
   stops.sort((a,b)=>a.rowNum-b.rowNum);
   const stoppedBy=[...new Set(stops.map(s=>s.rowNum))].sort((a,b)=>a-b);
+  // Board d3ba1e9f — the sentences name the stopping rows as Excel numbers them; rowNum stays the data row.
+  const stoppedRows=stoppedBy.map(rowNum=>identity(rowNum).excelRow);
   const errors:BulkJobRowError[]=[
    ...stops.map(s=>({rowNum:s.rowNum,ref:employees.get(s.rowNum)?.email??'',message:s.message??''})),
-   ...[...employees.values()].filter(e=>!stoppedBy.includes(e.row_num)).map(e=>({rowNum:e.row_num,ref:e.email??'',message:cancelledRowMessage(stoppedBy)})),
+   ...[...employees.values()].filter(e=>!stoppedBy.includes(e.row_num)).map(e=>({rowNum:e.row_num,ref:e.email??'',message:cancelledRowMessage(stoppedRows)})),
   ].sort((a,b)=>a.rowNum-b.rowNum);
-  return{error:cancelledFileMessage(stoppedBy,message),errors,planMerge:{saveReport:stops.slice(0,EMPLOYEE_IMPORT_SAVE_REPORT_LIMIT)}};
+  return{error:cancelledFileMessage(stoppedRows,message),errors,planMerge:{saveReport:stops.slice(0,EMPLOYEE_IMPORT_SAVE_REPORT_LIMIT)}};
  },
  /** Void every staged row in bounded owner batches (ADR-0157), release the attempt as discarded, then settle. */
  async discard(job,unit){

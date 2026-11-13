@@ -383,12 +383,13 @@ describe('§5 employee-import.tsx wiring (static — no DOM runner in this suite
     expect(src).toMatch(/preview\.rows\.map\(\(r\) =>/);
     const tableBody = src.slice(src.indexOf('<tbody'), src.indexOf('</tbody>'));
     expect(tableBody).not.toMatch(/preview\.rows\.filter/);
-    expect(src).toMatch(/onDownloadErrors\(preview\.rows\.filter\(\(r\) => !r\.ok\)\)/);
-    expect(src).toMatch(/r\.errors\.map\(nricMessage\)\.join\('; '\)/);
-    expect(src).toMatch(/preview\.missingColumns\.map/);
-    // Result card: failures listed with row number and message.
-    expect(src).toMatch(/result\.failed\.map\(\(f\) =>/);
-    expect(src).toMatch(/\{nricMessage\(f\.message\)\}/);
+    // Board d3ba1e9f — every problem (refused rows, their reasons, missing columns) is one Error Log line from the
+    // adapter, shown in the problem table and downloaded as the Error Log; the result card does the same.
+    expect(src).toMatch(/employeePreviewProblemLines\(preview, problemT\)/);
+    expect(src).toMatch(/<ImportProblems lines=\{lines\}/);
+    expect(read('/lib/employee-import-problems.ts')).toMatch(/missingColumnLines\(preview\.missingColumns/);
+    expect(src).toMatch(/employeeResultProblemLines\(result,preview,problemT\)/);
+    expect(src).not.toMatch(/toCsv\(/);
   });
 
   it('does not paginate the preview (r75 — a hidden row is a row nobody approved)', () => {

@@ -6,6 +6,10 @@
  */
 import { describe, expect, it } from 'vitest';
 import { csvSafeCell, toCsv } from '../lib/csv';
+import * as XLSX from 'xlsx';
+import { problemCellSafe } from '../lib/import-problem-workbook';
+import { importProblemWorkbookStreamBytes } from '../lib/import-problem-workbook-stream';
+import type { ImportProblemLine } from '../lib/import-problem-lines';
 
 describe('CSV formula-injection sanitisation', () => {
   it('prefixes a single quote on leading-formula cells', () => {
@@ -36,5 +40,26 @@ describe('CSV formula-injection sanitisation', () => {
 
   it('does not alter the byte output of a clean roster row', () => {
     expect(toCsv([['Name', 'Dept'], ['Ann', 'Finance']])).toBe('Name,Dept\r\nAnn,Finance\r\n');
+  });
+});
+
+/** d3ba1e9f — the Excel Error Log carries uploaded names and codes too: the streamed .xlsx never holds a formula. */
+describe('xlsx Error Log formula-injection sanitisation', () => {
+  it('guards the same leading characters as the CSV guard', () => {
+    for (const raw of ['=HYPERLINK("http://evil","x")', '@SUM(A1:A9)', '+1+1', '-2+3', '\tTabbed', '\rCR', ' =spaced']) expect(problemCellSafe(raw)).toBe("'" + raw);
+    expect(problemCellSafe('Ann Tan')).toBe('Ann Tan');
+  });
+
+  it('writes uploaded text as text cells, never as formulas, in the streamed Error Log', async () => {
+    const t = (key: string) => key;
+    const lines: ImportProblemLine[] = [{ row: 2, reference: '=HYPERLINK("http://evil","x")', employeeName: '@SUM(A1:A9)', value: '+cmd|/C calc', problem: '-2+3', stage: 'check', result: 'refused' }];
+    async function* pages() { yield lines; }
+    const bytes = await importProblemWorkbookStreamBytes({ pages: pages(), columns: ['row', 'reference', 'employeeName', 'value', 'problem', 'result'], t });
+    const sheet = XLSX.read(bytes, { type: 'buffer', cellFormula: true }).Sheets.Errors;
+    const cells = Object.keys(sheet).filter(k => !k.startsWith('!'));
+    expect(cells.some(k => sheet[k].f)).toBe(false);
+    expect(['B2', 'C2', 'D2', 'E2'].map(k => [sheet[k].t, sheet[k].v])).toEqual([
+      ['s', '\'=HYPERLINK("http://evil","x")'], ['s', "'@SUM(A1:A9)"], ['s', "'+cmd|/C calc"], ['s', "'-2+3"],
+    ]);
   });
 });

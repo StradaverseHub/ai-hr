@@ -11,6 +11,7 @@ import {previewSystemLabelImport,applySystemLabelImport} from '../core/system-la
 import {buildSystemLabelWorkbook} from '../lib/system-label-workbook';
 import {createGradeGroup} from '../packs/leave/service';
 import {ORGANISATION_LABEL_KINDS} from '../lib/system-label-definition';
+import en from '../messages/en.json';
 let b:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();});
 const book=(rows:Record<string,Record<string,string>[]>)=>buildSystemLabelWorkbook({kinds:Object.keys(rows),rows,references:{companies:[],grades:[],employees:[]}});
@@ -73,6 +74,18 @@ describe('new-only System Label import identity boundary',()=>{
   for(const [code,reason]of Object.entries(reasons))expect(preview.rows.find(row=>(row.after.Code||row.after.Name)===code)).toMatchObject({reason,outcome:'error',selected:false});
   expect(preview.rows.find(row=>row.after.Label==='Missing code')).toMatchObject({reason:'required',reasonField:'Code'});
   for(const [code,field]of [['MISSING_DESCRIPTION','Description'],['MISSING_LABEL','Label']])expect(preview.rows.find(row=>row.after.Code===code)).toMatchObject({reasonField:field});
+  // Board c074c6b8: each throw site also names its exact check and the column it read. The reasons above and each
+  // server message are unchanged (the history still records them); the detail only selects the screen's sentence.
+  const details={MISSING_COMPANY:['criteriaCompaniesRequired','Criteria Companies'],BAD_COMPANY:['companyNotPermitted','Company'],BAD_CRITERIA:['invalidCriteria','Criteria'],
+   BAD_CRITERIA_COMPANY:['companyNotPermitted','Criteria Companies'],EMPTY_CRITERIA:['criteriaCompaniesRequired','Criteria Companies'],BAD_HEAD:['invalidHeadEmployee','Head Employee Code'],
+   MISSING_DESCRIPTION:['required','Description'],BAD_SORT:['wholeNumber','Sort Order'],lowercase:['invalidGradeCode','Code'],MISSING_LABEL:['required','Label'],
+   DUPLICATE_LABEL:['gradeLabelExists','Label'],'Unknown grade group':['invalidGradeReferences','Grade Codes'],'Already assigned group':['gradeAlreadyGrouped','Grade Codes']} as const;
+  for(const [code,[reasonDetail,reasonColumn]]of Object.entries(details))expect(preview.rows.find(row=>(row.after.Code||row.after.Name)===code),code).toMatchObject({reasonDetail,reasonColumn});
+  expect(preview.rows.find(row=>row.after.Label==='Missing code')).toMatchObject({reasonDetail:'required',reasonColumn:'Code',message:'Code is required.'});
+  expect(preview.rows.find(row=>row.after.Code==='BAD_COMPANY')).toMatchObject({message:'Company is unknown, ambiguous, inactive or outside your administrator scope.'});
+  expect(preview.rows.find(row=>row.after.Code==='BAD_CRITERIA')).toMatchObject({message:'Criteria must be global or companies.'});
+  const unsupported=preview.rows.find(row=>row.sheet==='unsupported')!;expect(unsupported).toMatchObject({reason:'unsupportedCategory',reasonDetail:'unsupportedCategory'});expect(unsupported.reasonColumn).toBeUndefined();
+  expect(preview.rows.find(row=>row.after.Code==='STILL_VALID')?.reasonDetail).toBeUndefined();
   expect(preview.valid).toBe(true);expect(preview.rows.find(row=>row.after.Code==='STILL_VALID')).toMatchObject({outcome:'add',selected:true});
  });
  it('reports an intentionally unselected valid row as skipped while importing only the selected valid subset',async()=>{
@@ -82,7 +95,10 @@ describe('new-only System Label import identity boundary',()=>{
   expect(preview.rows.find(row=>row.after.Code==='UNSELECTED_NEW')).toMatchObject({outcome:'skip',reason:'notSelected',selected:false});
   const summary=await applySystemLabelImport(ctx,{bytes,token:preview.token,selectedKeys});expect(summary).toMatchObject({imported:1,updated:0,skipped:1,failed:0});expect(summary.errorReport).toBeTruthy();
   const report=XLSX.read(Buffer.from(summary.errorReport!,'base64'),{type:'buffer'}),rows=XLSX.utils.sheet_to_json<string[]>(report.Sheets.Errors,{header:1,raw:false});
-  expect(rows).toEqual([['Worksheet','Row','Code','Result','Message'],['division','3','UNSELECTED_NEW','skip','Valid new code was not selected for this import. No record was created.']]);
+  // Board c074c6b8: the stored report is the shared Error Log layout, in English, with the same sentence as before.
+  const h=en.importProblems.headers;
+  expect(rows).toEqual([[h.row,h.category,h.reference,h.field,h.value,h.problem,h.correction,h.stage,h.result],
+   ['3','Division','UNSELECTED_NEW','Code','UNSELECTED_NEW','Valid new code was not selected for this import. No record was created.',en.labelsImportWizard.fix.notSelected,en.importProblems.stage.check,en.importProblems.result.skipped]]);
   expect(await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'SELECTED_NEW'))).toHaveLength(1);expect(await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'UNSELECTED_NEW'))).toHaveLength(0);
   const events=await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.eventType,'system-label-import.applied'));expect(events).toHaveLength(1);expect(events[0].payload).toMatchObject({summary:{imported:1,updated:0,skipped:1,failed:0},rows:[{sheet:'division',row:2,outcome:'add',reason:null,message:'Valid new code.'},{sheet:'division',row:3,outcome:'skip',reason:'notSelected',message:'Valid new code was not selected for this import. No record was created.'}]});
  });

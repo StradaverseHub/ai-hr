@@ -4,15 +4,19 @@ import userEvent from '@testing-library/user-event';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viLocale from '../messages/vi.json';
 import {SystemLabelImport} from '../components/system-label-import';
-const mocks=vi.hoisted(()=>({fetch:vi.fn(),post:vi.fn(),job:vi.fn(),refresh:vi.fn()}));
+import {labelImportFailureLines,labelImportProblemLines} from '../lib/system-label-import-problems';
+import {labelRootTranslator} from './label-import-translators';
+const mocks=vi.hoisted(()=>({fetch:vi.fn(),post:vi.fn(),job:vi.fn(),errors:vi.fn(),refresh:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:mocks.refresh})}));
 // 44810ec04 runs the import as a background job: on mount the wizard rejoins an active job (GET .../import/jobs), the
 // confirmation enqueues one, and the wizard follows it (GET .../import/jobs/{id}) to the same summary or refusal.
 // Preview and confirmation still POST to the import route; `post` and `job` answer those two in order.
+// Board c074c6b8: a finished job's rows come from GET .../import/jobs/{id}/errors (`errors`), built from the job's
+// stored rows by the same adapter the screen uses.
 const JOBS='/admin/settings/system-labels/import/jobs',IMPORT='/admin/settings/system-labels/import';
-beforeEach(()=>{vi.clearAllMocks();mocks.fetch.mockImplementation((url:string,init?:RequestInit)=>url===JOBS?Promise.resolve(response({jobs:[]})):url.startsWith(JOBS+'/')?mocks.job(url,init):mocks.post(url,init));vi.stubGlobal('fetch',mocks.fetch);});
+beforeEach(()=>{vi.clearAllMocks();mocks.errors.mockResolvedValue(response({lines:[],total:0,legacy:false}));mocks.fetch.mockImplementation((url:string,init?:RequestInit)=>url===JOBS?Promise.resolve(response({jobs:[]})):url.startsWith(JOBS+'/')&&url.includes('/errors')?mocks.errors(url,init):url.startsWith(JOBS+'/')?mocks.job(url,init):mocks.post(url,init));vi.stubGlobal('fetch',mocks.fetch);});
 const queued={id:'00000000-0000-4000-8000-000000000001',state:'queued',sourceName:'fictional.xls',stepsTotal:0,stepsDone:0,error:null,errors:[],result:null,worker:'running',createdAt:'2026-11-11T00:00:00.000Z',updatedAt:'2026-11-11T00:00:00.000Z'};
-const rows=[{sheet:'division',row:2,values:{Code:'NEW',Label:'New label'},after:{Code:'NEW',Label:'New label'},before:null,outcome:'add',selected:true,message:'Valid new code.'},{sheet:'department',row:3,values:{Code:'EXISTING'},after:{Code:'EXISTING'},before:null,outcome:'error',selected:false,reason:'existing',message:'This code already exists.'}];
+const rows=[{sheet:'division',row:2,values:{Code:'NEW',Label:'New label'},after:{Code:'NEW',Label:'New label'},before:null,outcome:'add',selected:true,message:'Valid new code.'},{sheet:'department',row:3,values:{Code:'EXISTING'},after:{Code:'EXISTING'},before:null,outcome:'error',selected:false,reason:'existing',reasonDetail:'existing',reasonColumn:'Code',message:'SERVER_ENGLISH_MUST_NOT_RENDER'}] as const;
 const response=(data:unknown)=>({ok:true,status:200,headers:new Headers({'Content-Type':'application/json'}),json:async()=>data});
 // Result rows can render before React finishes the transition. Act only on the settled control.
 async function clickReady(user:ReturnType<typeof userEvent.setup>,name:string,scope:Pick<typeof screen,'getByRole'>=screen){
@@ -38,23 +42,59 @@ describe('three-step new-code import wizard',()=>{
   await user.upload(within(dialog).getByLabelText(w.upload),new File(['fictional'],'fictional.xls'));
   mocks.post.mockResolvedValueOnce(response({ok:true,preview:{token:'source-bound-token',mode:'add',valid:true,rows}}));
   await clickReady(user,w.check,within(dialog));
-  expect(await within(dialog).findByText(w.existing,{},{timeout:5000})).toBeVisible();expect(within(dialog).getByText(w.ready.replace('{count}','1'))).toBeVisible();
+  expect(await within(dialog).findByText(w.problem.existing,{},{timeout:5000})).toBeVisible();expect(within(dialog).getByText(w.ready.replace('{count}','1'))).toBeVisible();
+  expect(within(dialog).getByText(w.fix.existing)).toBeVisible();expect(within(dialog).getByRole('heading',{name:w.problemsTitle})).toBeVisible();
   expect(within(dialog).queryByText('Current values')).not.toBeInTheDocument();
   mocks.post.mockResolvedValueOnce(response({ok:true,job:queued,existing:false}));
   mocks.job.mockResolvedValueOnce(response({job:{...queued,state:'completed',stepsTotal:1,stepsDone:1,result:{imported:1,updated:0,skipped:1,failed:0}}}));
+  // What the job errors route returns: the stored refused row through the same adapter, in this locale.
+  const stored=labelImportProblemLines([...rows],labelRootTranslator(locale,messages));
+  mocks.errors.mockResolvedValueOnce(response({lines:stored,total:stored.length,legacy:false}));
   await clickReady(user,w.importCount.replace('{count}','1'),within(dialog));
   expect(await within(dialog).findByText(w.summary.replace('{created}','1').replace('{skipped}','1'),{},{timeout:5000})).toBeVisible();expect(mocks.refresh).toHaveBeenCalledOnce();
+  // Step 3 lists the row that was not imported, not only its count.
+  const done=await within(dialog).findByRole('table',{},{timeout:5000});
+  expect(within(done).getByText(w.problem.existing)).toBeVisible();expect(within(done).getAllByText('EXISTING').length).toBeGreaterThan(0);
+  expect(within(done).getByRole('cell',{name:'3'})).toBeVisible();expect(mocks.errors).toHaveBeenCalledWith(`${JOBS}/${queued.id}/errors`,expect.anything());
   expect(mocks.job).toHaveBeenCalledWith(`${JOBS}/${queued.id}`,expect.anything());expect(mocks.post.mock.calls.map(call=>call[0])).toEqual([IMPORT,IMPORT]);
   const body=mocks.post.mock.calls[1][1].body as FormData;expect(body.get('operation')).toBe('apply');expect(body.get('token')).toBe('source-bound-token');expect(body.has('mode')).toBe(false);expect(body.has('confirmUpdates')).toBe(false);
  });
- it.each(locales)('localizes ordinary validation refusals in %s without displaying server English',async(locale,messages)=>{
+ // Board c074c6b8: the screen no longer collapses a reason into one general sentence. Each refusal shows its own
+ // problem, column and entered value, translated from labelsImportWizard.problem/fix. The server's English `message`
+ // is still never printed (it stays in the import history only): what English readers see is the catalogue sentence,
+ // which is deliberately word for word what the downloaded report says, and what other locales see is its translation.
+ it.each(locales)('shows each refusal with its own translated problem, column and value in %s, never the server message',async(locale,messages)=>{
   const user=userEvent.setup();mount(locale,messages);const w=messages.labelsImportWizard;
   await user.click(screen.getByRole('button',{name:messages.admin.systemLabels.excel.import}));await user.upload(screen.getByLabelText(w.upload),new File(['fictional'],'invalid.xlsx'));
-  const reasons=['unsupportedCategory','invalidCompany','invalidCriteria','invalidCriteriaCompany','globalAdminRequired','criteriaCompaniesRequired','invalidHeadEmployee','invalidStatus','wholeNumber','invalidGradeCode','gradeLabelExists','invalidGradeReferences','gradeAlreadyGrouped','invalidRow'] as const;
-  const invalid=[{...rows[1],row:99,outcome:'skip',reason:'notSelected',message:'SERVER_ENGLISH_MUST_NOT_RENDER'},...reasons.map((reason,index)=>({...rows[1],row:index+2,reason,message:'SERVER_ENGLISH_MUST_NOT_RENDER'})),...(['Code','Company','Description','Label','Name'] as const).map((reasonField,index)=>({...rows[1],row:index+30,reason:'required',reasonField,message:'SERVER_ENGLISH_MUST_NOT_RENDER'}))];
+  const refusals=[
+   ['unsupportedCategory',undefined],['companyNotPermitted','Company'],['companyUnknown','Company'],['companyOutOfScope','Criteria Companies'],
+   ['invalidCriteria','Criteria'],['globalWithCompanies','Company'],['globalAdminRequired','Criteria'],['noOwnerCompany','Company'],
+   ['companyNotInCriteria','Company'],['criteriaCompaniesRequired','Criteria Companies'],['invalidHeadEmployee','Head Employee Code'],
+   ['invalidStatus','Status'],['wholeNumber','Rank'],['invalidGradeCode','Code'],['gradeLabelExists','Label'],
+   ['invalidGradeReferences','Grade Codes'],['gradeAlreadyGrouped','Grade Codes'],['gradeScope','Grade Codes'],['invalidRow',undefined],['existing','Code'],
+  ] as const;
+  const invalid=[
+   {...rows[1],row:99,outcome:'skip',reason:'notSelected',reasonDetail:'notSelected',reasonColumn:'Code',values:{Code:'UNSELECTED_99'}},
+   {...rows[1],row:98,outcome:'skip',reason:'duplicate',reasonDetail:'duplicate',reasonColumn:'Code',values:{Code:'DUP_98'}},
+   ...refusals.map(([detail,column],index)=>({...rows[1],row:index+2,reason:'invalidRow',reasonDetail:detail,reasonColumn:column,values:{Code:`CODE_${index+2}`,...(column&&column!=='Code'?{[column]:`VALUE_${index+2}`}:{})}})),
+   ...(['Code','Company','Description','Label','Name'] as const).map((reasonField,index)=>({...rows[1],row:index+30,reason:'required',reasonField,reasonDetail:'required',reasonColumn:reasonField,values:{Code:reasonField==='Code'?'':`REQ_${index+30}`}})),
+   // A row stored before details existed still maps by its reason.
+   {...rows[1],row:40,reason:'invalidHeadEmployee',reasonDetail:undefined,reasonColumn:undefined,values:{Code:'OLD_40'}},
+  ];
   mocks.post.mockResolvedValueOnce(response({ok:true,preview:{token:'invalid-locales',valid:false,rows:invalid}}));await user.click(screen.getByRole('button',{name:w.check}));
-  expect(await screen.findByText(w.invalidCompany,{},{timeout:5000})).toBeVisible();expect(screen.getByText(w.notSelected)).toBeVisible();expect(screen.getByText(w.notSelectedStatus)).toBeVisible();for(const reason of reasons)expect(screen.getByText(w[reason])).toBeVisible();
-  for(const field of ['Code','Company','Description','Label','Name'] as const)expect(screen.getByText(w.required.replace('{field}',w.fields[field]))).toBeVisible();
+  const table=await screen.findByRole('table',{name:w.problemsTitle},{timeout:5000});
+  const rowOf=(excelRow:number)=>within(table).getAllByRole('row').find(tr=>tr.getAttribute('data-problem-row')===String(excelRow))!;
+  for(const [index,[detail,column]] of refusals.entries()){
+   const tr=rowOf(index+2);expect(tr,detail).toBeDefined();
+   expect(within(tr).getByText(w.problem[detail])).toBeVisible();expect(within(tr).getByText(w.fix[detail])).toBeVisible();
+   if(column&&column!=='Code')expect(within(tr).getByText(`VALUE_${index+2}`)).toBeVisible();
+  }
+  expect(within(rowOf(refusals.findIndex(([detail])=>detail==='invalidHeadEmployee')+2)).getByText('Head (leave approver)')).toBeVisible();
+  expect(within(rowOf(99)).getByText(w.problem.notSelected)).toBeVisible();expect(within(rowOf(99)).getByText(messages.importProblems.result.skipped)).toBeVisible();
+  expect(within(rowOf(98)).getByText(w.problem.duplicate)).toBeVisible();
+  expect(within(rowOf(40)).getByText(w.problem.invalidHeadEmployee)).toBeVisible();
+  for(const [index,field] of (['Code','Company','Description','Label','Name'] as const).entries())expect(within(rowOf(index+30)).getByText(w.problem.required.replace('{field}',w.fields[field]))).toBeVisible();
+  expect(within(rowOf(2)).getByText(messages.importProblems.result.refused)).toBeVisible();
   expect(screen.queryByText('SERVER_ENGLISH_MUST_NOT_RENDER')).not.toBeInTheDocument();expect(await screen.findByRole('button',{name:w.importCount.replace('{count}','0')})).toBeDisabled();
  });
  it('keeps all-blocked rows read-only and disables import; Escape closes and restores the trigger',async()=>{
@@ -67,11 +107,18 @@ describe('three-step new-code import wizard',()=>{
  });
  it('preserves the file after a failed confirmation and requires a fresh preview before retry',async()=>{
   const user=userEvent.setup();mount();await upload(user,'preserved.xlsx');
-  mocks.post.mockResolvedValueOnce(response({ok:true,preview:{token:'t',valid:true,rows}}));await user.click(screen.getByRole('button',{name:en.labelsImportWizard.check}));await screen.findByText(en.labelsImportWizard.existing,{},{timeout:5000});
+  mocks.post.mockResolvedValueOnce(response({ok:true,preview:{token:'t',valid:true,rows}}));await user.click(screen.getByRole('button',{name:en.labelsImportWizard.check}));await screen.findByText(en.labelsImportWizard.problem.existing,{},{timeout:5000});
   // The writer now runs in the job; its failure reaches the wizard as the stopped job's reason.
   mocks.post.mockResolvedValueOnce(response({ok:true,job:{...queued,sourceName:'preserved.xlsx'},existing:false}));
-  mocks.job.mockResolvedValueOnce(response({job:{...queued,sourceName:'preserved.xlsx',state:'failed',error:'Fixture writer failure; no additions saved.'}}));await clickReady(user,'Import 1 new codes');
-  expect(await screen.findByText('Fixture writer failure; no additions saved.',{},{timeout:5000})).toBeVisible();expect(await screen.findByRole('button',{name:en.labelsImportWizard.checkAgain},{timeout:5000})).toBeEnabled();expect(screen.queryByText('1 new codes created · 1 rows skipped')).not.toBeInTheDocument();
+  mocks.job.mockResolvedValueOnce(response({job:{...queued,sourceName:'preserved.xlsx',state:'failed',error:'Fixture writer failure; no additions saved.'}}));
+  // Board c074c6b8: the stopped import lists the row involved and its reason, as the job errors route serves them.
+  const stopped=labelImportFailureLines({failed:[{sheet:'division',row:2,code:'NEW',detail:'releaseConflict',message:''}],jobId:queued.id},labelRootTranslator('en',en));
+  mocks.errors.mockResolvedValueOnce(response({lines:stopped,total:1,legacy:false}));
+  await clickReady(user,'Import 1 new codes');
+  expect(await screen.findByText('Fixture writer failure; no additions saved.',{},{timeout:5000})).toBeVisible();
+  const table=await screen.findByRole('table',{name:en.labelsImportWizard.stoppedTitle},{timeout:5000});
+  expect(within(table).getByText('Code "NEW" was added by someone else while the import was running.')).toBeVisible();
+  expect(within(table).getByText(en.importProblems.result.stopped)).toBeVisible();expect(within(table).getByRole('cell',{name:'2'})).toBeVisible();expect(await screen.findByRole('button',{name:en.labelsImportWizard.checkAgain},{timeout:5000})).toBeEnabled();expect(screen.queryByText('1 new codes created · 1 rows skipped')).not.toBeInTheDocument();
   await user.click(screen.getByRole('button',{name:en.labelsImportWizard.back}));expect(screen.getByText(/preserved.xlsx/)).toBeVisible();
  });
  it('refuses unsupported and oversized files immediately without contacting the server',async()=>{
