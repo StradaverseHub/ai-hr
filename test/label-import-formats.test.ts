@@ -15,7 +15,10 @@ describe('bounded real XLS and XLSX Labels admission',()=>{
  });
  // Board c074c6b8: a row number is the one Excel shows, also when the sheet's data starts below row 1.
  it.each(['biff8','xlsx'] as const)('numbers %s rows as Excel does when the used range starts lower down',type=>{
-  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([headers,['LOW','Fictional low','',''],[],['LOWER','Fictional lower','','']],{origin:'A3'}),'division');
+  const ws:XLSX.WorkSheet={};XLSX.utils.sheet_add_aoa(ws,[headers,['LOW','Fictional low','',''],[],['LOWER','Fictional lower','','']],{origin:'A3'});
+  // As Excel writes it: the used range (and so the file's dimension) starts at the first row with data.
+  ws['!ref']='A3:D6';
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'division');
   const bytes=XLSX.write(wb,{type:'buffer',bookType:type,compression:false}) as Buffer;
   expect(readSystemLabelWorkbook(bytes).map(row=>[row.values.Code,row.row])).toEqual([['LOW',4],['LOWER',6]]);
  });

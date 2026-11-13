@@ -107,7 +107,7 @@ describe('three-step new-code import wizard',()=>{
  });
  it('preserves the file after a failed confirmation and requires a fresh preview before retry',async()=>{
   const user=userEvent.setup();mount();await upload(user,'preserved.xlsx');
-  mocks.post.mockResolvedValueOnce(response({ok:true,preview:{token:'t',valid:true,rows}}));await user.click(screen.getByRole('button',{name:en.labelsImportWizard.check}));await screen.findByText(en.labelsImportWizard.existing,{},{timeout:5000});
+  mocks.post.mockResolvedValueOnce(response({ok:true,preview:{token:'t',valid:true,rows}}));await user.click(screen.getByRole('button',{name:en.labelsImportWizard.check}));await screen.findByText(en.labelsImportWizard.problem.existing,{},{timeout:5000});
   // The writer now runs in the job; its failure reaches the wizard as the stopped job's reason.
   mocks.post.mockResolvedValueOnce(response({ok:true,job:{...queued,sourceName:'preserved.xlsx'},existing:false}));
   mocks.job.mockResolvedValueOnce(response({job:{...queued,sourceName:'preserved.xlsx',state:'failed',error:'Fixture writer failure; no additions saved.'}}));
