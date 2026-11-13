@@ -106,10 +106,12 @@ describe('turn harness over native owners',()=>{
   expect(team.system).toContain(HARNESS_SPEC.roleNote.manager);
   for(const notTheirs of ['setup_readiness','company_setup','pay_aggregates'])expect(team.offered,notTheirs).not.toContain(notTheirs);
   // The manager is offered exactly what an employee is on the same question, plus the team's workforce metrics (AI v2
-  // W7, test/workforce-metrics.test.ts): the manager sentence widened nothing else.
+  // W7, test/workforce-metrics.test.ts) and, from spec v30 (96a54ed2), operations_status scoped to the two on-behalf
+  // topics whose keys a manager holds by default: the manager sentence widened nothing else.
   const own=await ask(employee,'who in my team has leave coming up?');
   expect(team.offered).toContain('workforce_metrics');expect(own.offered).not.toContain('workforce_metrics');
-  expect(own.offered.slice().sort()).toEqual(team.offered.filter(name=>name!=='workforce_metrics').sort());
+  expect(team.offered).toContain('operations_status');expect(own.offered).not.toContain('operations_status');
+  expect(own.offered.slice().sort()).toEqual(team.offered.filter(name=>name!=='workforce_metrics'&&name!=='operations_status').sort());
   // Issue 13: another person's pay. No read for anyone; the administrator is told the per-person payslip page.
   const reply='Pay is not shown in chat; you can see it on [Individual Payslip](/payroll/individual-payslip).';
   const asAdmin=await ask(hr,"what is Ravi's salary?",reply);

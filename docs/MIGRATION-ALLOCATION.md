@@ -5,7 +5,9 @@ Branch `claude/board-release-20261112` (from `claude/board-rewards-offcycle-2026
 `claude/board-rewards-governance-owner-fns-20261112` at `c174bd5da`) allocates the board lanes' migrations as one
 block, tags `5400`–`5620`, using the lanes' draft offset (tag T, idx T − 600, when
 1793330004800 + (T − 5100)). Alpha's newest entries are `5129_payroll_history_effective_reads` and
-`5130_pay_formula_ai_draft_job` (when 1793330004829 / …830), so the block sits strictly above them. `5560` is new at
+`5130_pay_formula_ai_draft_job` (when 1793330004829 / …830), so the block sits strictly above them. On
+13 November 2026 the branch merged `origin/alpha` at `65e23a1e7`, whose Irwin attendance entries `5140`–`5150`
+(when 1793330004840–1793330004850) also sort below the block; the journal keeps alpha's entries as an exact prefix. `5560` is new at
 this integration: it replaces the owner-owned `app.reward_limit_controls_access()` (from `5500`) so Limit Controls
 follows its Rewards Access Role permissions row; no purpose-owned object is replaced. A scan of every origin head's
 journal on 12 November 2026 found no other claim on tags 5400–5579 or on when 1793330005100–1793330005279; the only
@@ -41,6 +43,22 @@ predicates from PUBLIC to the roles that evaluate them; a scan of the 400 most r
 found no other claim on tags 5600–5639 or when 1793330005300–1793330005339. None of these migrations has been applied to any installation. If another migration is
 installed first with a when at or above 1793330005100, this block must move above it before installation. Recheck peer
 claims and the installed ledger at admission; this allocation grants no installation authority.
+
+# Attendance on-behalf AI read controls — 12 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/irwin-batch-b2-20261112` uses `5145_ai_attendance_on_behalf_reads` at idx 4545 / when 1793330004845,
+allocated by the release coordinator from the Irwin block 5140–5159 it holds for this release. Its journal entry sits
+between `5144_attendance_lane_security_review` (when 1793330004844) and `5150_attendance_policy_dated_rounding` (when
+1793330004850), in ascending `when`. One INSERT registering the AI Centre controls `read:attendance_on_behalf_subjects`
+and `read:attendance_on_behalf_approvers` (owner decision of 12 November 2026); no table, privilege or write. Recheck
+the installed watermarks and peer claims at admission; this grants no installation authority.
+
+# Irwin attendance approval-workflow lane (daa76ed4, 96a54ed2) — 12 November 2026 MYT (draft, unapplied)
+
+Branch `claude/irwin-attendance-workflow-20261112` (base `origin/alpha` `f84f4c567`) uses its reserved draft block
+5140–5149 (idx 4540–4549, when 1793330004840–1793330004849, shared offset). `5140_attendance_workflow_cross_company_pending`
+and `5141_attendance_workflow_escalation` (daa76ed4); the on-behalf migration of 96a54ed2 is 5142, the owner-decided final-decision window 5143 and its security-review follow-up 5144. The
+coordinator reconciles final numbering, above every installed watermark, at integration. Never applied anywhere.
 
 # Background AI Formula Generator — 12 November 2026 MYT (unapplied, allocated)
 

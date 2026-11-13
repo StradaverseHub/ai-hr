@@ -91,6 +91,8 @@ import {
   MapPin,
   Settings2,
   Table2,
+  UserCheck,
+  UserPen,
   Users,
 } from 'lucide-react';
 import { registerPack, type ModulePack, type NavNodeGroupDescriptor } from '../registry';
@@ -288,6 +290,10 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
      */
     { href: '/attendance', labelKey: 'employeeAttendance', icon: Clock, adminOnly: true },
     { href: '/attendance/application-history', labelKey: 'applicationHistory', icon: ClipboardList, adminOnly: true },
+    // 96a54ed2 — Request On Behalf / Approve On Behalf for HR administrators. Superiors reach the same screens from
+    // their Manage rows below; each screen and action re-checks the permission key and scope.
+    { href: '/attendance/on-behalf/request', labelKey: 'attendanceRequestOnBehalf', icon: UserPen, adminOnly: true },
+    { href: '/attendance/on-behalf/approve', labelKey: 'attendanceApproveOnBehalf', icon: UserCheck, adminOnly: true },
     // 22d67223 — ATTENDANCE BREAKDOWN DETAIL. The audit surface: every figure the engine recorded, day by
     // day, for one employee over a range. Deliberately the opposite of 570fd56e, which took the calculation
     // columns OFF Individual Attendance — one screen to review a month, one to interrogate it.
@@ -501,6 +507,9 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
  */
 const ATTENDANCE_MANAGE_LINKS = [
   { href: '/roster', labelKey: 'roster', icon: CalendarRange, managerUp: true, group: 'manage' as const },
+  // 96a54ed2 — the same two on-behalf screens for superiors (people beneath them in their own reporting line only).
+  { href: '/attendance/on-behalf/request', labelKey: 'attendanceRequestOnBehalf', icon: UserPen, managerUp: true, group: 'manage' as const },
+  { href: '/attendance/on-behalf/approve', labelKey: 'attendanceApproveOnBehalf', icon: UserCheck, managerUp: true, group: 'manage' as const },
   /**
    * 1661123d (r317) — IMPORT'S MANAGE ROW IS GONE, and Roster's stays. They are not a pair any more.
    *

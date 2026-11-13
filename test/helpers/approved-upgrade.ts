@@ -145,6 +145,16 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:4529,when:1793330004829,tag:'5129_payroll_history_effective_reads'},
  // Background AI Formula Generator draft job (12 November 2026), allocated above 5129 (docs/MIGRATION-ALLOCATION.md).
  {idx:4530,when:1793330004830,tag:'5130_pay_formula_ai_draft_job'},
+ // daa76ed4/96a54ed2 Irwin attendance workflow lane draft (block 5140-5149; final numbering at integration).
+ {idx:4540,when:1793330004840,tag:'5140_attendance_workflow_cross_company_pending'},
+ {idx:4541,when:1793330004841,tag:'5141_attendance_workflow_escalation'},
+ {idx:4542,when:1793330004842,tag:'5142_attendance_on_behalf'},
+ {idx:4543,when:1793330004843,tag:'5143_attendance_final_decision_window'},
+ {idx:4544,when:1793330004844,tag:'5144_attendance_lane_security_review'},
+ // 96a54ed2 AI Centre controls for the two on-behalf reads (owner decision, 12 November 2026; coordinator block 5140-5159).
+ {idx:4545,when:1793330004845,tag:'5145_ai_attendance_on_behalf_reads'},
+ // 2f803985 Irwin Schedule Group Overtime Setting: per-date rounding in the policy part payable count (block 5150-5159).
+ {idx:4550,when:1793330004850,tag:'5150_attendance_policy_dated_rounding'},
  // 60f1fdcd Rewards direct configuration (DRAFT block 5400–5419; the integrator renumbers at admission).
  {idx:4800,when:1793330005100,tag:'5400_rewards_direct_configuration'},
  // 4de410ed/356ae8c1 Rewards dashboard preparation notices (DRAFT block 5420–5439).
@@ -170,6 +180,13 @@ export const APPROVED_UPGRADE_TAIL=[
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5150_attendance_policy_dated_rounding':'f1549fefc467398d9701ba5428e238134a8ca248fb645046b4b23877280e3408',
+ '5145_ai_attendance_on_behalf_reads':'45f46d793d836371aebc7d7e20bcea000edef1a6e517367f8deffd59dd2ec9ff',
+ '5144_attendance_lane_security_review':'a8b3b68d4ff8faa0f3f69f62089be537c1c8a7ba4522aefa5c3a5e8d314569ed',
+ '5143_attendance_final_decision_window':'e048acb77ceb8115bebc25365c5f0b7a53a9981c7b2533312c0c460e5f6dca9d',
+ '5142_attendance_on_behalf':'f6e733a3388ff70ffde812ce669b42b6a55decb3951584a8d8d420100d061125',
+ '5141_attendance_workflow_escalation':'b578fbc0588c783b9091ae12753701e5e3322fc3fe53cbae60e5da18ce66ddde',
+ '5140_attendance_workflow_cross_company_pending':'3fbdc8541c9ba5b9b03d7cb3a0e212df1db1b9e196822db575cc186bbb33c4c1',
  '5124_attendance_workflow_skipped_levels':'849dba4bf7c3aa39e45eb7f463ef24301a2eea3b10a781cf39858aa218635c6d',
  '5123_import_history_kind':'2da28686e0f48790491ed9677813be1fae9a71f1e9fbbe1c9b51786f401420e7',
  '5127_import_log_actor_labels':'1f90bf32091400f2ec667a8538802248a90bb1336c869a8b8faad349b2530ce2',
@@ -326,6 +343,10 @@ export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;col
  {tag:'5036_leave_type_pending_year_cycle',table:'leave_type',columns:['pending_year_cycle_job_id']},
  {tag:'5051_payroll_processing_job',table:'payroll_batch',columns:['processing_job_id','processing_started_at']},
  {tag:'5125_individual_txn_pricing_marker',table:'payroll_individual_txn',columns:['pricing_source','pricing_ref','priced_at']},
+ // daa76ed4 Escalation Approval stage clock: NULL on every request submitted before it (never escalates).
+ {tag:'5141_attendance_workflow_escalation',table:'attendance_workflow_request',columns:['stage_reached_at','escalate_on']},
+ // 96a54ed2 Request On Behalf: NULL on every application filed before it (the employee filed it).
+ {tag:'5142_attendance_on_behalf',table:'attendance_correction',columns:['submitted_by_user_id','submitted_by_person_id','submitted_by_name']},
  ...['department','position','cost_center','business_unit','label_company_assignment','profile_option','job_grade','grade_group','grade_group_member']
   .map(table=>({tag:'5070_system_label_import_staged_job',table,columns:['import_pending_attempt_id']})),
 ]);

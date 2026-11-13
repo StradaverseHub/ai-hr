@@ -207,6 +207,16 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5129_payroll_history_effective_reads',
    // Background AI Formula Generator draft job (12 November 2026), above 5129.
    '5130_pay_formula_ai_draft_job',
+   // Irwin attendance workflow lane draft (daa76ed4/96a54ed2).
+   '5140_attendance_workflow_cross_company_pending',
+   '5141_attendance_workflow_escalation',
+   '5142_attendance_on_behalf',
+   '5143_attendance_final_decision_window',
+   '5144_attendance_lane_security_review',
+   // 96a54ed2: the AI Centre controls for the two on-behalf reads.
+   '5145_ai_attendance_on_behalf_reads',
+   // Irwin Schedule Group Overtime Setting (2f803985): per-date rounding (function replacement only).
+   '5150_attendance_policy_dated_rounding',
    // Board release 12 November 2026 (docs/MIGRATION-ALLOCATION.md): Rewards, dashboard and On/Off Boarding block.
    '5400_rewards_direct_configuration',
    '5420_rewards_dashboard_preparation_notices',
@@ -251,6 +261,12 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    // 5129: the set-wise effective-snapshot owner, inlined into app.payroll_history_effective and the batch aggregate.
    // Board release block 5400-5560: three trigger functions, owner only.
    // 5580/5600: owner-only readers, trigger functions, the PAT repricing chain and the review creator's source copies.
+   // daa76ed4/96a54ed2 (5140-5142): the login rule helper and two trigger functions, never granted to the application role.
+   'app.attendance_workflow_approver_login(uuid)','app.attendance_workflow_stage_clock()','app.attendance_correction_submitter_guard()',
+   // 5143: the request-bound final-decision read window proof, called only by the owner-run visibility functions.
+   'app.attendance_effect_window_employment()',
+   // 5144: the window token and proof (owner only).
+   'app.attendance_final_window_token(uuid,uuid)','app.attendance_final_window_prove(uuid)',
    'app._access_bootstrap_eligible(uuid,uuid)','app._access_workforce_list_rows(uuid[])','app._ai_control_context_for_purpose(text,boolean,boolean)',
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()','app._assert_assistant_rewards_presentation_v1(text)',
    'app._assistant_assigned_index_login(uuid,boolean)','app._assistant_presentation_feature_unpaused_v1()','app._assistant_rewards_calendar_choice_payload_v1()',
@@ -280,6 +296,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const addedFunctions=[
    // Board window 4 (5124): the preview binding trigger (owner only) and the superior diagnostic.
    // Board release block 5400-5560 (12 November 2026): the Rewards, dashboard and On/Off Boarding functions. Kept sorted.
+   // daa76ed4/96a54ed2 (5140-5144, origin/alpha 65e23a1e7): the attendance resolution, escalation, on-behalf and final-window functions.
    'app._access_bootstrap_eligible(uuid,uuid)','app._access_workforce_list_rows(uuid[])','app._ai_control_context_for_purpose(text,boolean,boolean)',
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()','app._assert_assistant_rewards_presentation_v1(text)',
    'app._assistant_assigned_index_login(uuid,boolean)','app._assistant_presentation_feature_unpaused_v1()','app._assistant_rewards_calendar_choice_payload_v1()',
@@ -292,56 +309,61 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.access_workforce_list_facts()','app.access_workforce_list_rows_for_ids(uuid[])','app.access_workforce_permitted_companies(text)',
    'app.access_workforce_picker_facts(uuid[])','app.ai_centre_mandate_bound_tenant()','app.ai_centre_mandate_write_order()',
    'app.assistant_rewards_calendar_presentation_choices_v1()','app.assistant_rewards_cancel_presentation_choices_v1()','app.assistant_rewards_return_presentation_choices_v1()',
-   'app.attendance_clock_policy_history(uuid,uuid)','app.attendance_frozen_actor_identity_keys(jsonb,text)','app.attendance_pending_visible_headers(uuid)',
-   'app.attendance_workflow_preview_bind()','app.attendance_workflow_superior_diagnostic(uuid,integer)','app.bulk_job_access(uuid)',
-   'app.bulk_job_admit()','app.bulk_job_attribution()','app.bulk_job_capability_held(uuid)',
-   'app.bulk_job_clear_inputs(uuid,boolean)','app.bulk_job_enqueue(text,uuid,uuid[],text,bytea,jsonb)','app.bulk_job_event_attribution()',
-   'app.bulk_job_fence(uuid,text)','app.bulk_job_held(uuid)','app.bulk_job_input_conforms(jsonb,integer,jsonb)',
-   'app.bulk_job_input_shape_valid(jsonb)','app.bulk_job_lease_capability(uuid,uuid,text)','app.bulk_job_mark_watched(uuid)',
-   'app.bulk_job_notice_recipients(uuid)','app.bulk_job_pending_steps(uuid,integer)','app.bulk_job_request_cancel(uuid,text)',
-   'app.bulk_job_scope_current(text,uuid[])','app.bulk_job_seal_verify(uuid,text)','app.bulk_job_step_digest(text,integer,jsonb,text,jsonb,text)',
-   'app.bulk_job_step_update(uuid,integer[],jsonb)','app.bulk_job_steps_put(uuid,boolean,jsonb)','app.bulk_job_value_digest(jsonb)',
-   'app.bulk_job_waiting(uuid)','app.bulk_job_worker_ready(text)','app.bulk_job_worker_update(uuid,jsonb)',
-   'app.contract_renewal_open(uuid)','app.delegated_approval_subjects(uuid[],text,text)','app.domain_event_chain_arm()',
-   'app.domain_event_chain_flush(uuid)','app.domain_event_chain_seal_now()','app.domain_event_chain_sealing()',
-   'app.employee_import_revert_release(uuid,boolean)','app.employment_void_reference_blockers(uuid[])','app.home_leave_presentation_index(text)',
-   'app.home_own_clock_day(uuid,date,date)','app.home_own_schedule_range(uuid,date,date)','app.import_activation_conflicts(uuid)',
-   'app.import_discard_batch(uuid,uuid,uuid,text,integer)','app.import_hidden_attempt_ids()','app.import_log_actor_facts(text,uuid[])',
-   'app.import_marker_released(uuid)','app.import_marker_visible(uuid)','app.import_pending_employment_ids()',
-   'app.import_pending_guard()','app.import_pending_person_ids()','app.import_pending_stamp()',
-   'app.import_release(uuid)','app.import_released_attempt_ids()','app.import_settle(uuid,uuid,integer)',
-   'app.label_import_marker_visible(uuid)','app.leave_ledger_stage_stamp()','app.leave_stage_digests(uuid[],uuid[],boolean)',
-   'app.leave_stage_release(uuid,uuid)','app.leave_stage_released_ids()','app.may_have_attendance_task_metadata()',
-   'app.movement_revert_capture_never_commits()','app.movement_revert_capture_row()','app.notification_event_processing_enqueue()',
-   'app.notification_projection_exists(uuid,uuid,text)','app.org_structure_statement_lock()','app.payroll_batch_period_required()',
-   'app.payroll_history_batch_admin_totals(uuid)','app.payroll_history_batch_visible_totals(uuid)','app.payroll_history_effective_ids(uuid[])',
-   'app.payroll_history_hidden_rows(text)','app.payroll_history_row_visible(text,uuid)','app.payroll_history_self_employment_ids()',
-   'app.payroll_history_stage_busy(uuid)','app.payroll_history_stage_open(uuid,uuid,text)','app.payroll_history_stage_release(uuid)',
-   'app.payroll_history_stage_stamp()','app.payroll_input_lock_keys(uuid[],uuid)','app.personnel_list_rows_for_ids(date,uuid[],uuid[])',
-   'app.personnel_overview_facts(date,uuid[])','app.personnel_overview_filter_fields(date,uuid[])','app.personnel_overview_narrow_rows(date,uuid[])',
-   'app.personnel_overview_page_rows(date,uuid[],uuid[])','app.personnel_overview_page_rows_typed(date,uuid[],uuid[])','app.personnel_private_search_entries(text,uuid[])',
-   'app.personnel_search_candidates(uuid[],boolean,boolean,text,text,text,text,text[])','app.register_import_release(uuid,boolean)','app.reward_access_observation_due(uuid)',
-   'app.reward_access_self_change_guard()','app.reward_actor_holds_role(text)','app.reward_actor_page_level(text)',
-   'app.reward_config_apply_confirmed_pat(uuid,uuid)','app.reward_config_architecture_for_source(uuid,uuid,uuid,date)','app.reward_config_change_recipients(uuid)',
-   'app.reward_config_change_record(text,text,uuid,text,uuid[],text,text,boolean,integer,jsonb,uuid,uuid[],text)','app.reward_config_change_visible(text,uuid[])','app.reward_config_companies(integer)',
-   'app.reward_config_company_eligible(uuid,integer)','app.reward_config_company_structure(uuid,date)','app.reward_config_create_planned_unit(uuid,uuid,uuid)',
-   'app.reward_config_creating()','app.reward_config_editor(uuid)','app.reward_config_editor_anywhere()',
-   'app.reward_config_grade_choices()','app.reward_config_identity_guard()','app.reward_config_library_capture_revision()',
-   'app.reward_config_library_input_guard()','app.reward_config_library_locked(uuid)','app.reward_config_library_used_by(uuid)',
-   'app.reward_config_library_viewer()','app.reward_config_page_allowed(uuid,text,text)','app.reward_config_pat_affected_units(uuid,integer)',
-   'app.reward_config_pat_confirm_apply()','app.reward_config_pat_history(uuid,integer)','app.reward_config_pat_input_guard()',
-   'app.reward_config_planned_policy_snapshot(jsonb,jsonb,jsonb,jsonb)','app.reward_config_policy_source(uuid)','app.reward_config_reprice_draft_pat(uuid,uuid)',
-   'app.reward_config_snapshot_pay_change_kind(uuid)','app.reward_config_source_org_tags(uuid,date)','app.reward_config_uploaded_binding()',
-   'app.reward_config_uploaded_binding_check(text,text,jsonb,jsonb)','app.reward_config_viewer(uuid)','app.reward_level_rank(text)',
-   'app.reward_limit_controls_access()','app.reward_limit_pin_on_submit(uuid,uuid)','app.reward_limit_reapply(uuid[],uuid,text)',
-   'app.reward_limit_version_guard()','app.reward_offcycle_balances(uuid)','app.reward_offcycle_company_funding(uuid,boolean)',
-   'app.reward_offcycle_cycle_readiness(uuid)','app.reward_offcycle_limit_pin(uuid,uuid)','app.reward_offcycle_limit_version(uuid)',
-   'app.reward_offcycle_year_save(uuid,integer,date,date)','app.reward_preparation_notices_v2()','app.reward_role_default_level(text,text)',
-   'app.reward_role_level(text,text)','app.reward_role_level_options(text,text)','app.reward_role_permission_immediate()',
-   'app.reward_role_permission_level_shape()','app.reward_role_permission_locked(text,text)','app.reward_role_permission_reader()',
-   'app.reward_role_permission_request_shape()','app.reward_role_permission_seat()','app.reward_setup_page_allowed(uuid,text,text)',
-   'app.reward_unit_level(uuid,text)','app.reward_unit_limit_version(uuid)','app.system_label_import_conflicts(uuid)',
-   'app.system_label_import_discard_batch(uuid,uuid,uuid,uuid,integer)','app.system_label_import_release_attempt(uuid,uuid)',
+   'app.attendance_clock_policy_history(uuid,uuid)','app.attendance_correction_submitter_guard()','app.attendance_effect_window_employment()',
+   'app.attendance_final_window_prove(uuid)','app.attendance_final_window_token(uuid,uuid)','app.attendance_frozen_actor_identity_keys(jsonb,text)',
+   'app.attendance_pending_visible_headers(uuid)','app.attendance_workflow_approver_login(uuid)','app.attendance_workflow_close_final_window()',
+   'app.attendance_workflow_escalate(uuid,date)','app.attendance_workflow_escalation_due(date,date,uuid,integer)','app.attendance_workflow_escalation_written(uuid,uuid,integer)',
+   'app.attendance_workflow_hierarchy_v5(uuid,integer)','app.attendance_workflow_on_behalf_allowed(uuid,integer,text)','app.attendance_workflow_on_behalf_slot(uuid,uuid)',
+   'app.attendance_workflow_open_final_window(uuid)','app.attendance_workflow_preview_bind()','app.attendance_workflow_stage_clock()',
+   'app.attendance_workflow_superior_diagnostic(uuid,integer)','app.bulk_job_access(uuid)','app.bulk_job_admit()',
+   'app.bulk_job_attribution()','app.bulk_job_capability_held(uuid)','app.bulk_job_clear_inputs(uuid,boolean)',
+   'app.bulk_job_enqueue(text,uuid,uuid[],text,bytea,jsonb)','app.bulk_job_event_attribution()','app.bulk_job_fence(uuid,text)',
+   'app.bulk_job_held(uuid)','app.bulk_job_input_conforms(jsonb,integer,jsonb)','app.bulk_job_input_shape_valid(jsonb)',
+   'app.bulk_job_lease_capability(uuid,uuid,text)','app.bulk_job_mark_watched(uuid)','app.bulk_job_notice_recipients(uuid)',
+   'app.bulk_job_pending_steps(uuid,integer)','app.bulk_job_request_cancel(uuid,text)','app.bulk_job_scope_current(text,uuid[])',
+   'app.bulk_job_seal_verify(uuid,text)','app.bulk_job_step_digest(text,integer,jsonb,text,jsonb,text)','app.bulk_job_step_update(uuid,integer[],jsonb)',
+   'app.bulk_job_steps_put(uuid,boolean,jsonb)','app.bulk_job_value_digest(jsonb)','app.bulk_job_waiting(uuid)',
+   'app.bulk_job_worker_ready(text)','app.bulk_job_worker_update(uuid,jsonb)','app.contract_renewal_open(uuid)',
+   'app.delegated_approval_subjects(uuid[],text,text)','app.domain_event_chain_arm()','app.domain_event_chain_flush(uuid)',
+   'app.domain_event_chain_seal_now()','app.domain_event_chain_sealing()','app.employee_import_revert_release(uuid,boolean)',
+   'app.employment_void_reference_blockers(uuid[])','app.home_leave_presentation_index(text)','app.home_own_clock_day(uuid,date,date)',
+   'app.home_own_schedule_range(uuid,date,date)','app.import_activation_conflicts(uuid)','app.import_discard_batch(uuid,uuid,uuid,text,integer)',
+   'app.import_hidden_attempt_ids()','app.import_log_actor_facts(text,uuid[])','app.import_marker_released(uuid)',
+   'app.import_marker_visible(uuid)','app.import_pending_employment_ids()','app.import_pending_guard()',
+   'app.import_pending_person_ids()','app.import_pending_stamp()','app.import_release(uuid)',
+   'app.import_released_attempt_ids()','app.import_settle(uuid,uuid,integer)','app.label_import_marker_visible(uuid)',
+   'app.leave_ledger_stage_stamp()','app.leave_stage_digests(uuid[],uuid[],boolean)','app.leave_stage_release(uuid,uuid)',
+   'app.leave_stage_released_ids()','app.may_have_attendance_task_metadata()','app.movement_revert_capture_never_commits()',
+   'app.movement_revert_capture_row()','app.notification_event_processing_enqueue()','app.notification_projection_exists(uuid,uuid,text)',
+   'app.org_structure_statement_lock()','app.payroll_batch_period_required()','app.payroll_history_batch_admin_totals(uuid)',
+   'app.payroll_history_batch_visible_totals(uuid)','app.payroll_history_effective_ids(uuid[])','app.payroll_history_hidden_rows(text)',
+   'app.payroll_history_row_visible(text,uuid)','app.payroll_history_self_employment_ids()','app.payroll_history_stage_busy(uuid)',
+   'app.payroll_history_stage_open(uuid,uuid,text)','app.payroll_history_stage_release(uuid)','app.payroll_history_stage_stamp()',
+   'app.payroll_input_lock_keys(uuid[],uuid)','app.personnel_list_rows_for_ids(date,uuid[],uuid[])','app.personnel_overview_facts(date,uuid[])',
+   'app.personnel_overview_filter_fields(date,uuid[])','app.personnel_overview_narrow_rows(date,uuid[])','app.personnel_overview_page_rows(date,uuid[],uuid[])',
+   'app.personnel_overview_page_rows_typed(date,uuid[],uuid[])','app.personnel_private_search_entries(text,uuid[])','app.personnel_search_candidates(uuid[],boolean,boolean,text,text,text,text,text[])',
+   'app.register_import_release(uuid,boolean)','app.reward_access_observation_due(uuid)','app.reward_access_self_change_guard()',
+   'app.reward_actor_holds_role(text)','app.reward_actor_page_level(text)','app.reward_config_apply_confirmed_pat(uuid,uuid)',
+   'app.reward_config_architecture_for_source(uuid,uuid,uuid,date)','app.reward_config_change_recipients(uuid)','app.reward_config_change_record(text,text,uuid,text,uuid[],text,text,boolean,integer,jsonb,uuid,uuid[],text)',
+   'app.reward_config_change_visible(text,uuid[])','app.reward_config_companies(integer)','app.reward_config_company_eligible(uuid,integer)',
+   'app.reward_config_company_structure(uuid,date)','app.reward_config_create_planned_unit(uuid,uuid,uuid)','app.reward_config_creating()',
+   'app.reward_config_editor(uuid)','app.reward_config_editor_anywhere()','app.reward_config_grade_choices()',
+   'app.reward_config_identity_guard()','app.reward_config_library_capture_revision()','app.reward_config_library_input_guard()',
+   'app.reward_config_library_locked(uuid)','app.reward_config_library_used_by(uuid)','app.reward_config_library_viewer()',
+   'app.reward_config_page_allowed(uuid,text,text)','app.reward_config_pat_affected_units(uuid,integer)','app.reward_config_pat_confirm_apply()',
+   'app.reward_config_pat_history(uuid,integer)','app.reward_config_pat_input_guard()','app.reward_config_planned_policy_snapshot(jsonb,jsonb,jsonb,jsonb)',
+   'app.reward_config_policy_source(uuid)','app.reward_config_reprice_draft_pat(uuid,uuid)','app.reward_config_snapshot_pay_change_kind(uuid)',
+   'app.reward_config_source_org_tags(uuid,date)','app.reward_config_uploaded_binding()','app.reward_config_uploaded_binding_check(text,text,jsonb,jsonb)',
+   'app.reward_config_viewer(uuid)','app.reward_level_rank(text)','app.reward_limit_controls_access()',
+   'app.reward_limit_pin_on_submit(uuid,uuid)','app.reward_limit_reapply(uuid[],uuid,text)','app.reward_limit_version_guard()',
+   'app.reward_offcycle_balances(uuid)','app.reward_offcycle_company_funding(uuid,boolean)','app.reward_offcycle_cycle_readiness(uuid)',
+   'app.reward_offcycle_limit_pin(uuid,uuid)','app.reward_offcycle_limit_version(uuid)','app.reward_offcycle_year_save(uuid,integer,date,date)',
+   'app.reward_preparation_notices_v2()','app.reward_role_default_level(text,text)','app.reward_role_level(text,text)',
+   'app.reward_role_level_options(text,text)','app.reward_role_permission_immediate()','app.reward_role_permission_level_shape()',
+   'app.reward_role_permission_locked(text,text)','app.reward_role_permission_reader()','app.reward_role_permission_request_shape()',
+   'app.reward_role_permission_seat()','app.reward_setup_page_allowed(uuid,text,text)','app.reward_unit_level(uuid,text)',
+   'app.reward_unit_limit_version(uuid)','app.system_label_import_conflicts(uuid)','app.system_label_import_discard_batch(uuid,uuid,uuid,uuid,integer)',
+   'app.system_label_import_release_attempt(uuid,uuid)',
   ];
   const beforeFunctions=new Set(beforePerformancePrivileges.functions.map(row=>row.fn));
   expect(afterPerformancePrivileges.functions.filter(row=>!beforeFunctions.has(row.fn)).map(row=>row.fn).sort()).toEqual(addedFunctions);
@@ -365,6 +387,31 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    }
    return qualifiers;
   });
+  // daa76ed4/96a54ed2 (5141-5142): this lane's new and replaced policies, each compared with PostgreSQL's own rendering
+  // of the reviewed expression (parsed on the same table and discarded), never with a hand-typed digest.
+  const ownerRead="tenant_id=app.current_tenant_id() AND request_id::text=current_setting('app.attendance_workflow_escalating',true) AND current_user=pg_catalog.pg_get_userbyid((SELECT p.proowner FROM pg_catalog.pg_proc p WHERE p.oid='app.attendance_workflow_escalate(uuid,date)'::regprocedure))";
+  const lanePolicies:{table:string;name:string;cmd:'SELECT'|'INSERT';using:string|null;check:string|null;replaces:boolean}[]=[
+   {table:'attendance_workflow_escalation',name:'attendance_workflow_escalation_read',cmd:'SELECT',replaces:false,check:null,
+    using:"tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.attendance_workflow_request w WHERE w.id=request_id AND w.tenant_id=app.current_tenant_id() AND app.attendance_workflow_v3_read(w.correction_id))"},
+   {table:'attendance_workflow_participant_decision',name:'attendance_workflow_escalation_owner_read',cmd:'SELECT',replaces:false,check:null,using:ownerRead},
+   {table:'attendance_workflow_participant_reassignment',name:'attendance_workflow_escalation_owner_read',cmd:'SELECT',replaces:false,check:null,using:ownerRead},
+   {table:'attendance_workflow_participant_decision',name:'attendance_workflow_v3_participant_insert',cmd:'INSERT',replaces:true,using:null,
+    check:"tenant_id=app.current_tenant_id() AND actual_user_id=app.current_user_id() AND EXISTS(SELECT 1 FROM public.attendance_workflow_request w WHERE w.id=request_id AND w.tenant_id=app.current_tenant_id() AND (app.attendance_workflow_v3_decision_slot(w.correction_id) IS NOT NULL OR (acting_mode='on_behalf' AND app.attendance_workflow_on_behalf_slot(w.correction_id,(assigned->>'employmentId')::uuid)->>'slot'=participant_slot)))"},
+  ];
+  const laneRendered=await storage.client.begin(async tx=>{
+   const out:{qual:string|null;with_check:string|null}[]=[];
+   for(const policy of lanePolicies){
+    await tx.unsafe(`create policy lane_reference on public.${policy.table} for ${policy.cmd}${policy.using?` using (${policy.using})`:''}${policy.check?` with check (${policy.check})`:''}`);
+    const [row]=await tx<{qual:string|null;with_check:string|null}[]>`select qual,with_check from pg_policies where schemaname='public' and tablename=${policy.table} and policyname='lane_reference'`;
+    out.push(row);await tx.unsafe(`drop policy lane_reference on public.${policy.table}`);
+   }
+   return out;
+  });
+  const isLanePolicy=(row:(typeof beforePerformancePrivileges.policies)[number])=>row.schemaname==='public'&&lanePolicies.some(policy=>policy.table===row.tablename&&policy.name===row.policyname);
+  for(const [index,policy] of lanePolicies.entries()){
+   const [row]=afterPerformancePrivileges.policies.filter(candidate=>candidate.schemaname==='public'&&candidate.tablename===policy.table&&candidate.policyname===policy.name);
+   expect(row,policy.name).toMatchObject({permissive:'PERMISSIVE',roles:'{public}',cmd:policy.cmd,qual:laneRendered[index].qual,with_check:laneRendered[index].with_check});
+  }
   const isClaimPolicy=(row:(typeof beforePerformancePrivileges.policies)[number])=>row.schemaname==='public'&&row.tablename==='claim_request'&&row.policyname==='claim_request_rls';
   expect(beforePerformancePrivileges.policies.find(isClaimPolicy)?.qual).toBe(expectedClaimQuals[0]);
   expect(afterPerformancePrivileges.policies.find(isClaimPolicy)?.qual).toBe(expectedClaimQuals[1]);
@@ -476,6 +523,11 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const combinedRelations:Record<string,{rls:boolean;force:boolean;acl:string|null}>={
    // Board window 4 (5124): stored Preview Assignment snapshots, append-only and forced RLS.
    'attendance_workflow_preview':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
+   // daa76ed4 (5141): immutable escalation history, read-only to the application role.
+   'attendance_workflow_escalation':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   // 5144: owner-only window key and spent-transaction record.
+   'app.attendance_final_window_key':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
+   'app.attendance_final_window_spent':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
    'app.access_administrator_assert_pending':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
    'app.access_administrator_guard':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
    'app.access_capability_publication':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
@@ -673,11 +725,11 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
     row.rel===clockTable?{...row,acl:beforeClockTable?.acl}:row),
    columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable&&row.rel!==clockTable&&!isCombinedRelation(row.rel)),
    functions:afterPerformancePrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
-   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isBoardPolicy(row)).map(row=>
+   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isBoardPolicy(row)&&!isLanePolicy(row)).map(row=>
     isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:
      isAssignmentPolicy(row)?{...row,qual:expectedAssignmentQuals[0]}:row),
   };
-  expect(terminalComparable).toEqual({...beforePerformancePrivileges,policies:beforePerformancePrivileges.policies.filter(row=>!isBoardRetiredPolicy(row))});
+  expect(terminalComparable).toEqual({...beforePerformancePrivileges,policies:beforePerformancePrivileges.policies.filter(row=>!isBoardRetiredPolicy(row)&&!isLanePolicy(row))});
   const complete=await ledger();expect(complete).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);expect(complete.slice(0,671)).toEqual(afterLedger);
   expect(complete.slice(0,performanceStart)).toEqual(beforePerformanceLedger);
   expect(complete.slice(671).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(APPROVED_UPGRADE_TAIL.map(entry=>({hash:hash(readFileSync('db/migrations/'+entry.tag+'.sql')),created_at:String(entry.when)})));

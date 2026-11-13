@@ -47,6 +47,7 @@ export type NotificationRecipientReaders<Reader>={
  delegationStarted:NotificationRecipientReader<Reader>;
  delegationEnded:NotificationRecipientReader<Reader>;
  leaveEscalation:NotificationRecipientReader<Reader>;
+ attendanceEscalation:NotificationRecipientReader<Reader>;
  automaticReviewChase:NotificationRecipientReader<Reader>;
  missingClockFollowup:NotificationRecipientReader<Reader>;
  passportFollowup:NotificationRecipientReader<Reader>;
@@ -639,6 +640,20 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
       linkPath: '/approvals',
     }),
     recipientPort:'leaveEscalation',recipients:readers.leaveEscalation,
+  },
+  // daa76ed4 — Attendance Escalation Approval moved a v4 request to its next level after the configured calendar
+  // days with no decision. The next level's frozen participants are told, re-checked at dispatch: the request must
+  // still be pending at that exact level. The subject is never a recipient.
+  'attendance-workflow.stage.escalated': {recipientAudience:'reader',
+    kind: 'attendance.escalated',
+    category: 'attendance',
+    render: (p) => ({
+      severity: 'action',
+      title: 'Attendance approval escalated to you',
+      body: `An attendance request was not approved or rejected within ${typeof p?.escalateAfterDays === 'number' ? p.escalateAfterDays : ''} day(s) and has moved to your approval level.`,
+      linkPath: '/approvals',
+    }),
+    recipientPort:'attendanceEscalation',recipients:readers.attendanceEscalation,
   },
   // WP13 (R18) — Automatic-tier chasers run by the tenant's agent principal (core/automatic-chasers.ts). The
   // event carries ids, stage and dates only; the copy is a fixed template (no model, no amount, no name). As for

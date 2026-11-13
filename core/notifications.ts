@@ -405,6 +405,20 @@ const webNotificationRecipients:NotificationRecipientReaders<Tx>={
     },
   delegationStarted:(tx, ev) => delegateRecipient(tx, ev.aggregateId),
   delegationEnded:(tx, ev) => delegateRecipient(tx, ev.aggregateId),
+  attendanceEscalation:async (tx, ev, payload) => {
+      const p = payload ?? {};
+      const requestId = typeof p.workflowRequestId === 'string' ? p.workflowRequestId : null;
+      const toStage = typeof p.toStageIndex === 'number' ? p.toStageIndex : null;
+      if (!requestId || toStage == null || !ev.subjectEmploymentId) return [];
+      // Freshness: still pending at exactly the level it was escalated to.
+      const [live] = await tx.execute<{ ok: boolean }>(sql`select exists(select 1 from attendance_workflow_request w join attendance_correction c on c.id=w.correction_id and c.tenant_id=w.tenant_id
+        where w.id=${requestId}::uuid and w.correction_id::text=${ev.aggregateId} and w.current_stage=${toStage} and c.status='pending') as ok`);
+      if (!live?.ok) return [];
+      const next = Array.isArray(p.nextParticipants) ? p.nextParticipants as { kind?: unknown; employmentId?: unknown }[] : [];
+      const ids = next.flatMap(actor => actor.kind !== 'hr_admin' && typeof actor.employmentId === 'string' ? [actor.employmentId] : []);
+      const hr = next.some(actor => actor.kind === 'hr_admin') ? await hrAdminsForCompany(tx, ev.subjectEmploymentId) : [];
+      return [...new Set([...ids, ...hr])].filter(id => id !== ev.subjectEmploymentId);
+    },
   leaveEscalation:async (tx, ev, payload) => {
       const p = payload ?? {};
       const leaveRequestId = typeof p.leaveRequestId === 'string' ? p.leaveRequestId : null;

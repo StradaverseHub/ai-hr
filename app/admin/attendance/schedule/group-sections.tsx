@@ -33,7 +33,10 @@ import {
   saveScheduleGroupAttendanceAction,
   saveScheduleGroupAllowedShiftsAction,
   saveScheduleGroupWeekAction,
+  saveScheduleGroupOvertimeSettingAction,
 } from './actions';
+import { ScheduleOvertimeSettingFields } from '@/components/schedule-overtime-setting';
+import { scheduleOvertimeSettingProps } from './overtime-setting-props';
 import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import { ScheduleRotationEditor, StepMark } from '@/components/schedule-rotation-editor';
 import { getScheduleRotation, legacyOvertimePatternIdForRule, workingShiftSchedule } from '@/packs/attendance/service';
@@ -154,6 +157,7 @@ export async function ScheduleGroupSections({
   const otWorkspace = await getTranslations('overtimePatterns');
   const tr = await getTranslations('admin.attendanceRule');
   const te = await getTranslations('scheduleGroupEditor');
+  const tos = await getTranslations('scheduleOvertimeSetting');
 
   const rotationT = await getTranslations('admin.rotation');
   const editing = mode === 'edit';
@@ -464,20 +468,31 @@ export async function ScheduleGroupSections({
   /**
    * 2f803985 — THE OVERTIME SECTION after the bands moved. The overtime bands, rates, rounding and early
    * overtime (unchanged UI and writer) now live in Overtime Patterns › 1. General Settings of this group's
-   * own legacy pattern; this tab points there. The new Overtime Setting section (before/after shift,
-   * approval method, lateness offset, rounding) is released separately, only after Payroll is proven to
-   * receive its figures (ADR-0134), so nothing here claims a setting that does not yet reach pay.
+   * own legacy pattern; this tab points there, below the Overtime Setting section.
    */
   const overtimeHref = legacyPatternId
     ? `/admin/attendance/settings/overtime-patterns?pattern=${legacyPatternId}` : '/admin/attendance/settings/overtime-patterns';
+  // 2f803985 (round 2) — the Overtime Setting section itself, on Edit and View: written as dated policy
+  // revisions per company, applied by Attendance from the start date and received by Payroll through the
+  // existing policy execution and financial replay owners (ADR-0134).
+  const settingProps = await scheduleOvertimeSettingProps(s, rule.id, editing);
+  const settingBody = <Card className="space-y-3 p-4" data-schedule-overtime-setting-card="">
+    <h3 className="font-semibold">{tos('title')}</h3>
+    <ScheduleOvertimeSettingFields {...settingProps}/>
+    {editing && <AttendanceSettingsSaveButton className={btnPrimary}>{tos('save')}</AttendanceSettingsSaveButton>}
+  </Card>;
   const overtime = <>
     <ErrorBanner message={bannerFor('overtime')}/>
+    {editing ? <AttendanceSettingsActionForm submitAction={saveScheduleGroupOvertimeSettingAction} data-attendance-save-scope=""
+      data-attendance-saved-receipt={savedSection === 'overtime' ? savedReceipt : undefined} className="space-y-6">
+      <input type="hidden" name="ruleId" value={rule.id}/>
+      {settingBody}
+    </AttendanceSettingsActionForm> : settingBody}
     <Card className="space-y-3 p-4" data-schedule-overtime-moved="">
       <h3 className="font-semibold">{t('sectionOvertime')}</h3>
       <p className="text-sm">{t('otMovedNote')}{' '}
         <Link href={overtimeHref} className="text-primary hover:underline">{t('otMovedOpen')}</Link></p>
       <p className="text-sm text-muted-foreground">{otWorkspace('legacyContext')}</p>
-      <p className="text-xs text-muted-foreground">{t('otSettingPending')}</p>
     </Card>
   </>;
 

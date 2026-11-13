@@ -590,7 +590,9 @@
     "attendanceFormulaBuilder": "考勤公式",
     "rewardsReviewSetup": "审核设置",
     "rewardsChangeLog": "变更日志",
-    "rewardsLimitControls": "限额控制"
+    "rewardsLimitControls": "限额控制",
+    "attendanceRequestOnBehalf": "代为申请",
+    "attendanceApproveOnBehalf": "代为审批"
   },
   "dashboard": {
     "viewAll": "查看全部"
@@ -5562,6 +5564,7 @@
     "maFoundMissingOut": "缺少下班打卡",
     "maFoundAbsent": "没有任何记录",
     "maFoundLateBy": "迟到 · {minutes} 分钟",
+    "maFoundLateAfterOffset": "加班抵扣后仍迟到 · {minutes} 分钟",
     "maFoundLateUnknown": "迟到 · 未记录时长",
     "maFoundEarlyBy": "提早下班 · {minutes} 分钟",
     "maFoundShort": "未达排班工时",
@@ -11957,7 +11960,9 @@
         "jobArchitecture": "岗位架构的访问权限取决于您当前的岗位架构职责和公司范围。",
         "rewardsAccess": "有效薪酬职责任命及限定范围的HR管理员权限决定访问权限；仅有系统角色不代表可执行所有操作。",
         "myPrivateCases": "仅限登录者本人的私密个案。特权角色不会扩大范围；管理员无法在此阅读他人的个案。",
-        "privateCaseHandling": "所有人都可以访问，但只向个案所属公司的指定个案处理人显示个案（若没有符合条件的处理人，则向集团管理员显示），绝不向提交人或被提交人排除的人显示。角色在此不授予任何权限。"
+        "privateCaseHandling": "所有人都可以访问，但只向个案所属公司的指定个案处理人显示个案（若没有符合条件的处理人，则向集团管理员显示），绝不向提交人或被提交人排除的人显示。角色在此不授予任何权限。",
+        "attendanceRequestOnBehalf": "仅在您持有 attendance.request_on_behalf 时，列出您作为人事管理的公司中的员工，或您本人汇报线下属的人员。申请遵循该员工自己的工作流程。",
+        "attendanceApproveOnBehalf": "仅在您持有 attendance.approve_on_behalf 时，列出您作为人事管理的公司中的审批人，或您本人汇报线下属的人员。决定将记录为代指定审批人作出。"
       },
       "scopedTo": "范围限定为 {company} 及其子公司",
       "screen": {
@@ -15171,7 +15176,8 @@
       "perDayDecision": "按日决定",
       "confirmed": "已确认",
       "extended": "已延长",
-      "terminated": "已终止"
+      "terminated": "已终止",
+      "escalated": "已升级"
     }
   },
   "payrollConfig": {
@@ -27748,7 +27754,13 @@
       "unusedDeleteImpact": "是否删除 {company} 的此未使用流程？所有未使用版本将永久删除，无法撤销。",
       "usedCannotDelete": "此流程已被审批交易使用，无法删除。请改为归档。",
       "archived": "流程已归档。现有申请和历史记录已保留。",
-      "archivedList": "已归档流程"
+      "archivedList": "已归档流程",
+      "escalationLegend": "升级审批 – 若在 [天数] 后仍未批准/拒绝，则自动转至下一级",
+      "escalationEnable": "启用升级审批",
+      "escalationDays": "升级期限（天）",
+      "escalationHelp": "按日历天计算，从申请到达此级别的次日开始计。每晚检查会将其转至下一级；绝不会自动批准或拒绝。",
+      "escalationInvalid": "请输入 1 到 365 之间的整数天数。",
+      "escalationFinal": "最终级别 – 不再升级"
     },
     "chooseCompanies": "选择公司",
     "searchCompanies": "搜索有权管理的公司",
@@ -27855,7 +27867,8 @@
         "hr_unavailable": "没有人力资源管理员可以为此员工审批。",
         "selected_unavailable": "所选审批人已停用、没有唯一可用的登录账号，或不在允许的公司范围内。请更换所选人员。",
         "login_unusable": "审批人没有可用于此员工公司的唯一登录账号。请让人力资源部更正其登录账号。"
-      }
+      },
+      "pendingActivation": "账户尚未激活 – 申请将等待该审批人"
     }
   },
   "attendanceHistory": {
@@ -27938,7 +27951,8 @@
     "modes": {
       "assigned": "指定审批人",
       "delegate": "有效受托人",
-      "administrator": "人事代为处理"
+      "administrator": "人事代为处理",
+      "on_behalf": "代指定审批人操作"
     },
     "invalidFilters": "无法应用筛选条件。请检查日期和所选值后重试。",
     "stageRecorded": "已记录阶段审批",
@@ -28078,7 +28092,15 @@
     },
     "skippedNoSuperior": "已自动跳过 - 没有更上一级直属上级（{sources}）",
     "skippedDecidedAt": "于提交申请时决定，{date}",
-    "skippedLabel": "无需审批"
+    "skippedLabel": "无需审批",
+    "awaitingActivation": "等待账户激活",
+    "escalatedStage": "已升级",
+    "escalatedMoved": "{days} 天内未获批准或拒绝，已自动转至第 {level} 级。",
+    "escalatedWaitedFor": "等待的审批人",
+    "escalatedBy": "系统自动升级",
+    "submittedOnBehalfBy": "由 {name} 代为提交",
+    "approvedOnBehalf": "已代为批准",
+    "rejectedOnBehalf": "已代为拒绝"
   },
   "scheduleDrafts": {
     "staleLadder": "“常规”部分的加班时段或费率已更改。您的草稿仍保留在此。保存加班设置前，请重新加载此页面。只有在您确认后，未保存的更改才会被丢弃。",
@@ -34679,9 +34701,9 @@
       "FixedAllowances": "固定津贴"
     },
     "functionHelp": {
-      "PayItem": "本次薪资运行中计算的另一个薪资项目金额（按比例计算后）。",
-      "PayItemNoProrate": "本次薪资运行中计算的另一个薪资项目金额（按比例计算前）。",
-      "PayItemInput": "本次运行中另一个薪资项目输入的数字或金额，在应用其规则之前。",
+      "PayItem": "本次薪资运行中计算的另一个薪资项目金额（按比例计算后）。如果员工在本次运行中没有该项目，则按 0 计算。",
+      "PayItemNoProrate": "本次薪资运行中计算的另一个薪资项目金额（按比例计算前）。如果员工在本次运行中没有该项目，则按 0 计算。",
+      "PayItemInput": "本次运行中另一个薪资项目输入的数字或金额，在应用其规则之前。如果员工在本次运行中没有该项目，则按 0 计算。",
       "Basic": "员工在该薪资月份的基本工资。",
       "EmployeeProfile": "雇佣字段，例如入职日期、雇佣类型、部门或职级。",
       "EmployeeInformation": "个人字段，例如出生日期、性别、国籍或婚姻状况。需要查看权限。",
@@ -34693,7 +34715,7 @@
       "AnotherPayItems": "以前已保存薪资运行中的薪资项目金额：薪资项目代码、月份（YYYY-MM）、周期和运行编号。",
       "Rounding": "将数字舍入到 0–12 位小数；0.5 向远离零的方向舍入。",
       "ServiceLength": "从所选服务日期起计算的完整服务年数、月数或天数。",
-      "Accumulation": "在累加组下设置的一组已命名薪资项目的合计。",
+      "Accumulation": "在累加组下设置的一组已命名薪资项目的合计。员工在本次运行中没有的成员按 0 计算。",
       "Payrate": "员工的计薪方式：按月、按日、按小时或自定义期间。",
       "OrdinaryRate": "在此薪资项目上设置的普通费率除数，例如 26 天。",
       "HoursPerDay": "在此薪资项目上设置的每个工作日小时数，例如 8。",
@@ -34770,6 +34792,8 @@
     "traceCalculatedAt": "记录时间",
     "traceExplanations": "公式说明",
     "traceNoExplanations": "此计算未记录说明。",
+    "missingItemZero": "{variable}（{code}）：本次运行中没有，按 0 计算",
+    "missingMemberZero": "{variable}（{group}）成员 {code}：本次运行中没有，按 0 计算",
     "traceReads": "公式读取的数值",
     "traceReadsHelp": "这些是在该次计算中实际读取并保存的来源数值。",
     "traceVariable": "变量",
@@ -34867,6 +34891,7 @@
       "otherwise": "否则：",
       "return": "结果为 {expression}。",
       "explain": "添加备注 {expression}。",
+      "missingZero": "员工在本次运行中没有的薪资项目按 0 计算：{items}。",
       "unavailable": "在修正下方问题之前，无法解释此公式。",
       "and": "并且",
       "or": "或",
@@ -34886,6 +34911,7 @@
       "missing_return": "有些情况没有给出金额。请添加带有 Return 的 Else，例如 Return 0。",
       "division_by_zero": "这里除以 0，薪资无法进行此计算。请更改除数。",
       "possible_zero_divisor": "这里除以 {name}。如果它为 0，该员工的薪资将因计算错误而停止。建议先检查是否为 0。",
+      "possible_zero_divisorMissingItem": "这里除以 {name}。员工在本次运行中没有的薪资项目按 0 计算，届时该员工的薪资将因计算错误而停止。建议先检查是否为 0。",
       "blocked": "请修正“保存前检查”中列出的问题。",
       "internal_id_comparedCompany": "companyId 是公司的内部 ID，因此永远不会等于“{value}”。公司代码请使用 companyCode，法定名称请使用 companyName。",
       "internal_id_compared": "{name} 是内部 ID，因此永远不会等于“{value}”。请从该字段的允许值列表中选择。",
@@ -38968,5 +38994,96 @@
     "historyHeading": "版本历史",
     "noVersions": "尚无版本。",
     "changeLogLink": "在变更日志中查看所有更改"
+  },
+  "scheduleOvertimeSetting": {
+    "title": "加班设置",
+    "intro": "控制此排班组员工的加班如何记录、审批、抵扣和取整。自开始日期起生效：之前的日期、打卡记录、迟到记录和以往工资不会重新计算。",
+    "companiesLabel": "适用于",
+    "allCompanies": "所有公司",
+    "selectedCompanies": "选定公司",
+    "effectiveFrom": "开始日期",
+    "effectiveHint": "须晚于今天，并晚于所选公司已保存的任何开始日期。",
+    "applicabilityTitle": "加班适用范围",
+    "beforeShift": "班前加班",
+    "beforeShiftHint": "允许在排定班次之前加班。",
+    "afterShift": "班后加班",
+    "afterShiftHint": "允许在排定班次之后加班。",
+    "allowBackdated": "允许无打卡补报加班",
+    "allowBackdatedHint": "员工可在没有对应打卡记录的情况下补报加班。HR 仍须记录实际工作时段后才会计入。",
+    "splitAtMidnight": "午夜拆分加班",
+    "splitAtMidnightHint": "午夜之后的加班计入下一个日历日，作为早班加班。例如：晚上 10:00 至凌晨 2:00，每个日期各计 2 小时。",
+    "offsetTitle": "以迟到抵扣加班",
+    "offsetLateness": "以迟到抵扣加班",
+    "offsetHint": "从符合条件的加班中扣除迟到分钟。例如：迟到 20 分钟、符合条件加班 60 分钟，剩余 40 分钟。已记录的迟到保持不变。",
+    "showLatenessException": "抵扣后显示迟到异常",
+    "showLatenessExceptionHint": "对抵扣后仍剩余的迟到显示迟到异常。",
+    "approvalTitle": "加班审批方式",
+    "approvalManual": "手动",
+    "approvalAuto": "自动",
+    "approvalManualHint": "考勤不产生应付加班。打卡记录保留，加班在工资模块中手动录入。",
+    "autoMethod": "自动加班审批方式",
+    "methodIntersect": "实际与预批取交集",
+    "methodActual": "实际时数",
+    "methodPreApproved": "已批准加班",
+    "methodIntersectHint": "按批准与实际分钟中较低者支付：批准 120、实际 90，支付 90。",
+    "methodActualHint": "按实际符合条件的分钟支付，不受批准上限限制。",
+    "methodPreApprovedHint": "按批准时长支付：批准 120、实际 90，支付 120。",
+    "patternsTitle": "各日期类型的加班模式",
+    "patternsHint": "加班工资由所选加班模式计算。仅列出对所有选定公司均有效的模式。",
+    "patternsNone": "没有对所有选定公司均有效的加班模式。请在加班模式中启用一个以使用自动，或选择手动。",
+    "choosePattern": "选择加班模式",
+    "dayNormal": "工作日",
+    "dayOff": "非工作日",
+    "dayRest": "休息日",
+    "dayPublicHoliday": "公共假日",
+    "dayReplacementHoliday": "补假日",
+    "roundingTitle": "加班取整",
+    "roundingMethod": "加班取整方式",
+    "roundUp": "向上取整",
+    "roundDown": "向下取整",
+    "roundingStep": "加班取整至分钟",
+    "stepMinutes": "{n} 分钟",
+    "roundingHint": "取整在最后进行，即在审批方式和迟到抵扣之后。已记录的打卡时长不会改变。",
+    "unsupportedRounding": "已保存的取整使用了本部分不提供的选项。保存后将自新开始日期起替换。",
+    "differs": "{n, plural, other {# 家公司}}的加班设置不同或尚未设置。保存后此设置将适用于所有选定公司。",
+    "savedFrom": "已保存的设置自 {date} 起生效。",
+    "none": "尚未保存加班设置。在保存之前，此组的加班照旧运作。",
+    "save": "保存加班设置",
+    "systemReason": "排班组加班设置已保存",
+    "on": "开",
+    "off": "关",
+    "payrollNote": "工资模块从此设置接收最终加班数据，方式与现在接收加班相同。"
+  },
+  "attendanceOnBehalf": {
+    "requestTitle": "代为申请",
+    "requestHelp": "选择员工，然后在常用页面为其提交考勤异常或自报加班。申请将遵循该员工自己的工作流程和审批人。",
+    "approveTitle": "代为审批",
+    "approveHelp": "选择您需要代为处理其待审批考勤申请的指定审批人。",
+    "approveListHelp": "等待 {name} 审批、您可代为决定的申请。",
+    "searchLabel": "按员工编号或姓名搜索",
+    "searchPlaceholder": "例如 EMP-0123 或姓名",
+    "search": "搜索",
+    "results": "您可代为办理的员工",
+    "noResults": "没有符合此搜索且您可代为办理的员工。",
+    "noPermission": "您的角色没有此权限。如需要，请联系管理员。",
+    "choose": "选择",
+    "employeeName": "员工",
+    "employeeId": "员工编号",
+    "company": "公司",
+    "department": "部门",
+    "changeEmployee": "更换员工",
+    "chooseCategory": "您要提交哪类申请？",
+    "irregularity": "考勤异常",
+    "irregularityHelp": "员工本人日期的缺失或错误打卡、工时不足或缺勤。",
+    "selfOvertime": "自报加班",
+    "selfOvertimeHelp": "按员工本人的排班组和加班规则计划或申报加班。",
+    "banner": "正在代 {name} 提交",
+    "pendingTitle": "待审批申请",
+    "pendingEmpty": "没有您可代为决定、正在等待该审批人的申请。",
+    "approveOnBehalf": "代为批准",
+    "rejectOnBehalf": "代为拒绝",
+    "approveAudit": "历史记录保留所选人员为指定审批人，并记录您为实际操作人。",
+    "previous": "上一页",
+    "next": "下一页"
   }
 }
