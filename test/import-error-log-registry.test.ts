@@ -10,7 +10,7 @@ const h = vi.hoisted(() => ({ bank: vi.fn(), cost: vi.fn(), info: vi.fn(), movem
 vi.mock('../core/bank-statutory-error-log', () => ({ bankStatutoryErrorLogFor: h.bank }));
 vi.mock('../core/cost-allocation-error-log', () => ({ costAllocationErrorLogFor: h.cost }));
 vi.mock('../core/information-correction-error-log', () => ({ informationCorrectionErrorLogFor: h.info }));
-vi.mock('../core/movement-import-error-log', () => ({ movementErrorLogFor: h.movement }));
+vi.mock('../core/movement-error-log', () => ({ movementErrorLogFor: h.movement }));
 vi.mock('../db/client', () => ({ withTenant: vi.fn() }));
 vi.mock('../core/import-history', () => ({ getImportAttempt: vi.fn(), getImportRun: vi.fn() }));
 vi.mock('../core/employee-import-history', () => ({ employeeImportErrorReportFor: vi.fn() }));

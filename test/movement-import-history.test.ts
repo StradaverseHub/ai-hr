@@ -20,7 +20,7 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {personnelImportLabelResolvers} from '../lib/personnel-import-labels.server';
 import {adminCtx,createAppUser,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {createTranslator} from 'next-intl';
-import {movementErrorLogFor} from '../core/movement-import-error-log';
+import {movementErrorLogFor} from '../core/movement-error-log';
 import ms from '../messages/ms.json';
 const day=(offset:number)=>new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+offset*86400000).toISOString().slice(0,10);
 const HEADER=['Company ID','Employee ID','Employee Name','Effective Date','Event Type','System Fields','Before','After'];

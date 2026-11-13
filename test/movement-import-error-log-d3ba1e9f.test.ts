@@ -25,7 +25,7 @@ import vi_ from '../messages/vi.json';
 const h=vi.hoisted(()=>({attempt:vi.fn(),companies:vi.fn()}));
 vi.mock('../core/import-history',()=>({getImportAttempt:h.attempt}));
 vi.mock('../core/workforce-access',()=>({workforceCompanies:h.companies}));
-const {movementErrorLogFor}=await import('../core/movement-import-error-log');
+const {movementErrorLogFor}=await import('../core/movement-error-log');
 
 const LOCALES={en,ms,zh,ta,th,vi:vi_} as Record<string,typeof en>;
 const resolverOf=(locale:string):PersonnelLabelResolver=>{const t=createTranslator({locale,messages:LOCALES[locale]}) as unknown as {(k:string):string;has(k:string):boolean};return (k,f)=>t.has(k)?t(k):f;};

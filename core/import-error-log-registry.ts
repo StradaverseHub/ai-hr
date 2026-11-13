@@ -23,7 +23,7 @@ import {employeeImportErrorReportFor} from './employee-import-history';
 import {bankStatutoryErrorLogFor} from './bank-statutory-error-log';
 import {costAllocationErrorLogFor} from './cost-allocation-error-log';
 import {informationCorrectionErrorLogFor} from './information-correction-error-log';
-import {movementErrorLogFor} from './movement-import-error-log';
+import {movementErrorLogFor} from './movement-error-log';
 
 /** `problems`: the ROOT translator in the request locale (full keys); `shared`: the importProblems translator. */
 export type ImportErrorLogTranslate={problems:(key:string,values?:Record<string,unknown>)=>string;shared:(key:string)=>string};
