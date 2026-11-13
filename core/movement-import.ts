@@ -29,6 +29,7 @@ import {allocationCompanyCode,matchAllocationCompany} from './cost-allocation-im
 import {recordImportItemTx} from './import-history';
 import {isComparisonKind,movementNeedsEntitlementReprojection} from './movement-kinds';
 import {resolveMovementEventTypeTx,activeMovementEventTypeChoicesTx,lockMovementTypeCatalogueTx} from './movement-type';
+import {HISTORY_FIELDS,classifyHistoryRows,dayBefore,historyVersionsTx,recordHistoryMovementTx,MovementHistoryError,type HistoryField,type HistoryValues} from './movement-history';
 import {lockEmploymentStatutoryOwnerTx,AssignmentBeforeCurrentStartError,EmploymentAlreadyInCompanyError,CrossCompanyError,DestinationCompanyNotAdministered} from './org';
 import {deriveEmploymentStatus} from './employment-status';
 import {visibleLabelIdsCondition} from './system-labels';
@@ -320,6 +321,7 @@ async function fingerprintTx(tx:Tx,ctx:SessionContext,id:string,companyId:string
  * what is wrong and on which date (production 13 Nov 2026: these all showed the generic "could not be applied"). */
 const CROSS_COMPANY_FIELD:Record<string,string>={department:'departmentId',position:'positionId','business-unit':'businessUnitId',location:'locationId'};
 export function movementWriterRefusalCode(error:unknown):string|null{
+ if(error instanceof MovementHistoryError)return error.message;
  if(error instanceof AssignmentBeforeCurrentStartError)return 'movement_before_current_record:'+error.currentStart;
  if(error instanceof EmploymentAlreadyInCompanyError)return 'movement_already_in_company';
  if(error instanceof CrossCompanyError)return CROSS_COMPANY_FIELD[error.entity]?'movement_label_other_company:'+CROSS_COMPANY_FIELD[error.entity]:'movement_label_other_company';
@@ -389,7 +391,45 @@ function checkBefore(record:MovementImportRecord,state:Record<string,string|null
  }
 }
 function recordDay(row:MovementImportRecord){return row.importVersion===2&&row.cells.kind==='blacklist'?todayInKualaLumpur():movementImportDate(row.cells.effectiveDate??'')??'9999';}
-function sortSequence(rows:MovementImportRecord[]){return [...rows].sort((a,b)=>recordDay(a).localeCompare(recordDay(b))||a.row-b.row);}
+/** Board 154511c4 — history rows first, newest first (each one is judged against the record the newer ones
+ * leave), then ordinary movements in effective-date order exactly as before. */
+function sortSequence(rows:MovementImportRecord[]){
+ const history=rows.filter(row=>row.history).sort((a,b)=>recordDay(b).localeCompare(recordDay(a))||b.row-a.row);
+ return [...history,...rows.filter(row=>!row.history).sort((a,b)=>recordDay(a).localeCompare(recordDay(b))||a.row-b.row)];
+}
+const HISTORY_SKIP=new Set(['kind','effectiveDate','remarks']);
+const historyFieldsOf=(record:MovementImportRecord)=>Object.keys(record.cells).filter(key=>!HISTORY_SKIP.has(key)&&record.cells[key as MovementFormField]!=null);
+/** A row that could be history: a new movement whose every field is a history field with a Before. */
+function historyShaped(record:MovementImportRecord){
+ if(isCorrection(record)||record.errors.length||!record.before)return false;
+ const fields=historyFieldsOf(record);
+ return fields.length>0&&fields.every(field=>(HISTORY_FIELDS as readonly string[]).includes(field)&&!!record.before?.[field]?.trim());
+}
+/** The After and Before ids of a history-shaped row, resolved by the same owner every import row uses. */
+async function historyValuesTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,id:string,versions:Awaited<ReturnType<typeof historyVersionsTx>>,reads?:MovementChunkReads){
+ const day=movementImportDate(record.cells.effectiveDate??'');if(!day)throw new Error('invalid_effective_date');
+ const [emp]=await tx.select({companyId:employment.companyId}).from(employment).where(eq(employment.id,id)).limit(1);
+ const at=(date:string)=>versions.find(v=>v.validFrom<=date&&(v.validTo===null||v.validTo>date))?.companyId??emp?.companyId??'';
+ const fields=historyFieldsOf(record) as HistoryField[];
+ const after=await inputTx(tx,ctx,record,id,at(day),false,reads);
+ const beforeRecord:MovementImportRecord={...record,cells:{kind:record.cells.kind,effectiveDate:record.cells.effectiveDate,...Object.fromEntries(fields.map(field=>[field,record.before![field]]))}};
+ const before=await inputTx(tx,ctx,beforeRecord,id,at(dayBefore(day)),false,reads);
+ const pickIds=(input:CreateMovementInput)=>Object.fromEntries(fields.map(field=>[field,(input[field as keyof CreateMovementInput] as string|null|undefined)??null])) as HistoryValues;
+ return{effectiveDate:day,fields,after:pickIds(after.input),before:pickIds(before.input),behaviour:after.behaviour,typeCode:after.input.kind,catalog:after.catalog,source:after.source};
+}
+/** Marks this employee's history rows (newest first against the live versions); every other row is unchanged. */
+async function classifyHistoryTx(tx:Tx,ctx:SessionContext,records:MovementImportRecord[],id:string):Promise<MovementImportRecord[]>{
+ const shaped=records.filter(historyShaped);
+ if(!shaped.length)return records.map(record=>record.history?{...record,history:undefined}:record);
+ const versions=await historyVersionsTx(tx,id);const candidates=[];
+ for(const record of shaped){
+  // Its own savepoint: a refused lookup must not abort the employee's transaction.
+  try{const v=await tx.transaction(savepoint=>historyValuesTx(savepoint,ctx,record,id,versions));if(isComparisonKind(v.behaviour))candidates.push({key:record.row,effectiveDate:v.effectiveDate,after:v.after,before:v.before});}
+  catch{/* Not resolvable as history: the row stays an ordinary movement and reports its own refusal. */}
+ }
+ const history=classifyHistoryRows(versions,candidates);
+ return records.map(record=>history.has(record.row)?{...record,history:true}:record.history?{...record,history:undefined}:record);
+}
 /** 646355e5 slice C — an Update or Delete row names an existing movement. */
 const isCorrection=(row:MovementImportRecord)=>row.action==='update'||row.action==='delete';
 /** One employee's order, identical in preview, commit and history: corrections first in sheet order (they act
@@ -422,6 +462,7 @@ function assertSequence(previous:RehearsedRow[],next:RehearsedRow){
  * it, the chunk's catalogues and organisation reads, and the subject's manager entry and state refreshed after the
  * write. The caller discards `reads` when the row's savepoint rolls back. */
 async function applyRowTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,id:string,rehearsal:boolean,resolvedInput?:CreateMovementInput,create?:MovementSequenceCreate,policy?:RehearsedRow,reads?:MovementChunkReads):Promise<RehearsedRow>{
+ if(record.history)return applyHistoryRowTx(tx,ctx,record,id,reads);
  const cached=reads?.state?.employmentId===id?reads.state.value as SubjectState:null;
  const before:SubjectState=cached?{...cached}:await subjectStateTx(tx,id);
  const prepared=resolvedInput?null:await inputTx(tx,ctx,record,id,before.companyId,false,reads,reads?before:undefined);
@@ -449,6 +490,16 @@ async function applyRowTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,i
  const view:MovementImportRow={...rowView(record),...(record.sourceRows?{sourceRows:record.sourceRows}:{}),...(record.companyCode!==undefined?{companyCode:record.companyCode}:{}),eventType:input.kind,effectiveDate:input.effectiveDate,status:'valid',errors:[],warnings:[...adapted.warnings,...organisation.warnings],baselineDate:adapted.baselineDate,before:readable(before,catalogBefore),proposed:{...readable(after,catalogAfter),...extra},scheduled,payrollFlaggedPeriods:'payrollFlaggedPeriods' in result&&Array.isArray(result.payrollFlaggedPeriods)?result.payrollFlaggedPeriods:[]};
  return {view,input,changedFields,references:adapted.references,rawAfter:afterValues,organisationWarnings:organisation.warnings};
 }
+/** Board 154511c4 — one history row: the Before values fill the period before its date (core/movement-history.ts). */
+async function applyHistoryRowTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,id:string,reads?:MovementChunkReads):Promise<RehearsedRow>{
+ const v=await historyValuesTx(tx,ctx,record,id,await historyVersionsTx(tx,id),reads);
+ const result=await recordHistoryMovementTx(tx,ctx,{employmentId:id,kind:v.behaviour,typeCode:v.typeCode,effectiveDate:v.effectiveDate,after:v.after,before:v.before,remarks:record.cells.remarks??null});
+ const labels={...v.source,companies:v.source.companies,fields:{...v.source.fields,...Object.fromEntries(Object.entries(v.catalog.fields).map(([key,options])=>[key,[...(v.source.fields[key as MovementFormField]??[]),...(options??[])]]))}} as MovementImportCatalog;
+ const view:MovementImportRow={...rowView(record),eventType:v.typeCode,effectiveDate:v.effectiveDate,status:'valid',errors:[],
+  warnings:result.closedPayrollPeriods.length&&!v.fields.includes('companyId')?['history_closed_payroll:'+result.closedPayrollPeriods.join(', ')]:[],
+  before:readable(v.before as Record<string,string|null>,labels),proposed:readable(v.after as Record<string,string|null>,labels),history:{from:result.spanFrom,to:result.spanTo}};
+ return{view,input:{employmentId:id,kind:v.typeCode,effectiveDate:v.effectiveDate},changedFields:v.fields.map(field=>'history:'+field),references:[],rawAfter:{}};
+}
 async function rehearseSequenceTx(tx:Tx,ctx:SessionContext,records:MovementImportRecord[],id:string,deadline:number){
  return rehearseMovementSequenceTx(tx,ctx,async(rehearsalTx,create)=>{
   const rows:RehearsedRow[]=[];
@@ -458,7 +509,7 @@ async function rehearseSequenceTx(tx:Tx,ctx:SessionContext,records:MovementImpor
 }
 /** 646355e5 slice C — one Update or Delete row as applied: the row view, plus what the attempt records for a
  * revert (the movement's recorded values before the correction, and the movement the Update left). */
-type CorrectedRow={view:MovementImportRow;references:MovementManagerEvidence[];changedFields:string[];rawAfter:Record<string,string|null>;action:'update'|'delete';originalId:string;originalKind:string;originalDate:string;original:CreateMovementInput;replacementId:string|null;closedPayrollPeriods:string[]};
+type CorrectedRow={view:MovementImportRow;references:MovementManagerEvidence[];changedFields:string[];rawAfter:Record<string,string|null>;action:'update'|'delete';originalId:string;originalKind:string;originalDate:string;original:CreateMovementInput|null;replacementId:string|null;closedPayrollPeriods:string[]};
 /** Correction refusals as finite row codes. The owner's own sentence travels as the detail. */
 function correctionError(error:unknown):never{
  if(error instanceof MovementFieldRuleError)fieldRuleError(error);
@@ -498,6 +549,22 @@ async function applyCorrectionTx(tx:Tx,ctx:SessionContext,record:MovementImportR
    if(record.cells.effectiveDate&&movementImportDate(record.cells.effectiveDate)!==base.effectiveDate)throw new Error('event_mismatch:effectiveDate');
    if(record.cells.kind&&record.cells.kind!==base.kind&&record.cells.kind!==base.displayKind)throw new Error('event_mismatch:kind');
    await reverseMovementForImportTx(tx,ctx,employmentId,movementId,reason,{acknowledgeClosedPayroll});
+  }else if(base.history){
+   // Board 154511c4 — Update of a history movement: delete it, then record it again with the recorded Before /
+   // After overlaid by the cells HR filled (core/movement-history.ts checks every rule again).
+   const day=record.cells.effectiveDate?movementImportDate(record.cells.effectiveDate):base.effectiveDate;if(!day)throw new Error('invalid_effective_date');
+   const fields=historyFieldsOf(record);
+   if(!fields.every(field=>(HISTORY_FIELDS as readonly string[]).includes(field)))throw new MovementHistoryError('movement_history_fields');
+   const code=record.cells.kind??base.kind;
+   const resolve=async(cells:Record<string,string>,company:string)=>{if(!Object.keys(cells).length)return{};const prepared=await inputTx(tx,ctx,{...record,cells:{kind:code,effectiveDate:day,...cells}},employmentId,company);return Object.fromEntries(Object.keys(cells).map(field=>[field,(prepared.input[field as keyof CreateMovementInput] as string|null|undefined)??null]));};
+   const afterCells=Object.fromEntries(fields.map(field=>[field,record.cells[field as MovementFormField]!]));
+   const beforeCells=Object.fromEntries(Object.entries(record.before??{}).filter(([field,value])=>(HISTORY_FIELDS as readonly string[]).includes(field)&&value.trim()));
+   await reverseMovementForImportTx(tx,ctx,employmentId,movementId,reason,{acknowledgeClosedPayroll});
+   const after={...base.history.after,...await resolve(afterCells,before.companyId)} as HistoryValues;
+   const priorCompany=(beforeCells.companyId?undefined:base.history.before.companyId)??before.companyId;
+   const was={...base.history.before,...await resolve(beforeCells,priorCompany)} as HistoryValues;
+   await recordHistoryMovementTx(tx,ctx,{employmentId,kind:base.behaviour??'transfer',typeCode:code,effectiveDate:day,after,before:was,remarks:reason});
+   kind=code;effectiveDate=day;
   }else{
    if(!base.input)throw new Error('movement_update_not_supported');
    const prepared=await inputTx(tx,ctx,{...record,cells:{...record.cells,kind:record.cells.kind??base.kind,effectiveDate:record.cells.effectiveDate??base.effectiveDate}},employmentId,before.companyId,base.behaviour==='termination'||base.behaviour==='resignation');
@@ -532,7 +599,9 @@ async function applyCorrectionTx(tx:Tx,ctx:SessionContext,record:MovementImportR
  const catalogAfter=after.companyId!==before.companyId?await catalogTx(tx,ctx,after.companyId):catalog;
  const organisation=await organisationImportWarningsTx(tx,ctx,{companyId:after.companyId,asOf:effectiveDate,businessUnit:record.cells.businessUnitId??record.ignoredOrganisation?.businessUnit,parentCompany:record.ignoredOrganisation?.parentCompany});
  const view:MovementImportRow={...rowView(record),eventType:kind,effectiveDate,status:'valid',errors:[],warnings:organisation.warnings,before:readable(before,catalog),proposed:readable(after,catalogAfter),...(closedPayrollPeriods.length?{closedPayrollPeriods}:{})};
- return {view,references,changedFields,rawAfter:afterValues,action,originalId:movementId,originalKind:base.kind,originalDate:base.effectiveDate,original:base.input??base.recorded,replacementId,closedPayrollPeriods};
+ return {view,references,changedFields,rawAfter:afterValues,action,originalId:movementId,originalKind:base.kind,originalDate:base.effectiveDate,
+  // A history movement's revert is not a forward re-record: no original, so a whole-import revert refuses it.
+  original:base.history?null:base.input??base.recorded,replacementId,closedPayrollPeriods};
 }
 class PreviewRollback extends Error{constructor(readonly employee:MovementImportEmployee){super('movement_preview_rollback');}}
 /** The employee a group of records names: its company (per record, or the legacy single company) and code. */
@@ -613,8 +682,18 @@ async function checkEmployeeTx(tx:Tx,ctx:SessionContext,c:MovementCheckEmployee,
  employee={...employee,employmentId:subject.id,name:subject.name,fingerprint:await fingerprintTx(tx,ctx,subject.id,companyId,inputHash,selection,records,employeeDeadline,[],reads)};held.employee=employee;
  if(reads)reads.state=null;
  const baseFingerprint=employee.fingerprint;const rows:MovementImportRow[]=[];const previous:RehearsedRow[]=[];const corrected:CorrectedRow[]=[];
- for(const record of employeeOrder(records)){
+ // Board 154511c4 — the new rows are classified once the corrections have acted (history newest first).
+ let ordered=employeeOrder(records),classified=false;
+ for(let index=0;index<ordered.length;index++){
+  const record=ordered[index];
   budget(employeeDeadline);
+  if(!classified&&!isCorrection(record)){
+   classified=true;
+   const fresh=await classifyHistoryTx(tx,ctx,ordered.slice(index).filter(row=>selection.includes(row.row)),subject.id);
+   const flags=new Map(fresh.map(row=>[row.row,row.history===true]));
+   ordered=[...ordered.slice(0,index),...sortSequence(ordered.slice(index).map(row=>flags.get(row.row)?{...row,history:true}:row))];
+   index--;continue;
+  }
   if(!selection.includes(record.row)){rows.push(rowView(record));continue;}
   if(isCorrection(record)){
    try{const next=await tx.transaction(rowTx=>applyCorrectionTx(rowTx,ctx,record,subject.id,companyId,true));corrected.push(next);rows.push(next.view);}
@@ -748,7 +827,8 @@ async function commitEmployeeTx(tx:Tx,ctx:SessionContext,p:MovementCommitEmploye
      for(const record of corrections){budget(employeeDeadline);corrected.push(await applyCorrectionTx(tx,ctx,record,subject.id,companyId,p.acknowledgeClosedPayroll===true));}
     }
     const settled=corrected.length?await fingerprintTx(tx,ctx,subject.id,companyId,inputHash,selection,records,employeeDeadline):fingerprint;
-    const creates=records.filter(row=>!isCorrection(row));
+    const flags=new Map((await classifyHistoryTx(tx,ctx,records.filter(row=>!isCorrection(row)&&selection.includes(row.row)),subject.id)).map(row=>[row.row,row.history===true]));
+    const creates=records.filter(row=>!isCorrection(row)).map(row=>flags.get(row.row)?{...row,history:true}:row);
     const rehearsed=await rehearseSequenceTx(tx,ctx,creates,subject.id,employeeDeadline);
     const combined=digest({base:fingerprint,references:[...corrected.flatMap(row=>row.references),...rehearsed.value.flatMap(row=>row.references)]});
     if(!p.fingerprints||p.fingerprints[key]!==combined)throw new Error('preview_stale_revalidate');
@@ -770,7 +850,7 @@ async function commitEmployeeTx(tx:Tx,ctx:SessionContext,p:MovementCommitEmploye
       const shown=[...new Set([...Object.keys(row.view.before??{}),...Object.keys(row.view.proposed??{})])].filter(field=>field!=='companyName'&&row.view.before?.[field]!==row.view.proposed?.[field]);
       const common={employeeCode:code,sourceRows:record.sourceRows??[record.source?.row??record.row],action:row.action,reason:record.reason?.trim()??'',originalMovementId:row.originalId};
       await recordImportItemTx(tx,ctx,{attemptId:p.history.attemptId,companyId,employmentId:subject.id,itemKey:`${record.row}|${row.action}|${row.originalId}`,label:`${code} · ${subject.name} · ${label(row.originalKind)} · ${row.originalDate}`,ordinal:record.row,status:'applied',
-       before:{...common,eventType:row.originalKind,eventLabel:label(row.originalKind),effectiveDate:row.originalDate,movementId:row.originalId,values:pick(row.view.before,shown),original:{...row.original}} satisfies MovementImportItemState,
+       before:{...common,eventType:row.originalKind,eventLabel:label(row.originalKind),effectiveDate:row.originalDate,movementId:row.originalId,values:pick(row.view.before,shown),original:row.original?{...row.original}:undefined} satisfies MovementImportItemState,
        after:{...common,organisationWarnings:row.view.warnings??[],eventType:row.view.eventType,eventLabel:label(row.view.eventType),effectiveDate:row.view.effectiveDate,movementId:row.action==='update'?row.replacementId:null,sequence,values:pick(row.view.proposed,shown),raw:pick(row.rawAfter,row.changedFields),...(row.closedPayrollPeriods.length?{closedPayrollPeriods:row.closedPayrollPeriods}:{})} satisfies MovementImportItemState});
      }
      for(const [index,{record,plan,row,movementIds}]of applied.entries()){const sequence=corrected.length+index;
@@ -817,6 +897,8 @@ async function commitEmployeeLeanTx(tx:Tx,ctx:SessionContext,p:MovementCommitEmp
  let employee=e.held.employee;
  const employeeDeadline=Math.min(deadline,Date.now()+MOVEMENT_IMPORT_LIMITS.employeeMs);
  if(records.some(isCorrection)||records.some(row=>!selection.includes(row.row))||records.some(row=>recordDay(row)>reads.today))throw new MovementLeanUnavailable('shape');
+ // Board 154511c4 — a possible history row takes the reference path, which classifies before it orders.
+ if(records.some(historyShaped))throw new MovementLeanUnavailable('shape');
  await assertCompany(tx,ctx,companyId,reads);const catalog=await catalogTx(tx,ctx,companyId,reads);if(p.catalogueHash&&digest({version:2,types:catalog.types})!==p.catalogueHash)throw new Error('workbook_catalogue_changed');const subject=await subjectTx(tx,ctx,companyId,code);
  employee={...employee,employmentId:subject.id,name:subject.name};e.held.employee=employee;
  if(await actorsOwnEmploymentTx(tx,ctx,reads,subject.personId))throw new MovementLeanUnavailable('actor');

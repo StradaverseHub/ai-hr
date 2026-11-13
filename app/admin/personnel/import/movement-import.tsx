@@ -111,6 +111,7 @@ export function MovementImport({onCommitPendingChange}:{onCommitPendingChange?:(
    {employees.map(employee=>{const key=movementEmployeeKey(employee);return <section key={key} className="space-y-2 rounded-lg border p-3"><h3 className="text-sm font-medium">{employee.employeeCode} · {employee.name??t('notFound')}{employee.companyName?` · ${employee.companyName}`:''}</h3>
     {!result&&<label className="flex items-center gap-2 text-sm"><input type="checkbox" disabled={busy||!employee.fingerprint||employee.rows.some(r=>r.status!=='valid')} checked={selected.includes(key)} onChange={e=>{setSelected(current=>e.target.checked?[...current,key]:current.filter(c=>c!==key));setAcknowledge(false);}}/>{word('included','Include employee')}</label>}
     <ul className="space-y-2">{employee.rows.map(row=><li key={row.row} className="space-y-1 border-t pt-2"><p className="text-sm font-medium">{actionLabel(row)}{eventLabel(row.eventType)} · {row.effectiveDate} · {sheetPlace(row)} · {t(`rowStatus.${row.status}`)}</p>
+     {row.history&&<p className="text-xs text-sky-700 dark:text-sky-400">{t('historyRow',{from:row.history.from,to:row.history.to,date:row.effectiveDate})}</p>}
      {row.errors.length>0&&<p className="text-xs text-destructive">{issueText(row.errors)}</p>}
      {!!row.closedPayrollPeriods?.length&&<p className="text-xs text-amber-700 dark:text-amber-400">{t('sheet.closedPayrollRow',{periods:row.closedPayrollPeriods.join(', ')})}</p>}
      {!!row.warnings?.length&&<p className="text-xs text-amber-700 dark:text-amber-400">{issueText(row.warnings)}</p>}

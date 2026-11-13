@@ -1900,7 +1900,8 @@
         },
         "payrollClosedBadge": "薪资已关闭：{periods}",
         "informationCorrected": "资料已更正",
-        "informationNeedsReview": "更正需要审核"
+        "informationNeedsReview": "更正需要审核",
+        "historyBadge": "历史"
       },
       "salaryCurrency": "货币",
       "emergency": {
@@ -2449,7 +2450,18 @@
           "movement_already_in_company": "该员工在此日期已属于此公司。",
           "movement_label_other_company": "此值在该日期不能用于员工所属公司。请选择该公司可用的值",
           "movement_backdated_reason_required": "此异动的日期早于之后的异动。请在备注中说明插入原因。",
-          "movement_before_join_date": "此日期早于员工的集团入职日期。请先更正入职日期，或使用较晚的日期。"
+          "movement_before_join_date": "此日期早于员工的集团入职日期。请先更正入职日期，或使用较晚的日期。",
+          "movement_history_fields": "只能为公司、部门、职位、业务单位和工作地点记录历史，且每项都需填写“之前”值。",
+          "movement_history_before_required": "请为此历史行设置的每个字段填写“之前”值。",
+          "movement_history_future": "只能为今天或之前的日期记录历史。",
+          "movement_history_no_period": "该员工在此日期之前没有记录的期间。",
+          "movement_history_after_mismatch": "要记录历史，“之后”必须与此日期的记录一致",
+          "movement_history_earlier_change": "此字段已在此日期之前的 %date% 发生变更。请从该日期起记录历史，或先更正该变更。",
+          "movement_history_no_change": "“之前”值在此日期之前已有记录，无需更改。",
+          "movement_history_splits_movement": "%date% 记录的异动涵盖此日期。请记录 %date% 之前的历史，或先删除该异动。",
+          "movement_history_payroll_company": "%detail% 的薪资已在另一家公司下结算关闭。请重新开启该薪资或检查“之前”的公司。",
+          "movement_history_overtaken": "之后的历史异动或更正已更改此期间。请先删除该更改。",
+          "history_closed_payroll": "已关闭的薪资涵盖 %detail%。薪资保持已发放状态；只更改雇佣记录。"
         },
         "v2": {
           "type": "人事异动类型",
@@ -2561,7 +2573,8 @@
           "closedPayrollTitle": "部分更正涉及薪资已关闭期间的异动（{periods}）。",
           "closedPayrollBody": "这些更正会更新员工记录及之后的处理。已关闭的薪资、已发放的工资单和法定申报将保留其最终数字，不会重新计算。未勾选此确认时，相关员工不会被保存。",
           "closedPayrollAcknowledge": "我了解已关闭的薪资不会改变。"
-        }
+        },
+        "historyRow": "记录为历史：{from} 至 {to} 采用“之前”的值。{date} 起的记录不变。"
       },
       "headerAssistance": {
         "title": "核对列标题",
@@ -3509,7 +3522,13 @@
       "effective": "未来处理将从{date}起使用这些更正信息。",
       "templateFields": "此模板可更正的字段（新增字段已突出显示）。空白单元格保留现有值。",
       "templateFieldsLabel": "此模板可更正的字段",
-      "ownersNote": "基本工资和辞职日期须在记录它们的事件上更正：请使用变动导入，操作选择“Update”。付款方式在银行与法定导入中。"
+      "ownersNote": "基本工资和辞职日期须在记录它们的事件上更正：请使用变动导入，操作选择“Update”。付款方式在银行与法定导入中。",
+      "fromJoinDate": "员工自入职日起即在此公司（更正整个历史，而不仅是从今天起）。仅适用于员工始终在同一家公司的情况；此更正中只更改公司。",
+      "warnings": {
+        "companyFromToday": "公司自 {date} 起更改。在此日期之前，员工仍属当前公司。如员工一直在新公司，请勾选“自入职日起”；如需记录较早在其他公司的期间，请以历史异动导入。",
+        "companyFromJoinDate": "公司将对整个历史更改，自 {date} 起。",
+        "historyBeforeJoinDate": "员工的日期历史始于 {date}，早于集团入职日期。请检查入职日期以及第一条公司和职位记录。"
+      }
     }
   },
   "leave": {
