@@ -824,8 +824,9 @@ export function MovementNewEvent({
         </div>
       )}
 
-      {isComparison && !historyMode && (
-        <div className="border-t border-border">
+      {isComparison && (
+        // Board 154511c4 — hidden (not unmounted) while recording history: the server ignores these After values then.
+        <div className="border-t border-border" hidden={historyMode}>
           <div className="hidden bg-muted/50 px-4 py-2 text-xs uppercase tracking-wide text-muted-foreground sm:grid sm:grid-cols-[11rem_minmax(0,1fr)_minmax(0,1fr)] sm:gap-4">
             <div className="font-medium">{t('detail.field')}</div>
             <div className="font-medium">{t('form.currentInformation')}</div>
