@@ -756,8 +756,12 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'reward_pat_version', 'reward_plan_company', 'reward_setup_grant',
   ];
   const expansionNames = new Set(expansionRelations.map(rel => rel + '_company_tenant_fk'));
+  // 5640 (board release gate repair, 13 November 2026) adds the same validated NO ACTION key to 5460's lc_v9_email_hold.
+  const boardReleaseKeys = [{ rel: 'lc_v9_email_hold', conname: 'lc_v9_email_hold_company_tenant_fk', convalidated: true, action: 'a' }];
+  const boardReleaseNames = new Set(boardReleaseKeys.map(row => row.conname));
   const completeKeys = await keys();
-  expect(completeKeys.filter(row => !expansionNames.has(row.conname))).toEqual(installed);
+  expect(completeKeys.filter(row => boardReleaseNames.has(row.conname))).toEqual(boardReleaseKeys);
+  expect(completeKeys.filter(row => !expansionNames.has(row.conname) && !boardReleaseNames.has(row.conname))).toEqual(installed);
   expect(completeKeys.filter(row => expansionNames.has(row.conname))).toEqual(expansionRelations.map(rel => ({
    rel, conname: rel + '_company_tenant_fk', convalidated: true, action: 'a',
   })));
