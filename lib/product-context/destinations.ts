@@ -291,7 +291,8 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/performance/plan/team','everyone','performance'],['/performance/team','everyone','performance'],
  ['/performance/team/kpis','everyone','performance'],['/performance/workspace','everyone','performance'],['/personnel','everyone',null],
  ['/policies','everyone',null],
- ['/reports','admin',null],['/reports/employee-master','admin',null],['/rewards','everyone','rewards'],['/rewards/approvals','everyone','rewards'],['/rewards/reviews','everyone','rewards'],
+ ['/reports','admin',null],['/reports/employee-master','admin',null],['/rewards','everyone','rewards'],['/rewards/approvals','everyone','rewards'],['/rewards/offcycle/new','everyone','rewards'],
+ ['/rewards/offcycle/settings','everyone','rewards'],['/rewards/reviews','everyone','rewards'],
  ['/roster','everyone','attendance'],['/roster/exceptions','everyone','attendance'],['/roster/import','admin','attendance'],
  ['/system-testing','everyone','system_testing'],['/tasks','everyone',null],
 ] satisfies PageRow[]).map(row=>Object.freeze(row)));
