@@ -23,5 +23,5 @@ export async function GET(_request:Request,{params}:{params:Promise<{jobId:strin
   catch(error){console.error('[bank import error log]',error);throw new Error('The import Error Log is unavailable.');}
  })();
  const stream=importProblemWorkbookStream({pages,columns,t:shared,summary:[[shared('summary.batch'),job.attempt_id??job.id],[shared('summary.file'),job.source_name],[shared('summary.status'),root(`people.import.background.${job.state}`)],[shared('summary.problems'),problems]]});
- return new Response(Readable.toWeb(stream as Readable) as ReadableStream<Uint8Array>,{headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':`attachment; filename="bank-statutory-error-log-${job.id.slice(0,8)}.xlsx"`,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});
+ return new Response(Readable.toWeb(stream) as ReadableStream<Uint8Array>,{headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':`attachment; filename="bank-statutory-error-log-${job.id.slice(0,8)}.xlsx"`,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});
 }

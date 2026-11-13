@@ -93,10 +93,10 @@ describe('streamed Error Log (d3ba1e9f)', () => {
         });
       }
     }
-    const stream = importProblemWorkbookStream({ pages: source(), columns, t }) as NodeJS.ReadableStream & { pause(): void; resume(): void };
+    const stream = importProblemWorkbookStream({ pages: source(), columns, t });
     const parts: Buffer[] = [];
     let pulledWhileStalled = -1;
-    for await (const part of stream as AsyncIterable<Buffer>) {
+    for await (const part of stream) {
       if (pulledWhileStalled < 0 && pulled >= 1) {
         // The consumer stalls once the sheet has started; the page source must not race ahead to the end meanwhile.
         await new Promise(resolve => setTimeout(resolve, 100));

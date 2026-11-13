@@ -113,7 +113,7 @@ const STYLES = XML + '<styleSheet xmlns="http://schemas.openxmlformats.org/sprea
   + '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
 
 /** The Error Log as a Node stream of .xlsx bytes. Read errors from `pages` surface as a stream error. */
-export function importProblemWorkbookStream(input: ImportProblemWorkbookStreamInput): NodeJS.ReadableStream {
+export function importProblemWorkbookStream(input: ImportProblemWorkbookStreamInput): Readable {
   const withSummary = !!input.summary?.length;
   const zip = new JSZip();
   zip.file('[Content_Types].xml', XML + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
@@ -132,12 +132,13 @@ export function importProblemWorkbookStream(input: ImportProblemWorkbookStreamIn
   if (withSummary) zip.file('xl/worksheets/sheet2.xml', summarySheet(input.summary!));
   // A byte stream (not object mode) with a small buffer: the page reader runs only as fast as the archive is read.
   zip.file('xl/worksheets/sheet1.xml', Readable.from(errorsSheet(input), { objectMode: false, highWaterMark: 64 * 1024 }));
-  return zip.generateNodeStream({ type: 'nodebuffer', streamFiles: true, compression: 'DEFLATE' });
+  // JSZip returns a legacy readable-stream; wrap it so consumers get a modern Readable (async iteration, toWeb).
+  return new Readable({ highWaterMark: 64 * 1024 }).wrap(zip.generateNodeStream({ type: 'nodebuffer', streamFiles: true, compression: 'DEFLATE' }));
 }
 
 /** Collect a stream into one buffer (tests, small logs). */
 export async function importProblemWorkbookStreamBytes(input: ImportProblemWorkbookStreamInput): Promise<Buffer> {
   const parts: Buffer[] = [];
-  for await (const part of importProblemWorkbookStream(input) as AsyncIterable<Buffer>) parts.push(Buffer.from(part));
+  for await (const part of importProblemWorkbookStream(input)) parts.push(Buffer.from(part as Buffer));
   return Buffer.concat(parts);
 }

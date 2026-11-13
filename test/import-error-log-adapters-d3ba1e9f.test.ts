@@ -10,7 +10,7 @@ import { createTranslator } from 'next-intl';
 import { HIDDEN_VALUE, importProblemCells, importProblemColumns, sortProblemLines, type ImportProblemLine } from '../lib/import-problem-lines';
 import { importProblemSheetRows, importProblemWorkbook } from '../lib/import-problem-workbook';
 import { importProblemText } from '../lib/import-problem-rules';
-import { bankColumnHidden, bankImportProblemLines, bankJobProblemLine, redactBankRecord } from '../lib/bank-import-problems';
+import { bankColumnHidden, bankImportProblemLines, bankJobProblemLine, redactBankRecord, type BankProblemRow } from '../lib/bank-import-problems';
 import { costAllocationProblemLines } from '../lib/cost-allocation-import-problems';
 import { informationCorrectionProblemLines } from '../lib/information-correction-problems';
 import { unexpectedErrorReference, publicUnexpectedErrorMessage, DATABASE_ERROR_TEXT_EN } from '../lib/public-error';
@@ -43,7 +43,7 @@ function parity(lines: readonly ImportProblemLine[], locale: string) {
 }
 
 describe('Bank and Statutory adapter', () => {
-  const rows = [
+  const rows: (BankProblemRow & { preview: { errors: string[] } })[] = [
     { ordinal: 1, state: 'invalid', error: null, record: redactBankRecord({ employee_code: 'EMP-0001', bank_name: 'Bank Fiktif', bank_account_no: '1234567890' }),
       preview: { employeeCode: 'EMP-0001', employeeName: 'Fictional Aina', errors: ['bank_name and bank_account_no must be provided together', '"Bank Fiktif" is not an active bank option — column bank_name'] } },
     { ordinal: 4, state: 'invalid', error: 'Duplicate Employee ID in this file; first used at row 1.', record: { employee_code: 'EMP-0001' }, preview: { employeeCode: 'EMP-0001', employeeName: 'Fictional Aina', errors: [] } },

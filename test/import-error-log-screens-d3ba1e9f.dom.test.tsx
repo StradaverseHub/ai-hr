@@ -77,8 +77,11 @@ describe('Cost Center Allocations Error Log',()=>{
    {key:'ACME|E2|2026-01-01',employeeCode:'E2',effectiveDate:'2026-01-01',rowNums:[3],saved:false,errors:['Allocations changed. Reload and preview again.']}]}});
   const {container}=render(<NextIntlClientProvider locale="en" messages={en}><CostAllocationImport/></NextIntlClientProvider>);
   fireEvent.change(container.querySelector('input[type=file]')!,{target:{files:[new File(['x'],'allocations.csv')]}});
-  fireEvent.click(await screen.findByRole('button',{name:'Save 1 valid sets'}));
-  expect(await screen.findByText(en.importErrorLogDataBankCostInfo.allocation.errors.changed)).toBeVisible();
+  const save=await screen.findByRole('button',{name:'Save 1 valid sets'});
+  await waitFor(()=>expect(save).not.toBeDisabled());
+  fireEvent.click(save);
+  await waitFor(()=>expect(actions.confirmAllocation).toHaveBeenCalledWith('0f0e0d0c-0000-4000-8000-000000000002','h'));
+  expect(await screen.findByText(en.importErrorLogDataBankCostInfo.allocation.errors.changed,{},{timeout:5000})).toBeVisible();
   const cells=tableCells();
   expect(cells.slice(1).map(r=>[r[0],r[1]])).toEqual([['2','E1'],['3','E2']]);
   expect(cells[2]).toContain(en.importProblems.stage.save);

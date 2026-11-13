@@ -22,7 +22,9 @@ type StoredRow = { ordinal: number; state: string; error: string | null; preview
 async function problemRowsTx(tx: Tx, jobId: string, after: number, limit: number): Promise<BankProblemRow[]> {
   const rows = await tx.execute<StoredRow>(sql`select ordinal,state,error,preview,record from bank_import_row
     where job_id=${jobId}::uuid and ordinal>${after} and state in ('invalid','failed') order by ordinal limit ${limit}`);
-  return rows.map(row => ({ ordinal: row.ordinal, state: row.state, error: row.error, preview: row.preview, record: redactBankRecord(row.record) }));
+  // Only what the Error Log uses leaves storage: the preview's proposed values are never passed on.
+  return rows.map(row => ({ ordinal: row.ordinal, state: row.state, error: row.error, record: redactBankRecord(row.record),
+    preview: row.preview ? { employeeCode: row.preview.employeeCode, employeeName: row.preview.employeeName, errors: row.preview.errors ?? [] } : null }));
 }
 
 /** Problem rows (not lines) the job counts: refused at the check plus not saved. */
