@@ -1,10 +1,12 @@
 import {beforeEach,expect,it,vi} from 'vitest';
 import {parseCsv} from '../lib/csv';
-const ports=vi.hoisted(()=>({session:vi.fn(),companies:vi.fn(),scope:vi.fn(),read:vi.fn(),requests:vi.fn()}));
+const ports=vi.hoisted(()=>({session:vi.fn(),companies:vi.fn(),scope:vi.fn(),read:vi.fn(),requests:vi.fn(),permissionRows:vi.fn()}));
 vi.mock('../lib/session',()=>({getSession:ports.session}));
 vi.mock('../lib/scope',()=>({getScopeIds:ports.scope}));
 vi.mock('../packs/rewards/access-policy',()=>({rewardAccessPageCompanies:ports.companies}));
 vi.mock('../packs/rewards/service',()=>({rewardAccessRequests:ports.requests,rewardAccessAdministration:ports.read,rewardRoleLabels:{ctro:'CTRO'}}));
+// Board db14e49c: the audit export also carries the role permission batches and the earlier one-cell changes.
+vi.mock('../packs/rewards/role-permission-grid',()=>({rewardRolePermissionAuditRows:ports.permissionRows}));
 import {GET} from '../app/admin/rewards/access/export/route';
 import {GET as auditGET} from '../app/admin/rewards/access/audit/route';
 beforeEach(()=>vi.clearAllMocks());
@@ -22,7 +24,9 @@ it('exports source-linked requests/decisions with exact scope and formula-safe r
  const session={tenantId:'fictional-tenant',userId:'reviewer'};ports.session.mockResolvedValue(session);ports.companies.mockResolvedValue([{id:'company'}]);ports.scope.mockResolvedValue(['company']);
  ports.read.mockResolvedValue({reviews:[{id:'review',company:'Example company',unit:'Example unit'}]});
  ports.requests.mockResolvedValue([{id:'request',changes:[{unitId:'review',before:null,after:{userId:'recipient',role:'pbp'}}],requestedBy:'requester',requestedAt:'2026-11-03',requestReason:'=unsafe formula',status:'applied_no_second_approval',decidedBy:null,decidedAt:'2026-11-03',reason:'Reviewed request',exemptionBasis:{review:'gr'}},{id:'foreign',changes:[{unitId:'elsewhere'}]}]);
+ ports.permissionRows.mockResolvedValue([['version 4','Role permissions','','','Fictional checker','CTRO · Bonus Matrices: View','CTRO · Bonus Matrices: Full','batch-approved','2026-11-04 09:00:00+08','Fictional checker','=formula reason','']]);
  const response=await auditGET(),rows=parseCsv((await response.text()).replace(/^\uFEFF/,''));
  expect(ports.companies).toHaveBeenCalledWith(session,true);expect(ports.scope).toHaveBeenCalledWith(['company']);
- expect(ports.requests).toHaveBeenCalledWith(session,{audit:true});expect(rows).toHaveLength(3);expect(rows[1]).toContain("'=unsafe formula");expect(rows[2][7]).toBe('applied_no_second_approval');expect(rows[2][9]).toBe('');expect(rows[2][11]).toBe('gr');expect(rows.flat()).not.toContain('foreign');expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+ expect(ports.requests).toHaveBeenCalledWith(session,{audit:true});expect(ports.permissionRows).toHaveBeenCalledWith(session);expect(rows).toHaveLength(4);expect(rows[1]).toContain("'=unsafe formula");expect(rows[2][7]).toBe('applied_no_second_approval');expect(rows[2][9]).toBe('');expect(rows[2][11]).toBe('gr');expect(rows.flat()).not.toContain('foreign');
+ expect(rows[3]).toEqual(['version 4','Role permissions','','','Fictional checker','CTRO · Bonus Matrices: View','CTRO · Bonus Matrices: Full','batch-approved','2026-11-04 09:00:00+08','Fictional checker',"'=formula reason",'']);expect(response.headers.get('Cache-Control')).toBe('private, no-store');
 });
