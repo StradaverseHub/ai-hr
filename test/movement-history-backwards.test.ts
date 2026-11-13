@@ -24,9 +24,12 @@ beforeEach(async()=>{
  const [beta]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Beta Fictional Sdn Bhd',country:'MY'}).returning({id:schema.company.id});coB=beta.id;
  const [gamma]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Gamma Fictional Sdn Bhd',country:'MY'}).returning({id:schema.company.id});coC=gamma.id;
  // Shared labels, so the department and position are usable in every company (as in the production case).
- await owner.db.update(schema.department).set({isGlobal:true}).where(eq(schema.department.id,b.deptA));
- await owner.db.update(schema.position).set({isGlobal:true}).where(eq(schema.position.id,b.positionId));
+ await share('department',b.deptA);await share('position',b.positionId);
 });
+/** Assigns a label to the two other companies (label_company_assignment), the canonical way to share it. */
+async function share(labelKind:'department'|'position',labelId:string){
+ await owner.db.insert(schema.labelCompanyAssignment).values([coB,coC].map(companyId=>({tenantId:b.tenantId,labelKind,labelId,companyId})));
+}
 
 const HIRED='2025-06-03',TRANSFER='2026-04-01';
 async function hire(code:string,departmentId=b.deptA){
@@ -89,7 +92,8 @@ describe('recording history before a date',()=>{
 
  it('never splits a version a recorded movement created, and keeps closed payroll true',async()=>{
   const id=await hire('HB-3');
-  const [deptOther]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:b.companyId,name:'Fictional Other',isGlobal:true}).returning({id:schema.department.id});
+  const [deptOther]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:b.companyId,name:'Fictional Other'}).returning({id:schema.department.id});
+  await share('department',deptOther.id);
   await createMovementEvent(adminCtx(b),{employmentId:id,kind:'transfer',effectiveDate:'2026-05-01',departmentId:deptOther.id});
   await expect(record(id,{effectiveDate:'2026-06-01',after:{companyId:b.companyId},before:{companyId:coB}})).rejects.toThrow('movement_history_splits_movement:2026-05-01');
   const paid=await hire('HB-4');
