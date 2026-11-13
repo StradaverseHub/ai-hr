@@ -24,7 +24,7 @@ UNIT=Path('/etc/systemd/system/aihr-bank-import.service')
 USER='aihr-import'
 LOCK_DIRECTORY=Path('/run/aihr-bank-import')
 BASE_ENV={'PATH':'/usr/sbin:/usr/bin:/sbin:/bin','LANG':'C.UTF-8'}
-ENV_KEYS={'DATABASE_URL','MIGRATION_DATABASE_URL','AUDIT_HASH_CHAIN_ENABLED','NODE_EXTRA_CA_CERTS','PGSSLMODE','PGSSLROOTCERT','PGSSLCERT','PGSSLKEY'}
+ENV_KEYS={'DATABASE_URL','MIGRATION_DATABASE_URL','AUDIT_HASH_CHAIN_ENABLED','NODE_EXTRA_CA_CERTS','PGSSLMODE','PGSSLROOTCERT','PGSSLCERT','PGSSLKEY','MOVEMENT_IMPORT_WORKBOOK_KEY','MOVEMENT_IMPORT_WORKBOOK_KEY_ID'}
 
 def check(ok,message):
     if not ok: raise ValueError('Worker installation refused: '+message)
