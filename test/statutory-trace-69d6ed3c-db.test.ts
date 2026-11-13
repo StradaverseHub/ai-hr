@@ -222,18 +222,22 @@ describe('69d6ed3c — the multi-run defect: an earlier run counts only its EPF-
     const s2 = statOf(await slipOf(run2.batchId, e.employmentId));
     expect([r.epfEmployee, r.epfEmployer]).toEqual([418, 494]);
     expect([s1.epfEmployee, s1.epfEmployer]).toEqual([0, 0]);
-    expect(s1.statutoryTrace!.run.own).toEqual({ epfAdditional: 0, socsoWageExtra: 0 });
+    expect(s1.statutoryTrace!.run.own).toEqual({ epfAdditional: 0, socsoWageExtra: 0, epfWageExtra: 0, exemptEpfWage: 0, exemptEpfAdditional: 0, exemptSocsoWage: 0 });
     expect([s2.epfEmployee, s2.epfEmployer]).toEqual([88, 104]);
 
     const tr = s2.statutoryTrace!;
-    // The whole month: 3,800 + 800 = 4,600, read once.
-    expect(tr.epf).toMatchObject({ normalWage: 3800, bonusWage: 800, base: 4600, band: { from: 4580.01, upTo: 4600 }, employee: 506, employer: 598 });
+    // The whole month: 3,800 + 800 = 4,600, read once. REVERSED 2026-11-13 (owner decision B): B2 is
+    // classified 'additional' for PCB but is NOT ticked EPF Bonus 2012, so its 800 is NORMAL EPF wages
+    // (this used to pin normalWage 3,800 / bonusWage 800). The amounts are unchanged — the month is one
+    // Third Schedule lookup on 4,600 either way (bdf7d248).
+    expect(tr.epf).toMatchObject({ normalWage: 4600, bonusWage: 0, base: 4600, band: { from: 4580.01, upTo: 4600 }, employee: 506, employer: 598 });
+    expect(tr.run.own).toMatchObject({ epfAdditional: 0, epfWageExtra: 800 });
     expect(tr.run).toMatchObject({ kind: 'additional', earlier: { runs: 2, unstamped: 0, additional: 1000, epfAdditional: 0 } });
     const ex = explainStatutory(s2, 'bonus');
     expect(ex.traceStatus).toBe('recorded');
     expect(ex.trace!.run.chargedBefore).toMatchObject({ epfEmployee: 418, epfEmployer: 494 });
     expect(ex.trace!.run.before!.epf.band).toEqual({ from: 3780.01, upTo: 3800 });
-    expect((s2 as unknown as { bases: Record<string, number> }).bases).toMatchObject({ epf: 3800, epfAdditional: 800 });
+    expect((s2 as unknown as { bases: Record<string, number> }).bases).toMatchObject({ epf: 4600, epfAdditional: 0 });
   });
 
   it('an earlier run from before the trace is read off its own pay item lines: still 88 / 104, in any order', async () => {

@@ -126,7 +126,8 @@ describe('69d6ed3c — the multi-run defect, in the arithmetic the kernel perfor
 
   it('readRunStatutoryStamp reads an earlier run’s own stamp, and refuses one that cannot be true', () => {
     const stamped = { statutoryTrace: { version: 1, run: { own: { epfAdditional: 0, socsoWageExtra: 0 } } } };
-    expect(readRunStatutoryStamp(stamped, 1000)).toEqual({ epfAdditional: 0, socsoWageExtra: 0 });
+    // A stamp written before 2026-11-13 has none of the four later figures: each reads as 0, as it was computed.
+    expect(readRunStatutoryStamp(stamped, 1000)).toEqual({ epfAdditional: 0, socsoWageExtra: 0, epfWageExtra: 0, exemptEpfWage: 0, exemptEpfAdditional: 0, exemptSocsoWage: 0 });
     expect(readRunStatutoryStamp({}, 1000), 'a payslip from before the trace has no stamp').toBeNull();
     expect(readRunStatutoryStamp({ statutoryTrace: { version: 1, run: { own: { epfAdditional: 1200, socsoWageExtra: 0 } } } }, 1000)).toBeNull();
     expect(readRunStatutoryStamp({ statutoryTrace: { version: 2, run: { own: { epfAdditional: 0, socsoWageExtra: 0 } } } }, 1000)).toBeNull();
@@ -140,13 +141,13 @@ describe('69d6ed3c — a pre-trace earlier run is read off its own pay item line
     { code: 'T', epf: true, buckets: [{ bucket: 'wage', amount: 300 }] },
   ];
   it('EPF-liable = bonus-bucket money on EPF-ticked lines, when the lines add up to the slip bonus', () => {
-    expect(readEarlierRunLiability({ componentLines: lines }, 1000)).toEqual({ epfAdditional: 0, socsoWageExtra: 0, source: 'component_lines' });
+    expect(readEarlierRunLiability({ componentLines: lines }, 1000)).toEqual({ epfAdditional: 0, socsoWageExtra: 0, epfWageExtra: 0, exemptEpfWage: 0, exemptEpfAdditional: 0, exemptSocsoWage: 0, source: 'component_lines' });
     expect(readEarlierRunLiability({ componentLines: [...lines, { code: 'B2', epf: true, buckets: [{ bucket: 'bonus', amount: 800 }] }] }, 1800))
-      .toEqual({ epfAdditional: 800, socsoWageExtra: 0, source: 'component_lines' });
+      .toEqual({ epfAdditional: 800, socsoWageExtra: 0, epfWageExtra: 0, exemptEpfWage: 0, exemptEpfAdditional: 0, exemptSocsoWage: 0, source: 'component_lines' });
   });
   it('the trace stamp wins; lines that do not reconcile, or none at all, mean the old gross reading', () => {
     expect(readEarlierRunLiability({ componentLines: lines, statutoryTrace: { version: 1, run: { own: { epfAdditional: 0, socsoWageExtra: 5 } } } }, 1000))
-      .toEqual({ epfAdditional: 0, socsoWageExtra: 5, source: 'trace' });
+      .toEqual({ epfAdditional: 0, socsoWageExtra: 5, epfWageExtra: 0, exemptEpfWage: 0, exemptEpfAdditional: 0, exemptSocsoWage: 0, source: 'trace' });
     expect(readEarlierRunLiability({ componentLines: lines }, 1200)).toBeNull();
     expect(readEarlierRunLiability({}, 1000)).toBeNull();
     expect(readEarlierRunLiability({ componentLines: [{ code: 'X', buckets: [] }] }, 0)).toBeNull();

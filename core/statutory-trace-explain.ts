@@ -90,7 +90,12 @@ const traceSchema = z.object({
   items: z.array(line),
   run: z.object({
     kind: z.enum(['single', 'additional', 'restate', 'post_employment']),
-    own: z.object({ epfAdditional: nonneg, socsoWageExtra: nonneg }),
+    // 2026-11-13 (owner decisions A/B) — four more, absent on every trace written before.
+    own: z.object({
+      epfAdditional: nonneg, socsoWageExtra: nonneg,
+      epfWageExtra: nonneg.optional(), exemptEpfWage: nonneg.optional(),
+      exemptEpfAdditional: nonneg.optional(), exemptSocsoWage: nonneg.optional(),
+    }),
     earlier: z.object({
       runs: z.number().int().nonnegative(),
       unstamped: z.number().int().nonnegative(),
@@ -98,6 +103,10 @@ const traceSchema = z.object({
       additional: nonneg,
       epfAdditional: money,
       socsoWageExtra: nonneg,
+      epfWageExtra: nonneg.optional(),
+      exemptEpfWage: nonneg.optional(),
+      exemptEpfAdditional: nonneg.optional(),
+      exemptSocsoWage: nonneg.optional(),
     }).optional(),
     before: z.object({ epf: epfTrace, socso: socsoTrace, skbbk: skbbkTrace, eis: eisTrace }).optional(),
     // What the earlier runs were charged can be negative on a restating run's arithmetic, so not `nonneg`.
