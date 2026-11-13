@@ -43,7 +43,8 @@ describe('streamed Error Log (d3ba1e9f)', () => {
     const buffered = importProblemWorkbook({ lines, t, columns, summary });
     const streamed = await importProblemWorkbookStreamBytes({ pages: pagesOf(lines, 2), columns, t, summary });
     readSpreadsheetArchive(streamed, { maxBytes: 5_000_000, maxExpandedBytes: 8_000_000, maxEntries: 160 });
-    const a = XLSX.read(buffered, { type: 'array' }), b = XLSX.read(streamed, { type: 'buffer' });
+    // cellStyles: SheetJS reads column widths and row heights only with it.
+    const a = XLSX.read(buffered, { type: 'array', cellStyles: true }), b = XLSX.read(streamed, { type: 'buffer', cellStyles: true });
     expect(b.SheetNames).toEqual(['Errors', 'Summary']);
     expect(b.SheetNames).toEqual(a.SheetNames);
     const errors = sheetRows(streamed, 'Errors');
