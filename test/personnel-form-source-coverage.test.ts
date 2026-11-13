@@ -163,7 +163,7 @@ describe('actual mounted Personnel form inventory',()=>{
     expect(audit(source,unbounded).issues.some(issue=>issue.message.includes('Unresolved Personnel binding'))).toBe(true);
     const reason='<textarea name="informationCorrectionReason"';expect(source).toContain(reason);
     expect(audit(source.replace(reason,'<textarea name="informationCorrectionReason"/>'+reason)).issues.some(issue=>issue.message.includes('occurrence changed'))).toBe(true);
-    expect(exemptions[file].map(item=>({name:item.name,occurrences:item.occurrences}))).toEqual([{name:'informationCorrectionReason',occurrences:1},{name:'correction-mode',occurrences:2}]);
+    expect(exemptions[file].map(item=>({name:item.name,occurrences:item.occurrences}))).toEqual([{name:'informationCorrectionReason',occurrences:1},{name:'correction-mode',occurrences:2},{name:'informationCorrectionFromJoinDate',occurrences:1}]);
   });
 
 });
