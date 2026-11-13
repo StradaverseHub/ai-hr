@@ -403,7 +403,7 @@ describe('00e28308 · the month records the ruleset version it was opened under'
           eis: { wage: 5000, band: { from: 4900.01, upTo: 5000 }, scheduleEmployee: GOLDEN_STATUTORY.eisEmployee,
             scheduleEmployer: GOLDEN_STATUTORY.eisEmployer, employee: GOLDEN_STATUTORY.eisEmployee, employer: GOLDEN_STATUTORY.eisEmployer },
           items: [{ kind: 'basic', amount: 5000, epfNormal: 5000, epfBonus: 0, socsoEis: 5000 }],
-          run: { kind: 'single', own: { epfAdditional: 0, socsoWageExtra: 0 },
+          run: { kind: 'single', own: { epfAdditional: 0, socsoWageExtra: 0, epfWageExtra: 0, exemptEpfWage: 0, exemptEpfAdditional: 0, exemptSocsoWage: 0 },
             thisRun: { epfEmployee: GOLDEN_STATUTORY.epfEmployee, epfEmployer: GOLDEN_STATUTORY.epfEmployer,
               socsoEmployee: GOLDEN_STATUTORY.socsoEmployee, socsoEmployer: GOLDEN_STATUTORY.socsoEmployer, socsoSkbbk: 0,
               eisEmployee: GOLDEN_STATUTORY.eisEmployee, eisEmployer: GOLDEN_STATUTORY.eisEmployer } },

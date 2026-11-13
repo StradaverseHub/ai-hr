@@ -13,10 +13,10 @@
       "pcb": 1578.75,
       "hrdf": 0,
       "bases": {
-        "epf": 10100,
+        "epf": 10180,
         "pcb": 10100,
         "hrdf": 10000,
-        "socsoEis": 10100,
+        "socsoEis": 10180,
         "epfAdditional": 0
       },
       "zakat": 0,
@@ -30,8 +30,8 @@
           "M": 100000,
           "R": 0.25,
           "Z": 0,
-          "K1": 1111,
-          "K2": 262.63,
+          "K1": 1122,
+          "K2": 261.63,
           "Kt": 0,
           "Y1": 10100,
           "Y2": 10100,
@@ -187,8 +187,8 @@
       "socsoSkbbk": 0,
       "eisEmployee": 11.9,
       "eisEmployer": 11.9,
-      "epfEmployee": 1111,
-      "epfEmployer": 1212,
+      "epfEmployee": 1122,
+      "epfEmployer": 1224,
       "recordLines": [
         {
           "code": "SYNTH_NONCASH",
@@ -233,7 +233,8 @@
               "amount": 50,
               "bucket": "wage"
             }
-          ]
+          ],
+          "exemptStatutory": true
         },
         {
           "epf": true,
@@ -263,7 +264,8 @@
               "amount": 30,
               "bucket": "reimburse"
             }
-          ]
+          ],
+          "exemptStatutory": true
         },
         {
           "epf": true,
@@ -300,9 +302,9 @@
       }
     },
     "otherDeductions": "0.00",
-    "totalDeductions": "2731.40",
-    "netPay": "7468.60",
-    "employerCost": "11528.05",
+    "totalDeductions": "2742.40",
+    "netPay": "7457.60",
+    "employerCost": "11540.05",
     "version": 1
   },
   {
@@ -319,10 +321,10 @@
       "pcb": 1590.8,
       "hrdf": 0,
       "bases": {
-        "epf": 10150,
+        "epf": 10180,
         "pcb": 10150,
         "hrdf": 10000,
-        "socsoEis": 10150,
+        "socsoEis": 10180,
         "epfAdditional": 0
       },
       "zakat": 0,
@@ -337,7 +339,7 @@
           "R": 0.25,
           "Z": 0,
           "K1": 1122,
-          "K2": 176.7,
+          "K2": 175.6,
           "Kt": 0,
           "Y1": 10150,
           "Y2": 10150,
@@ -366,7 +368,7 @@
           "mtdAdditionalFloored": 0,
           "childDeductionPerChild": 2000
         },
-        "ytdNet": 38989,
+        "ytdNet": 38978,
         "pcbPaid": 1578.75,
         "reliefs": {
           "lp": 40,
@@ -378,7 +380,7 @@
           "disabledIndividual": 0
         },
         "ytdGross": 40100,
-        "epfClaimed": 1111,
+        "epfClaimed": 1122,
         "taxSelectionId": "selected-employer-tax-owner",
         "taxCircumstance": {
           "key": null,
@@ -564,7 +566,8 @@
               "amount": 30,
               "bucket": "reimburse"
             }
-          ]
+          ],
+          "exemptStatutory": true
         },
         {
           "epf": true,
@@ -620,10 +623,10 @@
       "pcb": 250,
       "hrdf": 0,
       "bases": {
-        "epf": 10150,
+        "epf": 10180,
         "pcb": 11150,
         "hrdf": 0,
-        "socsoEis": 10150,
+        "socsoEis": 10180,
         "epfAdditional": 1000
       },
       "zakat": 0,
@@ -644,12 +647,12 @@
           "R": 0.25,
           "Z": 0,
           "K1": 1122,
-          "K2": 176.7,
+          "K2": 175.6,
           "Kt": 110,
           "Y1": 10150,
           "Y2": 10150,
           "Yt": 1000,
-          "K2t": 165.7,
+          "K2t": 164.6,
           "taxOnP1": 19082.5,
           "category": 1,
           "lpCurrent": 0,
@@ -675,7 +678,7 @@
           "mtdAdditionalFloored": 250,
           "childDeductionPerChild": 2000
         },
-        "ytdNet": 38989,
+        "ytdNet": 38978,
         "pcbPaid": 1578.75,
         "reliefs": {
           "lp": 20,
@@ -687,7 +690,7 @@
           "disabledIndividual": 0
         },
         "ytdGross": 40100,
-        "epfClaimed": 1111,
+        "epfClaimed": 1122,
         "taxSelectionId": "selected-employer-tax-owner",
         "taxCircumstance": {
           "key": null,
