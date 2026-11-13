@@ -11,6 +11,11 @@ import { commitEmployeeImport, validateEmployeeImport } from '../core/import';
 import { getImportAttempt } from '../core/import-history';
 import { employeeImportErrorReportFor } from '../core/employee-import-history';
 import { parseCsvRecords } from '../lib/csv';
+import { createTranslator } from 'next-intl';
+import en from '../messages/en.json';
+import * as XLSX from 'xlsx';
+import { employeeFullErrorLog } from '../core/import-error-log-registry';
+import { importProblemSheetRows, importProblemWorkbook } from '../lib/import-problem-workbook';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
@@ -83,7 +88,7 @@ describe('1859cce0 · problems found while saving', () => {
       expect(result.failed.map((f) => [f.rowNum, f.outcome])).toEqual([[1, 'cancelled'], [2, 'stopped'], [3, 'cancelled'], [4, 'stopped']]);
       expect(result.failed.find((f) => f.rowNum === 2)).toMatchObject({ employeeCode: 'ERR002', fullName: 'Fictional Person 2', companyId: b.companyId });
       expect(result.failed.find((f) => f.rowNum === 3)?.stoppedBy).toEqual([2, 4]);
-      expect(result.fileErrors[0]).toMatch(/Row 2, 4 could not be saved/);
+      expect(result.fileErrors[0]).toMatch(/Row 3, 5 could not be saved/);
       expect(await counts()).toEqual(before);
 
       const item = await getImportAttempt(a, result.attemptId!);
@@ -96,6 +101,20 @@ describe('1859cce0 · problems found while saving', () => {
         [1, null, 'cancelled'], [2, 'save', 'stopped'], [3, null, 'cancelled'], [4, 'save', 'stopped'], [5, 'check', 'refused'],
       ]);
       expect(report.lines.find((l) => l.rowNum === 5)?.column).toBe('department');
+
+      // Board d3ba1e9f — the Import History Error Log: rows as Excel numbers them (data row + 1 here: a CSV with no
+      // blank lines), the refused rows 'stopped', every other valid row 'cancelled', none reported as imported.
+      const root = createTranslator({ locale: 'en', messages: en }), shared = createTranslator({ locale: 'en', messages: en, namespace: 'importProblems' });
+      const t = { problems: (key: string, values?: Record<string, unknown>) => root(key as never, values as never), shared: (key: string) => shared(key as never) };
+      const log = await employeeFullErrorLog(a, result.attemptId!, t);
+      expect(log).not.toBeNull();
+      expect(log!.truncated).toBe(false);
+      expect(log!.lines.map((l) => [l.row, l.result])).toEqual([[2, 'cancelled'], [3, 'stopped'], [4, 'cancelled'], [5, 'stopped'], [6, 'refused']]);
+      expect(log!.lines[0].problem).toBe(en.people.importHistory.errorReport.cancelledRow.replace('{rows}', '3, 5'));
+      expect(log!.lines[4]).toMatchObject({ reference: 'ERR005', field: 'Department', value: 'No Such Department', correction: 'Choose a Department from the Reference sheet.' });
+      const wb = XLSX.read(importProblemWorkbook({ lines: log!.lines, t: t.shared }), { type: 'array' });
+      expect(XLSX.utils.sheet_to_json<string[]>(wb.Sheets.Errors, { header: 1, raw: false, defval: '' })).toEqual(importProblemSheetRows({ lines: log!.lines, t: t.shared }));
+      expect(await employeeFullErrorLog(a, '00000000-0000-4000-8000-000000000000', t)).toBeNull();
     } finally {
       await owner.db.execute(sql`ALTER TABLE person DROP CONSTRAINT test_refuse_two_ck`);
     }
@@ -109,7 +128,7 @@ describe('1859cce0 · problems found while saving', () => {
       const before = await counts();
       const result = await commitEmployeeImport(a, { companyId: b.companyId, records });
       expect(result.failed.map((f) => [f.rowNum, f.outcome, f.column ?? null])).toEqual([[1, 'stopped', 'direct_superior'], [2, 'stopped', null], [3, 'cancelled', null]]);
-      expect(result.failed[0].message).toMatch(/direct superior on row 2 could not be saved/);
+      expect(result.failed[0].message).toMatch(/direct superior on row 3 could not be saved/);
       expect(await counts()).toEqual(before);
     } finally {
       await owner.db.execute(sql`ALTER TABLE person DROP CONSTRAINT test_refuse_mgr_ck`);

@@ -15,15 +15,28 @@ import { visibleLabelIdsCondition, labelMaintenanceCondition, SYSTEM_LABEL_MAINT
 import { createGradeGroup } from '../packs/leave/service';
 import { EMPLOYMENT_LABEL_CATEGORIES, PROFILE_LABEL_CATEGORIES, LABEL_IMPORT_DEFINITIONS, ORGANISATION_LABEL_KINDS,
   ORGANISATION_LABEL_COLUMNS, type OrganisationLabelKind, type LabelImportMode,
-  type LabelImportRow, type LabelImportPreview, type LabelImportPreviewRow, type LabelImportRowReason, type LabelImportRequiredField } from '../lib/system-label-definition';
+  type LabelImportRow, type LabelImportPreview, type LabelImportPreviewRow, type LabelImportRowReason, type LabelImportRequiredField,
+  type LabelImportReasonDetail, type LabelImportColumn, labelReasonColumn as reasonColumnOf, labelReasonDetail } from '../lib/system-label-definition';
 import { readSystemLabelWorkbook, buildSystemLabelWorkbook, buildSystemLabelUploadTemplate, systemLabelExportId, systemLabelErrorWorkbook } from '../lib/system-label-workbook';
 
+/** Board c074c6b8: `detail` and `column` say which check refused the row and where; omitted, they follow the reason. */
 class LabelImportRowError extends Error {
-  constructor(readonly reason:LabelImportRowReason,message:string,readonly reasonField?:LabelImportRequiredField){super(message);}
+  constructor(readonly reason:LabelImportRowReason,message:string,readonly reasonField?:LabelImportRequiredField,readonly detail?:LabelImportReasonDetail,readonly column?:LabelImportColumn){super(message);}
 }
+/** Records the precise check and column on a refused row, beside the unchanged reason and message. */
+function describeRefusal(result:LabelImportPreviewRow,error:unknown){
+  const reason=result.reason??'invalidRow';
+  const detail=(error instanceof LabelImportRowError||error instanceof LabelAssignmentError)?error.detail:undefined;
+  const column=(error instanceof LabelImportRowError||error instanceof LabelAssignmentError)?error.column:undefined;
+  result.reasonDetail=detail??labelReasonDetail(reason);
+  const at=column??reasonColumnOf(reason,result.sheet,result.reasonField);
+  if(at)result.reasonColumn=at;
+}
+/** The preview token binds what it always bound: the explanatory fields added for board c074c6b8 stay out of it. */
+const tokenRow=(row:LabelImportPreviewRow)=>{const {reasonDetail,reasonColumn,...bound}=row;void reasonDetail;void reasonColumn;return bound;};
 const lower = (v: string) => v.toLowerCase();
 const list = (v: string) => [...new Set(v.split(';').map(x => x.trim()).filter(Boolean))].sort();
-const whole = (v: string) => { if (v && !/^-?\d{1,9}$/.test(v)) throw new LabelImportRowError('wholeNumber','Rank and Sort Order must be whole numbers.'); return Number(v || 0); };
+const whole = (v: string, column: 'Rank'|'Sort Order') => { if (v && !/^-?\d{1,9}$/.test(v)) throw new LabelImportRowError('wholeNumber','Rank and Sort Order must be whole numbers.',undefined,'wholeNumber',column); return Number(v || 0); };
 const same = (a: Record<string,string>, b: Record<string,string>) => JSON.stringify(Object.keys(a).sort().map(key=>[key,a[key]])) === JSON.stringify(Object.keys(b).sort().map(key=>[key,b[key]]));
 type Org = { kind: OrganisationLabelKind; id: string; companyId: string; archived: boolean;
   values: Record<string, string>; original: LabelUpdateInput };
@@ -196,7 +209,7 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audi
       const requireValue=(field:LabelImportRequiredField)=>{if(!v[field])throw new LabelImportRowError('required',`${field} is required.`,field);return v[field];};
       const identify=(identity:string)=>{
         const previous=seen.get(identity);
-        if(previous){result.reason=same(previous,v)?'duplicate':'conflicting';result.outcome='skip';result.selected=false;result.message=same(previous,v)?'Duplicate code in this workbook; only the first valid row can be added.':'Conflicting code in this workbook; this later row is skipped.';return false;}
+        if(previous){result.reason=same(previous,v)?'duplicate':'conflicting';result.reasonDetail=result.reason;result.reasonColumn=reasonColumnOf(result.reason,row.sheet);result.outcome='skip';result.selected=false;result.message=same(previous,v)?'Duplicate code in this workbook; only the first valid row can be added.':'Conflicting code in this workbook; this later row is skipped.';return false;}
         seen.set(identity,{...v});return true;
       };
       const add=(write:SystemLabelWrite)=>{
@@ -209,8 +222,9 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audi
         v.Criteria=assignment.criteria;v['Criteria Companies']=assignment.companyIds?.map(id=>companyCell(c.companies,id)).sort().join(';')??'';
         const companyValue=assignment.companyId,matches=c.companies.filter(co=>co.id===companyValue);
         const co=matches.length===1?matches[0]:undefined;
-        if(!co)throw new LabelImportRowError('invalidCompany','Company is unknown or ambiguous.');
-        if(!co.writable||co.archived)throw new LabelImportRowError('invalidCompany','Company is archived or outside your administrator scope.');
+        const companyColumn=row.values.Company?'Company':'Criteria Companies';
+        if(!co)throw new LabelImportRowError('invalidCompany','Company is unknown or ambiguous.',undefined,'companyUnknown',companyColumn);
+        if(!co.writable||co.archived)throw new LabelImportRowError('invalidCompany','Company is archived or outside your administrator scope.',undefined,'companyOutOfScope',companyColumn);
         v.Company=companyCell(c.companies,co.id);
         const shared=assignment.companyIds??[];
         const head=v['Head Employee Code'],heads=head?c.employees.filter(e=>e.companyId===co.id&&(e.code===head||`${e.code} — ${e.name}`===head)&&e.active):[];
@@ -227,7 +241,7 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audi
         const scope=resolveLabelAssignment(v,c.companies,c.groupAdmin);Object.assign(v,flatScopeValues(c,scope.companyIds));
         const value=requireValue('Code');
         if(c.options.some(option=>option.category===row.sheet&&option.value===value))throw new LabelImportRowError('existing',existingCodeMessage);
-        v.Label=v.Label||value;v['Sort Order']=String(whole(v['Sort Order']));
+        v.Label=v.Label||value;v['Sort Order']=String(whole(v['Sort Order'],'Sort Order'));
         if(!identify(`${row.sheet}|${value}`))continue;
         add({kind:'option',key,input:{category:row.sheet,value,label:v.Label,description:v.Description,sortOrder:Number(v['Sort Order']),isActive:active,scopeCompanyIds:scope.companyIds}});
       }else if(row.sheet==='grades'){
@@ -235,7 +249,7 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audi
         const code=requireValue('Code');
         if(!/^[A-Z][A-Z0-9_]{0,31}$/.test(code))throw new LabelImportRowError('invalidGradeCode','Grade Code must use uppercase letters, digits or underscores.');
         if(c.grades.some(grade=>grade.code===code))throw new LabelImportRowError('existing',existingCodeMessage);
-        const name=requireValue('Label');v.Rank=String(whole(v.Rank));
+        const name=requireValue('Label');v.Rank=String(whole(v.Rank,'Rank'));
         if(seen.has(`grades|${code}`)){identify(`grades|${code}`);continue;}
         if(c.grades.some(grade=>!grade.archivedAt&&lower(grade.name)===lower(name))||names.has(lower(name)))throw new LabelImportRowError('gradeLabelExists','Another grade already uses this Label.');
         identify(`grades|${code}`);names.add(lower(name));add({kind:'grade',key,input:{code,name,rank:Number(v.Rank),description:v.Description,active,scopeCompanyIds:scope.companyIds}});
@@ -248,26 +262,28 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audi
         if(grades.some(grade=>!grade))throw new LabelImportRowError('invalidGradeReferences','Grade Codes must reference existing active grades. Import new grades separately first.');
         if(seen.has(`grade_groups|${lower(name)}`)){identify(`grade_groups|${lower(name)}`);continue;}
         for(const grade of grades)if(c.members.some(member=>member.gradeId===grade!.id)||memberClaims.has(grade!.id))throw new LabelImportRowError('gradeAlreadyGrouped','A grade already belongs to another group. Change its membership in the editor first.');
-        if(grades.some(grade=>grade!.scopeCompanyIds!==null&&(scope.companyIds===null||scope.companyIds.some(id=>!grade!.scopeCompanyIds!.includes(id)))))throw new LabelImportRowError('invalidCriteriaCompany','Every grade must apply to every company in the group.');
+        if(grades.some(grade=>grade!.scopeCompanyIds!==null&&(scope.companyIds===null||scope.companyIds.some(id=>!grade!.scopeCompanyIds!.includes(id)))))throw new LabelImportRowError('invalidCriteriaCompany','Every grade must apply to every company in the group.',undefined,'gradeScope','Grade Codes');
         if(!identify(`grade_groups|${lower(name)}`))continue;
         for(const grade of grades)memberClaims.add(grade!.id);
         add({kind:'group',key,input:{name,gradeIds:grades.map(grade=>grade!.id),scopeCompanyIds:scope.companyIds}});
       }
-    }catch(error){result.reason=error instanceof LabelImportRowError||error instanceof LabelAssignmentError?error.reason:'invalidRow';if(error instanceof LabelImportRowError&&error.reasonField)result.reasonField=error.reasonField;result.outcome='error';result.selected=false;result.message=error instanceof Error?error.message:'Invalid label row.';}
+    }catch(error){result.reason=error instanceof LabelImportRowError||error instanceof LabelAssignmentError?error.reason:'invalidRow';if(error instanceof LabelImportRowError&&error.reasonField)result.reasonField=error.reasonField;result.outcome='error';result.selected=false;result.message=error instanceof Error?error.message:'Invalid label row.';describeRefusal(result,error);}
   }
   // Valid subset selection is intentional, not a validation error. Keep it visible in reports.
   for(const result of output)if(result.outcome==='add'&&!result.selected){
-    result.outcome='skip';result.reason='notSelected';result.message='Valid new code was not selected for this import. No record was created.';
+    result.outcome='skip';result.reason='notSelected';result.reasonDetail='notSelected';result.reasonColumn=reasonColumnOf('notSelected',result.sheet);result.message='Valid new code was not selected for this import. No record was created.';
   }
   for(const result of output)if(result.warnings?.length)result.message=[result.message,...result.warnings].join(' ');
   const selectedWrites=writes.filter(write=>output.some(row=>row.selected&&row.outcome==='add'&&row.sheet+':'+row.row===write.key));
   // Application order: flat codes in workbook order, then each organisation category in ORGANISATION_LABEL_KINDS order.
   const ordered=[...selectedWrites.filter(write=>write.kind!=='org'),...ORGANISATION_LABEL_KINDS.flatMap(kind=>selectedWrites.filter(write=>write.kind==='org'&&write.orgKind===kind))];
-  const token=createHash('sha256').update(JSON.stringify([ctx.tenantId,ctx.userId,'add',c,audit,output])).digest('hex');
+  const token=createHash('sha256').update(JSON.stringify([ctx.tenantId,ctx.userId,'add',c,audit,output.map(tokenRow)])).digest('hex');
   return {preview:{token,rows:output,valid:selectedWrites.length>0,mode:'add'},writes:ordered};
 }
 
 const gradeAlreadyGrouped='A grade already belongs to another group. Change its membership in the editor first.';
+/** The refusal applySystemLabelWriteTx raises for a grade that joined another group after the preview. */
+export const SYSTEM_LABEL_GRADE_ALREADY_GROUPED=gradeAlreadyGrouped;
 /** Writes one new code through its ordinary owner, inside the caller's transaction and writer locks. A grade group
  * first re-checks, under those locks, that none of its grades joined another group since the preview: the group
  * writer would otherwise move them out of that group. */

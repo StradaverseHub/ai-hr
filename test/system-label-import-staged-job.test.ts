@@ -8,7 +8,10 @@ import * as s from '../db/schema';
 import {createJobGrade} from '../core/admin';
 import {hireEmployee} from '../core/org';
 import {previewSystemLabelImport,applySystemLabelImport} from '../core/system-label-import';
-import {startSystemLabelImportJob,getSystemLabelImportJob,SystemLabelImportJobError} from '../core/system-label-import-job';
+import {startSystemLabelImportJob,getSystemLabelImportJob,readSystemLabelImportProblems,SystemLabelImportJobError} from '../core/system-label-import-job';
+import {labelImportProblemLines,labelJobProblemLines} from '../lib/system-label-import-problems';
+import en from '../messages/en.json';
+import {labelRootTranslator} from './label-import-translators';
 import {requestBulkJobCancel} from '../core/bulk-job';
 import {runBulkJobTick} from '../core/bulk-job-worker';
 import {BULK_JOB_HANDLERS} from '../core/bulk-job-handlers';
@@ -123,6 +126,19 @@ describe('staged System Labels import job',{timeout:240_000},()=>{
   expect({...progress.result,errorReport:report(progress.result)}).toEqual({...sync,errorReport:report(sync)});
   expect(await endState(b.tenantId)).toEqual(expected);
   expect((await verifyTenantChain(ctx)).valid).toBe(true);
+  // Board c074c6b8: the result screen's rows are the preview's own refused and skipped rows, kept by the worker. Checking
+  // the file again now would call every imported code "already exists"; the stored rows still say what the check said.
+  const problems=await readSystemLabelImportProblems(ctx,started.id);
+  expect(problems).toMatchObject({state:'completed',legacy:false,failed:[]});
+  const t=labelRootTranslator('en',en);
+  const lines=labelJobProblemLines(problems,t);
+  expect(lines).toEqual(labelImportProblemLines(started.preview.rows,t));
+  expect(lines).toEqual([expect.objectContaining({row:4,reference:'EQ_DIV_A',field:'Code',problem:'Duplicate code in this workbook; only the first valid row can be added.',result:'skipped'})]);
+  expect(labelImportProblemLines((await previewSystemLabelImport(ctx,started.bytes)).rows,t).filter(line=>line.result==='refused').length).toBeGreaterThan(5);
+  // Creator-only: another administrator of the same tenant cannot read this import's rows.
+  const [other]=await owner.db.insert(s.appUser).values({tenantId:b.tenantId,workosUserId:randomUUID()}).returning();
+  await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:other.id,role:'hr_admin',companyId:b.companyId});
+  await expect(readSystemLabelImportProblems({...ctx,userId:other.id,grants:[{role:'hr_admin',companyId:b.companyId}]},started.id)).rejects.toMatchObject({status:404});
   // Every chunk held the import's writer locks only briefly.
   expect(done.metrics.chunks).toBeGreaterThan(3);
  });
@@ -134,6 +150,11 @@ describe('staged System Labels import job',{timeout:240_000},()=>{
   await owner.client`insert into job_grade(tenant_id,code,name,rank,archived_at) values(${b.tenantId}::uuid,'CF_G1','Fictional conflicting grade',9,now())`;
   const failed=await ticks(started.id,row=>row.state==='failed');
   expect(failed.error).toMatch(/No labels were imported/);
+  // Board c074c6b8: the stopped import names the conflicting code's worksheet and Excel row.
+  const conflictRow=started.preview.rows.find(row=>row.sheet==='grades'&&row.values.Code==='CF_G1')!.row;
+  expect(conflictRow).toBe(2);
+  expect((await readSystemLabelImportProblems(ctx,started.id)).failed).toEqual([{sheet:'grades',row:conflictRow,code:'CF_G1',detail:'releaseConflict',message:''}]);
+  expect((await getSystemLabelImportJob(ctx,started.id)).errors).toEqual([{rowNum:conflictRow,ref:'CF_G1',message:'Code "CF_G1" was added by someone else while the import was running.'}]);
   // Only the conflicting grade itself is visible: none of the import's codes or events.
   expect(await visible('CF')).toBe(1);
   const [left]=await owner.client<{n:number}[]>`select ((select count(*) from department where import_pending_attempt_id=${failed.attempt_id}::uuid)+(select count(*) from profile_option where import_pending_attempt_id=${failed.attempt_id}::uuid)

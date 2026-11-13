@@ -82,6 +82,9 @@ describe('Company-aware System Labels imports and canonical consumers',()=>{
  it('records failed and skipped rows without overwriting existing records',async()=>{
   await createProfileOption(adminCtx(b),{category:'division',value:'EXISTS',label:'Original'});
   const bytes=await book({division:[{Code:'EXISTS',Company:b.companyId},{Code:'INVALID',Company:'unknown'},{Code:'VALID',Company:b.companyId},{Code:'VALID',Company:b.companyId}]}),preview=await previewSystemLabelImport(adminCtx(b),bytes);
+  // Board c074c6b8: the reason stays, and the row also names its exact check and column.
+  expect(preview.rows.map(row=>[row.values.Code,row.outcome,row.reason??null,row.reasonDetail??null,row.reasonColumn??null])).toEqual([
+   ['EXISTS','error','existing','existing','Code'],['INVALID','error','invalidCompany','companyNotPermitted','Company'],['VALID','add',null,null,null],['VALID','skip','duplicate','duplicate','Code']]);
   expect(await applySystemLabelImport(adminCtx(b),{bytes,token:preview.token})).toMatchObject({imported:1,skipped:1,failed:2,errorReport:expect.any(String)});
   const [original]=await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'EXISTS'));expect(original.label).toBe('Original');
   const events=await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.eventType,'system-label-import.applied'));

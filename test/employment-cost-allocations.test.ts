@@ -17,6 +17,9 @@ import {validateEmployeeImport,commitEmployeeImport} from '../core/import';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {dayBefore} from '../core/employment-company';
 import {adminCtx,createAppUser,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {createTranslator} from 'next-intl';
+import enMessages from '../messages/en.json';
+import {costAllocationErrorLogFor} from '../core/cost-allocation-error-log';
 const today=todayInKualaLumpur(),year=Number(today.slice(0,4)),hireDate=`${year-1}-01-01`,future=`${year+1}-01-01`;
 describe('Effective-dated employment cost allocation owner',()=>{
  let b:Base,a:ReturnType<typeof adminCtx>,employmentId:string,cc1:string,cc2:string;
@@ -194,6 +197,24 @@ describe('Effective-dated employment cost allocation owner',()=>{
   const foreignRefs=await costAllocationWorkbookReferences(stranger);expect(foreignRefs.companies.map(c=>c.name)).toEqual(['Acme Sdn Bhd']);expect(JSON.stringify(foreignRefs)).not.toMatch(/ACME|ALLOC-A|ALLOC-B/);
   expect((await read()).revision).toBe(0);
  });
+ it('d3ba1e9f: Import History gives the Error Log from the recorded check, one line per Excel row, scoped to viewable companies',async()=>{
+  const records=[{company_code:'ACME',employee_code:'ALLOC01',effective_date:today,operation:'replace',cost_center_code:'ALLOC-A',percentage:'100'},{company_code:'ACME',employee_code:'ALLOC01',effective_date:`${year-1}-06-01`,operation:'replace',cost_center_code:'NOPE',percentage:'100'}];
+  const{attemptId}=await previewCostAllocationUpload(a,{name:'allocations.csv',content:allocationCsv(records)});
+  const t={problems:createTranslator({locale:'en',messages:enMessages}) as never,shared:createTranslator({locale:'en',messages:enMessages,namespace:'importProblems'}) as never};
+  const log=await costAllocationErrorLogFor(a,attemptId,t);
+  expect(log).toMatchObject({total:2,truncated:false});
+  expect(log!.lines.map(l=>[l.row,l.reference,l.field,l.value,l.problem,l.correction,l.stage,l.result])).toEqual([
+   [2,'ALLOC01',undefined,undefined,'Another allocation for Employee ID ALLOC01 in this file has errors, so this employee is not imported. Correct that row first.',undefined,'check','refused'],
+   [3,'ALLOC01','Cost Center Code','NOPE','This Cost Center Code is not available for ACME (Acme Sdn Bhd).',enMessages.importErrorLogDataBankCostInfo.corrections.chooseCostCenter,'check','refused'],
+  ]);
+  const[other]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Other allocation company',companyLabel:'OTHERCO'}).returning();
+  const[p]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional other allocation administrator',primaryEmail:'other-allocation-admin@example.test'}).returning();
+  const userId=await createAppUser(b.tenantId,p.id,'hr_admin');await owner.db.update(s.roleAssignment).set({companyId:other.id}).where(eq(s.roleAssignment.appUserId,userId));
+  const outsider={...a,userId,personId:p.id,grants:[{role:'hr_admin',companyId:other.id}]};
+  const scoped=await costAllocationErrorLogFor(outsider,attemptId,t);
+  expect(scoped===null||scoped.lines.length===0).toBe(true);
+  expect(await costAllocationErrorLogFor(adminCtx(await seedBase()),attemptId,t)).toBeNull();
+ });
  it('resolves lowercase existing Employee IDs and Company Codes through the canonical normalizers',async()=>{
   const records=[{company_code:' acme ',employee_code:' alloc01 ',effective_date:today,operation:'Replace',cost_center_code:'ALLOC-A',percentage:'100'}];
   const p=await previewCostAllocationImport(a,records);expect(p.groups).toHaveLength(1);expect(p.groups[0]).toMatchObject({employeeCode:'ALLOC01',companyId:b.companyId,employmentId,errors:[]});
@@ -232,6 +253,6 @@ describe('Effective-dated employment cost allocation owner',()=>{
  it('rolls back new employee identity, assignment and compensation when the allocation writer refuses after hire',async()=>{
   const allocations=[{company_code:'ACME',employee_code:'NEWALLOC01',effective_date:today,operation:'replace',cost_center_code:'ALLOC-A',percentage:'100'}];const preview=await validateEmployeeImport(a,{companyId:b.companyId,records:[record()],allocationRecords:allocations});expect(preview.fileErrors).toEqual([]);
   await owner.db.execute(sql`CREATE FUNCTION public.allocation_test_refuse() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture allocation owner refusal';END $$`);await owner.db.execute(sql`CREATE TRIGGER allocation_test_refuse BEFORE INSERT ON employment_cost_allocation_row FOR EACH ROW EXECUTE FUNCTION public.allocation_test_refuse()`);
-  try{const result=await commitEmployeeImport(a,{companyId:b.companyId,records:[record()],allocationRecords:allocations,allocationToken:preview.allocations!.token});expect(result.imported).toBe(0);expect(result.fileErrors.join(' ')).toMatch(/No employee was saved\. Row 1 could not be saved, so the whole file was cancelled\./);expect(await owner.db.select().from(s.person).where(eq(s.person.primaryEmail,record().email))).toEqual([]);expect(await owner.db.select().from(s.employment).where(eq(s.employment.employeeCode,'NEWALLOC01'))).toEqual([]);const leaked=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from employment_cost_allocation_set where tenant_id=${b.tenantId}::uuid`);expect(leaked[0].n).toBe(0);}finally{await owner.db.execute(sql`DROP TRIGGER allocation_test_refuse ON employment_cost_allocation_row`);await owner.db.execute(sql`DROP FUNCTION public.allocation_test_refuse()`);}
+  try{const result=await commitEmployeeImport(a,{companyId:b.companyId,records:[record()],allocationRecords:allocations,allocationToken:preview.allocations!.token});expect(result.imported).toBe(0);expect(result.fileErrors.join(' ')).toMatch(/No employee was saved\. Row 2 could not be saved, so the whole file was cancelled\./);expect(await owner.db.select().from(s.person).where(eq(s.person.primaryEmail,record().email))).toEqual([]);expect(await owner.db.select().from(s.employment).where(eq(s.employment.employeeCode,'NEWALLOC01'))).toEqual([]);const leaked=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from employment_cost_allocation_set where tenant_id=${b.tenantId}::uuid`);expect(leaked[0].n).toBe(0);}finally{await owner.db.execute(sql`DROP TRIGGER allocation_test_refuse ON employment_cost_allocation_row`);await owner.db.execute(sql`DROP FUNCTION public.allocation_test_refuse()`);}
  });
 });

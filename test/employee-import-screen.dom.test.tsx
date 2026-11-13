@@ -351,3 +351,52 @@ describe('2983802f · the result names what happened to family and to superiors'
     expect(screen.queryByText(/failed/)).toBeNull();
   }, 30_000);
 });
+
+describe('d3ba1e9f · the check screen shows the Error Log lines and rows as Excel numbers them', () => {
+  const withProblems: ImportPreview = {
+    ...basePreview,
+    validCount: 1,
+    rows: [
+      basePreview.rows[0],
+      { rowNum: 2, excelRow: 4, employeeCode: 'E002', fullName: 'Other Staff', email: 'other@acme.test', ok: false, warnings: [], company: 'Acme Sdn Bhd',
+        errors: ['Unknown department "Finanse"'], issues: [{ column: 'department', code: 'unknown_reference', value: 'Finanse', message: 'Unknown department "Finanse"' }] },
+    ],
+    dependents: { total: 0, validCount: 0, missingColumns: [], rows: [] },
+  };
+  it('lists the problem once with its Excel row, field, value and fix, and offers the Error Log instead of the CSV', async () => {
+    await previewWith(withProblems);
+    const problem = (await screen.findAllByText('Unknown department "Finanse"'));
+    expect(problem).toHaveLength(1);
+    const line = problem[0].closest('tr')!;
+    expect(line).toHaveAttribute('data-problem-row', '4');
+    expect(line).toHaveTextContent('E002');
+    expect(line).toHaveTextContent('Finanse');
+    expect(line).toHaveTextContent(messages.importErrorLogEmployee.correction.reference.replace('{field}', 'Department'));
+    expect(screen.getByRole('button', { name: messages.importProblems.downloadLog })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: messages.people.import.downloadErrors })).toBeNull();
+    // The preview's own row list numbers the row as Excel does, and says only that it is not imported.
+    expect(screen.getAllByText(messages.importProblems.result.refused).length).toBeGreaterThan(0);
+  });
+});
+
+describe('d3ba1e9f · a workbook with blank rows sends its Excel rows with the check', () => {
+  it('passes each sheet’s Excel rows (labels only) to the check', async () => {
+    validateMock.mockClear();
+    validateMock.mockResolvedValue({ ...basePreview, fileErrors: [] });
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      ['full_name', 'email', 'department', 'hired_on', 'employee_code'],
+      ['Fictional Hire', 'hire@example.invalid', 'Finance', '2026-01-01', '00017'],
+      [],
+      ['Fictional Second', 'second@example.invalid', 'Finance', '2026-01-01', '00018'],
+    ]), 'Employee Import');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([['employee_code', 'relationship', 'name'], [], [], ['00017', 'child', 'Fictional Child']]), 'Family');
+    const file = new NodeFile([XLSX.write(workbook, { type: 'array', bookType: 'xlsx' })], 'blank-rows.xlsx');
+    const { container } = screenUnderTest();
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [file] } });
+    await waitFor(() => expect(validateMock).toHaveBeenCalledTimes(1));
+    const sourceRows = validateMock.mock.calls[0][5];
+    expect(sourceRows.employee).toEqual([2, 4]);
+    expect(sourceRows.family).toEqual([4]);
+  });
+});
