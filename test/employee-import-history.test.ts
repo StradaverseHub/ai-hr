@@ -123,6 +123,7 @@ describe('cf43c909 · employee import history', () => {
     expect(Object.keys((row.errors as Record<string, unknown>[])[0]).sort()).toEqual([
       'email',
       'errors',
+      'excelRow',
       'fullName',
       'issues',
       'outcome',
@@ -168,12 +169,12 @@ describe('cf43c909 · employee import history', () => {
       // Item 1859cce0 — no generic "rolled back" text: row 2 is named with its real reason (and a reference),
       // and row 1 says it has no problem and was not saved only because the file was cancelled at row 2.
       expect(result.failed[0]).toMatchObject({ rowNum: 1, outcome: 'cancelled', stoppedBy: [2] });
-      expect(result.failed[0].message).toMatch(/cancelled because row 2 could not be saved.*no problem/);
+      expect(result.failed[0].message).toMatch(/cancelled because row 3 could not be saved.*no problem/);
       expect(result.failed[1]).toMatchObject({ rowNum: 2, outcome: 'stopped', fullName: 'Doomed' });
       expect(result.failed[1].message).toMatch(/Reference/);
       expect(result.failed.some((row) => /rolled back/.test(row.message))).toBe(false);
       expect(result.fileErrors).toHaveLength(1);
-      expect(result.fileErrors[0]).toMatch(/No employee was saved\. Row 2 could not be saved, so the whole file was cancelled/);
+      expect(result.fileErrors[0]).toMatch(/No employee was saved\. Row 3 could not be saved, so the whole file was cancelled/);
       expect(await owner.db.select({ id: schema.person.id }).from(schema.person).orderBy(schema.person.id)).toEqual(beforePeople);
       expect(await owner.db.select({ id: schema.employment.id }).from(schema.employment).orderBy(schema.employment.id)).toEqual(beforeEmployments);
       expect(await eventTypesFor(b.tenantId, b.companyId)).not.toContain('employee-import.completed');

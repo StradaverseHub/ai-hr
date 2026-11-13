@@ -164,12 +164,12 @@ describe('staged employee import job',()=>{
    const {job}=await startJob(rows);
    await ticks(j=>j.state==='failed',800);
    const final=await getEmployeeImportJob(ctx,job.id);
-   expect(final.state).toBe('failed');expect(final.error).toMatch(/Row 2, 4 could not be saved/);
+   expect(final.state).toBe('failed');expect(final.error).toMatch(/Row 3, 5 could not be saved/);
    expect(final.errors.find(e=>e.rowNum===2)?.message).toMatch(/refused by a safeguard.*Reference/);
    expect(final.errors.find(e=>e.rowNum===4)?.message).toMatch(/refused by a safeguard.*Reference/);
    const others=final.errors.filter(e=>e.rowNum!==2&&e.rowNum!==4);
    expect(others.map(e=>e.rowNum)).toEqual([1,3,5]);
-   expect(others.every(e=>/cancelled because row 2, 4 could not be saved.*no problem/.test(e.message))).toBe(true);
+   expect(others.every(e=>/cancelled because row 3, 5 could not be saved.*no problem/.test(e.message))).toBe(true);
    expect(final.errors.some(e=>e.message.includes('rolled back'))).toBe(false);
    // Import History keeps the save report on the failed event, kept after the job cleared its plan.
    const [failedEvent]=await owner.client<{detail:{rows?:{rowNum:number;outcome:string;message:string;employeeCode:string;companyId:string}[]}}[]>`select detail from import_attempt_event where attempt_id=${final.attemptId}::uuid and kind='failed'`;
@@ -312,9 +312,9 @@ describe('staged employee import job',()=>{
    const final=await getEmployeeImportJob(ctx,job.id);
    // Row 2 (the manager) stopped the file; row 1 is named because its direct superior was not saved; row 3 has no problem.
    expect(final.errors.map(e=>e.rowNum)).toEqual([1,2,3]);
-   expect(final.errors[0].message).toMatch(/direct superior on row 2 could not be saved/);
+   expect(final.errors[0].message).toMatch(/direct superior on row 3 could not be saved/);
    expect(final.errors[1].message).toMatch(/refused by a safeguard/);
-   expect(final.errors[2].message).toMatch(/cancelled because row 1, 2 could not be saved.*no problem/);
+   expect(final.errors[2].message).toMatch(/cancelled because row 2, 3 could not be saved.*no problem/);
    const [failedEvent]=await owner.client<{detail:{rows:{rowNum:number;column?:string}[]}}[]>`select detail from import_attempt_event where attempt_id=${final.attemptId}::uuid and kind='failed'`;
    expect(failedEvent.detail.rows.map(r=>[r.rowNum,r.column??null])).toEqual([[1,'direct_superior'],[2,null]]);
    // Nothing of the file remains live: no employee, and the staged ones were voided.

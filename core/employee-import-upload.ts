@@ -13,11 +13,14 @@ import {parsePersonnelImportCsv} from '../lib/personnel-import-contract';
 import {personnelImportLabelResolvers} from '../lib/personnel-import-labels.server';
 import {DEPENDENT_IMPORT_COLUMNS,IMPORT_COLUMNS} from '../lib/import-schema';
 import {commitEmployeeImport} from './import';
+import {sanitizeImportSourceRows,type ImportSourceRows} from '../lib/import-problem-common';
 import {ImportHistoryError,IMPORT_SOURCE_MAX_BYTES} from './import-history';
 
 /** The sheets' text, as the server action bounds it. */
 export const EMPLOYEE_IMPORT_TEXT_MAX_BYTES=900000;
-export type EmployeeImportUploadInput={companyId:string;csv:string;fileName?:string;dependentsCsv?:string;registers?:PersonnelRegisterTexts;allocationsCsv?:string;allocationToken?:string};
+/** `sourceRows` (board d3ba1e9f): each sheet's Excel rows as the browser read them from the workbook, so the Error
+ *  Log names rows as Excel numbers them. Labels only: they change no verdict and nothing that is saved. */
+export type EmployeeImportUploadInput={companyId:string;csv:string;fileName?:string;dependentsCsv?:string;registers?:PersonnelRegisterTexts;allocationsCsv?:string;allocationToken?:string;sourceRows?:ImportSourceRows};
 
 const text=(value:unknown)=>typeof value==='string'?value:'';
 /** Validates the posted JSON part; anything malformed is refused before parsing a row. */
@@ -26,7 +29,8 @@ export function employeeImportUploadInput(raw:unknown):EmployeeImportUploadInput
  const registersRaw=(o.registers&&typeof o.registers==='object'?o.registers:{}) as Record<string,unknown>;
  if(Object.keys(registersRaw).some(key=>!(PERSONNEL_REGISTER_KINDS as readonly string[]).includes(key)))throw new ImportHistoryError('Unknown register sheet.');
  const input={companyId:text(o.companyId),csv:text(o.csv),fileName:text(o.fileName),dependentsCsv:text(o.dependentsCsv),allocationsCsv:text(o.allocationsCsv),allocationToken:text(o.allocationToken)||undefined,
-  registers:Object.fromEntries(PERSONNEL_REGISTER_KINDS.map(kind=>[kind,text(registersRaw[kind])])) as PersonnelRegisterTexts};
+  registers:Object.fromEntries(PERSONNEL_REGISTER_KINDS.map(kind=>[kind,text(registersRaw[kind])])) as PersonnelRegisterTexts,
+  ...(o.sourceRows!==undefined?{sourceRows:sanitizeImportSourceRows(o.sourceRows)}:{})};
  if(!/^[0-9a-f-]{36}$/i.test(input.companyId))throw new ImportHistoryError('Choose a company before importing.');
  if(Buffer.byteLength([input.csv,input.dependentsCsv,input.allocationsCsv,...Object.values(input.registers)].join(''),'utf8')>EMPLOYEE_IMPORT_TEXT_MAX_BYTES)throw new ImportHistoryError('The import is too large. Split the workbook and check each part.');
  return input;

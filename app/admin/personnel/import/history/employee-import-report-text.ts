@@ -6,7 +6,7 @@ import type {EmployeeImportReportLine} from '@/lib/employee-import-report';
 type Translate={(key:string,values?:Record<string,string|number>):string;has(key:string):boolean};
 /** The problem in the viewer's language where its reason is known; otherwise the recorded detail. */
 export function employeeImportProblemText(line:EmployeeImportReportLine,t:Translate){
- if(line.outcome==='cancelled')return line.stoppedBy.length?t('errorReport.cancelledRow',{rows:line.stoppedBy.join(', ')}):t('errorReport.cancelledRowUnnamed');
+ if(line.outcome==='cancelled')return line.stoppedByRows.length?t('errorReport.cancelledRow',{rows:line.stoppedByRows.join(', ')}):t('errorReport.cancelledRowUnnamed');
  if(line.code?.startsWith('contract.')){const key=`errorReport.contract.${line.code.slice('contract.'.length)}`;if(t.has(key))return t(key);}
  return line.message??'';
 }

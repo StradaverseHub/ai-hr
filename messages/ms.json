@@ -3431,7 +3431,7 @@
         "csvFile": "Nama fail",
         "csvStatus": "Status akhir",
         "csvStage": "Ditemui",
-        "rowsHint": "Nombor baris mengira baris pekerja dalam fail, seperti dalam pratonton import.",
+        "rowsHint": "Nombor baris ialah baris seperti yang dinomborkan oleh Excel, termasuk baris tajuk.",
         "truncated": "Menunjukkan {shown} baris pertama daripada {total}. Muat turun laporan ralat untuk kesemuanya."
       }
     },
@@ -38416,6 +38416,32 @@
     "actorWithId": "{name} ({employeeId})",
     "actorUnlinked": "Log masuk pentadbir (tiada rekod pekerja · log masuk berakhir {suffix})",
     "actorUnavailable": "Pengguna tidak tersedia"
+  },
+  "importErrorLogEmployee": {
+    "problemsTitle": "Masalah untuk dibetulkan",
+    "missingColumn": "Lajur wajib ini tiada dalam helaian.",
+    "thisField": "lajur ini",
+    "downloadFailed": "Log Ralat tidak dapat disediakan. Cuba lagi.",
+    "correction": {
+      "reference": "Pilih {field} daripada helaian Rujukan.",
+      "date": "Masukkan tarikh sebagai YYYY-MM-DD atau sebagai tarikh Excel.",
+      "month": "Masukkan bulan sebagai YYYY-MM.",
+      "required": "Isikan {field} - ia wajib.",
+      "requiredForContract": "Isikan lajur ini - ia wajib bagi pekerja Kontrak.",
+      "duplicateInFile": "Nilai ini muncul lebih daripada sekali dalam fail - simpan satu baris sahaja.",
+      "duplicateEmployeeId": "ID Pekerja ini muncul lebih daripada sekali dalam fail - simpan satu baris sahaja.",
+      "duplicateInSystem": "Nilai ini sudah digunakan oleh pekerja lain - masukkan nilai lain, atau keluarkan baris ini.",
+      "number": "Masukkan nombor (digit sahaja, tanpa simbol mata wang).",
+      "choice": "Pilih salah satu nilai yang disenaraikan dalam helaian Arahan atau Rujukan.",
+      "yesNo": "Masukkan Ya atau Tidak.",
+      "email": "Masukkan alamat e-mel penuh, contohnya nama@syarikat.com.",
+      "notOnEmployeeSheet": "Tambah pekerja ini ke helaian pekerja, atau betulkan ID Pekerja.",
+      "employeeNotFound": "Semak ID Pekerja. Untuk menambah pekerja baharu, gunakan Semua - pekerja baharu dahulu.",
+      "missingColumn": "Tambah lajur {field} menggunakan templat semasa, dan muat naik semula.",
+      "wrongSection": "Keluarkan lajur itu, atau importnya dengan templat yang memilikinya.",
+      "system": "Cuba lagi. Jika ia berulang, berikan rujukan sokongan kepada pentadbir anda.",
+      "uploadAgain": "Betulkan baris yang menghentikan import, kemudian muat naik semula keseluruhan fail."
+    }
   },
   "scheduleOvertimeSetting": {
     "title": "Tetapan Kerja Lebih Masa",

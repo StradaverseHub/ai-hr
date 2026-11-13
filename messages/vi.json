@@ -3431,7 +3431,7 @@
         "csvFile": "Tên tệp",
         "csvStatus": "Trạng thái cuối",
         "csvStage": "Phát hiện",
-        "rowsHint": "Số dòng đếm các dòng nhân viên của tệp, như trong bản xem trước khi nhập.",
+        "rowsHint": "Số dòng là số dòng như Excel đánh số, bao gồm dòng tiêu đề.",
         "truncated": "Đang hiển thị {shown} dòng đầu tiên trong {total} dòng. Tải báo cáo lỗi để xem tất cả."
       }
     },
@@ -38416,6 +38416,32 @@
     "actorWithId": "{name} ({employeeId})",
     "actorUnlinked": "Đăng nhập quản trị (không có hồ sơ nhân viên · đăng nhập kết thúc bằng {suffix})",
     "actorUnavailable": "Người dùng không khả dụng"
+  },
+  "importErrorLogEmployee": {
+    "problemsTitle": "Các vấn đề cần sửa",
+    "missingColumn": "Trang tính thiếu cột bắt buộc này.",
+    "thisField": "cột này",
+    "downloadFailed": "Không thể chuẩn bị Nhật ký lỗi. Vui lòng thử lại.",
+    "correction": {
+      "reference": "Chọn {field} từ trang Tham chiếu.",
+      "date": "Nhập ngày theo định dạng YYYY-MM-DD hoặc dưới dạng ngày Excel.",
+      "month": "Nhập tháng theo định dạng YYYY-MM.",
+      "required": "Điền {field} - đây là thông tin bắt buộc.",
+      "requiredForContract": "Điền cột này - bắt buộc đối với nhân viên Hợp đồng.",
+      "duplicateInFile": "Giá trị này xuất hiện nhiều lần trong tệp - chỉ giữ một dòng.",
+      "duplicateEmployeeId": "Mã nhân viên này xuất hiện nhiều lần trong tệp - chỉ giữ một dòng.",
+      "duplicateInSystem": "Giá trị này đã được nhân viên khác sử dụng - nhập giá trị khác hoặc bỏ dòng này.",
+      "number": "Nhập một số (chỉ chữ số, không có ký hiệu tiền tệ).",
+      "choice": "Chọn một trong các giá trị được liệt kê trên trang Hướng dẫn hoặc Tham chiếu.",
+      "yesNo": "Nhập Yes hoặc No.",
+      "email": "Nhập địa chỉ email đầy đủ, ví dụ name@company.com.",
+      "notOnEmployeeSheet": "Thêm nhân viên này vào trang nhân viên, hoặc sửa Mã nhân viên.",
+      "employeeNotFound": "Kiểm tra Mã nhân viên. Để thêm nhân viên mới, hãy dùng Tất cả - nhân viên mới trước.",
+      "missingColumn": "Thêm cột {field} theo mẫu hiện tại, rồi tải lên lại.",
+      "wrongSection": "Xóa cột đó, hoặc nhập nó bằng mẫu sở hữu cột đó.",
+      "system": "Vui lòng thử lại. Nếu vẫn xảy ra, hãy cung cấp mã tham chiếu hỗ trợ cho quản trị viên của bạn.",
+      "uploadAgain": "Sửa các dòng đã làm dừng việc nhập, rồi tải lên lại toàn bộ tệp."
+    }
   },
   "scheduleOvertimeSetting": {
     "title": "Cài đặt làm thêm giờ",
