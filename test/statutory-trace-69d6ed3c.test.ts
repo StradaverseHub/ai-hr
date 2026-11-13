@@ -22,7 +22,7 @@ import { statutory, type StatutoryTraceV1 } from '../localization/my/payroll';
 import { buildStatutoryTraceLines, readEarlierRunLiability, readRunStatutoryStamp } from '../core/statutory-trace';
 import { readStatutoryTrace, STATUTORY_TRACE_AMOUNT_KEYS } from '../core/statutory-trace-explain';
 import { explainStatutory } from '../core/statutory-explain';
-import { epfTraceItemRows, epfTraceRows, runTraceRows, scheduleTraceRows, socsoTraceItemRows } from '../app/payroll/statutory-detail/statutory-trace';
+import { epfTraceItemRows, epfTraceRows, runTraceRows, scheduleTraceItemRows, scheduleTraceRows, scheduleTraceWageHeading } from '../app/payroll/statutory-detail/statutory-trace';
 
 const ROOT = path.resolve(__dirname, '..');
 const code = (rel: string) =>
@@ -232,28 +232,29 @@ describe('69d6ed3c — the kernel’s item lines add up to the bases', () => {
   });
 });
 
-/** A stamped payslip blob for the reader, built from the real pack trace + real kernel lines. */
-function stampedBlob() {
-  const r = GOLDEN();
+type KernelLine = Parameters<typeof buildStatutoryTraceLines>[0]['lines'][number];
+const GOLDEN_LINES: KernelLine[] = [
+  { code: 'TRANSPORT', name: 'Transport', buckets: [{ bucket: 'wage', amount: 300 }], epf: true, socso: true },
+  { code: 'PHONE', name: 'Phone', buckets: [{ bucket: 'wage', amount: 150 }], epf: false, socso: true },
+  { code: 'OT', name: 'Overtime', buckets: [{ bucket: 'ot', amount: 250 }], epf: false, socso: true },
+  { code: 'BNS', name: 'Bonus', buckets: [{ bucket: 'bonus', amount: 800 }], epf: true, socso: true },
+];
+
+/** A stamped payslip blob for the reader, built from a real pack result + real kernel lines. */
+function stampFrom(r: ReturnType<typeof run>, lines: KernelLine[], bonus2012Codes: Set<string>) {
   const t = traceOf(r);
   const items = buildStatutoryTraceLines({
-    basic: 3500,
-    lines: [
-      { code: 'TRANSPORT', name: 'Transport', buckets: [{ bucket: 'wage', amount: 300 }], epf: true, socso: true },
-      { code: 'PHONE', name: 'Phone', buckets: [{ bucket: 'wage', amount: 150 }], epf: false, socso: true },
-      { code: 'OT', name: 'Overtime', buckets: [{ bucket: 'ot', amount: 250 }], epf: false, socso: true },
-      { code: 'BNS', name: 'Bonus', buckets: [{ bucket: 'bonus', amount: 800 }], epf: true, socso: true },
-    ],
-    bonus2012Codes: new Set(['BNS']), ownOvertimeCharged: true, unpaid: 0,
+    basic: 3500, lines, bonus2012Codes, ownOvertimeCharged: true, unpaid: 0,
     totals: { epfNormal: t.epf.normalWage, epfBonus: t.epf.bonusWage, socsoEis: t.socso.wage },
   });
   const thisRun = Object.fromEntries(STATUTORY_TRACE_AMOUNT_KEYS.map((k) => [k, r[k]]));
   return {
     ...r,
-    bases: { epf: 3800, epfAdditional: 800, socsoEis: 4200, pcb: 5000, hrdf: 0 },
-    statutoryTrace: { ...t, items, run: { kind: 'single', own: { epfAdditional: 800, socsoWageExtra: 0 }, thisRun } },
+    bases: { epf: t.epf.normalWage, epfAdditional: t.epf.bonusWage, socsoEis: t.socso.wage, pcb: 5000, hrdf: 0 },
+    statutoryTrace: { ...t, items, run: { kind: 'single', own: { epfAdditional: t.epf.bonusWage, socsoWageExtra: 0 }, thisRun } },
   };
 }
+const stampedBlob = () => stampFrom(GOLDEN(), GOLDEN_LINES, new Set(['BNS']));
 
 describe('69d6ed3c — the explanation reads the trace, checks it, and never recomputes', () => {
   it('a reconciling trace is shown', () => {
@@ -338,9 +339,132 @@ describe('69d6ed3c — the screen and the workbook rows', () => {
   });
   it('SOCSO / SKBBK / EIS rows, and SOCSO’s item table', () => {
     const trace = explainStatutory(stampedBlob(), 'regular').trace!;
-    expect(socsoTraceItemRows(trace, t, money).at(-1)).toMatchObject({ contribution: '4200.00', emphasis: true });
+    expect(scheduleTraceItemRows(trace, 'socso', t, money).at(-1)).toMatchObject({ contribution: '4200.00', emphasis: true });
     expect(scheduleTraceRows(trace, 'socso', t, money)).toContainEqual({ label: 'traceTableSocso', value: 'traceRange(4100.01|4200.00)' });
     expect(scheduleTraceRows(trace, 'skbbk', t, money)).toContainEqual({ label: 'traceRowEmployee', value: '31.15' });
     expect(scheduleTraceRows(trace, 'eis', t, money)).toContainEqual({ label: 'traceRowEmployer', value: '8.30' });
+  });
+});
+
+describe('69d6ed3c — SOCSO, SKBBK and EIS each explain their own wage, classification and range', () => {
+  const t = (key: string, values?: Record<string, string>) => (values ? `${key}(${Object.values(values).join('|')})` : key);
+  const rm = (n: number) => n.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const traceFor = (blob: ReturnType<typeof stampedBlob>) => {
+    const ex = explainStatutory(blob, 'regular');
+    expect(ex.traceStatus, 'the fixture must reconcile, or the screen shows no trace at all').toBe('recorded');
+    return ex.trace!;
+  };
+  // Basic 3,500 + Transport 300 (EPF) + OT 250 + Phone 150 (SOCSO ticked, no EPF) + Bonus 800 (EPF Bonus 2012).
+  const golden = () => traceFor(stampedBlob());
+
+  const SCHEMES = [
+    { key: 'socso', heading: 'traceColSocsoWages', included: 'traceTreatSocsoIncluded', bonus: 'traceTreatSocsoExcludedBonus2012', total: 'traceSocsoTotal' },
+    { key: 'skbbk', heading: 'traceColSkbbkWages', included: 'traceTreatSkbbkIncluded', bonus: 'traceTreatSkbbkExcludedBonus2012', total: 'traceSkbbkTotal' },
+    { key: 'eis', heading: 'traceColEisWages', included: 'traceTreatEisIncluded', bonus: 'traceTreatEisExcludedBonus2012', total: 'traceEisTotal' },
+  ] as const;
+
+  it.each(SCHEMES)('$key: its own pay item table, Bonus 2012 kept out, ending at 4,200.00', ({ key, heading, included, bonus, total }) => {
+    const rows = scheduleTraceItemRows(golden(), key, t, rm);
+    expect(scheduleTraceWageHeading(key, t)).toBe(heading);
+    expect(rows.map((r) => [r.description, r.amount, r.settings, r.treatment, r.contribution])).toEqual([
+      ['traceLineBasic', '3,500.00', '', included, '3,500.00'],
+      ['Transport', '300.00', 'traceSocsoSetting(traceYes)', included, '300.00'],
+      ['Phone', '150.00', 'traceSocsoSetting(traceYes)', included, '150.00'],
+      ['Overtime', '250.00', 'traceSocsoSetting(traceYes)', included, '250.00'],
+      // Ticked for SOCSO/EIS, yet EPF Bonus 2012 kept it out — so the setting that excluded it is shown.
+      ['Bonus', '800.00', 'traceSocsoSettings(traceYes|traceYes)', bonus, '0.00'],
+      [total, '', '', '', '4,200.00'],
+    ]);
+    expect(rows.at(-1)!.emphasis).toBe(true);
+  });
+
+  it('an item with the SOCSO/EIS tick off reads "not included", without a bonus reason', () => {
+    const lines = GOLDEN_LINES.map((l) => (l.code === 'PHONE' ? { ...l, socso: false } : l));
+    const r = run(3950, 800, 250, { epfWageExcluded: 150, socsoWageExcluded: 150 });
+    const trace = traceFor(stampFrom(r, lines, new Set(['BNS'])));
+    const phone = scheduleTraceItemRows(trace, 'eis', t, rm).find((row) => row.code === 'PHONE');
+    expect(phone).toMatchObject({ settings: 'traceSocsoSetting(traceNo)', treatment: 'traceTreatEisExcluded', contribution: '0.00' });
+    expect(scheduleTraceItemRows(trace, 'eis', t, rm).at(-1)!.contribution).toBe('4,050.00');
+  });
+
+  it('classification: SOCSO category, citizenship and age group on all three; EIS eligibility', () => {
+    const trace = golden();
+    for (const key of ['socso', 'skbbk', 'eis'] as const) {
+      const rows = scheduleTraceRows(trace, key, t, rm);
+      expect(rows.slice(0, 2)).toEqual([
+        { label: 'traceSocsoCategory', value: 'traceSocsoCategory1' },
+        { label: 'traceClassification', value: 'traceSchemeClassification(traceCitizen|traceSchemeAge18To59)' },
+      ]);
+    }
+    expect(scheduleTraceRows(trace, 'eis', t, rm)).toContainEqual({ label: 'traceEisEligibility', value: 'traceEisEligible' });
+    expect(scheduleTraceRows(trace, 'socso', t, rm).some((r) => r.label === 'traceEisEligibility')).toBe(false);
+  });
+
+  it('the rows already shown stay: EIS wage, row 4,100.01–4,200.00 and 8.30 / 8.30; SKBBK employee only', () => {
+    const trace = golden();
+    expect(scheduleTraceRows(trace, 'eis', t, rm).slice(3)).toEqual([
+      { label: 'traceWageBasis', value: '4,200.00' },
+      { label: 'traceTableEis', value: 'traceRange(4,100.01|4,200.00)' },
+      { label: 'traceRowEmployee', value: '8.30' },
+      { label: 'traceRowEmployer', value: '8.30' },
+    ]);
+    const skbbk = scheduleTraceRows(trace, 'skbbk', t, rm);
+    expect(skbbk).toContainEqual({ label: 'traceRowEmployee', value: '31.15' });
+    expect(skbbk.some((r) => r.label === 'traceRowEmployer')).toBe(false);
+    expect(runTraceRows(trace, 'eis', t, rm)).toEqual([
+      { label: 'traceThisRunEmployee', value: '8.30' },
+      { label: 'traceThisRunEmployer', value: '8.30' },
+    ]);
+  });
+
+  it('EIS at age 60+: not eligible, the trace’s reason, no EIS range; SOCSO Second Category, age 60 and above', () => {
+    const r = run(3950, 0, 0, { epfAge: 61, epfWageExcluded: 150, eisEligible: false, socsoCategory: 2, trace: { eisNotApplicable: 'age_60_plus' } });
+    const trace = traceFor(stampFrom(r, GOLDEN_LINES.filter((l) => l.code === 'TRANSPORT' || l.code === 'PHONE'), new Set()));
+    expect(scheduleTraceRows(trace, 'eis', t, rm)).toEqual([
+      { label: 'traceSocsoCategory', value: 'traceSocsoCategory2' },
+      { label: 'traceClassification', value: 'traceSchemeClassification(traceCitizen|traceSchemeAge60)' },
+      { label: 'traceEisEligibility', value: 'traceEisIneligible' },
+      { label: 'traceWageBasis', value: '3,950.00' },
+      { label: 'traceNotApplicable', value: 'traceEisAge60' },
+    ]);
+    // The wage it would have been charged on is still itemised, read off the same lines.
+    expect(scheduleTraceItemRows(trace, 'eis', t, rm).at(-1)).toMatchObject({ description: 'traceEisTotal', contribution: '3,950.00' });
+  });
+
+  it('non-citizen: citizenship shown, EIS not applicable for non-citizens', () => {
+    const r = run(3950, 0, 0, { epfWageExcluded: 150, epfCitizenship: 'non_citizen', eisEligible: false, socsoCategory: 2, trace: { eisNotApplicable: 'non_citizen' } });
+    const trace = traceFor(stampFrom(r, GOLDEN_LINES.filter((l) => l.code === 'TRANSPORT' || l.code === 'PHONE'), new Set()));
+    const eis = scheduleTraceRows(trace, 'eis', t, rm);
+    expect(eis).toContainEqual({ label: 'traceClassification', value: 'traceSchemeClassification(traceNonCitizen|traceSchemeAge18To59)' });
+    expect(eis).toContainEqual({ label: 'traceNotApplicable', value: 'traceEisNonCitizen' });
+    expect(eis.some((row) => row.label === 'traceTableEis')).toBe(false);
+    expect(scheduleTraceRows(trace, 'socso', t, rm)).toContainEqual({ label: 'traceClassification', value: 'traceSchemeClassification(traceNonCitizen|traceSchemeAge18To59)' });
+  });
+
+  it('an age the run did not record is left out, never guessed', () => {
+    const trace = traceFor(stampFrom(run(3950, 800, 250, { epfAge: undefined, epfWageExcluded: 150 }), GOLDEN_LINES, new Set(['BNS'])));
+    expect(trace.epf.age).toBeNull();
+    expect(scheduleTraceRows(trace, 'socso', t, rm)).toContainEqual({ label: 'traceClassification', value: 'traceCitizen' });
+  });
+
+  it('the screen and the workbook build every scheme’s table from the shared builder; the “same as SOCSO” note is gone', () => {
+    for (const rel of ['app/payroll/statutory-detail/statutory-detail-view.tsx', 'app/payroll/statutory-detail/export/route.ts']) {
+      const src = code(rel);
+      expect(src, rel).toContain('scheduleTraceItemRows(');
+      expect(src, rel).toContain('scheduleTraceWageHeading(');
+      expect(src, rel).not.toContain('traceSameWageAsSocso');
+    }
+    for (const locale of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
+      const ns = JSON.parse(fs.readFileSync(path.join(ROOT, 'messages', `${locale}.json`), 'utf8')).payroll.statutoryDetail;
+      expect(ns.traceSameWageAsSocso, locale).toBeUndefined();
+      // Every key the SOCSO / SKBBK / EIS builders reach through a lookup table, which the coverage scan cannot see.
+      const reached = [
+        ...SCHEMES.flatMap((s) => [s.heading, s.included, s.bonus, s.total]),
+        'traceTreatSocsoExcluded', 'traceTreatSkbbkExcluded', 'traceTreatEisExcluded', 'traceSocsoSetting', 'traceSocsoSettings',
+        'traceSchemeClassification', 'traceSchemeAgeUnder18', 'traceSchemeAge18To59', 'traceSchemeAge60',
+        'traceEisEligibility', 'traceEisEligible', 'traceEisIneligible',
+      ];
+      for (const k of reached) expect(ns[k], `${locale}.${k}`).toBeTruthy();
+    }
   });
 });

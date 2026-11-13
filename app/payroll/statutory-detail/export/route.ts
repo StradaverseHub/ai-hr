@@ -49,7 +49,7 @@ import {
 import { toXlsxReport, type ReportData } from '@/lib/report-export';
 import { epfWorkingRows } from '../epf-working';
 import { hrdfCalculationLine, hrdfWorkingRows } from '../hrdf-working';
-import { epfTraceItemRows, epfTraceRows, runTraceRows, scheduleTraceRows, socsoTraceItemRows, type TraceKey } from '../statutory-trace';
+import { epfTraceItemRows, epfTraceRows, runTraceRows, scheduleTraceItemRows, scheduleTraceRows, scheduleTraceWageHeading, type TraceKey } from '../statutory-trace';
 import { employeeLabel } from '@/lib/employee-code';
 
 /** STATIC keys, exhaustively mapped — the same map the view uses, for the same reason: a computed `t()`
@@ -161,10 +161,8 @@ export async function GET(req: Request) {
           ...(key === 'epf'
             ? [pad([t('traceColItem'), t('traceColAmount'), t('traceColSettings'), t('traceColTreatment'), t('traceColEpfWages')]),
                ...epfTraceItemRows(trace, t, money).map((r) => pad([r.code ? `${r.description} (${r.code})` : r.description, r.amount, r.settings, r.treatment, r.contribution]))]
-            : key === 'socso'
-              ? [pad([t('traceColItem'), t('traceColAmount'), t('traceColSettings'), t('traceColTreatment'), t('traceColSocsoWages')]),
-                 ...socsoTraceItemRows(trace, t, money).map((r) => pad([r.code ? `${r.description} (${r.code})` : r.description, r.amount, r.settings, r.treatment, r.contribution]))]
-              : [pad([t('traceSameWageAsSocso')])]),
+            : [pad([t('traceColItem'), t('traceColAmount'), t('traceColSettings'), t('traceColTreatment'), scheduleTraceWageHeading(key, t)]),
+               ...scheduleTraceItemRows(trace, key, t, money).map((r) => pad([r.code ? `${r.description} (${r.code})` : r.description, r.amount, r.settings, r.treatment, r.contribution]))]),
           ...(key === 'epf' ? epfTraceRows(trace, t, money, locale) : scheduleTraceRows(trace, key, t, money)).map((r) => pad([r.label, r.value])),
           ...runTraceRows(trace, key, t, money).map((r) => pad([r.label, r.value])),
         ])

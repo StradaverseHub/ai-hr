@@ -86,21 +86,48 @@ export function epfTraceItemRows(trace: StatutoryTraceRecord, t: T, money: Money
   return rows;
 }
 
-/** The pay items table for SOCSO / EIS / SKBBK — the three share one wage. */
-export function socsoTraceItemRows(trace: StatutoryTraceRecord, t: T, money: Money): TraceItemRow[] {
+export type ScheduleTraceKey = Exclude<TraceKey, 'epf'>;
+
+/**
+ * SOCSO, SKBBK and EIS are charged on ONE wage — the run's single `socsoEis` line per item — so each scheme's
+ * table is the same lines read for that scheme, under that scheme's own headings and total. Static keys per
+ * scheme, so the coverage scan sees every one.
+ */
+const SCHEME_ITEM = {
+  socso: { included: 'traceTreatSocsoIncluded', excluded: 'traceTreatSocsoExcluded', excludedBonus: 'traceTreatSocsoExcludedBonus2012', total: 'traceSocsoTotal' },
+  skbbk: { included: 'traceTreatSkbbkIncluded', excluded: 'traceTreatSkbbkExcluded', excludedBonus: 'traceTreatSkbbkExcludedBonus2012', total: 'traceSkbbkTotal' },
+  eis: { included: 'traceTreatEisIncluded', excluded: 'traceTreatEisExcluded', excludedBonus: 'traceTreatEisExcludedBonus2012', total: 'traceEisTotal' },
+} as const;
+
+/** The table's last column heading: what each line added to this scheme's wage. */
+export function scheduleTraceWageHeading(key: ScheduleTraceKey, t: T): string {
+  return key === 'socso' ? t('traceColSocsoWages') : key === 'skbbk' ? t('traceColSkbbkWages') : t('traceColEisWages');
+}
+
+/**
+ * The pay items table for SOCSO, SKBBK or EIS: every line, its SOCSO/EIS tick as the run read it (and its
+ * EPF Bonus 2012 setting where that kept the item out), how it was treated, what it added to the wage, and
+ * the scheme's contributable wage as the run recorded it.
+ */
+export function scheduleTraceItemRows(trace: StatutoryTraceRecord, key: ScheduleTraceKey, t: T, money: Money): TraceItemRow[] {
+  const labels = SCHEME_ITEM[key];
   const rows: TraceItemRow[] = [];
   for (const l of trace.items) {
     if (l.kind !== 'item' && l.socsoEis === 0) continue;
+    // EPF Bonus 2012 keeps a bonus out of SOCSO / EIS even with the SOCSO/EIS tick on (SOCSO Act 1969 s.2).
+    const bonusExcluded = l.kind === 'item' && l.socsoEis === 0 && l.socso === true && l.epfBonus2012 === true;
     rows.push({
       description: lineDescription(l, t),
       ...(l.code ? { code: l.code } : {}),
       amount: l.amount == null ? '' : signed(money, l.amount),
-      settings: l.kind === 'item' ? t('traceSocsoSettings', { socso: yesNo(t, l.socso), bonus2012: yesNo(t, l.epfBonus2012) }) : '',
-      treatment: t(l.socsoEis !== 0 ? 'traceTreatSocsoIncluded' : 'traceTreatSocsoExcluded'),
+      settings: l.kind !== 'item' ? ''
+        : bonusExcluded ? t('traceSocsoSettings', { socso: yesNo(t, l.socso), bonus2012: yesNo(t, l.epfBonus2012) })
+          : t('traceSocsoSetting', { socso: yesNo(t, l.socso) }),
+      treatment: t(l.socsoEis !== 0 ? labels.included : bonusExcluded ? labels.excludedBonus : labels.excluded),
       contribution: signed(money, l.socsoEis),
     });
   }
-  rows.push({ description: t('traceSocsoTotal'), amount: '', settings: '', treatment: '', contribution: money(trace.socso.wage), emphasis: true });
+  rows.push({ description: t(labels.total), amount: '', settings: '', treatment: '', contribution: money(trace[key].wage), emphasis: true });
   return rows;
 }
 
@@ -181,12 +208,32 @@ export function epfTraceRows(trace: StatutoryTraceRecord, t: T, money: Money, lo
   return rows;
 }
 
-/** SOCSO / SKBBK / EIS: category, wage, range and the two shares — or the reason it does not apply. */
-export function scheduleTraceRows(trace: StatutoryTraceRecord, key: Exclude<TraceKey, 'epf'>, t: T, money: Money): TraceRow[] {
+/**
+ * Citizenship and age group as the run recorded them. The trace carries them once, on its EPF part (the
+ * run's own inputs); an age the run did not record is left out, never guessed.
+ */
+function schemeClassification(trace: StatutoryTraceRecord, t: T): string {
+  const citizenship = t(CITIZENSHIP[trace.epf.citizenship]);
+  const age = trace.epf.age;
+  if (age == null) return citizenship;
+  return t('traceSchemeClassification', {
+    citizenship,
+    age: age >= 60 ? t('traceSchemeAge60') : age >= 18 ? t('traceSchemeAge18To59') : t('traceSchemeAgeUnder18'),
+  });
+}
+
+/**
+ * SOCSO / SKBBK / EIS: SOCSO category, classification (and for EIS its eligibility), wage, range and the
+ * two shares — or the reason it does not apply.
+ */
+export function scheduleTraceRows(trace: StatutoryTraceRecord, key: ScheduleTraceKey, t: T, money: Money): TraceRow[] {
   const s = trace[key];
-  const rows: TraceRow[] = [];
-  if (key === 'socso') {
-    rows.push({ label: t('traceSocsoCategory'), value: t(trace.socso.category === 2 ? 'traceSocsoCategory2' : 'traceSocsoCategory1') });
+  const rows: TraceRow[] = [
+    { label: t('traceSocsoCategory'), value: t(trace.socso.category === 2 ? 'traceSocsoCategory2' : 'traceSocsoCategory1') },
+    { label: t('traceClassification'), value: schemeClassification(trace, t) },
+  ];
+  if (key === 'eis') {
+    rows.push({ label: t('traceEisEligibility'), value: t(trace.eis.notApplicable ? 'traceEisIneligible' : 'traceEisEligible') });
   }
   rows.push({ label: t('traceWageBasis'), value: money(s.wage) });
   if (s.notApplicable) {
