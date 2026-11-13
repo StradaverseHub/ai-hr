@@ -13,11 +13,12 @@ import {publicErrorMessage} from '../lib/public-error';
 import type {LabelImportPreviewRow} from '../lib/system-label-definition';
 import type {BulkJobRowError} from '../lib/bulk-job';
 import type {SystemLabelImportResult} from '../lib/system-label-import-job';
+import type {SystemLabelImportFailedRow} from '../lib/system-label-import-problems';
 import {isTransientBulkJobError,type BulkJobHandler,type BulkJobUnit} from './bulk-job-worker';
 import type {BulkJobRow} from './bulk-job';
 import {OPERATOR_CHUNK_BUDGET_MS,lockOperatorChunkTx} from './operator-chunks';
 import {SYSTEM_LABEL_IMPORT_KIND,type SystemLabelImportJobInput} from './system-label-import-job';
-import {SYSTEM_LABEL_IMPORT_CHANGED,SYSTEM_LABEL_IMPORT_NOTHING,analyseSystemLabelImport,appendSystemLabelImportAppliedTx,applySystemLabelWriteTx,
+import {SYSTEM_LABEL_GRADE_ALREADY_GROUPED,SYSTEM_LABEL_IMPORT_CHANGED,SYSTEM_LABEL_IMPORT_NOTHING,analyseSystemLabelImport,appendSystemLabelImportAppliedTx,applySystemLabelWriteTx,
  lockSystemLabelImportTx,systemLabelImportBlockedRows,systemLabelImportErrorReport,systemLabelImportEventRows,systemLabelImportSummary,
  type SystemLabelImportEventRow,type SystemLabelImportSummary,type SystemLabelWrite} from './system-label-import';
 
@@ -27,11 +28,17 @@ const DISCARD_BATCH=200;
 /** What prepare stores for release: the preview's summary, its history rows and the rows the error workbook lists. */
 export type SystemLabelImportStoredPlan={summary:SystemLabelImportSummary;eventRows:SystemLabelImportEventRow[];blocked:LabelImportPreviewRow[];
  /** The staged attempt that marks every row this import writes (bulk_job.attempt_id is Import History's). */
- attemptId?:string;released?:boolean;result?:SystemLabelImportResult};
+ attemptId?:string;released?:boolean;result?:SystemLabelImportResult;
+ /** Board c074c6b8: the released plan keeps `blocked`, which the result screen and its Error Log read (jobs released
+  * before this marker kept only the stored English report). */
+ blockedKept?:true;
+ /** Board c074c6b8: the rows that stopped a failed import, with their worksheet and Excel row. */
+ failed?:SystemLabelImportFailedRow[]};
 const inputOf=(job:BulkJobRow)=>job.input as SystemLabelImportJobInput;
 const planOf=(job:BulkJobRow)=>(job.plan??{}) as SystemLabelImportStoredPlan;
 const attemptOf=(job:BulkJobRow)=>planOf(job).attemptId??null;
 const rowNumOf=(key:string)=>{const n=Number(key.slice(key.lastIndexOf(':')+1));return Number.isSafeInteger(n)?n:null;};
+const sheetOf=(key:string)=>key.slice(0,key.lastIndexOf(':'));
 const codeOf=(write:SystemLabelWrite)=>write.kind==='org'?String((write.orgKind==='department'?write.create.name:write.orgKind==='position'?write.create.title:write.create.code)??''):write.kind==='option'?write.input.value:write.kind==='grade'?write.input.code:write.input.name;
 
 /** A visible code that appeared while the import was staged and that the preview's rules refuse. */
@@ -84,13 +91,25 @@ export const systemLabelImportJobHandler:BulkJobHandler<SystemLabelWrite>={
   return{result:plan.result??{...plan.summary}};
  },
  onFailure:job=>planOf(job).released?'fail':'discard',
- async describeFailure(job,error,step){
-  if(error instanceof ReleaseConflict)return{error:`No labels were imported. ${error.message} Preview the workbook again.`,
-   errors:error.rows.map(r=>({rowNum:0,ref:r.code.slice(0,200),message:`Code "${r.code}" was added by someone else while the import was running.`}))};
+ async describeFailure(job,error,step,owner){
+  if(error instanceof ReleaseConflict){
+   // Board c074c6b8: name each conflicting code's worksheet and Excel row, from this job's own steps (one bounded read).
+   const codes=[...new Set(error.rows.map(r=>r.code.trim().toLowerCase()))];
+   const steps=await owner<{key:string;row_num:number|null;code:string}[]>`select payload->>'key' as key,row_num,code from (select payload,row_num,
+     case payload->>'kind' when 'org' then case payload->>'orgKind' when 'department' then payload#>>'{create,name}' when 'position' then payload#>>'{create,title}' else payload#>>'{create,code}' end
+      when 'option' then payload#>>'{input,value}' when 'grade' then payload#>>'{input,code}' else payload#>>'{input,name}' end as code
+     from bulk_job_step where job_id=${job.id}::uuid) s where lower(btrim(code)) in (select jsonb_array_elements_text(${JSON.stringify(codes)}::jsonb)) limit 400`;
+   const rows=error.rows.map(r=>{const at=steps.find(st=>sheetOf(st.key)===r.kind&&st.code.trim().toLowerCase()===r.code.trim().toLowerCase());
+    return{sheet:r.kind,row:at?.row_num??null,code:r.code.slice(0,200),detail:'releaseConflict' as const,message:''};});
+   return{error:`No labels were imported. ${error.message} Preview the workbook again.`,
+    errors:rows.map(r=>({rowNum:r.row??0,ref:r.code,message:`Code "${r.code}" was added by someone else while the import was running.`})),planMerge:{failed:rows}};
+  }
   const message=publicErrorMessage(error);
   if(planOf(job).released)return{error:`The labels were imported; finishing the import needs attention: ${message}`};
   const errors:BulkJobRowError[]=step?[{rowNum:step.row_num??0,ref:codeOf(step.payload as SystemLabelWrite).slice(0,200),message:message.slice(0,1000)}]:[];
-  return{error:step?`No labels were imported${step.row_num?`; row ${step.row_num} was refused`:''}. ${message}`:`No labels were imported. ${message}`,errors};
+  const failed:SystemLabelImportFailedRow[]=step?[{sheet:sheetOf((step.payload as SystemLabelWrite).key),row:step.row_num??null,code:errors[0].ref,
+   detail:message===SYSTEM_LABEL_GRADE_ALREADY_GROUPED?'gradeAlreadyGrouped':'saveRefused',message:message.slice(0,1000)}]:[];
+  return{error:step?`No labels were imported${step.row_num?`; row ${step.row_num} was refused`:''}. ${message}`:`No labels were imported. ${message}`,errors,...(failed.length?{planMerge:{failed}}:{})};
  },
  /** Delete every staged row in bounded owner batches; the last batch records the attempt as discarded. */
  async discard(job,unit){
@@ -121,7 +140,8 @@ async function release(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit,plan:S
   await tx.execute(sql`select app.system_label_import_release_attempt(${attemptOf(job)}::uuid,${job.id}::uuid)`);
   await appendSystemLabelImportAppliedTx(tx,ctx,plan.summary,plan.eventRows);
   const result:SystemLabelImportResult={...plan.summary,...systemLabelImportErrorReport(plan.blocked)};
-  const next:SystemLabelImportStoredPlan={summary:plan.summary,eventRows:[],blocked:[],attemptId:plan.attemptId,released:true,result};
+  // Board c074c6b8: keep the refused and skipped rows; the result screen lists them and its Error Log is built from them.
+  const next:SystemLabelImportStoredPlan={summary:plan.summary,eventRows:[],blocked:plan.blocked,blockedKept:true,attemptId:plan.attemptId,released:true,result};
   await unit.set(tx,{plan:next});
  });
  unit.metric('releaseTxMs',performance.now()-started);

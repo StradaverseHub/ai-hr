@@ -3,7 +3,11 @@ import { SaxesParser } from 'saxes';
 import { readSpreadsheetArchive, decodeSpreadsheetXml, SpreadsheetArchiveError } from './spreadsheet-archive';
 import { legacyLabelWorkbookStream } from './system-label-xls';
 import * as XLSX from 'xlsx';
-import { LABEL_IMPORT_DEFINITIONS, LABEL_TEMPLATE_DEFINITIONS, LABEL_TEMPLATE_NOTE, ORGANISATION_LABEL_KINDS, type LabelImportRow, type LabelImportPreviewRow } from './system-label-definition';
+import { createTranslator } from 'next-intl';
+import { LABEL_IMPORT_DEFINITIONS, LABEL_LEGACY_HEADERS_WARNING, LABEL_TEMPLATE_DEFINITIONS, LABEL_TEMPLATE_NOTE, ORGANISATION_LABEL_KINDS, type LabelImportRow, type LabelImportPreviewRow } from './system-label-definition';
+import { importProblemWorkbook } from './import-problem-workbook';
+import { labelImportProblemLines, labelProblemTranslator, type LabelProblemTranslator } from './system-label-import-problems';
+import en from '../messages/en.json';
 
 export const LABEL_WORKBOOK_GENERATION=3;
 export const LABEL_WORKBOOK_MAX_BYTES = 5_000_000;
@@ -112,16 +116,18 @@ export function readSystemLabelWorkbook(bytes: Buffer, options:{generation?:numb
       const ws=wb.Sheets[sheet],range=XLSX.utils.decode_range(ws['!fullref']??ws['!ref']??'A1');
       if(range.e.r>LABEL_FORMATTED_ROW_CEILING||range.e.c>20)throw new Error(`Unsupported worksheet ${sheet} exceeds the row or column limit.`);
       const values=XLSX.utils.sheet_to_json<string[]>(ws,{header:1,raw:false,defval:'',blankrows:true});
+      // values[0] is the first row of the used range, which is not Excel row 1 when the sheet starts lower down.
+      const origin=XLSX.utils.decode_range(ws['!ref']??'A1').s.r;
       let count=0;
       for(let i=1;i<values.length;i++)if(values[i].some(value=>String(value).trim())){
         if(++count>LABEL_WORKBOOK_MAX_ROWS||rows.length>=LABEL_WORKBOOK_TOTAL_ROWS)throw new Error('Worksheet limit: 500 data rows per worksheet and 7000 per workbook.');
         if(values[i].some(value=>String(value).length>1000))throw new Error('A value is too long in an unsupported worksheet.');
-        rows.push({sheet,row:i+1,values:{Code:String(values[i][0]??'').trim()}});
+        rows.push({sheet,row:origin+i+1,values:{Code:String(values[i][0]??'').trim()}});
       }
       // An unrecognised one-line sheet may contain data rather than a header. Do not silently drop it.
       if(!count&&values[0]?.some(value=>String(value).trim())){
         if(rows.length>=LABEL_WORKBOOK_TOTAL_ROWS||values[0].some(value=>String(value).length>1000))throw new Error('Unsupported worksheet exceeds the supported size.');
-        rows.push({sheet,row:1,values:{Code:String(values[0][0]??'').trim()}});
+        rows.push({sheet,row:origin+1,values:{Code:String(values[0][0]??'').trim()}});
       }
       continue;
     }
@@ -133,6 +139,8 @@ export function readSystemLabelWorkbook(bytes: Buffer, options:{generation?:numb
     for (const [key, cell] of Object.entries(ws)) if (!key.startsWith('!') && cell?.f)
       throw new Error(`Formula in ${sheet}!${key}. Enter a literal value.`);
     const values = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, raw: false, defval: '', blankrows: true });
+    // Board c074c6b8: row numbers are Excel's own. values[0] is the used range's first row, not always row 1.
+    const origin = XLSX.utils.decode_range(ws['!ref'] ?? 'A1').s.r;
     const newLayout=!!template&&values[0]?.[0]===LABEL_TEMPLATE_NOTE&&values[0].slice(1).every(value=>!value);
     if(template&&!newLayout)throw new Error(`Headers do not match the template in ${sheet}.`);
     const headerRow=newLayout?1:0,headers=values[headerRow];
@@ -152,7 +160,7 @@ export function readSystemLabelWorkbook(bytes: Buffer, options:{generation?:numb
       if (++dataRows>LABEL_WORKBOOK_MAX_ROWS||rows.length>=LABEL_WORKBOOK_TOTAL_ROWS)throw new Error('Worksheet limit: 500 data rows per worksheet and 7000 per workbook. Narrow the selected lists.');
       const fields = Object.fromEntries(columns.map((c, n) => [c, String(values[i][n] ?? '').trim()]));
       if(!newLayout&&headers[columns.length]==='Status')fields.Status=String(values[i][columns.length]??'').trim();
-      if (Object.values(fields).some(v => v.length > 1000)) throw new Error(`A value is too long in ${sheet}, row ${i + 1}.`);
+      if (Object.values(fields).some(v => v.length > 1000)) throw new Error(`A value is too long in ${sheet}, row ${origin + i + 1}.`);
       if(['Criteria','Criteria Companies','Company'].every(field=>!fields[field]))for(const field of ['Criteria','Criteria Companies','Company'])delete fields[field];
       if(legacy) {
         const scope=fields.Criteria;
@@ -163,54 +171,25 @@ export function readSystemLabelWorkbook(bytes: Buffer, options:{generation?:numb
           fields['Criteria Companies']=[fields.Company,fields['Criteria Companies']].filter(Boolean).join(';');
         }
       }
-      rows.push({ sheet:definition.kind, row: i + 1, values: fields, ...(legacy?{warnings:['Older Criteria headers were converted. Download the current template for the next upload.']}: {}) });
+      rows.push({ sheet:definition.kind, row: origin + i + 1, values: fields, ...(legacy?{warnings:[LABEL_LEGACY_HEADERS_WARNING]}: {}) });
     }
   }
   if(!seen.size)throw new Error('Unknown workbook: no recognised category sheets. Download the System Labels template.');
   return rows;
 }
 
-export function systemLabelErrorWorkbook(rows: LabelImportPreviewRow[]): Uint8Array {
-  const wb = XLSX.utils.book_new();
-  const data = [
-    ['Worksheet', 'Row', 'Code', 'Result', 'Message'],
-    ...rows.filter(r => r.outcome === 'error'||r.outcome === 'skip').map(r => [safe(r.sheet), r.row, safe(r.values.Code||r.values.Name||''), r.outcome, safe(r.message)]),
-  ];
-  const sheet = XLSX.utils.aoa_to_sheet(data), widths = [24, 8, 38, 12, 88];
-  sheet['!cols'] = widths.map(wch => ({ wch }));
-  // Reserve space for wrapped identifiers/messages. This is a conservative estimate, not font metrics;
-  // all cell text is retained and unusually long rows remain manually expandable in Excel.
-  sheet['!rows'] = data.map((row, index) => ({ hpt: index === 0 ? 24 : Math.min(240, Math.max(32,
-    8 + 15 * Math.max(...row.map((value, column) => String(value).split(/\r\n|\r|\n/).reduce((lines, line) => lines + Math.max(1, Math.ceil([...line].length / (widths[column] - 4))), 0))),
-  )) }));
-  XLSX.utils.book_append_sheet(wb, sheet, 'Errors');
-  // The installed SheetJS writer serializes widths/heights but not arbitrary cell.s alignment.
-  // Its public synchronous ZIP API styles only this freshly generated report, preserving our
-  // synchronous caller contract; no uploaded archive or business value is rewritten here.
-  const zip = XLSX.CFB.read(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }), { type: 'buffer' });
-  const part = (name: string): string => {
-    // CFB resolves a leading slash relative to its synthetic Root Entry storage.
-    const entry = XLSX.CFB.find(zip, '/' + name);
-    if (!entry?.content) throw new Error('Error workbook layout is unavailable.');
-    return Buffer.from(entry.content).toString('utf8');
-  };
-  let styles = part('xl/styles.xml');
-  const cellXfs = /<cellXfs\b[^>]*\bcount="(\d+)"[^>]*>/.exec(styles);
-  if (!cellXfs || !styles.includes('</cellXfs>')) throw new Error('Error workbook styles are unavailable.');
-  const first = Number(cellXfs[1]);
-  const wrapped = [0, 49].map(numFmtId => `<xf numFmtId="${numFmtId}" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>`).join('');
-  styles = styles.replace(cellXfs[0], cellXfs[0].replace(/count="\d+"/, `count="${first + 2}"`)).replace('</cellXfs>', wrapped + '</cellXfs>');
-  const xml = part('xl/worksheets/sheet1.xml').replace(/<c\b[^>]*>/g, opening => {
-    const closed = opening.endsWith('/>'), attributes = opening.slice(2, closed ? -2 : -1).replace(/\s+s="[^"]*"/g, '');
-    const address = /\br="([A-Z]+)(\d+)"/.exec(attributes);
-    const style = first + (address?.[1] === 'B' && address[2] !== '1' ? 0 : 1);
-    return '<c' + attributes + ` s="${style}"` + (closed ? '/>' : '>');
-  });
-  XLSX.CFB.utils.cfb_add(zip, '/xl/styles.xml', Buffer.from(styles));
-  XLSX.CFB.utils.cfb_add(zip, '/xl/worksheets/sheet1.xml', Buffer.from(xml));
-  return new Uint8Array(XLSX.CFB.write(zip, { type: 'buffer', fileType: 'zip', compression: true }));
+/** English, for callers with no request locale (the stored report of an import, kept for older screens). */
+let english: LabelProblemTranslator | undefined;
+export const englishLabelProblemTranslator = (): LabelProblemTranslator =>
+  english ??= createTranslator({ locale: 'en', messages: en as never }) as unknown as LabelProblemTranslator;
+/**
+ * Board c074c6b8: the System Labels Error Log. A thin wrapper: the rows become problem lines through the same adapter
+ * the check screen uses (lib/system-label-import-problems.ts), and the shared writer lays them out
+ * (lib/import-problem-workbook.ts). Pass the request's translator; without one the file is in English.
+ */
+export function systemLabelErrorWorkbook(rows: LabelImportPreviewRow[], t: LabelProblemTranslator = englishLabelProblemTranslator()): Uint8Array {
+  return importProblemWorkbook({ lines: labelImportProblemLines(rows, t), t: labelProblemTranslator(t) });
 }
-
 
 export function systemLabelExportId(bytes:Buffer):string|null {
   const wb=readWorkbook(bytes);

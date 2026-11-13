@@ -10,6 +10,7 @@ import { listProfileOptions } from '../core/profile-options';
 import { labelIdsForCompany } from '../core/system-labels';
 import { createCompany, createJobGrade } from '../core/admin';
 import { createGradeGroup } from '../packs/leave/service';
+import en from '../messages/en.json';
 
 let b:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();});
@@ -58,7 +59,8 @@ describe('reviewed System Labels imports',()=>{
     expect(preview.rows.map(row=>[row.outcome,row.selected])).toEqual([['add',true],['error',false]]);
     const summary=await applySystemLabelImport(adminCtx(b),{bytes,mode:'add',token:preview.token});expect(summary).toMatchObject({imported:1,updated:0,skipped:0,failed:1});
     expect(summary.errorReport).toBeTruthy();const report=XLSX.read(Buffer.from(summary.errorReport!,'base64'),{type:'buffer'});
-    expect(XLSX.utils.sheet_to_json(report.Sheets.Errors)).toMatchObject([{Worksheet:'division',Row:3,Code:'',Message:'Code is required.'}]);
+    const h=en.importProblems.headers;
+    expect(XLSX.utils.sheet_to_json(report.Sheets.Errors)).toMatchObject([{[h.row]:3,[h.category]:'Division',[h.field]:'Code',[h.problem]:'Code is required.',[h.result]:en.importProblems.result.refused}]);
     expect(XLSX.utils.sheet_to_json(report.Sheets.Errors)).toHaveLength(1);
     expect(await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'VALID'))).toHaveLength(1);
     const valid=book({division:[{Code:'NOT_SAVED',Label:'Valid'}]});const stale=await previewSystemLabelImport(adminCtx(b),valid,'add');

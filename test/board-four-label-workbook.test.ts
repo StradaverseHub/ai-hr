@@ -36,7 +36,10 @@ describe('System Labels Excel contract',()=>{
   it('exports spreadsheet-safe errors with exact source row references',()=>{
     const bytes=systemLabelErrorWorkbook([{sheet:'division',row:2,values:{Code:'=HYPERLINK("bad")'},before:null,after:{},outcome:'error',message:'=1+1'}]);
     const wb=XLSX.read(bytes,{type:'array'}),rows=XLSX.utils.sheet_to_json<string[]>(wb.Sheets.Errors,{header:1});
-    expect(rows[1]).toEqual(['division',2,"'=HYPERLINK(\"bad\")",'error',"'=1+1"]);
+    // Board c074c6b8: shared Error Log columns; the entered code is guarded wherever it appears (Reference here).
+    expect(rows[0].slice(0,3)).toEqual(['Excel row','Category','Reference']);
+    expect(rows[1].slice(0,3)).toEqual([2,'Division',"'=HYPERLINK(\"bad\")"]);
+    expect(JSON.stringify(rows)).not.toContain('=1+1');
     expect(Object.values(wb.Sheets.Errors).some(c=>c?.f)).toBe(false);
   });
 });

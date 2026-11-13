@@ -296,6 +296,8 @@ describe('System Labels authenticated Excel browser journey',()=>{
    await runBulkJobTick(owner.client,{handlers:BULK_JOB_HANDLERS});
    return page.getByRole('dialog').innerText();
   },{timeout:120000,interval:250}).toContain('Failed rows: 1');
+  // Board c074c6b8: the result screen lists the row that was not imported, read back from the job.
+  await page.getByRole('table',{name:en.labelsImportWizard.problemsTitle}).getByText('Company is unknown, ambiguous, inactive or outside your administrator scope.',{exact:true}).waitFor();
   const [labelJob]=await owner.client<{state:string}[]>`select state from bulk_job where tenant_id=${b.tenantId}::uuid and kind='system_label_import' order by created_at desc limit 1`;
   expect(labelJob).toEqual({state:'completed'});
   const [global]=await owner.db.select().from(s.department).where(eq(s.department.name,'BROWSER_GLOBAL_LABEL'));
@@ -331,7 +333,8 @@ describe('System Labels authenticated Excel browser journey',()=>{
   const refused=await buildSystemLabelWorkbook({kinds:['department'],rows:{department:[{Code:'BROWSER_FORBIDDEN_GLOBAL'}]},references:{companies:[],grades:[],employees:[]}});
   await restrictedImportDialog.getByLabel(en.labelsImportWizard.upload,{exact:true}).setInputFiles({name:'forbidden-global.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:refused});
   await restrictedPage.getByRole('button',{name:en.labelsImportWizard.check,exact:true}).click();
-  await restrictedPage.getByText(en.labelsImportWizard.globalAdminRequired,{exact:true}).waitFor();
+  // Board c074c6b8: the refusal shows the server's own sentence (catalogue text) with its column.
+  await restrictedPage.getByText(en.labelsImportWizard.problem.globalAdminRequired,{exact:true}).waitFor();
   expect(await owner.db.select().from(s.department).where(eq(s.department.name,'BROWSER_FORBIDDEN_GLOBAL'))).toHaveLength(0);
   const allowedExport=await restrictedContext.request.get(origin+'/admin/settings/system-labels/current-data?kind=division&inactive=1');
   expect(allowedExport.status()).toBe(200);expect(readSystemLabelWorkbook(await allowedExport.body()).some(row=>row.values.Code==='BROWSER_COMPANY_LABEL')).toBe(false);
