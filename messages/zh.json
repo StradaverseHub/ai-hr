@@ -38467,5 +38467,46 @@
     "approveAudit": "历史记录保留所选人员为指定审批人，并记录您为实际操作人。",
     "previous": "上一页",
     "next": "下一页"
+  },
+  "importProblems": {
+    "headers": {
+      "sheet": "工作表",
+      "row": "Excel 行",
+      "category": "类别",
+      "reference": "参考编号",
+      "employeeName": "员工姓名",
+      "field": "字段",
+      "value": "输入的值",
+      "problem": "问题",
+      "correction": "修正方法",
+      "stage": "发现于",
+      "result": "结果",
+      "errorReference": "支持参考号"
+    },
+    "stage": {
+      "file": "读取文件",
+      "check": "检查文件",
+      "save": "保存",
+      "system": "系统错误"
+    },
+    "result": {
+      "refused": "未导入",
+      "skipped": "已跳过",
+      "stopped": "导致导入停止",
+      "cancelled": "未保存 - 另一行导致导入停止",
+      "not_saved": "未保存 - 请重新上传已更正的文件"
+    },
+    "hiddenValue": "（已隐藏）",
+    "wholeFile": "整个文件",
+    "moreInLog": "另有 {count} 个问题列在错误日志中。",
+    "downloadLog": "下载错误日志",
+    "summary": {
+      "sheetTitle": "摘要",
+      "batch": "导入",
+      "file": "文件",
+      "status": "状态",
+      "problems": "问题",
+      "truncated": "记录导入时此列表已被缩短。请在导入后立即下载错误日志以查看所有问题。"
+    }
   }
 }

@@ -38467,5 +38467,46 @@
     "approveAudit": "Lịch sử giữ người được chọn là người phê duyệt được chỉ định và ghi nhận bạn là người thực hiện.",
     "previous": "Trước",
     "next": "Tiếp"
+  },
+  "importProblems": {
+    "headers": {
+      "sheet": "Trang tính",
+      "row": "Dòng Excel",
+      "category": "Danh mục",
+      "reference": "Mã tham chiếu",
+      "employeeName": "Tên nhân viên",
+      "field": "Trường",
+      "value": "Giá trị đã nhập",
+      "problem": "Lỗi gì",
+      "correction": "Cách sửa",
+      "stage": "Phát hiện khi",
+      "result": "Kết quả",
+      "errorReference": "Mã tham chiếu hỗ trợ"
+    },
+    "stage": {
+      "file": "Đọc tệp",
+      "check": "Kiểm tra tệp",
+      "save": "Lưu",
+      "system": "Lỗi hệ thống"
+    },
+    "result": {
+      "refused": "Không được nhập",
+      "skipped": "Đã bỏ qua",
+      "stopped": "Đã dừng việc nhập",
+      "cancelled": "Không được lưu - một dòng khác đã dừng việc nhập",
+      "not_saved": "Không được lưu - hãy tải lên lại tệp đã sửa"
+    },
+    "hiddenValue": "(đã ẩn)",
+    "wholeFile": "Toàn bộ tệp",
+    "moreInLog": "Còn {count} lỗi khác được liệt kê trong Nhật ký lỗi.",
+    "downloadLog": "Tải xuống Nhật ký lỗi",
+    "summary": {
+      "sheetTitle": "Tóm tắt",
+      "batch": "Lần nhập",
+      "file": "Tệp",
+      "status": "Trạng thái",
+      "problems": "Lỗi",
+      "truncated": "Danh sách này đã được rút gọn khi ghi nhận lần nhập. Hãy tải Nhật ký lỗi ngay sau khi nhập để xem tất cả lỗi."
+    }
   }
 }

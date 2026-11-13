@@ -38467,5 +38467,46 @@
     "approveAudit": "Sejarah mengekalkan orang yang dipilih sebagai pelulus yang ditetapkan dan merekodkan anda sebagai orang yang bertindak.",
     "previous": "Sebelumnya",
     "next": "Seterusnya"
+  },
+  "importProblems": {
+    "headers": {
+      "sheet": "Helaian",
+      "row": "Baris Excel",
+      "category": "Kategori",
+      "reference": "Rujukan",
+      "employeeName": "Nama pekerja",
+      "field": "Medan",
+      "value": "Nilai dimasukkan",
+      "problem": "Apa yang salah",
+      "correction": "Cara membetulkannya",
+      "stage": "Ditemui semasa",
+      "result": "Keputusan",
+      "errorReference": "Rujukan sokongan"
+    },
+    "stage": {
+      "file": "Membaca fail",
+      "check": "Menyemak fail",
+      "save": "Menyimpan",
+      "system": "Ralat sistem"
+    },
+    "result": {
+      "refused": "Tidak diimport",
+      "skipped": "Dilangkau",
+      "stopped": "Menghentikan import",
+      "cancelled": "Tidak disimpan - baris lain menghentikan import",
+      "not_saved": "Tidak disimpan - muat naik semula fail yang telah dibetulkan"
+    },
+    "hiddenValue": "(disembunyikan)",
+    "wholeFile": "Seluruh fail",
+    "moreInLog": "{count} lagi masalah disenaraikan dalam Log Ralat.",
+    "downloadLog": "Muat turun Log Ralat",
+    "summary": {
+      "sheetTitle": "Ringkasan",
+      "batch": "Import",
+      "file": "Fail",
+      "status": "Status",
+      "problems": "Masalah",
+      "truncated": "Senarai ini telah dipendekkan semasa import direkodkan. Muat turun Log Ralat sejurus selepas import untuk melihat semua masalah."
+    }
   }
 }

@@ -38467,5 +38467,46 @@
     "approveAudit": "History keeps the chosen person as the designated approver and records you as the person who acted.",
     "previous": "Previous",
     "next": "Next"
+  },
+  "importProblems": {
+    "headers": {
+      "sheet": "Sheet",
+      "row": "Excel row",
+      "category": "Category",
+      "reference": "Reference",
+      "employeeName": "Employee name",
+      "field": "Field",
+      "value": "Value entered",
+      "problem": "What is wrong",
+      "correction": "How to fix it",
+      "stage": "Found while",
+      "result": "Result",
+      "errorReference": "Support reference"
+    },
+    "stage": {
+      "file": "Reading the file",
+      "check": "Checking the file",
+      "save": "Saving",
+      "system": "System error"
+    },
+    "result": {
+      "refused": "Not imported",
+      "skipped": "Skipped",
+      "stopped": "Stopped the import",
+      "cancelled": "Not saved - another row stopped the import",
+      "not_saved": "Not saved - upload the corrected file again"
+    },
+    "hiddenValue": "(hidden)",
+    "wholeFile": "Whole file",
+    "moreInLog": "{count} more problems are listed in the Error Log.",
+    "downloadLog": "Download Error Log",
+    "summary": {
+      "sheetTitle": "Summary",
+      "batch": "Import",
+      "file": "File",
+      "status": "Status",
+      "problems": "Problems",
+      "truncated": "This list was shortened when the import was recorded. Download the Error Log straight after an import to see every problem."
+    }
   }
 }
