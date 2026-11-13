@@ -163,9 +163,12 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
   }
   await refreshRewardFixtureBudget(gr,earlierId);
   const governance=await getRewardUnitGovernance(gr,earlierId),basis=(governance.inputs??governance.legacyInputs)!;
-  await changeRewardFixtureInputs(gr,earlierId,{targetMonthsBp:basis.targetMonthsBp*2});
+  // The fixture PAT actual is zero, so its bonus pool is zero; the earlier year meets its PAT target and has a bonus pool.
+  await changeRewardFixtureInputs(gr,earlierId,{patActual:Math.max(basis.targetCents??0,100)});
   await confirmAll();await change(checker,{kind:'release'});
   const latest=await getRewardUnit(gr,unitId),earlier=await getRewardUnit(gr,earlierId);
+  // Company buttons count the rows this reviewer may see.
+  const seenLatest=await getRewardUnit(reviewer,unitId),seenEarlier=await getRewardUnit(reviewer,earlierId);
   expect(earlier.budgets.standard.bonusPoolCents).not.toBe(latest.budgets.standard.bonusPoolCents);
 
   const byDefault=await rewardDashboard(reviewer,[base.companyId],{version:2,period:'monthly',businessUnit:buId});
@@ -173,7 +176,7 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
   expect(byDefault.context).toMatchObject({cycle:'Preparation fixture',companies:1});
   expect(byDefault.figures!.bonus.standard).toMatchObject({used:latest.budgets.standard.bonusUsedCents,pool:latest.budgets.standard.bonusPoolCents});
   expect(byDefault.figures!.salary.standard.merit).toMatchObject({used:latest.budgets.standard.used[0],pool:latest.budgets.standard.pools[0]});
-  expect(byDefault.companies).toEqual([{id:base.companyId,label:expect.any(String),headcount:latest.rows.length,blocked:latest.flags.some(f=>f.severity==='block'),preparing:false}]);
+  expect(byDefault.companies).toEqual([{id:base.companyId,label:expect.any(String),headcount:seenLatest.rows.length,blocked:seenLatest.flags.some(f=>f.severity==='block'),preparing:false}]);
 
   const picked=await rewardDashboard(reviewer,[base.companyId],{version:2,period:'monthly',businessUnit:buId,year:2025});
   expect(picked).toMatchObject({year:2025,years:[2026,2025],choice:{year:2025,businessUnit:buId,companies:[]}});
@@ -181,7 +184,7 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
   expect(picked.figures!.bonus.standard).toMatchObject({used:earlier.budgets.standard.bonusUsedCents,pool:earlier.budgets.standard.bonusPoolCents});
   expect(picked.figures!.salary.standard.merit).toMatchObject({used:earlier.budgets.standard.used[0],pool:earlier.budgets.standard.pools[0]});
   expect(picked.figures!.bonus.standard.pool).not.toBe(byDefault.figures!.bonus.standard.pool);
-  expect(picked.companies).toEqual([{id:base.companyId,label:expect.any(String),headcount:earlier.rows.length,blocked:earlier.flags.some(f=>f.severity==='block'),preparing:false}]);
+  expect(picked.companies).toEqual([{id:base.companyId,label:expect.any(String),headcount:seenEarlier.rows.length,blocked:seenEarlier.flags.some(f=>f.severity==='block'),preparing:false}]);
   // Waiting on you lists the same released reviews from every year whichever year is picked.
   expect(picked.waiting).toEqual(byDefault.waiting);
   expect(byDefault.waiting.every(row=>[unitId,earlierId].includes(row.id))).toBe(true);
