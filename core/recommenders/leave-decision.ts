@@ -5,9 +5,13 @@
  *    approver already sees) against the days requested, under the leave type's negative-balance rule;
  *  - own_overlap: the applicant's other approved or pending leave on the same dates (listLeaveRequestsPage, by the
  *    applicant's employment and the request's date range);
- *  - team_coverage: others the caller may see away on those dates (core/read.ts plannedAbsences, narrowed to the
- *    people with leave on those dates). No tenant
- *    coverage minimum exists yet, so only "nobody else away" passes; anyone away is unusual for a person to judge;
+ *  - team_coverage: with no minimum set for the applicant's company, others the caller may see away on those dates
+ *    (core/read.ts plannedAbsences, narrowed to the people with leave on those dates): only "nobody else away" passes;
+ *    anyone away is unusual for a person to judge. When the company sets a "minimum people present" (owner decision,
+ *    12 November 2026; core/leave-team-minimum.ts), it is checked instead on each day of the request against the
+ *    applicant's team (the Leave Calendar's Team view of their line manager): the minimum met on every day passes,
+ *    any day below it fails (never blocking: the leave engine does not refuse on it) and `teamCoverage` names those
+ *    days with how many would be present. An applicant with no line manager has no team, so the earlier check runs;
  *  - policy_limits: the leave type's document rule and backdating, against the request.
  * Each check carries the rule version it ran under: the leave policy version (migration 0891) where the leave
  * type's rules decide, otherwise this recommender's own version.
@@ -30,7 +34,7 @@ import {withTenant,type SessionContext} from '../../db/client';
 import {domainEvent,employment,leaveRequest as leaveRequestTable,leaveType as leaveTypeTable} from '../../db/schema';
 import {terasOutcomeFollowup,terasOutcomeRecord} from '../../db/teras-schema';
 import {todayInKualaLumpur} from '../../lib/hr-date';
-import {pendingLeaveTaskMetadata} from '../../packs/leave/service';
+import {leaveTeamPresence,pendingLeaveTaskMetadata} from '../../packs/leave/service';
 import {workerRunGateTx} from '../agent-registry/controls';
 import {newRunId,recordOutcomeFollowup,writeOutcomeRecordTx,type OutcomeCheck} from '../outcome-record/record';
 import {leavePolicyVersionTx} from '../outcome-record/rule-versions';
@@ -48,8 +52,13 @@ export type RecommendationCheck=Readonly<{check:RecommendationCheckName;owner:st
  /** A failure the leave engine itself refuses on. It is named to the approver; it never recommends rejection. */blocking:boolean}>;
 /** A failed rule, named with the version it ran under. */
 export type FailedRule=Readonly<{check:RecommendationCheckName;blocking:boolean;ruleVersion:string|null}>;
+/** The company's team minimum as this request meets it: null when no minimum applies (none set, or no team). */
+export type TeamCoverage=Readonly<{minimum:number;teamSize:number;
+ /** The request's days on which approving leaves fewer than `minimum` present, in date order, each with that count. */
+ shortDays:readonly Readonly<{date:string;present:number}>[]}>;
 export type LeaveDecisionRecommendation=Readonly<{kind:'teras.recommendation';version:1;action:'approvals.leave.decide';
- verdict:RecommendationVerdict;checks:readonly RecommendationCheck[];failedRules:readonly FailedRule[];recommenderVersion:string;recordId:string|null}>;
+ verdict:RecommendationVerdict;checks:readonly RecommendationCheck[];failedRules:readonly FailedRule[];recommenderVersion:string;recordId:string|null;
+ teamCoverage:TeamCoverage|null}>;
 
 /** The verdict from the checks alone. Any check absent from the list counts as missing. */
 export function evaluateLeaveDecision(checks:readonly RecommendationCheck[]):RecommendationVerdict{
@@ -68,11 +77,21 @@ export type LeaveDecisionFacts=Readonly<{
  balanceNow:number|null;
  ownLeave:Readonly<{complete:boolean;overlappingApproved:number;overlappingPending:number}>|null;
  othersAway:number|null;
+ /** The company's minimum people present and who of the team would be present on each day of the request; absent or
+  * null when no minimum applies (the othersAway check runs, unchanged); 'unreadable' when it could not be read. */
+ teamMinimum?:Readonly<{minimum:number;days:readonly Readonly<{date:string;present:number}>[]}>|'unreadable'|null;
  leaveType:Readonly<{allowNegativeBalance:boolean;maxNegativeBalance:number|null;requiresDocument:boolean;mandatoryAfterDays:number|null}>|null;
  policyVersion:string|null;today:string}>;
 
-const OWNERS={balance:'core/read.ts#listLeaveRequests',overlap:'core/read.ts#listLeaveRequestsPage',coverage:'core/read.ts#plannedAbsences',policy:'core/outcome-record/rule-versions.ts#leavePolicyVersionTx'} as const;
+const OWNERS={balance:'core/read.ts#listLeaveRequests',overlap:'core/read.ts#listLeaveRequestsPage',coverage:'core/read.ts#plannedAbsences',
+ minimum:'core/leave-team-minimum.ts#leaveTeamPresence',policy:'core/outcome-record/rule-versions.ts#leavePolicyVersionTx'} as const;
 const row=(check:RecommendationCheckName,owner:string,ruleVersion:string|null,result:RecommendationResult,blocking=false):RecommendationCheck=>Object.freeze({check,owner,ruleVersion,result,blocking});
+
+/** The request's days on which fewer than the minimum would be present, in date order. Pure. */
+export function shortDays(teamMinimum:Readonly<{minimum:number;days:readonly Readonly<{date:string;present:number}>[]}>):readonly Readonly<{date:string;present:number}>[]{
+ return Object.freeze(teamMinimum.days.filter(day=>day.present<teamMinimum.minimum).slice().sort((a,b)=>a.date.localeCompare(b.date))
+  .map(day=>Object.freeze({date:day.date,present:day.present})));
+}
 
 /** The four checks from the facts. Pure, so the boundary cases are testable without a database. */
 export function leaveDecisionChecks(facts:LeaveDecisionFacts):readonly RecommendationCheck[]{
@@ -87,7 +106,10 @@ export function leaveDecisionChecks(facts:LeaveDecisionFacts):readonly Recommend
   :own.overlappingApproved>0?row('own_overlap',OWNERS.overlap,RECOMMENDER_VERSION,'fail',true)
   :own.overlappingPending>0?row('own_overlap',OWNERS.overlap,RECOMMENDER_VERSION,'unusual')
   :row('own_overlap',OWNERS.overlap,RECOMMENDER_VERSION,'pass');
- const coverage=facts.othersAway===null?row('team_coverage',OWNERS.coverage,RECOMMENDER_VERSION,'missing')
+ const minimum=facts.teamMinimum;
+ const coverage=minimum==='unreadable'?row('team_coverage',OWNERS.minimum,RECOMMENDER_VERSION,'missing')
+  :minimum?row('team_coverage',OWNERS.minimum,RECOMMENDER_VERSION,shortDays(minimum).length>0?'fail':'pass')
+  :facts.othersAway===null?row('team_coverage',OWNERS.coverage,RECOMMENDER_VERSION,'missing')
   :row('team_coverage',OWNERS.coverage,RECOMMENDER_VERSION,facts.othersAway===0?'pass':'unusual');
  let limits:RecommendationCheck;
  if(!leaveType||!policy)limits=row('policy_limits',OWNERS.policy,policy,'missing');
@@ -147,6 +169,17 @@ export async function recommendLeaveDecision(supplied:SessionContext,input:Reado
   othersAway=people.filter(person=>person.id!==request.personId&&person.leaves.length>0).length;
   reads.push({tool:OWNERS.coverage,status:'ok'});
  }catch{reads.push({tool:OWNERS.coverage,status:'failed'});}
+ // The company's minimum people present (core/leave-team-minimum.ts). With none set, nothing below changes: no read is
+ // recorded and the othersAway check above decides. A read that fails leaves the check missing.
+ let teamMinimum:LeaveDecisionFacts['teamMinimum']=null,teamCoverage:TeamCoverage|null=null;
+ try{
+  const presence=await leaveTeamPresence(ctx,{leaveRequestId:request.id,today});
+  if(presence.kind!=='no_minimum')reads.push({tool:OWNERS.minimum,status:'ok'});
+  if(presence.kind==='presence'){
+   teamMinimum={minimum:presence.minimum,days:presence.days};
+   teamCoverage=Object.freeze({minimum:presence.minimum,teamSize:presence.teamSize,shortDays:shortDays(teamMinimum)});
+  }
+ }catch{teamMinimum='unreadable';reads.push({tool:OWNERS.minimum,status:'failed'});}
  let leaveType:LeaveDecisionFacts['leaveType']=null,policyVersion:string|null=null;
  try{
   await withTenant(ctx,async tx=>{
@@ -161,7 +194,7 @@ export async function recommendLeaveDecision(supplied:SessionContext,input:Reado
   reads.push({tool:'core/outcome-record/rule-versions.ts#leavePolicyVersionTx',status:'ok',refs:[request.leaveTypeId]});
  }catch{leaveType=null;policyVersion=null;reads.push({tool:'core/outcome-record/rule-versions.ts#leavePolicyVersionTx',status:'failed'});}
  const checks=leaveDecisionChecks({request:{startDate:request.startDate,endDate:request.endDate,days,hasDocument:request.hasDocument===true},
-  balanceNow:Number.isFinite(balance)?balance:null,ownLeave,othersAway,leaveType,policyVersion,today});
+  balanceNow:Number.isFinite(balance)?balance:null,ownLeave,othersAway,teamMinimum,leaveType,policyVersion,today});
  const verdict=evaluateLeaveDecision(checks),failed=failedRules(checks);
  // The record is written only while the worker may still run: a switch-off or stop in between ends it unrecorded.
  const recordId=await withTenant(ctx,async tx=>{
@@ -176,13 +209,15 @@ export async function recommendLeaveDecision(supplied:SessionContext,input:Reado
     result:check.result==='pass'?'pass':check.result==='fail'?'fail':'needs_review'})),
    replay:{model:null,provider:null,instructionSet:RECOMMENDER_VERSION,specVersion:null,specDigest:null,toolCatalogue:null},
    outcomeKind:'suggested',outcome:{action:'approvals.leave.decide',verdict,leaveRequestId:request.id,checks:checks.map(check=>`${check.check}:${check.result}`),
-    failedRules:failed.map(rule=>`${rule.check}:${rule.blocking?'blocking':'non_blocking'}`)},
+    failedRules:failed.map(rule=>`${rule.check}:${rule.blocking?'blocking':'non_blocking'}`),
+    // Only when a minimum applied: the minimum and each short day with how many would be present.
+    ...(teamCoverage?{teamMinimum:teamCoverage.minimum,teamShortDays:teamCoverage.shortDays.slice(0,200).map(day=>`${day.date}:${day.present}`)}:{})},
    humanInvolvement:'none',notice:'not_given'});
   return record.id;
  });
  if(recordId===null)return unavailable('stopped');
  return Object.freeze({kind:'recommendation' as const,recommendation:Object.freeze({kind:'teras.recommendation' as const,version:1 as const,
-  action:'approvals.leave.decide' as const,verdict,checks,failedRules:failed,recommenderVersion:RECOMMENDER_VERSION,recordId})});
+  action:'approvals.leave.decide' as const,verdict,checks,failedRules:failed,recommenderVersion:RECOMMENDER_VERSION,recordId,teamCoverage})});
 }
 
 const VERDICT_TEXT:Readonly<Record<RecommendationVerdict,string>>={recommend_approve:'Recommend approve: every check passed.',
@@ -198,10 +233,17 @@ const CHECK_TEXT:Readonly<Record<RecommendationCheckName,Readonly<Record<Recomme
   unusual:'The leave starts before today.',missing:'The leave type\'s rules could not be read.'},
 };
 /** Deterministic wording. A model may rephrase it, never change the verdict or a check. */
-export function recommendationText(recommendation:Pick<LeaveDecisionRecommendation,'verdict'|'checks'>):string{
+export function recommendationText(recommendation:Pick<LeaveDecisionRecommendation,'verdict'|'checks'>&Partial<Pick<LeaveDecisionRecommendation,'teamCoverage'>>):string{
  const blocking=recommendation.checks.some(check=>check.result==='fail'&&check.blocking);
+ const coverage=recommendation.teamCoverage;
  return [VERDICT_TEXT[recommendation.verdict],...(blocking?['A leave rule would refuse this request as it stands; you decide.']:[]),
-  ...recommendation.checks.map(check=>CHECK_TEXT[check.check][check.result])].join(' ');
+  ...recommendation.checks.map(check=>check.check==='team_coverage'&&coverage&&check.result!=='missing'?teamMinimumText(coverage):CHECK_TEXT[check.check][check.result])].join(' ');
+}
+/** The minimum's own wording: met on every day, or each day below it with how many would be present. */
+function teamMinimumText(coverage:TeamCoverage):string{
+ const people=(n:number)=>`${n} ${n===1?'person':'people'}`;
+ if(coverage.shortDays.length===0)return `At least ${people(coverage.minimum)} of the team stay present on every day of this request.`;
+ return `Approving would leave fewer than the minimum of ${people(coverage.minimum)} present on ${coverage.shortDays.map(day=>`${day.date} (${day.present} present)`).join(', ')}.`;
 }
 
 /** After the approver decided on the review route: whether they followed the recommendation. Appended to the

@@ -802,7 +802,9 @@
           "pass": "Tiada orang lain yang boleh anda lihat bercuti pada tarikh ini.",
           "fail": "Liputan pasukan di bawah tahap minimum.",
           "unusual": "Ada orang lain yang boleh anda lihat bercuti pada sebahagian tarikh ini.",
-          "missing": "Siapa lagi yang bercuti tidak dapat dibaca."
+          "missing": "Siapa lagi yang bercuti tidak dapat dibaca.",
+          "passMinimum": "Sekurang-kurangnya {minimum} orang daripada pasukan kekal hadir pada setiap hari permohonan ini.",
+          "failMinimum": "Meluluskan permohonan ini akan menyebabkan kurang daripada {minimum} orang daripada pasukan hadir pada {count} hari: {days}."
         },
         "policy_limits": {
           "pass": "Peraturan dokumen dan tarikh bagi jenis cuti ini dipenuhi.",
@@ -823,7 +825,9 @@
         "passing": "Lulus setiap semakan ({count})",
         "help": "Hanya menunjukkan permohonan yang lulus setiap semakan. Pilih permohonan itu, kemudian luluskan atau tolak dengan pengesahan. Tiada apa yang diluluskan secara automatik."
       },
-      "openOne": "Tunjukkan cadangan"
+      "openOne": "Tunjukkan cadangan",
+      "teamDay": "{date} ({present} hadir)",
+      "teamMoreDays": "{count} hari lagi"
     },
     "digest": {
       "title": "Hari anda",
@@ -1073,7 +1077,9 @@
           "condition_other_clocking": "ada rekod masa lain pada hari itu",
           "condition_inactive": "pekerjaan telah tamat",
           "would_create_overtime": "pembetulan itu akan mewujudkan kerja lebih masa",
-          "approval_routed": "kelulusan kehadiran dihantar ke aliran kerja"
+          "approval_routed": "kelulusan kehadiran dihantar ke aliran kerja",
+          "condition_record_changed": "rekod berubah sebelum ia dapat dilakukan",
+          "condition_no_manager": "pekerja tiada pengurus dalam rekod"
         },
         "status": {
           "fixed": "Dibetulkan · boleh dibuat asal hingga {date}",
@@ -1086,12 +1092,19 @@
           "withdrawnEmployee": "Ditarik balik atas permintaan pekerja",
           "withdrawnHr": "Ditarik balik oleh HR",
           "sentOpen": "Dihantar · boleh ditarik balik hingga {date}",
-          "sentClosed": "Dihantar"
+          "sentClosed": "Dihantar",
+          "opened": "Dibuka · bersama pengurus",
+          "openedOpen": "Dibuka · boleh dibatalkan sehingga {date}",
+          "cancelledHr": "Semakan dibatalkan oleh HR"
         },
         "undo": "Buat asal",
         "notSent": "Tidak dihantar: {reason}",
         "sent": "Permintaan dihantar untuk mengisi {count, plural, one {# butiran} other {# butiran}}",
-        "withdraw": "Tarik balik"
+        "withdraw": "Tarik balik",
+        "passportSent": "Meminta pekerja memperbaharui pasport mereka, yang tamat tempoh pada {date}",
+        "probationOpened": "Membuka semakan percubaan dan menghantarnya kepada pengurus, perlu siap pada {date}",
+        "notOpened": "Tidak dibuka: {reason}",
+        "cancelReview": "Batalkan semakan"
       },
       "limits": {
         "title": "Had yang tidak boleh dilangkaui",
@@ -1106,7 +1119,9 @@
         "requestOnly": "Hanya menghantar permintaan; tidak sekali-kali mengubah rekod",
         "requestActive": "Tidak sekali-kali menghantar permintaan kepada orang yang pekerjaannya telah tamat",
         "perNightRequests": "{company}: paling banyak {count, plural, one {# permintaan} other {# permintaan}} semalam, setiap satu boleh ditarik balik selama {days} hari",
-        "level3": "Pada tahap Bertindak dan diaudit, HR menyemak sampel mingguan dan bukannya setiap tindakan."
+        "level3": "Pada tahap Bertindak dan diaudit, HR menyemak sampel mingguan dan bukannya setiap tindakan.",
+        "passportRequestOnly": "Hanya menghantar permintaan pembaharuan; tidak pernah mengubah rekod pasport",
+        "probationRequestOnly": "Hanya membuka semakan dan menghantarnya kepada pengurus; tidak pernah mengesahkan, melanjutkan atau menamatkan pekerjaan"
       },
       "owner": {
         "suspended": "Digantung: penajanya tidak lagi mempunyai akses HR.",
@@ -2675,6 +2690,28 @@
         "payrollBlocking": "Apakah yang menyekat gaji bulan ini?",
         "claimsBeforeCutOff": "Siapa yang belum menghantar tuntutan sebelum tarikh tutup?",
         "approvalsWaiting": "Kelulusan mana yang telah menunggu lebih daripada 3 hari?"
+      },
+      "morning": {
+        "title": "Ringkasan pagi",
+        "intro": "Setiap pagi, AI Centre mengira perkara yang menunggu anda: keputusan, jurang persediaan dan tarikh akhir berkanun. Ia disediakan untuk anda sahaja dan tidak memutuskan apa-apa.",
+        "start": "Hantar ringkasan pagi kepada saya",
+        "stop": "Hentikan ringkasan pagi saya",
+        "started": "Ringkasan pagi anda bermula esok pagi.",
+        "stoppedToast": "Ringkasan pagi anda telah dihentikan.",
+        "startFailed": "Ringkasan pagi tidak dapat dimulakan. Muat semula halaman dan cuba lagi.",
+        "stopFailed": "Ringkasan pagi tidak dapat dihentikan. Muat semula halaman dan cuba lagi.",
+        "unavailable": "Ringkasan pagi anda tidak dapat dimuatkan.",
+        "approvals": "{count, plural, =0 {Tiada apa-apa menunggu keputusan anda} other {# keputusan menunggu anda}}",
+        "setup": "Persediaan: {blocked} disekat, {attention} perlu perhatian",
+        "deadlines": "Tarikh akhir berkanun: {overdue} lewat, {dueSoon} tamat dalam 7 hari",
+        "openApprovals": "Semak",
+        "openSetup": "Buka persediaan",
+        "openDeadlines": "Buka borang",
+        "preparedAt": "Disediakan pagi ini pada {time}.",
+        "first": "Ringkasan pertama anda disediakan awal pagi esok.",
+        "notToday": "Tiada ringkasan disediakan pagi ini. Ia akan dicuba semula malam ini.",
+        "paused": "Aktiviti AI dihentikan, jadi tiada ringkasan disediakan sehingga ia disambung semula.",
+        "forYouOnly": "Hanya anda melihat ringkasan ini. Ia mengira dan memberi pautan; setiap keputusan masih dibuat oleh manusia."
       }
     },
     "manager": {

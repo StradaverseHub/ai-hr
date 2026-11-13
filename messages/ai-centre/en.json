@@ -802,7 +802,9 @@
           "pass": "Nobody else you can see is away on these dates.",
           "fail": "Team coverage is below the minimum.",
           "unusual": "Others you can see are away on some of these dates.",
-          "missing": "Who else is away could not be read."
+          "missing": "Who else is away could not be read.",
+          "passMinimum": "At least {minimum, plural, one {# person} other {# people}} of the team stay present on every day of this request.",
+          "failMinimum": "Approving this would leave fewer than {minimum, plural, one {# person} other {# people}} of the team present on {count, plural, one {one day} other {# days}}: {days}."
         },
         "policy_limits": {
           "pass": "The leave type's document and date rules are met.",
@@ -823,7 +825,9 @@
         "passing": "Passes every check ({count})",
         "help": "Showing only requests that pass every check. Select them, then approve or reject them with a confirmation. Nothing is approved automatically."
       },
-      "openOne": "Show the recommendation"
+      "openOne": "Show the recommendation",
+      "teamDay": "{date} ({present} present)",
+      "teamMoreDays": "{count, plural, one {# more day} other {# more days}}"
     },
     "digest": {
       "title": "Your day",
@@ -1073,7 +1077,9 @@
           "condition_other_clocking": "another clocking that day",
           "condition_inactive": "the employment has ended",
           "would_create_overtime": "the fix would have created overtime",
-          "approval_routed": "the attendance approval goes to a workflow"
+          "approval_routed": "the attendance approval goes to a workflow",
+          "condition_record_changed": "the record changed before it could be done",
+          "condition_no_manager": "the employee has no manager on record"
         },
         "status": {
           "fixed": "Fixed · undo until {date}",
@@ -1086,12 +1092,19 @@
           "withdrawnEmployee": "Withdrawn at the employee’s request",
           "withdrawnHr": "Withdrawn by HR",
           "sentOpen": "Sent · can be withdrawn until {date}",
-          "sentClosed": "Sent"
+          "sentClosed": "Sent",
+          "opened": "Opened · with the manager",
+          "openedOpen": "Opened · can be cancelled until {date}",
+          "cancelledHr": "Review cancelled by HR"
         },
         "undo": "Undo",
         "notSent": "Not sent: {reason}",
         "sent": "Request sent to fill in {count, plural, one {# detail} other {# details}}",
-        "withdraw": "Withdraw"
+        "withdraw": "Withdraw",
+        "passportSent": "Asked the employee to renew their passport, which expires on {date}",
+        "probationOpened": "Opened the probation review and sent it to the manager, due {date}",
+        "notOpened": "Not opened: {reason}",
+        "cancelReview": "Cancel review"
       },
       "limits": {
         "title": "Limits it can never cross",
@@ -1106,7 +1119,9 @@
         "requestOnly": "Sends the request only; never changes a record",
         "requestActive": "Never sends a request to someone whose employment has ended",
         "perNightRequests": "{company}: at most {count, plural, one {# request} other {# requests}} a night, each can be withdrawn for {days} days",
-        "level3": "At Act and audit, HR reviews a weekly sample instead of every action."
+        "level3": "At Act and audit, HR reviews a weekly sample instead of every action.",
+        "passportRequestOnly": "Sends the renewal request only; never changes the passport record",
+        "probationRequestOnly": "Opens the review and sends it to the manager only; never confirms, extends or ends employment"
       },
       "owner": {
         "suspended": "Suspended: its sponsor no longer has HR access.",
@@ -2675,6 +2690,28 @@
         "payrollBlocking": "What is blocking this month's payroll?",
         "claimsBeforeCutOff": "Who has not sent their claims before the cut-off?",
         "approvalsWaiting": "Which approvals have waited more than 3 days?"
+      },
+      "morning": {
+        "title": "Morning summary",
+        "intro": "Each morning, AI Centre counts what waits for you: decisions, setup gaps and statutory deadlines. It is prepared for you only and decides nothing.",
+        "start": "Send me a morning summary",
+        "stop": "Stop my morning summary",
+        "started": "Your morning summary starts tomorrow morning.",
+        "stoppedToast": "Your morning summary is stopped.",
+        "startFailed": "The morning summary could not be started. Refresh the page and try again.",
+        "stopFailed": "The morning summary could not be stopped. Refresh the page and try again.",
+        "unavailable": "Your morning summary could not be loaded.",
+        "approvals": "{count, plural, =0 {Nothing waits for your decision} one {# decision waits for you} other {# decisions wait for you}}",
+        "setup": "Setup: {blocked} blocked, {attention} need attention",
+        "deadlines": "Statutory deadlines: {overdue} overdue, {dueSoon} due within 7 days",
+        "openApprovals": "Review",
+        "openSetup": "Open setup",
+        "openDeadlines": "Open forms",
+        "preparedAt": "Prepared this morning at {time}.",
+        "first": "Your first summary is prepared early tomorrow morning.",
+        "notToday": "No summary was prepared this morning. It will be tried again tonight.",
+        "paused": "AI activity is stopped, so no summary is prepared until it is resumed.",
+        "forYouOnly": "Only you see this summary. It counts and links; people still make every decision."
       }
     },
     "manager": {

@@ -802,7 +802,9 @@
           "pass": "Không có ai khác mà bạn thấy được nghỉ vào những ngày này.",
           "fail": "Mức bố trí nhân sự của nhóm thấp hơn mức tối thiểu.",
           "unusual": "Có người khác mà bạn thấy được nghỉ vào một số ngày này.",
-          "missing": "Không thể đọc những ai khác đang nghỉ."
+          "missing": "Không thể đọc những ai khác đang nghỉ.",
+          "passMinimum": "Mỗi ngày của đơn này, nhóm vẫn có ít nhất {minimum} người có mặt.",
+          "failMinimum": "Nếu duyệt đơn này, số người có mặt của nhóm sẽ ít hơn {minimum} người trong {count} ngày: {days}."
         },
         "policy_limits": {
           "pass": "Đáp ứng quy tắc về giấy tờ và ngày của loại nghỉ phép.",
@@ -823,7 +825,9 @@
         "passing": "Đạt mọi kiểm tra ({count})",
         "help": "Chỉ hiển thị các yêu cầu đạt mọi kiểm tra. Chọn chúng, rồi phê duyệt hoặc từ chối sau khi xác nhận. Không có gì được phê duyệt tự động."
       },
-      "openOne": "Xem gợi ý"
+      "openOne": "Xem gợi ý",
+      "teamDay": "{date} ({present} người có mặt)",
+      "teamMoreDays": "{count} ngày khác"
     },
     "digest": {
       "title": "Ngày của bạn",
@@ -1073,7 +1077,9 @@
           "condition_other_clocking": "có lần chấm công khác trong ngày",
           "condition_inactive": "việc làm đã kết thúc",
           "would_create_overtime": "lần sửa sẽ tạo ra giờ làm thêm",
-          "approval_routed": "việc duyệt chấm công đi theo quy trình phê duyệt"
+          "approval_routed": "việc duyệt chấm công đi theo quy trình phê duyệt",
+          "condition_record_changed": "hồ sơ đã thay đổi trước khi thực hiện",
+          "condition_no_manager": "nhân viên chưa có quản lý trong hồ sơ"
         },
         "status": {
           "fixed": "Đã sửa · có thể hoàn tác đến {date}",
@@ -1086,12 +1092,19 @@
           "withdrawnEmployee": "Rút lại theo yêu cầu của nhân viên",
           "withdrawnHr": "Bị HR rút lại",
           "sentOpen": "Đã gửi · có thể rút lại đến {date}",
-          "sentClosed": "Đã gửi"
+          "sentClosed": "Đã gửi",
+          "opened": "Đã mở · quản lý đang xử lý",
+          "openedOpen": "Đã mở · có thể hủy đến {date}",
+          "cancelledHr": "Đánh giá đã bị HR hủy"
         },
         "undo": "Hoàn tác",
         "notSent": "Không gửi: {reason}",
         "sent": "Đã gửi yêu cầu điền {count, plural, other {# thông tin}}",
-        "withdraw": "Rút lại"
+        "withdraw": "Rút lại",
+        "passportSent": "Đã đề nghị nhân viên gia hạn hộ chiếu, hết hạn vào {date}",
+        "probationOpened": "Đã mở đánh giá thử việc và gửi cho quản lý, hạn {date}",
+        "notOpened": "Chưa mở: {reason}",
+        "cancelReview": "Hủy đánh giá"
       },
       "limits": {
         "title": "Những giới hạn không bao giờ được vượt qua",
@@ -1106,7 +1119,9 @@
         "requestOnly": "Chỉ gửi yêu cầu; không bao giờ thay đổi hồ sơ",
         "requestActive": "Không bao giờ gửi yêu cầu cho người đã nghỉ việc",
         "perNightRequests": "{company}: tối đa {count, plural, other {# yêu cầu}} mỗi đêm, mỗi yêu cầu có thể rút lại trong {days} ngày",
-        "level3": "Ở cấp Thực hiện và kiểm tra, HR xem xét mẫu hằng tuần thay vì từng hành động."
+        "level3": "Ở cấp Thực hiện và kiểm tra, HR xem xét mẫu hằng tuần thay vì từng hành động.",
+        "passportRequestOnly": "Chỉ gửi đề nghị gia hạn; không bao giờ thay đổi hồ sơ hộ chiếu",
+        "probationRequestOnly": "Chỉ mở đánh giá và gửi cho quản lý; không bao giờ xác nhận, gia hạn hay chấm dứt hợp đồng lao động"
       },
       "owner": {
         "suspended": "Đã tạm ngưng: người bảo trợ không còn quyền truy cập HR.",
@@ -2675,6 +2690,28 @@
         "payrollBlocking": "Điều gì đang chặn kỳ lương tháng này?",
         "claimsBeforeCutOff": "Ai chưa gửi yêu cầu hoàn ứng trước ngày chốt?",
         "approvalsWaiting": "Những phê duyệt nào đã chờ hơn 3 ngày?"
+      },
+      "morning": {
+        "title": "Tóm tắt buổi sáng",
+        "intro": "Mỗi sáng, AI Centre đếm những việc đang chờ bạn: các quyết định, thiếu sót trong thiết lập và hạn chót theo luật định. Bản tóm tắt chỉ dành cho bạn và không quyết định điều gì.",
+        "start": "Gửi tóm tắt buổi sáng cho tôi",
+        "stop": "Dừng tóm tắt buổi sáng của tôi",
+        "started": "Tóm tắt buổi sáng của bạn bắt đầu từ sáng mai.",
+        "stoppedToast": "Đã dừng tóm tắt buổi sáng của bạn.",
+        "startFailed": "Không thể bắt đầu tóm tắt buổi sáng. Hãy tải lại trang và thử lại.",
+        "stopFailed": "Không thể dừng tóm tắt buổi sáng. Hãy tải lại trang và thử lại.",
+        "unavailable": "Không thể tải tóm tắt buổi sáng của bạn.",
+        "approvals": "{count, plural, =0 {Không có việc nào chờ bạn quyết định} other {# quyết định đang chờ bạn}}",
+        "setup": "Thiết lập: {blocked} bị chặn, {attention} cần chú ý",
+        "deadlines": "Hạn chót theo luật định: {overdue} quá hạn, {dueSoon} đến hạn trong 7 ngày",
+        "openApprovals": "Xem xét",
+        "openSetup": "Mở thiết lập",
+        "openDeadlines": "Mở biểu mẫu",
+        "preparedAt": "Được chuẩn bị sáng nay lúc {time}.",
+        "first": "Bản tóm tắt đầu tiên của bạn được chuẩn bị vào sáng sớm mai.",
+        "notToday": "Sáng nay chưa có bản tóm tắt nào được chuẩn bị. Hệ thống sẽ thử lại tối nay.",
+        "paused": "Hoạt động AI đang bị dừng, nên sẽ không có bản tóm tắt cho đến khi được tiếp tục.",
+        "forYouOnly": "Chỉ bạn thấy bản tóm tắt này. Nó chỉ đếm và đưa liên kết; mọi quyết định vẫn do con người đưa ra."
       }
     },
     "manager": {

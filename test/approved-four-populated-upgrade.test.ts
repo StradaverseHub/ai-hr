@@ -6,6 +6,7 @@ import postgres from 'postgres';
 import {migrate} from 'drizzle-orm/postgres-js/migrator';
 import {expect,it} from 'vitest';
 import {createDb} from '../db/client';
+import {withoutCombinedReleaseNulls} from './helpers/approved-upgrade';
 it('upgrades a populated canonical baseline with an exact ledger prefix and preserves existing workflow versions and native records',async()=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:{tag:string;when:number}[]};
  const boundary=journal.entries.findIndex(row=>row.tag==='3100_pay_formula_saved_availability');expect(boundary).toBeGreaterThan(0);
@@ -30,7 +31,10 @@ it('upgrades a populated canonical baseline with an exact ledger prefix and pres
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
   const after=await ledger();expect(after.slice(0,prefix.length)).toEqual(prefix);expect(after).toHaveLength(journal.entries.length);
   expect(await storage.client`select to_jsonb(t) as row from attendance_workflow_template t where tenant_id=${tenant}`).toEqual(before.map(({row})=>({row:{...row,all_companies:false}})));
-  expect(await storage.client`select to_jsonb(c) as row from company c where tenant_id=${tenant}`).toEqual(beforeCompany);
+  // Columns the later release blocks add to company (5161's team minimum) are proven null and compared without
+  // (test/helpers/approved-upgrade.ts COMBINED_RELEASE_NULL_COLUMNS).
+  expect((await storage.client<{row:Record<string,unknown>}[]>`select to_jsonb(c) as row from company c where tenant_id=${tenant}`)
+   .map(({row})=>({row:withoutCombinedReleaseNulls('company',row)}))).toEqual(beforeCompany);
   expect(await storage.client`select tenant_id,template_id,company_id from attendance_workflow_company where template_id=${template}`).toEqual([{tenant_id:tenant,template_id:template,company_id:company}]);
   for(const [index,entry]of journal.entries.slice(boundary).entries())expect(after[boundary+index].hash).toBe(createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex'));
   expect(await application.client`select * from attendance_workflow_company`).toEqual([]);

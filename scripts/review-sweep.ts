@@ -35,6 +35,11 @@ import { sql } from 'drizzle-orm';
 // AI v2 W8: the SAME principal then runs the five loops at the Prepare level (core/loops/run.ts): each only behind its
 // own switch (off by default) and the tenant stop switch, reading through the native owners under its sponsor's current
 // authority, preparing cards a person confirms, and verifying its earlier cards. Deterministic, no model and no spend.
+// Owner decision (11 Nov 2026): after every tenant, the SAME pass starts the morning summaries people started on Today —
+// each `daily_digest` mandate in force with nothing prepared yet today — as a child process (scripts/daily-digest-sweep.ts,
+// core/digest/run.ts runDueDailyDigests), because the digest's module graph needs the server runtime this plain-Node
+// script must not load. The runner re-checks both keys, the stop switch and each grantor's current authority, and records
+// every run. Counts and links only. One cron line still runs everything.
 // Idempotent: a re-run opens nothing already open (and escalation fires once per (group, step) ever).
 // Schedule daily, e.g.
 //   0 3 * * *  cd /opt/ai-hr && node --env-file=.env.production --import tsx scripts/review-sweep.ts
@@ -58,6 +63,26 @@ import { queueEmployeeLoopDigests } from '../core/loops/employee-action-digest';
 import { runLoopsForTenant } from '../core/loops/run';
 import { runPayrollAuditLoop } from '../core/payroll-audit/run';
 import { runPayrollLearning } from '../core/payroll-learning/recompute';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+type DigestTotals = { tenants: number; due: number; prepared: number; stopped: number; failed: number; cappedTenants: number; failedTenants: number };
+/** Runs scripts/daily-digest-sweep.ts as a child, echoing its output, and returns its counts (null when it failed). */
+function runMorningSummaries(): Promise<{ ok: boolean; totals: DigestTotals | null }> {
+  return new Promise(resolve => {
+    const child = spawn(process.execPath, ['--conditions=react-server', ...process.execArgv, fileURLToPath(new URL('./daily-digest-sweep.ts', import.meta.url))],
+      { stdio: ['ignore', 'pipe', 'inherit'], env: process.env });
+    let out = '';
+    child.stdout.on('data', chunk => { out += String(chunk); process.stdout.write(chunk); });
+    child.once('error', () => resolve({ ok: false, totals: null }));
+    child.once('close', code => {
+      const line = out.split('\n').reverse().find(row => row.startsWith('daily-digest:sweep result '));
+      let totals: DigestTotals | null = null;
+      try { totals = line ? JSON.parse(line.slice('daily-digest:sweep result '.length)) as DigestTotals : null; } catch { totals = null; }
+      resolve({ ok: code === 0, totals });
+    });
+  });
+}
 
 async function main() {
   const startedAt = Date.now();
@@ -336,6 +361,9 @@ async function main() {
       console.error(`  ✗ ${t.name} (${t.id}): ${(e as Error).message}`);
     }
   }
+  // Morning summaries for every tenant in scope, in their own server-runtime child (see the note at the top).
+  const morning = await runMorningSummaries();
+  if (!morning.ok) { failures++; console.error('review:sweep — morning summaries did not all complete; see the lines above.'); }
   console.log(
     `review:sweep done — ${totalOpened} review(s) opened, ${totalReminders} reminder(s), ${totalEscalated} escalation(s), ${totalChases} automatic chase(s) across ${chaserTenants} opted-in tenant(s), ${totalMovements} movement(s) applied, ${totalNudges} nudge(s) across ${nudgeTenants} opted-in tenant(s), ${totalNudgesSettled} nudge outcome(s) judged, ${totalQueries} claim question(s) across ${triageTenants} opted-in tenant(s), across ${tenants.length} tenant(s), ${failures} failure(s).` +
       (scope.skipped.length > 0 ? ` ${scope.skipped.length} tenant(s) skipped for standing.` : ''),
@@ -387,6 +415,10 @@ async function main() {
         loopCasesClosed,
         loopRunsStopped,
         loopRunsFailed,
+        digestsPrepared: morning.totals?.prepared ?? 0,
+        digestsStopped: morning.totals?.stopped ?? 0,
+        digestsFailed: (morning.totals?.failed ?? 0) + (morning.totals?.failedTenants ?? 0) + (morning.totals ? 0 : 1),
+        digestsCappedTenants: morning.totals?.cappedTenants ?? 0,
       },
     });
   } catch (e) {

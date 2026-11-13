@@ -23,7 +23,7 @@ import {explainOwnPayDifference} from './pay-difference';
 import {explainOwnClaimLimit} from './claim-limit';
 import {LoopViewRefused,loopPausedCompanies,loopsOverview} from '../loops/views';
 import {loopCompanyLevels} from '../loops/autonomy-views';
-import {maxLevel} from '../loops/autonomy';
+import {promotableTo} from '../loops/autonomy';
 import {levelKey} from '../loops/autonomy-types';
 import {askMyPayrollReadiness} from '../pre-salary/ask';
 import {payrollAuditStatus,payrollCycleStatus,payrollLoopSettings,salaryPayrollChecks} from './payroll-loops';
@@ -85,7 +85,7 @@ async function loopsStatus(ctx:SessionContext):Promise<ExplainerOutcome>{
  try{
   const overview=await loopsOverview(ctx),paused=await loopPausedCompanies(ctx),levels=await loopCompanyLevels(ctx);
   return{ok:true,canSwitch:overview.canSwitch,
-   loops:overview.rows.map(row=>({loop:row.id,ceiling:levelKey(maxLevel(row.id)),levels:levels[row.id].map(item=>({company:item.companyName,level:levelKey(item.level)})),
+   loops:overview.rows.map(row=>({loop:row.id,ceiling:levelKey(promotableTo(row.id)),levels:levels[row.id].map(item=>({company:item.companyName,level:levelKey(item.level)})),
     on:row.on,stopped:row.stopped,running:row.running,
     lastRun:row.lastRun?{at:row.lastRun.at.toISOString(),status:row.lastRun.status,capped:row.lastRun.capped}:null,
     openNow:row.openNow,waitingNow:row.waitingNow,pausedIn:paused[row.id].map(company=>({company}))})),

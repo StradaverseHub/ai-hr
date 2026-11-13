@@ -50,12 +50,17 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   return rows;
  };
  // The combined block adds the staged-import marker column (5010, 5070) to some of these tables. It is null on every
- // row no import staged, and only then is the row compared without it.
+ // row no import staged, and only then is the row compared without it. 5161 (draft 9770) adds the company's team minimum the
+ // same way: unset on every company that predates it.
  const withoutImportMarker=(rows:Record<string,unknown>)=>Object.fromEntries(Object.entries(rows).map(([table,list])=>[table,
   (list as {row:Record<string,unknown>}[]).map(({row})=>{
-   if(!('import_pending_attempt_id' in row))return {row};
-   expect(row.import_pending_attempt_id,table+' staged-import marker').toBeNull();
-   const rest={...row};delete rest.import_pending_attempt_id;return {row:rest};
+   const rest={...row};
+   for(const column of ['import_pending_attempt_id',...(table==='company'?['leave_team_minimum_present']:[])]){
+    if(!(column in rest))continue;
+    expect(rest[column],table+'.'+column+' on a retained row').toBeNull();
+    delete rest[column];
+   }
+   return {row:rest};
   })]));
  // Everything a grant or policy could change, except the one function ACL 2100 deliberately narrows.
  const privileges=async()=>({
@@ -217,6 +222,12 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5145_ai_attendance_on_behalf_reads',
    // Irwin Schedule Group Overtime Setting (2f803985): per-date rounding (function replacement only).
    '5150_attendance_policy_dated_rounding',
+   // Sweep reads each company's net-swing threshold (draft 9760), allocated 5160 (13 November 2026).
+   '5160_sweep_swing_thresholds',
+   // Manager Today team minimum (draft 9770), allocated 13 November 2026 as 5161.
+   '5161_leave_team_minimum_present',
+   // Probation and passport loops act as request-only steps (13 November 2026): draft 9780 allocated as 5162, widened CHECKs only.
+   '5162_teras_loop_request_acts',
    // Board release 12 November 2026 (docs/MIGRATION-ALLOCATION.md): Rewards, dashboard and On/Off Boarding block.
    '5400_rewards_direct_configuration',
    '5420_rewards_dashboard_preparation_notices',
@@ -297,6 +308,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    // Board window 4 (5124): the preview binding trigger (owner only) and the superior diagnostic.
    // Board release block 5400-5560 (12 November 2026): the Rewards, dashboard and On/Off Boarding functions. Kept sorted.
    // daa76ed4/96a54ed2 (5140-5144, origin/alpha 65e23a1e7): the attendance resolution, escalation, on-behalf and final-window functions.
+   // 5160 (origin/alpha de15677b0): the sweep's net-swing threshold reader.
    'app._access_bootstrap_eligible(uuid,uuid)','app._access_workforce_list_rows(uuid[])','app._ai_control_context_for_purpose(text,boolean,boolean)',
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()','app._assert_assistant_rewards_presentation_v1(text)',
    'app._assistant_assigned_index_login(uuid,boolean)','app._assistant_presentation_feature_unpaused_v1()','app._assistant_rewards_calendar_choice_payload_v1()',
@@ -362,8 +374,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.reward_role_level_options(text,text)','app.reward_role_permission_immediate()','app.reward_role_permission_level_shape()',
    'app.reward_role_permission_locked(text,text)','app.reward_role_permission_reader()','app.reward_role_permission_request_shape()',
    'app.reward_role_permission_seat()','app.reward_setup_page_allowed(uuid,text,text)','app.reward_unit_level(uuid,text)',
-   'app.reward_unit_limit_version(uuid)','app.system_label_import_conflicts(uuid)','app.system_label_import_discard_batch(uuid,uuid,uuid,uuid,integer)',
-   'app.system_label_import_release_attempt(uuid,uuid)',
+   'app.reward_unit_limit_version(uuid)','app.sweep_swing_thresholds(uuid[])','app.system_label_import_conflicts(uuid)',
+   'app.system_label_import_discard_batch(uuid,uuid,uuid,uuid,integer)','app.system_label_import_release_attempt(uuid,uuid)',
   ];
   const beforeFunctions=new Set(beforePerformancePrivileges.functions.map(row=>row.fn));
   expect(afterPerformancePrivileges.functions.filter(row=>!beforeFunctions.has(row.fn)).map(row=>row.fn).sort()).toEqual(addedFunctions);

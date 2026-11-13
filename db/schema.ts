@@ -301,6 +301,10 @@ export const company = pgTable(
     escalationTarget: text('escalation_target').notNull().default('next_level'),
     escalationTargetRole: text('escalation_target_role'),
     escalationUpdatedAt: timestamp('escalation_updated_at', { withTimezone: true }),
+    // Owner decision 12 November 2026 (migration 5161): the fewest people of a team who must be present on any
+    // day, which the approver recommendation's team_coverage check reads. NULL = no minimum (the recommendation is
+    // unchanged). CHECK: NULL or >= 0. Written only by core/leave-team-minimum.ts setLeaveTeamMinimum.
+    leaveTeamMinimumPresent: integer('leave_team_minimum_present'),
     // r79a (4fb8b75a step 3) — two per-company HR defaults RELOCATED off company_payroll_config (migration
     // 0324), where they had nothing to do with payroll. Columns on `company` rather than a new table: the
     // 0287 escalation precedent and the leave_* siblings above (RLS + grant already in place).
@@ -329,6 +333,8 @@ export const company = pgTable(
     check('company_escalation_target_check', sql`${t.escalationTarget} IN ('next_level', 'specific_role')`),
     // r79a (migration 0324) — the DB mirror of core/hiring-defaults.ts's cleaners.
     check('company_probation_months_check', sql`${t.probationMonths} IS NULL OR ${t.probationMonths} > 0`),
+    // Migration 5161 — the team minimum is a whole number of people, or unset.
+    check('company_leave_team_minimum_present_check', sql`${t.leaveTeamMinimumPresent} IS NULL OR ${t.leaveTeamMinimumPresent} >= 0`),
     check(
       'company_review_reminder_days_check',
       sql`${t.reviewReminderDays} IS NULL OR (array_length(${t.reviewReminderDays}, 1) BETWEEN 1 AND 10 AND 1 <= ALL (${t.reviewReminderDays}) AND 365 >= ALL (${t.reviewReminderDays}))`,

@@ -1,6 +1,9 @@
 /** Historical loop actions remain readable. Missed-clock-out undo requires a new human review
  * without an automatic application or recorded undo. The missing-data request loop retains its
- * existing authorised withdrawal, atomically recorded with its notice and undo receipt. */
+ * existing authorised withdrawal, atomically recorded with its notice and undo receipt, and the passports loop's
+ * renewal request (13 November 2026) is withdrawn the same way. The probation loop's opened review is cancelled through
+ * the employment-review owner (owner decision, 13 November 2026: cancelLoopOpenedReviewTx), by HR only: an employee never
+ * cancels their own probation review. */
 import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type Grant,type SessionContext} from '../../db/client';
 import {appendEvent} from '../../db/events';
@@ -9,6 +12,8 @@ import {terasLoopAction,terasLoopActionUndo} from '../../db/teras-autonomy-schem
 import {isAdmin} from '../../lib/authz-model';
 import {LoopUndoRefused} from './act-clock-outs';
 import {withdrawRequestTx} from './act-requests';
+import {withdrawPassportRequestTx} from './act-passports';
+import {cancelLoopOpenedReviewTx} from '../employment-review';
 import type {UndoneBy} from './autonomy-types';
 import type {LoopId} from './types';
 
@@ -34,7 +39,7 @@ export async function currentAuthority(caller:SessionContext,userId:string):Prom
 
 type Seen=Readonly<{workerId:LoopId;employmentId:string;personId:string|null;state:string;undoUntil:Date;undone:boolean;sponsorUserId:string;agentPrincipalId:string;
  facts:Readonly<Record<string,string|number|boolean|null>>;admin:boolean}>;
-const UNDOABLE:ReadonlySet<string>=new Set(['loop_missed_clock_outs','loop_missing_employee_data']);
+const UNDOABLE:ReadonlySet<string>=new Set(['loop_missed_clock_outs','loop_missing_employee_data','loop_document_expiry','loop_probation_ending']);
 
 export async function undoLoopAction(supplied:SessionContext,input:Readonly<{actionId:unknown;confirm:unknown}>,now:Date=new Date()):Promise<LoopUndoResult>{
  const ctx=capture(supplied);
@@ -58,6 +63,8 @@ export async function undoLoopAction(supplied:SessionContext,input:Readonly<{act
   if(now.getTime()>seen.undoUntil.getTime())return refused('expired');
   const own=!!ctx.personId&&seen.personId===ctx.personId;
   if(!own&&!seen.admin)return refused('access');
+  // A probation review is HR's: the employee it is about never cancels it, not even their own.
+  if(seen.workerId==='loop_probation_ending'&&own)return refused('access');
   // Keep historical records intact; the attendance editor starts a separately authorised human review.
   if(seen.workerId==='loop_missed_clock_outs')return refused('human_review_required');
   // 2. Whose authority compensates.
@@ -67,12 +74,16 @@ export async function undoLoopAction(supplied:SessionContext,input:Readonly<{act
   // 3. Compensate through the owner, and record the undo in the same transaction.
   await withTenant(authority,async tx=>{
    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`teras-loop-undo:${ctx.tenantId}:${actionId}`},0))`);
-   const [current]=await tx.select({state:terasLoopAction.state,undone:terasLoopActionUndo.actionId,facts:terasLoopAction.facts})
+   const [current]=await tx.select({state:terasLoopAction.state,undone:terasLoopActionUndo.actionId,facts:terasLoopAction.facts,ownerRef:terasLoopAction.ownerRef})
     .from(terasLoopAction).leftJoin(terasLoopActionUndo,eq(terasLoopActionUndo.actionId,terasLoopAction.id))
     .where(and(eq(terasLoopAction.tenantId,ctx.tenantId),eq(terasLoopAction.id,actionId))).limit(1);
    if(!current||current.state!=='applied'||current.undone!==null)throw new LoopUndoRefused('changed');
    let compensationRef:string;
-   compensationRef=await withdrawRequestTx(tx,authority,{actionId,employmentId:seen.employmentId,facts:current.facts,by,askedByUserId:ctx.userId!});
+   compensationRef=seen.workerId==='loop_probation_ending'
+    ?await cancelLoopOpenedReviewTx(tx,authority,{reviewId:current.ownerRef!,loopActionId:actionId})
+    :seen.workerId==='loop_document_expiry'
+    ?await withdrawPassportRequestTx(tx,authority,{actionId,employmentId:seen.employmentId,by,askedByUserId:ctx.userId!})
+    :await withdrawRequestTx(tx,authority,{actionId,employmentId:seen.employmentId,facts:current.facts,by,askedByUserId:ctx.userId!});
    await tx.insert(terasLoopActionUndo).values({actionId,tenantId:ctx.tenantId,undoneBy:by,undoneByUserId:ctx.userId!,compensationRef});
    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'teras-loop-action',aggregateId:actionId,eventType:'teras-loop.action.undone',
     actor:{type:'user',id:ctx.userId!},subjectEmploymentId:seen.employmentId,payload:{workerId:seen.workerId,by,compensationRef,date:current.facts.date??null}});

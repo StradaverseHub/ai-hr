@@ -155,6 +155,12 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:4545,when:1793330004845,tag:'5145_ai_attendance_on_behalf_reads'},
  // 2f803985 Irwin Schedule Group Overtime Setting: per-date rounding in the policy part payable count (block 5150-5159).
  {idx:4550,when:1793330004850,tag:'5150_attendance_policy_dated_rounding'},
+ // Sweep reads each company's net-swing threshold (draft 9760), allocated 5160 above the Irwin 5140–5150 holds (docs/MIGRATION-ALLOCATION.md, 13 November 2026).
+ {idx:4560,when:1793330004860,tag:'5160_sweep_swing_thresholds'},
+ // Manager Today team minimum (draft 9770), allocated 13 November 2026 as 5161 (docs/MIGRATION-ALLOCATION.md).
+ {idx:4561,when:1793330004861,tag:'5161_leave_team_minimum_present'},
+ // Probation and passport loops act as request-only steps: draft 9780, allocated 13 November 2026 as 5162 (docs/MIGRATION-ALLOCATION.md).
+ {idx:4562,when:1793330004862,tag:'5162_teras_loop_request_acts'},
  // 60f1fdcd Rewards direct configuration (DRAFT block 5400–5419; the integrator renumbers at admission).
  {idx:4800,when:1793330005100,tag:'5400_rewards_direct_configuration'},
  // 4de410ed/356ae8c1 Rewards dashboard preparation notices (DRAFT block 5420–5439).
@@ -192,6 +198,9 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5127_import_log_actor_labels':'1f90bf32091400f2ec667a8538802248a90bb1336c869a8b8faad349b2530ce2',
  '5129_payroll_history_effective_reads':'2df235f08c69d3547847e6bd8a3cafb1f774bc051ec51b2c2fcf50d8d07596e7',
  '5130_pay_formula_ai_draft_job':'842cf4996cdb4f3d0d8f26fcc205e774d5937f0d612122dafe2b5254e16e84ce',
+ '5160_sweep_swing_thresholds':'5217e41181c030728ee879b45cc683c39bc9d7b9c7aed44c4c4abe88a230ee48',
+ '5161_leave_team_minimum_present':'fa4c016e8aa6d259e8ec31bec4809c88b46f50dfd157d9ddaf251568623a4660',
+ '5162_teras_loop_request_acts':'1b92edf3fe85d66954e50f5677bc1cf5122f8fe92faf22db636181c5ed8503f8',
  '5400_rewards_direct_configuration':'0e55f9de5d62ef07719a876ae208d9206ebc43d716c3bbdba02094a3cb997c6e',
  '5500_rewards_limit_controls':'3a710dc0103dd39b50c734243fd7f2691d6f08dbfb5d94d388d7664eb7ef93b0',
  '5520_rewards_role_permission_grid':'e603208c9cb9ada2e35a7338ede22637dcf886c5763912e5273adce0fd7ce172',
@@ -347,6 +356,8 @@ export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;col
  {tag:'5141_attendance_workflow_escalation',table:'attendance_workflow_request',columns:['stage_reached_at','escalate_on']},
  // 96a54ed2 Request On Behalf: NULL on every application filed before it (the employee filed it).
  {tag:'5142_attendance_on_behalf',table:'attendance_correction',columns:['submitted_by_user_id','submitted_by_person_id','submitted_by_name']},
+ // 5161 (draft 9770): the team minimum is unset (no minimum) on every company that predates it.
+ {tag:'5161_leave_team_minimum_present',table:'company',columns:['leave_team_minimum_present']},
  ...['department','position','cost_center','business_unit','label_company_assignment','profile_option','job_grade','grade_group','grade_group_member']
   .map(table=>({tag:'5070_system_label_import_staged_job',table,columns:['import_pending_attempt_id']})),
 ]);

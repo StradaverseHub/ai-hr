@@ -7,7 +7,9 @@ block, tags `5400`–`5620`, using the lanes' draft offset (tag T, idx T − 600
 1793330004800 + (T − 5100)). Alpha's newest entries are `5129_payroll_history_effective_reads` and
 `5130_pay_formula_ai_draft_job` (when 1793330004829 / …830), so the block sits strictly above them. On
 13 November 2026 the branch merged `origin/alpha` at `65e23a1e7`, whose Irwin attendance entries `5140`–`5150`
-(when 1793330004840–1793330004850) also sort below the block; the journal keeps alpha's entries as an exact prefix. `5560` is new at
+(when 1793330004840–1793330004850) also sort below the block; the journal keeps alpha's entries as an exact prefix.
+The same day it merged `origin/alpha` at `de15677b0`, whose `5160`–`5162` (when 1793330004860–1793330004862) sort below
+the block as well. `5560` is new at
 this integration: it replaces the owner-owned `app.reward_limit_controls_access()` (from `5500`) so Limit Controls
 follows its Rewards Access Role permissions row; no purpose-owned object is replaced. A scan of every origin head's
 journal on 12 November 2026 found no other claim on tags 5400–5579 or on when 1793330005100–1793330005279; the only
@@ -3398,3 +3400,45 @@ another builder's branch); renumbered the same day to `5127_import_log_actor_lab
 It adds one read-only STABLE SECURITY DEFINER function, `app.import_log_actor_facts(text, uuid[])`, with EXECUTE for
 `ai_hr_app` only; no table, column, policy, grant on data or existing function changes. This entry carries no
 deployment authority.
+
+## Sweep net-swing thresholds — 13 November 2026, allocated 13 November 2026
+
+Branch `claude/sweep-threshold-20261113` (base `origin/alpha` at `3a11d916e`) drafted `9760_sweep_swing_thresholds`
+(idx 9760, when 1793330099760) from the coordinator-provided 9760–9769 block. Allocated 13 Nov 2026 as
+`5160_sweep_swing_thresholds`, idx 4560, when 1793330004860, keeping the shared offset (tag 51NN, idx 45NN, when …48NN)
+and sitting above the Irwin branches' 5140–5150 holds. 5161–5169 are reserved for the other two ainative follow-ons.
+SQL bytes are unchanged from the draft (SHA-256 `5217e41181c030728ee879b45cc683c39bc9d7b9c7aed44c4c4abe88a230ee48`; the
+file's own header still reads "DRAFT, UNALLOCATED", kept so the bytes do not move). It adds one read-only STABLE SECURITY
+DEFINER function, `app.sweep_swing_thresholds(uuid[])`, with EXECUTE for `ai_hr_app` only: for the requested companies
+(1–500) of the session's own tenant, and only to a system session (no login, no agent principal), the net-swing
+threshold of each company's latest Salary payroll loop setting version, and nothing else. No table, column, policy,
+grant on data, existing function or data change. The approved upgrade tail pin (`test/helpers/approved-upgrade.ts`)
+and `test/tenant-company-fk-upgrade.test.ts` carry the allocated tag. Recheck peer claims and the installed ledger at
+admission; this entry carries no deployment authority.
+
+## Manager Today team minimum — 13 November 2026 (allocated 13 Nov 2026 as 5161)
+
+Branch `claude/team-minimum-20261113` (base `origin/alpha` at `3a11d916e`, owner decision 12 November 2026, HANDOFF §5 item 4)
+journals `9770_leave_team_minimum_present` at idx 9770 and when 1793330099770 as an UNALLOCATED DRAFT from the
+coordinator-provided 9770–9779 block (9760–9769 belong to another builder's sweep-threshold draft). It adds one nullable
+integer column to `company`, `leave_team_minimum_present`, and one CHECK (`company_leave_team_minimum_present_check`: NULL
+or >= 0); no default, no backfill, no new table, policy, grant or function (`company` keeps its row security,
+admin-for-company update policy and table-level app grant from 0324). SHA-256
+`fa4c016e8aa6d259e8ec31bec4809c88b46f50dfd157d9ddaf251568623a4660`. The approved upgrade tail pin, its hash and the
+populated null-column proof (`test/helpers/approved-upgrade.ts`, `test/tenant-company-fk-upgrade.test.ts`) carry the draft;
+ALLOCATED by the coordinator on 13 November 2026 as `5161_leave_team_minimum_present`, idx 4561, when 1793330004861 (after the
+sweep-threshold batch's 5160); SQL bytes unchanged (the header comment still records its draft number). This entry carries no
+deployment authority.
+
+## Probation and passport loop request acts — 13 November 2026 (allocated 13 Nov 2026 as 5162)
+
+Branch `claude/probation-passport-acts-20261113` (base `origin/alpha` at `3a11d916e`, which journals
+`5130_pay_formula_ai_draft_job` at idx 4530 / when 1793330004830) drafted `9780_teras_loop_request_acts` (idx 9780 / when 1793330099780, from the coordinator-provided 9780–9789 block);
+it was allocated 13 Nov 2026 as `5162_teras_loop_request_acts`, idx 4562, when 1793330004862, with the SQL bytes unchanged. It widens exactly four
+CHECKs from migration 2004 (`teras_loop_level_cap`, `teras_loop_level_change_cap`, `teras_loop_action_worker_id_check`,
+`teras_loop_sample_review_worker_id_check`) to add `loop_probation_ending` and `loop_document_expiry`, so the owner's
+11 November 2026 request-only acts can be promoted, recorded, undone and counted for demotion. No policy, trigger,
+grant, function, column or row changes; existing rows already satisfy the wider checks. SQL SHA-256
+`1b92edf3fe85d66954e50f5677bc1cf5122f8fe92faf22db636181c5ed8503f8`. The approved upgrade tail pin
+(`test/helpers/approved-upgrade.ts`) and `test/tenant-company-fk-upgrade.test.ts` carry `5162`. Recheck peer claims and
+the installed ledger at admission. This entry carries no deployment authority.

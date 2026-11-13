@@ -106,18 +106,24 @@ export async function LoopCompanySettings({ autonomy, loop, companies, status }:
 
 type Translator = (key: string, values?: Record<string, string | number>) => string;
 const wrap = (t: (key: never, values?: never) => string): Translator => (key, values) => t(key as never, values as never);
-/** What one action did and where it stands, from its own record. */
-function describe(t: Translator, requests: boolean, day: (iso: string) => string, when: (date: Date) => string, item: AutonomyActionView, reviewOnly=false) {
+/** What one action did and where it stands, from its own record, in the loop's own words: the request sent, the
+ * passport renewal asked for (13 November 2026), or the probation review opened for the manager. */
+function describe(t: Translator, requests: boolean, day: (iso: string) => string, when: (date: Date) => string, item: AutonomyActionView, loop: LoopId) {
+  const reviewOnly = loop === 'loop_missed_clock_outs', probation = loop === 'loop_probation_ending';
   const date = isDate(item.facts.date) ? day(item.facts.date) : '—';
   const time = typeof item.facts.checkOut === 'string' ? item.facts.checkOut : '—';
   const count = typeof item.facts.gaps === 'number' ? item.facts.gaps : 0;
+  const reason = t(`actions.reasons.${item.reason ?? 'owner_refused'}`);
   const what = item.state === 'not_applied'
-    ? (requests ? t('actions.notSent', { reason: t(`actions.reasons.${item.reason ?? 'owner_refused'}`) }) : t('actions.notSet', { reason: t(`actions.reasons.${item.reason ?? 'owner_refused'}`), date }))
+    ? (probation ? t('actions.notOpened', { reason }) : requests ? t('actions.notSent', { reason }) : t('actions.notSet', { reason, date }))
+    : probation ? t('actions.probationOpened', { date: isDate(item.facts.dueDate) ? day(item.facts.dueDate) : date })
+    : loop === 'loop_document_expiry' ? t('actions.passportSent', { date })
     : requests ? t('actions.sent', { count }) : t('actions.set', { time, date });
-  const status = item.undo ? t(requests ? (item.undo.by === 'employee' ? 'actions.status.withdrawnEmployee' : 'actions.status.withdrawnHr')
+  const status = item.undo ? t(probation ? 'actions.status.cancelledHr' : requests ? (item.undo.by === 'employee' ? 'actions.status.withdrawnEmployee' : 'actions.status.withdrawnHr')
       : item.undo.by === 'employee' ? 'actions.status.undoneEmployee' : 'actions.status.undoneHr')
     : item.peopleChanged ? t('actions.status.changed')
     : reviewOnly&&(item.state==='applied'||item.state==='applying') ? t('reviewRequiredStatus')
+    : probation && item.state === 'applied' ? (item.undoUntil.getTime() > Date.now() ? t('actions.status.openedOpen', { date: when(item.undoUntil) }) : t('actions.status.opened'))
     : item.state === 'applied' ? (item.undoUntil.getTime() > Date.now() ? t(requests ? 'actions.status.sentOpen' : 'actions.status.fixed', { date: when(item.undoUntil) })
       : t(requests ? 'actions.status.sentClosed' : 'actions.status.fixedClosed'))
     : item.state === 'applying' ? t('actions.status.applying') : t('actions.status.toPerson');
@@ -126,7 +132,7 @@ function describe(t: Translator, requests: boolean, day: (iso: string) => string
 
 function ActionsTable({ t, requests, loop, actions, day, when, label }: { t: Translator; requests: boolean; loop: LoopId; actions: readonly AutonomyActionView[];
   day: (iso: string) => string; when: (date: Date) => string; label: string }) {
-  const undo = t(requests ? 'actions.withdraw' : 'actions.undo');
+  const undo = t(loop === 'loop_probation_ending' ? 'actions.cancelReview' : requests ? 'actions.withdraw' : 'actions.undo');
   return (
     <div className="overflow-x-auto">
       <table data-loop-actions className="w-full min-w-[720px] text-left text-sm">
@@ -136,7 +142,7 @@ function ActionsTable({ t, requests, loop, actions, day, when, label }: { t: Tra
             {key === 'action' ? <span className="sr-only">{t('actions.columns.action')}</span> : t(`actions.columns.${key}`)}</th>)}</tr></thead>
         <tbody className="divide-y divide-border">
           {actions.map(item => {
-            const { what, status } = describe(t, requests, day, when, item, loop==='loop_missed_clock_outs');
+            const { what, status } = describe(t, requests, day, when, item, loop);
             return (
               <tr key={item.id} data-loop-action={item.undo ? 'undone' : item.state}>
                 <td className="px-4 py-3 tabular-nums">{when(item.at)}</td>
@@ -217,7 +223,7 @@ export async function LoopGuardsAndOwner({ autonomy, loop, name, sponsorName, on
       ? [t('limits.clockIn'), t('limits.leave'), t('limits.pay'), t('limits.noOvertime'), ...acting.flatMap(conditionLine),
         ...acting.map(item => t('limits.perNight', { company: item.companyName, count: item.limits?.maxActionsPerNight ?? 0, days: item.limits?.undoDays ?? 3 })),
         t('limits.demotion'), tl('limits.model')]
-      : [t('limits.requestOnly'), t('limits.requestActive'),
+      : [t(loop === 'loop_document_expiry' ? 'limits.passportRequestOnly' : loop === 'loop_probation_ending' ? 'limits.probationRequestOnly' : 'limits.requestOnly'), t('limits.requestActive'),
         ...acting.map(item => t('limits.perNightRequests', { company: item.companyName, count: item.limits?.maxActionsPerNight ?? 0, days: item.limits?.undoDays ?? 3 })),
         t('limits.demotion'), tl('limits.model')];
   const capped = touchesCapped(LOOP_AUTONOMY[loop].categories);

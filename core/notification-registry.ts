@@ -730,10 +730,18 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
   },
   // AI v2 Phase 2 P2-1 (core/loops/act-requests.ts): the missing employee data loop, acting within its limits, sent the
   // employee its request to fill in their own details. A count and their own request section only; no record changed.
+  // 13 November 2026 (core/loops/act-passports.ts): the passports loop sends its renewal request as the same event
+  // (request 'passport_renewal'), so the AI Centre stop holds it too: the expiry date and their own profile only.
   'teras-loop.request.sent': {recipientAudience:'subject',
     kind: 'teras-loop.details-requested',
     category: null,
     render: (p) => {
+      if (p?.request === 'passport_renewal') {
+        const expires = typeof p.expiresOn === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.expiresOn) ? p.expiresOn : null;
+        return { severity: 'action', title: 'Please renew your passport',
+          body: `${expires ? `The passport on your record expires on ${expires}.` : 'The passport on your record expires soon.'} Renew it, then send the new details to HR from your profile; HR approves them as usual.`,
+          linkPath: '/me?tab=profile' };
+      }
       const tab = p?.tab === 'bankStatutory' || p?.tab === 'payroll' ? p.tab : 'profile';
       const count = typeof p?.gaps === 'number' && Number.isInteger(p.gaps) && p.gaps > 0 ? p.gaps : null;
       return { severity: 'action', title: 'Please complete your details',
@@ -745,7 +753,9 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
   'teras-loop.request.withdrawn': {recipientAudience:'subject',
     kind: 'teras-loop.details-request-withdrawn',
     category: null,
-    render: () => ({ severity: 'info', title: 'Details request withdrawn', body: 'The request to complete your details was withdrawn. You can ignore it.', linkPath: '/me' }),
+    render: (p) => p?.request === 'passport_renewal'
+      ? { severity: 'info', title: 'Passport renewal request withdrawn', body: 'The request to renew your passport was withdrawn. You can ignore it.', linkPath: '/me' }
+      : { severity: 'info', title: 'Details request withdrawn', body: 'The request to complete your details was withdrawn. You can ignore it.', linkPath: '/me' },
   },
   [EMPLOYEE_LOOP_DIGEST_EVENT]: {recipientAudience:'reader',
     kind:'teras-loop.employee-digest',category:'readiness',

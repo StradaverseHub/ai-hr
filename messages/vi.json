@@ -13591,7 +13591,19 @@
     "leaveConfigCompanyRules": {
       "pageDescription": "Các thiết lập nghỉ phép thuộc về một công ty hoặc toàn tổ chức, được gom về một nơi.",
       "intro": "Các thiết lập nghỉ phép ở đây thuộc về một công ty hoặc toàn tổ chức chứ không thuộc riêng loại nghỉ phép nào, nên chỉ cần đặt một lần thay vì lặp lại trên từng loại nghỉ phép.",
-      "whoQualifies": "Ai được nghỉ một loại phép, và ai nhận bảng định mức nào, được đặt trong mục Loại nghỉ phép, không phải ở đây."
+      "whoQualifies": "Ai được nghỉ một loại phép, và ai nhận bảng định mức nào, được đặt trong mục Loại nghỉ phép, không phải ở đây.",
+      "teamMinimum": {
+        "title": "Số người tối thiểu có mặt",
+        "help": "Đề xuất nghỉ phép sẽ báo cho người duyệt khi việc duyệt một đơn khiến số người có mặt trong nhóm của nhân viên vào một ngày ít hơn mức này, và nêu rõ các ngày đó. Người duyệt vẫn là người quyết định.",
+        "teamHelp": "Nhóm gồm quản lý trực tiếp của nhân viên và tất cả những người báo cáo cho quản lý đó. Người nghỉ phép đã được duyệt từ nửa ngày trở lên được tính là vắng mặt.",
+        "label": "Số người tối thiểu có mặt vào bất kỳ ngày nào (để trống nếu không có mức tối thiểu)",
+        "save": "Lưu",
+        "none": "Bạn không quản lý cài đặt nghỉ phép của công ty nào.",
+        "error": {
+          "invalid": "Nhập số nguyên từ 0 đến 10.000, hoặc để trống nếu không có mức tối thiểu.",
+          "not_allowed": "Bạn không thể thay đổi cài đặt này cho công ty đó."
+        }
+      }
     },
     "leaveConfigSpecialSetting": {
       "pageDescription": "Các thiết lập áp dụng cho mọi loại nghỉ phép thay vì thuộc về riêng loại nào."
