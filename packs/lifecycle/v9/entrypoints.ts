@@ -16,6 +16,7 @@ export const v9OwnWork: Service['v9OwnWork'] = async (...args) => (await load())
 export const v9OwnDocument: Service['v9OwnDocument'] = async (...args) => (await load()).v9OwnDocument(...args);
 export const v9CaseDetail: Service['v9CaseDetail'] = async (...args) => (await load()).v9CaseDetail(...args);
 export const v9Sweep: Service['v9Sweep'] = async (...args) => (await load()).v9Sweep(...args);
+export const v9BackfillReturnPresets: Service['v9BackfillReturnPresets'] = async (...args) => (await load()).v9BackfillReturnPresets(...args);
 export const v9OwnTask: Service['v9OwnTask'] = async (...args) => (await load()).v9OwnTask(...args);
 export const v9UploadFile: Service['v9UploadFile'] = async (...args) => (await load()).v9UploadFile(...args);
 export const v9DownloadFile: Service['v9DownloadFile'] = async (...args) => (await load()).v9DownloadFile(...args);
@@ -45,3 +46,6 @@ export const v9CreateOffboardingTx: Service['v9CreateOffboardingTx'] = async (..
 export const v9PreviewWorkflowRemoval: Service['v9PreviewWorkflowRemoval'] = async (...args) => (await load()).v9PreviewWorkflowRemoval(...args);
 export const v9RemoveWorkflow: Service['v9RemoveWorkflow'] = async (...args) => (await load()).v9RemoveWorkflow(...args);
 export const v9RestoreWorkflow: Service['v9RestoreWorkflow'] = async (...args) => (await load()).v9RestoreWorkflow(...args);
+
+export const v9PlanWorkflow: Service['v9PlanWorkflow'] = async (...args) => (await load()).v9PlanWorkflow(...args);
+export const v9EmailHoldInbox: Service['v9EmailHoldInbox'] = async (...args) => (await load()).v9EmailHoldInbox(...args);

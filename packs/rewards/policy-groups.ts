@@ -4,7 +4,7 @@ import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../../db/client';
 import {withRewardsTenant} from '../../core/module-gate';
 import {pgSqlState} from '../../lib/db-error';
-import {policySchema,type RewardPolicy} from './model';
+import {policySchema,rollRewardPolicyDates,type RewardPolicy} from './model';
 import {rewardEligibilitySummary,type RewardEligibilitySummary} from './policy-eligibility';
 import {assertRewardPolicyGrids} from './policy-grid-validation';
 import {sharedRewardPolicyProjection} from './shared-policy-projection';
@@ -46,6 +46,12 @@ export function saveRewardPolicyGroup(ctx:SessionContext,raw:unknown):Promise<Re
     const [row]=await tx.execute<{allowed:boolean;ok:boolean}>(sql`select exists(select 1 from company c where c.id=${companyId}::uuid and c.tenant_id=app.current_tenant_id() and app.reward_admin(c.id)) as allowed,app.reward_company_admin_available(${companyId}::uuid,${p.policy.year}) as ok`);
     if(!row?.allowed)throw new RewardPolicyGroupError('scope');
     if(!row.ok)throw new RewardPolicyGroupError('excluded');
+   }
+   // 70d5e7c5: a configuration moved to a new year takes its dates with it. The exclusion window showed 2025
+   // on 2026 reviews because the earlier year's dates were kept; dates changed in the form stay as typed.
+   if(p.groupId){
+    const current=(await tx.execute<{version:unknown}>(sql`select app.reward_policy_groups() as version`)).map(row=>parseRewardPolicyGroupVersion(row.version)).find(version=>version.groupId===p.groupId);
+    if(current&&current.policy.year!==p.policy.year)p.policy=policySchema.parse(rollRewardPolicyDates(p.policy,current.policy,p.policy.year));
    }
    const taken=await rewardPolicyTakenTx(tx,targets.map(row=>row.companyId),p.policy.year);
    const conflicts=taken.filter(row=>row.groupId!==p.groupId&&targets.some(target=>target.companyId===row.companyId&&target.businessUnitId===row.businessUnitId));

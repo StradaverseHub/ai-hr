@@ -169,11 +169,13 @@ export const SCREENS: readonly ScreenEntry[] = [
   { screenKey: 'identityEmail', href: '/admin/settings/email', labelKey: 'nav.identityEmail', guard: 'scopedSession', routes: ['/admin/settings/email'], hasScopeNote: true },
   {screenKey:'rewards',href:'/rewards',labelKey:'nav.rewards',guard:'scopedSession',hasScopeNote:true,conditionalAccess:true,routes:[
     '/rewards','/rewards/reviews','/rewards/[unitId]','/rewards/[unitId]/setup','/rewards/[unitId]/data-check','/rewards/[unitId]/people/[entryId]','/rewards/[unitId]/advisor',
-    '/rewards/[unitId]/advisor/fairness','/rewards/[unitId]/uploaded','/rewards/analytics','/rewards/promotions','/rewards/rules',
+    '/rewards/[unitId]/advisor/fairness','/rewards/[unitId]/uploaded','/rewards/analytics','/rewards/promotions','/rewards/rules','/rewards/offcycle/new','/rewards/offcycle/settings',
   ]},
   { screenKey: 'rewardsApprovals', href: '/rewards/approvals', labelKey: 'rewards.board.title', guard: 'scopedSession', routes: ['/rewards/approvals'] },
   { screenKey: 'rewardsAdmin', href: '/admin/rewards', labelKey: 'rewards.adminTitle', guard: 'scopedAdmin', routes: ['/admin/rewards','/admin/rewards/shared'] },
   { screenKey: 'rewardsPolicy', href: '/admin/rewards/[unitId]', labelKey: 'rewards.configuration', guard: 'scopedSession', routes: ['/admin/rewards/[unitId]'] },
+  // 70d5e7c5: Configuration › Review Set-up. Group Rewards edits; CTRO and EC view; the review seat decides.
+  { screenKey: 'rewardsReviewSetup', href: '/admin/rewards/review-setup', labelKey: 'nav.rewardsReviewSetup', guard: 'scopedSession', conditionalAccess: true, routes: ['/admin/rewards/review-setup', '/admin/rewards/review-setup/[unitId]'] },
   // ── Everyday screens (scopedSession: every role reaches, data is scoped) ──
   { screenKey: 'dashboard', href: '/', labelKey: 'nav.dashboard', guard: 'scopedSession', routes: ['/'] },
   {

@@ -228,6 +228,20 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5161_leave_team_minimum_present',
    // Probation and passport loops act as request-only steps (13 November 2026): draft 9780 allocated as 5162, widened CHECKs only.
    '5162_teras_loop_request_acts',
+   // Board release 12 November 2026 (docs/MIGRATION-ALLOCATION.md): Rewards, dashboard and On/Off Boarding block.
+   '5400_rewards_direct_configuration',
+   '5420_rewards_dashboard_preparation_notices',
+   '5460_lifecycle_v9_email_recipients',
+   '5480_offboarding_items_assignment_load',
+   '5500_rewards_limit_controls',
+   '5520_rewards_role_permission_grid',
+   '5540_rewards_offcycle_company_balance',
+   '5560_rewards_limit_controls_role_level',
+   '5580_rewards_config_owner_paths',
+   '5600_rewards_config_editor_role_levels',
+   '5620_rewards_config_grants_creator_lock',
+   // Gate repair (13 November 2026): the ADR-0174 composite key for 5460's lc_v9_email_hold.
+   '5640_lifecycle_v9_email_hold_company_tenant',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -257,7 +271,9 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // granted to exactly the roles their policies or the domain_event writers are (test/policy-helper-function-grants).
   const privateFunctions=[
    // Board window 4 (5124): a trigger function, never granted to the application role.
-   'app.attendance_workflow_preview_bind()',
+   // 5129: the set-wise effective-snapshot owner, inlined into app.payroll_history_effective and the batch aggregate.
+   // Board release block 5400-5560: three trigger functions, owner only.
+   // 5580/5600: owner-only readers, trigger functions, the PAT repricing chain and the review creator's source copies.
    // daa76ed4/96a54ed2 (5140-5142): the login rule helper and two trigger functions, never granted to the application role.
    'app.attendance_workflow_approver_login(uuid)','app.attendance_workflow_stage_clock()','app.attendance_correction_submitter_guard()',
    // 5143: the request-bound final-decision read window proof, called only by the owner-run visibility functions.
@@ -268,70 +284,100 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()','app._assert_assistant_rewards_presentation_v1(text)',
    'app._assistant_assigned_index_login(uuid,boolean)','app._assistant_presentation_feature_unpaused_v1()','app._assistant_rewards_calendar_choice_payload_v1()',
    'app._assistant_rewards_cancel_choice_payload_v1()','app._assistant_rewards_return_choice_payload_v1()','app._domain_event_chain_key_held(uuid)',
-   'app._domain_event_chain_seal_tenant(uuid)','app._personnel_company_tags(uuid[],date)','app._personnel_employment_tags(uuid[],date)','app.access_administrator_assert_run()',
-   'app.access_administrator_guard_tenant()','app.access_capability_effective(uuid)','app.access_lock_assert_strict(uuid,text,text)',
-   'app.ai_centre_mandate_bound_tenant()','app.ai_centre_mandate_write_order()','app.attendance_workflow_preview_bind()','app.bulk_job_capability_held(uuid)',
-   'app.bulk_job_clear_inputs(uuid,boolean)','app.bulk_job_event_attribution()','app.bulk_job_held(uuid)',
-   'app.bulk_job_input_conforms(jsonb,integer,jsonb)','app.bulk_job_input_shape_valid(jsonb)','app.bulk_job_lease_capability(uuid,uuid,text)',
-   'app.bulk_job_seal_verify(uuid,text)','app.bulk_job_step_digest(text,integer,jsonb,text,jsonb,text)','app.bulk_job_value_digest(jsonb)',
-   'app.domain_event_chain_arm()','app.domain_event_chain_seal_now()','app.employee_import_revert_release(uuid,boolean)',
-   'app.employment_void_reference_blockers(uuid[])','app.import_discard_batch(uuid,uuid,uuid,text,integer)','app.import_marker_visible(uuid)',
-   'app.import_settle(uuid,uuid,integer)','app.label_import_marker_visible(uuid)','app.leave_ledger_stage_stamp()',
-   'app.movement_revert_capture_never_commits()','app.movement_revert_capture_row()','app.notification_event_processing_enqueue()','app.org_structure_statement_lock()',
-   'app.payroll_history_row_visible(text,uuid)','app.register_import_release(uuid,boolean)','app.system_label_import_discard_batch(uuid,uuid,uuid,uuid,integer)',
-   // 5129: the set-wise effective-snapshot owner, inlined into app.payroll_history_effective and the batch aggregate.
-   'app.payroll_history_effective_ids(uuid[])',
+   'app._domain_event_chain_seal_tenant(uuid)','app._personnel_company_tags(uuid[],date)','app._personnel_employment_tags(uuid[],date)',
+   'app.access_administrator_assert_run()','app.access_administrator_guard_tenant()','app.access_capability_effective(uuid)',
+   'app.access_lock_assert_strict(uuid,text,text)','app.ai_centre_mandate_bound_tenant()','app.ai_centre_mandate_write_order()',
+   'app.attendance_workflow_preview_bind()','app.bulk_job_capability_held(uuid)','app.bulk_job_clear_inputs(uuid,boolean)',
+   'app.bulk_job_event_attribution()','app.bulk_job_held(uuid)','app.bulk_job_input_conforms(jsonb,integer,jsonb)',
+   'app.bulk_job_input_shape_valid(jsonb)','app.bulk_job_lease_capability(uuid,uuid,text)','app.bulk_job_seal_verify(uuid,text)',
+   'app.bulk_job_step_digest(text,integer,jsonb,text,jsonb,text)','app.bulk_job_value_digest(jsonb)','app.domain_event_chain_arm()',
+   'app.domain_event_chain_seal_now()','app.employee_import_revert_release(uuid,boolean)','app.employment_void_reference_blockers(uuid[])',
+   'app.import_discard_batch(uuid,uuid,uuid,text,integer)','app.import_marker_visible(uuid)','app.import_settle(uuid,uuid,integer)',
+   'app.label_import_marker_visible(uuid)','app.leave_ledger_stage_stamp()','app.movement_revert_capture_never_commits()',
+   'app.movement_revert_capture_row()','app.notification_event_processing_enqueue()','app.org_structure_statement_lock()',
+   'app.payroll_history_effective_ids(uuid[])','app.payroll_history_row_visible(text,uuid)','app.register_import_release(uuid,boolean)',
+   'app.reward_access_self_change_guard()','app.reward_config_apply_confirmed_pat(uuid,uuid)','app.reward_config_architecture_for_source(uuid,uuid,uuid,date)',
+   'app.reward_config_identity_guard()','app.reward_config_library_capture_revision()','app.reward_config_library_input_guard()',
+   'app.reward_config_pat_confirm_apply()','app.reward_config_pat_input_guard()','app.reward_config_planned_policy_snapshot(jsonb,jsonb,jsonb,jsonb)',
+   'app.reward_config_policy_source(uuid)','app.reward_config_reprice_draft_pat(uuid,uuid)','app.reward_config_snapshot_pay_change_kind(uuid)',
+   'app.reward_config_source_org_tags(uuid,date)','app.reward_config_uploaded_binding()','app.reward_limit_version_guard()',
+   'app.system_label_import_discard_batch(uuid,uuid,uuid,uuid,integer)',
   ];
+  // 5620 took EXECUTE on the 5580 configuration predicates and the creating flag away from PUBLIC; each is granted to
+  // the roles that evaluate it (test/rewards-config-grants-lock.test.ts), so no added function is callable by PUBLIC.
   const publicFunctions:string[]=[];
   const addedFunctions=[
+   // Board window 4 (5124): the preview binding trigger (owner only) and the superior diagnostic.
+   // Board release block 5400-5560 (12 November 2026): the Rewards, dashboard and On/Off Boarding functions. Kept sorted.
+   // daa76ed4/96a54ed2 (5140-5144, origin/alpha 65e23a1e7): the attendance resolution, escalation, on-behalf and final-window functions.
+   // 5160 (origin/alpha de15677b0): the sweep's net-swing threshold reader.
    'app._access_bootstrap_eligible(uuid,uuid)','app._access_workforce_list_rows(uuid[])','app._ai_control_context_for_purpose(text,boolean,boolean)',
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()','app._assert_assistant_rewards_presentation_v1(text)',
    'app._assistant_assigned_index_login(uuid,boolean)','app._assistant_presentation_feature_unpaused_v1()','app._assistant_rewards_calendar_choice_payload_v1()',
    'app._assistant_rewards_cancel_choice_payload_v1()','app._assistant_rewards_return_choice_payload_v1()','app._domain_event_chain_key_held(uuid)',
-   'app._domain_event_chain_seal_tenant(uuid)','app._personnel_company_tags(uuid[],date)','app._personnel_employment_tags(uuid[],date)','app.access_administrator_assert_run()',
-   'app.access_administrator_guard_tenant()','app.access_administrator_set_lock(uuid)','app.access_capability_effective(uuid)',
-   'app.access_configuration_exclusive_wait(uuid,integer)','app.access_configuration_write_lock()','app.access_editor_presentation_v1()',
-   'app.access_lock_assert_strict(uuid,text,text)','app.access_lock_mode_held(uuid)','app.access_profile_policy_read_lock()',
-   'app.access_profile_policy_value_lock()','app.access_workforce_employment_permitted(uuid,uuid,timestamp with time zone,uuid,uuid[])','app.access_workforce_list_facts()',
-   'app.access_workforce_list_rows_for_ids(uuid[])','app.access_workforce_permitted_companies(text)','app.access_workforce_picker_facts(uuid[])',
-   'app.ai_centre_mandate_bound_tenant()','app.ai_centre_mandate_write_order()','app.assistant_rewards_calendar_presentation_choices_v1()',
-   'app.assistant_rewards_cancel_presentation_choices_v1()','app.assistant_rewards_return_presentation_choices_v1()','app.attendance_clock_policy_history(uuid,uuid)','app.attendance_correction_submitter_guard()','app.attendance_effect_window_employment()','app.attendance_final_window_prove(uuid)','app.attendance_final_window_token(uuid,uuid)',
-   'app.attendance_frozen_actor_identity_keys(jsonb,text)','app.attendance_pending_visible_headers(uuid)',
-   // daa76ed4/96a54ed2 (5140-5142): resolution, escalation and on-behalf owners.
-   'app.attendance_workflow_approver_login(uuid)','app.attendance_workflow_close_final_window()','app.attendance_workflow_escalate(uuid,date)','app.attendance_workflow_escalation_due(date,date,uuid,integer)',
-   'app.attendance_workflow_escalation_written(uuid,uuid,integer)','app.attendance_workflow_hierarchy_v5(uuid,integer)',
-   'app.attendance_workflow_on_behalf_allowed(uuid,integer,text)','app.attendance_workflow_on_behalf_slot(uuid,uuid)','app.attendance_workflow_open_final_window(uuid)',
-   // Board window 4 (5124): the preview binding trigger (owner only) and the superior diagnostic.
-   'app.attendance_workflow_preview_bind()','app.attendance_workflow_stage_clock()','app.attendance_workflow_superior_diagnostic(uuid,integer)',
-   'app.bulk_job_access(uuid)',
-   'app.bulk_job_admit()','app.bulk_job_attribution()','app.bulk_job_capability_held(uuid)',
-   'app.bulk_job_clear_inputs(uuid,boolean)','app.bulk_job_enqueue(text,uuid,uuid[],text,bytea,jsonb)','app.bulk_job_event_attribution()',
-   'app.bulk_job_fence(uuid,text)','app.bulk_job_held(uuid)','app.bulk_job_input_conforms(jsonb,integer,jsonb)',
-   'app.bulk_job_input_shape_valid(jsonb)','app.bulk_job_lease_capability(uuid,uuid,text)','app.bulk_job_mark_watched(uuid)',
-   'app.bulk_job_notice_recipients(uuid)','app.bulk_job_pending_steps(uuid,integer)','app.bulk_job_request_cancel(uuid,text)',
-   'app.bulk_job_scope_current(text,uuid[])','app.bulk_job_seal_verify(uuid,text)','app.bulk_job_step_digest(text,integer,jsonb,text,jsonb,text)',
-   'app.bulk_job_step_update(uuid,integer[],jsonb)','app.bulk_job_steps_put(uuid,boolean,jsonb)','app.bulk_job_value_digest(jsonb)',
-   'app.bulk_job_waiting(uuid)','app.bulk_job_worker_ready(text)','app.bulk_job_worker_update(uuid,jsonb)',
-   'app.contract_renewal_open(uuid)','app.delegated_approval_subjects(uuid[],text,text)','app.domain_event_chain_arm()','app.domain_event_chain_flush(uuid)',
+   'app._domain_event_chain_seal_tenant(uuid)','app._personnel_company_tags(uuid[],date)','app._personnel_employment_tags(uuid[],date)',
+   'app.access_administrator_assert_run()','app.access_administrator_guard_tenant()','app.access_administrator_set_lock(uuid)',
+   'app.access_capability_effective(uuid)','app.access_configuration_exclusive_wait(uuid,integer)','app.access_configuration_write_lock()',
+   'app.access_editor_presentation_v1()','app.access_lock_assert_strict(uuid,text,text)','app.access_lock_mode_held(uuid)',
+   'app.access_profile_policy_read_lock()','app.access_profile_policy_value_lock()','app.access_workforce_employment_permitted(uuid,uuid,timestamp with time zone,uuid,uuid[])',
+   'app.access_workforce_list_facts()','app.access_workforce_list_rows_for_ids(uuid[])','app.access_workforce_permitted_companies(text)',
+   'app.access_workforce_picker_facts(uuid[])','app.ai_centre_mandate_bound_tenant()','app.ai_centre_mandate_write_order()',
+   'app.assistant_rewards_calendar_presentation_choices_v1()','app.assistant_rewards_cancel_presentation_choices_v1()','app.assistant_rewards_return_presentation_choices_v1()',
+   'app.attendance_clock_policy_history(uuid,uuid)','app.attendance_correction_submitter_guard()','app.attendance_effect_window_employment()',
+   'app.attendance_final_window_prove(uuid)','app.attendance_final_window_token(uuid,uuid)','app.attendance_frozen_actor_identity_keys(jsonb,text)',
+   'app.attendance_pending_visible_headers(uuid)','app.attendance_workflow_approver_login(uuid)','app.attendance_workflow_close_final_window()',
+   'app.attendance_workflow_escalate(uuid,date)','app.attendance_workflow_escalation_due(date,date,uuid,integer)','app.attendance_workflow_escalation_written(uuid,uuid,integer)',
+   'app.attendance_workflow_hierarchy_v5(uuid,integer)','app.attendance_workflow_on_behalf_allowed(uuid,integer,text)','app.attendance_workflow_on_behalf_slot(uuid,uuid)',
+   'app.attendance_workflow_open_final_window(uuid)','app.attendance_workflow_preview_bind()','app.attendance_workflow_stage_clock()',
+   'app.attendance_workflow_superior_diagnostic(uuid,integer)','app.bulk_job_access(uuid)','app.bulk_job_admit()',
+   'app.bulk_job_attribution()','app.bulk_job_capability_held(uuid)','app.bulk_job_clear_inputs(uuid,boolean)',
+   'app.bulk_job_enqueue(text,uuid,uuid[],text,bytea,jsonb)','app.bulk_job_event_attribution()','app.bulk_job_fence(uuid,text)',
+   'app.bulk_job_held(uuid)','app.bulk_job_input_conforms(jsonb,integer,jsonb)','app.bulk_job_input_shape_valid(jsonb)',
+   'app.bulk_job_lease_capability(uuid,uuid,text)','app.bulk_job_mark_watched(uuid)','app.bulk_job_notice_recipients(uuid)',
+   'app.bulk_job_pending_steps(uuid,integer)','app.bulk_job_request_cancel(uuid,text)','app.bulk_job_scope_current(text,uuid[])',
+   'app.bulk_job_seal_verify(uuid,text)','app.bulk_job_step_digest(text,integer,jsonb,text,jsonb,text)','app.bulk_job_step_update(uuid,integer[],jsonb)',
+   'app.bulk_job_steps_put(uuid,boolean,jsonb)','app.bulk_job_value_digest(jsonb)','app.bulk_job_waiting(uuid)',
+   'app.bulk_job_worker_ready(text)','app.bulk_job_worker_update(uuid,jsonb)','app.contract_renewal_open(uuid)',
+   'app.delegated_approval_subjects(uuid[],text,text)','app.domain_event_chain_arm()','app.domain_event_chain_flush(uuid)',
    'app.domain_event_chain_seal_now()','app.domain_event_chain_sealing()','app.employee_import_revert_release(uuid,boolean)',
    'app.employment_void_reference_blockers(uuid[])','app.home_leave_presentation_index(text)','app.home_own_clock_day(uuid,date,date)',
    'app.home_own_schedule_range(uuid,date,date)','app.import_activation_conflicts(uuid)','app.import_discard_batch(uuid,uuid,uuid,text,integer)',
-   'app.import_hidden_attempt_ids()','app.import_log_actor_facts(text,uuid[])','app.import_marker_released(uuid)','app.import_marker_visible(uuid)',
-   'app.import_pending_employment_ids()','app.import_pending_guard()','app.import_pending_person_ids()',
-   'app.import_pending_stamp()','app.import_release(uuid)','app.import_released_attempt_ids()',
-   'app.import_settle(uuid,uuid,integer)','app.label_import_marker_visible(uuid)','app.leave_ledger_stage_stamp()',
-   'app.leave_stage_digests(uuid[],uuid[],boolean)','app.leave_stage_release(uuid,uuid)','app.leave_stage_released_ids()',
-   'app.may_have_attendance_task_metadata()','app.movement_revert_capture_never_commits()','app.movement_revert_capture_row()','app.notification_event_processing_enqueue()',
-   'app.notification_projection_exists(uuid,uuid,text)','app.org_structure_statement_lock()','app.payroll_batch_period_required()',
-   'app.payroll_history_batch_admin_totals(uuid)','app.payroll_history_batch_visible_totals(uuid)','app.payroll_history_effective_ids(uuid[])',
-   'app.payroll_history_hidden_rows(text)','app.payroll_history_row_visible(text,uuid)','app.payroll_history_self_employment_ids()','app.payroll_history_stage_busy(uuid)',
+   'app.import_hidden_attempt_ids()','app.import_log_actor_facts(text,uuid[])','app.import_marker_released(uuid)',
+   'app.import_marker_visible(uuid)','app.import_pending_employment_ids()','app.import_pending_guard()',
+   'app.import_pending_person_ids()','app.import_pending_stamp()','app.import_release(uuid)',
+   'app.import_released_attempt_ids()','app.import_settle(uuid,uuid,integer)','app.label_import_marker_visible(uuid)',
+   'app.leave_ledger_stage_stamp()','app.leave_stage_digests(uuid[],uuid[],boolean)','app.leave_stage_release(uuid,uuid)',
+   'app.leave_stage_released_ids()','app.may_have_attendance_task_metadata()','app.movement_revert_capture_never_commits()',
+   'app.movement_revert_capture_row()','app.notification_event_processing_enqueue()','app.notification_projection_exists(uuid,uuid,text)',
+   'app.org_structure_statement_lock()','app.payroll_batch_period_required()','app.payroll_history_batch_admin_totals(uuid)',
+   'app.payroll_history_batch_visible_totals(uuid)','app.payroll_history_effective_ids(uuid[])','app.payroll_history_hidden_rows(text)',
+   'app.payroll_history_row_visible(text,uuid)','app.payroll_history_self_employment_ids()','app.payroll_history_stage_busy(uuid)',
    'app.payroll_history_stage_open(uuid,uuid,text)','app.payroll_history_stage_release(uuid)','app.payroll_history_stage_stamp()',
    'app.payroll_input_lock_keys(uuid[],uuid)','app.personnel_list_rows_for_ids(date,uuid[],uuid[])','app.personnel_overview_facts(date,uuid[])',
    'app.personnel_overview_filter_fields(date,uuid[])','app.personnel_overview_narrow_rows(date,uuid[])','app.personnel_overview_page_rows(date,uuid[],uuid[])',
-   'app.personnel_overview_page_rows_typed(date,uuid[],uuid[])','app.personnel_private_search_entries(text,uuid[])',
-   'app.personnel_search_candidates(uuid[],boolean,boolean,text,text,text,text,text[])','app.register_import_release(uuid,boolean)',
-   'app.reward_access_observation_due(uuid)','app.sweep_swing_thresholds(uuid[])','app.system_label_import_conflicts(uuid)','app.system_label_import_discard_batch(uuid,uuid,uuid,uuid,integer)',
-   'app.system_label_import_release_attempt(uuid,uuid)',
+   'app.personnel_overview_page_rows_typed(date,uuid[],uuid[])','app.personnel_private_search_entries(text,uuid[])','app.personnel_search_candidates(uuid[],boolean,boolean,text,text,text,text,text[])',
+   'app.register_import_release(uuid,boolean)','app.reward_access_observation_due(uuid)','app.reward_access_self_change_guard()',
+   'app.reward_actor_holds_role(text)','app.reward_actor_page_level(text)','app.reward_config_apply_confirmed_pat(uuid,uuid)',
+   'app.reward_config_architecture_for_source(uuid,uuid,uuid,date)','app.reward_config_change_recipients(uuid)','app.reward_config_change_record(text,text,uuid,text,uuid[],text,text,boolean,integer,jsonb,uuid,uuid[],text)',
+   'app.reward_config_change_visible(text,uuid[])','app.reward_config_companies(integer)','app.reward_config_company_eligible(uuid,integer)',
+   'app.reward_config_company_structure(uuid,date)','app.reward_config_create_planned_unit(uuid,uuid,uuid)','app.reward_config_creating()',
+   'app.reward_config_editor(uuid)','app.reward_config_editor_anywhere()','app.reward_config_grade_choices()',
+   'app.reward_config_identity_guard()','app.reward_config_library_capture_revision()','app.reward_config_library_input_guard()',
+   'app.reward_config_library_locked(uuid)','app.reward_config_library_used_by(uuid)','app.reward_config_library_viewer()',
+   'app.reward_config_page_allowed(uuid,text,text)','app.reward_config_pat_affected_units(uuid,integer)','app.reward_config_pat_confirm_apply()',
+   'app.reward_config_pat_history(uuid,integer)','app.reward_config_pat_input_guard()','app.reward_config_planned_policy_snapshot(jsonb,jsonb,jsonb,jsonb)',
+   'app.reward_config_policy_source(uuid)','app.reward_config_reprice_draft_pat(uuid,uuid)','app.reward_config_snapshot_pay_change_kind(uuid)',
+   'app.reward_config_source_org_tags(uuid,date)','app.reward_config_uploaded_binding()','app.reward_config_uploaded_binding_check(text,text,jsonb,jsonb)',
+   'app.reward_config_viewer(uuid)','app.reward_level_rank(text)','app.reward_limit_controls_access()',
+   'app.reward_limit_pin_on_submit(uuid,uuid)','app.reward_limit_reapply(uuid[],uuid,text)','app.reward_limit_version_guard()',
+   'app.reward_offcycle_balances(uuid)','app.reward_offcycle_company_funding(uuid,boolean)','app.reward_offcycle_cycle_readiness(uuid)',
+   'app.reward_offcycle_limit_pin(uuid,uuid)','app.reward_offcycle_limit_version(uuid)','app.reward_offcycle_year_save(uuid,integer,date,date)',
+   'app.reward_preparation_notices_v2()','app.reward_role_default_level(text,text)','app.reward_role_level(text,text)',
+   'app.reward_role_level_options(text,text)','app.reward_role_permission_immediate()','app.reward_role_permission_level_shape()',
+   'app.reward_role_permission_locked(text,text)','app.reward_role_permission_reader()','app.reward_role_permission_request_shape()',
+   'app.reward_role_permission_seat()','app.reward_setup_page_allowed(uuid,text,text)','app.reward_unit_level(uuid,text)',
+   'app.reward_unit_limit_version(uuid)','app.sweep_swing_thresholds(uuid[])','app.system_label_import_conflicts(uuid)',
+   'app.system_label_import_discard_batch(uuid,uuid,uuid,uuid,integer)','app.system_label_import_release_attempt(uuid,uuid)',
   ];
   const beforeFunctions=new Set(beforePerformancePrivileges.functions.map(row=>row.fn));
   expect(afterPerformancePrivileges.functions.filter(row=>!beforeFunctions.has(row.fn)).map(row=>row.fn).sort()).toEqual(addedFunctions);
@@ -594,15 +640,110 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const isCombinedPolicy=(row:(typeof afterPerformancePrivileges.policies)[number])=>combinedPolicies.some(policy=>policy.schemaname===row.schemaname&&policy.tablename===row.tablename&&policy.policyname===row.policyname);
   expect(afterPerformancePrivileges.policies.filter(isCombinedPolicy).map(row=>({...row,qual:digest(row.qual),with_check:digest(row.with_check)}))).toEqual(combinedPolicies);
   for(const rel of Object.keys(combinedRelations))expect(beforePerformancePrivileges.relations.some(row=>row.rel===rel),rel).toBe(false);
-  expect({
-   relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==receiptTable&&!sealTables.includes(row.rel)&&!isCombinedRelation(row.rel)).map(row=>
+  // Board release block 5400-5600 (12-13 November 2026, docs/MIGRATION-ALLOCATION.md): the seven new tables, the 66 row
+  // policies it adds (5580's configuration-editor and owner policies and 5600's owner policies included) (qual/with_check as md5 digests, the migration owner written OWNER) and the one it retires
+  // (5400 drops the second-person PAT confirmation policy). Nothing else in the privilege graph may change.
+  const boardRelations:Record<string,{rls:boolean;force:boolean;acl:string|null}>={
+   'lc_v9_email_hold':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=arw/OWNER}'},
+   'reward_config_change':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   'reward_limit_version':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
+   'reward_offcycle_year':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   'reward_role_permission_request':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=arw/OWNER}'},
+   'reward_role_permission_version':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
+   'reward_unit_limit_pin':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+  };
+  const boardPolicyRow=(row:(typeof afterPerformancePrivileges.policies)[number])=>({...row,roles:ownerAcl(row.roles),qual:digest(row.qual),with_check:digest(row.with_check)});
+  const boardPolicies=[
+   {schemaname:'public',tablename:'company_registration_classification',policyname:'company_registration_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'SELECT',qual:'3f508ac9bab3a400ba652cdcbc225fec',with_check:null},
+   {schemaname:'public',tablename:'job_architecture_catalogue_revision',policyname:'reward_config_architecture_catalogue',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'SELECT',qual:'dbbe81253dcbe78bcb5b57df467675ae',with_check:null},
+   {schemaname:'public',tablename:'job_architecture_position_revision',policyname:'reward_config_architecture_position',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'SELECT',qual:'ee611118f080c3f4c23c582744c9e6fc',with_check:null},
+   {schemaname:'public',tablename:'lc_v9_email_hold',policyname:'v9_email_hold_insert',permissive:'PERMISSIVE',roles:'{public}',cmd:'INSERT',qual:null,with_check:'943f46d6c51979e6a3e15d49c833cfd3'},
+   {schemaname:'public',tablename:'lc_v9_email_hold',policyname:'v9_email_hold_read',permissive:'PERMISSIVE',roles:'{public}',cmd:'SELECT',qual:'a891360032acbd07afa1f1c6e6c5be0a',with_check:null},
+   {schemaname:'public',tablename:'lc_v9_email_hold',policyname:'v9_email_hold_release',permissive:'PERMISSIVE',roles:'{public}',cmd:'UPDATE',qual:'943f46d6c51979e6a3e15d49c833cfd3',with_check:'63096f37cc862794aecf97d68e8a8239'},
+   {schemaname:'public',tablename:'lc_v9_email_hold',policyname:'v9_email_hold_storage_owner',permissive:'PERMISSIVE',roles:'{OWNER}',cmd:'ALL',qual:'b326b5062b2f0e69046810717534cb09',with_check:'b326b5062b2f0e69046810717534cb09'},
+   {schemaname:'public',tablename:'reward_config_change',policyname:'reward_config_change_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'59492f3697ba1af7263dfebcdb7c1b78',with_check:'59492f3697ba1af7263dfebcdb7c1b78'},
+   {schemaname:'public',tablename:'reward_config_change',policyname:'reward_config_change_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'b0652841b761793f00814566b72e654b',with_check:null},
+   {schemaname:'public',tablename:'reward_governance',policyname:'reward_pat_draft_governance_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'042db60115c525438a1583b0609fcebb',with_check:'042db60115c525438a1583b0609fcebb'},
+   {schemaname:'public',tablename:'reward_governance_history',policyname:'reward_pat_draft_history_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'INSERT',qual:null,with_check:'7c64acb97dde9a40d6fd64b947f0878f'},
+   {schemaname:'public',tablename:'reward_governance_public',policyname:'reward_pat_draft_public_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'1692d9ff59891005626ffc283881c409',with_check:'1692d9ff59891005626ffc283881c409'},
+   {schemaname:'public',tablename:'reward_library',policyname:'reward_library_config_insert',permissive:'PERMISSIVE',roles:'{public}',cmd:'INSERT',qual:null,with_check:'460d9edc04eb8b288e570b264338be1b'},
+   {schemaname:'public',tablename:'reward_library',policyname:'reward_library_config_read',permissive:'PERMISSIVE',roles:'{public}',cmd:'SELECT',qual:'c5be2466a772025245f339de977e091f',with_check:null},
+   {schemaname:'public',tablename:'reward_library',policyname:'reward_library_role_level_insert',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'3db9f2711a716af4114c1d2de6f36690'},
+   {schemaname:'public',tablename:'reward_library',policyname:'reward_library_role_level_read',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'9e5d27cf872cd899d911a7f32e4cc4af',with_check:null},
+   {schemaname:'public',tablename:'reward_library',policyname:'reward_library_role_level_update',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'UPDATE',qual:'3db9f2711a716af4114c1d2de6f36690',with_check:'3db9f2711a716af4114c1d2de6f36690'},
+   {schemaname:'public',tablename:'reward_library_revision_audit',policyname:'reward_library_revision_audit_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'INSERT',qual:null,with_check:'9b373c82902eef1a24a76bf152720190'},
+   {schemaname:'public',tablename:'reward_library_revision_audit',policyname:'reward_library_revision_audit_config_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'c5be2466a772025245f339de977e091f',with_check:null},
+   {schemaname:'public',tablename:'reward_library_version',policyname:'reward_library_version_config_insert',permissive:'PERMISSIVE',roles:'{public}',cmd:'INSERT',qual:null,with_check:'86e428b683b8e16ae531f0b2b6fe0506'},
+   {schemaname:'public',tablename:'reward_library_version',policyname:'reward_library_version_config_read',permissive:'PERMISSIVE',roles:'{public}',cmd:'SELECT',qual:'c5be2466a772025245f339de977e091f',with_check:null},
+   {schemaname:'public',tablename:'reward_library_version',policyname:'reward_library_version_config_update',permissive:'PERMISSIVE',roles:'{public}',cmd:'UPDATE',qual:'fa548c9c50304e48374aeb96778cc3b3',with_check:'3e6d9aa831224badb17f27d760458c1c'},
+   {schemaname:'public',tablename:'reward_library_version',policyname:'reward_library_version_role_level_insert',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'19469ece367ce5db1b948c904a930afe'},
+   {schemaname:'public',tablename:'reward_library_version',policyname:'reward_library_version_role_level_read',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'3dd971f5ee9fd9894fcddae5d59219d7',with_check:null},
+   {schemaname:'public',tablename:'reward_library_version',policyname:'reward_library_version_role_level_update',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'UPDATE',qual:'19469ece367ce5db1b948c904a930afe',with_check:'19469ece367ce5db1b948c904a930afe'},
+   {schemaname:'public',tablename:'reward_limit_version',policyname:'reward_limit_version_insert',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'dc8abe21091318ab10c2bbd508ce87f7'},
+   {schemaname:'public',tablename:'reward_limit_version',policyname:'reward_limit_version_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'59492f3697ba1af7263dfebcdb7c1b78',with_check:'59492f3697ba1af7263dfebcdb7c1b78'},
+   {schemaname:'public',tablename:'reward_limit_version',policyname:'reward_limit_version_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'f793da3071cf53b7718d88009b667c30',with_check:null},
+   {schemaname:'public',tablename:'reward_offcycle_year',policyname:'reward_offcycle_year_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'59492f3697ba1af7263dfebcdb7c1b78',with_check:'59492f3697ba1af7263dfebcdb7c1b78'},
+   {schemaname:'public',tablename:'reward_offcycle_year',policyname:'reward_offcycle_year_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'59492f3697ba1af7263dfebcdb7c1b78',with_check:null},
+   {schemaname:'public',tablename:'reward_pat_basis',policyname:'reward_pat_basis_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'75e09c69c00173db53bdde71101b1450',with_check:'75e09c69c00173db53bdde71101b1450'},
+   {schemaname:'public',tablename:'reward_pat_version',policyname:'reward_pat_config_edit',permissive:'PERMISSIVE',roles:'{public}',cmd:'UPDATE',qual:'e8664043d4e71aa72cda090b8d7579ea',with_check:'0a9ee63b1a7f167a8d2cc559dc366c48'},
+   {schemaname:'public',tablename:'reward_pat_version',policyname:'reward_pat_config_insert',permissive:'PERMISSIVE',roles:'{public}',cmd:'INSERT',qual:null,with_check:'c477309fc5ff423e0050998366955f1c'},
+   {schemaname:'public',tablename:'reward_pat_version',policyname:'reward_pat_config_read',permissive:'PERMISSIVE',roles:'{public}',cmd:'SELECT',qual:'3f508ac9bab3a400ba652cdcbc225fec',with_check:null},
+   {schemaname:'public',tablename:'reward_pat_version',policyname:'reward_pat_edit',permissive:'PERMISSIVE',roles:'{public}',cmd:'UPDATE',qual:'4a6390221289b7a5b68ed462f1ae654d',with_check:'6e4e6815b3f76a0a02dfc631d884d4a6'},
+   {schemaname:'public',tablename:'reward_pat_version',policyname:'reward_pat_role_level_insert',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'fb82f1d410f5a0cc23172d46a47934b4'},
+   {schemaname:'public',tablename:'reward_pat_version',policyname:'reward_pat_role_level_update',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'UPDATE',qual:'fb82f1d410f5a0cc23172d46a47934b4',with_check:'fb82f1d410f5a0cc23172d46a47934b4'},
+   {schemaname:'public',tablename:'reward_plan_company',policyname:'reward_plan_company_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'SELECT',qual:'d4bfed513a5dca90ee295d81659abce9',with_check:null},
+   {schemaname:'public',tablename:'reward_plan_setup',policyname:'reward_plan_setup_role_level_insert',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'eb77a6877e57fb4ed5e1105c04f429d8'},
+   {schemaname:'public',tablename:'reward_plan_setup',policyname:'reward_plan_setup_role_level_update',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'UPDATE',qual:'eb77a6877e57fb4ed5e1105c04f429d8',with_check:'eb77a6877e57fb4ed5e1105c04f429d8'},
+   {schemaname:'public',tablename:'reward_role_permission',policyname:'reward_role_permission_immediate_write',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'ALL',qual:'936f1d956dcd8547eb9e662eee9f286c',with_check:'6f8317317731342637ca575bdd15bda7'},
+   {schemaname:'public',tablename:'reward_role_permission',policyname:'reward_role_permission_not_own_delete',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'DELETE',qual:'5160b252615da4b17341fc336d0cabd4',with_check:null},
+   {schemaname:'public',tablename:'reward_role_permission',policyname:'reward_role_permission_not_own_insert',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'5160b252615da4b17341fc336d0cabd4'},
+   {schemaname:'public',tablename:'reward_role_permission',policyname:'reward_role_permission_not_own_update',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'UPDATE',qual:'5160b252615da4b17341fc336d0cabd4',with_check:'5160b252615da4b17341fc336d0cabd4'},
+   {schemaname:'public',tablename:'reward_role_permission_request',policyname:'reward_role_permission_request_decide',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'UPDATE',qual:'1829518e556fb0c57877c207e96d879c',with_check:'353ed469b3fc79962a302ab434cd15cf'},
+   {schemaname:'public',tablename:'reward_role_permission_request',policyname:'reward_role_permission_request_insert',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'4efd5fd19e4d4b5eca40d71dbbb1db47'},
+   {schemaname:'public',tablename:'reward_role_permission_request',policyname:'reward_role_permission_request_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'59492f3697ba1af7263dfebcdb7c1b78',with_check:'59492f3697ba1af7263dfebcdb7c1b78'},
+   {schemaname:'public',tablename:'reward_role_permission_request',policyname:'reward_role_permission_request_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'6b7e9d58809ee4629186960da8e36764',with_check:null},
+   {schemaname:'public',tablename:'reward_role_permission_request',policyname:'reward_view_as_insert',permissive:'RESTRICTIVE',roles:'{public}',cmd:'INSERT',qual:null,with_check:'64d386c9dfb279b22c2b1b0801e4fe32'},
+   {schemaname:'public',tablename:'reward_role_permission_request',policyname:'reward_view_as_update',permissive:'RESTRICTIVE',roles:'{public}',cmd:'UPDATE',qual:'64d386c9dfb279b22c2b1b0801e4fe32',with_check:'64d386c9dfb279b22c2b1b0801e4fe32'},
+   {schemaname:'public',tablename:'reward_role_permission_version',policyname:'reward_role_permission_version_insert',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'c0dcbcb0a01de2cf0e3b99d7cf3893c8'},
+   {schemaname:'public',tablename:'reward_role_permission_version',policyname:'reward_role_permission_version_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'59492f3697ba1af7263dfebcdb7c1b78',with_check:'59492f3697ba1af7263dfebcdb7c1b78'},
+   {schemaname:'public',tablename:'reward_role_permission_version',policyname:'reward_role_permission_version_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'6b7e9d58809ee4629186960da8e36764',with_check:null},
+   {schemaname:'public',tablename:'reward_role_permission_version',policyname:'reward_view_as_insert',permissive:'RESTRICTIVE',roles:'{public}',cmd:'INSERT',qual:null,with_check:'64d386c9dfb279b22c2b1b0801e4fe32'},
+   {schemaname:'public',tablename:'reward_senior_award',policyname:'reward_senior_award_role_level_delete',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'DELETE',qual:'8868c5bc470186e1b41c27776e90fd3e',with_check:null},
+   {schemaname:'public',tablename:'reward_senior_award',policyname:'reward_senior_award_role_level_insert',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'8868c5bc470186e1b41c27776e90fd3e'},
+   {schemaname:'public',tablename:'reward_senior_award',policyname:'reward_senior_award_role_level_read',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'ad6fe465015b65b7e97e25dc80363599',with_check:null},
+   {schemaname:'public',tablename:'reward_senior_award',policyname:'reward_senior_award_role_level_update',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'UPDATE',qual:'8868c5bc470186e1b41c27776e90fd3e',with_check:'8868c5bc470186e1b41c27776e90fd3e'},
+   {schemaname:'public',tablename:'reward_senior_evidence',policyname:'reward_senior_evidence_role_level_insert',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'8868c5bc470186e1b41c27776e90fd3e'},
+   {schemaname:'public',tablename:'reward_senior_evidence',policyname:'reward_senior_evidence_role_level_read',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'ad6fe465015b65b7e97e25dc80363599',with_check:null},
+   {schemaname:'public',tablename:'reward_setup_grant',policyname:'reward_setup_grant_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'SELECT',qual:'194cbd7d3fd11cfc049653fe38684a49',with_check:null},
+   {schemaname:'public',tablename:'reward_snapshot_comp_movement',policyname:'reward_config_snapshot_pay_change',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'SELECT',qual:'43dace533fb958e7731144fd5d2a99ee',with_check:null},
+   {schemaname:'public',tablename:'reward_unit_limit_pin',policyname:'reward_unit_limit_pin_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'59492f3697ba1af7263dfebcdb7c1b78',with_check:'59492f3697ba1af7263dfebcdb7c1b78'},
+   {schemaname:'public',tablename:'reward_unit_limit_pin',policyname:'reward_unit_limit_pin_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'f793da3071cf53b7718d88009b667c30',with_check:null},
+   {schemaname:'public',tablename:'reward_unit_setup',policyname:'reward_unit_setup_pat_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'f11a21eee98956088c3be9e2f59ebb19',with_check:'f11a21eee98956088c3be9e2f59ebb19'},
+   {schemaname:'public',tablename:'reward_uploaded_award',policyname:'reward_uploaded_award_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'SELECT',qual:'4094f5ce20f217ddbff264f02f20fd45',with_check:null},
+  ];
+  const boardRetiredPolicies=[
+   {schemaname:'public',tablename:'reward_pat_version',policyname:'reward_pat_check',permissive:'PERMISSIVE',roles:'{public}',cmd:'UPDATE',qual:'c66ab0b91608107f679757a4c4f058a5',with_check:'48c95b77271b4a3fb728d587ca687b6e'},
+  ];
+  const samePolicy=(a:Record<string,unknown>,b:Record<string,unknown>)=>a.schemaname===b.schemaname&&a.tablename===b.tablename&&a.policyname===b.policyname;
+  const isBoardPolicy=(row:(typeof afterPerformancePrivileges.policies)[number])=>boardPolicies.some(policy=>samePolicy(policy,row));
+  const isBoardRetiredPolicy=(row:(typeof afterPerformancePrivileges.policies)[number])=>boardRetiredPolicies.some(policy=>samePolicy(policy,row));
+  expect(Object.fromEntries(afterPerformancePrivileges.relations.filter(row=>Object.hasOwn(boardRelations,row.rel)).map(row=>[row.rel,{rls:row.rls,force:row.force,acl:ownerAcl(row.acl)}]))).toEqual(boardRelations);
+  for(const rel of Object.keys(boardRelations))expect(beforePerformancePrivileges.relations.some(row=>row.rel===rel),rel).toBe(false);
+  expect(afterPerformancePrivileges.columns.filter(row=>Object.hasOwn(boardRelations,row.rel))).toEqual([]);
+  expect(afterPerformancePrivileges.policies.filter(isBoardPolicy).map(boardPolicyRow)).toEqual(boardPolicies);
+  expect(beforePerformancePrivileges.policies.filter(isBoardPolicy)).toEqual([]);
+  expect(beforePerformancePrivileges.policies.filter(isBoardRetiredPolicy).map(boardPolicyRow)).toEqual(boardRetiredPolicies);
+  expect(afterPerformancePrivileges.policies.filter(isBoardRetiredPolicy)).toEqual([]);
+  const terminalComparable={
+   relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==receiptTable&&!sealTables.includes(row.rel)&&!isCombinedRelation(row.rel)&&!Object.hasOwn(boardRelations,row.rel)).map(row=>
     row.rel===clockTable?{...row,acl:beforeClockTable?.acl}:row),
    columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable&&row.rel!==clockTable&&!isCombinedRelation(row.rel)),
    functions:afterPerformancePrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
-   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isLanePolicy(row)).map(row=>
+   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isBoardPolicy(row)&&!isLanePolicy(row)).map(row=>
     isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:
      isAssignmentPolicy(row)?{...row,qual:expectedAssignmentQuals[0]}:row),
-  }).toEqual({...beforePerformancePrivileges,policies:beforePerformancePrivileges.policies.filter(row=>!isLanePolicy(row))});
+  };
+  expect(terminalComparable).toEqual({...beforePerformancePrivileges,policies:beforePerformancePrivileges.policies.filter(row=>!isBoardRetiredPolicy(row)&&!isLanePolicy(row))});
   const complete=await ledger();expect(complete).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);expect(complete.slice(0,671)).toEqual(afterLedger);
   expect(complete.slice(0,performanceStart)).toEqual(beforePerformanceLedger);
   expect(complete.slice(671).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(APPROVED_UPGRADE_TAIL.map(entry=>({hash:hash(readFileSync('db/migrations/'+entry.tag+'.sql')),created_at:String(entry.when)})));
@@ -615,8 +756,12 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'reward_pat_version', 'reward_plan_company', 'reward_setup_grant',
   ];
   const expansionNames = new Set(expansionRelations.map(rel => rel + '_company_tenant_fk'));
+  // 5640 (board release gate repair, 13 November 2026) adds the same validated NO ACTION key to 5460's lc_v9_email_hold.
+  const boardReleaseKeys = [{ rel: 'lc_v9_email_hold', conname: 'lc_v9_email_hold_company_tenant_fk', convalidated: true, action: 'a' }];
+  const boardReleaseNames = new Set(boardReleaseKeys.map(row => row.conname));
   const completeKeys = await keys();
-  expect(completeKeys.filter(row => !expansionNames.has(row.conname))).toEqual(installed);
+  expect(completeKeys.filter(row => boardReleaseNames.has(row.conname))).toEqual(boardReleaseKeys);
+  expect(completeKeys.filter(row => !expansionNames.has(row.conname) && !boardReleaseNames.has(row.conname))).toEqual(installed);
   expect(completeKeys.filter(row => expansionNames.has(row.conname))).toEqual(expansionRelations.map(rel => ({
    rel, conname: rel + '_company_tenant_fk', convalidated: true, action: 'a',
   })));

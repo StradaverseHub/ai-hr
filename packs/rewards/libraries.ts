@@ -3,23 +3,30 @@ import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../../db/client';
-import {setupPersonTx,setupAuthority,setupTenant,setupAuditedReadTenant,setupReadTenant,setupLock,setupEvent} from './setup-data';
+import {setupPersonTx,configAuthority,configLibraryView,configPageAuthority,setupTenant,setupAuditedReadTenant,setupReadTenant,setupLock,setupEvent} from './setup-data';
 import {validateRewardLibrary,gradeCodeForLibrary,setupUuid,setupYear,setupReason,RewardSetupError,type RewardLibrary,type LibraryCandidate} from './setup-model';
 export type {RewardLibraryVersion} from './setup-query-owner';
 import {libraryVersionQueryTx,rewardLibrariesQueryTx,rewardPlanLibraryChoicesQueryTx,type RewardLibraryVersion} from './setup-query-owner';
+import {configRewardSetupQueryPort} from './setup-config-query-port';
 import {legacyRewardSetupQueryPort} from './setup-legacy-query-port';
+import {assertRewardConfigReviewed,recordRewardConfigChangeTx,rewardConfigLines,rewardConfigMoney,rewardConfigMonths,rewardConfigSummary,rewardConfigSummaryDigest} from './config-change';
 /** Descriptive page access only: protected reads and every command re-admit authority.
  * The native manage predicate returns false for denial; database failures propagate
  * instead of continuing an aborted snapshot or masquerading as a permission answer. */
-export function rewardLibraryPageAccess(ctx:SessionContext){
+export function rewardLibraryPageAccess(ctx:SessionContext,kind?:'salary'|'bonus'){
  return setupReadTenant(ctx,async tx=>{
-  await setupAuthority(tx,null,'library_view');
-  const [row]=await tx.execute<{allowed:boolean}>(sql`select app.reward_setup_allowed(null::uuid,'manage') as allowed`);
+  await configLibraryView(tx);
+  // Board db14e49c + 60f1fdcd: the configuration editor (Group Rewards, CTRO, group-wide HR Admin) and the Salary
+  // Structures / Bonus Matrices row together (View only reads, Full also edits). app.reward_config_page_allowed (5600).
+  const [row]=await tx.execute<{view:boolean;allowed:boolean}>(kind
+   ?sql`select app.reward_config_page_allowed(null::uuid,${kind+'.view'},'library_view') as view,app.reward_config_page_allowed(null::uuid,${kind+'.view'},'manage') as allowed`
+   :sql`select true as view,app.reward_config_editor(null::uuid) as allowed`);
+  if(!row?.view)throw new RewardSetupError('forbidden','This Rewards configuration is not available to you.');
   return {canManage:row?.allowed===true};
  });
 }
-export async function libraryVersionTx(tx:Tx,ctx:SessionContext,id:string,requireConfirmed=false):Promise<RewardLibraryVersion>{return libraryVersionQueryTx(tx,ctx,id,requireConfirmed,legacyRewardSetupQueryPort);}
-async function checkGradeIds(tx:Tx,_ctx:SessionContext,data:RewardLibrary){const grades=await tx.execute<{id:string;code:string}>(sql`select id,code from app.reward_setup_grade_choices()`);for(const g of data.rows)if(!grades.some(row=>row.id===g.gradeId&&gradeCodeForLibrary(row.code)===g.grade))throw new RewardSetupError('invalid','A library grade must match the active Grade Ladder identity.');}
+export async function libraryVersionTx(tx:Tx,ctx:SessionContext,id:string,requireConfirmed=false):Promise<RewardLibraryVersion>{return libraryVersionQueryTx(tx,ctx,id,requireConfirmed,configRewardSetupQueryPort);}
+async function checkGradeIds(tx:Tx,_ctx:SessionContext,data:RewardLibrary){const grades=await tx.execute<{id:string;code:string}>(sql`select id,code from app.reward_config_grade_choices()`);for(const g of data.rows)if(!grades.some(row=>row.id===g.gradeId&&gradeCodeForLibrary(row.code)===g.grade))throw new RewardSetupError('invalid','A library grade must match the active Grade Ladder identity.');}
 function auditedLibraryRead<T>(ctx:SessionContext,kind:'salary'|'bonus'|undefined,year:number|undefined,read:(tx:Tx)=>Promise<T>){
  if(year!==undefined)setupYear.parse(year);
  return setupAuditedReadTenant(ctx,async tx=>{
@@ -29,28 +36,74 @@ function auditedLibraryRead<T>(ctx:SessionContext,kind:'salary'|'bonus'|undefine
  });
 }
 export function rewardLibraries(ctx:SessionContext,kind?:'salary'|'bonus',year?:number){
- return auditedLibraryRead(ctx,kind,year,tx=>rewardLibrariesQueryTx(tx,ctx,kind,year,legacyRewardSetupQueryPort));
+ return auditedLibraryRead(ctx,kind,year,tx=>rewardLibrariesQueryTx(tx,ctx,kind,year,configRewardSetupQueryPort));
 }
 /** Plans keeps its existing committed view event for the narrower selector. */
 export function rewardPlanLibraryChoices(ctx:SessionContext,year:number){
  return auditedLibraryRead(ctx,undefined,year,tx=>rewardPlanLibraryChoicesQueryTx(tx,ctx,year,legacyRewardSetupQueryPort));
 }
-export function saveRewardLibrary(ctx:SessionContext,raw:unknown){const p=z.object({libraryId:setupUuid.nullable(),versionId:setupUuid.nullable(),expectedLock:z.number().int().nonnegative(),name:z.string().trim().min(1).max(100),year:setupYear,tags:z.array(z.string().trim().min(1).max(80)).max(20),groupDefault:z.boolean(),previousLibraryId:setupUuid.nullable(),sourcePolicyVersionId:setupUuid.nullable().optional(),data:z.unknown(),reason:setupReason}).strict().parse(raw);const data=validateRewardLibrary(p.data);return setupTenant(ctx,async tx=>{await setupAuthority(tx,null,'manage');await setupPersonTx(tx);await setupLock(tx,ctx,'library');await checkGradeIds(tx,ctx,data);let libraryId=p.libraryId;
+const librarySaveSchema=z.object({libraryId:setupUuid.nullable(),versionId:setupUuid.nullable(),expectedLock:z.number().int().nonnegative(),name:z.string().trim().min(1).max(100),year:setupYear,tags:z.array(z.string().trim().min(1).max(80)).max(20),groupDefault:z.boolean(),previousLibraryId:setupUuid.nullable(),sourcePolicyVersionId:setupUuid.nullable().optional(),data:z.unknown(),reason:setupReason,
+ /** Board 60f1fdcd: 'active' saves and makes the version active in one command; 'draft' (default) keeps work in progress. */
+ mode:z.enum(['draft','active']).default('draft'),summaryDigest:z.string().nullable().optional(),restoredFrom:setupUuid.nullable().optional()}).strict();
+const libraryCellLabel=(key:string)=>{const [grade,field]=key.split(':');return grade==='segment'?`Segment ${field}`:`JG ${grade} ${field}`;};
+/** Display values for every library cell, so a summary can list what changed. */
+function libraryCells(data:RewardLibrary|null):Record<string,string|null>|null{
+ if(!data)return null;
+ if(data.kind==='salary')return Object.fromEntries(data.rows.flatMap(r=>[[`${r.grade}:Minimum`,rewardConfigMoney(r.minimumCents)],[`${r.grade}:Midpoint`,rewardConfigMoney(r.midpointCents)],[`${r.grade}:Maximum`,rewardConfigMoney(r.maximumCents)]]));
+ const columns=['UA','BE','ME','AE','OU'];
+ return Object.fromEntries([['type:Type',data.type],...data.rows.flatMap(r=>r.months.map((m,i)=>[`${r.grade}:${columns[i]}`,rewardConfigMonths(m)])),...data.segments.flatMap(seg=>seg.factors.map((f,i)=>[`segment:${seg.name} ${columns[i]}`,rewardConfigMonths(f)]))]);
+}
+/** The change summary for saving `data` as the library's next active version: cells against the current active
+ * version, and the reviews already released with an earlier version (they keep it). */
+async function librarySummaryTx(tx:Tx,ctx:SessionContext,libraryId:string|null,label:string,data:RewardLibrary,mode:'draft'|'active'){
+ const [active]=libraryId?await tx.execute<{data:RewardLibrary}>(sql`select data from reward_library_version where tenant_id=${ctx.tenantId}::uuid and library_id=${libraryId}::uuid and state='confirmed' order by revision desc limit 1`):[];
+ const affected=libraryId&&mode==='active'?await tx.execute<{reviewId:string;label:string;stage:string}>(sql`select u.id as "reviewId",coalesce(c.legal_name,'Review')||' '||coalesce(u.policy->>'year','') as label,u.status as stage
+  from reward_unit_setup s join reward_unit u on u.id=s.unit_id and u.tenant_id=s.tenant_id and u.deleted_at is null left join company c on c.id=u.company_id and c.tenant_id=u.tenant_id
+  join reward_library_version v on v.tenant_id=s.tenant_id and (v.id=s.salary_version_id or v.id=s.bonus_version_id)
+  where s.tenant_id=${ctx.tenantId}::uuid and v.library_id=${libraryId}::uuid and u.status<>'draft' order by 2,1 limit 201`):[];
+ return rewardConfigSummary({area:data.kind,itemLabel:label,lines:rewardConfigLines(libraryCells(active?.data??null),libraryCells(data)!,libraryCellLabel),
+  affected:affected.map(a=>({...a,consequence:'keeps-version' as const})),highImpact:affected.length?['released-library']:[]});
+}
+/** Read-only preview for "Review before saving": the same summary the save recomputes. */
+export function previewRewardLibrarySave(ctx:SessionContext,raw:unknown){const p=librarySaveSchema.parse(raw);const data=validateRewardLibrary(p.data);return setupReadTenant(ctx,async tx=>{await configPageAuthority(tx,data.kind==='salary'?'salary.view':'bonus.view',null,'manage');const summary=await librarySummaryTx(tx,ctx,p.libraryId,`${p.name} ${p.year}`,data,p.mode);return{summary,digest:rewardConfigSummaryDigest(summary)};});}
+export function saveRewardLibrary(ctx:SessionContext,raw:unknown){const p=librarySaveSchema.parse(raw);const data=validateRewardLibrary(p.data);return setupTenant(ctx,async tx=>{await configPageAuthority(tx,data.kind==='salary'?'salary.view':'bonus.view',null,'manage');await setupPersonTx(tx);await setupLock(tx,ctx,'library');await checkGradeIds(tx,ctx,data);let libraryId=p.libraryId;
+ const summary=await librarySummaryTx(tx,ctx,libraryId,`${p.name} ${p.year}`,data,p.mode);const reason=assertRewardConfigReviewed(summary,{reason:p.reason,digest:p.summaryDigest});
  if(!libraryId){if(p.sourcePolicyVersionId){if(p.previousLibraryId)throw new RewardSetupError('invalid','Choose one source for the new library.');const {setupPolicySourceTx}=await import('./plan-configuration'),source=await setupPolicySourceTx(tx,p.sourcePolicyVersionId);if(source.policy.year>p.year)throw new RewardSetupError('invalid','Choose a shared source from this year or an earlier year.');}if(p.previousLibraryId){const [prior]=await tx.execute<{kind:string;year:number}>(sql`select kind,year from reward_library where tenant_id=${ctx.tenantId}::uuid and id=${p.previousLibraryId}::uuid`);if(!prior||prior.kind!==data.kind||prior.year>p.year)throw new RewardSetupError('invalid','Choose a prior library of the same kind.');}libraryId=randomUUID();await tx.execute(sql`insert into reward_library(id,tenant_id,kind,name,year,tags,group_default,previous_library_id,source_policy_version_id,created_by) values(${libraryId}::uuid,${ctx.tenantId}::uuid,${data.kind},${p.name},${p.year},ARRAY[${sql.join(p.tags.map(tag=>sql`${tag}`),sql`, `)}]::text[],${p.groupDefault},${p.previousLibraryId}::uuid,${p.sourcePolicyVersionId??null}::uuid,${ctx.userId}::uuid)`);}
  else{const[r]=await tx.execute<{kind:string;name:string;year:number}>(sql`select kind,name,year from reward_library where id=${libraryId}::uuid and tenant_id=${ctx.tenantId}::uuid`);if(!r||r.kind!==data.kind||r.name!==p.name||r.year!==p.year)throw new RewardSetupError('invalid','Existing library identity is fixed; duplicate it to change its name or year.');}
- if(p.versionId){const prior=await libraryVersionTx(tx,ctx,p.versionId);if(prior.libraryId!==libraryId||prior.state!=='draft'||prior.lockVersion!==p.expectedLock)throw new RewardSetupError('changed','Reopen the current draft before saving.');await tx.execute(sql`update reward_library_version set data=${JSON.stringify(data)}::jsonb,reason=${p.reason},lock_version=lock_version+1,updated_at=now() where id=${p.versionId}::uuid and tenant_id=${ctx.tenantId}::uuid`);await setupEvent(tx,ctx,'library.saved',p.versionId,{libraryId});return p.versionId;}
- const id=randomUUID();await tx.execute(sql`insert into reward_library_version(id,tenant_id,library_id,revision,data,state,created_by,contributor_ids,reason) select ${id}::uuid,${ctx.tenantId}::uuid,${libraryId}::uuid,coalesce(max(revision),0)+1,${JSON.stringify(data)}::jsonb,'draft',${ctx.userId}::uuid,array[${ctx.userId}::uuid],${p.reason} from reward_library_version where tenant_id=${ctx.tenantId}::uuid and library_id=${libraryId}::uuid`);await setupEvent(tx,ctx,'library.created',id,{libraryId,sourcePolicyVersionId:p.sourcePolicyVersionId??null});return id;
+ let id:string;
+ // A legacy pending version is a draft now: anyone with the authority may continue it.
+ if(p.versionId){const prior=await libraryVersionTx(tx,ctx,p.versionId);if(prior.libraryId!==libraryId||(prior.state!=='draft'&&prior.state!=='pending')||prior.lockVersion!==p.expectedLock)throw new RewardSetupError('changed','Reopen the current draft before saving.');await tx.execute(sql`update reward_library_version set data=${JSON.stringify(data)}::jsonb,reason=${reason},state='draft',lock_version=lock_version+1,updated_at=now() where id=${p.versionId}::uuid and tenant_id=${ctx.tenantId}::uuid`);await setupEvent(tx,ctx,'library.saved',p.versionId,{libraryId});id=p.versionId;}
+ else{id=randomUUID();await tx.execute(sql`insert into reward_library_version(id,tenant_id,library_id,revision,data,state,created_by,contributor_ids,reason) select ${id}::uuid,${ctx.tenantId}::uuid,${libraryId}::uuid,coalesce(max(revision),0)+1,${JSON.stringify(data)}::jsonb,'draft',${ctx.userId}::uuid,array[${ctx.userId}::uuid],${reason} from reward_library_version where tenant_id=${ctx.tenantId}::uuid and library_id=${libraryId}::uuid`);await setupEvent(tx,ctx,'library.created',id,{libraryId,sourcePolicyVersionId:p.sourcePolicyVersionId??null});}
+ if(p.mode==='active')await activateLibraryVersionTx(tx,ctx,id);
+ const [version]=await tx.execute<{revision:number}>(sql`select revision from reward_library_version where id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+ await recordRewardConfigChangeTx(tx,ctx,{area:data.kind,action:p.restoredFrom?'restored':p.mode==='active'?'activated':'saved-draft',itemId:libraryId,itemLabel:`${p.name} ${p.year}`,companyIds:[],versionRef:String(version?.revision??''),reason,summary,restoredFrom:p.restoredFrom??null});
+ return id;
  });}
-export function submitRewardLibrary(ctx:SessionContext,id:string,expectedLock:number){setupUuid.parse(id);return setupTenant(ctx,async tx=>{await setupAuthority(tx,null,'manage');await setupPersonTx(tx);await setupLock(tx,ctx,'library');const v=await libraryVersionTx(tx,ctx,id);if(v.state!=='draft'||v.lockVersion!==expectedLock)throw new RewardSetupError('changed','Reopen the current draft.');validateRewardLibrary(v.data);await checkGradeIds(tx,ctx,v.data);await tx.execute(sql`update reward_library_version set state='pending',lock_version=lock_version+1,updated_at=now() where id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid`);await setupEvent(tx,ctx,'library.submitted',id,{libraryId:v.libraryId});});}
-export function confirmRewardLibrary(ctx:SessionContext,id:string,expectedLock:number){setupUuid.parse(id);return setupTenant(ctx,async tx=>{await setupAuthority(tx,null,'manage');await setupPersonTx(tx);await setupLock(tx,ctx,'library');const v=await libraryVersionTx(tx,ctx,id);if(v.state!=='pending'||v.lockVersion!==expectedLock)throw new RewardSetupError('changed','Reopen the current pending version.');if(v.contributors.includes(ctx.userId!)||(v.contributorPersonIds??[]).includes(await setupPersonTx(tx)))throw new RewardSetupError('independent','A different Group Rewards user must confirm this version.');validateRewardLibrary(v.data);await checkGradeIds(tx,ctx,v.data);await tx.execute(sql`update reward_library_version set state='confirmed',confirmed_by=${ctx.userId}::uuid,confirmed_at=now(),lock_version=lock_version+1,updated_at=now() where id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid`);await setupEvent(tx,ctx,'library.confirmed',id,{libraryId:v.libraryId,version:v.version});});}
+async function activateLibraryVersionTx(tx:Tx,ctx:SessionContext,id:string){const v=await libraryVersionTx(tx,ctx,id);if(v.state==='confirmed')throw new RewardSetupError('changed','This version is already active.');validateRewardLibrary(v.data);await checkGradeIds(tx,ctx,v.data);await tx.execute(sql`update reward_library_version set state='confirmed',confirmed_by=${ctx.userId}::uuid,confirmed_at=now(),lock_version=lock_version+1,updated_at=now() where id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid and state in('draft','pending')`);await setupEvent(tx,ctx,'library.confirmed',id,{libraryId:v.libraryId,version:v.version});return v;}
+/** Legacy two-step commands kept for existing callers: submit leaves a draft for work in progress and confirm makes
+ * it active. Neither requires a second person (board 60f1fdcd). */
+export function submitRewardLibrary(ctx:SessionContext,id:string,expectedLock:number){setupUuid.parse(id);return setupTenant(ctx,async tx=>{await configAuthority(tx,null);await setupPersonTx(tx);await setupLock(tx,ctx,'library');const v=await libraryVersionTx(tx,ctx,id);if(v.state!=='draft'||v.lockVersion!==expectedLock)throw new RewardSetupError('changed','Reopen the current draft.');validateRewardLibrary(v.data);await checkGradeIds(tx,ctx,v.data);await tx.execute(sql`update reward_library_version set state='pending',lock_version=lock_version+1,updated_at=now() where id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid`);await setupEvent(tx,ctx,'library.submitted',id,{libraryId:v.libraryId});});}
+/** Make a saved draft (or legacy pending) version active in one step. */
+export function activateRewardLibrary(ctx:SessionContext,id:string,expectedLock:number,reason?:string,summaryDigest?:string|null){setupUuid.parse(id);return setupTenant(ctx,async tx=>{await configAuthority(tx,null);await setupPersonTx(tx);await setupLock(tx,ctx,'library');const v=await libraryVersionTx(tx,ctx,id);if((v.state!=='pending'&&v.state!=='draft')||v.lockVersion!==expectedLock)throw new RewardSetupError('changed','Reopen the current draft.');
+ const summary=await librarySummaryTx(tx,ctx,v.libraryId,`${v.name} ${v.year}`,v.data,'active');const why=assertRewardConfigReviewed(summary,{reason:reason??v.reason.slice(0,4000),digest:summaryDigest});
+ await activateLibraryVersionTx(tx,ctx,id);
+ await recordRewardConfigChangeTx(tx,ctx,{area:v.kind,action:'activated',itemId:v.libraryId,itemLabel:`${v.name} ${v.year}`,companyIds:[],versionRef:String(v.version),reason:why,summary});});}
+export function confirmRewardLibrary(ctx:SessionContext,id:string,expectedLock:number){return activateRewardLibrary(ctx,id,expectedLock);}
+/** Read-only preview for activating a saved version. */
+export function previewRewardLibraryActivation(ctx:SessionContext,id:string){setupUuid.parse(id);return setupReadTenant(ctx,async tx=>{await configAuthority(tx,null);const v=await libraryVersionTx(tx,ctx,id);const summary=await librarySummaryTx(tx,ctx,v.libraryId,`${v.name} ${v.year}`,v.data,'active');return{summary,digest:rewardConfigSummaryDigest(summary)};});}
+/** Restore: an earlier version's values become a new version (draft or active). The old version is never changed and
+ * reviews that consumed it keep it (ADR-0137 lineage). */
+export function restoreRewardLibraryVersion(ctx:SessionContext,raw:unknown){const p=z.object({versionId:setupUuid,mode:z.enum(['draft','active']),reason:setupReason,summaryDigest:z.string().nullable().optional()}).strict().parse(raw);
+ return setupReadTenant(ctx,async tx=>{const old=await libraryVersionTx(tx,ctx,p.versionId);const [working]=await tx.execute<{id:string;lockVersion:number}>(sql`select id,lock_version as "lockVersion" from reward_library_version where tenant_id=${ctx.tenantId}::uuid and library_id=${old.libraryId}::uuid and state<>'confirmed' limit 1`);return{old,working:working??null};})
+  .then(({old,working})=>saveRewardLibrary(ctx,{libraryId:old.libraryId,versionId:working?.id??null,expectedLock:working?.lockVersion??0,name:old.name,year:old.year,tags:old.tags,groupDefault:old.groupDefault,previousLibraryId:null,data:old.data,reason:p.reason,mode:p.mode,summaryDigest:p.summaryDigest??null,restoredFrom:old.id}));}
 export function libraryCandidates(rows:readonly RewardLibraryVersion[]):LibraryCandidate[]{return rows.filter(r=>r.state==='confirmed').map(r=>({id:r.id,libraryId:r.libraryId,name:r.name,year:r.year,version:r.version,kind:r.kind,tags:r.tags,groupDefault:r.groupDefault,previousLibraryId:r.previousLibraryId,...(r.data.kind==='bonus'?{type:r.data.type}:{})}));}
 export function rewardLibraryForExport(ctx:SessionContext,id:string){return setupAuditedReadTenant(ctx,async tx=>{const v=await libraryVersionTx(tx,ctx,id);await setupEvent(tx,ctx,'library.exported',id,{libraryId:v.libraryId,version:v.version});return v;});}
-export function rewardLibraryGradeChoices(ctx:SessionContext){return setupReadTenant(ctx,async tx=>{await setupAuthority(tx,null,'library_view');const rows=await tx.execute<{id:string;code:string;name:string}>(sql`select * from app.reward_setup_grade_choices()`);return rows.map(r=>({gradeId:r.id,grade:gradeCodeForLibrary(r.code),name:r.name}));});}
+export function rewardLibraryGradeChoices(ctx:SessionContext){return setupReadTenant(ctx,async tx=>{await configLibraryView(tx);const rows=await tx.execute<{id:string;code:string;name:string}>(sql`select * from app.reward_config_grade_choices()`);return rows.map(r=>({gradeId:r.id,grade:gradeCodeForLibrary(r.code),name:r.name}));});}
 
 export function rewardLibraryHistory(ctx:SessionContext,id:string){
  setupUuid.parse(id);
  return setupReadTenant(ctx,async tx=>{
-  await setupAuthority(tx,null,'library_view');
+  await configLibraryView(tx);
   return [...await tx.execute<{lockVersion:number;actorId:string;occurredAt:string;reason:string;beforeState:string|null;afterState:string;before:RewardLibrary|null;after:RewardLibrary}>(sql`select lock_version as "lockVersion",actor_id as "actorId",occurred_at::text as "occurredAt",reason,before_state as "beforeState",after_state as "afterState",before_values as "before",after_values as "after" from reward_library_revision_audit where version_id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid order by lock_version desc`)];
  });
 }

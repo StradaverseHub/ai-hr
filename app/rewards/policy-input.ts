@@ -45,10 +45,12 @@ export function rewardPolicyFromForm(f:FormData,p:RewardPolicy,options:{context?
     const branchRatings = shared?{}:f.has('branchRatings')?Object.fromEntries(lines(str(f, 'branchRatings'), 2)):p.branchRatings;
     return policySchema.parse({ ...p,...eligibility, effectiveFrom: str(f, 'effectiveFrom'), joinedBefore: str(f, 'joinedBefore'), confirmedBy: str(f, 'confirmedBy'), blockedFrom: str(f, 'blockedFrom'), blockedTo: str(f, 'blockedTo'),
       patActual: shared?0:f.has('patActual')?scaled(f,'patActual'):p.patActual, patTarget:shared?100:f.has('patTarget')?scaled(f,'patTarget'):p.patTarget, targetMonthsBp:shared?0:f.has('targetMonths')?scaled(f,'targetMonths',10000):p.targetMonthsBp, multiplierBp:shared?null:f.has('multiplier')?scaled(f,'multiplier',10000):p.multiplierBp,
-      standardPools: [0, 1, 2].map(i => Math.round(number(f, `standard.${i}`) * 100)), hPools: [0, 1, 2].map(i => Math.round(number(f, `h.${i}`) * 100)),
+      // Board fc804e8c: a shared configuration no longer carries the limits block; its stored values are kept unchanged
+      // and the reviews use Limit Controls for the reward year.
+      standardPools: f.has('standard.0') ? [0, 1, 2].map(i => Math.round(number(f, `standard.${i}`) * 100)) : p.standardPools, hPools: f.has('h.0') ? [0, 1, 2].map(i => Math.round(number(f, `h.${i}`) * 100)) : p.hPools,
       meritMatrix, ranges:options.libraryOwned?p.ranges:matrix(gridRows.ranges,'ranges'),bonusMatrix:options.libraryOwned?p.bonusMatrix:matrix(gridRows.bonusMatrix,'bonusMatrix'), bonusStructure: options.libraryOwned?p.bonusStructure:str(f, 'bonusStructure'),
       branchFactors:options.libraryOwned?p.branchFactors:matrix(gridRows.branchFactors,'branchFactors'), branchRatings,
       seniorGrades: p.seniorGrades,
-      lumpStepCents: scaled(f, 'lumpStep'), lumpShareBp: scaled(f, 'lumpShare'), lumpCapCents: scaled(f, 'lumpCap'), exemptReason: shared?'':f.has('exemptReason')?str(f,'exemptReason'):p.exemptReason,
+      lumpStepCents: f.has('lumpStep') ? scaled(f, 'lumpStep') : p.lumpStepCents, lumpShareBp: f.has('lumpShare') ? scaled(f, 'lumpShare') : p.lumpShareBp, lumpCapCents: f.has('lumpCap') ? scaled(f, 'lumpCap') : p.lumpCapCents, exemptReason: shared?'':f.has('exemptReason')?str(f,'exemptReason'):p.exemptReason,
     });
  }

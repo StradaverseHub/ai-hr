@@ -7,7 +7,7 @@ import { opaque } from './crypto';
 import { INTERNAL_EMAIL_STATE_KEY } from './active-relay';
 import { sendSmtp, type Relay, type Mail, type MailTransport } from './smtp';
 import type {StoredEmailRelay} from '../identity/email-relay';
-import {bindLifecycleEmailConnection,publicLifecycleSenders,publicEmailConnections,saveEmailConnection,testedEmailConnection,activateEmailConnection,type ConnectionState} from './email-connections';
+import {bindLifecycleEmailConnection,nameLifecycleSender,publicLifecycleSenders,publicEmailConnections,saveEmailConnection,testedEmailConnection,activateEmailConnection,type ConnectionState} from './email-connections';
 export { sendSmtp } from './smtp';
 export type { Relay, Mail, MailTransport } from './smtp';
 
@@ -42,6 +42,13 @@ export async function internalEmailRequest<T>(request: EmailSettingsRequest, tra
         revision: request.connectionId?state.connectionsRevision??state.revision:state.revision, draft: selected?{id:selected.version,config:selected.config,hasPassword:Boolean(selected.password),testedAt:selected.testedAt&&selected.testedBy===identity.subject&&selected.testedAgainstRevision===state.revision&&(selected.testedAgainstLifecycleRevision??'initial')===(state.lifecycleRevision??'initial')?new Date(selected.testedAt).toISOString():null}:request.connectionId?null:draft ? { id: draft.id, config: draft.config, hasPassword: Boolean(draft.password), testedAt: draft.testedAt ? new Date(draft.testedAt).toISOString() : null } : null,
         testRecipient: identity.email } satisfies EmailSettingsView as T;
     }
+    if(request.op==='lifecycleSenderName'){
+      // Tenant-scoped by the verified session, never by a posted identifier. The address is unchanged.
+      const name=nameLifecycleSender(state,ctx.tenantId,request.name,identity.subject);
+      await writeRecord(tx,STATE,state,null);
+      await tx.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,'identity-email.lifecycle-sender-named','user',$2::uuid,$3::jsonb)",[ctx.tenantId,ctx.userId!,JSON.stringify({name})]);
+      return {ok:true} as T;
+    }
     if(request.op==='save'&&request.connectionName!==undefined){
       const connection=saveEmailConnection(state,{id:request.connectionId,name:request.connectionName,revision:request.revision,config:emailConfigSchema.parse(request.config),password:request.password});
       await writeRecord(tx,STATE,state,null);
@@ -59,7 +66,7 @@ export async function internalEmailRequest<T>(request: EmailSettingsRequest, tra
           return {failed:true} as T;
         }
         connection.testedAt=Date.now();connection.testedBy=identity.subject;connection.testedAgainstRevision=state.revision;connection.testedAgainstLifecycleRevision=state.lifecycleRevision??'initial';
-      }else if(request.lifecycleSender)bindLifecycleEmailConnection(state,ctx.tenantId,request.lifecycleSender,connection.id,request.draftId,identity.subject,request.received);
+      }else if(request.lifecycleSender)bindLifecycleEmailConnection(state,ctx.tenantId,connection.id,request.draftId,identity.subject,request.received);
       else activateEmailConnection(state,connection.id,request.draftId,identity.subject,request.received);
       await writeRecord(tx,STATE,state,null);
       await tx.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,$3,'user',$2::uuid,$4::jsonb)",[ctx.tenantId,ctx.userId!,request.op==='test'?'identity-email.test-accepted':request.lifecycleSender?'identity-email.lifecycle-sender-applied':'identity-email.applied',JSON.stringify({connectionId:connection.id,...(request.op==='apply'&&request.lifecycleSender?{profile:request.lifecycleSender}:{})})]);

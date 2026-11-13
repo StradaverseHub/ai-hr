@@ -26,8 +26,11 @@ it('inserts and removes the source inline-image token without exposing a public 
   render(<Harness/>); fireEvent.change(screen.getByLabelText('Add image'),{target:{files:[new File(['Fictional image'],'Fictional logo.png',{type:'image/png'})]}});
   await waitFor(()=>expect(current().images).toEqual([image]));
   expect(screen.getByRole('img',{name:image.name})).toHaveAttribute('src',`/lifecycle/v9/email-assets/${image.id}`);
-  await waitFor(()=>expect(screen.getByRole('button',{name:`Insert ${image.name}`})).toBeEnabled());
-  fireEvent.click(screen.getByRole('button',{name:`Insert ${image.name}`})); expect(current().body).toBe(`Dear colleague,\n\n{image:${image.id}}\n`);
+  // Board 6bdda222: images go in at the cursor through the rich editor; each needs alt text.
+  expect(screen.queryByRole('button',{name:`Insert ${image.name}`})).toBeNull();
+  fireEvent.change(screen.getByRole('textbox',{name:`Alt text for ${image.name}`}),{target:{value:'Fictional company logo'}});
+  expect(current().images?.[0].alt).toBe('Fictional company logo');
+  await waitFor(()=>expect(screen.getByRole('button',{name:`Remove image ${image.name}`})).toBeEnabled());
   fireEvent.click(screen.getByRole('button',{name:`Remove image ${image.name}`})); expect(current().images).toEqual([]); expect(current().body).not.toContain('{image:');
 });
 it('waits for saved settings and retains the existing content on an upload error', async () => {
