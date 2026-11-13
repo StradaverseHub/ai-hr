@@ -6,8 +6,8 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createAppUser,owner,closeAll,resetDb,migrateTestDb,seedBase,setModule,entitledCtx,type Base } from './harness';
-import { createPreparingRewardUnit as createApprovedRewardUnit } from './rewards-setup-fixture';
-import { initializeRewardGovernanceFixture,refreshRewardFixtureBudget } from './rewards-governance-fixture';
+import { createPreparingRewardUnit as createApprovedRewardUnit,createApprovedRewardUnit as createRetainedRewardUnit } from './rewards-setup-fixture';
+import { initializeRewardGovernanceFixture,refreshRewardFixtureBudget,changeRewardFixtureInputs } from './rewards-governance-fixture';
 import { setRewardMember } from './rewards-access-fixture';
 import { previewRewardPreparationRelease,getRewardUnit,getRewardUnitGovernance,refreshRewardSources,importRewardFacts,getRewardPreparationStatus,getRewardPreparationChecklist,changeRewardPreparation,saveRewardUnitInputs,decideRewardUnit,rewardPreparationNotices,rewardDashboard,getRewardDashboardPreference,saveRewardDashboardPreference,rewardAccessAdministration,previewRewardAccessChange,saveRewardAccessChange } from '../packs/rewards/service';
 import {rewardAccessPageCompanies,rewardAccessPageEntry,rewardNavigation} from '../packs/rewards/access-policy';
@@ -110,7 +110,7 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
 
  it('withholds every figure and set-up note until release, for reviewers and Group Rewards alike (4de410ed)',async()=>{
   const pending=await rewardDashboard(reviewer,[base.companyId],{scope:unitId});
-  expect(pending).toMatchObject({year:2026,figures:null,context:null,excluded:[],waiting:[],roles:[],businessUnits:[{id:buId,label:'PREP-BU'}]});
+  expect(pending).toMatchObject({year:2026,years:[2026],figures:null,context:null,excluded:[],waiting:[],roles:[],businessUnits:[{id:buId,label:'PREP-BU'}]});
   expect(pending.preparing).toEqual([{unitId,company:expect.any(String),expectedRelease:null}]);
   expect(pending.companies).toEqual([{id:base.companyId,label:expect.any(String),headcount:null,blocked:false,preparing:true}]);
   expect(await rewardPreparationNotices({...reviewer,userId:randomUUID(),personId:undefined})).toEqual([]);
@@ -126,7 +126,7 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
   await confirmAll();await change(checker,{kind:'release'});
   const native=await getRewardUnit(gr,unitId),dashboard=await rewardDashboard(gr,[base.companyId],{scope:unitId,period:'annual'});
   // The earlier single-review preference decodes to its Business unit; one company is All companies.
-  expect(dashboard.choice).toEqual({version:2,kind:'annual',period:'annual',businessUnit:buId,companies:[]});
+  expect(dashboard.choice).toEqual({version:2,kind:'annual',period:'annual',businessUnit:buId,companies:[],year:2026});expect(dashboard.years).toEqual([2026]);
   expect(dashboard.preparing).toEqual([]);expect(dashboard.excluded).toEqual([]);
   expect(dashboard.context).toEqual({businessUnit:'PREP-BU',companies:1,cycle:expect.any(String),cycleVaries:false,snapshot:snapshotDate,snapshotVaries:false});
   expect(dashboard.companies).toEqual([{id:base.companyId,label:expect.any(String),headcount:native.rows.length,blocked:native.flags.some(f=>f.severity==='block'),preparing:false}]);
@@ -149,6 +149,57 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
   expect(await getRewardDashboardPreference(gr)).toEqual({version:2,kind:'annual',period:'annual',businessUnit:buId,companies:[base.companyId]});
   expect(await getRewardDashboardPreference(reviewer)).toBeNull();
   await expect(saveRewardDashboardPreference(reviewer,[],{version:2,period:'annual'})).rejects.toThrow(/scope/);
+ });
+
+ it('scopes bars, company buttons and the context line to the picked review year; Waiting on you is not limited to it (81a7b286)',async()=>{
+  // An earlier, already released 2025 review of the same company and Business unit, with its own budget basis.
+  const earlierId=await createRetainedRewardUnit(gr,{name:'Earlier year fixture',year:2025,companyId:base.companyId,businessUnitId:buId,snapshotDate});
+  const earlierChecker=await initializeRewardGovernanceFixture(gr,earlierId);
+  await setRewardMember(gr,earlierId,(await getRewardUnit(gr,earlierId)).unit.revision,reviewer.userId!,'bu');
+  await refreshRewardSources(gr,earlierId,(await getRewardUnit(gr,earlierId)).unit.revision,snapshotDate);
+  for(const actor of [gr,earlierChecker]){
+   const current=await getRewardUnit(actor,earlierId),fresh=current.rows.filter(row=>!row.facts.reviewed);
+   if(fresh.length)await importRewardFacts(actor,earlierId,current.unit.revision,fresh.map(row=>({employmentId:row.source.employmentId,facts:{...row.facts,talent:'STAR' as const,performance:'ME' as const,reviewed:true}})));
+  }
+  await refreshRewardFixtureBudget(gr,earlierId);
+  const governance=await getRewardUnitGovernance(gr,earlierId),basis=(governance.inputs??governance.legacyInputs)!;
+  // The fixture PAT actual is zero, so its bonus pool is zero; the earlier year meets its PAT target and has a bonus pool.
+  await changeRewardFixtureInputs(gr,earlierId,{patActual:Math.max(basis.targetCents??0,100)});
+  await confirmAll();await change(checker,{kind:'release'});
+  const latest=await getRewardUnit(gr,unitId),earlier=await getRewardUnit(gr,earlierId);
+  // Company buttons count the rows this reviewer may see.
+  const seenLatest=await getRewardUnit(reviewer,unitId),seenEarlier=await getRewardUnit(reviewer,earlierId);
+  expect(earlier.budgets.standard.bonusPoolCents).not.toBe(latest.budgets.standard.bonusPoolCents);
+
+  const byDefault=await rewardDashboard(reviewer,[base.companyId],{version:2,period:'monthly',businessUnit:buId});
+  expect(byDefault).toMatchObject({year:2026,years:[2026,2025],choice:{year:2026}});
+  expect(byDefault.context).toMatchObject({cycle:'Preparation fixture',companies:1});
+  expect(byDefault.figures!.bonus.standard).toMatchObject({used:latest.budgets.standard.bonusUsedCents,pool:latest.budgets.standard.bonusPoolCents});
+  expect(byDefault.figures!.salary.standard.merit).toMatchObject({used:latest.budgets.standard.used[0],pool:latest.budgets.standard.pools[0]});
+  expect(byDefault.companies).toEqual([{id:base.companyId,label:expect.any(String),headcount:seenLatest.rows.length,blocked:seenLatest.flags.some(f=>f.severity==='block'),preparing:false}]);
+
+  const picked=await rewardDashboard(reviewer,[base.companyId],{version:2,period:'monthly',businessUnit:buId,year:2025});
+  expect(picked).toMatchObject({year:2025,years:[2026,2025],choice:{year:2025,businessUnit:buId,companies:[]}});
+  expect(picked.context).toMatchObject({cycle:'Earlier year fixture',companies:1,cycleVaries:false});
+  expect(picked.figures!.bonus.standard).toMatchObject({used:earlier.budgets.standard.bonusUsedCents,pool:earlier.budgets.standard.bonusPoolCents});
+  expect(picked.figures!.salary.standard.merit).toMatchObject({used:earlier.budgets.standard.used[0],pool:earlier.budgets.standard.pools[0]});
+  expect(picked.figures!.bonus.standard.pool).not.toBe(byDefault.figures!.bonus.standard.pool);
+  expect(picked.companies).toEqual([{id:base.companyId,label:expect.any(String),headcount:seenEarlier.rows.length,blocked:seenEarlier.flags.some(f=>f.severity==='block'),preparing:false}]);
+  // Waiting on you lists the same released reviews from every year whichever year is picked.
+  expect(picked.waiting).toEqual(byDefault.waiting);
+  expect(byDefault.waiting.every(row=>[unitId,earlierId].includes(row.id))).toBe(true);
+
+  // A year outside the viewer's reviews, or a malformed one, falls back to the latest and discloses nothing more.
+  for(const year of [2019,2027,'2025',2025.5]){
+   const fallback=await rewardDashboard(reviewer,[base.companyId],{version:2,period:'monthly',businessUnit:buId,year});
+   expect(fallback).toMatchObject({year:2026,years:[2026,2025],choice:{year:2026}});expect(fallback.figures).toEqual(byDefault.figures);expect(fallback.companies).toEqual(byDefault.companies);
+  }
+  // Outside company scope there are no years to pick, whatever year is asked for.
+  expect(await rewardDashboard(reviewer,[randomUUID()],{version:2,year:2025})).toMatchObject({years:[],figures:null,companies:[],waiting:[]});
+  // The picked year is saved with the rest of the choice for this login only.
+  await saveRewardDashboardPreference(reviewer,[base.companyId],{version:2,period:'monthly',businessUnit:buId,companies:[],year:2025});
+  expect(await getRewardDashboardPreference(reviewer)).toEqual({version:2,kind:'annual',period:'monthly',businessUnit:buId,companies:[],year:2025});
+  expect((await rewardDashboard(reviewer,[base.companyId],await getRewardDashboardPreference(reviewer))).figures).toEqual(picked.figures);
  });
 
  it('retains permitted BG aggregate contributions without returning a BG personal line',async()=>{

@@ -6,19 +6,20 @@ import {REWARD_DASHBOARD_ALL,toggleRewardDashboardCompany} from '@/packs/rewards
 import type {RewardDashboard} from '@/packs/rewards/service';
 import {saveDashboardAction} from './dashboard-actions';
 
-type Choice=Pick<RewardDashboard['choice'],'period'|'businessUnit'|'companies'>;
-const same=(a:Choice,b:Choice)=>a.period===b.period&&a.businessUnit===b.businessUnit&&a.companies.join()===b.companies.join();
+type Choice=Pick<RewardDashboard['choice'],'period'|'businessUnit'|'companies'|'year'>;
+const same=(a:Choice,b:Choice)=>a.period===b.period&&a.businessUnit===b.businessUnit&&a.companies.join()===b.companies.join()&&a.year===b.year;
 
 /**
- * 356ae8c1: choices apply straight away. Saves run one at a time in the order they were made, and the
+ * 356ae8c1: choices apply straight away. 81a7b286: the Review year picker appears only when more than one year is
+ * offered; with one year the context line already names its cycle. Saves run one at a time in the order they were made, and the
  * server's re-checked choice replaces the local one only when no later change is still being saved.
  */
 export function RewardsDashboardFilters({value,showPeriod}:{value:RewardDashboard;showPeriod:boolean}){
  const t=useTranslations('rewardDashboard'),r=useTranslations('rewards');
- const server:Choice={period:value.choice.period,businessUnit:value.choice.businessUnit,companies:value.choice.companies};
+ const server:Choice={period:value.choice.period,businessUnit:value.choice.businessUnit,companies:value.choice.companies,year:value.choice.year};
  const [choice,setChoice]=useState<Choice>(server),[failed,setFailed]=useState(false),[,startTransition]=useTransition();
  const queue=useRef<Promise<unknown>>(Promise.resolve()),pending=useRef(0);
- const serverKey=`${server.period}|${server.businessUnit}|${server.companies.join()}`;
+ const serverKey=`${server.period}|${server.businessUnit}|${server.companies.join()}|${server.year}`;
  // eslint-disable-next-line react-hooks/exhaustive-deps
  useEffect(()=>{if(pending.current===0)setChoice(current=>same(current,server)?current:server);},[serverKey]);
  const apply=(next:Choice)=>{
@@ -31,12 +32,18 @@ export function RewardsDashboardFilters({value,showPeriod}:{value:RewardDashboar
  const available=value.companies.map(company=>company.id);
  return <div className="space-y-3" role="group" aria-label={t('preferences')}>
   <div className="flex flex-wrap items-end justify-between gap-3">
+   <div className="flex min-w-0 flex-wrap items-end gap-3">
    {fixed?<p className="text-sm"><span className="block text-muted-foreground">{r('unit')}</span><span className="font-medium">{value.businessUnits[0].label}</span></p>
     :<label className="min-w-0 space-y-1 text-sm"><span className="block">{r('unit')}</span>
      <select value={choice.businessUnit} onChange={event=>apply({...choice,businessUnit:event.target.value,companies:[]})} className={`${inputCls} max-w-full sm:max-w-md`}>
       {value.canSelectAll&&<option value={REWARD_DASHBOARD_ALL}>{t('allBusinessUnits')}</option>}
       {value.businessUnits.map(unit=><option key={unit.id} value={unit.id}>{unit.label}</option>)}
      </select></label>}
+   {value.years.length>1&&<label className="min-w-0 space-y-1 text-sm"><span className="block">{t('reviewYear')}</span>
+    <select value={choice.year} onChange={event=>apply({...choice,year:Number(event.target.value)})} className={inputCls}>
+     {value.years.map(year=><option key={year} value={year}>{year}</option>)}
+    </select></label>}
+   </div>
    {showPeriod&&<div role="group" aria-label={t('salaryPeriod')} className="inline-flex rounded-md border border-border p-0.5 text-xs">
     {(['monthly','annual'] as const).map(period=><button key={period} type="button" aria-pressed={choice.period===period} onClick={()=>apply({...choice,period})}
      className={`rounded px-2.5 py-1 ${choice.period===period?'bg-primary text-primary-foreground':'text-muted-foreground hover:text-foreground'}`}>{t(period)}</button>)}

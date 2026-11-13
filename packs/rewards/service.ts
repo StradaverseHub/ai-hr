@@ -2462,11 +2462,13 @@ export async function rewardDashboard(ctx:SessionContext,companyIds:string[],pre
    ...notices.map(notice=>({id:notice.unitId,businessUnitId:notice.businessUnitId,businessUnit:notice.unit,companyId:notice.companyId,company:notice.company,cycle:notice.cycle,year:notice.year,
     released:false,expectedRelease:notice.expectedRelease,row:null})),
   ];
-  // The dashboard covers the latest review year in scope; All reviews keeps every earlier cycle.
-  const year=candidates.length?Math.max(...candidates.map(c=>c.year)):list.year;
+  // 81a7b286: the budget bars, company pills and context line cover one review year, the latest by default. A saved
+  // year outside the viewer's live released years falls back to the latest. Waiting on you is not limited to it.
+  const years=model.rewardDashboardYears(candidates);
+  const year=model.rewardDashboardYear(preference,years)??list.year;
   const current=candidates.filter(c=>c.year===year);
   const canSelectAll=visible.length>0&&visible.every(privileged);
-  const choice={...model.rewardDashboardPreference(preference,current,canSelectAll,candidates),kind};
+  const choice={...model.rewardDashboardPreference(preference,current,canSelectAll,candidates),kind,year};
   const businessUnits=[...new Map(current.map(c=>[c.businessUnitId,{id:c.businessUnitId,label:c.businessUnit}])).values()]
    .sort((a,b)=>a.label.localeCompare(b.label)||a.id.localeCompare(b.id));
   const inUnit=current.filter(c=>choice.businessUnit===model.REWARD_DASHBOARD_ALL||c.businessUnitId===choice.businessUnit);
@@ -2505,11 +2507,11 @@ export async function rewardDashboard(ctx:SessionContext,companyIds:string[],pre
    businessUnit:choice.businessUnit===model.REWARD_DASHBOARD_ALL?null:businessUnits.find(bu=>bu.id===choice.businessUnit)?.label??null,
    companies:new Set(releasedSelected.map(c=>c.companyId)).size,cycle:cycle.value,cycleVaries:cycle.varies,snapshot:snapshot.value,snapshotVaries:snapshot.varies,
   }:null;
-  // Waiting on you keeps every released annual review in the selection, including earlier cycles.
+  // Waiting on you keeps every released annual review in the selection from every year, whatever year is picked.
   const waiting=visible.filter(row=>row.waiting&&released(row)&&model.inRewardDashboardSelection(choice,row))
    .map(row=>({id:row.id,company:row.company,name:row.unit,due:row.due,daysUntilDue:row.daysUntilDue,blocking:row.blocking??0,exceptions:row.exceptions??0}))
    .sort((a,b)=>(a.due??'9999').localeCompare(b.due??'9999')||a.id.localeCompare(b.id));
-  return {kind,year,choice,canSelectAll,businessUnits,companies,context,figures,excluded,preparing,waiting,
+  return {kind,year,years,choice,canSelectAll,businessUnits,companies,context,figures,excluded,preparing,waiting,
    roles:[...roles].sort(),emptyReason:list.emptyReason};
  });
 }
