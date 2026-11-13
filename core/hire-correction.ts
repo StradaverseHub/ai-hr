@@ -202,6 +202,11 @@ export function originMapOf(correctionPayloads: unknown[]): Map<string, string> 
     }
     const rl = p.reportingLine;
     if (rl?.supersededId && rl?.replacementId) m.set(rl.replacementId, rl.supersededId);
+    // Board 154511c4 — salary revisions and reporting lines re-inserted when the dated records were aligned
+    // to the Group Join Date (core/movement-history.ts alignHistoryStartTx).
+    for (const r of (Array.isArray(p.aligned) ? p.aligned : []) as Replacement[]) {
+      if (r?.supersededId && r?.replacementId) m.set(r.replacementId, r.supersededId);
+    }
   }
   return m;
 }

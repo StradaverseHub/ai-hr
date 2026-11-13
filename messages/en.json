@@ -1793,7 +1793,10 @@
           "endDateRequiredIntern": "Required because the new Employee Type is Intern. The internship must end after the effective date.",
           "mustChangeRefused": "{field} must change for this event type. Enter the new value.",
           "documentOptional": "Supporting document (optional)",
-          "documentRequired": "Supporting document (required when this changes)"
+          "documentRequired": "Supporting document (required when this changes)",
+          "recordHistory": "Record history: enter what the employee had before the effective date. The record from the effective date onward does not change.",
+          "recordHistoryHint": "Choose only what was different before the effective date; leave the rest blank. The earlier period, back to the join date, takes these values.",
+          "historyUnchanged": "Not recorded"
         },
         "edit": "Edit",
         "delete": "Delete",
@@ -1900,7 +1903,8 @@
         },
         "payrollClosedBadge": "Payroll closed: {periods}",
         "informationCorrected": "Information corrected",
-        "informationNeedsReview": "Correction needs review"
+        "informationNeedsReview": "Correction needs review",
+        "historyBadge": "History"
       },
       "salaryCurrency": "Currency",
       "emergency": {
@@ -2444,7 +2448,24 @@
           "movement_field_not_editable": "This field cannot be edited for this event type.",
           "movement_field_must_change": "This event type requires this field to change.",
           "movement_document_required": "This change needs a supporting document, which an import cannot carry. Record this movement on the Movement tab instead.",
-          "movement_document_not_enabled": "This event type does not take a supporting document for this field."
+          "movement_document_not_enabled": "This event type does not take a supporting document for this field.",
+          "movement_before_current_record": "This date is earlier than the employee’s current company and position record, which starts on %date%. Use a date on or after %date%, or reverse the change that created that record first.",
+          "movement_already_in_company": "The employee is already in this company on this date.",
+          "movement_label_other_company": "This value cannot be used in the employee’s company on this date. Choose a value available to that company",
+          "movement_backdated_reason_required": "This movement is dated before later movements. Enter Remarks explaining why it is being inserted.",
+          "movement_before_join_date": "This date is before the employee’s Group Join Date. Correct the join date first, or use a later date.",
+          "movement_history_fields": "History can only be recorded for Company, Department, Position, Business Unit and Work Location, with a Before value for each.",
+          "movement_history_before_required": "Enter the Before value for every field this history row sets.",
+          "movement_history_future": "History can only be recorded for a date up to today.",
+          "movement_history_no_period": "The employee has no recorded period before this date.",
+          "movement_history_after_mismatch": "To record history, After must match what is on record on this date",
+          "movement_history_earlier_change": "This field already changes on %date%, before this date. Record history from that date, or correct that change first.",
+          "movement_history_no_change": "The Before values are already on record before this date. There is nothing to change.",
+          "movement_history_splits_movement": "A movement recorded on %date% covers this date. Record history before %date%, or delete that movement first.",
+          "movement_history_payroll_company": "Payroll for %detail% was closed under a different company. Reopen that payroll or check the Before company.",
+          "movement_history_overtaken": "A later history movement or correction has changed this period since. Delete that change first.",
+          "history_closed_payroll": "Closed payroll covers %detail%. It stays as issued; only the employment record changes.",
+          "movement_history_change_on_date": "A change to this field is already recorded on this date. Correct or delete that change instead."
         },
         "v2": {
           "type": "Movement type",
@@ -2556,7 +2577,8 @@
           "closedPayrollTitle": "Some corrections change movements behind closed payroll ({periods}).",
           "closedPayrollBody": "These corrections update the employees’ records and future processing. The closed payroll, released payslips and statutory submissions keep their finalised figures and will not be recalculated. Without this confirmation, the employees concerned are not saved.",
           "closedPayrollAcknowledge": "I understand that closed payroll will not change."
-        }
+        },
+        "historyRow": "Recorded as history: {from} to {to} takes the Before values. The record from {date} does not change."
       },
       "headerAssistance": {
         "title": "Review column headings",
@@ -3504,7 +3526,13 @@
       "effective": "Future processing uses these corrected details from {date}.",
       "templateFields": "Fields this template corrects (new ones highlighted). Blank cells keep the existing value.",
       "templateFieldsLabel": "Fields this template corrects",
-      "ownersNote": "Basic Salary and resignation dates are corrected on the event that recorded them: use the Movement import with Action \"Update\". Payment Method is in the Bank and Statutory import."
+      "ownersNote": "Basic Salary and resignation dates are corrected on the event that recorded them: use the Movement import with Action \"Update\". Payment Method is in the Bank and Statutory import.",
+      "fromJoinDate": "The employee was in this company from the join date (correct the whole history, not just from today). Only when the employee has been in one company throughout; change only the company in this correction.",
+      "warnings": {
+        "companyFromToday": "The company changes from {date}. Before that date the employee stays in the current company. If the employee was always in the new company, tick “from the join date”; to record an earlier period in another company, import it as a history movement.",
+        "companyFromJoinDate": "The company changes for the whole history, from {date}.",
+        "historyStartAligned": "The employee’s dated records (company and position, salary, reporting line) start on {from}. Saving moves their start to the Group Join Date, {date}."
+      }
     }
   },
   "leave": {
@@ -10266,7 +10294,9 @@
         "backgroundHelp": "You can leave this page. Nobody sees any of these changes until all of them are committed together, and you get a notice when it finishes.",
         "waiting": "Waiting for the background service. Your request is saved; do not submit it again.",
         "workerUnavailable": "The background service is not running yet. Your request is saved and starts automatically as soon as it is."
-      }
+      },
+      "otherCompanyTitle": "Check these rows: by the employee’s employment history, they were in another company in this month",
+      "otherCompanyRow": "{employee} {name} · {period}: recorded under {company}, but the employee’s history shows another company for this month. Check the Company Code or the employee’s Employment History."
     },
     "individualImport": {
       "submitWorkbook": "Upload workbook",

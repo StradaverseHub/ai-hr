@@ -1,5 +1,8 @@
 'use server';
 
+import { recordHistoryMovement } from '@/core/movement-history-command';
+import { MovementHistoryError } from '@/core/movement-history';
+import { movementImportIssueText } from '@/lib/movement-import-issues';
 import {setEmploymentBlacklist,setEmploymentInfo,setReportingLine} from '@/core/workforce-commands';
 import { publicErrorMessage } from '@/lib/public-error';
 import {movementNeedsEntitlementReprojection} from '@/core/movement-kinds';
@@ -486,9 +489,42 @@ async function parseMovementDocuments(formData: FormData): Promise<MovementDocum
   return out;
 }
 
+/** Board 154511c4 — the Before values of New Event's "Record history" (blank selections are left out). */
+const HISTORY_FORM_FIELDS = ['companyId', 'departmentId', 'positionId', 'businessUnitId', 'locationId'] as const;
+function parseHistoryBefore(formData: FormData): Record<string, string> | null {
+  if (formData.get('recordHistory') !== '1') return null;
+  const before: Record<string, string> = {};
+  for (const field of HISTORY_FORM_FIELDS) {
+    const value = String(formData.get('history.' + field) ?? '').trim();
+    if (value) before[field] = value;
+  }
+  return before;
+}
+
 export async function createMovementEventAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
+  const historyBefore = parseHistoryBefore(formData);
+  if (historyBefore) {
+    try {
+      await recordHistoryMovement(s, {
+        employmentId,
+        typeCode: String(formData.get('kind') ?? ''),
+        effectiveDate: String(formData.get('effectiveDate') ?? ''),
+        before: historyBefore,
+        remarks: String(formData.get('remarks') ?? '').trim() || null,
+      });
+    } catch (e) {
+      const labels = await getTranslations();
+      const message = e instanceof MovementHistoryError
+        ? movementImportIssueText(e.message, (key, fallback) => (labels.has(key) ? labels(key) : fallback))
+        : await compensationErrorMessage(e);
+      if (formData.get('movementPage')) throw new Error(message);
+      redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(message)}`));
+    }
+    revalidatePath(`/admin/personnel/${employmentId}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+  }
   /** ae9350f2 — 'YYYY-MM' payroll periods a backdated termination lands inside. Reported, never adjusted. */
   let payrollFlagged: string[] = [];
   try {
