@@ -10,9 +10,10 @@ import {
   OFFER_SEND_CHANNELS, RecruitmentError, type ApplicationHire, type InterviewFormOptions, type InterviewStatus, type OfferView,
 } from '@/packs/recruitment/service';
 import {
-  cancelInterviewAction, markOfferSentAction, recordOfferDecisionAction, saveOfferAction, scheduleInterviewAction, setCandidateResponseAction,
+  addInterviewersAction, cancelInterviewAction, markOfferSentAction, recordOfferDecisionAction, saveOfferAction, scheduleInterviewFormAction, setCandidateResponseAction,
   submitOfferAction, withdrawOfferAction,
 } from '../../actions';
+import { ActionForm, FieldProblem } from '../../action-form';
 import { Notice, Pill, SubTabs, klDate, klDateTime, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../../shared';
 import { pgSqlState } from '@/lib/db-error';
 import { CandidateSection } from './candidate-section';
@@ -152,7 +153,16 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
                 </div>
                 <dl className="grid gap-2 text-sm sm:grid-cols-3">
                   <div><dt className="text-xs text-muted-foreground">{t('iv.time')}</dt><dd>{klDateTime(locale, iv.startsAt)} · {t('iv.minutes', { n: iv.durationMinutes })}</dd></div>
-                  <div><dt className="text-xs text-muted-foreground">{t('iv.site')}</dt><dd>{[iv.site, iv.meetingRoom].filter(Boolean).join(' · ') || '—'}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">{t('iv.site')}</dt><dd>
+                    {iv.place ? (
+                      <span className="block">
+                        <span className="font-medium">{iv.place.addressName}</span>{iv.place.roomName && <> · {t('iv.roomNamed', { room: iv.place.roomName })}</>}
+                        <span className="block text-xs text-muted-foreground">{iv.place.address} · {iv.place.region}</span>
+                        {iv.place.mapUrl && <a className="text-xs text-primary hover:underline" href={iv.place.mapUrl} target="_blank" rel="noopener noreferrer">{t('iv.openMap')}</a>}
+                      </span>
+                    ) : null}
+                    {[iv.site, iv.meetingRoom].filter(Boolean).join(' · ') || (iv.place ? null : '—')}
+                  </dd></div>
                   <div><dt className="text-xs text-muted-foreground">{t('iv.response')}</dt><dd>{t(`iv.responses.${iv.candidateResponse}`)}</dd></div>
                 </dl>
                 <ul className="divide-y divide-border rounded-lg border border-border">
@@ -176,21 +186,44 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
                     </li>
                   ))}
                 </ul>
-                {interviews.canSchedule && !iv.cancelled && (
+                {(interviews.canSchedule && !iv.cancelled || iv.canCancel) && (
                   <div className="flex flex-wrap items-center gap-2">
-                    <form action={setCandidateResponseAction} className="flex items-center gap-1">
+                    {interviews.canSchedule && <form action={setCandidateResponseAction} className="flex items-center gap-1">
                       {hidden('interviewId', iv.id)}{hidden('applicationId', id)}{hidden('returnTo', here)}
                       <label className="sr-only" htmlFor={`resp-${iv.id}`}>{t('iv.response')}</label>
                       <select id={`resp-${iv.id}`} name="response" defaultValue={iv.candidateResponse} className={cn(selectCls, 'h-9 w-40')}>
                         {CANDIDATE_RESPONSES.map((r) => <option key={r} value={r}>{t(`iv.responses.${r}`)}</option>)}
                       </select>
                       <button type="submit" className={btnGhost}>{t('iv.saveResponse')}</button>
-                    </form>
-                    <form action={cancelInterviewAction}>
+                    </form>}
+                    {iv.canCancel && <form action={cancelInterviewAction}>
                       {hidden('interviewId', iv.id)}{hidden('applicationId', id)}{hidden('returnTo', here)}
                       <button type="submit" className={btnGhost}>{t('iv.cancel')}</button>
-                    </form>
+                    </form>}
                   </div>
+                )}
+                {interviews.canSchedule && !iv.cancelled && options && iv.total < 20 && (
+                  <details className="rounded-lg border border-dashed border-border px-3 py-2 text-sm">
+                    <summary className="cursor-pointer font-medium">{t('iv.addInterviewers')}</summary>
+                    <form action={addInterviewersAction} className="mt-3 space-y-3">
+                      {hidden('interviewId', iv.id)}{hidden('applicationId', id)}{hidden('returnTo', here)}
+                      {options.groups.length > 0 && (
+                        <fieldset className="space-y-1">
+                          <legend className="text-xs font-medium text-muted-foreground">{t('iv.addGroup')}</legend>
+                          {options.groups.map((g) => (
+                            <label key={g.id} className="flex items-center gap-2"><input type="checkbox" name="groupIds" value={g.id} className="accent-primary" />{g.name} <span className="text-xs text-muted-foreground">({t('iv.groupMembers', { n: g.members })})</span></label>
+                          ))}
+                        </fieldset>
+                      )}
+                      <Field label={t('iv.addPeople')}>
+                        <select name="interviewerIds" multiple size={Math.min(5, Math.max(3, options.users.length))} className={cn(selectCls, 'h-auto')}>
+                          {options.users.filter((u) => !iv.interviewers.some((v) => v.userId === u.id)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                        </select>
+                      </Field>
+                      <p className="text-xs text-muted-foreground">{t('iv.groupNote')}</p>
+                      <button type="submit" className={btnGhost}>{t('iv.addInterviewersSubmit')}</button>
+                    </form>
+                  </details>
                 )}
               </li>
             ))}
@@ -224,8 +257,10 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
 type T = Awaited<ReturnType<typeof getTranslations<'recruitment'>>>;
 
 function ScheduleForm({ options, t }: { options: InterviewFormOptions; t: T }) {
+  const problem = { required: t('job.required'), invalid: t('iv.fieldInvalid') };
   return (
-    <form action={scheduleInterviewAction} className="space-y-4 rounded-xl border border-border bg-card p-4">
+    // Slice 18 review: the save returns its refusal (a room already booked, groups leaving nobody …) and the form keeps what was typed.
+    <ActionForm action={scheduleInterviewFormAction} className="space-y-4 rounded-xl border border-border bg-card p-4">
       <input type="hidden" name="applicationId" value={options.applicationId} />
       <h2 className="text-sm font-semibold">{t('iv.addTitle')} <span className="font-normal text-muted-foreground">· {options.stageName}</span></h2>
       <div className="grid gap-4 sm:grid-cols-3">
@@ -253,22 +288,55 @@ function ScheduleForm({ options, t }: { options: InterviewFormOptions; t: T }) {
         </Field>
         <Field label={t('iv.startsAt')} required requiredAriaLabel={t('job.required')}>
           <Input name="startsAt" type="datetime-local" required />
+          <FieldProblem name="startsAt" {...problem} />
         </Field>
         <Field label={t('iv.duration')}>
           <Input name="durationMinutes" type="number" min={5} max={720} step={5} defaultValue={60} />
+          <FieldProblem name="duration" {...problem} />
         </Field>
-        <Field label={t('iv.site')}><Input name="site" maxLength={200} /></Field>
+        {/* Slice 18: an on-site interview picks one of the company's addresses and optionally an enabled room (a room names its address). */}
+        <Field label={t('iv.address')}>
+          <select name="addressId" className={selectCls} defaultValue="">
+            <option value="">{options.addresses.length ? t('iv.noAddress') : t('iv.noAddresses')}</option>
+            {options.addresses.map((a) => <option key={a.id} value={a.id}>{a.name} · {a.region}</option>)}
+          </select>
+          <FieldProblem name="addressId" {...problem} />
+        </Field>
+        <Field label={t('iv.roomPick')}>
+          <select name="roomId" className={selectCls} defaultValue="">
+            <option value="">{t('iv.noRoom')}</option>
+            {options.addresses.filter((a) => a.rooms.length).map((a) => (
+              <optgroup key={a.id} label={a.name}>
+                {a.rooms.map((r) => <option key={r.id} value={r.id}>{t('iv.roomOption', { room: r.name, capacity: r.capacity })}</option>)}
+              </optgroup>
+            ))}
+          </select>
+          <FieldProblem name="roomId" {...problem} />
+          <span className="text-xs text-muted-foreground">{t('iv.roomHint')}</span>
+        </Field>
+        <Field label={t('iv.siteFree')}><Input name="site" maxLength={200} /></Field>
         <Field label={t('iv.room')}><Input name="meetingRoom" maxLength={120} /></Field>
         <Field label={t('iv.interviewers')} required requiredAriaLabel={t('job.required')} className="sm:col-span-2">
-          <select name="interviewerIds" multiple required size={Math.min(6, Math.max(3, options.users.length))} className={cn(selectCls, 'h-auto')}>
+          <select name="interviewerIds" multiple size={Math.min(6, Math.max(3, options.users.length))} className={cn(selectCls, 'h-auto')}>
             {options.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
+          <FieldProblem name="interviewers" {...problem} />
           <span className="text-xs text-muted-foreground">{t('iv.interviewersHint')}</span>
         </Field>
+        {options.groups.length > 0 && (
+          <fieldset className="space-y-1 text-sm">
+            <legend className="text-xs font-medium text-muted-foreground">{t('iv.addGroup')}</legend>
+            {options.groups.map((g) => (
+              <label key={g.id} className="flex items-center gap-2"><input type="checkbox" name="groupIds" value={g.id} className="accent-primary" />{g.name} <span className="text-xs text-muted-foreground">({t('iv.groupMembers', { n: g.members })})</span></label>
+            ))}
+            <FieldProblem name="groupIds" {...problem} />
+            <p className="text-xs text-muted-foreground">{t('iv.groupNote')}</p>
+          </fieldset>
+        )}
       </div>
       <p className="text-xs text-muted-foreground">{t('iv.timeZoneNote')}</p>
       <button type="submit" className={btnPrimary}>{t('iv.schedule')}</button>
-    </form>
+    </ActionForm>
   );
 }
 

@@ -223,6 +223,9 @@ export const recruitmentInterview = pgTable('recruitment_interview', {
   durationMinutes: integer('duration_minutes').notNull(),
   site: text('site'),
   meetingRoom: text('meeting_room'),
+  /** Slice 18 (5219): the on-site address and room chosen from the company's list (free text above stays for other cases). */
+  addressId: uuid('address_id'),
+  roomId: uuid('room_id'),
   evaluationFormId: uuid('evaluation_form_id').notNull(),
   candidateResponse: text('candidate_response').$type<CandidateResponse>().notNull().default('pending'),
   cancelledAt: ts('cancelled_at'),
@@ -905,5 +908,71 @@ export const recruitmentStageWaitingRule = pgTable('recruitment_stage_waiting_ru
   remindDays: integer('remind_days').notNull(),
   archiveDays: integer('archive_days'),
   dayKind: text('day_kind').$type<'calendar' | 'working'>().notNull(),
+  ...audit,
+});
+
+// ── Slice 18 (db/migrations/5219_recruitment_interview_setup.sql) ─────────────────────────────────────────
+
+/** An interviewer group: a named list of users the scheduler adds as individual interviewers. Grants nothing. */
+export const recruitmentInterviewerGroup = pgTable('recruitment_interviewer_group', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  name: text('name').notNull(),
+  ...audit,
+});
+
+export const recruitmentInterviewerGroupMember = pgTable('recruitment_interviewer_group_member', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  groupId: uuid('group_id').notNull(),
+  appUserId: uuid('app_user_id').notNull(),
+  createdAt: ts('created_at').notNull().defaultNow(),
+  createdByUserId: uuid('created_by_user_id').notNull(),
+});
+
+/** A question in the company's bank: guidance for interviewers, never an answered or scored field. */
+export const recruitmentInterviewQuestion = pgTable('recruitment_interview_question', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  title: text('title').notNull(),
+  guidance: text('guidance'),
+  category: text('category'),
+  retiredAt: ts('retired_at'),
+  retiredByUserId: uuid('retired_by_user_id'),
+  ...audit,
+});
+
+export const recruitmentInterviewQuestionLink = pgTable('recruitment_interview_question_link', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  questionId: uuid('question_id').notNull(),
+  evaluationFormId: uuid('evaluation_form_id').notNull(),
+  createdAt: ts('created_at').notNull().defaultNow(),
+  createdByUserId: uuid('created_by_user_id').notNull(),
+});
+
+export const recruitmentInterviewAddress = pgTable('recruitment_interview_address', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  name: text('name').notNull(),
+  address: text('address').notNull(),
+  region: text('region').notNull(),
+  mapUrl: text('map_url'),
+  ...audit,
+});
+
+export const recruitmentInterviewRoom = pgTable('recruitment_interview_room', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  addressId: uuid('address_id').notNull(),
+  name: text('name').notNull(),
+  capacity: integer('capacity').notNull(),
+  enabled: boolean('enabled').notNull().default(true),
   ...audit,
 });

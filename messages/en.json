@@ -38076,7 +38076,17 @@
       "export_busy": "Another export is running. Try again in a moment.",
       "export_too_slow": "This export is too large to make in time. Narrow the filters and export again.",
       "import_too_heavy": "This file is too heavy to check at once. Split it into smaller files and check each one.",
-      "import_preview_limit": "You have checked 20 files today. You can check more tomorrow."
+      "import_preview_limit": "You have checked 20 files today. You can check more tomorrow.",
+      "group_unavailable": "That interviewer group is not available in this company any more. Reload the page and choose again.",
+      "question_in_use": "This question is linked to a scorecard template. Unlink it or retire it instead of deleting it.",
+      "question_retired": "A retired question cannot be linked to more scorecard templates. Restore it first.",
+      "address_in_use": "An interview names this address, so it cannot be deleted.",
+      "room_in_use": "An interview was booked in this room, so it cannot be deleted. Disable it instead.",
+      "room_unavailable": "Choose an enabled room at the chosen address. Addresses and rooms are for on-site interviews only.",
+      "room_booked": "That room is already booked for another interview at an overlapping time. Choose another room or time.",
+      "map_link_https": "The map link must be a full https:// address.",
+      "setup_limit": "The most allowed has been reached (groups 100, questions 500, addresses 100, rooms 50 per address, questions 30 per scorecard template). Remove one you no longer use first.",
+      "no_interviewers": "The chosen groups have no member who can interview for this company. Choose people or another group."
     },
     "overview": {
       "purpose": "Today's hiring work across the companies whose recruitment you manage.",
@@ -38354,7 +38364,10 @@
         "fields": "Custom fields",
         "templates": "Position templates",
         "exports": "Export templates",
-        "waiting": "Waiting limits"
+        "waiting": "Waiting limits",
+        "groups": "Interviewer groups",
+        "questions": "Question bank",
+        "places": "Addresses and rooms"
       },
       "iv": {
         "rulesTitle": "Feedback rules",
@@ -38567,7 +38580,24 @@
       "colCandidate": "Candidate",
       "colPosition": "Position",
       "colRecruiter": "Recruiter",
-      "colStatus": "Status"
+      "colStatus": "Status",
+      "roomNamed": "Room {room}",
+      "openMap": "Open map",
+      "addInterviewers": "Add interviewers",
+      "addGroup": "Add group",
+      "groupMembers": "{n, plural, one {# member} other {# members}}",
+      "addPeople": "People",
+      "groupNote": "Each current member of a chosen group is added once as an interviewer. Later changes to the group do not change this interview.",
+      "addInterviewersSubmit": "Add",
+      "fieldInvalid": "Check this value.",
+      "address": "Address (on-site)",
+      "noAddress": "No address",
+      "noAddresses": "No addresses set up",
+      "roomPick": "Meeting room (optional)",
+      "noRoom": "No room",
+      "roomOption": "{room} (seats {capacity})",
+      "roomHint": "A room is booked for the interview time; the same room cannot be booked twice at overlapping times.",
+      "siteFree": "Other location (free text)"
     },
     "fb": {
       "results": {
@@ -38591,7 +38621,9 @@
       "submit": "Submit feedback",
       "scorecardTitle": "Scorecard by {name}",
       "unnamedUser": "User",
-      "total": "{sum}/{max}"
+      "total": "{sum}/{max}",
+      "questionsTitle": "Questions to ask",
+      "questionsNote": "Guidance from the question bank for this scorecard. They are not answered here and do not count towards the score."
     },
     "offer": {
       "privateHidden": "Private — not visible to you",
@@ -40126,6 +40158,65 @@
         "not_suggested": "no longer past the suggest-archiving limit (it may have moved)"
       },
       "countWindow": "Counts cover the {count} oldest applications of a stage; “+” means there may be more."
+    },
+    "setup": {
+      "fieldRequired": "Required.",
+      "fieldInvalid": "Check this value.",
+      "unnamedUser": "User",
+      "changedAt": "Changed {at}",
+      "save": "Save",
+      "add": "Add",
+      "delete": "Delete",
+      "deleteNamed": "Delete {name}",
+      "groups": {
+        "note": "Groups are lists of people who often interview together. When scheduling, \"Add group\" adds each current member once as an individual interviewer. A group gives nobody access, and changing it later does not change interviews already scheduled.",
+        "empty": "No interviewer groups yet.",
+        "name": "Group name",
+        "members": "Members (at most {max})",
+        "memberCount": "{count, plural, one {# member} other {# members}}",
+        "noAccess": "no longer has access",
+        "noMembers": "No members.",
+        "newTitle": "New interviewer group"
+      },
+      "questions": {
+        "note": "Questions interviewers can ask. Link them to scorecard templates (Settings › Interviews): interviewers see the linked questions as guidance on their feedback form. Questions are never answered or scored. Retire a question to hide it from feedback forms; a linked question cannot be deleted.",
+        "empty": "No questions yet.",
+        "title": "Question",
+        "guidance": "Guidance for the interviewer (at most {max} characters)",
+        "category": "Category (optional)",
+        "templates": "Show on these scorecard templates (at most {max} questions each)",
+        "formDisabled": "disabled",
+        "formCount": "{form}: {count}",
+        "retired": "Retired",
+        "linkedTo": "Shown on: {forms}",
+        "notLinked": "Not linked to any scorecard template.",
+        "retire": "Retire",
+        "restore": "Restore",
+        "newTitle": "New question"
+      },
+      "places": {
+        "note": "Addresses and meeting rooms for on-site interviews. A room cannot be booked for two interviews at overlapping times; cancelling an interview frees its room. These are AI HR's own lists: no calendar or meeting-room system is connected.",
+        "empty": "No interview addresses yet.",
+        "name": "Name",
+        "region": "Region",
+        "address": "Address",
+        "mapUrl": "Map link (optional)",
+        "mapUrlInvalid": "Use a full link starting with https://",
+        "mapUrlHint": "Only https links are accepted.",
+        "roomCount": "{count, plural, one {# room} other {# rooms}}",
+        "openMap": "Open map",
+        "roomsTitle": "Meeting rooms",
+        "noRooms": "No rooms at this address.",
+        "roomName": "Room name",
+        "capacity": "Seats (1–{max})",
+        "enabled": "Enabled",
+        "disabled": "Disabled",
+        "roomInUse": "Used by an interview",
+        "addRoom": "Add room",
+        "addressInUse": "Used by an interview, so it is kept.",
+        "deleteAddress": "Delete address",
+        "newTitle": "New interview address"
+      }
     }
   },
   "careersPublic": {

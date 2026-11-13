@@ -1,3 +1,21 @@
+# Recruitment slice 18 — 12 November 2026 MYT (unapplied)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after the slice 17 entry, `5219_recruitment_interview_setup` at
+idx 4619 / when 1793330004919. A read-only survey of the already-fetched refs (7,576 refs, 4,176 distinct tips; no commit touches a
+`5219_` file; 1,195 distinct committed journal blobs and 768 committed allocation-document blobs; no new fetch) and the working trees of
+all 210 registered worktrees (all journals readable) found no `5219_` migration file and no claim of this name, position or timestamp.
+`origin/main` and `origin/alpha` end at idx 4530 / when 1793330004830, below this block; recheck the target's applied watermark before
+admission (a lower timestamp can be silently skipped). 5219 adds six tables (`recruitment_interviewer_group`,
+`recruitment_interviewer_group_member`, `recruitment_interview_question`, `recruitment_interview_question_link`,
+`recruitment_interview_address`, `recruitment_interview_room`: administrator-only writes), `recruitment_interview.address_id` and
+`.room_id` with composite keys, a CHECK and a btree_gist exclusion constraint (`recruitment_interview_room_no_overlap`: a room is never
+booked for two overlapping, non-cancelled interviews), two partial indexes on `recruitment_interview`, the immutable
+`app.recruitment_interview_period`, `app.recruitment_user_in_company`, four guard functions, and restates
+`app.recruitment_delete_company_setup` (5218 body byte for byte) with one added block; `app.recruitment_destroy_candidate` is unchanged
+(the set-up holds no personal data). PRECONDITION: `recruitment_interview` is empty wherever 5219 applies; 5200–5218 are unapplied
+outside throwaway databases, CI and the branch author's local render database. Recheck peer claims, the published baseline and the
+ordered applied ledger before admission. The reservation grants no installation authority.
+
 # Recruitment slice 17 — 12 November 2026 MYT (unapplied)
 
 Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after the slice 16 entry, `5218_recruitment_waiting_limits` at

@@ -38076,7 +38076,17 @@
       "export_busy": "Một lần xuất khác đang chạy. Hãy thử lại sau giây lát.",
       "export_too_slow": "Lần xuất này quá lớn để tạo kịp thời gian. Hãy thu hẹp bộ lọc và xuất lại.",
       "import_too_heavy": "Tệp này quá nặng để kiểm tra một lần. Hãy chia thành các tệp nhỏ hơn và kiểm tra từng tệp.",
-      "import_preview_limit": "Hôm nay bạn đã kiểm tra 20 tệp. Bạn có thể kiểm tra thêm vào ngày mai."
+      "import_preview_limit": "Hôm nay bạn đã kiểm tra 20 tệp. Bạn có thể kiểm tra thêm vào ngày mai.",
+      "group_unavailable": "Nhóm người phỏng vấn đó không còn khả dụng trong công ty này. Hãy tải lại trang và chọn lại.",
+      "question_in_use": "Câu hỏi này đã được liên kết với một mẫu phiếu đánh giá. Hãy bỏ liên kết hoặc ngừng dùng thay vì xóa.",
+      "question_retired": "Câu hỏi đã ngừng dùng không thể liên kết thêm với mẫu phiếu đánh giá. Hãy khôi phục trước.",
+      "address_in_use": "Một buổi phỏng vấn đang dùng địa chỉ này nên không thể xóa.",
+      "room_in_use": "Một buổi phỏng vấn đã được đặt ở phòng này nên không thể xóa. Hãy tắt phòng thay vào đó.",
+      "room_unavailable": "Hãy chọn một phòng đang bật tại địa chỉ đã chọn. Địa chỉ và phòng chỉ dành cho phỏng vấn trực tiếp.",
+      "room_booked": "Phòng đó đã được đặt cho một buổi phỏng vấn khác vào thời gian trùng nhau. Hãy chọn phòng hoặc thời gian khác.",
+      "map_link_https": "Liên kết bản đồ phải là một địa chỉ https:// đầy đủ.",
+      "setup_limit": "Đã đạt mức tối đa cho phép (100 nhóm, 500 câu hỏi, 100 địa chỉ, 50 phòng mỗi địa chỉ, 30 câu hỏi mỗi mẫu phiếu đánh giá). Hãy xóa mục không còn dùng trước.",
+      "no_interviewers": "Các nhóm đã chọn không có thành viên nào có thể phỏng vấn cho công ty này. Hãy chọn người hoặc nhóm khác."
     },
     "overview": {
       "purpose": "Công việc tuyển dụng hôm nay tại các công ty mà bạn quản lý tuyển dụng.",
@@ -38354,7 +38364,10 @@
         "fields": "Trường tùy chỉnh",
         "templates": "Mẫu vị trí",
         "exports": "Mẫu xuất",
-        "waiting": "Giới hạn chờ"
+        "waiting": "Giới hạn chờ",
+        "groups": "Nhóm người phỏng vấn",
+        "questions": "Ngân hàng câu hỏi",
+        "places": "Địa chỉ và phòng"
       },
       "iv": {
         "rulesTitle": "Quy tắc đánh giá",
@@ -38567,7 +38580,24 @@
       "colCandidate": "Ứng viên",
       "colPosition": "Vị trí",
       "colRecruiter": "Chuyên viên tuyển dụng",
-      "colStatus": "Trạng thái"
+      "colStatus": "Trạng thái",
+      "roomNamed": "Phòng {room}",
+      "openMap": "Mở bản đồ",
+      "addInterviewers": "Thêm người phỏng vấn",
+      "addGroup": "Thêm nhóm",
+      "groupMembers": "{n, plural, other {# thành viên}}",
+      "addPeople": "Người",
+      "groupNote": "Mỗi thành viên hiện tại của nhóm đã chọn được thêm một lần làm người phỏng vấn. Thay đổi nhóm sau này không làm thay đổi buổi phỏng vấn này.",
+      "addInterviewersSubmit": "Thêm",
+      "fieldInvalid": "Hãy kiểm tra giá trị này.",
+      "address": "Địa chỉ (trực tiếp)",
+      "noAddress": "Không có địa chỉ",
+      "noAddresses": "Chưa thiết lập địa chỉ",
+      "roomPick": "Phòng họp (không bắt buộc)",
+      "noRoom": "Không có phòng",
+      "roomOption": "{room} ({capacity} chỗ)",
+      "roomHint": "Phòng được đặt theo thời gian phỏng vấn; một phòng không thể được đặt hai lần vào thời gian trùng nhau.",
+      "siteFree": "Địa điểm khác (nhập tự do)"
     },
     "fb": {
       "results": {
@@ -38591,7 +38621,9 @@
       "submit": "Gửi đánh giá",
       "scorecardTitle": "Phiếu đánh giá của {name}",
       "unnamedUser": "Người dùng",
-      "total": "{sum}/{max}"
+      "total": "{sum}/{max}",
+      "questionsTitle": "Câu hỏi nên hỏi",
+      "questionsNote": "Hướng dẫn từ ngân hàng câu hỏi cho phiếu đánh giá này. Không trả lời ở đây và không tính vào điểm."
     },
     "offer": {
       "privateHidden": "Riêng tư — bạn không xem được",
@@ -40126,6 +40158,65 @@
         "not_suggested": "không còn vượt quá giới hạn đề xuất lưu trữ (có thể đã được chuyển)"
       },
       "countWindow": "Số liệu tính trên {count} hồ sơ cũ nhất của một giai đoạn; “+” nghĩa là có thể còn nhiều hơn."
+    },
+    "setup": {
+      "fieldRequired": "Bắt buộc.",
+      "fieldInvalid": "Hãy kiểm tra giá trị này.",
+      "unnamedUser": "Người dùng",
+      "changedAt": "Đã thay đổi {at}",
+      "save": "Lưu",
+      "add": "Thêm",
+      "delete": "Xóa",
+      "deleteNamed": "Xóa {name}",
+      "groups": {
+        "note": "Nhóm là danh sách những người thường phỏng vấn cùng nhau. Khi lên lịch, \"Thêm nhóm\" thêm mỗi thành viên hiện tại một lần làm người phỏng vấn riêng lẻ. Nhóm không cấp quyền truy cập cho ai, và thay đổi nhóm sau này không làm thay đổi các buổi phỏng vấn đã lên lịch.",
+        "empty": "Chưa có nhóm người phỏng vấn.",
+        "name": "Tên nhóm",
+        "members": "Thành viên (tối đa {max})",
+        "memberCount": "{count, plural, other {# thành viên}}",
+        "noAccess": "không còn quyền truy cập",
+        "noMembers": "Không có thành viên.",
+        "newTitle": "Nhóm người phỏng vấn mới"
+      },
+      "questions": {
+        "note": "Các câu hỏi người phỏng vấn có thể hỏi. Liên kết chúng với mẫu phiếu đánh giá (Cài đặt › Phỏng vấn): người phỏng vấn thấy các câu hỏi đã liên kết như hướng dẫn trên phiếu phản hồi. Câu hỏi không bao giờ được trả lời hay chấm điểm. Ngừng dùng một câu hỏi để ẩn nó khỏi phiếu phản hồi; câu hỏi đã liên kết không thể xóa.",
+        "empty": "Chưa có câu hỏi.",
+        "title": "Câu hỏi",
+        "guidance": "Hướng dẫn cho người phỏng vấn (tối đa {max} ký tự)",
+        "category": "Danh mục (không bắt buộc)",
+        "templates": "Hiển thị trên các mẫu phiếu đánh giá này (tối đa {max} câu hỏi mỗi mẫu)",
+        "formDisabled": "đã tắt",
+        "formCount": "{form}: {count}",
+        "retired": "Ngừng dùng",
+        "linkedTo": "Hiển thị trên: {forms}",
+        "notLinked": "Chưa liên kết với mẫu phiếu đánh giá nào.",
+        "retire": "Ngừng dùng",
+        "restore": "Khôi phục",
+        "newTitle": "Câu hỏi mới"
+      },
+      "places": {
+        "note": "Địa chỉ và phòng họp cho phỏng vấn trực tiếp. Một phòng không thể được đặt cho hai buổi phỏng vấn vào thời gian trùng nhau; hủy buổi phỏng vấn sẽ giải phóng phòng. Đây là danh sách riêng của AI HR: không kết nối hệ thống lịch hay phòng họp nào.",
+        "empty": "Chưa có địa chỉ phỏng vấn.",
+        "name": "Tên",
+        "region": "Khu vực",
+        "address": "Địa chỉ",
+        "mapUrl": "Liên kết bản đồ (không bắt buộc)",
+        "mapUrlInvalid": "Hãy dùng liên kết đầy đủ bắt đầu bằng https://",
+        "mapUrlHint": "Chỉ chấp nhận liên kết https.",
+        "roomCount": "{count, plural, other {# phòng}}",
+        "openMap": "Mở bản đồ",
+        "roomsTitle": "Phòng họp",
+        "noRooms": "Không có phòng tại địa chỉ này.",
+        "roomName": "Tên phòng",
+        "capacity": "Số chỗ (1–{max})",
+        "enabled": "Đang bật",
+        "disabled": "Đã tắt",
+        "roomInUse": "Đã được buổi phỏng vấn sử dụng",
+        "addRoom": "Thêm phòng",
+        "addressInUse": "Đã được buổi phỏng vấn sử dụng nên được giữ lại.",
+        "deleteAddress": "Xóa địa chỉ",
+        "newTitle": "Địa chỉ phỏng vấn mới"
+      }
     }
   },
   "careersPublic": {

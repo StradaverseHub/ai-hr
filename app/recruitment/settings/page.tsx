@@ -18,6 +18,9 @@ import { CustomFieldSettingsSection } from './custom-field-settings';
 import { PositionTemplateSettingsSection } from './position-template-settings';
 import { ExportTemplateSettingsSection } from './export-template-settings';
 import { WaitingSettingsSection } from './waiting-settings';
+import { InterviewerGroupSettingsSection } from './interviewer-group-settings';
+import { QuestionBankSettingsSection } from './question-bank-settings';
+import { InterviewPlaceSettingsSection } from './interview-place-settings';
 
 /**
  * Recruitment › Settings for one company (administrators only). Pipeline: the stage catalogue, recruitment processes
@@ -28,7 +31,8 @@ import { WaitingSettingsSection } from './waiting-settings';
  * page) and consultants. Background checks (slice 12): the company's check types. Talent pools (slice 13): custom pools, sub-pools
  * and sharing. Custom fields (slice 14): the company's own candidate and job fields and their options. Position templates (slice 15):
  * the company's switch for "New position from template" and its templates. Waiting limits (slice 17): per stage, when to remind and when to
- * suggest archiving applications left unprocessed. Every change is a domain event.
+ * suggest archiving applications left unprocessed. Interview set-up (slice 18): interviewer groups, the question bank linked to
+ * scorecard templates, and the company's interview addresses and meeting rooms. Every change is a domain event.
  */
 export default async function RecruitmentSettingsPage({ searchParams }: { searchParams: Promise<{ company?: string; problem?: string; notice?: string; section?: string; agency?: string; tag?: string; type?: string; status?: string; kind?: string; template?: string }> }) {
   await requireModule('recruitment');
@@ -38,7 +42,7 @@ export default async function RecruitmentSettingsPage({ searchParams }: { search
   const [t, nav, locale] = await Promise.all([getTranslations('recruitment.settings'), getTranslations('nav'), getLocale()]);
   const company = pickCompany(companies, sp.company);
   const settings = company ? await recruitmentSettings(s, company.id) : null;
-  const section = sp.section === 'interviews' || sp.section === 'offers' || sp.section === 'privacy' || sp.section === 'tags' || sp.section === 'referrals' || sp.section === 'careers' || sp.section === 'agencies' || sp.section === 'checks' || sp.section === 'pools' || sp.section === 'fields' || sp.section === 'templates' || sp.section === 'exports' || sp.section === 'waiting' ? sp.section : 'general';
+  const section = sp.section === 'interviews' || sp.section === 'offers' || sp.section === 'privacy' || sp.section === 'tags' || sp.section === 'referrals' || sp.section === 'careers' || sp.section === 'agencies' || sp.section === 'checks' || sp.section === 'pools' || sp.section === 'fields' || sp.section === 'templates' || sp.section === 'exports' || sp.section === 'waiting' || sp.section === 'groups' || sp.section === 'questions' || sp.section === 'places' ? sp.section : 'general';
   const sectionHref = (key: string) => `/recruitment/settings?${new URLSearchParams({ ...(company ? { company: company.id } : {}), ...(key === 'general' ? {} : { section: key }) })}`;
   const here = sectionHref(section);
   const when = (iso: string) => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' }).format(new Date(iso));
@@ -62,7 +66,7 @@ export default async function RecruitmentSettingsPage({ searchParams }: { search
               <button type="submit" className={btnGhost}>{t('switchCompany')}</button>
             </form>
           )}
-          <SubTabs label={t('sections')} items={(['general', 'interviews', 'offers', 'privacy', 'tags', 'referrals', 'careers', 'agencies', 'checks', 'pools', 'fields', 'templates', 'exports', 'waiting'] as const).map((key) => ({ key, href: sectionHref(key), text: t(`section.${key}`), current: section === key }))} />
+          <SubTabs label={t('sections')} items={(['general', 'interviews', 'offers', 'privacy', 'tags', 'referrals', 'careers', 'agencies', 'checks', 'pools', 'fields', 'templates', 'exports', 'waiting', 'groups', 'questions', 'places'] as const).map((key) => ({ key, href: sectionHref(key), text: t(`section.${key}`), current: section === key }))} />
           {section === 'interviews' ? <InterviewSettingsSection s={s} companyId={company.id} here={here} />
             : section === 'offers' ? <OfferSettingsSection s={s} companyId={company.id} here={here} />
               : section === 'privacy' ? <PrivacySettingsSection s={s} companyId={company.id} here={here} />
@@ -75,7 +79,10 @@ export default async function RecruitmentSettingsPage({ searchParams }: { search
                             : section === 'fields' ? <CustomFieldSettingsSection s={s} companyId={company.id} kind={sp.kind} />
                               : section === 'templates' ? <PositionTemplateSettingsSection s={s} companyId={company.id} here={here} template={sp.template} />
                                 : section === 'exports' ? <ExportTemplateSettingsSection s={s} companyId={company.id} kind={sp.kind} />
-                                  : section === 'waiting' ? <WaitingSettingsSection s={s} companyId={company.id} here={here} /> : (<>
+                                  : section === 'waiting' ? <WaitingSettingsSection s={s} companyId={company.id} here={here} />
+                                    : section === 'groups' ? <InterviewerGroupSettingsSection s={s} companyId={company.id} />
+                                      : section === 'questions' ? <QuestionBankSettingsSection s={s} companyId={company.id} />
+                                        : section === 'places' ? <InterviewPlaceSettingsSection s={s} companyId={company.id} /> : (<>
 
           <section className="space-y-3" aria-labelledby="stages-title">
             <div><h2 id="stages-title" className="text-base font-semibold">{t('stagesTitle')}</h2><p className="text-sm text-muted-foreground">{t('stagesNote')}</p></div>

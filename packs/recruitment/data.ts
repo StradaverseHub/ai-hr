@@ -43,6 +43,7 @@ import {
 } from './custom-field-store';
 import { customFilterKey, type RawCustomValues } from './custom-field-model';
 import { cutoffRelation, stageEnteredDayOf, stageEnteredDaySql, waitingContextTx } from './waiting-store';
+import { cancelFutureInterviewsTx } from './interview-closing';
 import { WAITING_BOARD_SCAN_LIMIT, WAITING_SCAN_LIMIT, parseWaitingFilter, waitingDays, waitingLevel, type WaitingFilter } from './waiting-model';
 import {
   CANDIDATE_SOURCES, DEFAULT_REPEAT_WINDOW_MONTHS, ID_TYPES, normEmail, normIdNumber, normMobile, normName, repeatApplicationBlocked,
@@ -1301,6 +1302,8 @@ export async function moveApplicationTx(tx: Tx, s: SessionContext, applicationId
   if (plan.kind === 'hired') {
     await tx.update(recruitmentApplication).set({ state: 'hired', updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentApplication.id, app.id))
       .catch(reviewRefusal);
+    // Slice 18 review: a hired application's future interviews are cancelled (their rooms are freed).
+    await cancelFutureInterviewsTx(tx, s, [app.id]);
     await writeEventTx(tx, s, { companyId: app.companyId, applicationId: app.id, ...moveEvent(plan) });
     return { state: 'hired', stageId: plan.from };
   }
@@ -1337,6 +1340,8 @@ export async function archiveApplicationsTx(tx: Tx, s: SessionContext, companyId
   await tx.execute(sql`update recruitment_application a set state = 'archived', archive_reason_id = ${reason.id}::uuid, stage_left_at_archive = x.stage_left,
       updated_at = now(), updated_by_user_id = ${user}::uuid
     from unnest(${appIds}::uuid[], ${stages}::uuid[]) as x(id, stage_left) where a.id = x.id`);
+  // Slice 18 review: the archived applications' future interviews are cancelled in the same transaction (their rooms are freed).
+  await cancelFutureInterviewsTx(tx, s, plans.map((p) => p.id));
   const e = rejectEvent({ stageLeft: plans[0].stageLeft, reasonId: reason.id });
   await tx.execute(sql`insert into recruitment_application_event (tenant_id, company_id, application_id, kind, from_stage_id, to_stage_id, from_state, to_state,
       archive_reason_id, actor_user_id)

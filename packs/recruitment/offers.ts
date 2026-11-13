@@ -32,6 +32,7 @@ import {
 } from './schema';
 import { actorId, assertCompanyTx, assertJobLevelTx, assertNoReviewMarkTx, ensureRecruitmentDefaultsTx, jobLevelTx, processStagesTx, reviewRefusal, userLabelsTx } from './data';
 import { applicationRowTx, companySettingsTx } from './interviews';
+import { cancelFutureInterviewsTx } from './interview-closing';
 
 const offerEvent = (tx: Tx, s: SessionContext, aggregateId: string, eventType: string, payload: Record<string, unknown>) =>
   appendEvent(tx, { tenantId: s.tenantId, aggregateType: 'recruitment-offer', aggregateId, eventType, actor: actorOf(s), payload });
@@ -331,8 +332,11 @@ export async function recordOfferDecision(s: SessionContext, offerId: unknown, d
     if (app?.state === 'active' && decision === 'accepted' && settings.offerAcceptMovesForward) {
       const [job] = await tx.execute<{ process_id: string }>(sql`select process_id from recruitment_job_opening where id = ${offer.jobId}::uuid`);
       const plan = planMoveForward(await processStagesTx(tx, job.process_id), app.currentStageId);
-      if (plan.kind === 'hired') await tx.update(recruitmentApplication).set({ state: 'hired', updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentApplication.id, app.id)).catch(reviewRefusal);
-      else await tx.update(recruitmentApplication).set({ currentStageId: plan.to, updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentApplication.id, app.id)).catch(reviewRefusal);
+      if (plan.kind === 'hired') {
+        await tx.update(recruitmentApplication).set({ state: 'hired', updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentApplication.id, app.id)).catch(reviewRefusal);
+        // Slice 18 review: a hired application's future interviews are cancelled (their rooms are freed).
+        await cancelFutureInterviewsTx(tx, s, [app.id]);
+      } else await tx.update(recruitmentApplication).set({ currentStageId: plan.to, updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentApplication.id, app.id)).catch(reviewRefusal);
       await tx.insert(recruitmentApplicationEvent).values({ tenantId: s.tenantId, companyId: app.companyId, applicationId: app.id, actorUserId: user, ...moveEvent(plan) });
       moved = true;
     }
@@ -342,6 +346,7 @@ export async function recordOfferDecision(s: SessionContext, offerId: unknown, d
       if (reason) {
         await tx.update(recruitmentApplication).set({ state: 'archived', archiveReasonId: reason.id, stageLeftAtArchive: app.currentStageId, updatedAt: sql`now()`, updatedByUserId: user })
           .where(eq(recruitmentApplication.id, app.id));
+        await cancelFutureInterviewsTx(tx, s, [app.id]);
         await tx.insert(recruitmentApplicationEvent).values({ tenantId: s.tenantId, companyId: app.companyId, applicationId: app.id, actorUserId: user, ...rejectEvent({ stageLeft: app.currentStageId, reasonId: reason.id }) });
         archived = true;
       }

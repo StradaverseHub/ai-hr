@@ -35,6 +35,23 @@ export default async function InterviewFeedbackPage({ params, searchParams }: { 
       <form action={submitScorecardAction} className="space-y-5">
         <input type="hidden" name="interviewId" value={form.interviewId} />
         <input type="hidden" name="applicationId" value={form.applicationId} />
+        {/* Slice 18: the scorecard template's questions from the bank — read-only guidance, never answered and never scored. */}
+        {form.questions.length > 0 && (
+          <section aria-labelledby="guidance-title" className="space-y-3 rounded-xl border border-border bg-muted/40 p-4">
+            <div>
+              <h2 id="guidance-title" className="text-sm font-semibold">{t('questionsTitle')}</h2>
+              <p className="text-xs text-muted-foreground">{t('questionsNote')}</p>
+            </div>
+            <ol className="list-decimal space-y-2 pl-5 text-sm">
+              {form.questions.map((q) => (
+                <li key={q.id}>
+                  <span className="font-medium">{q.title}</span>{q.category && <span className="ml-2 text-xs text-muted-foreground">{q.category}</span>}
+                  {q.guidance && <p className="whitespace-pre-wrap text-xs text-muted-foreground">{q.guidance}</p>}
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
         <fieldset disabled={locked} className="space-y-5">
           <p className="text-xs text-muted-foreground">{t('scale')}</p>
           {form.definition.sections.map((section) => (

@@ -81,7 +81,8 @@ export default async function RecruitmentInterviewsPage({ searchParams }: { sear
                           <td className="px-3 py-2"><Link className="font-medium hover:underline" href={`/recruitment/applications/${r.applicationId}?tab=interviews`}>{r.candidateName}</Link>
                             <div className="text-xs text-muted-foreground">{[r.email, r.phone].filter(Boolean).join(' · ')}</div></td>
                           <td className="px-3 py-2">{r.jobTitle} <span className="font-mono text-xs text-muted-foreground">{r.jobNumber}</span></td>
-                          <td className="px-3 py-2">{[r.site, r.meetingRoom].filter(Boolean).join(' · ') || '—'}</td>
+                          <td className="px-3 py-2">{[r.place ? [r.place.addressName, r.place.roomName].filter(Boolean).join(' · ') : null, r.site, r.meetingRoom].filter(Boolean).join(' · ') || '—'}
+                            {r.place && <span className="block text-xs text-muted-foreground">{r.place.address} · {r.place.region}</span>}</td>
                           <td className="px-3 py-2">{r.recruiterName ?? '—'}</td>
                           <td className="px-3 py-2"><Pill tone={r.status === 'awaiting_feedback' ? 'warn' : r.status === 'feedback_complete' ? 'good' : r.status === 'cancelled' ? 'neutral' : 'info'}>{status(r)}</Pill></td>
                         </tr>

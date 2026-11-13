@@ -104,6 +104,13 @@ export const RECRUITMENT_ERROR_CODES = [
   // …another export of the person (or too many in the tenant) is running; an export or a preview ran out of time (narrow the
   // filters / split the file); the person's previews for today are used.
   'export_busy', 'export_too_slow', 'import_too_heavy', 'import_preview_limit',
+  // Slice 18: an interviewer group is not the company's (or was deleted); a question linked to a scorecard template cannot be
+  // deleted (retire it); a retired question cannot be linked; an address or room some interview uses cannot be deleted (disable the
+  // room); a room is disabled, of another address or company, or not for this kind of interview; the room is already booked at an
+  // overlapping time; a map link is not https; the company already has the most groups, questions, addresses or rooms (or a
+  // template the most questions); the chosen groups leave no one who can interview.
+  'group_unavailable', 'question_in_use', 'question_retired', 'address_in_use', 'room_in_use', 'room_unavailable', 'room_booked',
+  'map_link_https', 'setup_limit', 'no_interviewers',
 ] as const;
 export type RecruitmentErrorCode = (typeof RECRUITMENT_ERROR_CODES)[number];
 

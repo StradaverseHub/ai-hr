@@ -28,6 +28,10 @@ import {
 import {
   actorId, assertCompanyTx, assertJobLevelTx, assertSeeCompanyTx, ensureRecruitmentDefaultsTx, jobLevelTx, userLabelsTx, uuidArray, type UserLabel,
 } from './data';
+import {
+  addressOfCompanyTx, formQuestionsTx, groupMembersTx, interviewPlaceError, roomOfCompanyTx, schedulingSetupTx, type SchedulingAddress, type SchedulingGroup,
+} from './interview-setup';
+import { INTERVIEWERS_MAX, expandInterviewers, resolvePlace, type GuidanceQuestion } from './interview-setup-model';
 
 const iso = (d: Date | string) => new Date(d).toISOString();
 const event = (tx: Tx, s: SessionContext, aggregateId: string, eventType: string, payload: Record<string, unknown>) =>
@@ -74,6 +78,8 @@ export type InterviewFormOptions = {
   /** Slice 15: the job's interview plan — each round's scorecard template (an evaluation form); empty when the job has none. A
    *  round whose form has since been disabled names it with `enabled: false` (scheduling then uses the company's default form). */
   plan: { round: number; formId: string; formName: string | null; enabled: boolean }[];
+  /** Slice 18: the company's interviewer groups ("Add group" adds each current member once) and addresses with their enabled rooms. */
+  groups: SchedulingGroup[]; addresses: SchedulingAddress[];
 };
 
 /** Slice 15: the job's interview plan as rounds (1-based) with each round's form, read with the job. */
@@ -101,13 +107,17 @@ export async function interviewFormOptions(s: SessionContext, applicationId: str
     const planned = plan.length ? plan.map((p) => p.round) : DEFAULT_ROUNDS;
     const rounds = [...new Set([...planned, ...Array.from({ length: Math.min(20, (maxRound?.n ?? 0) + 1) }, (_, i) => i + 1)])].sort((a, b) => a - b);
     const users = [...(await userLabelsTx(tx, app.company_id)).values()].filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name));
-    return { applicationId: app.id, candidateName: app.candidate_name, jobTitle: app.job_title, stageName: app.stage_name, rounds, forms, users, plan };
+    const { groups, addresses } = await schedulingSetupTx(tx, app.company_id);
+    return { applicationId: app.id, candidateName: app.candidate_name, jobTitle: app.job_title, stageName: app.stage_name, rounds, forms, users, plan, groups, addresses };
   });
 }
 
 /**
  * Schedule an interview of an ACTIVE application at its current stage. The interviewers must be people of the
  * company (the same population the team pickers offer). The form defaults to the company's default form.
+ * Slice 18: chosen interviewer groups add each CURRENT member who still has access, once (the group itself is not recorded); an
+ * on-site interview may name one of the company's addresses and optionally one of its enabled rooms. The database refuses a room
+ * already booked at an overlapping time (5219 exclusion constraint) as `room_booked`.
  */
 export async function scheduleInterview(s: SessionContext, input: InterviewInput): Promise<{ id: string }> {
   const valid = validateInterviewInput(input);
@@ -117,9 +127,16 @@ export async function scheduleInterview(s: SessionContext, input: InterviewInput
   return withRecruitmentTenant(s, async (tx) => {
     const app = await applicationRowTx(tx, s, v.applicationId);
     await assertJobLevelTx(tx, app.company_id, app.job_id, 'operate', app.id);
-    if (app.state !== 'active') throw new RecruitmentError('application_closed');
+    // Slice 18 review: the state is read under a share lock on the application (application, then interview — a reject's order), so
+    // a concurrent reject either commits first (and this refuses) or waits for this interview to commit (and then cancels it).
+    const [locked] = await tx.execute<{ state: ApplicationState }>(sql`select state from recruitment_application where id = ${app.id}::uuid for share`);
+    if (locked?.state !== 'active') throw new RecruitmentError('application_closed');
     const labels = await userLabelsTx(tx, app.company_id);
     if (!v.interviewerIds.every((id) => labels.get(id)?.active)) throw new RecruitmentError('invalid_input', ['interviewers']);
+    const expanded = expandInterviewers({ picked: v.interviewerIds, groups: await groupMembersTx(tx, app.company_id, v.groupIds), eligible: (id) => labels.get(id)?.active === true });
+    if (!expanded.interviewerIds.length) throw new RecruitmentError('no_interviewers', ['groupIds']);
+    if (expanded.interviewerIds.length > INTERVIEWERS_MAX) throw new RecruitmentError('invalid_input', ['interviewers']);
+    const place = await placeTx(tx, app.company_id, v.type, v.addressId, v.roomId);
     let formId = v.formId;
     // Slice 15: no form chosen — the job's interview plan names the round's form; it is used while it is still enabled.
     if (!formId) {
@@ -139,18 +156,30 @@ export async function scheduleInterview(s: SessionContext, input: InterviewInput
     const [row] = await tx.insert(recruitmentInterview).values({
       tenantId: s.tenantId, companyId: app.company_id, jobId: app.job_id, applicationId: app.id, stageId: app.current_stage_id,
       roundNo: v.roundNo, interviewType: v.type, startsAt: v.startsAt, durationMinutes: v.durationMinutes, site: v.site, meetingRoom: v.meetingRoom,
-      evaluationFormId: formId, createdByUserId: user, updatedByUserId: user,
-    }).returning({ id: recruitmentInterview.id });
-    for (const interviewer of v.interviewerIds) {
-      await tx.insert(recruitmentInterviewInterviewer).values({
-        tenantId: s.tenantId, companyId: app.company_id, jobId: app.job_id, applicationId: app.id, interviewId: row.id, appUserId: interviewer, createdByUserId: user,
-      });
-    }
+      addressId: place.addressId, roomId: place.roomId, evaluationFormId: formId, createdByUserId: user, updatedByUserId: user,
+    }).returning({ id: recruitmentInterview.id }).catch(interviewPlaceError);
+    // One statement for every interviewer (at most INTERVIEWERS_MAX).
+    await tx.insert(recruitmentInterviewInterviewer).values(expanded.interviewerIds.map((interviewer) => ({
+      tenantId: s.tenantId, companyId: app.company_id, jobId: app.job_id, applicationId: app.id, interviewId: row.id, appUserId: interviewer, createdByUserId: user,
+    }))).catch(interviewPlaceError);
     await event(tx, s, row.id, 'recruitment-interview.scheduled', {
-      companyId: app.company_id, applicationId: app.id, roundNo: v.roundNo, type: v.type, startsAt: iso(v.startsAt), interviewers: v.interviewerIds,
+      companyId: app.company_id, applicationId: app.id, roundNo: v.roundNo, type: v.type, startsAt: iso(v.startsAt), interviewers: expanded.interviewerIds,
+      groups: v.groupIds.length, skippedMembers: expanded.skipped.length, addressId: place.addressId, roomId: place.roomId,
     });
     return row;
   });
+}
+
+/** Slice 18: the on-site place of an interview — an address of the company and optionally one of its ENABLED rooms (a room alone
+ *  names its address). `room_unavailable` for anything else; the 5219 keys, CHECK and guard refuse the same. */
+async function placeTx(tx: Tx, companyId: string, type: InterviewType, addressId: string | null, roomId: string | null): Promise<{ addressId: string | null; roomId: string | null }> {
+  if (!addressId && !roomId) return { addressId: null, roomId: null };
+  const room = roomId ? await roomOfCompanyTx(tx, companyId, roomId) : null;
+  if (roomId && (!room || !room.enabled)) throw new RecruitmentError('room_unavailable', ['roomId']);
+  if (addressId && !(await addressOfCompanyTx(tx, companyId, addressId))) throw new RecruitmentError('room_unavailable', ['addressId']);
+  const resolved = resolvePlace({ type, addressId, roomId, roomAddress: () => room?.addressId ?? null });
+  if (!resolved.ok) throw new RecruitmentError('room_unavailable', resolved.fields);
+  return { addressId: resolved.addressId, roomId: resolved.roomId };
 }
 
 async function interviewTx(tx: Tx, s: SessionContext, interviewId: unknown) {
@@ -184,6 +213,49 @@ export async function setCandidateResponse(s: SessionContext, interviewId: unkno
   });
 }
 
+/**
+ * Slice 18: add interviewers to an open interview — chosen people and/or interviewer groups. Each CURRENT member of a chosen group who
+ * still has access is added once; anyone already an interviewer is left as they are (adding the same group again adds nobody). The
+ * group is not recorded on the interview, so later group edits change nothing here. Operators of the job only.
+ */
+export async function addInterviewers(s: SessionContext, interviewId: unknown, input: { interviewerIds?: unknown; groupIds?: unknown }):
+  Promise<{ added: string[]; skipped: number }> {
+  const list = (v: unknown) => [...new Set((Array.isArray(v) ? v : v == null || v === '' ? [] : [v]).filter((x) => x !== ''))];
+  const picked = list(input.interviewerIds);
+  const groupIds = list(input.groupIds);
+  if (!picked.length && !groupIds.length) throw new RecruitmentError('missing_fields', ['interviewers']);
+  if (picked.length > INTERVIEWERS_MAX || !picked.every(isUuid)) throw new RecruitmentError('invalid_input', ['interviewers']);
+  if (groupIds.length > INTERVIEWERS_MAX || !groupIds.every(isUuid)) throw new RecruitmentError('invalid_input', ['groupIds']);
+  const user = actorId(s);
+  return withRecruitmentTenant(s, async (tx) => {
+    const i = await interviewTx(tx, s, interviewId);
+    await assertJobLevelTx(tx, i.companyId, i.jobId, 'operate', i.applicationId);
+    if (i.cancelledAt) throw new RecruitmentError('interview_closed');
+    // Slice 18 review: only while the application is active (naming an interviewer grants read of the candidate; 5219's interviewer
+    // guard refuses the same). The application row is locked first — the order a reject takes (application, then its interviews) —
+    // so a concurrent reject either finishes first (and this refuses) or waits for this to commit.
+    const [appRow] = await tx.execute<{ state: ApplicationState }>(sql`select state from recruitment_application where id = ${i.applicationId}::uuid for share`);
+    if (appRow?.state !== 'active') throw new RecruitmentError('application_closed');
+    // One writer of this interview's interviewers at a time (a write path; reads never take it).
+    await tx.execute(sql`select id from recruitment_interview where id = ${i.id}::uuid for no key update`);
+    const existing = (await tx.execute<{ app_user_id: string }>(sql`select app_user_id from recruitment_interview_interviewer where interview_id = ${i.id}::uuid order by created_at, id`))
+      .map((r) => r.app_user_id);
+    const labels = await userLabelsTx(tx, i.companyId);
+    if (!picked.filter((id) => !existing.includes(id)).every((id) => labels.get(id)?.active)) throw new RecruitmentError('invalid_input', ['interviewers']);
+    const expanded = expandInterviewers({ existing, picked, groups: await groupMembersTx(tx, i.companyId, groupIds), eligible: (id) => labels.get(id)?.active === true });
+    if (expanded.interviewerIds.length > INTERVIEWERS_MAX) throw new RecruitmentError('invalid_input', ['interviewers']);
+    if (expanded.added.length) {
+      await tx.insert(recruitmentInterviewInterviewer).values(expanded.added.map((id) => ({
+        tenantId: s.tenantId, companyId: i.companyId, jobId: i.jobId, applicationId: i.applicationId, interviewId: i.id, appUserId: id, createdByUserId: user,
+      }))).onConflictDoNothing({ target: [recruitmentInterviewInterviewer.interviewId, recruitmentInterviewInterviewer.appUserId] }).catch(interviewPlaceError);
+      await event(tx, s, i.id, 'recruitment-interview.interviewers-added', {
+        companyId: i.companyId, applicationId: i.applicationId, added: expanded.added, groups: groupIds.length, skippedMembers: expanded.skipped.length,
+      });
+    }
+    return { added: expanded.added, skipped: expanded.skipped.length };
+  });
+}
+
 // ── Reading interviews ───────────────────────────────────────────────────────────────────────────────────
 
 export type InterviewerView = {
@@ -194,9 +266,14 @@ export type InterviewerView = {
 export type InterviewCard = {
   id: string; roundNo: number; type: InterviewType; startsAt: string; durationMinutes: number; site: string | null; meetingRoom: string | null;
   candidateResponse: CandidateResponse; cancelled: boolean; status: InterviewStatus; formName: string; stageName: string;
+  /** Slice 18: the on-site address (and room) chosen from the company's list; null when the interview names none. */
+  place: { addressName: string; address: string; region: string; mapUrl: string | null; roomName: string | null } | null;
   interviewers: InterviewerView[]; submitted: number; total: number;
   /** The viewer is an interviewer here and has not yet given feedback. */
   canAddFeedback: boolean; canEditFeedback: boolean;
+  /** Slice 18 review: the viewer operates the job and may cancel this open interview — while the application is active, or, once it
+   *  has closed, while the interview is still in the future (closing cancels future interviews; this covers any left over). */
+  canCancel: boolean;
 };
 
 async function interviewCardsTx(tx: Tx, s: SessionContext, where: ReturnType<typeof sql>, now: Date, labelsByCompany: (companyId: string) => Promise<Map<string, UserLabel>>) {
@@ -204,15 +281,19 @@ async function interviewCardsTx(tx: Tx, s: SessionContext, where: ReturnType<typ
     id: string; company_id: string; job_id: string; application_id: string; stage_id: string; round_no: number; interview_type: InterviewType; starts_at: string;
     duration_minutes: number; site: string | null; meeting_room: string | null; candidate_response: CandidateResponse; cancelled: boolean;
     form_name: string; stage_name: string; app_state: ApplicationState; app_stage_id: string; process_id: string;
+    address_name: string | null; address_text: string | null; address_region: string | null; address_map_url: string | null; room_name: string | null;
   }>(sql`
     select i.id, i.company_id, i.job_id, i.application_id, i.stage_id, i.round_no, i.interview_type, to_char(i.starts_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as starts_at,
       i.duration_minutes, i.site, i.meeting_room, i.candidate_response, i.cancelled_at is not null as cancelled, f.name as form_name, st.name as stage_name,
-      a.state as app_state, a.current_stage_id as app_stage_id, j.process_id
+      a.state as app_state, a.current_stage_id as app_stage_id, j.process_id,
+      ad.name as address_name, ad.address as address_text, ad.region as address_region, ad.map_url as address_map_url, rm.name as room_name
     from recruitment_interview i
     join recruitment_evaluation_form f on f.id = i.evaluation_form_id
     join recruitment_stage st on st.id = i.stage_id
     join recruitment_application a on a.id = i.application_id
     join recruitment_job_opening j on j.id = i.job_id
+    left join recruitment_interview_address ad on ad.id = i.address_id
+    left join recruitment_interview_room rm on rm.id = i.room_id
     where i.tenant_id = ${s.tenantId}::uuid and ${where}
     order by i.starts_at, i.round_no, i.id`);
   if (!rows.length) return [];
@@ -247,8 +328,12 @@ async function interviewCardsTx(tx: Tx, s: SessionContext, where: ReturnType<typ
       durationMinutes: r.duration_minutes, site: r.site, meetingRoom: r.meeting_room, candidateResponse: r.candidate_response, cancelled: r.cancelled,
       status: interviewStatus({ startsAt: r.starts_at, durationMinutes: r.duration_minutes, cancelled: r.cancelled, interviewers: views.length, submitted }, now),
       formName: r.form_name, stageName: r.stage_name, interviewers: views, submitted, total: views.length,
+      place: r.address_name === null ? null : {
+        addressName: r.address_name, address: r.address_text ?? '', region: r.address_region ?? '', mapUrl: r.address_map_url, roomName: r.room_name,
+      },
       canAddFeedback: !r.cancelled && !!viewer && !viewer.submitted,
       canEditFeedback: !r.cancelled && !!viewer?.submitted && editable,
+      canCancel: false,
     });
   }
   return out;
@@ -266,7 +351,9 @@ export async function applicationInterviews(s: SessionContext, applicationId: st
     const access = await jobLevelTx(tx, app.company_id, app.job_id, app.id);
     if (!access.read) throw new RecruitmentError('not_found');
     const labels = await userLabelsTx(tx, app.company_id);
-    const interviews = await interviewCardsTx(tx, s, sql`i.application_id = ${app.id}::uuid`, now, async () => labels);
+    const interviews = (await interviewCardsTx(tx, s, sql`i.application_id = ${app.id}::uuid`, now, async () => labels)).map((c) => ({
+      ...c, canCancel: access.operate && !c.cancelled && (app.state === 'active' || new Date(c.startsAt).getTime() > now.getTime()),
+    }));
     return {
       applicationId: app.id, candidateName: app.candidate_name, jobTitle: app.job_title, jobId: app.job_id, companyId: app.company_id, state: app.state,
       stageName: app.stage_name, canSchedule: access.operate && app.state === 'active', interviews,
@@ -351,6 +438,8 @@ export async function interviewSchedule(s: SessionContext, companyIds: readonly 
 export type ScorecardForm = {
   interviewId: string; applicationId: string; candidateName: string; jobTitle: string; roundNo: number; formName: string;
   definition: EvaluationFormDefinition; resultRequired: boolean;
+  /** Slice 18: the scorecard template's linked questions that are not retired, read now — guidance only: never answered, never scored. */
+  questions: GuidanceQuestion[];
   existing: { ratings: Record<string, { rating: number; notes?: string }>; result: EvaluationResult | null; overview: string | null } | null;
   editable: boolean;
 };
@@ -374,7 +463,7 @@ export async function scorecardForm(s: SessionContext, interviewId: unknown): Pr
       { stageId: i.stageId, position: positions.get(i.stageId) ?? null });
     return {
       interviewId: i.id, applicationId: i.applicationId, candidateName: app.candidate_name, jobTitle: app.job_title, roundNo: i.roundNo, formName: form.name,
-      definition: readFormDefinition(form.definition), resultRequired: settings.resultRequired,
+      definition: readFormDefinition(form.definition), resultRequired: settings.resultRequired, questions: await formQuestionsTx(tx, i.evaluationFormId),
       existing: existing ? { ratings: existing.ratings, result: existing.result ?? null, overview: existing.overview ?? null } : null, editable,
     };
   });

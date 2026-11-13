@@ -38076,7 +38076,17 @@
       "export_busy": "Eksport lain sedang berjalan. Cuba lagi sebentar lagi.",
       "export_too_slow": "Eksport ini terlalu besar untuk disiapkan dalam masa. Kecilkan penapis dan eksport semula.",
       "import_too_heavy": "Fail ini terlalu berat untuk disemak sekali gus. Bahagikan kepada fail yang lebih kecil dan semak setiap satu.",
-      "import_preview_limit": "Anda telah menyemak 20 fail hari ini. Anda boleh menyemak lagi esok."
+      "import_preview_limit": "Anda telah menyemak 20 fail hari ini. Anda boleh menyemak lagi esok.",
+      "group_unavailable": "Kumpulan penemu duga itu tidak lagi tersedia dalam syarikat ini. Muat semula halaman dan pilih semula.",
+      "question_in_use": "Soalan ini dipautkan kepada templat kad skor. Nyahpautkan atau bersarakan soalan ini dan bukannya memadamnya.",
+      "question_retired": "Soalan yang telah bersara tidak boleh dipautkan kepada templat kad skor lain. Pulihkannya dahulu.",
+      "address_in_use": "Satu temu duga menggunakan alamat ini, jadi ia tidak boleh dipadam.",
+      "room_in_use": "Satu temu duga telah ditempah di bilik ini, jadi ia tidak boleh dipadam. Nyahdayakannya sahaja.",
+      "room_unavailable": "Pilih bilik yang didayakan di alamat yang dipilih. Alamat dan bilik hanya untuk temu duga di lokasi.",
+      "room_booked": "Bilik itu sudah ditempah untuk temu duga lain pada masa yang bertindih. Pilih bilik atau masa lain.",
+      "map_link_https": "Pautan peta mestilah alamat https:// yang lengkap.",
+      "setup_limit": "Had maksimum telah dicapai (kumpulan 100, soalan 500, alamat 100, bilik 50 setiap alamat, soalan 30 setiap templat kad skor). Buang yang tidak digunakan lagi dahulu.",
+      "no_interviewers": "Kumpulan yang dipilih tiada ahli yang boleh menemu duga untuk syarikat ini. Pilih orang atau kumpulan lain."
     },
     "overview": {
       "purpose": "Kerja pengambilan hari ini merentas syarikat yang pengambilannya anda uruskan.",
@@ -38354,7 +38364,10 @@
         "fields": "Medan tersuai",
         "templates": "Templat jawatan",
         "exports": "Templat eksport",
-        "waiting": "Had menunggu"
+        "waiting": "Had menunggu",
+        "groups": "Kumpulan penemu duga",
+        "questions": "Bank soalan",
+        "places": "Alamat dan bilik"
       },
       "iv": {
         "rulesTitle": "Peraturan maklum balas",
@@ -38567,7 +38580,24 @@
       "colCandidate": "Calon",
       "colPosition": "Jawatan",
       "colRecruiter": "Perekrut",
-      "colStatus": "Status"
+      "colStatus": "Status",
+      "roomNamed": "Bilik {room}",
+      "openMap": "Buka peta",
+      "addInterviewers": "Tambah penemu duga",
+      "addGroup": "Tambah kumpulan",
+      "groupMembers": "{n, plural, one {# ahli} other {# ahli}}",
+      "addPeople": "Orang",
+      "groupNote": "Setiap ahli semasa kumpulan yang dipilih ditambah sekali sebagai penemu duga. Perubahan kemudian pada kumpulan tidak mengubah temu duga ini.",
+      "addInterviewersSubmit": "Tambah",
+      "fieldInvalid": "Semak nilai ini.",
+      "address": "Alamat (di lokasi)",
+      "noAddress": "Tiada alamat",
+      "noAddresses": "Tiada alamat disediakan",
+      "roomPick": "Bilik mesyuarat (pilihan)",
+      "noRoom": "Tiada bilik",
+      "roomOption": "{room} ({capacity} tempat duduk)",
+      "roomHint": "Bilik ditempah untuk masa temu duga; bilik yang sama tidak boleh ditempah dua kali pada masa yang bertindih.",
+      "siteFree": "Lokasi lain (teks bebas)"
     },
     "fb": {
       "results": {
@@ -38591,7 +38621,9 @@
       "submit": "Hantar maklum balas",
       "scorecardTitle": "Kad skor oleh {name}",
       "unnamedUser": "Pengguna",
-      "total": "{sum}/{max}"
+      "total": "{sum}/{max}",
+      "questionsTitle": "Soalan untuk ditanya",
+      "questionsNote": "Panduan daripada bank soalan untuk kad skor ini. Soalan ini tidak dijawab di sini dan tidak dikira dalam skor."
     },
     "offer": {
       "privateHidden": "Peribadi — tidak kelihatan kepada anda",
@@ -40126,6 +40158,65 @@
         "not_suggested": "tidak lagi melebihi had cadangan arkib (mungkin telah dipindahkan)"
       },
       "countWindow": "Kiraan merangkumi {count} permohonan tertua sesuatu peringkat; “+” bermaksud mungkin ada lagi."
+    },
+    "setup": {
+      "fieldRequired": "Wajib.",
+      "fieldInvalid": "Semak nilai ini.",
+      "unnamedUser": "Pengguna",
+      "changedAt": "Diubah {at}",
+      "save": "Simpan",
+      "add": "Tambah",
+      "delete": "Padam",
+      "deleteNamed": "Padam {name}",
+      "groups": {
+        "note": "Kumpulan ialah senarai orang yang sering menemu duga bersama. Semasa menjadualkan, \"Tambah kumpulan\" menambah setiap ahli semasa sekali sebagai penemu duga individu. Kumpulan tidak memberi akses kepada sesiapa, dan mengubahnya kemudian tidak mengubah temu duga yang sudah dijadualkan.",
+        "empty": "Belum ada kumpulan penemu duga.",
+        "name": "Nama kumpulan",
+        "members": "Ahli (paling banyak {max})",
+        "memberCount": "{count, plural, one {# ahli} other {# ahli}}",
+        "noAccess": "tiada akses lagi",
+        "noMembers": "Tiada ahli.",
+        "newTitle": "Kumpulan penemu duga baharu"
+      },
+      "questions": {
+        "note": "Soalan yang boleh ditanya oleh penemu duga. Pautkan kepada templat kad skor (Tetapan › Temu duga): penemu duga melihat soalan yang dipautkan sebagai panduan pada borang maklum balas mereka. Soalan tidak pernah dijawab atau diberi skor. Bersarakan soalan untuk menyembunyikannya daripada borang maklum balas; soalan yang dipautkan tidak boleh dipadam.",
+        "empty": "Belum ada soalan.",
+        "title": "Soalan",
+        "guidance": "Panduan untuk penemu duga (paling banyak {max} aksara)",
+        "category": "Kategori (pilihan)",
+        "templates": "Tunjukkan pada templat kad skor ini (paling banyak {max} soalan setiap satu)",
+        "formDisabled": "dinyahdayakan",
+        "formCount": "{form}: {count}",
+        "retired": "Bersara",
+        "linkedTo": "Ditunjukkan pada: {forms}",
+        "notLinked": "Tidak dipautkan kepada mana-mana templat kad skor.",
+        "retire": "Bersarakan",
+        "restore": "Pulihkan",
+        "newTitle": "Soalan baharu"
+      },
+      "places": {
+        "note": "Alamat dan bilik mesyuarat untuk temu duga di lokasi. Bilik tidak boleh ditempah untuk dua temu duga pada masa yang bertindih; membatalkan temu duga membebaskan biliknya. Ini senarai AI HR sendiri: tiada sistem kalendar atau bilik mesyuarat disambungkan.",
+        "empty": "Belum ada alamat temu duga.",
+        "name": "Nama",
+        "region": "Wilayah",
+        "address": "Alamat",
+        "mapUrl": "Pautan peta (pilihan)",
+        "mapUrlInvalid": "Gunakan pautan lengkap yang bermula dengan https://",
+        "mapUrlHint": "Hanya pautan https diterima.",
+        "roomCount": "{count, plural, one {# bilik} other {# bilik}}",
+        "openMap": "Buka peta",
+        "roomsTitle": "Bilik mesyuarat",
+        "noRooms": "Tiada bilik di alamat ini.",
+        "roomName": "Nama bilik",
+        "capacity": "Tempat duduk (1–{max})",
+        "enabled": "Didayakan",
+        "disabled": "Dinyahdayakan",
+        "roomInUse": "Digunakan oleh temu duga",
+        "addRoom": "Tambah bilik",
+        "addressInUse": "Digunakan oleh temu duga, jadi ia disimpan.",
+        "deleteAddress": "Padam alamat",
+        "newTitle": "Alamat temu duga baharu"
+      }
     }
   },
   "careersPublic": {

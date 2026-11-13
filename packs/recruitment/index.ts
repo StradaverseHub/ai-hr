@@ -170,6 +170,13 @@ export const recruitmentPack: ModulePack = {
     { table: 'recruitment_export_template', note: 'saved export column sets per company and kind; administrators manage, operators use' },
     // Slice 17 (5218)
     { table: 'recruitment_stage_waiting_rule', note: 'per-stage waiting limits: reminder and suggest-archiving days, calendar or working days; no personal data' },
+    // Slice 18 (5219)
+    { table: 'recruitment_interviewer_group', note: 'interviewer groups: a name per company; grants no access; administrators manage, operators read' },
+    { table: 'recruitment_interviewer_group_member', note: 'the users of an interviewer group (ids only); copied into an interview\'s interviewers when the group is added' },
+    { table: 'recruitment_interview_question', note: 'the question bank: title, guidance, category, retired; guidance for interviewers, never scored; no personal data' },
+    { table: 'recruitment_interview_question_link', note: 'which questions a scorecard template shows on the feedback form' },
+    { table: 'recruitment_interview_address', note: 'interview addresses: name, address, region, https map link; company setup, no personal data' },
+    { table: 'recruitment_interview_room', note: 'meeting rooms per address: name, capacity, enabled; never double-booked (5219 exclusion constraint)' },
   ],
 };
 registerPack(recruitmentPack);

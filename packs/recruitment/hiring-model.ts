@@ -61,10 +61,13 @@ export function klLocalToInstant(value: unknown): Date | null {
 export type InterviewInput = {
   applicationId?: unknown; roundNo?: unknown; type?: unknown; startsAt?: unknown; durationMinutes?: unknown;
   site?: unknown; meetingRoom?: unknown; interviewerIds?: unknown; formId?: unknown;
+  /** Slice 18: interviewer groups whose current members are added as interviewers; the on-site address and an optional room. */
+  groupIds?: unknown; addressId?: unknown; roomId?: unknown;
 };
 export type ValidInterview = {
   applicationId: string; roundNo: number; type: InterviewType; startsAt: Date; durationMinutes: number;
   site: string | null; meetingRoom: string | null; interviewerIds: string[]; formId: string | null;
+  groupIds: string[]; addressId: string | null; roomId: string | null;
 };
 const text = (value: unknown, max: number): string | null | 'invalid' => {
   if (value == null || value === '') return null;
@@ -84,7 +87,9 @@ export function validateInterviewInput(input: InterviewInput): { ok: true; value
   const ids = (Array.isArray(input.interviewerIds) ? input.interviewerIds : input.interviewerIds == null || input.interviewerIds === '' ? [] : [input.interviewerIds])
     .filter((v) => v !== '');
   const interviewerIds = [...new Set(ids)];
-  if (!interviewerIds.length) missing.push('interviewers');
+  // Slice 18: a group alone may name the interviewers (its members are added; the service refuses when none remains).
+  const groupIds = [...new Set((Array.isArray(input.groupIds) ? input.groupIds : input.groupIds == null || input.groupIds === '' ? [] : [input.groupIds]).filter((v) => v !== ''))];
+  if (!interviewerIds.length && !groupIds.length) missing.push('interviewers');
   if (input.startsAt == null || input.startsAt === '') missing.push('startsAt');
   if (input.type == null || input.type === '') missing.push('type');
   if (missing.length) return { ok: false, code: 'missing_fields', fields: missing };
@@ -104,12 +109,18 @@ export function validateInterviewInput(input: InterviewInput): { ok: true; value
   if (interviewerIds.length > 20 || !interviewerIds.every(isUuid)) invalid.push('interviewers');
   const formId = input.formId == null || input.formId === '' ? null : isUuid(input.formId) ? input.formId : 'invalid';
   if (formId === 'invalid') invalid.push('form');
+  if (groupIds.length > 20 || !groupIds.every(isUuid)) invalid.push('groupIds');
+  const addressId = input.addressId == null || input.addressId === '' ? null : isUuid(input.addressId) ? input.addressId : 'invalid';
+  if (addressId === 'invalid') invalid.push('addressId');
+  const roomId = input.roomId == null || input.roomId === '' ? null : isUuid(input.roomId) ? input.roomId : 'invalid';
+  if (roomId === 'invalid') invalid.push('roomId');
   if (invalid.length) return { ok: false, code: 'invalid_input', fields: invalid };
   return {
     ok: true,
     value: {
       applicationId: input.applicationId as string, roundNo: roundNo!, type: type!, startsAt: startsAt!, durationMinutes: durationMinutes!,
       site: site as string | null, meetingRoom: meetingRoom as string | null, interviewerIds: interviewerIds as string[], formId: formId as string | null,
+      groupIds: groupIds as string[], addressId: addressId as string | null, roomId: roomId as string | null,
     },
   };
 }

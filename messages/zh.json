@@ -38076,7 +38076,17 @@
       "export_busy": "另一个导出正在进行。请稍后再试。",
       "export_too_slow": "此导出太大，无法及时生成。请缩小筛选范围后重新导出。",
       "import_too_heavy": "此文件太大，无法一次检查。请拆分为较小的文件并逐一检查。",
-      "import_preview_limit": "您今天已检查了 20 个文件。明天可以继续检查。"
+      "import_preview_limit": "您今天已检查了 20 个文件。明天可以继续检查。",
+      "group_unavailable": "该面试官小组在本公司已不可用。请刷新页面后重新选择。",
+      "question_in_use": "此问题已关联到评分卡模板。请取消关联或停用，而不是删除。",
+      "question_retired": "已停用的问题不能再关联到其他评分卡模板。请先恢复。",
+      "address_in_use": "有面试使用了此地址，因此不能删除。",
+      "room_in_use": "有面试预订了此会议室，因此不能删除。请改为停用。",
+      "room_unavailable": "请选择所选地址中已启用的会议室。地址和会议室仅用于现场面试。",
+      "room_booked": "该会议室在重叠的时间已被另一场面试预订。请选择其他会议室或时间。",
+      "map_link_https": "地图链接必须是完整的 https:// 地址。",
+      "setup_limit": "已达到允许的上限（小组 100 个、问题 500 个、地址 100 个、每个地址 50 间会议室、每个评分卡模板 30 个问题）。请先移除不再使用的项目。",
+      "no_interviewers": "所选小组中没有可为本公司面试的成员。请选择人员或其他小组。"
     },
     "overview": {
       "purpose": "您所管理招聘的各公司今天的招聘工作。",
@@ -38354,7 +38364,10 @@
         "fields": "自定义字段",
         "templates": "职位模板",
         "exports": "导出模板",
-        "waiting": "等待期限"
+        "waiting": "等待期限",
+        "groups": "面试官小组",
+        "questions": "题库",
+        "places": "地址和会议室"
       },
       "iv": {
         "rulesTitle": "反馈规则",
@@ -38567,7 +38580,24 @@
       "colCandidate": "候选人",
       "colPosition": "职位",
       "colRecruiter": "招聘专员",
-      "colStatus": "状态"
+      "colStatus": "状态",
+      "roomNamed": "会议室 {room}",
+      "openMap": "打开地图",
+      "addInterviewers": "添加面试官",
+      "addGroup": "添加小组",
+      "groupMembers": "{n, plural, other {# 名成员}}",
+      "addPeople": "人员",
+      "groupNote": "所选小组的每位当前成员都会作为面试官添加一次。之后对小组的更改不会影响此面试。",
+      "addInterviewersSubmit": "添加",
+      "fieldInvalid": "请检查此值。",
+      "address": "地址（现场）",
+      "noAddress": "无地址",
+      "noAddresses": "尚未设置地址",
+      "roomPick": "会议室（可选）",
+      "noRoom": "无会议室",
+      "roomOption": "{room}（{capacity} 座）",
+      "roomHint": "会议室按面试时间预订；同一会议室不能在重叠的时间被预订两次。",
+      "siteFree": "其他地点（自由填写）"
     },
     "fb": {
       "results": {
@@ -38591,7 +38621,9 @@
       "submit": "提交反馈",
       "scorecardTitle": "{name} 的评分卡",
       "unnamedUser": "用户",
-      "total": "{sum}/{max}"
+      "total": "{sum}/{max}",
+      "questionsTitle": "可提问的问题",
+      "questionsNote": "来自题库的本评分卡指引。这些问题无需在此作答，也不计入评分。"
     },
     "offer": {
       "privateHidden": "私密——您不可见",
@@ -40126,6 +40158,65 @@
         "not_suggested": "已不再超过建议归档期限（可能已被移动）"
       },
       "countWindow": "计数涵盖每个阶段最早的 {count} 份申请；“+”表示可能还有更多。"
+    },
+    "setup": {
+      "fieldRequired": "必填。",
+      "fieldInvalid": "请检查此值。",
+      "unnamedUser": "用户",
+      "changedAt": "修改于 {at}",
+      "save": "保存",
+      "add": "添加",
+      "delete": "删除",
+      "deleteNamed": "删除 {name}",
+      "groups": {
+        "note": "小组是经常一起面试的人员名单。安排面试时，“添加小组”会将每位当前成员作为个人面试官添加一次。小组不授予任何人访问权限，之后修改小组也不会改变已安排的面试。",
+        "empty": "尚无面试官小组。",
+        "name": "小组名称",
+        "members": "成员（最多 {max} 名）",
+        "memberCount": "{count, plural, other {# 名成员}}",
+        "noAccess": "已无访问权限",
+        "noMembers": "无成员。",
+        "newTitle": "新建面试官小组"
+      },
+      "questions": {
+        "note": "面试官可以提出的问题。将其关联到评分卡模板（设置 › 面试）：面试官会在反馈表上看到关联的问题作为指引。问题不会被作答或评分。停用问题可将其从反馈表中隐藏；已关联的问题不能删除。",
+        "empty": "尚无问题。",
+        "title": "问题",
+        "guidance": "给面试官的指引（最多 {max} 个字符）",
+        "category": "类别（可选）",
+        "templates": "在以下评分卡模板中显示（每个最多 {max} 个问题）",
+        "formDisabled": "已停用",
+        "formCount": "{form}：{count}",
+        "retired": "已停用",
+        "linkedTo": "显示于：{forms}",
+        "notLinked": "未关联任何评分卡模板。",
+        "retire": "停用",
+        "restore": "恢复",
+        "newTitle": "新建问题"
+      },
+      "places": {
+        "note": "用于现场面试的地址和会议室。同一会议室不能在重叠的时间为两场面试预订；取消面试会释放其会议室。这些是 AI HR 自己的列表：未连接任何日历或会议室系统。",
+        "empty": "尚无面试地址。",
+        "name": "名称",
+        "region": "地区",
+        "address": "地址",
+        "mapUrl": "地图链接（可选）",
+        "mapUrlInvalid": "请使用以 https:// 开头的完整链接",
+        "mapUrlHint": "仅接受 https 链接。",
+        "roomCount": "{count, plural, other {# 间会议室}}",
+        "openMap": "打开地图",
+        "roomsTitle": "会议室",
+        "noRooms": "此地址尚无会议室。",
+        "roomName": "会议室名称",
+        "capacity": "座位（1–{max}）",
+        "enabled": "已启用",
+        "disabled": "已停用",
+        "roomInUse": "已被面试使用",
+        "addRoom": "添加会议室",
+        "addressInUse": "已被面试使用，因此保留。",
+        "deleteAddress": "删除地址",
+        "newTitle": "新建面试地址"
+      }
     }
   },
   "careersPublic": {

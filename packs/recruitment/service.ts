@@ -19,7 +19,7 @@ export type {
 // Slice 2 — interviews and scorecards.
 export {
   interviewFormOptions, scheduleInterview, cancelInterview, setCandidateResponse, applicationInterviews, interviewSchedule, scorecardForm,
-  submitScorecard, getScorecard, interviewSettings, updateInterviewSettings, saveEvaluationForm, myJobRoles,
+  submitScorecard, getScorecard, interviewSettings, updateInterviewSettings, saveEvaluationForm, myJobRoles, addInterviewers,
 } from './interviews';
 export type {
   InterviewFormOptions, InterviewCard, InterviewerView, ApplicationInterviews, ScheduleFilters, ScheduleRow, InterviewSchedule, ScorecardForm,
@@ -251,6 +251,26 @@ export {
   waitingDays, waitingCutoff, ruleCutoffs, waitingLevel, holidayWindowStart, parseWaitingFilter, validateWaitingRule,
 } from './waiting-model';
 export type { WaitingDayKind, WaitingFilter, WaitingRule, WaitingLevel, WaitingRuleInput } from './waiting-model';
+// Slice 18 — interview set-up: interviewer groups (scheduling and addInterviewers add each current member once; the group grants
+// nothing and is not recorded on the interview), the question bank linked to scorecard templates (read-only guidance on the feedback
+// form, never scored; retired questions hidden), and the company's interview addresses and meeting rooms (a room is never booked
+// for two overlapping interviews: 5219's exclusion constraint). No meeting or calendar integration (D-058).
+export {
+  interviewerGroupSettings, saveInterviewerGroup, deleteInterviewerGroup, questionBankSettings, saveInterviewQuestion, setInterviewQuestionRetired,
+  deleteInterviewQuestion, interviewPlaceSettings, saveInterviewAddress, deleteInterviewAddress, saveInterviewRoom, deleteInterviewRoom,
+} from './interview-setup';
+export type {
+  GroupMemberView, InterviewerGroupRow, InterviewerGroupSettings, SchedulingGroup, SchedulingAddress, QuestionRow, QuestionBankSettings, RoomRow, AddressRow,
+  InterviewPlaceSettings,
+} from './interview-setup';
+export {
+  GROUP_NAME_MAX, GROUP_MEMBERS_MAX, GROUPS_MAX, QUESTION_TITLE_MAX, QUESTION_GUIDANCE_MAX, QUESTION_CATEGORY_MAX, QUESTIONS_MAX, FORM_QUESTIONS_MAX,
+  ADDRESS_NAME_MAX, ADDRESS_TEXT_MAX, ADDRESS_REGION_MAX, MAP_LINK_MAX, ADDRESSES_MAX, ROOM_NAME_MAX, ROOM_CAPACITY_MAX, ROOMS_PER_ADDRESS_MAX, INTERVIEWERS_MAX,
+  validateGroup, expandInterviewers, validateQuestion, guidanceQuestions, isHttpsMapLink, validateAddress, validateRoom, resolvePlace, interviewPeriod, periodsOverlap,
+} from './interview-setup-model';
+export type {
+  GroupInput, ValidGroup, QuestionInput, ValidQuestion, GuidanceQuestion, AddressInput, ValidAddress, RoomInput, ValidRoom,
+} from './interview-setup-model';
 export {
   RecruitmentError, RECRUITMENT_ERROR_CODES, JOB_STATUSES, JOB_STATUS_TRANSITIONS, JOB_MEMBER_ROLES, POSITION_ATTRIBUTES, RECRUITMENT_TYPES,
   JOB_EMPLOYMENT_TYPES, RECRUITMENT_STAGE_TYPES, canChangeJobStatus, jobTab, INTERVIEW_PLAN_MAX, INTERVIEW_PLAN_FORM_MARKER, parseInterviewPlan, interviewPlanFromForm,

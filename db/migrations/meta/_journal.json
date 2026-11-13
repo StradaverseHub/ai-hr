@@ -5909,6 +5909,13 @@
       "when": 1793330004918,
       "tag": "5218_recruitment_waiting_limits",
       "breakpoints": true
+    },
+    {
+      "idx": 4619,
+      "version": "7",
+      "when": 1793330004919,
+      "tag": "5219_recruitment_interview_setup",
+      "breakpoints": true
     }
   ]
 }

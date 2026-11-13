@@ -574,3 +574,24 @@ the board filter counted 2 waiting and 1 suggested and narrowed the cards. The j
 HR Admin, not on the job, saw none. The hiring manager saw "Waiting 10 days" without the suggestion and was refused the
 list. From the list, a refusal without a reason kept the selection; archiving with a reason wrote the normal rejected
 event by the recruiter, and "1 application archived." stayed after the list emptied.
+
+| Run | Job | Result |
+| --- | --- | --- |
+| 43235368745 | Whole-repo type check | PASS |
+| 43235368745 | Production build | PASS |
+| 43235368745 | Selected tests (64 files) | 58 PASS; FAIL: the known 6 AI files (53 tests) |
+| 43238773263 | Selected tests (60 files) | 59 PASS; FAIL: candidate-privacy case 26 counted 71 recruitment tables (72 with the rule table) |
+| 43235482456 | Selected tests (6 files, incl. waiting, waiting rules, import and export) | PASS: 60 tests |
+| 43240767473 | Candidate privacy after the count fix (789f22f02) | PASS: 12 tests |
+
+## Slice 18 — Interview set-up: groups, question bank, addresses and rooms
+
+Local: after a review and a confirmation round, the slice tests passed 27/27 and 29 affected existing files 456/456;
+non-test type check 0 errors.
+Rendered (case 126): an interviewer group of two people; two questions linked to the scorecard template (Delete hidden
+while linked); an address refused with an http map link (typed values kept) and saved with https; two rooms. Scheduling
+an on-site interview with the group and a room added both members as interviewers and showed the address and room. A
+second booking of the same room at an overlapping time was refused with the form kept; back to back was accepted. The
+group member, as interviewer, saw both questions as guidance above the criteria, with no answer fields. After the
+render database was rebuilt with the final migration: rejecting an application cancelled its future interview and the
+same room and time could be booked for another candidate. No server errors.

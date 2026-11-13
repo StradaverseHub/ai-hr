@@ -35,6 +35,8 @@ import {
   previewCandidateImport, startCandidateImport, candidateImportJob, cancelCandidateImport, assignToJob, setToAssignHidden, saveExportTemplate, deleteExportTemplate,
   type ImportPreview, type CandidateImportJob,
   archiveSuggestedApplications, deleteWaitingRule, saveWaitingRule, type SuggestedArchiveRefusal,
+  addInterviewers, deleteInterviewAddress, deleteInterviewQuestion, deleteInterviewRoom, deleteInterviewerGroup, saveInterviewAddress, saveInterviewQuestion,
+  saveInterviewRoom, saveInterviewerGroup, setInterviewQuestionRetired,
 } from '@/packs/recruitment/service';
 import { getLocale } from 'next-intl/server';
 
@@ -222,11 +224,30 @@ export async function deleteArchiveReasonAction(f: FormData) {
 
 const appPage = (f: FormData, tab: string) => back(f, `/recruitment/applications/${encodeURIComponent(str(f, 'applicationId'))}?tab=${tab}`);
 
-export async function scheduleInterviewAction(f: FormData) {
-  return run(appPage(f, 'interviews'), (s) => scheduleInterview(s, {
-    applicationId: str(f, 'applicationId'), roundNo: str(f, 'roundNo'), type: str(f, 'type'), startsAt: str(f, 'startsAt'),
-    durationMinutes: str(f, 'durationMinutes'), site: str(f, 'site'), meetingRoom: str(f, 'meetingRoom'),
-    interviewerIds: f.getAll('interviewerIds').map(String), formId: str(f, 'formId'),
+/**
+ * Schedule an interview (slice 2; slice 18 review). The save RETURNS a refusal (a room already booked at that time, an unavailable
+ * room, groups leaving nobody …) so the form keeps everything typed; a successful save redirects to the Interviews tab.
+ */
+export async function scheduleInterviewFormAction(prev: FormRefusal, f: FormData): Promise<FormRefusal> {
+  const s = await getSession();
+  try {
+    await scheduleInterview(s, {
+      applicationId: str(f, 'applicationId'), roundNo: str(f, 'roundNo'), type: str(f, 'type'), startsAt: str(f, 'startsAt'),
+      durationMinutes: str(f, 'durationMinutes'), site: str(f, 'site'), meetingRoom: str(f, 'meetingRoom'),
+      interviewerIds: f.getAll('interviewerIds').map(String), formId: str(f, 'formId'),
+      groupIds: f.getAll('groupIds').map(String), addressId: str(f, 'addressId'), roomId: str(f, 'roomId'),
+    });
+  } catch (e) {
+    return refusal(prev, f, e);
+  }
+  revalidatePath('/recruitment', 'layout');
+  redirect(withParam(appPage(f, 'interviews'), 'notice', 'saved'));
+}
+
+/** Slice 18: add people and/or interviewer groups to an open interview (each current member once). */
+export async function addInterviewersAction(f: FormData) {
+  return run(appPage(f, 'interviews'), (s) => addInterviewers(s, str(f, 'interviewId'), {
+    interviewerIds: f.getAll('interviewerIds').map(String), groupIds: f.getAll('groupIds').map(String),
   }));
 }
 
@@ -863,4 +884,56 @@ export async function archiveSuggestedAction(prev: SuggestedArchiveState, f: For
     const errorText = (RECRUITMENT_ERROR_CODES as readonly string[]).includes(problem) ? t(problem as (typeof RECRUITMENT_ERROR_CODES)[number]) : t('unexpected');
     return { status: 'refused', problem, errorText, nonce };
   }
+}
+
+// ── Slice 18: interview set-up (groups, question bank, addresses and rooms) ─────────────────────────────────────────
+const setupPage = (f: FormData, section: 'groups' | 'questions' | 'places') =>
+  `/recruitment/settings?${new URLSearchParams({ company: str(f, 'companyId'), section })}`;
+/** Save a set-up form; a refusal is RETURNED (the form keeps what was typed and names the refused fields). */
+async function setupSave(prev: FormRefusal, f: FormData, section: 'groups' | 'questions' | 'places', work: (s: Awaited<ReturnType<typeof getSession>>) => Promise<unknown>): Promise<FormRefusal> {
+  const s = await getSession();
+  try {
+    await work(s);
+  } catch (e) {
+    return refusal(prev, f, e);
+  }
+  revalidatePath('/recruitment', 'layout');
+  redirect(withParam(setupPage(f, section), 'notice', 'saved'));
+}
+export async function saveInterviewerGroupFormAction(prev: FormRefusal, f: FormData): Promise<FormRefusal> {
+  return setupSave(prev, f, 'groups', (s) => saveInterviewerGroup(s, {
+    id: str(f, 'groupId') || undefined, companyId: str(f, 'companyId'), name: str(f, 'name'), memberIds: f.getAll('memberIds').map(String),
+  }));
+}
+export async function deleteInterviewerGroupAction(f: FormData) {
+  return run(setupPage(f, 'groups'), (s) => deleteInterviewerGroup(s, str(f, 'groupId')));
+}
+export async function saveInterviewQuestionFormAction(prev: FormRefusal, f: FormData): Promise<FormRefusal> {
+  return setupSave(prev, f, 'questions', (s) => saveInterviewQuestion(s, {
+    id: str(f, 'questionId') || undefined, companyId: str(f, 'companyId'), title: str(f, 'title'), guidance: String(f.get('guidance') ?? ''),
+    category: str(f, 'category'), formIds: f.getAll('formIds').map(String),
+  }));
+}
+export async function setInterviewQuestionRetiredAction(f: FormData) {
+  return run(setupPage(f, 'questions'), (s) => setInterviewQuestionRetired(s, { id: str(f, 'questionId'), retired: str(f, 'retired') }));
+}
+export async function deleteInterviewQuestionAction(f: FormData) {
+  return run(setupPage(f, 'questions'), (s) => deleteInterviewQuestion(s, str(f, 'questionId')));
+}
+export async function saveInterviewAddressFormAction(prev: FormRefusal, f: FormData): Promise<FormRefusal> {
+  return setupSave(prev, f, 'places', (s) => saveInterviewAddress(s, {
+    id: str(f, 'addressId') || undefined, companyId: str(f, 'companyId'), name: str(f, 'name'), address: String(f.get('address') ?? ''),
+    region: str(f, 'region'), mapUrl: str(f, 'mapUrl'),
+  }));
+}
+export async function deleteInterviewAddressAction(f: FormData) {
+  return run(setupPage(f, 'places'), (s) => deleteInterviewAddress(s, str(f, 'addressId')));
+}
+export async function saveInterviewRoomFormAction(prev: FormRefusal, f: FormData): Promise<FormRefusal> {
+  return setupSave(prev, f, 'places', (s) => saveInterviewRoom(s, {
+    id: str(f, 'roomId') || undefined, addressId: str(f, 'addressId'), name: str(f, 'name'), capacity: str(f, 'capacity'), enabled: f.get('enabled') === 'on',
+  }));
+}
+export async function deleteInterviewRoomAction(f: FormData) {
+  return run(setupPage(f, 'places'), (s) => deleteInterviewRoom(s, str(f, 'roomId')));
 }
