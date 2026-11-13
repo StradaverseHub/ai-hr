@@ -1174,7 +1174,7 @@ export async function analyzeBankImportBatch(ctx:SessionContext,records:ImportRe
 export async function planSectionImport(ctx:SessionContext,section:ImportSection,records:ImportRecord[]){
  const {preview,resolved}=await analyze(ctx,section,records);
  return{fileErrors:preview.fileErrors,total:resolved.length,nominations:resolved.filter(row=>row.result.ok&&row.subject).map(nominate),
-  rejected:resolved.filter(row=>!row.result.ok).map(row=>({rowNum:row.result.rowNum,employeeCode:row.result.employeeCode,employeeName:row.result.employeeName,errors:row.result.errors,
+  rejected:resolved.filter(row=>!row.result.ok).map(row=>({rowNum:row.result.rowNum,excelRow:(row.result as SectionRowResultWithIssues).excelRow,employeeCode:row.result.employeeCode,employeeName:row.result.employeeName,errors:row.result.errors,
    ...((row.result as SectionRowResultWithIssues).issues?.length?{issues:(row.result as SectionRowResultWithIssues).issues}:{})})),
   companyId:resolved.find(row=>row.subject)?.subject?.companyId??null};
 }

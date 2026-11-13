@@ -10,7 +10,7 @@ import * as XLSX from 'xlsx';
 import en from '../messages/en.json';
 import zh from '../messages/zh.json';
 import { ImportProblems } from '../app/admin/personnel/import/import-error-log';
-import { importProblemSheetRows } from '../lib/import-problem-workbook';
+import { importProblemSheetRows, problemCellSafe } from '../lib/import-problem-workbook';
 import { employeePreviewProblemLines } from '../lib/employee-import-problems';
 import { sectionPreviewProblemLines } from '../lib/section-import-problems';
 import type { ImportProblemTranslate } from '../lib/import-problem-common';
@@ -62,7 +62,8 @@ describe('the Error Log button', () => {
     await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
     const bytes = await new Promise<ArrayBuffer>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result as ArrayBuffer); reader.onerror = reject; reader.readAsArrayBuffer(blob!); });
     const wb = XLSX.read(new Uint8Array(bytes), { type: 'array' });
-    expect(XLSX.utils.sheet_to_json<string[]>(wb.Sheets.Errors, { header: 1, raw: false, defval: '' })).toEqual(importProblemSheetRows({ lines, t: tr('en').shared }));
+    // The same strings, each guarded against formula injection in the file.
+    expect(XLSX.utils.sheet_to_json<string[]>(wb.Sheets.Errors, { header: 1, raw: false, defval: '' })).toEqual(importProblemSheetRows({ lines, t: tr('en').shared }).map((row) => row.map(problemCellSafe)));
     // The formula guard: a cell from the file never becomes a formula.
     expect(JSON.stringify(XLSX.utils.sheet_to_json(wb.Sheets.Errors, { header: 1 }))).toContain("'=cmd");
     const anchor = click.mock.instances[0] as unknown as HTMLAnchorElement;

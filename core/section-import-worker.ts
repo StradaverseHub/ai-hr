@@ -23,7 +23,7 @@ export const SECTION_IMPORT_CHUNK_BUDGET_MS=Number(process.env.SECTION_IMPORT_CH
 const RELIEF_BATCH=25;
 export type SectionImportJobInput={section:ImportSection;records:ImportRecord[];fileName:string};
 /** `issues` (board d3ba1e9f): each problem with its column and reason code, for the Error Log. */
-type Rejected={rowNum:number;employeeCode:string;employeeName:string;errors:string[];issues?:ImportIssue[]};
+type Rejected={rowNum:number;excelRow?:number;employeeCode:string;employeeName:string;errors:string[];issues?:ImportIssue[]};
 export type SectionStoredPlan={section:ImportSection;total?:number;companyId?:string|null;rejected?:Rejected[];reliefFrom?:number;warnings?:string[];result?:SectionImportResult};
 type StepResult={wrote:boolean;personId:string;dependent:boolean};
 const inputOf=(job:BulkJobRow)=>job.input as SectionImportJobInput;
