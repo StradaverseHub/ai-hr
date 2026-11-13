@@ -2461,7 +2461,8 @@
           "movement_history_splits_movement": "%date% 记录的异动涵盖此日期。请记录 %date% 之前的历史，或先删除该异动。",
           "movement_history_payroll_company": "%detail% 的薪资已在另一家公司下结算关闭。请重新开启该薪资或检查“之前”的公司。",
           "movement_history_overtaken": "之后的历史异动或更正已更改此期间。请先删除该更改。",
-          "history_closed_payroll": "已关闭的薪资涵盖 %detail%。薪资保持已发放状态；只更改雇佣记录。"
+          "history_closed_payroll": "已关闭的薪资涵盖 %detail%。薪资保持已发放状态；只更改雇佣记录。",
+          "movement_history_change_on_date": "此字段在该日期已有记录的更改。请更正或删除该更改。"
         },
         "v2": {
           "type": "人事异动类型",

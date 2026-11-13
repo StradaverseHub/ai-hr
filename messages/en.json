@@ -2461,7 +2461,8 @@
           "movement_history_splits_movement": "A movement recorded on %date% covers this date. Record history before %date%, or delete that movement first.",
           "movement_history_payroll_company": "Payroll for %detail% was closed under a different company. Reopen that payroll or check the Before company.",
           "movement_history_overtaken": "A later history movement or correction has changed this period since. Delete that change first.",
-          "history_closed_payroll": "Closed payroll covers %detail%. It stays as issued; only the employment record changes."
+          "history_closed_payroll": "Closed payroll covers %detail%. It stays as issued; only the employment record changes.",
+          "movement_history_change_on_date": "A change to this field is already recorded on this date. Correct or delete that change instead."
         },
         "v2": {
           "type": "Movement type",

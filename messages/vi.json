@@ -2461,7 +2461,8 @@
           "movement_history_splits_movement": "Một biến động ghi nhận vào %date% bao gồm ngày này. Hãy ghi lịch sử trước %date%, hoặc xóa biến động đó trước.",
           "movement_history_payroll_company": "Bảng lương cho %detail% đã được đóng dưới một công ty khác. Hãy mở lại bảng lương đó hoặc kiểm tra công ty Trước.",
           "movement_history_overtaken": "Một biến động lịch sử hoặc chỉnh sửa sau đó đã thay đổi giai đoạn này. Hãy xóa thay đổi đó trước.",
-          "history_closed_payroll": "Bảng lương đã đóng bao gồm %detail%. Bảng lương giữ nguyên như đã phát hành; chỉ hồ sơ tuyển dụng thay đổi."
+          "history_closed_payroll": "Bảng lương đã đóng bao gồm %detail%. Bảng lương giữ nguyên như đã phát hành; chỉ hồ sơ tuyển dụng thay đổi.",
+          "movement_history_change_on_date": "Một thay đổi cho trường này đã được ghi nhận vào ngày này. Hãy sửa hoặc xóa thay đổi đó."
         },
         "v2": {
           "type": "Loại Biến động",

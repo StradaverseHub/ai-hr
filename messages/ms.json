@@ -2461,7 +2461,8 @@
           "movement_history_splits_movement": "Pergerakan yang direkodkan pada %date% meliputi tarikh ini. Rekod sejarah sebelum %date%, atau padam pergerakan itu dahulu.",
           "movement_history_payroll_company": "Gaji bagi %detail% telah ditutup di bawah syarikat lain. Buka semula gaji itu atau semak syarikat Sebelum.",
           "movement_history_overtaken": "Pergerakan sejarah atau pembetulan kemudian telah mengubah tempoh ini. Padam perubahan itu dahulu.",
-          "history_closed_payroll": "Gaji yang ditutup meliputi %detail%. Ia kekal seperti yang dikeluarkan; hanya rekod pekerjaan berubah."
+          "history_closed_payroll": "Gaji yang ditutup meliputi %detail%. Ia kekal seperti yang dikeluarkan; hanya rekod pekerjaan berubah.",
+          "movement_history_change_on_date": "Perubahan pada medan ini sudah direkodkan pada tarikh ini. Betulkan atau padam perubahan itu."
         },
         "v2": {
           "type": "Jenis Pergerakan",

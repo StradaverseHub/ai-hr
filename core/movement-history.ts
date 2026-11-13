@@ -118,6 +118,8 @@ export async function recordHistoryMovementTx(tx:Tx,ctx:SessionContext,p:RecordH
  const spanFrom=span[0].validFrom;
  for(const f of fields as HistoryField[]){
   if(valueAt(versions,d,f)!==p.after[f])throw new MovementHistoryError('movement_history_after_mismatch:'+f);
+  // A change already recorded ON D owns that boundary: rewriting before it would leave its Before stale.
+  if(span[span.length-1][f]!==p.after[f])throw new MovementHistoryError('movement_history_change_on_date');
   // The field must be uniform over [start, D): a change inside it belongs to an earlier record.
   for(let i=1;i<span.length;i++)if(span[i][f]!==span[i-1][f])throw new MovementHistoryError('movement_history_earlier_change:'+span[i].validFrom);
  }
