@@ -19,7 +19,7 @@ import { personnelFamilyValues, personnelFamilyCatalogErrors } from '../lib/pers
 import { personnelImportProposedValues, PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS, personnelScalarIssue } from '../lib/personnel-import-contract';
 import { isCalendarDate } from '../lib/calendar-date';
 import { setPersonComplianceFields } from './workforce-commands';
-import {applyBankStatutoryPatchTx,bankStatutoryDiff,bankStatutoryRefusal,buildBankStatutoryPatch,readBankStatutoryStateTx,readTaxResidencyTx} from './bank-statutory-import';
+import {applyBankStatutoryPatchTx,bankStatutoryDiff,bankStatutoryRefusal,buildBankStatutoryPatch,readBankStatutoryStateTx,readTaxResidenciesTx} from './bank-statutory-import';
 import {bankStatutoryStateFrom,MERGED_STATUTORY_COLUMNS,type BankStatutoryItemState,type BankStatutoryState} from '../lib/bank-statutory-import';
 import {BANK_STATUTORY_LEGACY_COLUMNS} from '../lib/import-sections';
 import {lockImportAttemptTx,lockImportAttemptHeaderTx,recordImportEventTx,recordImportItemTx} from './import-history';
@@ -587,12 +587,23 @@ async function loadBankImportSubjects(tx:Tx,ctx:SessionContext,codes:Set<string>
  const byCode=new Map<string,Subject>(),columns=getTableColumns(employeeStatutoryMy),wanted=[...codes];
  for(let offset=0;offset<wanted.length;offset+=1000){
   const rows=await tx.execute<Row>(sql`select * from app.bank_import_subjects(${JSON.stringify(wanted.slice(offset,offset+1000))}::jsonb)`);
+  const loaded:{subject:Subject;statutory:Record<string,unknown>|null;paymentMethod:string|null;needsResidency:boolean}[]=[];
   for(const row of rows){
    const statutory=row.statutory?Object.fromEntries(Object.entries(columns).map(([key,column])=>[key,row.statutory![column.name]])):null;
    const subject:Subject={employmentId:row.employment_id,personId:row.person_id,companyId:row.company_id,employeeCode:normalizeEmployeeCode(row.employee_code),fullName:row.full_name,primaryEmail:row.primary_email,phone:row.phone,hiredOn:String(row.hired_on),country:row.country,pack:requirePackFor(row.country),personRow:{},statutory,familyMembers:[],operations:{cardId:row.card_id,attendancePhotoSetting:row.attendance_photo_setting,paymentMethod:row.payment_method}};
-   const needsResidency=scope.residencyCodes?.has(subject.employeeCode)&&(!scope.focusCode||scope.focusCode===subject.employeeCode);
-   const taxResidency=needsResidency?await readTaxResidencyTx(tx,ctx,{employmentId:subject.employmentId,personId:subject.personId,pack:subject.pack,country:subject.country},statutory as {taxCircumstance?:string|null}|null):'';
-   subject.bankState=bankStatutoryStateFrom(statutory,{taxResidency,paymentMethod:row.payment_method});
+   const needsResidency=scope.residencyCodes?.has(subject.employeeCode)===true&&(!scope.focusCode||scope.focusCode===subject.employeeCode);
+   loaded.push({subject,statutory,paymentMethod:row.payment_method,needsResidency});
+  }
+  // Tax residency for every subject of this slice that names a residency column, read set-wise: one bounded
+  // read per pack instead of one per row (each per-row read rebuilt the tenant's visible-employment set).
+  const residencyNeeded=loaded.filter(item=>item.needsResidency);
+  const residencies=new Map<Subject,string>();
+  if(residencyNeeded.length){
+   const answers=await readTaxResidenciesTx(tx,ctx,residencyNeeded.map(({subject,statutory})=>({subject:{employmentId:subject.employmentId,personId:subject.personId,pack:subject.pack,country:subject.country},row:statutory as {taxCircumstance?:string|null}|null})));
+   residencyNeeded.forEach((item,index)=>residencies.set(item.subject,answers[index]));
+  }
+  for(const{subject,statutory,paymentMethod}of loaded){
+   subject.bankState=bankStatutoryStateFrom(statutory,{taxResidency:residencies.get(subject)??'',paymentMethod});
    byCode.set(subject.employeeCode,subject);
   }
  }
