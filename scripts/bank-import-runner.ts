@@ -4,19 +4,20 @@
  * (core/bulk-job-handlers.ts), so one protected installation serves all background imports.
  */
 import './lib/stub-server-only';
-import postgres from 'postgres';
 import {freshImportContext,runBankImportTick} from '../core/bank-import-worker';
 import {runIndividualImportTick} from '../core/individual-import-worker';
 import {retireBulkJobWorker,runBulkJobTick} from '../core/bulk-job-worker';
 import {BULK_JOB_HANDLERS} from '../core/bulk-job-handlers';
 import {client} from '../db/client';
+import {openImportWorkerOwner} from '../db/worker-connection';
 import {movementWorkbookKeyReady} from '../lib/movement-workbook-metadata.server';
 import {IMPORT_WORKER_STALL_ENV,importWorkerStallSeconds,startImportWorkerWatchdog} from '../lib/import-worker-watchdog';
 const url=process.env.MIGRATION_DATABASE_URL;
 if(!url)throw new Error('MIGRATION_DATABASE_URL is required by the import worker.');
 // Validated before any connection opens: an invalid value refuses to start with a message naming the setting.
 const stallSeconds=importWorkerStallSeconds(process.env);
-const owner=postgres(url,{max:1,onnotice:()=>{}});
+// Server and client keepalive end a half-open owner session, and its advisory locks, within minutes (db/worker-connection.ts).
+const owner=openImportWorkerOwner(url);
 // Between two bulk-job units, so waiting interactive writers always get the tenant locks first.
 const bulkPauseMs=Number(process.env.BULK_JOB_PAUSE_MS??25);
 let stopping=false;process.on('SIGTERM',()=>{stopping=true;});process.on('SIGINT',()=>{stopping=true;});

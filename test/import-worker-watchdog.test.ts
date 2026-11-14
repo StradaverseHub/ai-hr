@@ -27,16 +27,16 @@ describe('import worker stall watchdog',()=>{
  it.each(['bank','individual','bulk','pause'] as const)('exits once with status 70 when the %s phase never returns',async stalled=>{
   vi.useFakeTimers();
   const log=vi.fn(),exit=vi.fn();
-  const watchdog=startImportWorkerWatchdog({limitSeconds:1200,log,exit});
+  const watchdog=startImportWorkerWatchdog({limitSeconds:1800,log,exit});
   const phases={bank:sleep(5),individual:sleep(5),bulk:sleep(5),pause:sleep(1000),[stalled]:never};
   void loop(watchdog,phases,3);
   // Not yet: exactly the limit has passed (the timer checks every 30 s).
-  await vi.advanceTimersByTimeAsync(1200_000);
+  await vi.advanceTimersByTimeAsync(1800_000);
   expect(exit).not.toHaveBeenCalled();
   await vi.advanceTimersByTimeAsync(30_000+1_000);
   expect(exit).toHaveBeenCalledTimes(1);expect(exit).toHaveBeenCalledWith(IMPORT_WORKER_STALL_EXIT_CODE);
   expect(log).toHaveBeenCalledTimes(1);
-  expect(log.mock.calls[0][0]).toMatch(new RegExp(`^Import worker stalled in ${stalled} for 12[0-3][0-9] s; exiting so systemd restarts it\\.$`));
+  expect(log.mock.calls[0][0]).toMatch(new RegExp(`^Import worker stalled in ${stalled} for 18[0-3][0-9] s; exiting so systemd restarts it\\.$`));
   // A later check (if exit were slow) never logs or exits twice.
   await vi.advanceTimersByTimeAsync(120_000);
   expect(exit).toHaveBeenCalledTimes(1);expect(log).toHaveBeenCalledTimes(1);
@@ -50,9 +50,10 @@ describe('import worker stall watchdog',()=>{
   // Idle polling: fast ticks and the 1 s pause, for about three limits.
   const idle=loop(watchdog,{bank:sleep(20),individual:sleep(20),bulk:sleep(40),pause:sleep(1000)},3_000);
   await vi.advanceTimersByTimeAsync(3_600_000);await idle;
-  // A bulk-job prepare that uses its whole 900 s lease, every round, and a long Bank phase just under the limit.
-  const busy=loop(watchdog,{bank:sleep(1_100_000),individual:sleep(10),bulk:sleep(900_000),pause:sleep(25)},3);
-  await vi.advanceTimersByTimeAsync(3*(1_100_000+900_000+10+25)+1_000);await busy;
+  // A bulk-job prepare that uses its whole 900 s lease, every round, and a Bank first tick of 1,700 s: the measured
+  // maximum workbook (339 s on a runner) scaled by 5, just under the limit.
+  const busy=loop(watchdog,{bank:sleep(1_700_000),individual:sleep(10),bulk:sleep(900_000),pause:sleep(25)},3);
+  await vi.advanceTimersByTimeAsync(3*(1_700_000+900_000+10+25)+1_000);await busy;
   expect(exit).not.toHaveBeenCalled();expect(log).not.toHaveBeenCalled();
   watchdog.stop();
  });
@@ -86,14 +87,16 @@ describe('import worker stall watchdog',()=>{
  },60_000);
 
  it('reads its limit from the environment within bounds and refuses anything else with a clear message',()=>{
-  expect(importWorkerStallSeconds({})).toBe(1200);
-  expect(IMPORT_WORKER_STALL_DEFAULT_SECONDS).toBe(1200);
-  for(const ok of [String(IMPORT_WORKER_STALL_MIN_SECONDS),'1200','3600',String(IMPORT_WORKER_STALL_MAX_SECONDS)])expect(importWorkerStallSeconds({[IMPORT_WORKER_STALL_ENV]:ok})).toBe(Number(ok));
-  // 960 keeps the limit above the 900 s bulk-job prepare lease (core/bulk-job-worker.ts PREPARE_LEASE_SECONDS).
-  expect(IMPORT_WORKER_STALL_MIN_SECONDS).toBeGreaterThan(900);
-  for(const bad of ['','0','30','959','21601','1200.5','1e3',' 1200','1200 ','01200','-1200','abc','99999999999999999999']){
+  expect(importWorkerStallSeconds({})).toBe(1800);
+  expect(IMPORT_WORKER_STALL_DEFAULT_SECONDS).toBe(1800);
+  expect(IMPORT_WORKER_STALL_MIN_SECONDS).toBe(1200);
+  for(const ok of [String(IMPORT_WORKER_STALL_MIN_SECONDS),'1800','3600',String(IMPORT_WORKER_STALL_MAX_SECONDS)])expect(importWorkerStallSeconds({[IMPORT_WORKER_STALL_ENV]:ok})).toBe(Number(ok));
+  // 1200 keeps the limit above the 900 s bulk-job prepare lease (core/bulk-job-worker.ts PREPARE_LEASE_SECONDS) and the
+  // maximum Bank workbook first tick scaled to staging (about 1,020 s; deploy/systemd/BANK-IMPORT.md "Stall watchdog").
+  expect(IMPORT_WORKER_STALL_MIN_SECONDS).toBeGreaterThan(1020);
+  for(const bad of ['','0','30','960','1199','21601','1800.5','1e3',' 1800','1800 ','01800','-1800','abc','99999999999999999999']){
    expect(()=>importWorkerStallSeconds({[IMPORT_WORKER_STALL_ENV]:bad}),JSON.stringify(bad))
-    .toThrow('AIHR_IMPORT_WORKER_STALL_SECONDS must be a whole number of seconds from 960 to 21600 (default 1200).');
+    .toThrow('AIHR_IMPORT_WORKER_STALL_SECONDS must be a whole number of seconds from 1200 to 21600 (default 1800).');
   }
  });
 });
