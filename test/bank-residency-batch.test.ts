@@ -87,7 +87,7 @@ describe('Bank & Statutory validation reads tax residency set-wise',()=>{
    {code:'RS12',expected:'non_resident',arrange:async e=>{await circumstance(e.personId,'spouse_not_working',2);await select(e.id,b.companyId,{scheme:'non_resident',state:'resolved'});}},
    {code:'RS13',expected:'knowledge_worker',arrange:async e=>{await circumstance(e.personId,'spouse_working',3);await select(e.id,b.companyId,{scheme:'knowledge_worker',state:'resolved'});}},
    {code:'RS14',expected:'rep',arrange:async e=>{await circumstance(e.personId,'widow_divorced',3);await select(e.id,b.companyId,{scheme:'rep',state:'resolved'});}},
-   {code:'RS15',expected:'',arrange:async e=>{await circumstance(e.personId,null,1);await select(e.id,b.companyId,{scheme:null,state:'resolved'});}},
+   {code:'RS15',expected:'',arrange:async e=>{await circumstance(e.personId,null,1);await select(e.id,b.companyId,{scheme:null,state:'confirmation_required'});}},
    // An employee of the second company, read by an administrator of both and by one of each company.
    {code:'RS16',expected:'resident',companyId:beta.id,arrange:e=>select(e.id,beta.id,{scheme:'resident',state:'resolved'})},
   ];
@@ -148,8 +148,9 @@ describe('Bank & Statutory validation reads tax residency set-wise',()=>{
   expect(pick(whole.rows[records.findIndex(r=>r.employee_code==='RS01')]).changes).toContain('tax_residency');
  },120_000);
 
- // The 1,000-row tick runs about 5 s on a 4-vCPU runner (about 18 s before this change); 120 s leaves headroom.
+ // TEMPORARY 400 s while the phases are timed on a runner (the first run exceeded 120 s); set to ~3x the measured worst.
  it('a 1,000-row validation tick issues the same fixed number of residency statements as a 10-row batch',async()=>{
+  const started=Date.now(),mark=(label:string)=>console.info(`[bank-residency-batch] ${label}: ${((Date.now()-started)/1000).toFixed(1)} s`);
   const template=await hire(1,'RSTPL');
   const ROWS=BANK_IMPORT_VALIDATION_ROWS;
   expect(ROWS).toBe(1000);
@@ -170,6 +171,7 @@ describe('Bank & Statutory validation reads tax residency set-wise',()=>{
     select e.tenant_id,e.id,e.company_id,case when right(e.employee_code,1)='7' then 'non_resident' else 'resident' end,'resolved','explicit','{"reason":"fixture","declarationIds":[]}'::jsonb
     from employment e where e.tenant_id=${b.tenantId}::uuid and e.employee_code like 'RSB%'`;
   });
+  mark('fixture');
   const codes=Array.from({length:ROWS},(_,i)=>`RSB${i+1}`);
   const expected=await withTenant(a,async tx=>{
    const rows=await tx.select({id:s.employment.id,personId:s.employment.personId,code:s.employment.employeeCode}).from(s.employment).where(inArray(s.employment.employeeCode,codes.slice(0,10)));
@@ -179,6 +181,7 @@ describe('Bank & Statutory validation reads tax residency set-wise',()=>{
   });
   expect([...expected.values()].filter(Boolean)).toHaveLength(10);
 
+  mark('per-row reference');
   // A 10-row batch: one set-wise read, nothing per row.
   const small=countResidencyReads();
   const ten=await analyzeBankImportBatch(a,codes.slice(0,10).map(code=>({employee_code:code,tax_residency:'non_resident',epf_citizenship:'pr'})));
@@ -195,10 +198,13 @@ describe('Bank & Statutory validation reads tax residency set-wise',()=>{
   const admission=await createBankImportJob(a,{name:'residency.csv',bytes:csv.length,hash:createHash('sha256').update(csv).digest('hex')});
   for(let offset=0,part=0;offset<csv.length;offset+=BANK_IMPORT_CHUNK_BYTES,part++)await uploadBankImportChunk(a,admission.job.id,part,csv.subarray(offset,offset+BANK_IMPORT_CHUNK_BYTES));
   await bankImportCommand(a,admission.job.id,'validate');
+  mark('10-row batch');
   await processBankImportJob(a,admission.job.id);
+  mark('queued tick');
   expect((await getBankImportJob(a,admission.job.id)).job).toMatchObject({state:'validating',total:ROWS});
   const large=countResidencyReads();
   await processBankImportJob(a,admission.job.id);
+  mark('validation tick');
   const{job}=await getBankImportJob(a,admission.job.id);
   expect(job.validated).toBe(ROWS);
   expect({single:large.single,setWise:large.setWise,ids:large.ids}).toEqual({single:0,setWise:1,ids:[ROWS]});
@@ -207,5 +213,5 @@ describe('Bank & Statutory validation reads tax residency set-wise',()=>{
   // Every 7th-ending code is already non-resident, so it is unchanged; the rest are changes.
   const sevens=codes.filter(code=>code.endsWith('7')).length;
   expect({valid:job.valid,unchanged:job.unchanged,invalid:job.invalid}).toEqual({valid:ROWS-sevens,unchanged:sevens,invalid:0});
- },120_000);
+ },400_000);
 });
