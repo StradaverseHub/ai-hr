@@ -79,7 +79,7 @@ describe('import worker stall watchdog',()=>{
   // A process whose only remaining handle is the watchdog's timer ends at once, with the default 30 s check interval.
   const started=Date.now();
   const result=spawnSync(process.execPath,['--import','tsx','test/helpers/import-worker-watchdog-idle.ts'],
-   {cwd:process.cwd(),encoding:'utf8',timeout:25_000,env:{PATH:process.env.PATH,HOME:process.env.HOME}});
+   {cwd:process.cwd(),encoding:'utf8',timeout:25_000,env:{NODE_ENV:'test',PATH:process.env.PATH,HOME:process.env.HOME}});
   expect(result.status,result.stderr+String(result.error??'')).toBe(0);
   expect(result.stdout).toContain('watchdog armed');
   expect(Date.now()-started).toBeLessThan(25_000);
