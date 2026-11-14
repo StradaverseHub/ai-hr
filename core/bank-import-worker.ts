@@ -11,7 +11,7 @@ import {ImportFileError} from '../lib/import-file';
 import {unexpectedErrorReference} from '../lib/public-error';
 import {PersonnelImportHeaderError} from '../lib/personnel-import-contract';
 import {PersonnelCsvError} from '../lib/personnel-csv';
-import {decodeBankImportSource} from '../lib/bank-import-source.server';
+import {BANK_IMPORT_STAGE_ROWS,bankImportStagedRecords,stageBankImportSource} from '../lib/bank-import-stream-source.server';
 import {BANK_IMPORT_BATCH_ROWS,BANK_IMPORT_VALIDATION_ROWS} from '../lib/bank-import-job';
 import {analyzeBankImportBatch,applyBankImportRowTx,BankImportRowRejectedError} from './import-sections';
 import {createImportAttemptTx,recordImportEventTx,sealImportPlan} from './import-history';
@@ -20,7 +20,8 @@ import type {ImportRecord} from '../lib/import-schema';
 import type {SectionRowResult} from '../lib/import-sections';
 
 type QueueRow={ordinal:number;record:ImportRecord;preview:SectionRowResult;company_id:string|null;employment_id:string|null;binding:string;state:string;error:string|null};
-async function sourceTx(tx:Tx,id:string){const parts=await tx.execute<{content:Buffer}>(sql`select content from bank_import_chunk where job_id=${id}::uuid order by part`);return Buffer.concat(parts.map(p=>p.content));}
+async function sourcePartsTx(tx:Tx,id:string):Promise<Buffer[]>{return(await tx.execute<{content:Buffer}>(sql`select content from bank_import_chunk where job_id=${id}::uuid order by part`)).map(p=>p.content);}
+async function sourceTx(tx:Tx,id:string){return Buffer.concat(await sourcePartsTx(tx,id));}
 export async function freshImportContext(context:SessionContext):Promise<SessionContext>{
  const ctx=structuredClone(context);
  ctx.entitlements=await withBackgroundDatabaseWork(()=>withPoolWork(ctx.tenantId,()=>client.begin(async transaction=>resolveEntitlementsInTenantTx(async(q,params)=>[...await transaction.unsafe(q,params as postgres.ParameterOrJSON<never>[])],ctx.tenantId))));
@@ -33,16 +34,20 @@ export function processBankImportJob(ctx:SessionContext,id:string):Promise<void>
 async function processBankImportPhase(ctx:SessionContext,id:string):Promise<void>{
  const job=await withTenant(ctx,tx=>bankJobTx(tx,id));
  if(job.state==='queued'){
-  const content=await withTenant(ctx,tx=>sourceTx(tx,id));
-  if(content.length!==job.source_bytes||createHash('sha256').update(content).digest('hex')!==job.source_hash)throw new Error('The uploaded file is incomplete or its checksum differs. Upload it again.');
-  const decoded=await decodeBankImportSource(job.source_name,content);
+  // The parts stay separate: the hash and the decoder read them in order, and a CSV decode releases each one.
+  const parts=await withTenant(ctx,tx=>sourcePartsTx(tx,id));
+  const hash=createHash('sha256');let bytes=0;for(const part of parts){hash.update(part);bytes+=part.length;}
+  if(bytes!==job.source_bytes||hash.digest('hex')!==job.source_hash)throw new Error('The uploaded file is incomplete or its checksum differs. Upload it again.');
+  // Same rows, errors and refusals as decodeBankImportSource, staged as compact batches (lib/bank-import-stream-source.server.ts).
+  const staged=await stageBankImportSource(job.source_name,parts);
   await withTenant(ctx,async tx=>{
    const current=await bankJobTx(tx,id,true);if(current.state!=='queued')return;
-   for(let start=0;start<decoded.records.length;start+=1000){
-    const rows=decoded.records.slice(start,start+1000).map((record,i)=>({ordinal:start+i+1,record,error:decoded.errors.get(start+i+1)??null}));
+   for(let batch=0;batch<staged.batches.length;batch++){
+    const start=batch*BANK_IMPORT_STAGE_ROWS;
+    const rows=bankImportStagedRecords(staged,batch).map((record,i)=>({ordinal:start+i+1,record,error:staged.errors.get(start+i+1)??null}));
     await tx.execute(sql`insert into bank_import_row(job_id,ordinal,record,error) select ${id}::uuid,x.ordinal,x.record,x.error from jsonb_to_recordset(${JSON.stringify(rows)}::jsonb) as x(ordinal int,record jsonb,error text)`);
    }
-   await tx.execute(sql`update bank_import_job set state='validating',total=${decoded.records.length},updated_at=now() where id=${id}::uuid`);
+   await tx.execute(sql`update bank_import_job set state='validating',total=${staged.total},updated_at=now() where id=${id}::uuid`);
   });
   return;
  }

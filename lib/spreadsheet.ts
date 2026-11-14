@@ -33,7 +33,7 @@ function rowsToCsvText(rows: Cell[][]): string {
 }
 
 /** yyyy-mm-dd from a JS Date in local time (SheetJS returns dates at local midnight with cellDates). */
-function toIsoDate(d: Date): string {
+export function toIsoDate(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
