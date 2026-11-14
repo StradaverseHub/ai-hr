@@ -68,6 +68,7 @@ function countResidencyReads(){
 }
 
 describe('Bank & Statutory validation reads tax residency set-wise',()=>{
+ // Measured 7.8 s on a 4-vCPU runner (run 43596547049); 60 s is about 8x.
  it('answers exactly what the per-row read answers, for every residency state and principal',async()=>{
   const[beta]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Beta Fictional Bhd',country:'MY'}).returning();
   await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:beta.id,name:'Finance'});
@@ -147,11 +148,10 @@ describe('Bank & Statutory validation reads tax residency set-wise',()=>{
   // A resolved non-resident is unchanged; a resolved other scheme is a change.
   expect(pick(whole.rows[records.findIndex(r=>r.employee_code==='RS02')]).changes).not.toContain('tax_residency');
   expect(pick(whole.rows[records.findIndex(r=>r.employee_code==='RS01')]).changes).toContain('tax_residency');
- },120_000);
+ },60_000);
 
- // TEMPORARY 400 s while the phases are timed on a runner (the first run exceeded 120 s); set to ~3x the measured worst.
+ // Measured 6.6 s on a 4-vCPU runner (run 43596547049; the tick itself 3.9 s); 60 s is about 9x.
  it('a 1,000-row validation tick issues the same fixed number of residency statements as a 10-row batch',async()=>{
-  const started=Date.now(),mark=(label:string)=>console.info(`[bank-residency-batch] ${label}: ${((Date.now()-started)/1000).toFixed(1)} s`);
   const template=await hire(1,'RSTPL');
   const ROWS=BANK_IMPORT_VALIDATION_ROWS;
   expect(ROWS).toBe(1000);
@@ -175,7 +175,6 @@ describe('Bank & Statutory validation reads tax residency set-wise',()=>{
   // Fresh statistics, as an installation's autovacuum keeps them: without them app.bank_import_subjects plans the
   // 1,000-code lookup badly and runs for minutes on a runner (observed in run 43595728226).
   for(const table of ['person','employment','employee_statutory_my','employment_tax_selection_my'])await owner.client.unsafe(`analyze ${table}`);
-  mark('fixture');
   const codes=Array.from({length:ROWS},(_,i)=>`RSB${i+1}`);
   const expected=await withTenant(a,async tx=>{
    const rows=await tx.select({id:s.employment.id,personId:s.employment.personId,code:s.employment.employeeCode}).from(s.employment).where(inArray(s.employment.employeeCode,codes.slice(0,10)));
@@ -185,7 +184,6 @@ describe('Bank & Statutory validation reads tax residency set-wise',()=>{
   });
   expect([...expected.values()].filter(Boolean)).toHaveLength(10);
 
-  mark('per-row reference');
   // A 10-row batch: one set-wise read, nothing per row.
   const small=countResidencyReads();
   const ten=await analyzeBankImportBatch(a,codes.slice(0,10).map(code=>({employee_code:code,tax_residency:'non_resident',epf_citizenship:'pr'})));
@@ -202,15 +200,10 @@ describe('Bank & Statutory validation reads tax residency set-wise',()=>{
   const admission=await createBankImportJob(a,{name:'residency.csv',bytes:csv.length,hash:createHash('sha256').update(csv).digest('hex')});
   for(let offset=0,part=0;offset<csv.length;offset+=BANK_IMPORT_CHUNK_BYTES,part++)await uploadBankImportChunk(a,admission.job.id,part,csv.subarray(offset,offset+BANK_IMPORT_CHUNK_BYTES));
   await bankImportCommand(a,admission.job.id,'validate');
-  mark('10-row batch');
   expect(await runBankImportTick(owner.client)).toBe(true);
-  mark('queued tick');
   expect((await getBankImportJob(a,admission.job.id)).job).toMatchObject({state:'validating',total:ROWS});
   const large=countResidencyReads();
-  // Diagnostic while the tick runs: any session of this database waiting longer than 20 s is printed.
-  const watch=setInterval(()=>{void owner.client`select pid,state,wait_event_type,wait_event,left(query,160) as query,now()-query_start as running from pg_stat_activity where datname=current_database() and pid<>pg_backend_pid() and state<>'idle' and now()-query_start>interval '20 seconds'`.then(rows=>{if(rows.length)console.info(`[bank-residency-batch] waiting: ${JSON.stringify(rows)}`);},()=>{});},20_000);
-  try{expect(await runBankImportTick(owner.client)).toBe(true);}finally{clearInterval(watch);}
-  mark('validation tick');
+  expect(await runBankImportTick(owner.client)).toBe(true);
   const{job}=await getBankImportJob(a,admission.job.id);
   expect(job.validated).toBe(ROWS);
   expect({single:large.single,setWise:large.setWise,ids:large.ids}).toEqual({single:0,setWise:1,ids:[ROWS]});
@@ -219,5 +212,5 @@ describe('Bank & Statutory validation reads tax residency set-wise',()=>{
   // Every 7th-ending code is already non-resident, so it is unchanged; the rest are changes.
   const sevens=codes.filter(code=>code.endsWith('7')).length;
   expect({valid:job.valid,unchanged:job.unchanged,invalid:job.invalid}).toEqual({valid:ROWS-sevens,unchanged:sevens,invalid:0});
- },400_000);
+ },60_000);
 });
