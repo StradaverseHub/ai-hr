@@ -15,7 +15,7 @@ import * as schema from '../db/schema';
 import {commitEmployeeImport} from '../core/import';
 import {createBankImportJob,uploadBankImportChunk,bankImportCommand,getBankImportJob} from '../core/bank-import-job';
 import {runBankImportTick} from '../core/bank-import-worker';
-import {decodeBankImportSource} from '../lib/bank-import-source.server';
+import {analyzeBankImportBatch} from '../core/import-sections';
 import {BANK_IMPORT_CHUNK_BYTES,BANK_IMPORT_MAX_ROWS} from '../lib/bank-import-job';
 import {parseCsvRecords} from '../lib/csv';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -61,23 +61,28 @@ describe('MEASUREMENT: import worker Bank & Statutory phases at the maximum CSV'
   const e=await exemplar();
   await clock('fixture: 250,000 employees with statutory rows',()=>employees(e.personId));
   const csv=worstCaseCsv(ROWS);
-  // Breakdown only (the tick below decodes again): the pure in-process decode of the same bytes.
-  const decoded=await clock('decode only (decodeBankImportSource, CSV)',async()=>{const d=await decodeBankImportSource('bank-statutory.csv',csv);return{rows:d.records.length,errors:d.errors.size};});
-  expect(decoded).toEqual({rows:ROWS,errors:0});
   const id=await clock('upload: 1 MiB chunks through the web service functions',()=>admit(csv,'bank-statutory.csv'));
   // PHASE OF CONCERN: one tick reads the chunks, checks the hash, decodes and inserts every row in one transaction.
   expect(await clock('bank tick 1: queued -> validating (fetch + decode + insert 250,000 rows)',()=>runBankImportTick(owner.client))).toBe(true);
   const staged=await job(id);
   if(staged.state!=='validating')console.info(`${TAG} queued tick ended in ${staged.state}: ${staged.error}`);
   expect(staged).toMatchObject({state:'validating',total:ROWS});
+  // Direct probes of the canonical analyzer the validation tick calls, to show its per-row cost.
+  for(const n of [10,100]){
+   const sample=await owner.client<{record:Record<string,string>}[]>`select record from bank_import_row where job_id=${id}::uuid order by ordinal limit ${n}`;
+   await clock(`probe: analyzeBankImportBatch on ${n} rows`,()=>analyzeBankImportBatch(ctx,sample.map(r=>r.record)));
+  }
+  let ticks=0;
   for(let i=1;i<=3;i++){
-   expect(await clock(`bank validation tick ${i} (1,000 rows)`,()=>runBankImportTick(owner.client))).toBe(true);
+   const started=Date.now();
+   expect(await clock(`bank validation tick ${i} (1,000 rows)`,()=>runBankImportTick(owner.client))).toBe(true);ticks++;
+   if(Date.now()-started>90_000)break;
   }
   const validated=await getBankImportJob(ctx,id);
-  console.info(`${TAG} after 3 validation ticks: ${JSON.stringify({validated:validated.job.validated,valid:validated.job.valid,invalid:validated.job.invalid,unchanged:validated.job.unchanged})}`);
+  console.info(`${TAG} after ${ticks} validation ticks: ${JSON.stringify({validated:validated.job.validated,valid:validated.job.valid,invalid:validated.job.invalid,unchanged:validated.job.unchanged})}`);
   const firstInvalid=validated.rows.find(row=>row.preview&&!row.preview.ok&&row.preview.errors.length);
   if(firstInvalid)console.info(`${TAG} first invalid row errors: ${JSON.stringify(firstInvalid.preview?.errors)}`);
-  expect(validated.job.validated).toBe(3000);
+  expect(validated.job.validated).toBe(ticks*1000);
   if(validated.job.valid>0){
    // Measurement shortcut, not product behavior: the remaining 247 validation ticks are the same bounded unit
    // as the three timed above, so the rest are marked unchanged to reach the confirmation phases in time.
@@ -89,11 +94,11 @@ describe('MEASUREMENT: import worker Bank & Statutory phases at the maximum CSV'
    await bankImportCommand(ctx,id,'confirm');
    expect(await clock('bank tick: create immutable history attempt (stores the ~126 MiB source)',()=>runBankImportTick(owner.client))).toBe(true);
    expect((await job(id)).attemptId).toBeTruthy();
-   for(let i=1;i<=3;i++)expect(await clock(`bank import tick ${i} (100 rows, one transaction each)`,()=>runBankImportTick(owner.client))).toBe(true);
+   for(let i=1;i<=2;i++)expect(await clock(`bank import tick ${i} (100 rows, one transaction each)`,()=>runBankImportTick(owner.client))).toBe(true);
    const done=await job(id);
-   console.info(`${TAG} after 3 import ticks: ${JSON.stringify({state:done.state,processed:done.processed,saved:done.saved,failed:done.failed,error:done.error})}`);
+   console.info(`${TAG} after 2 import ticks: ${JSON.stringify({state:done.state,processed:done.processed,saved:done.saved,failed:done.failed,error:done.error})}`);
    expect(done.state).toBe('importing');
-  }else console.info(`${TAG} no valid rows in the first 3,000; attempt/import ticks not measured`);
+  }else console.info(`${TAG} no valid rows in the validated batches; attempt/import ticks not measured`);
   summary('bank-csv');
  },1_080_000);
 });

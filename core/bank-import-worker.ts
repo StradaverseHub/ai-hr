@@ -30,12 +30,15 @@ export async function freshImportContext(context:SessionContext):Promise<Session
 export function processBankImportJob(ctx:SessionContext,id:string):Promise<void>{
  return withBackgroundDatabaseWork(()=>processBankImportPhase(ctx,id));
 }
+// MEASUREMENT BRANCH ONLY (never merged): sub-step timings for the stall-watchdog measurement.
+const stepClock=()=>{let last=performance.now();return(label:string)=>{const now=performance.now();console.info(`[worker-stall-measure]   step ${label}: ${((now-last)/1000).toFixed(2)} s`);last=now;};};
 async function processBankImportPhase(ctx:SessionContext,id:string):Promise<void>{
+ const step=stepClock();
  const job=await withTenant(ctx,tx=>bankJobTx(tx,id));
  if(job.state==='queued'){
-  const content=await withTenant(ctx,tx=>sourceTx(tx,id));
+  const content=await withTenant(ctx,tx=>sourceTx(tx,id));step('queued: fetch chunks');
   if(content.length!==job.source_bytes||createHash('sha256').update(content).digest('hex')!==job.source_hash)throw new Error('The uploaded file is incomplete or its checksum differs. Upload it again.');
-  const decoded=await decodeBankImportSource(job.source_name,content);
+  const decoded=await decodeBankImportSource(job.source_name,content);step('queued: hash + decode');
   await withTenant(ctx,async tx=>{
    const current=await bankJobTx(tx,id,true);if(current.state!=='queued')return;
    for(let start=0;start<decoded.records.length;start+=1000){
@@ -43,13 +46,13 @@ async function processBankImportPhase(ctx:SessionContext,id:string):Promise<void
     await tx.execute(sql`insert into bank_import_row(job_id,ordinal,record,error) select ${id}::uuid,x.ordinal,x.record,x.error from jsonb_to_recordset(${JSON.stringify(rows)}::jsonb) as x(ordinal int,record jsonb,error text)`);
    }
    await tx.execute(sql`update bank_import_job set state='validating',total=${decoded.records.length},updated_at=now() where id=${id}::uuid`);
-  });
+  });step('queued: insert rows + commit');
   return;
  }
  if(job.state==='validating'){
-  const pending=await withTenant(ctx,tx=>tx.execute<QueueRow>(sql`select * from bank_import_row where job_id=${id}::uuid and state='pending' order by ordinal limit ${BANK_IMPORT_VALIDATION_ROWS}`));
+  const pending=await withTenant(ctx,tx=>tx.execute<QueueRow>(sql`select * from bank_import_row where job_id=${id}::uuid and state='pending' order by ordinal limit ${BANK_IMPORT_VALIDATION_ROWS}`));step('validating: select pending');
   if(!pending.length){await withTenant(ctx,tx=>tx.execute(sql`update bank_import_job set state='ready',updated_at=now() where id=${id}::uuid and state='validating'`));return;}
-  const analyzed=await analyzeBankImportBatch(ctx,pending.map(r=>r.record));
+  const analyzed=await analyzeBankImportBatch(ctx,pending.map(r=>r.record));step('validating: analyze batch');
   if(analyzed.fileErrors.length)throw new Error(analyzed.fileErrors.join(' '));
   await withTenant(ctx,async tx=>{
    await bankJobTx(tx,id,true);
@@ -67,8 +70,9 @@ async function processBankImportPhase(ctx:SessionContext,id:string):Promise<void
     from jsonb_to_recordset(${JSON.stringify(updates)}::jsonb) x(ordinal int,preview jsonb,company_id uuid,employment_id uuid,binding text,state text)
     where r.job_id=${id}::uuid and r.ordinal=x.ordinal and r.state='pending' returning r.state`);
    const valid=changed.filter(row=>row.state==='valid').length,invalid=changed.filter(row=>row.state==='invalid').length,unchanged=changed.filter(row=>row.state==='unchanged').length;
+   step('validating: access + row update');
    await tx.execute(sql`update bank_import_job set company_ids=array(select distinct value::uuid from jsonb_array_elements_text(to_jsonb(company_ids)||${JSON.stringify(companyIds)}::jsonb)),validated=validated+${changed.length},valid=valid+${valid},invalid=invalid+${invalid},unchanged=unchanged+${unchanged},updated_at=now() where id=${id}::uuid`);
-  });return;
+  });step('validating: job update + commit');return;
  }
  if(job.state!=='importing')return;
  if(!job.attempt_id){
