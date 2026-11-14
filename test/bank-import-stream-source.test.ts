@@ -194,13 +194,15 @@ describe('Excel: streamed decode equals the whole-file decode',()=>{
    ['unknown-heading.xlsx',book([['Bank',[['employee_code','nope'],['E1','x']]]])],
    ['beyond.xlsx',book([['Bank',[['employee_code'],['E1','extra']]]])],
    ['header-only.xlsx',book([['Bank',[['employee_code','tax_number']]]])],
-   ['long-cell.xlsx',book([['Bank',[['employee_code','tax_number'],['E1','x'.repeat(1048577)]]]])],
-   ['long-cell-boundary.xlsx',book([['Bank',[['employee_code','tax_number'],['E1','x'.repeat(1048576)]]]])],
-   ['long-cell-and-bad-heading.xlsx',book([['Bank',[['employee_code','nope'],['E1','x'.repeat(1048577)]]]])],
    ['not-a-workbook.xlsx',Buffer.from('employee_code,tax_number\nE1,T1\n')],
    ['garbage.xlsx',Buffer.from([0x50,0x4b,0x03,0x04,1,2,3,4,5,6,7,8])],
   ];
   for(const [name,bytes] of cases)await same(name,bytes,[1048576]);
+  // SheetJS refuses to write cells above Excel's 32,767 characters, so the CSV cell budget cases are hand-written.
+  const long=(heading:string,length:number)=>workbook([{name:'Bank',rows:'<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row><row r="2"><c r="A2" t="s"><v>2</v></c><c r="B2" t="s"><v>3</v></c></row>'}],[t('employee_code'),t(heading),t('E1'),t('x'.repeat(length))]);
+  expect(await same('long-cell.xlsx',await long('tax_number',1048577),[1048576])).toMatchObject({ok:false,error:'PersonnelCsvError'});
+  expect(await same('long-cell-boundary.xlsx',await long('tax_number',1048576),[1048576])).toMatchObject({ok:true});
+  expect(await same('long-cell-and-bad-heading.xlsx',await long('nope',1048577),[1048576])).toMatchObject({ok:false,error:'PersonnelCsvError'});
   const duplicateNames=await workbook([{name:'Bank',rows:header},{name:'bank ',rows:''}],headerSst);
   expect(await same('duplicate-names.xlsx',duplicateNames,[1048576])).toMatchObject({ok:false});
   const ws=XLSX.utils.aoa_to_sheet([['employee_code'],['E1']]);ws['!ref']=`A1:A${BANK_IMPORT_MAX_ROWS+3}`;
