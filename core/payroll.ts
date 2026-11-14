@@ -486,7 +486,9 @@ export type ReprocessEmployeeOutcome = {
   /** 792053e5 — the Pay Items whose one-off transactions were re-priced with an updated formula (amount moved). */
   repricedItems?: RepricedPayItem[];
   /** 792053e5 — the Pay Item whose updated formula could not price this employee's transactions (PAY_ITEM_FORMULA_FAILED). */
-  formulaFailure?: { componentId: string; code: string; name: string; dates: string[]; reason: string; detail: string | null };
+  formulaFailure?: { componentId: string; code: string; name: string; dates: string[]; reason: string; detail: string | null;
+    /** ad6ed930 — reason 'after_leaving_date': the employee's last day (ISO). Absent on outcomes written before it. */
+    leftOn?: string };
 };
 
 export type ReprocessJobResult = {
@@ -525,7 +527,7 @@ function employeeReprocessValidation(error: unknown): Pick<ReprocessEmployeeOutc
   // the dates and the reason (the savepoint rolled back their re-pricing; the previous result stays), never a run stop.
   if (error instanceof PayItemFormulaRepriceError) return {status:'validation_failed',reasonCode:'PAY_ITEM_FORMULA_FAILED',
     validationCode:'pay_item_formula_failed',formulaFailure:{componentId:error.componentId,code:error.code,name:error.itemName,
-      dates:error.dates,reason:error.reason,detail:error.detail}};
+      dates:error.dates,reason:error.reason,detail:error.detail,...(error.leftOn?{leftOn:error.leftOn}:{})}};
   // 3244584c — the removal decision (excluded vs not_eligible) is the loop's; this maps the cause only.
   if (error instanceof ReprocessEmploymentNotInPeriodError) return {status:'excluded',reasonCode:error.reason,
     validationCode:'employment_not_in_period',
@@ -10748,7 +10750,8 @@ export function decodeReprocessEmployeeOutcomes(result: unknown, selection: read
     if ((r.reasonCode === 'PAY_ITEM_FORMULA_FAILED') !== (r.formulaFailure !== undefined)) return null;
     if (r.formulaFailure !== undefined && (typeof r.formulaFailure !== 'object' || r.formulaFailure === null
       || typeof r.formulaFailure.code !== 'string' || typeof r.formulaFailure.name !== 'string' || typeof r.formulaFailure.reason !== 'string'
-      || !Array.isArray(r.formulaFailure.dates) || r.formulaFailure.dates.some(d => typeof d !== 'string'))) return null;
+      || !Array.isArray(r.formulaFailure.dates) || r.formulaFailure.dates.some(d => typeof d !== 'string')
+      || (r.formulaFailure.leftOn !== undefined && typeof r.formulaFailure.leftOn !== 'string'))) return null;
     if (r.repricedItems !== undefined && (r.status !== 'reprocessed' || !Array.isArray(r.repricedItems)
       || r.repricedItems.some(i => !i || typeof i.code !== 'string' || typeof i.name !== 'string'
         || ![i.count,i.quantity,i.before,i.after].every(n => typeof n === 'number' && Number.isFinite(n))))) return null;
