@@ -179,10 +179,12 @@ describe('6b134681 — the additional run stamps the items it pays', () => {
     // regular-run-only gate existed to answer, and it is answered by the subset rather than by silence.
     expect(lines.map((l) => l.code)).not.toContain('A0027');
 
-    // Every retained bucket contribution is a bonus one; nothing else survived the filter.
+    // Every retained bucket contribution is a bonus one, except the PCB-exempt slice of the one-off B0500.
+    // RESTATED 2026-11-14 (statutory follow-ups, item 1): this pinned the overruled behaviour — B0500's
+    // RM1,000 PCB-exempt slice keyed on the bonus run was dropped (paid by no run). The bonus run now pays it.
     for (const l of lines) {
       expect(l.buckets.length).toBeGreaterThan(0);
-      for (const b of l.buckets) expect(b.bucket).toBe('bonus');
+      for (const b of l.buckets) expect(b.bucket === 'bonus' || (l.code === 'B0500' && b.bucket === 'reimburse')).toBe(true);
     }
 
     // The reporter's line, by name, on the payslip that pays it.
@@ -200,12 +202,13 @@ describe('6b134681 — the additional run stamps the items it pays', () => {
     const lines = statOf(await slipOf(bonusRun.batchId, e.employmentId)).componentLines ?? [];
     const split = lines.find((l) => l.code === 'B0500')!;
 
-    // RM1,500 keyed; RM1,000 exempt under PCB_COMPANY_PROD (paid untaxed, and NOT paid by this run at
-    // all, since an additional run's gross is its bonus); RM500 taxable bonus.
-    expect(split.buckets).toEqual([{ bucket: 'bonus', amount: 500 }]);
-    // `amount` is re-summed from what was RETAINED. Copying the stored 1,500 through would put a figure
-    // larger than the payslip's own gross onto Transaction View's grid, which renders `l.amount`.
-    expect(split.amount).toBeCloseTo(500, 2);
+    // RM1,500 keyed; RM1,000 exempt under PCB_COMPANY_PROD (paid untaxed); RM500 taxable bonus.
+    // RESTATED 2026-11-14 (statutory follow-ups, item 1): this pinned the overruled behaviour — B0500's
+    // RM1,000 PCB-exempt slice keyed on the bonus run was dropped (paid by no run). The bonus run now pays it.
+    // Before: buckets [{ bonus 500 }] and amount 500.
+    expect(split.buckets).toEqual([{ bucket: 'reimburse', amount: 1000 }, { bucket: 'bonus', amount: 500 }]);
+    // `amount` is re-summed from what was RETAINED — here both legs, which is what this run paid.
+    expect(split.amount).toBeCloseTo(1500, 2);
   });
 
   it('the stamped lines RECONCILE to the bonus figure and to gross — the property r196 requires', async () => {
@@ -218,10 +221,14 @@ describe('6b134681 — the additional run stamps the items it pays', () => {
     const named = payItemLinesForBuckets(lines, ['bonus']);
 
     expect(named.reduce((s, l) => s + l.amount, 0)).toBeCloseTo(Number(slip.bonus), 2);
-    // On an additional run gross IS the bonus, so the same rows explain both figures.
-    expect(Number(slip.grossPay)).toBeCloseTo(Number(slip.bonus), 2);
     expect(payItemLinesReconcile(named, slip.bonus)).toBe(true);
-    expect(payItemLinesReconcile(named, slip.grossPay)).toBe(true);
+    // RESTATED 2026-11-14 (statutory follow-ups, item 1): this pinned the overruled behaviour — B0500's
+    // RM1,000 PCB-exempt slice keyed on the bonus run was dropped (paid by no run). The bonus run now pays it.
+    // Before: gross was the bonus alone. Now gross = bonus + the exempt cash on the allowance line, and the
+    // stamped rows (both buckets) still explain it to the cent.
+    expect(Number(slip.grossPay)).toBeCloseTo(Number(slip.bonus) + Number(slip.allowance), 2);
+    expect(payItemLinesReconcile(payItemLinesForBuckets(lines, ['reimburse']), slip.allowance)).toBe(true);
+    expect(payItemLinesReconcile(payItemLinesForBuckets(lines, ['bonus', 'reimburse']), slip.grossPay)).toBe(true);
   });
 
   it('recordLines and exemptionUsed stay regular-run only — deliberately out of scope', async () => {
@@ -234,7 +241,10 @@ describe('6b134681 — the additional run stamps the items it pays', () => {
     // against the new component line inside History's ITEM population (history-pivot pushes both).
     expect(bonusSt.recordLines).toBeUndefined();
     // exemptionUsed is replayed by later months' YTD accumulator; stamping it twice would double-count.
-    expect(bonusSt.exemptionUsed).toBeUndefined();
+    // RESTATED 2026-11-14 (statutory follow-ups, item 1): this pinned the overruled behaviour — B0500's
+    // RM1,000 PCB-exempt slice keyed on the bonus run was dropped (paid by no run). The bonus run now pays it.
+    // It now stamps ONLY the headroom its own one-off cash used (before: undefined), never the re-fold's.
+    expect(bonusSt.exemptionUsed).toEqual({ PCB_COMPANY_PROD: 1000 });
 
     // And the regular run is untouched: it still stamps every line it folded, wage bucket included.
     const regLines = statOf(await slipOf(reg.batchId, e.employmentId)).componentLines ?? [];
@@ -264,11 +274,14 @@ describe('6b134681 — the additional run stamps the items it pays', () => {
     // ── The bonus run: it pays ONLY its additional remuneration. ──
     const b = await slipOf(bonusRun.batchId, e.employmentId);
     expect(Number(b.basicSalary)).toBeCloseTo(0, 2);
-    expect(Number(b.allowance)).toBeCloseTo(0, 2);
+    // RESTATED 2026-11-14 (statutory follow-ups, item 1): this pinned the overruled behaviour — B0500's
+    // RM1,000 PCB-exempt slice keyed on the bonus run was dropped (paid by no run). The bonus run now pays it.
+    // Before: allowance 0.00 and gross 1,000.00.
+    expect(Number(b.allowance)).toBeCloseTo(1000, 2);
     expect(Number(b.overtimePay)).toBeCloseTo(0, 2);
     // ANGPOW 500 + the taxable leg of the split productivity bonus 500.
     expect(Number(b.bonus)).toBeCloseTo(1000, 2);
-    expect(Number(b.grossPay)).toBeCloseTo(1000, 2);
+    expect(Number(b.grossPay)).toBeCloseTo(2000, 2);
     const bst = statOf(b);
     // A bonus is outside SOCSO/EIS by law (SOCSO Act 1969 s.2), so the additional run adds neither.
     expect(Number(bst.socsoEmployee)).toBeCloseTo(0, 2);
@@ -276,7 +289,7 @@ describe('6b134681 — the additional run stamps the items it pays', () => {
     // HRD Corp levy rides the normal wage only.
     expect(Number(bst.hrdf)).toBeCloseTo(0, 2);
     expect(Number(b.netPay)).toBeCloseTo(
-      1000 - (bst.epfEmployee + bst.socsoEmployee + bst.socsoSkbbk + bst.eisEmployee + bst.pcb),
+      2000 - (bst.epfEmployee + bst.socsoEmployee + bst.socsoSkbbk + bst.eisEmployee + bst.pcb),
       2,
     );
 
@@ -284,6 +297,7 @@ describe('6b134681 — the additional run stamps the items it pays', () => {
     // figure they sit under, and to gross, on the very payslip whose money is asserted above.
     const named = payItemLinesForBuckets(statOf(b).componentLines ?? [], ['bonus']);
     expect(named.map((l) => payItemLabel(l)).sort()).toEqual(['B0500 · PRODUCTIVITY BONUS', 'BOOO1 · ANGPOW']);
-    expect(payItemLinesReconcile(named, b.grossPay)).toBe(true);
+    expect(payItemLinesReconcile(named, b.bonus)).toBe(true);
+    expect(payItemLinesReconcile(payItemLinesForBuckets(statOf(b).componentLines ?? [], ['bonus', 'reimburse']), b.grossPay)).toBe(true);
   });
 });

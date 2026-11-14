@@ -1,3 +1,18 @@
+# Statutory follow-ups: EPF Bonus 2012 on the default BONUS pay item — 14 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/statutory-followups-20261114` (from `origin/main` at `e197b8c07`, merged with `origin/main` at `9b4f22c09`) appends
+`5660_pay_component_bonus_epf_bonus_2012` at idx 5060 / when 1793330005360, the next slot of the board block's offset
+(tag T, idx T − 600, when 1793330004800 + (T − 5100)) directly after `5640` (when 1793330005340), which is the
+journal's maximum `when`. SHA256 `b61c1f10cf2016da97ad257cdbd7b6f8ad8daf261a322fa5260dc0c54f6b6ddf`. It is one
+`UPDATE public.pay_component SET epf_bonus_2012 = true` on rows with code `BONUS` still in the seeded shape
+(allowance; EPF, PCB yes; SOCSO/EIS, non-payable no; no PCB remuneration type or exemption code; not yet ticked),
+plus a NOTICE count; no DDL, function, grant or policy change. A scan of every committed journal on the 4,211
+origin heads that day (469 distinct journals) found no claim on tags 5641–5999 or when 1793330005341–1793330009819
+(the only higher entries are 10 November drafts with tags 9xxx). The live staging ledger was not read by this
+session (operator access was not granted to it); `test/migration-installed-watermark.test.ts` records staging at
+when 1793330004790 and production at 1793330001700, both below this entry. Recheck the installed ledgers and peer
+claims at admission; this allocation grants no installation authority.
+
 # Board release 12 November 2026 — Rewards, dashboard and On/Off Boarding block (unapplied, allocated)
 
 Branch `claude/board-release-20261112` (from `claude/board-rewards-offcycle-20261112` at `f4bcb5de7`, merged with
