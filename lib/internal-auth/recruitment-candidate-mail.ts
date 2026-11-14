@@ -11,8 +11,9 @@ import { CandidateMailNotSent, type CandidateEmailSender, type CandidateMail } f
 
 /** Null when the tenant has no active relay. The sender's revision identifies the relay version a send starts on. */
 export async function internalCandidateEmailSender(tenantId: string, transport: MailTransport = sendSmtp): Promise<CandidateEmailSender | null> {
-  // NOTE for the merge with origin/main: there readLifecycleRelayTx(tx, tenantId) takes no profile and resolves 'noreply' itself.
-  const active = await readLifecycleRelayTx(admittedAuthSql, tenantId, 'noreply');
+  // The tenant's bound sender ('noreply') or the installation relay. The binding's own display name is not used: the company's
+  // frozen sender name always travels with the message.
+  const active = await readLifecycleRelayTx(admittedAuthSql, tenantId);
   if (!active) return null;
   const host = new URL(internalConfig().origin).hostname;
   return {

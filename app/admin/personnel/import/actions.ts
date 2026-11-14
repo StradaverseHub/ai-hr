@@ -12,6 +12,7 @@ import {beginEmployeeImportEvaluation,prepareEmployeeImportEvaluationCommit,reop
 import {EmployeeImportEvaluationBindingSchema,type EmployeeImportEvaluationBinding,type EmployeeImportEvaluationReceipt,type EmployeeImportEvaluationPublicResult} from '@/lib/personnel-import-evaluation';
 import { personnelImportLabelResolvers } from '@/lib/personnel-import-labels.server';
 import { IMPORT_COLUMNS, DEPENDENT_IMPORT_COLUMNS } from '@/lib/import-schema';
+import { sanitizeImportSourceRows } from '@/lib/import-problem-common';
 const parseEmployee=(text:string)=>parsePersonnelImportCsv(text,{columns:[...IMPORT_COLUMNS.required,...IMPORT_COLUMNS.optional],resolvers:personnelImportLabelResolvers});
 const parseFamily=(text:string)=>parsePersonnelImportCsv(text,{columns:[...DEPENDENT_IMPORT_COLUMNS.required,...DEPENDENT_IMPORT_COLUMNS.optional],sheet:'family',resolvers:personnelImportLabelResolvers});
 import {
@@ -50,12 +51,15 @@ export async function validateImportAction(
   dependentsCsv?: string,
   registers?:PersonnelRegisterTexts,
   allocationsCsv?:string,
+  /** Board d3ba1e9f — each sheet's Excel rows as read from the workbook (labels only; bounded and type-checked). */
+  sourceRows?:unknown,
 ): Promise<ImportPreview | EmployeeImportFailure> {
   const s = await requireAdmin();
   try {
     if(Buffer.byteLength([csv,dependentsCsv??'',allocationsCsv??'',...Object.values(registers??{})].join(''),'utf8')>900000)throw new Error('The import is too large. Split the workbook and check each part.');
     const { records, warnings } = parseEmployee(csv);
-    const preview=await validateEmployeeImport(s, { companyId, records, dependentRecords: familyRecords(dependentsCsv),registerRecords:registerRecords(registers),allocationRecords:parseCostAllocationCsv(allocationsCsv??'') });
+    const labels=sourceRows!==undefined?{sourceRows:sanitizeImportSourceRows(sourceRows)}:{};
+    const preview=await validateEmployeeImport(s, { companyId, records, dependentRecords: familyRecords(dependentsCsv),registerRecords:registerRecords(registers),allocationRecords:parseCostAllocationCsv(allocationsCsv??''),...labels });
     for(const row of preview.rows) row.warnings.push(...warnings);
     const familyWarnings=(dependentsCsv??'').trim()?parseFamily(dependentsCsv!).warnings:[];
     for(const row of preview.rows) row.warnings.push(...familyWarnings.map(warning=>`Family: ${warning}`));
@@ -74,9 +78,11 @@ export async function commitImportAction(
   dependentsCsv?: string,
   registers?:PersonnelRegisterTexts,
   allocationsCsv?:string,allocationToken?:string,evaluationBinding?:EmployeeImportEvaluationBinding,
+  /** Board d3ba1e9f — as validateImportAction. */
+  sourceRows?:unknown,
 ): Promise<(ImportResult & {evaluationReceipt?:EmployeeImportEvaluationReceipt}) | {job:EmployeeImportProgress;existing:boolean} | EmployeeImportFailure> {
   if(evaluationBinding!==undefined){
-    try{return await commitMeasuredEmployeeImport(csv,companyId,evaluationBinding,dependentsCsv,registers,allocationsCsv,allocationToken,fileName);}
+    try{return await commitMeasuredEmployeeImport(csv,companyId,evaluationBinding,dependentsCsv,registers,allocationsCsv,allocationToken,fileName,sourceRows);}
     catch(error){if(error instanceof EmployeeImportJobError&&error.message===EMPLOYEE_IMPORT_ALREADY_RUNNING)return {error:error.message};return {error:EMPLOYEE_IMPORT_EVALUATION_UNAVAILABLE};}
   }
   const s = await requireAdmin();
@@ -87,7 +93,7 @@ export async function commitImportAction(
     // the guidance below. Parse with the same parsers before enqueueing, so it still never becomes a job.
     parseEmployee(csv);familyRecords(dependentsCsv);registerRecords(registers);parseCostAllocationCsv(allocationsCsv??'');
     const source=pastedSource(csv,fileName);
-    const started=await createEmployeeImportJob(s,{companyId,csv,fileName:fileName??'',dependentsCsv:dependentsCsv??'',registers:registers??{},allocationsCsv:allocationsCsv??'',allocationToken},source);
+    const started=await createEmployeeImportJob(s,{companyId,csv,fileName:fileName??'',dependentsCsv:dependentsCsv??'',registers:registers??{},allocationsCsv:allocationsCsv??'',allocationToken,...(sourceRows!==undefined?{sourceRows:sanitizeImportSourceRows(sourceRows)}:{})},source);
     revalidatePath('/admin/personnel/import');
     if('replay' in started)throw new Error('Unexpected receipt replay without an evaluation binding.');
     return started;
@@ -111,11 +117,11 @@ export async function prepareEmployeeImportEvaluationCommitAction(preparation:un
 /** Evaluation-bound import: the same background job as every import, carrying the receipt binding. The worker claims
  * the binding when writing starts and completes the receipt in the activation transaction; a binding that already
  * committed replays its receipt here instead of importing twice. The browser reads the receipt with the reopen action. */
-async function commitMeasuredEmployeeImport(csv:string,companyId:string,binding:EmployeeImportEvaluationBinding,dependentsCsv?:string,registers?:PersonnelRegisterTexts,allocationsCsv?:string,allocationToken?:string,fileName?:string):Promise<(ImportResult&{evaluationReceipt?:EmployeeImportEvaluationReceipt})|{job:EmployeeImportProgress;existing:boolean}>{
+async function commitMeasuredEmployeeImport(csv:string,companyId:string,binding:EmployeeImportEvaluationBinding,dependentsCsv?:string,registers?:PersonnelRegisterTexts,allocationsCsv?:string,allocationToken?:string,fileName?:string,sourceRows?:unknown):Promise<(ImportResult&{evaluationReceipt?:EmployeeImportEvaluationReceipt})|{job:EmployeeImportProgress;existing:boolean}>{
  const captured=structuredClone({csv,companyId,dependentsCsv,registers,allocationsCsv});
  measuredInputs(captured.csv,captured.companyId,captured.dependentsCsv,captured.registers,captured.allocationsCsv);
  const bound=EmployeeImportEvaluationBindingSchema.parse(structuredClone(binding)),ctx=await getBrowserCommandSession();
- const started=await createEmployeeImportJob(ctx,{companyId:captured.companyId,csv:captured.csv,fileName:fileName??'',dependentsCsv:captured.dependentsCsv??'',registers:captured.registers??{},allocationsCsv:captured.allocationsCsv??'',allocationToken},pastedSource(captured.csv,fileName),bound);
+ const started=await createEmployeeImportJob(ctx,{companyId:captured.companyId,csv:captured.csv,fileName:fileName??'',dependentsCsv:captured.dependentsCsv??'',registers:captured.registers??{},allocationsCsv:captured.allocationsCsv??'',allocationToken,...(sourceRows!==undefined?{sourceRows:sanitizeImportSourceRows(structuredClone(sourceRows))}:{})},pastedSource(captured.csv,fileName),bound);
  revalidatePath('/admin/personnel/import');
  revalidatePath('/admin/personnel/import/history');
  if('replay' in started){revalidatePath('/admin/personnel');return measuredImportReplay(captured.companyId,started.replay);}

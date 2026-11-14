@@ -54,24 +54,20 @@ it('keeps an explicit default CC mailbox separate from directory people', () => 
   expect(saved().cc).toEqual([]);
 });
 
-it('inserts allowed Personnel fields at the selected cursor range in the correct email input', () => {
+it('inserts allowed Personnel fields at the subject cursor and edits the body in the rich editor (board 6bdda222)', () => {
   render(<Editor/>);
-  const body = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Body' });
-  fireEvent.change(body, { target: { value: 'Hello replacement today' } });
-  body.focus();
-  body.setSelectionRange(6, 17);
-  fireEvent.blur(body);
-  fireEvent.click(screen.getByRole('button', { name: 'Insert field into body' }));
-  expect(screen.getByRole('button', { name: /Business unit · \{employee.businessUnit\}/ })).toBeVisible();
-  expect(screen.queryByRole('button', { name: /IC number|Passport number|Religion|Race/ })).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: /Position · \{employee.position\}/ }));
-  expect(saved().body).toBe('Hello {employee.position} today');
-  expect(screen.getByText('Position inserted into the body.')).toBeVisible();
+  // The body is the rich editor, not a textarea; the subject stays plain text with Insert field.
+  const body = screen.getByRole('textbox', { name: 'Body' });
+  expect(body.tagName).not.toBe('TEXTAREA'); expect(body).toHaveAttribute('contenteditable');
+  expect(screen.getByRole('toolbar')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Insert field into subject' }));
+  expect(screen.queryByRole('button', { name: /IC number|Passport number|Religion|Race/ })).toBeNull();
   fireEvent.change(screen.getByRole('searchbox', { name: 'Search subject fields' }), { target: { value: 'date' } });
   expect(screen.getByRole('button', { name: /Last working date/ })).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: /Join date/ }));
-  expect(saved()).toMatchObject({ subject: '{joiner.joinDate}', body: 'Hello {employee.position} today' });
+  expect(saved().subject).toBe('{joiner.joinDate}');
+  // Opening the editor converts nothing until the body itself is edited.
+  expect(saved().bodyDoc).toBeUndefined();
 });
 
 it('renders the Personnel field picker in the email template drawer', async () => {
@@ -79,9 +75,8 @@ it('renders the Personnel field picker in the email template drawer', async () =
     <h1>Email template</h1><Editor showDefinition={false}/>
   </section></div>);
   fireEvent.change(screen.getByLabelText('Subject'), { target: { value: 'Welcome, {employee.name}' } });
-  fireEvent.change(screen.getByLabelText('Body'), { target: { value: 'Welcome to {company.name}.' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Insert field into body' }));
-  fireEvent.change(screen.getByRole('searchbox', { name: 'Search body fields' }), { target: { value: 'organisation' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Insert field into subject' }));
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search subject fields' }), { target: { value: 'organisation' } });
   expect(screen.getByRole('button', { name: /Business unit/ })).toBeVisible();
   expect(screen.getByRole('button', { name: /Direct superior/ })).toBeVisible();
   expect(screen.queryByRole('button', { name: /Nationality/ })).toBeNull();

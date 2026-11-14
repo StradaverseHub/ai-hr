@@ -9,7 +9,8 @@ it('imports the complete supplied definitions without fixture users or cases', (
   expect(config.groups.every(g => g.members.length === 0)).toBe(true);
   expect(config.workflows.filter(w => w.status === 'draft')).toHaveLength(2);
   expect(config.workflows.find(w => w.id === 'w4')?.steps.map(s => s.type)).toEqual(['doc', 'waitSign']);
-  expect(config.emails.find(e => e.id === 'e3')?.cc).toEqual(['supervisor', 'pbp']);
+  expect(config.emails.find(e => e.id === 'e3')?.cc).toEqual(['supervisor']);
+  // Board 4a60b3ec: the ready-made recipients are pinned in test/lifecycle-v9-default-recipients.test.ts.
   expect(config.checklists.find(c => c.id === 'oc1')?.tasks.some(t => t.documentTemplate === 'txi')).toBe(true);
   expect(config.templates.find(t => t.id === 'tsv')?.versions.at(-1)?.fields).toHaveLength(48);
 });
@@ -34,6 +35,8 @@ it('rejects cross-module workflow links and duplicate form identifiers', () => {
 it('preserves real assignment groups by identity and rejects duplicate definitions', () => {
   const config = v9Defaults([{ id: 'g-people', name: 'HR Ops', members: ['11111111-1111-4111-8111-111111111111'], limit: 7 }]);
   expect(config.groups.find(g => g.id === 'g-people')).toMatchObject({ members: ['11111111-1111-4111-8111-111111111111'], limit: 7 });
+  // No ready-made recipient names an assignment group: GBS People Ops is reached through Settings, never by HR Ops.
+  expect(config.workflows.flatMap(w => w.steps.flatMap(s => 'to' in s ? [...[s.to].flat(), ...s.cc] : [])).filter(role => role.startsWith('group:'))).toEqual([]);
   config.workflows.push(config.workflows[0]); expect(() => parseV9Config(config)).toThrow('Duplicate workflow');
 });
 it('links supplied Facility tasks to the existing group identity', () => {

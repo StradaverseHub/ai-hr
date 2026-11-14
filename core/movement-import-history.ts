@@ -6,13 +6,14 @@
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {createImportAttemptTx,importAttemptEventsTx,importAttemptItemsTx,lockImportAttemptTx,recordImportEventTx,recordImportFailure,recordImportItemTx,sealImportPlan,ImportHistoryError,type ImportAttemptItemRow,type ImportRevertHandler} from './import-history';
-import {commitMovementImport,previewMovementImport,movementImportTypes,movementImportStateTx,type MovementCommitInput,type MovementImportItemState} from './movement-import';
+import {commitMovementImport,previewMovementImport,movementImportTypesForCheck,movementImportStateTx,type MovementCommitInput,type MovementImportItemState} from './movement-import';
 import {createMovementEventTx,editMovementEventTx,movementCorrectionBaseTx,movementHistoryTx,movementLedgerMarkerTx,movementReversalBlockerTx,reverseMovementForImportTx,type CreateMovementInput} from './movement';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {readMovementSource,movementWorkbookCatalogue} from '../lib/movement-workbook.server';
 import {movementImportIssueText} from '../lib/movement-import-issues';
 import {movementEmployeeKey,type MovementImportPreview,type MovementImportResult} from '../lib/movement-import-contract';
 import {movementImportFieldLabel} from '../lib/movement-import-issues';
+import {movementRecordedProblemRows,type MovementProblemRow} from '../lib/movement-import-problems';
 import {personnelImportLabelResolvers} from '../lib/personnel-import-labels.server';
 import type {ImportPlanBase} from '../lib/import-history';
 import type {PersonnelLabelResolver} from '../lib/personnel-import-contract';
@@ -20,12 +21,16 @@ import {createHash} from 'node:crypto';
 
 /** The sealed plan of a movement attempt. Fingerprints stay server-side; the browser sends only its choice. */
 export type MovementImportPlan=ImportPlanBase&{kind:'movement';inputHash:string;sourceHash:string;catalogueHash:string;fingerprints:Record<string,string>;
- employees:{key:string;employeeCode:string;companyId:string|null;name:string|null;rows:number[];valid:boolean;errors:string[]}[]};
+ employees:{key:string;employeeCode:string;companyId:string|null;name:string|null;rows:number[];valid:boolean;errors:string[];
+  /** Board d3ba1e9f — the employee's refused rows as issue codes, for the Error Log in the viewer's language (additive). */
+  checked?:MovementProblemRow[]}[];
+ /** Board d3ba1e9f — the file problems as issue codes (additive; `issues` keeps the sentences). */
+ fileErrors?:string[]};
 const sha=(content:Buffer)=>createHash('sha256').update(content).digest('hex');
 type Words={resolve:PersonnelLabelResolver};
 export async function sourceRecords(ctx:SessionContext,name:string,content:Buffer,words:Words){
- const types=await movementImportTypes(ctx);
- const parsed=await readMovementSource(name,content,{tenantId:ctx.tenantId,types,resolve:words.resolve});
+ const {types,reasonCreatedAt}=await movementImportTypesForCheck(ctx);
+ const parsed=await readMovementSource(name,content,{tenantId:ctx.tenantId,types,reasonCreatedAt,resolve:words.resolve});
  return{...parsed,catalogueHash:movementWorkbookCatalogue({types}),sourceHash:sha(content)};
 }
 /** Checks an uploaded file and records it as an import attempt with the original bytes. Nothing is saved. */
@@ -41,10 +46,10 @@ export type MovementCheckSource=Awaited<ReturnType<typeof sourceRecords>>;
 export async function recordMovementPreview(ctx:SessionContext,input:{name:string;content:Buffer;operationKey?:string;source:Pick<MovementCheckSource,'sourceHash'|'catalogueHash'|'fileErrors'>;preview:MovementImportPreview}&Words,hooks:{before?:(tx:Tx)=>Promise<void>;after?:(tx:Tx,attempt:{attemptId:string;previewHash:string})=>Promise<void>}={}):Promise<{attemptId:string;previewHash:string;preview:MovementImportPreview}>{
  const {source,preview}=input;
  const describe=(errors:readonly string[])=>movementImportIssueText(errors,input.resolve);
- const employees=preview.employees.map(e=>{const errors=e.rows.flatMap(r=>r.errors);return{key:movementEmployeeKey(e),employeeCode:e.employeeCode,companyId:e.companyId??null,name:e.name,rows:e.rows.map(r=>r.row),valid:!!e.fingerprint&&e.rows.every(r=>r.status==='valid'),errors:errors.length?[describe(errors)]:[]};});
+ const employees=preview.employees.map(e=>{const errors=e.rows.flatMap(r=>r.errors);return{key:movementEmployeeKey(e),employeeCode:e.employeeCode,companyId:e.companyId??null,name:e.name,rows:e.rows.map(r=>r.row),valid:!!e.fingerprint&&e.rows.every(r=>r.status==='valid'),errors:errors.length?[describe(errors)]:[],...(errors.length?{checked:movementRecordedProblemRows(e.rows)}:{})};});
  const movements=preview.employees.reduce((n,e)=>n+e.rows.length,0),valid=employees.filter(e=>e.valid).reduce((n,e)=>n+e.rows.length,0);
  const plan=sealImportPlan<MovementImportPlan>({version:1,kind:'movement',inputHash:preview.inputHash,sourceHash:source.sourceHash,catalogueHash:source.catalogueHash,fingerprints:Object.fromEntries(preview.employees.filter(e=>e.fingerprint).map(e=>[movementEmployeeKey(e),e.fingerprint!])),employees,
-  counts:{total:movements,valid,invalid:movements-valid},issues:source.fileErrors.map(code=>({rowNum:1,reason:describe([code])})),previewHash:''});
+  counts:{total:movements,valid,invalid:movements-valid},issues:source.fileErrors.map(code=>({rowNum:1,reason:describe([code])})),...(source.fileErrors.length?{fileErrors:[...source.fileErrors]}:{}),previewHash:''});
  const companyIds=[...new Set(employees.map(e=>e.companyId).filter((id):id is string=>!!id))];
  const created=await withTenant(ctx,async tx=>{
   await hooks.before?.(tx);

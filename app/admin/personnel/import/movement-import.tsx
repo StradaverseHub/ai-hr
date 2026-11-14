@@ -2,13 +2,14 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {useTranslations} from 'next-intl';
 import Link from 'next/link';
-import {toCsv} from '@/lib/csv';
 import {movementPageHref} from '@/lib/personnel-movement-navigation';
 import {Button,Card,Field,inputCls} from '@/components/ui';
 import {movementImportFieldLabel,movementImportIssueText} from '@/lib/movement-import-issues';
 import {movementEmployeeKey,type MovementImportPreview,type MovementImportResult,type MovementImportRow} from '@/lib/movement-import-contract';
 import {MOVEMENT_CHECK_ALREADY_RUNNING,MOVEMENT_IMPORT_ALREADY_RUNNING,movementCheckJobActive,movementImportJobActive,type MovementCheckJobProgress,type MovementCheckJobResult,type MovementImportJobProgress} from '@/lib/movement-import-job';
 import {MovementImportJobPanel} from './movement-import-progress';
+import {ImportProblems} from './import-error-log';
+import {movementPreviewProblemLines,movementResultProblemLines} from '@/lib/movement-import-problems';
 function download(data:BlobPart,type:string,name:string){const url=URL.createObjectURL(new Blob([data],{type}));const anchor=document.createElement('a');anchor.href=url;anchor.download=name;anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 const HISTORY='/admin/personnel/import/history';
 /**
@@ -18,7 +19,7 @@ const HISTORY='/admin/personnel/import/history';
  * navigation) and then shows the same preview or result the request used to return.
  */
 export function MovementImport({onCommitPendingChange}:{onCommitPendingChange?:(pending:boolean)=>void}){
- const t=useTranslations('people.import.movement'),j=useTranslations('people.import.movementJob'),c=useTranslations('people.import.movementCheckJob'),labels=useTranslations();
+ const t=useTranslations('people.import.movement'),j=useTranslations('people.import.movementJob'),c=useTranslations('people.import.movementCheckJob'),labels=useTranslations(),tl=useTranslations('importErrorLogEmployee');
  const word=(key:string,fallback:string)=>t.has(`sheet.${key}`)?t(`sheet.${key}`):fallback;
  const [file,setFile]=useState<File|null>(null),[preview,setPreview]=useState<MovementImportPreview|null>(null),[result,setResult]=useState<MovementImportResult|null>(null);
  const [attempt,setAttempt]=useState<{attemptId:string;previewHash:string}|null>(null);
@@ -93,7 +94,9 @@ export function MovementImport({onCommitPendingChange}:{onCommitPendingChange?:(
  const sheetRows=(row:MovementImportRow)=>(row.sourceRows??[row.source?.row??row.row]).join(', ');
  // d9e33556 — name the worksheet with its original Excel rows so a correction can be found in the file.
  const sheetPlace=(row:MovementImportRow)=>(row.source?.sheet?row.source.sheet+' · ':'')+word('rows','Rows')+' '+sheetRows(row);
- const errorsCsv=()=>download(toCsv([[t('row'),word('companyId','Company ID'),t('employeeId'),t('eventType'),t('effectiveDate'),t('errors')],...employees.flatMap(e=>e.rows.filter(r=>r.errors.length).map(r=>[sheetPlace(r),r.companyCode??'',r.employeeCode,eventLabel(r.eventType),r.effectiveDate,issueText(r.errors)]))]),'text/csv;charset=utf-8','movement-import-errors.csv');
+ // Board d3ba1e9f — the problem table and the Error Log (.xlsx) are drawn from the SAME lines (one adapter), so the
+ // screen and the downloaded file say the same thing. File-level problems are whole-file lines.
+ const problemLines=result?movementResultProblemLines(result,preview,resolver):preview?movementPreviewProblemLines(preview,resolver):[];
  return <section aria-label={t('title')} className="space-y-5" aria-busy={busy}>
   <Card className="space-y-4 p-5"><h2 className="font-medium">{t('title')}</h2>
    <p className="text-sm text-muted-foreground">{word('screenHint','One template for every movement type and company. Enter one row per field that changes; rows with the same company, employee, date and event type are one movement.')}</p>
@@ -106,11 +109,13 @@ export function MovementImport({onCommitPendingChange}:{onCommitPendingChange?:(
   {job&&!result&&<MovementImportJobPanel job={job} onFinished={finished}/>}
   {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
   {!!preview?.fileErrors.length&&<div role="alert" className="rounded-lg border border-destructive p-4"><p>{t('fileRefused')}</p><ul>{preview.fileErrors.map((issue,i)=><li key={i} className="text-sm">{issueText(issue)}</li>)}</ul></div>}
+  {problemLines.length>0&&<Card className="overflow-hidden p-0"><ImportProblems lines={problemLines} fileName={file?.name} title={tl('problemsTitle')}/></Card>}
   {!!employees.length&&<Card className="space-y-4 p-5"><div ref={summary} tabIndex={-1} className="outline-none"><h2 className="font-medium">{result?t('resultTitle'):t('previewTitle')}</h2><p role="status" className="text-sm">{result?t('resultCounts',{imported:result.imported,failed:result.failed,excluded:result.excluded}):t('previewCounts',{valid:preview!.valid,excluded:preview!.excluded})}</p></div>
    <p className="text-sm text-muted-foreground">{word('wholeEmployee','Each employee’s movements are imported together or not at all. Other employees still go through.')}</p>
    {employees.map(employee=>{const key=movementEmployeeKey(employee);return <section key={key} className="space-y-2 rounded-lg border p-3"><h3 className="text-sm font-medium">{employee.employeeCode} · {employee.name??t('notFound')}{employee.companyName?` · ${employee.companyName}`:''}</h3>
     {!result&&<label className="flex items-center gap-2 text-sm"><input type="checkbox" disabled={busy||!employee.fingerprint||employee.rows.some(r=>r.status!=='valid')} checked={selected.includes(key)} onChange={e=>{setSelected(current=>e.target.checked?[...current,key]:current.filter(c=>c!==key));setAcknowledge(false);}}/>{word('included','Include employee')}</label>}
     <ul className="space-y-2">{employee.rows.map(row=><li key={row.row} className="space-y-1 border-t pt-2"><p className="text-sm font-medium">{actionLabel(row)}{eventLabel(row.eventType)} · {row.effectiveDate} · {sheetPlace(row)} · {t(`rowStatus.${row.status}`)}</p>
+     {row.history&&<p className="text-xs text-sky-700 dark:text-sky-400">{t('historyRow',{from:row.history.from,to:row.history.to,date:row.effectiveDate})}</p>}
      {row.errors.length>0&&<p className="text-xs text-destructive">{issueText(row.errors)}</p>}
      {!!row.closedPayrollPeriods?.length&&<p className="text-xs text-amber-700 dark:text-amber-400">{t('sheet.closedPayrollRow',{periods:row.closedPayrollPeriods.join(', ')})}</p>}
      {!!row.warnings?.length&&<p className="text-xs text-amber-700 dark:text-amber-400">{issueText(row.warnings)}</p>}
@@ -123,7 +128,6 @@ export function MovementImport({onCommitPendingChange}:{onCommitPendingChange?:(
      <label className="flex items-start gap-2"><input className="mt-1" type="checkbox" name="acknowledgeClosedPayroll" disabled={busy} checked={closedPayroll} onChange={e=>setClosedPayroll(e.target.checked)}/>{t('sheet.closedPayrollAcknowledge')}</label></div>}
     <Button aria-busy={busy} type="button" disabled={busy||!canCommit} onClick={()=>void run('apply')}>{busy?t('working'):t('confirm')}</Button>
    </>}
-   {employees.some(e=>e.rows.some(r=>r.errors.length))&&<Button aria-busy={busy} type="button" variant="secondary" disabled={busy} onClick={errorsCsv}>{t('downloadErrors')}</Button>}
   </Card>}
  </section>;
 }

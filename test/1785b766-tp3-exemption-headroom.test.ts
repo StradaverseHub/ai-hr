@@ -260,8 +260,8 @@ async function payable(name: string, opts: { hiredOn?: string; travel?: number; 
 async function exemptedOn(batchId: string, employmentId: string, code = 'PCB_TRA_BUSINESS') {
   const rows = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
   const slip = rows.find((r) => r.employmentId === employmentId)!;
-  const st = slip.statutory as { exemptionUsed?: Record<string, number>; epfEmployee?: number };
-  return { used: Number(st.exemptionUsed?.[code] ?? 0), epfEmployee: Number(st.epfEmployee ?? 0) };
+  const st = slip.statutory as { exemptionUsed?: Record<string, number>; epfEmployee?: number; bases?: { pcb?: number } };
+  return { used: Number(st.exemptionUsed?.[code] ?? 0), epfEmployee: Number(st.epfEmployee ?? 0), pcbBase: Number(st.bases?.pcb ?? 0) };
 }
 
 /** The stored opening balance, as the kernel reads it. */
@@ -325,9 +325,13 @@ describe('1785b766 §3 · the previous employer’s usage opens this employer’
     // block from core/payroll.ts and these two become equal, and this line fails.
     expect(c.used, 'the same pay item, with no form behind it, is exempt in full').toBe(1_000);
     expect(s.used).not.toBe(c.used);
-    // …and the money is therefore IN the statutory bases for the subject and OUT of them for the control,
-    // which is the tax the defect was losing. Derived, not a written-down LHDN figure.
-    expect(s.epfEmployee).toBeGreaterThan(c.epfEmployee);
+    // …and the money is therefore IN the PCB base for the subject and OUT of it for the control, which is
+    // the tax the defect was losing. Derived, not a written-down LHDN figure.
+    // REVISED 2026-11-13 (owner decision A): this used to read the difference off EPF, because an exempt
+    // slice then left every statutory base. A PCB exemption is income-tax only, so the travel item (ticked
+    // EPF) is EPF wages for both people and their EPF is equal; the exemption shows in the PCB base alone.
+    expect(s.pcbBase).toBeCloseTo(c.pcbBase + 1_000, 2);
+    expect(s.epfEmployee).toBe(c.epfEmployee);
   });
 
   it('3.2 the reporter’s own example: TP3 2,000 + a 1,500 pay item = 3,500 of 6,000, leaving 2,500', async () => {

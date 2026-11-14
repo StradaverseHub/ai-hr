@@ -10,6 +10,8 @@ import type {ImportIssue,ImportIssueStage,ImportRowOutcome} from './import-schem
  *  never the row's identity number, bank account, statutory numbers or salary. */
 export type EmployeeImportSaveReportRow={
  rowNum:number;employeeCode:string;fullName:string;companyId:string;
+ /** Board d3ba1e9f — the row as Excel numbers it (absent on reports recorded before it). */
+ excelRow?:number;
  /** 'stopped': refused while saving (this row stopped the file); 'cancelled': no problem, not saved. */
  outcome:'stopped'|'cancelled';
  column?:string;message?:string;
@@ -19,12 +21,16 @@ export type EmployeeImportSaveReportRow={
 /** Bounded like the job's own row errors: a file with more problems than this is the wrong file. */
 export const EMPLOYEE_IMPORT_SAVE_REPORT_LIMIT=2000;
 
-/** English text recorded with a cancelled row (Import History renders the translated wording by outcome). */
+/** English text recorded with a cancelled row (Import History renders the translated wording by outcome). Board
+ *  d3ba1e9f: callers pass the stopping rows as Excel numbers them. */
 export function cancelledRowMessage(stoppedBy:readonly number[]){
  return stoppedBy.length
   ?`Not saved: the file was cancelled because row ${stoppedBy.join(', ')} could not be saved. This row has no problem; upload it again with the corrected file.`
   :'Not saved: the file was cancelled before any employee was saved. This row has no problem; upload it again with the corrected file.';
 }
+/** True for the recorded cancelled-row sentence above (either wording), so a screen holding only the job's row
+ *  messages can tell a cancelled row from the row that stopped the file without another read. */
+export const isCancelledRowMessage=(message:string)=>message.startsWith('Not saved: the file was cancelled ');
 /** English summary for a file cancelled while saving. */
 export function cancelledFileMessage(stoppedBy:readonly number[],reason:string){
  return stoppedBy.length
@@ -44,17 +50,25 @@ const OWNER_REFUSAL_COLUMNS:Record<string,string>={
 };
 export const ownerRefusalColumn=(message:string)=>OWNER_REFUSAL_COLUMNS[message.trim()];
 
-type PlanRow={rowNum:number;fullName?:string;employeeCode?:string;companyId?:string;ok:boolean;errors?:string[];issues?:ImportIssue[]};
+type PlanRow={rowNum:number;excelRow?:number;fullName?:string;employeeCode?:string;companyId?:string;ok:boolean;errors?:string[];issues?:ImportIssue[]};
 type HistoryEvent={kind:string;detail:Record<string,unknown>};
 export type EmployeeImportReportLine={
  rowNum:number;employeeCode:string;fullName:string;companyId:string|null;
  column:string|null;code:string|null;message:string|null;stage:ImportIssueStage|null;
  /** 'pending': the import has not finished (no outcome recorded yet). */
  outcome:ImportRowOutcome|'pending';stoppedBy:number[];
+ /** Board d3ba1e9f — the row as Excel numbers it: recorded on newer attempts, data row + 1 on older ones. */
+ excelRow:number;
+ /** The stopping rows (stoppedBy) as Excel numbers them. */
+ stoppedByRows:number[];
+ /** The recorded entered value of the issue (never set for sensitive columns). */
+ value?:string;
 };
 export type EmployeeImportReport={lines:EmployeeImportReportLine[];counts:{saved:number;toFix:number;cancelled:number;total:number};
  /** The file was cancelled while saving (at least one row stopped it, or the save stopped). */
- cancelledWhileSaving:boolean;stoppedBy:number[]};
+ cancelledWhileSaving:boolean;stoppedBy:number[];
+ /** Board d3ba1e9f — stoppedBy as Excel numbers the rows. */
+ stoppedByRows:number[]};
 
 const planRowsOf=(plan:unknown):PlanRow[]=>{
  const rows=(plan as {rows?:unknown}|null)?.rows;
@@ -74,25 +88,29 @@ export function employeeImportReport(plan:unknown,events:readonly HistoryEvent[]
  const byRow=new Map<number,EmployeeImportSaveReportRow[]>();
  for(const r of saveRows)(byRow.get(r.rowNum)??byRow.set(r.rowNum,[]).get(r.rowNum)!).push(r);
  const stoppedBy=[...new Set(saveRows.filter(r=>r.outcome==='stopped').map(r=>r.rowNum))].sort((a,b)=>a-b);
+ const planRows=planRowsOf(plan);
+ const excelOf=new Map(planRows.map(r=>[r.rowNum,typeof r.excelRow==='number'&&r.excelRow>0?r.excelRow:r.rowNum+1] as const));
+ for(const r of saveRows)if(typeof r.excelRow==='number'&&r.excelRow>0&&!excelOf.has(r.rowNum))excelOf.set(r.rowNum,r.excelRow);
+ const rowsOf=(nums:readonly number[])=>nums.map(n=>excelOf.get(n)??n+1);
  const lines:EmployeeImportReportLine[]=[];
- for(const row of planRowsOf(plan).sort((a,b)=>a.rowNum-b.rowNum)){
-  const base={rowNum:row.rowNum,employeeCode:row.employeeCode??'',fullName:row.fullName??'',companyId:row.companyId??null};
+ for(const row of [...planRows].sort((a,b)=>a.rowNum-b.rowNum)){
+  const base={rowNum:row.rowNum,excelRow:excelOf.get(row.rowNum)!,employeeCode:row.employeeCode??'',fullName:row.fullName??'',companyId:row.companyId??null};
   if(!row.ok){
    const issues:ImportIssue[]=Array.isArray(row.issues)&&row.issues.length?row.issues:(row.errors??[]).map(message=>({message}));
-   for(const issue of issues)lines.push({...base,column:issue.column??null,code:issue.code??null,message:issue.message,stage:'check',outcome:'refused',stoppedBy:[]});
+   for(const issue of issues)lines.push({...base,column:issue.column??null,code:issue.code??null,message:issue.message,...(issue.value?{value:issue.value}:{}),stage:'check',outcome:'refused',stoppedBy:[],stoppedByRows:[]});
    continue;
   }
   const saved=byRow.get(row.rowNum);
   const stops=saved?.filter(r=>r.outcome==='stopped')??[];
-  if(stops.length){for(const s of stops)lines.push({...base,column:s.column??null,code:null,message:s.message??null,stage:'save',outcome:'stopped',stoppedBy:[]});continue;}
-  if(confirmed)lines.push({...base,column:null,code:null,message:null,stage:null,outcome:'saved',stoppedBy:[]});
-  else if(failed)lines.push({...base,column:null,code:null,message:null,stage:null,outcome:'cancelled',stoppedBy:saved?.find(r=>r.outcome==='cancelled')?.stoppedBy??stoppedBy});
-  else lines.push({...base,column:null,code:null,message:null,stage:null,outcome:'pending',stoppedBy:[]});
+  if(stops.length){for(const s of stops)lines.push({...base,column:s.column??null,code:null,message:s.message??null,stage:'save',outcome:'stopped',stoppedBy:[],stoppedByRows:[]});continue;}
+  if(confirmed)lines.push({...base,column:null,code:null,message:null,stage:null,outcome:'saved',stoppedBy:[],stoppedByRows:[]});
+  else if(failed){const by=saved?.find(r=>r.outcome==='cancelled')?.stoppedBy??stoppedBy;lines.push({...base,column:null,code:null,message:null,stage:null,outcome:'cancelled',stoppedBy:by,stoppedByRows:rowsOf(by)});}
+  else lines.push({...base,column:null,code:null,message:null,stage:null,outcome:'pending',stoppedBy:[],stoppedByRows:[]});
  }
  const rowsWith=(...o:EmployeeImportReportLine['outcome'][])=>new Set(lines.filter(l=>o.includes(l.outcome)).map(l=>l.rowNum)).size;
  const total=planRowsOf(plan).length;
  const saved=confirmed?Number((confirmed.detail as {succeeded?:unknown}).succeeded??0):0;
- return{lines,counts:{saved,toFix:rowsWith('refused','stopped'),cancelled:confirmed?0:rowsWith('cancelled'),total},cancelledWhileSaving:!confirmed&&failed&&(stoppedBy.length>0||saveRows.length>0),stoppedBy};
+ return{lines,counts:{saved,toFix:rowsWith('refused','stopped'),cancelled:confirmed?0:rowsWith('cancelled'),total},cancelledWhileSaving:!confirmed&&failed&&(stoppedBy.length>0||saveRows.length>0),stoppedBy,stoppedByRows:rowsOf(stoppedBy)};
 }
 
 /**

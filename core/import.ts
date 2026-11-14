@@ -94,7 +94,9 @@ import {
   type ImportResult,
   type ImportRunError,
   type ImportRunRow,
+  type ImportIssue,
 } from '../lib/import-schema';
+import {excelRowOf,isHiddenImportColumn,lineRowOf,sanitizeImportSourceRows} from '../lib/import-problem-common';
 
 // Re-exported so server-side callers (actions, tests) can keep importing from core/import.
 export { IMPORT_COLUMNS, DEPENDENT_IMPORT_COLUMNS };
@@ -280,6 +282,8 @@ export type ResolvedDependent = {
 };
 
 const norm = (s: string | undefined) => (s ?? '').trim();
+/** Board d3ba1e9f — the reason code of a personnelScalarIssue verdict (what kind of value the column wanted). */
+const scalarIssueCode=(issue:string)=>issue==='date'?'invalid_date':issue==='year and month'?'invalid_month':issue==='non-negative whole number'?'invalid_number':issue==='email'?'invalid_email':'invalid_choice';
 /** Item 1859cce0 — a problem found after the row loop, recorded on both the plain list and the issue list. */
 function rowIssue(result: RowResult, column: string, message: string) {
   result.errors.push(message);
@@ -383,8 +387,13 @@ async function analyze(
   dependentRecords: ImportRecord[] = [],
   registerRecords:PersonnelRegisterRecords={},
   outerTx?:Tx,
+  /** Board d3ba1e9f — each sheet's Excel rows as the browser read them from the workbook (index = data row - 1).
+   *  Only labels: they change no verdict. A list that does not match its sheet's record count is ignored. */
+  rawSourceRows?:unknown,
 ): Promise<{ preview: ImportPreview; resolved: ResolvedRow[]; dependents: ResolvedDependent[]; registers:Awaited<ReturnType<typeof validateRegisterImport>>[] }> {
   const read=<T,>(fn:(tx:Tx)=>Promise<T>)=>outerTx?fn(outerTx):withTenant(ctx,fn);
+  const sourceRows=sanitizeImportSourceRows(rawSourceRows,{employee:records.length,family:dependentRecords.length,qualification:registerRecords.qualification?.length??0,emergency:registerRecords.emergency?.length??0});
+  const employeeRow=(rowNum:number)=>excelRowOf(sourceRows.employee,rowNum);
   if(Object.keys(registerRecords).some(key=>!(PERSONNEL_REGISTER_KINDS as readonly string[]).includes(key)))throw new Error('Unknown register sheet.');
   const [catalogCompanies, leaveTypes, maintainIds, viewIds] = await Promise.all([
     listCompanies(ctx,{adminOnly:true},outerTx), listLeaveTypes(ctx,{},outerTx), workforceCompanies(ctx,'maintain',outerTx), workforceCompanies(ctx,'view',outerTx),
@@ -548,8 +557,10 @@ async function analyze(
     // Item 1859cce0 — every problem found below is pushed with the column it is about, so the error report
     // can name the cell to correct without parsing the message back. Helpers that return plain messages
     // (catalog normalisation, operational, bank, Bank & Statutory parsers) keep no column.
-    const columnOf=new Map<string,{column:string;code?:string}>();
-    const fail=(column:string,message:string,code?:string)=>{errors.push(message);if(!columnOf.has(message))columnOf.set(message,{column,code});};
+    // Board d3ba1e9f — each issue also keeps a stable reason code (for the Error Log's common correction) and the
+    // entered cell, except for sensitive columns, whose value is never recorded.
+    const columnOf=new Map<string,{column:string;code?:string;value?:string}>();
+    const fail=(column:string,message:string,code?:string)=>{errors.push(message);if(!columnOf.has(message)){const value=isHiddenImportColumn(column)?'':norm(rawRecord[column]);columnOf.set(message,{column,...(code?{code}:{}),...(value?{value}:{})});}};
     const operations=personnelOperationalValues(rec);errors.push(...operations.errors);
     if(operations.values.paymentMethod==='bank_transfer' && bankTransferLacksBank({bankName:rec.bank_name,bankAccountNo:rec.bank_account_no}))fail('bank_name', 'Bank Transfer requires bank_name and bank_account_no.');
     const fullName = norm(rec.full_name);
@@ -558,9 +569,9 @@ async function analyze(
     // PASS 2 begins with the company: every catalog lookup below is against THIS row's company, which
     // is what makes the reporter's "Department does not belong to selected company" a real check.
     const rc = rowCompanies[idx];
-    if(rc.ambiguous)fail('company', `Ambiguous company "${rc.raw}" — use its exact company ID or registration number`);
-    else if (rc.unknown) fail('company', `Unknown company "${rc.raw}"`);
-    else if (!rc.co) fail('company', 'Missing company');
+    if(rc.ambiguous)fail('company', `Ambiguous company "${rc.raw}" — use its exact company ID or registration number`,'unknown_reference');
+    else if (rc.unknown) fail('company', `Unknown company "${rc.raw}"`,'unknown_reference');
+    else if (!rc.co) fail('company', 'Missing company','required');
     const cctx = rc.co ? contexts.get(rc.co.id) : undefined;
     const { deptByName, posByName, ccByName, buByName, gradeByName } = cctx ?? {
       deptByName: new PersonnelImportLookup<string>(),
@@ -578,92 +589,92 @@ async function analyze(
     const codeRaw = norm(rec.employee_code);
     const codeNorm = normalizeEmployeeCode(codeRaw);
     if (codeRaw && !isValidEmployeeCode(codeRaw))
-      fail('employee_code', `Invalid employee_code "${codeRaw}" (letters/numbers/dash, max ${EMPLOYEE_CODE_MAX_LEN})`);
-    else if (codeRaw && seenCodes.has(codeNorm)) fail('employee_code', 'Duplicate employee_code in this file');
-    else if (codeRaw && existingCodes.has(codeNorm)) fail('employee_code', `Employee ID "${codeNorm}" is already in use`);
+      fail('employee_code', `Invalid employee_code "${codeRaw}" (letters/numbers/dash, max ${EMPLOYEE_CODE_MAX_LEN})`,'invalid_code');
+    else if (codeRaw && seenCodes.has(codeNorm)) fail('employee_code', 'Duplicate employee_code in this file','duplicate_in_file');
+    else if (codeRaw && existingCodes.has(codeNorm)) fail('employee_code', `Employee ID "${codeNorm}" is already in use`,'duplicate_in_system');
     // Named differently from "already in use" (item 06f0cb8f): nobody is employed under this ID — an
     // unfinished draft is holding it, and the way out is to finish or discard that draft.
     else if (codeRaw && reservedCodes.has(codeNorm))
-      fail('employee_code', `Employee ID "${codeNorm}" is reserved by a draft employee record`);
+      fail('employee_code', `Employee ID "${codeNorm}" is reserved by a draft employee record`,'duplicate_in_system');
     if (codeRaw && isValidEmployeeCode(codeRaw)) seenCodes.add(codeNorm);
 
-    if (!fullName) fail('full_name', 'Missing full_name');
-    if (!email) fail('email', 'Missing email');
-    else if (!EMAIL_RE.test(email)) fail('email', `Invalid email "${email}"`);
+    if (!fullName) fail('full_name', 'Missing full_name','required');
+    if (!email) fail('email', 'Missing email','required');
+    else if (!EMAIL_RE.test(email)) fail('email', `Invalid email "${email}"`,'invalid_email');
     // 5e0b2154 — with Allow Duplicated Work Email or Personal Email ON, a shared email is reported, not refused.
-    else if (seenEmails.has(email.toLowerCase())) { if (allowDuplicatedEmail) warnings.push('This email is also used by another row in this file'); else fail('email', 'Duplicate email in this file'); }
+    else if (seenEmails.has(email.toLowerCase())) { if (allowDuplicatedEmail) warnings.push('This email is also used by another row in this file'); else fail('email', 'Duplicate email in this file','duplicate_in_file'); }
     // 524303d9 — the duplicate policy applies in full, exactly like NRIC: with "Allow Duplicated Work Email or
     // Personal Email" OFF an email another person already holds is refused; ON it is reported.
-    else if (existingEmails.has(email.toLowerCase())) { if (allowDuplicatedEmail) warnings.push('A person with this email already exists'); else fail('email', `Email "${email}" is already used by another employee (Allow Duplicated Work Email is off)`); }
+    else if (existingEmails.has(email.toLowerCase())) { if (allowDuplicatedEmail) warnings.push('A person with this email already exists'); else fail('email', `Email "${email}" is already used by another employee (Allow Duplicated Work Email is off)`,'duplicate_in_system'); }
     if (email) seenEmails.add(email.toLowerCase());
 
     // Department (required, canonical code before an unambiguous legacy label)
     const deptName = norm(rec.department);
     const departmentId = deptByName.get(deptName.toLowerCase());
-    if (!deptName) fail('department', 'Missing department');
-    else if (deptByName.isAmbiguous(deptName))fail('department', `Ambiguous department "${deptName}" — choose a distinct label or code`);
-    else if (!departmentId) fail('department', `Unknown department "${deptName}"`);
+    if (!deptName) fail('department', 'Missing department','required');
+    else if (deptByName.isAmbiguous(deptName))fail('department', `Ambiguous department "${deptName}" — choose a distinct label or code`,'unknown_reference');
+    else if (!departmentId) fail('department', `Unknown department "${deptName}"`,'unknown_reference');
 
     // Position / cost-center (optional; code first, unknown = error so it is never dropped silently)
     const posName = norm(rec.position);
     let positionId: string | undefined;
     if (posName) {
       positionId = posByName.get(posName.toLowerCase());
-      if(posByName.isAmbiguous(posName))fail('position', `Ambiguous position "${posName}" — choose a distinct label or code`);
-      else if (!positionId) fail('position', `Unknown position "${posName}"`);
+      if(posByName.isAmbiguous(posName))fail('position', `Ambiguous position "${posName}" — choose a distinct label or code`,'unknown_reference');
+      else if (!positionId) fail('position', `Unknown position "${posName}"`,'unknown_reference');
     }
     const ccName = norm(rec.cost_center);
     let costCenterId: string | undefined;
     if (ccName) {
       costCenterId = ccByName.get(ccName.toLowerCase());
-      if(ccByName.isAmbiguous(ccName))fail('cost_center', `Ambiguous cost_center "${ccName}" — choose a distinct label or code`);
-      else if (!costCenterId) fail('cost_center', `Unknown cost_center "${ccName}"`);
+      if(ccByName.isAmbiguous(ccName))fail('cost_center', `Ambiguous cost_center "${ccName}" — choose a distinct label or code`,'unknown_reference');
+      else if (!costCenterId) fail('cost_center', `Unknown cost_center "${ccName}"`,'unknown_reference');
     }
 
     const organisationChoice=(column:string,lookup:PersonnelImportLookup<string>)=>{
       const raw=norm(rec[column]);if(!raw)return undefined;
       const id=lookup.get(raw);
-      if(lookup.isAmbiguous(raw))fail(column, `Ambiguous ${column} "${raw}" for ${cctx?.name??'the selected company'} — choose a distinct label or code`);
-      else if(!id)fail(column, `Unavailable ${column} "${raw}" for ${cctx?.name??'the selected company'}`);
+      if(lookup.isAmbiguous(raw))fail(column, `Ambiguous ${column} "${raw}" for ${cctx?.name??'the selected company'} — choose a distinct label or code`,'unknown_reference');
+      else if(!id)fail(column, `Unavailable ${column} "${raw}" for ${cctx?.name??'the selected company'}`,'unknown_reference');
       return id;
     };
     const tags=derivedOrganisationRows.get(idx)?.tags;
     const businessUnitId=tags&&(derivedOrganisationRows.get(idx)?.managed||tags.status!=='legacy')?(tags.businessUnitId??undefined):organisationChoice('business_unit',buByName);
     const gradeId=organisationChoice('job_grade',gradeByName);
     const departmentUnit=departmentId?cctx?.departmentBusinessUnits.get(departmentId):undefined;
-    if(businessUnitId && departmentUnit && businessUnitId!==departmentUnit)fail('department', 'department: unavailable under the selected business_unit');
+    if(businessUnitId && departmentUnit && businessUnitId!==departmentUnit)fail('department', 'department: unavailable under the selected business_unit','unknown_reference');
 
     // Hire date
     const hiredOn = norm(rec.hired_on);
-    if (!hiredOn) fail('hired_on', 'Missing hired_on');
-    else if (!isCalendarDate(hiredOn)) fail('hired_on', `hired_on must be YYYY-MM-DD (got "${hiredOn}")`);
+    if (!hiredOn) fail('hired_on', 'Missing hired_on','required');
+    else if (!isCalendarDate(hiredOn)) fail('hired_on', `hired_on must be YYYY-MM-DD (got "${hiredOn}")`,'invalid_date');
 
     // Employment type
     let employmentType: 'full_time' | 'part_time' | 'contract' | 'intern' = 'full_time';
     const etRaw = lc(rec.employment_type).replace(/[\s-]+/g, '_');
     if (etRaw) {
       if (EMPLOYMENT_TYPES.has(etRaw)) employmentType = etRaw as 'full_time' | 'part_time' | 'contract' | 'intern';
-      else fail('employment_type', `Unknown employment_type "${rec.employment_type}"`);
+      else fail('employment_type', `Unknown employment_type "${rec.employment_type}"`,'invalid_choice');
     }
 
     // Optional NRIC: format is unconditional; duplication follows the current tenant policy.
     const icRaw = norm(rec.ic_number);
     const icNorm = pack.statutory.normalizeIC(icRaw);
     if (icRaw && !pack.statutory.validateIC(icRaw)) fail('ic_number', `Invalid IC "${icRaw}" (expected 12 digits)`);
-    else if (!allowDuplicatedNric && icRaw && seenIcs.has(icNorm)) fail('ic_number', NRIC_FILE_DUPLICATE_MESSAGE);
-    else if (!allowDuplicatedNric && icRaw && existingIcs.has(icNorm)) fail('ic_number', NRIC_DUPLICATE_MESSAGE);
+    else if (!allowDuplicatedNric && icRaw && seenIcs.has(icNorm)) fail('ic_number', NRIC_FILE_DUPLICATE_MESSAGE,'duplicate_in_file');
+    else if (!allowDuplicatedNric && icRaw && existingIcs.has(icNorm)) fail('ic_number', NRIC_DUPLICATE_MESSAGE,'duplicate_in_system');
     if (icRaw && pack.statutory.validateIC(icRaw)) seenIcs.add(icNorm);
 
     // Salary
     const salaryRaw = norm(rec.basic_salary).replace(/[,_]/g, '');
     const basicSalary = Number(salaryRaw);
-    if (!Number.isFinite(basicSalary) || basicSalary < 0) fail('basic_salary', `Invalid basic_salary "${rec.basic_salary}"`);
+    if (!Number.isFinite(basicSalary) || basicSalary < 0) fail('basic_salary', `Invalid basic_salary "${rec.basic_salary}"`,'invalid_number');
     const allowanceRaw = norm(rec.monthly_allowance).replace(/[,_]/g, '');
     let monthlyAllowance = 0;
     if (allowanceRaw) {
       monthlyAllowance = Number(allowanceRaw);
       if (!Number.isFinite(monthlyAllowance) || monthlyAllowance < 0) {
-        fail('monthly_allowance', `Invalid monthly_allowance "${rec.monthly_allowance}"`);
+        fail('monthly_allowance', `Invalid monthly_allowance "${rec.monthly_allowance}"`,'invalid_number');
         monthlyAllowance = 0;
       }
     }
@@ -673,13 +684,13 @@ async function analyze(
     const tcRaw = norm(rec.tax_category);
     if (tcRaw) {
       taxCategory = Number(tcRaw);
-      if (![1, 2, 3].includes(taxCategory)) fail('tax_category', 'tax_category must be 1, 2 or 3');
+      if (![1, 2, 3].includes(taxCategory)) fail('tax_category', 'tax_category must be 1, 2 or 3','invalid_choice');
     }
     let numChildren: number | undefined;
     const ncRaw = norm(rec.num_children);
     if (ncRaw) {
       numChildren = Number(ncRaw);
-      if (!Number.isInteger(numChildren) || numChildren < 0) fail('num_children', `Invalid num_children "${ncRaw}"`);
+      if (!Number.isInteger(numChildren) || numChildren < 0) fail('num_children', `Invalid num_children "${ncRaw}"`,'invalid_number');
     }
 
     // Boolean flags (default true)
@@ -688,7 +699,7 @@ async function analyze(
       if (v === '') return undefined;
       if (TRUTHY.has(v)) return true;
       if (FALSY.has(v)) return false;
-      fail(label, `Invalid ${label} "${raw}" (use yes/no)`);
+      fail(label, `Invalid ${label} "${raw}" (use yes/no)`,'yes_no');
       return undefined;
     };
     const eisEligible = boolField(rec.eis_eligible, 'eis_eligible');
@@ -701,7 +712,7 @@ async function analyze(
       if (c === 'malaysian') return 'citizen';
       if (c === 'permanent_resident') return 'pr';
       if (['noncitizen', 'foreign', 'foreigner', 'foreign_worker'].includes(c)) return 'non_citizen';
-      fail('epf_citizenship', `Invalid epf_citizenship "${rec.epf_citizenship}" (use citizen / pr / non_citizen)`);
+      fail('epf_citizenship', `Invalid epf_citizenship "${rec.epf_citizenship}" (use citizen / pr / non_citizen)`,'invalid_choice');
       return undefined;
     })();
 
@@ -717,7 +728,7 @@ async function analyze(
       const m = lc(rec.pay_mode).replace(/[\s-]+/g, '_');
       if (!m) return undefined;
       if ((PERSONNEL_PAY_MODES as readonly string[]).includes(m)) return m as (typeof PERSONNEL_PAY_MODES)[number];
-      fail('pay_mode', `Invalid pay_mode "${rec.pay_mode}" (use monthly / daily / hourly / custom_period)`);
+      fail('pay_mode', `Invalid pay_mode "${rec.pay_mode}" (use monthly / daily / hourly / custom_period)`,'invalid_choice');
       return undefined;
     })();
     const paymentTerm = ((): 'monthly' | 'weekly' | 'biweekly' | undefined => {
@@ -725,7 +736,7 @@ async function analyze(
       if (!f) return undefined;
       if ((PERSONNEL_PAYMENT_TERMS as readonly string[]).includes(f)) return f as (typeof PERSONNEL_PAYMENT_TERMS)[number];
       if (f === 'bi_weekly') return 'biweekly';
-      fail('payment_term', `Invalid payment_term "${rec.payment_term}" (use monthly / weekly / biweekly)`);
+      fail('payment_term', `Invalid payment_term "${rec.payment_term}" (use monthly / weekly / biweekly)`,'invalid_choice');
       return undefined;
     })();
     let rateAmount: number | undefined;
@@ -733,7 +744,7 @@ async function analyze(
     if (rateRaw) {
       rateAmount = Number(rateRaw);
       if (!Number.isFinite(rateAmount) || rateAmount < 0) {
-        fail('rate_amount', `Invalid rate_amount "${rec.rate_amount}"`);
+        fail('rate_amount', `Invalid rate_amount "${rec.rate_amount}"`,'invalid_number');
         rateAmount = undefined;
       }
     }
@@ -781,7 +792,7 @@ async function analyze(
       const v = norm(raw);
       if (!v) return undefined;
       if (!isCalendarDate(v)) {
-        fail(label, `${label} must be YYYY-MM-DD (got "${v}")`);
+        fail(label, `${label} must be YYYY-MM-DD (got "${v}")`,'invalid_date');
         return undefined;
       }
       return v;
@@ -792,7 +803,7 @@ async function analyze(
       if (!v) return undefined;
       const n = Number(v);
       if (!Number.isInteger(n) || n < 0) {
-        fail(label, `Invalid ${label} "${raw}" (whole number, 0 or more)`);
+        fail(label, `Invalid ${label} "${raw}" (whole number, 0 or more)`,'invalid_number');
         return undefined;
       }
       return String(n);
@@ -803,7 +814,7 @@ async function analyze(
       const cell = classifyCatalogCell(raw, (v) => catalogAllows(category, v,rc.co?.id));
       if (cell.kind === 'refused') {
         fail(label, 
-          `"${cell.value}" is not an active ${category} option (see the Reference sheet) — column ${label}`,
+          `"${cell.value}" is not an active ${category} option (see the Reference sheet) — column ${label}`,'unknown_reference',
         );
       }
       return cell;
@@ -860,10 +871,10 @@ async function analyze(
     for(const field of PERSONNEL_COMPLIANCE_IMPORT_FIELDS) {
       const column=field.import.column!; const value=norm(rec[column]);if(!value)continue;
       const issue=personnelScalarIssue(field,value);
-      if(issue)fail(column, `${column}: invalid ${issue} value`);
+      if(issue)fail(column, `${column}: invalid ${issue} value`,scalarIssueCode(issue));
       else (compliance as Record<string,string>)[field.ownerField]=value;
     }
-    if(profile.personalEmail && !EMAIL_RE.test(profile.personalEmail))fail('personal_email', 'Invalid personal_email');
+    if(profile.personalEmail && !EMAIL_RE.test(profile.personalEmail))fail('personal_email', 'Invalid personal_email','invalid_email');
     // 524303d9 — "Same as permanent address": Yes copies the permanent block into the correspondence block
     // through the same writer, exactly as draft completion does (`copyPermanentToCorrespondence`).
     const sameAsPermanent = boolField(rec.correspondence_same_as_permanent ?? '', 'correspondence_same_as_permanent');
@@ -881,8 +892,8 @@ async function analyze(
       const wanted = policyRaw.toLowerCase();
       const hits = policies.filter((policy) => policy.companyId === cctx.id && (policy.name.toLowerCase() === wanted || (policy.code ?? '').toLowerCase() === wanted));
       if (!isModuleEnabled(ctx, 'payroll', cctx.id)) fail('payroll_policy', `payroll_policy: Payroll is not switched on for ${cctx.name}`);
-      else if (hits.length > 1) fail('payroll_policy', `Ambiguous payroll_policy "${policyRaw}" — use its policy code`);
-      else if (!hits.length) fail('payroll_policy', `Unknown payroll_policy "${policyRaw}" for ${cctx.name}`);
+      else if (hits.length > 1) fail('payroll_policy', `Ambiguous payroll_policy "${policyRaw}" — use its policy code`,'unknown_reference');
+      else if (!hits.length) fail('payroll_policy', `Unknown payroll_policy "${policyRaw}" for ${cctx.name}`,'unknown_reference');
       else if (hits[0].status !== 'active') fail('payroll_policy', `payroll_policy "${policyRaw}" is inactive`);
       else payrollPolicyId = hits[0].id;
     }
@@ -891,8 +902,8 @@ async function analyze(
     if (groupRaw) {
       const wanted = groupRaw.toLowerCase();
       const hits = scheduleGroups.filter((group) => group.name.toLowerCase() === wanted || (group.label ?? '').toLowerCase() === wanted);
-      if (hits.length > 1) fail('schedule_group', `Ambiguous schedule_group "${groupRaw}"`);
-      else if (!hits.length) fail('schedule_group', `Unknown schedule_group "${groupRaw}"`);
+      if (hits.length > 1) fail('schedule_group', `Ambiguous schedule_group "${groupRaw}"`,'unknown_reference');
+      else if (!hits.length) fail('schedule_group', `Unknown schedule_group "${groupRaw}"`,'unknown_reference');
       else if (hits[0].status !== 'active') fail('schedule_group', `schedule_group "${groupRaw}" is inactive`);
       else scheduleGroupId = hits[0].id;
     }
@@ -955,7 +966,7 @@ async function analyze(
 
     for(const field of PERSONNEL_EMPLOYMENT_IMPORT_FIELDS) {
       const {column,writerField,catalog:category}=field.import;const value=norm(rec[column!]);if(!value)continue;
-      const issue=personnelScalarIssue(field,value);if(issue){fail(column!, `${column}: invalid ${issue} value`);continue;}
+      const issue=personnelScalarIssue(field,value);if(issue){fail(column!, `${column}: invalid ${issue} value`,scalarIssueCode(issue));continue;}
       const checked=category?catalogField(value,category,column!):undefined;
       if(checked?.kind==='refused')continue;
       employmentInfo[writerField!]=checked?.kind==='ok'?checked.value:value;
@@ -998,6 +1009,8 @@ async function analyze(
         return display?{...value,value:`${norm(rawRecord[value.column])} → ${display}`}:value;
       }),
       rowNum: idx + 1,
+      excelRow: employeeRow(idx + 1),
+      ...(codeRaw ? { employeeCode: codeRaw } : {}),
       fullName,
       email,
       ok,
@@ -1140,7 +1153,7 @@ async function analyze(
       if (!row.result.ok || row.superior?.kind !== 'row') return;
       if (resolved[row.superior.index].result.ok) return;
       rowIssue(row.result,'direct_superior',
-        `direct_superior "${superiorRaw[idx]}" is on row ${row.superior.index + 1} of this file, which has errors and will not be imported`,
+        `direct_superior "${superiorRaw[idx]}" is on row ${employeeRow(row.superior.index + 1)} of this file, which has errors and will not be imported`,
       );
       row.result.ok = false;
       settling = true;
@@ -1152,13 +1165,15 @@ async function analyze(
     resolved,
     codeToRow,
     catalog,
+    employeeRow,
+    familyRow: (rowNum) => excelRowOf(sourceRows.family, rowNum),
   });
 
   if(['tender_resignation_date','resignation_date','last_working_date'].some(field=>presentColumns.has(field)))fileErrors.push('Resignation dates must be recorded through Movement import. Remove these columns from the employee file. Nothing was imported.');
 
   for(const dependent of dependents)if(dependent.result.ok) {
     try { await assertDependentsValid(ctx,[dependent.add],outerTx); }
-    catch(error) { dependent.result.ok=false;dependent.result.errors.push(error instanceof Error?error.message:'Invalid Family values'); }
+    catch(error) { const message=error instanceof Error?error.message:'Invalid Family values';dependent.result.ok=false;dependent.result.errors.push(message);(dependent.result.issues??=[]).push({message}); }
   }
   dependentPreview.validCount=dependents.filter(dependent=>dependent.result.ok).length;
   if(dependentPreview.validCount<dependents.length && !fileErrors.length)fileErrors.push('Some Family values were refused by the Personnel owner. Correct those rows before importing; nothing will be written.');
@@ -1168,6 +1183,8 @@ async function analyze(
   for(const kind of PERSONNEL_REGISTER_KINDS) {
     if(!registerRecords[kind]?.length)continue;
     const checked=await (outerTx?analyzeRegisterImportTx(outerTx,kind,registerRecords[kind]??[],{subjects,newEmployees:true}):validateRegisterImport(ctx,kind,registerRecords[kind]??[],{subjects,newEmployees:true}));
+    // Board d3ba1e9f — each register row's Excel row (the register owner numbers data rows).
+    for(const row of checked.preview.rows as {rowNum:number;excelRow?:number}[])row.excelRow=excelRowOf(sourceRows[kind],row.rowNum);
     registers.push(checked);
     fileErrors.push(...checked.preview.fileErrors.map(error=>`${kind}: ${error}`));
   }
@@ -1207,8 +1224,13 @@ function analyzeDependents(
     resolved: ResolvedRow[];
     codeToRow: Map<string, number>;
     catalog: Map<string, Set<string>>;
+    /** Board d3ba1e9f — data row -> Excel row of the employee sheet and of the Family sheet. */
+    employeeRow?: (rowNum: number) => number;
+    familyRow?: (rowNum: number) => number;
   },
 ): { dependents: ResolvedDependent[]; dependentPreview: DependentPreview; fileErrors: string[] } {
+  const employeeRow = ctx.employeeRow ?? ((rowNum: number) => rowNum + 1);
+  const familyRow = ctx.familyRow ?? ((rowNum: number) => rowNum + 1);
   const presentColumns = new Set(records.length ? Object.keys(records[0]) : []);
   const missingColumns = records.length
     ? DEPENDENT_IMPORT_COLUMNS.required.filter((c) => !presentColumns.has(c))
@@ -1224,21 +1246,25 @@ function analyzeDependents(
     const codeRaw = norm(rec.employee_code);
     const fullName = norm(rec.full_name);
     const relationship = norm(rec.relationship);
+    // Board d3ba1e9f — the column, reason code and (non-sensitive) value of each problem, as on the employee sheet.
+    const columnOf=new Map<string,ImportIssue>();
+    const fail=(column:string,message:string,code?:string)=>{errors.push(message);if(!columnOf.has(message)){const value=isHiddenImportColumn(column,'family')?'':norm(rawRecord[column]);columnOf.set(message,{message,column,...(code?{code}:{}),...(value?{value}:{})});}};
 
-    if (!codeRaw) errors.push('Missing employee_code — this is the link to the employee row');
-    if (!fullName) errors.push('Missing full_name');
-    if (!relationship) errors.push('Missing relationship');
+    if (!codeRaw) fail('employee_code', 'Missing employee_code — this is the link to the employee row', 'required');
+    if (!fullName) fail('full_name', 'Missing full_name', 'required');
+    if (!relationship) fail('relationship', 'Missing relationship', 'required');
     else if (!builtinRelationships.has(relationship) && !customRelationships.has(relationship)) {
-      errors.push(
+      fail('relationship',
         `Unknown relationship "${relationship}" (use ${[...DEPENDENT_RELATIONSHIPS].join(' / ')}, or an active option from your Family relationship list)`,
+        'unknown_reference',
       );
     }
 
     const dob = norm(rec.date_of_birth);
-    if (dob && !isCalendarDate(dob)) errors.push(`date_of_birth must be YYYY-MM-DD (got "${dob}")`);
+    if (dob && !isCalendarDate(dob)) fail('date_of_birth', `date_of_birth must be YYYY-MM-DD (got "${dob}")`, 'invalid_date');
     const gender = enumCell(rec.gender);
     if (gender && !genders.has(gender)) {
-      errors.push(`Unknown gender "${rec.gender}" (use ${[...DEPENDENT_GENDERS].join(' / ')})`);
+      fail('gender', `Unknown gender "${rec.gender}" (use ${[...DEPENDENT_GENDERS].join(' / ')})`, 'invalid_choice');
     }
     // Blank means NO here, unlike the employee sheet's default-true statutory flags: a family member is
     // an insurance beneficiary only when somebody says so.
@@ -1247,7 +1273,7 @@ function analyzeDependents(
     if (benRaw !== '') {
       if (TRUTHY.has(benRaw)) isBeneficiary = true;
       else if (FALSY.has(benRaw)) isBeneficiary = false;
-      else errors.push(`Invalid is_beneficiary "${rec.is_beneficiary}" (use yes/no)`);
+      else fail('is_beneficiary', `Invalid is_beneficiary "${rec.is_beneficiary}" (use yes/no)`, 'yes_no');
     }
 
     const extra=personnelFamilyValues(rec);errors.push(...extra.errors,...personnelFamilyCatalogErrors(rec,ctx.catalog));
@@ -1257,13 +1283,13 @@ function analyzeDependents(
     if (codeRaw) {
       const found = ctx.codeToRow.get(codeNorm);
       if (found === undefined) {
-        errors.push(`Employee ID "${codeRaw}" is not on the employee sheet`);
+        fail('employee_code', `Employee ID "${codeRaw}" is not on the employee sheet`, 'not_on_employee_sheet');
         if (!unmatchedCodes.includes(codeRaw)) unmatchedCodes.push(codeRaw);
       } else {
         employeeIndex = found;
         if (!ctx.resolved[found].result.ok) {
           errors.push(
-            `the employee on row ${found + 1} of the employee sheet has errors, so this family member has nobody to belong to`,
+            `the employee on row ${employeeRow(found + 1)} of the employee sheet has errors, so this family member has nobody to belong to`,
           );
         }
       }
@@ -1272,11 +1298,13 @@ function analyzeDependents(
     dependents.push({
       result: {
         rowNum: idx + 1,
+        excelRow: familyRow(idx + 1),
         employeeCode: codeRaw,
         fullName,
         relationship,
         ok: errors.length === 0,
         errors,
+        issues: errors.map((message) => columnOf.get(message) ?? { message }),
       },
       employeeIndex,
       add: {
@@ -1305,7 +1333,7 @@ function analyzeDependents(
       `The Family sheet names Employee ID "${code}", which is not on the employee sheet. Nothing was imported — add the employee, or correct the ID, and upload again.`,
     );
   }
-  const badRows = dependents.filter((d) => !d.result.ok).map((d) => d.result.rowNum);
+  const badRows = dependents.filter((d) => !d.result.ok).map((d) => d.result.excelRow ?? familyRow(d.result.rowNum));
   if (badRows.length > 0) {
     fileErrors.push(
       `${badRows.length} row(s) on the Family sheet could not be validated (row ${badRows.slice(0, 10).join(', row ')}${badRows.length > 10 ? ', …' : ''}). A file that carries family members is imported whole or not at all, so nothing was imported.`,
@@ -1327,9 +1355,11 @@ function analyzeDependents(
 /** Dry run: validate the records against the company catalog without writing anything. */
 export async function validateEmployeeImport(
   ctx: SessionContext,
-  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[]; registerRecords?:PersonnelRegisterRecords; allocationRecords?:AllocationImportRecords },
+  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[]; registerRecords?:PersonnelRegisterRecords; allocationRecords?:AllocationImportRecords;
+    /** Board d3ba1e9f — the workbook's Excel rows per sheet (labels only). */
+    sourceRows?:unknown },
 ): Promise<ImportPreview> {
-  const { preview, resolved } = await analyze(ctx, p.companyId, p.records, p.dependentRecords ?? [],p.registerRecords);
+  const { preview, resolved } = await analyze(ctx, p.companyId, p.records, p.dependentRecords ?? [],p.registerRecords,undefined,p.sourceRows);
   await withTenant(ctx,async tx=>{
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await assertWorkforceCompanyTx(tx,ctx,p.companyId,'view');
@@ -1542,7 +1572,7 @@ export async function commitEmployeeImport(
     } catch (e) {
       if (isTransientImportError(e)) throw e;
       const message = publicErrorMessage(e);
-      failed.push({ rowNum: row.result.rowNum, email: row.result.email, message, fullName: row.result.fullName, employeeCode: row.hire.employeeCode ?? '', companyId: row.hire.companyId, column: ownerRefusalColumn(message), outcome: 'stopped' });
+      failed.push({ rowNum: row.result.rowNum, excelRow: lineRowOf(row.result), email: row.result.email, message, fullName: row.result.fullName, employeeCode: row.hire.employeeCode ?? '', companyId: row.hire.companyId, column: ownerRefusalColumn(message), outcome: 'stopped' });
     }
   }
 
@@ -1559,9 +1589,10 @@ export async function commitEmployeeImport(
     if (!subordinate) continue; // the employee itself was refused; its own problem is already listed
     const manager =
       row.superior.kind === 'existing' ? row.superior.employmentId : employmentByRow.get(row.superior.index);
-    const stop = (message: string, column?: string) => failed.push({ rowNum: row.result.rowNum, email: row.result.email, message, fullName: row.result.fullName, employeeCode: row.hire.employeeCode ?? '', companyId: row.hire.companyId, column, outcome: 'stopped' });
+    const stop = (message: string, column?: string) => failed.push({ rowNum: row.result.rowNum, excelRow: lineRowOf(row.result), email: row.result.email, message, fullName: row.result.fullName, employeeCode: row.hire.employeeCode ?? '', companyId: row.hire.companyId, column, outcome: 'stopped' });
     if (!manager) {
-      const managerRow = row.superior.kind === 'row' ? resolved[row.superior.index]?.result.rowNum : undefined;
+      const managerResult = row.superior.kind === 'row' ? resolved[row.superior.index]?.result : undefined;
+      const managerRow = managerResult ? lineRowOf(managerResult) : undefined;
       stop(managerRow ? `The direct superior on row ${managerRow} could not be saved, so this reporting line was not set.` : 'The direct superior named on this row was not imported.', 'direct_superior');
       continue;
     }
@@ -1620,15 +1651,17 @@ export async function commitEmployeeImport(
     // file was cancelled, and says so. A busy database or an unexpected stop names no row and gives its reference.
     const stops=error instanceof ImportSaveRefused?failed.filter(f=>f.outcome==='stopped').sort((x,y)=>x.rowNum-y.rowNum):[];
     const stoppedBy=[...new Set(stops.map(f=>f.rowNum))];
-    writeFileErrors.push(cancelledFileMessage(stoppedBy,publicErrorMessage(error)));
-    failed.splice(0,failed.length,...stops,...valid.filter(row=>!stoppedBy.includes(row.result.rowNum)).map(row=>({rowNum:row.result.rowNum,email:row.result.email,message:cancelledRowMessage(stoppedBy),
+    // Board d3ba1e9f — the sentences name the stopping rows as Excel numbers them.
+    const stoppedRows=[...new Set(stops.map(f=>f.excelRow??f.rowNum+1))];
+    writeFileErrors.push(cancelledFileMessage(stoppedRows,publicErrorMessage(error)));
+    failed.splice(0,failed.length,...stops,...valid.filter(row=>!stoppedBy.includes(row.result.rowNum)).map(row=>({rowNum:row.result.rowNum,excelRow:lineRowOf(row.result),email:row.result.email,message:cancelledRowMessage(stoppedRows),
       fullName:row.result.fullName,employeeCode:row.hire.employeeCode??'',companyId:row.hire.companyId,outcome:'cancelled' as const,stoppedBy})));
     failed.sort((x,y)=>x.rowNum-y.rowNum);
     superiorFailed.splice(0);imported=0;dependentsImported=0;registersImported.qualification=0;registersImported.emergency=0;employmentByRow.clear();
   }
 
   if(writeFileErrors.length&&attemptId){
-    const rows:EmployeeImportSaveReportRow[]=failed.filter(f=>f.outcome==='stopped').slice(0,EMPLOYEE_IMPORT_SAVE_REPORT_LIMIT).map(f=>({rowNum:f.rowNum,employeeCode:f.employeeCode??'',fullName:f.fullName??'',companyId:f.companyId??p.companyId,outcome:'stopped' as const,message:f.message,...(f.column?{column:f.column}:{})}));
+    const rows:EmployeeImportSaveReportRow[]=failed.filter(f=>f.outcome==='stopped').slice(0,EMPLOYEE_IMPORT_SAVE_REPORT_LIMIT).map(f=>({rowNum:f.rowNum,...(f.excelRow?{excelRow:f.excelRow}:{}),employeeCode:f.employeeCode??'',fullName:f.fullName??'',companyId:f.companyId??p.companyId,outcome:'stopped' as const,message:f.message,...(f.column?{column:f.column}:{})}));
     await recordImportFailure(ctx,attemptId,'employee_full','failed',new ImportHistoryError(writeFileErrors.join(' ')),{rows});
   }
   if(replayedEvaluation&&evaluationReceipt){
@@ -1687,9 +1720,10 @@ type EmployeeImportAttemptInput={companyId:string;records:ImportRecord[];fileNam
 export async function recordEmployeeImportAttemptTx(tx:Tx,ctx:SessionContext,p:EmployeeImportAttemptInput,preview:ImportPreview,resolved:ResolvedRow[]){
   const name=p.source?.name||p.fileName||'pasted-employees.csv';
   const content=p.source?.content??Buffer.from(recordsAsCsv(p.records),'utf8');
-  const rows=resolved.map(row=>({rowNum:row.result.rowNum,fullName:row.result.fullName,employeeCode:row.hire.employeeCode??'',company:row.result.company,companyId:row.hire.companyId,ok:row.result.ok,errors:row.result.errors,issues:row.result.issues??[]}));
+  const rows=resolved.map(row=>({rowNum:row.result.rowNum,excelRow:lineRowOf(row.result),fullName:row.result.fullName,employeeCode:row.hire.employeeCode??'',company:row.result.company,companyId:row.hire.companyId,ok:row.result.ok,errors:row.result.errors,issues:row.result.issues??[]}));
+  // Board d3ba1e9f — each row keeps its Excel row; the issue sentence names it as Excel numbers it.
   const plan=sealImportPlan<EmployeeFullImportPlan>({version:1,kind:'employee_full',companyId:p.companyId,rows,counts:{total:rows.length,valid:preview.validCount,invalid:rows.length-preview.validCount},
-    issues:[...preview.fileErrors.map(reason=>({rowNum:0,reason})),...rows.filter(row=>!row.ok).map(row=>({rowNum:row.rowNum,reason:`Row ${row.rowNum} (${row.fullName||row.employeeCode||'no name'}): ${row.errors.join('; ')}`}))],previewHash:''});
+    issues:[...preview.fileErrors.map(reason=>({rowNum:0,reason})),...rows.filter(row=>!row.ok).map(row=>({rowNum:row.rowNum,reason:`Row ${row.excelRow} (${row.fullName||row.employeeCode||'no name'}): ${row.errors.join('; ')}`}))],previewHash:''});
   const companyIds=[...new Set(resolved.filter(row=>row.result.ok).map(row=>row.hire.companyId))];
   const created=await createImportAttemptTx(tx,ctx,{kind:'employee_full',sourceName:name,content,companyIds,plan,operationKey:p.source?.operationKey});
   return{attemptId:created.attemptId,existing:created.existing};
@@ -1703,8 +1737,8 @@ export type EmployeeImportPlanStep=
 export type EmployeeImportJobPlan={fileErrors:string[];total:number;valid:number;invalid:number;companyIds:string[];allocationPreview?:AllocationImportPreview;
  steps:EmployeeImportPlanStep[];preview:ImportPreview;resolved:ResolvedRow[];rejected:RowResult[]};
 /** Validate once (no tenant locks held) and shape the plan the worker persists before any write. */
-export async function prepareEmployeeImportJobPlan(ctx:SessionContext,p:{companyId:string;records:ImportRecord[];dependentRecords?:ImportRecord[];registerRecords?:PersonnelRegisterRecords;allocationRecords?:AllocationImportRecords;allocationToken?:string}):Promise<EmployeeImportJobPlan>{
-  const {preview,resolved,dependents,registers}=await analyze(ctx,p.companyId,p.records,p.dependentRecords??[],p.registerRecords);
+export async function prepareEmployeeImportJobPlan(ctx:SessionContext,p:{companyId:string;records:ImportRecord[];dependentRecords?:ImportRecord[];registerRecords?:PersonnelRegisterRecords;allocationRecords?:AllocationImportRecords;allocationToken?:string;sourceRows?:unknown}):Promise<EmployeeImportJobPlan>{
+  const {preview,resolved,dependents,registers}=await analyze(ctx,p.companyId,p.records,p.dependentRecords??[],p.registerRecords,undefined,p.sourceRows);
   const allocationEmployees=resolved.flatMap((row,index)=>row.result.ok?[{companyId:row.hire.companyId,employeeCode:row.hire.employeeCode??'',hiredOn:row.hire.hiredOn,index}]:[]);
   let allocationPreview:AllocationImportPreview|undefined;
   const fileErrors=[...preview.fileErrors];
@@ -1779,8 +1813,8 @@ export async function recordImportRun(
   // file is not stored at all (see migration 0341's header); this is what a correction actually needs.
   const errors: ImportRunError[] = [
     // 1859cce0 — with the column of each problem and where it was found, so the run log can say what to fix.
-    ...p.rejected.map((r) => ({ rowNum: r.rowNum, fullName: r.fullName, email: r.email, errors: r.errors, issues: r.issues ?? r.errors.map((message) => ({ message })), stage: 'check' as const, outcome: 'refused' as const })),
-    ...p.failed.map((f) => ({ rowNum: f.rowNum, fullName: f.fullName ?? '', email: f.email, errors: [f.message],
+    ...p.rejected.map((r) => ({ rowNum: r.rowNum, ...(r.excelRow ? { excelRow: r.excelRow } : {}), fullName: r.fullName, email: r.email, errors: r.errors, issues: r.issues ?? r.errors.map((message) => ({ message })), stage: 'check' as const, outcome: 'refused' as const })),
+    ...p.failed.map((f) => ({ rowNum: f.rowNum, ...(f.excelRow ? { excelRow: f.excelRow } : {}), fullName: f.fullName ?? '', email: f.email, errors: [f.message],
       ...(f.employeeCode ? { employeeCode: f.employeeCode } : {}), ...(f.companyId ? { companyId: f.companyId } : {}),
       issues: [{ message: f.message, ...(f.column ? { column: f.column } : {}) }], stage: 'save' as const, ...(f.outcome ? { outcome: f.outcome } : {}) })),
   ].sort((a, b) => a.rowNum - b.rowNum);

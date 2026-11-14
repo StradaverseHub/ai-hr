@@ -1,12 +1,15 @@
 import { z } from 'zod';
 import { v9CaseFieldSchema, validateV9CaseFields } from './lifecycle-v9-case-form';
 import { v9LiteralAddress } from './lifecycle-v9-recipient';
-import { V9Error, workflowProblems, currentVersion, type Config, type TemplateUsage } from './lifecycle-v9-model';
+import { recipientListProblems, replaceableRoles, roleLabel, toRoles } from './lifecycle-v9-recipients';
+import { V9Error, workflowProblems, currentVersion, emailSensitiveKeys, type Config, type TemplateUsage } from './lifecycle-v9-model';
+import { createEmailBodyDocSchema, summariseEmailBody, emailBodyImageIds, emailBodyFieldKeys } from './email-body/doc';
 const id = z.string().min(1).max(120), text = z.string().max(20000), day = z.number().int().min(-3660).max(3660);
-const emailAsset = z.object({ id: z.uuid(), kind: z.enum(['file','image']), name: z.string().min(1).max(180).regex(/^[^\u0000-\u001f\u007f/\\:]+$/u), mimeType: z.string().max(200), size: z.number().int().positive().max(10485760), contentHash: z.string().regex(/^[0-9a-f]{64}$/), at: z.iso.datetime(), by: z.string().max(200) }).strict();
+const emailAsset = z.object({ id: z.uuid(), kind: z.enum(['file','image']), name: z.string().min(1).max(180).regex(/^[^\u0000-\u001f\u007f/\\:]+$/u), mimeType: z.string().max(200), size: z.number().int().positive().max(10485760), contentHash: z.string().regex(/^[0-9a-f]{64}$/), at: z.iso.datetime(), by: z.string().max(200), alt: z.string().trim().max(300).optional() }).strict();
 const moduleSchema = z.enum(['onb', 'off']);
 const rules = z.object({ businessGroup: z.array(id).max(200).optional(), company: z.array(id).max(200).optional(), department: z.array(id).max(200).optional(), grade: z.array(id).max(200).optional(), employmentType: z.array(id).max(200).optional(), title: z.array(id).max(200).optional(), caseType: z.array(id).max(200).optional() }).strict();
-const role = z.union([z.enum(['employee', 'supervisor', 'pbp', 'ta', 'peopleOps', 'taskOwners', 'hrSignatory', 'starter']), z.string().regex(/^person:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i), z.string().regex(/^group:[^\u0000-\u001f\u007f]{1,120}$/u), z.string().refine(value => !!v9LiteralAddress(value), 'Enter a valid email address.')]);
+export const v9RoleSchema = z.union([z.enum(['employeeWork', 'employeePersonal', 'employee', 'supervisor', 'pbp', 'ta', 'peopleOps', 'taskOwners', 'hrSignatory', 'starter']), z.string().regex(/^person:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i), z.string().regex(/^group:[^\u0000-\u001f\u007f]{1,120}$/u), z.string().refine(value => !!v9LiteralAddress(value), 'Enter a valid email address.')]) as z.ZodType<import('./lifecycle-v9-model').Role>;
+const role = v9RoleSchema;
 const field = z.object({ id, label: z.string().min(1).max(500), type: z.enum(['text', 'textarea', 'select', 'date', 'checkbox', 'phone', 'email', 'number', 'table']), owner: z.enum(['employee', 'hr', 'pmLocked']), pmKey: id.nullable(), required: z.boolean(), sensitive: z.boolean(), options: z.array(z.string().max(500)).max(200), section: id, width: z.enum(['half', 'full']).optional(), columns: z.array(z.string().min(1).max(200)).max(30).optional(), when: z.object({ field: id, value: z.string().max(500) }).strict().nullable() }).strict();
 const block = z.object({ id, type: z.enum(['letterhead', 'heading', 'subheading', 'text', 'fields', 'field', 'table', 'signature']), text, section: z.string().max(120), fieldId: id.optional(), columns: text.optional(), rows: text.optional(), role: z.string().max(120).optional(), label: z.string().max(1000).optional() }).strict();
 const task = z.object({ id, name: z.string().min(1).max(500), by: z.enum(['group', 'manager', 'employee']), group: id.nullable(), mode: z.enum(['rr', 'manual']), opens: day.nullable(), due: day, required: z.boolean(), documentTemplate: id.nullable(), documentAction: z.enum(['completed', 'signed', 'sent']) }).strict();
@@ -15,15 +18,15 @@ const step = z.discriminatedUnion('type', [
   z.object({ id, type: z.literal('doc'), template: z.string().max(120), release: z.boolean() }).strict(),
   z.object({ id, type: z.literal('waitSign'), template: z.string().max(120), by: z.enum(['hr', 'employee']) }).strict(),
   z.object({ id, type: z.literal('waitFile'), slot: z.string().max(120), label: z.string().max(500) }).strict(),
-  z.object({ id, type: z.literal('email'), template: z.string().max(120), to: z.union([role, z.array(role).max(8)]), cc: z.array(role).max(8) }).strict(),
-  z.object({ id, type: z.literal('notify'), subject: z.string().max(1000), body: text, to: z.union([role, z.array(role).max(8)]), cc: z.array(role).max(8) }).strict(),
+  z.object({ id, type: z.literal('email'), template: z.string().max(120), to: z.union([role, z.array(role).max(8)]), cc: z.array(role).max(8), recipientReview: z.literal(true).optional(), recipientSetup: z.literal(true).optional() }).strict(),
+  z.object({ id, type: z.literal('notify'), subject: z.string().max(1000), body: text, to: z.union([role, z.array(role).max(8)]), cc: z.array(role).max(8), recipientReview: z.literal(true).optional(), recipientSetup: z.literal(true).optional() }).strict(),
 ]);
 export const v9ConfigSchema = z.object({
   caseForms: z.object({ onb: z.array(v9CaseFieldSchema).max(100).optional(), off: z.array(v9CaseFieldSchema).max(100).optional() }).strict().optional(),
   version: z.literal(9), revision: z.number().int().positive(), groupsRevision: z.number().int().nonnegative().optional(),
   checklists: z.array(z.object({ id, name: z.string().min(1).max(200), module: moduleSchema, ownerUserId: z.string().uuid().optional(), createdAt: z.string().datetime().optional(), rules, tasks: z.array(task).max(300) }).strict()).max(200),
   templates: z.array(z.object({ id, name: z.string().min(1).max(200), module: moduleSchema, type: z.enum(['Form', 'Letter', 'Acknowledgement', 'Attachment']), rules, hrStep: z.enum(['none', 'before', 'after']), employeeAck: z.boolean(), retired: z.boolean(), currentVersion: z.number().int().positive().optional(), note: text.optional(), versions: z.array(z.object({ version: z.number().int().positive(), state: z.enum(['draft', 'published']), at: z.string().max(100), by: z.string().max(200), blocks: z.array(block).max(500), fields: z.array(field).max(500) }).strict()).max(100) }).strict()).max(200),
-  emails: z.array(z.object({ id, name: z.string().min(1).max(200), module: moduleSchema, active: z.boolean(), sender: id, subject: z.string().max(1000), body: text, files: z.array(emailAsset).max(20).optional(), images: z.array(emailAsset).max(3).optional(), cc: z.array(role).max(8), links: z.array(id).max(100), attachments: z.array(id).max(100), slots: z.array(z.object({ id, label: z.string().max(500), required: z.boolean() }).strict()).max(50) }).strict()).max(200),
+  emails: z.array(z.object({ id, name: z.string().min(1).max(200), module: moduleSchema, active: z.boolean(), sender: id, subject: z.string().max(1000), body: text, files: z.array(emailAsset).max(20).optional(), images: z.array(emailAsset).max(3).optional(), cc: z.array(role).max(8), recipientReview: z.literal(true).optional(), bodyDoc: z.unknown().optional(), links: z.array(id).max(100), attachments: z.array(id).max(100), slots: z.array(z.object({ id, label: z.string().max(500), required: z.boolean() }).strict()).max(50) }).strict()).max(200),
   workflows: z.array(z.object({ id, name: z.string().min(1).max(200), module: moduleSchema, status: z.enum(['draft', 'published', 'retired']), retired: z.object({ at: z.iso.datetime(), by: z.object({ id: z.string().max(120), name: z.string().max(200) }).strict(), cases: z.number().int().nonnegative(), automatic: z.boolean() }).strict().optional(), trigger: z.object({ event: z.enum(['submitted', 'hrSigned', 'docSigned', 'taskDone', 'fileUploaded', 'manual', 'beforeJoin', 'afterJoin', 'beforeLWD', 'afterLWD']), days: z.number().int().min(0).max(3660), workdays: z.boolean(), repeat: z.boolean(), skipIf: z.string().max(500).refine(s => ['', 'noPre', 'allDocsDone'].includes(s) || s.startsWith('task:')) }).strict(), conditions: z.array(z.object({ field: z.enum(['businessGroup', 'company', 'department', 'grade', 'employmentType', 'title', 'caseType', 'joinWithin']), op: z.enum(['is', 'isNot', 'lt', 'gte']), value: z.string().max(500) }).strict()).max(30), steps: z.array(step).max(100), description: text }).strict()).max(200),
   groups: z.array(z.object({ id, name: z.string().min(1).max(200), members: z.array(z.string().uuid()).max(500), limit: z.number().int().min(0).max(1000) }).strict()).max(100),
   peopleOpsGroup: id.nullable(), bpRules: z.array(z.object({ rules: z.object({ businessGroup: z.array(id).optional(), company: z.array(id).optional(), department: z.array(id).optional() }).strict(), userId: z.string().uuid() }).strict()).max(500),
@@ -33,6 +36,11 @@ export const v9ConfigSchema = z.object({
 }).strict();
 export function parseV9Config(value: unknown, previous?: Config) {
   const config = v9ConfigSchema.parse(value);
+  // Every template sends as the tenant's single On/Off Boarding sender. Earlier per-name values are rewritten on this save;
+  // nothing else in the template changes, so an active template stays active. Stored revisions are history and stay as they were.
+  for (const email of config.emails) email.sender = 'noreply';
+  // A step flagged for setup stops being flagged once it has a To recipient.
+  for (const wf of config.workflows) for (const s of wf.steps) if ('to' in s && s.recipientSetup && (Array.isArray(s.to) ? s.to.length : s.to)) delete s.recipientSetup;
   for (const module of ['onb','off'] as const) if (config.caseForms?.[module]) { try { validateV9CaseFields(module, config.caseForms[module]!); } catch (error) { throw new V9Error(error instanceof Error ? error.message : 'Review the case form fields.'); } }
   const unique = (values: string[], what: string) => { if (new Set(values).size !== values.length) throw new V9Error(`Duplicate ${what} identifiers.`); };
   unique(config.groups.map(g => g.id), 'group'); unique(config.checklists.map(g => g.id), 'checklist'); unique(config.templates.map(g => g.id), 'template'); unique(config.emails.map(g => g.id), 'email'); unique(config.workflows.map(g => g.id), 'workflow');
@@ -69,15 +77,14 @@ export function parseV9Config(value: unknown, previous?: Config) {
       // Turning an email off preserves an unchanged live workflow; its next email step holds.
       // A new or edited live workflow still has to select active email definitions.
       const before = previous?.workflows.find(workflow => workflow.id === wf.id);
-      const problems = workflowProblems(wf as Config['workflows'][number], config as Config, { allowInactiveEmail: before?.status === 'published' && v9Equal(before, wf) });
+      // A ready-made step flagged for setup may stay live without a To only as imported or unchanged since.
+      const problems = workflowProblems(wf as Config['workflows'][number], config as Config, { allowInactiveEmail: before?.status === 'published' && v9Equal(before, wf), allowRecipientSetup: !previous || before?.status === 'published' && v9Equal(before, wf) });
       if (problems.length) throw new V9Error(problems.join(' '));
     }
-    for (const step of wf.steps) if ('cc' in step && step.cc.includes('taskOwners')) throw new V9Error('Task owners cannot be CC recipients.');
     if (wf.module === 'onb' && ['beforeLWD','afterLWD'].includes(wf.trigger.event) || wf.module === 'off' && ['beforeJoin', 'afterJoin'].includes(wf.trigger.event)) throw new V9Error('Choose a trigger for this module.');
     for (const s of wf.steps) if ('template' in s && s.template) sameModule(wf.module, s.template, s.type === 'email' ? 'email' : 'document');
   }
   for (const email of config.emails) {
-    if (email.active && !['onboarding', 'hr', 'noreply'].includes(email.sender)) throw new V9Error('Choose a managed sender profile before activating this email.');
     if (email.active && !email.subject.trim()) throw new V9Error('Add a subject before activating this email.');
     unique(email.slots.map(slot => slot.id), 'email file slot');
     for (const slot of email.slots) if (!slot.label.trim()) throw new V9Error('Give each per-person file a label.');
@@ -86,7 +93,48 @@ export function parseV9Config(value: unknown, previous?: Config) {
     for (const templateId of email.links) if (config.templates.find(template => template.id === templateId)!.type === 'Attachment') throw new V9Error('Attachments are sent as PDFs.');
   }
   unique((config.companies ?? []).map(c => c.companyId), 'company signatory');
+  validateV9Recipients(config as Config, previous);
+  validateV9RichBodies(config as Config);
   return config as Config;
+}
+/** Board 6bdda222: the strict structured schema is the server trust boundary for a rich body (no free HTML is stored). */
+function validateV9RichBodies(config: Config): void {
+  const sensitive = emailSensitiveKeys(config);
+  for (const email of config.emails) {
+    if (email.bodyDoc === undefined) continue;
+    const linked = new Set(email.links), images = email.images ?? [];
+    const result = createEmailBodyDocSchema({ imageIds: images.map(image => image.id), documentIds: config.templates.filter(template => template.module === email.module).map(template => template.id), sensitive: key => sensitive.has(key) }).safeParse(email.bodyDoc);
+    if (!result.success) throw new V9Error(`${email.name}: ${result.error.issues[0]?.message ?? 'Review the email body.'}`);
+    email.bodyDoc = result.data;
+    const unticked = [...summariseEmailBody(result.data).documentLinks].filter(id => !linked.has(id));
+    if (unticked.length) throw new V9Error(`${email.name}: a document linked in the body must also be ticked under Documents.`);
+    const used = new Set(emailBodyImageIds(result.data));
+    if (images.some(image => used.has(image.id) && !image.alt?.trim()) || images.some(image => !image.alt?.trim())) throw new V9Error(`${email.name}: add alt text to every uploaded image.`);
+    if (emailBodyFieldKeys(result.data).some(key => sensitive.has(key))) throw new V9Error('Sensitive fields cannot be included in an email.');
+  }
+}
+/** Board 4a60b3ec: removed roles are flagged, never added, and a definition that still uses one cannot change or go live until it is replaced. */
+function validateV9Recipients(config: Config, previous?: Config): void {
+  const names = { group: (id: string) => config.groups.find(group => group.id === id)?.name };
+  for (const wf of config.workflows) {
+    const before = previous?.workflows.find(workflow => workflow.id === wf.id);
+    for (const step of wf.steps) {
+      if (step.type !== 'email' && step.type !== 'notify') continue;
+      const old = before?.steps.find(candidate => candidate.id === step.id && 'to' in candidate) as typeof step | undefined;
+      const kept = previous ? old ? [...toRoles(old.to), ...old.cc] : [] : [...toRoles(step.to), ...step.cc];
+      const problems = [...recipientListProblems(toRoles(step.to), wf.module, kept, 'To recipients'), ...recipientListProblems(step.cc, wf.module, kept, 'CC recipients')];
+      if (problems.length) throw new V9Error(`${wf.name}: ${[...new Set(problems)].join(' ')}`);
+    }
+    const removed = replaceableRoles(wf.steps.flatMap(step => 'to' in step ? [...toRoles(step.to), ...step.cc] : []));
+    if (previous && removed.length && !v9Equal(before, wf)) throw new V9Error(`Replace recipient in ${wf.name}: ${removed.map(role => roleLabel(role, names)).join(', ')} can no longer be used. Replace it before changing this workflow or turning it on.`);
+  }
+  for (const email of config.emails) {
+    const before = previous?.emails.find(candidate => candidate.id === email.id);
+    const problems = recipientListProblems(email.cc, email.module, previous ? before?.cc ?? [] : email.cc, 'Default CC recipients');
+    if (problems.length) throw new V9Error(`${email.name}: ${problems.join(' ')}`);
+    const removed = replaceableRoles(email.cc);
+    if (previous && removed.length && before && !v9Equal({ ...before, sender: email.sender }, email)) throw new V9Error(`Replace recipient in ${email.name}: ${removed.map(role => roleLabel(role, names)).join(', ')} can no longer be used in Default CC. Replace it before changing this template.`);
+  }
 }
 
 /** Published bodies are historical evidence; edits start a new numbered draft. */

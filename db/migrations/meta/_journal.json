@@ -6007,6 +6007,90 @@
       "when": 1793330004920,
       "tag": "5220_recruitment_candidate_email",
       "breakpoints": true
+    },
+    {
+      "idx": 4800,
+      "version": "7",
+      "when": 1793330005100,
+      "tag": "5400_rewards_direct_configuration",
+      "breakpoints": true
+    },
+    {
+      "idx": 4820,
+      "version": "7",
+      "when": 1793330005120,
+      "tag": "5420_rewards_dashboard_preparation_notices",
+      "breakpoints": true
+    },
+    {
+      "idx": 4860,
+      "version": "7",
+      "when": 1793330005160,
+      "tag": "5460_lifecycle_v9_email_recipients",
+      "breakpoints": true
+    },
+    {
+      "idx": 4880,
+      "version": "7",
+      "when": 1793330005180,
+      "tag": "5480_offboarding_items_assignment_load",
+      "breakpoints": true
+    },
+    {
+      "idx": 4900,
+      "version": "7",
+      "when": 1793330005200,
+      "tag": "5500_rewards_limit_controls",
+      "breakpoints": true
+    },
+    {
+      "idx": 4920,
+      "version": "7",
+      "when": 1793330005220,
+      "tag": "5520_rewards_role_permission_grid",
+      "breakpoints": true
+    },
+    {
+      "idx": 4940,
+      "version": "7",
+      "when": 1793330005240,
+      "tag": "5540_rewards_offcycle_company_balance",
+      "breakpoints": true
+    },
+    {
+      "idx": 4960,
+      "version": "7",
+      "when": 1793330005260,
+      "tag": "5560_rewards_limit_controls_role_level",
+      "breakpoints": true
+    },
+    {
+      "idx": 4980,
+      "version": "7",
+      "when": 1793330005280,
+      "tag": "5580_rewards_config_owner_paths",
+      "breakpoints": true
+    },
+    {
+      "idx": 5000,
+      "version": "7",
+      "when": 1793330005300,
+      "tag": "5600_rewards_config_editor_role_levels",
+      "breakpoints": true
+    },
+    {
+      "idx": 5020,
+      "version": "7",
+      "when": 1793330005320,
+      "tag": "5620_rewards_config_grants_creator_lock",
+      "breakpoints": true
+    },
+    {
+      "idx": 5040,
+      "version": "7",
+      "when": 1793330005340,
+      "tag": "5640_lifecycle_v9_email_hold_company_tenant",
+      "breakpoints": true
     }
   ]
 }

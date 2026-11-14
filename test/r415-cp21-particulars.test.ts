@@ -379,8 +379,18 @@ export function eaIncomePartsForSource(source:{basic:unknown;overtime:unknown;bo
           expect(end).toBeGreaterThan(start);
           return source.slice(start, end + 2);
         };
+        // 2026-11-13 (deduction grouping, owner-approved payslip display change): restorePayItemQuantities
+        // restores a keyed day count for every deduction code, not only ABSENT. Its only callers are the
+        // payslip overtime/deduction display readers — outside EA's financial path. Undo exactly that one
+        // edit (it must occur once) and the rest of the file must still match the pinned history byte-for-byte.
+        const groupingNow = `    // 2026-11-13 — every deduction code, not only ABSENT: a keyed unpaid-leave day count (unit 'days') is
+    // restored the same way, so a grouped row can say "3 days". A bare null unit is still ABSENT-only below.
+    if (!code) continue;`;
+        const groupingWas = `    if (!code || (kind === 'deduction' && code !== 'ABSENT')) continue;`;
+        expect(unchanged.split(groupingNow).length).toBe(2);
+        const beforeGrouping = unchanged.replace(groupingNow, groupingWas);
         // The follow-up changes only the overtime presentation reader, outside EA's financial path.
-        expect(unchanged.replace(overtimeReader(followup), overtimeReader(payrollDisplay))).toBe(payrollDisplay);
+        expect(beforeGrouping.replace(overtimeReader(followup), overtimeReader(payrollDisplay))).toBe(payrollDisplay);
       }else expect(unchanged === show(f), f).toBe(true);
     }
     const slice = (src: string) => {

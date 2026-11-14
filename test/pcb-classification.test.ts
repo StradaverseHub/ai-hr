@@ -247,7 +247,7 @@ describe('09b554e9 — engine: declared classification drives the PCB/EPF stream
     expect((lpFeb.statutory as { exemptionUsed?: Record<string, number> }).exemptionUsed).toEqual({ LP_SOCSO: 50 });
   });
 
-  it('PCB_* exemption caps: under in Jan, over in Feb (YTD carry) — the exempt slice is paid but leaves the statutory bases; EA accumulates it', async () => {
+  it('PCB_* exemption caps: under in Jan, over in Feb (YTD carry) — the exempt slice is paid and leaves the PCB base only; EA accumulates it', async () => {
     await seedPayComponentCatalog(a);
     // PCB_CHILD_CARE cap RM3,000/year; RM2,000/month ⇒ Jan fully exempt, Feb 1,000 exempt + 1,000 taxable.
     await upsertPayComponent(a, input('CHILDCARE', { pcbRemunerationType: 'normal', pcbExemptionCode: 'PCB_CHILD_CARE' }));
@@ -260,16 +260,20 @@ describe('09b554e9 — engine: declared classification drives the PCB/EPF stream
     const sJan = await slipOf(jan.batchId, e.employmentId);
     // Paid in full…
     expect(Number(sJan.allowance)).toBeCloseTo(2000, 2);
-    // …but fully exempt: EPF sees the RM4,000 basic only (Third Schedule band ⇒ RM440 employee).
-    expect(Number((sJan.statutory as { epfEmployee: number }).epfEmployee)).toBe(440);
+    // …and fully exempt FROM PCB only. REVERSED 2026-11-13 (owner decision A): this line used to pin
+    // "EPF sees the RM4,000 basic only (RM440)" — the exempt slice left every statutory base. A PCB
+    // exemption is an income-tax exemption; CHILDCARE is ticked EPF, so EPF is on the whole RM6,000 (RM660).
+    expect(Number((sJan.statutory as { epfEmployee: number }).epfEmployee)).toBe(660);
+    expect((sJan.statutory as { bases?: { epf?: number } }).bases?.epf).toBeCloseTo(6000, 2);
     expect((sJan.statutory as { exemptionUsed?: Record<string, number> }).exemptionUsed).toEqual({ PCB_CHILD_CARE: 2000 });
 
     const feb = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-02' });
     await generatePayslips(a, { batchId: feb.batchId });
     const sFeb = await slipOf(feb.batchId, e.employmentId);
     expect(Number(sFeb.allowance)).toBeCloseTo(2000, 2); // still paid in full
-    // Only RM1,000 headroom left ⇒ RM1,000 taxable rides the wage: EPF on RM5,000 ⇒ RM550 employee.
-    expect(Number((sFeb.statutory as { epfEmployee: number }).epfEmployee)).toBe(550);
+    // Only RM1,000 headroom left ⇒ RM1,000 taxable rides the wage. REVERSED 2026-11-13 (owner decision A):
+    // EPF used to be on RM5,000 (RM550); it now follows the EPF tick on the whole RM6,000 ⇒ RM660.
+    expect(Number((sFeb.statutory as { epfEmployee: number }).epfEmployee)).toBe(660);
     expect((sFeb.statutory as { exemptionUsed?: Record<string, number> }).exemptionUsed).toEqual({ PCB_CHILD_CARE: 1000 });
 
     // EA: the exempt portions accumulate to the exempt-allowances figure (2,000 + 1,000).

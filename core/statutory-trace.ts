@@ -47,16 +47,24 @@ export type TraceSourceLine = {
   buckets: { bucket: Bucket; amount: number }[];
   epf: boolean;
   socso: boolean;
+  /** 2026-11-13 — the line's `bonus` money is NORMAL EPF wages (see PayComponentLine in core/payroll.ts). */
+  epfNormalStream?: true;
+  /** 2026-11-13 — the line's `reimburse` money is a PCB-exempt slice counted in the agency bases by its ticks. */
+  exemptStatutory?: true;
 };
 
 /**
  * Lay the run's own folded pay items against the three bases the pack charged. Treatment per bucket is the
  * kernel's own routing (core/payroll.ts `earningsOf`), restated — not re-decided:
  *   wage      → EPF normal wages if ticked EPF; SOCSO/EIS wages if ticked SOCSO;
- *   bonus     → EPF bonus wages if ticked EPF; SOCSO/EIS wages only if ticked SOCSO AND not EPF Bonus 2012
- *               (a declared bonus is not SOCSO wages, SOCSO Act 1969 s.2);
+ *   bonus     → if ticked EPF: EPF NORMAL wages on a line stamped `epfNormalStream` (an 'additional'-classified
+ *               item not ticked EPF Bonus 2012 — owner decision B, 2026-11-13), otherwise EPF bonus wages;
+ *               SOCSO/EIS wages only if ticked SOCSO AND not EPF Bonus 2012 (a declared bonus is not SOCSO
+ *               wages, SOCSO Act 1969 s.2);
  *   ot        → never EPF; always SOCSO/EIS wages (on a run that charges its own overtime);
- *   reimburse → no base;
+ *   reimburse → no base, EXCEPT on a line stamped `exemptStatutory`: a PCB-exempt slice, which follows the
+ *               item's ticks exactly as its taxable money does (owner decision A, 2026-11-13) — EPF normal
+ *               (EPF bonus under EPF Bonus 2012), SOCSO/EIS if ticked and not EPF Bonus 2012;
  *   deduct    → out of each base whose box is ticked.
  */
 export function buildStatutoryTraceLines(p: {
@@ -89,7 +97,12 @@ export function buildStatutoryTraceLines(p: {
         if (l.epf) epfNormal = round2(epfNormal + a);
         if (l.socso) socsoEis = round2(socsoEis + a);
       } else if (bucket === 'bonus') {
-        if (l.epf) epfBonus = round2(epfBonus + a);
+        if (l.epf && l.epfNormalStream && !b2012) epfNormal = round2(epfNormal + a);
+        else if (l.epf) epfBonus = round2(epfBonus + a);
+        if (l.socso && !b2012) socsoEis = round2(socsoEis + a);
+      } else if (bucket === 'reimburse' && l.exemptStatutory) {
+        if (l.epf && b2012) epfBonus = round2(epfBonus + a);
+        else if (l.epf) epfNormal = round2(epfNormal + a);
         if (l.socso && !b2012) socsoEis = round2(socsoEis + a);
       } else if (bucket === 'ot') {
         socsoEis = round2(socsoEis + a);
@@ -113,8 +126,26 @@ export function buildStatutoryTraceLines(p: {
   return out;
 }
 
-/** This run's own figures that later runs in the same month read back. */
-export type RunStatutoryStamp = { epfAdditional: number; socsoWageExtra: number };
+/**
+ * This run's own figures that later runs in the same month read back.
+ *
+ * 2026-11-13 (owner decisions A/B) adds four, all ABSENT on every stamp written before and read as 0 there —
+ * which is exactly how those runs were computed:
+ *   epfWageExtra         — of this run's additional pay, the part that is NORMAL EPF wages (an
+ *                          'additional'-classified item ticked EPF, not EPF Bonus 2012);
+ *   exemptEpfWage        — PCB-exempt one-off money a regular run paid that is EPF normal wages;
+ *   exemptEpfAdditional  — …that is EPF bonus wages (EPF Bonus 2012);
+ *   exemptSocsoWage      — …that is SOCSO/EIS/SKBBK wages.
+ */
+export type RunStatutoryStamp = {
+  epfAdditional: number;
+  socsoWageExtra: number;
+  epfWageExtra: number;
+  exemptEpfWage: number;
+  exemptEpfAdditional: number;
+  exemptSocsoWage: number;
+};
+const STAMP_OPTIONAL = ['epfWageExtra', 'exemptEpfWage', 'exemptEpfAdditional', 'exemptSocsoWage'] as const;
 
 /**
  * Read an EARLIER payslip's own stamp (`statutory.statutoryTrace.run.own`), or null when it has none or it
@@ -122,7 +153,7 @@ export type RunStatutoryStamp = { epfAdditional: number; socsoWageExtra: number 
  * exactly what every run did before this item, and says so on the trace.
  */
 export function readRunStatutoryStamp(statutory: unknown, bonus: number): RunStatutoryStamp | null {
-  const st = statutory as { statutoryTrace?: { version?: unknown; run?: { own?: { epfAdditional?: unknown; socsoWageExtra?: unknown } } } } | null;
+  const st = statutory as { statutoryTrace?: { version?: unknown; run?: { own?: Record<string, unknown> } } } | null;
   const tr = st?.statutoryTrace;
   if (!tr || tr.version !== 1) return null;
   const own = tr.run?.own;
@@ -132,7 +163,16 @@ export function readRunStatutoryStamp(statutory: unknown, bonus: number): RunSta
   if (typeof socsoWageExtra !== 'number' || !Number.isFinite(socsoWageExtra) || socsoWageExtra < 0) return null;
   // The EPF-liable part of a run's additional pay can never exceed the additional pay itself.
   if (epfAdditional > round2(Math.max(0, bonus)) + 0.005) return null;
-  return { epfAdditional, socsoWageExtra };
+  const extra = { epfWageExtra: 0, exemptEpfWage: 0, exemptEpfAdditional: 0, exemptSocsoWage: 0 };
+  for (const k of STAMP_OPTIONAL) {
+    const v = own?.[k];
+    if (v === undefined) continue;
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return null;
+    extra[k] = v;
+  }
+  // Both are parts of the same additional pay, so together they can never exceed it either.
+  if (round2(epfAdditional + extra.epfWageExtra) > round2(Math.max(0, bonus)) + 0.005) return null;
+  return { epfAdditional, socsoWageExtra, ...extra };
 }
 
 /**
@@ -156,16 +196,23 @@ export function readEarlierRunLiability(
   const lines = (statutory as { componentLines?: unknown } | null)?.componentLines;
   if (!Array.isArray(lines)) return null;
   let total = 0, epf = 0;
+  let epfNormal = 0;
   for (const raw of lines) {
-    const l = raw as { epf?: unknown; buckets?: unknown };
+    const l = raw as { epf?: unknown; buckets?: unknown; epfNormalStream?: unknown };
     if (!l || typeof l !== 'object' || typeof l.epf !== 'boolean' || !Array.isArray(l.buckets)) return null;
     for (const b of l.buckets as { bucket?: unknown; amount?: unknown }[]) {
       if (b?.bucket !== 'bonus') continue;
       if (typeof b.amount !== 'number' || !Number.isFinite(b.amount)) return null;
       total = round2(total + b.amount);
-      if (l.epf) epf = round2(epf + b.amount);
+      // A line stamped `epfNormalStream` (2026-11-13) was NORMAL EPF wages on that run, not bonus EPF wages.
+      if (l.epf && l.epfNormalStream === true) epfNormal = round2(epfNormal + b.amount);
+      else if (l.epf) epf = round2(epf + b.amount);
     }
   }
   if (Math.abs(total - round2(Math.max(0, bonus))) >= 0.005) return null;
-  return { epfAdditional: Math.max(0, epf), socsoWageExtra: 0, source: 'component_lines' };
+  return {
+    epfAdditional: Math.max(0, epf), socsoWageExtra: 0,
+    epfWageExtra: Math.max(0, epfNormal), exemptEpfWage: 0, exemptEpfAdditional: 0, exemptSocsoWage: 0,
+    source: 'component_lines',
+  };
 }

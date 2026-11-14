@@ -1,3 +1,4 @@
+import { formatMoney } from '@/lib/money';
 import { RewardSubmit } from '../../../submit-button';
 import Link from 'next/link';
 import { RoleComparison } from './role-comparison';
@@ -21,7 +22,7 @@ export default async function RewardPersonPage({ params }: { params: Promise<{ u
   const senior=isSeniorPlanMember(v.unit.policy,e.facts,e.source.grade);
   const gr = v.roles.includes('gr'), r = e.recommendation, f = e.facts;
   const payWindowLocked = !!e.payChange && payWindowReasons.includes(e.incrementReason);
-  const rm = (cents: number) => new Intl.NumberFormat('en-MY', { style: 'currency', currency: 'MYR' }).format(cents / 100);
+  const rm = (cents: number) => formatMoney(cents === 0 ? 0 : cents / 100, 'MYR');
   const numeric = (name: string, label: string, value: number | null, scale = 100) => <Field label={label}><input type="number" min="0" step="0.01" name={name} defaultValue={value == null ? '' : value / scale} placeholder={t('automatic')} className={inputCls} /></Field>;
   return <div className="mx-auto max-w-5xl space-y-5">
     <Link href={`/rewards/${unitId}`} className="text-sm text-primary hover:underline">← {t('review')}</Link>

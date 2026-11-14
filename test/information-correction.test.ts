@@ -1,6 +1,6 @@
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {randomUUID} from 'node:crypto';
-import {and,eq,sql} from 'drizzle-orm';
+import {and,eq,isNull,sql} from 'drizzle-orm';
 import * as XLSX from 'xlsx';
 import {adminCtx,createAppUser,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {hireEmployee,setEmploymentGrade} from '../core/org';
@@ -26,6 +26,9 @@ import {payslipForReview,listPayrollRegisterAcross,listPayslipRunsFor,listProces
 import {INFORMATION_HEADERS,type InformationChanges} from '../lib/information-correction';
 import {parseInformationWorkbook,informationWorkbook} from '../lib/information-correction-workbook';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {createTranslator} from 'next-intl';
+import enMessages from '../messages/en.json';
+import {informationCorrectionErrorLogFor} from '../core/information-correction-error-log';
 let b:Base;
 beforeAll(()=>migrateTestDb());beforeEach(async()=>{await resetDb();b=await seedBase();await owner.db.update(schema.company).set({companyLabel:'DEMO'}).where(eq(schema.company.id,b.companyId));});afterAll(()=>closeAll());
 const ctx=()=>adminCtx(b);
@@ -76,7 +79,9 @@ describe('8550b282 information-only corrections',()=>{
   expect(await document(after!)).toEqual(pdfBefore);
   expect(await eaStatement(ctx(),{employmentId:id,companyId:b.companyId,year:'2025'})).toEqual(eaBefore);
   const register=await listPayrollRegisterAcross(ctx(),{companyIds:[b.companyId],year:2025});expect(register.length).toBe(1);expect(register[0]).toMatchObject({jobGrade:null,employmentType:'full_time',net:'2660.00'});
-  const versions=await owner.db.select().from(schema.assignment).where(eq(schema.assignment.employmentId,id));expect(versions).toHaveLength(2);expect(versions.find(a=>a.validTo===null)).toMatchObject({validFrom:todayInKualaLumpur(),employmentType:'part_time'});
+  // Board 154511c4 — the first dated record now starts on the corrected Group Join Date (it is superseded and
+  // re-inserted), so the live history is that record from 2025-01-01 plus the type change from today.
+  const versions=await owner.db.select().from(schema.assignment).where(and(eq(schema.assignment.employmentId,id),isNull(schema.assignment.supersededAt)));expect(versions).toHaveLength(2);expect(versions.find(a=>a.validTo===null)).toMatchObject({validFrom:todayInKualaLumpur(),employmentType:'part_time'});expect(versions.find(a=>a.validTo!==null)).toMatchObject({validFrom:'2025-01-01',employmentType:'full_time'});
   const history=await informationCorrectionHistory(ctx(),id);expect(history).toHaveLength(1);expect(history[0].actorId).toBe(ctx().userId);expect(history[0].payload).toMatchObject({method:'manual',reason:'Correct signed employment record',before:{hiredOn:'2025-01-15'},after:{hiredOn:'2025-01-01'}});
  });
  it('preserves the first snapshot through repeated corrections and refuses stale reviews',async()=>{
@@ -217,6 +222,29 @@ describe('8550b282 information-only corrections',()=>{
   const importedHistory=await movementHistory(ctx(),id);expect(importedHistory).toHaveLength(1);expect(importedHistory[0].effectiveDate).toBe('2025-01-01');expect(importedHistory[0].informationCorrections?.[0].fields).toEqual(['hiredOn']);
   const again=await confirmInformationUpload(ctx(),{attemptId:preview.attemptId,previewHash:preview.plan.previewHash});expect(again).toEqual(result);expect(await informationCorrectionHistory(ctx(),id)).toHaveLength(1);
   const [history]=await informationCorrectionHistory(ctx(),id);expect(history.payload).toMatchObject({method:'excel',batchId:preview.attemptId,filename:'corrections.xlsx'});
+ });
+ it('d3ba1e9f: Import History gives the Error Log built from the recorded attempt, scoped like its Import Log',async()=>{
+  await fixture();await fixture('EMP-002');
+  const file=workbook([['DEMO','EMP-001','','','2025-01-01','','','','Correct signed record'],['DEMO','EMP-002','','','','','UNKNOWN','','Correct grade'],['DEMO','MISSING','','','','','','','Unknown employee']]);
+  const preview=await previewInformationUpload(ctx(),{name:'corrections.xlsx',content:file,operationKey:randomUUID()});
+  await confirmInformationUpload(ctx(),{attemptId:preview.attemptId,previewHash:preview.plan.previewHash});
+  const t={problems:createTranslator({locale:'en',messages:enMessages}) as never,shared:createTranslator({locale:'en',messages:enMessages,namespace:'importProblems'}) as never};
+  const log=await informationCorrectionErrorLogFor(ctx(),preview.attemptId,t);
+  expect(log).toMatchObject({total:2,truncated:false});
+  expect(log!.lines.map(l=>[l.sheet,l.row,l.reference,l.field,l.value,l.problem,l.stage,l.result])).toEqual([
+   ['Corrections',3,'EMP-002','Job Grade','UNKNOWN','Job Grade is not an active system code.','check','refused'],
+   ['Corrections',4,'MISSING','Employee ID','MISSING','Employee ID is unknown or ambiguous within the existing company.','check','refused'],
+  ]);
+  // Another company's administrator in the tenant sees none of this company's rows; another tenant sees no attempt.
+  const [other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional other company',companyLabel:'OTHER'}).returning();
+  const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional other company administrator',primaryEmail:randomUUID()+'@example.test'}).returning();
+  const userId=await createAppUser(b.tenantId,person.id,'hr_admin');await owner.db.update(schema.roleAssignment).set({companyId:other.id}).where(eq(schema.roleAssignment.appUserId,userId));
+  const outsider={...ctx(),userId,personId:person.id,grants:[{role:'hr_admin',companyId:other.id}]};
+  const scoped=await informationCorrectionErrorLogFor(outsider,preview.attemptId,t);
+  expect(scoped===null||scoped.lines.length===0).toBe(true);
+  expect(await informationCorrectionErrorLogFor(adminCtx(await seedBase()),preview.attemptId,t)).toBeNull();
+  // Not this kind: null.
+  expect(await informationCorrectionErrorLogFor(ctx(),randomUUID(),t)).toBeNull();
  });
  it('resolves every row\'s employee in one read and reviews each row as the single-employee review does, with the same refusals',async()=>{
   // 12 November 2026 (SCALE rule 2): the rows' employees are read in one statement, not one transaction per row.

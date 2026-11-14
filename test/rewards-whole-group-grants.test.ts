@@ -122,11 +122,12 @@ it('resolves grants on future draft reviews without assigning a review seat', as
 
 it('describes current whole-group CTRO and GR page access without turning it into a command grant', async () => {
   await withTenant(admin, tx => tx.execute(sql`select app.reward_save_group_role(${reviewer.userId}::uuid, 'ctro', true, 0, 'Fictional independently admitted CTRO page view')`));
-  expect(await rewardLibraryPageAccess(reviewer)).toEqual({canManage: false});
+  // Board 60f1fdcd: a whole-group CTRO is a configuration editor of group-wide items.
+  expect(await rewardLibraryPageAccess(reviewer)).toEqual({canManage: true});
   expect(await save(admin, reviewer.userId!, true, 0)).toBe(1);
   expect(await rewardLibraryPageAccess(reviewer)).toEqual({canManage: true});
   expect(await save(admin, reviewer.userId!, false, 1)).toBe(2);
-  expect(await rewardLibraryPageAccess(reviewer)).toEqual({canManage: false});
+  expect(await rewardLibraryPageAccess(reviewer)).toEqual({canManage: true});
   await owner.withTenant(admin, tx => tx.update(employment)
     .set({tenderResignationDate: todayInKualaLumpur()}).where(eq(employment.id, employmentId)));
   await expect(rewardLibraryPageAccess(reviewer)).rejects.toThrow(/not available/);

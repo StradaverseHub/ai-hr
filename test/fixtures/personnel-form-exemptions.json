@@ -537,6 +537,22 @@
       "hidden": false,
       "occurrences": 1,
       "reason": "646355e5 (ADR-0164) closed-payroll acknowledgement on a movement correction: an instruction to the correction service (MovementClosedPayrollAcknowledgementError), not a Personnel fact. The checkbox shipped with 646355e5 without an exemption entry."
+    },
+    {
+      "tag": "input",
+      "context": "MovementNewEvent",
+      "name": "recordHistory",
+      "hidden": false,
+      "occurrences": 1,
+      "reason": "Board 154511c4: chooses that this New Event records what the employee had before its effective date (history) instead of a change from that date; an instruction to the history writer, not a Personnel fact."
+    },
+    {
+      "tag": "select",
+      "context": "historySelect",
+      "nameExpression": "`history.${field}`",
+      "hidden": false,
+      "occurrences": 1,
+      "reason": "Board 154511c4: the Before value of a history entry for a dated placement field; core/movement-history.ts validates it against the record on the effective date and writes the period before it."
     }
   ],
   "app/admin/personnel/[employmentId]/hire-correction-form.tsx": [
@@ -854,6 +870,14 @@
       "hidden": false,
       "occurrences": 2,
       "reason": "Finite choice between the existing operational workflow and information-only correction; it controls presentation and never submits an employee fact."
+    },
+    {
+      "tag": "input",
+      "name": "informationCorrectionFromJoinDate",
+      "context": "InformationForm",
+      "hidden": false,
+      "occurrences": 1,
+      "reason": "Board 154511c4: chooses whether a company-only correction applies to the whole dated history (from the join date) or from today; it selects the correction's scope and never submits an employee fact itself."
     }
   ],
   "app/admin/personnel/[employmentId]/movement-history-actions.tsx": [

@@ -35,3 +35,9 @@ export async function rewardPreparationNotificationRecipients(tx:Tx,unitId:strin
  const rows=await tx.execute<{employmentId:string}>(sql`select app.reward_preparation_notification_recipients(${unitId}::uuid,${stage},${released}) as "employmentId"`);
  return rows.map(row=>row.employmentId);
 }
+
+/** Board 60f1fdcd: the other current Rewards configuration holders for a configuration change, never its editor. */
+export async function rewardConfigChangeRecipients(tx:Tx,changeId:string):Promise<string[]>{
+ const rows=await tx.execute<{employmentId:string}>(sql`select app.reward_config_change_recipients(${changeId}::uuid) as "employmentId"`);
+ return rows.map(row=>row.employmentId);
+}

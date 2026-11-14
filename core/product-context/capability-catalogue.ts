@@ -115,6 +115,7 @@ export const IMPORT_SUPPORT_FILES:Readonly<Record<string,string>>=Object.freeze(
  'core/bank-import-worker.ts':'Queue worker that runs the bank and statutory import job.',
  'core/bank-statutory-import.ts':'Row rules of the bank and statutory import.',
  'core/employee-import-history.ts':'Revert support for the employee import.',
+ 'core/import-error-log-registry.ts':'Import History Error Log sources; it reads recorded entries and imports nothing.',
  'core/employee-import-job.ts':'Background admission and progress of the employee import.',
  'core/employee-import-revert-job.ts':'Background revert of the employee import (ADR-0155, ADR-0157).',
  'core/employee-import-upload.ts':'Upload transport of the employee import.',

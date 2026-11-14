@@ -160,12 +160,18 @@ export const NATIVE_SCOPE_ONLY_PAGES:ReadonlySet<string>=new Set([
  '/payroll/statutory-forms/filing-history',
  '/admin/rewards/access/view-as',
  '/admin/rewards/bonus-matrices',
+ '/admin/rewards/change-log',
+ '/admin/rewards/limit-controls',
  '/admin/rewards/pat-inputs',
  '/admin/rewards/plans',
+ '/admin/rewards/review-setup',
  '/admin/rewards/salary-structures',
  '/admin/rewards/setup-access',
  '/admin/rewards/uploaded',
  '/rewards/analytics',
+ // b945f0cc: seat-scoped off-cycle flows stay in native navigation.
+ '/rewards/offcycle/new',
+ '/rewards/offcycle/settings',
  '/rewards/promotions',
  '/rewards/rules',
  // ADR-0049 — Recruitment admits HR administrators and the company-scoped Recruiting Partner per company

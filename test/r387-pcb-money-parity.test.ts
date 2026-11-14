@@ -12,6 +12,11 @@ import * as schema from '../db/schema';
 import {withoutVerifiedStatutoryTrace} from './helpers/statutory-trace-evidence';
 // Frozen historical money oracle generated with the original 2026 calculator.
 // Keep its already-past periods stable; the current-year capture test is separate.
+// 2026-11-13 (owner decision A) — the ONE sanctioned change to this oracle: a PCB exemption is income-tax
+// only, so the exempt travel/unlimited slices (ticked EPF + SOCSO) are now EPF and SOCSO/EIS wages. Moved:
+// bases.epf/socsoEis (+80 Jan, +30 Feb and bonus run), Jan EPF 1111/1212 -> 1122/1224 (net, totals,
+// employer cost), and the EPF relief that follows it (K1/K2/K2t, epfClaimed, ytdNet); the lines that carry
+// the slice gain `exemptStatutory: true`. PCB, gross, cash buckets and exemptionUsed are unchanged.
 const year=2026;
 const pack=requirePackFor('MY');
 const flags={kind:'allowance' as const,isNonPayable:false,prorates:false,includedInPcb:true,includedInEpf:true,includedInSocsoEis:true,includedInHrdfBase:false,pcbRemunerationType:'normal' as const,epfBonus2012:false};

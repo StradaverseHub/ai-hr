@@ -9,8 +9,8 @@ import { todayInKualaLumpur } from '../../lib/hr-date';
 import { withRewardsTenant } from '../../core/module-gate';
 import { rewardRoles, type RewardRole } from './model';
 import { activeRewardLogin, rewardRequiredRoles, rewardRoleLabels, rewardUnitCoverage } from './coverage';
-export type RewardMaintenanceCode = 'scope' | 'changed' | 'locked' | 'account' | 'lastGr' | 'lastRequired' | 'membership' | 'preview' | 'confirmation' | 'used' | 'missing' | 'checker' | 'reason' | 'proxy' | 'dates';
-const errorMessages: Record<RewardMaintenanceCode, string> = { checker: 'An independent eligible Group Rewards reviewer must decide this request.', reason: 'Give a reason of at least 10 characters.', proxy: 'Choose an existing holder of this role to cover, with an end date.', dates: 'Choose a valid access date range.', scope: 'Rewards access authority for this review is required.', changed: 'This review changed in another session. Reload before saving.', locked: 'Return the unit to draft before changing its approved inputs.', account: 'Choose an active existing login account in this tenant.', lastGr: 'Keep at least one active Group Rewards reviewer assigned.', lastRequired: 'Keep at least one active person in every required approval role; replace them in one edit.', membership: 'The selected membership changed. Reload before saving.', preview: 'Access or account eligibility changed. Preview it again before saving.', confirmation: 'Confirm the exact review before deleting.', used: 'This review is in use and its history must be retained.', missing: 'Reward unit not found or access has been removed.' };
+export type RewardMaintenanceCode = 'scope' | 'changed' | 'locked' | 'account' | 'lastGr' | 'lastRequired' | 'membership' | 'preview' | 'confirmation' | 'used' | 'missing' | 'checker' | 'reason' | 'proxy' | 'dates' | 'self';
+const errorMessages: Record<RewardMaintenanceCode, string> = { self: 'You cannot add or widen your own Rewards access. Ask another Rewards administrator.', checker: 'An independent eligible Group Rewards reviewer must decide this request.', reason: 'Give a reason of at least 10 characters.', proxy: 'Choose an existing holder of this role to cover, with an end date.', dates: 'Choose a valid access date range.', scope: 'Rewards access authority for this review is required.', changed: 'This review changed in another session. Reload before saving.', locked: 'Return the unit to draft before changing its approved inputs.', account: 'Choose an active existing login account in this tenant.', lastGr: 'Keep at least one active Group Rewards reviewer assigned.', lastRequired: 'Keep at least one active person in every required approval role; replace them in one edit.', membership: 'The selected membership changed. Reload before saving.', preview: 'Access or account eligibility changed. Preview it again before saving.', confirmation: 'Confirm the exact review before deleting.', used: 'This review is in use and its history must be retained.', missing: 'Reward unit not found or access has been removed.' };
 export class RewardMaintenanceError extends Error {
     constructor(readonly code: RewardMaintenanceCode, readonly role?: RewardRole) { super(code === 'lastRequired' && role ? `Keep at least one active ${rewardRoleLabels[role]} assigned; replace them in one edit.` : errorMessages[code]); this.name = 'RewardMaintenanceError'; }
 }
@@ -135,16 +135,41 @@ async function prepareAccess(tx: Tx, ctx: SessionContext, input: RewardAccessCha
     return { unit, current, next, digest, pending:!authority?.basis };
 }
 export async function previewRewardAccessChange(ctx: SessionContext, raw: unknown) { const input = rewardAccessChangeSchema.parse(raw); return withRewardsTenant(ctx, async (tx) => { const p = await prepareAccess(tx, ctx, input); return { ...input, digest: p.digest, pending:p.pending }; }); }
-async function storeAccessRequest(tx:Tx,changes:RewardAccessChange[],reason:string){
+async function storeAccessRequest(tx:Tx,changes:RewardAccessChange[],reason:string,ctx?:SessionContext){
  const clean=changes.map(({reason:_,...change})=>change);
- const [row]=await tx.execute<{id:string}>(sql`select app.reward_access_request_create(${JSON.stringify(clean)}::jsonb,${reason}) as id`);
+ let row:{id:string};
+ try{[row]=await tx.execute<{id:string}>(sql`select app.reward_access_request_create(${JSON.stringify(clean)}::jsonb,${reason}) as id`);}
+ catch(error){
+  // Board 60f1fdcd: the database refuses an immediate change that adds or widens the editor's own access.
+  const cause=(error as {cause?:{message?:string}}).cause?.message??(error as Error).message;
+  if(/cannot add or widen your own Rewards access/.test(String(cause)))throw new RewardMaintenanceError('self');
+  throw error;
+ }
  const [request]=await tx.execute<{status:string}>(sql`select status from reward_access_request where id=${row.id}::uuid`);
+ if(ctx&&request.status==='applied_no_second_approval')await recordAccessChangeTx(tx,ctx,row.id,clean,reason);
  return {requestId:row.id,pending:request.status==='pending',status:request.status};
+}
+/** One change-log row and notice for an access change applied without a second approval. Removing access is the
+ * high-impact case; the editor reviewed it through the access preview digest before saving. */
+async function recordAccessChangeTx(tx:Tx,ctx:SessionContext,requestId:string,changes:Omit<RewardAccessChange,'reason'>[],reason:string){
+ const {recordRewardConfigChangeTx,rewardConfigSummary}=await import('./config-change');
+ const unitIds=[...new Set(changes.map(c=>c.unitId))];
+ const units=await tx.execute<{id:string;companyId:string;label:string;status:string}>(sql`select u.id,u.company_id as "companyId",coalesce(c.legal_name,'Review')||' '||coalesce(u.policy->>'year','') as label,u.status from reward_unit u left join company c on c.id=u.company_id and c.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and u.id=any(ARRAY[${sql.join(unitIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`);
+ const userIds=[...new Set(changes.flatMap(c=>[c.before?.userId,c.after?.userId].filter((id):id is string=>!!id)))];
+ const names=new Map(userIds.length?(await tx.execute<{id:string;name:string|null}>(sql`select u.id,p.full_name as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and u.id=any(ARRAY[${sql.join(userIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`)).map(r=>[r.id,r.name??r.id]):[]);
+ const seat=(m:{userId:string;role:RewardRole}|null|undefined)=>m?`${names.get(m.userId)??m.userId} · ${rewardRoleLabels[m.role]}`:null;
+ const unitLabel=new Map(units.map(u=>[u.id,u.label]));
+ const removed=changes.filter(c=>c.before&&(!c.after||c.before.userId!==c.after.userId||c.before.role!==c.after.role));
+ const summary=rewardConfigSummary({area:'access',itemLabel:units.length===1?`Rewards access · ${units[0].label}`:`Rewards access · ${units.length} reviews`,
+  lines:changes.map((c,i)=>({key:`${unitLabel.get(c.unitId)??c.unitId}:${i}`,label:unitLabel.get(c.unitId)??c.unitId,before:seat(c.before),after:seat(c.after)})),
+  affected:removed.length?units.filter(u=>removed.some(c=>c.unitId===u.id)).map(u=>({reviewId:u.id,label:u.label,stage:u.status,consequence:'access-removed' as const})):[],
+  highImpact:removed.length?['remove-access']:[]});
+ await recordRewardConfigChangeTx(tx,ctx,{area:'access',action:'applied',itemId:requestId,itemLabel:summary.itemLabel,companyIds:units.map(u=>u.companyId),versionRef:null,reason,summary});
 }
 /** The database selects immediate application or one independent GR decision for the whole request. */
 export async function saveRewardAccessChange(ctx: SessionContext, raw: unknown, digest: string) {
  const input=rewardAccessChangeSchema.parse(raw);z.string().regex(/^[a-f0-9]{64}$/).parse(digest);
- return withRewardsTenant(ctx,async tx=>{const p=await prepareAccess(tx,ctx,input,true);if(p.digest!==digest)throw new RewardMaintenanceError('preview');return storeAccessRequest(tx,[input],accessReason(input.reason));});
+ return withRewardsTenant(ctx,async tx=>{const p=await prepareAccess(tx,ctx,input,true);if(p.digest!==digest)throw new RewardMaintenanceError('preview');return storeAccessRequest(tx,[input],accessReason(input.reason),ctx);});
 }
 /** Legacy forms propose through the same request owner; they cannot bypass the second person. */
 export async function changeRewardMember(ctx:SessionContext,unitId:string,revision:number,userId:string,role:RewardRole,remove=false){
@@ -199,7 +224,7 @@ export async function saveRewardAccessBatch(ctx: SessionContext, raw: unknown, d
  const batch=rewardAccessBatchSchema.parse(raw);z.string().regex(/^[a-f0-9]{64}$/).parse(digest);
  return withRewardsTenant(ctx,async tx=>{
   const p=await prepareAccessBatch(tx,ctx,batch,true);if(p.digest!==digest)throw new RewardMaintenanceError('preview');
-  const stored=p.applied.length?await storeAccessRequest(tx,p.applied,accessReason(batch.reason)):{requestId:null,pending:false as const};
+  const stored=p.applied.length?await storeAccessRequest(tx,p.applied,accessReason(batch.reason),ctx):{requestId:null,pending:false as const};
   return {...stored,batchId:stored.requestId,reviews:new Set(p.applied.map(c=>c.unitId)).size,applied:p.applied.length,alreadyPresent:p.alreadyPresent.length};
  });
 }

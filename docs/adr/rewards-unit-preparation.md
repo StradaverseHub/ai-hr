@@ -2,6 +2,8 @@
 
 Status: implementation candidate for approved feedback a24cb308; verification and release are separate.
 
+> Superseded in part on 12 November 2026 by [Rewards direct configuration](2026-11-12-rewards-direct-configuration.md) (board 60f1fdcd): release no longer needs a second Group Rewards person. Basis, step proofs, locked set-up, controlled change and legacy markers stay.
+
 ## Context
 
 A unit review currently combines Group Rewards preparation and reviewer work. Approvers can encounter partial figures, while preparation has no single six-step release record. The approved change requires a second Group Rewards person to release a prepared review and requires controlled, explained changes after release.
@@ -44,3 +46,9 @@ Verify role and scope withholding through services and native reads, stale basis
 Preparing units still permit their existing scoped access administrator to read routing metadata and maintain participants. That bounded projection contains unit/company/cycle identity, stage and revision; it never returns financial policy or entries. Native scope, lock, review and independent access-request rules remain authoritative. Draft deletion retains its original administrator, exact revision, history-retention and View As refusal through a bounded native command and the existing audit owner.
 
 Uploaded annual awards keep their existing independently checked current-file owner. Ordinary reviewers remain withheld until the current upload has a named check, check time and matching version without a required source refresh. Its native same-person, immutable version and salary/source validation continue to govern release. It does not acquire six synthetic library-preparation confirmations or a legacy marker. Group Rewards and existing inspection seats use the uploaded review; the standard Unit set-up command refuses it. A private tenant-bounded upload-state reader is excluded only from the old recursive PUBLIC policy arms; every existing actor retains the prior policy expression.
+
+## Where set-up lives (70d5e7c5, November 2026)
+
+Unit set-up moved out of the review page into Configuration › Review Set-up (`/admin/rewards/review-setup`, one row per annual review, and `/admin/rewards/review-setup/[unitId]`, one step at a time). The review page no longer carries a Review / Unit set-up switch for any seat; Group Rewards reaches set-up from an Open set-up link in the review header, and the old `/rewards/[unitId]/setup` address forwards there. Seat visibility is unchanged: the list reads only reviews where the viewer holds a Group Rewards, CTRO or EC seat through `app.reward_roles`, so preparing reviews stay withheld from BU, BG and PBP seats. Group Rewards edits; CTRO and EC view. The same preparation commands and audit history apply; release follows the direct single-person rule of [Rewards direct configuration](2026-11-12-rewards-direct-configuration.md) (60f1fdcd), with the "Review before saving" summary and a reason. Reviews from before step tracking are listed as Released with their steps shown as done before tracking began; their compatibility marker is not changed and no history is invented.
+
+An exclusion window outside the review's own year is a blocking readiness check for the exclusion-list step. A shared configuration moved to a new year now takes its still-unchanged dates into that year; live reviews are never re-dated. Post-release changes still reopen preparation as described above; an in-place controlled change remains a separate decision.

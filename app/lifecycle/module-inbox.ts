@@ -5,9 +5,13 @@ import type {LifecycleTaskItem} from '@/lib/lifecycle-task-item';
 import {probationInbox} from '@/packs/probation/service';
 import {contractInbox} from '@/packs/contracts/service';
 import {lifecycleModuleNavigation} from './workflow-availability';
+import {v9EmailHoldInbox} from '@/packs/lifecycle/service';
 export async function lifecycleModuleInbox(ctx:SessionContext,navigation:Awaited<ReturnType<typeof lifecycleModuleNavigation>>){
- const [probation,contracts]=await Promise.all([navigation.probation.page?probationInbox(ctx):Promise.resolve({count:0,items:[]}),navigation.contractStaff.page?contractInbox(ctx):Promise.resolve({count:0,items:[]})]);
+ // Held On/Off Boarding emails: rechecked against Full case view and company access on every read.
+ const [probation,contracts,holds]=await Promise.all([navigation.probation.page?probationInbox(ctx):Promise.resolve({count:0,items:[]}),navigation.contractStaff.page?contractInbox(ctx):Promise.resolve({count:0,items:[]}),v9EmailHoldInbox(ctx).catch(()=>({count:0,items:[]}))]);
+ const holdCopy=holds.items.length?await getTranslations('lifecycleEmailHold'):null;
  const contractCopy=contracts.items.some(item=>['reconciliation','date_amendment'].includes(item.kind))?await getTranslations():null;
  const items:LifecycleTaskItem[]=[...probation.items.slice(0,20).map(item=>({id:'probation:'+item.caseId+':'+item.partId,kind:'probation' as const,ownerKind:item.kind,subjectName:item.employeeName,linkPath:item.href})),...contracts.items.slice(0,20).map(item=>({id:'contract_staff:'+item.caseId+':'+item.kind,kind:'contract_staff' as const,ownerKind:item.kind,subjectName:item.name+' · '+item.number,actionLabel:contractCopy&&['reconciliation','date_amendment'].includes(item.kind)?contractCopy(item.kind==='reconciliation'?'contractManagement.reconcile':'notifications.task.contractDateCorrection'):undefined,linkPath:item.href}))];
- return{count:probation.count+contracts.count,items};
+ items.push(...holds.items.map(item=>({id:'lifecycle_email:'+item.caseId+':'+item.heldAt,kind:'lifecycle_email' as const,subjectName:item.name+' · '+item.number,actionLabel:holdCopy!('inboxAction',{email:item.email}),linkPath:item.module==='onb'?'/lifecycle/onboarding/cases/'+encodeURIComponent(item.caseId):'/lifecycle/v9?view=leavers&case='+encodeURIComponent(item.caseId)})));
+ return{count:probation.count+contracts.count+holds.count,items};
 }

@@ -11,6 +11,7 @@ import type {InformationLogRow} from '@/lib/information-correction';
 import {personnelColumnLabel} from '@/lib/personnel-import-contract';
 import {movementImportFieldLabel} from '@/lib/movement-import-issues';
 import {formatImportActor,formatImportBatch} from '@/lib/import-reference';
+import {hasImportErrorLog} from '@/lib/import-error-log-kinds';
 export const IMPORT_HISTORY_PATH='/admin/personnel/import/history';
 const dateTime={dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'} as const;
 /** ccd3a65c — one look for all three pages: bordered card, muted header row, the same cell padding. */
@@ -27,12 +28,14 @@ export async function ImportKindFilter({active}:{active?:ImportHistoryKind}){
 }
 /** ccd3a65c — every import with Total, Successful and Failed; each row opens its Import Log. */
 export async function ImportHistoryTable({items}:{items:ImportHistoryRow[]}){
- const t=await getTranslations('people.importHistory'),format=await getFormatter(),labels=await getTranslations('importLog');
+ const t=await getTranslations('people.importHistory'),format=await getFormatter(),labels=await getTranslations('importLog'),problems=await getTranslations('importProblems');
  // 8d02748a — the file name sits under the batch number, so the separate File column is folded in.
  const heads=[t('reference'),t('type'),t('time'),t('user'),t('companies'),t('total'),t('successful'),t('failed'),t('status')];
  return <div className="overflow-x-auto rounded-xl border bg-card"><table className={historyTableCls}><thead className={historyHeadCls}><tr>{heads.map((label,index)=><th key={index} scope="col" className={historyCellCls+(index>=5&&index<=7?' text-right':'')}>{label}</th>)}</tr></thead>
   <tbody>{items.map(item=><tr key={item.cursor} className="border-t align-top">
-   <td className={historyCellCls}><Link href={item.source==='attempt'?`${IMPORT_HISTORY_PATH}/${item.id}`:`${IMPORT_HISTORY_PATH}/runs/${item.id}`} className="font-medium text-primary underline" aria-label={t('openLog',{file:item.sourceName||t('pasted')})}>{formatImportBatch(labels,item.id)}</Link><span className="block break-all text-xs text-muted-foreground">{item.sourceName||t('pasted')}</span></td>
+   <td className={historyCellCls}><Link href={item.source==='attempt'?`${IMPORT_HISTORY_PATH}/${item.id}`:`${IMPORT_HISTORY_PATH}/runs/${item.id}`} className="font-medium text-primary underline" aria-label={t('openLog',{file:item.sourceName||t('pasted')})}>{formatImportBatch(labels,item.id)}</Link><span className="block break-all text-xs text-muted-foreground">{item.sourceName||t('pasted')}</span>
+    {/* Board d3ba1e9f — the standard Error Log of every entry whose kind has a registered source. */}
+    {hasImportErrorLog(item.kind,item.source)&&<ExportDownloadLink className="mt-1 inline-block text-xs text-primary underline" href={`${IMPORT_HISTORY_PATH}/${item.id}/error-log`} aria-label={`${problems('downloadLog')} · ${formatImportBatch(labels,item.id)}`}>{problems('downloadLog')}</ExportDownloadLink>}</td>
    <td className={historyCellCls}>{item.kind?t(`kinds.${item.kind}`):<span className="text-muted-foreground">{t('kinds.notRecorded')}</span>}</td>
    <td className={historyCellCls+' whitespace-nowrap'}>{format.dateTime(item.createdAt,dateTime)}</td>
    <td className={historyCellCls}>{formatImportActor(labels,item.createdByActor)}</td>

@@ -30,7 +30,9 @@ it.each([1440,390])('renders the approved shared case structure at %i pixels wit
  await screen.findByText('Salary source unavailable');
  const workspace=container.querySelector('.lifecycle-case-page') as HTMLElement;
  expect(workspace.scrollWidth).toBeLessThanOrEqual(workspace.clientWidth+1);
- const headings=[...container.querySelectorAll('.lifecycle-case-page>.lifecycle-case-section>h2')].map(node=>node.textContent);
+ // Each full-width section's heading. Return and revoke (d1e26f81) carries its heading inside the shared "Set for all
+ // items" header, like onboarding Equipment and access, so the heading is the section's first h2, not a direct child.
+ const headings=[...container.querySelectorAll('.lifecycle-case-page>.lifecycle-case-section')].map(section=>section.querySelector('h2')?.textContent);
  expect(headings).toEqual(['Return and revoke','Documents','Case files','Workflows','Emails for this person','Sent emails','Exit clearance']);
  const aside=container.querySelector('.onb-aside') as HTMLElement;
  const main=container.querySelector('.onb-main') as HTMLElement;

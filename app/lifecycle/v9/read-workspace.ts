@@ -4,6 +4,7 @@ import { getScopeIds } from '@/lib/scope';
 import type { SessionContext } from '@/db/client';
 import { v9Workspace, onboardingContext, onboardingList, onboardingOptions } from '@/packs/lifecycle/service';
 import { viewerIdentity } from '@/lib/viewer';
+import { lifecycleV9SenderName } from '@/lib/lifecycle-v9-sender';
 import type { NativeSettingsData } from './workspace-settings';
 import type { NativeJoinersData } from './native-joiners';
 /** Both V9 register and native-case presentation use the same scoped workspace owner. */
@@ -17,5 +18,7 @@ export async function readV9Workspace(session: SessionContext) {
   }
   // The AIHR header owns company selection; this only narrows already-authorized projections.
   const companyScope = await getScopeIds((await allowedCompanies(session)).map(company => company.id));
+  // Only template administrators see the sender name; it is read outside the tenant transaction and holds no lock.
+  if (initial.config && (initial.canConfigure || initial.permissions?.administration)) initial.sender = await lifecycleV9SenderName(session.tenantId);
   return { initial, viewer, joiners, nativeSettings, companyScope };
 }

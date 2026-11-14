@@ -208,6 +208,40 @@ export async function workbookToCsvTexts(
 }
 
 /**
+ * Board d3ba1e9f — the Excel row of every data record of the first worksheet and of named worksheets, exactly as
+ * Excel numbers them. workbookToCsvTexts drops blank rows (blankrows:false and the non-empty filter), so a data
+ * record's position in the CSV text is not its Excel row once a sheet has blank rows; this reads the same cells
+ * with the same non-empty rule and returns, per sheet, the 1-based Excel row of each record after the header (and
+ * after a Personnel frame row). Additive helper for the import Error Log; it changes no decoded text. Bounded like
+ * the importer: at most 32 sheets and 10,000 rows per sheet, otherwise the sheet is left out (callers then fall
+ * back to data row + 1).
+ */
+export async function workbookDataRowNumbers(buf:ArrayBuffer|Uint8Array,sheetNames:readonly string[]=[]):Promise<{first:number[];extra:Record<string,number[]>}>{
+  const XLSX=await import('xlsx');
+  const bytes=buf instanceof Uint8Array?buf:new Uint8Array(buf);
+  const wb=XLSX.read(bytes,{type:'array',cellDates:true,sheetRows:10001});
+  if(wb.SheetNames.length>32)return{first:[],extra:{}};
+  const rowsOf=(name:string|undefined):number[]=>{
+    const ws=name?wb.Sheets[name]:undefined,ref=ws?.['!ref'];if(!ws||!ref)return[];
+    const range=XLSX.utils.decode_range(ref);if(range.e.r-range.s.r+1>10001)return[];
+    const present:number[]=[];let frame=false;
+    for(let r=range.s.r;r<=range.e.r;r++){
+      let filled=false;
+      for(let c=range.s.c;c<=range.e.c&&!filled;c++){const v=ws[XLSX.utils.encode_cell({r,c})]?.v;if(v!=null&&String(v instanceof Date?'d':v).trim()!=='')filled=true;}
+      if(!filled)continue;
+      if(present.length===0&&String(ws[XLSX.utils.encode_cell({r,c:range.s.c})]?.v??'')==='AI-HR Personnel CSV')frame=true;
+      present.push(r+1);
+    }
+    return present.slice(frame?2:1);
+  };
+  const key=(s:string)=>s.trim().toLowerCase();
+  const byKey=new Map(wb.SheetNames.map(n=>[key(n),n]));
+  const extra:Record<string,number[]>={};
+  for(const wanted of sheetNames){const found=byKey.get(key(wanted));if(found&&found!==wb.SheetNames[0])extra[wanted]=rowsOf(found);}
+  return{first:rowsOf(wb.SheetNames[0]),extra};
+}
+
+/**
  * Build a real .xlsx workbook (single sheet) from a header row + data rows and return it as bytes.
  * Used for the "Download Excel template" button so HR gets a genuine Excel file (not a CSV renamed
  * .xlsx). Headers are the reporter's human labels ("Employee ID", …) which normalise back to the

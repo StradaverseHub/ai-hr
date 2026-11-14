@@ -41,9 +41,35 @@ export type LabelImportMode = 'add' | 'update' | 'merge';
 export type LabelImportRow = { sheet: string; row: number; values: Record<string, string>; warnings?:string[] };
 export type LabelImportRowReason = 'existing'|'duplicate'|'conflicting'|'unsupportedCategory'|'required'|'invalidCompany'|'invalidCriteria'|'invalidCriteriaCompany'|'globalAdminRequired'|'criteriaCompaniesRequired'|'invalidHeadEmployee'|'invalidStatus'|'wholeNumber'|'invalidGradeCode'|'gradeLabelExists'|'invalidGradeReferences'|'gradeAlreadyGrouped'|'invalidRow'|'notSelected';
 export type LabelImportRequiredField = 'Code'|'Company'|'Description'|'Label'|'Name';
+/** Board c074c6b8: every template column a row problem can point at (internal header keys, not display captions). */
+export type LabelImportColumn = LabelImportRequiredField|'Criteria'|'Criteria Companies'|'Status'|'Rank'|'Sort Order'|'Head Employee Code'|'Grade Codes';
+/** Board c074c6b8: the exact check that refused or skipped a row, one per distinct server sentence. `reason` stays the
+ * coarse category existing callers and history rows rely on; the screen and the Error Log read this. */
+export const LABEL_IMPORT_REASON_DETAILS = [
+  'unsupportedCategory','existing','duplicate','conflicting','invalidStatus','required','invalidCriteria','companyNotPermitted',
+  'companyUnknown','companyOutOfScope','globalWithCompanies','globalAdminRequired','noOwnerCompany','companyNotInCriteria',
+  'criteriaCompaniesRequired','invalidHeadEmployee','wholeNumber','invalidGradeCode','gradeLabelExists','invalidGradeReferences',
+  'gradeAlreadyGrouped','gradeScope','invalidRow','notSelected',
+] as const;
+export type LabelImportReasonDetail = typeof LABEL_IMPORT_REASON_DETAILS[number];
 export type LabelImportPreviewRow = LabelImportRow & {
   outcome: 'add' | 'update' | 'skip' | 'error'; message: string;
   before: Record<string, string> | null; after: Record<string, string>;
   selected?: boolean; stale?: boolean; reason?: LabelImportRowReason; reasonField?: LabelImportRequiredField;
+  /** Board c074c6b8: the precise check and the column it found the problem in (absent on rows stored before it). */
+  reasonDetail?: LabelImportReasonDetail; reasonColumn?: LabelImportColumn;
 };
 export type LabelImportPreview = { token: string; rows: LabelImportPreviewRow[]; valid: boolean; mode?: LabelImportMode };
+/** The one reader warning: a previous header generation was converted. Shown translated on the row's problem. */
+export const LABEL_LEGACY_HEADERS_WARNING = 'Older Criteria headers were converted. Download the current template for the next upload.';
+/** Board c074c6b8: the column a reason points at when its throw site names none. No rule depends on this. */
+export function labelReasonColumn(reason: LabelImportRowReason, sheet: string, field?: LabelImportRequiredField): LabelImportColumn | undefined {
+  if (reason === 'existing' || reason === 'duplicate' || reason === 'conflicting' || reason === 'notSelected') return sheet === 'grade_groups' ? 'Name' : 'Code';
+  return ({ required: field, invalidStatus: 'Status', invalidGradeCode: 'Code', gradeLabelExists: 'Label', invalidGradeReferences: 'Grade Codes',
+    gradeAlreadyGrouped: 'Grade Codes', invalidHeadEmployee: 'Head Employee Code' } as Partial<Record<LabelImportRowReason, LabelImportColumn | undefined>>)[reason];
+}
+/** The precise check for a reason that has only one server sentence; the two shared reasons need their throw site. */
+export function labelReasonDetail(reason: LabelImportRowReason | undefined): LabelImportReasonDetail {
+  if (!reason || reason === 'invalidCriteriaCompany') return 'invalidRow';
+  return reason === 'invalidCompany' ? 'companyNotPermitted' : reason;
+}

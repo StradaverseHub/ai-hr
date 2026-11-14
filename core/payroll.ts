@@ -5307,7 +5307,11 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     // Display evidence only: a reused recurring assessment retains its recorded cap.
     const earlierExemptionLimits = new Map<string, Map<string, number | null>>();
     const retainedOneOffExemptions = new Map<string, {code:string;annualLimit:number|null;item:string;amount:number}[]>();
-    const postNumericOptions=['epfWageExcluded','epfAdditionalExcluded','socsoWageExcluded','socsoWageExtra','epfWageDeduction','socsoWageDeduction','pcbWageDeduction'] as const;
+    const postNumericOptions=['epfWageExcluded','epfAdditionalExcluded','socsoWageExcluded','socsoWageExtra','epfWageDeduction','socsoWageDeduction','pcbWageDeduction','epfWageExtra','exemptEpfWage','exemptEpfAdditional','exemptSocsoWage'] as const;
+    // 2026-11-13 — the four options added by owner decisions A/B are ABSENT on every outstanding-payment stamp
+    // written before them, and those runs were computed without them: read absent as 0, never as malformed.
+    const POST_OPTIONS_ADDED_20261113=new Set<string>(['epfWageExtra','exemptEpfWage','exemptEpfAdditional','exemptSocsoWage']);
+    const postOptionOf=(options:Record<string,number>,key:string)=>options[key]===undefined&&POST_OPTIONS_ADDED_20261113.has(key)?0:options[key];
     type PostInputs={wages:number;additional:number;overtime:number;lp:number;zakat:number;options:Record<string,number>};
     const postEarlierByEmp=new Map<string,{inputs:PostInputs;paid:Record<string,number>}>();
     /**
@@ -5320,7 +5324,12 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
      * trace stamp, or, on a slip from before the trace, off its own componentLines (`readEarlierRunLiability`); a slip with neither keeps the old reading (gross, nothing extra)
      * and is counted in `unstamped` so the trace can say so.
      */
-    const earlierRunByEmp = new Map<string, { additional: number; overtime: number; epfAdditionalExcluded: number; socsoWageExtra: number; runs: number; unstamped: number; fromItemLines: number }>();
+    // 2026-11-13 (owner decisions A/B) — and four more off the same stamp: `epfWageExtra` (the part of their
+    // additional pay that was NORMAL EPF wages) and the PCB-exempt one-off money a regular run paid that its
+    // ticks put in EPF / SOCSO-EIS (`exempt*`; a later run does not re-fold an earlier run's one-off items).
+    type EarlierRunCarry = { additional: number; overtime: number; epfAdditionalExcluded: number; socsoWageExtra: number; epfWageExtra: number; exemptEpfWage: number; exemptEpfAdditional: number; exemptSocsoWage: number; runs: number; unstamped: number; fromItemLines: number };
+    const emptyEarlierRun = (): EarlierRunCarry => ({ additional: 0, overtime: 0, epfAdditionalExcluded: 0, socsoWageExtra: 0, epfWageExtra: 0, exemptEpfWage: 0, exemptEpfAdditional: 0, exemptSocsoWage: 0, runs: 0, unstamped: 0, fromItemLines: 0 });
+    const earlierRunByEmp = new Map<string, EarlierRunCarry>();
     const earlierEpfByEmp = new Map<string, { employee: number | null; employer: number | null }>();
     const earlierTaxBasisByEmp = new Map<string,{additionalDelta:number;normal:number|undefined;paidPcb:number;paidBonus:number;corrected:boolean}>();
     const earlierNonCashByEmp = new Map<string,{ownedEntries:NonCashEntry[];regularEntries:NonCashEntry[]|null;ownedEaEntries:NonCashEaEntry[];regularEaEntries:NonCashEaEntry[]|null;legacyRegular:boolean}>();
@@ -5365,10 +5374,10 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         }
         if(postEmploymentIds.has(r.employmentId)){
           const saved=(r.statutory as {postEmploymentPayment?:{statutoryInputs?:PostInputs}}|null)?.postEmploymentPayment?.statutoryInputs;
-          if(correction||!saved||!saved.options||[saved.wages,saved.additional,saved.overtime,saved.lp,saved.zakat,...postNumericOptions.map(k=>saved.options[k])].some(n=>typeof n!=='number'||!Number.isFinite(n)||n<0))throw new PayrollTaxBasisError('Earlier outstanding-payment payroll must be reviewed and reprocessed before this cycle.');
+          if(correction||!saved||!saved.options||[saved.wages,saved.additional,saved.overtime,saved.lp,saved.zakat,...postNumericOptions.map(k=>postOptionOf(saved.options,k))].some(n=>typeof n!=='number'||!Number.isFinite(n)||n<0))throw new PayrollTaxBasisError('Earlier outstanding-payment payroll must be reviewed and reprocessed before this cycle.');
           const current=postEarlierByEmp.get(r.employmentId)??{inputs:{wages:0,additional:0,overtime:0,lp:0,zakat:0,options:Object.fromEntries(postNumericOptions.map(k=>[k,0]))},paid:{}};
           for(const key of ['wages','additional','overtime','lp','zakat'] as const)current.inputs[key]=round2(current.inputs[key]+saved[key]);
-          for(const key of postNumericOptions)current.inputs.options[key]=round2(current.inputs.options[key]+saved.options[key]);
+          for(const key of postNumericOptions)current.inputs.options[key]=round2(current.inputs.options[key]+postOptionOf(saved.options,key));
           for(const key of DELTA_KEYS)current.paid[key]=round2((current.paid[key]??0)+Number((r.statutory as Record<string,unknown>)[key]??0));
           postEarlierByEmp.set(r.employmentId,current);
           // These are independent cash owners. Carry their consumed annual exemptions into
@@ -5383,7 +5392,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           }
           exemptUsedByEmp.set(r.employmentId,used);
         }
-        const cur = earlierRunByEmp.get(r.employmentId) ?? { additional: 0, overtime: 0, epfAdditionalExcluded: 0, socsoWageExtra: 0, runs: 0, unstamped: 0, fromItemLines: 0 };
+        const cur = earlierRunByEmp.get(r.employmentId) ?? emptyEarlierRun();
         cur.additional = round2(cur.additional + Number(r.bonus));
         // 69d6ed3c — what that run itself charged its additional pay on, from ITS OWN stamp (read off the
         // statutory blob as that run wrote it, before any tax-basis correction replaced `r.statutory`).
@@ -5394,6 +5403,10 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         if (ownStamp) {
           cur.epfAdditionalExcluded = round2(cur.epfAdditionalExcluded + Math.max(0, round2(Number(r.bonus) - ownStamp.epfAdditional)));
           cur.socsoWageExtra = round2(cur.socsoWageExtra + ownStamp.socsoWageExtra);
+          cur.epfWageExtra = round2(cur.epfWageExtra + ownStamp.epfWageExtra);
+          cur.exemptEpfWage = round2(cur.exemptEpfWage + ownStamp.exemptEpfWage);
+          cur.exemptEpfAdditional = round2(cur.exemptEpfAdditional + ownStamp.exemptEpfAdditional);
+          cur.exemptSocsoWage = round2(cur.exemptSocsoWage + ownStamp.exemptSocsoWage);
           if (ownStamp.source === 'component_lines') cur.fromItemLines += 1;
         } else cur.unstamped += 1;
         const taxBasis = earlierTaxBasisByEmp.get(r.employmentId) ?? {additionalDelta:0,normal:undefined,paidPcb:0,paidBonus:0,corrected:false};
@@ -5867,6 +5880,12 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
        * input a `per_hour` / `per_day` rule consumed.
        */
       detail?: { qty: number; rate: number; unit: 'hours' | 'days' | null };
+      /** 2026-11-13 (owner decision B) — true when this line's `bonus`-bucket money is NORMAL EPF wages: an
+       *  'additional'-classified item ticked EPF and not EPF Bonus 2012. Absent on every line written before. */
+      epfNormalStream?: true;
+      /** 2026-11-13 (owner decision A) — true when this line's `reimburse`-bucket money is a PCB-exempt slice
+       *  this run counted in EPF / SOCSO / EIS / SKBBK by the item's own ticks. Absent ⇒ that money is in no base. */
+      exemptStatutory?: true;
       displayCategory?: string | null;
       inputQuantity?: { qty: number; unit: string | null };
     };
@@ -5926,6 +5945,26 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       /** Of `bonus`: the part sitting on an 'additional' item ticked SUBJECT TO SOCSO/EIS (the OT1_5 leg —
        *  the one carve-out that ADDS a contribution rather than removing one). */
       socsoWageExtra: number;
+      // ── 2026-11-13 owner decisions A/B — the EPF stream follows the EPF ticks, and a PCB exemption is
+      // tax-only. Cash buckets, gross and the PCB streams are NOT changed by any of these; they only move
+      // money between, or into, the agency bases (see the pack's opts block, localization/my/payroll.ts).
+      /** Of `bonus`: the part on an 'additional'-classified item ticked EPF and NOT EPF Bonus 2012. It is
+       *  NORMAL EPF wages, so it is also counted in `epfAdditionalExcluded` (it leaves the bonus EPF base). Like
+       *  `socsoWageExtra` it is money THIS run pays, so the additional-run baseline drops it and later runs in
+       *  the month read it back off this run's stamp (`statutoryTrace.run.own.epfWageExtra`). */
+      epfWageExtra: number;
+      /** The PCB-exempt slices (cash bucket `reimburse`) this run's bases count by the item's own ticks:
+       *  EPF normal (ticked EPF, not EPF Bonus 2012), EPF bonus (EPF Bonus 2012) and SOCSO/EIS/SKBBK (ticked
+       *  SOCSO/EIS, not EPF Bonus 2012). Wage-side money: present on both sides of a delta. On an additional
+       *  run only RECURRING items count — an additional run pays its `bonus` bucket only, and its re-fold of
+       *  the recurring items is the month's normal wage the regular run pays. */
+      exemptEpfWage: number;
+      exemptEpfAdditional: number;
+      exemptSocsoWage: number;
+      /** Of the three above, the ONE-OFF part a regular run paid. A later run in the same month does not
+       *  re-fold this run's one-off items, so it reads this back off the stamp and counts it on both sides of
+       *  its delta. Zero on an additional run (it pays no exempt slice) and on the recurring part (re-folded). */
+      exemptCarry: { epfWage: number; epfAdditional: number; socsoWage: number };
       // ── Feedback 2333b7fb (r193) — the DEDUCTION side of the same fault ──────────────────────────
       // r187 fixed the EARNING half: a pay item's EPF/SOCSO ticks were overridden by its declared
       // remuneration type. The DEDUCTION half was untouched and is worse — the `kind === 'deduction'`
@@ -5995,6 +6034,11 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           epfAdditionalExcluded: 0,
           socsoWageExcluded: 0,
           socsoWageExtra: 0,
+          epfWageExtra: 0,
+          exemptEpfWage: 0,
+          exemptEpfAdditional: 0,
+          exemptSocsoWage: 0,
+          exemptCarry: { epfWage: 0, epfAdditional: 0, socsoWage: 0 },
           // 2333b7fb — likewise: with typed components off there are no deduction pay items at all (the
           // legacy path has no deduct bucket — `deduct: 0` above), so there is nothing to carve.
           epfWageDeduction: 0,
@@ -6030,6 +6074,9 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       let basicRaw = 0, basicGross = 0, wageAllow = 0, hrdfAllow = 0, ot = 0, bonusAmt = 0, reimburse = 0, deduct = 0;
       // 017d9c25 — the four base carve-outs, accumulated beside the buckets they carve (see the return type).
       let epfWageExcluded = 0, epfAdditionalExcluded = 0, socsoWageExcluded = 0, socsoWageExtra = 0;
+      // 2026-11-13 — the EPF-stream move and the PCB-exempt slices' agency legs (see the return type).
+      let epfWageExtra = 0, exemptEpfWage = 0, exemptEpfAdditional = 0, exemptSocsoWage = 0;
+      const exemptCarry = { epfWage: 0, epfAdditional: 0, socsoWage: 0 };
       // 2333b7fb — and the four deduction-side reductions, accumulated in the `kind === 'deduction'` branch.
       const epfDeductionItems: { label: string; amount: number }[] = [];
       let epfWageDeduction = 0, socsoWageDeduction = 0, pcbWageDeduction = 0, hrdfWageDeduction = 0;
@@ -6364,7 +6411,11 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         if (c.hrdf) addHrdfEarning(c.code, c.name, applied);
         // ── Feedback 09b554e9: declared Normal/Additional remuneration, with per-code annual exemption ──
         // The exempt portion (up to the PCB code's remaining annual headroom; cap -1 = fully exempt,
-        // cap 0 = fully taxable) is PAID but stays out of every statutory base (the reimburse bucket);
+        // cap 0 = fully taxable) is PAID but stays out of the PCB base (the reimburse bucket). Owner
+        // decision A (2026-11-13) — a PCB exemption is an INCOME-TAX exemption only: EPF, SOCSO, EIS and
+        // SKBBK follow the item's own ticks on the WHOLE amount, so the exempt slice is carried into those
+        // bases as `exempt*` below (before that date it left every statutory base, which under-charged EPF
+        // and SOCSO on e.g. a tax-exempt long service award ticked for both);
         // the taxable remainder rides the declared stream: normal → the Y1 wage bucket, additional → the
         // Yt bonus bucket. EPF Bonus 2012 forces the bonus (additional-remuneration EPF) routing regardless
         // of the SOCSO flag — the amount is a bonus payment for EPF purposes (and bonuses sit outside
@@ -6382,6 +6433,24 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
               reimburse = round2(reimburse + exempt);
               contributes('reimburse', exempt);
               useRoom(code, exempt);
+              // Owner decision A — the agency legs of the exempt slice, by the item's own ticks. An additional
+              // run pays no `reimburse` cash, so there only a RECURRING item's slice counts (it is the month's
+              // normal wage, re-folded exactly as its taxable wage is); a one-off's slice on that run is not
+              // paid by anyone and is not wages. EPF Bonus 2012 keeps its bonus EPF stream and stays out of
+              // SOCSO/EIS (SOCSO Act 1969 s.2), exactly as its taxable remainder does below.
+              if (!isAdditionalRun || !c.oneOff) {
+                const epfLeg = c.epf ? exempt : 0;
+                const socsoLeg = c.socso && !c.epfBonus2012 ? exempt : 0;
+                if (c.epfBonus2012) exemptEpfAdditional = round2(exemptEpfAdditional + epfLeg);
+                else exemptEpfWage = round2(exemptEpfWage + epfLeg);
+                exemptSocsoWage = round2(exemptSocsoWage + socsoLeg);
+                if (!isAdditionalRun && c.oneOff) {
+                  if (c.epfBonus2012) exemptCarry.epfAdditional = round2(exemptCarry.epfAdditional + epfLeg);
+                  else exemptCarry.epfWage = round2(exemptCarry.epfWage + epfLeg);
+                  exemptCarry.socsoWage = round2(exemptCarry.socsoWage + socsoLeg);
+                }
+                if (currentLine && (epfLeg > 0 || socsoLeg > 0)) currentLine.exemptStatutory = true;
+              }
             }
           }
           if (stream === 'normal') {
@@ -6403,6 +6472,17 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
             // Same rule on the additional stream. `epfBonus2012` codes are validated to require
             // includedInEpf (core/pay-components.ts `epfBonusRequiresEpf`), so they never carve EPF out.
             if (!c.epf) epfAdditionalExcluded = round2(epfAdditionalExcluded + taxable);
+            // Owner decision B (2026-11-13) — the PCB remuneration type is a PCB-only classification (Y1 vs
+            // Yt and the payslip box); it does NOT choose the EPF stream. EPF has normal wages only, except
+            // money on an item ticked EPF Bonus 2012, which keeps the additional-remuneration EPF routing.
+            // So an 'additional'-classified item ticked EPF and NOT EPF Bonus 2012 is NORMAL EPF wages: it
+            // leaves the bonus EPF base (`epfAdditionalExcluded`) and joins the normal one (`epfWageExtra`).
+            // Cash stays in the bonus bucket, so gross, the payslip box and PCB's Yt are untouched.
+            else if (!c.epfBonus2012 && taxable > 0) {
+              epfAdditionalExcluded = round2(epfAdditionalExcluded + taxable);
+              epfWageExtra = round2(epfWageExtra + taxable);
+              if (currentLine) currentLine.epfNormalStream = true;
+            }
             // The SOCSO leg is the ADDING one, and the only place r187 increases a contribution:
             // Overtime 1.5 on this tenant is ticked "not EPF, yes SOCSO/EIS" but classified
             // 'additional', so before r187 it was charged EPF and left OUT of SOCSO/EIS — the exact
@@ -6427,7 +6507,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         else { reimburse = round2(reimburse + applied); contributes('reimburse', applied); } // all-false earning: paid but untaxed
       }
       for(const row of exemptionInformation.values())row.thisMonth=row.table==='lp' && isAdditionalRun ? 0 : round2((exemptionUsed[row.code]??0)+(reusedExemption.get(row.code)??0));
-      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, epfWageExcluded, epfAdditionalExcluded, socsoWageExcluded, socsoWageExtra, epfWageDeduction, epfDeductionItems, socsoWageDeduction, pcbWageDeduction, hrdfWageDeduction, hrdfEarningItems: [...hrdfEarningByCode.values()], hrdfDeductionItems: [...hrdfDeductionByCode.values()], recordLines, componentLines, bonus2012Codes, lpDeclared, exemptionUsed, exemptionInformation:[...exemptionInformation.values()].sort((a,b)=>a.code.localeCompare(b.code)), nonCashEntries, nonCashEaEntries, display, displayMoved, displayOtOutbound, orpUnpaidLeaveExtra };
+      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, epfWageExcluded, epfAdditionalExcluded, socsoWageExcluded, socsoWageExtra, epfWageExtra, exemptEpfWage, exemptEpfAdditional, exemptSocsoWage, exemptCarry, epfWageDeduction, epfDeductionItems, socsoWageDeduction, pcbWageDeduction, hrdfWageDeduction, hrdfEarningItems: [...hrdfEarningByCode.values()], hrdfDeductionItems: [...hrdfDeductionByCode.values()], recordLines, componentLines, bonus2012Codes, lpDeclared, exemptionUsed, exemptionInformation:[...exemptionInformation.values()].sort((a,b)=>a.code.localeCompare(b.code)), nonCashEntries, nonCashEaEntries, display, displayMoved, displayOtOutbound, orpUnpaidLeaveExtra };
     };
 
     /**
@@ -7330,6 +7410,13 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         epfAdditionalExcluded: en.epfAdditionalExcluded,
         socsoWageExcluded: en.socsoWageExcluded,
         socsoWageExtra: en.socsoWageExtra,
+        // 2026-11-13 owner decisions A/B — the 'additional'-classified EPF money that is NORMAL EPF wages (an
+        // additional-stream carve-out like the two above: dropped from the additional-run baseline), and the
+        // PCB-exempt slices' agency legs (wage-side: on both sides of a delta, like the deductions below).
+        epfWageExtra: en.epfWageExtra,
+        exemptEpfWage: en.exemptEpfWage,
+        exemptEpfAdditional: en.exemptEpfAdditional,
+        exemptSocsoWage: en.exemptSocsoWage,
         // Feedback 2333b7fb (r193) — the DEDUCTION pay-item ticks, same mechanism. Same clamping note:
         // `wagesExOt` may already be smaller than the carve-out, and the pack clamps at 0.
         // These three stay on BOTH sides of the additional-run delta below (unlike epfAdditionalExcluded
@@ -7398,7 +7485,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // every `computeMonth` below would default to the pre-probe figure. The probe itself passes 0.
         zakatOffsetTotal = round2(effectiveZakat + tp1Rebate);
       }
-      const earlierRun = earlierRunByEmp.get(e.employmentId) ?? { additional: 0, overtime: 0, epfAdditionalExcluded: 0, socsoWageExtra: 0, runs: 0, unstamped: 0, fromItemLines: 0 };
+      const earlierRun = earlierRunByEmp.get(e.employmentId) ?? emptyEarlierRun();
       /**
        * ── Item 70b14723 — THE SAME OPTION BAG WITH THE TYPED EPF AMOUNTS REMOVED ─────────────────────
        *
@@ -7462,6 +7549,13 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         ...b,
         epfAdditionalExcluded: round2((own ? b.epfAdditionalExcluded : 0) + earlierRun.epfAdditionalExcluded),
         socsoWageExtra: round2((own ? b.socsoWageExtra : 0) + earlierRun.socsoWageExtra),
+        // 2026-11-13 — `epfWageExtra` is this run's additional pay, so it follows `own` exactly as the two above.
+        // The exempt slices are wage-side (`b` carries this run's own on both sides already); the earlier runs'
+        // one-off ones are added to both sides, so they set the month's band without being charged again.
+        epfWageExtra: round2((own ? b.epfWageExtra : 0) + earlierRun.epfWageExtra),
+        exemptEpfWage: round2(b.exemptEpfWage + earlierRun.exemptEpfWage),
+        exemptEpfAdditional: round2(b.exemptEpfAdditional + earlierRun.exemptEpfAdditional),
+        exemptSocsoWage: round2(b.exemptSocsoWage + earlierRun.exemptSocsoWage),
       });
       const coreFor = (bases: typeof stOpts) => {
         if(postEmployment){
@@ -7477,7 +7571,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // stay on both sides — both calls re-fold the same recurring components. (Item 70b14723 moved this
         // one line inside `coreFor` when the expression became a function of `bases`; for `bases === stOpts`
         // it is the identical object the previous `additionalBaseline` const built.)
-        const baseline = { ...bases, epfAdditionalExcluded: 0, socsoWageExtra: 0, pcbNonCashNormal: nonCashBefore };
+        const baseline = { ...bases, epfAdditionalExcluded: 0, socsoWageExtra: 0, epfWageExtra: 0, pcbNonCashNormal: nonCashBefore };
         // 69d6ed3c — the "now" side carries this run's carve-outs AND the earlier runs'; the "earlier runs"
         // side carries the earlier runs' alone; the restating run's "no additional at all" month carries none.
         const nowBases = withEarlierCarveOuts(bases, true);
@@ -7561,12 +7655,17 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       const monthDelta = !postEmployment && (isAdditionalRun || restatesMonth);
       const statEpfAdditionalExcluded = monthDelta ? round2(en.epfAdditionalExcluded + earlierRun.epfAdditionalExcluded) : en.epfAdditionalExcluded;
       const statSocsoWageExtra = monthDelta ? round2(en.socsoWageExtra + earlierRun.socsoWageExtra) : en.socsoWageExtra;
+      // 2026-11-13 — the EPF-stream move and the PCB-exempt slices, summed exactly as the pack received them.
+      const statEpfWageExtra = monthDelta ? round2(en.epfWageExtra + earlierRun.epfWageExtra) : en.epfWageExtra;
+      const statExemptEpfWage = monthDelta ? round2(en.exemptEpfWage + earlierRun.exemptEpfWage) : en.exemptEpfWage;
+      const statExemptEpfAdditional = monthDelta ? round2(en.exemptEpfAdditional + earlierRun.exemptEpfAdditional) : en.exemptEpfAdditional;
+      const statExemptSocsoWage = monthDelta ? round2(en.exemptSocsoWage + earlierRun.exemptSocsoWage) : en.exemptSocsoWage;
       const statBases = {
-        epf: Math.max(0, round2(wagesExOt - en.epfWageExcluded - en.epfWageDeduction)),
-        epfAdditional: Math.max(0, round2(statAdditional - statEpfAdditionalExcluded)),
+        epf: Math.max(0, round2(wagesExOt - en.epfWageExcluded - en.epfWageDeduction + statEpfWageExtra + statExemptEpfWage)),
+        epfAdditional: Math.max(0, round2(statAdditional - statEpfAdditionalExcluded + statExemptEpfAdditional)),
         socsoEis: Math.max(
           0,
-          round2(wagesExOt + statOvertime - en.socsoWageExcluded + statSocsoWageExtra - en.socsoWageDeduction),
+          round2(wagesExOt + statOvertime - en.socsoWageExcluded + statSocsoWageExtra + statExemptSocsoWage - en.socsoWageDeduction),
         ),
         pcb: round2((earlierTaxBasis?.corrected && earlierTaxBasis.normal!==undefined ? earlierTaxBasis.normal : Math.max(0, round2(wagesExOt + statOvertime - en.pcbWageDeduction))) + statAdditional + (earlierTaxBasis?.additionalDelta??0) + nonCashCumulative.bik + nonCashCumulative.vola),
         hrdf: isAdditionalRun ? 0 : hrdfBase,
@@ -7780,7 +7879,13 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
               namedAllowance += amount;
               add(line.name, amount);
             } else if (bucket === 'bonus') {
-              namedBonus += amount;
+              // 2026-11-13 — a line whose bonus money is NORMAL EPF wages is already out of
+              // `bonus − epfAdditionalExcluded` (it is in `epfWageExtra`), so it is named here but not
+              // counted against the Bonus remainder below.
+              if (!line.epfNormalStream) namedBonus += amount;
+              add(line.name, amount);
+            } else if (bucket === 'reimburse' && line.exemptStatutory) {
+              // 2026-11-13 — a PCB-exempt slice ticked for EPF (it is in `exemptEpf*`, outside both remainders).
               add(line.name, amount);
             }
           }
@@ -7793,10 +7898,13 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         const priorPost = postEmployment ? postEarlierByEmp.get(e.employmentId)?.inputs : undefined;
         if (priorPost) {
           add('Earlier runs in the wage month', priorPost.wages + priorPost.additional
-            - priorPost.options.epfWageExcluded - priorPost.options.epfWageDeduction - priorPost.options.epfAdditionalExcluded);
+            - priorPost.options.epfWageExcluded - priorPost.options.epfWageDeduction - priorPost.options.epfAdditionalExcluded
+            + priorPost.options.epfWageExtra + priorPost.options.exemptEpfWage + priorPost.options.exemptEpfAdditional);
         } else if (isAdditionalRun || restatesMonth) {
-          // 69d6ed3c — only the part of the earlier runs' additional pay that was subject to EPF.
-          add('Earlier additional pay in the wage month', earlierRun.additional - earlierRun.epfAdditionalExcluded);
+          // 69d6ed3c — only the part of the earlier runs' additional pay that was subject to EPF (2026-11-13: in
+          // either EPF stream), plus the PCB-exempt one-off money they paid that was EPF wages.
+          add('Earlier additional pay in the wage month', earlierRun.additional - earlierRun.epfAdditionalExcluded
+            + earlierRun.epfWageExtra + earlierRun.exemptEpfWage + earlierRun.exemptEpfAdditional);
         }
         // The pack clamps the normal and additional wage streams separately. Disclose the
         // difference when a deduction exceeds its stream rather than overstating eligible pay.
@@ -7838,15 +7946,17 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         const priorPost = postEmployment ? postEarlierByEmp.get(e.employmentId)?.inputs : undefined;
         const earlierLine = priorPost
           ? {
-              epfNormal: round2(priorPost.wages - priorPost.options.epfWageExcluded - priorPost.options.epfWageDeduction),
-              epfBonus: round2(priorPost.additional - priorPost.options.epfAdditionalExcluded),
-              socsoEis: round2(priorPost.wages + priorPost.overtime - priorPost.options.socsoWageExcluded + priorPost.options.socsoWageExtra - priorPost.options.socsoWageDeduction),
+              epfNormal: round2(priorPost.wages - priorPost.options.epfWageExcluded - priorPost.options.epfWageDeduction + priorPost.options.epfWageExtra + priorPost.options.exemptEpfWage),
+              epfBonus: round2(priorPost.additional - priorPost.options.epfAdditionalExcluded + priorPost.options.exemptEpfAdditional),
+              socsoEis: round2(priorPost.wages + priorPost.overtime - priorPost.options.socsoWageExcluded + priorPost.options.socsoWageExtra + priorPost.options.exemptSocsoWage - priorPost.options.socsoWageDeduction),
             }
           : monthDelta
             ? {
-                epfNormal: 0,
-                epfBonus: round2(earlierRun.additional - earlierRun.epfAdditionalExcluded),
-                socsoEis: round2(earlierRun.socsoWageExtra + (restatesMonth ? earlierRun.overtime : 0)),
+                // 2026-11-13 — the earlier runs' additional pay that was NORMAL EPF wages, and the PCB-exempt
+                // one-off money they paid, by its ticks (both read off their own stamps).
+                epfNormal: round2(earlierRun.epfWageExtra + earlierRun.exemptEpfWage),
+                epfBonus: round2(earlierRun.additional - earlierRun.epfAdditionalExcluded + earlierRun.exemptEpfAdditional),
+                socsoEis: round2(earlierRun.socsoWageExtra + earlierRun.exemptSocsoWage + (restatesMonth ? earlierRun.overtime : 0)),
               }
             : undefined;
         const items = buildStatutoryTraceLines({
@@ -7876,6 +7986,11 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
             own: {
               epfAdditional: Math.max(0, round2(bonus - en.epfAdditionalExcluded)),
               socsoWageExtra: Math.max(0, round2(en.socsoWageExtra)),
+              // 2026-11-13 (owner decisions A/B) — read back by later runs in the month (`readRunStatutoryStamp`).
+              epfWageExtra: Math.max(0, round2(en.epfWageExtra)),
+              exemptEpfWage: Math.max(0, round2(en.exemptCarry.epfWage)),
+              exemptEpfAdditional: Math.max(0, round2(en.exemptCarry.epfAdditional)),
+              exemptSocsoWage: Math.max(0, round2(en.exemptCarry.socsoWage)),
             },
             ...(monthDelta ? { earlier: {
               runs: earlierRun.runs,
@@ -7884,6 +7999,10 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
               additional: earlierRun.additional,
               epfAdditional: round2(earlierRun.additional - earlierRun.epfAdditionalExcluded),
               socsoWageExtra: earlierRun.socsoWageExtra,
+              epfWageExtra: earlierRun.epfWageExtra,
+              exemptEpfWage: earlierRun.exemptEpfWage,
+              exemptEpfAdditional: earlierRun.exemptEpfAdditional,
+              exemptSocsoWage: earlierRun.exemptSocsoWage,
             } } : {}),
             ...(beforeTrace ? { before: { epf: beforeTrace.epf, socso: beforeTrace.socso, skbbk: beforeTrace.skbbk, eis: beforeTrace.eis } } : {}),
             ...(delta ? { chargedBefore: lines(delta.charged) } : {}),
@@ -8667,7 +8786,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         const after=sl.statutory as Record<string,unknown>;
         const inputs=(st:Record<string,unknown>|undefined)=>{
           const saved=(st?.postEmploymentPayment as {statutoryInputs?:PostInputs}|undefined)?.statutoryInputs;
-          return saved?.options?[saved.wages,saved.additional,saved.overtime,saved.lp,saved.zakat,...postNumericOptions.map(key=>saved.options[key]),...DELTA_KEYS.map(key=>Number(st?.[key]??0)),Object.entries((st?.exemptionUsed??{}) as Record<string,unknown>).sort(([a],[b])=>a.localeCompare(b))]:null;
+          return saved?.options?[saved.wages,saved.additional,saved.overtime,saved.lp,saved.zakat,...postNumericOptions.map(key=>postOptionOf(saved.options,key)),...DELTA_KEYS.map(key=>Number(st?.[key]??0)),Object.entries((st?.exemptionUsed??{}) as Record<string,unknown>).sort(([a],[b])=>a.localeCompare(b))]:null;
         };
         if(JSON.stringify(inputs(before))===JSON.stringify(inputs(after)))continue;
         const later=await tx.select({id:payrollBatch.id,status:payrollBatch.status}).from(payrollBatch).innerJoin(payslip,eq(payslip.batchId,payrollBatch.id))

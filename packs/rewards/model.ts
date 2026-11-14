@@ -42,6 +42,8 @@ export type Recommendation = {
   meritBp: number | null; promotionGrade: string | null; promotionBp: number | null; specialBp: number | null;
   multiplierBp: number | null; bonusCents: number | null; lumpCents: number | null; reason: string;
   currentRoleSummary: string; proposedRoleSummary: string;
+  /** 37f82412 — a short reviewer note shown in the person panel beside the business case. Absent on older entries. */
+  note?: string;
 };
 export const policySchema: z.ZodType<RewardPolicy> = z.object({
   year: z.number().int().min(2000).max(2200),
@@ -84,12 +86,15 @@ export const factsSchema: z.ZodType<RewardFacts> = z.object({
   segment: z.string().trim().max(80), branch: z.string().trim().max(100),
   reviewed: z.boolean(),
 }).strict();
+/** 37f82412 — the person-panel note length cap. */
+export const REWARD_NOTE_MAX = 2000;
 export const recommendationSchema: z.ZodType<Recommendation> = z.object({
   meritBp: bpSchema.nullable(), promotionGrade: z.string().trim().max(30).nullable(),
   promotionBp: bpSchema.nullable(), specialBp: bpSchema.nullable(),
   multiplierBp: bpSchema.nullable(), bonusCents: centsSchema.nullable(), lumpCents: centsSchema.nullable(),
   reason: z.string().trim().max(4000),
   currentRoleSummary: z.string().trim().max(8000).default(''), proposedRoleSummary: z.string().trim().max(8000).default(''),
+  note: z.string().trim().max(REWARD_NOTE_MAX).optional(),
 }).strict();
 /** 328ebe84 — a negative increase or award is a salary reduction attempt, not a technical range error. */
 const reductionFields = ['meritBp', 'promotionBp', 'specialBp', 'bonusCents', 'lumpCents'];
@@ -144,6 +149,34 @@ export function defaultPolicy(year: number): RewardPolicy {
   };
 }
 
+/** 70d5e7c5 — a salary-increase exclusion window that does not fall inside the review's own year (for example
+ *  a 2026 review still carrying 1 Oct – 31 Dec 2025). It is flagged in set-up as a blocking check; live
+ *  reviews are never silently re-dated. */
+export function exclusionWindowOutsideYear(policy: Pick<RewardPolicy, 'year' | 'blockedFrom' | 'blockedTo'>): boolean {
+  const year = String(policy.year);
+  return policy.blockedFrom.slice(0, 4) !== year || policy.blockedTo.slice(0, 4) !== year;
+}
+/** The dated policy fields that move with the review year when a configuration is based on an earlier year. */
+export const REWARD_POLICY_DATE_FIELDS = ['effectiveFrom', 'joinedBefore', 'confirmedBy', 'blockedFrom', 'blockedTo', 'activeAsOf'] as const;
+/** Move one ISO date by whole years, keeping the day (29 February becomes 28 February in a common year). */
+export function shiftIsoDateYears(date: string, years: number): string {
+  const [y, m, d] = date.split('-').map(Number);
+  const year = y + years, last = new Date(Date.UTC(year, m, 0)).getUTCDate();
+  return `${String(year).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(Math.min(d, last)).padStart(2, '0')}`;
+}
+/** 70d5e7c5 — when a new year's configuration starts from an earlier year's, every dated field that still holds
+ *  the earlier configuration's value moves into the new year. A date the user changed is kept as typed. */
+export function rollRewardPolicyDates<T extends Pick<RewardPolicy, typeof REWARD_POLICY_DATE_FIELDS[number]>>(next: T, base: Pick<RewardPolicy, 'year' | typeof REWARD_POLICY_DATE_FIELDS[number]>, year: number): T {
+  const years = year - base.year;
+  if (!years) return next;
+  const out = { ...next };
+  for (const field of REWARD_POLICY_DATE_FIELDS) {
+    const before = base[field], value = next[field];
+    if (before && value === before) (out as Record<string, string | undefined>)[field] = shiftIsoDateYears(before, years);
+  }
+  return out;
+}
+
 /** Existing policy snapshots retain their historical grade rule until explicitly converted. */
 export function isSeniorPlanMember(policy: RewardPolicy, facts: RewardFacts, grade: string): boolean {
   return facts.seniorPlan || policy.seniorMembershipMode !== 'named-members' && policy.seniorGrades.includes(grade);
@@ -164,10 +197,11 @@ export function withConfidentialityFloor(source: RewardSource, floor: { level: '
   return floor ? { ...rest, confidentialityFloor: floor.level, confidentialityReason: floor.reason } : rest;
 }
 
-export function visibleEntry(entry: RewardEntry & { groupEcDirectReport?: boolean }, roles: readonly RewardRole[], personId?: string | null): boolean {
+export function visibleEntry(entry: RewardEntry & { groupEcDirectReport?: boolean; restrictedHidden?: boolean }, roles: readonly RewardRole[], personId?: string | null): boolean {
   if (entry.source.personId === personId) return false;
   if (!entry.facts.reviewed && !roles.includes('gr')) return false;
-  if (entry.groupEcDirectReport || entry.facts.confidentiality === 'ec') return roles.some(r => ['gr', 'ctro', 'ec'].includes(r));
+  // restrictedHidden: the viewer's Role permissions row for restricted (EC) direct reports is "—" (board db14e49c).
+  if (entry.groupEcDirectReport || entry.facts.confidentiality === 'ec') return !entry.restrictedHidden && roles.some(r => ['gr', 'ctro', 'ec'].includes(r));
   if (entry.facts.confidentiality === 'bg' && roles.every(r => r === 'bu' || r === 'pbp')) return false;
   return true;
 }

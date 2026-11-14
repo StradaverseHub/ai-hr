@@ -105,7 +105,9 @@ it('rechecks native setup grants and actual login grants with retained contexts 
  expect(userId).toBe(f.b.adminUserId);
  const [grant]=await owner.client<{id:string}[]>`select id from reward_setup_grant where tenant_id=${f.b.tenantId}::uuid and user_id=${userId}::uuid and active`;
  await owner.client`update reward_setup_grant set active=false where id=${grant.id}::uuid`;
- await expect(rewardLibraryGradeChoices(f.ctx)).rejects.toThrow(/not available/);await expect(rewardSetupPlanChoices(f.ctx)).rejects.toThrow(/not available/);
+ // Board 60f1fdcd: the fixture administrator is also a group-wide HR Admin, a Salary Structure / Bonus Matrix editor
+ // since 5580, so the grade ladder stays available without the Group Rewards grant; the Plans page does not.
+ expect((await rewardLibraryGradeChoices(f.ctx)).length).toBeGreaterThan(0);await expect(rewardSetupPlanChoices(f.ctx)).rejects.toThrow(/not available/);
  expect(await rewardApprovedPlanReviewSummaries(f.ctx)).toEqual([]);
  await owner.client`update reward_setup_grant set active=true where id=${grant.id}::uuid`;
  expect((await rewardSetupPlanChoices(f.ctx)).map(p=>p.source.versionId)).toEqual([f.binding.plan_version_id]);
