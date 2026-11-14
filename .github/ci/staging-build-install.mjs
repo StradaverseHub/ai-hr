@@ -69,8 +69,8 @@ function targetRoot(source=ROOT){
  source=resolve(source);assert(source==='/opt/ai-hr'&&realpathSync(source)===source&&process.platform==='linux','Installer is restricted to the existing Linux alpha/staging source');
  return source;
 }
-function selected(installId,sourceRef,buildRecordId,{allowCleanup=false}={}){
- const p=readPrivateInstall(installId,{allowCleanup});
+function selected(installId,sourceRef,buildRecordId,{allowCleanup=false,allowExpired=false}={}){
+ const p=readPrivateInstall(installId,{allowCleanup,allowExpired});
  assert(p.grant.source===sourceRef&&p.grant.build.buildRecordId===buildRecordId,'Selected source/record differs from installation grant');
  return p;
 }
@@ -190,8 +190,9 @@ export async function activateCiBuild(sourceRef,installId,buildRecordId){
   bootIdSha256:installHash(readFileSync('/proc/sys/kernel/random/boot_id')),activatedAt:new Date().toISOString(),releaseAuthorized:false,activeServiceVerified:false};
  save(join(p.directory,'activated.json'),result);return result;
 }
-async function confirmRuntime(sourceRef,installId,buildRecordId,{persist=true,allowCleanup=false}={}){
- const source=targetRoot(),p=selected(installId,sourceRef,buildRecordId,{allowCleanup}),g=p.grant;
+async function confirmRuntime(sourceRef,installId,buildRecordId,{persist=true,allowCleanup=false,allowExpired=false}={}){
+ assert(!(persist&&allowExpired),'An expired installation grant is read-only');
+ const source=targetRoot(),p=selected(installId,sourceRef,buildRecordId,{allowCleanup,allowExpired}),g=p.grant;
  const activated=JSON.parse(regular(join(p.directory,'activated.json'),1024**2));
  assert(activated.installId===installId&&activated.source===sourceRef&&activated.buildRecordId===buildRecordId&&activated.authorizationSha256===p.authorizationSha256,'Activated installation differs');
  runtimeContract(source,g);const bound=await sourceContract(source,p);
@@ -213,10 +214,12 @@ async function confirmRuntime(sourceRef,installId,buildRecordId,{persist=true,al
   authorizationSha256:p.authorizationSha256,pid,startedMonotonicUs:started,healthStatus:200,compiledByteInventory,migrationLedger:collectMigrationLedger(source),verifiedAt:new Date().toISOString(),releaseAuthorized:false,fullSourceChecksumVerified:false,fullMigrationLedgerVerified:true};
  if(persist)save(join(p.directory,'runtime.json'),result);return result;
 }
-async function readStatus(sourceRef,installId,buildRecordId){
- targetRoot();const p=selected(installId,sourceRef,buildRecordId,{allowCleanup:true});
+/** `status` keeps the strict unexpired grant. `resume-status` (aihr-resume-arrival/v1) is the same read-only proof for an
+ * installation whose grant expired while its deploy record awaited resume; it never persists, stages, activates or cleans. */
+async function readStatus(sourceRef,installId,buildRecordId,{allowExpired=false}={}){
+ targetRoot();const p=selected(installId,sourceRef,buildRecordId,{allowCleanup:true,allowExpired});
  return {authorizationSha256:p.authorizationSha256,verified:JSON.parse(regular(join(p.directory,'verified.json'),1024**2)),
-  activated:JSON.parse(regular(join(p.directory,'activated.json'),1024**2)),runtime:await confirmRuntime(sourceRef,installId,buildRecordId,{persist:false,allowCleanup:true}),releaseAuthorized:false};
+  activated:JSON.parse(regular(join(p.directory,'activated.json'),1024**2)),runtime:await confirmRuntime(sourceRef,installId,buildRecordId,{persist:false,allowCleanup:true,allowExpired}),releaseAuthorized:false};
 }
 export async function withNormalCleanupLock(directory,selection,operation){
  const release=acquireNormalCleanupLock(join(directory,'normal-cleanup.lock'),selection);
@@ -318,9 +321,9 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
    if(existsSync(COORDINATOR))assert(grant.source===process.env.AIHR_STAGING_CANDIDATE,'Installation source differs from lease');
    return initializePrivateInstall(grant);
   }
-  assert(process.argv.length===6&&['stage','activate','confirm-runtime','status','cleanup','cleanup-session'].includes(mode),'Exact installer mode/source/install/build record required');
+  assert(process.argv.length===6&&['stage','activate','confirm-runtime','status','resume-status','cleanup','cleanup-session'].includes(mode),'Exact installer mode/source/install/build record required');
   if(mode==='cleanup-session')return cleanupCiBuildSession(sourceRef,installId,buildRecordId);
   if(mode==='cleanup'){const chunks=[];let total=0;for await(const chunk of process.stdin){total+=chunk.length;assert(total<=32*1024,'Cleanup proof exceeds bound');chunks.push(chunk);}return cleanupCiBuild(sourceRef,installId,buildRecordId,JSON.parse(Buffer.concat(chunks)));}
-  return mode==='stage'?stageCiBuild(sourceRef,installId,buildRecordId):mode==='activate'?activateCiBuild(sourceRef,installId,buildRecordId):mode==='confirm-runtime'?confirmRuntime(sourceRef,installId,buildRecordId):readStatus(sourceRef,installId,buildRecordId);
+  return mode==='stage'?stageCiBuild(sourceRef,installId,buildRecordId):mode==='activate'?activateCiBuild(sourceRef,installId,buildRecordId):mode==='confirm-runtime'?confirmRuntime(sourceRef,installId,buildRecordId):readStatus(sourceRef,installId,buildRecordId,{allowExpired:mode==='resume-status'});
  })().then(value=>console.log(JSON.stringify(value))).catch(error=>{console.error(error);process.exitCode=1;});
 }

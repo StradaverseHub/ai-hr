@@ -332,6 +332,36 @@ the current template, atomic replacement, `daemon-reload`, start, three stable l
 digest, and a later managed `drain` can validate it. A failure after replacement enters the same protected
 quarantine. The mode never signals, kills, restores or deletes the prior worker, its release or any record.
 
+### Hung worker during a web release
+
+With `AIHR_IMPORT_WORKER_REQUIRED=1` (staging), `deploy/deploy.sh` ends with `scripts/check-import-worker.ts` and fails
+the deploy if any bulk-job kind has no live heartbeat (one within 90 s, waiting up to `AIHR_IMPORT_WORKER_WAIT_SECONDS`,
+default 45 s). The CI web build has already been activated and the service restarted by then. The drain → web →
+activate order above does not help, because `drain` and the upgrade helper need a successful web deploy record.
+
+A hung worker usually recovers by itself: the [stall watchdog](#stall-watchdog) exits it once one phase has lasted
+longer than `AIHR_IMPORT_WORKER_STALL_SECONDS` (default 1800 s) and systemd starts a new process, which records a
+fresh heartbeat. Until that happens, the heartbeat is stale and the deploy's worker check fails. The steps below
+cover that window, and a worker that keeps hanging after each restart.
+
+- **Before the web deploy:** run the check with the pinned runtime:
+  `cd /opt/ai-hr && /opt/node22/bin/node --env-file=.env.production --import tsx scripts/check-import-worker.ts`.
+  If the managed worker is running but its heartbeat is stale, look in the journal for a stall line or for the
+  watchdog's start line. Wait for the watchdog to restart it, or restart that existing unit yourself
+  (`sudo systemctl restart aihr-bank-import`) under the held lease. On staging the deploy user's passwordless sudo
+  covers only `systemctl restart aihr`, so a person with the sudo password runs this in their own terminal
+  (`ssh -t -F /PRIVATE/ssh_config aihr-staging 'sudo systemctl restart aihr-bank-import'`; done this way on
+  13 November 2026). Repeat the check before deploying.
+  A restart keeps the unit, release and receipts unchanged. It is not a worker upgrade.
+- **If the deploy already failed at that check** (deploy record `failed` at phase `ci-build-health`, log ending in
+  `Import worker check failed`): wait until the check passes again (the watchdog restart, or the restart above),
+  then complete the web arrival with `operator-release.mjs verify-resume-arrival` and `resume-arrival`
+  ([policy](../../docs/CI-STAGING-VERIFICATION-POLICY.md#resume-after-activation--aihr-resume-arrivalv1)). Do not
+  hand-write `deploy-state.sh finish`. Run the worker upgrade helper only after that arrival.
+- If the new release adds a bulk-job kind the old worker cannot serve, neither the watchdog nor a restart can pass
+  the check. That is a worker upgrade, not a hung worker. Plan the drain/activate sequence before the web deploy
+  instead.
+
 ## Production first activation (`production-first-install`)
 
 `bank_import_worker_production_v1.py` is the reviewed route for the first worker activation on the customer
