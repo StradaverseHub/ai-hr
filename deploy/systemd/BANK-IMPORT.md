@@ -141,7 +141,7 @@ the worker's tick, the unit one phase covers:
 | `bank`, first tick of an Excel workbook (decode and store every row in one transaction) | 250,000 rows, every template column, 29.7 MiB file | 228 s and 339 s (decode 217 s and 332 s) | about 1,020 s |
 | `bank`, first tick of a CSV file | 250,000 rows, every template column, 118.6 MiB | 218 s and 302 s (decode 291 s of the 302 s) | about 905 s |
 | `bank`, one validation tick | 1,000 rows, every template column, tenant of 2,001 employees | about 18 s (from 20-row probes of 0.36 s) | about 55 s |
-| `bank`, one validation tick | 100 rows, every template column, tenant of 250,001 employees | 78.5 s and 79.4 s | about 240 s (see below for 1,000 rows) |
+| `bank`, one validation tick | 100 rows, every template column, tenant of 250,001 employees | 78.5 s and 79.4 s before the residency fix; 0.98 s and 0.92 s after (1,000 rows: 6.05 s and 5.86 s, see below) | about 240 s before; about 3 s after (1,000 rows: about 18 s) |
 | `bank`, one import tick | 100 changed rows, tenant of 250,001 employees | 19.4 s and 19.6 s | about 60 s |
 | `individual`, validation | 2,000 rows | 0.35 s and 0.30 s | under 5 s |
 | `individual`, confirmation (one transaction) | 2,000 rows for 200 employees | 58.0 s and 42.3 s | about 175 s |
@@ -154,14 +154,27 @@ less than 20% margin above that, and the old 960 s minimum was below it, so the 
 other bulk unit holds a 60 s lease). The workbook decode also peaked at about 3 GB of worker memory in the test
 process, which is a separate capacity concern on the 3.9 GB staging host.
 
-One phase is not covered by any sensible limit. In a tenant of 250,001 employees, every row that names a residency
-column (`tax_residency`, `is_resident`, `tax_circumstance`, `tax_category` or `epf_citizenship`) reads the
-employee's tax selection one at a time during validation. That read took about 0.8 s per row in that tenant (15 ms
-in a tenant of 2,001 employees), so one 1,000-row validation tick takes about 790 s on a runner and about 2,400 s on
-staging. Rows without those columns cost about 5 ms each. Until validation reads residency for the whole batch at
-once, a residency file in a tenant above roughly 150,000 employees can exceed the 1800 s limit in `bank`, and the
-restarted worker repeats the same tick. Raising the limit does not make such a file finish in reasonable time, so
-fix the validator rather than raising the limit for it.
+Fixed on 14 Nov 2026: a residency file no longer outgrows the limit. Before the fix, every row that named a residency
+column (`tax_residency`, `is_resident`, `tax_circumstance`, `tax_category` or `epf_citizenship`) read the employee's
+tax selection one at a time during validation, about 0.8 s per row in a tenant of 250,001 employees (15 ms at 2,001),
+so one 1,000-row validation tick took about 790 s on a runner and about 2,400 s on staging. The cost came from the
+employment row policy: without the transaction-local point-read marker each statement that reads `employment`
+(directly or through the statutory and tax-selection policies) rebuilds the tenant's whole visible-employment set,
+about 0.34 s at 250,001 employees, and the per-row read ran two or more such statements per row. Validation now reads
+residency for each slice of up to 1,000 subjects in one set-wise read through the pack's borrowed
+`getTaxSelections` (the read the Personnel export uses), so that cost is paid a fixed number of times per tick, not
+per row (`readTaxResidenciesTx` in `core/bank-statutory-import.ts`; `test/bank-residency-batch.test.ts` proves the
+same answers as the per-row read and a fixed statement count). Re-measured on branch
+`claude/bank-residency-measure-20261114`, `alpha-focused-checks` runs 43593293114 and 43593396202 (4-vCPU runners),
+in a tenant of 250,001 employees with every template column:
+
+| Validation tick | Before | After (two runs) | Staging estimate (x3) |
+| --- | --- | --- | --- |
+| 100 rows | 78.5 s and 79.4 s | 0.98 s and 0.92 s | about 3 s |
+| 1,000 rows | about 790 s (estimated from 20-row probes) | 6.05 s and 5.86 s | about 18 s |
+
+The residency read itself fell from 16.8 s and 15.5 s for 20 rows one at a time to 0.47 s and 0.44 s for 1,000
+rows at once. The import tick (100 changed rows, one transaction each) is unchanged at about 19 s.
 
 The exit itself is the whole recovery. The watchdog writes nothing and does no clean-up, because the stalled call
 may hold the only queue-owner connection. When the process exits, PostgreSQL rolls back each open transaction. A
