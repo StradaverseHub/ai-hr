@@ -26,6 +26,14 @@ describe('System Labels Excel download controls',()=>{
   expect(screen.getByRole('button',{name:'Export'}).hasAttribute('disabled')).toBe(false);
   expect(screen.queryByText(/credentials/)).toBeNull();
  });
+ it('shows the server\'s stated refusal instead of a bare failure',async()=>{
+  // Board 2026-11-14: production Positions exports were refused with a reason HR never saw.
+  fetchMock.mockResolvedValue({ok:false,status:400,headers:new Headers({'Content-Type':'application/json'}),json:async()=>({error:'The selected lists exceed 7000 rows. Narrow the companies or lists.'})});
+  render(<NextIntlClientProvider locale="en" messages={en}><SystemLabelExportButton kind="position"/></NextIntlClientProvider>);
+  await userEvent.click(screen.getByRole('button',{name:'Export'}));
+  await waitFor(()=>expect(screen.getByRole('alert').textContent).toBe('The selected lists exceed 7000 rows. Narrow the companies or lists.'));
+  expect(screen.getByRole('button',{name:'Export'}).hasAttribute('disabled')).toBe(false);
+ });
  it('refuses an HTML sign-in response instead of downloading it as an Excel file',async()=>{
   fetchMock.mockResolvedValue({ok:true,headers:new Headers({'Content-Type':'text/html'}),blob:vi.fn()});
   render(<NextIntlClientProvider locale="en" messages={en}><SystemLabelExportButton kind="grades"/></NextIntlClientProvider>);
