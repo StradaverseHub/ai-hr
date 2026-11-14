@@ -236,7 +236,7 @@ describe('consolidated Organisation Assignment save — both legs in one submit'
         departmentId: b.deptB,
         org: { orgDivision: 'Anything' },
       }),
-    ).rejects.toThrow(/effective date cannot be before/i);
+    ).rejects.toThrow(/before the current assignment record, which starts on/i); // Board 2026-11-14: refusal names both dates.
 
     expect((await employmentRow(hire.employmentId)).gradeId).toBe(gradeBefore);
     expect(await assignmentRows(hire.employmentId)).toHaveLength(1);
