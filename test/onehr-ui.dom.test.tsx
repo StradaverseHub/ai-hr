@@ -21,7 +21,7 @@ import { AssessmentCalibrationView } from '../app/performance/onehr/calibration-
 import { KpiEditor } from '../app/performance/onehr/kpi-editor';
 import { OnehrReviewView } from '../app/performance/onehr/review-view';
 import { ItemNavigator } from '../app/performance/workspace/item-navigator';
-import { flushAssessmentDrafts } from '../app/performance/onehr/draft-form';
+import { AssessmentDraftForm, flushAssessmentDrafts } from '../app/performance/onehr/draft-form';
 const show=(element:React.ReactNode)=>render(<NextIntlClientProvider locale="en" messages={en}>{element}</NextIntlClientProvider>);
 /** Every element of `type` in a returned element tree, walking props.children (the page wraps the view, PT-X2). */
 function elementsOf(node:React.ReactNode,type:unknown):React.ReactElement[]{
@@ -151,5 +151,14 @@ describe('OneHR native workflow controls',()=>{
   expect(screen.getByRole('group',{name:'Analysis Level 3'})).toBeTruthy();expect(screen.getByRole('group',{name:'Analysis Level 4'})).toBeTruthy();
   expect(screen.getByText(en.onehr.competencyScope.current)).toBeTruthy();expect(screen.getByText(en.onehr.competencyScope.future)).toBeTruthy();
 
+ });
+ it('settles a pending draft autosave before the screen unmounts',async()=>{
+  // Last on purpose: a debounce still pending here would otherwise run after the environment is torn down.
+  const save=vi.fn().mockResolvedValue({revision:2});
+  show(<AssessmentDraftForm revision={1} save={save} action={async()=>{}} labels={{saving:'Saving',saved:'Saved',privateDraft:'Private draft',failed:'Failed'}}><label>Note<input name="note" defaultValue=""/></label></AssessmentDraftForm>);
+  fireEvent.change(screen.getByLabelText('Note'),{target:{value:'Unsaved wording'}});
+  expect(screen.getByRole('status').textContent).toBe('Saving');expect(save).not.toHaveBeenCalled();
+  await unmountSettled();
+  expect(save).toHaveBeenCalledOnce();expect((save.mock.calls[0][0] as FormData).get('note')).toBe('Unsaved wording');
  });
 });
