@@ -148,8 +148,33 @@ than waiting, its heartbeat row stays behind until it goes stale, and the new pr
 
 If the database server never sees the old connection close (for example when the network path itself failed),
 the old backend, together with any Bank or Individual advisory lock it holds, lasts until the server's TCP
-keepalive ends it. Until then those two queues wait while bulk jobs continue. Use `ps` and `pg_locks` on the
-database host (rule 12 of docs/SCALE-AND-RELEASE-RULES.md) to find such a backend.
+keepalive ends it. The server's own default is far too slow for this: staging's PostgreSQL 16 measured
+`tcp_keepalives_idle` 7200 s and `client_connection_check_interval` 0, which would have blocked those two queues
+for more than two hours. Every connection of a worker-role process (`AIHR_DB_PROCESS_ROLE=worker`: the queue-owner
+connection and the HR-transaction pool) therefore sets its own session values at startup
+(`db/worker-connection.ts`), with no change to the database server:
+
+| Setting | Value | Effect |
+| --- | --- | --- |
+| `tcp_keepalives_idle`, `_interval`, `_count` | 60 s, 15 s, 8 | an idle backend whose client vanished closes about 3 min later |
+| `tcp_user_timeout` | 180000 ms | the same bound while the backend is sending to a client that no longer acknowledges |
+| `client_connection_check_interval` | 10000 ms | a running statement is cancelled within 10 s once its client is known to be gone |
+
+Keepalive probes run only on an idle connection, and the connection check ends a statement only when its client
+has gone, so neither shortens a legitimate long statement. All five settings may be set by a role that is not a
+superuser, so the restricted `ai_hr_owner` and `ai_hr_app` apply them. A server that refused one would fail the
+worker's connection at start with the error in the journal, instead of running without it.
+`test/worker-connection-db.test.ts` checks every worker connection against a real database.
+On the client side the worker keeps TCP keepalive on with a 60 s idle time (the operating system's probe interval and count
+apply, about 12 min on Linux), and the stall watchdog stays the backstop for a call that never returns.
+So a half-open owner session now ends, and its locks with it, about 3 min after the network failed, usually
+before the watchdog has restarted the worker. The web keeps the server defaults; it may connect through PgBouncer,
+which refuses startup parameters it does not know.
+
+If the two queues still wait after a restart, use `ps` and `pg_locks` on the database host (rule 12 of
+docs/SCALE-AND-RELEASE-RULES.md) to find the old backend. Over a Unix-domain socket PostgreSQL ignores the TCP
+settings (`SHOW tcp_keepalives_idle` reads 0); such a connection is local, so the server sees a dead process at
+once.
 
 ## Protected staging update after first installation
 
