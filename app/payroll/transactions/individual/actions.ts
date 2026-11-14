@@ -10,13 +10,14 @@ import { buildTxnPanel, type TxnPanel } from './existing-context';
 import {previewIndividualTxnInput,PayComponentCompanyError} from '@/packs/payroll/service';
 import { deriveIndividualTxnAmount, TxnEffectiveDateInvalidError, TxnQuantityRequiredError } from '@/core/pay-components';
 import { PayRuleEvalError } from '@/core/pay-rule';
-import {PayFormulaError} from '@/lib/pay-formula-model';
+import {PayFormulaError,PayFormulaAfterLeavingDateError} from '@/lib/pay-formula-model';
 import {
   createIndividualTxnsBulk,
   getIndividualTxn,
   updateIndividualTxn,
   deleteIndividualTxn,
   InvalidTxnDateError,
+  TxnAfterLeavingDateError,
   TxnNotFoundError,
   AmountNotPositiveError,
   CompanyMismatchError,
@@ -51,6 +52,16 @@ import {
  * enforced here rather than assumed.
  */
 
+/** ad6ed930 — the employee's last day (ISO) carried by either named after-leaving refusal, else null. */
+const leftOnOf = (e: unknown): string | null =>
+  e instanceof TxnAfterLeavingDateError || e instanceof PayFormulaAfterLeavingDateError ? e.leftOn : null;
+
+/** ICU values for the key `txnErrorKey` returns, when it takes any. The ISO date crosses raw; the screen formats it. */
+const txnErrorValues = (e: unknown): { errorValues?: Record<string, string> } => {
+  const leftOn = leftOnOf(e);
+  return leftOn ? { errorValues: { leftOn } } : {};
+};
+
 /** Map a typed individual-transaction error to a friendly key the client resolves against its catalog. */
 const txnErrorKey = (e: unknown): string =>
   // 4b909202 — the only action on this screen that asks for a payroll permission is the add-to-run
@@ -65,6 +76,10 @@ const txnErrorKey = (e: unknown): string =>
       ? 'addToRunNotEmployed'
       : e instanceof InvalidTxnDateError || e instanceof TxnEffectiveDateInvalidError
     ? 'invalidEffectiveDate'
+    : // ad6ed930 — a date after the employee's last day, from the save's own guard or from the formula
+      // runtime. Before the generic PayFormulaError branch below, which would blame the Pay Item's set-up.
+      leftOnOf(e) != null
+      ? 'txnAfterLeavingDate'
     : // 2da9937a — a pay item that works its amount out from a keyed quantity, saved without one. Two keys
       // rather than one interpolated sentence: the screen resolves an error key with no values, and the
       // operator needs to be told WHICH box, not that a box is missing.
@@ -180,7 +195,7 @@ function txnFailure(e: unknown, target?: { processed: boolean }): Extract<TxnAct
         : {}),
     };
   }
-  return { ok: false, error: txnErrorKey(e) };
+  return { ok: false, error: txnErrorKey(e), ...txnErrorValues(e) };
 }
 
 export type TxnActionResult =
@@ -424,7 +439,7 @@ export type TxnAmountPreview =
        *  pay-item screen shows, not the token. Null when nothing divided by zero. */
       zeroDivisor: string | null;
     }
-  | { ok: false; error: string };
+  | { ok: false; error: string; errorValues?: Record<string, string> };
 
 /**
  * 2da9937a — show the operator the amount BEFORE they save it.
@@ -482,7 +497,7 @@ export async function previewTxnAmountAction(input: {
         : null,
     };
   } catch (e) {
-    return { ok: false, error: txnErrorKey(e) };
+    return { ok: false, error: txnErrorKey(e), ...txnErrorValues(e) };
   }
 }
 
@@ -512,7 +527,7 @@ export async function previewTxnAmountAction(input: {
  * Read-only: no write, no domain event.
  */
 export type TxnAmountsPreview =
-  | { ok: false; error: string }
+  | { ok: false; error: string; errorValues?: Record<string, string> }
   | {
       ok: true;
       derived: false;
@@ -605,7 +620,7 @@ export async function previewTxnAmountsAction(input: {
         : null,
     };
   } catch (e) {
-    return { ok: false, error: txnErrorKey(e) };
+    return { ok: false, error: txnErrorKey(e), ...txnErrorValues(e) };
   }
 }
 
@@ -699,6 +714,8 @@ export async function createIndividualTxnDayGridAction(input: {
       rows,
       intendedCycleId: input.intendedCycleId,
       ...(input.confirmAddToRun ? { widenScopeIfNeeded: true } : {}),
+      // ad6ed930 — the window caps its dates at the last day; the service is the authority.
+      refuseAfterLeavingDate: true,
     });
     revalidatePath('/payroll/transactions/individual');
     return {
@@ -783,6 +800,8 @@ export async function createIndividualTxnAction(
       ],
       intendedCycleId: input.intendedCycleId,
       ...(input.confirmAddToRun ? { widenScopeIfNeeded: true } : {}),
+      // ad6ed930 — the window caps its dates at the last day; the service is the authority.
+      refuseAfterLeavingDate: true,
     });
     revalidatePath('/payroll/transactions/individual');
     return {
@@ -844,6 +863,7 @@ export async function updateIndividualTxnAction(
       notes: input.notes,
       componentId: input.componentId,
       ...(input.intendedCycleId !== undefined ? { intendedCycleId: input.intendedCycleId } : {}),
+      refuseAfterLeavingDate: true,
     });
     revalidatePath('/payroll/transactions/individual');
     // `recalcOnEdit` is the SERVICE's own answer, read on the row that was about to be edited — not a

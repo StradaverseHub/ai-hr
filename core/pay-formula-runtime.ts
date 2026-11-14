@@ -11,10 +11,11 @@ import {serviceYearsAt} from '../lib/completed-years';
 import {PayFormulaError as FormulaLanguageError,evaluatePayFormula,analyzePayFormula,normalizeFormulaDecimal,addFormulaDecimal,applyFormulaAmount,divideFormulaDecimal,type FormulaRequest,type FormulaValue} from '../lib/pay-formula-language';
 import {PAY_FORMULA_PROVIDER_VERSION} from '../lib/pay-formula-registry';
 import {payFormulaRowInputs} from '../lib/pay-formula-input';
-import {PayFormulaError,type ActiveFormula,type PayFormulaContext,type FormulaReadRequirements,type PayFormulaMissingItem} from '../lib/pay-formula-model';
+import {PayFormulaError,PayFormulaAfterLeavingDateError,type ActiveFormula,type PayFormulaContext,type FormulaReadRequirements,type PayFormulaMissingItem} from '../lib/pay-formula-model';
 import {resolvePayrollPermission,loadActiveFormulaProgramTx,loadFormulaAccumulationGroupsTx,recordFormulaEvaluationTx,resolvePayComponentSet,resolveAssignedPolicy,resolveProrationSettings,prorationDivisorDays,usesWorkingDayProration,workingDayRoster,cutOffWindowFor,type PayRuleScope,type PayRuleFormulaRuntime,type ResolvablePayComponent,readPayrollComponentInputsTx,readPayrollIndividualLedgerTx,readPayrollAttendanceHoursTx,payRuleDependencies,payRuleReadsFixedAllowanceTotal,payItemFeedsOvertimeOrp,countsTowardFixedAllowances} from '../packs/payroll/service';
 import {assertWorkforceEmploymentSharedTx} from './workforce-access-shared';
 import {companyOnDate,companySegmentsForPeriodBulk,segmentForCompany} from './employment-company';
+import {payrollEmploymentEnd} from './payroll-employment-eligibility';
 import {employmentInformationAt} from './information-correction-history';
 import {employment,companyPayrollConfig} from '../db/schema';
 import {eq} from 'drizzle-orm';
@@ -232,32 +233,55 @@ export async function preparePayFormulaRuntimeTx(tx:Tx,ctx:SessionContext,contex
  sourceFingerprint:()=>fingerprint({providerVersion:PAY_FORMULA_PROVIDER_VERSION,context,catalog,groups,sources,raw:[...raw],basic:snapshot.basic,proratedBasic:snapshot.proratedBasic,factor:snapshot.factor,fields:[...values].sort(([a],[b])=>a.localeCompare(b)),sourceEvidence:snapshot.sourceEvidence,...(missingItems.length?{missingItems}:{})}),readRequirements:()=>requirements([...usedFields],usedWorkforce),async record(){const refs=[];for(const e of evaluations){if(!snapshot.batchId)throw unavailable('payroll batch');const evaluationId=await recordFormulaEvaluationTx(tx,ctx,{...e,companyId:context.companyId,employmentId:context.employmentId,batchId:snapshot.batchId,period:context.period});refs.push({formulaId:e.formula.formulaId,revisionId:e.formula.revisionId,contentHash:e.formula.contentHash,evaluationId,componentCode:e.componentCode,amount:e.amount});}return refs;}};
 }
 
-export async function simulatePayFormulaTx(tx:Tx,ctx:SessionContext,formula:ActiveFormula,context:PayFormulaContext){
+/**
+ * ad6ed930 — `options.workDate` is a one-off transaction's own Effective Date, when the caller prices one.
+ *
+ * THE LAST DAY BOUNDS EVERY PRICE. The employee's last day is payrollEmploymentEnd (least of terminated_on,
+ * resignation_date and last_working_date). A work date — or, without one, the evaluation date — after it is refused
+ * with the named PayFormulaAfterLeavingDateError, never priced and never reported as a Pay Item set-up fault.
+ *
+ * A FORMER EMPLOYEE'S LATE CLAIM. When the employment ended before the selected payroll month starts and the work date
+ * is on or before the last day, outstandingPaymentPredicate already admits the row into that later regular run. It is
+ * priced against the month the work was done in (employer segment, proration, attendance and recurring inputs of that
+ * month, evaluated on the work date) and against the compensation at departure, the same record
+ * payrollCompensationEffectiveOn gives the run. The run, cycle and ledger are still the selected month's. An active
+ * employee (no last day, or a last day on or after the evaluation date) takes none of these branches.
+ */
+export async function simulatePayFormulaTx(tx:Tx,ctx:SessionContext,formula:ActiveFormula,context:PayFormulaContext,options?:{workDate?:string|null}){
  await financialSubjectTx(tx,ctx,context.companyId,context.employmentId);
  if(!isCalendarDate(context.asOf)||!/^\d{4}-(0[1-9]|1[0-2])$/.test(context.period)||!uuid.test(context.cycleId))throw unavailable('test context');
  if(!isModuleEnabled(ctx,'typed_pay_components'))throw unavailable('Typed Pay Items module');
- const start=context.period+'-01',dim=new Date(Date.UTC(Number(context.period.slice(0,4)),Number(context.period.slice(5)),0)).getUTCDate(),end=context.period+'-'+String(dim).padStart(2,'0');
- if(context.asOf<start||context.asOf>end)throw new PayFormulaError('Choose an effective date within the selected payroll month.');
+ const workDate=options?.workDate&&isCalendarDate(options.workDate)?options.workDate:null;
+ const [left]=await tx.execute<{leftOn:string|null}>(sql`select ${payrollEmploymentEnd}::text as "leftOn" from employment where id=${context.employmentId}::uuid`);
+ const leftOn=left?.leftOn??null;
+ const departed=!!leftOn&&!!workDate&&leftOn<context.period+'-01'&&workDate<=leftOn;
+ // A work date on or before the last day, in an earlier month of a run that covers the last day, is evaluated on the
+ // last day rather than on a month end the employee never reached.
+ const asOf=departed?workDate!:leftOn&&workDate&&workDate<=leftOn&&context.asOf>leftOn?leftOn:context.asOf;
+ if(leftOn&&((workDate!==null&&workDate>leftOn)||asOf>leftOn))throw new PayFormulaAfterLeavingDateError(leftOn);
+ const pricingPeriod=departed?workDate!.slice(0,7):context.period;
+ const start=pricingPeriod+'-01',dim=new Date(Date.UTC(Number(pricingPeriod.slice(0,4)),Number(pricingPeriod.slice(5)),0)).getUTCDate(),end=pricingPeriod+'-'+String(dim).padStart(2,'0');
+ if(asOf<start||asOf>end)throw new PayFormulaError('Choose an effective date within the selected payroll month.');
  const [cycle]=await tx.execute<{id:string;runType:string}>(sql`select id,run_type as "runType" from payroll_cycle where id=${context.cycleId}::uuid and company_id=${context.companyId}::uuid`);if(!cycle)throw unavailable('payroll cycle');
  const requestedBatchId=(context as PayFormulaContext&{batchId?:string}).batchId;if(requestedBatchId&&!uuid.test(requestedBatchId))throw unavailable('payroll run');
  const batches=await tx.execute<{id:string;runType:string;payrollCycleId:string|null;runSeq:number}>(sql`select id,run_type as "runType",payroll_cycle_id as "payrollCycleId",run_seq as "runSeq" from payroll_batch where company_id=${context.companyId}::uuid and pay_period=${context.period} and ${requestedBatchId?sql`id=${requestedBatchId}::uuid and (payroll_cycle_id=${context.cycleId}::uuid or (payroll_cycle_id is null and run_type=${cycle.runType}))`:sql`payroll_cycle_id=${context.cycleId}::uuid`} order by id`);
  if(batches.length>1)throw new PayFormulaError('Choose the exact payroll run before testing this formula.');if(requestedBatchId&&batches.length!==1)throw unavailable('selected payroll run');const batch=batches[0];
  // A selected Native run owns its compensation at period end; standalone previews use the chosen record date.
- const salaryDate=batch?end:context.asOf;
+ const salaryDate=departed?leftOn!:batch?end:asOf;
  const salaryRows=await tx.execute<{id:string;basic:string;payMode:string;rateAmount:string|null;validFrom:string;validTo:string|null}>(sql`select id,basic_salary as basic,pay_mode as "payMode",rate_amount as "rateAmount",valid_from::text as "validFrom",valid_to::text as "validTo" from compensation where employment_id=${context.employmentId}::uuid and valid_from<=${salaryDate}::date and (valid_to is null or valid_to>${salaryDate}::date) and superseded_at is null`);if(salaryRows.length!==1)throw unavailable('effective compensation');const salary=salaryRows[0];
- const [dates]=await tx.execute<{companyId:string;hiredOn:string;terminatedOn:string|null}>(sql`select company_id as "companyId",${employmentInformationAt('hiredOn',sql`${context.asOf}::date`,sql`${employment.hiredOn}`)}::text as "hiredOn",terminated_on::text as "terminatedOn" from employment where id=${context.employmentId}::uuid`);if(!dates)throw unavailable('employment dates');
- const segments=await companySegmentsForPeriodBulk(tx,[context.employmentId],start,end,new Map([[context.employmentId,dates.companyId]])),mine=segmentForCompany(segments.get(context.employmentId)??[],context.companyId);if(!mine||mine.split||context.asOf<mine.from||context.asOf>mine.to)throw unavailable('employer segment for the selected payroll month');
+ const [dates]=await tx.execute<{companyId:string;hiredOn:string;terminatedOn:string|null}>(sql`select company_id as "companyId",${employmentInformationAt('hiredOn',sql`${asOf}::date`,sql`${employment.hiredOn}`)}::text as "hiredOn",terminated_on::text as "terminatedOn" from employment where id=${context.employmentId}::uuid`);if(!dates)throw unavailable('employment dates');
+ const segments=await companySegmentsForPeriodBulk(tx,[context.employmentId],start,end,new Map([[context.employmentId,dates.companyId]])),mine=segmentForCompany(segments.get(context.employmentId)??[],context.companyId);if(!mine||mine.split||asOf<mine.from||asOf>mine.to)throw unavailable('employer segment for the selected payroll month');
  const hired=mine&&mine.from>dates.hiredOn?mine.from:dates.hiredOn,terminated=mine&&mine.to<end?dates.terminatedOn&&dates.terminatedOn<mine.to?dates.terminatedOn:mine.to:dates.terminatedOn;
  const policy=await resolveAssignedPolicy(tx,context.employmentId),cfg=policy?.config??null,[companyCfg]=await tx.select().from(companyPayrollConfig).where(eq(companyPayrollConfig.companyId,context.companyId));
- const settings=resolveProrationSettings(cfg,{isHire:dates.hiredOn>start,isResign:!!dates.terminatedOn&&dates.terminatedOn<end}),divisorDays=prorationDivisorDays(settings,dim),window=cutOffWindowFor('salary',cfg,companyCfg??null,context.period),workingDayBasis=usesWorkingDayProration(settings)?{roster:workingDayRoster(settings),holidays:settings?.includeHoliday?new Set<string>():await holidayDatesFor(tx,{employmentId:context.employmentId,startDate:start,endDate:end})}:undefined;
- const ratio=payrollProrationRatio(context.period,hired,terminated,{divisorDays:divisorDays===dim?undefined:divisorDays,workingDayBasis,window}),factor=divideFormulaDecimal(String(ratio.numerator),String(ratio.denominator)),legacyFactor=ratio.numerator/ratio.denominator;
+ const settings=resolveProrationSettings(cfg,{isHire:dates.hiredOn>start,isResign:!!dates.terminatedOn&&dates.terminatedOn<end}),divisorDays=prorationDivisorDays(settings,dim),window=cutOffWindowFor('salary',cfg,companyCfg??null,pricingPeriod),workingDayBasis=usesWorkingDayProration(settings)?{roster:workingDayRoster(settings),holidays:settings?.includeHoliday?new Set<string>():await holidayDatesFor(tx,{employmentId:context.employmentId,startDate:start,endDate:end})}:undefined;
+ const ratio=payrollProrationRatio(pricingPeriod,hired,terminated,{divisorDays:divisorDays===dim?undefined:divisorDays,workingDayBasis,window}),factor=divideFormulaDecimal(String(ratio.numerator),String(ratio.denominator)),legacyFactor=ratio.numerator/ratio.denominator;
  const hours=(await readPayrollAttendanceHoursTx(tx,{employmentIds:[context.employmentId],periodStart:start,periodEnd:end})).get(context.employmentId)??0;
  const {recurring,batch:batchRows}=await readPayrollComponentInputsTx(tx,{employmentIds:[context.employmentId],periodStart:start,periodEnd:end,batchId:batch?.id});
  const components:ResolvablePayComponent[]=[...recurring,...batchRows].map(r=>({...r,...payFormulaRowInputs({amount:r.amount}),amount:Number(r.amount)}));
  const ledger=settingEnabled(ctx,'payroll.individual_txn_pay_enabled')?await readPayrollIndividualLedgerTx(tx,{employmentIds:[context.employmentId],batchId:batch?.id,unattached:{companyId:context.companyId,payPeriod:context.period,payrollCycleId:batch?batch.payrollCycleId:context.cycleId,runType:batch?.runType??cycle.runType}}):[];
  for(const row of ledger)if(['earning','deduction'].includes(row.kind)&&row.compCode){const builder=row.compRule?.kind==='formula_builder'&&(row.calculationMethod==null);components.push({code:row.compCode,kind:row.compKind,amount:payrollRoundAmount(Number(row.amount)),...payFormulaRowInputs(row),rule:builder?row.compRule:null,prorates:row.calculationMethod!=null?false:row.compProrates??false,prorateOverride:null,rounding:row.calculationMethod!=null?'none':row.compRounding,oneOff:true,orpOvertime:false,orpUnpaidLeave:false,nonPayable:row.compNonPayable??false,resolutionOrder:builder?row.compResolutionOrder:0});}
  let paidBasic=payrollRateBasic(Number(salary.basic),legacyFactor),basicEvidence:unknown={salary,salaryDate};
- if(salary.payMode==='daily'){if(salary.rateAmount===null)throw unavailable('daily rate');const holidays=await holidayDatesFor(tx,{employmentId:context.employmentId,startDate:start,endDate:end}),days=eligibleWorkingDays(context.period,hired,terminated,holidays);paidBasic=payrollRateBasic(Number(salary.rateAmount),days);basicEvidence={salary,salaryDate,days,holidays:[...holidays].sort()};}
+ if(salary.payMode==='daily'){if(salary.rateAmount===null)throw unavailable('daily rate');const holidays=await holidayDatesFor(tx,{employmentId:context.employmentId,startDate:start,endDate:end}),days=eligibleWorkingDays(pricingPeriod,hired,terminated,holidays);paidBasic=payrollRateBasic(Number(salary.rateAmount),days);basicEvidence={salary,salaryDate,days,holidays:[...holidays].sort()};}
  else if(salary.payMode==='hourly'){if(salary.rateAmount===null)throw unavailable('hourly rate');paidBasic=payrollRateBasic(Number(salary.rateAmount),hours);basicEvidence={salary,salaryDate,hours};}
  else if(salary.payMode==='custom_period')throw unavailable('custom period pay');
  else if(cfg?.salaryIncrementProration){const rows=await tx.execute<{id:string;basic:string;validFrom:string;validTo:string|null}>(sql`select id,basic_salary as basic,valid_from::text as "validFrom",valid_to::text as "validTo" from compensation where employment_id=${context.employmentId}::uuid and valid_from<=${end}::date and (valid_to is null or valid_to>=${start}::date) and superseded_at is null order by valid_from,id`),increment=payrollIncrementBasic(rows.map(r=>({...r,basic:Number(r.basic)})),start,end,dim);if(increment!==undefined){paidBasic=increment;basicEvidence={rows,salaryDate};}}
@@ -270,7 +294,7 @@ export async function simulatePayFormulaTx(tx:Tx,ctx:SessionContext,formula:Acti
  // {#FixedAllowances} reads every member row, so the test snapshot must contain them (rule-free, so no further closure).
  if(analyzePayFormula(formula.program).functions.includes('FixedAllowances')){const pinned=new Set(['BASIC']);for(const c of candidates)if(c!==selected&&countsTowardFixedAllowances(c,pinned))needed.add(itemKey(c.code));}
  const all=candidates.filter(c=>c===selected||needed.has(itemKey(c.code))),scope:PayRuleScope={basic:Number(salary.basic),proratedBasic:payrollRateBasic(Number(salary.basic),legacyFactor),calendarDays:dim,daysWorked:legacyFactor*dim,hours,components:{BASIC:Number(salary.basic)}};
- const prepared=await preparePayFormulaRuntimeTx(tx,ctx,context,{components:all,inputComponents:components,scope,basic:salary.basic,proratedBasic:String(paidBasic),factor,legacyFactor,batchId:batch?.id,sourceEvidence:{basic:basicEvidence,policy:cfg,companyCfg,window,ratio,hours,recurring,batch:batchRows,ledger,run:batch??{payrollCycleId:context.cycleId,runType:cycle.runType}}},formula);scope.formulaBuilder=prepared.runtime;
+ const prepared=await preparePayFormulaRuntimeTx(tx,ctx,asOf===context.asOf?context:{...context,asOf},{components:all,inputComponents:components,scope,basic:salary.basic,proratedBasic:String(paidBasic),factor,legacyFactor,batchId:batch?.id,sourceEvidence:{basic:basicEvidence,policy:cfg,companyCfg,window,ratio,hours,recurring,batch:batchRows,ledger,run:batch??{payrollCycleId:context.cycleId,runType:cycle.runType}}},formula);scope.formulaBuilder=prepared.runtime;
  try{resolvePayComponentSet(all,scope);const result=prepared.evaluations.find(e=>itemKey(e.componentCode)===itemKey(context.currentCode));if(!result)throw unavailable('result');return {passed:true,amount:result.amount,error:null,explanations:result.explanations,missingItems:result.missingItems??[],sourceFingerprint:prepared.sourceFingerprint(),readRequirements:prepared.readRequirements()};}
  catch(e){if(e instanceof FormulaLanguageError&&e.code==='source_denied')throw new PayFormulaError('Formula source permission is unavailable.','FORMULA_SOURCE_DENIED');if(e instanceof PayFormulaError&&e.code==='FORMULA_SOURCE_DENIED')throw e;return {passed:false,amount:null,error:e instanceof PayFormulaError||e instanceof FormulaLanguageError?e.message:'The formula could not calculate from the selected inputs.',explanations:[],missingItems:[] as PayFormulaMissingItem[],sourceFingerprint:prepared.sourceFingerprint(),readRequirements:prepared.readRequirements()};}
 }

@@ -6,7 +6,7 @@ import {payComponent,payrollIndividualTxn} from '../../db/schema';
 import {deriveIndividualTxnAmountTx,TxnQuantityRequiredError} from '../../core/pay-components';
 import {payRuleDerivesAmount,payRuleInputUnit} from '../../core/pay-rule';
 import {isDatabaseError} from '../../lib/db-error';
-import {PayFormulaError} from '../../lib/pay-formula-model';
+import {PayFormulaError,PayFormulaAfterLeavingDateError} from '../../lib/pay-formula-model';
 import {isTransactionEffectiveDate} from '../../lib/transaction-effective-date';
 import {lockPayComponentCatalogReadTx} from '../../core/pay-component-catalog-lock';
 import {assertPayComponentCompaniesTx} from '../../core/pay-component-company';
@@ -48,7 +48,9 @@ export async function priceIndividualTxnInputTx(tx:Tx,ctx:SessionContext,p:Indiv
  const formula=await loadSavedFormulaProgramTx(tx,ctx,item.rule.formulaId,p.companyId);
  // The selected payroll month owns payroll sources; retain an out-of-month work date on the ledger.
  const end=new Date(Date.UTC(Number(p.payPeriod.slice(0,4)),Number(p.payPeriod.slice(5)),0)).toISOString().slice(0,10);
- const result=await simulatePayFormulaTx(tx,ctx,formula,{companyId:p.companyId,employmentId:p.employmentId,period:p.payPeriod,asOf:p.txnDate.startsWith(p.payPeriod+'-')?p.txnDate:end,cycleId,currentCode:item.code,input:payFormulaKeyedInput({amount:p.amount,quantity:p.quantity,unit:p.unit,calculationMethod:'formula'}).value!,...(p.batchId?{batchId:p.batchId}:{})});
+ // ad6ed930 — the work date also goes as itself: it bounds the price at the employee's last day, and a former
+ // employee's late claim is priced in the month the work was done (see simulatePayFormulaTx).
+ const result=await simulatePayFormulaTx(tx,ctx,formula,{companyId:p.companyId,employmentId:p.employmentId,period:p.payPeriod,asOf:p.txnDate.startsWith(p.payPeriod+'-')?p.txnDate:end,cycleId,currentCode:item.code,input:payFormulaKeyedInput({amount:p.amount,quantity:p.quantity,unit:p.unit,calculationMethod:'formula'}).value!,...(p.batchId?{batchId:p.batchId}:{})},{workDate:p.txnDate});
  if(!result.passed||result.amount==null)throw new PayFormulaError(result.error??'The saved formula could not calculate this transaction.');
  const amount=Number(result.amount);if(!Number.isFinite(amount)||amount<=0)throw new PayFormulaError('The formula must produce a positive transaction amount.');
  return {amount,calculationMethod:'formula' as const,formulaId:formula.id,formulaRevisionId:formula.revisionId};
@@ -93,17 +95,21 @@ export async function individualTxnPricingMarkerTx(tx:Tx,ctx:SessionContext,p:{c
  return {pricingSource:'pay_item_rule',pricingRef:'rule:'+item.hash,pricedAt:new Date()};
 }
 
-export type PayItemRepriceReason='formula_failed'|'not_positive'|'zero_divisor'|'input_missing'|'no_longer_calculates';
+/** ad6ed930 — 'after_leaving_date': the row's Effective Date is after the employee's last day (`leftOn`). */
+export type PayItemRepriceReason='formula_failed'|'not_positive'|'zero_divisor'|'input_missing'|'no_longer_calculates'|'after_leaving_date';
 /** The updated Pay Item formula could not price one or more of an employee's transactions. Never a silent fallback to
  * the previous figure: a reprocess maps it to a Configuration incomplete outcome (core/payroll.ts) and keeps the run
  * marked; a whole-run processing job fails with this message and the run returns to draft. */
 export class PayItemFormulaRepriceError extends Error{
  constructor(public readonly employmentId:string,public readonly componentId:string,public readonly code:string,public readonly itemName:string,
-  public readonly dates:string[],public readonly reason:PayItemRepriceReason,public readonly detail:string|null){
+  public readonly dates:string[],public readonly reason:PayItemRepriceReason,public readonly detail:string|null,public readonly leftOn:string|null=null){
   const why={formula_failed:'The formula could not be calculated for these inputs.',not_positive:'The formula did not produce a positive amount.',
    zero_divisor:'The formula divides by zero for these inputs.',input_missing:'The transaction has no Hours, Days or Quantity the formula needs.',
-   no_longer_calculates:'The Pay Item no longer calculates its amount from a formula.'}[reason];
-  super(`${itemName} (${code}): the updated formula could not calculate ${dates.length} transaction${dates.length===1?'':'s'} (${dates.join(', ')}). ${why}${detail?` ${detail}`:''} Correct the formula in Payroll > Settings > Pay Items and process again.`);
+   no_longer_calculates:'The Pay Item no longer calculates its amount from a formula.',after_leaving_date:''}[reason];
+  // ad6ed930 — a date after the last day is not a formula fault: say so, with the date, and do not send HR to Pay Items.
+  super(reason==='after_leaving_date'&&leftOn
+   ?`${itemName} (${code}): ${dates.length} transaction${dates.length===1?' is':'s are'} dated after this employee's last day (${dates.join(', ')}). This employee left on ${leftOn}. Choose an effective date on or before that day.`
+   :`${itemName} (${code}): the updated formula could not calculate ${dates.length} transaction${dates.length===1?'':'s'} (${dates.join(', ')}). ${why}${detail?` ${detail}`:''} Correct the formula in Payroll > Settings > Pay Items and process again.`);
   this.name='PayItemFormulaRepriceError';
  }
 }
@@ -128,12 +134,12 @@ export async function repriceIndividualLedgerTx(tx:Tx,ctx:SessionContext,p:{batc
    inArray(payrollIndividualTxn.employmentId,[...p.employmentIds]),isNotNull(payrollIndividualTxn.pricingSource)))
   .orderBy(asc(payrollIndividualTxn.employmentId),asc(payrollIndividualTxn.txnDate),asc(payrollIndividualTxn.id));
  if(!rows.length)return out;
- const failures=new Map<string,{row:typeof rows[number];dates:string[];reason:PayItemRepriceReason;detail:string|null}>();
+ const failures=new Map<string,{row:typeof rows[number];dates:string[];reason:PayItemRepriceReason;detail:string|null;leftOn:string|null}>();
  type Source=Exclude<IndividualTxnPricingMarker['pricingSource'],null>;
  const changes:{row:typeof rows[number];amount:string;ref:string;source:Source}[]=[];
  for(const row of rows){
   const quantity=row.quantity==null?null:Number(row.quantity);
-  let priced:{amount:number;ref:string;source:Source}|{reason:PayItemRepriceReason;detail:string|null};
+  let priced:{amount:number;ref:string;source:Source}|{reason:PayItemRepriceReason;detail:string|null;leftOn?:string};
   // The Pay Item that priced this legacy row has since been linked to a saved Formula Builder formula. Its stored
   // amount is a price, not an input: re-price it from the keyed Hours, Days or Quantity exactly as entry prices a
   // Formula Builder item, and record what entry records (method 'formula', 'saved_formula', the formula revision).
@@ -157,18 +163,20 @@ export async function repriceIndividualLedgerTx(tx:Tx,ctx:SessionContext,p:{batc
     priced=ref?{amount:r.amount,ref,source:'saved_formula'}:{reason:'formula_failed',detail:null};
    }catch(e){
     if(!(e instanceof PayFormulaError))throw e;
-    priced={reason:'formula_failed',detail:e.message};
+    // ad6ed930 — a row dated after the last day is named as such, with the date, not as a formula fault.
+    priced=e instanceof PayFormulaAfterLeavingDateError?{reason:'after_leaving_date',detail:null,leftOn:e.leftOn}:{reason:'formula_failed',detail:e.message};
    }
   }
   if('reason' in priced){
-   const key=row.employmentId+':'+row.componentId;const f=failures.get(key);
-   if(f)f.dates.push(row.txnDate);else failures.set(key,{row,dates:[row.txnDate],reason:priced.reason,detail:priced.detail});
+   // Grouped per reason too, so an after-last-day list never names a date that failed for another reason.
+   const key=row.employmentId+':'+row.componentId+':'+priced.reason;const f=failures.get(key);
+   if(f)f.dates.push(row.txnDate);else failures.set(key,{row,dates:[row.txnDate],reason:priced.reason,detail:priced.detail,leftOn:priced.leftOn??null});
    continue;
   }
   const amount=ledgerMoney(priced.amount);
   if(amount!==ledgerMoney(Number(row.amount))||priced.ref!==row.pricingRef||priced.source!==row.pricingSource)changes.push({row,amount,ref:priced.ref,source:priced.source});
  }
- if(failures.size){const f=[...failures.values()][0];throw new PayItemFormulaRepriceError(f.row.employmentId,f.row.componentId!,f.row.code,f.row.name,f.dates,f.reason,f.detail);}
+ if(failures.size){const f=[...failures.values()][0];throw new PayItemFormulaRepriceError(f.row.employmentId,f.row.componentId!,f.row.code,f.row.name,f.dates,f.reason,f.detail,f.leftOn);}
  const pricedAt=new Date();
  for(const {row,amount,ref,source} of changes){
   const relinked=source!==row.pricingSource;
