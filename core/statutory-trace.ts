@@ -58,7 +58,8 @@ export type TraceSourceLine = {
  * kernel's own routing (core/payroll.ts `earningsOf`), restated — not re-decided:
  *   wage      → EPF normal wages if ticked EPF; SOCSO/EIS wages if ticked SOCSO;
  *   bonus     → if ticked EPF: EPF NORMAL wages on a line stamped `epfNormalStream` (an 'additional'-classified
- *               item not ticked EPF Bonus 2012 — owner decision B, 2026-11-13), otherwise EPF bonus wages;
+ *               item not ticked EPF Bonus 2012 — owner decision B, 2026-11-13; since 2026-11-14 also a legacy
+ *               unclassified item ticked EPF and not SOCSO), otherwise EPF bonus wages;
  *               SOCSO/EIS wages only if ticked SOCSO AND not EPF Bonus 2012 (a declared bonus is not SOCSO
  *               wages, SOCSO Act 1969 s.2);
  *   ot        → never EPF; always SOCSO/EIS wages (on a run that charges its own overtime);
