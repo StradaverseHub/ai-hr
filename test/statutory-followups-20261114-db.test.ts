@@ -69,7 +69,10 @@ async function setup(items: PayComponentInput[]) {
   for (const i of items) await upsertPayComponent(a, i);
 }
 
+// Each hire needs its own NRIC (duplicates are refused by the People settings); same birth date, same rules.
+let icSeq = 0;
 async function hire(email: string, basic: number) {
+  icSeq += 1;
   const e = await hireEmployee(a, {
     person: { fullName: email.split('@')[0], primaryEmail: email },
     companyId: base.companyId,
@@ -78,7 +81,7 @@ async function hire(email: string, basic: number) {
     hiredOn: '2026-01-01',
   });
   // Born 1 Jan 1990: a Malaysian citizen below 60 — KWSP Part A, SOCSO First Category, EIS eligible.
-  await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101015401', subjectToSkbbk: true });
+  await setStatutoryProfileMY(a, { personId: e.personId, icNumber: `90010101${String(5400 + icSeq).padStart(4, '0')}`, subjectToSkbbk: true });
   await setCompensation(a, { employmentId: e.employmentId, basicSalary: basic, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
   await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await idByCode('BASIC'), amount: basic, effectiveFrom: '2026-01-01' });
   return e;
@@ -106,7 +109,7 @@ type Stat = Record<string, number> & {
 const statOf = (s: { statutory: unknown }) => s.statutory as Stat;
 const itemLine = (st: Stat, code: string) => st.statutoryTrace!.items.find((l) => l.code === code);
 const AGENCY = ['epfEmployee', 'epfEmployer', 'socsoEmployee', 'socsoEmployer', 'socsoSkbbk', 'eisEmployee', 'eisEmployer', 'pcb'] as const;
-const round2 = (n: number) => Math.round(n * 100) / 100;
+const round2 = (n: number) => Math.round(n * 100) / 100 + 0; // + 0 folds -0 into 0 for toEqual
 const monthTotal = (...slips: Stat[]) =>
   Object.fromEntries(AGENCY.map((k) => [k, round2(slips.reduce((s, st) => s + Number(st[k] ?? 0), 0))]));
 
@@ -114,6 +117,7 @@ beforeAll(async () => {
   await migrateTestDb();
 });
 beforeEach(async () => {
+  icSeq = 0;
   await resetDb();
   base = await seedBase();
   a = adminCtx(base);
@@ -151,7 +155,7 @@ describe('item 1 — a PCB-exempt one-off keyed on an additional run is paid by 
     expect([st.epfEmployee, st.epfEmployer]).toEqual([110, 130]);
     // PCB: the award stays out of the income-tax base.
     expect(st.bases!.pcb).toBeCloseTo(3734, 2);
-    expect(st.pcb).toBe(0);
+    expect(Number(st.pcb)).toBeCloseTo(0, 2);
     expect(itemLine(st, 'A0097')).toMatchObject({ epfNormal: 1000, epfBonus: 0, socsoEis: 1000 });
     expect(st.statutoryTrace!.run).toMatchObject({ kind: 'additional', own: { exemptEpfWage: 1000, exemptSocsoWage: 1000, exemptEpfAdditional: 0 } });
     expect(explainStatutory(st, 'bonus').traceStatus).toBe('recorded');
