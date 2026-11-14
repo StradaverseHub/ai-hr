@@ -99,5 +99,13 @@ it('keeps the exact authorized search matches with bounded response at retained 
   boundedPlanPairs.push({round,order:round%2===0?'reference-normalized':'normalized-reference',referenceMs,normalizedMs});
  }
  phase('boundedPlanPairs');
+ // In-run baselines on the same backend, data and statistics: the bounded response stays a small fixed page,
+ // and the normalized search keeps a clear lead over the frozen unmaterialized reference (focused run
+ // 43566945192: about 160 ms against 600 ms). Medians of interleaved pairs, so one slow sample cannot decide.
+ const median=(values:number[])=>{const sorted=[...values].sort((a,c)=>a-c),mid=sorted.length>>1;return sorted.length%2?sorted[mid]:(sorted[mid-1]+sorted[mid])/2;};
+ const normalizedMedianMs=median(boundedPlanPairs.map(row=>row.normalizedMs)),referenceMedianMs=median(boundedPlanPairs.map(row=>row.referenceMs));
+ Object.assign(report,{normalizedMedianMs,referenceMedianMs});save();
+ expect(boundedBytes,'bounded response must stay a fixed page, not the population').toBeLessThan(legacyBytes/100);
+ expect(normalizedMedianMs,'bounded search must stay at least 20% faster than the frozen unmaterialized reference').toBeLessThan(referenceMedianMs*.8);
  Object.assign(report,{phaseMs,pairedTimings:pairs,boundedPlanPairs,boundedReferenceSource:'c27ce14f69aea76576f198e5bcc50666136551e6_equivalentNonemptyCompanyOnlyFilter',boundedRows:8,boundedBytes,exactRankedMatches:true,emptyForeignScopeRefused:true});save();
 },240000);
