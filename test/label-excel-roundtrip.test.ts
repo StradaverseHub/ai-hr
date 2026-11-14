@@ -138,6 +138,7 @@ describe('System Labels populated workbook round trip',()=>{
  it('accepts literal formula-looking text without changing it and refuses oversized lists',async()=>{
   const literal=await buildSystemLabelWorkbook({kinds:['division'],references:{companies:[],grades:[],employees:[]},rows:{division:[{Code:'=literal',Label:'+literal',Description:'@literal','Sort Order':'0'}]}});
   expect(readSystemLabelWorkbook(literal)[0].values).toMatchObject({Code:'=literal',Label:'+literal',Description:'@literal'});
-  await expect(buildSystemLabelWorkbook({kinds:['division'],references:{companies:[],grades:[],employees:[]},rows:{division:Array.from({length:501},(_,i)=>({Code:String(i),Label:'X'}))}})).rejects.toThrow(/Narrow/);
+  // Board 2026-11-14: one list may fill the 7000-row workbook allowance (production Positions: 1,349); beyond it is refused.
+  await expect(buildSystemLabelWorkbook({kinds:['division'],references:{companies:[],grades:[],employees:[]},rows:{division:Array.from({length:7001},(_,i)=>({Code:String(i),Label:'X'}))}})).rejects.toThrow(/Narrow/);
  });
 });

@@ -358,7 +358,7 @@ export async function buildSystemLabelWorkbook(p:{references:LabelWorkbookRefere
       for(const [column,range] of Object.entries(ranges)){
         const at=d.columns.indexOf(column);if(at<0)continue;
         const letter=XLSX.utils.encode_col(at);
-        validations.push(`<dataValidation type="list" allowBlank="1" showErrorMessage="0" sqref="${letter}2:${letter}${(formattedEnds[name]??1000)+1}"><formula1>INDIRECT(&quot;${range}&quot;)</formula1></dataValidation>`);
+        validations.push(`<dataValidation type="list" allowBlank="1" showErrorMessage="0" sqref="${letter}2:${letter}${Math.max(1000,formattedEnds[name]??0)+1}"><formula1>INDIRECT(&quot;${range}&quot;)</formula1></dataValidation>`);
       }
       const validationXml=validations.length?`<dataValidations count="${validations.length}">${validations.join('')}</dataValidations>`:'';
       xml=xml.replace('</sheetData>',`</sheetData><autoFilter ref="A1:${XLSX.utils.encode_col(d.columns.length-(p.includeStatus?0:1))}${(p.rows?.[name]?.length??0)+1}"/>${validationXml}`);
