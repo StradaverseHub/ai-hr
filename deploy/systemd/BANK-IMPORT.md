@@ -105,6 +105,52 @@ The leave family runs on the same worker (draft 5030, docs/adr/2026-11-10-leave-
 import (`leave_ledger`), Generate Entitlement (`leave_generation`) and Run Earned Accrual (`leave_accrual`). The
 monthly accrual and yearly carry-expiry timers keep their own units and now write in short per-batch transactions.
 
+## Stall watchdog
+
+On 13 Nov 2026 the staging worker stayed `active` under systemd with the same PID while its heartbeat stopped and
+no job moved for about 50 minutes; it logged nothing. One call in the loop never returned, most likely a database
+call on a connection that no longer answered. The worker now watches its own loop
+(`lib/import-worker-watchdog.ts`). It records which phase it is in (`bank`, `individual`, `bulk`, `pause`, and
+`stop` while shutting down) and when that phase started. Every 30 s it checks the phase. When one phase has
+lasted longer than the limit, it writes one line to stderr and exits with status 70:
+
+    Import worker stalled in bulk for 1230 s; exiting so systemd restarts it.
+
+`Restart=on-failure` (with `RestartSec=5`) then starts a new process, so the unit file is unchanged. The phase
+names the tick that stalled: `bank` (Bank & Statutory queue), `individual` (Individual Transaction queue), `bulk`
+(one bulk-job unit, including the claim and heartbeat) or `pause` (the idle wait, which cannot stall on the
+database). One stall line is an incident to investigate, not a routine event. Check the database and network at
+that time, and look for repeated lines. Repeated lines for the same phase and job mean a unit that keeps hanging.
+If a legitimate unit is longer than the limit, raise the limit. Do not resubmit work.
+
+At start the worker logs its limit, so the journal shows the setting in force:
+
+    Import worker started (pid 12345); stall watchdog 1200 s (AIHR_IMPORT_WORKER_STALL_SECONDS).
+
+`AIHR_IMPORT_WORKER_STALL_SECONDS` in `/etc/aihr/import-worker.env` sets the limit: a whole number of seconds from
+960 to 21600 (default 1200). Any other value refuses to start before the worker connects, and the journal names the
+setting and its range. The minimum stays above the 900 s lease of a bulk-job prepare unit, the longest unit the
+kernel allows (every other bulk unit holds a 60 s lease). A shorter limit could cut off a legitimate prepare and
+restart it repeatedly. Raise the limit only after measuring a legitimate phase on the target that runs longer.
+The longest phases are a maximum-size Bank & Statutory file's first tick, which decodes the whole file and stores
+its rows in one transaction, an Individual Transaction confirmation (up to 2,000 rows in one tick), and a bulk-job
+prepare.
+
+The exit itself is the whole recovery. The watchdog writes nothing and does no clean-up, because the stalled call
+may hold the only queue-owner connection. When the process exits, PostgreSQL rolls back each open transaction. A
+chunk's writes and its applied markers commit together, so an interrupted chunk leaves nothing behind. Bank and
+Individual rows keep their own committed checkpoints, and their session advisory locks end with the session. A
+bulk job keeps the dead worker's lease until the lease expires (at most 60 s, or 15 min during prepare). The new
+process cannot claim the job before then, and afterwards it claims the job with a new lease and capability and
+resumes it from its committed steps.
+`test/import-worker-watchdog-db.test.ts` proves this against a real database. Because the worker exits rather
+than waiting, its heartbeat row stays behind until it goes stale, and the new process records its own.
+
+If the database server never sees the old connection close (for example when the network path itself failed),
+the old backend, together with any Bank or Individual advisory lock it holds, lasts until the server's TCP
+keepalive ends it. Until then those two queues wait while bulk jobs continue. Use `ps` and `pg_locks` on the
+database host (rule 12 of docs/SCALE-AND-RELEASE-RULES.md) to find such a backend.
+
 ## Protected staging update after first installation
 
 `bank_import_worker_upgrade_v1.py` is a staging-only two-step update, separate from
