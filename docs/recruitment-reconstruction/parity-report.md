@@ -625,3 +625,24 @@ recruitment block 5200–5220 (idx 4600–4620, when …4900–…4920), so an i
 block. It moved with `git mv` to 5700–5720 (idx 5100–5120, when …5400–…5420), in order, after 5640; only comments naming
 sibling migrations and 5719's precondition message changed inside 5714–5720. Mapping and survey: the top entry of
 `docs/MIGRATION-ALLOCATION.md`. Sections above keep the numbers of their time.
+
+## Slice 19 — Candidate e-mail (receipts and rejection letters)
+
+Local: after a review and two confirmation rounds, 56 files and 872 tests passed; after the merge of origin/main and the
+renumber to 5700–5720, 65 files (1,001 tests; the three failures of the first run were fixed in test code and their two
+files rerun, 124 passed) and the whole-repo type check passed. Sending was exercised with faked transports only.
+Rendered (case 132, partly): the render server runs without the embedded sign-in, so the settings page showed that
+candidate e-mail is unavailable on this installation, the switch disabled, the data-processing note, the 30-day
+counts and both templates' default wording with the placeholder list. A template with an unknown placeholder and one
+with a domain link were refused with the typed wording kept; a valid rejection wording saved; a sender name containing
+"@" was refused with its own message and kept. The reject dialog offered no e-mail option while e-mail is unavailable.
+Not rendered: queuing a receipt or a rejection with a preview, and the application page's e-mail list, which need an
+installation with an active embedded mail relay.
+
+| Run (bde982fbe: slice 19, merge of origin/main, renumber to 5700–5720) | Job | Result |
+| --- | --- | --- |
+| 43582353939 | Whole-repo type check | PASS |
+| 43582353939 | Production build | PASS |
+| 43582353939 | Selected tests (60 files) | 55 PASS; FAIL: 5 of the known 6 AI files (44 tests) |
+| 43582378924 | Selected tests (60 files) | 59 PASS; FAIL: the sixth known AI file, provider-analysis-policy (9 tests) |
+| 43583984796 | Selected tests (28 files, incl. candidate e-mail, the mail transport suites and the installed-watermark test) | PASS: 395 tests |
