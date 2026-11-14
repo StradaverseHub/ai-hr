@@ -40,6 +40,9 @@ async function unmaterializedReference(ctx:ReturnType<typeof adminCtx>,tx:Tx,com
 
 beforeAll(migrateTestDb);afterAll(closeAll);
 it('keeps the exact authorized search matches with bounded response at retained volume',async()=>{
+ // Phase clock: a gate timeout names the phase that consumed it (job log) as well as the evidence file.
+ const phaseMs:Record<string,number>={};let phaseStart=performance.now();
+ const phase=(name:string)=>{const now=performance.now();phaseMs[name]=Math.round(now-phaseStart);phaseStart=now;console.info(`[personnel-switcher-volume] ${name} ${phaseMs[name]}ms`);};
  await resetDb();const b=await seedBase(),foreign=await seedBase();
  async function population(base:Base,size:number,prefix:string){
   const people=Array.from({length:size},(_,i)=>({id:randomUUID(),tenantId:base.tenantId,fullName:'Fictional Personnel '+prefix+String(i).padStart(6,'0'),primaryEmail:prefix+i+'@example.invalid'}));
@@ -53,9 +56,15 @@ it('keeps the exact authorized search matches with bounded response at retained 
  }
 
  const employees=await population(b,16384,'MAIN');await population(foreign,7,'FOREIGN');const ctx=adminCtx(b);
+ phase('fixture');
+ // Current planner statistics for the retained population, as an installation has. Without this the plans
+ // depend on whether autovacuum's autoanalyze reaches this database during the case: on a busy gate cluster
+ // it may not, and the same reads ran several times slower (gate run 43462257540 timed out at 240 s).
+ for(const table of ['person','employment','assignment'])await owner.client.unsafe('analyze '+table);
+ phase('analyze');
  expect((await withTenant(ctx,tx=>tx.execute(sql`select current_user as role`)))[0].role).toBe('ai_hr_app');
  const start=performance.now(),legacy=await readers.listWorkforcePickOptions(ctx,[b.companyId]);
- const legacyMs=performance.now()-start;
+ const legacyMs=performance.now()-start;phase('eagerFirst');
  expect(legacy).toHaveLength(employees.length);
  const fields=({employmentId,name,employeeCode,company,department}:typeof legacy[number])=>({employmentId,name,employeeCode,company,department});
  const legacyBytes=Buffer.byteLength(JSON.stringify(legacy.map(fields)));
@@ -71,6 +80,7 @@ it('keeps the exact authorized search matches with bounded response at retained 
  expect((await read('main000008'))[0].employmentId).toBe(employees[8].id);
  expect(await read('MAIN',[])).toEqual([]);expect(await read('FOREIGN',[foreign.companyId])).toEqual([]);
  await expect(read('x'.repeat(201))).rejects.toThrow('Invalid employee search');
+ phase('equivalence');
  const pairs=[];let boundedBytes=0;
  for(let round=0;round<4;round++){
   let eagerMs=0,boundedMs=0;
@@ -79,6 +89,7 @@ it('keeps the exact authorized search matches with bounded response at retained 
   if(round%2===0){await eager();await bounded();}else{await bounded();await eager();}
   pairs.push({round,eagerMs,boundedMs});
  }
+ phase('eagerBoundedPairs');
  const boundedPlanPairs=[];
  for(let round=0;round<4;round++){
   let referenceMs=0,normalizedMs=0;
@@ -87,5 +98,6 @@ it('keeps the exact authorized search matches with bounded response at retained 
   if(round%2===0){await reference();await normalized();}else{await normalized();await reference();}
   boundedPlanPairs.push({round,order:round%2===0?'reference-normalized':'normalized-reference',referenceMs,normalizedMs});
  }
- Object.assign(report,{pairedTimings:pairs,boundedPlanPairs,boundedReferenceSource:'c27ce14f69aea76576f198e5bcc50666136551e6_equivalentNonemptyCompanyOnlyFilter',boundedRows:8,boundedBytes,exactRankedMatches:true,emptyForeignScopeRefused:true});save();
+ phase('boundedPlanPairs');
+ Object.assign(report,{phaseMs,pairedTimings:pairs,boundedPlanPairs,boundedReferenceSource:'c27ce14f69aea76576f198e5bcc50666136551e6_equivalentNonemptyCompanyOnlyFilter',boundedRows:8,boundedBytes,exactRankedMatches:true,emptyForeignScopeRefused:true});save();
 },240000);
