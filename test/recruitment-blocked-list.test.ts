@@ -5,7 +5,7 @@
  * NOBYPASSRLS table owner with row security forced. Pools (cases 88–89) are test/recruitment-pools.test.ts; case 94 is the
  * lead's rendered check.
  *
- * Expected values are computed independently of packs/recruitment/blocked-list.ts and 5213's matching: which applications
+ * Expected values are computed independently of packs/recruitment/blocked-list.ts and 5713's matching: which applications
  * match is decided here from the fixture's own identity values by the rule written out again (same ID number, or the same
  * name plus the same e-mail or mobile), and checked against plain owner-connection SQL that ignores row security. Every person
  * is fictional. Reasons carry LETTER sentinels (QZX…: no UUID, timestamp or number can contain them); the mobile is checked as

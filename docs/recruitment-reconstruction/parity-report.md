@@ -499,7 +499,7 @@ No recruitment test failed on GitHub.
 
 origin/main (== origin/alpha at the time, 2a2495919) was merged into this branch with a normal merge commit; the
 branch is now 0 behind origin/main. The 14 Recruitment migrations moved from 4400–4413 (idx 3800–3813, when
-…4100–…4113) to 5200–5213 (idx 4600–4613, when …4900–…4913) with SQL bytes unchanged, after a survey of every
+…4100–…4113) to 5200–5213 (idx 4600–4613, when …4900–…4913; since renumbered to 5700–5713, see the 14 November section) with SQL bytes unchanged, after a survey of every
 remote journal, allocation document and worktree found no claim on that block. 5214 restates main's 5000 version of
 `app.consume_invitation` with `recruiting_partner` added, because 5201's older restatement would otherwise drop
 main's Access lock (diff checked: one line). Slice 13 (8fefb6242) had no separate GitHub run; it is covered here.
@@ -606,7 +606,7 @@ same room and time could be booked for another candidate. No server errors.
 
 ## Merge of origin/main (7282034468) after slice 18 — commit 463e24dd3
 
-Main's migrations 5129–5162 (idx 4529–4562) sit below the recruitment block 5200–5219 (idx 4600–4619); no function or
+Main's migrations 5129–5162 (idx 4529–4562) sit below the recruitment block 5200–5219 (idx 4600–4619; now 5700–5719); no function or
 table is defined on both sides. Conflicts were additive only (messages merged key by key with identical key sets in all
 six locales, the journal as a union in idx order, the allocation document, the regenerated AI manifests).
 
@@ -617,3 +617,11 @@ six locales, the journal as a union in idx order, the allocation document, the r
 | 43407132693 | Selected tests (60 files) | 55 PASS; FAIL: 5 of the known 6 AI files (44 tests) |
 | 43407179173 | Selected tests (60 files) | 59 PASS; FAIL: the sixth known AI file, provider-analysis-policy (9 tests) |
 | 43409436035 | Selected tests (12 files) | PASS: 111 tests |
+
+## Migration renumber above main's 5400–5640 block (2026-11-14)
+
+origin/main (9b4f22c09) ends at `5640_lifecycle_v9_email_hold_company_tenant` (idx 5040, when …5340), above the
+recruitment block 5200–5220 (idx 4600–4620, when …4900–…4920), so an installation applying main first would skip the
+block. It moved with `git mv` to 5700–5720 (idx 5100–5120, when …5400–…5420), in order, after 5640; only comments naming
+sibling migrations and 5719's precondition message changed inside 5714–5720. Mapping and survey: the top entry of
+`docs/MIGRATION-ALLOCATION.md`. Sections above keep the numbers of their time.

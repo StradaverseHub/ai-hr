@@ -3,7 +3,7 @@
  * outside the pack ONLY through ./service.
  *
  * Recruitment administrators define, edit, order, enable and disable their company's custom fields for candidates and for
- * jobs, with the options of choice fields (5215 row security admits administrators only to write; the service checks first for
+ * jobs, with the options of choice fields (5715 row security admits administrators only to write; the service checks first for
  * a clear refusal). A field whose labels or help text name a sensitive category is refused by the fixed word list in
  * ./custom-field-model (D-052). Once any record has a value, a field keeps its type and restricted setting and cannot be
  * deleted, and an option in use cannot be deleted (the database refuses the same through its foreign keys); disabling hides a

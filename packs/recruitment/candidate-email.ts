@@ -3,7 +3,7 @@
  * templates, the composer and previews people see, queueing (receipts HR ticks and rejections, set-based, frozen at queue time), the application
  * page's list and an administrator's retry. Careers-page receipts are not in this slice (D-064: the applicant's address is not
  * verified until slice 21). Reached from outside the pack only through ./service. Delivery is
- * ./candidate-email-delivery (the sweep). db/migrations/5220_recruitment_candidate_email.sql refuses every illegal write again.
+ * ./candidate-email-delivery (the sweep). db/migrations/5720_recruitment_candidate_email.sql refuses every illegal write again.
  *
  * Nothing is queued unless the installation can send (the embedded relay, AUTH_PROVIDER=internal, has an active relay for the
  * tenant: lib/recruitment-candidate-email-ipc) AND the company's switch is on. Receipts and rejections render through
@@ -12,7 +12,7 @@
  *
  * Who reads the e-mails: the job's reviewers (administrators, recruiter, assistants, hiring managers) — the same people who may
  * reject the application and who already read the candidate's name and the job title, which is all an e-mail states besides the
- * company's wording. Interviewers read none (row security, 5220). Only administrators change settings and templates or retry.
+ * company's wording. Interviewers read none (row security, 5720). Only administrators change settings and templates or retry.
  */
 import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
@@ -106,7 +106,7 @@ export function previewCandidateEmail(c: CandidateEmailComposer, who: { candidat
 const previewFingerprint = (c: CandidateEmailComposer, recipient: string, m: RenderedCandidateEmail) =>
   createHash('sha256').update(JSON.stringify([c.fingerprint, recipient, m.subject, m.text])).digest('hex').slice(0, 32);
 
-/** A database refusal of a queue (5220's checks) as the person's sentence. */
+/** A database refusal of a queue (5720's checks) as the person's sentence. */
 function queueRefusal(e: unknown): never {
   let cur = e as { constraint_name?: unknown; cause?: unknown } | null | undefined;
   for (let i = 0; cur && typeof cur === 'object' && i < 4; i++, cur = cur.cause as typeof cur) {
@@ -174,12 +174,12 @@ export type CandidateEmailQueueResult = {
 /**
  * Queue one e-mail of `kind` per application, inside the caller's transaction (after the reject, archive or add it belongs to, so
  * it commits or rolls back with it). The applications are of ONE company and already locked and checked by the caller. Set-based:
- * one read of the applications, candidates and jobs, one INSERT for the set (5220 checks the set once), one event per e-mail.
+ * one read of the applications, candidates and jobs, one INSERT for the set (5720 checks the set once), one event per e-mail.
  * An application that cannot be e-mailed is skipped with its reason (no usable address; a link-like name or job title; for a rejection,
  * no preview shown) while the rest are queued. The whole action is refused only when the installation cannot send
  * (email_unavailable), the company's switch is off (email_off), a POSTED preview fingerprint no longer matches what would be sent
  * (email_changed: the wording, sender, the candidate's details or address changed) or the company would pass 500 queued e-mails in the
- * hour (email_hourly_limit; counted under the same per-company lock as 5220's check, so concurrent queues cannot pass it together).
+ * hour (email_hourly_limit; counted under the same per-company lock as 5720's check, so concurrent queues cannot pass it together).
  * Receipts are queued without a preview (the person ticks "Send receipt"); rejections take `fingerprints` (application id → the
  * fingerprint of the preview shown).
  */
@@ -311,6 +311,13 @@ export async function saveCandidateEmailSettings(s: SessionContext, companyId: u
   if (v.value.enabled && !(await candidateEmailAvailable(s.tenantId))) throw new RecruitmentError('email_unavailable');
   await withRecruitmentTenant(s, async (tx) => {
     const company = await assertAdminTx(tx, companyId);
+    if (v.value.enabled && v.value.senderName === null) {
+      // The default is the company name made safe for the transport (D-064); a name of nothing but refused characters leaves none,
+      // so the company sets its own sender name first.
+      const [co] = await tx.execute<{ name: string }>(sql`select app.recruitment_candidate_email_sender(null, co.legal_name) as name from company co
+        where co.id = ${company}::uuid and co.tenant_id = ${s.tenantId}::uuid`);
+      if (!co?.name) throw new RecruitmentError('missing_fields', ['senderName']);
+    }
     await tx.execute(sql`insert into recruitment_candidate_email_setting (company_id, tenant_id, enabled, sender_name, reply_to, locale, created_by_user_id, updated_by_user_id)
       values (${company}::uuid, ${s.tenantId}::uuid, ${v.value.enabled}, ${v.value.senderName}, ${v.value.replyTo}, ${v.value.locale}, ${user}::uuid, ${user}::uuid)
       on conflict (company_id) do update set enabled = excluded.enabled, sender_name = excluded.sender_name, reply_to = excluded.reply_to, locale = excluded.locale,

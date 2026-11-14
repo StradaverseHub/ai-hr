@@ -14,7 +14,7 @@
  *            never a reason to send again (the lease runs out and the row becomes uncertain).
  * When the installation cannot send (no embedded relay, no active relay), claimed e-mails are held (due again in 5 minutes, the
  * attempt not counted; failed as relay unavailable after 7 days). An e-mail whose frozen address is no longer the candidate's recorded
- * e-mail, or whose company switched candidate e-mail off, is not sent (failed, not eligible). Every database step is an owner-only 5220 function that takes the id and token, never an address or words.
+ * e-mail, or whose company switched candidate e-mail off, is not sent (failed, not eligible). Every database step is an owner-only 5720 function that takes the id and token, never an address or words.
  */
 import { sql } from 'drizzle-orm';
 import type { SessionContext } from '../../db/client';

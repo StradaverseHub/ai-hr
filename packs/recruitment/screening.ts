@@ -8,9 +8,9 @@
  * and withdraw open requests. Each named reviewer answers Advance, Reject or Pending with an optional comment; Pending may be
  * followed by another answer, Advance or Reject closes the request. An answer never moves or rejects anything.
  *
- * Every entry point runs inside `withRecruitmentTenant` as the caller, under the caller's own row security (5211): operators
+ * Every entry point runs inside `withRecruitmentTenant` as the caller, under the caller's own row security (5711): operators
  * and administrators read every request and answer on the job; a reviewer reads their own requests and, like scorecards, the
- * job's answers; nobody else reads anything. The service checks first for a clear refusal; the 5211 guards refuse the same
+ * job's answers; nobody else reads anything. The service checks first for a clear refusal; the 5711 guards refuse the same
  * again. The job's hiring managers are read through app.recruitment_job_hiring_managers (ids, to the job's operators only).
  * Audit events carry ids, counts and results — never a note or a comment. Nothing here calls a model or scores a résumé.
  */
@@ -46,7 +46,7 @@ const constraintOf = (e: unknown): string | undefined => {
 };
 
 /** The job's hiring managers (ids, oldest membership first) — for an operator or administrator of the job; else none. The
- *  5211 definer is STABLE and writes nothing, so this works in a read-only transaction. */
+ *  5711 definer is STABLE and writes nothing, so this works in a read-only transaction. */
 async function jobHiringManagersTx(tx: Tx, jobId: string): Promise<string[]> {
   const rows = await tx.execute<{ app_user_id: string }>(sql`select app_user_id from app.recruitment_job_hiring_managers(${jobId}::uuid)`);
   return rows.map((r) => r.app_user_id);
@@ -228,7 +228,7 @@ export type ScreeningTodoRow = {
  * The hiring manager's "To screen" list: their OPEN requests, newest first (at most SCREENING_LIST_LIMIT), in the companies
  * given (undefined: every company), with the job, the candidate, who sent it and when, the note, and their own earlier Pending
  * answers. A request closes by itself when its application is archived or hired or the reviewer leaves the job's hiring
- * managers (5211), so no application state is filtered here. Row security returns only the viewer's own requests while they
+ * managers (5711), so no application state is filtered here. Row security returns only the viewer's own requests while they
  * are a hiring manager of the job.
  */
 export async function myScreeningRequests(s: SessionContext, companyIds?: readonly string[]): Promise<ScreeningTodoRow[]> {

@@ -40,9 +40,9 @@
 --      each probe stopping at its first match); app.recruitment_settle_candidate_import (the worker's owner settle: an import's
 --      outcome and refused rows when its importer can no longer write them); the To assign guard also refuses a candidate with an
 --      application (an owner-bound probe).
---   4. app.recruitment_destroy_candidate restated (5215 body byte for byte) plus one step: the person's To assign marker (with the
+--   4. app.recruitment_destroy_candidate restated (5715 body byte for byte) plus one step: the person's To assign marker (with the
 --      job title as written) and import note go; import rows keep ids only.
---   5. app.recruitment_delete_company_setup restated (5216 body byte for byte) plus the five tables.
+--   5. app.recruitment_delete_company_setup restated (5716 body byte for byte) plus the five tables.
 --
 -- Nothing here calls a model, parses a résumé or infers anything about a candidate.
 
@@ -503,7 +503,7 @@ END $$;
 REVOKE ALL ON FUNCTION app.recruitment_settle_candidate_import(uuid) FROM PUBLIC, ai_hr_app;
 --> statement-breakpoint
 
--- ── 5. Removal: 5215's app.recruitment_destroy_candidate, byte for byte, plus the To assign marker and the import note ─────────
+-- ── 5. Removal: 5715's app.recruitment_destroy_candidate, byte for byte, plus the To assign marker and the import note ─────────
 -- (The new step follows the slice 14 steps, before the candidate row is cleared.)
 CREATE OR REPLACE FUNCTION app.recruitment_destroy_candidate(p_candidate uuid) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, public, app, pg_temp SET row_security = on AS $$
@@ -654,7 +654,7 @@ REVOKE ALL ON FUNCTION app.recruitment_destroy_candidate(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.recruitment_destroy_candidate(uuid) TO ai_hr_app;
 --> statement-breakpoint
 
--- ── 6. Deleting a company (core/company-refs.ts): 5216's body plus the slice 16 tables ───────────────────────────────────────
+-- ── 6. Deleting a company (core/company-refs.ts): 5716's body plus the slice 16 tables ───────────────────────────────────────
 CREATE OR REPLACE FUNCTION app.recruitment_delete_company_setup(p_company uuid) RETURNS integer
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, public, app, pg_temp AS $$
 DECLARE removed integer := 0; n integer;

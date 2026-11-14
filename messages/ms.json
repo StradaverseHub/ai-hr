@@ -40861,6 +40861,8 @@
       "enabled": "E-mel calon",
       "senderName": "Nama penghantar (sehingga {max} aksara)",
       "senderNameHint": "Biarkan kosong untuk menggunakan {name}.",
+      "senderNameRequired": "Masukkan nama penghantar: nama syarikat ini tidak mempunyai aksara yang boleh digunakan sebagai nama penghantar.",
+      "senderNameInvalid": "Gunakan nama sahaja: sehingga {max} aksara, tanpa aksara @, <, > atau \".",
       "replyTo": "Alamat balasan",
       "replyToHint": "Balasan calon dihantar ke sini. Wajib apabila e-mel calon dihidupkan.",
       "locale": "Bahasa e-mel calon",

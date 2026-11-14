@@ -1,7 +1,7 @@
 /**
  * Recruitment slice 19 — the pure candidate e-mail rules (packs/recruitment/candidate-email-model.ts), the code-owned default wording in
  * the six messages files, the transport's per-message display name and reply-to (lib/internal-auth/smtp.ts, nodemailer faked), and the
- * 5220 restatements of the candidate removal and company delete (byte for byte plus added steps). No database. Fictional values only.
+ * 5720 restatements of the candidate removal and company delete (byte for byte plus added steps). No database. Fictional values only.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -18,11 +18,12 @@ import { CandidateMailNotSent, type CandidateMail } from '../lib/recruitment-can
 import { EmailSettingsError } from '../lib/identity/email-model';
 import {
   BASE_PLACEHOLDERS, CANDIDATE_EMAIL_FROZEN_HTML_MAX, CANDIDATE_EMAIL_FROZEN_SUBJECT_MAX, CANDIDATE_EMAIL_FROZEN_TEXT_MAX, CANDIDATE_EMAIL_VALUE_MAX, HTML_GRAMMAR,
-  LINK_PATTERN, defaultSenderName, linkish, usableRecipient, worstCaseLength, CANDIDATE_EMAIL_HOURLY_CAP, CANDIDATE_EMAIL_KINDS, CANDIDATE_EMAIL_LOCALES, CANDIDATE_EMAIL_PLACEHOLDERS, candidateEmailBackoffSeconds,
+  LINK_PATTERN, SENDER_NAME_REFUSED, defaultSenderName, linkish, usableRecipient, worstCaseLength, CANDIDATE_EMAIL_HOURLY_CAP, CANDIDATE_EMAIL_KINDS, CANDIDATE_EMAIL_LOCALES, CANDIDATE_EMAIL_PLACEHOLDERS, candidateEmailBackoffSeconds,
   candidateEmailDisplayState, candidateEmailRetryable, parseRejectionDelay, renderCandidateEmail, templatePlaceholders, validReplyTo,
   validateCandidateEmailSettings, validateCandidateEmailTemplate,
 } from '../packs/recruitment/candidate-email-model';
 import { RECRUITMENT_ERROR_CODES } from '../packs/recruitment/model';
+import { validManagedEmailSenderName } from '../lib/managed-email-policy';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, import.meta.url)), 'utf8');
 const messages = (locale: string) => JSON.parse(read(`messages/${locale}.json`)) as { recruitment: Record<string, any> };
@@ -135,12 +136,47 @@ describe('settings, delays, states and backoff', () => {
       expect(usableRecipient(bad), String(bad)).toBe(false);
     }
   });
-  it('cuts the default sender name at 80 and trims Unicode spaces after the cut (as 5220 does)', () => {
+  it('cuts the default sender name at 80 and trims Unicode spaces after the cut (as 5720 does)', () => {
     expect(defaultSenderName('\u3000 Fictional QZE\u00a0')).toBe('Fictional QZE');
     const name = 'Q'.repeat(79) + '\u00a0' + 'tail';
     expect(defaultSenderName(name)).toBe('Q'.repeat(79));
     expect(defaultSenderName('A\nB')).toBe('A B');
-    expect(read('db/migrations/5220_recruitment_candidate_email.sql')).toContain('\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff');
+    expect(read('db/migrations/5720_recruitment_candidate_email.sql')).toContain('\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff');
+  });
+  it('refuses a sender name the transport refuses (@ < > " and control characters); every accepted name passes the transport rule', () => {
+    for (const bad of ['QZE@Talent', 'talent@example.test', 'QZE <Talent>', 'QZE Talent >', 'QZE "Talent"', '"', 'QZE\tTalent', 'QZE\u0085Talent']) {
+      expect(validateCandidateEmailSettings({ enabled: false, senderName: bad }), JSON.stringify(bad)).toEqual({ ok: false, code: 'invalid_input', fields: ['senderName'] });
+      // The transport refuses each of these too (C1 controls are refused here only, as 5720 refuses them).
+      if (!/[\u0080-\u009f]/.test(bad)) expect(validManagedEmailSenderName(bad.trim()), JSON.stringify(bad)).not.toBe(bad.trim());
+    }
+    for (const good of ['QZE Talent & Co.', 'Fictional QZE (Talent)', "O'Brien QZE", 'QZE 人才团队', 'Q'.repeat(80), '\u00a0QZE Talent\u3000']) {
+      const v = validateCandidateEmailSettings({ enabled: false, senderName: good });
+      expect(v.ok, JSON.stringify(good)).toBe(true);
+      const name = v.ok ? v.value.senderName : null;
+      expect(validManagedEmailSenderName(name), JSON.stringify(good)).toBe(name);
+    }
+  });
+  it('makes the company name safe as the default sender name (D-064): refused characters made spaces, runs of spaces made one', () => {
+    expect(defaultSenderName('Fictional "QZE" Sdn Bhd')).toBe('Fictional QZE Sdn Bhd');
+    expect(defaultSenderName('QZE@Work Sdn Bhd')).toBe('QZE Work Sdn Bhd');
+    expect(defaultSenderName('<QZE>  Fictional\n\nSdn Bhd')).toBe('QZE Fictional Sdn Bhd');
+    expect(defaultSenderName(' "QZE" ')).toBe('QZE');
+    expect(defaultSenderName(`${'Q'.repeat(79)}"tail`)).toBe('Q'.repeat(79));
+    expect(defaultSenderName('"@<>"')).toBe('');
+    for (const name of ['Fictional "QZE" Sdn Bhd', 'QZE@Work Sdn Bhd', '<QZE> Sdn Bhd', `${'@'.repeat(40)}${'Q'.repeat(100)}`, 'QZE\u0001\u007f\u009f x', '\u3000"QZE"\u00a0']) {
+      const d = defaultSenderName(name);
+      expect(d, JSON.stringify(name)).not.toBe('');
+      expect(validManagedEmailSenderName(d), JSON.stringify(name)).toBe(d);
+    }
+  });
+  it('5720 refuses the same characters in both sender CHECKs and makes them spaces in the default (one class, as the model)', () => {
+    expect(SENDER_NAME_REFUSED.source).toBe('[\\u0001-\\u001f\\u007f-\\u009f@<>"]');
+    const m = read('db/migrations/5720_recruitment_candidate_email.sql');
+    const cls = `'[\\x01-\\x1f\\x7f-\\x9f@<>"]'`;
+    expect(m).toContain(`AND sender_name !~ ${cls})),`);
+    expect(m).toContain(`sender_name text NOT NULL CHECK (char_length(sender_name) BETWEEN 1 AND 80 AND sender_name !~ ${cls}`);
+    expect(m).toContain(`coalesce(p_company_name, ''), ${cls}, ' ', 'g'), ' {2,}', ' ', 'g'),`);
+    expect(m.match(/sender_name !~ '\[\\x01-\\x1f\\x7f-\\x9f\]'/g)).toBeNull();
   });
   it('rejection delays are now or 1–3 days', () => {
     expect(['0', '1', '2', '3', 2].map(parseRejectionDelay)).toEqual([0, 1, 2, 3, 2]);
@@ -180,8 +216,8 @@ describe('default wording in the six languages', () => {
   });
 });
 
-describe('5220 agrees with the model', () => {
-  const m = read('db/migrations/5220_recruitment_candidate_email.sql');
+describe('5720 agrees with the model', () => {
+  const m = read('db/migrations/5720_recruitment_candidate_email.sql');
   it('uses the same link pattern and HTML grammar as the model, and has no careers receipt path (D-064)', () => {
     expect(m).toContain(`SELECT p_text ~* '${LINK_PATTERN}';`);
     expect(m).toContain(`body_html ~ '${HTML_GRAMMAR}'`);
@@ -197,7 +233,7 @@ describe('5220 agrees with the model', () => {
     expect(m).toContain('REFERENCING NEW TABLE AS inserted FOR EACH STATEMENT');
     expect(m).toContain('least(3600, 60 * power(2, x.attempts))');
   });
-  it('restates the candidate removal (5217) and the company delete (5219) byte for byte with added steps only', () => {
+  it('restates the candidate removal (5717) and the company delete (5719) byte for byte with added steps only', () => {
     const fn = (source: string, name: string) => {
       const start = source.lastIndexOf(`CREATE OR REPLACE FUNCTION ${name}(`);
       expect(start, name).toBeGreaterThan(-1);
@@ -214,10 +250,10 @@ describe('5220 agrees with the model', () => {
       expect(b.length).toBeGreaterThan(90);
       return a.slice(i, a.length - j);
     };
-    const destroy = added('5217_recruitment_import_export.sql', 'app.recruitment_destroy_candidate');
+    const destroy = added('5717_recruitment_import_export.sql', 'app.recruitment_destroy_candidate');
     expect(destroy.filter((l) => /DELETE FROM/.test(l)).map((l) => l.trim().split(' ')[2])).toEqual(['public.recruitment_candidate_email']);
     expect(destroy).toHaveLength(4);
-    const del = added('5219_recruitment_interview_setup.sql', 'app.recruitment_delete_company_setup');
+    const del = added('5719_recruitment_interview_setup.sql', 'app.recruitment_delete_company_setup');
     expect(del.filter((l) => /DELETE FROM/.test(l)).map((l) => l.trim().split(' ')[2])).toEqual(['public.recruitment_candidate_email',
       'public.recruitment_candidate_email_template', 'public.recruitment_candidate_email_setting']);
     expect(del).toHaveLength(9);
@@ -243,8 +279,9 @@ describe('the transport: a per-message display name and reply-to, nothing else c
   it('without them, keeps the relay\'s name and reply-to (existing callers unchanged)', async () => {
     await sendSmtp(relay, mail());
     expect(smtp.send.mock.calls[0][0]).toMatchObject({ from: { name: 'Fictional relay name', address: relay.config.from }, replyTo: 'relay-replies@fixture.invalid' });
-    await sendSmtp(relay, mail({ senderProfile: 'onboarding' }));
-    expect(smtp.send.mock.calls[1][0]).toMatchObject({ from: { name: 'HR Onboarding' } });
+    // Main's transport has no per-message sender profile any more (one On/Off Boarding sender name per tenant): the field is refused.
+    await expect(sendSmtp(relay, mail({ senderProfile: 'onboarding' }))).rejects.toMatchObject({ code: 'invalid' });
+    expect(smtp.send).toHaveBeenCalledOnce();
   });
   it('tells the caller when it starts connecting; nothing before that reaches the relay', async () => {
     const connecting = vi.fn();
@@ -268,7 +305,11 @@ describe('the transport: a per-message display name and reply-to, nothing else c
   });
   it.each([
     ['a display name with a line break', { senderName: 'QZE\r\nBcc: x@example.test' }],
-    ['a display name over 80 characters', { senderName: 'x'.repeat(81) }],
+    ['a display name over 160 characters', { senderName: 'x'.repeat(161) }],
+    ['a display name with @', { senderName: 'QZE@Talent' }],
+    ['a display name with < and >', { senderName: 'QZE <Talent>' }],
+    ['a display name with a double quote', { senderName: 'QZE "Talent"' }],
+    ['a display name with surrounding space', { senderName: ' QZE Talent' }],
     ['a reply-to with a display name', { replyTo: 'Talent <talent@example.test>' }],
     ['a display name outside managed delivery', { attachments: undefined, senderName: 'QZE' }],
     ['a reply-to outside managed delivery', { attachments: undefined, replyTo: 'talent@example.test' }],

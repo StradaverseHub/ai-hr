@@ -2,7 +2,7 @@
  * Recruitment slice 5 rules — candidate records and privacy. Pure, deterministic and client-safe: no database, no
  * clock (every "today" is passed in, from lib/hr-date's Kuala Lumpur calendar), no model.
  *
- * The SQL in db/migrations/5205_recruitment_candidate_privacy.sql enforces the same rules independently: the
+ * The SQL in db/migrations/5705_recruitment_candidate_privacy.sql enforces the same rules independently: the
  * normalisers and the duplicate match mirror app.recruitment_norm_* and app.recruitment_candidate_duplicate_count; the
  * repeated-application window mirrors app.recruitment_guard_repeat_application. Nothing here infers anything about a
  * candidate: no smart tags, no resume parsing, no scoring.

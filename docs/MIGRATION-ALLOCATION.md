@@ -1,3 +1,55 @@
+# Recruitment block renumbered above main's 5400–5640 block — 14 November 2026 MYT (unapplied)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` merged `origin/main` (`9b4f22c09`), whose journal now ends at
+idx 5040 / when 1793330005340 (`5640_lifecycle_v9_email_hold_company_tenant`; the 5400–5640 rewards and lifecycle block).
+That block sorts ABOVE the Recruitment block reserved below (`5200`–`5220` at idx 4600–4620 / when
+1793330004900–1793330004920): an installation that applies main's block first would hold an applied watermark above every
+Recruitment timestamp, and drizzle silently skips an entry whose `when` is not greater than the latest applied
+`created_at`. The block is renumbered above main's maximum, in its original order, keeping main's offset convention (tag T,
+idx T−600, when 1793330000000+(T−300)): `52NN_<name>` → `57NN_<name>`, idx 4600+NN → 5100+NN, when 1793330004900+NN →
+1793330005400+NN (NN = 00–20). Files moved with `git mv`; the journal keeps main's entries byte-for-byte and appends the
+block after `5640`. `5700`–`5713` keep their SQL bytes; in `5714`–`5720` only comments that name sibling migrations, and
+`5719`'s precondition exception text, now name the new numbers. The earlier entries below (including the 12 November
+renumber and the slice 14–19 reservations) are history and are not rewritten.
+
+| Old file | Old idx | Old when | New file | New idx | New when |
+| --- | --- | --- | --- | --- | --- |
+| `5200_recruiting_partner_role` | idx 4600 | when 1793330004900 | `5700_recruiting_partner_role` | idx 5100 | when 1793330005400 |
+| `5201_recruitment_core` | idx 4601 | when 1793330004901 | `5701_recruitment_core` | idx 5101 | when 1793330005401 |
+| `5202_recruitment_team_interviews` | idx 4602 | when 1793330004902 | `5702_recruitment_team_interviews` | idx 5102 | when 1793330005402 |
+| `5203_recruitment_offers_hire_handoff` | idx 4603 | when 1793330004903 | `5703_recruitment_offers_hire_handoff` | idx 5103 | when 1793330005403 |
+| `5204_recruitment_requisitions` | idx 4604 | when 1793330004904 | `5704_recruitment_requisitions` | idx 5104 | when 1793330005404 |
+| `5205_recruitment_candidate_privacy` | idx 4605 | when 1793330004905 | `5705_recruitment_candidate_privacy` | idx 5105 | when 1793330005405 |
+| `5206_recruitment_report_indexes` | idx 4606 | when 1793330004906 | `5706_recruitment_report_indexes` | idx 5106 | when 1793330005406 |
+| `5207_recruitment_referrals` | idx 4607 | when 1793330004907 | `5707_recruitment_referrals` | idx 5107 | when 1793330005407 |
+| `5208_recruitment_careers_page` | idx 4608 | when 1793330004908 | `5708_recruitment_careers_page` | idx 5108 | when 1793330005408 |
+| `5209_recruitment_tasks` | idx 4609 | when 1793330004909 | `5709_recruitment_tasks` | idx 5109 | when 1793330005409 |
+| `5210_recruitment_agencies` | idx 4610 | when 1793330004910 | `5710_recruitment_agencies` | idx 5110 | when 1793330005410 |
+| `5211_recruitment_screening` | idx 4611 | when 1793330004911 | `5711_recruitment_screening` | idx 5111 | when 1793330005411 |
+| `5212_recruitment_background_checks` | idx 4612 | when 1793330004912 | `5712_recruitment_background_checks` | idx 5112 | when 1793330005412 |
+| `5213_recruitment_talent_pools_blocked_list` | idx 4613 | when 1793330004913 | `5713_recruitment_talent_pools_blocked_list` | idx 5113 | when 1793330005413 |
+| `5214_recruitment_consume_invitation_access_lock` | idx 4614 | when 1793330004914 | `5714_recruitment_consume_invitation_access_lock` | idx 5114 | when 1793330005414 |
+| `5215_recruitment_custom_fields` | idx 4615 | when 1793330004915 | `5715_recruitment_custom_fields` | idx 5115 | when 1793330005415 |
+| `5216_recruitment_position_templates` | idx 4616 | when 1793330004916 | `5716_recruitment_position_templates` | idx 5116 | when 1793330005416 |
+| `5217_recruitment_import_export` | idx 4617 | when 1793330004917 | `5717_recruitment_import_export` | idx 5117 | when 1793330005417 |
+| `5218_recruitment_waiting_limits` | idx 4618 | when 1793330004918 | `5718_recruitment_waiting_limits` | idx 5118 | when 1793330005418 |
+| `5219_recruitment_interview_setup` | idx 4619 | when 1793330004919 | `5719_recruitment_interview_setup` | idx 5119 | when 1793330005419 |
+| `5220_recruitment_candidate_email` | idx 4620 | when 1793330004920 | `5720_recruitment_candidate_email` | idx 5120 | when 1793330005420 |
+
+Survey (read-only): 7,589 refs, 596 distinct committed journal blobs and the working trees of all 214 registered worktrees
+found no claim on tags 5650–5899, idx 5050–5300 or when 1793330005350–1793330005600. A recheck while renumbering (7,675 refs,
+217 worktree journals) found one later claim in that range, below this block: `5660_pay_component_bonus_epf_bonus_2012` at
+idx 5060 / when 1793330005360 (branches `claude/statutory-followups-20261114` and `claude/board-trio-rc-20261114`, committed
+14 November). Nothing claims 5700–5720, idx 5100–5120 or when 1793330005400–1793330005420; the block sorts above 5660 whichever
+merges first (if this block reached an installation before 5660, 5660 would then sit below that watermark: release
+coordination must keep 5660 first or renumber it). `test/migration-installed-watermark.test.ts`
+lists no pending blocks; its rules hold: every pending entry is above staging's watermark 1793330004790 and the reserved 5100–5112
+and 5122 (when up to 1793330004822), with strictly increasing `when` in journal order. PRECONDITION: `5700`–`5720` apply after
+`5640` (and after every entry of main's block, and after `5660` where it ships) wherever they are installed. The block is unapplied outside throwaway and CI
+databases and the branch author's local render database (which must be rebuilt, not upgraded: its ledger holds the 52NN
+timestamps). Recheck peer claims, the published baseline and the target's ordered applied ledger before admission. The
+renumber grants no installation authority.
+
 # Recruitment slice 19 — 14 November 2026 MYT (unapplied)
 
 Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after the slice 18 entry, `5220_recruitment_candidate_email` at

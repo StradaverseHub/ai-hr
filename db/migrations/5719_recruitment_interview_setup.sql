@@ -37,21 +37,21 @@
 --      race-free (two concurrent bookings cannot both commit). app.recruitment_interview_period is IMMUTABLE: adding a whole
 --      number of MINUTES to a timestamptz does not depend on the session time zone (only day and month parts do).
 --      PRECONDITION — public.recruitment_interview is empty wherever this applies: the recruitment tables are new in this release
---      block (5200–5218 are unapplied outside throwaway databases, CI and the branch author's local render database), so adding
---      the columns, keys and the exclusion constraint locks no populated table (as 5218's header states for its indexes). An
+--      block (5700–5718 are unapplied outside throwaway databases, CI and the branch author's local render database), so adding
+--      the columns, keys and the exclusion constraint locks no populated table (as 5718's header states for its indexes). An
 --      installation that already holds interviews must not apply this migration as written. The two plain indexes use CREATE INDEX
---      IF NOT EXISTS like 5218.
+--      IF NOT EXISTS like 5718.
 --   3. app.recruitment_user_in_company (SECURITY DEFINER, boolean only, for an administrator of the company): may this user be an
 --      interviewer of the company — an active login employed by it, or holding recruitment administration covering it. A member
 --      who later loses access stays listed (as for job team members) and is skipped when a group is added to an interview.
---   4. app.recruitment_delete_company_setup restated (5218 body byte for byte) plus one block: the question links, questions, group
+--   4. app.recruitment_delete_company_setup restated (5718 body byte for byte) plus one block: the question links, questions, group
 --      members, groups, rooms and addresses, before the evaluation forms the links name.
 --   5. Closing an application frees its rooms. The pack cancels an application's FUTURE open interviews in the same transaction
 --      whenever it leaves 'active' (packs/recruitment/interview-closing.ts, from every path that rejects, archives or hires). A
 --      hiring manager may close an application without operating the job, so a new UPDATE policy admits the job's reviewers and
 --      the place guard admits from a non-operator only that cancellation (future, open, application no longer active, nothing
 --      else changed).
---   6. app.recruitment_guard_interviewer restated (5202 body byte for byte plus one check): an interviewer is added only while the
+--   6. app.recruitment_guard_interviewer restated (5702 body byte for byte plus one check): an interviewer is added only while the
 --      application is active, so naming one on an interview of a closed application cannot grant read of the candidate.
 --   0. The empty-table precondition below is CHECKED first: the migration refuses (55000) if recruitment_interview has rows.
 --
@@ -59,14 +59,14 @@
 -- fields and add nothing to a scorecard's totals.
 
 -- ── 0. Precondition: no interview exists yet ──────────────────────────────────────────────────────────────
--- 5219 adds columns, keys and an exclusion constraint to public.recruitment_interview and builds indexes on it inside this
+-- 5719 adds columns, keys and an exclusion constraint to public.recruitment_interview and builds indexes on it inside this
 -- transaction; that is only safe on an empty table (header). Refuse loudly otherwise. The table forces row security, which binds its
 -- owner too, so the check lifts FORCE for this transaction only (the owner then reads every row) and restores it at once.
 ALTER TABLE public.recruitment_interview NO FORCE ROW LEVEL SECURITY;
 DO $$
 BEGIN
  IF EXISTS (SELECT 1 FROM public.recruitment_interview) THEN
-  RAISE EXCEPTION '5219_recruitment_interview_setup needs an empty recruitment_interview table: this installation already holds interviews. Do not apply 5219 as written; build its interview indexes and constraint for a populated table first.'
+  RAISE EXCEPTION '5719_recruitment_interview_setup needs an empty recruitment_interview table: this installation already holds interviews. Do not apply 5719 as written; build its interview indexes and constraint for a populated table first.'
    USING ERRCODE = '55000';
  END IF;
 END $$;
@@ -246,7 +246,7 @@ GRANT SELECT, INSERT, DELETE ON public.recruitment_interviewer_group_member, pub
 
 -- ── 5. Who may be an interviewer of the company ────────────────────────────────────────────────────────────
 -- An active login (not archived) of the tenant employed by the company, or holding recruitment administration covering it
--- (app.recruitment_user_administers, 5210). Answers a boolean only, and only to a caller who administers recruitment for the
+-- (app.recruitment_user_administers, 5710). Answers a boolean only, and only to a caller who administers recruitment for the
 -- company (anybody else gets false).
 CREATE FUNCTION app.recruitment_user_in_company(p_company uuid, p_user uuid) RETURNS boolean
  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, app, pg_temp AS $$
@@ -383,7 +383,7 @@ BEGIN
    OR NOT EXISTS (SELECT 1 FROM public.recruitment_application a WHERE a.id = NEW.application_id AND a.tenant_id = NEW.tenant_id AND a.state <> 'active') THEN
    RAISE EXCEPTION 'Only the job''s operators change an interview' USING ERRCODE = '42501';
   END IF;
-  -- The audit values are the database's, not the caller's (the cancelling user is checked by 5202's interview guard).
+  -- The audit values are the database's, not the caller's (the cancelling user is checked by 5702's interview guard).
   NEW.cancelled_at := now(); NEW.updated_at := now(); NEW.updated_by_user_id := app.current_user_id();
  END IF;
  IF NEW.room_id IS NOT NULL AND (TG_OP = 'INSERT' OR NEW.room_id IS DISTINCT FROM OLD.room_id)
@@ -402,7 +402,7 @@ CREATE POLICY recruitment_interview_close_review ON public.recruitment_interview
  USING (tenant_id = app.current_tenant_id() AND app.can_review_recruitment_job(company_id, job_id))
  WITH CHECK (tenant_id = app.current_tenant_id() AND app.can_review_recruitment_job(company_id, job_id));
 --> statement-breakpoint
--- Interviewers (5202's guard restated: its body byte for byte plus one check): an interviewer is added only while the application
+-- Interviewers (5702's guard restated: its body byte for byte plus one check): an interviewer is added only while the application
 -- is active, so adding one to an interview of a rejected, archived or hired application cannot grant read of that candidate.
 CREATE OR REPLACE FUNCTION app.recruitment_guard_interviewer() RETURNS trigger
 LANGUAGE plpgsql SET search_path = pg_catalog, public, app, pg_temp AS $$
@@ -412,7 +412,7 @@ BEGIN
   RAISE EXCEPTION 'A cancelled interview is closed' USING ERRCODE = '23514';
  END IF;
  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
- -- Slice 18 (5219): an interviewer is added only while the application is active (being named grants read of the candidate).
+ -- Slice 18 (5719): an interviewer is added only while the application is active (being named grants read of the candidate).
  IF NOT EXISTS (SELECT 1 FROM public.recruitment_application a WHERE a.id = NEW.application_id AND a.tenant_id = NEW.tenant_id AND a.state = 'active') THEN
   RAISE EXCEPTION 'Interviewers are added only while the application is active' USING ERRCODE = '23514',
    CONSTRAINT = 'recruitment_interview_interviewer_application_active';
@@ -422,7 +422,7 @@ END $$;
 REVOKE ALL ON FUNCTION app.recruitment_guard_interviewer() FROM PUBLIC, ai_hr_app;
 --> statement-breakpoint
 
--- ── 8. Deleting a company (core/company-refs.ts): 5218's body plus the interview set-up ─────────────────────────────
+-- ── 8. Deleting a company (core/company-refs.ts): 5718's body plus the interview set-up ─────────────────────────────
 CREATE OR REPLACE FUNCTION app.recruitment_delete_company_setup(p_company uuid) RETURNS integer
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, public, app, pg_temp AS $$
 DECLARE removed integer := 0; n integer;

@@ -77,8 +77,8 @@ const hashOf = async (raw: string) => {
 const ROLE_CHECKS = [
   {
     name: 'app_invitation_role_customer_set',
-    // 0611 (ADR-0142) re-issued this constraint with performance_partner, and 5201 (ADR-0049) with
-    // recruiting_partner; 5201 is the latest definition.
+    // 0611 (ADR-0142) re-issued this constraint with performance_partner, and 5701 (ADR-0049) with
+    // recruiting_partner; 5701 is the latest definition.
     def: "CHECK (role IN ('employee', 'manager', 'hr_admin', 'super_admin', 'payroll_partner', 'performance_comp_partner', 'performance_partner', 'recruiting_partner'))",
   },
   {

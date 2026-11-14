@@ -2,7 +2,7 @@
  * Recruitment slice 16 — the pure rules of the candidate import file (packs/recruitment/import-model.ts) and of exports
  * (packs/recruitment/export-model.ts): reading and checking a file row by row, the template header, possible duplicates within a file,
  * the job result, the permission confirmation, the export columns, the cap, saved column sets and the formula-injection guard; and
- * the static shape of migration 5217 and the kind's registration. No database. The database behaviour (cases 108–113) is
+ * the static shape of migration 5717 and the kind's registration. No database. The database behaviour (cases 108–113) is
  * test/recruitment-import.test.ts and test/recruitment-export.test.ts.
  *
  * Expected values are written out by hand from each fixture, never computed with the module under test.
@@ -182,13 +182,13 @@ describe('exports', () => {
   });
 });
 
-describe('5217 static shape and registration', () => {
+describe('5717 static shape and registration', () => {
   const journal = JSON.parse(read('db/migrations/meta/_journal.json')) as { entries: { idx: number; when: number; tag: string }[] };
-  const migration = read('db/migrations/5217_recruitment_import_export.sql');
-  it('is journalled once at idx 4617 / when 1793330004917, right after 5216', () => {
-    const at = journal.entries.findIndex((e) => e.tag === '5217_recruitment_import_export');
-    expect(journal.entries.filter((e) => e.tag === '5217_recruitment_import_export')).toEqual([expect.objectContaining({ idx: 4617, when: 1793330004917 })]);
-    expect(journal.entries[at - 1]?.tag).toBe('5216_recruitment_position_templates');
+  const migration = read('db/migrations/5717_recruitment_import_export.sql');
+  it('is journalled once at idx 5117 / when 1793330005417, right after 5716', () => {
+    const at = journal.entries.findIndex((e) => e.tag === '5717_recruitment_import_export');
+    expect(journal.entries.filter((e) => e.tag === '5717_recruitment_import_export')).toEqual([expect.objectContaining({ idx: 5117, when: 1793330005417 })]);
+    expect(journal.entries[at - 1]?.tag).toBe('5716_recruitment_position_templates');
   });
   it('registers the kind with the kernel, its handler and its completion notice', () => {
     expect(CANDIDATE_IMPORT_KIND).toBe('recruitment_candidate_import');

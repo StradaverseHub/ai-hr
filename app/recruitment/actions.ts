@@ -134,13 +134,13 @@ export async function changeJobStatusAction(f: FormData) {
   return run(back(f, `/recruitment/positions/${encodeURIComponent(jobId)}`), (s) => changeJobStatus(s, jobId, str(f, 'status')));
 }
 
-/** Slice 7: the job's "Show on the referral portal" setting (recruitment administrators; the service and 5207 refuse others). */
+/** Slice 7: the job's "Show on the referral portal" setting (recruitment administrators; the service and 5707 refuse others). */
 export async function setJobReferralPortalAction(f: FormData) {
   const jobId = str(f, 'jobId');
   return run(back(f, `/recruitment/positions/${encodeURIComponent(jobId)}?tab=settings`), (s) => setJobReferralPortal(s, jobId, f.get('showOnReferralPortal') === 'on'));
 }
 
-/** Slice 8: the job's "Show on careers page" switch (recruitment administrators; the service and 5208 refuse others). */
+/** Slice 8: the job's "Show on careers page" switch (recruitment administrators; the service and 5708 refuse others). */
 export async function setJobCareersPageAction(f: FormData) {
   const jobId = str(f, 'jobId');
   return run(back(f, `/recruitment/positions/${encodeURIComponent(jobId)}?tab=settings`), (s) => setJobCareersPage(s, jobId, f.get('showOnCareersPage') === 'on'));

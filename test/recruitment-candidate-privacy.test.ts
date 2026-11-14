@@ -536,7 +536,7 @@ describe('case 26 — destruction', () => {
     // No sentinel anywhere in any recruitment table (rows as text; file bytes searched as bytes) or in any event.
     const tables = await owner.db.execute<{ relname: string }>(sql`select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'recruitment\\_%' order by c.relname`);
-    expect(tables.length).toBe(81); // slice 7 (5207) adds recruitment_referral; slice 8 (5208) the careers site, notice and application; slice 9 (5209) the read markers; slice 10 (5210) nine agency tables; slice 11 (5211) two screening tables; slice 12 (5212) five background check tables; slice 13 (5213) seven pool and blocked-list tables; slice 14 (5215) five custom field tables; slice 15 (5216) two position template tables; slice 16 (5217) six import, preview quota, To assign and export template tables; slice 17 (5218) the stage waiting rule; slice 18 (5219) six interview set-up tables (groups, members, questions, links, addresses, rooms); slice 19 (5220) three candidate e-mail tables (settings, templates, e-mails)
+    expect(tables.length).toBe(81); // slice 7 (5707) adds recruitment_referral; slice 8 (5708) the careers site, notice and application; slice 9 (5709) the read markers; slice 10 (5710) nine agency tables; slice 11 (5711) two screening tables; slice 12 (5712) five background check tables; slice 13 (5713) seven pool and blocked-list tables; slice 14 (5715) five custom field tables; slice 15 (5716) two position template tables; slice 16 (5717) six import, preview quota, To assign and export template tables; slice 17 (5718) the stage waiting rule; slice 18 (5719) six interview set-up tables (groups, members, questions, links, addresses, rooms); slice 19 (5720) three candidate e-mail tables (settings, templates, e-mails)
     for (const { relname } of tables) {
       const [hit] = await owner.db.execute<{ n: number }>(sql`select count(*)::int as n from ${sql.identifier(relname)} r where to_jsonb(r.*)::text ilike ${`%${SENTINEL}%`}`);
       expect(hit.n, `${relname} still holds personal data`).toBe(0);
@@ -581,7 +581,7 @@ describe('case 26 — destruction waits for a concurrent write to the same candi
     expect((await dueForDestruction(admin, base.companyId)).due.map((d) => d.candidateId)).toEqual([t.candY]);
     let settled = false;
     let destroy!: Promise<string>;
-    // An in-flight consent write to Y: its guard takes the candidate lock shared (as every 5205 guard does) and holds it
+    // An in-flight consent write to Y: its guard takes the candidate lock shared (as every 5705 guard does) and holds it
     // until it commits. The removal starts while it is in flight and must wait for it, then see it.
     await owner.client.begin(async (tx) => {
       await tx`select set_config('app.user_id', ${t.recruiter.userId!}, true), set_config('app.tenant_id', ${base.tenantId}, true)`;

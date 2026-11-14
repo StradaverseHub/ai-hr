@@ -5,7 +5,7 @@
  * Every entry point runs inside `withRecruitmentTenant` and re-asks the database for the caller's authority:
  *   schedule / cancel / candidate response — operators of the job (recruiter, assistant, administrators);
  *   read an application's interviews        — anyone who may read the application (reviewers and its interviewers);
- *   write feedback                          — only the named interviewer, for themselves (5202 guard and policy);
+ *   write feedback                          — only the named interviewer, for themselves (5702 guard and policy);
  *   read a scorecard                        — its author, the job's reviewers and administrators, and other interviewers
  *                                             of the application only when the company makes scorecards shared.
  * Totals are sums of whole-number ratings (./hiring-model sectionTotals). No model is involved.
@@ -117,7 +117,7 @@ export async function interviewFormOptions(s: SessionContext, applicationId: str
  * company (the same population the team pickers offer). The form defaults to the company's default form.
  * Slice 18: chosen interviewer groups add each CURRENT member who still has access, once (the group itself is not recorded); an
  * on-site interview may name one of the company's addresses and optionally one of its enabled rooms. The database refuses a room
- * already booked at an overlapping time (5219 exclusion constraint) as `room_booked`.
+ * already booked at an overlapping time (5719 exclusion constraint) as `room_booked`.
  */
 export async function scheduleInterview(s: SessionContext, input: InterviewInput): Promise<{ id: string }> {
   const valid = validateInterviewInput(input);
@@ -171,7 +171,7 @@ export async function scheduleInterview(s: SessionContext, input: InterviewInput
 }
 
 /** Slice 18: the on-site place of an interview — an address of the company and optionally one of its ENABLED rooms (a room alone
- *  names its address). `room_unavailable` for anything else; the 5219 keys, CHECK and guard refuse the same. */
+ *  names its address). `room_unavailable` for anything else; the 5719 keys, CHECK and guard refuse the same. */
 async function placeTx(tx: Tx, companyId: string, type: InterviewType, addressId: string | null, roomId: string | null): Promise<{ addressId: string | null; roomId: string | null }> {
   if (!addressId && !roomId) return { addressId: null, roomId: null };
   const room = roomId ? await roomOfCompanyTx(tx, companyId, roomId) : null;
@@ -231,7 +231,7 @@ export async function addInterviewers(s: SessionContext, interviewId: unknown, i
     const i = await interviewTx(tx, s, interviewId);
     await assertJobLevelTx(tx, i.companyId, i.jobId, 'operate', i.applicationId);
     if (i.cancelledAt) throw new RecruitmentError('interview_closed');
-    // Slice 18 review: only while the application is active (naming an interviewer grants read of the candidate; 5219's interviewer
+    // Slice 18 review: only while the application is active (naming an interviewer grants read of the candidate; 5719's interviewer
     // guard refuses the same). The application row is locked first — the order a reject takes (application, then its interviews) —
     // so a concurrent reject either finishes first (and this refuses) or waits for this to commit.
     const [appRow] = await tx.execute<{ state: ApplicationState }>(sql`select state from recruitment_application where id = ${i.applicationId}::uuid for share`);
@@ -310,7 +310,7 @@ async function interviewCardsTx(tx: Tx, s: SessionContext, where: ReturnType<typ
     if (!positionsByProcess.has(r.process_id)) positionsByProcess.set(r.process_id, await stagePositionsTx(tx, r.process_id));
     const labels = await labelsByCompany(r.company_id);
     const mine = cards.filter((c) => c.interview_id === r.id);
-    // An interviewer who is not a reviewer sees only their own interviewer row (5202 policy); the scorecards they
+    // An interviewer who is not a reviewer sees only their own interviewer row (5702 policy); the scorecards they
     // may read show their authors too, so the list is the union of both.
     const userIds = [...new Set([...interviewers.filter((v) => v.interview_id === r.id).map((v) => v.app_user_id), ...mine.map((c) => c.interviewer_user_id)])];
     const views: InterviewerView[] = userIds.map((uid) => {
@@ -471,7 +471,7 @@ export async function scorecardForm(s: SessionContext, interviewId: unknown): Pr
 
 /**
  * Submit (or, where the company's edit lock allows, edit) the viewer's own feedback. Validated against the
- * interview's form; the 5202 guard refuses another author, a cancelled interview and a locked edit independently.
+ * interview's form; the 5702 guard refuses another author, a cancelled interview and a locked edit independently.
  */
 export async function submitScorecard(s: SessionContext, interviewId: unknown, input: ScorecardInput): Promise<void> {
   const user = actorId(s);
@@ -575,7 +575,7 @@ export async function updateInterviewSettings(s: SessionContext, companyId: unkn
   });
 }
 
-/** Create (no id) or edit an evaluation form. A form an interview uses keeps its questions (5202 guard). */
+/** Create (no id) or edit an evaluation form. A form an interview uses keeps its questions (5702 guard). */
 export async function saveEvaluationForm(s: SessionContext, input: { id?: unknown; companyId?: unknown; name?: unknown; source?: unknown; isDefault?: unknown; enabled?: unknown }): Promise<void> {
   const name = typeof input.name === 'string' ? input.name.trim() : '';
   if (!name || name.length > 120) throw new RecruitmentError('missing_fields', ['name']);

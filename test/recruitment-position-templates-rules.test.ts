@@ -159,14 +159,14 @@ describe('case 105 — a requisition\'s values win over the template\'s', () => 
   });
 });
 
-describe('5216 static shape', () => {
+describe('5716 static shape', () => {
   const read = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, import.meta.url)), 'utf8');
-  const migration = read('db/migrations/5216_recruitment_position_templates.sql');
+  const migration = read('db/migrations/5716_recruitment_position_templates.sql');
   const journal = JSON.parse(read('db/migrations/meta/_journal.json')) as { entries: { idx: number; when: number; tag: string }[] };
-  it('is journalled once at idx 4616 / when 1793330004916, right after 5215', () => {
-    const at = journal.entries.findIndex((e) => e.tag === '5216_recruitment_position_templates');
-    expect(journal.entries.filter((e) => e.tag === '5216_recruitment_position_templates')).toEqual([expect.objectContaining({ idx: 4616, when: 1793330004916 })]);
-    expect(journal.entries[at - 1]).toEqual(expect.objectContaining({ tag: '5215_recruitment_custom_fields', idx: 4615, when: 1793330004915 }));
+  it('is journalled once at idx 5116 / when 1793330005416, right after 5715', () => {
+    const at = journal.entries.findIndex((e) => e.tag === '5716_recruitment_position_templates');
+    expect(journal.entries.filter((e) => e.tag === '5716_recruitment_position_templates')).toEqual([expect.objectContaining({ idx: 5116, when: 1793330005416 })]);
+    expect(journal.entries[at - 1]).toEqual(expect.objectContaining({ tag: '5715_recruitment_custom_fields', idx: 5115, when: 1793330005415 }));
   });
   it('forces row security on its tables, grants nothing to PUBLIC and does not restate the candidate removal', () => {
     expect(migration).toMatch(/FORCE ROW LEVEL SECURITY/);

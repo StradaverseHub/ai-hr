@@ -401,16 +401,16 @@ describe('case 119 — the Overview workload shows the per-job counts; the bell 
   });
 });
 
-describe('5218 — the company delete covers the rules; restated byte for byte; the AI Centre read is counts only', () => {
-  it('restates the company delete as 5217 plus one step; leaves the candidate removal as it was', () => {
+describe('5718 — the company delete covers the rules; restated byte for byte; the AI Centre read is counts only', () => {
+  it('restates the company delete as 5717 plus one step; leaves the candidate removal as it was', () => {
     const read = (file: string) => readFileSync(fileURLToPath(new URL(`../db/migrations/${file}`, import.meta.url)), 'utf8');
     const fn = (source: string, name: string) => {
       const start = source.lastIndexOf(`CREATE OR REPLACE FUNCTION ${name}(`);
       expect(start, name).toBeGreaterThan(-1);
       return source.slice(start, source.indexOf('END $$;', start) + 'END $$;'.length);
     };
-    const b = fn(read('5217_recruitment_import_export.sql'), 'app.recruitment_delete_company_setup').split('\n');
-    const a = fn(read('5218_recruitment_waiting_limits.sql'), 'app.recruitment_delete_company_setup').split('\n');
+    const b = fn(read('5717_recruitment_import_export.sql'), 'app.recruitment_delete_company_setup').split('\n');
+    const a = fn(read('5718_recruitment_waiting_limits.sql'), 'app.recruitment_delete_company_setup').split('\n');
     let i = 0;
     while (i < b.length && a[i] === b[i]) i++;
     let j = 0;
@@ -422,10 +422,10 @@ describe('5218 — the company delete covers the rules; restated byte for byte; 
     expect(added).toHaveLength(4);
     // Before the stages the rules name.
     expect(a.findIndex((l) => l.includes('DELETE FROM public.recruitment_stage_waiting_rule'))).toBeLessThan(a.findIndex((l) => l.includes('DELETE FROM public.recruitment_stage WHERE')));
-    expect(read('5218_recruitment_waiting_limits.sql')).not.toContain('recruitment_destroy_candidate(p_candidate');
+    expect(read('5718_recruitment_waiting_limits.sql')).not.toContain('recruitment_destroy_candidate(p_candidate');
     // The journal names the file at its reserved place.
     const journal = JSON.parse(read('meta/_journal.json')) as { entries: { idx: number; when: number; tag: string }[] };
-    expect(journal.entries.find((e) => e.tag === '5218_recruitment_waiting_limits')).toMatchObject({ idx: 4618, when: 1793330004918 });
+    expect(journal.entries.find((e) => e.tag === '5718_recruitment_waiting_limits')).toMatchObject({ idx: 5118, when: 1793330005418 });
   });
 
   it('deleting a company with only setup removes its rules (every row of its recruitment tables counted); the AI Centre counts keep their keys', async () => {

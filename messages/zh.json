@@ -40861,6 +40861,8 @@
       "enabled": "向候选人发送邮件",
       "senderName": "发件人名称（最多 {max} 个字符）",
       "senderNameHint": "留空则使用 {name}。",
+      "senderNameRequired": "请输入发件人名称：本公司名称中没有可用作发件人名称的字符。",
+      "senderNameInvalid": "只能填写名称：最多 {max} 个字符，不能包含 @、<、> 或 \" 字符。",
       "replyTo": "回复地址",
       "replyToHint": "候选人的回复会发到这里。开启候选人邮件时必填。",
       "locale": "候选人邮件的语言",

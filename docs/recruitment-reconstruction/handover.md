@@ -95,6 +95,16 @@ keeps main's Access lock in `app.consume_invitation` (5000) with the recruiting 
 the other files in this folder keep the old numbers as history; the full mapping is the top entry of
 `docs/MIGRATION-ALLOCATION.md`. A local database migrated with the old numbers must be rebuilt, not upgraded.
 
+## Update — migrations renumbered above main's 5400–5640 block (2026-11-14)
+
+Main's journal now ends at `5640_lifecycle_v9_email_hold_company_tenant` (idx 5040, when 1793330005340), above the
+`5200`–`5220` block, so the block moved again with `git mv`: `52NN_<name>` → `57NN_<name>`, idx 46NN → 51NN, when
+17933300049NN → 17933300054NN (NN = 00–20; for example `5201_recruitment_core` is now `5701_recruitment_core` and
+`5220_recruitment_candidate_email` is now `5720_recruitment_candidate_email`). Code, tests, SQL comments and the current
+documents name the new numbers; the earlier sections here and the dated sections of `parity-report.md` keep the numbers
+of their time as history. The full mapping and the survey are the top entry of `docs/MIGRATION-ALLOCATION.md`. A local
+database migrated with the 52NN numbers must be rebuilt, not upgraded.
+
 ## Next actions, in order (original plan)
 
 1. Resolve B-001: the owner signs in to a Moka **test tenant** in the built-in browser pane. Then use read-only observation (`read_page`, screenshots, network list) per role and journey, recording EV-0xx entries.

@@ -42,7 +42,7 @@ export async function CandidateEmailSettingsSection({ s, companyId, lang }: { s:
           <Field label={t('senderName', { max: CANDIDATE_EMAIL_SENDER_NAME_MAX })}>
             <Input name="senderName" maxLength={CANDIDATE_EMAIL_SENDER_NAME_MAX} defaultValue={view.senderName ?? ''} placeholder={view.defaultSenderName} />
             <span className="text-xs text-muted-foreground">{t('senderNameHint', { name: view.defaultSenderName })}</span>
-            <FieldProblem name="senderName" {...problem} />
+            <FieldProblem name="senderName" required={t('senderNameRequired')} invalid={t('senderNameInvalid', { max: CANDIDATE_EMAIL_SENDER_NAME_MAX })} />
           </Field>
           <Field label={t('replyTo')}>
             <Input name="replyTo" type="email" maxLength={254} defaultValue={view.replyTo ?? ''} />

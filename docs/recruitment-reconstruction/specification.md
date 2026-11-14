@@ -1444,7 +1444,8 @@ ADR (docs/adr/2026-11-14-recruitment-candidate-email.md) records why candidate e
 ### Sender and switch
 
 - Per company (recruitment administrators): a switch "E-mail candidates" (off by default), a sender display name
-  (≤80, default the company name) and a reply-to address (required when the switch is on; validated address, never an
+  (≤80, default the company name; no control character or @ < > ", the embedded transport's display-name rule — a
+  company name containing them is used with each made a space, per D-064) and a reply-to address (required when the switch is on; validated address, never an
   address of the installation relay's own domain unless the relay allows it). The From address stays the
   installation relay's (or the tenant's lifecycle sender profile when one is bound); only the display name and
   reply-to vary per company.

@@ -3,7 +3,7 @@
  * pack ONLY through ./service.
  *
  * Recruitment administrators keep their company's templates under Settings › Position templates and turn the feature on or off
- * for the company (5216 row security admits administrators only; the service checks first for a clear refusal). Everyone who may
+ * for the company (5716 row security admits administrators only; the service checks first for a clear refusal). Everyone who may
  * create a position — today exactly those administrators (slice 1) — starts "New position from template" from the company's
  * ENABLED templates while the feature is on. The template opens as a pre-filled DRAFT of the ordinary new-position form (nothing is
  * saved here): whatever the template names that has since been disabled or removed is left empty with a plain note
@@ -186,7 +186,7 @@ export async function positionTemplateEditor(s: SessionContext, companyId: strin
 /**
  * Create (with `companyId`) or edit (with `id`) a template: name (unique in the company, ≤120) and title required; the job form's
  * other fields, the process, the interview plan and custom job field values optional. A reference that is set or changed must be
- * the company's and usable now; one left as it was may since have been disabled (5216 checks the same). Custom values follow slice
+ * the company's and usable now; one left as it was may since have been disabled (5716 checks the same). Custom values follow slice
  * 14's value rules without "required" (a template may leave any field empty) and are replaced as a whole when the form carried
  * them. At most POSITION_TEMPLATES_MAX templates per company. Administrators only.
  */
@@ -277,7 +277,7 @@ export async function setPositionTemplateEnabled(s: SessionContext, templateId: 
 }
 
 /** Delete a template and its values. Positions created from it keep everything they were saved with; only their record of which
- *  template they came from is cleared (5216's foreign key). Administrators only. */
+ *  template they came from is cleared (5716's foreign key). Administrators only. */
 export async function deletePositionTemplate(s: SessionContext, templateId: unknown): Promise<void> {
   actorId(s);
   await withRecruitmentTenant(s, async (tx) => {

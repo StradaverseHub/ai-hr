@@ -7,7 +7,7 @@
  * company's job teams) and, only when a rule counts working days, those companies' public holidays (one statement through the
  * holiday owner, core/holidays.ts companyHolidayDatesByCompany). The cutoffs are computed in TypeScript (./waiting-model) and passed
  * to ONE set-based statement as arrays; no per-company or per-application statement. When an application entered its current stage
- * is one backward probe of the 5218 history index per application (stageEnteredSql).
+ * is one backward probe of the 5718 history index per application (stageEnteredSql).
  */
 import { sql, type SQL } from 'drizzle-orm';
 import type { Tx } from '../../db/client';

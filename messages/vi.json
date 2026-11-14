@@ -40861,6 +40861,8 @@
       "enabled": "Gửi e-mail cho ứng viên",
       "senderName": "Tên người gửi (tối đa {max} ký tự)",
       "senderNameHint": "Để trống để dùng {name}.",
+      "senderNameRequired": "Hãy nhập tên người gửi: tên công ty này không có ký tự nào dùng được làm tên người gửi.",
+      "senderNameInvalid": "Chỉ nhập tên: tối đa {max} ký tự, không có các ký tự @, <, > hoặc \".",
       "replyTo": "Địa chỉ trả lời",
       "replyToHint": "Thư trả lời của ứng viên sẽ đến đây. Bắt buộc khi bật e-mail cho ứng viên.",
       "locale": "Ngôn ngữ của e-mail gửi ứng viên",

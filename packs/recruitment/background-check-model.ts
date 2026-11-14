@@ -2,7 +2,7 @@
  * Recruitment slice 12 rules — background checks (docs/recruitment-reconstruction/specification.md "Slice 12"). Pure,
  * deterministic and client-safe: no database, no clock, no model.
  *
- * packs/recruitment/background-checks.ts runs every write through these functions, and the 5212 guards refuse the same
+ * packs/recruitment/background-checks.ts runs every write through these functions, and the 5712 guards refuse the same
  * illegal states again (status machine, authorisation first, an outcome to complete, final states, the stage rule). AI HR
  * records checks run OUTSIDE it (D-043): nothing here contacts a provider, scores a result or decides a hire (D-046).
  */
@@ -19,7 +19,7 @@ export type AuthorisationMethod = (typeof AUTHORISATION_METHODS)[number];
 export const CHECK_FILE_KINDS = ['authorisation', 'report'] as const;
 export type CheckFileKind = (typeof CHECK_FILE_KINDS)[number];
 
-/** The transitions the database also enforces (5212 app.recruitment_guard_background_check). */
+/** The transitions the database also enforces (5712 app.recruitment_guard_background_check). */
 export const CHECK_TRANSITIONS: Readonly<Record<CheckStatus, readonly CheckStatus[]>> = {
   awaiting_authorisation: ['in_progress', 'cancelled'],
   in_progress: ['completed', 'cancelled'],
@@ -89,7 +89,7 @@ export type CheckStagePosition = {
   stagePosition: number | null; offerPosition: number | null;
 };
 /**
- * May a check be added at this stage? (The 5212 guard applies the same rule, app.recruitment_background_check_stage_ok.)
+ * May a check be added at this stage? (The 5712 guard applies the same rule, app.recruitment_background_check_stage_ok.)
  * Yes when the current stage is an Offer-type stage; or the job's process has an Offer-type stage and the current stage's
  * position is at or after the FIRST one (disabled stages keep their positions; Onboarding counts); or it is the company's
  * seeded Background check stage, by its seed key, whatever it has been renamed to. Behaviour never keys off an editable name.

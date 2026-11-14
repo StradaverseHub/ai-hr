@@ -1,6 +1,6 @@
 /**
  * Recruitment slice 18 — interview set-up: the pure rules (docs/recruitment-reconstruction/specification.md "Slice 18", D-058).
- * Deterministic and client-safe: no database, no clock, no model. ./interview-setup runs every write through these checks; 5219's
+ * Deterministic and client-safe: no database, no clock, no model. ./interview-setup runs every write through these checks; 5719's
  * CHECKs, guards and exclusion constraint refuse the same independently.
  *
  *   Interviewer groups  a name (≤80, unique in the company) and up to GROUP_MEMBERS_MAX members. Adding a group to an interview adds
@@ -11,7 +11,7 @@
  *   Addresses, rooms    name (≤120), address (≤500), region (≤120), an optional map link that must be https (isHttpsMapLink); rooms
  *                       with a name (≤120), a capacity (1–1,000) and an enabled switch. A room is booked for an interview's period
  *                       [start, start + duration): two periods overlap exactly when each starts before the other ends, so touching
- *                       periods (one ends when the other starts) do NOT overlap (periodsOverlap — the rule 5219's exclusion
+ *                       periods (one ends when the other starts) do NOT overlap (periodsOverlap — the rule 5719's exclusion
  *                       constraint applies with tstzrange '[)' and &&).
  */
 import { isUuid } from './model';
@@ -128,7 +128,7 @@ const HOST_LABEL = /^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$/;
 /**
  * An https map link: exactly the scheme "https://", a host name of two or more dot-separated labels (letters, digits, hyphens), no
  * user name or password, an optional port, then an optional path, query or fragment without spaces, control characters, quotes,
- * angle brackets, backslashes or backticks; at most 2,000 characters. The same shape as 5219's CHECK.
+ * angle brackets, backslashes or backticks; at most 2,000 characters. The same shape as 5719's CHECK.
  */
 export function isHttpsMapLink(value: string): boolean {
   if (value.length > MAP_LINK_MAX || !value.startsWith('https://')) return false;

@@ -34,7 +34,7 @@
 --      its company while the company setting is on; the template never changes afterwards and only its delete clears it. A plan
 --      names enabled forms of the job's company when a form is added, with no empty round before a filled one (the service
 --      refuses gaps); a form disabled later stays in a plan that keeps it.
---   5. app.recruitment_delete_company_setup restated (5215 body byte for byte) plus the two tables (values, then templates).
+--   5. app.recruitment_delete_company_setup restated (5715 body byte for byte) plus the two tables (values, then templates).
 --
 -- Nothing here calls a model, scores anything or copies a template into a position by itself.
 
@@ -259,7 +259,7 @@ CREATE TRIGGER recruitment_job_opening_template_guard BEFORE INSERT OR UPDATE OF
  ON public.recruitment_job_opening FOR EACH ROW EXECUTE FUNCTION app.recruitment_guard_job_template();
 --> statement-breakpoint
 
--- ── 5. Deleting a company (core/company-refs.ts): 5215's body plus the position templates ────────────────────────
+-- ── 5. Deleting a company (core/company-refs.ts): 5715's body plus the position templates ────────────────────────
 CREATE OR REPLACE FUNCTION app.recruitment_delete_company_setup(p_company uuid) RETURNS integer
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, public, app, pg_temp AS $$
 DECLARE removed integer := 0; n integer;

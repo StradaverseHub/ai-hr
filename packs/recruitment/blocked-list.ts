@@ -4,14 +4,14 @@
  *
  * Who does what:
  *   add and remove entries (with a reason), read reasons and history, resolve marks
- *                                       — recruitment administrators, through 5213's owner-run functions only (the app role
+ *                                       — recruitment administrators, through 5713's owner-run functions only (the app role
  *                                         has no write grant on any blocked-list table);
  *   see THAT a candidate is listed or that an application matches the list, never why
  *                                       — the job's recruiter and assistants (operators of the candidate);
  *   "Needs an administrator's review"   — anyone else who may read the application (hiring managers, interviewers): a yes/no
  *                                         from app.recruitment_application_needs_review and nothing more.
- * Matching runs in the database for every channel at commit (5213's deferred trigger) and never changes what a channel
- * answers. A marked application cannot move, get or progress an offer, or be hired (./data, ./offers and 5213's guards).
+ * Matching runs in the database for every channel at commit (5713's deferred trigger) and never changes what a channel
+ * answers. A marked application cannot move, get or progress an offer, or be hired (./data, ./offers and 5713's guards).
  * Audit events carry ids, counts and fixed codes — never a reason or an identity value. Read paths write nothing.
  */
 import { sql } from 'drizzle-orm';
@@ -113,7 +113,7 @@ export async function resolveReviewMark(s: SessionContext, markId: unknown, reso
     if (!m) throw new RecruitmentError('not_found');
     await assertCompanyTx(tx, m.company_id);
     if (m.cleared) throw new RecruitmentError('mark_cleared');
-    // The listed person's own mark: only removing the entry resolves it (5213 refuses too).
+    // The listed person's own mark: only removing the entry resolves it (5713 refuses too).
     if (kind === 'not_same_person' && m.own) throw new RecruitmentError('own_entry_mark');
     const [row] = await tx.execute<{ n: number }>(sql`select app.recruitment_resolve_review_mark(${markId}::uuid, ${kind}, ${text}) as n`).catch(asError);
     await appendEvent(tx, { tenantId: s.tenantId, aggregateType: 'recruitment-application', aggregateId: m.application_id, eventType: 'recruitment-application.review-resolved',

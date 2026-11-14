@@ -367,21 +367,21 @@ describe('case 124 — a room is never double-booked (database), cancelling free
 });
 
 describe('case 125 — company deletion covers the new tables; forced row security and grants, none to PUBLIC', () => {
-  it('restates the company delete as 5218 plus one block before the evaluation forms; leaves the candidate removal as it was', () => {
+  it('restates the company delete as 5718 plus one block before the evaluation forms; leaves the candidate removal as it was', () => {
     const read = (file: string) => readFileSync(fileURLToPath(new URL(`../db/migrations/${file}`, import.meta.url)), 'utf8');
     const fn = (source: string, name: string) => {
       const start = source.lastIndexOf(`CREATE OR REPLACE FUNCTION ${name}(`);
       expect(start, name).toBeGreaterThan(-1);
       return source.slice(start, source.indexOf('END $$;', start) + 'END $$;'.length);
     };
-    const m19 = read('5219_recruitment_interview_setup.sql');
-    const b = fn(read('5218_recruitment_waiting_limits.sql'), 'app.recruitment_delete_company_setup').split('\n');
+    const m19 = read('5719_recruitment_interview_setup.sql');
+    const b = fn(read('5718_recruitment_waiting_limits.sql'), 'app.recruitment_delete_company_setup').split('\n');
     const a = fn(m19, 'app.recruitment_delete_company_setup').split('\n');
     let i = 0;
     while (i < b.length && a[i] === b[i]) i++;
     let j = 0;
     while (j < b.length - i && a[a.length - 1 - j] === b[b.length - 1 - j]) j++;
-    // 5218's lines, byte for byte, around ONE contiguous added block.
+    // 5718's lines, byte for byte, around ONE contiguous added block.
     expect(i + j).toBe(b.length);
     expect(b.length).toBeGreaterThan(90);
     const added = a.slice(i, a.length - j);
@@ -393,12 +393,12 @@ describe('case 125 — company deletion covers the new tables; forced row securi
     // The links go before the evaluation forms they name.
     expect(a.findIndex((l) => l.includes('DELETE FROM public.recruitment_interview_question_link'))).toBeLessThan(a.findIndex((l) => l.includes('DELETE FROM public.recruitment_evaluation_form')));
     expect(m19).not.toContain('recruitment_destroy_candidate(p_candidate');
-    // The trailing REVOKE/GRANT are 5218's.
+    // The trailing REVOKE/GRANT are 5718's.
     expect(m19.trimEnd().endsWith('REVOKE ALL ON FUNCTION app.recruitment_delete_company_setup(uuid) FROM PUBLIC;\nGRANT EXECUTE ON FUNCTION app.recruitment_delete_company_setup(uuid) TO ai_hr_app;')).toBe(true);
     const journal = JSON.parse(read('meta/_journal.json')) as { entries: { idx: number; when: number; tag: string }[] };
-    const k = journal.entries.findIndex((e) => e.tag === '5219_recruitment_interview_setup');
-    expect(journal.entries[k]).toMatchObject({ idx: 4619, when: 1793330004919 });
-    expect(journal.entries[k - 1]).toMatchObject({ tag: '5218_recruitment_waiting_limits', idx: 4618 });
+    const k = journal.entries.findIndex((e) => e.tag === '5719_recruitment_interview_setup');
+    expect(journal.entries[k]).toMatchObject({ idx: 5119, when: 1793330005419 });
+    expect(journal.entries[k - 1]).toMatchObject({ tag: '5718_recruitment_waiting_limits', idx: 5118 });
   });
 
   it('forced row security, explicit grants to the app role, none to PUBLIC', async () => {
@@ -535,7 +535,7 @@ describe('slice 18 review — closing an application frees its rooms; interviewe
     expect((await applicationInterviews(w.recruiter, w.a1.applicationId)).interviews.map((c) => c.canCancel)).toEqual([false]);
   });
 
-  it('interviewers are added only while the application is active (service and the restated 5202 guard); Cancel stays for future interviews', async () => {
+  it('interviewers are added only while the application is active (service and the restated 5702 guard); Cancel stays for future interviews', async () => {
     const w = await world();
     const { id: past } = await scheduleInterview(w.recruiter, { applicationId: w.a1.applicationId, type: 'video', startsAt: '2024-05-06T10:00', interviewerIds: [w.interviewer.userId] });
     const { id: future } = await scheduleInterview(w.recruiter, { applicationId: w.a1.applicationId, type: 'video', startsAt: at('10:00'), interviewerIds: [w.interviewer.userId] });
@@ -566,11 +566,11 @@ describe('slice 18 review — closing an application frees its rooms; interviewe
     expect(await cancelledBy(later)).toBe(w.recruiter.userId);
   });
 
-  it('restates 5202\'s interviewer guard byte for byte plus one check, and refuses to apply over existing interviews', async () => {
+  it('restates 5702\'s interviewer guard byte for byte plus one check, and refuses to apply over existing interviews', async () => {
     const read = (file: string) => readFileSync(fileURLToPath(new URL(`../db/migrations/${file}`, import.meta.url)), 'utf8');
-    const m19 = read('5219_recruitment_interview_setup.sql');
+    const m19 = read('5719_recruitment_interview_setup.sql');
     const slice = (src: string, head: string) => { const at0 = src.indexOf(head); expect(at0, head).toBeGreaterThan(-1); return src.slice(at0, src.indexOf('END $$;', at0) + 'END $$;'.length); };
-    const b = slice(read('5202_recruitment_team_interviews.sql'), 'CREATE FUNCTION app.recruitment_guard_interviewer()').split('\n');
+    const b = slice(read('5702_recruitment_team_interviews.sql'), 'CREATE FUNCTION app.recruitment_guard_interviewer()').split('\n');
     const a = slice(m19, 'CREATE OR REPLACE FUNCTION app.recruitment_guard_interviewer()').split('\n');
     expect(a[0]).toBe(b[0].replace('CREATE FUNCTION', 'CREATE OR REPLACE FUNCTION'));
     let i = 1;
@@ -583,7 +583,7 @@ describe('slice 18 review — closing an application frees its rooms; interviewe
     expect(added.length).toBe(5);
     expect(added.join('\n')).toMatch(/a\.state = 'active'/);
     expect(added.join('\n')).not.toMatch(/DELETE|UPDATE public\./);
-    // The precondition: run 5219's own check against a database that holds an interview (rolled back).
+    // The precondition: run 5719's own check against a database that holds an interview (rolled back).
     const w = await world();
     await scheduleInterview(w.recruiter, { applicationId: w.a1.applicationId, type: 'video', startsAt: at('10:00'), interviewerIds: [w.interviewer.userId] });
     const start = m19.indexOf('ALTER TABLE public.recruitment_interview NO FORCE ROW LEVEL SECURITY;');

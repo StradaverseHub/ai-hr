@@ -1,8 +1,8 @@
--- Recruitment block, after the renumber above main's watermark (5200-5213 apply after 5000).
--- 5201 restates app.consume_invitation from its 0611 body with recruiting_partner in guard A. 5000
+-- Recruitment block, after the renumber above main's watermark (5700-5713 apply after 5000).
+-- 5701 restates app.consume_invitation from its 0611 body with recruiting_partner in guard A. 5000
 -- (access reader/writer core) has since restated the same function with the exclusive Access lock taken
--- before any row lock, and 5201 now applies after 5000, so it would drop that lock. This restates 5000's
--- definition byte-for-byte except guard A's role list, which gains 'recruiting_partner' exactly as in 5201.
+-- before any row lock, and 5701 now applies after 5000, so it would drop that lock. This restates 5000's
+-- definition byte-for-byte except guard A's role list, which gains 'recruiting_partner' exactly as in 5701.
 CREATE OR REPLACE FUNCTION app.consume_invitation(p_raw_token text, p_subject text)
  RETURNS TABLE(app_user_id uuid, tenant_id uuid)
  LANGUAGE plpgsql

@@ -2,7 +2,7 @@
  * Recruitment slice 16 — candidate import and the To assign list. Reached from outside the pack ONLY through ./service.
  *
  * Who: recruitment administrators and the company's recruiters and assistants (app.recruitment_operates_in_company). The database
- * refuses the same (5217): the import record, its rows and the To assign list are theirs only, candidates are inserted under the
+ * refuses the same (5717): the import record, its rows and the To assign list are theirs only, candidates are inserted under the
  * slice 2 insert policy, applications under the job's operate policy, restricted and custom values under slices 5 and 14.
  *
  * The import (D-055): the web request validates the whole file and previews it (READ ONLY), and on confirmation (with the slice 5
@@ -39,7 +39,7 @@ import {
 
 // ── Access ───────────────────────────────────────────────────────────────────────────────────────────────────
 
-/** Refuse unless the caller administers the company's recruitment or is a recruiter or assistant of one of its jobs (5202). */
+/** Refuse unless the caller administers the company's recruitment or is a recruiter or assistant of one of its jobs (5702). */
 export async function assertOperatesCompanyTx(tx: Tx, companyId: unknown): Promise<{ admin: boolean }> {
   if (!isUuid(companyId)) throw new RecruitmentError('forbidden');
   const [row] = await tx.execute<{ operates: boolean; admin: boolean }>(sql`select app.recruitment_operates_in_company(${companyId}::uuid) as operates,
@@ -53,7 +53,7 @@ export async function assertOperatesCompanyTx(tx: Tx, companyId: unknown): Promi
 const labelCols = sql.raw(CUSTOM_FIELD_LOCALES.map((l) => `label_${l}`).join(', '));
 type LabelRow = Record<`label_${(typeof CUSTOM_FIELD_LOCALES)[number]}`, string | null>;
 /** The company's ENABLED custom candidate fields, in order, with every option (an import names options by label; only enabled
- *  ones are accepted). Restricted fields too: the caller operates in the company, so their definitions are visible (5215). */
+ *  ones are accepted). Restricted fields too: the caller operates in the company, so their definitions are visible (5715). */
 export async function importFieldsTx(tx: Tx, s: SessionContext, companyId: string): Promise<ImportField[]> {
   const fields = await tx.execute<LabelRow & { id: string; field_type: CustomFieldType; required: boolean; restricted: boolean; number_min: string | null;
     number_max: string | null; number_decimals: number | null }>(sql`
@@ -115,7 +115,7 @@ export type ImportPreview =
 
 const fileNameOf = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim().replace(/[\\/]/g, '_').slice(0, 200) : 'candidates.csv');
 
-/** At most this many previews per person per Kuala Lumpur day (5217 recruitment_import_preview_quota). */
+/** At most this many previews per person per Kuala Lumpur day (5717 recruitment_import_preview_quota). */
 export const IMPORT_PREVIEWS_PER_DAY = 20;
 /** A preview's statement time limit: a heavier file is refused with a plain message, never retried. */
 export const IMPORT_PREVIEW_TIMEOUT_MS = 15_000;
@@ -215,7 +215,7 @@ async function previewTx(tx: Tx, s: SessionContext, companyId: string, text: str
 
 // ── Starting, following and stopping an import ───────────────────────────────────────────────────────────────
 
-/** What the job's admission stores (bulk_job_kind.input_shape, 5217). The file is the job's source content. */
+/** What the job's admission stores (bulk_job_kind.input_shape, 5717). The file is the job's source content. */
 export type CandidateImportJobInput = { companyId: string; previewHash: string; locale: string; permissionConfirmed: boolean };
 
 /**
@@ -601,13 +601,13 @@ async function toAssignCandidateTx(tx: Tx, s: SessionContext, candidateId: unkno
 /**
  * "Assign to job": a normal application on an Open job of the candidate's company that the caller may add applications to, at its
  * first enabled stage — the repeat window and slice 13's blocked-list matching (at commit) apply as for any application; the
- * candidate is never merged with another. The database takes the candidate off the To assign list (5217).
+ * candidate is never merged with another. The database takes the candidate off the To assign list (5717).
  */
 export async function assignToJob(s: SessionContext, candidateId: unknown, jobId: unknown): Promise<{ applicationId: string }> {
   const user = actorId(s);
   if (!isUuid(jobId)) throw new RecruitmentError('missing_fields', ['job']);
   return withRecruitmentTenant(s, async (tx) => {
-    // The candidate's lock first (the 5205 order: candidate, then the application's own locks), so a removal never interleaves.
+    // The candidate's lock first (the 5705 order: candidate, then the application's own locks), so a removal never interleaves.
     if (isUuid(candidateId)) await tx.execute(sql`select pg_advisory_xact_lock_shared(app.recruitment_candidate_lock_key(${s.tenantId}::uuid, ${candidateId}::uuid))`);
     const c = await toAssignCandidateTx(tx, s, candidateId);
     const [job] = await tx.execute<{ id: string; company_id: string; status: string; process_id: string; operate: boolean }>(sql`

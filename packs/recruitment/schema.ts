@@ -1,6 +1,6 @@
 /**
  * The Recruitment pack's satellite tables (ADR-0080 D5/D11) as the service reads and writes them. The DDL,
- * keys, row security, grants and guards are owned by db/migrations/5201_recruitment_core.sql and 5202–5212; these
+ * keys, row security, grants and guards are owned by db/migrations/5701_recruitment_core.sql and 5702–5712; these
  * declarations carry no references or checks of their own so they can never disagree with it.
  */
 import { boolean, customType, date, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
@@ -22,7 +22,7 @@ const audit = {
   updatedAt: ts('updated_at').notNull().defaultNow(),
   updatedByUserId: uuid('updated_by_user_id').notNull(),
 };
-/** Slice 8 (5208): candidates and applications received through the careers page have no signed-in author (NULL). */
+/** Slice 8 (5708): candidates and applications received through the careers page have no signed-in author (NULL). */
 const auditOrCareers = {
   createdAt: ts('created_at').notNull().defaultNow(),
   createdByUserId: uuid('created_by_user_id'),
@@ -95,15 +95,15 @@ export const recruitmentJobOpening = pgTable('recruitment_job_opening', {
   processId: uuid('process_id').notNull(),
   autoArchiveAfterReject: boolean('auto_archive_after_reject').notNull().default(false),
   statusChangedAt: ts('status_changed_at').notNull().defaultNow(),
-  /** Slice 7 (5207): listed on the employee referral portal while Open. Changed by recruitment administrators only. */
+  /** Slice 7 (5707): listed on the employee referral portal while Open. Changed by recruitment administrators only. */
   showOnReferralPortal: boolean('show_on_referral_portal').notNull().default(false),
-  /** Slice 8 (5208): listed on the company's public careers page while Open and the page is published. Administrators only;
+  /** Slice 8 (5708): listed on the company's public careers page while Open and the page is published. Administrators only;
    *  careersPostedAt is set by the database when the flag is turned on and cleared when it is turned off. */
   showOnCareersPage: boolean('show_on_careers_page').notNull().default(false),
   careersPostedAt: ts('careers_posted_at'),
-  /** Slice 15 (5216): the position template the job was created from (reporting only; cleared if the template is deleted). */
+  /** Slice 15 (5716): the position template the job was created from (reporting only; cleared if the template is deleted). */
   createdFromTemplateId: uuid('created_from_template_id'),
-  /** Slice 15 (5216): the job's interview plan — one evaluation form (scorecard template) per round, in order; empty = the
+  /** Slice 15 (5716): the job's interview plan — one evaluation form (scorecard template) per round, in order; empty = the
    *  default rounds (D-005). */
   interviewPlanFormIds: uuid('interview_plan_form_ids').array().notNull().default([]),
   ...audit,
@@ -128,7 +128,7 @@ export const recruitmentCandidate = pgTable('recruitment_candidate', {
   email: text('email'),
   phone: text('phone'),
   ownerUserId: uuid('owner_user_id'),
-  // Slice 5 (5205): the profile and the removal marker.
+  // Slice 5 (5705): the profile and the removal marker.
   location: text('location'),
   currentCompany: text('current_company'),
   currentTitle: text('current_title'),
@@ -175,7 +175,7 @@ export const recruitmentApplicationEvent = pgTable('recruitment_application_even
   occurredAt: ts('occurred_at').notNull().defaultNow(),
 });
 
-// ── Slice 2 (db/migrations/5202_recruitment_team_interviews.sql) ──────────────────────────────────────────
+// ── Slice 2 (db/migrations/5702_recruitment_team_interviews.sql) ──────────────────────────────────────────
 
 export const recruitmentCompanySetting = pgTable('recruitment_company_setting', {
   companyId: uuid('company_id').primaryKey(),
@@ -183,17 +183,17 @@ export const recruitmentCompanySetting = pgTable('recruitment_company_setting', 
   scorecardsPrivate: boolean('scorecards_private').notNull().default(true),
   feedbackEditLock: text('feedback_edit_lock').$type<FeedbackEditLock>().notNull().default('until_stage_left'),
   resultRequired: boolean('result_required').notNull().default(true),
-  // Slice 3 (5203).
+  // Slice 3 (5703).
   offerValidDays: integer('offer_valid_days').notNull().default(15),
   offerAcceptMovesForward: boolean('offer_accept_moves_forward').notNull().default(false),
   offerDeclineArchives: boolean('offer_decline_archives').notNull().default(false),
-  // Slice 5 (5205).
+  // Slice 5 (5705).
   retentionMonthsWithoutConsent: integer('retention_months_without_consent').notNull().default(6),
   retentionMonthsWithConsent: integer('retention_months_with_consent').notNull().default(24),
   repeatWindowMonths: integer('repeat_window_months').notNull().default(3),
-  // Slice 7 (5207): days a referral of a candidate keeps the first referrer's credit; 0 = off.
+  // Slice 7 (5707): days a referral of a candidate keeps the first referrer's credit; 0 = off.
   referralProtectionDays: integer('referral_protection_days').notNull().default(180),
-  // Slice 15 (5216): "New position from template" is offered in the company.
+  // Slice 15 (5716): "New position from template" is offered in the company.
   positionTemplatesEnabled: boolean('position_templates_enabled').notNull().default(false),
   ...audit,
 });
@@ -223,7 +223,7 @@ export const recruitmentInterview = pgTable('recruitment_interview', {
   durationMinutes: integer('duration_minutes').notNull(),
   site: text('site'),
   meetingRoom: text('meeting_room'),
-  /** Slice 18 (5219): the on-site address and room chosen from the company's list (free text above stays for other cases). */
+  /** Slice 18 (5719): the on-site address and room chosen from the company's list (free text above stays for other cases). */
   addressId: uuid('address_id'),
   roomId: uuid('room_id'),
   evaluationFormId: uuid('evaluation_form_id').notNull(),
@@ -261,7 +261,7 @@ export const recruitmentScorecard = pgTable('recruitment_scorecard', {
   updatedAt: ts('updated_at').notNull().defaultNow(),
 });
 
-// ── Slice 3 (db/migrations/5203_recruitment_offers_hire_handoff.sql) ──────────────────────────────────────
+// ── Slice 3 (db/migrations/5703_recruitment_offers_hire_handoff.sql) ──────────────────────────────────────
 
 export const recruitmentOfferField = pgTable('recruitment_offer_field', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -329,7 +329,7 @@ export const recruitmentOfferValue = pgTable('recruitment_offer_value', {
   updatedByUserId: uuid('updated_by_user_id').notNull(),
 });
 
-/** The approval decision log: one row per decided step, written by that step's approver (5203/5204). */
+/** The approval decision log: one row per decided step, written by that step's approver (5703/5704). */
 const approvalColumns = {
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').notNull(),
@@ -360,7 +360,7 @@ export const recruitmentHireHandoff = pgTable('recruitment_hire_handoff', {
   linkedByUserId: uuid('linked_by_user_id').notNull(),
 });
 
-// ── Slice 4 (db/migrations/5204_recruitment_requisitions.sql) ─────────────────────────────────────────────
+// ── Slice 4 (db/migrations/5704_recruitment_requisitions.sql) ─────────────────────────────────────────────
 
 export const recruitmentRequisition = pgTable('recruitment_requisition', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -416,7 +416,7 @@ export const recruitmentRequisitionJob = pgTable('recruitment_requisition_job', 
   createdByUserId: uuid('created_by_user_id').notNull(),
 });
 
-// ── Slice 5 (db/migrations/5205_recruitment_candidate_privacy.sql) ───────────────────────────────────────────
+// ── Slice 5 (db/migrations/5705_recruitment_candidate_privacy.sql) ───────────────────────────────────────────
 
 const bytea = customType<{ data: Buffer; driver: Buffer }>({ dataType: () => 'bytea' });
 
@@ -511,7 +511,7 @@ export const recruitmentCandidateConsent = pgTable('recruitment_candidate_consen
   careersNoticeVersion: integer('careers_notice_version'),
 });
 
-// ── Slice 7 (db/migrations/5207_recruitment_referrals.sql) ────────────────────────────────────────────────────
+// ── Slice 7 (db/migrations/5707_recruitment_referrals.sql) ────────────────────────────────────────────────────
 
 /**
  * One row per referred application. Written only by app.recruitment_submit_referral; read by the application's readers
@@ -531,7 +531,7 @@ export const recruitmentReferral = pgTable('recruitment_referral', {
   createdAt: ts('created_at').notNull().defaultNow(),
 });
 
-// ── Slice 8 (db/migrations/5208_recruitment_careers_page.sql) ───────────────────────────────────────────────────
+// ── Slice 8 (db/migrations/5708_recruitment_careers_page.sql) ───────────────────────────────────────────────────
 
 /** One public careers page per company. Written by recruitment administrators; read by the public careers functions only
  *  while published. */
@@ -570,7 +570,7 @@ export const recruitmentCareersApplication = pgTable('recruitment_careers_applic
   receivedAt: ts('received_at').notNull().defaultNow(),
 });
 
-/** Slice 9 (5209): a user's own "read up to" time per company and update category. Rows are the viewer's own only. */
+/** Slice 9 (5709): a user's own "read up to" time per company and update category. Rows are the viewer's own only. */
 export const recruitmentTaskReadMarker = pgTable('recruitment_task_read_marker', {
   tenantId: uuid('tenant_id').notNull(),
   companyId: uuid('company_id').notNull(),
@@ -580,7 +580,7 @@ export const recruitmentTaskReadMarker = pgTable('recruitment_task_read_marker',
   updatedAt: ts('updated_at').notNull().defaultNow(),
 });
 
-// ── Slice 10 (db/migrations/5210_recruitment_agencies.sql) ─────────────────────────────────────────────────────
+// ── Slice 10 (db/migrations/5710_recruitment_agencies.sql) ─────────────────────────────────────────────────────
 
 /** The company's agency tags (administrators). A tag in use can be disabled; its foreign key keeps it from deletion. */
 export const recruitmentAgencyTag = pgTable('recruitment_agency_tag', {
@@ -717,7 +717,7 @@ export const recruitmentAgencySubmission = pgTable('recruitment_agency_submissio
   personalDataRemovedAt: ts('personal_data_removed_at'),
 });
 
-// ── Slice 11 (db/migrations/5211_recruitment_screening.sql) ───────────────────────────────────────────────────
+// ── Slice 11 (db/migrations/5711_recruitment_screening.sql) ───────────────────────────────────────────────────
 
 /** One hiring manager asked to screen one application. Open until withdrawn or answered with Advance or Reject. */
 export const recruitmentScreeningRequest = pgTable('recruitment_screening_request', {
@@ -749,7 +749,7 @@ export const recruitmentScreeningAnswer = pgTable('recruitment_screening_answer'
   answeredByUserId: uuid('answered_by_user_id').notNull(),
 });
 
-// ── Slice 12 (db/migrations/5212_recruitment_background_checks.sql) ───────────────────────────────────────────
+// ── Slice 12 (db/migrations/5712_recruitment_background_checks.sql) ───────────────────────────────────────────
 
 /** The company's background check types (administrators write; the company's job teams read the names). */
 export const recruitmentBackgroundCheckType = pgTable('recruitment_background_check_type', {
@@ -828,7 +828,7 @@ export const recruitmentBackgroundCheckFile = pgTable('recruitment_background_ch
   uploadedByUserId: uuid('uploaded_by_user_id').notNull(),
 });
 
-// ── Slice 16 (db/migrations/5217_recruitment_import_export.sql) ───────────────────────────────────────────
+// ── Slice 16 (db/migrations/5717_recruitment_import_export.sql) ───────────────────────────────────────────
 
 /** One candidate import (its id is the bulk job's): company, importer, the permission confirmation, rows in the file, the ending. */
 export const recruitmentCandidateImport = pgTable('recruitment_candidate_import', {
@@ -897,7 +897,7 @@ export const recruitmentExportTemplate = pgTable('recruitment_export_template', 
   ...audit,
 });
 
-// ── Slice 17 (db/migrations/5218_recruitment_waiting_limits.sql) ──────────────────────────────────────────
+// ── Slice 17 (db/migrations/5718_recruitment_waiting_limits.sql) ──────────────────────────────────────────
 
 /** A stage's waiting limit: remind after `remindDays`, suggest archiving after `archiveDays` (optional), calendar or working days. */
 export const recruitmentStageWaitingRule = pgTable('recruitment_stage_waiting_rule', {
@@ -911,7 +911,7 @@ export const recruitmentStageWaitingRule = pgTable('recruitment_stage_waiting_ru
   ...audit,
 });
 
-// ── Slice 18 (db/migrations/5219_recruitment_interview_setup.sql) ─────────────────────────────────────────
+// ── Slice 18 (db/migrations/5719_recruitment_interview_setup.sql) ─────────────────────────────────────────
 
 /** An interviewer group: a named list of users the scheduler adds as individual interviewers. Grants nothing. */
 export const recruitmentInterviewerGroup = pgTable('recruitment_interviewer_group', {
@@ -977,7 +977,7 @@ export const recruitmentInterviewRoom = pgTable('recruitment_interview_room', {
   ...audit,
 });
 
-// Slice 19 (5220): candidate e-mail — the company's sender settings, its template overrides and one delivery row per e-mail.
+// Slice 19 (5720): candidate e-mail — the company's sender settings, its template overrides and one delivery row per e-mail.
 export const recruitmentCandidateEmailSetting = pgTable('recruitment_candidate_email_setting', {
   companyId: uuid('company_id').primaryKey(),
   tenantId: uuid('tenant_id').notNull(),

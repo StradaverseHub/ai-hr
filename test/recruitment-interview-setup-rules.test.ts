@@ -110,7 +110,7 @@ describe('validateRoom and resolvePlace', () => {
   });
 });
 
-describe('the booking overlap rule (the same rule as 5219\'s exclusion constraint)', () => {
+describe('the booking overlap rule (the same rule as 5719\'s exclusion constraint)', () => {
   const at = (hhmm: string) => `2026-12-01T${hhmm}:00+08:00`;
   it('half-open periods: touching is allowed, any real overlap is not', () => {
     const tenToEleven = interviewPeriod(at('10:00'), 60);

@@ -75,7 +75,7 @@ export {
 } from './referral-model';
 export type { ReferralStatus, ReferralRefusal, ReferralProgress } from './referral-model';
 // Slice 8 — the public careers page and online applications: HR's settings, notice versions and job switch; the
-// anonymous page, job and submission (through 5208's definer functions only); the careers record on an application.
+// anonymous page, job and submission (through 5708's definer functions only); the careers record on an application.
 export {
   careersSettings, updateCareersSettings, setCareersPublished, setJobCareersPage, jobCareersStatus, applicationCareers, careersPublicPage,
   careersPublicJob, submitCareersApplication, careersClientLimited,
@@ -92,7 +92,7 @@ export {
 } from './careers-model';
 export type { CareersPublishRequirement, CareersFormField, CareersFieldError, CareersOutcome, CareersApplicationInput, CareersSettingsInput } from './careers-model';
 // Slice 9 — recruitment tasks and updates: the live to-do list (also the bell's recruitment tasks), the live updates per
-// category, unread counts against the viewer's own read markers (5209) and "Mark all as read".
+// category, unread counts against the viewer's own read markers (5709) and "Mark all as read".
 export { recruitmentTodos, recruitmentJobTodos, recruitmentWaitingTodos, recruitmentUpdates, recruitmentUnreadCounts, markRecruitmentTasksRead, pendingRecruitmentTasks } from './tasks';
 export type { RecruitmentUpdatesPage, RecruitmentJobTodos } from './tasks';
 export {
@@ -254,7 +254,7 @@ export type { WaitingDayKind, WaitingFilter, WaitingRule, WaitingLevel, WaitingR
 // Slice 18 — interview set-up: interviewer groups (scheduling and addInterviewers add each current member once; the group grants
 // nothing and is not recorded on the interview), the question bank linked to scorecard templates (read-only guidance on the feedback
 // form, never scored; retired questions hidden), and the company's interview addresses and meeting rooms (a room is never booked
-// for two overlapping interviews: 5219's exclusion constraint). No meeting or calendar integration (D-058).
+// for two overlapping interviews: 5719's exclusion constraint). No meeting or calendar integration (D-058).
 export {
   interviewerGroupSettings, saveInterviewerGroup, deleteInterviewerGroup, questionBankSettings, saveInterviewQuestion, setInterviewQuestionRetired,
   deleteInterviewQuestion, interviewPlaceSettings, saveInterviewAddress, deleteInterviewAddress, saveInterviewRoom, deleteInterviewRoom,
@@ -286,7 +286,7 @@ export type {
 } from './hiring-model';
 // Slice 19 — candidate e-mail: the company's sender and templates (administrators), the previews people see, receipts HR ticks and
 // rejection letters queued with the action they belong to (careers-page receipts wait for slice 21, D-064), the application page's list, an administrator's retry, and the sweep
-// step that delivers through the embedded relay (5220; docs/adr/2026-11-14-recruitment-candidate-email.md).
+// step that delivers through the embedded relay (5720; docs/adr/2026-11-14-recruitment-candidate-email.md).
 export {
   candidateEmailComposers, previewCandidateEmail, candidateEmailSettings, saveCandidateEmailSettings, saveCandidateEmailTemplate, resetCandidateEmailTemplate,
   applicationCandidateEmails, retryCandidateEmail, candidateEmailDefault, rejectionEmailPreviews, REJECTION_PREVIEW_LIMIT,

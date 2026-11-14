@@ -3,7 +3,7 @@
  * question bank linked to scorecard templates, and the company's interview addresses and meeting rooms. Reached from outside the pack
  * ONLY through ./service; ./interviews uses the *Tx helpers below when scheduling, adding interviewers and opening a feedback form.
  *
- * Who: recruitment administrators manage everything here (the service asks first; 5219 row security, CHECKs and guards refuse again).
+ * Who: recruitment administrators manage everything here (the service asks first; 5719 row security, CHECKs and guards refuse again).
  * Operators of the company's jobs read the groups when scheduling; the company's job teams read questions, addresses and rooms. A
  * group grants no access: it is a list the scheduler copies from. Nothing here calls a model or touches candidate data. Settings reads
  * are bounded (GROUPS_MAX, QUESTIONS_MAX, ADDRESSES_MAX with ROOMS_PER_ADDRESS_MAX) and set-based: a fixed number of statements per
@@ -41,7 +41,7 @@ export function interviewSetupError(e: unknown): never {
   const code = pgSqlState(e);
   if (code === '23P01' && named === 'recruitment_interview_room_no_overlap') throw new RecruitmentError('room_booked', ['roomId']);
   if (named === 'recruitment_interview_room_enabled' || named === 'recruitment_interview_place_ck') throw new RecruitmentError('room_unavailable', ['roomId']);
-  // The application closed while interviewers were being added (5219's interviewer guard).
+  // The application closed while interviewers were being added (5719's interviewer guard).
   if (named === 'recruitment_interview_interviewer_application_active') throw new RecruitmentError('application_closed');
   if (code === '23505' && /_name_uq$/.test(named)) throw new RecruitmentError('name_taken', ['name']);
   if (named === 'recruitment_interviewer_group_member_access') throw new RecruitmentError('invalid_input', ['memberIds']);
@@ -118,7 +118,7 @@ export async function interviewerGroupSettings(s: SessionContext, companyId: str
 
 /**
  * Create (no id) or edit a group: its name and its member list, replaced as a set. A NEW member must be an active person of the
- * company (the people the team pickers offer; 5219's guard asks the database's own rule again); a member kept from before stays
+ * company (the people the team pickers offer; 5719's guard asks the database's own rule again); a member kept from before stays
  * even if they lost access since (they are skipped when the group is added to an interview). Interviews already scheduled are not
  * changed. Administrators only.
  */

@@ -3,7 +3,7 @@
  * Pure, deterministic and client-safe: no database, no clock, no model.
  *
  * packs/recruitment/custom-fields.ts reads definitions and values under the viewer's own row security and hands them to these
- * helpers; nothing here decides who may see or do what (the database does, 5215). What is decided here: a definition's shape,
+ * helpers; nothing here decides who may see or do what (the database does, 5715). What is decided here: a definition's shape,
  * the fixed sensitive-category word list (D-052), how a typed value is read from a form and checked against its field, the
  * label in the viewer's locale (English when a locale has none), and the one-field filter.
  */

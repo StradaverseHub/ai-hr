@@ -271,7 +271,7 @@ describe('function-access registry (lib/permissions)', () => {
     const actual=guardedRoutes().filter(route=>route==='/assistant'||route.startsWith('/assistant/')).sort();expect(screen?.routes.slice().sort()).toEqual(actual);expect(actual.length).toBeGreaterThan(1);
     expect(actual).toEqual(expectedAssistantRoutes);expect(screen?.routes.slice().sort()).toEqual(expectedAssistantRoutes);
     // This is CONDITIONAL shell reach, never a role grant to HR choices, fields, approval or effects.
-    // The actual roleEnum has 9 roles (ADR-0049's recruiting_partner joined in 5200); no new role or automatic permission is invented for added routes.
+    // The actual roleEnum has 9 roles (ADR-0049's recruiting_partner joined in 5700); no new role or automatic permission is invented for added routes.
     const expectedShellReach={employee:true,manager:true,hr_admin:true,super_admin:true,payroll_partner:true,performance_comp_partner:true,operator:true,performance_partner:true,recruiting_partner:true};
     expect(Object.keys(expectedShellReach).sort()).toEqual([...roleEnum.enumValues].sort());
     for(const [role,reachable] of Object.entries(expectedShellReach))expect(canReach(role as typeof roleEnum.enumValues[number],screen!),role).toBe(reachable);
@@ -340,7 +340,7 @@ describe('function-access registry (lib/permissions)', () => {
 
   // The scopedSession count tracks MATRIX_ROLES (that guard gates nothing at the page boundary, so every
   // authenticated role reaches it) and moved 6 → 7 when the operator tier was added in 0294, then 7 → 8
-  // with ADR-0142's performance_partner (0610), then 8 → 9 with ADR-0049's recruiting_partner (5200). The two ADMIN counts stay pinned at 2, which is the
+  // with ADR-0142's performance_partner (0610), then 8 → 9 with ADR-0049's recruiting_partner (5700). The two ADMIN counts stay pinned at 2, which is the
   // assertion that matters: neither operator nor performance_partner is an admin role, so the loop below
   // also proves neither reaches a requireAdmin/scopedAdmin screen.
   it('access is guard-derived and honest: admin/scopedAdmin → 2 admin roles, scopedSession → all 9', () => {

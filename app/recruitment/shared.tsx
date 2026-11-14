@@ -31,7 +31,7 @@ export type RecruitmentAccess = RecruitmentViewer & {
 /**
  * The gate of the pages a job-team member may open too (Candidates, Interviews, Positions, an application, feedback
  * and approvals): administrators of a company in scope, members of a job team or interviewers there, or anyone with an
- * approval step waiting for them. The DATABASE answers each part (5202); nobody else gets in.
+ * approval step waiting for them. The DATABASE answers each part (5702); nobody else gets in.
  */
 export async function recruitmentViewerAccess(s: SessionContext, scopeIds: string[], opts: { afterDecision?: boolean } = {}): Promise<RecruitmentAccess> {
   const viewer = await recruitmentViewer(s, scopeIds);

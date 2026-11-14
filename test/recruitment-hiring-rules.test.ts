@@ -2,7 +2,7 @@
  * Recruitment slices 2–4 — the deterministic rules (packs/recruitment/hiring-model.ts) behind acceptance cases 12,
  * 13, 14 and 17 (docs/recruitment-reconstruction/specification.md "Slices 2–4 acceptance cases"). No database and no
  * clock: "now" and "today" are passed in. test/recruitment-slices-service.test.ts proves the same rules end to end,
- * under row security and against the 5202–5204 guards.
+ * under row security and against the 5702–5704 guards.
  */
 import { describe, expect, it } from 'vitest';
 import { RecruitmentError } from '../packs/recruitment/model';

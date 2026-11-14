@@ -2,7 +2,7 @@
  * Recruitment rules (slice 1) — pure, deterministic and client-safe. No database, no clock, no model.
  *
  * The service (./data.ts) runs every write through these functions and the database guards
- * (migration 5201) refuse the same illegal states independently, so a form that skips a check still
+ * (migration 5701) refuse the same illegal states independently, so a form that skips a check still
  * cannot write one. Names of stages, the process and archive reasons below are EDITABLE SEED DEFAULTS
  * a company receives once; behaviour never keys off a name, only off ids, types and system keys.
  */
@@ -233,7 +233,7 @@ export function validateJobInput(input: JobInput): { ok: true; value: ValidJob }
 /**
  * The job status machine: Open ↔ On hold, Open / On hold → Closed, and Closed → Open.
  * Reopening a closed job is a slice 1 IMPLEMENTATION DECISION (the reference did not show it); the
- * database guard in 5201 allows exactly the same five moves.
+ * database guard in 5701 allows exactly the same five moves.
  */
 export const JOB_STATUS_TRANSITIONS: Readonly<Record<JobStatus, readonly JobStatus[]>> = {
   open: ['on_hold', 'closed'],
@@ -303,7 +303,7 @@ export function validateCandidateInput(input: CandidateInput): { ok: true; value
   return fields.length ? { ok: false, fields } : { ok: true, value: { fullName: fullName!, email: emailText, phone, source } };
 }
 
-/** The job's process is fixed once the job has any application (F3; the 5201 guard refuses it too). */
+/** The job's process is fixed once the job has any application (F3; the 5701 guard refuses it too). */
 export function processChangeRefused(currentProcessId: string, requestedProcessId: string, hasApplications: boolean): boolean {
   return requestedProcessId !== currentProcessId && hasApplications;
 }

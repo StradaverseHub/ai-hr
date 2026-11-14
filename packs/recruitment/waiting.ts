@@ -3,7 +3,7 @@
  * Reached from outside the pack ONLY through ./service.
  *
  * Settings › Waiting limits: the company's administrators set, per enabled stage, a reminder after N days and optionally "suggest
- * archiving" after M days, in calendar or working days (5218 row security: administrators write; the company's job teams read). The
+ * archiving" after M days, in calendar or working days (5718 row security: administrators write; the company's job teams read). The
  * board, the application page and the Overview read the rules through ./waiting-store; waiting time is computed when read, never
  * stored. The "Suggested to archive" list of a job is for its operators and administrators: they tick applications and archive them
  * with an archive reason in ONE action through the normal reject path (./data archiveApplicationsTx). Nothing is ever archived
@@ -99,7 +99,7 @@ export async function waitingRuleSettings(s: SessionContext, companyId: string):
 /**
  * Set a stage's waiting limit (create or replace): reminder 1–365 days, optional "suggest archiving" after more days than the
  * reminder and at most 730, calendar or working days. A new rule needs an ENABLED stage of the company. Administrators only (the
- * service asks first; 5218 row security and CHECKs refuse again).
+ * service asks first; 5718 row security and CHECKs refuse again).
  */
 export async function saveWaitingRule(s: SessionContext, input: WaitingRuleInput & { companyId?: unknown; stageId?: unknown }): Promise<void> {
   const user = actorId(s);
@@ -119,7 +119,7 @@ export async function saveWaitingRule(s: SessionContext, input: WaitingRuleInput
       from recruitment_stage st where st.id = ${stageId}::uuid and st.tenant_id = ${s.tenantId}::uuid and st.company_id = ${companyId}::uuid`);
     if (!stage) throw new RecruitmentError('not_found');
     if (!stage.enabled && !stage.has_rule) throw new RecruitmentError('stage_unavailable');
-    // An existing rule is updated in place (its stage may since have been disabled); a new one is inserted (5218: enabled stages only).
+    // An existing rule is updated in place (its stage may since have been disabled); a new one is inserted (5718: enabled stages only).
     // Every write must change exactly one row; anything else is refused rather than reported as saved.
     const written = stage.has_rule
       ? await tx.execute<{ id: string }>(sql`update recruitment_stage_waiting_rule set remind_days = ${remindDays}, archive_days = ${archiveDays}, day_kind = ${dayKind},
@@ -285,7 +285,7 @@ export async function archiveSuggestedApplications(s: SessionContext, input: { j
     const [reason] = await tx.execute<{ id: string }>(sql`select id from recruitment_archive_reason
       where id = ${reasonId}::uuid and company_id = ${job.company_id}::uuid and tenant_id = ${s.tenantId}::uuid and displayed`);
     if (!reason) throw new RecruitmentError('reason_required');
-    // Serialise with the blocked list (5213 takes this company lock exclusively to add an entry or resolve a mark), so a hold added
+    // Serialise with the blocked list (5713 takes this company lock exclusively to add an entry or resolve a mark), so a hold added
     // while this runs is either seen below or waits for this action. Then lock the selected applications.
     await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${`recruitment-blocked:${s.tenantId}:${job.company_id}`}, 0))`);
     const locked = await tx.execute<{ id: string; job_id: string; state: string; current_stage_id: string }>(sql`

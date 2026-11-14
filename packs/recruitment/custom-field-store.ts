@@ -3,7 +3,7 @@
  * ONLY through ./service (the candidate profile, the job form and the three lists use these helpers from ./candidates, ./data
  * and ./requisitions; Settings › Custom fields is ./custom-fields).
  *
- * Everything here runs in the caller's transaction under their own row security (5215): the open candidate values for anyone
+ * Everything here runs in the caller's transaction under their own row security (5715): the open candidate values for anyone
  * who may read the candidate, the RESTRICTED candidate values for administrators and the candidate's job operators only, a
  * job's values for whoever may read the job. The service asks the restricted table only for a viewer who operates the
  * candidate, and row security answers again (a hiring manager's or interviewer's direct read returns no row). Values are typed:

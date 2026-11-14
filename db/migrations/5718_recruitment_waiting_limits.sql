@@ -23,12 +23,12 @@
 --      applications by (job, stage, updated_at), so the bounded waiting scans read a job's stage least recently updated first
 --      (updated_at is only a sort key that front-loads likely matches; counts come from the history and unread rows are flagged
 --      "N+"). CREATE INDEX IF NOT EXISTS inside the
---      migration transaction, like 5206: PRECONDITION — public.recruitment_application_event and public.recruitment_application are
---      empty wherever this applies, because the recruitment tables are new in this release block (5200–5217 are unapplied outside
+--      migration transaction, like 5706: PRECONDITION — public.recruitment_application_event and public.recruitment_application are
+--      empty wherever this applies, because the recruitment tables are new in this release block (5700–5717 are unapplied outside
 --      throwaway databases, CI and the branch author's local render database), so there is no populated table to lock. An
 --      installation that already holds applications builds both indexes CONCURRENTLY (same names and definitions) before applying
 --      this migration; the IF NOT EXISTS statements then leave them as they are.
---   3. app.recruitment_delete_company_setup restated (5217 body byte for byte) plus the rules, before the stages they name.
+--   3. app.recruitment_delete_company_setup restated (5717 body byte for byte) plus the rules, before the stages they name.
 --
 -- Nothing here calls a model, scores a candidate or changes an application.
 
@@ -107,7 +107,7 @@ CREATE INDEX IF NOT EXISTS recruitment_application_active_stage_updated_idx ON p
  WHERE state = 'active';
 --> statement-breakpoint
 
--- ── 3. Deleting a company (core/company-refs.ts): 5217's body plus the waiting rules ─────────────────────────────────────
+-- ── 3. Deleting a company (core/company-refs.ts): 5717's body plus the waiting rules ─────────────────────────────────────
 CREATE OR REPLACE FUNCTION app.recruitment_delete_company_setup(p_company uuid) RETURNS integer
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, public, app, pg_temp AS $$
 DECLARE removed integer := 0; n integer;

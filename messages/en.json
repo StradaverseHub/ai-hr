@@ -40861,6 +40861,8 @@
       "enabled": "E-mail candidates",
       "senderName": "Sender name (up to {max} characters)",
       "senderNameHint": "Leave empty to use {name}.",
+      "senderNameRequired": "Enter a sender name: this company's name has no characters a sender name can use.",
+      "senderNameInvalid": "Use a name only: up to {max} characters, without @, <, > or \" characters.",
       "replyTo": "Reply-to address",
       "replyToHint": "Candidates' replies go here. Required when candidate e-mail is on.",
       "locale": "Language of candidate e-mails",

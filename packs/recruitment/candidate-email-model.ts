@@ -2,13 +2,13 @@
  * Candidate e-mail rules (slice 19, D-063, docs/adr/2026-11-14-recruitment-candidate-email.md). Pure and client-safe: the kinds and
  * their placeholder allowlists, the limits, template and settings validation, and the ONE renderer every candidate e-mail goes
  * through — the preview a person sees, the content frozen at queue time and the careers receipt all call renderCandidateEmail, so
- * what is previewed is what is sent. db/migrations/5220_recruitment_candidate_email.sql refuses the same illegal templates, settings
+ * what is previewed is what is sent. db/migrations/5720_recruitment_candidate_email.sql refuses the same illegal templates, settings
  * and rows again.
  */
 import { isCanonicalEmailAddress } from '../../lib/email-address';
 
 /** The kinds this slice sends. Slice 20 adds 'interview_invitation', 'interview_reminder', 'interview_cancelled' and 'offer'
- *  here, in CANDIDATE_EMAIL_PLACEHOLDERS (with their interview and offer fields), in the messages defaults and in 5220's CHECKs. */
+ *  here, in CANDIDATE_EMAIL_PLACEHOLDERS (with their interview and offer fields), in the messages defaults and in 5720's CHECKs. */
 export const CANDIDATE_EMAIL_KINDS = ['application_received', 'rejection'] as const;
 export type CandidateEmailKind = (typeof CANDIDATE_EMAIL_KINDS)[number];
 
@@ -24,10 +24,10 @@ export const CANDIDATE_EMAIL_PLACEHOLDERS: Record<CandidateEmailKind, readonly s
   rejection: BASE_PLACEHOLDERS,
 };
 export type CandidateEmailValues = Record<BasePlaceholder, string>;
-/** The longest value each placeholder can take: candidate names and job titles are at most 200 (5201), the sender name 80; the company
+/** The longest value each placeholder can take: candidate names and job titles are at most 200 (5701), the sender name 80; the company
  *  name has no stored limit, so the renderer cuts every value to these lengths and a template's worst case is known at save time. */
 export const CANDIDATE_EMAIL_VALUE_MAX: Record<BasePlaceholder, number> = { candidateName: 200, jobTitle: 200, companyName: 200, senderName: 80 };
-/** What 5220 freezes at most: the rendered subject and text. A template whose worst case (every placeholder at its longest value)
+/** What 5720 freezes at most: the rendered subject and text. A template whose worst case (every placeholder at its longest value)
  *  exceeds these is refused on save (email_too_long), so a render can never exceed the frozen columns. The HTML is then at most
  *  6 x the text plus its wrapper (an escaped character is at most 6 characters), well inside its 200,000. */
 export const CANDIDATE_EMAIL_FROZEN_SUBJECT_MAX = 1000;
@@ -38,7 +38,7 @@ export const CANDIDATE_EMAIL_SUBJECT_MAX = 200;
 export const CANDIDATE_EMAIL_BODY_MAX = 5000;
 export const CANDIDATE_EMAIL_SENDER_NAME_MAX = 80;
 export const CANDIDATE_EMAIL_REPLY_TO_MAX = 254;
-/** Per company, e-mails queued in any hour (5220 counts the same under a per-company lock). */
+/** Per company, e-mails queued in any hour (5720 counts the same under a per-company lock). */
 export const CANDIDATE_EMAIL_HOURLY_CAP = 500;
 /** A rejection e-mail is sent now or 1, 2 or 3 days later, as the person chooses. */
 export const REJECTION_EMAIL_DELAYS = [0, 1, 2, 3] as const;
@@ -67,7 +67,7 @@ export function candidateEmailBackoffSeconds(attempts: number): number {
 
 const CONTROL_SUBJECT = /[\u0001-\u001f\u007f-\u009f]/;
 const CONTROL_BODY = /[\u0001-\u0009\u000b-\u001f\u007f-\u009f]/;
-/** Link-like text, the SAME pattern as 5220's app.recruitment_candidate_email_linkish (a test compares them): a known scheme followed by
+/** Link-like text, the SAME pattern as 5720's app.recruitment_candidate_email_linkish (a test compares them): a known scheme followed by
  *  ":" and more (http, https, ftp, mailto, tel, sms, data, javascript, vbscript, file), any "://", a "//" at the start or after a space
  *  or punctuation, "www" with any dot (Unicode dots too), punycode, or a bare domain followed by "/" ("evil.example/login").
  *  Case-insensitive. Ordinary names and titles ("S.Kumar", "Node.js Developer", "Ref:HR-12") are not link-like. Templates must not
@@ -75,7 +75,7 @@ const CONTROL_BODY = /[\u0001-\u0009\u000b-\u001f\u007f-\u009f]/;
 export const LINK_PATTERN = '(^|[^a-z0-9])(https?|ftp|mailto|tel|sms|data|javascript|vbscript|file):\\S|://|(^|[^a-z0-9])//|www[.。．｡]|xn--|[a-z0-9-][.。．｡][a-z]{2,}/';
 const LINK = new RegExp(LINK_PATTERN, 'i');
 export const linkish = (text: string) => LINK.test(text);
-/** The HTML grammar the renderer emits and 5220's body_html CHECK accepts (the same text): its wrapper, paragraphs, line breaks and
+/** The HTML grammar the renderer emits and 5720's body_html CHECK accepts (the same text): its wrapper, paragraphs, line breaks and
  *  five entities only. */
 export const HTML_GRAMMAR = '^<!doctype html><html lang="(en|ms|zh|vi|ta|th)"><head><meta charset="utf-8"></head><body>(<p>([^<>&]|<br>|&(amp|lt|gt|quot|#39);)*</p>)*</body></html>$';
 const PLACEHOLDER = /\{([^{}]*)\}/g;
@@ -131,21 +131,28 @@ export function validateCandidateEmailTemplate(kind: CandidateEmailKind, input: 
 export function validReplyTo(value: string): boolean {
   return value.length <= CANDIDATE_EMAIL_REPLY_TO_MAX && isCanonicalEmailAddress(value);
 }
-/** A candidate's recorded e-mail the transport would accept (the same canonical rule, at most 254 as 5220 stores it); anything else
+/** A candidate's recorded e-mail the transport would accept (the same canonical rule, at most 254 as 5720 stores it); anything else
  *  counts as no usable address: the candidate is skipped and the person told. */
 export function usableRecipient(email: string | null | undefined): email is string {
   return typeof email === 'string' && email.length <= CANDIDATE_EMAIL_REPLY_TO_MAX && isCanonicalEmailAddress(email);
 }
-/** The display name used when the company sets none — the same rule as 5220's app.recruitment_candidate_email_sender: control
- *  characters made spaces, leading space removed, cut to 80 characters, trailing space removed (JavaScript's trim set, which includes
- *  the no-break and ideographic spaces the transport's check removes). */
+/** Characters the transport refuses in a display name (lib/managed-email-policy.ts validManagedEmailSenderName: control characters
+ *  and @ < > ", so a name never looks like another mailbox); the C1 controls are refused here as well. 5720's sender CHECKs use the
+ *  same class. */
+export const SENDER_NAME_REFUSED = /[\u0001-\u001f\u007f-\u009f@<>"]/;
+/** The display name used when the company sets none — the same rule as 5720's app.recruitment_candidate_email_sender (D-064): every
+ *  character the transport refuses made a space, runs of spaces made one, leading space removed, cut to 80 characters, trailing space
+ *  removed (JavaScript's trim set, which includes the no-break and ideographic spaces the transport's check removes). A company name
+ *  with nothing else left gives '': the company must then set its own sender name to switch candidate e-mail on. */
 export function defaultSenderName(companyName: string): string {
-  return [...companyName.replace(/[\u0001-\u001f\u007f-\u009f]/g, ' ').trimStart()].slice(0, CANDIDATE_EMAIL_SENDER_NAME_MAX).join('').trimEnd();
+  return [...companyName.replace(/[\u0001-\u001f\u007f-\u009f@<>"]/g, ' ').replace(/ {2,}/g, ' ').trimStart()]
+    .slice(0, CANDIDATE_EMAIL_SENDER_NAME_MAX).join('').trimEnd();
 }
 
 export type CandidateEmailSettingsInput = { enabled?: unknown; senderName?: unknown; replyTo?: unknown; locale?: unknown };
 export type ValidCandidateEmailSettings = { enabled: boolean; senderName: string | null; replyTo: string | null; locale: CandidateEmailLocale };
-/** The company's switch, sender display name (≤80; empty = the company name), reply-to (required when on) and language. */
+/** The company's switch, sender display name (≤80, none of the characters the transport refuses; empty = the company name),
+ *  reply-to (required when on) and language. */
 export function validateCandidateEmailSettings(input: CandidateEmailSettingsInput):
   { ok: true; value: ValidCandidateEmailSettings } | { ok: false; code: 'missing_fields' | 'invalid_input'; fields: string[] } {
   const enabled = input.enabled === true || input.enabled === 'on' || input.enabled === 'true';
@@ -154,7 +161,7 @@ export function validateCandidateEmailSettings(input: CandidateEmailSettingsInpu
   const locale = input.locale == null || input.locale === '' ? 'en' : input.locale;
   if (enabled && !replyTo) return { ok: false, code: 'missing_fields', fields: ['replyTo'] };
   const fields = [
-    ...(senderName && ([...senderName].length > CANDIDATE_EMAIL_SENDER_NAME_MAX || CONTROL_SUBJECT.test(senderName)) ? ['senderName'] : []),
+    ...(senderName && ([...senderName].length > CANDIDATE_EMAIL_SENDER_NAME_MAX || SENDER_NAME_REFUSED.test(senderName)) ? ['senderName'] : []),
     ...(replyTo && !validReplyTo(replyTo) ? ['replyTo'] : []),
     ...((CANDIDATE_EMAIL_LOCALES as readonly unknown[]).includes(locale) ? [] : ['locale']),
   ];

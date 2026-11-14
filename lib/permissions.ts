@@ -56,7 +56,7 @@ export const MATRIX_ROLES: readonly Role[] = [
   // reaches; /performance and its cycle children admit it for OneHR-native cycles inside the page
   // (requireOnehrAdminAccess + notFound for a generic cycle), and no requireAdmin/scopedAdmin screen.
   'performance_partner',
-  // ADR-0049 §2 (5200/5201) — Recruiting Partner. Reaches the scopedSession screens every role reaches; the
+  // ADR-0049 §2 (5700/5701) — Recruiting Partner. Reaches the scopedSession screens every role reaches; the
   // /recruitment screens admit it inside the page (canAdministerRecruitment, then app.can_admin_recruitment_for
   // per company in the service and RLS), and no requireAdmin/scopedAdmin screen.
   'recruiting_partner',
@@ -181,14 +181,14 @@ export const SCREENS: readonly ScreenEntry[] = [
   // ADR-0080 D10 / ADR-0049 — Recruitment. Every page calls requireModule('recruitment') + scopedSession and then admits
   // recruitment administrators (canAdminRecruitment: HR administrators and the company-scoped Recruiting Partner) for
   // the companies app.can_admin_recruitment_for answers true, and — slice 2 — job-team members and interviewers for
-  // their own jobs and interviews (app.can_*_recruitment_job, 5202), and approvers for their own pending steps.
+  // their own jobs and interviews (app.can_*_recruitment_job, 5702), and approvers for their own pending steps.
   // Overview, Settings, Requisitions and Talent pool stay administrator-only inside the page; Reports (slice 6) admits
   // administrators and a job's recruiter, assistant or hiring manager for their own jobs, its Team view administrators only. The service and row
   // security refuse independently. A capability gate inside the page, not a role grant at the boundary — hence
   // conditionalAccess.
   // Recruitment slice 7 — employee referrals. Every signed-in person reaches the address; the pages show the referral portal
   // and My referrals only to a person with an active employment in a company with Recruitment (app.recruitment_referral_*,
-  // 5207), and only their own referrals. Referring grants no other Recruitment access.
+  // 5707), and only their own referrals. Referring grants no other Recruitment access.
   {screenKey:'myReferrals',href:'/me/referrals',labelKey:'nav.myReferrals',guard:'scopedSession',hasScopeNote:true,conditionalAccess:true,
     routes:['/me/referrals','/me/referrals/jobs/[jobId]','/me/referrals/mine']},
   {screenKey:'recruitment',href:'/recruitment',labelKey:'nav.recruitment',guard:'scopedSession',hasScopeNote:true,conditionalAccess:true,routes:[

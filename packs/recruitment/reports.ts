@@ -12,7 +12,7 @@
  *      no lock a writer waits for;
  *   3. narrows itself further than row security: a company counts only when the caller administers its recruitment
  *      (app.can_admin_recruitment_for) or is a recruiter, assistant or hiring manager on one of its jobs; in a company
- *      the caller does not administer, only those jobs count (app.recruitment_has_job_role, 5202). The job scope is
+ *      the caller does not administer, only those jobs count (app.recruitment_has_job_role, 5702). The job scope is
  *      computed ONCE per dashboard and passed to every later statement as a uuid[] (row security still applies to
  *      each). An interviewer alone, an approver or anyone else gets `forbidden`. Team is for administrators (D-018);
  *   4. is a small fixed number of aggregate statements (no per-job loop): setup 3 (settings + snapshot facts, companies,
@@ -110,7 +110,7 @@ type Ctx = {
   q: <T extends Record<string, unknown>>(query: SQL) => Promise<T[]>;
 };
 
-/** The applications received in the period on the report jobs (index: tenant, company, applied_at — 5206). */
+/** The applications received in the period on the report jobs (index: tenant, company, applied_at — 5706). */
 const cohort = (c: Ctx) => sql`select a.id, a.job_id, a.state, a.candidate_id, a.applied_at
     from recruitment_application a
     where a.tenant_id = ${c.s.tenantId}::uuid and a.company_id = any(${c.selected}::uuid[]) and a.job_id = any(${c.jobIds}::uuid[])
@@ -486,7 +486,7 @@ export async function recruitmentTeamReport(s: SessionContext, scopeIds: readonl
         (count(*) over ())::int as total
       from per_job group by recruiter
       order by sum(moved) + sum(interviews) + sum(offers) + sum(hires) desc, recruiter nulls last limit ${REPORT_RECRUITER_LIMIT}`);
-    // Recruiter names: the company's people labels (5202), only for the users listed.
+    // Recruiter names: the company's people labels (5702), only for the users listed.
     const userIds = rows.map((r) => r.recruiter).filter((id): id is string => !!id);
     const names = new Map<string, string>();
     if (userIds.length) {

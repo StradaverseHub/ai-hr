@@ -2,7 +2,7 @@
  * Recruitment slice 13 — custom talent pools (docs/recruitment-reconstruction/specification.md "Slice 13"). Reached from
  * outside the pack ONLY through ./service.
  *
- * Who does what (5213 row security answers every part; the service checks first for a clear refusal):
+ * Who does what (5713 row security answers every part; the service checks first for a clear refusal):
  *   create, edit, share, sub-pool, delete      — recruitment administrators (every pool of their companies);
  *   see a pool                                 — administrators; the company's recruiters and assistants when the pool is
  *                                                shared with all recruiters or its top-level pool lists them (D-050);

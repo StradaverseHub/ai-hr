@@ -12,7 +12,7 @@ export const SCREENING_SEND_FORM = 'screening-send';
 /**
  * Slice 11 — "Send to hiring manager" for the cards ticked on the board (one job): the job's hiring managers (all ticked by
  * default), an optional note, and "also move to <next stage>" (on by default; offered only when the stage has a next one).
- * The service and 5211 refuse anybody but the job's operators and administrators.
+ * The service and 5711 refuse anybody but the job's operators and administrators.
  */
 export async function ScreeningSendPanel({ s, jobId, here, nextStage, selectable }: {
   s: SessionContext; jobId: string; here: string; nextStage: string | null; selectable: number;

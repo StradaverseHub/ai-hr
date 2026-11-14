@@ -18,8 +18,8 @@
 --                            lease token and never a recipient or content: the address and the words are frozen at queue time.
 --
 -- What this installs:
---   1. public.recruitment_candidate_email_setting (one per company): "E-mail candidates" (off by default), sender display name (≤80;
---      NULL = the company name), reply-to (required when on), the language of candidate e-mails (en, ms, zh, vi, ta, th; the candidate
+--   1. public.recruitment_candidate_email_setting (one per company): "E-mail candidates" (off by default), sender display name (≤80,
+--      no control character or @ < > ", as the transport requires; NULL = the company name made safe), reply-to (required when on), the language of candidate e-mails (en, ms, zh, vi, ta, th; the candidate
 --      has no recorded preferred language, so this company setting decides; default English).
 --   2. public.recruitment_candidate_email_template: a company override per kind and language — subject ≤200 and body ≤5,000 plain text,
 --      placeholders from the kind's allowlist only (app.recruitment_candidate_email_placeholders_ok), nothing link- or domain-like
@@ -48,8 +48,8 @@
 --      through a new owner-only policy on public.recruitment_candidate. Every owner-bound policy here is keyed by the owner-only
 --      context table app.recruitment_candidate_email_context, which the functions write for their own transaction and delete before
 --      they return — never by a session setting, which any session could set.
---   5. app.recruitment_destroy_candidate restated (5217 body byte for byte) plus one step: the candidate's e-mails go.
---   6. app.recruitment_delete_company_setup restated (5219 body byte for byte) plus one block: the e-mails, templates and settings.
+--   5. app.recruitment_destroy_candidate restated (5717 body byte for byte) plus one step: the candidate's e-mails go.
+--   6. app.recruitment_delete_company_setup restated (5719 body byte for byte) plus one block: the e-mails, templates and settings.
 --
 -- No index, constraint or trigger is added to an existing table; the one change to one is the owner-only read policy above.
 --
@@ -57,13 +57,16 @@
 -- e-mail they chose to send.
 
 -- ── 1. Company e-mail settings ─────────────────────────────────────────────────────────────────────────────
--- The effective sender display name: the company's own (≤80) or the company name — control characters made spaces, leading space
--- removed, cut to 80 characters, then trailing space removed. "Space" includes the Unicode spaces JavaScript's trim() removes
--- (no-break, ideographic …), so the name is what the transport accepts (packs/recruitment/candidate-email-model.ts defaultSenderName
--- is the same rule). One expression for the service, the queue check and the sweep.
+-- The effective sender display name: the company's own (≤80) or the company name — every character the transport refuses in a
+-- display name (control characters and @ < > ", lib/managed-email-policy.ts validManagedEmailSenderName) made a space, runs of
+-- spaces made one, leading space removed, cut to 80 characters, then trailing space removed (D-064). "Space" includes the Unicode
+-- spaces JavaScript's trim() removes (no-break, ideographic …), so the name is what the transport accepts
+-- (packs/recruitment/candidate-email-model.ts defaultSenderName is the same rule). A company name with nothing else left gives '':
+-- the service then requires the company's own sender name to switch on, and the frozen row's CHECK refuses ''. One expression for
+-- the service, the queue check and the sweep.
 CREATE FUNCTION app.recruitment_candidate_email_sender(p_sender_name text, p_company_name text) RETURNS text
 LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
- SELECT coalesce(p_sender_name, regexp_replace(left(regexp_replace(regexp_replace(coalesce(p_company_name, ''), '[\x01-\x1f\x7f-\x9f]', ' ', 'g'),
+ SELECT coalesce(p_sender_name, regexp_replace(left(regexp_replace(regexp_replace(regexp_replace(coalesce(p_company_name, ''), '[\x01-\x1f\x7f-\x9f@<>"]', ' ', 'g'), ' {2,}', ' ', 'g'),
   '^[\s\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+', ''), 80), '[\s\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+$', ''));
 $$;
 REVOKE ALL ON FUNCTION app.recruitment_candidate_email_sender(text, text) FROM PUBLIC;
@@ -86,7 +89,7 @@ CREATE TABLE public.recruitment_candidate_email_setting (
  tenant_id uuid NOT NULL REFERENCES public.tenant(id),
  enabled boolean NOT NULL DEFAULT false,
  sender_name text CHECK (sender_name IS NULL OR (char_length(sender_name) BETWEEN 1 AND 80
-  AND sender_name !~ '^[\s\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]|[\s\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]$' AND sender_name !~ '[\x01-\x1f\x7f-\x9f]')),
+  AND sender_name !~ '^[\s\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]|[\s\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]$' AND sender_name !~ '[\x01-\x1f\x7f-\x9f@<>"]')),
  -- The service validates the address with the transport's own canonical-address rule (lib/email-address.ts); this is its outline.
  reply_to text CHECK (reply_to IS NULL OR (char_length(reply_to) <= 254 AND reply_to ~ '^[!-~]+@[!-~]+$')),
  locale text NOT NULL DEFAULT 'en' CHECK (locale IN ('en','ms','zh','vi','ta','th')),
@@ -161,7 +164,7 @@ CREATE TABLE public.recruitment_candidate_email (
  body_text text CHECK (body_text IS NULL OR (char_length(body_text) BETWEEN 1 AND 20000 AND NOT app.recruitment_candidate_email_linkish(body_text))),
  body_html text CHECK (body_html IS NULL OR (char_length(body_html) BETWEEN 1 AND 200000
   AND body_html ~ '^<!doctype html><html lang="(en|ms|zh|vi|ta|th)"><head><meta charset="utf-8"></head><body>(<p>([^<>&]|<br>|&(amp|lt|gt|quot|#39);)*</p>)*</body></html>$')),
- sender_name text NOT NULL CHECK (char_length(sender_name) BETWEEN 1 AND 80 AND sender_name !~ '[\x01-\x1f\x7f-\x9f]'
+ sender_name text NOT NULL CHECK (char_length(sender_name) BETWEEN 1 AND 80 AND sender_name !~ '[\x01-\x1f\x7f-\x9f@<>"]'
   AND sender_name !~ '^[\s\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]|[\s\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]$'),
  reply_to text NOT NULL CHECK (char_length(reply_to) <= 254 AND reply_to ~ '^[!-~]+@[!-~]+$'),
  status text NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','leased','sending','sent','retry','failed','uncertain')),
@@ -446,7 +449,7 @@ CREATE TRIGGER recruitment_candidate_email_guard BEFORE INSERT OR UPDATE ON publ
 --> statement-breakpoint
 -- What a person queues, checked once per statement over the inserted set (a bulk archive inserts its e-mails in one statement): each
 -- names its application, job, company and candidate; a rejection is for an application archived in THIS transaction
--- (state_changed_at = now(): 5201's guard stamps it on every state change) and a receipt for one created in it (applied_at = now());
+-- (state_changed_at = now(): 5701's guard stamps it on every state change) and a receipt for one created in it (applied_at = now());
 -- the recipient is the candidate's recorded e-mail and the candidate is not removed; the company's switch is on and the sender name,
 -- reply-to and language are its current settings; and the company has queued at most 500 e-mails in the last hour, these included
 -- (counted under the company's cap lock, so concurrent queues count one after the other). Runs as the caller; the owner (tests and
@@ -657,7 +660,7 @@ END $$;
 REVOKE ALL ON FUNCTION app.recruitment_candidate_email_purge(integer) FROM PUBLIC, ai_hr_app;
 --> statement-breakpoint
 
--- ── 7. Removal: 5217's app.recruitment_destroy_candidate, byte for byte, plus the candidate's e-mails ───────────────────────
+-- ── 7. Removal: 5717's app.recruitment_destroy_candidate, byte for byte, plus the candidate's e-mails ───────────────────────
 -- (The new step follows the slice 16 steps, before the candidate row is cleared.)
 CREATE OR REPLACE FUNCTION app.recruitment_destroy_candidate(p_candidate uuid) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, public, app, pg_temp SET row_security = on AS $$
@@ -812,7 +815,7 @@ REVOKE ALL ON FUNCTION app.recruitment_destroy_candidate(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.recruitment_destroy_candidate(uuid) TO ai_hr_app;
 --> statement-breakpoint
 
--- ── 8. Deleting a company (core/company-refs.ts): 5219's body plus the candidate e-mail tables ─────────────────────────────
+-- ── 8. Deleting a company (core/company-refs.ts): 5719's body plus the candidate e-mail tables ─────────────────────────────
 CREATE OR REPLACE FUNCTION app.recruitment_delete_company_setup(p_company uuid) RETURNS integer
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, public, app, pg_temp AS $$
 DECLARE removed integer := 0; n integer;

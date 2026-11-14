@@ -23,6 +23,7 @@ import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { appUser, company, employment, jobGrade, person, roleAssignment } from '../db/schema';
 import { pgSqlState } from '../lib/db-error';
+import { validManagedEmailSenderName } from '../lib/managed-email-policy';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { CandidateMailNotSent, type CandidateEmailSender, type CandidateMail } from '../lib/recruitment-candidate-email-ipc';
 import {
@@ -615,7 +616,7 @@ describe('case 131 — who reads e-mails; the AI Centre sees counts only; the ho
   });
 });
 
-describe('5220 — grants, the default sender name, company deletion and the restricted owner', () => {
+describe('5720 — grants, the default sender name, company deletion and the restricted owner', () => {
   const NEW_TABLES = ['recruitment_candidate_email', 'recruitment_candidate_email_setting', 'recruitment_candidate_email_template'];
   it('forces row security with no PUBLIC grant; the sweep functions are owner-only definers; the app role cannot call them', async () => {
     const t = await owner.db.execute<{ relname: string; rls: boolean; forced: boolean; public_grants: number }>(sql`
@@ -665,12 +666,46 @@ describe('5220 — grants, the default sender name, company deletion and the res
     }))).toBe('42501');
   });
 
-  it('the default sender name is cut to 80 and trimmed of Unicode spaces, the same in SQL and TypeScript', async () => {
-    for (const name of ['　 Fictional QZE ', `${'Q'.repeat(79)} tail`, `${'Q'.repeat(78)}　　x`, 'Fictional\nQZE', 'Plain QZE Sdn Bhd']) {
+  it('the default sender name is cut to 80, trimmed of Unicode spaces and made safe for the transport, the same in SQL and TypeScript', async () => {
+    for (const name of ['　 Fictional QZE ', `${'Q'.repeat(79)} tail`, `${'Q'.repeat(78)}　　x`, 'Fictional\nQZE', 'Plain QZE Sdn Bhd',
+      'Fictional "QZE" Sdn Bhd', 'QZE@Work Sdn Bhd', '<QZE>  Fictional\n\nSdn Bhd', ' "QZE" ', `${'Q'.repeat(79)}"tail`, `${'@'.repeat(40)}${'Q'.repeat(100)}`,
+      'QZE\u0001\u007f\u009f x', '\u3000"QZE"\u00a0', '"@<>"']) {
       const [r] = await owner.db.execute<{ n: string }>(sql`select app.recruitment_candidate_email_sender(null, ${name}) as n`);
       expect(r.n, JSON.stringify(name)).toBe(defaultSenderName(name));
       expect(r.n.trim()).toBe(r.n);
+      // Whatever is left is a display name the transport accepts (D-064); only a name of nothing but refused characters leaves none.
+      if (name !== '"@<>"') expect(validManagedEmailSenderName(r.n), JSON.stringify(name)).toBe(r.n);
     }
+    const [none] = await owner.db.execute<{ n: string }>(sql`select app.recruitment_candidate_email_sender(null, '"@<>"') as n`);
+    expect(none.n).toBe('');
+  });
+
+  it('sender names the transport refuses (@ < > ") are refused on save and by both CHECKs; a company name with them sends made safe', async () => {
+    for (const bad of ['QZE@Talent', 'QZE <Talent>', 'QZE Talent >', 'QZE "Talent"']) {
+      expect(await code(saveCandidateEmailSettings(admin, base.companyId, { enabled: true, replyTo: REPLY_TO, senderName: bad })), bad).toBe('invalid_input');
+      // Past the service, as the administrator (row security admits the write; the CHECK refuses it).
+      expect(await code(rows(admin, sql`insert into recruitment_candidate_email_setting (company_id, tenant_id, enabled, sender_name, reply_to,
+        created_by_user_id, updated_by_user_id) values (${base.companyId}::uuid, ${base.tenantId}::uuid, false, ${bad}, ${REPLY_TO}, ${admin.userId}::uuid,
+        ${admin.userId}::uuid)`)), bad).toBe('23514');
+    }
+    expect(await owner.db.execute(sql`select 1 from recruitment_candidate_email_setting where company_id = ${base.companyId}::uuid`)).toHaveLength(0);
+    // The default: the company's legal name with each refused character made a space (D-064), shown on the page and frozen on the e-mail.
+    await owner.db.execute(sql`update company set legal_name = 'Fictional "QZE" <Talent>@Sdn Bhd' where id = ${base.companyId}::uuid`);
+    const w = await world();
+    expect(await code(saveCandidateEmailSettings(admin, base.companyId, { enabled: true, replyTo: REPLY_TO }))).toBe('ok');
+    expect((await candidateEmailSettings(admin, base.companyId)).defaultSenderName).toBe('Fictional QZE Talent Sdn Bhd');
+    await add(w.recruiter, w.jobId, { sendReceipt: 'on' });
+    const [row] = await emails();
+    expect(row).toMatchObject({ kind: 'application_received', sender_name: 'Fictional QZE Talent Sdn Bhd' });
+    expect(validManagedEmailSenderName(row.sender_name)).toBe(row.sender_name);
+    // The frozen row's CHECK refuses the same characters, even past the triggers.
+    expect(await code(travel('update recruitment_candidate_email set sender_name = $1 where id = $2', ['QZE "Talent"', row.id]))).toBe('23514');
+    // A company name with nothing a sender name can use leaves no default: switching on needs the company's own sender name.
+    await owner.db.execute(sql`update company set legal_name = '"@<>"' where id = ${otherCompanyId}::uuid`);
+    expect(await code(saveCandidateEmailSettings(admin, otherCompanyId, { enabled: true, replyTo: REPLY_TO }))).toBe('missing_fields');
+    expect(await owner.db.execute(sql`select 1 from recruitment_candidate_email_setting where company_id = ${otherCompanyId}::uuid`)).toHaveLength(0);
+    expect(await code(saveCandidateEmailSettings(admin, otherCompanyId, { enabled: false, replyTo: REPLY_TO }))).toBe('ok');
+    expect(await code(saveCandidateEmailSettings(admin, otherCompanyId, { enabled: true, replyTo: REPLY_TO, senderName: 'QZE Talent' }))).toBe('ok');
   });
 
   it('the company delete removes the settings and templates; candidates refuse it first', async () => {

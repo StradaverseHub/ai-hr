@@ -5862,153 +5862,6 @@
       "breakpoints": true
     },
     {
-      "idx": 4600,
-      "version": "7",
-      "when": 1793330004900,
-      "tag": "5200_recruiting_partner_role",
-      "breakpoints": true
-    },
-    {
-      "idx": 4601,
-      "version": "7",
-      "when": 1793330004901,
-      "tag": "5201_recruitment_core",
-      "breakpoints": true
-    },
-    {
-      "idx": 4602,
-      "version": "7",
-      "when": 1793330004902,
-      "tag": "5202_recruitment_team_interviews",
-      "breakpoints": true
-    },
-    {
-      "idx": 4603,
-      "version": "7",
-      "when": 1793330004903,
-      "tag": "5203_recruitment_offers_hire_handoff",
-      "breakpoints": true
-    },
-    {
-      "idx": 4604,
-      "version": "7",
-      "when": 1793330004904,
-      "tag": "5204_recruitment_requisitions",
-      "breakpoints": true
-    },
-    {
-      "idx": 4605,
-      "version": "7",
-      "when": 1793330004905,
-      "tag": "5205_recruitment_candidate_privacy",
-      "breakpoints": true
-    },
-    {
-      "idx": 4606,
-      "version": "7",
-      "when": 1793330004906,
-      "tag": "5206_recruitment_report_indexes",
-      "breakpoints": true
-    },
-    {
-      "idx": 4607,
-      "version": "7",
-      "when": 1793330004907,
-      "tag": "5207_recruitment_referrals",
-      "breakpoints": true
-    },
-    {
-      "idx": 4608,
-      "version": "7",
-      "when": 1793330004908,
-      "tag": "5208_recruitment_careers_page",
-      "breakpoints": true
-    },
-    {
-      "idx": 4609,
-      "version": "7",
-      "when": 1793330004909,
-      "tag": "5209_recruitment_tasks",
-      "breakpoints": true
-    },
-    {
-      "idx": 4610,
-      "version": "7",
-      "when": 1793330004910,
-      "tag": "5210_recruitment_agencies",
-      "breakpoints": true
-    },
-    {
-      "idx": 4611,
-      "version": "7",
-      "when": 1793330004911,
-      "tag": "5211_recruitment_screening",
-      "breakpoints": true
-    },
-    {
-      "idx": 4612,
-      "version": "7",
-      "when": 1793330004912,
-      "tag": "5212_recruitment_background_checks",
-      "breakpoints": true
-    },
-    {
-      "idx": 4613,
-      "version": "7",
-      "when": 1793330004913,
-      "tag": "5213_recruitment_talent_pools_blocked_list",
-      "breakpoints": true
-    },
-    {
-      "idx": 4614,
-      "version": "7",
-      "when": 1793330004914,
-      "tag": "5214_recruitment_consume_invitation_access_lock",
-      "breakpoints": true
-    },
-    {
-      "idx": 4615,
-      "version": "7",
-      "when": 1793330004915,
-      "tag": "5215_recruitment_custom_fields",
-      "breakpoints": true
-    },
-    {
-      "idx": 4616,
-      "version": "7",
-      "when": 1793330004916,
-      "tag": "5216_recruitment_position_templates",
-      "breakpoints": true
-    },
-    {
-      "idx": 4617,
-      "version": "7",
-      "when": 1793330004917,
-      "tag": "5217_recruitment_import_export",
-      "breakpoints": true
-    },
-    {
-      "idx": 4618,
-      "version": "7",
-      "when": 1793330004918,
-      "tag": "5218_recruitment_waiting_limits",
-      "breakpoints": true
-    },
-    {
-      "idx": 4619,
-      "version": "7",
-      "when": 1793330004919,
-      "tag": "5219_recruitment_interview_setup",
-      "breakpoints": true
-    },
-    {
-      "idx": 4620,
-      "version": "7",
-      "when": 1793330004920,
-      "tag": "5220_recruitment_candidate_email",
-      "breakpoints": true
-    },
-    {
       "idx": 4800,
       "version": "7",
       "when": 1793330005100,
@@ -6090,6 +5943,153 @@
       "version": "7",
       "when": 1793330005340,
       "tag": "5640_lifecycle_v9_email_hold_company_tenant",
+      "breakpoints": true
+    },
+    {
+      "idx": 5100,
+      "version": "7",
+      "when": 1793330005400,
+      "tag": "5700_recruiting_partner_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 5101,
+      "version": "7",
+      "when": 1793330005401,
+      "tag": "5701_recruitment_core",
+      "breakpoints": true
+    },
+    {
+      "idx": 5102,
+      "version": "7",
+      "when": 1793330005402,
+      "tag": "5702_recruitment_team_interviews",
+      "breakpoints": true
+    },
+    {
+      "idx": 5103,
+      "version": "7",
+      "when": 1793330005403,
+      "tag": "5703_recruitment_offers_hire_handoff",
+      "breakpoints": true
+    },
+    {
+      "idx": 5104,
+      "version": "7",
+      "when": 1793330005404,
+      "tag": "5704_recruitment_requisitions",
+      "breakpoints": true
+    },
+    {
+      "idx": 5105,
+      "version": "7",
+      "when": 1793330005405,
+      "tag": "5705_recruitment_candidate_privacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 5106,
+      "version": "7",
+      "when": 1793330005406,
+      "tag": "5706_recruitment_report_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 5107,
+      "version": "7",
+      "when": 1793330005407,
+      "tag": "5707_recruitment_referrals",
+      "breakpoints": true
+    },
+    {
+      "idx": 5108,
+      "version": "7",
+      "when": 1793330005408,
+      "tag": "5708_recruitment_careers_page",
+      "breakpoints": true
+    },
+    {
+      "idx": 5109,
+      "version": "7",
+      "when": 1793330005409,
+      "tag": "5709_recruitment_tasks",
+      "breakpoints": true
+    },
+    {
+      "idx": 5110,
+      "version": "7",
+      "when": 1793330005410,
+      "tag": "5710_recruitment_agencies",
+      "breakpoints": true
+    },
+    {
+      "idx": 5111,
+      "version": "7",
+      "when": 1793330005411,
+      "tag": "5711_recruitment_screening",
+      "breakpoints": true
+    },
+    {
+      "idx": 5112,
+      "version": "7",
+      "when": 1793330005412,
+      "tag": "5712_recruitment_background_checks",
+      "breakpoints": true
+    },
+    {
+      "idx": 5113,
+      "version": "7",
+      "when": 1793330005413,
+      "tag": "5713_recruitment_talent_pools_blocked_list",
+      "breakpoints": true
+    },
+    {
+      "idx": 5114,
+      "version": "7",
+      "when": 1793330005414,
+      "tag": "5714_recruitment_consume_invitation_access_lock",
+      "breakpoints": true
+    },
+    {
+      "idx": 5115,
+      "version": "7",
+      "when": 1793330005415,
+      "tag": "5715_recruitment_custom_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 5116,
+      "version": "7",
+      "when": 1793330005416,
+      "tag": "5716_recruitment_position_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 5117,
+      "version": "7",
+      "when": 1793330005417,
+      "tag": "5717_recruitment_import_export",
+      "breakpoints": true
+    },
+    {
+      "idx": 5118,
+      "version": "7",
+      "when": 1793330005418,
+      "tag": "5718_recruitment_waiting_limits",
+      "breakpoints": true
+    },
+    {
+      "idx": 5119,
+      "version": "7",
+      "when": 1793330005419,
+      "tag": "5719_recruitment_interview_setup",
+      "breakpoints": true
+    },
+    {
+      "idx": 5120,
+      "version": "7",
+      "when": 1793330005420,
+      "tag": "5720_recruitment_candidate_email",
       "breakpoints": true
     }
   ]

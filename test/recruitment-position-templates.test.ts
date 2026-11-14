@@ -544,9 +544,9 @@ describe('case 106 — company deletion, forced row security, grants, write-free
       expect(start, name).toBeGreaterThan(-1);
       return source.slice(start, source.indexOf('END $$;', start) + 'END $$;'.length);
     };
-    const b = fn(read('5215_recruitment_custom_fields.sql'), 'app.recruitment_delete_company_setup').split('\n');
-    const a = fn(read('5216_recruitment_position_templates.sql'), 'app.recruitment_delete_company_setup').split('\n');
-    // 5215's body is exactly a prefix plus a suffix of 5216's: one inserted block, nothing else changed.
+    const b = fn(read('5715_recruitment_custom_fields.sql'), 'app.recruitment_delete_company_setup').split('\n');
+    const a = fn(read('5716_recruitment_position_templates.sql'), 'app.recruitment_delete_company_setup').split('\n');
+    // 5715's body is exactly a prefix plus a suffix of 5716's: one inserted block, nothing else changed.
     let i = 0;
     while (i < b.length && a[i] === b[i]) i++;
     let j = 0;
@@ -556,7 +556,7 @@ describe('case 106 — company deletion, forced row security, grants, write-free
     const added = a.slice(i, a.length - j);
     expect(added).toHaveLength(7);
     expect(added.filter((l) => /DELETE FROM/.test(l)).map((l) => l.trim().split(' ')[2])).toEqual(['public.recruitment_position_template_value', 'public.recruitment_position_template']);
-    expect(read('5216_recruitment_position_templates.sql')).not.toContain('recruitment_destroy_candidate(p_candidate');
+    expect(read('5716_recruitment_position_templates.sql')).not.toContain('recruitment_destroy_candidate(p_candidate');
   });
 
   it('company deletion covers the new tables; the delete and the template guards work under a NOBYPASSRLS owner with forced row security', async () => {

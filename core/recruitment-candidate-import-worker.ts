@@ -1,5 +1,5 @@
 /** Recruitment slice 16 — the candidate import as a client of the shared bulk-job kernel (core/bulk-job-worker.ts; kind row in
- * 5217). Per-step: one step per file row, so a refused row is recorded and the rest continue (D-055); nothing is staged, and each
+ * 5717). Per-step: one step per file row, so a refused row is recorded and the rest continue (D-055); nothing is staged, and each
  * row becomes visible when its chunk commits. The chunk budget keeps every transaction short (a few dozen rows at most), so one
  * import never holds a lock long enough to slow anyone else's work. The rows' own writes run through the recruitment service
  * (packs/recruitment/service: importCandidateRowTx) under the importer's freshly resolved authority and the ordinary guards; the

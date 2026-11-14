@@ -3,14 +3,14 @@
  * deterministic and client-safe. No database, no model. "Now" and "today" are always passed in: the service takes
  * them from the clock and lib/hr-date, so every rule here can be tested with fixed values.
  *
- * The database guards in migrations 5202–5204 refuse the same illegal states independently. Seeded content below is
+ * The database guards in migrations 5702–5704 refuse the same illegal states independently. Seeded content below is
  * generic and editable; behaviour never keys off a label, only off ids, types, keys and flags.
  */
 import { RecruitmentError, isUuid, type JobMemberRole } from './model';
 
 // ── Team access (slice 2) ─────────────────────────────────────────────────────────────────────────────────
 
-/** What a viewer may do on one job. The database predicates (5202) decide; this mirrors them for the screens. */
+/** What a viewer may do on one job. The database predicates (5702) decide; this mirrors them for the screens. */
 export type JobAccess = { read: boolean; review: boolean; operate: boolean };
 export function jobAccess(admin: boolean, roles: readonly JobMemberRole[], interviewsHere = false): JobAccess {
   const operate = admin || roles.includes('recruiter') || roles.includes('assistant');
@@ -239,7 +239,7 @@ export function sectionTotals(def: EvaluationFormDefinition, ratings: Record<str
  *   until_stage_left  while the application is active and not at a later stage than the interview's (default);
  *   until_archived    while the application is not archived.
  * Positions are the stages' places in the job's process; an unknown position counts as "left" unless the
- * application is still in the interview's own stage. The 5202 scorecard guard applies the same rule.
+ * application is still in the interview's own stage. The 5702 scorecard guard applies the same rule.
  */
 export function feedbackEditable(
   lock: FeedbackEditLock,
@@ -345,7 +345,7 @@ export function approvalFieldsChanged(fields: readonly OfferFieldDef[], before: 
 
 /**
  * One submission round: the ordered approvers (copied from the company flow at submission) and the position of the
- * pending step (1-based; null when no step is pending). Stored on the offer / requisition row (5203/5204).
+ * pending step (1-based; null when no step is pending). Stored on the offer / requisition row (5703/5704).
  */
 export type ApprovalRound = { approvers: string[]; pendingPosition: number | null };
 export type ApprovalDecision = 'approved' | 'rejected';

@@ -32,7 +32,7 @@ export type ExportTable = { kind: ExportKind; columns: string[]; customLabels: R
 const labelCols = sql.raw(CUSTOM_FIELD_LOCALES.map((l) => `label_${l}`).join(', '));
 type LabelRow = Record<`label_${(typeof CUSTOM_FIELD_LOCALES)[number]}`, string | null>;
 type FieldDef = { id: string; type: CustomFieldType; label: string; options: Map<string, string> };
-/** The custom candidate fields the exporter may see (restricted definitions only for operators: 5215), enabled, with option labels. */
+/** The custom candidate fields the exporter may see (restricted definitions only for operators: 5715), enabled, with option labels. */
 async function customDefsTx(tx: Tx, s: SessionContext, companyIds: readonly string[], locale: string): Promise<FieldDef[]> {
   if (!companyIds.length) return [];
   const fields = await tx.execute<LabelRow & { id: string; field_type: CustomFieldType }>(sql`select id, field_type, ${labelCols} from recruitment_custom_field

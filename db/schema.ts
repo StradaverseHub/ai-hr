@@ -71,7 +71,7 @@ const int8multirange=customType<{data:string;driver:string}>({dataType(){return 
 
 // Partner roles (ADR-0049) are ADDITIVE specialist roles beside hr_admin: each administers only
 // its function's data (payroll, or performance+comp) within its company subtree. Company-scopable
-// like hr_admin. Recruiting Partner shipped with the recruitment pack (5200/5201).
+// like hr_admin. Recruiting Partner shipped with the recruitment pack (5700/5701).
 export const roleEnum = pgEnum('role', [
   'employee',
   'manager',
@@ -89,7 +89,7 @@ export const roleEnum = pgEnum('role', [
   // company subtree WITHOUT any compensation, payroll, Rewards, HR or generic-cycle authority. Appended
   // after operator because ALTER TYPE … ADD VALUE appends; enum order is NOT authority order (0312).
   'performance_partner',
-  // ADR-0049 §2 (5200/5201) — Recruiting Partner: administers Recruitment (jobs, candidates, applications and
+  // ADR-0049 §2 (5700/5701) — Recruiting Partner: administers Recruitment (jobs, candidates, applications and
   // recruitment settings) for its company subtree via app.can_admin_recruitment_for, and nothing else. It
   // shipped with the recruitment tables (packs/recruitment), never as an inert label.
   'recruiting_partner',

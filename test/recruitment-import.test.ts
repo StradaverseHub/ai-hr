@@ -522,7 +522,7 @@ describe('case 113 — removal and company deletion cover the new tables; forced
     };
     const added = (prior: string, name: string) => {
       const b = fn(read(prior), name).split('\n');
-      const a = fn(read('5217_recruitment_import_export.sql'), name).split('\n');
+      const a = fn(read('5717_recruitment_import_export.sql'), name).split('\n');
       let i = 0;
       while (i < b.length && a[i] === b[i]) i++;
       let j = 0;
@@ -531,10 +531,10 @@ describe('case 113 — removal and company deletion cover the new tables; forced
       expect(b.length).toBeGreaterThan(90);
       return a.slice(i, a.length - j);
     };
-    const destroy = added('5215_recruitment_custom_fields.sql', 'app.recruitment_destroy_candidate');
+    const destroy = added('5715_recruitment_custom_fields.sql', 'app.recruitment_destroy_candidate');
     expect(destroy.filter((l) => /DELETE FROM/.test(l)).map((l) => l.trim().split(' ')[2])).toEqual(['public.recruitment_to_assign', 'public.recruitment_candidate_import_note']);
     expect(destroy).toHaveLength(6);
-    const del = added('5216_recruitment_position_templates.sql', 'app.recruitment_delete_company_setup');
+    const del = added('5716_recruitment_position_templates.sql', 'app.recruitment_delete_company_setup');
     expect(del.filter((l) => /DELETE FROM/.test(l)).map((l) => l.trim().split(' ')[2])).toEqual(['public.recruitment_candidate_import_note', 'public.recruitment_to_assign',
       'public.recruitment_candidate_import_row', 'public.recruitment_candidate_import', 'public.recruitment_export_template']);
     expect(del).toHaveLength(13);

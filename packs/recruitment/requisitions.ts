@@ -3,7 +3,7 @@
  *
  * Requisitions are administered by recruitment administrators (HR administrators and Recruiting Partners). An
  * approver named in the company's requisition flow reads the requisition they are asked to approve and decides
- * only their own pending step, never on a requisition they created. Statuses follow the 5204 guard: Completed and
+ * only their own pending step, never on a requisition they created. Statuses follow the 5704 guard: Completed and
  * Cancelled are terminal; Expired is a non-terminal requisition past its target on-board date (Kuala Lumpur day).
  * Vacancy figures are deterministic counts: nothing estimates, forecasts or calls a model.
  *
@@ -539,7 +539,7 @@ export async function addPoolCandidateToJob(s: SessionContext, archivedApplicati
     const [candidate] = await tx.execute<{ removed: boolean }>(sql`select destroyed_at is not null as removed from recruitment_candidate where id = ${archived.candidateId}::uuid`);
     if (candidate?.removed) throw new RecruitmentError('candidate_removed');
     // Slice 5: the repeated-application rule (the same job while active or closed within the window) replaces the
-    // one-application-per-job key; the 5205 guard refuses the same again.
+    // one-application-per-job key; the 5705 guard refuses the same again.
     await assertNotRepeatedTx(tx, job.companyId, archived.candidateId, job.id);
     // A concurrent add of the same candidate to the same job (the guard's 23505) maps to duplicate_application.
     const inserted = [{ id: await insertApplicationTx(tx, {

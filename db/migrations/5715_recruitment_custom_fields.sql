@@ -38,8 +38,8 @@
 --      ENABLED option when chosen, and never for a candidate whose personal data was removed (serialised against the removal
 --      by the 4405 candidate lock). Required values are enforced by the service on save (D: a record created before a field
 --      became required stays valid until its next edit).
---   4. app.recruitment_destroy_candidate restated (5213 body byte for byte) plus one step: every custom value of the person
---      (open and restricted) is deleted. app.recruitment_delete_company_setup restated (5213 body byte for byte) plus the
+--   4. app.recruitment_destroy_candidate restated (5713 body byte for byte) plus one step: every custom value of the person
+--      (open and restricted) is deleted. app.recruitment_delete_company_setup restated (5713 body byte for byte) plus the
 --      five tables, values first (they need a candidate or a job, which refuses the delete first), then options and fields.
 --
 -- Nothing here calls a model, scores a candidate or infers anything from a value.
@@ -364,7 +364,7 @@ BEGIN
 END $$;
 --> statement-breakpoint
 
--- ── 4. Removal: 5213's app.recruitment_destroy_candidate, byte for byte, plus the custom values ─────────────────────
+-- ── 4. Removal: 5713's app.recruitment_destroy_candidate, byte for byte, plus the custom values ─────────────────────
 -- (The new step follows the slice 13 steps, before the candidate row is cleared.)
 CREATE OR REPLACE FUNCTION app.recruitment_destroy_candidate(p_candidate uuid) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, public, app, pg_temp SET row_security = on AS $$
@@ -509,7 +509,7 @@ REVOKE ALL ON FUNCTION app.recruitment_destroy_candidate(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.recruitment_destroy_candidate(uuid) TO ai_hr_app;
 --> statement-breakpoint
 
--- ── 5. Deleting a company (core/company-refs.ts): 5213's body plus the custom field tables ─────────────────────────
+-- ── 5. Deleting a company (core/company-refs.ts): 5713's body plus the custom field tables ─────────────────────────
 CREATE OR REPLACE FUNCTION app.recruitment_delete_company_setup(p_company uuid) RETURNS integer
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, public, app, pg_temp AS $$
 DECLARE removed integer := 0; n integer;

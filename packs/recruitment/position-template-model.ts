@@ -2,7 +2,7 @@
  * Recruitment slice 15 — position templates: the pure rules (docs/recruitment-reconstruction/specification.md "Slice 15").
  * Deterministic and client-safe: no database, no clock, no model. ./position-templates runs every template write through
  * validateTemplateInput and every "New position from template" through resolveTemplate (and mergeRequisition for a requisition's
- * "Create job"); 5216's guards refuse the same references independently.
+ * "Create job"); 5716's guards refuse the same references independently.
  *
  * A template is a STARTING POINT, never a link: resolving copies what is still usable into a draft of the ordinary new-position
  * form, and the person edits it before saving through the normal job rules. Whatever has since been disabled or removed — the

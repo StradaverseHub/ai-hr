@@ -3,11 +3,11 @@
  * archive" list, hired by a move, or by a recorded offer decision) frees what it had booked: its FUTURE interviews that are not yet
  * cancelled are cancelled in the same transaction, recording the person who closed the application and when, exactly as
  * cancelInterview records it. Interviews already held stay as they are (their feedback is history). A cancelled interview frees its
- * meeting room (5219's exclusion constraint ignores cancelled interviews).
+ * meeting room (5719's exclusion constraint ignores cancelled interviews).
  *
  * One set-based UPDATE for every application closed by the statement before it, and one INSERT of domain events (appendEvents).
  * Callers: ./data archiveApplicationsTx and moveApplicationTx, ./offers recordOfferDecision. Reached from outside the pack ONLY
- * through ./service. The hiring manager may close an application but does not operate the job: 5219 lets the job's reviewers update
+ * through ./service. The hiring manager may close an application but does not operate the job: 5719 lets the job's reviewers update
  * an interview for exactly this (its guard admits only cancelling a future interview of an application that is no longer active).
  */
 import { sql } from 'drizzle-orm';
