@@ -172,6 +172,9 @@ describe('Bank & Statutory validation reads tax residency set-wise',()=>{
     select e.tenant_id,e.id,e.company_id,case when right(e.employee_code,1)='7' then 'non_resident' else 'resident' end,'resolved','explicit','{"reason":"fixture","declarationIds":[]}'::jsonb
     from employment e where e.tenant_id=${b.tenantId}::uuid and e.employee_code like 'RSB%'`;
   });
+  // Fresh statistics, as an installation's autovacuum keeps them: without them app.bank_import_subjects plans the
+  // 1,000-code lookup badly and runs for minutes on a runner (observed in run 43595728226).
+  for(const table of ['person','employment','employee_statutory_my','employment_tax_selection_my'])await owner.client.unsafe(`analyze ${table}`);
   mark('fixture');
   const codes=Array.from({length:ROWS},(_,i)=>`RSB${i+1}`);
   const expected=await withTenant(a,async tx=>{
