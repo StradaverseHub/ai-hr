@@ -31,15 +31,18 @@ export async function freshImportContext(context:SessionContext):Promise<Session
 export function processBankImportJob(ctx:SessionContext,id:string):Promise<void>{
  return withBackgroundDatabaseWork(()=>processBankImportPhase(ctx,id));
 }
+// MEASUREMENT BRANCH ONLY (never merged): sub-step timings and RSS for the memory re-measurement.
+const stepClock=()=>{let last=performance.now();return(label:string)=>{const now=performance.now();console.info(`[worker-stall-measure]   step ${label}: ${((now-last)/1000).toFixed(2)} s (rss ${Math.round(process.memoryUsage().rss/1048576)} MiB)`);last=now;};};
 async function processBankImportPhase(ctx:SessionContext,id:string):Promise<void>{
+ const step=stepClock();
  const job=await withTenant(ctx,tx=>bankJobTx(tx,id));
  if(job.state==='queued'){
   // The parts stay separate: the hash and the decoder read them in order, and a CSV decode releases each one.
-  const parts=await withTenant(ctx,tx=>sourcePartsTx(tx,id));
+  const parts=await withTenant(ctx,tx=>sourcePartsTx(tx,id));step('queued: fetch chunks');
   const hash=createHash('sha256');let bytes=0;for(const part of parts){hash.update(part);bytes+=part.length;}
   if(bytes!==job.source_bytes||hash.digest('hex')!==job.source_hash)throw new Error('The uploaded file is incomplete or its checksum differs. Upload it again.');
   // Same rows, errors and refusals as decodeBankImportSource, staged as compact batches (lib/bank-import-stream-source.server.ts).
-  const staged=await stageBankImportSource(job.source_name,parts);
+  const staged=await stageBankImportSource(job.source_name,parts);step('queued: hash + decode');
   await withTenant(ctx,async tx=>{
    const current=await bankJobTx(tx,id,true);if(current.state!=='queued')return;
    for(let batch=0;batch<staged.batches.length;batch++){
@@ -48,7 +51,7 @@ async function processBankImportPhase(ctx:SessionContext,id:string):Promise<void
     await tx.execute(sql`insert into bank_import_row(job_id,ordinal,record,error) select ${id}::uuid,x.ordinal,x.record,x.error from jsonb_to_recordset(${JSON.stringify(rows)}::jsonb) as x(ordinal int,record jsonb,error text)`);
    }
    await tx.execute(sql`update bank_import_job set state='validating',total=${staged.total},updated_at=now() where id=${id}::uuid`);
-  });
+  });step('queued: insert rows + commit');
   return;
  }
  if(job.state==='validating'){
