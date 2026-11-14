@@ -55,7 +55,7 @@ afterAll(async()=>{await owner.client.unsafe('drop table if exists public.watchd
 it('logs its limit at start, honours the setting and ends a --once run with the watchdog armed',()=>{
  const standard=runner({AIHR_IMPORT_WORKER_STALL_SECONDS:undefined});
  expect(standard.status,standard.stderr).toBe(0);
- expect(standard.stderr).toMatch(/Import worker started \(pid \d+\); stall watchdog 1200 s \(AIHR_IMPORT_WORKER_STALL_SECONDS\)\./);
+ expect(standard.stderr).toMatch(/Import worker started \(pid \d+\); stall watchdog 1800 s \(AIHR_IMPORT_WORKER_STALL_SECONDS\)\./);
  expect(standard.stderr).not.toContain('stalled');
  const tuned=runner({AIHR_IMPORT_WORKER_STALL_SECONDS:'3600'});
  expect(tuned.status,tuned.stderr).toBe(0);
@@ -66,7 +66,7 @@ it('refuses to start with an invalid limit before it connects or claims anything
  const {row}=await withTenant(ctx,tx=>enqueueBulkJobTx(tx,ctx,{kind:'watchdog_fixture',input:{values:['a']},source:{name:'fixture.csv',content:Buffer.from('a')}}));
  const refused=runner({AIHR_IMPORT_WORKER_STALL_SECONDS:'60'});
  expect(refused.status).toBe(1);
- expect(refused.stderr).toContain('AIHR_IMPORT_WORKER_STALL_SECONDS must be a whole number of seconds from 960 to 21600 (default 1200).');
+ expect(refused.stderr).toContain('AIHR_IMPORT_WORKER_STALL_SECONDS must be a whole number of seconds from 1200 to 21600 (default 1800).');
  expect(refused.stderr).not.toContain('Import worker started');
  const [job]=await owner.client<{state:string;lease_token:string|null}[]>`select state,lease_token from bulk_job where id=${row.id}::uuid`;
  expect(job).toEqual({state:'queued',lease_token:null});

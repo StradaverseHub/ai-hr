@@ -114,7 +114,7 @@ call on a connection that no longer answered. The worker now watches its own loo
 `stop` while shutting down) and when that phase started. Every 30 s it checks the phase. When one phase has
 lasted longer than the limit, it writes one line to stderr and exits with status 70:
 
-    Import worker stalled in bulk for 1230 s; exiting so systemd restarts it.
+    Import worker stalled in bulk for 1830 s; exiting so systemd restarts it.
 
 `Restart=on-failure` (with `RestartSec=5`) then starts a new process, so the unit file is unchanged. The phase
 names the tick that stalled: `bank` (Bank & Statutory queue), `individual` (Individual Transaction queue), `bulk`
@@ -125,16 +125,43 @@ If a legitimate unit is longer than the limit, raise the limit. Do not resubmit 
 
 At start the worker logs its limit, so the journal shows the setting in force:
 
-    Import worker started (pid 12345); stall watchdog 1200 s (AIHR_IMPORT_WORKER_STALL_SECONDS).
+    Import worker started (pid 12345); stall watchdog 1800 s (AIHR_IMPORT_WORKER_STALL_SECONDS).
 
 `AIHR_IMPORT_WORKER_STALL_SECONDS` in `/etc/aihr/import-worker.env` sets the limit: a whole number of seconds from
-960 to 21600 (default 1200). Any other value refuses to start before the worker connects, and the journal names the
-setting and its range. The minimum stays above the 900 s lease of a bulk-job prepare unit, the longest unit the
-kernel allows (every other bulk unit holds a 60 s lease). A shorter limit could cut off a legitimate prepare and
-restart it repeatedly. Raise the limit only after measuring a legitimate phase on the target that runs longer.
-The longest phases are a maximum-size Bank & Statutory file's first tick, which decodes the whole file and stores
-its rows in one transaction, an Individual Transaction confirmation (up to 2,000 rows in one tick), and a bulk-job
-prepare.
+1200 to 21600 (default 1800). Any other value refuses to start before the worker connects, and the journal names the
+setting and its range. Raise the limit only after measuring a legitimate phase on the target that runs longer.
+
+The default and the minimum come from a measurement on 14 Nov 2026 (branch `claude/worker-stall-measure-20261114`,
+`alpha-focused-checks` runs 43569779572, 43571207900, 43569777102, 43571538877, 43569782311, 43570418529,
+43573247694 and 43573249829, on 4-vCPU GitHub runners with PostgreSQL on the same machine). Each figure is one call of
+the worker's tick, the unit one phase covers:
+
+| Phase | Input | Runner | Staging estimate (x3) |
+| --- | --- | --- | --- |
+| `bank`, first tick of an Excel workbook (decode and store every row in one transaction) | 250,000 rows, every template column, 29.7 MiB file | 228 s and 339 s (decode 217 s and 332 s) | about 1,020 s |
+| `bank`, first tick of a CSV file | 250,000 rows, every template column, 118.6 MiB | 218 s and 302 s (decode 291 s of the 302 s) | about 905 s |
+| `bank`, one validation tick | 1,000 rows, every template column, tenant of 2,001 employees | about 18 s (from 20-row probes of 0.36 s) | about 55 s |
+| `bank`, one validation tick | 100 rows, every template column, tenant of 250,001 employees | 78.5 s and 79.4 s | about 240 s (see below for 1,000 rows) |
+| `bank`, one import tick | 100 changed rows, tenant of 250,001 employees | 19.4 s and 19.6 s | about 60 s |
+| `individual`, validation | 2,000 rows | 0.35 s and 0.30 s | under 5 s |
+| `individual`, confirmation (one transaction) | 2,000 rows for 200 employees | 58.0 s and 42.3 s | about 175 s |
+| `bulk`, one prepare | not measured; bounded by its 900 s lease | | 900 s |
+
+Staging has 2 vCPUs and runs PostgreSQL, PgBouncer and the web service on the same host, so the runner figures are
+multiplied by 3. The slowest runner figure (339 s on an AMD EPYC 7763) gives about 1,020 s. A 1200 s limit left
+less than 20% margin above that, and the old 960 s minimum was below it, so the default is 1800 s and the minimum
+1200 s. The minimum also stays above the 900 s bulk-job prepare lease, the longest unit the kernel allows (every
+other bulk unit holds a 60 s lease). The workbook decode also peaked at about 3 GB of worker memory in the test
+process, which is a separate capacity concern on the 3.9 GB staging host.
+
+One phase is not covered by any sensible limit. In a tenant of 250,001 employees, every row that names a residency
+column (`tax_residency`, `is_resident`, `tax_circumstance`, `tax_category` or `epf_citizenship`) reads the
+employee's tax selection one at a time during validation. That read took about 0.8 s per row in that tenant (15 ms
+in a tenant of 2,001 employees), so one 1,000-row validation tick takes about 790 s on a runner and about 2,400 s on
+staging. Rows without those columns cost about 5 ms each. Until validation reads residency for the whole batch at
+once, a residency file in a tenant above roughly 150,000 employees can exceed the 1800 s limit in `bank`, and the
+restarted worker repeats the same tick. Raising the limit does not make such a file finish in reasonable time, so
+fix the validator rather than raising the limit for it.
 
 The exit itself is the whole recovery. The watchdog writes nothing and does no clean-up, because the stalled call
 may hold the only queue-owner connection. When the process exits, PostgreSQL rolls back each open transaction. A
@@ -148,8 +175,33 @@ than waiting, its heartbeat row stays behind until it goes stale, and the new pr
 
 If the database server never sees the old connection close (for example when the network path itself failed),
 the old backend, together with any Bank or Individual advisory lock it holds, lasts until the server's TCP
-keepalive ends it. Until then those two queues wait while bulk jobs continue. Use `ps` and `pg_locks` on the
-database host (rule 12 of docs/SCALE-AND-RELEASE-RULES.md) to find such a backend.
+keepalive ends it. The server's own default is far too slow for this: staging's PostgreSQL 16 measured
+`tcp_keepalives_idle` 7200 s and `client_connection_check_interval` 0, which would have blocked those two queues
+for more than two hours. Every connection of a worker-role process (`AIHR_DB_PROCESS_ROLE=worker`: the queue-owner
+connection and the HR-transaction pool) therefore sets its own session values at startup
+(`db/worker-connection.ts`), with no change to the database server:
+
+| Setting | Value | Effect |
+| --- | --- | --- |
+| `tcp_keepalives_idle`, `_interval`, `_count` | 60 s, 15 s, 8 | an idle backend whose client vanished closes about 3 min later |
+| `tcp_user_timeout` | 180000 ms | the same bound while the backend is sending to a client that no longer acknowledges |
+| `client_connection_check_interval` | 10000 ms | a running statement is cancelled within 10 s once its client is known to be gone |
+
+Keepalive probes run only on an idle connection, and the connection check ends a statement only when its client
+has gone, so neither shortens a legitimate long statement. All five settings may be set by a role that is not a
+superuser, so the restricted `ai_hr_owner` and `ai_hr_app` apply them. A server that refused one would fail the
+worker's connection at start with the error in the journal, instead of running without it.
+`test/worker-connection-db.test.ts` checks every worker connection against a real database.
+On the client side the worker keeps TCP keepalive on with a 60 s idle time (the operating system's probe interval and count
+apply, about 12 min on Linux), and the stall watchdog stays the backstop for a call that never returns.
+So a half-open owner session now ends, and its locks with it, about 3 min after the network failed, usually
+before the watchdog has restarted the worker. The web keeps the server defaults; it may connect through PgBouncer,
+which refuses startup parameters it does not know.
+
+If the two queues still wait after a restart, use `ps` and `pg_locks` on the database host (rule 12 of
+docs/SCALE-AND-RELEASE-RULES.md) to find the old backend. Over a Unix-domain socket PostgreSQL ignores the TCP
+settings (`SHOW tcp_keepalives_idle` reads 0); such a connection is local, so the server sees a dead process at
+once.
 
 ## Protected staging update after first installation
 
