@@ -138,8 +138,8 @@ the worker's tick, the unit one phase covers:
 
 | Phase | Input | Runner | Staging estimate (x3) |
 | --- | --- | --- | --- |
-| `bank`, first tick of an Excel workbook (decode and store every row in one transaction) | 250,000 rows, every template column, 29.7 MiB file | 228 s and 339 s (decode 217 s and 332 s) | about 1,020 s |
-| `bank`, first tick of a CSV file | 250,000 rows, every template column, 118.6 MiB | 218 s and 302 s (decode 291 s of the 302 s) | about 905 s |
+| `bank`, first tick of an Excel workbook (decode and store every row in one transaction) | 250,000 rows, every template column, 29.7 MiB file | 228 s and 339 s (decode 217 s and 332 s) before the bounded-memory decoder; 24.1 s (decode 14.9 s) after | about 1,020 s before; about 75 s after |
+| `bank`, first tick of a CSV file | 250,000 rows, every template column, 118.6 MiB | 218 s and 302 s (decode 291 s of the 302 s) before; 16.9 s (decode 3.1 s, insert 13.2 s) after | about 905 s before; about 50 s after |
 | `bank`, one validation tick | 1,000 rows, every template column, tenant of 2,001 employees | about 18 s (from 20-row probes of 0.36 s) | about 55 s |
 | `bank`, one validation tick | 100 rows, every template column, tenant of 250,001 employees | 78.5 s and 79.4 s | about 240 s (see below for 1,000 rows) |
 | `bank`, one import tick | 100 changed rows, tenant of 250,001 employees | 19.4 s and 19.6 s | about 60 s |
@@ -151,8 +151,38 @@ Staging has 2 vCPUs and runs PostgreSQL, PgBouncer and the web service on the sa
 multiplied by 3. The slowest runner figure (339 s on an AMD EPYC 7763) gives about 1,020 s. A 1200 s limit left
 less than 20% margin above that, and the old 960 s minimum was below it, so the default is 1800 s and the minimum
 1200 s. The minimum also stays above the 900 s bulk-job prepare lease, the longest unit the kernel allows (every
-other bulk unit holds a 60 s lease). The workbook decode also peaked at about 3 GB of worker memory in the test
-process, which is a separate capacity concern on the 3.9 GB staging host.
+other bulk unit holds a 60 s lease). The limits were set from the slower decoder and are kept: the first tick is now
+far below them (see the decode memory section below).
+
+### Decode memory of the first Bank tick
+
+The first ('queued') tick decodes the whole upload and stores its rows in one transaction, 1,000 rows per insert.
+Until 14 Nov 2026 it held every stage of a maximum file at once: the stored parts and a concatenated copy, a `File`
+copy, the whole CSV text, fields grown one character at a time, an array of every row and an array of every record;
+for Excel also the full SheetJS workbook (with formatted and HTML text for every cell), a whole-sheet array, its CSV
+text and a second parse of that text. A maximum file could need about 4 GB, more than the 3.9 GB staging host, and an
+out-of-memory kill would restart the worker into the same tick.
+
+`lib/bank-import-stream-source.server.ts` now decodes for the worker. It produces the same records, ordinals,
+duplicate errors and refusals as `decodeBankImportSource` (unchanged; `test/bank-import-stream-source.test.ts`
+compares the two, and at the maximum size both produced the identical 395,703,371-byte insert payload): a CSV is
+decoded and parsed part by part, each stored part released once read; a workbook still goes through SheetJS, with
+dense cells and without the presentation-only text, read in 5,000-row windows; rows wait for the insert as compact
+1,000-row JSON batches. The transaction, its inserts and the job states are unchanged.
+
+Measured on 14 Nov 2026 in a fresh process per decode (branch `claude/bank-import-memory-measure-20261114`, never
+merged; `alpha-focused-checks` runs 43594676216 before and 43594671099 after, 4-vCPU runners), decode plus the insert
+payloads, 250,000 rows with every template column:
+
+| File | Before: peak RSS, time | After: peak RSS, time |
+| --- | --- | --- |
+| CSV, 118.6 MiB | 3,645 MiB, 184 s | 858 MiB, 4.6 s |
+| Excel, 29.7 MiB (7.5 million cells) | 4,210 MiB, 208 s | 1,958 MiB, 24 s |
+
+A maximum CSV now fits comfortably. A maximum workbook still needs about 2 GB, almost all of it inside SheetJS's
+whole-workbook read (the inflated 254 MiB sheet XML and 108 MiB shared-string XML as strings, plus one object per
+cell). That is still about half of the staging host: keep the worker's memory in mind when PostgreSQL and the web
+service are busy, and prefer CSV for files near the limit. Removing it needs a streaming sheet reader (a follow-up).
 
 One phase is not covered by any sensible limit. In a tenant of 250,001 employees, every row that names a residency
 column (`tax_residency`, `is_resident`, `tax_circumstance`, `tax_category` or `epf_citizenship`) reads the
