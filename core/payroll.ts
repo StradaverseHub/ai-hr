@@ -6540,8 +6540,10 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
             // saying "this money IS a bonus" (it forces the additional-remuneration EPF rate). SOCSO
             // Act 1969 s.2 excludes a bonus from wages, so a declared bonus stays out of SOCSO/EIS even
             // if its SOCSO box is ticked — honouring the tick there would compute an illegal
-            // contribution. The seeded BONUS code carries epfBonus2012, so the ordinary bonus is
-            // covered by this without anyone having to know the rule. Pinned by the golden test in
+            // contribution. The seeded BONUS code carries epfBonus2012 — but only since 2026-11-14 (the seed
+            // for new tenants, migration 5660 for existing seeded-shape rows); before that date it did NOT,
+            // and was routed by the legacy `epf && !socso` inference below instead. With the tick, the
+            // ordinary bonus is covered by this without anyone having to know the rule. Pinned by the golden test in
             // test/pcb-classification.test.ts ("EPF Bonus 2012 … routes the amount down the
             // additional-remuneration EPF path"), which asserts the RM4,000-band SOCSO share.
             if (c.socso && !c.epfBonus2012) socsoWageExtra = round2(socsoWageExtra + taxable);

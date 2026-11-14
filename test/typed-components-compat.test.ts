@@ -136,14 +136,11 @@ describe('Wave 3 #9-3 — typed components are byte-identical to the legacy kern
 
     // ── Back-fill the components, then the typed path (module on) ──
     await seedPayComponentCatalog(a);
-    // RESTATED 2026-11-14 (statutory follow-ups, item 2) — owner rule: ONLY the EPF Bonus 2012 tick puts money
-    // on the EPF bonus stream. The seeded BONUS code is a legacy row (EPF yes, SOCSO no, no remuneration type,
-    // no EPF Bonus 2012), so on the typed path it is now NORMAL EPF wages, while the legacy path keeps
-    // `payroll_input.bonus` on the bonus stream. Before this date the two matched without the tick. The
-    // byte-identity this file guards holds for a BONUS row that says what the legacy contract means — a bonus
-    // for EPF — which is the tick HR is asked to set on such rows before release; set it here, on the row only.
-    await owner.db.update(schema.payComponent).set({ epfBonus2012: true })
-      .where(and(eq(schema.payComponent.tenantId, b.tenantId), eq(schema.payComponent.code, 'BONUS')));
+    // 2026-11-14 — only the EPF Bonus 2012 tick puts money on the EPF bonus stream, so the byte-identity with the
+    // legacy `payroll_input.bonus` rests on the seeded BONUS row carrying that tick (localization/my/pay-components.ts;
+    // migration 5660 for existing tenants). Pinned here so a seed without it fails this file, not a payroll.
+    expect((await owner.db.select({ t: schema.payComponent.epfBonus2012 }).from(schema.payComponent)
+      .where(and(eq(schema.payComponent.tenantId, b.tenantId), eq(schema.payComponent.code, 'BONUS'))))[0]?.t).toBe(true);
     await backfillEmploymentComponentsFromCompensation(a);
     await backfillBatchComponentsFromInput(a, batchId);
     // Grant the module, then RE-RESOLVE: the snapshot is point-in-time, so `a` would still say off.

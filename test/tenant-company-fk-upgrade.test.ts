@@ -242,6 +242,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5620_rewards_config_grants_creator_lock',
    // Gate repair (13 November 2026): the ADR-0174 composite key for 5460's lc_v9_email_hold.
    '5640_lifecycle_v9_email_hold_company_tenant',
+   // Statutory follow-ups (14 November 2026): EPF Bonus 2012 on the seeded-shape default BONUS pay item.
+   '5660_pay_component_bonus_epf_bonus_2012',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);

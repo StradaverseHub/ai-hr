@@ -118,12 +118,7 @@ describe('r385 authoritative tax circumstance transactions',()=>{
  });
  it('worksheet replays saved None after the current profile becomes taxable',async()=>{
   await setModule(b.tenantId,'multi_cycle_payroll','active');await setModule(b.tenantId,'typed_pay_components','active');const ctx=await entitledCtx(b);await select('none','none');
-  const regular=await createBatch(ctx,{companyId:b.companyId,payPeriod:period});await generatePayslips(ctx,{batchId:regular.batchId});await seedPayComponentCatalog(ctx);
-  // RESTATED 2026-11-14 (statutory follow-ups, item 2): only the EPF Bonus 2012 tick puts money on the EPF bonus
-  // stream. The seeded BONUS row carries no tick, so its money is now NORMAL EPF wages; the worksheet then
-  // reports the month (`base_carve_outs` / `inconsistent_run_bases`) instead of comparing it. This case is about
-  // replaying a saved None, so it keeps its bonus a bonus for EPF by ticking EPF Bonus 2012 on the row.
-  await owner.db.update(schema.payComponent).set({epfBonus2012:true}).where(and(eq(schema.payComponent.tenantId,b.tenantId),eq(schema.payComponent.code,'BONUS')));const [bonus]=await owner.db.select().from(schema.payComponent).where(and(eq(schema.payComponent.tenantId,b.tenantId),eq(schema.payComponent.code,'BONUS')));const extra=await createAdditionalRun(ctx,{companyId:b.companyId,payPeriod:period,runType:'bonus'});await setPayrollBatchComponent(ctx,{batchId:extra.batchId,employmentId:e.employmentId,componentId:bonus.id,amount:2000});await generatePayslips(ctx,{batchId:extra.batchId});
+  const regular=await createBatch(ctx,{companyId:b.companyId,payPeriod:period});await generatePayslips(ctx,{batchId:regular.batchId});await seedPayComponentCatalog(ctx);const [bonus]=await owner.db.select().from(schema.payComponent).where(and(eq(schema.payComponent.tenantId,b.tenantId),eq(schema.payComponent.code,'BONUS')));const extra=await createAdditionalRun(ctx,{companyId:b.companyId,payPeriod:period,runType:'bonus'});await setPayrollBatchComponent(ctx,{batchId:extra.batchId,employmentId:e.employmentId,componentId:bonus.id,amount:2000});await generatePayslips(ctx,{batchId:extra.batchId});
   const before=await multiCycleWorksheetMY(ctx,{companyIds:[b.companyId]});expect(before.employeeMonthsCompared).toBe(1);expect(before.employeeMonthsExcluded).toBe(0);await select('widow_divorced','resident');expect(await multiCycleWorksheetMY(ctx,{companyIds:[b.companyId]})).toEqual(before);
  });
  it('cross-employer saved None bypasses and present malformed or mixed history is unavailable',async()=>{

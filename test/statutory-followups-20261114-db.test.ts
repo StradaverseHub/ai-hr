@@ -17,7 +17,8 @@
  * EPF rows are KWSP Third Schedule Part A: 3,734 → 412 / 487, 4,734 → 522 / 617, 4,000 → 440 / 520,
  * 6,500 → 715 / 780.
  */
-import { and, eq } from 'drizzle-orm';
+import { readFileSync } from 'node:fs';
+import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
@@ -307,5 +308,75 @@ describe('item 2 — only EPF Bonus 2012 chooses the EPF bonus stream (legacy fl
     expect(L.bases).toMatchObject({ epf: 5200, epfAdditional: 0 });
     expect(monthTotal(L)).toEqual(monthTotal(P));
     expect(explainStatutory(L, 'bonus').traceStatus).toBe('recorded');
+  });
+});
+
+describe('owner decision (14 Nov 2026) — the default BONUS pay item carries EPF Bonus 2012', () => {
+  it('a NEW tenant: the seeded BONUS is ticked EPF Bonus 2012, stays on the EPF bonus stream and out of SOCSO/EIS/SKBBK', async () => {
+    await setup([LEG]);
+    const [bonusRow] = await owner.db.select().from(schema.payComponent)
+      .where(and(eq(schema.payComponent.tenantId, base.tenantId), eq(schema.payComponent.code, 'BONUS')));
+    expect(bonusRow).toMatchObject({ epfBonus2012: true, includedInEpf: true, includedInSocsoEis: false, pcbRemunerationType: null });
+    const withBonus = await hire('seeded-bonus@acme.test', 4800);
+    const withLegacy = await hire('legacy-normal@acme.test', 4800); // the same money with no tick: normal EPF wages
+    const reg = await createBatch(a, { companyId: base.companyId, payPeriod: PERIOD });
+    await oneOff(reg.batchId, withBonus.employmentId, 'BONUS', 400);
+    await oneOff(reg.batchId, withLegacy.employmentId, 'LEGINC', 400);
+    await generatePayslips(a, { batchId: reg.batchId });
+    const slip = await slipOf(reg.batchId, withBonus.employmentId);
+    const B = statOf(slip);
+    const L = statOf(await slipOf(reg.batchId, withLegacy.employmentId));
+    expect(Number(slip.bonus)).toBeCloseTo(400, 2);
+    expect(B.bases).toMatchObject({ epf: 4800, epfAdditional: 400, socsoEis: 4800 });
+    expect(B.statutoryTrace!.epf).toMatchObject({ normalWage: 4800, bonusWage: 400 });
+    expect(itemLine(B, 'BONUS')).toMatchObject({ epfNormal: 0, epfBonus: 400, socsoEis: 0 });
+    // NOTE (14 Nov 2026, for the owner): the owner's example expected employer 676 (13%, rate read on the
+    // pre-bonus wage). The pack (localization/my/payroll.ts `epf`, bdf7d248 / r210) reads Part A ONCE on the
+    // month's COMBINED base, normal + bonus, on either stream, so 4,800 + 400 reads the 5,200 row here too.
+    // Which reading the EPF Bonus 2012 rule requires is a statutory decision outside this change; this case
+    // pins the stream only, not that amount.
+    expect(B.epfEmployer).toBe(L.epfEmployer);
+    // Not SOCSO/EIS/SKBBK wages: identical to the employee without it on those agencies.
+    expect([B.socsoEmployee, B.socsoEmployer, B.socsoSkbbk, B.eisEmployee]).toEqual([L.socsoEmployee, L.socsoEmployer, L.socsoSkbbk, L.eisEmployee]);
+    // The same 400 without the tick is normal EPF wages.
+    expect(L.bases).toMatchObject({ epf: 5200, epfAdditional: 0 });
+    expect(L.statutoryTrace!.epf).toMatchObject({ normalWage: 5200, bonusWage: 0 });
+  });
+
+  it('migration 5660 ticks a seeded-shape BONUS once, and leaves an operator-modified BONUS and other legacy items alone', async () => {
+    await setup([LEG]);
+    const migration = readFileSync('db/migrations/5660_pay_component_bonus_epf_bonus_2012.sql', 'utf8')
+      .split('--> statement-breakpoint').map((x) => x.trim()).filter(Boolean);
+    expect(migration).toHaveLength(2);
+    const apply = async () => { for (const stmt of migration) await owner.db.execute(sql.raw(stmt)); };
+    const where = (code: string) => and(eq(schema.payComponent.tenantId, base.tenantId), eq(schema.payComponent.code, code));
+    const read = async (code: string) => (await owner.db.select().from(schema.payComponent).where(where(code)))[0]!;
+    const reset = (over: Partial<typeof schema.payComponent.$inferInsert>) =>
+      owner.db.update(schema.payComponent).set({ epfBonus2012: false, includedInEpf: true, includedInSocsoEis: false, includedInPcb: true,
+        isNonPayable: false, pcbRemunerationType: null, pcbExemptionCode: null, ...over }).where(where('BONUS'));
+
+    // An existing tenant's BONUS as seeded before this release (no tick), beside a legacy item of the same shape.
+    await reset({});
+    const before = await read('BONUS');
+    await apply();
+    expect((await read('BONUS')).epfBonus2012).toBe(true);
+    expect((await read('LEGINC')).epfBonus2012, 'only the BONUS code is ticked').toBe(false);
+    // Nothing else on the row moved.
+    expect({ ...(await read('BONUS')), epfBonus2012: false }).toEqual(before);
+    // Idempotent: a second application changes nothing.
+    await apply();
+    expect((await read('BONUS')).epfBonus2012).toBe(true);
+
+    // Operator-modified BONUS rows are left exactly as they are.
+    for (const over of [
+      { includedInSocsoEis: true },
+      { includedInEpf: false },
+      { pcbRemunerationType: 'additional' as const, pcbExemptionCode: 'PCB_TAXABLE' },
+      { isNonPayable: true },
+    ]) {
+      await reset(over);
+      await apply();
+      expect((await read('BONUS')).epfBonus2012, JSON.stringify(over)).toBe(false);
+    }
   });
 });
