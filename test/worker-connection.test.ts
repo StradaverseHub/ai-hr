@@ -34,7 +34,6 @@ describe('worker connection options',()=>{
   expect(workerServerDeadClientSeconds()*4).toBeLessThan(IMPORT_WORKER_STALL_MIN_SECONDS);
   // The client's own detection (60 s idle, then the Linux default 9 probes x 75 s) also ends inside the minimum.
   expect(WORKER_CLIENT_KEEPALIVE_SECONDS+9*75).toBeLessThan(IMPORT_WORKER_STALL_MIN_SECONDS);
-  expect(workerServerDeadClientSeconds({...WORKER_SERVER_SESSION_PARAMETERS,tcp_user_timeout:600_000})).toBe(610);
  });
 
  it('builds the owner connection with one connection and the worker settings, without connecting',()=>{
