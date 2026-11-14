@@ -16,7 +16,7 @@ import {commitEmployeeImport} from '../core/import';
 import {analyzeBankImportBatch,validateSectionImport} from '../core/import-sections';
 import {readTaxResidenciesTx,readTaxResidencyTx,type BankStatutorySubject} from '../core/bank-statutory-import';
 import {createBankImportJob,uploadBankImportChunk,bankImportCommand,getBankImportJob} from '../core/bank-import-job';
-import {processBankImportJob} from '../core/bank-import-worker';
+import {runBankImportTick} from '../core/bank-import-worker';
 import {BANK_IMPORT_CHUNK_BYTES,BANK_IMPORT_VALIDATION_ROWS} from '../lib/bank-import-job';
 import {parseCsvRecords} from '../lib/csv';
 import {requirePackFor} from '../localization/registry';
@@ -70,6 +70,7 @@ function countResidencyReads(){
 describe('Bank & Statutory validation reads tax residency set-wise',()=>{
  it('answers exactly what the per-row read answers, for every residency state and principal',async()=>{
   const[beta]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Beta Fictional Bhd',country:'MY'}).returning();
+  await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:beta.id,name:'Finance'});
   const fixtures:{code:string;expected:string;arrange:(e:typeof s.employment.$inferSelect)=>Promise<unknown>;companyId?:string}[]=[
    {code:'RS01',expected:'resident',arrange:e=>select(e.id,b.companyId,{scheme:'resident',state:'resolved'})},
    {code:'RS02',expected:'non_resident',arrange:e=>select(e.id,b.companyId,{scheme:'non_resident',state:'resolved'})},
@@ -199,11 +200,13 @@ describe('Bank & Statutory validation reads tax residency set-wise',()=>{
   for(let offset=0,part=0;offset<csv.length;offset+=BANK_IMPORT_CHUNK_BYTES,part++)await uploadBankImportChunk(a,admission.job.id,part,csv.subarray(offset,offset+BANK_IMPORT_CHUNK_BYTES));
   await bankImportCommand(a,admission.job.id,'validate');
   mark('10-row batch');
-  await processBankImportJob(a,admission.job.id);
+  expect(await runBankImportTick(owner.client)).toBe(true);
   mark('queued tick');
   expect((await getBankImportJob(a,admission.job.id)).job).toMatchObject({state:'validating',total:ROWS});
   const large=countResidencyReads();
-  await processBankImportJob(a,admission.job.id);
+  // Diagnostic while the tick runs: any session of this database waiting longer than 20 s is printed.
+  const watch=setInterval(()=>{void owner.client`select pid,state,wait_event_type,wait_event,left(query,160) as query,now()-query_start as running from pg_stat_activity where datname=current_database() and pid<>pg_backend_pid() and state<>'idle' and now()-query_start>interval '20 seconds'`.then(rows=>{if(rows.length)console.info(`[bank-residency-batch] waiting: ${JSON.stringify(rows)}`);},()=>{});},20_000);
+  try{expect(await runBankImportTick(owner.client)).toBe(true);}finally{clearInterval(watch);}
   mark('validation tick');
   const{job}=await getBankImportJob(a,admission.job.id);
   expect(job.validated).toBe(ROWS);
