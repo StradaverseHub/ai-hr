@@ -1465,9 +1465,11 @@ ADR (docs/adr/2026-11-14-recruitment-candidate-email.md) records why candidate e
 
 ### Sending
 
-- Application received: queued automatically when an application is created from the careers page or by HR adding a
-  candidate with "send receipt" ticked (off by default for HR-added and imported candidates; imports never send).
-  At most one receipt per application.
+- Application received: queued when HR adds a candidate with "send receipt" ticked (off by default; imports never
+  send). At most one receipt per application. Careers-page receipts are deferred to slice 21 (D-064): a careers address
+  is unverified and the name visitor-supplied, so receipts would let any visitor make the company's relay (which also
+  carries sign-in and recovery mail) write to an address they choose; they come once the applicant's address is
+  verified by code.
 - Rejection: when a person rejects or archives an application (single or the slice 17 bulk action), the dialog offers
   "Send rejection e-mail" with a rendered preview; nothing is sent unless the person ticks it. The bulk action sends
   one e-mail per application that was actually archived. A rejection e-mail is queued with an optional delay chosen
@@ -1500,8 +1502,9 @@ ADR (docs/adr/2026-11-14-recruitment-candidate-email.md) records why candidate e
 
 127. Only administrators change sender settings and templates (service and database); placeholders are allowlisted;
      the switch off or no active relay means nothing is queued.
-128. A careers application queues exactly one receipt in the candidate's language; HR-added candidates only when
-     ticked; imports never.
+128. Careers-page receipts are deferred to slice 21 per D-064 (a careers application queues nothing); HR-added
+     candidates get a receipt in the company's candidate e-mail language only when ticked, at most one per application;
+     imports never.
 129. A rejection e-mail is sent only when the person ticks it, after a preview identical to what is sent; bulk sends
      one per archived application; the delay is honoured; a removed candidate's queued e-mail is deleted.
 130. The sweep sends the frozen content to the frozen address through a faked transport; 4xx retries, 5xx fails,
@@ -1509,8 +1512,8 @@ ADR (docs/adr/2026-11-14-recruitment-candidate-email.md) records why candidate e
      never send one row twice.
 131. Hiring managers and interviewers cannot read e-mail bodies of applications they cannot see; the AI Centre sees
      counts only; the per-company hourly cap holds.
-132. Rendered: enabling e-mail with a sender name and reply-to; editing a template with a bad placeholder refused; a
-     careers application producing a receipt; a rejection with preview; the e-mail list on the application page.
+132. Rendered: enabling e-mail with a sender name and reply-to; editing a template with a bad placeholder refused; an
+     HR-added candidate with "send receipt" producing a receipt; a rejection with preview; the e-mail list on the application page.
 
 ## Slice 20 — Candidate e-mail: interview invitations, reminders, cancellations and offers (owner: group 2, 2026-11-14; D-063, EV-023)
 

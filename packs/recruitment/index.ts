@@ -69,6 +69,11 @@
  *   previewed in full, then imported by a background job on the shared bulk-job kernel (one step per row, rows independent, D-055);
  *   candidates without a usable job wait on the To assign list until assigned or hidden; the board, talent pool and a job's
  *   interview feedback export as CSV or Excel from what the exporter reads, capped and formula-escaped, with saved column sets (5217).
+ * - Candidate e-mail (slice 19, ./candidate-email, ./candidate-email-delivery and ./candidate-email-model): administrators switch candidate
+ *   e-mail on per company with a sender display name and reply-to and edit the wording per kind and language; a receipt queues when HR
+ *   adds a candidate with "Send receipt" ticked (careers-page receipts wait for slice 21, D-064) and a rejection letter when the person
+ *   rejecting ticks it after its preview; content is frozen at queue time and the minute sweep delivers through the embedded relay only
+ *   (5220; D-063).
  * - Team access (slice 2): a job's recruiter, assistants, hiring managers and interviewers reach that job's data through
  *   database predicates (5202); the menu shows for team members, interviewers and pending approvers.
  */
@@ -177,6 +182,10 @@ export const recruitmentPack: ModulePack = {
     { table: 'recruitment_interview_question_link', note: 'which questions a scorecard template shows on the feedback form' },
     { table: 'recruitment_interview_address', note: 'interview addresses: name, address, region, https map link; company setup, no personal data' },
     { table: 'recruitment_interview_room', note: 'meeting rooms per address: name, capacity, enabled; never double-booked (5219 exclusion constraint)' },
+    // Slice 19 (5220)
+    { table: 'recruitment_candidate_email_setting', note: 'per company: "E-mail candidates" switch, sender display name, reply-to and e-mail language; administrators write' },
+    { table: 'recruitment_candidate_email_template', note: 'a company\'s wording per e-mail kind and language: plain-text subject and body with allowlisted placeholders' },
+    { table: 'recruitment_candidate_email', note: 'one candidate e-mail: frozen recipient and content (purged 90 days after its final state), delivery state, actor, lease' },
   ],
 };
 registerPack(recruitmentPack);

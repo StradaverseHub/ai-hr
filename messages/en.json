@@ -38183,7 +38183,15 @@
       "room_booked": "That room is already booked for another interview at an overlapping time. Choose another room or time.",
       "map_link_https": "The map link must be a full https:// address.",
       "setup_limit": "The most allowed has been reached (groups 100, questions 500, addresses 100, rooms 50 per address, questions 30 per scorecard template). Remove one you no longer use first.",
-      "no_interviewers": "The chosen groups have no member who can interview for this company. Choose people or another group."
+      "no_interviewers": "The chosen groups have no member who can interview for this company. Choose people or another group.",
+      "email_unavailable": "Candidate e-mail is not available on this installation.",
+      "email_off": "Candidate e-mail is off for this company. An administrator can switch it on in Settings › Candidate e-mail.",
+      "email_placeholder": "Use only the listed placeholders, each in braces, and no other braces.",
+      "email_link": "Links are not allowed in candidate e-mails.",
+      "email_hourly_limit": "This company has queued 500 candidate e-mails in the last hour. Nothing was done; try again later, or continue without the e-mail.",
+      "email_changed": "The e-mail preview changed (wording, sender, the candidate's details or address). Nothing was done; open it again and check what will be sent.",
+      "email_not_retryable": "Only a failed or uncertain e-mail whose content is still kept can be sent again.",
+      "email_too_long": "With the longest names and titles filled in, this wording would be too long. Shorten it or use fewer placeholders."
     },
     "overview": {
       "purpose": "Today's hiring work across the companies whose recruitment you manage.",
@@ -38464,7 +38472,8 @@
         "waiting": "Waiting limits",
         "groups": "Interviewer groups",
         "questions": "Question bank",
-        "places": "Addresses and rooms"
+        "places": "Addresses and rooms",
+        "email": "Candidate e-mail"
       },
       "iv": {
         "rulesTitle": "Feedback rules",
@@ -40314,6 +40323,119 @@
         "deleteAddress": "Delete address",
         "newTitle": "New interview address"
       }
+    },
+    "candidateEmail": {
+      "defaults": {
+        "application_received": {
+          "subject": "We received your application for {jobTitle}",
+          "body": "Dear {candidateName},\n\nThank you for applying for the {jobTitle} position at {companyName}. We have received your application and will review it carefully.\n\nIf your experience matches what we are looking for, we will contact you about the next steps.\n\nKind regards,\n{senderName}"
+        },
+        "rejection": {
+          "subject": "Your application for {jobTitle}",
+          "body": "Dear {candidateName},\n\nThank you for your interest in the {jobTitle} position at {companyName} and for the time you spent on your application.\n\nAfter careful consideration, we have decided not to move forward with your application for this position.\n\nWe wish you every success in your search.\n\nKind regards,\n{senderName}"
+        }
+      },
+      "settingsNote": "E-mail candidates about their own application: a receipt when they apply and, when a person chooses, a rejection letter. E-mails go through this installation's mail service from its address; you set the name candidates see and the address their replies go to.",
+      "unavailable": "Candidate e-mail is not available on this installation: it needs the built-in sign-in and mail service with an active mail connection. Nothing is sent or queued.",
+      "dataNote": "Once this is on, the installation's mail provider handles candidates' names and e-mail addresses. Make sure your data-processing agreement covers candidates.",
+      "enabled": "E-mail candidates",
+      "senderName": "Sender name (up to {max} characters)",
+      "senderNameHint": "Leave empty to use {name}.",
+      "replyTo": "Reply-to address",
+      "replyToHint": "Candidates' replies go here. Required when candidate e-mail is on.",
+      "locale": "Language of candidate e-mails",
+      "localeHint": "Candidates have no recorded language, so this company's candidate e-mails are written in this language.",
+      "save": "Save",
+      "changed": "Changed by {by} on {at}",
+      "unnamedUser": "Unnamed user",
+      "countsTitle": "Candidate e-mails in the last 30 days",
+      "templatesTitle": "Wording",
+      "templatesNote": "Every e-mail has default wording in each language. You can change it for this company. Subject and body are plain text; no links, images or attachments.",
+      "templateLanguage": "Show the wording in",
+      "showLanguage": "Show",
+      "kinds": {
+        "application_received": "Application received",
+        "rejection": "Rejection"
+      },
+      "kindNotes": {
+        "application_received": "Sent when HR adds a candidate and ticks Send receipt. Never for imported candidates. Careers-page applicants get no receipt yet: their address is not verified.",
+        "rejection": "Sent only when the person rejecting or archiving ticks Send rejection e-mail after seeing it."
+      },
+      "subject": "Subject (up to {max} characters)",
+      "body": "Body (up to {max} characters)",
+      "placeholders": "Placeholders, filled in for each candidate: {list}",
+      "customised": "Changed for this company",
+      "usingDefault": "Default wording",
+      "saveTemplate": "Save wording",
+      "resetTemplate": "Use the default wording",
+      "fieldRequired": "Required",
+      "fieldInvalid": "Check this: plain text within the limit, only the listed placeholders and no links.",
+      "send": "Send rejection e-mail",
+      "sendNote": "To {address}. Nothing is sent unless you tick this.",
+      "noAddress": "This candidate has no usable e-mail address recorded, so no e-mail can be sent.",
+      "delay": "Send",
+      "delays": {
+        "0": "Now",
+        "1": "In 1 day",
+        "2": "In 2 days",
+        "3": "In 3 days"
+      },
+      "preview": "Preview of the e-mail",
+      "fromLine": "From: {name} · Replies go to: {replyTo}",
+      "subjectLine": "Subject: {subject}",
+      "bulkSend": "Send each archived candidate a rejection e-mail",
+      "bulkNote": "One e-mail per application actually archived, to the candidate's recorded address; candidates without one are skipped. Each candidate's preview is under their name.",
+      "sendReceipt": "Send receipt",
+      "sendReceiptNote": "E-mail the candidate that their application was received (when their company has candidate e-mail on).",
+      "notice": {
+        "rejectedQueued": "Rejected. The rejection e-mail is queued.",
+        "rejectedNoEmail": "Rejected. No e-mail was sent: the candidate has no usable e-mail address.",
+        "receiptQueued": "Saved. The receipt e-mail is queued.",
+        "receiptNoEmail": "Saved. No receipt was sent: the candidate has no usable e-mail address.",
+        "bulk": "{queued, plural, one {# rejection e-mail queued} other {# rejection e-mails queued}}{skipped, plural, =0 {} one {; # candidate was not e-mailed (no usable address, a name or job title that looks like a link, or no preview shown)} other {; # candidates were not e-mailed (no usable address, a name or job title that looks like a link, or no preview shown)}}.",
+        "retried": "The e-mail is queued to be sent again.",
+        "rejectedValueLink": "Rejected. No e-mail was sent: the candidate's name or the job title looks like a link or web address.",
+        "rejectedNotPreviewed": "Rejected. No e-mail was sent: its preview was not shown.",
+        "receiptValueLink": "Saved. No receipt was sent: the candidate's name or the job title looks like a link or web address."
+      },
+      "tab": "E-mails",
+      "listEmpty": "No e-mail has been queued for this candidate about this application.",
+      "listNote": "E-mails to the candidate about this application. The address and content are kept for 90 days after an e-mail's final state.",
+      "states": {
+        "queued": "Queued",
+        "sending": "Sending",
+        "sent": "Sent",
+        "failed": "Failed",
+        "uncertain": "Uncertain"
+      },
+      "stateNotes": {
+        "sent": "The mail service accepted it. Delivery to the candidate's inbox is not confirmed.",
+        "uncertain": "The mail service may or may not have received it. It is not sent again automatically.",
+        "failed": "It was not sent."
+      },
+      "errorCodes": {
+        "relayUnavailable": "The mail service was unavailable.",
+        "notEligible": "Candidate e-mail was switched off before it was sent.",
+        "smtpTemporary": "The mail service refused it several times.",
+        "smtpRejected": "The mail service rejected it.",
+        "smtpAuthentication": "The mail service did not accept this installation's sign-in.",
+        "smtpTls": "A secure connection to the mail service could not be made.",
+        "uncertain": "The answer from the mail service was lost or unclear.",
+        "invalidMessage": "The message was refused before it reached the mail service. It was not sent.",
+        "relayPreparation": "The connection to the mail service could not be prepared (sign-in or settings). It was not sent."
+      },
+      "queuedBy": "Queued by {name} on {at}",
+      "queuedByApplicant": "Queued when the candidate applied, on {at}",
+      "sendAfter": "Sends from {at}",
+      "finishedAt": "Last update {at}",
+      "attempts": "{n, plural, one {# attempt} other {# attempts}}",
+      "retriedBy": "Sent again by {name} on {at}",
+      "purged": "The address and content were removed 90 days after the final state.",
+      "to": "To: {address}",
+      "showContent": "Show the e-mail",
+      "retry": "Send again",
+      "retryAck": "I understand the candidate may receive this e-mail twice.",
+      "valueLink": "This e-mail cannot be sent: the candidate's name or the job title looks like a link or web address."
     }
   },
   "careersPublic": {

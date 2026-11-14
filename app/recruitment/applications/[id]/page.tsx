@@ -6,12 +6,12 @@ import { scopedSession } from '@/lib/scope';
 import { ErrorBanner, Field, Input, PageHeader, btnGhost, btnPrimary } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import {
-  applicationAgency, applicationBackgroundChecks, applicationCareers, applicationWaiting, applicationPools, applicationReview, applicationHire, applicationHistory, applicationInterviews, applicationOffer, applicationReferral, applicationScreening, candidateProfile, interviewFormOptions, CANDIDATE_RESPONSES, INTERVIEW_TYPES,
-  OFFER_SEND_CHANNELS, RecruitmentError, type ApplicationHire, type InterviewFormOptions, type InterviewStatus, type OfferView,
+  applicationAgency, applicationBackgroundChecks, applicationCandidateEmails, applicationCareers, applicationWaiting, applicationPools, applicationReview, applicationHire, applicationHistory, applicationInterviews, applicationOffer, applicationReferral, applicationScreening, candidateProfile, interviewFormOptions, CANDIDATE_RESPONSES, INTERVIEW_TYPES,
+  OFFER_SEND_CHANNELS, RecruitmentError, type ApplicationCandidateEmails, type ApplicationHire, type InterviewFormOptions, type InterviewStatus, type OfferView,
 } from '@/packs/recruitment/service';
 import {
   addInterviewersAction, cancelInterviewAction, markOfferSentAction, recordOfferDecisionAction, saveOfferAction, scheduleInterviewFormAction, setCandidateResponseAction,
-  submitOfferAction, withdrawOfferAction,
+  submitOfferAction, withdrawOfferAction, retryCandidateEmailAction,
 } from '../../actions';
 import { ActionForm, FieldProblem } from '../../action-form';
 import { Notice, Pill, SubTabs, klDate, klDateTime, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../../shared';
@@ -21,7 +21,7 @@ import { ScreeningSection } from './screening-section';
 import { BackgroundChecksSection } from './background-checks-section';
 import { PoolsAndBlockSection, ReviewBanner } from './review-section';
 
-type Tab = 'candidate' | 'screening' | 'interviews' | 'offer' | 'checks' | 'history';
+type Tab = 'candidate' | 'screening' | 'interviews' | 'offer' | 'checks' | 'emails' | 'history';
 const STATUS_TONE: Record<InterviewStatus, 'neutral' | 'info' | 'good' | 'warn' | 'bad'> = {
   scheduled: 'info', in_progress: 'info', awaiting_feedback: 'warn', feedback_complete: 'good', cancelled: 'neutral',
 };
@@ -47,7 +47,7 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
     throw e;
   }
   const soft = async <T,>(work: Promise<T>): Promise<T | null> => work.catch((e) => { if (e instanceof RecruitmentError) return null; throw e; });
-  const [offer, history, hire, options, profile, referral, careers, agency, screening, checks, review, pools, waiting] = await Promise.all([
+  const [offer, history, hire, options, profile, referral, careers, agency, screening, checks, review, pools, waiting, emails] = await Promise.all([
     soft(applicationOffer(s, id)), soft(applicationHistory(s, id)), soft(applicationHire(s, id)),
     interviews.canSchedule ? soft(interviewFormOptions(s, id)) : Promise.resolve(null), soft(candidateProfile(s, id)), soft(applicationReferral(s, id)),
     soft(applicationCareers(s, id)), soft(applicationAgency(s, id)),
@@ -69,12 +69,18 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
       if (!(e instanceof RecruitmentError)) console.error('recruitment waiting line failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
       return null;
     }),
+    // Slice 19: the candidate's e-mails about this application (the job's reviewers; null for an interviewer). A database failure
+    // leaves the page without the tab.
+    applicationCandidateEmails(s, id).catch((e) => {
+      if (!(e instanceof RecruitmentError)) console.error('recruitment candidate e-mails failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+      return null;
+    }),
   ]);
   const reviewer = !!offer;
   const tab: Tab = sp.tab === 'offer' && reviewer ? 'offer' : sp.tab === 'history' && history ? 'history' : sp.tab === 'screening' && screening ? 'screening'
-    : sp.tab === 'checks' && checks ? 'checks'
+    : sp.tab === 'checks' && checks ? 'checks' : sp.tab === 'emails' && emails ? 'emails'
     : sp.tab === 'interviews' || !profile ? 'interviews' : 'candidate';
-  const [t, locale] = await Promise.all([getTranslations('recruitment'), getLocale()]);
+  const [t, locale, te] = await Promise.all([getTranslations('recruitment'), getLocale(), getTranslations('recruitment.candidateEmail')]);
   const here = `/recruitment/applications/${id}?tab=${tab}`;
   const hidden = (name: string, value: string) => <input type="hidden" name={name} value={value} />;
   const stateText = interviews.state === 'active' ? interviews.stageName : interviews.state === 'hired' ? t('candidates.hired') : t('candidates.archivedFrom', { stage: interviews.stageName });
@@ -89,7 +95,7 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
           : sp.notice === 'check-authorised' ? t('checks.authorisedNotice') : sp.notice === 'check-started' ? t('checks.startedNotice')
             : sp.notice === 'check-completed' ? t('checks.completedNotice') : sp.notice === 'check-cancelled' ? t('checks.cancelledNotice')
               : sp.notice === 'pool-added' ? t('pools.notice.added') : sp.notice === 'pool-removed' ? t('pools.notice.removed') : sp.notice === 'blocked' ? t('pools.notice.blocked')
-                : sp.notice === 'review-resolved' ? t('pools.notice.resolved') : undefined} />
+                : sp.notice === 'review-resolved' ? t('pools.notice.resolved') : sp.notice === 'email-retried' ? te('notice.retried') : undefined} />
       <ErrorBanner message={errorText} />
       <ReviewBanner review={review} here={here} locale={locale} />
       {waiting && (
@@ -132,6 +138,7 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
         { key: 'interviews', href: `/recruitment/applications/${id}?tab=interviews`, text: t('app.tabInterviews'), current: tab === 'interviews' },
         ...(reviewer ? [{ key: 'offer', href: `/recruitment/applications/${id}?tab=offer`, text: t('app.tabOffer'), current: tab === 'offer' }] : []),
         ...(checks ? [{ key: 'checks', href: `/recruitment/applications/${id}?tab=checks`, text: t('checks.tab'), current: tab === 'checks' }] : []),
+        ...(emails ? [{ key: 'emails', href: `/recruitment/applications/${id}?tab=emails`, text: te('tab'), current: tab === 'emails' }] : []),
         ...(history ? [{ key: 'history', href: `/recruitment/applications/${id}?tab=history`, text: t('app.tabHistory'), current: tab === 'history' }] : []),
       ]} />
 
@@ -235,6 +242,8 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
       {tab === 'offer' && offer && <OfferSection offer={offer} applicationId={id} here={here} t={t} locale={locale} />}
 
       {tab === 'checks' && checks && <BackgroundChecksSection checks={checks} here={here} locale={locale} isAdmin={access.isAdmin} />}
+
+      {tab === 'emails' && emails && <CandidateEmailsSection emails={emails} applicationId={id} here={here} t={te} locale={locale} />}
 
       {tab === 'history' && history && (
         <ol className="space-y-2 rounded-xl border border-border bg-card p-4 text-sm">
@@ -466,6 +475,57 @@ function HireSection({ hire, applicationId, t, locale }: { hire: ApplicationHire
           <Link className={btnPrimary} href={`/admin/personnel/new?fromApplication=${encodeURIComponent(applicationId)}`}>{t('hire.start')}</Link>
         </>
       ) : <span className="text-muted-foreground">{t('hire.adminOnly')}</span>}
+    </section>
+  );
+}
+
+type TE = Awaited<ReturnType<typeof getTranslations<'recruitment.candidateEmail'>>>;
+
+/** Slice 19: the candidate's e-mails about this application, newest first, with the frozen content until it is purged; administrators
+ *  may send a failed or uncertain one again after acknowledging the candidate may receive it twice. */
+function CandidateEmailsSection({ emails, applicationId, here, t, locale }: { emails: ApplicationCandidateEmails; applicationId: string; here: string; t: TE; locale: string }) {
+  return (
+    <section aria-labelledby="emails-title" className="space-y-3">
+      <p id="emails-title" className="text-sm text-muted-foreground">{t('listNote')}</p>
+      {emails.rows.length === 0 ? <p className="rounded-lg border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">{t('listEmpty')}</p> : (
+        <ul className="space-y-3">
+          {emails.rows.map((e) => (
+            <li key={e.id} className="space-y-2 rounded-xl border border-border bg-card p-4 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-medium">{t(`kinds.${e.kind}`)}</span>
+                <Pill tone={e.state === 'sent' ? 'good' : e.state === 'failed' ? 'bad' : e.state === 'uncertain' ? 'warn' : 'info'}>{t(`states.${e.state}`)}</Pill>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {e.byApplicant ? t('queuedByApplicant', { at: klDateTime(locale, e.queuedAt) }) : t('queuedBy', { name: e.queuedBy ?? t('unnamedUser'), at: klDateTime(locale, e.queuedAt) })}
+                {e.state === 'queued' && <> · {t('sendAfter', { at: klDateTime(locale, e.sendAfter) })}</>}
+                {e.completedAt && <> · {t('finishedAt', { at: klDateTime(locale, e.completedAt) })}</>}
+                {e.attempts > 0 && <> · {t('attempts', { n: e.attempts })}</>}
+              </p>
+              {e.retriedAt && <p className="text-xs text-muted-foreground">{t('retriedBy', { name: e.retriedBy ?? t('unnamedUser'), at: klDateTime(locale, e.retriedAt) })}</p>}
+              {(e.state === 'sent' || e.state === 'failed' || e.state === 'uncertain') && <p className="text-xs text-muted-foreground">{t(`stateNotes.${e.state}`)}</p>}
+              {e.error && e.state !== 'sent' && <p className="text-xs text-muted-foreground">{t(`errorCodes.${e.error as 'uncertain'}`)}</p>}
+              {e.purged ? <p className="text-xs text-muted-foreground">{t('purged')}</p> : (
+                <details>
+                  <summary className="cursor-pointer text-xs font-medium text-primary">{t('showContent')}</summary>
+                  <div className="mt-2 space-y-1 rounded-md bg-muted/40 p-2">
+                    <p className="text-xs text-muted-foreground">{t('to', { address: e.recipient ?? '' })}</p>
+                    <p className="font-medium">{t('subjectLine', { subject: e.subject ?? '' })}</p>
+                    <p className="max-h-80 overflow-auto whitespace-pre-wrap">{e.text}</p>
+                  </div>
+                </details>
+              )}
+              {e.retryable && (
+                <form action={retryCandidateEmailAction} className="flex flex-wrap items-center gap-3">
+                  <input type="hidden" name="emailId" value={e.id} /><input type="hidden" name="applicationId" value={applicationId} />
+                  <input type="hidden" name="returnTo" value={here} />
+                  <label className="flex items-center gap-2 text-xs"><input type="checkbox" name="acknowledged" required />{t('retryAck')}</label>
+                  <button type="submit" className={btnGhost}>{t('retry')}</button>
+                </form>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

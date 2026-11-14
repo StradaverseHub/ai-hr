@@ -20,6 +20,7 @@ import { pgSqlState } from '../../lib/db-error';
 import { RecruitmentError, isUuid, type JobStatus, type RecruitmentStageType } from './model';
 import { actorId, archiveApplicationsTx, assertCompanyTx, jobLevelTx, userLabelsTx, uuidArray } from './data';
 import { cutoffRelation, stageEnteredDayOf, stageEnteredDaySql, waitingContextTx } from './waiting-store';
+import { parseRejectionEmailChoice, queueCandidateEmailsTx, type RejectionEmailChoice } from './candidate-email';
 import {
   SUGGESTED_LIST_LIMIT, WAITING_SCAN_LIMIT, validateWaitingRule, waitingDays, waitingLevel, type WaitingDayKind, type WaitingRuleInput,
 } from './waiting-model';
@@ -257,7 +258,12 @@ export async function suggestedArchiveList(s: SessionContext, jobId: unknown): P
 
 /** Why one selected application was not archived. */
 export type SuggestedArchiveRefusal = 'not_found' | 'application_closed' | 'needs_review' | 'not_suggested';
-export type SuggestedArchiveResult = { archived: string[]; refused: { applicationId: string; code: SuggestedArchiveRefusal }[] };
+export type SuggestedArchiveResult = {
+  archived: string[]; refused: { applicationId: string; code: SuggestedArchiveRefusal }[];
+  /** Slice 19, when "Send rejection e-mail" was ticked: e-mails queued, and archived applications skipped with their reason (no usable
+   *  address; a link-like name or job title; no preview shown for that row). */
+  emailQueued?: number; emailNoAddress?: number; emailValueLink?: number; emailNotPreviewed?: number;
+};
 
 /**
  * Archive the selected applications of one job with one archive reason, in ONE action (one transaction) through the normal reject
@@ -266,7 +272,8 @@ export type SuggestedArchiveResult = { archived: string[]; refused: { applicatio
  * they are. The job's operators and administrators only; at most SUGGESTED_LIST_LIMIT at once. A reason that is not one of the
  * company's displayed reasons refuses the whole action.
  */
-export async function archiveSuggestedApplications(s: SessionContext, input: { jobId?: unknown; applicationIds?: unknown; archiveReasonId?: unknown }): Promise<SuggestedArchiveResult> {
+export async function archiveSuggestedApplications(s: SessionContext, input: { jobId?: unknown; applicationIds?: unknown; archiveReasonId?: unknown; email?: RejectionEmailChoice }): Promise<SuggestedArchiveResult> {
+  const email = parseRejectionEmailChoice(input.email);
   actorId(s);
   const asked = Array.isArray(input.applicationIds) ? [...new Set(input.applicationIds)] : [];
   if (!asked.length) throw new RecruitmentError('missing_fields', ['applicationIds']);
@@ -303,6 +310,11 @@ export async function archiveSuggestedApplications(s: SessionContext, input: { j
       else eligible.push({ id: a.id, currentStageId: a.current_stage_id });
     }
     await archiveApplicationsTx(tx, s, job.company_id, eligible, reason.id);
-    return { archived: eligible.map((e) => e.id), refused };
+    // Slice 19: one rejection e-mail per application actually archived, when the person ticked it (set-based, same transaction).
+    const mail = email && eligible.length
+      ? await queueCandidateEmailsTx(tx, s, { companyId: job.company_id, kind: 'rejection', applicationIds: eligible.map((e) => e.id), ...email })
+      : null;
+    return { archived: eligible.map((e) => e.id), refused, ...(mail ? { emailQueued: mail.queued.length, emailNoAddress: mail.noEmail.length,
+      emailValueLink: mail.valueLink.length, emailNotPreviewed: mail.notPreviewed.length } : {}) };
   });
 }

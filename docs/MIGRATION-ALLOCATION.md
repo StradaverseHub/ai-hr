@@ -1,3 +1,21 @@
+# Recruitment slice 19 — 14 November 2026 MYT (unapplied)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after the slice 18 entry, `5220_recruitment_candidate_email` at
+idx 4620 / when 1793330004920. A read-only survey of the already-fetched refs (7,673 refs, 4,225 distinct tips; no commit touches a
+`5220_` file and no committed journal adds idx 4620 or this timestamp; no new fetch) and the working trees of all 214 registered
+worktrees (all journals readable) found no `5220_` migration file and no claim of this name, position or timestamp. WATERMARK RISK:
+`origin/main` and `origin/alpha` now end at idx 5040 / when 1793330005340 (5400–5640, rewards and lifecycle), ABOVE this whole
+recruitment block (5200–5220 at 4600–4620): an installation that applies those first would see every recruitment timestamp as lower
+than its applied watermark, which can be silently skipped. Re-allocate or confirm the block against the target's ordered applied
+ledger before admission. 5220 adds three tables (`recruitment_candidate_email_setting`, `recruitment_candidate_email_template`:
+administrator-only writes, job-team read; `recruitment_candidate_email`: frozen per-e-mail delivery rows queued by the service or the
+careers definers), the app-schema `recruitment_candidate_email_receipt_pending` with a deferred settle check, guard triggers, an
+AFTER INSERT trigger on `recruitment_careers_application`, owner-only sweep functions (claim, target, start, finish, purge), the
+hourly-cap count, the careers receipt source and queue definers, and restates `app.recruitment_destroy_candidate` (5217 body byte for
+byte) and `app.recruitment_delete_company_setup` (5219 body byte for byte) with added steps only. No index or constraint is added to an
+existing table. 5200–5219 are unapplied outside throwaway databases, CI and the branch author's local render database. Recheck peer
+claims, the published baseline and the ordered applied ledger before admission. The reservation grants no installation authority.
+
 # Recruitment slice 18 — 12 November 2026 MYT (unapplied)
 
 Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after the slice 17 entry, `5219_recruitment_interview_setup` at

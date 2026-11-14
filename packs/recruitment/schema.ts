@@ -976,3 +976,57 @@ export const recruitmentInterviewRoom = pgTable('recruitment_interview_room', {
   enabled: boolean('enabled').notNull().default(true),
   ...audit,
 });
+
+// Slice 19 (5220): candidate e-mail — the company's sender settings, its template overrides and one delivery row per e-mail.
+export const recruitmentCandidateEmailSetting = pgTable('recruitment_candidate_email_setting', {
+  companyId: uuid('company_id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  enabled: boolean('enabled').notNull().default(false),
+  senderName: text('sender_name'),
+  replyTo: text('reply_to'),
+  locale: text('locale').notNull().default('en'),
+  ...audit,
+});
+
+export const recruitmentCandidateEmailTemplate = pgTable('recruitment_candidate_email_template', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  kind: text('kind').notNull(),
+  locale: text('locale').notNull(),
+  subject: text('subject').notNull(),
+  body: text('body').notNull(),
+  ...audit,
+});
+
+export const recruitmentCandidateEmail = pgTable('recruitment_candidate_email', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  jobId: uuid('job_id').notNull(),
+  applicationId: uuid('application_id').notNull(),
+  candidateId: uuid('candidate_id').notNull(),
+  kind: text('kind').notNull(),
+  locale: text('locale').notNull(),
+  recipient: text('recipient'),
+  subject: text('subject'),
+  bodyText: text('body_text'),
+  bodyHtml: text('body_html'),
+  senderName: text('sender_name').notNull(),
+  replyTo: text('reply_to').notNull(),
+  status: text('status').notNull().default('queued'),
+  errorCode: text('error_code'),
+  attempts: integer('attempts').notNull().default(0),
+  queuedAt: ts('queued_at').notNull().defaultNow(),
+  queuedByUserId: uuid('queued_by_user_id'),
+  nextAttemptAt: ts('next_attempt_at').notNull().defaultNow(),
+  leaseToken: uuid('lease_token'),
+  leaseUntil: ts('lease_until'),
+  startedAt: ts('started_at'),
+  completedAt: ts('completed_at'),
+  relayRevision: text('relay_revision'),
+  retriedAt: ts('retried_at'),
+  retriedByUserId: uuid('retried_by_user_id'),
+  retryCount: integer('retry_count').notNull().default(0),
+  contentPurgedAt: ts('content_purged_at'),
+});

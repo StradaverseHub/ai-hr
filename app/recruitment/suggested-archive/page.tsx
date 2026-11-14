@@ -3,7 +3,7 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { requireModule } from '@/lib/authz';
 import { scopedSession } from '@/lib/scope';
 import { ErrorBanner, PageHeader, btnPrimary } from '@/components/ui';
-import { suggestedArchiveList, RecruitmentError, SUGGESTED_LIST_LIMIT, WAITING_SCAN_LIMIT, type SuggestedArchiveList } from '@/packs/recruitment/service';
+import { rejectionEmailPreviews, suggestedArchiveList, RecruitmentError, REJECTION_EMAIL_DELAYS, SUGGESTED_LIST_LIMIT, WAITING_SCAN_LIMIT, type SuggestedArchiveList } from '@/packs/recruitment/service';
 import { archiveSuggestedAction } from '../actions';
 import { Pill, RecruitmentTabs, klDate, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../shared';
 import { SuggestedArchiveForm } from './archive-form';
@@ -31,6 +31,11 @@ export default async function SuggestedArchivePage({ searchParams }: { searchPar
     }
   }
   const name = (r: SuggestedArchiveList['rows'][number]) => (r.candidateRemoved ? tc('removedLabel') : r.candidateName ?? tc('removedLabel'));
+  // Slice 19: the rejection e-mail each archived candidate would receive, rendered exactly as it would be queued (the job's company
+  // must e-mail candidates; nothing is offered otherwise). Each row posts its preview's fingerprint: a change refuses the archive.
+  const te = await getTranslations('recruitment.candidateEmail');
+  const previews = list ? await rejectionEmailPreviews(s, list.rows.filter((r) => !r.needsReview).map((r) => r.applicationId)) : {};
+  const offered = Object.keys(previews).length > 0;
   const selectable = list ? list.rows.filter((r) => !r.needsReview) : [];
   return (
     <div className="w-full space-y-5">
@@ -73,6 +78,21 @@ export default async function SuggestedArchivePage({ searchParams }: { searchPar
                       {r.needsReview && <Pill tone="bad">{t('heldForReview')}</Pill>}
                       <Link href={`/recruitment/applications/${r.applicationId}`} className="text-sm text-primary hover:underline">{t('open')}</Link>
                     </span>
+                    {previews[r.applicationId] && (() => {
+                      const p = previews[r.applicationId];
+                      if (p.blocked) return <p className="w-full text-xs text-muted-foreground">{p.blocked === 'no_address' ? te('noAddress') : te('valueLink')}</p>;
+                      return (
+                        <details className="w-full text-sm">
+                          <input type="hidden" name={`emailFingerprint.${r.applicationId}`} value={p.fingerprint} />
+                          <summary className="cursor-pointer text-xs font-medium text-primary">{te('preview')}</summary>
+                          <div className="mt-2 space-y-1 rounded-md bg-muted/40 p-2">
+                            <p className="text-xs text-muted-foreground">{te('to', { address: p.recipient ?? '' })} · {te('fromLine', { name: p.senderName, replyTo: p.replyTo })}</p>
+                            <p className="font-medium">{te('subjectLine', { subject: p.subject })}</p>
+                            <p className="max-h-60 overflow-auto whitespace-pre-wrap">{p.text}</p>
+                          </div>
+                        </details>
+                      );
+                    })()}
                   </li>
                 ))}
               </ul>
@@ -88,6 +108,21 @@ export default async function SuggestedArchivePage({ searchParams }: { searchPar
                   </label>
                   <button type="submit" className={btnPrimary}>{t('archiveSelected')}</button>
                   <p className="w-full text-xs text-muted-foreground">{t('archiveSelectedNote')}</p>
+                  {offered && (
+                    // Unticked by default: nothing is sent unless the person ticks it, after seeing each candidate's e-mail above.
+                    <fieldset className="w-full space-y-2 rounded-md border border-border p-3">
+                      <label className="flex items-start gap-2 text-sm">
+                        <input type="checkbox" name="sendEmail" className="mt-0.5" />
+                        <span>{te('bulkSend')}<span className="block text-xs text-muted-foreground">{te('bulkNote')}</span></span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                        {te('delay')}
+                        <select name="emailDelay" defaultValue="0" className={selectCls}>
+                          {REJECTION_EMAIL_DELAYS.map((d) => <option key={d} value={String(d)}>{te(`delays.${d}`)}</option>)}
+                        </select>
+                      </label>
+                    </fieldset>
+                  )}
                 </div>
               )}
             </>)}

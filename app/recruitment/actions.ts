@@ -37,6 +37,7 @@ import {
   archiveSuggestedApplications, deleteWaitingRule, saveWaitingRule, type SuggestedArchiveRefusal,
   addInterviewers, deleteInterviewAddress, deleteInterviewQuestion, deleteInterviewRoom, deleteInterviewerGroup, saveInterviewAddress, saveInterviewQuestion,
   saveInterviewRoom, saveInterviewerGroup, setInterviewQuestionRetired,
+  saveCandidateEmailSettings, saveCandidateEmailTemplate, resetCandidateEmailTemplate, retryCandidateEmail,
 } from '@/packs/recruitment/service';
 import { getLocale } from 'next-intl/server';
 
@@ -171,11 +172,12 @@ export type AddApplicationState = {
  */
 export async function addApplicationFormAction(prev: AddApplicationState, f: FormData): Promise<AddApplicationState> {
   const s = await getSession();
-  const values = Object.fromEntries(['jobId', 'fullName', 'email', 'phone', 'idType', 'idNumber', 'candidateSource'].map((k) => [k, str(f, k)]));
+  const values = Object.fromEntries(['jobId', 'fullName', 'email', 'phone', 'idType', 'idNumber', 'candidateSource', 'sendReceipt'].map((k) => [k, str(f, k)]));
   const input = { ...values, existingCandidateId: str(f, 'existingCandidateId'), confirmSeparate: str(f, 'confirmSeparate') };
   const nonce = (prev.nonce ?? 0) + 1;
+  let receipt: 'queued' | 'no_email' | 'value_link' | undefined;
   try {
-    await addApplication(s, input);
+    ({ receipt } = await addApplication(s, input));
   } catch (e) {
     if (e instanceof RecruitmentError && e.code === 'possible_duplicate') {
       try {
@@ -191,15 +193,26 @@ export async function addApplicationFormAction(prev: AddApplicationState, f: For
     return { status: 'error', errorText, values, nonce };
   }
   revalidatePath('/recruitment', 'layout');
-  redirect(withParam(back(f, '/recruitment/candidates'), 'notice', 'saved'));
+  redirect(withParam(back(f, '/recruitment/candidates'), 'notice', receipt === 'queued' ? 'receipt-queued' : receipt === 'no_email' ? 'receipt-no-email'
+    : receipt === 'value_link' ? 'receipt-value-link' : 'saved'));
 }
 
 export async function moveApplicationAction(f: FormData) {
   return run(back(f, '/recruitment/candidates'), (s) => moveApplication(s, str(f, 'applicationId'), str(f, 'targetStageId') || undefined));
 }
 
+/** Slice 19: the reject and archive dialogs' "Send rejection e-mail" tick, its delay and the fingerprint of the preview shown. */
+const rejectionEmailChoice = (f: FormData) => ({
+  send: f.get('sendEmail') === 'on', delayDays: str(f, 'emailDelay') || '0', fingerprint: str(f, 'emailFingerprint'),
+  // Suggested to archive: one fingerprint per listed application ("emailFingerprint.<application id>").
+  fingerprints: Object.fromEntries([...f.keys()].filter((k) => k.startsWith('emailFingerprint.')).map((k) => [k.slice('emailFingerprint.'.length), str(f, k)])),
+});
+
 export async function rejectApplicationAction(f: FormData) {
-  return run(back(f, '/recruitment/candidates'), (s) => rejectApplication(s, str(f, 'applicationId'), str(f, 'archiveReasonId')));
+  const url = back(f, '/recruitment/candidates');
+  return run(url, (s) => rejectApplication(s, str(f, 'applicationId'), str(f, 'archiveReasonId'), rejectionEmailChoice(f)),
+    (r) => withParam(url, 'notice', r.email === 'queued' ? 'rejected-email' : r.email === 'no_email' ? 'rejected-no-email'
+      : r.email === 'value_link' ? 'rejected-value-link' : r.email === 'not_previewed' ? 'rejected-not-previewed' : 'saved'));
 }
 
 export async function updateStageAction(f: FormData) {
@@ -865,16 +878,21 @@ export type SuggestedArchiveState = {
   /** "N applications archived", in the viewer's language (absent when none was). */
   archivedText?: string;
   refused?: { applicationId: string; code: SuggestedArchiveRefusal; text: string }[];
+  /** Slice 19: "N rejection e-mails queued; M candidates have no e-mail address", when the e-mail was ticked. */
+  emailText?: string;
   problem?: string; errorText?: string; nonce?: number;
 };
 export async function archiveSuggestedAction(prev: SuggestedArchiveState, f: FormData): Promise<SuggestedArchiveState> {
   const s = await getSession();
   const nonce = (prev.nonce ?? 0) + 1;
   try {
-    const result = await archiveSuggestedApplications(s, { jobId: str(f, 'jobId'), applicationIds: f.getAll('applicationIds').map(String), archiveReasonId: str(f, 'archiveReasonId') });
-    const t = await getTranslations('recruitment.waiting');
+    const result = await archiveSuggestedApplications(s, { jobId: str(f, 'jobId'), applicationIds: f.getAll('applicationIds').map(String), archiveReasonId: str(f, 'archiveReasonId'),
+      email: rejectionEmailChoice(f) });
+    const [t, te] = await Promise.all([getTranslations('recruitment.waiting'), getTranslations('recruitment.candidateEmail')]);
     revalidatePath('/recruitment', 'layout');
     return { status: 'done', archived: result.archived.length, nonce,
+      emailText: result.emailQueued !== undefined ? te('notice.bulk', { queued: result.emailQueued,
+        skipped: (result.emailNoAddress ?? 0) + (result.emailValueLink ?? 0) + (result.emailNotPreviewed ?? 0) }) : undefined,
       archivedText: result.archived.length ? t('archivedNotice', { count: result.archived.length }) : undefined,
       refused: result.refused.map((r) => ({ applicationId: r.applicationId, code: r.code, text: t(`refused.${r.code}`) })) };
   } catch (e) {
@@ -936,4 +954,41 @@ export async function saveInterviewRoomFormAction(prev: FormRefusal, f: FormData
 }
 export async function deleteInterviewRoomAction(f: FormData) {
   return run(setupPage(f, 'places'), (s) => deleteInterviewRoom(s, str(f, 'roomId')));
+}
+
+// ── Slice 19: candidate e-mail ───────────────────────────────────────────────────────────────────────────────────
+const emailSettingsPage = (f: FormData) => `/recruitment/settings?${new URLSearchParams({ company: str(f, 'companyId'), section: 'email', ...(str(f, 'lang') ? { lang: str(f, 'lang') } : {}) })}`;
+
+/** Settings › Candidate e-mail: the switch, sender name, reply-to and language. A refusal is RETURNED (the form keeps what was typed). */
+export async function saveCandidateEmailSettingsFormAction(prev: FormRefusal, f: FormData): Promise<FormRefusal> {
+  const s = await getSession();
+  try {
+    await saveCandidateEmailSettings(s, str(f, 'companyId'), { enabled: f.get('enabled') === 'on', senderName: str(f, 'senderName'), replyTo: str(f, 'replyTo'), locale: str(f, 'locale') });
+  } catch (e) {
+    return refusal(prev, f, e);
+  }
+  revalidatePath('/recruitment', 'layout');
+  redirect(withParam(emailSettingsPage(f), 'notice', 'saved'));
+}
+
+/** One kind's wording in one language. An unknown placeholder or a link is refused and the typed text stays. */
+export async function saveCandidateEmailTemplateFormAction(prev: FormRefusal, f: FormData): Promise<FormRefusal> {
+  const s = await getSession();
+  try {
+    await saveCandidateEmailTemplate(s, { companyId: str(f, 'companyId'), kind: str(f, 'kind'), locale: str(f, 'locale'), subject: str(f, 'subject'), body: String(f.get('body') ?? '') });
+  } catch (e) {
+    return refusal(prev, f, e);
+  }
+  revalidatePath('/recruitment', 'layout');
+  redirect(withParam(emailSettingsPage(f), 'notice', 'saved'));
+}
+
+export async function resetCandidateEmailTemplateAction(f: FormData) {
+  return run(emailSettingsPage(f), (s) => resetCandidateEmailTemplate(s, { companyId: str(f, 'companyId'), kind: str(f, 'kind'), locale: str(f, 'locale') }));
+}
+
+/** An administrator sends a failed or uncertain e-mail again, acknowledging that the candidate may receive it twice. */
+export async function retryCandidateEmailAction(f: FormData) {
+  const url = back(f, `/recruitment/applications/${encodeURIComponent(str(f, 'applicationId'))}?tab=emails`);
+  return run(url, (s) => retryCandidateEmail(s, { emailId: str(f, 'emailId'), acknowledged: f.get('acknowledged') === 'on' }), withParam(url, 'notice', 'email-retried'));
 }

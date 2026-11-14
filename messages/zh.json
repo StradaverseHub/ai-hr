@@ -38183,7 +38183,15 @@
       "room_booked": "该会议室在重叠的时间已被另一场面试预订。请选择其他会议室或时间。",
       "map_link_https": "地图链接必须是完整的 https:// 地址。",
       "setup_limit": "已达到允许的上限（小组 100 个、问题 500 个、地址 100 个、每个地址 50 间会议室、每个评分卡模板 30 个问题）。请先移除不再使用的项目。",
-      "no_interviewers": "所选小组中没有可为本公司面试的成员。请选择人员或其他小组。"
+      "no_interviewers": "所选小组中没有可为本公司面试的成员。请选择人员或其他小组。",
+      "email_unavailable": "本系统无法使用候选人邮件。",
+      "email_off": "本公司的候选人邮件已关闭。管理员可在“设置 › 候选人邮件”中开启。",
+      "email_placeholder": "只能使用列出的占位符（每个都放在花括号中），不能有其他花括号。",
+      "email_link": "候选人邮件中不允许包含链接。",
+      "email_hourly_limit": "本公司在过去一小时内已排队 500 封候选人邮件。未执行任何操作；请稍后再试，或不发送邮件继续。",
+      "email_changed": "邮件预览已更改（内容、发件人、候选人信息或地址）。未执行任何操作；请重新打开并检查将发送的内容。",
+      "email_not_retryable": "只有失败或不确定且内容仍保留的邮件才能重新发送。",
+      "email_too_long": "填入最长的姓名和职位后，此内容会过长。请缩短内容或减少占位符。"
     },
     "overview": {
       "purpose": "您所管理招聘的各公司今天的招聘工作。",
@@ -38464,7 +38472,8 @@
         "waiting": "等待期限",
         "groups": "面试官小组",
         "questions": "题库",
-        "places": "地址和会议室"
+        "places": "地址和会议室",
+        "email": "候选人邮件"
       },
       "iv": {
         "rulesTitle": "反馈规则",
@@ -40314,6 +40323,119 @@
         "deleteAddress": "删除地址",
         "newTitle": "新建面试地址"
       }
+    },
+    "candidateEmail": {
+      "defaults": {
+        "application_received": {
+          "subject": "我们已收到您对{jobTitle}职位的申请",
+          "body": "{candidateName}，您好：\n\n感谢您申请{companyName}的{jobTitle}职位。我们已收到您的申请，并将认真审阅。\n\n如果您的经历符合我们的要求，我们会与您联系，告知后续步骤。\n\n此致\n{senderName}"
+        },
+        "rejection": {
+          "subject": "关于您申请{jobTitle}职位的结果",
+          "body": "{candidateName}，您好：\n\n感谢您对{companyName}{jobTitle}职位的关注，以及您为申请所付出的时间。\n\n经过慎重考虑，我们决定不再推进您对该职位的申请。\n\n祝您求职顺利。\n\n此致\n{senderName}"
+        }
+      },
+      "settingsNote": "就候选人自己的申请给他们发送电子邮件：申请时发送确认函，并在有人选择时发送拒绝信。邮件通过本系统的邮件服务从其地址发出；您可设置候选人看到的发件人名称和回复地址。",
+      "unavailable": "本系统无法使用候选人邮件：需要内置登录和邮件服务，并有可用的邮件连接。不会发送或排队任何邮件。",
+      "dataNote": "开启后，本系统的邮件服务商将处理候选人的姓名和电子邮件地址。请确保您的数据处理协议涵盖候选人。",
+      "enabled": "向候选人发送邮件",
+      "senderName": "发件人名称（最多 {max} 个字符）",
+      "senderNameHint": "留空则使用 {name}。",
+      "replyTo": "回复地址",
+      "replyToHint": "候选人的回复会发到这里。开启候选人邮件时必填。",
+      "locale": "候选人邮件的语言",
+      "localeHint": "候选人没有记录的语言，因此本公司的候选人邮件都使用此语言。",
+      "save": "保存",
+      "changed": "由 {by} 于 {at} 修改",
+      "unnamedUser": "未命名用户",
+      "countsTitle": "最近 30 天的候选人邮件",
+      "templatesTitle": "邮件内容",
+      "templatesNote": "每种邮件在每种语言下都有默认内容。您可以为本公司修改。主题和正文为纯文本；不含链接、图片或附件。",
+      "templateLanguage": "显示以下语言的内容",
+      "showLanguage": "显示",
+      "kinds": {
+        "application_received": "已收到申请",
+        "rejection": "拒绝"
+      },
+      "kindNotes": {
+        "application_received": "HR 添加候选人并勾选“发送确认函”时发送。导入的候选人从不发送。招聘页面的申请人暂不发送确认函：其地址尚未验证。",
+        "rejection": "仅在拒绝或归档的人查看邮件后勾选“发送拒绝邮件”时发送。"
+      },
+      "subject": "主题（最多 {max} 个字符）",
+      "body": "正文（最多 {max} 个字符）",
+      "placeholders": "占位符，会按每位候选人填入：{list}",
+      "customised": "已为本公司修改",
+      "usingDefault": "默认内容",
+      "saveTemplate": "保存内容",
+      "resetTemplate": "使用默认内容",
+      "fieldRequired": "必填",
+      "fieldInvalid": "请检查：纯文本且不超过限制，只使用列出的占位符，不含链接。",
+      "send": "发送拒绝邮件",
+      "sendNote": "发送至 {address}。除非勾选此项，否则不会发送任何邮件。",
+      "noAddress": "此候选人没有可用的电子邮件地址，因此无法发送邮件。",
+      "delay": "发送时间",
+      "delays": {
+        "0": "立即",
+        "1": "1 天后",
+        "2": "2 天后",
+        "3": "3 天后"
+      },
+      "preview": "邮件预览",
+      "fromLine": "发件人：{name} · 回复至：{replyTo}",
+      "subjectLine": "主题：{subject}",
+      "bulkSend": "向每位被归档的候选人发送拒绝邮件",
+      "bulkNote": "每份实际归档的申请发送一封邮件，发到候选人记录的地址；没有地址的候选人将被跳过。每位候选人的预览在其姓名下方。",
+      "sendReceipt": "发送确认函",
+      "sendReceiptNote": "通过邮件告知候选人已收到其申请（仅当其公司已开启候选人邮件）。",
+      "notice": {
+        "rejectedQueued": "已拒绝。拒绝邮件已排队。",
+        "rejectedNoEmail": "已拒绝。未发送邮件：候选人没有可用的电子邮件地址。",
+        "receiptQueued": "已保存。确认函邮件已排队。",
+        "receiptNoEmail": "已保存。未发送确认函：候选人没有可用的电子邮件地址。",
+        "bulk": "{queued, plural, other {已排队 # 封拒绝邮件}}{skipped, plural, =0 {} other {；# 位候选人未发送邮件（没有可用地址、姓名或职位名称看起来像链接，或未显示预览）}}。",
+        "retried": "该邮件已重新排队发送。",
+        "rejectedValueLink": "已拒绝。未发送邮件：候选人姓名或职位名称看起来像链接或网址。",
+        "rejectedNotPreviewed": "已拒绝。未发送邮件：未显示其预览。",
+        "receiptValueLink": "已保存。未发送确认函：候选人姓名或职位名称看起来像链接或网址。"
+      },
+      "tab": "邮件",
+      "listEmpty": "尚未就此申请为该候选人排队任何邮件。",
+      "listNote": "就此申请发给候选人的邮件。地址和内容在邮件最终状态后保留 90 天。",
+      "states": {
+        "queued": "已排队",
+        "sending": "发送中",
+        "sent": "已发送",
+        "failed": "失败",
+        "uncertain": "不确定"
+      },
+      "stateNotes": {
+        "sent": "邮件服务已接收。未确认是否已送达候选人收件箱。",
+        "uncertain": "邮件服务可能已收到，也可能未收到。系统不会自动重发。",
+        "failed": "未发送。"
+      },
+      "errorCodes": {
+        "relayUnavailable": "邮件服务不可用。",
+        "notEligible": "发送前候选人邮件已被关闭。",
+        "smtpTemporary": "邮件服务多次拒绝了该邮件。",
+        "smtpRejected": "邮件服务拒绝了该邮件。",
+        "smtpAuthentication": "邮件服务不接受本系统的登录。",
+        "smtpTls": "无法与邮件服务建立安全连接。",
+        "uncertain": "邮件服务的回复丢失或不明确。",
+        "invalidMessage": "邮件在到达邮件服务之前被拒绝，未发送。",
+        "relayPreparation": "无法准备与邮件服务的连接（登录或设置），未发送。"
+      },
+      "queuedBy": "由 {name} 于 {at} 排队",
+      "queuedByApplicant": "候选人申请时排队，{at}",
+      "sendAfter": "自 {at} 起发送",
+      "finishedAt": "最后更新 {at}",
+      "attempts": "{n, plural, other {# 次尝试}}",
+      "retriedBy": "由 {name} 于 {at} 重新发送",
+      "purged": "地址和内容已在最终状态 90 天后删除。",
+      "to": "收件人：{address}",
+      "showContent": "显示邮件",
+      "retry": "重新发送",
+      "retryAck": "我了解候选人可能会收到两次此邮件。",
+      "valueLink": "无法发送此邮件：候选人姓名或职位名称看起来像链接或网址。"
     }
   },
   "careersPublic": {

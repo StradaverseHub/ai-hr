@@ -52,6 +52,9 @@ export function SuggestedArchiveForm({ action, jobId, names, labels, children }:
         {state.status === 'done' && state.archivedText && (
           <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">{state.archivedText}</p>
         )}
+        {state.status === 'done' && state.emailText && (
+          <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">{state.emailText}</p>
+        )}
         {state.status === 'done' && (state.refused?.length ?? 0) > 0 && (
           <div className="rounded-lg border border-destructive/40 px-3 py-2 text-sm">
             <p className="font-medium">{labels.refusedTitle}</p>

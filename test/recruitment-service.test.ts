@@ -264,14 +264,15 @@ describe('case 8 — users without access cannot read or move applications', () 
     // test/recruitment-candidate-privacy.test.ts, test/recruitment-referrals.test.ts, test/recruitment-careers.test.ts,
     // test/recruitment-tasks.test.ts, test/recruitment-agencies.test.ts, test/recruitment-screening.test.ts, test/recruitment-pools.test.ts,
     // test/recruitment-blocked-list.test.ts, test/recruitment-custom-fields.test.ts, test/recruitment-position-templates.test.ts, test/recruitment-import.test.ts,
-    // test/recruitment-export.test.ts, test/recruitment-waiting.test.ts and test/recruitment-interview-setup.test.ts check them in detail.
+    // test/recruitment-export.test.ts, test/recruitment-waiting.test.ts, test/recruitment-interview-setup.test.ts and test/recruitment-candidate-email.test.ts check them in detail.
     expect(rows.map((r) => r.relname)).toEqual([
       'recruitment_agency', 'recruitment_agency_consultant', 'recruitment_agency_contract', 'recruitment_agency_contract_terms', 'recruitment_agency_contract_user',
       'recruitment_agency_submission', 'recruitment_agency_tag', 'recruitment_agency_tag_link',
       'recruitment_application', 'recruitment_application_event', 'recruitment_application_review_mark', 'recruitment_approval_step', 'recruitment_archive_reason',
       'recruitment_background_check', 'recruitment_background_check_detail', 'recruitment_background_check_file', 'recruitment_background_check_type',
       'recruitment_background_check_type_link', 'recruitment_blocked_entry', 'recruitment_blocked_entry_restricted', 'recruitment_blocked_history', 'recruitment_candidate',
-      'recruitment_candidate_consent', 'recruitment_candidate_custom_restricted', 'recruitment_candidate_custom_value', 'recruitment_candidate_entry', 'recruitment_candidate_file',
+      'recruitment_candidate_consent', 'recruitment_candidate_custom_restricted', 'recruitment_candidate_custom_value', 'recruitment_candidate_email',
+      'recruitment_candidate_email_setting', 'recruitment_candidate_email_template', 'recruitment_candidate_entry', 'recruitment_candidate_file',
       'recruitment_candidate_import', 'recruitment_candidate_import_note', 'recruitment_candidate_import_row', 'recruitment_candidate_restricted', 'recruitment_candidate_tag',
       'recruitment_careers_application', 'recruitment_careers_notice', 'recruitment_careers_site', 'recruitment_company_setting', 'recruitment_custom_field', 'recruitment_custom_field_option', 'recruitment_evaluation_form', 'recruitment_export_template', 'recruitment_hire_handoff', 'recruitment_import_preview_quota', 'recruitment_interview', 'recruitment_interview_address', 'recruitment_interview_interviewer',
       'recruitment_interview_question', 'recruitment_interview_question_link', 'recruitment_interview_room', 'recruitment_interviewer_group', 'recruitment_interviewer_group_member',

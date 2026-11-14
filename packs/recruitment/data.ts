@@ -44,6 +44,7 @@ import {
 import { customFilterKey, type RawCustomValues } from './custom-field-model';
 import { cutoffRelation, stageEnteredDayOf, stageEnteredDaySql, waitingContextTx } from './waiting-store';
 import { cancelFutureInterviewsTx } from './interview-closing';
+import { parseRejectionEmailChoice, queueCandidateEmailsTx, type RejectionEmailChoice } from './candidate-email';
 import { WAITING_BOARD_SCAN_LIMIT, WAITING_SCAN_LIMIT, parseWaitingFilter, waitingDays, waitingLevel, type WaitingFilter } from './waiting-model';
 import {
   CANDIDATE_SOURCES, DEFAULT_REPEAT_WINDOW_MONTHS, ID_TYPES, normEmail, normIdNumber, normMobile, normName, repeatApplicationBlocked,
@@ -1137,6 +1138,8 @@ export async function duplicateCheckTx(tx: Tx, companyId: string, probe: Probe):
 export type AddApplicationInput = { jobId?: unknown } & CandidateInput & {
   /** Slice 5: the candidate's source (choice), ID type and number (restricted), and how a possible duplicate is resolved. */
   candidateSource?: unknown; idType?: unknown; idNumber?: unknown; existingCandidateId?: unknown; confirmSeparate?: unknown;
+  /** Slice 19: "Send receipt" (unticked by default): queue the application-received e-mail in the same transaction. */
+  sendReceipt?: unknown;
 };
 
 function addProbe(input: AddApplicationInput) {
@@ -1185,14 +1188,15 @@ export async function checkDuplicateCandidate(s: SessionContext, input: AddAppli
  * separate candidate (`confirmSeparate`) or adds the application to the existing candidate (`existingCandidateId`) — a
  * job operator cannot resolve it. A repeated application to the same job follows the company's window.
  */
-export async function addApplication(s: SessionContext, input: AddApplicationInput): Promise<{ applicationId: string; candidateId: string }> {
+export async function addApplication(s: SessionContext, input: AddApplicationInput): Promise<{ applicationId: string; candidateId: string; receipt?: 'queued' | 'no_email' | 'value_link' }> {
   const v = addProbe(input);
   if (!isUuid(input.jobId)) throw new RecruitmentError('missing_fields', ['job']);
   const user = actorId(s);
   const existing = input.existingCandidateId == null || input.existingCandidateId === '' ? null : input.existingCandidateId;
   if (existing !== null && !isUuid(existing)) throw new RecruitmentError('not_found');
   // A refused possible duplicate commits its audit event (nothing else has been written yet), then the refusal is thrown.
-  const outcome = await withRecruitmentTenant(s, async (tx): Promise<{ applicationId: string; candidateId: string } | 'duplicate'> => {
+  const sendReceipt = input.sendReceipt === true || input.sendReceipt === 'on' || input.sendReceipt === 'true';
+  const outcome = await withRecruitmentTenant(s, async (tx): Promise<{ applicationId: string; candidateId: string; receipt?: 'queued' | 'no_email' | 'value_link' } | 'duplicate'> => {
     // The job's recruiter and assistants may add applications to it, as administrators may (slice 2).
     const job = await jobTx(tx, s, input.jobId as string, 'operate');
     if (job.status === 'closed') throw new RecruitmentError('job_closed');
@@ -1237,6 +1241,12 @@ export async function addApplication(s: SessionContext, input: AddApplicationInp
     if (existing) {
       await appendEvent(tx, { tenantId: s.tenantId, aggregateType: 'recruitment-application', aggregateId: applicationId, eventType: 'recruitment-application.added-to-existing-candidate',
         actor: actorOf(s), payload: { companyId: job.companyId, candidateId, jobId: job.id } });
+    }
+    // Slice 19: the receipt only when the person ticked it (imports never send); a candidate without an e-mail is skipped and the
+    // person is told.
+    if (sendReceipt) {
+      const r = await queueCandidateEmailsTx(tx, s, { companyId: job.companyId, kind: 'application_received', applicationIds: [applicationId] });
+      return { applicationId, candidateId, receipt: r.queued.length ? 'queued' as const : r.valueLink.length ? 'value_link' as const : 'no_email' as const };
     }
     return { applicationId, candidateId };
   });
@@ -1313,11 +1323,19 @@ export async function moveApplicationTx(tx: Tx, s: SessionContext, applicationId
   return { state: 'active', stageId: plan.to };
 }
 
-/** Reject: an archive reason of the application's company is mandatory; the application keeps the stage it left. */
-export async function rejectApplication(s: SessionContext, applicationId: unknown, archiveReasonId: unknown): Promise<void> {
-  await withRecruitmentTenant(s, async (tx) => {
+/**
+ * Reject: an archive reason of the application's company is mandatory; the application keeps the stage it left. Slice 19: when the
+ * person ticked "Send rejection e-mail" (after its preview), the e-mail is queued in the same transaction with the delay they chose;
+ * `email` says whether it was queued or skipped because the candidate has no e-mail.
+ */
+export async function rejectApplication(s: SessionContext, applicationId: unknown, archiveReasonId: unknown, emailChoice?: RejectionEmailChoice): Promise<{ email: 'queued' | 'no_email' | 'value_link' | 'not_previewed' | null }> {
+  const email = parseRejectionEmailChoice(emailChoice, isUuid(applicationId) ? applicationId : undefined);
+  return withRecruitmentTenant(s, async (tx) => {
     const { app } = await applicationTx(tx, s, applicationId);
     await archiveApplicationsTx(tx, s, app.companyId, [{ id: app.id, currentStageId: app.currentStageId }], archiveReasonId);
+    if (!email) return { email: null };
+    const r = await queueCandidateEmailsTx(tx, s, { companyId: app.companyId, kind: 'rejection', applicationIds: [app.id], ...email });
+    return { email: r.queued.length ? 'queued' as const : r.valueLink.length ? 'value_link' as const : r.notPreviewed.length ? 'not_previewed' as const : 'no_email' as const };
   });
 }
 

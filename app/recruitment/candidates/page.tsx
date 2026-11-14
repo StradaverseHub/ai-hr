@@ -4,11 +4,11 @@ import { requireModule } from '@/lib/authz';
 import { scopedSession } from '@/lib/scope';
 import { ErrorBanner, Field, PageHeader, btnGhost, btnPrimary } from '@/components/ui';
 import { cn } from '@/lib/utils';
-import { applicationHistory, candidateBoard, poolChoices, ASSIGNMENT_STATUSES, SCREENING_STATUS_WINDOW, WAITING_SCAN_LIMIT, CANDIDATE_SOURCES, ID_TYPES, RecruitmentError, type ApplicationHistoryRow } from '@/packs/recruitment/service';
+import { applicationHistory, candidateBoard, candidateEmailComposers, poolChoices, rejectionEmailPreviews, ASSIGNMENT_STATUSES, SCREENING_STATUS_WINDOW, WAITING_SCAN_LIMIT, CANDIDATE_SOURCES, ID_TYPES, REJECTION_EMAIL_DELAYS, RecruitmentError, type ApplicationCard, type ApplicationHistoryRow } from '@/packs/recruitment/service';
 import { moveApplicationAction, rejectApplicationAction, removeCandidateFromPoolAction } from '../actions';
 import { AddToPool } from '../pool-ui';
 import { NoRecruitmentCompany, Notice, Pill, RecruitmentTabs, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../shared';
-import { RejectDialog } from './reject-dialog';
+import { RejectDialog, type RejectEmailOffer } from './reject-dialog';
 import { AddApplicationForm } from './add-application-form';
 import { AgencyReviewList, AgencySubmissionPanel } from './agency-panel';
 import { SCREENING_SEND_FORM, ScreeningSendPanel } from './screening-panel';
@@ -58,6 +58,20 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
   const tabLabel = (key: string, name: string) => (key === 'hired' ? t('hired') : key === 'archived' ? t('archived') : name);
   const openJobs = board.jobs.filter((j) => j.status !== 'closed' && j.canOperate);
   const rejectLabels = { open: t('reject'), title: t('rejectTitle'), reason: t('rejectReason'), choose: t('choose'), external: t('externalReason'), confirm: t('rejectConfirm'), cancel: t('cancel') };
+  // Slice 19: the rejection e-mail offered in each card's reject dialog, rendered exactly as it would be queued (companies whose candidate
+  // e-mail is on, on an installation that can send; one set-based read for the cards, no query per card). Each preview carries its own
+  // fingerprint: a change before the reject is submitted refuses it.
+  const [te, previews, receiptComposers] = await Promise.all([getTranslations('recruitment.candidateEmail'),
+    rejectionEmailPreviews(s, board.cards.filter((c) => c.state === 'active' && c.canReview && !c.removed).map((c) => c.id)),
+    candidateEmailComposers(s, [...new Set(openJobs.map((j) => j.companyId))], 'application_received')]);
+  const emailOffer = (card: ApplicationCard): RejectEmailOffer | null => {
+    const p = previews[card.id];
+    if (!p) return null;
+    return { address: p.recipient, blocked: p.blocked === 'no_address' ? te('noAddress') : p.blocked === 'value_link' ? te('valueLink') : null,
+      fromLine: te('fromLine', { name: p.senderName, replyTo: p.replyTo }), subjectLine: te('subjectLine', { subject: p.subject }), text: p.text,
+      fingerprint: p.fingerprint, labels: { send: te('send'), sendNote: te('sendNote', { address: p.recipient ?? '' }), delay: te('delay'),
+        delays: REJECTION_EMAIL_DELAYS.map((d) => ({ value: String(d), label: te(`delays.${d}`) })), preview: te('preview') } };
+  };
   return (
     <div className="w-full space-y-5">
       <PageHeader title={nav('recruitment')} description={t('purpose')} actions={access.poolCompanies.length > 0 ? (
@@ -67,7 +81,10 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
         </div>
       ) : undefined} />
       <RecruitmentTabs active="candidates" admin={access.isAdmin} approvals={access.pendingApprovals} reports={access.reportCompanies.length > 0}  screening={access.pendingScreening} pools={access.poolCompanies.length > 0} />
-      <Notice text={sp.notice === 'saved' ? t('savedNotice') : sp.notice === 'screening-sent' ? ts('sentNotice')
+      <Notice text={sp.notice === 'saved' ? t('savedNotice') : sp.notice === 'rejected-email' ? te('notice.rejectedQueued') : sp.notice === 'rejected-no-email' ? te('notice.rejectedNoEmail')
+        : sp.notice === 'rejected-value-link' ? te('notice.rejectedValueLink') : sp.notice === 'rejected-not-previewed' ? te('notice.rejectedNotPreviewed')
+        : sp.notice === 'receipt-queued' ? te('notice.receiptQueued') : sp.notice === 'receipt-no-email' ? te('notice.receiptNoEmail')
+        : sp.notice === 'receipt-value-link' ? te('notice.receiptValueLink') : sp.notice === 'screening-sent' ? ts('sentNotice')
         : sp.notice === 'screening-sent-held' ? tp('notice.screeningHeld', { n: Math.max(1, Number.parseInt(sp.held ?? '1', 10) || 1) })
         : sp.notice === 'pool-added' ? tp('notice.added') : sp.notice === 'pool-removed' ? tp('notice.removed')
         : sp.notice === 'agency-accepted' || sp.notice === 'agency-waiting' ? await agencyNotice(sp.notice) : undefined} />
@@ -237,7 +254,7 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
                         )}
                         {card.state === 'active' && card.canReview && (
                           <RejectDialog action={rejectApplicationAction} applicationId={card.id} returnTo={here} candidateName={card.candidateName}
-                            reasons={board.reasons.filter((r) => r.companyId === card.companyId)} labels={rejectLabels} />
+                            reasons={board.reasons.filter((r) => r.companyId === card.companyId)} labels={rejectLabels} email={emailOffer(card)} />
                         )}
                         {card.state === 'active' && card.canOperate && !sendable.includes(card) && (
                           <Link href={`${query({ job: card.jobId, send: card.id, screening: undefined, application: undefined })}#screening-send-panel`} className="text-sm text-primary hover:underline">{ts('send')}</Link>
@@ -291,6 +308,7 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
                   idTypes={ID_TYPES.map((v) => ({ value: v, label: tc(`idTypes.${v}`) }))}
                   matchLabels={{ idNumber: tc('match.idNumber'), email: tc('match.email'), name: tc('match.name'), mobile: tc('match.mobile') }}
                   stateLabels={{ active: tc('appStates.active'), hired: tc('appStates.hired'), archived: tc('appStates.archived') }}
+                  receipt={Object.keys(receiptComposers).length ? { label: te('sendReceipt'), note: te('sendReceiptNote') } : null}
                   labels={{
                     job: t('job'), choose: t('choose'), required: t('required'), fullName: t('fullName'), email: t('email'), phone: t('phone'),
                     idType: tc('idType'), idNumber: tc('idNumber'), idNone: tc('idNone'), source: t('source'), add: t('add'), adding: tc('adding'),

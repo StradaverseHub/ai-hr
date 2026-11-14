@@ -10,6 +10,7 @@ async function main(){
   import('../packs/contracts/service'),import('../packs/performance/service'),import('../core/notifications'),import('../core/notification-email-delivery'),
   import('../core/letter-email-delivery'),import('../core/letter-automation'),import('../core/letter-notifications'),import('../core/notice-projection'),import('./lib/notification-sweep-role'),
   import('../core/job-run'),import('../lib/notification-scheduling-evidence'),import('../core/orchestrator-harness'),import('./lib/notification-projection-backlog')]);
+ const {deliverCandidateEmails}=await import('../packs/recruitment/service');
  const url=process.env.MIGRATION_DATABASE_URL;if(!url)throw new Error('Migration database required');
  const owner=createDb(url);let failed=0,tenantsProcessed=0,tenantsFailed=0,tenantsSkipped=0,fatal=false;
  const counters=notificationProjectionCounters();let run:StartedJobRun|undefined;
@@ -39,6 +40,10 @@ async function main(){
      try{const contracts=await sweepContractManagement(ctx,owner);if(contracts.failed>0)failed++;console.log(JSON.stringify({tenantId:tenant.id,contracts}));}catch{failed++;console.error('Contract maintenance failed for tenant '+tenant.id);}
     }
     const letterAutomation=await sweepLetterAutomationFromSweep(ctx,owner);if(letterAutomation.failed>0)failed++;console.log(JSON.stringify({tenantId:tenant.id,letterAutomation}));
+    // Recruitment candidate e-mail (slice 19): its own frozen delivery rows, independent of workflow notifications. Counts only in the log.
+    // Per-message outcomes (a bad address, a rejected recipient, an uncertain send) never fail the run; an exception or an operational
+    // failure of the relay (authentication, TLS, preparation) does, as for letter mail.
+    if(isModuleEnabled(ctx,'recruitment')){try{const candidateMail=await deliverCandidateEmails(ctx,owner);if(candidateMail.operational>0)failed++;console.log(JSON.stringify({tenantId:tenant.id,candidateMail}));}catch{failed++;console.error('Candidate e-mail delivery failed for tenant '+tenant.id);}}
     if(!notificationsEnabled)continue;
     await sweepAssessmentReminders(ctx);
     const noticeSweep=await createNoticeSweepAccess(ctx,owner);

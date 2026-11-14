@@ -38183,7 +38183,15 @@
       "room_booked": "Bilik itu sudah ditempah untuk temu duga lain pada masa yang bertindih. Pilih bilik atau masa lain.",
       "map_link_https": "Pautan peta mestilah alamat https:// yang lengkap.",
       "setup_limit": "Had maksimum telah dicapai (kumpulan 100, soalan 500, alamat 100, bilik 50 setiap alamat, soalan 30 setiap templat kad skor). Buang yang tidak digunakan lagi dahulu.",
-      "no_interviewers": "Kumpulan yang dipilih tiada ahli yang boleh menemu duga untuk syarikat ini. Pilih orang atau kumpulan lain."
+      "no_interviewers": "Kumpulan yang dipilih tiada ahli yang boleh menemu duga untuk syarikat ini. Pilih orang atau kumpulan lain.",
+      "email_unavailable": "E-mel calon tidak tersedia pada pemasangan ini.",
+      "email_off": "E-mel calon dimatikan untuk syarikat ini. Pentadbir boleh menghidupkannya di Tetapan › E-mel calon.",
+      "email_placeholder": "Gunakan hanya pemegang tempat yang disenaraikan, setiap satu dalam kurungan kerinting, dan tiada kurungan lain.",
+      "email_link": "Pautan tidak dibenarkan dalam e-mel calon.",
+      "email_hourly_limit": "Syarikat ini telah membaris gilir 500 e-mel calon dalam sejam yang lalu. Tiada apa-apa dilakukan; cuba lagi kemudian, atau teruskan tanpa e-mel.",
+      "email_changed": "Pratonton e-mel telah berubah (kata-kata, penghantar, butiran atau alamat calon). Tiada apa-apa dilakukan; buka semula dan semak apa yang akan dihantar.",
+      "email_not_retryable": "Hanya e-mel yang gagal atau tidak pasti dan kandungannya masih disimpan boleh dihantar semula.",
+      "email_too_long": "Dengan nama dan jawatan yang paling panjang diisi, kata-kata ini akan terlalu panjang. Pendekkan atau gunakan kurang pemegang tempat."
     },
     "overview": {
       "purpose": "Kerja pengambilan hari ini merentas syarikat yang pengambilannya anda uruskan.",
@@ -38464,7 +38472,8 @@
         "waiting": "Had menunggu",
         "groups": "Kumpulan penemu duga",
         "questions": "Bank soalan",
-        "places": "Alamat dan bilik"
+        "places": "Alamat dan bilik",
+        "email": "E-mel calon"
       },
       "iv": {
         "rulesTitle": "Peraturan maklum balas",
@@ -40314,6 +40323,119 @@
         "deleteAddress": "Padam alamat",
         "newTitle": "Alamat temu duga baharu"
       }
+    },
+    "candidateEmail": {
+      "defaults": {
+        "application_received": {
+          "subject": "Kami telah menerima permohonan anda untuk {jobTitle}",
+          "body": "Kepada {candidateName},\n\nTerima kasih kerana memohon jawatan {jobTitle} di {companyName}. Kami telah menerima permohonan anda dan akan menelitinya dengan teliti.\n\nJika pengalaman anda sepadan dengan keperluan kami, kami akan menghubungi anda mengenai langkah seterusnya.\n\nSekian, terima kasih.\n{senderName}"
+        },
+        "rejection": {
+          "subject": "Permohonan anda untuk {jobTitle}",
+          "body": "Kepada {candidateName},\n\nTerima kasih atas minat anda terhadap jawatan {jobTitle} di {companyName} dan atas masa yang anda luangkan untuk permohonan ini.\n\nSetelah pertimbangan yang teliti, kami memutuskan untuk tidak meneruskan permohonan anda bagi jawatan ini.\n\nKami mendoakan kejayaan anda.\n\nSekian, terima kasih.\n{senderName}"
+        }
+      },
+      "settingsNote": "E-mel calon tentang permohonan mereka sendiri: resit apabila mereka memohon dan, apabila seseorang memilih, surat penolakan. E-mel dihantar melalui perkhidmatan mel pemasangan ini daripada alamatnya; anda tetapkan nama yang dilihat calon dan alamat untuk balasan mereka.",
+      "unavailable": "E-mel calon tidak tersedia pada pemasangan ini: ia memerlukan log masuk dan perkhidmatan mel terbina dalam dengan sambungan mel yang aktif. Tiada apa-apa dihantar atau dibaris gilir.",
+      "dataNote": "Apabila ini dihidupkan, penyedia mel pemasangan mengendalikan nama dan alamat e-mel calon. Pastikan perjanjian pemprosesan data anda meliputi calon.",
+      "enabled": "E-mel calon",
+      "senderName": "Nama penghantar (sehingga {max} aksara)",
+      "senderNameHint": "Biarkan kosong untuk menggunakan {name}.",
+      "replyTo": "Alamat balasan",
+      "replyToHint": "Balasan calon dihantar ke sini. Wajib apabila e-mel calon dihidupkan.",
+      "locale": "Bahasa e-mel calon",
+      "localeHint": "Calon tidak mempunyai bahasa yang direkodkan, jadi e-mel calon syarikat ini ditulis dalam bahasa ini.",
+      "save": "Simpan",
+      "changed": "Diubah oleh {by} pada {at}",
+      "unnamedUser": "Pengguna tanpa nama",
+      "countsTitle": "E-mel calon dalam 30 hari lepas",
+      "templatesTitle": "Kata-kata",
+      "templatesNote": "Setiap e-mel mempunyai kata-kata lalai dalam setiap bahasa. Anda boleh mengubahnya untuk syarikat ini. Subjek dan kandungan ialah teks biasa; tiada pautan, imej atau lampiran.",
+      "templateLanguage": "Tunjukkan kata-kata dalam",
+      "showLanguage": "Tunjuk",
+      "kinds": {
+        "application_received": "Permohonan diterima",
+        "rejection": "Penolakan"
+      },
+      "kindNotes": {
+        "application_received": "Dihantar apabila HR menambah calon dan menandakan Hantar resit. Tidak sekali-kali untuk calon yang diimport. Pemohon halaman kerjaya belum menerima resit: alamat mereka belum disahkan.",
+        "rejection": "Dihantar hanya apabila orang yang menolak atau mengarkibkan menandakan Hantar e-mel penolakan selepas melihatnya."
+      },
+      "subject": "Subjek (sehingga {max} aksara)",
+      "body": "Kandungan (sehingga {max} aksara)",
+      "placeholders": "Pemegang tempat, diisi untuk setiap calon: {list}",
+      "customised": "Diubah untuk syarikat ini",
+      "usingDefault": "Kata-kata lalai",
+      "saveTemplate": "Simpan kata-kata",
+      "resetTemplate": "Guna kata-kata lalai",
+      "fieldRequired": "Wajib",
+      "fieldInvalid": "Semak ini: teks biasa dalam had, hanya pemegang tempat yang disenaraikan dan tiada pautan.",
+      "send": "Hantar e-mel penolakan",
+      "sendNote": "Kepada {address}. Tiada apa-apa dihantar melainkan anda menandakan ini.",
+      "noAddress": "Calon ini tiada alamat e-mel yang boleh digunakan, jadi tiada e-mel boleh dihantar.",
+      "delay": "Hantar",
+      "delays": {
+        "0": "Sekarang",
+        "1": "Dalam 1 hari",
+        "2": "Dalam 2 hari",
+        "3": "Dalam 3 hari"
+      },
+      "preview": "Pratonton e-mel",
+      "fromLine": "Daripada: {name} · Balasan ke: {replyTo}",
+      "subjectLine": "Subjek: {subject}",
+      "bulkSend": "Hantar e-mel penolakan kepada setiap calon yang diarkibkan",
+      "bulkNote": "Satu e-mel bagi setiap permohonan yang benar-benar diarkibkan, ke alamat calon yang direkodkan; calon tanpa alamat dilangkau. Pratonton setiap calon ada di bawah namanya.",
+      "sendReceipt": "Hantar resit",
+      "sendReceiptNote": "E-mel calon bahawa permohonan mereka telah diterima (apabila syarikat mereka menghidupkan e-mel calon).",
+      "notice": {
+        "rejectedQueued": "Ditolak. E-mel penolakan telah dibaris gilir.",
+        "rejectedNoEmail": "Ditolak. Tiada e-mel dihantar: calon tiada alamat e-mel yang boleh digunakan.",
+        "receiptQueued": "Disimpan. E-mel resit telah dibaris gilir.",
+        "receiptNoEmail": "Disimpan. Tiada resit dihantar: calon tiada alamat e-mel yang boleh digunakan.",
+        "bulk": "{queued, plural, other {# e-mel penolakan dibaris gilir}}{skipped, plural, =0 {} other {; # calon tidak dihantar e-mel (tiada alamat yang boleh digunakan, nama atau jawatan kelihatan seperti pautan, atau tiada pratonton ditunjukkan)}}.",
+        "retried": "E-mel dibaris gilir untuk dihantar semula.",
+        "rejectedValueLink": "Ditolak. Tiada e-mel dihantar: nama calon atau jawatan kelihatan seperti pautan atau alamat web.",
+        "rejectedNotPreviewed": "Ditolak. Tiada e-mel dihantar: pratontonnya tidak ditunjukkan.",
+        "receiptValueLink": "Disimpan. Tiada resit dihantar: nama calon atau jawatan kelihatan seperti pautan atau alamat web."
+      },
+      "tab": "E-mel",
+      "listEmpty": "Tiada e-mel dibaris gilir untuk calon ini tentang permohonan ini.",
+      "listNote": "E-mel kepada calon tentang permohonan ini. Alamat dan kandungan disimpan selama 90 hari selepas status akhir e-mel.",
+      "states": {
+        "queued": "Dalam baris gilir",
+        "sending": "Sedang dihantar",
+        "sent": "Dihantar",
+        "failed": "Gagal",
+        "uncertain": "Tidak pasti"
+      },
+      "stateNotes": {
+        "sent": "Perkhidmatan mel menerimanya. Penghantaran ke peti masuk calon tidak disahkan.",
+        "uncertain": "Perkhidmatan mel mungkin atau mungkin tidak menerimanya. Ia tidak dihantar semula secara automatik.",
+        "failed": "Ia tidak dihantar."
+      },
+      "errorCodes": {
+        "relayUnavailable": "Perkhidmatan mel tidak tersedia.",
+        "notEligible": "E-mel calon dimatikan sebelum ia dihantar.",
+        "smtpTemporary": "Perkhidmatan mel menolaknya beberapa kali.",
+        "smtpRejected": "Perkhidmatan mel menolaknya.",
+        "smtpAuthentication": "Perkhidmatan mel tidak menerima log masuk pemasangan ini.",
+        "smtpTls": "Sambungan selamat ke perkhidmatan mel tidak dapat dibuat.",
+        "uncertain": "Jawapan daripada perkhidmatan mel hilang atau tidak jelas.",
+        "invalidMessage": "Mesej ditolak sebelum sampai ke perkhidmatan mel. Ia tidak dihantar.",
+        "relayPreparation": "Sambungan ke perkhidmatan mel tidak dapat disediakan (log masuk atau tetapan). Ia tidak dihantar."
+      },
+      "queuedBy": "Dibaris gilir oleh {name} pada {at}",
+      "queuedByApplicant": "Dibaris gilir apabila calon memohon, pada {at}",
+      "sendAfter": "Dihantar mulai {at}",
+      "finishedAt": "Kemas kini terakhir {at}",
+      "attempts": "{n, plural, other {# percubaan}}",
+      "retriedBy": "Dihantar semula oleh {name} pada {at}",
+      "purged": "Alamat dan kandungan dibuang 90 hari selepas status akhir.",
+      "to": "Kepada: {address}",
+      "showContent": "Tunjuk e-mel",
+      "retry": "Hantar semula",
+      "retryAck": "Saya faham calon mungkin menerima e-mel ini dua kali.",
+      "valueLink": "E-mel ini tidak boleh dihantar: nama calon atau jawatan kelihatan seperti pautan atau alamat web."
     }
   },
   "careersPublic": {

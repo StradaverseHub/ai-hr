@@ -18,8 +18,10 @@ export type AddApplicationLabels = {
   createSeparate: string; matchedOn: string; noApplications: string;
 };
 
-export function AddApplicationForm({ returnTo, jobs, defaultJob, sources, idTypes, matchLabels, stateLabels, labels }: {
+export function AddApplicationForm({ returnTo, jobs, defaultJob, sources, idTypes, matchLabels, stateLabels, labels, receipt }: {
   returnTo: string;
+  /** Slice 19: "Send receipt" (unticked by default), offered when a company of the open jobs e-mails candidates; null otherwise. */
+  receipt?: { label: string; note: string } | null;
   jobs: { id: string; label: string }[];
   defaultJob: string;
   sources: { value: string; label: string }[];
@@ -94,6 +96,12 @@ export function AddApplicationForm({ returnTo, jobs, defaultJob, sources, idType
             </>
           )}
         </div>
+      )}
+      {receipt && (
+        <label className="flex items-start gap-2 text-sm">
+          <input key={`r-${state.nonce ?? 0}`} type="checkbox" name="sendReceipt" defaultChecked={v.sendReceipt === 'on'} className="mt-0.5" />
+          <span>{receipt.label}<span className="block text-xs text-muted-foreground">{receipt.note}</span></span>
+        </label>
       )}
       <button type="submit" className={btnPrimary} disabled={pending}>{pending ? labels.adding : labels.add}</button>
     </form>

@@ -284,3 +284,22 @@ export type {
   InterviewType, InterviewStatus, CandidateResponse, EvaluationResult, FeedbackEditLock, EvaluationFormDefinition, OfferFieldType, OfferStatus,
   OfferValue, OfferLabel, CandidateDecision, RequisitionStatus, EffectiveRequisitionStatus, RequisitionApprovalStatus, ApprovalStepView,
 } from './hiring-model';
+// Slice 19 — candidate e-mail: the company's sender and templates (administrators), the previews people see, receipts HR ticks and
+// rejection letters queued with the action they belong to (careers-page receipts wait for slice 21, D-064), the application page's list, an administrator's retry, and the sweep
+// step that delivers through the embedded relay (5220; docs/adr/2026-11-14-recruitment-candidate-email.md).
+export {
+  candidateEmailComposers, previewCandidateEmail, candidateEmailSettings, saveCandidateEmailSettings, saveCandidateEmailTemplate, resetCandidateEmailTemplate,
+  applicationCandidateEmails, retryCandidateEmail, candidateEmailDefault, rejectionEmailPreviews, REJECTION_PREVIEW_LIMIT,
+} from './candidate-email';
+export type {
+  CandidateEmailComposer, CandidateEmailSettingsView, CandidateEmailTemplateView, CandidateEmailRow, ApplicationCandidateEmails, CandidateEmailQueueResult,
+  RejectionEmailChoice, RejectionEmailPreview,
+} from './candidate-email';
+export { deliverCandidateEmails, DELIVERY_BATCH as CANDIDATE_EMAIL_DELIVERY_BATCH } from './candidate-email-delivery';
+export type { CandidateEmailDeliveryResult } from './candidate-email-delivery';
+export {
+  CANDIDATE_EMAIL_KINDS, CANDIDATE_EMAIL_LOCALES, CANDIDATE_EMAIL_PLACEHOLDERS, CANDIDATE_EMAIL_SUBJECT_MAX, CANDIDATE_EMAIL_BODY_MAX,
+  CANDIDATE_EMAIL_SENDER_NAME_MAX, CANDIDATE_EMAIL_HOURLY_CAP, REJECTION_EMAIL_DELAYS, CANDIDATE_EMAIL_PURGE_DAYS, renderCandidateEmail,
+  validateCandidateEmailTemplate, validateCandidateEmailSettings, candidateEmailDisplayState, linkish, usableRecipient, defaultSenderName,
+} from './candidate-email-model';
+export type { CandidateEmailKind, CandidateEmailLocale, CandidateEmailDisplayState, RenderedCandidateEmail } from './candidate-email-model';

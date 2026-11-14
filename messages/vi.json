@@ -38183,7 +38183,15 @@
       "room_booked": "Phòng đó đã được đặt cho một buổi phỏng vấn khác vào thời gian trùng nhau. Hãy chọn phòng hoặc thời gian khác.",
       "map_link_https": "Liên kết bản đồ phải là một địa chỉ https:// đầy đủ.",
       "setup_limit": "Đã đạt mức tối đa cho phép (100 nhóm, 500 câu hỏi, 100 địa chỉ, 50 phòng mỗi địa chỉ, 30 câu hỏi mỗi mẫu phiếu đánh giá). Hãy xóa mục không còn dùng trước.",
-      "no_interviewers": "Các nhóm đã chọn không có thành viên nào có thể phỏng vấn cho công ty này. Hãy chọn người hoặc nhóm khác."
+      "no_interviewers": "Các nhóm đã chọn không có thành viên nào có thể phỏng vấn cho công ty này. Hãy chọn người hoặc nhóm khác.",
+      "email_unavailable": "Hệ thống này không hỗ trợ e-mail cho ứng viên.",
+      "email_off": "E-mail cho ứng viên đang tắt với công ty này. Quản trị viên có thể bật trong Cài đặt › E-mail ứng viên.",
+      "email_placeholder": "Chỉ dùng các phần giữ chỗ được liệt kê, mỗi phần trong dấu ngoặc nhọn, và không có dấu ngoặc nhọn nào khác.",
+      "email_link": "Không được phép có liên kết trong e-mail gửi ứng viên.",
+      "email_hourly_limit": "Công ty này đã xếp hàng 500 e-mail gửi ứng viên trong giờ qua. Chưa thực hiện gì; hãy thử lại sau, hoặc tiếp tục mà không gửi e-mail.",
+      "email_changed": "Bản xem trước e-mail đã thay đổi (nội dung, người gửi, thông tin hoặc địa chỉ ứng viên). Chưa thực hiện gì; hãy mở lại và kiểm tra nội dung sẽ được gửi.",
+      "email_not_retryable": "Chỉ có thể gửi lại e-mail thất bại hoặc không chắc chắn mà nội dung vẫn còn được lưu.",
+      "email_too_long": "Khi điền tên và chức danh dài nhất, nội dung này sẽ quá dài. Hãy rút ngắn hoặc dùng ít phần giữ chỗ hơn."
     },
     "overview": {
       "purpose": "Công việc tuyển dụng hôm nay tại các công ty mà bạn quản lý tuyển dụng.",
@@ -38464,7 +38472,8 @@
         "waiting": "Giới hạn chờ",
         "groups": "Nhóm người phỏng vấn",
         "questions": "Ngân hàng câu hỏi",
-        "places": "Địa chỉ và phòng"
+        "places": "Địa chỉ và phòng",
+        "email": "E-mail ứng viên"
       },
       "iv": {
         "rulesTitle": "Quy tắc đánh giá",
@@ -40314,6 +40323,119 @@
         "deleteAddress": "Xóa địa chỉ",
         "newTitle": "Địa chỉ phỏng vấn mới"
       }
+    },
+    "candidateEmail": {
+      "defaults": {
+        "application_received": {
+          "subject": "Chúng tôi đã nhận được đơn ứng tuyển của bạn cho vị trí {jobTitle}",
+          "body": "Kính gửi {candidateName},\n\nCảm ơn bạn đã ứng tuyển vị trí {jobTitle} tại {companyName}. Chúng tôi đã nhận được đơn ứng tuyển của bạn và sẽ xem xét cẩn thận.\n\nNếu kinh nghiệm của bạn phù hợp với yêu cầu, chúng tôi sẽ liên hệ với bạn về các bước tiếp theo.\n\nTrân trọng,\n{senderName}"
+        },
+        "rejection": {
+          "subject": "Đơn ứng tuyển của bạn cho vị trí {jobTitle}",
+          "body": "Kính gửi {candidateName},\n\nCảm ơn bạn đã quan tâm đến vị trí {jobTitle} tại {companyName} và đã dành thời gian cho đơn ứng tuyển.\n\nSau khi cân nhắc kỹ lưỡng, chúng tôi quyết định không tiếp tục với đơn ứng tuyển của bạn cho vị trí này.\n\nChúc bạn thành công trong quá trình tìm việc.\n\nTrân trọng,\n{senderName}"
+        }
+      },
+      "settingsNote": "Gửi e-mail cho ứng viên về chính đơn ứng tuyển của họ: thư xác nhận khi họ ứng tuyển và, khi có người chọn, thư từ chối. E-mail được gửi qua dịch vụ thư của hệ thống này từ địa chỉ của hệ thống; bạn đặt tên ứng viên nhìn thấy và địa chỉ nhận thư trả lời.",
+      "unavailable": "Hệ thống này không hỗ trợ e-mail cho ứng viên: cần đăng nhập và dịch vụ thư tích hợp với kết nối thư đang hoạt động. Không có gì được gửi hoặc xếp hàng.",
+      "dataNote": "Khi bật, nhà cung cấp dịch vụ thư của hệ thống sẽ xử lý tên và địa chỉ e-mail của ứng viên. Hãy đảm bảo thỏa thuận xử lý dữ liệu của bạn bao gồm ứng viên.",
+      "enabled": "Gửi e-mail cho ứng viên",
+      "senderName": "Tên người gửi (tối đa {max} ký tự)",
+      "senderNameHint": "Để trống để dùng {name}.",
+      "replyTo": "Địa chỉ trả lời",
+      "replyToHint": "Thư trả lời của ứng viên sẽ đến đây. Bắt buộc khi bật e-mail cho ứng viên.",
+      "locale": "Ngôn ngữ của e-mail gửi ứng viên",
+      "localeHint": "Ứng viên không có ngôn ngữ được ghi nhận, vì vậy e-mail gửi ứng viên của công ty này được viết bằng ngôn ngữ này.",
+      "save": "Lưu",
+      "changed": "Được {by} thay đổi vào {at}",
+      "unnamedUser": "Người dùng chưa đặt tên",
+      "countsTitle": "E-mail gửi ứng viên trong 30 ngày qua",
+      "templatesTitle": "Nội dung",
+      "templatesNote": "Mỗi e-mail có nội dung mặc định bằng từng ngôn ngữ. Bạn có thể thay đổi cho công ty này. Tiêu đề và nội dung là văn bản thuần; không có liên kết, hình ảnh hoặc tệp đính kèm.",
+      "templateLanguage": "Hiển thị nội dung bằng",
+      "showLanguage": "Hiển thị",
+      "kinds": {
+        "application_received": "Đã nhận đơn ứng tuyển",
+        "rejection": "Từ chối"
+      },
+      "kindNotes": {
+        "application_received": "Gửi khi HR thêm ứng viên và đánh dấu Gửi thư xác nhận. Không bao giờ gửi cho ứng viên được nhập. Người ứng tuyển qua trang tuyển dụng chưa nhận thư xác nhận: địa chỉ của họ chưa được xác minh.",
+        "rejection": "Chỉ gửi khi người từ chối hoặc lưu trữ đánh dấu Gửi e-mail từ chối sau khi xem."
+      },
+      "subject": "Tiêu đề (tối đa {max} ký tự)",
+      "body": "Nội dung (tối đa {max} ký tự)",
+      "placeholders": "Phần giữ chỗ, được điền cho từng ứng viên: {list}",
+      "customised": "Đã thay đổi cho công ty này",
+      "usingDefault": "Nội dung mặc định",
+      "saveTemplate": "Lưu nội dung",
+      "resetTemplate": "Dùng nội dung mặc định",
+      "fieldRequired": "Bắt buộc",
+      "fieldInvalid": "Kiểm tra lại: văn bản thuần trong giới hạn, chỉ dùng phần giữ chỗ được liệt kê và không có liên kết.",
+      "send": "Gửi e-mail từ chối",
+      "sendNote": "Đến {address}. Không có gì được gửi nếu bạn không đánh dấu mục này.",
+      "noAddress": "Ứng viên này không có địa chỉ e-mail hợp lệ được ghi nhận, nên không thể gửi e-mail.",
+      "delay": "Gửi",
+      "delays": {
+        "0": "Ngay",
+        "1": "Sau 1 ngày",
+        "2": "Sau 2 ngày",
+        "3": "Sau 3 ngày"
+      },
+      "preview": "Xem trước e-mail",
+      "fromLine": "Từ: {name} · Trả lời đến: {replyTo}",
+      "subjectLine": "Tiêu đề: {subject}",
+      "bulkSend": "Gửi e-mail từ chối cho từng ứng viên được lưu trữ",
+      "bulkNote": "Một e-mail cho mỗi đơn ứng tuyển thực sự được lưu trữ, đến địa chỉ đã ghi nhận của ứng viên; ứng viên không có địa chỉ sẽ được bỏ qua. Bản xem trước của từng ứng viên nằm dưới tên của họ.",
+      "sendReceipt": "Gửi thư xác nhận",
+      "sendReceiptNote": "Gửi e-mail cho ứng viên rằng đơn ứng tuyển của họ đã được nhận (khi công ty của họ bật e-mail cho ứng viên).",
+      "notice": {
+        "rejectedQueued": "Đã từ chối. E-mail từ chối đã được xếp hàng.",
+        "rejectedNoEmail": "Đã từ chối. Không gửi e-mail: ứng viên không có địa chỉ e-mail hợp lệ.",
+        "receiptQueued": "Đã lưu. E-mail xác nhận đã được xếp hàng.",
+        "receiptNoEmail": "Đã lưu. Không gửi thư xác nhận: ứng viên không có địa chỉ e-mail hợp lệ.",
+        "bulk": "{queued, plural, other {Đã xếp hàng # e-mail từ chối}}{skipped, plural, =0 {} other {; # ứng viên không được gửi e-mail (không có địa chỉ hợp lệ, tên hoặc chức danh trông giống liên kết, hoặc chưa hiển thị bản xem trước)}}.",
+        "retried": "E-mail đã được xếp hàng để gửi lại.",
+        "rejectedValueLink": "Đã từ chối. Không gửi e-mail: tên ứng viên hoặc chức danh trông giống liên kết hoặc địa chỉ web.",
+        "rejectedNotPreviewed": "Đã từ chối. Không gửi e-mail: bản xem trước chưa được hiển thị.",
+        "receiptValueLink": "Đã lưu. Không gửi thư xác nhận: tên ứng viên hoặc chức danh trông giống liên kết hoặc địa chỉ web."
+      },
+      "tab": "E-mail",
+      "listEmpty": "Chưa có e-mail nào được xếp hàng cho ứng viên này về đơn ứng tuyển này.",
+      "listNote": "E-mail gửi ứng viên về đơn ứng tuyển này. Địa chỉ và nội dung được giữ 90 ngày sau trạng thái cuối cùng của e-mail.",
+      "states": {
+        "queued": "Đang chờ",
+        "sending": "Đang gửi",
+        "sent": "Đã gửi",
+        "failed": "Thất bại",
+        "uncertain": "Không chắc chắn"
+      },
+      "stateNotes": {
+        "sent": "Dịch vụ thư đã nhận. Chưa xác nhận đã đến hộp thư của ứng viên.",
+        "uncertain": "Dịch vụ thư có thể đã nhận hoặc chưa. E-mail không được tự động gửi lại.",
+        "failed": "E-mail chưa được gửi."
+      },
+      "errorCodes": {
+        "relayUnavailable": "Dịch vụ thư không khả dụng.",
+        "notEligible": "E-mail cho ứng viên đã bị tắt trước khi gửi.",
+        "smtpTemporary": "Dịch vụ thư đã từ chối nhiều lần.",
+        "smtpRejected": "Dịch vụ thư đã từ chối.",
+        "smtpAuthentication": "Dịch vụ thư không chấp nhận đăng nhập của hệ thống này.",
+        "smtpTls": "Không thể tạo kết nối an toàn đến dịch vụ thư.",
+        "uncertain": "Phản hồi từ dịch vụ thư bị mất hoặc không rõ ràng.",
+        "invalidMessage": "Thư bị từ chối trước khi đến dịch vụ thư. Thư chưa được gửi.",
+        "relayPreparation": "Không thể chuẩn bị kết nối đến dịch vụ thư (đăng nhập hoặc cài đặt). Thư chưa được gửi."
+      },
+      "queuedBy": "{name} xếp hàng vào {at}",
+      "queuedByApplicant": "Xếp hàng khi ứng viên ứng tuyển, vào {at}",
+      "sendAfter": "Gửi từ {at}",
+      "finishedAt": "Cập nhật lần cuối {at}",
+      "attempts": "{n, plural, other {# lần thử}}",
+      "retriedBy": "{name} gửi lại vào {at}",
+      "purged": "Địa chỉ và nội dung đã bị xóa 90 ngày sau trạng thái cuối cùng.",
+      "to": "Đến: {address}",
+      "showContent": "Xem e-mail",
+      "retry": "Gửi lại",
+      "retryAck": "Tôi hiểu rằng ứng viên có thể nhận e-mail này hai lần.",
+      "valueLink": "Không thể gửi e-mail này: tên ứng viên hoặc chức danh trông giống liên kết hoặc địa chỉ web."
     }
   },
   "careersPublic": {

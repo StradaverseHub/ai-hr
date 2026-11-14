@@ -111,6 +111,13 @@ export const RECRUITMENT_ERROR_CODES = [
   // template the most questions); the chosen groups leave no one who can interview.
   'group_unavailable', 'question_in_use', 'question_retired', 'address_in_use', 'room_in_use', 'room_unavailable', 'room_booked',
   'map_link_https', 'setup_limit', 'no_interviewers',
+  // Slice 19: candidate e-mail cannot be sent on this installation (no embedded relay); the company's candidate e-mail is off; a
+  // template names a placeholder its kind does not have (or a stray brace); a template contains a link; the company has queued 500
+  // e-mails in the last hour; the preview changed (wording, sender, the candidate's details or address) or none was shown; the e-mail
+  // cannot be retried (not failed or uncertain, or its content was purged).
+  'email_unavailable', 'email_off', 'email_placeholder', 'email_link', 'email_hourly_limit', 'email_changed', 'email_not_retryable',
+  // …a template's worst case (every placeholder at its longest value) would not fit what is stored.
+  'email_too_long',
 ] as const;
 export type RecruitmentErrorCode = (typeof RECRUITMENT_ERROR_CODES)[number];
 
