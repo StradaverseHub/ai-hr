@@ -1431,3 +1431,118 @@ AI HR adds the first four; no meeting or calendar integrations (D-058).
 125. Company deletion covers the new tables; forced RLS and grants with none to PUBLIC.
 126. Rendered: creating a group, questions linked to a scorecard, an address with rooms; scheduling with a group and a
      room; the double-booking refusal; the interviewer seeing the questions.
+
+## Slice 19 — Candidate e-mail: sender, templates, delivery, receipts and rejection letters (owner: group 2, 2026-11-14; D-063, EV-018, EV-023)
+
+Moka sends rejection letters manually or automatically by e-mail or SMS, immediately or delayed (EV-018), and previews
+offer e-mails and SMS (EV-023); its message-template settings were not observed. AI HR sends candidates nothing today
+(D-029, slice 3 "Mark as sent"). The owner decided (D-063) that candidate e-mail uses the installation's existing mail
+service, people send rejections and offers after a preview, and receipts and reminders send automatically. A durable
+ADR (docs/adr/2026-11-14-recruitment-candidate-email.md) records why candidate e-mail may carry more than ADR-0034's
+"brief alert" minimum: the recipient is the data subject reading about their own application.
+
+### Sender and switch
+
+- Per company (recruitment administrators): a switch "E-mail candidates" (off by default), a sender display name
+  (≤80, default the company name) and a reply-to address (required when the switch is on; validated address, never an
+  address of the installation relay's own domain unless the relay allows it). The From address stays the
+  installation relay's (or the tenant's lifecycle sender profile when one is bound); only the display name and
+  reply-to vary per company.
+- Sending needs the embedded mail relay (`AUTH_PROVIDER=internal`) to be active; otherwise the settings page says
+  e-mail is unavailable on this installation and nothing is queued (the Keycloak socket service gains no route in
+  this slice).
+
+### Templates
+
+- Kinds in this slice: application received, rejection. Slice 20 adds interview invitation, interview reminder,
+  interview cancelled and offer. Each kind has code-owned default wording in all six app languages (messages files)
+  and an optional company override per language: subject (≤200) and body (≤5,000) as plain text with an allowlisted
+  set of placeholders per kind ({candidateName}, {jobTitle}, {companyName}, {senderName}; slice 20 adds interview and
+  offer fields). Unknown placeholders are refused on save; values are escaped; the body renders as text and simple
+  HTML (paragraphs and line breaks only); no images, attachments, links or tracking in this slice.
+- The language of an e-mail is the candidate's preferred language when recorded, else the company's default
+  language, else English.
+
+### Sending
+
+- Application received: queued automatically when an application is created from the careers page or by HR adding a
+  candidate with "send receipt" ticked (off by default for HR-added and imported candidates; imports never send).
+  At most one receipt per application.
+- Rejection: when a person rejects or archives an application (single or the slice 17 bulk action), the dialog offers
+  "Send rejection e-mail" with a rendered preview; nothing is sent unless the person ticks it. The bulk action sends
+  one e-mail per application that was actually archived. A rejection e-mail is queued with an optional delay chosen
+  by the person (now, 1, 2 or 3 days); a queued, unsent rejection is withdrawn if the application is reopened (no
+  reopen exists today) or the candidate is removed.
+- Each e-mail goes only to the candidate's recorded e-mail at queue time; a candidate without an e-mail is skipped
+  and the person is told. Never to a removed candidate. A per-company cap of 500 queued e-mails per hour (refused
+  above it, the person told).
+- Content is frozen at queue time (recipient, subject, text and HTML, sender name, reply-to). Delivery follows the
+  lifecycle v9 pattern: a sweep (in scripts/notification-email-sweep.ts) claims due rows with a lease, re-reads the
+  frozen row, commits a private start before SMTP, sends via the internal-auth relay, and records sent, retry
+  (4xx, at most 5 attempts with backoff), failed (5xx, auth, TLS) or uncertain (never replayed automatically).
+  Administrators can retry a failed or uncertain e-mail after acknowledging a possible duplicate. "Sent" means the
+  relay accepted it; there is no bounce handling.
+- The application page shows each candidate e-mail (kind, queued, sent or failed state, actor, time) and its
+  rendered content to people who could see that content anyway; the frozen body is purged 90 days after a final
+  state, keeping the metadata. Candidate removal deletes the candidate's e-mails; company deletion covers the tables.
+- AI Centre: counts only (e-mails queued, sent, failed per company), never content or addresses.
+
+### Data
+
+- One migration: company e-mail settings (columns on the recruitment company setting or a new table), template
+  override table (company, kind, locale), delivery table with frozen payload, lease, attempts, state and timestamps;
+  forced RLS, explicit grants, none to PUBLIC; administrator-only writes for settings and templates; queue inserts
+  only through the service with the actor recorded; owner-bound start/finish functions for the sweep (SECURITY
+  DEFINER, pinned search_path) that cannot be called with an arbitrary recipient or content. Restate the candidate
+  destruction and company deletion functions as previous body plus steps.
+
+### Slice 19 acceptance cases
+
+127. Only administrators change sender settings and templates (service and database); placeholders are allowlisted;
+     the switch off or no active relay means nothing is queued.
+128. A careers application queues exactly one receipt in the candidate's language; HR-added candidates only when
+     ticked; imports never.
+129. A rejection e-mail is sent only when the person ticks it, after a preview identical to what is sent; bulk sends
+     one per archived application; the delay is honoured; a removed candidate's queued e-mail is deleted.
+130. The sweep sends the frozen content to the frozen address through a faked transport; 4xx retries, 5xx fails,
+     unknown is uncertain and never replayed; an administrator retry needs the acknowledgement; concurrent sweeps
+     never send one row twice.
+131. Hiring managers and interviewers cannot read e-mail bodies of applications they cannot see; the AI Centre sees
+     counts only; the per-company hourly cap holds.
+132. Rendered: enabling e-mail with a sender name and reply-to; editing a template with a bad placeholder refused; a
+     careers application producing a receipt; a rejection with preview; the e-mail list on the application page.
+
+## Slice 20 — Candidate e-mail: interview invitations, reminders, cancellations and offers (owner: group 2, 2026-11-14; D-063, EV-023)
+
+### Interviews
+
+- Scheduling an interview (slice 2, 18) offers "E-mail the candidate an invitation" with a preview (default ticked
+  when company e-mail is on). The invitation carries the round, interview type, date, time and duration in Kuala
+  Lumpur time with the time zone named, and for on-site interviews the address and room name and map link (https,
+  from slice 18), or the free-text location. Interviewer names are not included. No accept link in this slice
+  (slice 21 adds signed accept links); the candidate replies to the company's reply-to.
+- A reminder is queued automatically 24 hours before an interview that had an invitation sent (company setting:
+  reminder on/off, default on; hours before: 2–72). Cancelling the interview, or its application closing, withdraws
+  an unsent reminder.
+- Cancelling an interview (person or slice 18's automatic cancel on close) offers "E-mail the candidate" with a
+  preview for a person's cancel; the automatic cancel on application close sends no cancellation (the rejection
+  e-mail, if sent, speaks for itself).
+
+### Offers
+
+- "Send offer by e-mail" on an Approved offer replaces "Mark as sent" for e-mail (Mark as sent remains for other
+  channels). The person sees the full rendered e-mail, including the offer fields the company marks "include in
+  e-mail" (salary and other money fields only when marked and only as entered by people, never computed), confirms,
+  and it is queued; the offer records the send (channel e-mail, time, actor) as Mark as sent does today. No PDF
+  attachment and no accept link in this slice.
+
+### Slice 20 acceptance cases
+
+133. An invitation contains exactly the interview's time (KL), type, address/room/map or location and nothing about
+     interviewers; it is queued only when ticked; the preview matches what is sent.
+134. Reminders queue once per invited interview at the configured offset and are withdrawn by cancellation or the
+     application closing; a reschedule-free model means no duplicate reminders.
+135. Offer e-mails are sent only by a person for an Approved offer, include only fields marked for e-mail, and record
+     the send; offers not approved cannot be e-mailed (service and database).
+136. Rendered: scheduling with an invitation preview; the reminder visible as queued; a cancellation e-mail; an offer
+     e-mail preview and send.
