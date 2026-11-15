@@ -37,8 +37,10 @@ it.each(['classic','monolith','atelier'] as const)('keeps AIHR %s chrome and the
  const trigger=screen.getByRole('button',{name:'On/Off Boarding'});if(trigger.getAttribute('aria-expanded')!=='true')fireEvent.click(trigger);
  const nav=within(screen.getByRole('navigation',{name:'On/Off Boarding'}));
  expect(nav.getAllByRole('button').map(button=>button.textContent?.trim())).toEqual(['Onboarding','Offboarding','Configuration']);
- expect(nav.getAllByRole('link')).toHaveLength(9);
- expect(nav.getByRole('link',{name:'Templates'}).getAttribute('aria-current')).toBe('page');
+ // ADR 2026-11-15-probation-shared-automation, decision 1: the V9 Templates row now sits in HR Automation.
+ expect(nav.getAllByRole('link')).toHaveLength(6);
+ const automationTrigger=screen.getByRole('button',{name:messages.nav.moduleHrAutomation});if(automationTrigger.getAttribute('aria-expanded')!=='true')fireEvent.click(automationTrigger);
+ expect(within(screen.getByRole('navigation',{name:messages.nav.moduleHrAutomation})).getByRole('link',{name:messages.nav.automationOnOffTemplates}).getAttribute('aria-current')).toBe('page');
  expect(screen.queryByRole('navigation',{name:'Onboarding and offboarding'})).toBeNull();
  const workspace=document.querySelector('.v9-workspace-global') as HTMLElement;
  expect(workspace.hasAttribute('data-area-theme')).toBe(false);

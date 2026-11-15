@@ -208,7 +208,7 @@ export function Sidebar({
       'module' in row.placement && row.placement.module === module.id && row.placement.section === section,
     ).map(row => row.destination));
     if (!children.length) return [];
-    if (children.length === 1 && !['onboarding','probation','contracts','rewards'].includes(module.id)) return [{...children[0],labelKey:module.labelKey}];
+    if (children.length === 1 && !['onboarding','probation','contracts','automation','rewards'].includes(module.id)) return [{...children[0],labelKey:module.labelKey}];
     return [{collapsible:true,activeMatch:'children',labelKey:module.labelKey,icon:children[0].icon,
       children,tour:children.some(child=>child.tour==='nav-admin')?'nav-admin':undefined} satisfies CollapsibleGroupItem];
   });
@@ -246,6 +246,8 @@ export function Sidebar({
     const placement=navigationPlacement(href);
     if (placement && 'module' in placement && placement.module === 'rewards' && placement.section === 'mine') return 'sectionManagingRewards';
     if (placement && 'module' in placement && ['probation','contracts'].includes(placement.module) && placement.section === 'hr') return undefined;
+    // The shared HR Automation section is configuration only, so its rows need no section caption.
+    if (placement && 'module' in placement && placement.module === 'automation') return undefined;
     return placement && 'section' in placement ? `section${placement.section==='hr'?'HR':placement.section==='ai'?'AiManagement':placement.section==='config'?'Configuration':placement.section==='mine'?'Mine':'Team'}` : undefined;
   };
 

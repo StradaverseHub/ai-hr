@@ -92,28 +92,47 @@ describe('shared shell policy preserves the pre-extraction visibility contract',
     const facts = {enabledModules:[],probationAccess:{page:true,configure:false},contractStaffAccess:{page:false,configure:false,intake:true}};
     expect(inFamily(facts,'/lifecycle/')).toEqual(['/lifecycle/probation','/lifecycle/contracts/intake']);
     expect(inFamily({probationAccess:{page:false,configure:true}},'/lifecycle/probation')).toEqual([
-      '/lifecycle/probation/settings','/lifecycle/probation/forms','/lifecycle/probation/routes','/lifecycle/probation/workflows','/lifecycle/probation/templates','/lifecycle/probation/intake',
+      '/lifecycle/probation/settings','/lifecycle/probation/forms','/lifecycle/probation/routes','/lifecycle/probation/intake',
     ]);
+    expect(inFamily({probationAccess:{page:true,configure:false}},'/lifecycle/probation')).toEqual(['/lifecycle/probation','/lifecycle/probation/postings']);
     expect(inFamily({contractStaffAccess:{page:false,configure:true}},'/lifecycle/contracts')).toEqual([
       '/lifecycle/contracts/settings','/lifecycle/contracts/workflows','/lifecycle/contracts/templates',
     ]);
   });
 
-  it('resolves the canonical twelve scoped descriptors in their original interleaved order', () => {
+  it('resolves the canonical eleven scoped descriptors in their declared interleaved order', () => {
     const rows = resolve({enabledModules:[],probationAccess:{page:true,configure:true,intake:true},
       contractStaffAccess:{page:true,configure:true,intake:true}}).destinations.filter(row=>
         row.href.startsWith('/lifecycle/probation') || row.href.startsWith('/lifecycle/contracts'));
     expect(rows.map(row=>row.href)).toEqual([
-      '/lifecycle/probation','/lifecycle/contracts','/lifecycle/probation/settings','/lifecycle/probation/forms',
-      '/lifecycle/probation/routes','/lifecycle/probation/workflows','/lifecycle/probation/templates',
+      '/lifecycle/probation','/lifecycle/probation/postings','/lifecycle/contracts','/lifecycle/probation/settings','/lifecycle/probation/forms',
+      '/lifecycle/probation/routes',
       '/lifecycle/probation/intake','/lifecycle/contracts/intake','/lifecycle/contracts/settings',
       '/lifecycle/contracts/workflows','/lifecycle/contracts/templates',
     ]);
-    expect(SCOPED_LIFECYCLE_NAVIGATION).toHaveLength(12);
+    expect(SCOPED_LIFECYCLE_NAVIGATION).toHaveLength(11);
     rows.forEach((row,index)=>expect(row).toBe(SCOPED_LIFECYCLE_NAVIGATION[index]));
     expect(SCOPED_LIFECYCLE_NAVIGATION.filter(row=>row.access==='configureOrIntake').map(row=>row.href)).toEqual(['/lifecycle/probation/intake']);
     expect(inFamily({probationAccess:{page:false,configure:false,intake:true}},'/lifecycle/probation')).toEqual(['/lifecycle/probation/intake']);
     expect(inFamily({contractStaffAccess:{page:false,configure:false,intake:true}},'/lifecycle/contracts')).toEqual(['/lifecycle/contracts/intake']);
+  });
+
+  it('shows the shared HR Automation builders to anyone who configures a module, from existing configure facts only', () => {
+    const shared = ['/automation/workflows','/automation/templates','/automation/groups'];
+    expect(inFamily({},'/automation')).toEqual([]);
+    expect(inFamily({isAdmin:true,enabledModules:['lifecycle']},'/automation')).toEqual([]);
+    expect(inFamily({probationAccess:{page:true,configure:false,intake:true}},'/automation')).toEqual([]);
+    expect(inFamily({probationAccess:{page:false,configure:true}},'/automation')).toEqual(shared);
+    expect(inFamily({contractStaffAccess:{page:false,configure:true}},'/automation')).toEqual(shared);
+    const v9 = {onboardingV9Access:true,onboardingV9Navigation:{onboarding:false,offboarding:false,administration:true}};
+    expect(hrefs(v9).filter(href=>href.startsWith('/automation')||href.startsWith('/lifecycle/v9'))).toEqual([
+      '/lifecycle/v9?view=settings','/lifecycle/v9?view=access','/lifecycle/v9?view=tasks',...shared,
+      '/lifecycle/v9?view=templates','/lifecycle/v9?view=workflows','/lifecycle/v9?view=groups',
+    ]);
+    // The moved V9 rows keep their own gate: without V9 administration they are not offered anywhere.
+    expect(hrefs({probationAccess:{page:false,configure:true},onboardingV9Access:true,onboardingV9Navigation:{onboarding:true,offboarding:false,administration:false}})).not.toContain('/lifecycle/v9?view=workflows');
+    expect(resolve(v9).destinations.filter(row=>row.href.startsWith('/lifecycle/v9?view=')&&['templates','workflows','groups'].some(view=>row.href.endsWith(view))).map(row=>row.labelKey))
+      .toEqual(['automationOnOffTemplates','automationOnOffWorkflows','automationOnOffGroups']);
   });
 
   it('checks Performance entitlement at the declared address before substituting the cycle destination', () => {

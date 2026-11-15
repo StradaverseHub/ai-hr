@@ -2,9 +2,9 @@
 import { modulePackById } from '@/packs/registry';
 import { navigationPlacement } from '@/lib/navigation-workspaces';
 import { isSecurityDestination, securityDestinationAllowed } from '@/lib/security-center-navigation';
-import { V9_NAVIGATION, V9_SHARED_NAVIGATION, type V9NavigationPermissions } from '@/lib/lifecycle-v9-navigation';
+import { V9_AUTOMATION_NAVIGATION, V9_NAVIGATION, V9_SHARED_NAVIGATION, type V9NavigationPermissions } from '@/lib/lifecycle-v9-navigation';
 import {
-  ADDITIONAL_ROWS, AI_PROVIDER_HREF, GROUPS, MODULE_OF_HREF, MY_TEAM_ROW, ONBOARDING_NODE,
+  ADDITIONAL_ROWS, AI_PROVIDER_HREF, AUTOMATION_NAVIGATION, GROUPS, MODULE_OF_HREF, MY_TEAM_ROW, ONBOARDING_NODE,
   PERFORMANCE_ADMIN_ROW, SCOPED_LIFECYCLE_NAVIGATION, isAiAdministrationHref, isCollapsible, type ChildItem,
 } from './shell-inventory';
 
@@ -153,7 +153,7 @@ export function resolveShellNavigation({
   // The old lifecycle addresses remain valid for existing records and links, but their old
   // hub/self-service/requisition presentation is replaced by the owner's explicit V9 hierarchy.
   const lifecycleNavigation: ChildItem[] = V9_NAVIGATION.filter(item => onboardingV9Access &&
-    !!onboardingV9Navigation?.[item.permission]).map(item => ({
+    !!onboardingV9Navigation?.[item.permission] && !('automationLabelKey' in item)).map(item => ({
       href: item.href, labelKey: item.labelKey, submenuKey: item.submenuKey, icon: ONBOARDING_NODE.icon,
       exactHref: true, ...('ownedSubpaths' in item ? { ownedSubpaths: [...item.ownedSubpaths] } : {}),
     } satisfies ChildItem)).filter(canSeeChild);
@@ -170,11 +170,21 @@ export function resolveShellNavigation({
       case 'intake': return access.intake === true;
     }
   });
+  // ADR 2026-11-15-probation-shared-automation, decision 1: the shared builders, for anyone who configures at least one
+  // module (existing facts: Probation and Contract staff configure, On/Off Boarding V9 administration). The On/Off
+  // Boarding builder rows sit in the same section and keep their V9 gate and screens.
+  const v9Administration = onboardingV9Access && !!onboardingV9Navigation?.administration;
+  const automationRows: ChildItem[] = [
+    ...(probationAccess.configure || contractStaffAccess.configure || v9Administration ? AUTOMATION_NAVIGATION : []),
+    ...V9_AUTOMATION_NAVIGATION.filter(() => v9Administration).map(item => ({
+      href: item.href, labelKey: item.automationLabelKey, icon: ONBOARDING_NODE.icon, exactHref: true,
+    } satisfies ChildItem)).filter(canSeeChild),
+  ];
   const rewardRows = modulePackById('rewards')!.navLinks!
     .filter(row => rewardDestinations.includes(row.href) && moduleAllows(row.href));
   const destinations: ChildItem[] = [...authorizedRows.filter(row => {
     const placement = navigationPlacement(row.href);
     return !placement || !('module' in placement) || placement.module !== 'onboarding';
-  }), ...ADDITIONAL_ROWS.filter(canSeeChild), ...lifecycleNavigation, ...lifecycleShared, ...scopedLifecycleRows, ...rewardRows];
+  }), ...ADDITIONAL_ROWS.filter(canSeeChild), ...lifecycleNavigation, ...lifecycleShared, ...scopedLifecycleRows, ...automationRows, ...rewardRows];
   return { destinations, lifecycleNavigation, canSeeChild };
 }
