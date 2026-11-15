@@ -278,6 +278,8 @@ export type MovementHistoryRow = {
    * canonical movementHistoryTx always supplies it, null for rows without a recorded exit event. */
   recordedExit?: MovementRecordedExit | null;
   recordedResignation?: MovementRecordedResignation | null;
+  /** Board 511aa74a — on a Rehired row only: the previous period it started from, as recorded on the event. */
+  rehiredFrom?: { employmentId: string; employeeCode: string | null } | null;
 };
 
 /**
@@ -1294,6 +1296,8 @@ type Correctability = { canReverse: boolean; canEdit: boolean; stateChanging: bo
 function correctabilityOf(row: ProjectedRow, group: RawEvent[], isLatest: boolean, behaviour:string|null): Correctability {
   const stateChanging = group.some((e) => STATE_CHANGING_EVENT_TYPES.has(e.eventType));
   if (!group.length || !behaviour) return { canReverse: false, canEdit: false, stateChanging };
+  // Board 511aa74a — a Rehired event created an employment; only its own Roll Back (core/rehire.ts) can undo it.
+  if (behaviour === 'rehire') return { canReverse: false, canEdit: false, stateChanging };
   // 1d58019a Step 2 (ADR-0166) — a Termination row must BE a termination in the ledger: its own
   // employment.terminated leg, or the scheduled intent. Since a tenant's own type may carry the Termination
   // behaviour, a type re-pointed around the service after use (the service locks a used type's behaviour)
@@ -1607,6 +1611,14 @@ async function personnelCorrectionViewTx(tx:Tx,events:RawEvent[],rows:ProjectedR
  }};
 }
 
+/** Board 511aa74a — the previous period a Rehired event names (core/rehire.ts writes both keys). */
+function rehiredFromOf(payload: unknown): { employmentId: string; employeeCode: string | null } | null {
+  const p = (payload ?? {}) as { fromEmploymentId?: unknown; previousEmployeeCode?: unknown };
+  return typeof p.fromEmploymentId === 'string'
+    ? { employmentId: p.fromEmploymentId, employeeCode: typeof p.previousEmployeeCode === 'string' ? p.previousEmployeeCode : null }
+    : null;
+}
+
 /** The Employment History list — a Hired-first, date-ascending projection over the event ledger. */
 export async function movementHistory(ctx: SessionContext, employmentId: string): Promise<MovementHistoryRow[]> {
   return (await readWorkforceMovementHistory(ctx,employmentId)).movements;
@@ -1723,6 +1735,7 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
         hireCorrection: r.kind === 'hired' ? hireTrace : null,
         recordedExit: primaryEvent ? movementRecordedExitOf(primaryEvent, (code) => resolvedTypes.get(code)?.behaviourKind) : null,
         recordedResignation:primaryEvent?movementRecordedResignationOf(primaryEvent):null,
+        ...(r.kind==='rehire'&&primaryEvent?{rehiredFrom:rehiredFromOf(primaryEvent.payload)}:{}),
       };
     });
     const resignation=includeResignation?await resignationInformationFromProjection(tx,employmentId,projection):null;

@@ -119,6 +119,10 @@ import { listMovementEventTypes } from '@/core/movement-type';
 import { readPersonnelMovementFormData } from './movement-form-data';
 import { withTenant } from '@/db/client';
 import { MovementNewEvent } from './movement-new-event';
+// Board 511aa74a — Rehired: eligibility/defaults, the Employment Periods card and the Rehired Roll Back.
+import { employmentPeriods, rehireFormDefaults } from '@/core/rehire';
+import { rollBackRehireAction } from './rehire-actions';
+import { EmploymentPeriodsCard } from './employment-periods-card';
 // c063eea9 — "Correct hire details" on the Hired row: the read behind the form, and its client island.
 import { HireCorrectionError, hireCorrectionView, type HireCorrectionField } from '@/core/hire-correction';
 import { HireCorrectionForm, type HireCorrectionFormField } from './hire-correction-form';
@@ -645,7 +649,13 @@ export default async function EmployeePage({
   // Read them together only for those forms; the History tab still uses the type labels above.
   const { canCreateMovement, canCorrectMovement } = movementScreenAccess({ admin, canMaintainWorkforce, terminatedOn: emp.terminatedOn });
   const movementEditRow = spEditMovement ? movements.find((row) => row.id === spEditMovement && row.canEdit) : undefined;
-  const movementFormOpen = Boolean((canCreateMovement && spNewEvent) || (canCorrectMovement && movementEditRow));
+  // Board 511aa74a — Rehired is the one event a Resigned (often terminated) employee may still receive. It is
+  // offered only while the service would accept it (core/rehire.ts applies the same rule on save).
+  const rehireTypeActive = movementTypes.some((r) => r.active && r.behaviourKind === 'rehire');
+  const rehireRead = canCorrectMovement && rehireTypeActive && derivedStatus === 'resigned'
+    ? await rehireFormDefaults(s, employmentId) : null;
+  const canRehire = !!rehireRead && !rehireRead.refusal;
+  const movementFormOpen = Boolean(((canCreateMovement || canRehire) && spNewEvent) || (canCorrectMovement && movementEditRow));
   const movementFormData = await readPersonnelMovementFormData(s, employmentId, movementTypes, movementFormOpen);
   const movementCurrent = movementFormData?.current ?? null;
   const typeControls = (code: string) => {
@@ -3104,6 +3114,30 @@ export default async function EmployeePage({
 } as const;
   const hireFieldLabel = (f:HireCorrectionField):string => personnelLabel(hireFieldIds[f]);
 
+  // Board 511aa74a — Employment Periods: shown once the person has more than one period (a rehire).
+  const periods = admin && (!movementPage || movementPage === 'history') ? await employmentPeriods(s, employmentId) : [];
+  const employmentPeriodsCard = periods.length > 1 ? (
+    <EmploymentPeriodsCard
+      title={t('movement.periods.title')}
+      columns={{ period: t('movement.periods.period'), employeeId: t('movement.periods.employeeId'), company: t('movement.periods.company'), dates: t('movement.periods.dates'), status: t('movement.periods.status') }}
+      rows={periods.map((p) => {
+        const from = p.rehiredFromEmploymentId ? periods.find((q) => q.employmentId === p.rehiredFromEmploymentId) : undefined;
+        return {
+          employmentId: p.employmentId,
+          employeeCode: p.employeeCode,
+          companyName: p.companyName,
+          dates: p.end ? t('movement.periods.range', { start: formatDmy(p.start), end: formatDmy(p.end) }) : t('movement.periods.onwards', { start: formatDmy(p.start) }),
+          status: p.status,
+          statusLabel: tStatus(p.status),
+          periodLabel: p.current ? t('movement.periods.current') : t('movement.periods.previous'),
+          note: p.rehiredAs ? t('movement.periods.rehiredAs', { code: p.rehiredAs.employeeCode ?? '—' }) : from ? t('movement.periods.rehiredFrom', { code: from.employeeCode ?? '—' }) : null,
+          noteHref: p.rehiredAs ? `/admin/personnel/${p.rehiredAs.employmentId}?tab=careerMovement` : from ? `/admin/personnel/${from.employmentId}?tab=careerMovement` : null,
+          isThis: p.employmentId === employmentId,
+        };
+      })}
+    />
+  ) : null;
+
   const employmentHistoryCard = (
     <Card id="section-assignment-history" className="overflow-hidden">
       <SectionHeader title={t('movement.title')} />
@@ -3137,6 +3171,15 @@ export default async function EmployeePage({
           {t('movement.exportExcel')}
         </ExportDownloadLink>
         {canCreateMovement && (
+          <Link
+            href={movementPageHref(employmentId,'new',undefined,movementContext)}
+            className={btnPrimary}
+          >
+            {t('movement.newEvent')}
+          </Link>
+        )}
+        {/* Board 511aa74a — a Resigned (often terminated) employee keeps one event: Rehired. */}
+        {!canCreateMovement && canRehire && (
           <Link
             href={movementPageHref(employmentId,'new',undefined,movementContext)}
             className={btnPrimary}
@@ -3193,6 +3236,11 @@ export default async function EmployeePage({
                   <span className="ml-2 rounded border border-sky-500/50 px-1.5 py-0.5 align-middle text-[10px] uppercase tracking-wide text-sky-700 dark:text-sky-400">
                     {t('movement.historyBadge')}
                   </span>
+                )}
+                {m.rehiredFrom && (
+                  <Link href={`/admin/personnel/${m.rehiredFrom.employmentId}?tab=careerMovement`} data-testid="rehired-from" className="ml-2 text-xs text-primary underline underline-offset-2">
+                    {t('movement.rehire.previousId', { code: m.rehiredFrom.employeeCode ?? '—' })}
+                  </Link>
                 )}
                 {!!m.informationCorrections?.length&&<Link href={movementPageHref(employmentId,'view',m.id,movementContext)+'#information-correction-history'} className="ml-2 text-xs text-primary underline underline-offset-2">{m.informationCorrections.some(c=>c.needsReview)?t('movement.informationNeedsReview'):t('movement.informationCorrected')}</Link>}
                 {m.reversed && (
@@ -3275,6 +3323,10 @@ export default async function EmployeePage({
                 <MovementHistoryActions context={movementContext} employmentId={employmentId} row={m} standalone={movementPage==='history'}
                   eventLabel={`${movementKindLabel(m.kind)} · ${formatDmy(m.effectiveDate)}`}
                   canCorrect={canCorrectMovement} reverseAction={reverseMovementEventAction}
+                  rehireRollBack={m.kind === 'rehire' ? {action: rollBackRehireAction, labels: {
+                    button: t('movement.rehire.rollBack'), title: t('movement.rehire.rollBackTitle'),
+                    description: t('movement.rehire.rollBackDescription'), reason: t('movement.correctionReasonLabel'), keep: t('movement.keepEvent'),
+                  }} : undefined}
                   labels={{
                     view:t('movement.view'), edit:t('movement.edit'), delete:t('movement.delete'),
                     deleteTitle:t('movement.deleteTitle'), deleteDescription:t('movement.deleteDescription'),
@@ -3562,16 +3614,40 @@ export default async function EmployeePage({
         // `behaviourKind` is what lets the form ask for the right fields for one of their OWN types.
         types: movementTypes
           .filter((r) => r.active)
+          .filter((r) => (r.behaviourKind === 'rehire' ? canRehire : canCreateMovement))
           .map((r) => ({ code: r.code, label: r.label, behaviourKind: r.behaviourKind, description: r.description, ...typeControls(r.code) })),
         cancelHref:historyHref,
         pageContext:movementPage?movementContext:undefined,
       }
     : null;
 
-  const newEventCard = canCreateMovement && spNewEvent && movementFormProps ? (
+  // Board 511aa74a — the Rehired form's previous-period values and each offered company's Employee ID rule.
+  const rehireForm = canRehire && spNewEvent && movementFormProps
+    ? await rehireFormDefaults(s, employmentId, movementCompanies.map((c) => c.id)) : null;
+  const rehireProps = rehireForm && !rehireForm.refusal && movementFormProps ? {
+    employmentId: emp.employmentId,
+    personName: emp.name,
+    previousEmployeeCode: rehireForm.previousEmployeeCode,
+    previousStart: rehireForm.previousStart,
+    previousEnd: rehireForm.previousEnd,
+    notOnOrBefore: rehireForm.notOnOrBefore,
+    defaults: {
+      ...rehireForm.values,
+      // The previous company leads when the actor administers it; otherwise the first company offered.
+      companyId: movementCompanies.some((c) => c.id === rehireForm.values.companyId) ? rehireForm.values.companyId : (movementCompanies[0]?.id ?? emp.companyId),
+    },
+    companies: movementFormProps.companies,
+    orgByCompany: movementFormProps.orgByCompany,
+    grades: movementFormProps.grades,
+    managers: movementFormProps.managers,
+    employmentTypes: movementFormProps.employmentTypes,
+    employeeIdRules: rehireForm.employeeIdRules,
+    cancelHref: historyHref,
+  } : undefined;
+  const newEventCard = (canCreateMovement || canRehire) && spNewEvent && movementFormProps ? (
     <Card id="section-movement-new-event" className="overflow-hidden">
       <SectionHeader title={t('movement.newEvent')} />
-      <MovementNewEvent {...movementFormProps} />
+      <MovementNewEvent {...movementFormProps} rehire={rehireProps} />
     </Card>
   ) : null;
 
@@ -3713,6 +3789,7 @@ export default async function EmployeePage({
           <StatusBadge status={derivedStatus} label={derivedStatusLabel} />
         </> : undefined}/>
       <ErrorBanner message={error}/>
+      {employmentPeriodsCard}
       {employmentHistoryCard}
     </div>;
   }
@@ -4550,6 +4627,7 @@ export default async function EmployeePage({
         {newEventCard}
         {editEventCard}
         {hireCorrectionCard}
+        {employmentPeriodsCard}
         {employmentHistoryCard}
       </>
     ),

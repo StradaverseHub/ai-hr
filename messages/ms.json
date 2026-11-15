@@ -777,7 +777,8 @@
         "dateToLabel": "{name} hingga",
         "choicePending": "Mengemas kini senarai…",
         "choiceFailed": "Senarai tidak dapat dikemas kini. Cuba lagi."
-      }
+      },
+      "rehiredAs": "Diambil semula sebagai {code}"
     },
     "switcher": {
       "ariaLabel": "Cari pekerja",
@@ -1741,7 +1742,8 @@
           "employmentTypeChange": "Perubahan Jenis Pekerjaan",
           "gradeChange": "Perubahan Gred",
           "joinDateChange": "Perubahan Tarikh Menyertai",
-          "groupJoinDateCorrection": "Pembetulan Tarikh Menyertai Kumpulan"
+          "groupJoinDateCorrection": "Pembetulan Tarikh Menyertai Kumpulan",
+          "rehire": "Diambil Semula"
         },
         "form": {
           "eventType": "Jenis Acara",
@@ -1910,7 +1912,75 @@
         "payrollClosedBadge": "Gaji ditutup: {periods}",
         "informationCorrected": "Maklumat dibetulkan",
         "informationNeedsReview": "Pembetulan perlu disemak",
-        "historyBadge": "Sejarah"
+        "historyBadge": "Sejarah",
+        "rehire": {
+          "intro": "Diambil Semula memulakan tempoh pekerjaan baharu untuk {name}. Tempoh sebelumnya ({code}, {start} hingga {end}), peletakan jawatan, slip gaji dan Borang EA kekal seperti sedia ada. Butiran peribadi, No. KP, nombor KWSP/PERKESO/cukai, butiran bank dan log masuk dibawa ke hadapan.",
+          "effectiveDate": "Tarikh Berkuat Kuasa Diambil Semula",
+          "effectiveDateHint": "Selepas {date}, hari bekerja terakhir",
+          "employeeCode": "ID Pekerja Baharu",
+          "employeeCodeHint": "Dicadangkan daripada penomboran syarikat; anda boleh mengubahnya",
+          "employeeCodeAutoHint": "Dikeluarkan daripada penomboran syarikat apabila anda menyimpan",
+          "employeeCodeManualHint": "Syarikat ini tiada penomboran ID Pekerja. Masukkan ID Pekerja baharu.",
+          "groupJoinDate": "Tarikh Sertai Kumpulan",
+          "groupJoinDateHint": "Lalai kepada tarikh Diambil Semula. Tetapkan tarikh lebih awal hanya jika perkhidmatan bersambung",
+          "none": "Tiada",
+          "selectPlaceholder": "Pilih…",
+          "cancel": "Batal",
+          "save": "Simpan Diambil Semula",
+          "unavailable": "Diambil Semula hanya boleh direkodkan untuk pekerja yang Meletak Jawatan tanpa pekerjaan semasa.",
+          "previousId": "Pekerja kembali · ID terdahulu {code}",
+          "rollBack": "Batalkan",
+          "rollBackTitle": "Batalkan peristiwa Diambil Semula ini?",
+          "rollBackDescription": "Tempoh pekerjaan baharu dan ID Pekerjanya akan dibuang. Tempoh sebelumnya kekal Meletak Jawatan dan tidak berubah. Ini dibenarkan hanya selagi tempoh baharu belum mempunyai rekod gaji, kehadiran, cuti atau permohonan.",
+          "rolledBack": "Peristiwa Diambil Semula dibatalkan. Tempoh sebelumnya tidak berubah.",
+          "error": {
+            "permission": "Anda tiada kebenaran untuk merekod peristiwa Diambil Semula bagi pekerja ini.",
+            "typeInactive": "Jenis peristiwa Diambil Semula dimatikan dalam Tetapan Pergerakan.",
+            "notResigned": "Diambil Semula hanya boleh direkodkan untuk pekerja berstatus Meletak Jawatan.",
+            "blacklisted": "Pekerja ini disenarai hitam. Kosongkan senarai hitam sebelum merekod Diambil Semula.",
+            "currentEmployment": "Individu ini sudah mempunyai pekerjaan semasa atau akan datang.",
+            "alreadyRehired": "Tempoh pekerjaan ini telah diambil semula sebagai {code}. Rekod sebarang peristiwa seterusnya pada tempoh itu.",
+            "dateInvalid": "Masukkan Tarikh Berkuat Kuasa Diambil Semula yang sah.",
+            "dateNotAfterEnd": "Tarikh Berkuat Kuasa Diambil Semula mesti selepas {date}.",
+            "groupJoinDateInvalid": "Tarikh Sertai Kumpulan mesti tarikh yang sah pada atau sebelum Tarikh Berkuat Kuasa Diambil Semula.",
+            "companyUnavailable": "Pilih syarikat, unit perniagaan, jawatan, gred dan penyelia langsung yang anda tadbir.",
+            "departmentRequired": "Pilih jabatan.",
+            "employmentTypeInvalid": "Pilih jenis pekerjaan.",
+            "salaryInvalid": "Masukkan gaji pokok sifar atau lebih.",
+            "employeeCodeRequired": "Masukkan ID Pekerja baharu.",
+            "employeeCodeNotAllowed": "Penomboran ID Pekerja syarikat ini tidak membenarkan ID Pekerja manual.",
+            "employeeCodeInvalid": "ID Pekerja hanya boleh mengandungi huruf, nombor dan sengkang, sehingga 30 aksara.",
+            "employeeCodeTaken": "ID Pekerja {code} sudah digunakan.",
+            "managerInvalid": "Pilih penyelia langsung yang lain.",
+            "reasonRequired": "Masukkan sebab pembatalan.",
+            "rollbackUnavailable": "Tempoh pekerjaan ini tidak dimulakan oleh peristiwa Diambil Semula.",
+            "rollbackBlocked": "Peristiwa Diambil Semula ini tidak boleh dibatalkan kerana tempoh baharu sudah mempunyai {blockers}."
+          },
+          "blocker": {
+            "payroll": "rekod gaji",
+            "attendance": "rekod kehadiran",
+            "leave": "cuti yang diambil",
+            "request": "permohonan",
+            "lifecycle": "rekod keluar",
+            "movement": "pergerakan atau perubahan gaji kemudian",
+            "reports": "pekerja yang melapor kepadanya",
+            "other": "aktiviti lain yang direkodkan"
+          }
+        },
+        "periods": {
+          "title": "Tempoh Pekerjaan",
+          "period": "Tempoh",
+          "employeeId": "ID Pekerja",
+          "company": "Syarikat",
+          "dates": "Tarikh",
+          "status": "Status",
+          "current": "Semasa",
+          "previous": "Terdahulu",
+          "range": "{start} hingga {end}",
+          "onwards": "{start} dan seterusnya",
+          "rehiredAs": "Diambil semula sebagai {code}",
+          "rehiredFrom": "Diambil semula daripada {code}"
+        }
       },
       "salaryCurrency": "Mata wang",
       "emergency": {
