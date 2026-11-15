@@ -139,8 +139,8 @@ describe('case 14 — ordered approval', () => {
   });
   it('only a change to a field that NEEDS approval re-runs approval', () => {
     const fields: OfferFieldDef[] = [
-      { id: 'f1', label: 'Basic salary', type: 'money', choices: [], required: true, needsApproval: true, private: true, enabled: true },
-      { id: 'f2', label: 'Department', type: 'text', choices: [], required: false, needsApproval: false, private: false, enabled: true },
+      { id: 'f1', label: 'Basic salary', type: 'money', choices: [], required: true, needsApproval: true, private: true, enabled: true, includeInEmail: false },
+      { id: 'f2', label: 'Department', type: 'text', choices: [], required: false, needsApproval: false, private: false, enabled: true, includeInEmail: false },
     ];
     const before = new Map<string, OfferValue>([['f1', { kind: 'money', amount: '5000.00', currency: 'MYR' }], ['f2', { kind: 'text', text: 'Finance' }]]);
     expect(approvalFieldsChanged(fields, before, new Map([...before, ['f2', { kind: 'text', text: 'Operations' }]]))).toBe(false);
@@ -149,7 +149,7 @@ describe('case 14 — ordered approval', () => {
 });
 
 describe('offers — values are typed, money stays decimal text, and nothing is computed', () => {
-  const fields: OfferFieldDef[] = DEFAULT_OFFER_FIELDS.map((f, i) => ({ id: `f${i}`, label: f.label, type: f.type, choices: [], required: f.required, needsApproval: f.needsApproval, private: f.private, enabled: true }));
+  const fields: OfferFieldDef[] = DEFAULT_OFFER_FIELDS.map((f, i) => ({ id: `f${i}`, label: f.label, type: f.type, choices: [], required: f.required, needsApproval: f.needsApproval, private: f.private, enabled: true, includeInEmail: false }));
   const byLabel = (label: string) => fields.find((f) => f.label === label)!.id;
   it('seeds generic fields; basic salary is a private money field that needs approval', () => {
     expect(DEFAULT_OFFER_FIELDS.find((f) => f.seedKey === 'basic_salary')).toMatchObject({ type: 'money', private: true, needsApproval: true, required: true });

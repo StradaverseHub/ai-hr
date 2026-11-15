@@ -646,3 +646,35 @@ installation with an active embedded mail relay.
 | 43582353939 | Selected tests (60 files) | 55 PASS; FAIL: 5 of the known 6 AI files (44 tests) |
 | 43582378924 | Selected tests (60 files) | 59 PASS; FAIL: the sixth known AI file, provider-analysis-policy (9 tests) |
 | 43583984796 | Selected tests (28 files, incl. candidate e-mail, the mail transport suites and the installed-watermark test) | PASS: 395 tests |
+
+## Merge of origin/main (1299e6724) after slice 19 — commit 12b68a8df (2026-11-15)
+
+Main's journal ends at `5660_pay_component_bonus_epf_bonus_2012` (when 1793330005360), below this branch's `5700`–`5720`, so no
+renumber: the journal keeps main's entries byte for byte and appends the block; main's allocation section is prepended; both AI
+source manifests were regenerated with the repo scripts.
+
+| Run (12b68a8df) | Job | Result |
+| --- | --- | --- |
+| 43687717855 | Selected tests (51 files: every `test/recruitment-*`, migration ordering and installed watermark, i18n, pack registry) | PASS |
+| 43687717855 | Whole-repo type check | PASS |
+| 43687717855 | Production build | PASS |
+| 43687722673 | Selected tests (63 files: mail transports, navigation and AI suites) | RESULT_B |
+
+## Slice 20 — Candidate e-mail (interview invitations, reminders, cancellations, offers) — commit 80a66c098
+
+Built: migration `5721` (idx 5121, when 1793330005421); invitation with a server-rendered live preview in the schedule form (the form
+posts the subject and text it showed; a difference refuses); the automatic reminder (on by default, 24 hours before, 2–72) frozen with
+the invitation; withdrawal of a cancelled interview's waiting invitation and reminder (new state `withdrawn`); the cancellation e-mail
+a person ticks after a preview (never for the automatic cancel on close); "Send offer by e-mail" for an Approved offer stating only the
+fields marked "In e-mail", as entered, recorded as sent by e-mail; Mark as sent keeps the other channels; the offer-field "In e-mail"
+setting; six languages. Decisions in D-065 (the address's map link is the one link allowed; server-side preview; no reschedule path).
+
+Tests: `test/recruitment-candidate-email-hiring.test.ts` (cases 133–135 against Postgres, sweep with a faked transport) and
+`test/recruitment-candidate-email-hiring-rules.test.ts` (pure rules and agreement with 5721).
+
+Not rendered (case 136): the local render cluster from slice 19 no longer exists, and queuing needs an installation with the embedded
+sign-in and an active mail relay (as for slice 19's case 132), which the local server does not have.
+
+| Run (80a66c098) | Job | Result |
+| --- | --- | --- |
+RESULT_C

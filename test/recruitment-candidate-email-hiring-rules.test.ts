@@ -16,6 +16,8 @@ import { RECRUITMENT_ERROR_CODES } from '../packs/recruitment/model';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (p: string) => readFileSync(`${root}${p}`, 'utf8');
 const m5721 = read('db/migrations/5721_recruitment_candidate_email_interviews_offers.sql');
+/** 5721 with every run of whitespace made one space (its long arrays wrap across lines). */
+const flat5721 = m5721.replace(/,\s+/g, ',').replace(/\s+/g, ' ');
 const messages = (l: string) => JSON.parse(read(`messages/${l}.json`)) as {
   recruitment: { candidateEmail: { interview: Omit<InterviewEmailLabels, 'weekdays'> & { weekdays: Record<string, string> }; defaults: Record<string, { subject: string; body: string }> };
     errors: Record<string, string>; offer: Record<string, unknown> } };
@@ -38,7 +40,7 @@ describe('kinds and placeholders agree with 5721', () => {
   });
   it('restates each kind\'s placeholder allowlist exactly as the model', () => {
     for (const kind of ['interview_invitation', 'interview_reminder', 'interview_cancelled', 'offer'] as const) {
-      expect(m5721).toContain(`WHEN '${kind}' THEN ARRAY[${CANDIDATE_EMAIL_PLACEHOLDERS[kind].map((p) => `'${p}'`).join(',')}]`);
+      expect(flat5721).toContain(`WHEN '${kind}' THEN ARRAY[${CANDIDATE_EMAIL_PLACEHOLDERS[kind].map((p) => `'${p}'`).join(',')}]`);
     }
     expect(CANDIDATE_EMAIL_PLACEHOLDERS.interview_cancelled).not.toContain('interviewPlace');
     expect(CANDIDATE_EMAIL_PLACEHOLDERS.offer).toContain('offerDetails');

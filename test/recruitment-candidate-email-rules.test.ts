@@ -124,8 +124,8 @@ describe('settings, delays, states and backoff', () => {
     expect(validateCandidateEmailSettings({ enabled: false, senderName: 'x'.repeat(81) })).toMatchObject({ ok: false, fields: ['senderName'] });
     expect(validateCandidateEmailSettings({ enabled: false, locale: 'fr' })).toMatchObject({ ok: false, fields: ['locale'] });
     expect(validateCandidateEmailSettings({ enabled: 'on', replyTo: ' Talent@Example.TEST ', senderName: ' QZE Talent ', locale: 'ms' }))
-      .toEqual({ ok: true, value: { enabled: true, replyTo: 'talent@example.test', senderName: 'QZE Talent', locale: 'ms' } });
-    expect(validateCandidateEmailSettings({})).toEqual({ ok: true, value: { enabled: false, replyTo: null, senderName: null, locale: 'en' } });
+      .toEqual({ ok: true, value: { enabled: true, replyTo: 'talent@example.test', senderName: 'QZE Talent', locale: 'ms', reminderEnabled: true, reminderHours: 24 } });
+    expect(validateCandidateEmailSettings({})).toEqual({ ok: true, value: { enabled: false, replyTo: null, senderName: null, locale: 'en', reminderEnabled: true, reminderHours: 24 } });
     expect(validReplyTo('talent@example.test')).toBe(true);
     expect(validReplyTo('talent@localhost')).toBe(false);
     expect(validReplyTo('qzé@example.test')).toBe(false);
