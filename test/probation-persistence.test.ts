@@ -825,3 +825,26 @@ describe('form approval routing (migration 5751)',()=>{
   expect(frozen.route.steps.map(step=>step.role)).toEqual(['lm','employee','hod','pbp']);expect(frozen.policy).toBeNull();
  });
 });
+describe('a GBS step held by the group (migration 5751, E4)',()=>{
+ it('resolves to the person assigned on the Part, then to that person\'s Probation delegate, who sees the case',async()=>{
+  const{ids,current}=await submittedForAcknowledgement();
+  const assigned=await person('Fictional Assigned GBS Signer'),delegate=await person('Fictional GBS Delegate');
+  const yesterday=addDaysIso(todayInKualaLumpur(),-1);
+  // A GBS approval step after the PBP: nobody holds it until someone is assigned on this Part.
+  await owner.db.execute(sql`update probation_part set data=jsonb_set(data,'{route,steps}',(data->'route'->'steps')||jsonb_build_array(jsonb_build_object('id','gbs','role','gbs','kind','approve','stage',4,'required',true))) where id=${ids.part}::uuid`);
+  let gbs=(await current(admin)).route.steps.find(step=>step.id==='gbs')!;expect(gbs.holderId??null).toBeNull();
+  await owner.db.execute(sql`insert into probation_delegate(tenant_id,part_id,step_id,holder_id,kind,reason,created_by,valid_from) values(${b.tenantId}::uuid,${ids.part}::uuid,'gbs',${assigned.userId}::uuid,'missing_holder','Fictional GBS assignment',${admin.userId}::uuid,${yesterday}::date)`);
+  gbs=(await current(admin)).route.steps.find(step=>step.id==='gbs')!;expect(gbs).toMatchObject({holderId:assigned.userId});
+  // A delegation line without Probation ticked moves nothing and shows nothing.
+  const[line]=await owner.db.execute<{id:string}>(sql`insert into reporting_line(tenant_id,subordinate_employment_id,manager_employment_id,line_type,valid_from) values(${b.tenantId}::uuid,${assigned.employmentId}::uuid,${delegate.employmentId}::uuid,'delegate',${yesterday}::date) returning id`);
+  await expect(probationCase(delegate.ctx,ids.caseId)).rejects.toThrow();
+  expect((await current(admin)).route.steps.find(step=>step.id==='gbs')).toMatchObject({holderId:assigned.userId});
+  await owner.db.execute(sql`insert into reporting_line_scope(tenant_id,reporting_line_id,module,task_type) values(${b.tenantId}::uuid,${line.id}::uuid,'probation','probation.approve')`);
+  gbs=(await current(delegate.ctx)).route.steps.find(step=>step.id==='gbs')!;
+  expect(gbs).toMatchObject({holderId:delegate.userId,representedId:assigned.userId});
+  // An explicit per-part delegation never chains into a general one.
+  await owner.db.execute(sql`update probation_delegate set kind='delegation' where part_id=${ids.part}::uuid and step_id='gbs'`);
+  expect((await current(admin)).route.steps.find(step=>step.id==='gbs')).toMatchObject({holderId:assigned.userId});
+  await expect(probationCase(delegate.ctx,ids.caseId)).rejects.toThrow();
+ });
+});

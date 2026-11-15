@@ -1,13 +1,15 @@
 # Probation work queues and form approval routing — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/probation-lane-queues-routing-20261116` (lane E) appends `5751_probation_queues_and_form_routing` at idx
-5151 / when 1793330005451 (assigned by the build coordinator). SHA256 `a8ba15e4f58b93d7c02fe44d6bf7ab241721efbd187c1999f6bcd88892e7d329`.
+5151 / when 1793330005451 (assigned by the build coordinator). SHA256 `378318141f25744883a7be53c5435f12acec38c60558bf24eff550d234809134`.
 It adds `app.probation_task_list(category, limit)` (granted to `ai_hr_app`): the caller's current Probation work,
 bounded (at most 200 candidates confirmed per read) and set-based, each candidate confirmed by the case view's own
 `app.probation_commands`; re-creates `app.probation_inbox()` (same shape) to answer from it; and re-creates the
 owner-owned `app.probation_prepare_signing` (2111 body) and `app.probation_resolve_route_unchecked` (5749 body) so a
 Part's route is frozen from its pinned form version's approval rows when the version has them (older versions keep
-the route configuration). No table, row, grant or purpose-owned object changes. The file is extended within lane E (form approval routing) before integration; this
+the route configuration), and so a GBS step held by the group, once assigned to a person on a Part, follows that
+person's general Probation delegation (with `app.probation_visible_among` from 5749 and `app.probation_signing_access`
+from 5746 re-created with the matching additions). No table, row, grant or purpose-owned object changes. The file is extended within lane E (form approval routing) before integration; this
 paragraph carries the current bytes' hash. The installed ledgers were not read; recheck watermarks and peer claims at
 admission. No installation authority.
 

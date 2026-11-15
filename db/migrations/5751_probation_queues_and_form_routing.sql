@@ -18,6 +18,11 @@
 --    version's duplicate-role policy (when set) is frozen on the Part as routePolicy, and
 --    app.probation_resolve_route_unchecked reads it before the route configuration's. Both are the previous bodies
 --    (2111 and 5749) with only these additions.
+-- 4. A GBS step held by the GBS group (E4): once someone is assigned to it on a Part, that person's general Probation
+--    delegation moves it to the delegate (app.probation_resolve_route_unchecked), the delegate sees the case
+--    (app.probation_visible_among, 5749 body plus the assigned set) and may sign a letter step that the current
+--    resolution names them on (app.probation_signing_access, 5746 body plus that clause). While nobody is assigned,
+--    the step has no holder and the GBS People Ops task to assign a signer stays as it is.
 -- No table, row, grant or purpose-owned object changes.
 CREATE FUNCTION app.probation_task_list(p_category text,p_limit integer) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE t uuid:=app.current_tenant_id();me uuid:=app.current_user_id();day date:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date;
@@ -175,6 +180,13 @@ BEGIN
    AND EXISTS(SELECT 1 FROM app_user u WHERE u.id=probation_delegate.holder_id AND u.tenant_id=probation_delegate.tenant_id AND u.person_id IS NOT NULL AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))
    ORDER BY created_at DESC,id DESC LIMIT 1;
   IF delegated.id IS NOT NULL THEN holder:=delegated.holder_id;step:=step||jsonb_build_object('representedId',delegated.represented_id);
+   -- 5751 (E4): a step held by a group (GBS People Ops) has no holder until someone is assigned to it on this Part
+   -- (missing_holder / holder_changed). Once assigned, that person's general Probation delegation applies exactly as it
+   -- does to a Head of Department or PBP holder. An explicit per-part delegation (kind 'delegation') never chains.
+   IF delegated.kind IN('missing_holder','holder_changed') AND step->>'role' IN('hod','pbp','gbs') AND step->>'kind' IN('approve','review','sign') THEN
+    general:=app.probation_general_delegate(holder,c.employment_id,CASE WHEN step->>'kind'='review' THEN 'probation.review' WHEN p.data->>'documentKind'='letter' THEN 'probation.letter_sign' ELSE 'probation.approve' END);
+    IF general IS NOT NULL THEN step:=step||jsonb_build_object('representedId',holder);holder:=general;END IF;
+   END IF;
   -- Decision 7: a general delegation with Probation ticked moves a Head of Department, PBP or GBS Review, Approve or
   -- letter Sign step to the delegate, on behalf of the holder. Line Manager and employee steps never move.
   ELSIF holder IS NOT NULL AND step->>'role' IN('hod','pbp','gbs') AND step->>'kind' IN('approve','review','sign') THEN
@@ -214,4 +226,89 @@ BEGIN
   IF step->>'required'='true' AND identity IS NOT NULL THEN seen:=array_append(seen,identity);END IF;
  END LOOP;
  RETURN jsonb_set(route,'{steps}',steps);
+END $$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.probation_visible_among(p_cases uuid[]) RETURNS SETOF uuid LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id();me uuid:=app.current_user_id();day date:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date;
+ my_person uuid;usable boolean:=false;ops boolean:=false;visible uuid[];
+BEGIN
+ IF t IS NULL THEN RETURN;END IF;
+ IF app.probation_storage_runner() THEN RETURN QUERY SELECT c.id FROM public.probation_case c WHERE c.tenant_id=t AND (p_cases IS NULL OR c.id=ANY(p_cases));RETURN;END IF;
+ IF coalesce(app.probation_active_user(),false) IS NOT TRUE THEN RETURN;END IF;
+ SELECT u.person_id,(u.archived_at IS NULL AND NOT app.login_blocked(u.id)) INTO my_person,usable FROM public.app_user u WHERE u.id=me AND u.tenant_id=t;
+ IF EXISTS(SELECT 1 FROM public.probation_access m WHERE m.tenant_id=t AND m.user_id=me AND m.role='gbs') THEN
+  ops:=coalesce(usable,false) AND coalesce(app.lifecycle_canonical_people_ops_member((SELECT co.id FROM public.company co WHERE co.tenant_id=t ORDER BY co.id LIMIT 1),me),false);
+ END IF;
+ SELECT coalesce(array_agg(x.id),'{}'::uuid[]) INTO visible FROM (
+  WITH cs AS MATERIALIZED (
+   SELECT c.id,c.employment_id,c.company_id,e.person_id,coalesce(e.company_id=c.company_id AND c.data->>'sourceCompanyMoved' IS DISTINCT FROM 'true',false) AS current_company
+   FROM public.probation_case c LEFT JOIN public.employment e ON e.id=c.employment_id AND e.tenant_id=c.tenant_id
+   WHERE c.tenant_id=t AND (p_cases IS NULL OR c.id=ANY(p_cases))),
+  ent AS MATERIALIZED (SELECT co.id FROM public.company co WHERE co.tenant_id=t AND co.id IN(SELECT DISTINCT cs.company_id FROM cs) AND app.probation_company_entitled(co.id)),
+  live AS MATERIALIZED (SELECT cs.* FROM cs JOIN ent ON ent.id=cs.company_id),
+  h AS MATERIALIZED (SELECT * FROM app.probation_holders_set(ARRAY(SELECT live.employment_id FROM live WHERE live.current_company))),
+  gbs AS MATERIALIZED (SELECT m.* FROM public.probation_access m WHERE ops AND m.tenant_id=t AND m.user_id=me AND m.role='gbs' AND m.valid_from<=day AND (m.valid_to IS NULL OR m.valid_to>=day)),
+  anc AS MATERIALIZED (SELECT * FROM app.probation_company_ancestors(ARRAY(SELECT DISTINCT h.company_id FROM h WHERE EXISTS(SELECT 1 FROM gbs)))),
+  -- Each GBS mapping covers the companies below it, optionally narrowed to a department or unit: decided per company once.
+  gbs_cover AS MATERIALIZED (SELECT DISTINCT anc.company_id,m.department_id,m.business_unit_id FROM gbs m JOIN anc ON anc.ancestor_id=m.company_id),
+  -- Decision 7: lines on which I am the delegate of a Head of Department or PBP holder, with Probation explicitly ticked.
+  general AS MATERIALIZED (
+   SELECT d.id AS line_id,hu.id AS holder_id FROM public.reporting_line d
+   JOIN public.employment de ON de.id=d.manager_employment_id AND de.tenant_id=d.tenant_id AND de.person_id=my_person
+   JOIN public.employment he ON he.id=d.subordinate_employment_id AND he.tenant_id=d.tenant_id
+   JOIN public.app_user hu ON hu.person_id=he.person_id AND hu.tenant_id=d.tenant_id
+   WHERE d.tenant_id=t AND d.line_type::text='delegate' AND d.superseded_at IS NULL AND d.valid_from<=current_date AND (d.valid_to IS NULL OR d.valid_to>current_date)
+    AND EXISTS(SELECT 1 FROM public.reporting_line_scope s WHERE s.reporting_line_id=d.id AND s.tenant_id=d.tenant_id AND s.module='probation')),
+  held AS MATERIALIZED (
+   SELECT h.employment_id FROM h WHERE me IN(h.employee,h.lm,h.hod,h.pbp)
+    OR EXISTS(SELECT 1 FROM general g JOIN public.reporting_line_scope s ON s.reporting_line_id=g.line_id AND s.tenant_id=t AND s.module='probation'
+     WHERE g.holder_id IN(h.hod,h.pbp) AND app.delegation_line_covers(g.line_id,h.employment_id,'probation',coalesce(s.task_type,'probation.approve')))
+    OR EXISTS(SELECT 1 FROM gbs_cover g WHERE g.company_id=h.company_id AND (g.department_id IS NULL OR g.department_id=h.department_id) AND (g.business_unit_id IS NULL OR g.business_unit_id=h.business_unit_id))),
+  delegated AS MATERIALIZED (
+   SELECT DISTINCT p.case_id FROM public.probation_delegate d JOIN public.probation_part p ON p.id=d.part_id AND p.tenant_id=d.tenant_id
+   WHERE d.tenant_id=t AND d.holder_id=me AND d.valid_from<=day AND (d.valid_to IS NULL OR d.valid_to>=day)),
+  -- 5751 (E4): steps assigned on a Part to a person I am a general Probation delegate for (a group-held GBS step resolves
+  -- to its assigned person); the delegation must cover this employee, as for Head of Department and PBP holders.
+  assigned AS MATERIALIZED (
+   SELECT DISTINCT p.case_id,g.line_id FROM general g
+   JOIN public.probation_delegate x ON x.tenant_id=t AND x.holder_id=g.holder_id AND x.kind IN('missing_holder','holder_changed') AND x.valid_from<=day AND (x.valid_to IS NULL OR x.valid_to>=day)
+   JOIN public.probation_part p ON p.id=x.part_id AND p.tenant_id=x.tenant_id)
+  SELECT live.id FROM live WHERE NOT live.current_company AND live.person_id=my_person
+  UNION
+  SELECT live.id FROM live WHERE live.current_company AND (live.employment_id IN(SELECT held.employment_id FROM held) OR live.id IN(SELECT delegated.case_id FROM delegated)
+   OR EXISTS(SELECT 1 FROM assigned a JOIN public.reporting_line_scope s ON s.reporting_line_id=a.line_id AND s.tenant_id=t AND s.module='probation'
+    WHERE a.case_id=live.id AND app.delegation_line_covers(a.line_id,live.employment_id,'probation',coalesce(s.task_type,'probation.approve'))))
+ ) x;
+ RETURN QUERY SELECT unnest(visible);
+ -- Residual: an escalated approver on a case that is otherwise invisible to them. Candidates are found as one set (cases
+ -- with a part waiting for approval that has a signing document), then checked per candidate.
+ RETURN QUERY WITH waiting AS MATERIALIZED (
+  SELECT DISTINCT p.case_id FROM public.probation_part p JOIN public.document_signing_document d ON d.tenant_id=p.tenant_id AND d.subject_type='probation' AND d.subject_id=p.id
+  WHERE p.tenant_id=t AND p.data->>'state'='pending_approval' AND (p_cases IS NULL OR p.case_id=ANY(p_cases))),
+ candidates AS MATERIALIZED (
+  SELECT c.id FROM public.probation_case c JOIN waiting w ON w.case_id=c.id
+  WHERE c.tenant_id=t AND NOT c.id=ANY(visible) AND app.probation_company_entitled(c.company_id))
+ SELECT candidates.id FROM candidates WHERE app.probation_current_escalated_actor(candidates.id);
+END $$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.probation_signing_access(p_subject uuid,p_operation text) RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE p probation_part;c probation_case;d document_signing_document;step jsonb;
+BEGIN
+ IF coalesce(p_operation,'') NOT IN('create','read','sign','revise','reroute','decline') THEN RETURN false;END IF;
+ SELECT * INTO p FROM probation_part WHERE id=p_subject AND tenant_id=app.current_tenant_id();IF NOT FOUND OR NOT app.probation_active_user() OR NOT app.probation_case_access(p.case_id) THEN RETURN false;END IF;
+ SELECT * INTO c FROM probation_case WHERE id=p.case_id AND tenant_id=p.tenant_id;
+ IF p_operation='read' THEN RETURN app.probation_part_access(p.id);END IF;
+ IF app.probation_case_company_current(c.id) IS NOT TRUE OR app.probation_owns_legacy(c.employment_id) IS NOT TRUE OR NOT app.probation_company_entitled(c.company_id) OR NOT EXISTS(SELECT 1 FROM probation_activation WHERE tenant_id=c.tenant_id AND company_id=c.company_id AND enabled) OR c.data->>'state' IN('withdrawn','confirmed','not_confirmed') OR p.data->>'state' IN('locked','recorded','completed_offline','cancelled','not_issued','release_requested') THEN RETURN false;END IF;
+ IF p.data->>'documentKind'='letter' THEN
+ IF p_operation IN('create','revise','reroute') THEN RETURN app.probation_role(c.employment_id,'pbp') OR app.probation_role(c.employment_id,'gbs');END IF;
+ IF p_operation='sign' THEN RETURN p.data->>'state'<>'returned' AND app.probation_letter_source_current(p.id) AND EXISTS(SELECT 1 FROM document_signing_document doc CROSS JOIN LATERAL jsonb_array_elements(doc.data->'route'->'steps') st WHERE doc.tenant_id=p.tenant_id AND doc.subject_type='probation' AND doc.subject_id=p.id AND st->>'holderId'=app.current_user_id()::text AND (app.probation_role(c.employment_id,st->>'role') OR EXISTS(SELECT 1 FROM jsonb_array_elements(app.probation_resolve_route_unchecked(p.id)->'steps') cur WHERE cur->>'id'=st->>'id' AND cur->>'holderId'=app.current_user_id()::text AND cur->>'representedId' IS NOT NULL) OR EXISTS(SELECT 1 FROM probation_delegate x WHERE x.tenant_id=p.tenant_id AND x.part_id=p.id AND x.step_id=st->>'id' AND x.holder_id=app.current_user_id() AND x.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (x.valid_to IS NULL OR x.valid_to>=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date))));END IF;RETURN false;END IF;
+ IF p_operation='create' THEN RETURN app.probation_part_role(p.id,'lm') AND app.probation_submission_ready(p.id,'lm');END IF;
+ IF p_operation IN('revise','reroute') THEN RETURN app.probation_role(c.employment_id,'pbp') OR app.probation_role(c.employment_id,'gbs') OR p.data->>'managerSubmittedAt' IS NULL AND app.probation_part_role(p.id,'lm') AND app.probation_submission_ready(p.id,'lm');END IF;
+ IF p_operation='decline' THEN RETURN p.data->>'managerSubmittedAt' IS NOT NULL AND p.data->>'acknowledgedAt' IS NULL AND (app.probation_part_role(p.id,'lm') OR app.probation_role(c.employment_id,'pbp') AND EXISTS(SELECT 1 FROM probation_followup WHERE tenant_id=p.tenant_id AND part_id=p.id AND kind='refusal_request' AND content_revision=p.content_revision));END IF;
+ IF p_operation<>'sign' THEN RETURN false;END IF;
+ SELECT * INTO d FROM document_signing_document WHERE tenant_id=p.tenant_id AND subject_type='probation' AND subject_id=p.id;
+ FOR step IN SELECT value FROM jsonb_array_elements(d.data->'route'->'steps') LOOP
+ IF step->>'holderId'=app.current_user_id()::text AND (step->>'role' IN('hod','pbp') AND p.data->>'managerSubmittedAt' IS NOT NULL OR step->>'role'='employee' AND app.probation_role(c.employment_id,'employee') AND p.data->>'managerSubmittedAt' IS NOT NULL OR step->>'role'='lm' AND app.probation_part_role(p.id,'lm') AND p.data->>'managerSubmittedAt' IS NULL AND app.probation_submission_ready(p.id,'lm')) THEN
+ IF EXISTS(SELECT 1 FROM jsonb_array_elements(app.probation_resolve_route_unchecked(p.id)->'steps') current_step WHERE current_step->>'id'=step->>'id' AND current_step->>'holderId'=app.current_user_id()::text) THEN RETURN true;END IF;
+ END IF;END LOOP;RETURN false;
 END $$;
