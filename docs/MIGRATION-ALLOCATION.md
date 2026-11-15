@@ -12,6 +12,19 @@ when 1793330005443 on the board block's offset (tag T, idx T − 600, when 17933
 coordinator; the installed ledgers were not read by this session. Recheck installed watermarks and peer
 claims at admission; this allocation grants no installation authority.
 
+# Personnel postings — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-postings-20261116` (from `faf21b686` on `claude/probation-confirmation-aihr-b81c70`) appends
+`5741_personnel_postings` at idx 5141 / when 1793330005441, the next slot of the board block's offset (tag T, idx T − 600,
+when 1793330004800 + (T − 5100)) directly after `5740` (when 1793330005440). SHA256
+`bac24f1f803408ee29db5915e69d47a72f981c45b5b6c5fee469831dcb800cb5`. It creates one new, empty table (`personnel_posting`) with the ADR-0174 company/tenant key, forced
+row security, a SELECT-only grant to `ai_hr_app`, an owner policy, a deferred constraint trigger, and eleven
+`app.personnel_posting_*` functions (create, edit, approve, record_movement and their authority, value and label helpers);
+no existing object, row, grant or purpose-owned object changes (ADR `docs/adr/2026-11-15-probation-shared-automation.md`,
+decision 4). Allocated by the Probation Confirmation build lead for lane B; peer lanes of the same build hold no claim on
+5741. The installed ledgers were not read by this session; recheck installed watermarks and peer claims at admission. This
+allocation grants no installation authority.
+
 # Shared HR automation definitions — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/probation-confirmation-aihr-b81c70` (from local main, merged with `origin/main` at `94d2f5bbe`) appends

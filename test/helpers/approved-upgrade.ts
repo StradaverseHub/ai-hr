@@ -189,6 +189,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5060,when:1793330005360,tag:'5660_pay_component_bonus_epf_bonus_2012'},
  // Board 4604dccc: payroll history binds a record to the company of its month (dated history), 15 Nov 2026.
  {idx:5080,when:1793330005380,tag:'5680_payroll_history_dated_company'},
+ // Probation reshape onto shared HR automation (ADR 2026-11-15-probation-shared-automation), 16 Nov 2026: shared
+ // workflow/routing definitions, Personnel postings and shared email templates. New empty tables and functions only.
+ {idx:5140,when:1793330005440,tag:'5740_automation_shared_definitions'},
+ {idx:5141,when:1793330005441,tag:'5741_personnel_postings'},
+ {idx:5143,when:1793330005443,tag:'5743_automation_email_templates'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -221,6 +226,9 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5640_lifecycle_v9_email_hold_company_tenant':'66d191aaee14e910480bd7ce7240bd23a76f02e57c66f1c129f40b2562e7d6c7',
  '5660_pay_component_bonus_epf_bonus_2012':'b61c1f10cf2016da97ad257cdbd7b6f8ad8daf261a322fa5260dc0c54f6b6ddf',
  '5680_payroll_history_dated_company':'664b422a2a2128357932b0e0b036fa69ad731eb6c31aa6c4a8ce2a5b6e080faf',
+ '5740_automation_shared_definitions':'72baaa106846be4ede55607235a4555a0a0f38f6f0958183077c9e9f6dca0569',
+ '5741_personnel_postings':'bac24f1f803408ee29db5915e69d47a72f981c45b5b6c5fee469831dcb800cb5',
+ '5743_automation_email_templates':'5b82f328178b8bc5357acb830eceffd89337e13dd563eaec8f931f1f29bce3cd',
  '4800_ai_shared_leave_groups_read':'774dce41ba113549ec5415586d104b8d5b7712934216f2beb4d9aa0e9f00ffc5',
  '4601_last_login_event_index':'868e30d4a2840d4939a46f303ce999b2e041ae3cb6823eb8b712179ccf7d5788',
  '4600_attendance_clock_policy_group_scope':'b30a62bec597f53266232abe569a040a9a421eaa2239eac232d0e44041352be6',

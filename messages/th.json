@@ -39699,5 +39699,70 @@
       "reasonSave": "Edited in the routing rules",
       "reasonRetire": "Retired in the routing rules"
     }
+  },
+  "personnelPostings": {
+    "breadcrumb": "Probation Confirmation / Personnel postings",
+    "title": "Personnel postings",
+    "intro": "Changes to Personnel Management created by Probation workflows wait here. Approve applies the change; Edit opens the event movement in Personnel Management.",
+    "rule": "Only members of the group set in Probation settings › “Who approves Personnel postings” can approve, by Approve or by Save event. Anyone who can record events can Edit; their changes wait for an approver. Nothing reaches Personnel Management until approval.",
+    "columns": {
+      "posting": "Posting",
+      "employee": "Employee",
+      "eventType": "Event type",
+      "change": "Change",
+      "created": "Created",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "events": {
+      "confirmation": "Confirmation",
+      "probationExtension": "Probation Extension"
+    },
+    "change": {
+      "confirmation": "Confirmation Date {date} · status Probation → Active",
+      "probationExtension": "Probation extended · new end date {end} · effective {date}",
+      "remarks": "Remarks: {remarks}"
+    },
+    "status": {
+      "pending": "Pending",
+      "edited": "Edited · waiting for approval",
+      "approved": "Approved"
+    },
+    "editedNote": "Edited by {name} {date}: {changes}",
+    "fields": {
+      "effectiveDate": "effective date",
+      "endDate": "end date",
+      "remarks": "remarks"
+    },
+    "fieldChange": "{field} {before} → {after}",
+    "someone": "a colleague",
+    "unknownGroup": "the posting approver group",
+    "approve": "Approve",
+    "edit": "Edit",
+    "editLabel": "Edit {posting} in Personnel Management",
+    "approveOnlyGroup": "Only {group} can approve",
+    "filters": {
+      "label": "Show postings",
+      "pending": "Waiting for approval",
+      "approved": "Approved",
+      "all": "All"
+    },
+    "empty": "No postings here.",
+    "previous": "Previous",
+    "next": "Next",
+    "saved": {
+      "approved": "Posting {posting} approved. Personnel Management is updated.",
+      "edited": "Your changes to posting {posting} are saved and wait for approval."
+    },
+    "movement": {
+      "banner": "From Personnel posting {posting} · Probation Confirmation.",
+      "approverHint": "You are in the posting approver group ({group}): saving applies this event, approves the posting as you and clears the pending state on the case.",
+      "editorHint": "You can correct these details. The posting stays Pending until {group} approves it; Personnel Management does not change yet.",
+      "leaveHint": "Leaving without saving changes nothing.",
+      "saveAndApprove": "Save event and approve",
+      "saveForApproval": "Save changes for approval",
+      "notPending": "Posting {posting} is no longer waiting for approval.",
+      "backToPostings": "Back to Personnel postings"
+    }
   }
 }

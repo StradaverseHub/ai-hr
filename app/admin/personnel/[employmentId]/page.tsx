@@ -119,6 +119,9 @@ import { listMovementEventTypes } from '@/core/movement-type';
 import { readPersonnelMovementFormData } from './movement-form-data';
 import { withTenant } from '@/db/client';
 import { MovementNewEvent } from './movement-new-event';
+// Personnel postings (ADR 2026-11-15 decision 4): ?posting=<id> on the New Event page prefills from a pending posting.
+import { personnelPosting } from '@/packs/personnel-postings/service';
+import { savePostingEventAction } from '@/app/lifecycle/probation/postings/actions';
 // c063eea9 — "Correct hire details" on the Hired row: the read behind the form, and its client island.
 import { HireCorrectionError, hireCorrectionView, type HireCorrectionField } from '@/core/hire-correction';
 import { HireCorrectionForm, type HireCorrectionFormField } from './hire-correction-form';
@@ -236,6 +239,8 @@ export default async function EmployeePage({
     incentiveError?: string;
     workforceCode?:string;
     workforceEdit?:string;
+    // Personnel postings: the pending posting the New Event page is prefilled from (movement page only).
+    posting?:string;
   }>;
 }) {
   const {s}=await requireWorkforceAccess();
@@ -3568,10 +3573,46 @@ export default async function EmployeePage({
       }
     : null;
 
+  // Personnel postings: read under row security; a posting for another employee or one this user cannot read is a 404.
+  const postingParam = movementPage === 'new' && canCreateMovement && rawSearchParams.posting ? rawSearchParams.posting : undefined;
+  const posting = postingParam ? await personnelPosting(s, postingParam) : null;
+  if (postingParam && (!posting || posting.employmentId !== employmentId)) notFound();
+  const tPostings = posting ? await getTranslations('personnelPostings') : null;
   const newEventCard = canCreateMovement && spNewEvent && movementFormProps ? (
     <Card id="section-movement-new-event" className="overflow-hidden">
       <SectionHeader title={t('movement.newEvent')} />
-      <MovementNewEvent {...movementFormProps} />
+      {posting && tPostings && posting.status !== 'pending' ? (
+        <div className="space-y-3 p-4">
+          <p role="status" className="text-sm">{tPostings('movement.notPending', { posting: posting.label })}</p>
+          <Link href="/lifecycle/probation/postings" className={btnGhost}>{tPostings('movement.backToPostings')}</Link>
+        </div>
+      ) : posting ? (
+        <MovementNewEvent
+          {...movementFormProps}
+          cancelHref="/lifecycle/probation/postings"
+          posting={{
+            id: posting.id,
+            label: posting.label,
+            revision: posting.revision,
+            kind: posting.eventType,
+            effectiveDate: posting.current.effectiveDate,
+            endDate: posting.current.endDate ?? null,
+            remarks: posting.current.remarks ?? null,
+            canApprove: posting.canApprove,
+            labels: {
+              banner: tPostings!('movement.banner', { posting: posting.label }),
+              hint: posting.canApprove
+                ? tPostings!('movement.approverHint', { group: posting.approverGroupName ?? tPostings!('unknownGroup') })
+                : tPostings!('movement.editorHint', { group: posting.approverGroupName ?? tPostings!('unknownGroup') }),
+              leaveHint: tPostings!('movement.leaveHint'),
+              submit: posting.canApprove ? tPostings!('movement.saveAndApprove') : tPostings!('movement.saveForApproval'),
+            },
+          }}
+          postingAction={savePostingEventAction}
+        />
+      ) : (
+        <MovementNewEvent {...movementFormProps} />
+      )}
     </Card>
   ) : null;
 
