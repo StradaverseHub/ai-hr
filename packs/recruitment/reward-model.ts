@@ -26,9 +26,10 @@ export function parseAmount(value: unknown, max: number): string | null {
   const text = value.replace(/[\s,]/g, '');
   if (!/^\d{1,9}(\.\d{1,2})?$/.test(text)) return null;
   const [whole, fraction = ''] = text.split('.');
-  const cents = BigInt(whole) * 100n + BigInt((fraction + '00').slice(0, 2));
-  if (cents <= 0n || cents > BigInt(max) * 100n) return null;
-  return `${cents / 100n}.${String(cents % 100n).padStart(2, '0')}`;
+  // Whole cents as an integer: at most 9 digits before the point, so exact well below 2^53.
+  const cents = Number(whole) * 100 + Number((fraction + '00').slice(0, 2));
+  if (!Number.isSafeInteger(cents) || cents <= 0 || cents > max * 100) return null;
+  return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
 }
 
 /** An optional job reward: empty clears it (null), otherwise a valid amount; `undefined` is a refusal. */

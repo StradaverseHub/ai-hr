@@ -12,6 +12,7 @@ import { withTenant, type SessionContext } from '../db/client';
 import { appUser, employment, jobGrade, payPeriod, payrollBatch, person, roleAssignment } from '../db/schema';
 import { pgSqlState } from '../lib/db-error';
 import { todayInKualaLumpur } from '../lib/hr-date';
+import { createEmployeeDraftWithReservedCode } from '../core/employee-draft';
 import {
   agencyFees, assignAgencyContract, createJob, decideAgencyFee, decideReferralReward, linkHireDraft, moveApplication, myReferrals, recordAgencyFee,
   recordAgencySubmission, recruitmentSettings, referralPortal, referralRewards, rewardPayMonths, rewardPayrollQueue, saveAgency, saveAgencyConsultant,
@@ -77,8 +78,10 @@ async function hire(applicationId: string) {
  * naming it, exactly what core/employee-draft writes), with the given employment dates.
  */
 async function employHire(applicationId: string, dates: Record<string, string | null> = {}) {
-  const draftId = randomUUID();
-  await linkHireDraft(admin, applicationId, draftId);
+  const draft = await createEmployeeDraftWithReservedCode(admin, { companyId: base.companyId, fullName: `Fictional S23 Hire ${++seq}`,
+    primaryEmail: `${randomUUID()}@example.test`, employeeIdMode: 'manual', employeeCode: `S23H${seq}` });
+  const draftId = draft.id;
+  await linkHireDraft(admin, applicationId, draftId, draft.employeeCode);
   const [p] = await owner.db.insert(person).values({ tenantId: base.tenantId, fullName: `Fictional S23 Hire ${++seq}`, primaryEmail: `${randomUUID()}@example.test` })
     .returning({ id: person.id });
   const [e] = await owner.db.insert(employment).values({ tenantId: base.tenantId, companyId: base.companyId, personId: p.id, hiredOn: addDays(today, -100) })
@@ -125,7 +128,8 @@ describe('case 149 — the job reward is set by administrators and frozen on eac
     expect((await referralPortal(referrer)).jobs.find((j) => j.jobId === jobId)?.reward).toEqual({ amount: '500.00', currency: 'MYR' });
     // Invalid amounts and non-administrators are refused (service and database).
     for (const bad of ['0', '-1', '1000000.01', '12.345', 'abc']) expect(await code(setJobReferralReward(admin, jobId, bad)), bad).toBe('invalid_input');
-    expect(await code(setJobReferralReward(referrer, jobId, '900'))).toBe('forbidden');
+    // The job is not even visible to a non-administrator.
+    expect(await code(setJobReferralReward(referrer, jobId, '900'))).toBe('not_found');
 
     const first = await refer(referrer, jobId);
     await setJobReferralReward(admin, jobId, '750.50');

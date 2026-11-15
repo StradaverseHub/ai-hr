@@ -94,7 +94,7 @@ DECLARE
  v_tenant uuid := app.current_tenant_id();
  v_today date := (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date;
  r record; v_draft uuid; v_hire uuid; e record; v_probation_end date; v_due date; v_ended date; v_active boolean;
- v_payees jsonb;
+ v_payees jsonb; v_hire_facts jsonb;
 BEGIN
  IF v_tenant IS NULL OR app.current_user_id() IS NULL OR p_application IS NULL THEN RETURN NULL; END IF;
  SELECT f.id, f.company_id, f.job_id, f.referrer_person_id, f.reward_amount, f.reward_currency, a.state INTO r
@@ -120,6 +120,9 @@ BEGIN
   v_due := coalesce(e.final_confirmation_date, v_probation_end + 1, e.start_on);
   v_ended := e.ended_on;
   v_active := app.recruitment_reward_employment_active(v_hire);
+  v_hire_facts := jsonb_build_object('employmentId', v_hire, 'personId', e.person_id, 'startOn', e.start_on,
+   'confirmationOn', e.final_confirmation_date, 'probationEndOn', v_probation_end, 'dueOn', v_due,
+   'noProbationDate', e.final_confirmation_date IS NULL AND v_probation_end IS NULL, 'endedOn', v_ended, 'active', v_active);
  END IF;
  SELECT coalesce(jsonb_agg(jsonb_build_object('employmentId', x.id, 'companyId', x.company_id, 'companyName', c.legal_name,
    'currency', c.currency, 'employeeCode', x.employee_code) ORDER BY c.legal_name, x.id), '[]'::jsonb) INTO v_payees
@@ -128,9 +131,7 @@ BEGIN
  RETURN jsonb_build_object(
   'referralId', r.id, 'companyId', r.company_id, 'jobId', r.job_id, 'referrerPersonId', r.referrer_person_id,
   'amount', r.reward_amount, 'currency', r.reward_currency, 'applicationState', r.state,
-  'hire', CASE WHEN v_hire IS NULL THEN NULL ELSE jsonb_build_object('employmentId', v_hire, 'personId', e.person_id,
-   'startOn', e.start_on, 'confirmationOn', e.final_confirmation_date, 'probationEndOn', v_probation_end, 'dueOn', v_due,
-   'noProbationDate', e.final_confirmation_date IS NULL AND v_probation_end IS NULL, 'endedOn', v_ended, 'active', v_active) END,
+  'hire', v_hire_facts,
   'payees', v_payees, 'today', v_today);
 END $$;
 REVOKE ALL ON FUNCTION app.recruitment_reward_facts(uuid) FROM PUBLIC;

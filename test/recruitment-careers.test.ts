@@ -54,6 +54,8 @@ const REVIEWED_DEFINERS: string[] = [
   // 5707: every job read filters by the caller's tenant (and the referral marker's companies, or the referrer's own rows).
   'app.recruitment_my_referrals()',
   'app.recruitment_referral_portal(uuid)',
+  // 5725: joins the portal function's own rows to their job's reward and company currency (nothing else).
+  'app.recruitment_referral_portal_rewards(uuid)',
   'app.recruitment_submit_referral(uuid,text,text,text,text,boolean,text,text,bytea)',
 ];
 /** The verified request source a reviewed proxy sets (deploy/internal-auth/abuse-careers-location.conf). */
