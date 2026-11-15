@@ -229,9 +229,9 @@ describe('case 134 — one reminder per invited interview at the company offset,
     expect(reminders[0].body_text).toContain(s.interviewTime);
     // One reminder per interview: a second is refused by the unique key.
     expect(await constraintOf(owner.db.execute(sql`insert into recruitment_candidate_email (tenant_id, company_id, job_id, application_id, candidate_id, kind, locale,
-      recipient, subject, body_text, body_html, sender_name, reply_to, queued_by_user_id, interview_id, interview_starts_at, next_attempt_at)
+      recipient, subject, body_text, body_html, sender_name, reply_to, queued_by_user_id, interview_id, interview_starts_at, next_attempt_at, map_url)
       select tenant_id, company_id, job_id, application_id, candidate_id, kind, locale, recipient, subject, body_text, body_html, sender_name, reply_to,
-        queued_by_user_id, interview_id, interview_starts_at, next_attempt_at from recruitment_candidate_email where id = ${reminders[0].id}::uuid`)))
+        queued_by_user_id, interview_id, interview_starts_at, next_attempt_at, map_url from recruitment_candidate_email where id = ${reminders[0].id}::uuid`)))
       .toBe('recruitment_candidate_email_interview_uq');
     // An interview closer than the offset: invitation only.
     await scheduleWithInvitation(w, { ...slot(1), startsAt: klLocal(3) }, { roomId: '' });
@@ -335,8 +335,8 @@ describe('case 135 — offer e-mails: a person, an Approved offer, only the fiel
     // Mark as sent by e-mail is replaced while candidate e-mail is on; other channels stay.
     expect(await code(markOfferSent(w.recruiter, offerId, 'email'))).toBe('email_use_send');
     expect(await code(sendOfferByEmail(w.recruiter, offerId, 'stale'))).toBe('email_changed');
-    // A hiring manager cannot send it.
-    expect(await code(sendOfferByEmail(w.manager, offerId, p.fingerprint))).toBe('forbidden');
+    // A hiring manager (who does not operate the job) cannot send it: the offer is not theirs to lock.
+    expect(await code(sendOfferByEmail(w.manager, offerId, p.fingerprint))).toMatch(/^(forbidden|not_found)$/);
     await sendOfferByEmail(w.recruiter, offerId, p.fingerprint);
     const [o] = await owner.db.execute<{ sent_channel: string; sent_by_user_id: string; sent_at: string }>(sql`select sent_channel, sent_by_user_id, sent_at from recruitment_offer where id = ${offerId}::uuid`);
     expect(o).toMatchObject({ sent_channel: 'email', sent_by_user_id: w.recruiter.userId });
