@@ -14,6 +14,7 @@ const PARTS = ['Part 1 · Week 1 Success Plan', 'Part 2 · Mid-Probation Review'
 const PART_TRIGGERS = ['dueAfterStart', 'formIssued', 'dueBeforeReview', 'lmSubmitted', 'acknowledged', 'approvalsComplete', 'returned', 'lowResult', 'outcomeOverridden', 'declinedToSign', 'outcomeDecided', 'approvalPending', 'kpiOverdue'] as const;
 const OUTCOME_TRIGGERS = ['outcomeDecided', 'letterActionNeeded', 'letterSentBack', 'letterReleased', 'letterReleasePending'] as const;
 const SCORE_TRIGGERS = ['lmSubmitted', 'lowResult', 'outcomeOverridden'] as const;
+const LETTER_TRIGGERS = ['letterActionNeeded', 'letterSentBack', 'letterReleased', 'letterReleasePending'] as const;
 const PENDING_TRIGGERS = ['dueAfterStart', 'dueBeforeReview', 'kpiOverdue'] as const;
 
 export const PROBATION_AUTOMATION_CATALOGUE: AutomationModuleCatalogue = {
@@ -77,6 +78,7 @@ export const PROBATION_AUTOMATION_CATALOGUE: AutomationModuleCatalogue = {
   mergeFields: [
     { key: 'employee.name', label: 'Full name', group: 'Employee' },
     { key: 'employee.id', label: 'Employee ID', group: 'Employee' },
+    { key: 'employee.firstName', label: 'First name', group: 'Employee' },
     { key: 'employee.jobTitle', label: 'Job title', group: 'Employee' },
     { key: 'employee.grade', label: 'Job grade', group: 'Employee' },
     { key: 'org.businessGroup', label: 'Business group', group: 'Organisation' },
@@ -96,6 +98,11 @@ export const PROBATION_AUTOMATION_CATALOGUE: AutomationModuleCatalogue = {
     { key: 'probation.extensionLength', label: 'Extension length', group: 'Probation', triggers: OUTCOME_TRIGGERS },
     { key: 'probation.newEndDate', label: 'New end date', group: 'Probation', triggers: OUTCOME_TRIGGERS },
     { key: 'probation.extensionNumber', label: 'Extension number', group: 'Probation', triggers: OUTCOME_TRIGGERS },
+    { key: 'probation.resultBand', label: 'Result band', group: 'Probation', triggers: SCORE_TRIGGERS },
+    { key: 'letter.documentName', label: 'Letter name', group: 'Letter', triggers: LETTER_TRIGGERS },
+    { key: 'letter.signingStep', label: 'Signing step waiting', group: 'Letter', triggers: ['letterActionNeeded'] },
+    { key: 'letter.sentBackBy', label: 'Sent back by', group: 'Letter', triggers: ['letterSentBack'] },
+    { key: 'letter.sentBackReason', label: 'Reason it was sent back', group: 'Letter', triggers: ['letterSentBack'] },
     { key: 'case.link', label: 'Link to the case', group: 'General' },
     { key: 'today', label: 'Today', group: 'General' },
   ],

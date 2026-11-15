@@ -3,7 +3,7 @@ import {revalidatePath} from 'next/cache';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
 import {
   AutomationError,automationBuilderAccess,automationPeopleNames,conditionFieldsForTrigger,dryRunAutomationWorkflow,
-  installAutomationDefaults,listAutomationEmailTemplates,listAutomationRoutings,automationAssignmentGroups,probationStepParamProblems,resolveRoutingRow,
+  installAutomationDefaults,listAutomationRoutings,automationAssignmentGroups,resolveRoutingRow,
   saveAutomationEmailTemplate,saveAutomationRouting,saveAutomationWorkflow,searchAutomationPeople,
   type AutomationDryRun,type AutomationEmailTemplate,type AutomationRecipient,type AutomationWorkflow,type Routing,
 } from '@/packs/automation/service';
@@ -26,17 +26,9 @@ async function probationConfigurer() {
   return ctx;
 }
 
-/** Saves a workflow. The store refuses Live with problems; Probation step settings are checked here as well. */
+/** Saves a workflow. The store refuses Live with problems, Probation step settings included. */
 export async function saveWorkflowAction(input: { workflow: AutomationWorkflow; expectedRevision: number; reason: string }) {
-  return execute(async () => {
-    const ctx = await requireScopedLifecycleModule();
-    if (input.workflow.module === 'probation' && input.workflow.status === 'live') {
-      const templates = await listAutomationEmailTemplates(ctx, { module: 'probation' });
-      const problems = probationStepParamProblems(input.workflow, { emailTemplates: templates.map(t => ({ id: t.template.id, name: t.template.name, active: t.template.active, retired: t.retired })), letterTemplateIds: null });
-      if (problems.length) throw new AutomationError('invalid', `Fix ${problems.length === 1 ? 'the problem' : `the ${problems.length} problems`} before making it live.`, problems);
-    }
-    return saveAutomationWorkflow(ctx, input);
-  });
+  return execute(async () => saveAutomationWorkflow(await requireScopedLifecycleModule(), input));
 }
 
 export async function saveEmailTemplateAction(input: { template: AutomationEmailTemplate; retired: boolean; expectedRevision: number; reason: string }) {

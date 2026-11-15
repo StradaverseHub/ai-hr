@@ -16,6 +16,7 @@ import {automationCatalogue} from '../lib/automation/catalogues';
 import {AUTOMATION_MODULES,type AutomationModule} from '../lib/automation/catalogue';
 import {automationMergeWarnings,automationWorkflowProblems,type AutomationReferences,type AutomationWorkflow} from '../lib/automation/workflow';
 import {routingProblems,type Routing,type RoutingRow} from '../lib/automation/routing';
+import {probationStepParamProblems} from '../lib/automation/email';
 
 export class AutomationError extends Error {
   constructor(public readonly code: 'forbidden' | 'invalid' | 'conflict' | 'not_found', message: string, public readonly problems: readonly string[] = []) { super(message); this.name = 'AutomationError'; }
@@ -85,6 +86,14 @@ export async function saveAutomationWorkflow(ctx: SessionContext, input: { workf
     const [allowed] = await tx.execute<{ ok: boolean }>(sql`select app.automation_can_configure(${workflow.module}) as ok`);
     if (!allowed?.ok) throw new AutomationError('forbidden', 'You cannot configure this.');
     const problems = workflow.status === 'retired' ? [] : automationWorkflowProblems(workflow, catalogue, await references(tx, people));
+    // Module step settings (which email template, letter, posting event) are checked here too, in the same
+    // transaction, so every caller is held to "no Live with problems", not only the builder screen.
+    if (workflow.module === 'probation' && workflow.status !== 'retired') {
+      const templates = await tx.execute<{ id: string; name: string; active: boolean; retired: boolean }>(sql`
+        select distinct on (template_id) template_id as id, name, active, retired from automation_email_template_version
+        where tenant_id = app.current_tenant_id() and module = 'probation' order by template_id, revision desc limit 500`);
+      problems.push(...probationStepParamProblems(workflow, { emailTemplates: templates, letterTemplateIds: null }));
+    }
     if (workflow.status === 'live' && problems.length) throw new AutomationError('invalid', `Fix ${problems.length === 1 ? 'the problem' : `the ${problems.length} problems`} before making it live.`, problems);
     const { status, required, ...definition } = workflow;
     try {

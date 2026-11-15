@@ -21,7 +21,7 @@ async function member(grant?:'allow'|'deny'){
 }
 const workflow=(over:Partial<AutomationWorkflow>={}):AutomationWorkflow=>({id:randomUUID(),module:'probation',name:'Outcome · Confirm',description:'',status:'paused',required:true,
  trigger:{event:'outcomeDecided',days:0,workdays:false,repeat:false},skipWhen:'caseClosed',conditions:[{field:'outcome',op:'is',values:['Confirm']}],
- steps:[{id:'s1',type:'sendEmail',conditions:[],to:[{kind:'role',role:'employee'}],cc:[{kind:'group',groupId:'g-gbs'}],params:{emailTemplateId:'e-letter'}}],...over});
+ steps:[{id:'s1',type:'notify',conditions:[],to:[{kind:'role',role:'employee'}],cc:[{kind:'group',groupId:'g-gbs'}],params:{subject:'Your probation letter'}}],...over});
 const routing=(over:Partial<Routing>={}):Routing=>({id:randomUUID(),name:'BP by business group',rows:[{match:{businessGroup:['CHGB']},assignTo:{kind:'group',groupId:'g-gbs'}}],...over});
 const rejects=async(p:Promise<unknown>,code:AutomationError['code'])=>{await expect(p).rejects.toBeInstanceOf(AutomationError);await expect(p).rejects.toMatchObject({code});};
 
@@ -98,5 +98,14 @@ describe('Shared routings',()=>{
   await rejects(saveAutomationRouting(plain,{routing:routing(),retired:false,expectedRevision:0,reason:'x'}),'forbidden');
   expect(await withTenant(plain,tx=>tx.execute(sql`select * from app.automation_assignment_groups()`))).toEqual([]);
   expect(await withTenant(plain,tx=>tx.execute(sql`select * from app.automation_active_users(${`{${admin.userId}}`}::uuid[])`))).toEqual([]);
+ });
+});
+
+describe('Probation step settings are enforced by the store',()=>{
+ it('refuses Live when a send-email step names no template, whoever calls the store',async()=>{
+  const wf=workflow({status:'live',steps:[{id:'s1',type:'sendEmail',conditions:[],to:[{kind:'role',role:'employee'}],cc:[],params:{}}]});
+  await rejects(saveAutomationWorkflow(admin,{workflow:wf,expectedRevision:0,reason:'Live without a template'}),'invalid');
+  const saved=await saveAutomationWorkflow(admin,{workflow:{...wf,status:'paused'},expectedRevision:0,reason:'Draft'});
+  expect(saved.problems).toContain('Step 1: choose an email template.');
  });
 });
