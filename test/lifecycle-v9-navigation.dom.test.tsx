@@ -27,18 +27,29 @@ it.each(['classic','monolith','atelier'] as const)('renders the requested three-
  expect(nav.getAllByRole('link').map(link=>[link.textContent?.trim(),link.getAttribute('href')])).toEqual([
   ['New Joiners','/lifecycle/v9'],['Checklist Management','/lifecycle/v9?view=onbChecklists'],
   ['Leavers','/lifecycle/v9?view=leavers'],['Offboarding checklists','/lifecycle/v9?view=offChecklists'],
-  ['Templates','/lifecycle/v9?view=templates'],['Workflows','/lifecycle/v9?view=workflows'],
-  ['Onboarding & Offboarding Settings','/lifecycle/v9?view=settings'],['Assignment Groups','/lifecycle/v9?view=groups'],['Module Access','/lifecycle/v9?view=access'],
+  ['Onboarding & Offboarding Settings','/lifecycle/v9?view=settings'],['Module Access','/lifecycle/v9?view=access'],
  ]);
  for(const label of ['Onboarding & IT','My onboarding & offboarding','Requisitions','All requisitions'])expect(nav.queryByText(label)).not.toBeInTheDocument();
  const onboarding=nav.getByRole('button',{name:'Onboarding'});fireEvent.click(onboarding);
  expect(onboarding).toHaveAttribute('aria-expanded','false');expect(nav.queryByRole('link',{name:'Checklist Management'})).not.toBeInTheDocument();
  expect(nav.getByRole('link',{name:'Leavers'})).toBeVisible();fireEvent.click(onboarding);expect(nav.getByRole('link',{name:'Checklist Management'})).toBeVisible();
 });
+it.each(['classic','monolith','atelier'] as const)('moves the On/Off Boarding builders into the shared HR Automation section in the %s sidebar',theme=>{
+ sidebar(theme);
+ // ADR 2026-11-15-probation-shared-automation, decision 1: same V9 screens, now beside the shared builders.
+ const automationTrigger=screen.getByRole('button',{name:messages.nav.moduleHrAutomation});
+ if(automationTrigger.getAttribute('aria-expanded')!=='true')fireEvent.click(automationTrigger);
+ const automation=within(screen.getByRole('navigation',{name:messages.nav.moduleHrAutomation}));
+ expect(automation.getAllByRole('link').map(link=>[link.textContent?.trim(),link.getAttribute('href')])).toEqual([
+  ['Workflows','/automation/workflows'],['Templates','/automation/templates'],['Assignment groups','/automation/groups'],
+  ['On/Off Boarding templates','/lifecycle/v9?view=templates'],['On/Off Boarding workflows','/lifecycle/v9?view=workflows'],['On/Off Boarding assignment groups','/lifecycle/v9?view=groups'],
+ ]);
+});
 it('keeps an offboarding-only reader out of onboarding and configuration navigation',()=>{
  const nav=within(sidebar('classic',{onboarding:false,offboarding:true,administration:false}));
  expect(nav.getAllByRole('button').map(button=>button.textContent?.trim())).toEqual(['Offboarding']);
  expect(nav.getAllByRole('link').map(link=>link.textContent?.trim())).toEqual(['Leavers','Offboarding checklists']);
+ expect(screen.queryByRole('button',{name:messages.nav.moduleHrAutomation})).not.toBeInTheDocument();
 });
 it('does not advertise lifecycle navigation without its module entitlement',()=>{
  render(<NextIntlClientProvider locale="en" messages={messages}><Sidebar isAdmin onboardingV9Access onboardingV9Navigation={permissions} defaultCollapsed={false} enabledModules={[]}/></NextIntlClientProvider>);

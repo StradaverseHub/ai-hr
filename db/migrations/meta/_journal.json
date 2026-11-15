@@ -5965,6 +5965,13 @@
       "when": 1793330005440,
       "tag": "5740_automation_shared_definitions",
       "breakpoints": true
+    },
+    {
+      "idx": 5143,
+      "version": "7",
+      "when": 1793330005443,
+      "tag": "5743_automation_email_templates",
+      "breakpoints": true
     }
   ]
 }

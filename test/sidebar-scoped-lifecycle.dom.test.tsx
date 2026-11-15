@@ -28,3 +28,20 @@ it('does not advertise Contract intake through configuration authority alone',()
  fireEvent.click(screen.getByRole('button',{name:messages.nav.contractManagement}));
  expect(screen.getByRole('link',{name:messages.nav.contractSettings})).toBeInTheDocument();expect(screen.queryByRole('link',{name:messages.nav.contractIntake})).not.toBeInTheDocument();
 });
+it('offers the shared HR Automation builders to a Probation configurer, and Personnel postings beside the tracker',()=>{
+ render(<NextIntlClientProvider locale="en" messages={messages}><Sidebar isAdmin={false} probationAccess={{page:true,configure:true}} enabledModules={[]} defaultCollapsed={false}/></NextIntlClientProvider>);
+ fireEvent.click(screen.getByRole('button',{name:messages.nav.probationConfirmation}));
+ expect(screen.getByRole('link',{name:messages.nav.probationPostings})).toHaveAttribute('href','/lifecycle/probation/postings');
+ expect(screen.getByRole('link',{name:messages.nav.probationSettings})).toHaveAttribute('href','/lifecycle/probation/settings');
+ expect(screen.queryByRole('link',{name:messages.nav.probationWorkflows})).not.toBeInTheDocument();expect(screen.queryByRole('link',{name:messages.nav.probationTemplates})).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:messages.nav.moduleHrAutomation}));
+ expect(screen.getByRole('link',{name:messages.nav.automationWorkflows})).toHaveAttribute('href','/automation/workflows');
+ expect(screen.getByRole('link',{name:messages.nav.automationTemplates})).toHaveAttribute('href','/automation/templates');
+ expect(screen.getByRole('link',{name:messages.nav.automationGroups})).toHaveAttribute('href','/automation/groups');
+ expect(screen.queryByRole('link',{name:messages.nav.automationOnOffWorkflows})).not.toBeInTheDocument();
+});
+it('keeps the shared builders hidden from someone who configures no module',()=>{
+ render(<NextIntlClientProvider locale="en" messages={messages}><Sidebar isAdmin={true} probationAccess={{page:true,configure:false,intake:true}} enabledModules={['lifecycle']} defaultCollapsed={false}/></NextIntlClientProvider>);
+ expect(screen.queryByRole('button',{name:messages.nav.moduleHrAutomation})).not.toBeInTheDocument();
+ expect(screen.queryByRole('link',{name:messages.nav.automationWorkflows})).not.toBeInTheDocument();
+});

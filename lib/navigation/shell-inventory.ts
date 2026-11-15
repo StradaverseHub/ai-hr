@@ -504,15 +504,26 @@ export type ScopedLifecycleNavigationItem = ChildItem & {
 };
 export const SCOPED_LIFECYCLE_NAVIGATION: readonly ScopedLifecycleNavigationItem[] = [
   {module:'probation',access:'page',href:'/lifecycle/probation',labelKey:'probationTracker',icon:Timer,exactHref:true,ownedSubpaths:['/lifecycle/probation']},
+  // ADR 2026-11-15-probation-shared-automation, decision 4: postings approved by the posting-approver group (page fact).
+  {module:'probation',access:'page',href:'/lifecycle/probation/postings',labelKey:'probationPostings',icon:Timer,exactHref:true,ownedSubpaths:['/lifecycle/probation/postings']},
   {module:'contracts',access:'page',href:'/lifecycle/contracts',labelKey:'contractManagement',icon:ScrollText,exactHref:true,ownedSubpaths:['/lifecycle/contracts']},
   {module:'probation',access:'configure',href:'/lifecycle/probation/settings',labelKey:'probationSettings',icon:Timer},
   {module:'probation',access:'configure',href:'/lifecycle/probation/forms',labelKey:'probationForms',icon:Timer},
   {module:'probation',access:'configure',href:'/lifecycle/probation/routes',labelKey:'probationRoutes',icon:Timer},
-  {module:'probation',access:'configure',href:'/lifecycle/probation/workflows',labelKey:'probationWorkflows',icon:Timer},
-  {module:'probation',access:'configure',href:'/lifecycle/probation/templates',labelKey:'probationTemplates',icon:Timer},
   {module:'probation',access:'configureOrIntake',href:'/lifecycle/probation/intake',labelKey:'probationIntake',icon:Timer},
   {module:'contracts',access:'intake',href:'/lifecycle/contracts/intake',labelKey:'contractIntake',icon:ScrollText},
   {module:'contracts',access:'configure',href:'/lifecycle/contracts/settings',labelKey:'contractSettings',icon:ScrollText},
   {module:'contracts',access:'configure',href:'/lifecycle/contracts/workflows',labelKey:'contractWorkflows',icon:ScrollText},
   {module:'contracts',access:'configure',href:'/lifecycle/contracts/templates',labelKey:'contractTemplates',icon:ScrollText},
+];
+
+/**
+ * ADR 2026-11-15-probation-shared-automation, decision 1: the shared "HR Automation" builders. Probation's own Workflows
+ * and Templates rows moved here (their old pages keep their addresses). Shown when the viewer configures at least one
+ * module, from each module's existing configure fact (shell-resolver.ts); every page and save checks again.
+ */
+export const AUTOMATION_NAVIGATION: readonly ChildItem[] = [
+  {href:'/automation/workflows',labelKey:'automationWorkflows',icon:Share2,ownedSubpaths:['/automation/workflows']},
+  {href:'/automation/templates',labelKey:'automationTemplates',icon:Share2,ownedSubpaths:['/automation/templates']},
+  {href:'/automation/groups',labelKey:'automationGroups',icon:Share2,ownedSubpaths:['/automation/groups']},
 ];

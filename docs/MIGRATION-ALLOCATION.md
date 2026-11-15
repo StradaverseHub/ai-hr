@@ -1,3 +1,17 @@
+# Shared HR automation email templates — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-screens-20261116` (lane A of the Probation Confirmation build, from
+`claude/probation-confirmation-aihr-b81c70` at `faf21b686`) appends `5743_automation_email_templates` at idx 5143 /
+when 1793330005443 on the board block's offset (tag T, idx T − 600, when 1793330004800 + (T − 5100)), directly above
+`5740_automation_shared_definitions` (when 1793330005440). SHA256
+`5b82f328178b8bc5357acb830eceffd89337e13dd563eaec8f931f1f29bce3cd`. It creates one new, empty, append-only table
+(`automation_email_template_version`) with forced row security, a SELECT-only grant to `ai_hr_app` read under
+`app.automation_can_configure(module)`, an owner policy, and one SECURITY DEFINER writer
+`app.automation_email_template_save`; no existing object, row, grant or purpose-owned object changes (ADR
+`docs/adr/2026-11-15-probation-shared-automation.md`). The tag, idx and when were assigned by the Probation build
+coordinator; the installed ledgers were not read by this session. Recheck installed watermarks and peer
+claims at admission; this allocation grants no installation authority.
+
 # Shared HR automation definitions — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/probation-confirmation-aihr-b81c70` (from local main, merged with `origin/main` at `94d2f5bbe`) appends

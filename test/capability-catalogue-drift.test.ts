@@ -207,6 +207,7 @@ const NOT_A_PAGE:Readonly<Record<string,string>>={
 const NOT_YET_LINKABLE:Readonly<Record<string,string>>={
  '/lifecycle/probation':'Main\'s Probation Confirmation pages: unlinkable until their semantic, guide and corpus entries exist.',
  '/lifecycle/contracts':'Main\'s Contract Management pages: unlinkable until their semantic, guide and corpus entries exist.',
+ '/automation':'The shared HR Automation builders (ADR 2026-11-15-probation-shared-automation): unlinkable until their semantic, guide and corpus entries exist.',
 };
 const pendingArea=(path:string)=>Object.keys(NOT_YET_LINKABLE).find(area=>path===area||path.startsWith(area+'/'));
 describe('destinations',()=>{
