@@ -295,7 +295,7 @@ async function previewTx(tx:Tx,ctx:SessionContext,input:PreviewInput,extended=fa
  if(effectiveOn>today)fail('Effective Date cannot be in the future.');
  const v=await validateTx(tx,ctx,state,input.changes,extended,await valuesAtTx(tx,ctx,state,effectiveOn));
  const earliest=v.after.hiredOn!;
- if(effectiveOn<earliest)fail(`Effective Date cannot be before ${earliest}, the Group Join Date, when the employee's history starts.`);
+ if(effectiveOn<earliest)fail(`Effective Date cannot be before ${earliest}, the Group Join Date, when the employee's history starts. If the employee joined earlier, correct the Group Join Date in this same correction.`);
  const backdated=effectiveOn<today;
  if(INFORMATION_ALL_FIELDS.some(f=>v.before[f]!==v.after[f])){const [history]=await tx.execute<{ready:boolean}>(sql`select app.information_payroll_ready(${state.emp.id}::uuid) as ready`);if(!history?.ready)fail('Original historical information cannot be verified after intervening changes. Ask the payroll administrator to reconcile the historical document evidence before correcting this record.');}
  const companyRows=tx.select({id:company.id,label:company.companyLabel,registration:company.registrationNo,name:company.legalName,country:company.country,currency:company.currency,archivedAt:company.archivedAt}).from(company).where(inArray(company.id,[v.before.companyId!,v.after.companyId!])).orderBy(asc(company.id));

@@ -74,3 +74,25 @@ before the current assignment record"), and payroll history import looked only a
   the correction records no organisation tag for that day. Moving those readers to the dated record is a follow-up
   migration across all of them.
 - New translations need translation review.
+
+## Revision 2 — correcting dates to earlier values (board 4604dccc, plan revision 2, 15 November 2026)
+
+The reporter contested that the saved Group Join Date and Join Date blocked corrections to earlier, real dates.
+
+1. **The limit is the corrected Group Join Date, never the saved one.** The Information-Only Correction form's
+   earliest Effective Date follows the Group Join Date entered in the same form; the server check (the corrected
+   `hiredOn`) is unchanged and remains the authority. Join Date is never a limit for the Effective Date.
+2. **Group Join Date Correction aligns the dated records.** After the movement (and after its Roll Back) moves
+   `employment.hired_on`, `alignHistoryToGroupJoinDateTx` (core/movement-history.ts) starts the first assignment
+   version, salary revision and reporting lines on it, as Information-Only Correction already did (board 154511c4).
+   It records `employment.history.start.aligned` with `assignment` and `aligned` replacements, which
+   `isAssignmentReplacementEvent` and the hire-correction ledger follow. Moving it later (including a Roll Back) is
+   refused when a recorded change or closed payroll lies in the dropped period.
+3. **Movement import:** a Group Join Date Correction row goes before the employee's other new rows (preview, commit
+   and history use the same order), so they are checked against the corrected date.
+4. **Refusals name the date:** `MovementBeforeGroupJoinDateError`, `event_before_hire:<date>` and
+   `movement_before_join_date:<date>`. Older recorded codes without a date drop the bracketed date when shown.
+
+Kept, by decision: nothing is dated before the corrected Group Join Date (no employment record covers it; leave
+service bands read `hiredOn`); Join Date stays on or after Group Join Date; Historical Hire records an earlier
+separate stint; Organisation Hire Correction gains no date inputs and anchors on the current Group Join Date.

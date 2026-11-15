@@ -93,7 +93,7 @@ import {
 import { movementFieldRuleViolations, type MovementFieldRule, type MovementFieldRuleViolation } from '../lib/movement-field-rules';
 // Board 154511c4 — history recorded backwards from the current record. Its event projects a movement row and
 // its row replacements join the hire correction's in the chain Roll Back follows.
-import { MOVEMENT_HISTORY_EVENT, MOVEMENT_HISTORY_REVERTED_EVENT, MovementHistoryError, isAssignmentReplacementEvent, reverseHistoryMovementTx, liftCorrectionBoundariesTx, reapplyCorrectionBoundariesTx, companyRecordOnTx } from './movement-history';
+import { MOVEMENT_HISTORY_EVENT, MOVEMENT_HISTORY_REVERTED_EVENT, MovementHistoryError, isAssignmentReplacementEvent, alignHistoryToGroupJoinDateTx, reverseHistoryMovementTx, liftCorrectionBoundariesTx, reapplyCorrectionBoundariesTx, companyRecordOnTx } from './movement-history';
 // c063eea9 — the hire-details correction. It owns its event and the trace the Hired row wears; this module
 // loads the event (it projects no row of its own) and follows its row replacements when rolling back.
 import {
@@ -3403,12 +3403,17 @@ async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateM
     // date. This is the ONLY route to hired_on after creation, and it MOVES LEAVE ENTITLEMENT (service bands
     // read hired_on), so it is deliberately its own event type rather than a field on another movement — an
     // entitlement change should never be a side effect of a transfer someone recorded for another reason.
-    case 'groupJoinDateCorrection':
-      return setEmploymentInfo(ctx, {
+    // Board 4604dccc r2 — the dated records then start on the corrected date, so movements dated between the new and
+    // the old Group Join Date can be recorded after it (New Event, or later rows of the same Movement import).
+    case 'groupJoinDateCorrection': {
+      const saved = await setEmploymentInfo(ctx, {
         employmentId: p.employmentId,
         hiredOn: p.effectiveDate,
         movement: { type: 'groupJoinDateCorrection', remarks, groupId: randomUUID() },
       },tx);
+      await alignHistoryToGroupJoinDateTx(tx, ctx, p.employmentId, 'groupJoinDateCorrection', (message) => new Error(message));
+      return saved;
+    }
 
     case 'probationExtension':
       if(!isCalendarDate(p.effectiveDate))throw new Error('A valid effective date (YYYY-MM-DD) is required.');
@@ -3760,6 +3765,13 @@ export async function applyDueMovementsTx(
 // grade / flat-column replays the detail view depends on stay complete in the ledger.
 
 /** Thrown when a correction is asked of a movement this module cannot replay (see REVERSIBLE_EVENT_TYPES). */
+/** Board 4604dccc r2 — a movement dated before the employee's Group Join Date. Names the date and the fix. */
+export class MovementBeforeGroupJoinDateError extends Error {
+  constructor(public readonly groupJoinDate: string) {
+    super(`This date is before the employee's Group Join Date (${groupJoinDate}). If the employee joined earlier, correct the Group Join Date first, or use a later date.`);
+    this.name = 'MovementBeforeGroupJoinDateError';
+  }
+}
 export class MovementNotCorrectableError extends Error {
   constructor(message: string) {
     super(message);
@@ -3967,7 +3979,7 @@ async function recordComparisonInEffectiveOrderTx(tx: Tx, ctx: SessionContext, i
   const { emp, events, rows, statusOf, resolvedTypes } = await projectRows(tx, ctx.tenantId, input.employmentId);
   if (input.effectiveDate < emp.hiredOn) {
     if (behaviour === 'confirmation') return dispatchMovementEventTx(tx, ctx, input, undefined, undefined, captureGradeBefore);
-    throw new Error('Use Historical Hire to record dates before the current Group Join Date.');
+    throw new MovementBeforeGroupJoinDateError(emp.hiredOn);
   }
   const later = await laterReplayPlanTx(tx, events, rows, statusOf, resolvedTypes, null, -1, input.effectiveDate);
   if (!later.length) return dispatchMovementEventTx(tx, ctx, input, undefined, undefined, captureGradeBefore);
@@ -4316,6 +4328,8 @@ async function reverseLegTx(
       } else if (Object.keys(restore).length || Object.keys(dates).length) {
         await withExitDateAuthorityTx(tx,employmentId,()=>setEmploymentInfo(ctx, { employmentId, ...restore, ...dates, movement: tag }, tx));
       }
+      // Board 4604dccc r2 — rolling back a Group Join Date Correction returns the dated records to the original date.
+      if (dates.hiredOn !== undefined) await alignHistoryToGroupJoinDateTx(tx, ctx, employmentId, 'rollback', (message) => new MovementNotCorrectableError(message));
       return;
     }
 
@@ -4747,7 +4761,7 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
         // Judge the replacement against the state AFTER its inverse, not the mistaken exit.
         const [dates] = await tx.select({hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,lastWorkingDate:employment.lastWorkingDate,resignationDate:employment.resignationDate}).from(employment).where(eq(employment.id,p.employmentId));
         if (!dates) throw new Error('Employment not found.');
-        if (!['groupJoinDateCorrection','blacklist'].includes(p.kind) && p.effectiveDate! < dates.hiredOn) throw new Error('The replacement event cannot be dated before the employee joined.');
+        if (!['groupJoinDateCorrection','blacklist'].includes(p.kind) && p.effectiveDate! < dates.hiredOn) throw new MovementBeforeGroupJoinDateError(dates.hiredOn);
         const remainingExit = [dates.terminatedOn,dates.lastWorkingDate,dates.resignationDate].filter((date):date is string => !!date).sort()[0];
         if (remainingExit && p.effectiveDate! > remainingExit && (isComparisonKind(p.kind) || ['secondment','actingPosition'].includes(p.kind))) throw new MovementNotCorrectableError('The replacement event falls after another recorded exit. Review that event first.');
         const beforeSequence = Math.max(...events.map(event => event.sequence));
