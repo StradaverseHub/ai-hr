@@ -38755,7 +38755,8 @@
       "email_no_address": "候选人没有可用的邮箱地址。未执行任何操作。",
       "email_value_link": "此邮件中的某个值（候选人姓名、职位名称、地点或录用字段值）看起来像链接或网址，无法发送。未执行任何操作。",
       "email_private_field": "某个标记为邮件中的录用字段为私密字段，您无法查看。未执行任何操作；请让能查看该字段的人发送。",
-      "email_use_send": "本公司已开启候选人邮件：请使用“通过邮件发送录用通知”，它会先显示邮件内容。未执行任何操作。"
+      "email_use_send": "本公司已开启候选人邮件：请使用“通过邮件发送录用通知”，它会先显示邮件内容。未执行任何操作。",
+      "email_survey_link": "调查邮件的正文必须恰好包含一次调查链接占位符（用花括号括起的 surveyLink），主题中不能包含。"
     },
     "overview": {
       "purpose": "您所管理招聘的各公司今天的招聘工作。",
@@ -39773,6 +39774,41 @@
         "in_progress": "进行中",
         "completed": "已完成",
         "cancelled": "已取消"
+      },
+      "survey": "候选人调查",
+      "candidateSurvey": {
+        "title": "候选人调查",
+        "note": "候选人在录用或被拒绝后提交的匿名回答，按回答月份统计。回答不关联职位，因此职位和部门筛选不适用。",
+        "tooFew": "所选公司和月份中至少有{minimum}名候选人回答后才显示结果。",
+        "noSplit": "录用和被拒绝的候选人各自至少有{minimum}份回答时才分别显示。",
+        "responses": "回答数",
+        "overallAverage": "总体评分（1–5）",
+        "recommendYes": "会推荐朋友",
+        "averages": "评分",
+        "question": "问题",
+        "columns": {
+          "all": "全部",
+          "hired": "已录用",
+          "rejected": "被拒绝"
+        },
+        "ratings": {
+          "overall": "总体体验（平均）",
+          "communication": "沟通清晰及时（平均）",
+          "respect": "受到尊重（平均）",
+          "process": "流程简便（平均）"
+        },
+        "recommend": {
+          "yes": "会推荐朋友：是",
+          "no": "会推荐朋友：否",
+          "unsure": "会推荐朋友：不确定"
+        },
+        "distribution": "总体评分",
+        "rating": "评分",
+        "answers": "回答数",
+        "share": "占比",
+        "comments": "意见",
+        "commentsNote": "按候选人原文显示，无特定顺序，不显示日期（最多200条）。",
+        "noComments": "没有意见。"
       }
     },
     "referral": {
@@ -40925,6 +40961,10 @@
         "offer": {
           "subject": "您的{jobTitle}职位录用通知",
           "body": "{candidateName}，您好：\n\n我们很高兴向您发出{companyName}{jobTitle}职位的录用通知。\n\n{offerDetails}\n\n如接受录用或有任何疑问，请回复本邮件。\n\n{responseLink}\n\n此致\n{senderName}"
+        },
+        "survey": {
+          "subject": "您在{companyName}的求职体验如何？",
+          "body": "{candidateName}您好：\n\n感谢您对{companyName}{jobTitle}职位的关注。无论结果如何，我们都想了解您的求职体验。\n\n本调查约需两分钟，可自愿参加。您的回答不会与您的姓名或电子邮箱一起保存，我们只会与其他候选人的回答合并查看。\n\n{surveyLink}\n\n此链接仅可使用一次，有效期30天。\n\n此致\n{senderName}"
         }
       },
       "settingsNote": "就候选人自己的申请给他们发送电子邮件：申请时发送确认函，并在有人选择时发送拒绝信。邮件通过本系统的邮件服务从其地址发出；您可设置候选人看到的发件人名称和回复地址。",
@@ -40953,7 +40993,8 @@
         "interview_invitation": "面试邀请",
         "interview_reminder": "面试提醒",
         "interview_cancelled": "面试已取消",
-        "offer": "录用通知"
+        "offer": "录用通知",
+        "survey": "候选人调查"
       },
       "kindNotes": {
         "application_received": "HR 添加候选人并勾选“发送确认函”时发送。导入的候选人从不发送。招聘页面的申请人暂不发送确认函：其地址尚未验证。",
@@ -40961,7 +41002,8 @@
         "interview_invitation": "安排面试的人在查看后勾选“向候选人发送面试邀请邮件”时发送。邮件说明轮次、类型、日期、时间、时长和地点（附地址的地图链接），绝不包含面试官。",
         "interview_reminder": "对已通过邮件发送邀请的面试，在上方设定的时间自动发送。如面试先被取消则撤回。",
         "interview_cancelled": "仅在取消面试的人查看后勾选“向候选人发送邮件”时发送。因申请关闭而自动取消的面试不会发送。",
-        "offer": "有人在已批准的录用通知上查看后选择“通过邮件发送录用通知”时发送。仅包含标记为“邮件中”的字段，按录入内容显示。"
+        "offer": "有人在已批准的录用通知上查看后选择“通过邮件发送录用通知”时发送。仅包含标记为“邮件中”的字段，按录入内容显示。",
+        "survey": "在下方开启调查后，于录用或发送拒绝邮件之后、按下方设置的天数自动发送。链接在发送邮件时生成，从不在此显示，因此任何人都无法看到谁作了回答。"
       },
       "subject": "主题（最多 {max} 个字符）",
       "body": "正文（最多 {max} 个字符）",
@@ -41087,7 +41129,13 @@
         "offer": "在此接受或拒绝此录用通知：{url}"
       },
       "responseReply": "候选人已通过链接回复：{answer}（{at}）",
-      "responseByLink": "候选人已通过链接回复"
+      "responseByLink": "候选人已通过链接回复",
+      "surveyTitle": "候选人调查（匿名）",
+      "surveyHired": "录用后发送调查",
+      "surveyRejected": "发送拒绝邮件后发送调查",
+      "surveyDelayDays": "多少天后发送（{min}–{max}天）",
+      "surveyHint": "拒绝后，调查只发送给已收到拒绝邮件的候选人，从该邮件发送时起计算。结果见“报表 › 候选人调查”。",
+      "surveyLinkMarker": "[个人调查链接，发送邮件时添加]"
     }
   },
   "careersPublic": {
@@ -41197,6 +41245,39 @@
         "phone": "电话面试"
       },
       "round": "第{round}轮"
+    },
+    "survey": {
+      "title": "您的求职体验如何？",
+      "intro": "{company}想了解您的求职体验。",
+      "anonymous": "您的回答不会与您的姓名或电子邮箱一起保存，公司只会与其他候选人的回答合并查看。除第一题外，所有问题均为选答。",
+      "scale": "1 = 非常差，5 = 非常好",
+      "questions": {
+        "overall": "您的总体体验",
+        "communication": "沟通是否清晰及时？",
+        "respect": "您是否受到尊重？",
+        "process": "流程是否简便？"
+      },
+      "invalid": {
+        "overall": "请选择1到5的评分。",
+        "communication": "请选择1到5的评分。",
+        "respect": "请选择1到5的评分。",
+        "process": "请选择1到5的评分。",
+        "comment": "意见请限制在1,000个字符的纯文本以内。"
+      },
+      "recommend": "您会鼓励朋友申请{company}的职位吗？",
+      "recommendOptions": {
+        "yes": "会",
+        "no": "不会",
+        "unsure": "不确定"
+      },
+      "comment": "还有其他想告诉我们的吗？",
+      "commentNote": "请不要填写您的姓名或其他个人信息。",
+      "submit": "提交回答",
+      "thanksTitle": "谢谢",
+      "thanks": "您的回答已记录。您可以关闭此页面。",
+      "closedTitle": "此调查已关闭",
+      "closed": "此调查链接已过期或已被使用。",
+      "limited": "此连接提交的回答过多，请稍后再试。"
     }
   },
   "bulkJobs": {

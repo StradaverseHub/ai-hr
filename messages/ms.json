@@ -38755,7 +38755,8 @@
       "email_no_address": "Calon tiada alamat e-mel yang boleh digunakan. Tiada apa-apa dilakukan.",
       "email_value_link": "Satu nilai dalam e-mel ini (nama calon, jawatan, tempat atau nilai tawaran) kelihatan seperti pautan atau alamat web, jadi ia tidak boleh dihantar melalui e-mel. Tiada apa-apa dilakukan.",
       "email_private_field": "Satu medan tawaran yang ditanda untuk e-mel adalah peribadi dan tersembunyi daripada anda. Tiada apa-apa dilakukan; minta seseorang yang boleh melihatnya menghantar tawaran.",
-      "email_use_send": "E-mel calon dihidupkan untuk syarikat ini: gunakan Hantar tawaran melalui e-mel, yang menunjukkan e-mel terlebih dahulu. Tiada apa-apa dilakukan."
+      "email_use_send": "E-mel calon dihidupkan untuk syarikat ini: gunakan Hantar tawaran melalui e-mel, yang menunjukkan e-mel terlebih dahulu. Tiada apa-apa dilakukan.",
+      "email_survey_link": "E-mel tinjauan mesti mengandungi pemegang tempat pautan tinjauan (surveyLink dalam kurungan) tepat sekali dalam teksnya, dan tidak dalam subjeknya."
     },
     "overview": {
       "purpose": "Kerja pengambilan hari ini merentas syarikat yang pengambilannya anda uruskan.",
@@ -39773,6 +39774,41 @@
         "in_progress": "Sedang berjalan",
         "completed": "Selesai",
         "cancelled": "Dibatalkan"
+      },
+      "survey": "Tinjauan calon",
+      "candidateSurvey": {
+        "title": "Tinjauan calon",
+        "note": "Jawapan tanpa nama daripada calon selepas pengambilan atau penolakan, mengikut bulan mereka menjawab. Jawapan tidak menyebut jawatan, jadi penapis jawatan dan jabatan tidak digunakan.",
+        "tooFew": "Keputusan dipaparkan apabila sekurang-kurangnya {minimum} calon telah menjawab dalam syarikat dan bulan yang dipilih.",
+        "noSplit": "Calon yang diambil dan ditolak dipaparkan berasingan apabila setiap satu mempunyai sekurang-kurangnya {minimum} jawapan.",
+        "responses": "Jawapan",
+        "overallAverage": "Penilaian keseluruhan (1–5)",
+        "recommendYes": "Akan menggalakkan rakan",
+        "averages": "Penilaian",
+        "question": "Soalan",
+        "columns": {
+          "all": "Semua",
+          "hired": "Diambil",
+          "rejected": "Ditolak"
+        },
+        "ratings": {
+          "overall": "Pengalaman keseluruhan (purata)",
+          "communication": "Komunikasi yang jelas dan tepat pada masa (purata)",
+          "respect": "Dilayan dengan hormat (purata)",
+          "process": "Proses yang mudah (purata)"
+        },
+        "recommend": {
+          "yes": "Akan menggalakkan rakan: ya",
+          "no": "Akan menggalakkan rakan: tidak",
+          "unsure": "Akan menggalakkan rakan: tidak pasti"
+        },
+        "distribution": "Penilaian keseluruhan",
+        "rating": "Penilaian",
+        "answers": "Jawapan",
+        "share": "Bahagian",
+        "comments": "Ulasan",
+        "commentsNote": "Seperti yang ditulis oleh calon, tanpa susunan tertentu dan tanpa tarikh (paling banyak 200).",
+        "noComments": "Tiada ulasan."
       }
     },
     "referral": {
@@ -40925,6 +40961,10 @@
         "offer": {
           "subject": "Tawaran anda untuk {jobTitle}",
           "body": "Kepada {candidateName},\n\nKami dengan sukacitanya menawarkan jawatan {jobTitle} di {companyName} kepada anda.\n\n{offerDetails}\n\nSila balas e-mel ini untuk menerima tawaran ini atau jika anda mempunyai sebarang pertanyaan.\n\n{responseLink}\n\nSekian, terima kasih,\n{senderName}"
+        },
+        "survey": {
+          "subject": "Bagaimana pengalaman memohon di {companyName}?",
+          "body": "Kepada {candidateName},\n\nTerima kasih atas minat anda terhadap jawatan {jobTitle} di {companyName}. Kami ingin tahu bagaimana pengalaman anda memohon, walau apa pun keputusannya.\n\nTinjauan ini mengambil masa kira-kira dua minit dan tidak wajib. Jawapan anda disimpan tanpa nama atau alamat e-mel anda, dan kami hanya melihatnya bersama jawapan calon lain.\n\n{surveyLink}\n\nPautan ini boleh digunakan sekali, selama 30 hari.\n\nYang benar,\n{senderName}"
         }
       },
       "settingsNote": "E-mel calon tentang permohonan mereka sendiri: resit apabila mereka memohon dan, apabila seseorang memilih, surat penolakan. E-mel dihantar melalui perkhidmatan mel pemasangan ini daripada alamatnya; anda tetapkan nama yang dilihat calon dan alamat untuk balasan mereka.",
@@ -40953,7 +40993,8 @@
         "interview_invitation": "Jemputan temu duga",
         "interview_reminder": "Peringatan temu duga",
         "interview_cancelled": "Temu duga dibatalkan",
-        "offer": "Tawaran"
+        "offer": "Tawaran",
+        "survey": "Tinjauan calon"
       },
       "kindNotes": {
         "application_received": "Dihantar apabila HR menambah calon dan menandakan Hantar resit. Tidak sekali-kali untuk calon yang diimport. Pemohon halaman kerjaya belum menerima resit: alamat mereka belum disahkan.",
@@ -40961,7 +41002,8 @@
         "interview_invitation": "Dihantar apabila orang yang menjadualkan temu duga menanda E-mel jemputan kepada calon selepas melihatnya. Ia menyatakan pusingan, jenis, tarikh, masa, tempoh dan tempat (dengan pautan peta alamat), tidak sekali-kali penemu duga.",
         "interview_reminder": "Dihantar secara automatik sebelum temu duga yang jemputannya telah dihantar melalui e-mel, pada masa yang ditetapkan di atas. Ditarik balik jika temu duga dibatalkan terlebih dahulu.",
         "interview_cancelled": "Dihantar hanya apabila orang yang membatalkan temu duga menanda E-mel kepada calon selepas melihatnya. Tidak sekali-kali apabila temu duga dibatalkan kerana permohonannya ditutup.",
-        "offer": "Dihantar apabila seseorang memilih Hantar tawaran melalui e-mel pada tawaran yang diluluskan, selepas melihatnya. Ia hanya menyatakan medan tawaran yang ditanda Dalam e-mel, seperti yang dimasukkan."
+        "offer": "Dihantar apabila seseorang memilih Hantar tawaran melalui e-mel pada tawaran yang diluluskan, selepas melihatnya. Ia hanya menyatakan medan tawaran yang ditanda Dalam e-mel, seperti yang dimasukkan.",
+        "survey": "Dihantar secara automatik selepas pengambilan atau selepas e-mel penolakan, apabila tinjauan dihidupkan di bawah, selepas bilangan hari yang ditetapkan di bawah. Pautan dibuat semasa e-mel dihantar dan tidak pernah dipaparkan di sini, jadi tiada sesiapa dapat melihat siapa yang menjawab."
       },
       "subject": "Subjek (sehingga {max} aksara)",
       "body": "Kandungan (sehingga {max} aksara)",
@@ -41087,7 +41129,13 @@
         "offer": "Terima atau tolak tawaran ini di sini: {url}"
       },
       "responseReply": "Calon membalas melalui pautan: {answer} ({at})",
-      "responseByLink": "Dijawab oleh calon melalui pautan"
+      "responseByLink": "Dijawab oleh calon melalui pautan",
+      "surveyTitle": "Tinjauan calon (tanpa nama)",
+      "surveyHired": "Hantar tinjauan selepas pengambilan",
+      "surveyRejected": "Hantar tinjauan selepas e-mel penolakan",
+      "surveyDelayDays": "Hantar selepas (hari, {min}–{max})",
+      "surveyHint": "Selepas penolakan, tinjauan hanya dihantar kepada calon yang telah menerima e-mel penolakan, dikira dari masa ia dihantar. Keputusan ada di Laporan › Tinjauan calon.",
+      "surveyLinkMarker": "[pautan tinjauan peribadi, ditambah semasa e-mel dihantar]"
     }
   },
   "careersPublic": {
@@ -41197,6 +41245,39 @@
         "phone": "Temu duga telefon"
       },
       "round": "Pusingan {round}"
+    },
+    "survey": {
+      "title": "Bagaimana pengalaman memohon?",
+      "intro": "{company} ingin tahu bagaimana pengalaman anda memohon.",
+      "anonymous": "Jawapan anda disimpan tanpa nama atau alamat e-mel anda, dan syarikat hanya melihatnya bersama jawapan calon lain. Semua soalan kecuali yang pertama adalah pilihan.",
+      "scale": "1 = sangat lemah, 5 = cemerlang",
+      "questions": {
+        "overall": "Pengalaman keseluruhan anda",
+        "communication": "Sejauh mana komunikasi jelas dan tepat pada masa?",
+        "respect": "Adakah anda dilayan dengan hormat?",
+        "process": "Sejauh mana prosesnya mudah?"
+      },
+      "invalid": {
+        "overall": "Pilih penilaian dari 1 hingga 5.",
+        "communication": "Pilih penilaian dari 1 hingga 5.",
+        "respect": "Pilih penilaian dari 1 hingga 5.",
+        "process": "Pilih penilaian dari 1 hingga 5.",
+        "comment": "Hadkan ulasan kepada 1,000 aksara teks biasa."
+      },
+      "recommend": "Adakah anda akan menggalakkan rakan memohon di {company}?",
+      "recommendOptions": {
+        "yes": "Ya",
+        "no": "Tidak",
+        "unsure": "Tidak pasti"
+      },
+      "comment": "Ada apa-apa lagi yang ingin anda beritahu kami?",
+      "commentNote": "Jangan sertakan nama atau butiran peribadi lain.",
+      "submit": "Hantar jawapan",
+      "thanksTitle": "Terima kasih",
+      "thanks": "Jawapan anda telah direkodkan. Anda boleh menutup halaman ini.",
+      "closedTitle": "Tinjauan ini telah ditutup",
+      "closed": "Pautan tinjauan ini telah tamat tempoh atau telah digunakan.",
+      "limited": "Terlalu banyak jawapan daripada sambungan ini. Cuba lagi kemudian."
     }
   },
   "bulkJobs": {

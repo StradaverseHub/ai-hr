@@ -990,6 +990,10 @@ export const recruitmentCandidateEmailSetting = pgTable('recruitment_candidate_e
   // Slice 20 (5721): interview reminders.
   reminderEnabled: boolean('reminder_enabled').notNull().default(true),
   reminderHours: integer('reminder_hours').notNull().default(24),
+  // Slice 22 (5724): the anonymous candidate survey.
+  surveyHired: boolean('survey_hired').notNull().default(false),
+  surveyRejected: boolean('survey_rejected').notNull().default(false),
+  surveyDelayDays: integer('survey_delay_days').notNull().default(3),
   ...audit,
 });
 
@@ -1039,4 +1043,6 @@ export const recruitmentCandidateEmail = pgTable('recruitment_candidate_email', 
   interviewStartsAt: ts('interview_starts_at'),
   offerId: uuid('offer_id'),
   mapUrl: text('map_url'),
+  // Slice 22 (5724): the outcome a survey follows (hired or rejected); null for every other kind.
+  surveyOutcome: text('survey_outcome'),
 });

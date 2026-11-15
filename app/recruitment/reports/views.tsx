@@ -6,8 +6,8 @@ import { SectionCard } from '@/components/ui/section-card';
 import { StatCells } from '@/components/ui/stat-cells';
 import { cn } from '@/lib/utils';
 import {
-  NO_VALUE, barPercent, formatDelta, formatNumber, formatPercent,
-  type Bucket, type InterviewsReport, type OverviewReport, type PositionsReport, type ReportScope, type TeamReport,
+  NO_VALUE, SURVEY_MIN_RESPONSES, SURVEY_RATINGS, SURVEY_RECOMMEND, barPercent, formatDelta, formatNumber, formatPercent,
+  type Bucket, type InterviewsReport, type OverviewReport, type PositionsReport, type ReportScope, type SurveyFigures, type SurveyReport, type TeamReport,
 } from '@/packs/recruitment/service';
 
 /**
@@ -228,5 +228,54 @@ export async function TeamView({ data }: { data: TeamReport }) {
         </Table>
       )}
     </SectionCard>
+  );
+}
+
+/** Slice 22 — the anonymous candidate survey (administrators): nothing below the minimum number of answers, the hired and rejected
+ *  split only when each side reaches it, and the comments without dates. */
+export async function SurveyView({ data, locale }: { data: SurveyReport; locale: string }) {
+  const t = await getTranslations('recruitment.reports.candidateSurvey');
+  const s = data.summary;
+  if (!s.shown) {
+    return <SectionCard index={1} title={t('title')} description={t('note')}><Empty text={t('tooFew', { minimum: s.minimum })} /></SectionCard>;
+  }
+  const columns: { key: string; figures: SurveyFigures }[] = [
+    { key: 'all', figures: s.all },
+    ...(s.split ? [{ key: 'hired', figures: s.split.hired }, { key: 'rejected', figures: s.split.rejected }] : []),
+  ];
+  const head = <tr><th className={thCls}>{t('question')}</th>{columns.map((c) => <th key={c.key} className={cn(thCls, 'text-right')}>{t(`columns.${c.key}`)}</th>)}</tr>;
+  return (
+    <div className="space-y-5">
+      <StatCells cells={[
+        { label: t('responses'), value: num(locale, s.all.responses) },
+        { label: t('overallAverage'), value: formatNumber(s.all.averages.overall, locale) },
+        { label: t('recommendYes'), value: formatPercent(s.all.recommend.yes, locale) },
+      ]} />
+      <p className="text-xs text-muted-foreground">{t('note')} {s.split ? '' : t('noSplit', { minimum: SURVEY_MIN_RESPONSES })}</p>
+      <SectionCard index={1} title={t('averages')}>
+        <Table head={head}>
+          <tr><td className={td}>{t('responses')}</td>{columns.map((c) => <td key={c.key} className={tdNum}>{num(locale, c.figures.responses)}</td>)}</tr>
+          {SURVEY_RATINGS.map((q) => (
+            <tr key={q}><td className={td}>{t(`ratings.${q}`)}</td>{columns.map((c) => <td key={c.key} className={tdNum}>{formatNumber(c.figures.averages[q], locale)}</td>)}</tr>
+          ))}
+          {SURVEY_RECOMMEND.map((r) => (
+            <tr key={r}><td className={td}>{t(`recommend.${r}`)}</td>{columns.map((c) => <td key={c.key} className={tdNum}>{formatPercent(c.figures.recommend[r], locale)}</td>)}</tr>
+          ))}
+        </Table>
+      </SectionCard>
+      <SectionCard index={2} title={t('distribution')}>
+        <Table head={<tr><th className={thCls}>{t('rating')}</th><th className={cn(thCls, 'text-right')}>{t('answers')}</th><th className={thCls}><span className="sr-only">{t('share')}</span></th></tr>}>
+          {[5, 4, 3, 2, 1].map((n) => (
+            <tr key={n}><td className={td}>{n}</td><td className={tdNum}>{num(locale, s.all.overallDistribution[n - 1])}</td>
+              <td className={td}><Bar value={s.all.overallDistribution[n - 1]} whole={s.all.responses} /></td></tr>
+          ))}
+        </Table>
+      </SectionCard>
+      <SectionCard index={3} title={t('comments')} description={t('commentsNote')}>
+        {s.comments.length === 0 ? <Empty text={t('noComments')} /> : (
+          <ul className="space-y-2">{s.comments.map((c, i) => <li key={i} className="whitespace-pre-line rounded-lg border border-border bg-card px-3 py-2 text-sm">{c}</li>)}</ul>
+        )}
+      </SectionCard>
+    </div>
   );
 }

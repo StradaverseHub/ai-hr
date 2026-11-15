@@ -18,6 +18,8 @@ const JOB_PATH = new RegExp(`^/careers/(${CAREERS_ADDRESS_SOURCE})/jobs/(${JOB_I
  *  characters), so it shadows none. */
 const RESPONSE_TOKEN = '[A-Za-z0-9_-]{43}';
 const RESPONSE_PATH = new RegExp(`^/careers/r/(${RESPONSE_TOKEN})$`);
+/** Slice 22: a candidate's survey link `/careers/s/<token>` (the same token shape; "s" is no careers address either). */
+const SURVEY_PATH = new RegExp(`^/careers/s/(${RESPONSE_TOKEN})$`);
 export const isCareersResponseToken = (value: unknown): value is string => typeof value === 'string' && new RegExp(`^${RESPONSE_TOKEN}$`).test(value);
 
 export const isCareersAddress = (value: unknown): value is string => typeof value === 'string' && ADDRESS.test(value);
@@ -29,6 +31,7 @@ export function isCareersRoute(path: string, method = 'GET'): boolean {
   if (PAGE_PATH.test(path)) return m === 'GET' || m === 'HEAD';
   if (JOB_PATH.test(path)) return m === 'GET' || m === 'HEAD' || m === 'POST';
   if (RESPONSE_PATH.test(path)) return m === 'GET' || m === 'HEAD' || m === 'POST';
+  if (SURVEY_PATH.test(path)) return m === 'GET' || m === 'HEAD' || m === 'POST';
   return false;
 }
 

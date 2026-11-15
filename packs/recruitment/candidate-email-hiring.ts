@@ -44,8 +44,8 @@ const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
 /** A preview shows this in place of the candidate's personal token (which exists only once the e-mail is queued); the frozen e-mail
  *  differs from the preview by exactly the token. */
 export const PREVIEW_RESPONSE_TOKEN = 'your-personal-link-appears-here-when-sent--';
-/** The installation's https origin, or null (no link is then offered). */
-function responseOrigin(): string | null {
+/** The installation's https origin, or null (no link is then offered). Slice 22's sweep makes survey links on the same origin. */
+export function responseOrigin(): string | null {
   // The embedded sign-in's origin, or an explicitly configured AUTH_PUBLIC_ORIGIN; never a legacy fallback.
   const origin = internalSelected() ? appOrigin() : configuredPublicOrigin();
   return origin && /^https:\/\/[A-Za-z0-9.-]+(:[0-9]{1,5})?$/.test(origin) ? origin : null;

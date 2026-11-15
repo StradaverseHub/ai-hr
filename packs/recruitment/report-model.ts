@@ -10,7 +10,7 @@ import { isCalendarDate } from '../../lib/calendar-date';
 import { addCalendarMonths } from '../../lib/hr-date';
 import { isUuid } from './model';
 
-export const REPORT_KINDS = ['overview', 'positions', 'interviews', 'team'] as const;
+export const REPORT_KINDS = ['overview', 'positions', 'interviews', 'team', 'survey'] as const;
 export type ReportKind = (typeof REPORT_KINDS)[number];
 /** The longest period a report may cover (owner scale bar, D-017). */
 export const REPORT_MAX_MONTHS = 24;

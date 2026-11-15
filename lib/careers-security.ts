@@ -58,6 +58,9 @@ export const CAREERS_CSS = [
   '.trap{position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden}',
   '.req{color:var(--bad)}',
   '.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}',
+  // Slice 22: the survey's rating groups.
+  'fieldset{border:0;padding:0;min-width:0}',
+  'legend{font-weight:500;margin:0 0 .25rem;padding:0}',
 ].join('\n');
 
 export const CAREERS_STYLE_HASH = `sha256-${createHash('sha256').update(CAREERS_CSS, 'utf8').digest('base64')}`;

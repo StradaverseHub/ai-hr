@@ -9,6 +9,7 @@ import {
   applicationAgency, applicationBackgroundChecks, applicationCandidateEmails, applicationCareers, applicationWaiting, applicationPools, applicationReview, applicationHire, applicationHistory, applicationInterviews, applicationOffer, applicationReferral, applicationScreening, candidateProfile, interviewFormOptions, CANDIDATE_RESPONSES, INTERVIEW_TYPES,
   OFFER_SEND_CHANNELS, RecruitmentError, type ApplicationCandidateEmails, type ApplicationHire, type InterviewFormOptions, type InterviewStatus, type OfferView,
   invitationOffer, interviewCancellationPreviews, offerEmailPreview, type CancellationEmailPreview, type InvitationOffer, type OfferEmailPreview,
+  SURVEY_LINK_PLACEHOLDER,
 } from '@/packs/recruitment/service';
 import {
   addInterviewersAction, cancelInterviewAction, markOfferSentAction, recordOfferDecisionAction, saveOfferAction, scheduleInterviewFormAction, setCandidateResponseAction,
@@ -583,7 +584,8 @@ function CandidateEmailsSection({ emails, applicationId, here, t, locale }: { em
                   <div className="mt-2 space-y-1 rounded-md bg-muted/40 p-2">
                     <p className="text-xs text-muted-foreground">{t('to', { address: e.recipient ?? '' })}</p>
                     <p className="font-medium">{t('subjectLine', { subject: e.subject ?? '' })}</p>
-                    <p className="max-h-80 overflow-auto whitespace-pre-wrap">{e.text}</p>
+                    {/* Slice 22: a survey's link is made when it is sent and never kept, so HR sees a marker where it goes. */}
+                    <p className="max-h-80 overflow-auto whitespace-pre-wrap">{e.kind === 'survey' && e.text ? e.text.split(SURVEY_LINK_PLACEHOLDER).join(t('surveyLinkMarker')) : e.text}</p>
                   </div>
                 </details>
               )}

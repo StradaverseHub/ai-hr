@@ -54,9 +54,9 @@ export {
 } from './privacy-model';
 export type { EducationLevel, CandidateSource, IdType, CandidateFileKind, EntryKind, ConsentStatus, ConsentMethod, ConsentState } from './privacy-model';
 // Slice 6 — recruitment reports: four fixed dashboards, aggregates only, each one read-only snapshot.
-export { recruitmentOverviewReport, recruitmentPositionsReport, recruitmentInterviewsReport, recruitmentTeamReport, ReportTooSlowError } from './reports';
+export { recruitmentOverviewReport, recruitmentPositionsReport, recruitmentInterviewsReport, recruitmentTeamReport, recruitmentSurveyReport, ReportTooSlowError } from './reports';
 export type {
-  ReportScope, ReportOptions, OverviewReport, OverviewJobRow, PositionsReport, PositionRow, PositionFigures, FunnelStep, InterviewsReport, TeamReport, TeamRow,
+  ReportScope, ReportOptions, OverviewReport, OverviewJobRow, PositionsReport, PositionRow, PositionFigures, FunnelStep, InterviewsReport, TeamReport, TeamRow, SurveyReport,
 } from './reports';
 export {
   REPORT_KINDS, REPORT_MAX_MONTHS, REPORT_JOB_LIMIT, REPORT_RECRUITER_LIMIT, NO_VALUE, formatPercent, formatNumber, formatDelta, barPercent,
@@ -83,10 +83,13 @@ export {
   careersApplyMode, requestCareersCode, checkCareersCode,
   // Slice 21b: candidate response links (5723).
   candidateResponseView, answerCandidateResponse,
+  // Slice 22: the anonymous candidate survey (5724).
+  candidateSurveyView, answerCandidateSurvey,
 } from './careers';
 export type {
   CareersSettings, CareersNoticeVersionView, JobCareersStatus, ApplicationCareers, CareersPublicJobRow, CareersPublicPage, CareersPublicJob,
   CareersPageQuery, CareersSubmission, CareersSubmitResult, CareersCodeRequest, CareersCodeCheck, CandidateResponseState, CandidateResponseResult,
+  CandidateSurveyResult,
 } from './careers';
 export {
   CAREERS_DISPLAY_NAME_MAX, CAREERS_HEADLINE_MAX, CAREERS_INTRODUCTION_MAX, CAREERS_NOTICE_MAX, CAREERS_NAME_MAX, CAREERS_MESSAGE_MAX,
@@ -316,3 +319,11 @@ export {
   offerDetailsText, reminderDueAt, klParts, linkishExcept,
 } from './candidate-email-model';
 export type { InterviewEmailLabels, InterviewEmailFacts, InterviewPlaceOption, OfferEmailLine } from './candidate-email-model';
+// Slice 22 — the anonymous candidate survey after a hire or a rejection: settings, the link the sweep makes, the survey page's
+// questions and the results' minimums (5724; D-067).
+export {
+  SURVEY_LINK_PLACEHOLDER, SURVEY_DELAY_DEFAULT, SURVEY_DELAY_MIN, SURVEY_DELAY_MAX, SURVEY_RATINGS, SURVEY_RECOMMEND, SURVEY_COMMENT_MAX,
+  SURVEY_MIN_RESPONSES, SURVEY_COMMENT_LIMIT, parseSurveyDelay, withSurveyLink, validateSurveyAnswers, summarizeSurvey, surveyFigures,
+  emptySurveyTally, addSurveyTallies,
+} from './candidate-email-model';
+export type { SurveyRating, SurveyRecommend, SurveyAnswers, SurveyTally, SurveyFigures, SurveySummary } from './candidate-email-model';

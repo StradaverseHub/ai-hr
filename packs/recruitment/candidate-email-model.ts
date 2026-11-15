@@ -7,9 +7,9 @@
  */
 import { isCanonicalEmailAddress } from '../../lib/email-address';
 
-/** The kinds candidate e-mail sends: slice 19's receipt and rejection, and slice 20's interview invitation, reminder and cancellation
- *  and offer (5721 adds them to the CHECKs and restates the placeholder allowlist). */
-export const CANDIDATE_EMAIL_KINDS = ['application_received', 'rejection', 'interview_invitation', 'interview_reminder', 'interview_cancelled', 'offer'] as const;
+/** The kinds candidate e-mail sends: slice 19's receipt and rejection, slice 20's interview invitation, reminder and cancellation
+ *  and offer (5721 adds them to the CHECKs and restates the placeholder allowlist), and slice 22's survey (5724). */
+export const CANDIDATE_EMAIL_KINDS = ['application_received', 'rejection', 'interview_invitation', 'interview_reminder', 'interview_cancelled', 'offer', 'survey'] as const;
 export const INTERVIEW_EMAIL_KINDS = ['interview_invitation', 'interview_reminder', 'interview_cancelled'] as const;
 export type InterviewEmailKind = (typeof INTERVIEW_EMAIL_KINDS)[number];
 export type CandidateEmailKind = (typeof CANDIDATE_EMAIL_KINDS)[number];
@@ -31,9 +31,11 @@ export const CANDIDATE_EMAIL_PLACEHOLDERS: Record<CandidateEmailKind, readonly s
   interview_reminder: [...BASE_PLACEHOLDERS, ...INTERVIEW_PLACEHOLDERS],
   interview_cancelled: [...BASE_PLACEHOLDERS, 'interviewRound', 'interviewType', 'interviewDate', 'interviewTime'],
   offer: [...BASE_PLACEHOLDERS, 'offerDetails', 'responseLink'],
+  // Slice 22: the survey link, put in by the sweep at send time (the frozen e-mail keeps the placeholder itself).
+  survey: [...BASE_PLACEHOLDERS, 'surveyLink'],
 };
-export type Placeholder = BasePlaceholder | InterviewPlaceholder | 'offerDetails' | 'responseLink';
-export type CandidateEmailValues = Record<BasePlaceholder, string> & Partial<Record<InterviewPlaceholder | 'offerDetails' | 'responseLink', string>>;
+export type Placeholder = BasePlaceholder | InterviewPlaceholder | 'offerDetails' | 'responseLink' | 'surveyLink';
+export type CandidateEmailValues = Record<BasePlaceholder, string> & Partial<Record<InterviewPlaceholder | 'offerDetails' | 'responseLink' | 'surveyLink', string>>;
 /** The longest value each placeholder can take: candidate names and job titles are at most 200 (5701), the sender name 80; the company
  *  name has no stored limit, so the renderer cuts every value to these lengths and a template's worst case is known at save time.
  *  Slice 20: the interview values are formatted here (below) from bounded parts; the place is at most a room (120), an address name
@@ -44,6 +46,8 @@ export const CANDIDATE_EMAIL_VALUE_MAX: Record<Placeholder, number> = {
   interviewRound: 80, interviewType: 80, interviewDate: 120, interviewTime: 160, interviewDuration: 80, interviewPlace: 3200, offerDetails: 10000,
   // Slice 21b: one sentence with the response link (at most 400 characters, 5723).
   responseLink: 600,
+  // Slice 22: the survey link the sweep puts in (https, the installation host and a 43-character token).
+  surveyLink: 300,
 };
 /** What 5720 freezes at most: the rendered subject and text. A template whose worst case (every placeholder at its longest value)
  *  exceeds these is refused on save (email_too_long), so a render can never exceed the frozen columns. The HTML is then at most
@@ -104,7 +108,8 @@ export function templatePlaceholders(text: string): { names: string[]; stray: bo
   return { names, stray: /[{}]/.test(text.replace(PLACEHOLDER, '')) };
 }
 
-export type TemplateRefusal = 'missing_fields' | 'invalid_input' | 'email_placeholder' | 'email_link' | 'email_too_long';
+export type TemplateRefusal = 'missing_fields' | 'invalid_input' | 'email_placeholder' | 'email_link' | 'email_too_long' | 'email_survey_link';
+const SURVEY_LINK_PLACEHOLDER_NAME = 'surveyLink';
 const len = (s: string) => [...s].length;
 /** The longest a text can render to: its own characters plus, for each placeholder, its longest value. */
 export function worstCaseLength(kind: CandidateEmailKind, text: string): number {
@@ -135,6 +140,14 @@ export function validateCandidateEmailTemplate(kind: CandidateEmailKind, input: 
     return p.stray || p.names.some((n) => !allowed.has(n));
   });
   if (bad.length) return { ok: false, code: 'email_placeholder', fields: bad };
+  // Slice 22: a survey's body names {surveyLink} exactly once and its subject never (5724 checks the frozen e-mail the same way).
+  if (kind === 'survey') {
+    const misplaced = [
+      ...(templatePlaceholders(subject).names.includes(SURVEY_LINK_PLACEHOLDER_NAME) ? ['subject' as const] : []),
+      ...(templatePlaceholders(body).names.filter((n) => n === SURVEY_LINK_PLACEHOLDER_NAME).length !== 1 ? ['body' as const] : []),
+    ];
+    if (misplaced.length) return { ok: false, code: 'email_survey_link', fields: misplaced };
+  }
   const linked = (['subject', 'body'] as const).filter((f) => linkish(f === 'subject' ? subject : body));
   if (linked.length) return { ok: false, code: 'email_link', fields: linked };
   const long = [
@@ -167,9 +180,10 @@ export function defaultSenderName(companyName: string): string {
     .slice(0, CANDIDATE_EMAIL_SENDER_NAME_MAX).join('').trimEnd();
 }
 
-export type CandidateEmailSettingsInput = { enabled?: unknown; senderName?: unknown; replyTo?: unknown; locale?: unknown; reminderEnabled?: unknown; reminderHours?: unknown };
+export type CandidateEmailSettingsInput = { enabled?: unknown; senderName?: unknown; replyTo?: unknown; locale?: unknown; reminderEnabled?: unknown; reminderHours?: unknown;
+  surveyHired?: unknown; surveyRejected?: unknown; surveyDelayDays?: unknown };
 export type ValidCandidateEmailSettings = { enabled: boolean; senderName: string | null; replyTo: string | null; locale: CandidateEmailLocale;
-  reminderEnabled: boolean; reminderHours: number };
+  reminderEnabled: boolean; reminderHours: number; surveyHired: boolean; surveyRejected: boolean; surveyDelayDays: number };
 /** The company's switch, sender display name (≤80, none of the characters the transport refuses; empty = the company name),
  *  reply-to (required when on) and language. */
 export function validateCandidateEmailSettings(input: CandidateEmailSettingsInput):
@@ -181,15 +195,20 @@ export function validateCandidateEmailSettings(input: CandidateEmailSettingsInpu
   // Slice 20: reminders are on unless switched off (an absent field keeps the default); hours 2–72, default 24.
   const reminderEnabled = input.reminderEnabled === undefined ? true : input.reminderEnabled === true || input.reminderEnabled === 'on' || input.reminderEnabled === 'true';
   const reminderHours = input.reminderHours == null || input.reminderHours === '' ? REMINDER_HOURS_DEFAULT : parseReminderHours(input.reminderHours);
+  // Slice 22: the survey is off unless ticked; it is sent 1–14 days after the decision (default 3).
+  const ticked = (v: unknown) => v === true || v === 'on' || v === 'true';
+  const surveyDelayDays = input.surveyDelayDays == null || input.surveyDelayDays === '' ? SURVEY_DELAY_DEFAULT : parseSurveyDelay(input.surveyDelayDays);
   if (enabled && !replyTo) return { ok: false, code: 'missing_fields', fields: ['replyTo'] };
   const fields = [
     ...(senderName && ([...senderName].length > CANDIDATE_EMAIL_SENDER_NAME_MAX || SENDER_NAME_REFUSED.test(senderName)) ? ['senderName'] : []),
     ...(replyTo && !validReplyTo(replyTo) ? ['replyTo'] : []),
     ...((CANDIDATE_EMAIL_LOCALES as readonly unknown[]).includes(locale) ? [] : ['locale']),
     ...(reminderHours === null ? ['reminderHours'] : []),
+    ...(surveyDelayDays === null ? ['surveyDelayDays'] : []),
   ];
   if (fields.length) return { ok: false, code: 'invalid_input', fields };
-  return { ok: true, value: { enabled, senderName, replyTo, locale: locale as CandidateEmailLocale, reminderEnabled, reminderHours: reminderHours! } };
+  return { ok: true, value: { enabled, senderName, replyTo, locale: locale as CandidateEmailLocale, reminderEnabled, reminderHours: reminderHours!,
+    surveyHired: ticked(input.surveyHired), surveyRejected: ticked(input.surveyRejected), surveyDelayDays: surveyDelayDays! } };
 }
 
 /** A rejection delay chosen in the dialog: 0–3 whole days. */
@@ -364,5 +383,114 @@ export function interviewFactsFromForm(form: { roundNo: number; type: 'onsite' |
     roundNo: form.roundNo, type: form.type, startsAt: form.startsAt, durationMinutes: form.durationMinutes,
     room: room ?? form.meetingRoom, address: place ? { name: place.name, address: place.address, region: place.region, mapUrl: place.mapUrl } : null,
     site: form.site, meetingRoom: form.meetingRoom,
+  };
+}
+
+// ── Slice 22: the anonymous candidate survey ─────────────────────────────────────────────────────────────────────
+
+/** What the frozen survey e-mail holds where the link goes; the sweep replaces it with a fresh link when it sends (5724). */
+export const SURVEY_LINK_PLACEHOLDER = '{surveyLink}';
+/** Sent 1–14 days after the hire, or after the rejection e-mail; default 3. */
+export const SURVEY_DELAY_DEFAULT = 3;
+export const SURVEY_DELAY_MIN = 1;
+export const SURVEY_DELAY_MAX = 14;
+export function parseSurveyDelay(value: unknown): number | null {
+  const n = typeof value === 'number' ? value : typeof value === 'string' && /^\d{1,2}$/.test(value.trim()) ? Number(value.trim()) : NaN;
+  return Number.isInteger(n) && n >= SURVEY_DELAY_MIN && n <= SURVEY_DELAY_MAX ? n : null;
+}
+/** The survey link the sweep makes: the installation's https origin and a 43-character token on the careers host. */
+export const SURVEY_URL_PATTERN = /^https:\/\/[A-Za-z0-9.-]+(:[0-9]{1,5})?\/careers\/s\/[A-Za-z0-9_-]{43}$/;
+/** The message as sent: the frozen subject, text and HTML with the one placeholder replaced by the link (null when the frozen content
+ *  does not hold it exactly once in the text and HTML and never in the subject — 5724 refuses such a row, so this is a backstop). */
+export function withSurveyLink(m: RenderedCandidateEmail, url: string): RenderedCandidateEmail | null {
+  const once = (t: string) => t.split(SURVEY_LINK_PLACEHOLDER).length === 2;
+  if (!SURVEY_URL_PATTERN.test(url) || m.subject.includes(SURVEY_LINK_PLACEHOLDER) || !once(m.text) || !once(m.html)) return null;
+  return { subject: m.subject, text: m.text.replace(SURVEY_LINK_PLACEHOLDER, url), html: m.html.replace(SURVEY_LINK_PLACEHOLDER, url) };
+}
+
+/** The rating questions (1–5; overall is required), then would-recommend and an optional comment. Code-owned (D-067). */
+export const SURVEY_RATINGS = ['overall', 'communication', 'respect', 'process'] as const;
+export type SurveyRating = (typeof SURVEY_RATINGS)[number];
+export const SURVEY_RECOMMEND = ['yes', 'no', 'unsure'] as const;
+export type SurveyRecommend = (typeof SURVEY_RECOMMEND)[number];
+export const SURVEY_COMMENT_MAX = 1000;
+export type SurveyAnswers = Record<'overall', number> & Partial<Record<Exclude<SurveyRating, 'overall'>, number>> & { recommend?: SurveyRecommend; comment?: string };
+/** A posted survey form: each rating 1–5 (overall required), recommend yes/no/unsure, a comment of at most 1,000 characters (line breaks
+ *  kept, other control characters refused, trimmed; empty = none). */
+export function validateSurveyAnswers(form: Readonly<Record<string, unknown>>):
+  { ok: true; value: SurveyAnswers } | { ok: false; fields: string[] } {
+  const fields: string[] = [];
+  const out: Record<string, unknown> = {};
+  for (const q of SURVEY_RATINGS) {
+    const v = form[q];
+    if (v == null || v === '') { if (q === 'overall') fields.push(q); continue; }
+    if (typeof v !== 'string' || !/^[1-5]$/.test(v.trim())) { fields.push(q); continue; }
+    out[q] = Number(v.trim());
+  }
+  const r = form.recommend;
+  if (r != null && r !== '') {
+    if (typeof r === 'string' && (SURVEY_RECOMMEND as readonly string[]).includes(r)) out.recommend = r;
+    else fields.push('recommend');
+  }
+  const c = form.comment;
+  if (c != null) {
+    const text = typeof c === 'string' ? c.replace(/\r\n?/g, '\n').trim() : null;
+    if (text === null || [...text].length > SURVEY_COMMENT_MAX || /[\u0001-\u0009\u000b-\u001f\u007f-\u009f]/.test(text)) fields.push('comment');
+    else if (text) out.comment = text;
+  }
+  return fields.length ? { ok: false, fields } : { ok: true, value: out as SurveyAnswers };
+}
+
+/** Results appear only from this many answers in the selection; the hired and rejected split only with this many on each side. */
+export const SURVEY_MIN_RESPONSES = 5;
+/** The comments a results page lists at most (in no particular order, without dates). */
+export const SURVEY_COMMENT_LIMIT = 200;
+/** The counts a results page is computed from, for one outcome (or both): how many answered, how many gave each overall rating, the
+ *  count and sum of each rating that was answered, and the recommend answers. The database aggregates these; nothing per answer. */
+export type SurveyTally = {
+  responses: number;
+  overall: [number, number, number, number, number];
+  ratings: Record<SurveyRating, { count: number; sum: number }>;
+  recommend: Record<SurveyRecommend, number>;
+};
+export const emptySurveyTally = (): SurveyTally => ({ responses: 0, overall: [0, 0, 0, 0, 0],
+  ratings: { overall: { count: 0, sum: 0 }, communication: { count: 0, sum: 0 }, respect: { count: 0, sum: 0 }, process: { count: 0, sum: 0 } },
+  recommend: { yes: 0, no: 0, unsure: 0 } });
+export function addSurveyTallies(a: SurveyTally, b: SurveyTally): SurveyTally {
+  return {
+    responses: a.responses + b.responses,
+    overall: a.overall.map((n, i) => n + b.overall[i]) as SurveyTally['overall'],
+    ratings: Object.fromEntries(SURVEY_RATINGS.map((q) => [q, { count: a.ratings[q].count + b.ratings[q].count, sum: a.ratings[q].sum + b.ratings[q].sum }])) as SurveyTally['ratings'],
+    recommend: { yes: a.recommend.yes + b.recommend.yes, no: a.recommend.no + b.recommend.no, unsure: a.recommend.unsure + b.recommend.unsure },
+  };
+}
+export type SurveyFigures = {
+  responses: number;
+  /** Average of each rating over the answers that gave it (one decimal), null when none did. */
+  averages: Record<SurveyRating, number | null>;
+  /** How many gave each overall rating, 1 to 5. */
+  overallDistribution: [number, number, number, number, number];
+  /** Share (0–1) of each recommend answer among those who answered it (null when none did); `answered` is how many did. */
+  recommend: { answered: number; yes: number | null; no: number | null; unsure: number | null };
+};
+export function surveyFigures(t: SurveyTally): SurveyFigures {
+  const averages = Object.fromEntries(SURVEY_RATINGS.map((q) => [q, t.ratings[q].count ? Math.round((t.ratings[q].sum / t.ratings[q].count) * 10) / 10 : null])) as Record<SurveyRating, number | null>;
+  const answered = t.recommend.yes + t.recommend.no + t.recommend.unsure;
+  const share = (n: number) => (answered ? n / answered : null);
+  return { responses: t.responses, averages, overallDistribution: [...t.overall] as SurveyFigures['overallDistribution'],
+    recommend: { answered, yes: share(t.recommend.yes), no: share(t.recommend.no), unsure: share(t.recommend.unsure) } };
+}
+export type SurveySummary =
+  | { shown: false; minimum: number }
+  | { shown: true; all: SurveyFigures; split: { hired: SurveyFigures; rejected: SurveyFigures } | null; comments: string[] };
+/** The results a page may show: nothing below SURVEY_MIN_RESPONSES answers in the selection (so no answer can be tied to the few
+ *  candidates of a period), the hired and rejected split only when each side has that many, and the comments as given. */
+export function summarizeSurvey(t: { hired: SurveyTally; rejected: SurveyTally }, comments: readonly string[]): SurveySummary {
+  const all = addSurveyTallies(t.hired, t.rejected);
+  if (all.responses < SURVEY_MIN_RESPONSES) return { shown: false, minimum: SURVEY_MIN_RESPONSES };
+  return {
+    shown: true, all: surveyFigures(all),
+    split: t.hired.responses >= SURVEY_MIN_RESPONSES && t.rejected.responses >= SURVEY_MIN_RESPONSES ? { hired: surveyFigures(t.hired), rejected: surveyFigures(t.rejected) } : null,
+    comments: comments.slice(0, SURVEY_COMMENT_LIMIT),
   };
 }

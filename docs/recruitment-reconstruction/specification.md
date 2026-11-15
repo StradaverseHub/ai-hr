@@ -1626,3 +1626,86 @@ slice 19 (D-064), go out once the address is verified. The slice lands in two pa
   existing "Record decision" (prefilled). A link never moves or archives an application (people decide; D-066).
 - Limits: 20 link requests an hour per client address; a token is used at most once per answer and can be changed until the
   interview starts or HR records the offer decision.
+
+## Slice 22 — Anonymous candidate survey after hire or rejection (owner: group 2, 2026-11-14; D-063, D-067; EV-033, EV-047)
+
+The owner decided (D-063) on an optional anonymous candidate survey after hire or rejection. Moka's evidence shows only that a
+"candidate satisfaction" measure and an "interview survey reminder" exist (EV-033, EV-047); the questions and the anonymity rules
+below are this reconstruction's (D-067).
+
+### Settings (Settings › Candidate e-mail, administrators)
+
+- "Candidate survey": **After hire** and **After rejection**, both off by default, and **Send after** 1–14 days (default 3).
+  The survey goes only while the company's candidate e-mail is on (slice 19).
+- The survey e-mail is a seventh e-mail kind with editable wording in the six languages. Its placeholders are slice 19's four plus
+  `{surveyLink}`, which the body must contain exactly once (the subject never).
+
+### When a survey is queued
+
+- **Hire:** when an application becomes Hired (moved forward, or an accepted offer that moves it), in that transaction, if After
+  hire is on: one survey e-mail, sent `Send after` days later.
+- **Rejection:** only when a person rejects and the rejection e-mail is queued in that action (slice 19), if After rejection is
+  on. The survey is sent `Send after` days after the rejection e-mail's own send time. A candidate who was not told of the
+  rejection is never surveyed. An offer the candidate declined is not surveyed (no rejection e-mail).
+- At most one survey per application. A survey never blocks the hire or rejection: when it cannot be queued (no usable address, a
+  link-like name or title, the hourly cap) it is skipped and the decision stands.
+- At send time the survey is not sent (failed, not eligible) unless the company's switch and the survey for that outcome are still
+  on, the address is still the candidate's recorded one, the application is still hired, and, after a rejection, its rejection
+  e-mail was sent.
+
+### Anonymity
+
+- The link is made when the e-mail is sent, not when it is queued: the frozen e-mail HR can read holds `{surveyLink}`, never the
+  link. Nobody in the company can open a candidate's survey, see whether they answered, or answer for them.
+- The link (`/careers/s/<token>`) is stored only as a hash with the company and the outcome (hired or rejected). It is valid 30
+  days, once. A retried e-mail gets a new link and the earlier one stops working.
+- An answer is stored with the company, the outcome and the Kuala Lumpur month only: no application, candidate, job, link or time.
+  The link's record is deleted when it is answered. Answers are kept 24 months.
+- Candidate removal deletes the e-mail, and a link whose e-mail is gone no longer opens. Answers already given stay, being
+  anonymous.
+
+### The survey page
+
+- Opening the link shows the company name and the questions and changes nothing (mail scanners open links). An unknown, used or
+  expired link shows the same "This survey is closed" page.
+- The questions are code-owned in six languages and are not company-editable:
+  - overall experience (1–5, required);
+  - clear and timely communication (1–5);
+  - treated with respect (1–5);
+  - an easy process (1–5);
+  - would encourage a friend to apply (yes, no or not sure);
+  - a comment (at most 1,000 characters), with the note "Please do not include your name or other personal details".
+- Sending is limited to 20 an hour per client, shared with slice 21b's answers.
+
+### Results (Reports › Candidate survey, administrators only)
+
+- By company and month range: the number of answers, each question's average (one decimal), the overall rating's distribution,
+  the share of yes, no and not sure, and the comments in no particular order, with no dates.
+- Nothing is shown below 5 answers in the selection ("Results appear once at least 5 candidates have answered"). The hired and
+  rejected split is shown only when each side has at least 5.
+- The job and department filters do not apply: answers carry no job.
+
+### Data
+
+- One migration (5724):
+  - the three settings columns;
+  - the kind added to the template and e-mail CHECKs, the placeholder allowlist restated;
+  - the e-mail's outcome column, with one survey per application;
+  - owner-only `app.recruitment_survey_invitation`;
+  - `public.recruitment_candidate_survey_response`, readable by the company's recruitment administrators only and written only by
+    the answer definer;
+  - definers to issue a link (the sweep, for a leased survey), view and answer (anonymous);
+  - 5723's guard and statement check, and 5721's target and finish, restated with the survey.
+
+### Slice 22 acceptance cases
+
+143. With After hire on, hiring queues one survey due `Send after` days later; with it off, none. After rejection queues a survey
+     only with a queued rejection e-mail, due that many days after it. A skipped survey never undoes the hire or rejection.
+144. The frozen e-mail holds `{surveyLink}` exactly once and no link. The sweep sends it with a fresh link. A survey whose
+     rejection e-mail was not sent, or whose application is no longer hired, is not sent.
+145. The link opens without changing anything and answers once. A second answer, an expired link or an unknown token all get the
+     same closed page. A removed candidate's link no longer opens. The 20-an-hour limit holds.
+146. An answer row names no application, candidate, job or time, and the link record is gone after answering. Only recruitment
+     administrators of the company read answers.
+147. Results hide everything below 5 answers and the split below 5 a side; averages and shares match independently computed values.
+148. Rendered: the settings block, the survey page, the closed page and the results tab.

@@ -15,6 +15,10 @@
  * When the installation cannot send (no embedded relay, no active relay), claimed e-mails are held (due again in 5 minutes, the
  * attempt not counted; failed as relay unavailable after 7 days). An e-mail whose frozen address is no longer the candidate's recorded
  * e-mail, or whose company switched candidate e-mail off, is not sent (failed, not eligible). Every database step is an owner-only 5720 function that takes the id and token, never an address or words.
+ *
+ * Slice 22 (5724): a survey's frozen content holds the placeholder {surveyLink}; between target and start the sweep makes a fresh random
+ * token, records only its sha256 (app.recruitment_survey_issue, for this lease) and sends the message with the link put in. The link is
+ * never stored, so nobody in the company can open a candidate's survey.
  */
 import { sql } from 'drizzle-orm';
 import type { SessionContext } from '../../db/client';
@@ -22,6 +26,10 @@ import type { NotificationSweepConnection } from '../../core/notice-projection';
 import { isModuleEnabled } from '../../core/entitlements';
 import { notificationSmtpFailure } from '../../lib/notification-email-model';
 import { CandidateMailNotSent, candidateEmailSender, type CandidateEmailSender } from '../../lib/recruitment-candidate-email-ipc';
+import { newCareersToken } from '../../lib/careers-client';
+import { createHash } from 'node:crypto';
+import { withSurveyLink } from './candidate-email-model';
+import { responseOrigin } from './candidate-email-hiring';
 
 export const DELIVERY_BATCH = 25;
 export const PURGE_BATCH = 500;
@@ -30,7 +38,7 @@ export const PURGE_BATCH = 500;
  *  run (as it does for letter mail); a bad candidate address never does. */
 export type CandidateEmailDeliveryResult = { claimed: number; sent: number; retry: number; failed: number; uncertain: number; held: number; purged: number; operational: number };
 const OPERATIONAL = new Set(['smtpAuthentication', 'smtpTls', 'relayPreparation']);
-type Target = { eligible: false } | { eligible: true; recipient: string; subject: string; text: string; html: string; senderName: string; replyTo: string };
+type Target = { eligible: false } | { eligible: true; recipient: string; subject: string; text: string; html: string; senderName: string; replyTo: string; kind: string };
 
 /** The sweep step for one tenant. `sender` is injected by tests (a faked transport); production resolves the tenant's relay. */
 export async function deliverCandidateEmails(ctx: SessionContext, connection: NotificationSweepConnection,
@@ -61,12 +69,28 @@ export async function deliverCandidateEmails(ctx: SessionContext, connection: No
         if (await finish('skipped', 'notEligible')) out.failed++;
         continue;
       }
+      // Slice 22: a survey's link is made now, for this send only (5724 stores its sha256; the frozen e-mail keeps {surveyLink}).
+      // No origin to link to, or content that does not take the link: not sent (failed, not eligible).
+      let message = { subject: target.subject, text: target.text, html: target.html };
+      if (target.kind === 'survey') {
+        const origin = responseOrigin();
+        const token = newCareersToken();
+        const linked = origin ? withSurveyLink(message, `${origin}/careers/s/${token}`) : null;
+        if (!linked) {
+          if (await finish('skipped', 'notEligible')) out.failed++;
+          continue;
+        }
+        const issued = await one<boolean>(sql`select app.recruitment_survey_issue(${claim.email_id}::uuid, ${claim.token}::uuid,
+          ${createHash('sha256').update(token, 'utf8').digest('hex')}) as r`);
+        if (!issued) continue;
+        message = linked;
+      }
       // Committed before the relay sees a byte: from here on a crash is 'uncertain', never a second send.
       const started = await one<boolean>(sql`select app.recruitment_candidate_email_start(${claim.email_id}::uuid, ${claim.token}::uuid, ${relay.revision}) as r`);
       if (!started) continue;
       let result: { outcome: string; error: string | null };
       try {
-        await relay.send({ to: target.recipient, subject: target.subject, text: target.text, html: target.html, senderName: target.senderName,
+        await relay.send({ to: target.recipient, subject: message.subject, text: message.text, html: message.html, senderName: target.senderName,
           replyTo: target.replyTo, messageId: `<recruitment-candidate-email.${claim.email_id}@${relay.host}>` });
         result = { outcome: 'sent', error: null };
       } catch (error) {

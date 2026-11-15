@@ -152,7 +152,7 @@ describe('case 127 — administrators set the sender and the wording; placeholde
     expect(await rows(w.bystander, sql`select 1 from recruitment_candidate_email_setting`)).toHaveLength(0);
     const v = await candidateEmailSettings(admin, base.companyId);
     expect(v).toMatchObject({ available: true, enabled: true, senderName: SENDER, replyTo: REPLY_TO, locale: 'en', defaultSenderName: expect.any(String) });
-    expect(v.templates).toHaveLength(36); // six kinds (slice 20 added four) in six languages
+    expect(v.templates).toHaveLength(42); // seven kinds (slice 20 added four, slice 22 the survey) in six languages
     // The reply-to is checked with the transport's own canonical rule.
     expect(await code(saveCandidateEmailSettings(admin, base.companyId, { enabled: true, replyTo: 'Talent <talent@example.test>' }))).toBe('invalid_input');
     expect(await code(saveCandidateEmailSettings(admin, base.companyId, { enabled: true, replyTo: 'qzé@example.test' }))).toBe('invalid_input');

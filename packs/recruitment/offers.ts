@@ -36,7 +36,7 @@ import { actorId, assertCompanyTx, assertJobLevelTx, assertNoReviewMarkTx, ensur
 import { applicationRowTx, companySettingsTx } from './interviews';
 import { cancelFutureInterviewsTx } from './interview-closing';
 import { candidateEmailAvailable } from '../../lib/recruitment-candidate-email-ipc';
-import { composersTx } from './candidate-email';
+import { composersTx, queueSurveysTx } from './candidate-email';
 import { offerEmailPreviewTx, queueOfferEmailTx } from './candidate-email-hiring';
 
 const offerEvent = (tx: Tx, s: SessionContext, aggregateId: string, eventType: string, payload: Record<string, unknown>) =>
@@ -379,6 +379,8 @@ export async function recordOfferDecision(s: SessionContext, offerId: unknown, d
         await tx.update(recruitmentApplication).set({ state: 'hired', updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentApplication.id, app.id)).catch(reviewRefusal);
         // Slice 18 review: a hired application's future interviews are cancelled (their rooms are freed).
         await cancelFutureInterviewsTx(tx, s, [app.id]);
+        // Slice 22: the company's survey after a hire, if it sends one (never refuses: skipped otherwise).
+        await queueSurveysTx(tx, s, { companyId: app.companyId, outcome: 'hired', applicationIds: [app.id] });
       } else await tx.update(recruitmentApplication).set({ currentStageId: plan.to, updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentApplication.id, app.id)).catch(reviewRefusal);
       await tx.insert(recruitmentApplicationEvent).values({ tenantId: s.tenantId, companyId: app.companyId, applicationId: app.id, actorUserId: user, ...moveEvent(plan) });
       moved = true;

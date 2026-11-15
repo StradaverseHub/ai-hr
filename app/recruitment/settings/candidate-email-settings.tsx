@@ -3,7 +3,7 @@ import type { SessionContext } from '@/db/client';
 import { Field, Input, btnGhost, btnPrimary } from '@/components/ui';
 import {
   CANDIDATE_EMAIL_BODY_MAX, CANDIDATE_EMAIL_KINDS, CANDIDATE_EMAIL_LOCALES, CANDIDATE_EMAIL_SENDER_NAME_MAX, CANDIDATE_EMAIL_SUBJECT_MAX, candidateEmailSettings,
-  REMINDER_HOURS_MAX, REMINDER_HOURS_MIN,
+  REMINDER_HOURS_MAX, REMINDER_HOURS_MIN, SURVEY_DELAY_MAX, SURVEY_DELAY_MIN,
 } from '@/packs/recruitment/service';
 import { localeNames, type Locale } from '@/i18n/config';
 import { resetCandidateEmailTemplateAction, saveCandidateEmailSettingsFormAction, saveCandidateEmailTemplateFormAction } from '../actions';
@@ -65,6 +65,17 @@ export async function CandidateEmailSettingsSection({ s, companyId, lang }: { s:
             </Field>
             <span className="text-xs text-muted-foreground">{t('reminderHint')}</span>
           </div>
+          {/* Slice 22: the anonymous candidate survey (D-063, D-067), off until ticked. */}
+          <fieldset className="space-y-1">
+            <legend className="text-sm font-medium">{t('surveyTitle')}</legend>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="surveyHired" defaultChecked={view.surveyHired} />{t('surveyHired')}</label>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="surveyRejected" defaultChecked={view.surveyRejected} />{t('surveyRejected')}</label>
+            <Field label={t('surveyDelayDays', { min: SURVEY_DELAY_MIN, max: SURVEY_DELAY_MAX })}>
+              <Input name="surveyDelayDays" type="number" min={SURVEY_DELAY_MIN} max={SURVEY_DELAY_MAX} step={1} defaultValue={view.surveyDelayDays} className="w-28" />
+              <FieldProblem name="surveyDelayDays" {...problem} />
+            </Field>
+            <span className="text-xs text-muted-foreground">{t('surveyHint')}</span>
+          </fieldset>
           <div className="flex items-end"><button type="submit" className={btnPrimary}>{t('save')}</button></div>
         </ActionForm>
         <div>

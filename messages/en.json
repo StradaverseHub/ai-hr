@@ -38755,7 +38755,8 @@
       "email_no_address": "The candidate has no usable e-mail address recorded. Nothing was done.",
       "email_value_link": "A value in this e-mail (the candidate's name, the job title, the place or an offer value) looks like a link or web address, so it cannot be e-mailed. Nothing was done.",
       "email_private_field": "An offer field marked for e-mail is private and hidden from you. Nothing was done; ask someone who can see it to send the offer.",
-      "email_use_send": "Candidate e-mail is on for this company: use Send offer by e-mail, which shows the e-mail first. Nothing was done."
+      "email_use_send": "Candidate e-mail is on for this company: use Send offer by e-mail, which shows the e-mail first. Nothing was done.",
+      "email_survey_link": "A survey e-mail must contain the survey link placeholder (surveyLink in braces) exactly once in its text, and not in its subject."
     },
     "overview": {
       "purpose": "Today's hiring work across the companies whose recruitment you manage.",
@@ -39773,6 +39774,41 @@
         "in_progress": "In progress",
         "completed": "Completed",
         "cancelled": "Cancelled"
+      },
+      "survey": "Candidate survey",
+      "candidateSurvey": {
+        "title": "Candidate survey",
+        "note": "Anonymous answers from candidates after a hire or a rejection, by the month they answered. Answers carry no job, so the job and department filters do not apply.",
+        "tooFew": "Results appear once at least {minimum} candidates have answered in the selected companies and months.",
+        "noSplit": "Hired and rejected candidates are shown separately once each has at least {minimum} answers.",
+        "responses": "Answers",
+        "overallAverage": "Overall rating (1–5)",
+        "recommendYes": "Would encourage a friend",
+        "averages": "Ratings",
+        "question": "Question",
+        "columns": {
+          "all": "All",
+          "hired": "Hired",
+          "rejected": "Rejected"
+        },
+        "ratings": {
+          "overall": "Overall experience (average)",
+          "communication": "Clear and timely communication (average)",
+          "respect": "Treated with respect (average)",
+          "process": "An easy process (average)"
+        },
+        "recommend": {
+          "yes": "Would encourage a friend: yes",
+          "no": "Would encourage a friend: no",
+          "unsure": "Would encourage a friend: not sure"
+        },
+        "distribution": "Overall rating",
+        "rating": "Rating",
+        "answers": "Answers",
+        "share": "Share",
+        "comments": "Comments",
+        "commentsNote": "As candidates wrote them, in no particular order and without dates (at most 200).",
+        "noComments": "No comments."
       }
     },
     "referral": {
@@ -40925,6 +40961,10 @@
         "offer": {
           "subject": "Your offer for {jobTitle}",
           "body": "Dear {candidateName},\n\nWe are pleased to offer you the {jobTitle} position at {companyName}.\n\n{offerDetails}\n\nPlease reply to this e-mail to accept the offer or if you have any questions.\n\n{responseLink}\n\nKind regards,\n{senderName}"
+        },
+        "survey": {
+          "subject": "How was applying to {companyName}?",
+          "body": "Dear {candidateName},\n\nThank you for your interest in the {jobTitle} position at {companyName}. We would like to know how applying went for you, whatever the outcome.\n\nThe survey takes about two minutes and is optional. Your answers are stored without your name or e-mail address, and we see them only combined with other candidates' answers.\n\n{surveyLink}\n\nThe link works once, for 30 days.\n\nKind regards,\n{senderName}"
         }
       },
       "settingsNote": "E-mail candidates about their own application: a receipt when they apply and, when a person chooses, a rejection letter. E-mails go through this installation's mail service from its address; you set the name candidates see and the address their replies go to.",
@@ -40953,7 +40993,8 @@
         "interview_invitation": "Interview invitation",
         "interview_reminder": "Interview reminder",
         "interview_cancelled": "Interview cancelled",
-        "offer": "Offer"
+        "offer": "Offer",
+        "survey": "Candidate survey"
       },
       "kindNotes": {
         "application_received": "Sent when HR adds a candidate and ticks Send receipt. Never for imported candidates. Careers-page applicants get no receipt yet: their address is not verified.",
@@ -40961,7 +41002,8 @@
         "interview_invitation": "Sent when the person scheduling an interview ticks E-mail the candidate an invitation after seeing it. It states the round, type, date, time, duration and place (with the address's map link), never the interviewers.",
         "interview_reminder": "Sent automatically before an interview whose invitation was e-mailed, at the time set above. Withdrawn if the interview is cancelled first.",
         "interview_cancelled": "Sent only when the person cancelling an interview ticks E-mail the candidate after seeing it. Never when an interview is cancelled because its application closed.",
-        "offer": "Sent when a person chooses Send offer by e-mail on an approved offer, after seeing it. It states only the offer fields marked In e-mail, as people entered them."
+        "offer": "Sent when a person chooses Send offer by e-mail on an approved offer, after seeing it. It states only the offer fields marked In e-mail, as people entered them.",
+        "survey": "Sent automatically after a hire or after a rejection e-mail, when the survey is switched on below, the days set below later. The link is made when the e-mail is sent and is never shown here, so nobody can see who answered."
       },
       "subject": "Subject (up to {max} characters)",
       "body": "Body (up to {max} characters)",
@@ -41087,7 +41129,13 @@
         "offer": "Accept or decline this offer here: {url}"
       },
       "responseReply": "The candidate replied by link: {answer} ({at})",
-      "responseByLink": "Answered by the candidate by link"
+      "responseByLink": "Answered by the candidate by link",
+      "surveyTitle": "Candidate survey (anonymous)",
+      "surveyHired": "Send the survey after a hire",
+      "surveyRejected": "Send the survey after a rejection e-mail",
+      "surveyDelayDays": "Send after (days, {min}–{max})",
+      "surveyHint": "After a rejection, the survey goes only to candidates who were sent the rejection e-mail, counted from when it was sent. Results are under Reports › Candidate survey.",
+      "surveyLinkMarker": "[personal survey link, added when the e-mail is sent]"
     }
   },
   "careersPublic": {
@@ -41197,6 +41245,39 @@
         "phone": "Phone interview"
       },
       "round": "Round {round}"
+    },
+    "survey": {
+      "title": "How was applying?",
+      "intro": "{company} would like to know how applying went for you.",
+      "anonymous": "Your answers are stored without your name or e-mail address, and the company sees them only combined with other candidates' answers. Every question except the first is optional.",
+      "scale": "1 = very poor, 5 = excellent",
+      "questions": {
+        "overall": "Your overall experience",
+        "communication": "How clear and timely was the communication?",
+        "respect": "Were you treated with respect?",
+        "process": "How easy was the process?"
+      },
+      "invalid": {
+        "overall": "Choose a rating from 1 to 5.",
+        "communication": "Choose a rating from 1 to 5.",
+        "respect": "Choose a rating from 1 to 5.",
+        "process": "Choose a rating from 1 to 5.",
+        "comment": "Keep the comment to 1,000 characters of plain text."
+      },
+      "recommend": "Would you encourage a friend to apply to {company}?",
+      "recommendOptions": {
+        "yes": "Yes",
+        "no": "No",
+        "unsure": "Not sure"
+      },
+      "comment": "Anything else you would like to tell us?",
+      "commentNote": "Please do not include your name or other personal details.",
+      "submit": "Send answers",
+      "thanksTitle": "Thank you",
+      "thanks": "Your answers are recorded. You can close this page.",
+      "closedTitle": "This survey is closed",
+      "closed": "This survey link has expired or was already used.",
+      "limited": "Too many answers from this connection. Try again later."
     }
   },
   "bulkJobs": {

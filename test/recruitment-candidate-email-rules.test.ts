@@ -90,7 +90,7 @@ describe('templates: placeholders, limits and links', () => {
     expect(templatePlaceholders('}{a}')).toEqual({ names: ['a'], stray: true });
   });
   it('the receipt and rejection allow exactly the four base placeholders (slice 20 adds kinds with their own)', () => {
-    expect(CANDIDATE_EMAIL_KINDS).toEqual(['application_received', 'rejection', 'interview_invitation', 'interview_reminder', 'interview_cancelled', 'offer']);
+    expect(CANDIDATE_EMAIL_KINDS).toEqual(['application_received', 'rejection', 'interview_invitation', 'interview_reminder', 'interview_cancelled', 'offer', 'survey']);
     for (const k of ['application_received', 'rejection'] as const) expect([...CANDIDATE_EMAIL_PLACEHOLDERS[k]]).toEqual(['candidateName', 'jobTitle', 'companyName', 'senderName']);
   });
 });
@@ -124,8 +124,10 @@ describe('settings, delays, states and backoff', () => {
     expect(validateCandidateEmailSettings({ enabled: false, senderName: 'x'.repeat(81) })).toMatchObject({ ok: false, fields: ['senderName'] });
     expect(validateCandidateEmailSettings({ enabled: false, locale: 'fr' })).toMatchObject({ ok: false, fields: ['locale'] });
     expect(validateCandidateEmailSettings({ enabled: 'on', replyTo: ' Talent@Example.TEST ', senderName: ' QZE Talent ', locale: 'ms' }))
-      .toEqual({ ok: true, value: { enabled: true, replyTo: 'talent@example.test', senderName: 'QZE Talent', locale: 'ms', reminderEnabled: true, reminderHours: 24 } });
-    expect(validateCandidateEmailSettings({})).toEqual({ ok: true, value: { enabled: false, replyTo: null, senderName: null, locale: 'en', reminderEnabled: true, reminderHours: 24 } });
+      .toEqual({ ok: true, value: { enabled: true, replyTo: 'talent@example.test', senderName: 'QZE Talent', locale: 'ms', reminderEnabled: true, reminderHours: 24,
+        surveyHired: false, surveyRejected: false, surveyDelayDays: 3 } });
+    expect(validateCandidateEmailSettings({})).toEqual({ ok: true, value: { enabled: false, replyTo: null, senderName: null, locale: 'en', reminderEnabled: true, reminderHours: 24,
+      surveyHired: false, surveyRejected: false, surveyDelayDays: 3 } });
     expect(validReplyTo('talent@example.test')).toBe(true);
     expect(validReplyTo('talent@localhost')).toBe(false);
     expect(validReplyTo('qzé@example.test')).toBe(false);

@@ -26,7 +26,7 @@ import {
   CANDIDATE_EMAIL_HOURLY_CAP, CANDIDATE_EMAIL_KINDS, CANDIDATE_EMAIL_LIST_LIMIT, CANDIDATE_EMAIL_LOCALES, CANDIDATE_EMAIL_PLACEHOLDERS,
   candidateEmailDisplayState, candidateEmailRetryable, parseRejectionDelay, renderCandidateEmail, validateCandidateEmailSettings,
   validateCandidateEmailTemplate,
-  linkish, usableRecipient, REMINDER_HOURS_DEFAULT,
+  linkish, usableRecipient, withSurveyLink, REMINDER_HOURS_DEFAULT, SURVEY_DELAY_DEFAULT, SURVEY_LINK_PLACEHOLDER,
   type CandidateEmailDisplayState, type CandidateEmailKind, type CandidateEmailLocale, type CandidateEmailSettingsInput, type CandidateEmailState,
   type RenderedCandidateEmail, type ValidTemplate,
 } from './candidate-email-model';
@@ -66,16 +66,18 @@ export type CandidateEmailComposer = {
   fingerprint: string;
   /** Slice 20: the company's interview reminders (on by default, 24 hours before). */
   reminderEnabled: boolean; reminderHours: number;
+  /** Slice 22: the company's survey after a hire and after a rejection (off by default), sent this many days later (1–14). */
+  surveyHired: boolean; surveyRejected: boolean; surveyDelayDays: number;
 };
-const fingerprintOf = (c: Omit<CandidateEmailComposer, 'fingerprint' | 'companyId' | 'custom' | 'reminderEnabled' | 'reminderHours'>) =>
+const fingerprintOf = (c: Omit<CandidateEmailComposer, 'fingerprint' | 'companyId' | 'custom' | 'reminderEnabled' | 'reminderHours' | 'surveyHired' | 'surveyRejected' | 'surveyDelayDays'>) =>
   createHash('sha256').update(JSON.stringify([c.kind, c.locale, c.template.subject, c.template.body, c.senderName, c.replyTo, c.companyName])).digest('hex').slice(0, 32);
 
 /** The composers of companies whose switch is on, read under the caller's row security (administrators and the company's job teams). */
 export async function composersTx(tx: Tx, tenantId: string, companyIds: readonly string[], kind: CandidateEmailKind): Promise<Map<string, CandidateEmailComposer>> {
   if (!companyIds.length) return new Map();
   const rows = await tx.execute<{ company_id: string; locale: CandidateEmailLocale; reply_to: string; sender_name: string; company_name: string; subject: string | null; body: string | null;
-    reminder_enabled: boolean; reminder_hours: number }>(sql`
-    select s.company_id, s.locale, s.reply_to, s.reminder_enabled, s.reminder_hours, app.recruitment_candidate_email_sender(s.sender_name, co.legal_name) as sender_name, co.legal_name as company_name,
+    reminder_enabled: boolean; reminder_hours: number; survey_hired: boolean; survey_rejected: boolean; survey_delay_days: number }>(sql`
+    select s.company_id, s.locale, s.reply_to, s.reminder_enabled, s.reminder_hours, s.survey_hired, s.survey_rejected, s.survey_delay_days, app.recruitment_candidate_email_sender(s.sender_name, co.legal_name) as sender_name, co.legal_name as company_name,
       t.subject, t.body
     from recruitment_candidate_email_setting s
     join company co on co.id = s.company_id and co.tenant_id = s.tenant_id
@@ -86,7 +88,8 @@ export async function composersTx(tx: Tx, tenantId: string, companyIds: readonly
     const template = r.subject !== null && r.body !== null ? { subject: r.subject, body: r.body } : await candidateEmailDefault(kind, r.locale);
     const base = { kind, locale: r.locale, senderName: r.sender_name, replyTo: r.reply_to, companyName: r.company_name, template };
     out.set(r.company_id, { ...base, companyId: r.company_id, custom: r.subject !== null, fingerprint: fingerprintOf(base),
-      reminderEnabled: r.reminder_enabled, reminderHours: Number(r.reminder_hours) });
+      reminderEnabled: r.reminder_enabled, reminderHours: Number(r.reminder_hours),
+      surveyHired: r.survey_hired, surveyRejected: r.survey_rejected, surveyDelayDays: Number(r.survey_delay_days) });
   }
   return out;
 }
@@ -232,7 +235,66 @@ export async function queueCandidateEmailsTx(tx: Tx, s: SessionContext, input: {
     tenantId: s.tenantId, aggregateType: 'recruitment-application', aggregateId: r.application_id, eventType: 'recruitment-candidate-email.queued',
     actor: actorOf(s), payload: { companyId: input.companyId, emailId: r.id, kind: input.kind, delayDays: delay },
   })));
+  // Slice 22: a rejection e-mail just queued may bring the company's survey, due its survey days after the rejection e-mail.
+  if (input.kind === 'rejection' && inserted.length) {
+    await queueSurveysTx(tx, s, { companyId: input.companyId, outcome: 'rejected', applicationIds: inserted.map((r) => r.application_id) });
+  }
   return { queued: inserted.map((r) => r.application_id), noEmail, valueLink, notPreviewed };
+}
+
+/** A well-formed stand-in link, to check that a rendered survey takes the sweep's link (withSurveyLink) before it is queued. */
+const SURVEY_CHECK_URL = `https://survey.invalid/careers/s/${'a'.repeat(43)}`;
+/**
+ * Slice 22: queue the company's anonymous survey for applications just hired, or just rejected with a rejection e-mail queued in this
+ * transaction (`outcome`), when the company's candidate e-mail is on and it surveys that outcome. Due the company's survey days after
+ * the hire, or after the rejection e-mail's own send time (5724 pins both). The frozen content keeps {surveyLink}: the sweep puts a
+ * fresh link in when it sends, so the e-mail HR can read never holds it.
+ *
+ * Never refuses and never undoes the decision it follows: an application that cannot get a survey (no usable address, a link-like
+ * name or job title, the company's hourly cap, an installation that cannot send) is skipped, and the insert runs in a savepoint, so a
+ * database refusal (for example the settings changing under it) skips the surveys and keeps the hire or rejection. Returns the
+ * applications a survey was queued for.
+ */
+export async function queueSurveysTx(tx: Tx, s: SessionContext, input: { companyId: string; outcome: 'hired' | 'rejected'; applicationIds: readonly string[] }): Promise<string[]> {
+  const wanted = [...new Set(input.applicationIds)].filter(isUuid);
+  if (!wanted.length || !s.userId || !isUuid(input.companyId)) return [];
+  // The company's own setting first (one indexed read), so a company that does not survey costs nothing more.
+  const [st] = await tx.execute<{ on: boolean }>(sql`
+    select (enabled and reply_to is not null and ${input.outcome === 'hired' ? sql`survey_hired` : sql`survey_rejected`}) as on
+    from recruitment_candidate_email_setting where company_id = ${input.companyId}::uuid and tenant_id = ${s.tenantId}::uuid`);
+  if (st?.on !== true || !(await candidateEmailAvailable(s.tenantId))) return [];
+  const composer = (await composersTx(tx, s.tenantId, [input.companyId], 'survey')).get(input.companyId);
+  if (!composer) return [];
+  const rows = await previewRowsTx(tx, s.tenantId, wanted, input.companyId);
+  const ready = rows.filter((r) => usableRecipient(r.email) && !r.destroyed).map((row) => ({ row,
+    mail: renderCandidateEmail('survey', composer.locale, composer.template, { candidateName: row.full_name, jobTitle: row.title, companyName: composer.companyName,
+      senderName: composer.senderName, surveyLink: SURVEY_LINK_PLACEHOLDER }) }))
+    .filter(({ mail }) => !linkish(mail.subject) && !linkish(mail.text) && withSurveyLink(mail, SURVEY_CHECK_URL) !== null);
+  if (!ready.length) return [];
+  const [count] = await tx.execute<{ n: number }>(sql`select app.recruitment_candidate_email_hour_count(${input.companyId}::uuid) as n`);
+  if (Number(count?.n ?? 0) + ready.length > CANDIDATE_EMAIL_HOURLY_CAP) return [];
+  const set = ready.map(({ row: r, mail: m }) => ({ job_id: r.job_id, application_id: r.id, candidate_id: r.candidate_id, recipient: r.email!,
+    subject: m.subject, body_text: m.text, body_html: m.html }));
+  const after = input.outcome === 'hired' ? sql`now()`
+    : sql`(select r.next_attempt_at from recruitment_candidate_email r where r.application_id = x.application_id and r.tenant_id = ${s.tenantId}::uuid and r.kind = 'rejection')`;
+  let inserted: { id: string; application_id: string }[];
+  try {
+    inserted = await tx.transaction(async (sp) => [...await sp.execute<{ id: string; application_id: string }>(sql`
+      insert into recruitment_candidate_email (tenant_id, company_id, job_id, application_id, candidate_id, kind, locale, recipient, subject, body_text, body_html,
+        sender_name, reply_to, queued_by_user_id, next_attempt_at, survey_outcome)
+      select ${s.tenantId}::uuid, ${input.companyId}::uuid, x.job_id, x.application_id, x.candidate_id, 'survey', ${composer.locale}, x.recipient, x.subject,
+        x.body_text, x.body_html, ${composer.senderName}, ${composer.replyTo}, ${s.userId}::uuid, ${after} + make_interval(days => ${composer.surveyDelayDays}::integer),
+        ${input.outcome}
+      from jsonb_to_recordset(${JSON.stringify(set)}::jsonb) as x(job_id uuid, application_id uuid, candidate_id uuid, recipient text, subject text, body_text text, body_html text)
+      returning id, application_id`)]);
+  } catch {
+    return [];
+  }
+  await appendEvents(tx, inserted.map((r) => ({
+    tenantId: s.tenantId, aggregateType: 'recruitment-application', aggregateId: r.application_id, eventType: 'recruitment-candidate-email.queued',
+    actor: actorOf(s), payload: { companyId: input.companyId, emailId: r.id, kind: 'survey', outcome: input.outcome, delayDays: composer.surveyDelayDays },
+  })));
+  return inserted.map((r) => r.application_id);
 }
 
 /** The e-mail options a reject or archive form posts: tick, delay and the fingerprint of each preview shown (`fingerprint` for the one
@@ -260,6 +322,8 @@ export type CandidateEmailSettingsView = {
   enabled: boolean; senderName: string | null; replyTo: string | null; locale: CandidateEmailLocale;
   /** Slice 20: interview reminders (on by default) and how many hours before (2–72, default 24). */
   reminderEnabled: boolean; reminderHours: number;
+  /** Slice 22: the anonymous survey after a hire and after a rejection (off by default), sent 1–14 days later (default 3). */
+  surveyHired: boolean; surveyRejected: boolean; surveyDelayDays: number;
   /** The display name used when none is set: the company name (≤80). */
   defaultSenderName: string;
   updatedAt: string | null; updatedBy: string | null;
@@ -282,8 +346,9 @@ export async function candidateEmailSettings(s: SessionContext, companyId: strin
   return withRecruitmentTenant(s, async (tx) => {
     await assertAdminTx(tx, companyId);
     const [st] = await tx.execute<{ enabled: boolean; sender_name: string | null; reply_to: string | null; locale: CandidateEmailLocale; updated_at: string; updated_by_user_id: string;
-      reminder_enabled: boolean; reminder_hours: number }>(sql`
-      select enabled, sender_name, reply_to, locale, updated_at, updated_by_user_id, reminder_enabled, reminder_hours from recruitment_candidate_email_setting
+      reminder_enabled: boolean; reminder_hours: number; survey_hired: boolean; survey_rejected: boolean; survey_delay_days: number }>(sql`
+      select enabled, sender_name, reply_to, locale, updated_at, updated_by_user_id, reminder_enabled, reminder_hours, survey_hired, survey_rejected, survey_delay_days
+      from recruitment_candidate_email_setting
       where company_id = ${companyId}::uuid and tenant_id = ${s.tenantId}::uuid`);
     const [co] = await tx.execute<{ name: string }>(sql`select app.recruitment_candidate_email_sender(null, co.legal_name) as name from company co
       where co.id = ${companyId}::uuid and co.tenant_id = ${s.tenantId}::uuid`);
@@ -308,6 +373,7 @@ export async function candidateEmailSettings(s: SessionContext, companyId: strin
     return {
       available, enabled: st?.enabled ?? false, senderName: st?.sender_name ?? null, replyTo: st?.reply_to ?? null, locale: st?.locale ?? 'en',
       reminderEnabled: st?.reminder_enabled ?? true, reminderHours: st ? Number(st.reminder_hours) : REMINDER_HOURS_DEFAULT,
+      surveyHired: st?.survey_hired ?? false, surveyRejected: st?.survey_rejected ?? false, surveyDelayDays: st ? Number(st.survey_delay_days) : SURVEY_DELAY_DEFAULT,
       defaultSenderName: co?.name ?? '', updatedAt: st ? iso(st.updated_at) : null, updatedBy: st ? labels.get(st.updated_by_user_id) ?? null : null,
       placeholders: CANDIDATE_EMAIL_PLACEHOLDERS, templates, counts,
     };
@@ -330,14 +396,16 @@ export async function saveCandidateEmailSettings(s: SessionContext, companyId: u
       if (!co?.name) throw new RecruitmentError('missing_fields', ['senderName']);
     }
     await tx.execute(sql`insert into recruitment_candidate_email_setting (company_id, tenant_id, enabled, sender_name, reply_to, locale, reminder_enabled, reminder_hours,
-        created_by_user_id, updated_by_user_id)
+        survey_hired, survey_rejected, survey_delay_days, created_by_user_id, updated_by_user_id)
       values (${company}::uuid, ${s.tenantId}::uuid, ${v.value.enabled}, ${v.value.senderName}, ${v.value.replyTo}, ${v.value.locale}, ${v.value.reminderEnabled},
-        ${v.value.reminderHours}, ${user}::uuid, ${user}::uuid)
+        ${v.value.reminderHours}, ${v.value.surveyHired}, ${v.value.surveyRejected}, ${v.value.surveyDelayDays}, ${user}::uuid, ${user}::uuid)
       on conflict (company_id) do update set enabled = excluded.enabled, sender_name = excluded.sender_name, reply_to = excluded.reply_to, locale = excluded.locale,
-        reminder_enabled = excluded.reminder_enabled, reminder_hours = excluded.reminder_hours, updated_by_user_id = excluded.updated_by_user_id`);
+        reminder_enabled = excluded.reminder_enabled, reminder_hours = excluded.reminder_hours, survey_hired = excluded.survey_hired,
+        survey_rejected = excluded.survey_rejected, survey_delay_days = excluded.survey_delay_days, updated_by_user_id = excluded.updated_by_user_id`);
     await appendEvents(tx, [{ tenantId: s.tenantId, aggregateType: 'recruitment-company', aggregateId: company, eventType: 'recruitment-candidate-email.settings-saved',
       actor: actorOf(s), payload: { companyId: company, enabled: v.value.enabled, locale: v.value.locale, senderNameSet: v.value.senderName !== null,
-      reminderEnabled: v.value.reminderEnabled, reminderHours: v.value.reminderHours } }]);
+      reminderEnabled: v.value.reminderEnabled, reminderHours: v.value.reminderHours, surveyHired: v.value.surveyHired, surveyRejected: v.value.surveyRejected,
+      surveyDelayDays: v.value.surveyDelayDays } }]);
   });
 }
 

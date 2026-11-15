@@ -6126,6 +6126,13 @@
       "when": 1793330005423,
       "tag": "5723_recruitment_candidate_response_links",
       "breakpoints": true
+    },
+    {
+      "idx": 5124,
+      "version": "7",
+      "when": 1793330005424,
+      "tag": "5724_recruitment_candidate_survey",
+      "breakpoints": true
     }
   ]
 }

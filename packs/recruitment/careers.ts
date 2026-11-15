@@ -26,7 +26,7 @@ import { candidateEmailAvailable, candidateEmailSender } from '../../lib/recruit
 import { messagesForLocale } from '../../i18n/catalogs';
 import { RecruitmentError, isUuid, type JobEmploymentType } from './model';
 import { CANDIDATE_FILE_MAX_BYTES, CANDIDATE_FILE_MIME, normEmail } from './privacy-model';
-import { CANDIDATE_EMAIL_LOCALES, linkish, renderCandidateEmail, usableRecipient, type CandidateEmailLocale, type ValidTemplate } from './candidate-email-model';
+import { CANDIDATE_EMAIL_LOCALES, linkish, renderCandidateEmail, usableRecipient, validateSurveyAnswers, type CandidateEmailLocale, type ValidTemplate } from './candidate-email-model';
 import { candidateEmailDefault } from './candidate-email';
 import {
   CAREERS_PAGE_SIZE, careersFileNameOk, careersPublishMissing, validateCareersApplication, validateCareersSettings, type CareersApplicationInput, type CareersFieldError,
@@ -490,4 +490,27 @@ export async function answerCandidateResponse(token: string, answer: 'accepted' 
   if (r?.status === 'answered' || r?.status === 'closed') return { status: r.status, state: responseState(r.state ?? {}) };
   if (r?.status === 'limited') return { status: 'limited' };
   return { status: 'not_found' };
+}
+
+// ── Slice 22: the anonymous candidate survey (5724) ─────────────────────────────────────────────────────────────────
+
+/** What a live survey link shows: the company's name only. Null for an unknown, used or expired link (one page for all three).
+ *  Read-only: opening a link changes nothing (mail scanners open links). */
+export async function candidateSurveyView(token: string): Promise<{ companyName: string } | null> {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
+  const [row] = await careersDb().unsafe<{ r: { companyName?: unknown } | null }[]>('select app.recruitment_survey_view($1::text) as r', [tokenDigest(token)]);
+  return row?.r ? { companyName: String(row.r.companyName ?? '') } : null;
+}
+export type CandidateSurveyResult = { status: 'answered' | 'closed' | 'limited' } | { status: 'invalid'; fields: string[] };
+/** The candidate's answers (a POST), checked here and again by 5724: answered once; closed (unknown, used or expired); limited (20 an
+ *  hour per client, counted with response links); invalid (the fields to correct; nothing is counted or stored). */
+export async function answerCandidateSurvey(token: string, form: Readonly<Record<string, unknown>>, clientHash: string): Promise<CandidateSurveyResult> {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return { status: 'closed' };
+  const v = validateSurveyAnswers(form);
+  if (!v.ok) return { status: 'invalid', fields: v.fields };
+  const [row] = await careersDb().unsafe<{ r: string }[]>('select app.recruitment_survey_answer($1::text, $2::jsonb, $3::text) as r',
+    [tokenDigest(token), JSON.stringify(v.value), clientHash]);
+  const status = row?.r;
+  if (status === 'answered' || status === 'closed' || status === 'limited') return { status };
+  throw new Error('Survey answer returned no outcome');
 }

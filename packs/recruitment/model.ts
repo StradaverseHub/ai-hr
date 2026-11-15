@@ -122,6 +122,8 @@ export const RECRUITMENT_ERROR_CODES = [
   // name, job title, place or offer value); an offer field marked for e-mail is private and hidden from the sender; an offer goes by
   // e-mail with "Send offer by e-mail" (which shows it first), not "Mark as sent", while candidate e-mail is on.
   'email_no_address', 'email_value_link', 'email_private_field', 'email_use_send',
+  // Slice 22: a survey template names {surveyLink} once in its body and never in its subject.
+  'email_survey_link',
 ] as const;
 export type RecruitmentErrorCode = (typeof RECRUITMENT_ERROR_CODES)[number];
 

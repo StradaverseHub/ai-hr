@@ -273,7 +273,7 @@ describe('case 8 — users without access cannot read or move applications', () 
       'recruitment_background_check_type_link', 'recruitment_blocked_entry', 'recruitment_blocked_entry_restricted', 'recruitment_blocked_history', 'recruitment_candidate',
       'recruitment_candidate_consent', 'recruitment_candidate_custom_restricted', 'recruitment_candidate_custom_value', 'recruitment_candidate_email',
       'recruitment_candidate_email_setting', 'recruitment_candidate_email_template', 'recruitment_candidate_entry', 'recruitment_candidate_file',
-      'recruitment_candidate_import', 'recruitment_candidate_import_note', 'recruitment_candidate_import_row', 'recruitment_candidate_restricted', 'recruitment_candidate_tag',
+      'recruitment_candidate_import', 'recruitment_candidate_import_note', 'recruitment_candidate_import_row', 'recruitment_candidate_restricted', 'recruitment_candidate_survey_response', 'recruitment_candidate_tag',
       'recruitment_careers_application', 'recruitment_careers_notice', 'recruitment_careers_site', 'recruitment_company_setting', 'recruitment_custom_field', 'recruitment_custom_field_option', 'recruitment_evaluation_form', 'recruitment_export_template', 'recruitment_hire_handoff', 'recruitment_import_preview_quota', 'recruitment_interview', 'recruitment_interview_address', 'recruitment_interview_interviewer',
       'recruitment_interview_question', 'recruitment_interview_question_link', 'recruitment_interview_room', 'recruitment_interviewer_group', 'recruitment_interviewer_group_member',
       'recruitment_job_agency_contract', 'recruitment_job_custom_value', 'recruitment_job_member', 'recruitment_job_opening', 'recruitment_offer', 'recruitment_offer_approval', 'recruitment_offer_field', 'recruitment_offer_value',

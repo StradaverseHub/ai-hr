@@ -16,9 +16,10 @@ import { RECRUITMENT_ERROR_CODES } from '../packs/recruitment/model';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (p: string) => readFileSync(`${root}${p}`, 'utf8');
 const m5721 = read('db/migrations/5721_recruitment_candidate_email_interviews_offers.sql');
-/** The latest restatement of the placeholder allowlist (5723, slice 21b, added {responseLink}), every run of whitespace made one space
- *  (its long arrays wrap across lines). */
-const flat5721 = read('db/migrations/5723_recruitment_candidate_response_links.sql').replace(/,\s+/g, ',').replace(/\s+/g, ' ');
+/** The latest restatement of the placeholder allowlist (5724, slice 22, added the survey's {surveyLink}; 5723 added {responseLink}), every
+ *  run of whitespace made one space (its long arrays wrap across lines). */
+const m5724 = read('db/migrations/5724_recruitment_candidate_survey.sql');
+const flat5721 = m5724.replace(/,\s+/g, ',').replace(/\s+/g, ' ');
 const messages = (l: string) => JSON.parse(read(`messages/${l}.json`)) as {
   recruitment: { candidateEmail: { interview: Omit<InterviewEmailLabels, 'weekdays'> & { weekdays: Record<string, string> }; defaults: Record<string, { subject: string; body: string }> };
     errors: Record<string, string>; offer: Record<string, unknown> } };
@@ -34,13 +35,15 @@ const facts = (over: Record<string, unknown> = {}) => ({
 });
 
 describe('kinds and placeholders agree with 5721', () => {
-  it('lists the six kinds in the template and delivery CHECKs', () => {
+  it('lists the six kinds in the template and delivery CHECKs (5721), and all seven with the survey (5724)', () => {
+    const six = CANDIDATE_EMAIL_KINDS.filter((k) => k !== 'survey').map((k) => `'${k}'`).join(',');
+    expect(m5721).toContain(`CHECK (kind IN (${six}))`);
+    expect(m5721.split(`CHECK (kind IN (${six}))`)).toHaveLength(3);
     const list = CANDIDATE_EMAIL_KINDS.map((k) => `'${k}'`).join(',');
-    expect(m5721).toContain(`CHECK (kind IN (${list}))`);
-    expect(m5721.split(`CHECK (kind IN (${list}))`)).toHaveLength(3);
+    expect(m5724.split(`CHECK (kind IN (${list}))`)).toHaveLength(3);
   });
-  it('restates each kind\'s placeholder allowlist exactly as the model (latest restatement, 5723)', () => {
-    for (const kind of ['interview_invitation', 'interview_reminder', 'interview_cancelled', 'offer'] as const) {
+  it('restates each kind\'s placeholder allowlist exactly as the model (latest restatement, 5724)', () => {
+    for (const kind of ['interview_invitation', 'interview_reminder', 'interview_cancelled', 'offer', 'survey'] as const) {
       expect(flat5721).toContain(`WHEN '${kind}' THEN ARRAY[${CANDIDATE_EMAIL_PLACEHOLDERS[kind].map((p) => `'${p}'`).join(',')}]`);
     }
     expect(CANDIDATE_EMAIL_PLACEHOLDERS.interview_cancelled).not.toContain('interviewPlace');

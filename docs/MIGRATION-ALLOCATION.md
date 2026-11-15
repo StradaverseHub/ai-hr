@@ -1,3 +1,12 @@
+# Recruitment slice 22: anonymous candidate survey — 15 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` appends `5724_recruitment_candidate_survey` at idx 5124 / when 1793330005424, the next slot
+of the recruitment block (tag T, idx T − 600, when 1793330000000 + (T − 300)) directly after `5723` (when 1793330005423), after merging
+`origin/main` at `e55138825` (whose newest entry, `5680`, sorts below the block). SHA256 `bdee5cec1396feb76b4ca4c5c6d8995714349c599b93421c3d78601ea99670e1` at allocation (the file may still change
+before it is applied anywhere). A scan of every committed journal on the 4,222 origin heads on 15 November 2026 found no claim on tags
+5724–5799 or when 1793330005424–1793330005499. The installed ledgers were not read by this session. Recheck the installed watermarks
+and peer claims at admission; this allocation grants no installation authority.
+
 # Recruitment slice 21b — 15 November 2026 MYT (unapplied)
 
 Branch `claude/rea-web-app-reconstruction-2c12ee` appends `5723_recruitment_candidate_response_links` at idx 5123 / when

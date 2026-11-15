@@ -17,7 +17,7 @@ import { careersJobPath, careersPagePath } from '../../lib/careers-route';
 import { CAREERS_CSS, CAREERS_HEADERS } from '../../lib/careers-security';
 import {
   CAREERS_MESSAGE_MAX, CAREERS_NAME_MAX, careersPageCount, type CareersFieldError, type CareersFormField, type CareersPublicJob, type CareersPublicPage,
-  type CandidateResponseState,
+  type CandidateResponseState, SURVEY_COMMENT_MAX,
 } from '@/packs/recruitment/service';
 
 type Dict = Record<string, unknown>;
@@ -352,4 +352,44 @@ export function careersResponseNotFoundHtml(view: CareersView): string {
 export function careersResponseLimitedHtml(view: CareersView, token: string): string {
   const w = view.words;
   return documentHtml(view, { title: w.limitedTitle, here: `/careers/r/${token}`, body: `<h1>${esc(w.limitedTitle)}</h1><p>${esc(w.response.limited)}</p>` });
+}
+
+// ── Slice 22: the anonymous candidate survey ─────────────────────────────────────────────────────────────────────
+
+/** The posted survey values, to show again when a field needs correcting. */
+export type SurveyFormValues = Partial<Record<'overall' | 'communication' | 'respect' | 'process' | 'recommend' | 'comment', string>>;
+/** The survey form: the company's name, the anonymity note, four 1–5 ratings (overall required), would-recommend and a comment. */
+export function careersSurveyHtml(view: CareersView, token: string, companyName: string, values: SurveyFormValues = {}, invalid: readonly string[] = []): string {
+  const w = view.words.survey;
+  const here = `/careers/s/${token}`;
+  const rating = (q: 'overall' | 'communication' | 'respect' | 'process') => {
+    const bad = invalid.includes(q);
+    return `<fieldset class="field"${bad ? ' aria-invalid="true"' : ''}><legend>${esc(w.questions[q])}${q === 'overall' ? ' <span class="req" aria-hidden="true">*</span>' : ''}</legend>`
+      + [1, 2, 3, 4, 5].map((n) => `<label class="check"><input type="radio" name="${q}" value="${n}"${values[q] === String(n) ? ' checked' : ''}${q === 'overall' ? ' required' : ''}> ${n}</label>`).join('')
+      + (bad ? `<p class="error" role="alert">${esc(w.invalid[q])}</p>` : '') + '</fieldset>';
+  };
+  const recommend = `<fieldset class="field"${invalid.includes('recommend') ? ' aria-invalid="true"' : ''}><legend>${fill(w.recommend, { company: companyName })}</legend>`
+    + (['yes', 'no', 'unsure'] as const).map((r) => `<label class="check"><input type="radio" name="recommend" value="${r}"${values.recommend === r ? ' checked' : ''}> ${esc(w.recommendOptions[r])}</label>`).join('')
+    + '</fieldset>';
+  const comment = `<div class="field"><label for="comment">${esc(w.comment)}</label>`
+    + `<textarea id="comment" name="comment" maxlength="${SURVEY_COMMENT_MAX}" aria-describedby="comment-note"${invalid.includes('comment') ? ' aria-invalid="true"' : ''}>${esc(values.comment ?? '')}</textarea>`
+    + `<p id="comment-note" class="muted">${esc(w.commentNote)}</p>${invalid.includes('comment') ? `<p class="error" role="alert">${esc(w.invalid.comment)}</p>` : ''}</div>`;
+  const body = `<h1>${esc(w.title)}</h1><p class="lead">${fill(w.intro, { company: companyName })}</p><p class="muted">${esc(w.anonymous)}</p>`
+    + `<form method="post" action="${esc(link(view, here))}" class="card"><p class="muted">${esc(w.scale)}</p>`
+    + rating('overall') + rating('communication') + rating('respect') + rating('process') + recommend + comment
+    + `<button class="btn" type="submit">${esc(w.submit)}</button></form>`;
+  return documentHtml(view, { title: w.title, here, body });
+}
+export function careersSurveyThanksHtml(view: CareersView, token: string): string {
+  const w = view.words.survey;
+  return documentHtml(view, { title: w.thanksTitle, here: `/careers/s/${token}`, body: `<h1>${esc(w.thanksTitle)}</h1><p role="status">${esc(w.thanks)}</p>` });
+}
+/** One page for an unknown, used or expired link, so a link never tells which. */
+export function careersSurveyClosedHtml(view: CareersView): string {
+  const w = view.words.survey;
+  return documentHtml(view, { title: w.closedTitle, here: '/careers', body: `<h1>${esc(w.closedTitle)}</h1><p>${esc(w.closed)}</p>` });
+}
+export function careersSurveyLimitedHtml(view: CareersView, token: string): string {
+  const w = view.words;
+  return documentHtml(view, { title: w.limitedTitle, here: `/careers/s/${token}`, body: `<h1>${esc(w.limitedTitle)}</h1><p>${esc(w.survey.limited)}</p>` });
 }

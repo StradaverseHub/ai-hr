@@ -38755,7 +38755,8 @@
       "email_no_address": "Ứng viên không có địa chỉ e-mail dùng được. Không có thay đổi nào.",
       "email_value_link": "Một giá trị trong e-mail này (tên ứng viên, chức danh, địa điểm hoặc giá trị thư mời) trông giống liên kết hoặc địa chỉ web, nên không thể gửi. Không có thay đổi nào.",
       "email_private_field": "Một trường thư mời được đánh dấu cho e-mail là riêng tư và bạn không xem được. Không có thay đổi nào; hãy nhờ người xem được trường đó gửi.",
-      "email_use_send": "E-mail ứng viên đang bật cho công ty này: hãy dùng Gửi thư mời nhận việc qua e-mail, chức năng này hiển thị e-mail trước. Không có thay đổi nào."
+      "email_use_send": "E-mail ứng viên đang bật cho công ty này: hãy dùng Gửi thư mời nhận việc qua e-mail, chức năng này hiển thị e-mail trước. Không có thay đổi nào.",
+      "email_survey_link": "E-mail khảo sát phải có chỗ giữ liên kết khảo sát (surveyLink trong dấu ngoặc nhọn) đúng một lần trong nội dung và không có trong tiêu đề."
     },
     "overview": {
       "purpose": "Công việc tuyển dụng hôm nay tại các công ty mà bạn quản lý tuyển dụng.",
@@ -39773,6 +39774,41 @@
         "in_progress": "Đang thực hiện",
         "completed": "Hoàn tất",
         "cancelled": "Đã hủy"
+      },
+      "survey": "Khảo sát ứng viên",
+      "candidateSurvey": {
+        "title": "Khảo sát ứng viên",
+        "note": "Câu trả lời ẩn danh của ứng viên sau khi được tuyển hoặc bị từ chối, theo tháng họ trả lời. Câu trả lời không gắn với vị trí, nên bộ lọc vị trí và phòng ban không áp dụng.",
+        "tooFew": "Kết quả hiển thị khi có ít nhất {minimum} ứng viên trả lời trong các công ty và tháng đã chọn.",
+        "noSplit": "Ứng viên được tuyển và bị từ chối được hiển thị riêng khi mỗi nhóm có ít nhất {minimum} câu trả lời.",
+        "responses": "Câu trả lời",
+        "overallAverage": "Đánh giá chung (1–5)",
+        "recommendYes": "Sẽ khuyến khích bạn bè",
+        "averages": "Đánh giá",
+        "question": "Câu hỏi",
+        "columns": {
+          "all": "Tất cả",
+          "hired": "Được tuyển",
+          "rejected": "Bị từ chối"
+        },
+        "ratings": {
+          "overall": "Trải nghiệm chung (trung bình)",
+          "communication": "Trao đổi rõ ràng, kịp thời (trung bình)",
+          "respect": "Được đối xử tôn trọng (trung bình)",
+          "process": "Quy trình dễ dàng (trung bình)"
+        },
+        "recommend": {
+          "yes": "Sẽ khuyến khích bạn bè: có",
+          "no": "Sẽ khuyến khích bạn bè: không",
+          "unsure": "Sẽ khuyến khích bạn bè: chưa chắc"
+        },
+        "distribution": "Đánh giá chung",
+        "rating": "Điểm",
+        "answers": "Câu trả lời",
+        "share": "Tỷ lệ",
+        "comments": "Nhận xét",
+        "commentsNote": "Đúng như ứng viên viết, không theo thứ tự nào và không có ngày (tối đa 200).",
+        "noComments": "Không có nhận xét."
       }
     },
     "referral": {
@@ -40925,6 +40961,10 @@
         "offer": {
           "subject": "Thư mời nhận việc vị trí {jobTitle}",
           "body": "Kính gửi {candidateName},\n\nChúng tôi vui mừng mời bạn nhận vị trí {jobTitle} tại {companyName}.\n\n{offerDetails}\n\nVui lòng trả lời e-mail này để chấp nhận lời mời hoặc nếu bạn có bất kỳ câu hỏi nào.\n\n{responseLink}\n\nTrân trọng,\n{senderName}"
+        },
+        "survey": {
+          "subject": "Trải nghiệm ứng tuyển tại {companyName} của bạn thế nào?",
+          "body": "Kính gửi {candidateName},\n\nCảm ơn bạn đã quan tâm đến vị trí {jobTitle} tại {companyName}. Dù kết quả thế nào, chúng tôi muốn biết trải nghiệm ứng tuyển của bạn.\n\nKhảo sát mất khoảng hai phút và không bắt buộc. Câu trả lời của bạn được lưu mà không kèm tên hay địa chỉ e-mail, và chúng tôi chỉ xem chúng cùng với câu trả lời của các ứng viên khác.\n\n{surveyLink}\n\nLiên kết chỉ dùng được một lần, trong 30 ngày.\n\nTrân trọng,\n{senderName}"
         }
       },
       "settingsNote": "Gửi e-mail cho ứng viên về chính đơn ứng tuyển của họ: thư xác nhận khi họ ứng tuyển và, khi có người chọn, thư từ chối. E-mail được gửi qua dịch vụ thư của hệ thống này từ địa chỉ của hệ thống; bạn đặt tên ứng viên nhìn thấy và địa chỉ nhận thư trả lời.",
@@ -40953,7 +40993,8 @@
         "interview_invitation": "Thư mời phỏng vấn",
         "interview_reminder": "Nhắc lịch phỏng vấn",
         "interview_cancelled": "Hủy phỏng vấn",
-        "offer": "Thư mời nhận việc"
+        "offer": "Thư mời nhận việc",
+        "survey": "Khảo sát ứng viên"
       },
       "kindNotes": {
         "application_received": "Gửi khi HR thêm ứng viên và đánh dấu Gửi thư xác nhận. Không bao giờ gửi cho ứng viên được nhập. Người ứng tuyển qua trang tuyển dụng chưa nhận thư xác nhận: địa chỉ của họ chưa được xác minh.",
@@ -40961,7 +41002,8 @@
         "interview_invitation": "Gửi khi người lên lịch phỏng vấn đánh dấu Gửi e-mail mời ứng viên sau khi xem. Thư nêu vòng, hình thức, ngày, giờ, thời lượng và địa điểm (kèm liên kết bản đồ của địa chỉ), không bao giờ nêu người phỏng vấn.",
         "interview_reminder": "Tự động gửi trước buổi phỏng vấn đã gửi thư mời qua e-mail, vào thời điểm đặt ở trên. Bị rút lại nếu buổi phỏng vấn bị hủy trước.",
         "interview_cancelled": "Chỉ gửi khi người hủy buổi phỏng vấn đánh dấu Gửi e-mail cho ứng viên sau khi xem. Không bao giờ gửi khi buổi phỏng vấn bị hủy do hồ sơ đã đóng.",
-        "offer": "Gửi khi một người chọn Gửi thư mời nhận việc qua e-mail trên một lời mời đã được duyệt, sau khi xem. Thư chỉ nêu các trường được đánh dấu Trong e-mail, đúng như đã nhập."
+        "offer": "Gửi khi một người chọn Gửi thư mời nhận việc qua e-mail trên một lời mời đã được duyệt, sau khi xem. Thư chỉ nêu các trường được đánh dấu Trong e-mail, đúng như đã nhập.",
+        "survey": "Gửi tự động sau khi tuyển dụng hoặc sau e-mail từ chối, khi khảo sát được bật bên dưới, sau số ngày đặt bên dưới. Liên kết được tạo khi gửi e-mail và không bao giờ hiển thị ở đây, nên không ai biết ai đã trả lời."
       },
       "subject": "Tiêu đề (tối đa {max} ký tự)",
       "body": "Nội dung (tối đa {max} ký tự)",
@@ -41087,7 +41129,13 @@
         "offer": "Chấp nhận hoặc từ chối thư mời này tại đây: {url}"
       },
       "responseReply": "Ứng viên đã trả lời qua liên kết: {answer} ({at})",
-      "responseByLink": "Ứng viên đã trả lời qua liên kết"
+      "responseByLink": "Ứng viên đã trả lời qua liên kết",
+      "surveyTitle": "Khảo sát ứng viên (ẩn danh)",
+      "surveyHired": "Gửi khảo sát sau khi tuyển dụng",
+      "surveyRejected": "Gửi khảo sát sau e-mail từ chối",
+      "surveyDelayDays": "Gửi sau (ngày, {min}–{max})",
+      "surveyHint": "Sau khi từ chối, khảo sát chỉ gửi cho ứng viên đã nhận e-mail từ chối, tính từ lúc e-mail đó được gửi. Kết quả nằm ở Báo cáo › Khảo sát ứng viên.",
+      "surveyLinkMarker": "[liên kết khảo sát riêng, được thêm khi gửi e-mail]"
     }
   },
   "careersPublic": {
@@ -41197,6 +41245,39 @@
         "phone": "Phỏng vấn qua điện thoại"
       },
       "round": "Vòng {round}"
+    },
+    "survey": {
+      "title": "Trải nghiệm ứng tuyển của bạn thế nào?",
+      "intro": "{company} muốn biết trải nghiệm ứng tuyển của bạn.",
+      "anonymous": "Câu trả lời của bạn được lưu mà không kèm tên hay địa chỉ e-mail, và công ty chỉ xem chúng cùng với câu trả lời của các ứng viên khác. Mọi câu hỏi trừ câu đầu tiên đều không bắt buộc.",
+      "scale": "1 = rất kém, 5 = xuất sắc",
+      "questions": {
+        "overall": "Trải nghiệm chung của bạn",
+        "communication": "Trao đổi có rõ ràng và kịp thời không?",
+        "respect": "Bạn có được đối xử tôn trọng không?",
+        "process": "Quy trình có dễ dàng không?"
+      },
+      "invalid": {
+        "overall": "Chọn điểm từ 1 đến 5.",
+        "communication": "Chọn điểm từ 1 đến 5.",
+        "respect": "Chọn điểm từ 1 đến 5.",
+        "process": "Chọn điểm từ 1 đến 5.",
+        "comment": "Giữ nhận xét trong 1.000 ký tự văn bản thường."
+      },
+      "recommend": "Bạn có khuyến khích bạn bè ứng tuyển vào {company} không?",
+      "recommendOptions": {
+        "yes": "Có",
+        "no": "Không",
+        "unsure": "Chưa chắc"
+      },
+      "comment": "Bạn còn muốn chia sẻ điều gì khác không?",
+      "commentNote": "Vui lòng không ghi tên hoặc thông tin cá nhân khác.",
+      "submit": "Gửi câu trả lời",
+      "thanksTitle": "Cảm ơn bạn",
+      "thanks": "Câu trả lời của bạn đã được ghi nhận. Bạn có thể đóng trang này.",
+      "closedTitle": "Khảo sát này đã đóng",
+      "closed": "Liên kết khảo sát này đã hết hạn hoặc đã được sử dụng.",
+      "limited": "Có quá nhiều câu trả lời từ kết nối này. Vui lòng thử lại sau."
     }
   },
   "bulkJobs": {

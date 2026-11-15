@@ -995,7 +995,8 @@ export async function saveCandidateEmailSettingsFormAction(prev: FormRefusal, f:
   const s = await getSession();
   try {
     await saveCandidateEmailSettings(s, str(f, 'companyId'), { enabled: f.get('enabled') === 'on', senderName: str(f, 'senderName'), replyTo: str(f, 'replyTo'), locale: str(f, 'locale'),
-      reminderEnabled: f.get('reminderEnabled') === 'on', reminderHours: str(f, 'reminderHours') });
+      reminderEnabled: f.get('reminderEnabled') === 'on', reminderHours: str(f, 'reminderHours'),
+      surveyHired: f.get('surveyHired') === 'on', surveyRejected: f.get('surveyRejected') === 'on', surveyDelayDays: str(f, 'surveyDelayDays') });
   } catch (e) {
     return refusal(prev, f, e);
   }

@@ -186,6 +186,8 @@ export const recruitmentPack: ModulePack = {
     { table: 'recruitment_candidate_email_setting', note: 'per company: "E-mail candidates" switch, sender display name, reply-to and e-mail language; administrators write' },
     { table: 'recruitment_candidate_email_template', note: 'a company\'s wording per e-mail kind and language: plain-text subject and body with allowlisted placeholders' },
     { table: 'recruitment_candidate_email', note: 'one candidate e-mail: frozen recipient and content (purged 90 days after its final state), delivery state, actor, lease' },
+    // Slice 22 (5724)
+    { table: 'recruitment_candidate_survey_response', note: 'an anonymous survey answer: company, outcome, Kuala Lumpur month, ratings, recommend, comment; no person, job or time; administrators read; kept 24 months' },
   ],
 };
 registerPack(recruitmentPack);

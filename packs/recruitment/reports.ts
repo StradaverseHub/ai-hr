@@ -50,6 +50,7 @@ import { pgSqlState } from '../../lib/db-error';
 import { RecruitmentError, isUuid, type RecruitmentErrorCode } from './model';
 import { uuidArray } from './data';
 import { CANDIDATE_SOURCES, type CandidateSource } from './privacy-model';
+import { SURVEY_COMMENT_LIMIT, SURVEY_MIN_RESPONSES, emptySurveyTally, summarizeSurvey, type SurveySummary, type SurveyTally } from './candidate-email-model';
 import {
   REPORT_BUDGET_MS, REPORT_JOB_LIMIT, REPORT_JOB_OPTION_LIMIT, REPORT_RECRUITER_LIMIT, REPORT_STATEMENT_TIMEOUT_MS, averageDays, fillBuckets,
   granularity, parseReportFilters, periodChange, periodInstants, previousPeriod, rate,
@@ -162,7 +163,7 @@ async function runReport<T>(
         from company c
         where c.tenant_id = ${s.tenantId}::uuid and c.id = any(${uuidArray(ids)}::uuid[]) and c.archived_at is null
         order by c.legal_name, c.id`);
-      const allowed = companyRows.filter((r) => (kind === 'team' ? r.admin : r.admin || r.reporter)).map((r) => ({ id: r.id, name: r.name, admin: r.admin }));
+      const allowed = companyRows.filter((r) => (kind === 'team' || kind === 'survey' ? r.admin : r.admin || r.reporter)).map((r) => ({ id: r.id, name: r.name, admin: r.admin }));
       if (!allowed.length) throw new RecruitmentError('forbidden');
       let companyId = filters.companyId;
       let chosen = companyId ? allowed.filter((c) => c.id === companyId) : allowed;
@@ -502,5 +503,44 @@ export async function recruitmentTeamReport(s: SessionContext, scopeIds: readonl
       })),
       rowsTotal: rows[0]?.total ?? 0,
     };
+  });
+}
+
+// ── Candidate survey (slice 22; administrators only) ─────────────────────────────────────────────────────────────
+
+export type SurveyReport = { summary: SurveySummary; scope: ReportScope };
+
+/**
+ * The anonymous survey's answers in the companies the caller administers (5724: row security admits administrators only), for the
+ * Kuala Lumpur months the period touches: answers carry their month and outcome, never a job, a candidate or a time, so the job and
+ * department filters do not apply. One aggregate statement by outcome; the comments (at most 200, ordered by their random id, so in
+ * no meaningful order and without dates) are read only when the selection has enough answers to show anything.
+ */
+export async function recruitmentSurveyReport(s: SessionContext, scopeIds: readonly string[], input: ReportFilterInput = {}, opts: ReportOptions = {}): Promise<SurveyReport> {
+  return runReport(s, scopeIds, { ...input, jobId: undefined, departmentId: undefined }, 'survey', opts, async (c) => {
+    const where = sql`tenant_id = ${c.s.tenantId}::uuid and company_id = any(${c.selected}::uuid[])
+      and answered_month >= date_trunc('month', ${c.scope.period.from}::date)::date and answered_month <= date_trunc('month', ${c.scope.period.to}::date)::date`;
+    const rows = await c.q<{ outcome: 'hired' | 'rejected'; n: number; o1: number; o2: number; o3: number; o4: number; o5: number; so: number;
+      nc: number; sc: number | null; nr: number; sr: number | null; np: number; sp: number | null; ry: number; rn: number; ru: number }>(sql`
+      select outcome, count(*)::int as n,
+        count(*) filter (where overall = 1)::int as o1, count(*) filter (where overall = 2)::int as o2, count(*) filter (where overall = 3)::int as o3,
+        count(*) filter (where overall = 4)::int as o4, count(*) filter (where overall = 5)::int as o5, sum(overall)::int as so,
+        count(communication)::int as nc, sum(communication)::int as sc, count(respect)::int as nr, sum(respect)::int as sr,
+        count(process)::int as np, sum(process)::int as sp,
+        count(*) filter (where recommend = 'yes')::int as ry, count(*) filter (where recommend = 'no')::int as rn, count(*) filter (where recommend = 'unsure')::int as ru
+      from recruitment_candidate_survey_response where ${where} group by outcome`);
+    const tally = (o: 'hired' | 'rejected'): SurveyTally => {
+      const r = rows.find((x) => x.outcome === o);
+      if (!r) return emptySurveyTally();
+      return { responses: r.n, overall: [r.o1, r.o2, r.o3, r.o4, r.o5],
+        ratings: { overall: { count: r.n, sum: r.so }, communication: { count: r.nc, sum: r.sc ?? 0 }, respect: { count: r.nr, sum: r.sr ?? 0 }, process: { count: r.np, sum: r.sp ?? 0 } },
+        recommend: { yes: r.ry, no: r.rn, unsure: r.ru } };
+    };
+    const total = rows.reduce((n, r) => n + r.n, 0);
+    const comments = total >= SURVEY_MIN_RESPONSES
+      ? (await c.q<{ comment: string }>(sql`select comment from recruitment_candidate_survey_response where ${where} and comment is not null
+          order by id limit ${SURVEY_COMMENT_LIMIT}`)).map((r) => r.comment)
+      : [];
+    return { summary: summarizeSurvey({ hired: tally('hired'), rejected: tally('rejected') }, comments) };
   });
 }

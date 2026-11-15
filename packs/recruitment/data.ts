@@ -44,7 +44,7 @@ import {
 import { customFilterKey, type RawCustomValues } from './custom-field-model';
 import { cutoffRelation, stageEnteredDayOf, stageEnteredDaySql, waitingContextTx } from './waiting-store';
 import { cancelFutureInterviewsTx } from './interview-closing';
-import { parseRejectionEmailChoice, queueCandidateEmailsTx, type RejectionEmailChoice } from './candidate-email';
+import { parseRejectionEmailChoice, queueCandidateEmailsTx, queueSurveysTx, type RejectionEmailChoice } from './candidate-email';
 import { WAITING_BOARD_SCAN_LIMIT, WAITING_SCAN_LIMIT, parseWaitingFilter, waitingDays, waitingLevel, type WaitingFilter } from './waiting-model';
 import {
   CANDIDATE_SOURCES, DEFAULT_REPEAT_WINDOW_MONTHS, ID_TYPES, normEmail, normIdNumber, normMobile, normName, repeatApplicationBlocked,
@@ -1315,6 +1315,8 @@ export async function moveApplicationTx(tx: Tx, s: SessionContext, applicationId
     // Slice 18 review: a hired application's future interviews are cancelled (their rooms are freed).
     await cancelFutureInterviewsTx(tx, s, [app.id]);
     await writeEventTx(tx, s, { companyId: app.companyId, applicationId: app.id, ...moveEvent(plan) });
+    // Slice 22: the company's survey after a hire, if it sends one (never refuses: skipped otherwise).
+    await queueSurveysTx(tx, s, { companyId: app.companyId, outcome: 'hired', applicationIds: [app.id] });
     return { state: 'hired', stageId: plan.from };
   }
   await tx.update(recruitmentApplication).set({ currentStageId: plan.to, updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentApplication.id, app.id))
