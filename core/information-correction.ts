@@ -18,11 +18,13 @@ import {withAccessDisplayRead} from './access-configuration-lock';
 import {allocationCompanyCode} from './cost-allocation-import';
 import {labelCompanyIdsSql,labelUsableByCompany,visibleLabelIdsCondition} from './system-labels';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {rewriteCompanyFromStartTx,alignHistoryStartTx,MovementHistoryError} from './movement-history';
+import {alignHistoryStartTx,MovementHistoryError,DATED_ASSIGNMENT_FIELDS,planDatedCorrection,writeDatedCorrectionTx,closedPayrollInSpanTx,type DatedAssignmentField,type DatedCorrectionPlan} from './movement-history';
+import {recordedMovementChangesTx,type RecordedMovementChange} from './movement';
+import {closedPeriodsTx,overlapsClosedPeriod} from './comp';
 import {contractPeriodIssues} from '../lib/contract-period';
 import {isCalendarDate} from '../lib/calendar-date';
 import {PERSONNEL_EMPLOYMENT_TYPES} from '../lib/personnel-choice-vocabulary';
-import {INFORMATION_FIELDS,INFORMATION_ALL_FIELDS,INFORMATION_ASSIGNMENT_FIELDS,INFORMATION_LABEL_FIELDS,INFORMATION_PERIOD_FIELDS,INFORMATION_PERIOD_PAIRS,INFORMATION_FIELD_CAPTIONS,type InformationField,type InformationOptions,type InformationChanges,type InformationWarning,type InformationValues,type InformationPreview} from '../lib/information-correction';
+import {INFORMATION_FIELDS,INFORMATION_ALL_FIELDS,INFORMATION_ASSIGNMENT_FIELDS,INFORMATION_LABEL_FIELDS,INFORMATION_PERIOD_FIELDS,INFORMATION_PERIOD_PAIRS,INFORMATION_FIELD_CAPTIONS,type InformationField,type InformationOptions,type InformationChanges,type InformationWarning,type InformationValues,type InformationPreview,type InformationConflict,type InformationTimelineRecord} from '../lib/information-correction';
 const correctionActor=alias(person,'correction_actor'),correctionAccount=alias(appUser,'correction_account');
 export const INFORMATION_CORRECTED_EVENT='employment.information.corrected';
 export class InformationCorrectionError extends Error {constructor(message:string){super(message);this.name='InformationCorrectionError';}}
@@ -33,14 +35,6 @@ function alignMessage(code:string){
  if(kind==='movement_history_earlier_change')return `A change recorded on ${detail} is before the new Group Join Date. Correct or roll back that change first, or use an earlier join date.`;
  if(kind==='movement_history_payroll_company')return `Payroll for ${detail} was closed before the new Group Join Date. Reopen that payroll, or use an earlier join date.`;
  return 'The employee\'s dated records could not be aligned to the Group Join Date.';
-}
-/** The from-the-join-date refusals (core/movement-history.ts codes) in this screen's own words. */
-function fromJoinDateMessage(code:string){
- const [kind,...rest]=code.split(':'),detail=rest.join(':');
- if(kind==='movement_history_earlier_change')return `The company already changes on ${detail}. Applying from the join date is only possible while the employee has been in one company throughout; correct the company from today instead.`;
- if(kind==='movement_history_payroll_company')return `Payroll for ${detail} was closed under a different company. Reopen that payroll, or correct the company from today instead.`;
- if(kind==='movement_label_other_company')return 'The employee\'s recorded department, position, business unit, cost centre or work location cannot be used in the new company. Correct those first.';
- return 'The company could not be applied from the join date.';
 }
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 async function administratorTx(tx:Tx,ctx:SessionContext,companyId:string){
@@ -136,7 +130,8 @@ export const informationChangesUseOwners=(changes:InformationChanges)=>Object.ke
 export function readInformationCorrection(ctx:SessionContext,employmentId:string){
  return withAccessDisplayRead(()=>withTenant(ctx,async tx=>{
   const state=await stateTx(tx,ctx,employmentId,'read'),before=values(state),beforeLabels=await labelsTx(tx,before);
-  return {effectiveOn:todayInKualaLumpur(),before,beforeLabels};
+  // Board 4604dccc — the Effective Date defaults to today; the earliest is the start of the dated history.
+  return {effectiveOn:todayInKualaLumpur(),earliestEffectiveOn:before.hiredOn,before,beforeLabels};
  }));
 }
 async function validateTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stateTx>>,changes:InformationChanges,extended:boolean){
@@ -190,19 +185,17 @@ async function validateTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof s
  if(source.country!==destination.country)fail('A cross-country company change requires the operational transfer workflow.');
  if(after.gradeId&&after.gradeId!==before.gradeId){const [grade]=await tx.select({id:jobGrade.id}).from(jobGrade).where(and(eq(jobGrade.id,after.gradeId),eq(jobGrade.tenantId,ctx.tenantId),isNull(jobGrade.archivedAt)));if(!grade)fail('Job Grade is not an active system code.');}
  if(after.companyId!==before.companyId){
-  const tags=await deriveCompanyOrganisationTx(tx,ctx,{companyId:after.companyId!,asOf:todayInKualaLumpur()});
-  for(const [kind,id] of [['department',after.departmentId],['position',after.positionId],['business_unit',tags.status==='legacy'?after.businessUnitId:tags.businessUnitId],['cost_center',s.current.costCenterId]] as const)if(id&&!await labelUsableByCompany(tx,ctx.tenantId,kind,id,after.companyId!))fail('Existing organisation details are not usable by the corrected company. Use Employment Movement.');
-  if(s.current.locationId) {const [loc]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from location where id=${s.current.locationId}::uuid and company_id=${after.companyId}::uuid and archived_at is null) as ok`);if(!loc?.ok)fail('The current work location belongs to another company. Use Employment Movement.');}
+  // Board 4604dccc — the organisation details of every record the dated company correction reaches are checked
+  // against the corrected company in previewTx (datedLabelsTx), not only the current record's.
   const duplicate=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.companyId,after.companyId!),eq(employment.employeeCode,s.emp.employeeCode??'')));
   if(duplicate.some(e=>e.id!==s.emp.id))fail('Employee ID is already used in the destination company.');
   if(s.assignments.some(a=>!a.companyId))fail('Historical company information is incomplete. Resolve the dated company history before correcting Company.');
  }
- if(extended)await validateExtendedTx(tx,ctx,s,before,after);
  return {before,after,contractStartDate};
 }
 /** ccd3a65c — the further details, checked against the resulting company's settings before any write. The
  * owners repeat their own checks when the correction is saved; these give the row error its column. */
-async function validateExtendedTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stateTx>>,before:InformationValues,after:InformationValues){
+async function validateExtendedTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stateTx>>,before:InformationValues,after:InformationValues,companyAt:string,effectiveOn:string){
  const changed=(field:InformationField)=>after[field]!==before[field];
  for(const field of INFORMATION_ASSIGNMENT_FIELDS){
   if(!changed(field))continue;
@@ -210,15 +203,15 @@ async function validateExtendedTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<
   const [row]=field==='departmentId'?await tx.select({id:department.id}).from(department).where(and(eq(department.id,id),eq(department.tenantId,ctx.tenantId),isNull(department.archivedAt)))
    :field==='positionId'?await tx.select({id:position.id}).from(position).where(and(eq(position.id,id),eq(position.tenantId,ctx.tenantId),isNull(position.archivedAt)))
    :await tx.select({id:businessUnit.id}).from(businessUnit).where(and(eq(businessUnit.id,id),eq(businessUnit.tenantId,ctx.tenantId),isNull(businessUnit.archivedAt)));
-  if(!row||!await labelUsableByCompany(tx,ctx.tenantId,kind,id,after.companyId!))fail(`${caption(field)}: not an active option for this company. Check the reference sheet.`);
+  if(!row||!await labelUsableByCompany(tx,ctx.tenantId,kind,id,companyAt))fail(`${caption(field)}: not an active option for this company. Check the reference sheet.`);
  }
  if(changed('businessUnitId')){
-  const tags=await deriveCompanyOrganisationTx(tx,ctx,{companyId:after.companyId!,asOf:todayInKualaLumpur()});
+  const tags=await deriveCompanyOrganisationTx(tx,ctx,{companyId:companyAt,asOf:effectiveOn});
   if(tags.status!=='legacy')fail('Business Unit: the Group structure sets the Business Unit for this company. Leave this cell blank.');
  }
  for(const field of INFORMATION_LABEL_FIELDS){
   if(!changed(field))continue;
-  try{await assertProfileValueAllowed(tx,LABEL_CATEGORY[field],after[field],before[field],after.companyId);}
+  try{await assertProfileValueAllowed(tx,LABEL_CATEGORY[field],after[field],before[field],companyAt);}
   catch{fail(`${caption(field)}: "${after[field]}" is not an active ${caption(field)} option for this company. Check the reference sheet.`);}
  }
  for(const [value,unit] of INFORMATION_PERIOD_PAIRS){
@@ -233,115 +226,268 @@ async function validateExtendedTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<
   const [manager]=await tx.select({id:employment.id,companyId:employment.companyId,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate,blacklistedAt:employment.blacklistedAt,isTestRecord:employment.isTestRecord})
    .from(employment).where(and(eq(employment.id,id),eq(employment.tenantId,ctx.tenantId),workforceEmploymentPredicate(sql`${employment.id}`,'view'))).limit(1);
   // An unknown and an invisible superior read the same, so the preview reveals nobody the user cannot view.
-  if(!manager||manager.companyId!==after.companyId)fail('Direct Superior: the Employee ID is unknown in this company or not visible to you.');
+  if(!manager||manager.companyId!==companyAt)fail('Direct Superior: the Employee ID is unknown in this company or not visible to you.');
   if(manager.isTestRecord)fail('Direct Superior: a test record cannot be a Direct Superior.');
   if(manager.terminatedOn||manager.hiredOn>today||['resigned','blacklisted'].includes(deriveEmploymentStatus(manager,today)))fail('Direct Superior: this employee is not an active employee.');
-  if(await wouldCreateAdminCycle(tx,s.emp.id,id,today))fail('Direct Superior: this would create a reporting loop.');
+  if(await wouldCreateAdminCycle(tx,s.emp.id,id,effectiveOn))fail('Direct Superior: this would create a reporting loop.');
  }
 }
-async function previewTx(tx:Tx,ctx:SessionContext,input:{employmentId:string;changes:InformationChanges;reason:string;fromJoinDate?:boolean},extended=false,mode:StateMode='write'){
+type PreviewInput={employmentId:string;changes:InformationChanges;reason:string;effectiveOn?:string};
+const DATED_FIELDS=new Set<string>(DATED_ASSIGNMENT_FIELDS);
+const LABEL_FIELD_SET=new Set<string>(INFORMATION_LABEL_FIELDS);
+type FullAssignment=Awaited<ReturnType<typeof stateTx>>['assignments'][number];
+const liveSpan=(v:{validFrom:string;validTo:string|null})=>v.validTo===null||v.validTo>v.validFrom;
+const coversDay=(v:{validFrom:string;validTo:string|null},day:string)=>v.validFrom<=day&&(v.validTo===null||v.validTo>day);
+/** Board 4604dccc — a later movement whose recorded Before value this correction contradicts, in the screen's words. */
+export function informationConflictMessage(c:InformationConflict){
+ return `${caption(c.field)}: the later ${c.label??c.kind} on ${c.date} records a change from a different value. Correct that movement first, or choose an Effective Date after ${c.date}. (Movement Event ID ${c.movementId})`;
+}
+function closedPayrollMessage(periods:readonly string[]){
+ return `Payroll for ${periods.join(', ')} is already closed in the corrected period. Confirm that closed payroll, payslips and statutory submissions stay as issued, then save the correction again.`;
+}
+/** The dated placement values this correction writes. A company with a Group structure derives its Business Unit. */
+async function datedAfterTx(tx:Tx,ctx:SessionContext,changed:readonly InformationField[],after:InformationValues,effectiveOn:string){
+ const dated:Partial<Record<DatedAssignmentField,string|null>>={};
+ for(const f of changed)if(DATED_FIELDS.has(f))dated[f as DatedAssignmentField]=after[f];
+ if(changed.includes('companyId')){const tags=await deriveCompanyOrganisationTx(tx,ctx,{companyId:after.companyId!,asOf:effectiveOn});if(tags.status!=='legacy')dated.businessUnitId=tags.businessUnitId;}
+ return dated;
+}
+/** Every record the dated correction rewrites keeps organisation details its (corrected) company can use. */
+async function datedLabelsTx(tx:Tx,ctx:SessionContext,versions:readonly FullAssignment[],plan:DatedCorrectionPlan){
+ for(const {index,values} of plan.affected){
+  const row=versions[index],company=('companyId' in values?values.companyId:row.companyId)??null;
+  if(!company)continue;
+  const companyChanged='companyId' in values&&values.companyId!==row.companyId;
+  for(const [kind,field] of [['department','departmentId'],['position','positionId'],['business_unit','businessUnitId']] as const){
+   const id=field in values?values[field]??null:row[field];
+   const fieldChanged=field in values&&values[field]!==row[field];
+   if(id&&(companyChanged||fieldChanged)&&!await labelUsableByCompany(tx,ctx.tenantId,kind,id,company))fail(fieldChanged?`${caption(field)}: not an active option for this company. Check the reference sheet.`:'Existing organisation details are not usable by the corrected company. Use Employment Movement.');
+  }
+  if(companyChanged&&row.costCenterId&&!await labelUsableByCompany(tx,ctx.tenantId,'cost_center',row.costCenterId,company))fail('Existing organisation details are not usable by the corrected company. Use Employment Movement.');
+  if(companyChanged&&row.locationId){const [loc]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from location where id=${row.locationId}::uuid and company_id=${company}::uuid and archived_at is null) as ok`);if(!loc?.ok)fail('The work location on a corrected record belongs to another company. Use Employment Movement.');}
+ }
+}
+async function previewTx(tx:Tx,ctx:SessionContext,input:PreviewInput,extended=false,mode:StateMode='write'){
  const reason=typeof input.reason==='string'?input.reason.trim():'';
  if(reason.length<3||reason.length>1000)fail('Provide a correction reason between 3 and 1,000 characters.');
  const write=mode==='write';
  const state=await stateTx(tx,ctx,input.employmentId,mode),v=await validateTx(tx,ctx,state,input.changes,extended);
+ // Board 4604dccc — the Effective Date: from the start of the dated history (the Group Join Date) up to today.
+ const today=todayInKualaLumpur();
+ const effectiveOn=typeof input.effectiveOn==='string'&&input.effectiveOn.trim()?input.effectiveOn.trim():today;
+ if(!isCalendarDate(effectiveOn))fail('Effective Date: use a valid date in YYYY-MM-DD format.');
+ if(effectiveOn>today)fail('Effective Date cannot be in the future.');
+ const earliest=v.after.hiredOn!;
+ if(effectiveOn<earliest)fail(`Effective Date cannot be before ${earliest}, the Group Join Date, when the employee's history starts.`);
+ const backdated=effectiveOn<today;
  if(INFORMATION_ALL_FIELDS.some(f=>v.before[f]!==v.after[f])){const [history]=await tx.execute<{ready:boolean}>(sql`select app.information_payroll_ready(${state.emp.id}::uuid) as ready`);if(!history?.ready)fail('Original historical information cannot be verified after intervening changes. Ask the payroll administrator to reconcile the historical document evidence before correcting this record.');}
  const companyRows=tx.select({id:company.id,label:company.companyLabel,registration:company.registrationNo,name:company.legalName,country:company.country,currency:company.currency,archivedAt:company.archivedAt}).from(company).where(inArray(company.id,[v.before.companyId!,v.after.companyId!])).orderBy(asc(company.id));
  const companyRefs=write?await companyRows.for('share'):await companyRows;
  const gradeIds=[...new Set([v.before.gradeId,v.after.gradeId].filter((id):id is string=>!!id))];
  const gradeRows=tx.select({id:jobGrade.id,code:jobGrade.code,name:jobGrade.name,archivedAt:jobGrade.archivedAt}).from(jobGrade).where(inArray(jobGrade.id,gradeIds)).orderBy(asc(jobGrade.id));
  const gradeRefs=gradeIds.length?(write?await gradeRows.for('share'):await gradeRows):[];
- const effectiveOn=todayInKualaLumpur();
  const organisation=await deriveCompanyOrganisationTx(tx,ctx,{companyId:v.after.companyId!,asOf:effectiveOn});
  const beforeLabels=await labelsTx(tx,v.before),afterLabels=await labelsTx(tx,v.after);
  const changed=INFORMATION_ALL_FIELDS.filter(f=>v.before[f]!==v.after[f]);
- // Board 154511c4 — "in this company from the join date": a company-only correction over the whole dated history.
- const fromJoinDate=input.fromJoinDate===true;
- if(fromJoinDate&&!changed.includes('companyId'))fail('Applying from the join date is only for a company change.');
- if(fromJoinDate&&changed.some(f=>f!=='companyId'&&(f==='employmentType'||(INFORMATION_ASSIGNMENT_FIELDS as readonly string[]).includes(f))))fail('To correct the company from the join date, change only the company in this correction and correct the other details separately.');
- const live=await tx.select({validFrom:assignment.validFrom}).from(assignment).where(and(eq(assignment.employmentId,state.emp.id),isNull(assignment.supersededAt))).orderBy(asc(assignment.validFrom)).limit(1);
+ const live=[...state.assignments].sort((a,b)=>a.validFrom.localeCompare(b.validFrom));
  const warnings:InformationWarning[]=[];
- if(changed.includes('companyId'))warnings.push(fromJoinDate?{code:'companyFromJoinDate',date:live[0]?.validFrom??v.after.hiredOn!}:{code:'companyFromToday',date:effectiveOn});
  // Board 154511c4 — the dated records start on the Group Join Date; saving aligns them when they do not.
  const alignStart=live[0]&&v.after.hiredOn&&live[0].validFrom!==v.after.hiredOn?{from:live[0].validFrom,to:v.after.hiredOn}:undefined;
+ // Board 4604dccc — the dated records as they stand after that alignment, and what this correction writes over them.
+ const versions=live.filter(liveSpan).map((row,i)=>i===0&&alignStart?{...row,validFrom:alignStart.to}:row);
+ const datedAfter=await datedAfterTx(tx,ctx,changed,v.after,effectiveOn);
+ let plan:DatedCorrectionPlan;
+ try{plan=planDatedCorrection(versions,effectiveOn,datedAfter);}
+ catch(error){if(error instanceof MovementHistoryError)fail(`The employee's dated records do not cover ${effectiveOn}. Review Employment Movement.`);throw error;}
+ const companyAt=(datedAfter.companyId??versions[plan.cover].companyId??state.emp.companyId)!;
+ if(extended)await validateExtendedTx(tx,ctx,state,v.before,v.after,companyAt,effectiveOn);
+ // HR administration of every company whose records this correction rewrites, not only today's.
+ for(const id of new Set(plan.affected.filter(x=>Object.keys(x.values).length).flatMap(x=>[versions[x.index].companyId,x.values.companyId]).filter((id):id is string=>!!id)))await administratorTx(tx,ctx,id);
+ await datedLabelsTx(tx,ctx,versions,plan);
+ // Later recorded changes: the movements whose recorded "from" values must agree, and the later corrections.
+ const needsLedger=backdated||!extended;
+ const recorded:RecordedMovementChange[]=needsLedger?await recordedMovementChangesTx(tx,ctx.tenantId,state.emp.id):[];
+ const corrections=needsLedger?await tx.select({payload:domainEvent.payload}).from(domainEvent).where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.subjectEmploymentId,state.emp.id),eq(domainEvent.eventType,INFORMATION_CORRECTED_EVENT))):[];
+ const correctionDates=corrections.map(row=>(row.payload??{}) as {effectiveOn?:string;fields?:string[]}).filter(p=>typeof p.effectiveOn==='string');
+ const conflicts:InformationConflict[]=[];
+ const until:Partial<Record<InformationField,string>>={};
+ for(const f of Object.keys(datedAfter) as DatedAssignmentField[]){
+  const stop=plan.stops[f]!,to=plan.ranges[f]?.to;
+  if(to)until[f]=to;
+  if(stop>=versions.length)continue;
+  const at=versions[stop].validFrom,movement=recorded.find(r=>r.effectiveDate===at&&r.fields.includes(f));
+  if(!movement)continue;
+  const from=f in movement.before?movement.before[f]??null:versions[stop-1][f];
+  if(from!==datedAfter[f])conflicts.push({movementId:movement.id,date:at,field:f,kind:movement.kind,label:movement.label});
+ }
+ // Labels (flat columns) and the Direct Superior: a later recorded change owns the current value from its date.
+ const labelsNotCurrent:string[]=[];
+ if(backdated)for(const f of changed.filter(field=>LABEL_FIELD_SET.has(field))){
+  const movement=recorded.filter(r=>r.effectiveDate>effectiveOn&&r.fields.includes(f)).sort((a,b)=>a.effectiveDate.localeCompare(b.effectiveDate))[0];
+  const correction=correctionDates.filter(p=>p.effectiveOn!>effectiveOn&&(p.fields??[]).includes(f)).map(p=>p.effectiveOn!).sort()[0];
+  const first=[movement?.effectiveDate,correction].filter((d):d is string=>!!d).sort()[0];
+  if(!first)continue;
+  labelsNotCurrent.push(f);until[f]=first;
+  if(movement&&movement.effectiveDate===first&&(f in movement.before?movement.before[f]??null:v.before[f])!==v.after[f])conflicts.push({movementId:movement.id,date:first,field:f,kind:movement.kind,label:movement.label});
+ }
+ let superiorUntil:string|null=null;
+ if(backdated&&changed.includes('managerEmploymentId')){
+  const lines=(await tx.select({validFrom:reportingLine.validFrom,validTo:reportingLine.validTo,managerEmploymentId:reportingLine.managerEmploymentId}).from(reportingLine).where(and(eq(reportingLine.tenantId,ctx.tenantId),eq(reportingLine.subordinateEmploymentId,state.emp.id),eq(reportingLine.lineType,'administrative'),isNull(reportingLine.supersededAt))).orderBy(asc(reportingLine.validFrom))).filter(liveSpan);
+  const next=lines.find(l=>l.validFrom>effectiveOn);
+  if(next){
+   superiorUntil=next.validFrom;until.managerEmploymentId=next.validFrom;
+   const movement=recorded.find(r=>r.effectiveDate===next.validFrom&&r.fields.includes('managerEmploymentId'));
+   const previous=lines.filter(l=>coversDay(l,effectiveOn)).at(-1)?.managerEmploymentId??null;
+   if(movement&&previous!==v.after.managerEmploymentId)conflicts.push({movementId:movement.id,date:next.validFrom,field:'managerEmploymentId',kind:movement.kind,label:movement.label});
+  }
+ }
+ // Closed payroll in the corrected period: acknowledged, never recalculated (the movement acknowledgement pattern);
+ // a month closed under another company contradicts the corrected company (movement_history_payroll_company).
+ const datedChange=Object.keys(datedAfter).length>0||changed.some(f=>LABEL_FIELD_SET.has(f)||f==='managerEmploymentId');
+ let closedPayrollPeriods:string[]=[];
+ if(backdated&&datedChange){
+  const ends=[...Object.values(plan.ranges).map(r=>r?.to??null),...changed.filter(f=>LABEL_FIELD_SET.has(f)||f==='managerEmploymentId').map(f=>until[f]??null)];
+  const end=ends.some(e=>e===null)?null:ends.filter((e):e is string=>!!e).sort().at(-1)??null;
+  closedPayrollPeriods=(await closedPeriodsTx(tx,state.emp.id)).filter(period=>overlapsClosedPeriod([period],effectiveOn,end)).sort();
+  if(datedAfter.companyId){
+   const contradicted=[...new Set((await closedPayrollInSpanTx(tx,state.emp.id,effectiveOn,plan.ranges.companyId?.to??'9999-12-31')).filter(r=>r.companyId!==null&&r.companyId!==datedAfter.companyId).map(r=>r.period))];
+   if(contradicted.length)fail(`Payroll for ${contradicted.join(', ')} was closed under a different company. Closed payroll stays as issued, so the company cannot be corrected for that period. Choose a later Effective Date, or correct that payroll through payroll reprocessing first.`);
+  }
+ }
+ if(changed.includes('companyId'))warnings.push({code:'companyFrom',date:effectiveOn,...(plan.ranges.companyId?.to?{to:plan.ranges.companyId.to}:{})});
  if(alignStart)warnings.push({code:'historyStartAligned',date:alignStart.to,from:alignStart.from});
+ // The review's records, in Effective Date order, flagged by what this correction does to each.
+ const timeline:InformationTimelineRecord[]=[];
+ if(!extended){
+  const correctionDays=new Set(correctionDates.filter(p=>(p.fields??[]).some(f=>DATED_FIELDS.has(f))).map(p=>p.effectiveOn!));
+  const affected=new Map(plan.affected.map(a=>[a.index,a.values]));
+  const ids=[...new Set(versions.flatMap((row,i)=>[row.companyId,affected.get(i)?.companyId]).filter((id):id is string=>!!id))];
+  const names=new Map((ids.length?await tx.select({id:company.id,name:company.legalName}).from(company).where(inArray(company.id,ids)):[]).map(r=>[r.id,r.name]));
+  const anything=datedChange;
+  versions.forEach((row,i)=>{
+   const movement=recorded.find(r=>r.effectiveDate===row.validFrom&&r.kind!=='hired');
+   const values=affected.get(i),split=i===plan.cover&&row.validFrom<effectiveOn;
+   const kind=i===0?'hired':movement?movement.kind:correctionDays.has(row.validFrom)?'informationCorrection':'record';
+   const status=conflicts.some(c=>c.date===row.validFrom)?'conflict':anything&&values&&!split&&(Object.keys(values).length||i===plan.cover)?'corrected':'unchanged';
+   timeline.push({date:row.validFrom,kind,label:i===0?null:movement?.label??null,company:names.get((split?row.companyId:(values?.companyId??row.companyId))??'')??null,status});
+   if(split&&anything)timeline.push({date:effectiveOn,kind:'thisCorrection',label:null,company:names.get((values?.companyId??row.companyId)??'')??null,status:'corrected'});
+  });
+  // A later label or Direct Superior change that conflicts has no dated record of its own.
+  for(const c of conflicts)if(!timeline.some(r=>r.date===c.date))timeline.push({date:c.date,kind:c.kind,label:c.label,company:null,status:'conflict'});
+  timeline.sort((a,b)=>a.date.localeCompare(b.date));
+ }
+ if(extended&&conflicts.length)fail(informationConflictMessage(conflicts[0]));
  // Five-fact corrections keep their original fingerprint; the further details also bind the displayed labels.
  const extendedChange=changed.some(f=>!(INFORMATION_FIELDS as readonly string[]).includes(f));
- const fingerprint=hash({state:state.fingerprint,companies:companyRefs,grades:gradeRefs,effectiveOn,...(organisation.status==='legacy'?{}:{organisation}),...(extendedChange?{labels:[beforeLabels,afterLabels]}:{}),...(fromJoinDate?{fromJoinDate:true}:{}),...(alignStart?{alignStart}:{})});
- const preview:InformationPreview={effectiveOn,employmentId:state.emp.id,employeeCode:state.emp.employeeCode??'',name:state.name,fingerprint,before:v.before,after:v.after,beforeLabels,afterLabels,reason,changed,...(fromJoinDate?{fromJoinDate:true as const}:{}),...(warnings.length?{warnings}:{}),...(alignStart?{alignStart}:{})};
- return {state,preview};
+ const fingerprint=hash({state:state.fingerprint,companies:companyRefs,grades:gradeRefs,effectiveOn,...(organisation.status==='legacy'?{}:{organisation}),...(extendedChange?{labels:[beforeLabels,afterLabels]}:{}),...(alignStart?{alignStart}:{})});
+ const fromJoinDate=Object.keys(datedAfter).length>0&&effectiveOn===versions[0]?.validFrom;
+ const preview:InformationPreview={effectiveOn,employmentId:state.emp.id,employeeCode:state.emp.employeeCode??'',name:state.name,fingerprint,before:v.before,after:v.after,beforeLabels,afterLabels,reason,changed,earliestEffectiveOn:earliest,
+  ...(fromJoinDate?{fromJoinDate:true as const}:{}),...(warnings.length?{warnings}:{}),...(alignStart?{alignStart}:{}),...(timeline.length?{timeline}:{}),...(conflicts.length?{conflicts}:{}),...(closedPayrollPeriods.length?{closedPayrollPeriods}:{}),...(Object.keys(until).length?{until}:{})};
+ return {state,preview,dated:{labelsNotCurrent,superiorUntil}};
 }
 class InformationRehearsal extends Error{constructor(readonly preview:InformationPreview){super('information_preview_rollback');}}
 /** Excel previews of the further details rehearse the owners' writes and roll back, so every refusal the save
  * would meet (closed payroll, reporting loop, catalog) is shown as a row error before confirmation. Every other
  * review is a read: shared Access lock and no row locks (withAccessDisplayRead, SCALE rule 1). */
-export async function previewInformationCorrection(ctx:SessionContext,input:{employmentId:string;changes:InformationChanges;reason:string;fromJoinDate?:boolean},options:{extended?:boolean}={}){
+export async function previewInformationCorrection(ctx:SessionContext,input:PreviewInput,options:{extended?:boolean}={}){
  if(!options.extended||!informationChangesUseOwners(input.changes))return withAccessDisplayRead(()=>withTenant(ctx,async tx=>(await previewTx(tx,ctx,input,!!options.extended,'read')).preview));
  try{await withTenant(ctx,async tx=>{
   await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
-  const {state,preview}=await previewTx(tx,ctx,input,true);
-  if(preview.changed.length)await applyTx(tx,ctx,state,preview,{method:'excel'});
+  const {state,preview,dated}=await previewTx(tx,ctx,input,true);
+  if(preview.changed.length)await applyTx(tx,ctx,state,preview,dated,{method:'excel'});
   throw new InformationRehearsal(preview);
  });}catch(error){if(error instanceof InformationRehearsal)return error.preview;throw error;}
  fail('The correction review could not be completed.');
 }
-/** No recalculation or operational workflow is called from this command. Caller may add import audit in this transaction. */
-export async function correctInformationTx(tx:Tx,ctx:SessionContext,input:{employmentId:string;changes:InformationChanges;reason:string;fingerprint:string;method:'manual'|'excel';batchId?:string;filename?:string;fromJoinDate?:boolean}){
+/** No recalculation or operational workflow is called from this command. Caller may add import audit in this transaction.
+ * Board 4604dccc — `effectiveOn` (default today) dates the correction; `acknowledgeClosedPayroll` confirms that closed
+ * payroll in the corrected period stays as issued. */
+export async function correctInformationTx(tx:Tx,ctx:SessionContext,input:{employmentId:string;changes:InformationChanges;reason:string;fingerprint:string;method:'manual'|'excel';batchId?:string;filename?:string;effectiveOn?:string;acknowledgeClosedPayroll?:boolean}){
  const extended=input.method==='excel';
  // Owner configuration locks first (the Movement import order), then the employee's own locks in stateTx.
  if(extended&&informationChangesUseOwners(input.changes)){await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);}
- const {state:s,preview:p}=await previewTx(tx,ctx,input,extended);
+ const {state:s,preview:p,dated}=await previewTx(tx,ctx,input,extended);
  if(input.fingerprint!==p.fingerprint)fail('The employee changed after your review. Review the correction again.');
+ if(p.conflicts?.length)fail(informationConflictMessage(p.conflicts[0]));
  if(!p.changed.length&&!p.alignStart)return {preview:p,changed:false};
- await applyTx(tx,ctx,s,p,input);
+ if(p.closedPayrollPeriods?.length&&input.acknowledgeClosedPayroll!==true)fail(closedPayrollMessage(p.closedPayrollPeriods));
+ await applyTx(tx,ctx,s,p,dated,input);
  return {preview:p,changed:true};
 }
-async function applyTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stateTx>>,p:InformationPreview,input:{method:'manual'|'excel';batchId?:string;filename?:string}){
+async function applyTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stateTx>>,p:InformationPreview,dated:{labelsNotCurrent:string[];superiorUntil:string|null},input:{method:'manual'|'excel';batchId?:string;filename?:string}){
  // The preimage protects every existing persisted output before any master information changes.
  const [preserved]=await tx.execute<{count:number}>(sql`select app.preserve_information_payroll(${s.emp.id}::uuid) as count`);
  if(!preserved)fail('Historical payroll metadata could not be protected.');
  const effectiveOn=p.effectiveOn;
- let assignmentVersionId:string|null=null;
- let fromStart:Awaited<ReturnType<typeof rewriteCompanyFromStartTx>>|null=null;
- if(p.fromJoinDate){
-  // Board 154511c4 — every dated version takes the company (core/movement-history.ts checks history, payroll, labels).
-  try{fromStart=await rewriteCompanyFromStartTx(tx,ctx,s.emp.id,p.before.companyId!,p.after.companyId!);}
-  catch(error){if(error instanceof MovementHistoryError)fail(fromJoinDateMessage(error.message));throw error;}
-  assignmentVersionId=fromStart.currentId;
- }else if(p.changed.some(field=>field==='companyId'||field==='employmentType'||(INFORMATION_ASSIGNMENT_FIELDS as readonly string[]).includes(field))){
-  const {id:_id,createdAt:_created,recordedAt:_recorded,supersededAt:_superseded,...prior}=s.current;
-  if(s.current.validFrom===effectiveOn)await tx.update(assignment).set({supersededAt:new Date()}).where(eq(assignment.id,s.current.id));
-  else await tx.update(assignment).set({validTo:effectiveOn}).where(eq(assignment.id,s.current.id));
-  const tags=await deriveCompanyOrganisationTx(tx,ctx,{companyId:p.after.companyId!,asOf:effectiveOn});
-  const [version]=await tx.insert(assignment).values({...prior,departmentId:p.after.departmentId??prior.departmentId,positionId:p.after.positionId,businessUnitId:p.after.businessUnitId,...(tags.status==='legacy'?{}:{businessUnitId:tags.businessUnitId}),validFrom:effectiveOn,validTo:null,companyId:p.after.companyId,employmentType:p.after.employmentType as typeof s.current.employmentType}).returning({id:assignment.id});
-  assignmentVersionId=version.id;
- }
- // 2260a06b — the type end dates live on employment. A change to Contract with no stored contract start starts it
- // on the join date (as hireEmployee does). provisional_end_on follows the internship date only while it is still
- // that date's copy (setEmploymentInfo applies the same rule), so the review and status fallbacks agree.
- const contractStartDate=p.after.employmentType==='contract'&&(p.changed.includes('employmentType')||p.changed.includes('contractEndDate'))?(s.emp.contractStartDate??p.after.joinDate??p.after.hiredOn):s.emp.contractStartDate;
- const internshipProvisional=p.changed.includes('internshipEndDate')&&p.after.internshipEndDate&&s.emp.provisionalEndOn!=null&&s.emp.provisionalEndOn===s.emp.internshipEndDate?{provisionalEndOn:p.after.internshipEndDate}:{};
- await tx.update(employment).set({companyId:p.after.companyId!,hiredOn:p.after.hiredOn!,joinDate:p.after.joinDate,gradeId:p.after.gradeId,contractStartDate,contractEndDate:p.after.contractEndDate,internshipEndDate:p.after.internshipEndDate,...internshipProvisional}).where(eq(employment.id,s.emp.id));
- // Board 154511c4 — the dated records start on the (corrected) Group Join Date.
+ // Board 154511c4 — the dated records start on the (corrected) Group Join Date. Aligned first (board 4604dccc), so
+ // a correction from the Group Join Date starts on the aligned record.
  let aligned:Awaited<ReturnType<typeof alignHistoryStartTx>>|null=null;
  if(p.alignStart){
   try{aligned=await alignHistoryStartTx(tx,s.emp.id,p.alignStart.to);}
   catch(error){if(error instanceof MovementHistoryError)fail(alignMessage(error.message));throw error;}
  }
+ // Board 4604dccc — the placement fields from the Effective Date until each field's next recorded change.
+ const datedAfter=await datedAfterTx(tx,ctx,p.changed,p.after,effectiveOn);
+ let datedWrite:Awaited<ReturnType<typeof writeDatedCorrectionTx>>|null=null;
+ if(Object.keys(datedAfter).length){
+  try{datedWrite=await writeDatedCorrectionTx(tx,s.emp.id,effectiveOn,datedAfter);}
+  catch(error){if(error instanceof MovementHistoryError)fail(`The employee's dated records do not cover ${effectiveOn}. Review Employment Movement.`);throw error;}
+ }
+ const assignmentVersionId=datedWrite?(datedWrite.inserted[0]??datedWrite.replaced[0]?.replacementId??null):null;
+ // employment.company_id is today's company: it changes only when the corrected period reaches the current record.
+ const companyReachesCurrent=!!datedWrite&&datedWrite.plan.ranges.companyId!==undefined&&datedWrite.plan.ranges.companyId.to===null;
+ const currentCompany=companyReachesCurrent?p.after.companyId!:s.emp.companyId;
+ // 2260a06b — the type end dates live on employment. A change to Contract with no stored contract start starts it
+ // on the join date (as hireEmployee does). provisional_end_on follows the internship date only while it is still
+ // that date's copy (setEmploymentInfo applies the same rule), so the review and status fallbacks agree.
+ const contractStartDate=p.after.employmentType==='contract'&&(p.changed.includes('employmentType')||p.changed.includes('contractEndDate'))?(s.emp.contractStartDate??p.after.joinDate??p.after.hiredOn):s.emp.contractStartDate;
+ const internshipProvisional=p.changed.includes('internshipEndDate')&&p.after.internshipEndDate&&s.emp.provisionalEndOn!=null&&s.emp.provisionalEndOn===s.emp.internshipEndDate?{provisionalEndOn:p.after.internshipEndDate}:{};
+ await tx.update(employment).set({companyId:currentCompany,hiredOn:p.after.hiredOn!,joinDate:p.after.joinDate,gradeId:p.after.gradeId,contractStartDate,contractEndDate:p.after.contractEndDate,internshipEndDate:p.after.internshipEndDate,...internshipProvisional}).where(eq(employment.id,s.emp.id));
  // ccd3a65c — labels, periods and Confirmation Date through their owner, untagged: no movement row is
  // projected, the catalog, date-order and closed-payroll checks apply, and employment.info.updated records it.
- const info=p.changed.filter(field=>(INFORMATION_LABEL_FIELDS as readonly string[]).includes(field)||(INFORMATION_PERIOD_FIELDS as readonly string[]).includes(field));
+ // Board 4604dccc — a label a later recorded change owns today keeps its current value; the event dates the correction.
+ const info=p.changed.filter(field=>((INFORMATION_LABEL_FIELDS as readonly string[]).includes(field)&&!dated.labelsNotCurrent.includes(field))||(INFORMATION_PERIOD_FIELDS as readonly string[]).includes(field));
  if(info.length){
   const patch:Record<string,string|number|null>={};for(const field of info)patch[field]=field.endsWith('Value')&&p.after[field]!==null?Number(p.after[field]):p.after[field];
   try{await writeEmploymentInfo(ctx,{employmentId:s.emp.id,...patch} as unknown as Parameters<typeof writeEmploymentInfo>[1],tx);}
   catch(error){ownerFailure(error,info.includes('confirmationDate')&&/onfirm|payroll/.test(String((error as Error)?.message))?'confirmationDate':info[0]);}
  }
- // The Direct Superior through the dated reporting-line owner from today, untagged (no movement row).
+ // The Direct Superior through the dated reporting-line owner from the Effective Date, untagged (no movement row).
+ // Board 4604dccc — up to the next recorded line when one follows.
+ let superiorLine:{supersededId:string|null;replacementId:string;validFrom:string;validTo:string|null}|null=null;
  if(p.changed.includes('managerEmploymentId')){
-  try{await writeReportingLine(ctx,{subordinateEmploymentId:s.emp.id,managerEmploymentId:p.after.managerEmploymentId!,lineType:'administrative',validFrom:effectiveOn},tx);}
-  catch(error){ownerFailure(error,'managerEmploymentId');}
+  if(dated.superiorUntil)superiorLine=await boundedSuperiorTx(tx,ctx,s.emp.id,p.after.managerEmploymentId!,effectiveOn,dated.superiorUntil);
+  else{
+   try{await writeReportingLine(ctx,{subordinateEmploymentId:s.emp.id,managerEmploymentId:p.after.managerEmploymentId!,lineType:'administrative',validFrom:effectiveOn},tx);}
+   catch(error){ownerFailure(error,'managerEmploymentId');}
+  }
  }
- await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:s.emp.id,eventType:INFORMATION_CORRECTED_EVENT,actor:actorOf(ctx),subjectEmploymentId:s.emp.id,payload:{...(fromStart?{fromJoinDate:true,spanFrom:fromStart.spanFrom}:{}),...(fromStart||aligned?{assignment:[...fromStart?.replaced??[],...aligned?.replaced??[]]}:{}),...(aligned?{alignedStart:p.alignStart,aligned:aligned.aligned}:{}),employeeCode:p.employeeCode,before:p.before,after:p.after,beforeLabels:p.beforeLabels,afterLabels:p.afterLabels,fields:p.changed,reason:p.reason,effectiveOn,method:input.method,batchId:input.batchId??null,filename:input.filename??null,snapshotCount:preserved.count,assignmentVersionId,previousAssignmentId:s.current.id}});
- await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:s.emp.id,companyId:p.after.companyId!,asOf:effectiveOn,trigger:'correction'});
+ const replaced=[...datedWrite?.replaced??[],...aligned?.replaced??[]];
+ const nextBoundary=Object.values(p.until??{}).length?Object.values(p.until!).sort()[0]:null;
+ await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:s.emp.id,eventType:INFORMATION_CORRECTED_EVENT,actor:actorOf(ctx),subjectEmploymentId:s.emp.id,payload:{
+  ...(p.fromJoinDate&&p.changed.includes('companyId')?{fromJoinDate:true,spanFrom:effectiveOn}:{}),
+  ...(effectiveOn<todayInKualaLumpur()?{dated:true}:{}),
+  ...(replaced.length?{assignment:replaced}:{}),...(datedWrite?.inserted.length?{inserted:datedWrite.inserted}:{}),
+  ...(aligned?{alignedStart:p.alignStart,aligned:aligned.aligned}:{}),...(superiorLine?{reportingLine:superiorLine}:{}),
+  employeeCode:p.employeeCode,before:p.before,after:p.after,beforeLabels:p.beforeLabels,afterLabels:p.afterLabels,fields:p.changed,reason:p.reason,effectiveOn,nextBoundary,...(p.until?{until:p.until}:{}),
+  ...(dated.labelsNotCurrent.length?{labelsNotCurrent:dated.labelsNotCurrent}:{}),...(p.closedPayrollPeriods?.length?{closedPayrollPeriods:p.closedPayrollPeriods,closedPayrollAcknowledged:true}:{}),
+  method:input.method,batchId:input.batchId??null,filename:input.filename??null,snapshotCount:preserved.count,assignmentVersionId,previousAssignmentId:s.current.id}});
+ const [at]=await tx.select({companyId:assignment.companyId}).from(assignment).where(and(eq(assignment.employmentId,s.emp.id),isNull(assignment.supersededAt),sql`${assignment.validFrom}<=${effectiveOn}::date`,sql`(${assignment.validTo} is null or ${assignment.validTo}>${effectiveOn}::date)`)).orderBy(desc(assignment.validFrom)).limit(1);
+ await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:s.emp.id,companyId:at?.companyId??currentCompany,asOf:effectiveOn,trigger:'correction'});
+}
+/** Board 4604dccc — the Direct Superior from the Effective Date until the next recorded line, which stays as it is. */
+async function boundedSuperiorTx(tx:Tx,ctx:SessionContext,employmentId:string,managerId:string,from:string,to:string){
+ if(await wouldCreateAdminCycle(tx,employmentId,managerId,from,to))fail('Direct Superior: this would create a reporting loop.');
+ const lines=(await tx.select().from(reportingLine).where(and(eq(reportingLine.tenantId,ctx.tenantId),eq(reportingLine.subordinateEmploymentId,employmentId),eq(reportingLine.lineType,'administrative'),isNull(reportingLine.supersededAt))).orderBy(asc(reportingLine.validFrom)).for('update')).filter(liveSpan);
+ const covering=lines.filter(l=>coversDay(l,from)).at(-1);
+ let supersededId:string|null=null;
+ if(covering){
+  if(covering.validFrom===from){await tx.update(reportingLine).set({supersededAt:new Date()}).where(eq(reportingLine.id,covering.id));supersededId=covering.id;}
+  else await tx.update(reportingLine).set({validTo:from}).where(eq(reportingLine.id,covering.id));
+ }
+ const end=covering?.validTo&&covering.validTo<to?covering.validTo:to;
+ const [row]=await tx.insert(reportingLine).values({tenantId:ctx.tenantId,subordinateEmploymentId:employmentId,managerEmploymentId:managerId,lineType:'administrative',validFrom:from,validTo:end}).returning({id:reportingLine.id});
+ return{supersededId,replacementId:row.id,validFrom:from,validTo:end};
 }
 export function correctInformation(ctx:SessionContext,input:Parameters<typeof correctInformationTx>[2]){return withTenant(ctx,tx=>correctInformationTx(tx,ctx,input));}
 export function informationCorrectionHistory(ctx:SessionContext,employmentId:string){return withAccessDisplayRead(()=>withTenant(ctx,async tx=>{await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');const [allowed]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from employment where id=${employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid and app.principal_snapshot_current() and app.is_admin_for(company_id)) as ok`);if(!allowed?.ok)fail('You do not have permission to review this correction history.');return tx.select({id:domainEvent.id,at:domainEvent.occurredAt,actorId:domainEvent.actorId,actorName:correctionActor.fullName,payload:domainEvent.payload}).from(domainEvent).leftJoin(correctionAccount,and(eq(correctionAccount.id,domainEvent.actorId),eq(correctionAccount.tenantId,ctx.tenantId))).leftJoin(correctionActor,and(eq(correctionActor.id,correctionAccount.personId),eq(correctionActor.tenantId,ctx.tenantId))).where(and(eq(domainEvent.subjectEmploymentId,employmentId),eq(domainEvent.eventType,INFORMATION_CORRECTED_EVENT))).orderBy(desc(domainEvent.sequence)).limit(100);}));}

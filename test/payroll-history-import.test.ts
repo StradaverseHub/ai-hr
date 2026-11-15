@@ -27,6 +27,7 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
+import { createMovementEvent } from '../core/movement';
 import { createBatch } from '../core/payroll';
 import { seedPayrollCycleCatalog } from '../core/payroll-cycle';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
@@ -652,3 +653,40 @@ async function empPersonId(employmentId: string): Promise<string> {
     .where(eq(schema.employment.id, employmentId));
   return e.personId;
 }
+
+/**
+ * Board 4604dccc — the month belongs to the company that employed the person then, by their dated history. An
+ * employee transferred from ACME to BETA on 1 Jul 2024 imports Jan–Jun under ACME and July onwards under BETA; a
+ * month in the other company's period is refused, naming the right company. Fictional companies and people.
+ */
+describe('import payroll history — the company of the period (board 4604dccc)', () => {
+  async function transferred() {
+    const a = adminCtx(b);
+    const [beta] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Beta Fictional Sdn Bhd', companyLabel: 'BETA', country: 'MY' }).returning({ id: schema.company.id });
+    await owner.db.insert(schema.labelCompanyAssignment).values({ tenantId: b.tenantId, labelKind: 'department', labelId: b.deptA, companyId: beta.id });
+    await seedPayrollCycleCatalog(a, beta.id);
+    const { employmentId } = await hire(a, 'X4604');
+    await createMovementEvent(a, { employmentId, kind: 'entityTransfer', effectiveDate: '2024-07-01', companyId: beta.id, remarks: 'Fictional transfer' });
+    const [emp] = await owner.db.select({ companyId: schema.employment.companyId }).from(schema.employment).where(eq(schema.employment.id, employmentId));
+    expect(emp.companyId).toBe(beta.id);
+    return { a, beta: beta.id };
+  }
+  it('finds the employee under the earlier company for its months, and under the current company after the transfer', async () => {
+    const { a, beta } = await transferred();
+    const acmeMonths = await validatePayrollHistoryImport(a, { companyId: b.companyId, records: file(...completeMonth('X4604', '202403'), ...completeMonth('X4604', '202406')) });
+    expect(acmeMonths.months.map((m) => [m.period, m.ok])).toEqual([['2024-03', true], ['2024-06', true]]);
+    const betaMonth = await validatePayrollHistoryImport(a, { companyId: beta, records: file(...completeMonth('X4604', '202408', { company: 'BETA' })) });
+    expect(betaMonth.months.map((m) => [m.period, m.ok])).toEqual([['2024-08', true]]);
+    const committed = await commitPayrollHistoryImport(a, { companyId: b.companyId, records: file(...completeMonth('X4604', '202403')) });
+    expect(committed.importedMonths).toBe(1);
+  });
+  it('refuses a month of the other company\'s period, naming that company', async () => {
+    const { a, beta } = await transferred();
+    const wrongAcme = await validatePayrollHistoryImport(a, { companyId: b.companyId, records: file(...completeMonth('X4604', '202408')) });
+    expect(wrongAcme.months[0].ok).toBe(false);
+    expect(wrongAcme.issues.map((i) => i.description)).toContain('Employee X4604 belonged to Beta Fictional Sdn Bhd during 2024-08, not Acme Sdn Bhd. Import this month under Beta Fictional Sdn Bhd.');
+    const wrongBeta = await validatePayrollHistoryImport(a, { companyId: beta, records: file(...completeMonth('X4604', '202402', { company: 'BETA' })) });
+    expect(wrongBeta.months[0].ok).toBe(false);
+    expect(wrongBeta.issues.map((i) => i.description)).toContain('Employee X4604 belonged to Acme Sdn Bhd during 2024-02, not Beta Fictional Sdn Bhd. Import this month under Acme Sdn Bhd.');
+  });
+});

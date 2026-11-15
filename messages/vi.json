@@ -1902,7 +1902,9 @@
           "reason": "Lý do",
           "originalHeading": "Ghi nhận ban đầu",
           "correctedHeading": "Đã điều chỉnh",
-          "noneValue": "Không"
+          "noneValue": "Không",
+          "effectiveFrom": "Hiệu lực từ",
+          "effectiveFromPointer": "Thông tin tuyển dụng luôn được sửa tại ngày tuyển dụng. Để sửa từ một ngày khác, hãy dùng Sửa thông tin đơn thuần với Ngày hiệu lực."
         },
         "payrollClosedBadge": "Đã khóa lương: {periods}",
         "informationCorrected": "Thông tin đã được sửa",
@@ -2468,7 +2470,9 @@
           "movement_history_payroll_company": "Bảng lương cho %detail% đã được đóng dưới một công ty khác. Hãy mở lại bảng lương đó hoặc kiểm tra công ty Trước.",
           "movement_history_overtaken": "Một biến động lịch sử hoặc chỉnh sửa sau đó đã thay đổi giai đoạn này. Hãy xóa thay đổi đó trước.",
           "history_closed_payroll": "Bảng lương đã đóng bao gồm %detail%. Bảng lương giữ nguyên như đã phát hành; chỉ hồ sơ tuyển dụng thay đổi.",
-          "movement_history_change_on_date": "Một thay đổi cho trường này đã được ghi nhận vào ngày này. Hãy sửa hoặc xóa thay đổi đó."
+          "movement_history_change_on_date": "Một thay đổi cho trường này đã được ghi nhận vào ngày này. Hãy sửa hoặc xóa thay đổi đó.",
+          "movement_correction_boundary": "Không thể giữ lần sửa thông tin đơn thuần ngày %date% sau biến động này. Hãy xem lại lần sửa đó trước.",
+          "movement_correction_boundary_label": "Lần sửa thông tin đơn thuần từ %date% đặt một công ty không thể dùng phòng ban, chức vụ, đơn vị kinh doanh, trung tâm chi phí hoặc nơi làm việc mà biến động này đặt. Hãy sửa thông tin đó trước, hoặc chọn giá trị công ty đó có thể dùng."
         },
         "v2": {
           "type": "Loại Biến động",
@@ -3530,12 +3534,40 @@
       "templateFields": "Các trường mẫu này sửa được (trường mới được làm nổi bật). Ô trống giữ nguyên giá trị hiện có.",
       "templateFieldsLabel": "Các trường mẫu này sửa được",
       "ownersNote": "Lương cơ bản và các ngày nghỉ việc được sửa trên sự kiện đã ghi nhận chúng: dùng nhập Biến động với Action \"Update\". Phương thức thanh toán nằm trong nhập Ngân hàng và Pháp định.",
-      "fromJoinDate": "Nhân viên thuộc công ty này từ ngày gia nhập (sửa toàn bộ lịch sử, không chỉ từ hôm nay). Chỉ áp dụng khi nhân viên luôn ở một công ty; chỉ thay đổi công ty trong lần sửa này.",
       "warnings": {
-        "companyFromToday": "Công ty thay đổi từ {date}. Trước ngày đó nhân viên vẫn thuộc công ty hiện tại. Nếu nhân viên luôn ở công ty mới, hãy chọn “từ ngày gia nhập”; để ghi một giai đoạn trước đó ở công ty khác, hãy nhập nó như một biến động lịch sử.",
-        "companyFromJoinDate": "Công ty thay đổi cho toàn bộ lịch sử, từ {date}.",
-        "historyStartAligned": "Các hồ sơ theo ngày của nhân viên (công ty và vị trí, lương, tuyến báo cáo) bắt đầu từ {from}. Lưu sẽ dời ngày bắt đầu về Ngày gia nhập tập đoàn, {date}."
-      }
+        "historyStartAligned": "Các hồ sơ theo ngày của nhân viên (công ty và vị trí, lương, tuyến báo cáo) bắt đầu từ {from}. Lưu sẽ dời ngày bắt đầu về Ngày gia nhập tập đoàn, {date}.",
+        "companyFrom": "Công ty thay đổi từ {date}.",
+        "companyFromUntil": "Công ty thay đổi từ {date} đến {to}, khi một bản ghi sau đó thay đổi nó."
+      },
+      "effectiveTitle": "Lần sửa này áp dụng từ khi nào?",
+      "effectiveDate": "Ngày hiệu lực",
+      "effectiveDateHint": "Bất kỳ ngày nào từ {start} đến hôm nay ({today}). Mặc định là hôm nay.",
+      "effectiveDateJoin": "Chọn {start}, Ngày gia nhập tập đoàn, sẽ sửa thông tin tuyển dụng ban đầu của nhân viên. Công ty, Loại hình lao động, Đơn vị kinh doanh, Phòng ban, Chức vụ, nhãn tổ chức và Cấp trên trực tiếp áp dụng từ Ngày hiệu lực đến thay đổi được ghi nhận tiếp theo.",
+      "timeline": {
+        "title": "Các bản ghi theo thứ tự Ngày hiệu lực",
+        "intro": "Các thông tin đã sửa áp dụng từ {date} đến thay đổi được ghi nhận tiếp theo. Các bản ghi sau giữ nguyên ngày và giá trị của chúng. Không có gì bị ghi đè hoặc xóa.",
+        "date": "Ngày hiệu lực",
+        "record": "Bản ghi",
+        "company": "Công ty",
+        "status": "Điều gì xảy ra",
+        "kinds": {
+          "hired": "Tuyển dụng",
+          "thisCorrection": "Lần sửa này",
+          "informationCorrection": "Sửa thông tin đơn thuần",
+          "record": "Bản ghi phân công"
+        },
+        "statuses": {
+          "corrected": "Được sửa bởi thay đổi này",
+          "unchanged": "Không thay đổi",
+          "conflict": "Mâu thuẫn với thay đổi này"
+        }
+      },
+      "conflictTitle": "Không thể lưu lần sửa này",
+      "conflict": "{record} ngày {date} ghi nhận {field} thay đổi từ một giá trị khác. Hãy sửa biến động đó trước (ID sự kiện biến động {id}), hoặc chọn Ngày hiệu lực sau {date}.",
+      "closedPayroll": "Bảng lương cho {periods} đã đóng trong giai đoạn được sửa. Bảng lương đã đóng, phiếu lương, Mẫu EA và hồ sơ nộp theo luật định không được tính lại.",
+      "closedPayrollAcknowledge": "Tôi xác nhận bảng lương đã đóng được giữ nguyên như đã phát hành.",
+      "importClosedPayroll": "Các dòng này sửa một giai đoạn có bảng lương đã đóng. Xác nhận bên dưới để lưu; nếu không xác nhận, các dòng này sẽ không được lưu.",
+      "importClosedPayrollRow": "Dòng {row} · {employee} · {periods}"
     }
   },
   "importErrorLogMovement": {

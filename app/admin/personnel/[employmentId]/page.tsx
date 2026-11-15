@@ -3641,6 +3641,13 @@ export default async function EmployeePage({
             reachesCurrent: f.reachesCurrent,
           }));
           const readOnly = [
+            // Board 4604dccc — this correction always applies as at the hire date: that is its Effective Date.
+            {
+              key: 'effectiveFrom',
+              label: t('movement.hireCorrection.effectiveFrom'),
+              value: formatDmy(hireCorrection.hiredOn),
+              pointer: t('movement.hireCorrection.effectiveFromPointer'),
+            },
             {
               key: 'company',
               label: t('movement.field.company'),

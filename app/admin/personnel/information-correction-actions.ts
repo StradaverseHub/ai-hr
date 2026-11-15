@@ -26,12 +26,13 @@ export async function informationContextAction(employmentId: string) {
   });
 }
 
-export async function previewInformationAction(input: { employmentId: string; changes: InformationChanges; reason: string; fromJoinDate?: boolean }) {
+/** Board 4604dccc — the Effective Date replaces the "from the join date" tickbox: the join date is the earliest choice. */
+export async function previewInformationAction(input: { employmentId: string; changes: InformationChanges; reason: string; effectiveOn?: string }) {
   const ctx = await requireAdmin();
-  return withCorrectionFeedback(() => previewInformationCorrection(ctx, { employmentId: input.employmentId, changes: input.changes, reason: input.reason, fromJoinDate: input.fromJoinDate === true }));
+  return withCorrectionFeedback(() => previewInformationCorrection(ctx, { employmentId: input.employmentId, changes: input.changes, reason: input.reason, ...(typeof input.effectiveOn === 'string' ? { effectiveOn: input.effectiveOn } : {}) }));
 }
 
-export async function saveInformationAction(input: { employmentId: string; changes: InformationChanges; reason: string; fingerprint: string; fromJoinDate?: boolean }) {
+export async function saveInformationAction(input: { employmentId: string; changes: InformationChanges; reason: string; fingerprint: string; effectiveOn?: string; acknowledgeClosedPayroll?: boolean }) {
   const ctx = await requireAdmin();
   return withCorrectionFeedback(async () => {
     const result = await correctInformation(ctx, {
@@ -40,7 +41,8 @@ export async function saveInformationAction(input: { employmentId: string; chang
       reason: input.reason,
       fingerprint: input.fingerprint,
       method: 'manual',
-      fromJoinDate: input.fromJoinDate === true,
+      ...(typeof input.effectiveOn === 'string' ? { effectiveOn: input.effectiveOn } : {}),
+      acknowledgeClosedPayroll: input.acknowledgeClosedPayroll === true,
     });
     revalidatePath('/admin/personnel');
     revalidatePath('/admin/personnel/' + input.employmentId);
@@ -56,10 +58,10 @@ export async function previewInformationUploadAction(data:FormData){
   return previewInformationUpload(ctx,{name:file.name,content:Buffer.from(await file.arrayBuffer()),operationKey:String(data.get('operationKey')??'')});
  });
 }
-export async function confirmInformationUploadAction(input:{attemptId:string;previewHash:string}){
+export async function confirmInformationUploadAction(input:{attemptId:string;previewHash:string;acknowledgeClosedPayroll?:boolean}){
  const ctx=await requireAdmin();
  return withCorrectionFeedback(async()=>{
- const result=await confirmInformationUpload(ctx,{attemptId:input.attemptId,previewHash:input.previewHash});
+ const result=await confirmInformationUpload(ctx,{attemptId:input.attemptId,previewHash:input.previewHash,acknowledgeClosedPayroll:input.acknowledgeClosedPayroll===true});
  revalidatePath('/admin/personnel');revalidatePath('/admin/personnel/[employmentId]','page');revalidatePath('/admin/personnel/[employmentId]/movement/[mode]','page');revalidatePath('/admin/personnel/[employmentId]/movement/[mode]/[movementId]','page');revalidatePath('/admin/personnel/import');revalidatePath('/admin/personnel/import/history');return result;
  });
 }

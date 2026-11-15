@@ -32,3 +32,7 @@ Historical leave processing is blocked only by corrections of fields leave proce
 Excluded, with the template and import screen pointing to the owner: Basic Salary (dated compensation, ADR-0164 decision 3) and Tender Resignation, Resignation and Last Working Dates (movement-only exit-date authority) are corrected with the Movement import, Action "Update" (ADR-0164 slice C). Payment Method stays in the Bank and Statutory import, which carries the bank details a transfer requires. This template does not clear values, and terminated employees are still refused.
 
 Import History lists every attempt and every section run (Profile, Family, Qualifications, Emergency Contacts) with Total, Successful and Failed, from a nullable `employee_import_run.import_section` (migration 4500; runs recorded earlier show "Not recorded"). Section runs are filtered read-side by the viewer's company access; their RLS is unchanged. The Information-Only Correction Import Log shows every row of the file, including rows refused at the check, limited to companies the viewer can view or to the uploader.
+
+## Superseded in part (board 4604dccc, 2026-11-15)
+
+"Assignment changes start on the business day of correction" is superseded by [dated information-only corrections](2026-11-15-dated-information-corrections.md): a correction applies from its Effective Date until each field's next recorded change.

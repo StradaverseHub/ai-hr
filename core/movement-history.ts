@@ -29,7 +29,7 @@
 import {and,asc,eq,inArray,isNull,sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
 import {appendEvent,actorOf} from '../db/events';
-import {assignment,compensation,domainEvent,location,payrollBatch,payslip,reportingLine} from '../db/schema';
+import {assignment,compensation,domainEvent,employment,location,payrollBatch,payslip,reportingLine} from '../db/schema';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {labelUsableByCompany} from './system-labels';
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx} from './workforce-access';
@@ -89,7 +89,7 @@ export async function historyVersionsTx(tx:Tx,employmentId:string):Promise<Versi
 }
 
 /** Closed payroll months that overlap [from, to) for this employment, with the company each was paid under. */
-async function closedPayrollInSpanTx(tx:Tx,employmentId:string,from:string,toExclusive:string){
+export async function closedPayrollInSpanTx(tx:Tx,employmentId:string,from:string,toExclusive:string){
  const rows=await tx.selectDistinct({period:payrollBatch.payPeriod,companyId:payrollBatch.companyId}).from(payslip)
   .innerJoin(payrollBatch,eq(payrollBatch.id,payslip.batchId))
   .where(and(eq(payslip.employmentId,employmentId),eq(payrollBatch.status,'closed')));
@@ -200,7 +200,7 @@ export async function reverseHistoryMovementTx(tx:Tx,ctx:SessionContext,e:{id:st
 
 /** Events whose `assignment` replacements Roll Back must follow (see originMapOf / liveIncarnationOf). */
 // An information correction applied from the join date records its replacements in the same shape.
-export const isAssignmentReplacementEvent=(eventType:string,hireCorrected:string)=>eventType===hireCorrected||eventType===MOVEMENT_HISTORY_EVENT||eventType===MOVEMENT_HISTORY_REVERTED_EVENT||eventType==='employment.information.corrected';
+export const isAssignmentReplacementEvent=(eventType:string,hireCorrected:string)=>eventType===hireCorrected||eventType===MOVEMENT_HISTORY_EVENT||eventType===MOVEMENT_HISTORY_REVERTED_EVENT||eventType==='employment.information.corrected'||eventType===INFORMATION_BOUNDARY_REAPPLIED_EVENT;
 
 /**
  * Board 154511c4 — Correct information "in this company from the join date": the employee was ALWAYS in `to`,
@@ -289,4 +289,172 @@ export async function alignHistoryStartTx(tx:Tx,employmentId:string,start:string
   aligned.push({supersededId:id,replacementId:row.id});
  }
  return{replaced,aligned};
+}
+
+/*
+ * Board 4604dccc (ADR 2026-11-15 dated information corrections) — information-only corrections are DATED. A correction applies from its Effective
+ * Date: the version covering that date is split there, and each corrected placement field is carried through
+ * the later versions that merely inherited it, stopping where the field changes again (the next recorded
+ * change owns its own period). Nothing after a stop is touched. Versions are superseded and re-inserted, never
+ * updated in place, except that the covering version keeps its id and ends on the Effective Date (the shape
+ * every assignment writer and Roll Back already use), so a movement's rollback still finds it.
+ */
+export const DATED_ASSIGNMENT_FIELDS=['companyId','employmentType','businessUnitId','departmentId','positionId'] as const;
+export type DatedAssignmentField=(typeof DATED_ASSIGNMENT_FIELDS)[number];
+export type DatedVersion={id:string;validFrom:string;validTo:string|null}&Record<DatedAssignmentField,string|null>;
+export type DatedCorrectionPlan={
+ /** Index of the version covering the Effective Date. */
+ cover:number;
+ /** Per corrected field: the index of the first version that changes it again (versions.length = none). */
+ stops:Partial<Record<DatedAssignmentField,number>>;
+ /** Per corrected field: [from, to) — `to` null when the correction reaches the current record. */
+ ranges:Partial<Record<DatedAssignmentField,{from:string;to:string|null}>>;
+ /** The versions the correction writes, with the values each takes. */
+ affected:{index:number;values:Partial<Record<DatedAssignmentField,string|null>>}[];
+};
+const liveSpan=(v:{validFrom:string;validTo:string|null})=>v.validTo===null||v.validTo>v.validFrom;
+/** Pure: what a dated correction writes over these live versions (oldest first, zero-length rows excluded). */
+export function planDatedCorrection(versions:readonly DatedVersion[],effectiveOn:string,after:Partial<Record<DatedAssignmentField,string|null>>):DatedCorrectionPlan{
+ const cover=versions.findIndex(v=>covers(v,effectiveOn));
+ if(cover<0)throw new MovementHistoryError('movement_history_no_period');
+ const stops:DatedCorrectionPlan['stops']={},ranges:DatedCorrectionPlan['ranges']={};
+ for(const f of Object.keys(after) as DatedAssignmentField[]){
+  let stop=cover+1;
+  while(stop<versions.length&&versions[stop][f]===versions[stop-1][f])stop++;
+  stops[f]=stop;ranges[f]={from:effectiveOn,to:stop<versions.length?versions[stop].validFrom:null};
+ }
+ const last=Math.max(cover+1,...Object.values(stops).map(n=>n??cover+1));
+ const affected:DatedCorrectionPlan['affected']=[];
+ for(let index=cover;index<last;index++){
+  const values:Partial<Record<DatedAssignmentField,string|null>>={};
+  for(const f of Object.keys(after) as DatedAssignmentField[])if(index<(stops[f]??0))values[f]=after[f]??null;
+  affected.push({index,values});
+ }
+ return{cover,stops,ranges,affected};
+}
+/** The live, non-zero-length versions in date order, locked for the rewrite when `lock` is set. */
+export async function datedVersionsTx(tx:Tx,employmentId:string,lock=false){
+ if(lock)await tx.execute(sql`select id from assignment where employment_id=${employmentId}::uuid and superseded_at is null for update`);
+ const rows=await tx.select().from(assignment).where(and(eq(assignment.employmentId,employmentId),isNull(assignment.supersededAt))).orderBy(asc(assignment.validFrom),asc(assignment.createdAt));
+ return rows.filter(liveSpan);
+}
+export type DatedCorrectionWrite={replaced:{supersededId:string;replacementId:string}[];inserted:string[];currentId:string|null;plan:DatedCorrectionPlan};
+/** Writes a dated correction of the placement fields. The caller has checked authority, payroll and labels. */
+export async function writeDatedCorrectionTx(tx:Tx,employmentId:string,effectiveOn:string,after:Partial<Record<DatedAssignmentField,string|null>>):Promise<DatedCorrectionWrite>{
+ const rows=await datedVersionsTx(tx,employmentId,true);
+ const plan=planDatedCorrection(rows,effectiveOn,after);
+ const now=new Date(),replaced:DatedCorrectionWrite['replaced']=[],inserted:string[]=[];
+ let currentId:string|null=rows.find(r=>r.validTo===null)?.id??null;
+ for(const {index,values} of plan.affected){
+  const row=rows[index];
+  const {id,createdAt:_c,recordedAt:_r,supersededAt:_s,...copy}=row;
+  if(index===plan.cover&&row.validFrom<effectiveOn){
+   // The covering version keeps its id and its earlier days; the corrected piece starts on the Effective Date.
+   await tx.update(assignment).set({validTo:effectiveOn}).where(eq(assignment.id,id));
+   const [piece]=await tx.insert(assignment).values({...copy,...values,validFrom:effectiveOn}).returning({id:assignment.id});
+   inserted.push(piece.id);if(row.validTo===null)currentId=piece.id;
+  }else{
+   await tx.update(assignment).set({supersededAt:now}).where(eq(assignment.id,id));
+   const [whole]=await tx.insert(assignment).values({...copy,...values}).returning({id:assignment.id});
+   replaced.push({supersededId:id,replacementId:whole.id});if(row.validTo===null)currentId=whole.id;
+  }
+ }
+ return{replaced,inserted,currentId,plan};
+}
+
+/*
+ * Board 4604dccc — a correction no longer blocks an earlier-dated movement. Before a comparison movement dated D
+ * writes, the correction-created versions after D are lifted (merged back into the version covering D), the
+ * movement writes from D through its ordinary writers, and each correction boundary is put back on its own date
+ * with the values it set. Only versions that start on an information correction's Effective Date and that no
+ * movement, history movement or other assignment writer created are lifted; anything else after D still blocks
+ * (AssignmentBeforeCurrentStartError), exactly as before.
+ */
+export const INFORMATION_BOUNDARY_REAPPLIED_EVENT='employment.information.boundary.reapplied';
+const PLACEMENT_COLUMNS=['companyId','employmentType','businessUnitId','departmentId','positionId','costCenterId','locationId'] as const;
+type PlacementColumn=(typeof PLACEMENT_COLUMNS)[number];
+export type LiftedBoundary={date:string;values:Partial<Record<PlacementColumn,string|null>>;liftedId:string};
+export type LiftedBoundaries={movementDate:string;boundaries:LiftedBoundary[];companyBefore:string|null};
+type BoundaryEvent={eventType:string;aggregateId:string;payload:unknown};
+/** replacementId chains (hire corrections, history movements, corrections) followed to the live row. */
+function liveOf(id:string,events:readonly BoundaryEvent[]){
+ const forward=new Map<string,string>();
+ for(const e of events){const p=(e.payload??{}) as {assignment?:{supersededId?:string;replacementId?:string}[]};for(const r of Array.isArray(p.assignment)?p.assignment:[])if(r?.supersededId&&r?.replacementId)forward.set(r.supersededId,r.replacementId);}
+ let cur=id;const seen=new Set<string>();while(forward.has(cur)&&!seen.has(cur)){seen.add(cur);cur=forward.get(cur)!;}return cur;
+}
+export async function liftCorrectionBoundariesTx(tx:Tx,ctx:SessionContext,employmentId:string,date:string):Promise<LiftedBoundaries|null>{
+ const probe=await datedVersionsTx(tx,employmentId);
+ if(!probe.some(v=>v.validFrom>date))return null;
+ const rows=await datedVersionsTx(tx,employmentId,true);
+ const later=rows.filter(v=>v.validFrom>date);
+ if(!later.length)return null;
+ const events:BoundaryEvent[]=await tx.select({eventType:domainEvent.eventType,aggregateId:domainEvent.aggregateId,payload:domainEvent.payload}).from(domainEvent)
+  .where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.subjectEmploymentId,employmentId),inArray(domainEvent.eventType,['employment.information.corrected','employment.assignment.changed','assignment.transferred','assignment.entity-backfilled','employment.hire.corrected',MOVEMENT_HISTORY_EVENT,MOVEMENT_HISTORY_REVERTED_EVENT,INFORMATION_BOUNDARY_REAPPLIED_EVENT])))
+  .orderBy(asc(domainEvent.sequence));
+ // The Effective Dates of corrections that changed a dated placement field, with the fields each set there.
+ const explicit=new Map<string,Set<string>>();
+ for(const e of events){
+  if(e.eventType!=='employment.information.corrected')continue;
+  const p=(e.payload??{}) as {effectiveOn?:string;fields?:string[]};
+  const fields=(Array.isArray(p.fields)?p.fields:[]).filter(f=>(PLACEMENT_COLUMNS as readonly string[]).includes(f));
+  if(typeof p.effectiveOn!=='string'||!fields.length)continue;
+  explicit.set(p.effectiveOn,new Set([...(explicit.get(p.effectiveOn)??[]),...fields]));
+ }
+ // Rows another writer created (movement legs, history pieces, data repair) are never lifted.
+ const owned=new Set<string>();
+ for(const e of events){
+  if(['employment.assignment.changed','assignment.transferred','assignment.entity-backfilled'].includes(e.eventType))owned.add(liveOf(e.aggregateId,events));
+  if(e.eventType===MOVEMENT_HISTORY_EVENT||e.eventType===MOVEMENT_HISTORY_REVERTED_EVENT){const p=(e.payload??{}) as {assignment?:{replacementId?:string}[];inserted?:string[]};for(const r of Array.isArray(p.assignment)?p.assignment:[])if(r?.replacementId)owned.add(liveOf(r.replacementId,events));for(const id of Array.isArray(p.inserted)?p.inserted:[])owned.add(liveOf(id,events));}
+ }
+ if(later.some(v=>!explicit.has(v.validFrom)||owned.has(v.id)))return null;
+ const cover=rows.filter(v=>v.validFrom<=date).at(-1);
+ if(!cover||cover.validTo!==later[0].validFrom)return null;
+ const boundaries:LiftedBoundary[]=later.map((v,i)=>{
+  const prev=i===0?cover:later[i-1],set=explicit.get(v.validFrom)!;
+  const values:LiftedBoundary['values']={};
+  for(const f of PLACEMENT_COLUMNS)if(v[f]!==prev[f]||set.has(f))values[f]=v[f]??null;
+  return{date:v.validFrom,values,liftedId:v.id};
+ });
+ await tx.update(assignment).set({supersededAt:new Date()}).where(inArray(assignment.id,later.map(v=>v.id)));
+ await tx.update(assignment).set({validTo:later.at(-1)!.validTo}).where(eq(assignment.id,cover.id));
+ const [emp]=await tx.select({companyId:employment.companyId}).from(employment).where(eq(employment.id,employmentId)).limit(1);
+ // The movement is judged against the record on its own date, company included.
+ if(emp&&cover.companyId&&emp.companyId!==cover.companyId){
+  await assertWorkforceCompanyTx(tx,ctx,cover.companyId,'maintain');
+  await tx.update(employment).set({companyId:cover.companyId}).where(eq(employment.id,employmentId));
+ }
+ return{movementDate:date,boundaries,companyBefore:emp?.companyId??null};
+}
+/** Puts each lifted correction boundary back on its own date, over whatever the movement wrote. */
+export async function reapplyCorrectionBoundariesTx(tx:Tx,ctx:SessionContext,employmentId:string,lifted:LiftedBoundaries){
+ const placed:{date:string;fields:string[];splitId:string;insertedId:string;liftedId:string}[]=[];
+ for(const boundary of [...lifted.boundaries].sort((a,b)=>a.date.localeCompare(b.date))){
+  const rows=await datedVersionsTx(tx,employmentId,true);
+  const cover=rows.find(v=>covers(v,boundary.date));
+  if(!cover||cover.validFrom===boundary.date)throw new MovementHistoryError('movement_correction_boundary:'+boundary.date);
+  const changed=(Object.keys(boundary.values) as PlacementColumn[]).filter(f=>cover[f]!==boundary.values[f]);
+  if(!changed.length)continue; // The movement already leaves these values: the boundary no longer changes anything.
+  const next={...cover,...boundary.values};
+  const company=next.companyId;
+  if(company&&(changed.includes('companyId')||changed.some(f=>f!=='companyId'))){
+   for(const [kind,id,field] of [['department',next.departmentId,'departmentId'],['position',next.positionId,'positionId'],['business_unit',next.businessUnitId,'businessUnitId'],['cost_center',next.costCenterId,'costCenterId']] as const)
+    if(id&&(changed.includes('companyId')||changed.includes(field))&&!await labelUsableByCompany(tx,ctx.tenantId,kind,id,company))throw new MovementHistoryError(`movement_correction_boundary_label:${boundary.date}`);
+   if(next.locationId&&changed.includes('companyId')){const [loc]=await tx.select({companyId:location.companyId}).from(location).where(eq(location.id,next.locationId)).limit(1);if(!loc||loc.companyId!==company)throw new MovementHistoryError(`movement_correction_boundary_label:${boundary.date}`);}
+  }
+  const {id,createdAt:_c,recordedAt:_r,supersededAt:_s,...copy}=cover;
+  await tx.update(assignment).set({validTo:boundary.date}).where(eq(assignment.id,id));
+  const [row]=await tx.insert(assignment).values({...copy,...boundary.values,validFrom:boundary.date}).returning({id:assignment.id});
+  placed.push({date:boundary.date,fields:changed,splitId:id,insertedId:row.id,liftedId:boundary.liftedId});
+ }
+ // employment.company_id follows the record with the latest Effective Date.
+ const rows=await datedVersionsTx(tx,employmentId);
+ const open=rows.find(v=>v.validTo===null);
+ const [emp]=await tx.select({companyId:employment.companyId}).from(employment).where(eq(employment.id,employmentId)).limit(1);
+ if(open?.companyId&&emp&&emp.companyId!==open.companyId){
+  await assertWorkforceCompanyTx(tx,ctx,open.companyId,'maintain');
+  await tx.update(employment).set({companyId:open.companyId}).where(eq(employment.id,employmentId));
+ }
+ await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:employmentId,eventType:INFORMATION_BOUNDARY_REAPPLIED_EVENT,actor:actorOf(ctx),subjectEmploymentId:employmentId,
+  payload:{employmentId,movementDate:lifted.movementDate,boundaries:placed,lifted:lifted.boundaries.map(b=>b.liftedId)}});
+ return placed;
 }

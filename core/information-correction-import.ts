@@ -34,7 +34,7 @@ export async function previewInformationUpload(ctx:SessionContext,input:{name:st
  for(const row of rows){
   const co=companyOf(row.companyCode);if(!co||row.errors.length)continue;
   employeeKeys.push({companyId:co.id,code:row.employeeCode});
-  const superior=version===2?row.values['Direct Superior']:undefined,destination=row.values['New Company Code']?companyOf(row.values['New Company Code']):co;
+  const superior=version!==1?row.values['Direct Superior']:undefined,destination=row.values['New Company Code']?companyOf(row.values['New Company Code']):co;
   if(superior&&destination)superiorKeys.push({companyId:destination.id,code:superior});
  }
  const {employees,superiors}=employeeKeys.length?await withTenant(ctx,async tx=>({employees:await employmentsByCodeTx(tx,ctx,employeeKeys,false),superiors:await employmentsByCodeTx(tx,ctx,superiorKeys,true)})):{employees:new Map<string,string[]>(),superiors:new Map<string,string[]>()};
@@ -55,8 +55,9 @@ export async function previewInformationUpload(ctx:SessionContext,input:{name:st
    if(row.values['Employment Type'])changes.employmentType=row.values['Employment Type'];
    if(row.values['Contract End Date'])changes.contractEndDate=row.values['Contract End Date'];
    if(row.values['Internship End Date'])changes.internshipEndDate=row.values['Internship End Date'];
-   if(version===2)extendedChanges(options,row.values,changes.companyId??co.id,changes,superiors);
-   row.preview=await previewInformationCorrection(ctx,{employmentId:matches[0],changes,reason:row.values['Correction Reason']!},{extended:true});
+   if(version!==1)extendedChanges(options,row.values,changes.companyId??co.id,changes,superiors);
+   // Board 4604dccc — version 3's Effective Date; blank (and every version 1 or 2 file) means today.
+   row.preview=await previewInformationCorrection(ctx,{employmentId:matches[0],changes,reason:row.values['Correction Reason']!,...(row.values['Effective Date']?{effectiveOn:row.values['Effective Date']}:{})},{extended:true});
   }catch(error){row.errors.push(rowError(error));}
  }
  // Each reviewed row's warnings in its own savepoint, so one refusal stays that row's error, as before.
@@ -75,7 +76,9 @@ export async function previewInformationUpload(ctx:SessionContext,input:{name:st
  // An operation-key retry returns the stored plan, never a fresh preview with the old attempt ID.
  return {attemptId:created.attemptId,plan:created.plan};
 }
-export async function confirmInformationUpload(ctx:SessionContext,input:{attemptId:string;previewHash:string}):Promise<InformationImportResult>{
+/** Board 4604dccc — `acknowledgeClosedPayroll` is the batch-level confirmation for the rows whose corrected period
+ * has closed payroll (listed on the review). Without it those rows fail with the closed months named. */
+export async function confirmInformationUpload(ctx:SessionContext,input:{attemptId:string;previewHash:string;acknowledgeClosedPayroll?:boolean}):Promise<InformationImportResult>{
  const load=()=>withTenant(ctx,async tx=>{
   const attempt=await lockImportAttemptTx(tx,ctx,input.attemptId,'information_correction');
   const [access]=await tx.execute<{ok:boolean}>(sql`select app.import_attempt_access(${attempt.id}::uuid,'maintain',true) as ok`);
@@ -101,7 +104,7 @@ export async function confirmInformationUpload(ctx:SessionContext,input:{attempt
     const prior=(await importAttemptItemsTx(tx,held.id)).find(item=>item.itemKey===String(row.row));
     if(prior){if(prior.status==='failed')throw new ImportHistoryError(prior.errors.join(' '));return;}
     const changes=Object.fromEntries(preview.changed.map(f=>[f,preview.after[f]])) as InformationChanges;
-    const saved=await correctInformationTx(tx,ctx,{employmentId:preview.employmentId,changes,reason:preview.reason,fingerprint:preview.fingerprint,method:'excel',batchId:held.id,filename:held.sourceName});
+    const saved=await correctInformationTx(tx,ctx,{employmentId:preview.employmentId,changes,reason:preview.reason,fingerprint:preview.fingerprint,method:'excel',batchId:held.id,filename:held.sourceName,effectiveOn:preview.effectiveOn,acknowledgeClosedPayroll:input.acknowledgeClosedPayroll===true});
     if(!saved.changed)throw new ImportHistoryError('The employee no longer needs this correction. Review again.');
     await recordImportItemTx(tx,ctx,{attemptId:held.id,companyId:preview.before.companyId!,employmentId:preview.employmentId,itemKey:String(row.row),label:preview.employeeCode+' · '+preview.name,ordinal:row.row,status:'applied',before:{values:changedLabels(preview.beforeLabels,preview.changed),reason:preview.reason},after:{values:changedLabels(preview.afterLabels,preview.changed),reason:preview.reason,organisationWarnings:row.warnings??[]}});
    });

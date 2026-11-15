@@ -123,36 +123,44 @@ describe('the Movement import',()=>{
   expect(result.imported).toBe(2);
   expect((await versions(id)).map(v=>[v.validFrom,v.companyId])).toEqual([[HIRED,coC],['2025-12-01',coB],[TRANSFER,b.companyId]]);
  });
- it('names the blocking record instead of the generic refusal',async()=>{
+ it('places a transfer dated before a correction by its date (board 4604dccc; it used to be refused)',async()=>{
   const id=await hire('HB-IMP');const ctx=adminCtx(b);
   // A forward transfer dated before a correction that started the current record.
   await correctInformation(ctx,{employmentId:id,changes:{companyId:coB},reason:'Fictional correction',fingerprint:(await previewInformationCorrection(ctx,{employmentId:id,changes:{companyId:coB},reason:'Fictional correction'})).fingerprint,method:'manual'});
   const [{validFrom:started}]=(await versions(id)).slice(-1);
-  const records=[{...row(2,TRANSFER,coC,coB),before:{}}];
+  const records=[{...row(2,TRANSFER,coC,b.companyId),before:{}}];
   const preview=await previewMovementImport(ctx,{companyId:coB,csv:'',records});
-  expect(preview.employees[0].rows[0].errors).toEqual([`movement_before_current_record:${started}`]);
+  expect(preview.employees[0].rows[0].errors).toEqual([]);
+  const result=await commitMovementImport(ctx,{companyId:coB,csv:'',records,selection:preview.selection,inputHash:preview.inputHash,fingerprints:Object.fromEntries(preview.employees.map(e=>[e.employeeCode,e.fingerprint!])),acknowledgeExcluded:false});
+  expect(result.imported).toBe(1);
+  // The transfer holds from its date; the correction still holds from its own date, so it is the current record.
+  expect((await versions(id)).map(v=>[v.validFrom,v.companyId])).toEqual([[HIRED,b.companyId],[TRANSFER,coC],[started,coB]]);
+  const [emp]=await owner.db.select({companyId:schema.employment.companyId}).from(schema.employment).where(eq(schema.employment.id,id));
+  expect(emp.companyId).toBe(coB);
  });
 });
 
 describe('Correct information',()=>{
- it('says from which date the company changes, and can apply a company-only correction from the join date',async()=>{
+ it('says from which date the company changes, and applies a correction from the join date as the Effective Date',async()=>{
   const id=await hire('HB-CI');const ctx=adminCtx(b);
   const today=await previewInformationCorrection(ctx,{employmentId:id,changes:{companyId:coB},reason:'Fictional correction'});
-  expect(today.warnings?.[0]).toMatchObject({code:'companyFromToday'});
-  const whole=await previewInformationCorrection(ctx,{employmentId:id,changes:{companyId:coB},reason:'Fictional correction',fromJoinDate:true});
-  expect(whole.warnings?.[0]).toEqual({code:'companyFromJoinDate',date:HIRED});
+  expect(today.warnings?.[0]).toMatchObject({code:'companyFrom',date:today.effectiveOn});
+  const whole=await previewInformationCorrection(ctx,{employmentId:id,changes:{companyId:coB},reason:'Fictional correction',effectiveOn:HIRED});
+  expect(whole.warnings?.[0]).toEqual({code:'companyFrom',date:HIRED});
+  expect(whole.fromJoinDate).toBe(true);
   expect(whole.fingerprint).not.toBe(today.fingerprint);
-  await correctInformation(ctx,{employmentId:id,changes:{companyId:coB},reason:'Fictional correction',fingerprint:whole.fingerprint,method:'manual',fromJoinDate:true});
+  await correctInformation(ctx,{employmentId:id,changes:{companyId:coB},reason:'Fictional correction',fingerprint:whole.fingerprint,method:'manual',effectiveOn:HIRED});
   expect(await versions(id)).toEqual([{validFrom:HIRED,validTo:null,companyId:coB}]);
   const [emp]=await owner.db.select({companyId:schema.employment.companyId}).from(schema.employment).where(eq(schema.employment.id,id));
   expect(emp.companyId).toBe(coB);
   expect((await movementHistory(ctx,id)).find(r=>r.kind==='hired')?.company).toBe('Beta Fictional Sdn Bhd');
  });
- it('refuses from the join date once the company has changed in the history',async()=>{
+ it('refuses from the join date when a later history movement records a different company before it',async()=>{
   const id=await hire('HB-CJ');const ctx=adminCtx(b);
   await record(id,{effectiveDate:TRANSFER,after:{companyId:b.companyId},before:{companyId:coB}});
-  const p=await previewInformationCorrection(ctx,{employmentId:id,changes:{companyId:coC},reason:'Fictional correction',fromJoinDate:true});
-  await expect(correctInformation(ctx,{employmentId:id,changes:{companyId:coC},reason:'Fictional correction',fingerprint:p.fingerprint,method:'manual',fromJoinDate:true})).rejects.toThrow(/already changes on 2026-04-01/);
+  const p=await previewInformationCorrection(ctx,{employmentId:id,changes:{companyId:coC},reason:'Fictional correction',effectiveOn:HIRED});
+  expect(p.conflicts).toEqual([expect.objectContaining({date:TRANSFER,field:'companyId'})]);
+  await expect(correctInformation(ctx,{employmentId:id,changes:{companyId:coC},reason:'Fictional correction',fingerprint:p.fingerprint,method:'manual',effectiveOn:HIRED})).rejects.toThrow(/on 2026-04-01 records a change from a different value/);
  });
 });
 
