@@ -13,6 +13,17 @@ import {publicErrorMessage} from '../lib/public-error';
 import {pgSqlState} from '../lib/db-error';
 const rowError=(error:unknown)=>error instanceof InformationCorrectionError?error.message:publicErrorMessage(error);
 /** Employments by company and Employee ID, for every key in one statement; `view` adds the Workforce view check. */
+/** Every employment the user can view whose Employee ID is one of `codes`, in any company, keyed by code. A Direct
+ * Superior may work for another company of the group (owner decision, 15 Nov 2026), as the Personnel record's
+ * Direct Superior field already allows. One statement for the whole file. */
+async function visibleEmploymentsByCodeTx(tx:Tx,ctx:SessionContext,codes:string[]){
+ const found=new Map<string,{id:string;companyId:string}[]>(),unique=[...new Set(codes)];
+ if(!unique.length)return found;
+ const rows=await tx.select({id:employment.id,companyId:employment.companyId,code:employment.employeeCode}).from(employment).where(and(eq(employment.tenantId,ctx.tenantId),
+  sql`${employment.employeeCode} in (${sql.join(unique.map(code=>sql`${code}`),sql`,`)})`,workforceEmploymentPredicate(sql`${employment.id}`,'view')));
+ for(const row of rows){const key=row.code!;found.set(key,[...(found.get(key)??[]),{id:row.id,companyId:row.companyId}]);}
+ return found;
+}
 async function employmentsByCodeTx(tx:Tx,ctx:SessionContext,keys:{companyId:string;code:string}[],view:boolean){
  const found=new Map<string,string[]>(),unique=[...new Map(keys.map(key=>[key.companyId+'|'+key.code,key])).values()];
  if(!unique.length)return found;
@@ -30,14 +41,14 @@ export async function previewInformationUpload(ctx:SessionContext,input:{name:st
  // Every row's employee and every Direct Superior are resolved in one statement each, with the predicates of the
  // per-row lookups they replace, instead of one transaction per row (SCALE rule 2). Each row is then reviewed by the
  // correction owner, and its organisation warnings are read in one transaction after the reviews.
- const employeeKeys:{companyId:string;code:string}[]=[],superiorKeys:{companyId:string;code:string}[]=[];
+ const employeeKeys:{companyId:string;code:string}[]=[],superiorCodes:string[]=[];
  for(const row of rows){
   const co=companyOf(row.companyCode);if(!co||row.errors.length)continue;
   employeeKeys.push({companyId:co.id,code:row.employeeCode});
-  const superior=version!==1?row.values['Direct Superior']:undefined,destination=row.values['New Company Code']?companyOf(row.values['New Company Code']):co;
-  if(superior&&destination)superiorKeys.push({companyId:destination.id,code:superior});
+  const superior=version!==1?row.values['Direct Superior']:undefined;
+  if(superior)superiorCodes.push(superior);
  }
- const {employees,superiors}=employeeKeys.length?await withTenant(ctx,async tx=>({employees:await employmentsByCodeTx(tx,ctx,employeeKeys,false),superiors:await employmentsByCodeTx(tx,ctx,superiorKeys,true)})):{employees:new Map<string,string[]>(),superiors:new Map<string,string[]>()};
+ const {employees,superiors}=employeeKeys.length?await withTenant(ctx,async tx=>({employees:await employmentsByCodeTx(tx,ctx,employeeKeys,false),superiors:await visibleEmploymentsByCodeTx(tx,ctx,superiorCodes)})):{employees:new Map<string,string[]>(),superiors:new Map<string,{id:string;companyId:string}[]>()};
  for(const row of rows){
   const co=companyOf(row.companyCode);
   if(!co){row.errors.push('Company Code is unknown, ambiguous or outside your permission.');continue;}
@@ -126,7 +137,7 @@ const LABEL_COLUMNS=INFORMATION_LABEL_FIELDS.map(field=>[INFORMATION_FIELD_CAPTI
 const PLAIN_COLUMNS=(['probationValue','probationUnit','extendedProbationValue','extendedProbationUnit','confirmationDate','noticeBeforeConfirmationValue','noticeBeforeConfirmationUnit','noticeAfterConfirmationValue','noticeAfterConfirmationUnit'] as const).map(field=>[INFORMATION_FIELD_CAPTIONS[field],field] as const);
 /** ccd3a65c — version 2 cells resolved against the resulting company's options. Labels, periods and dates are
  * passed as typed; the correction command validates them and names the column. */
-function extendedChanges(options:Awaited<ReturnType<typeof informationCorrectionOptions>>,values:Partial<Record<InformationHeader,string>>,companyId:string,changes:InformationChanges,superiors:Map<string,string[]>){
+function extendedChanges(options:Awaited<ReturnType<typeof informationCorrectionOptions>>,values:Partial<Record<InformationHeader,string>>,companyId:string,changes:InformationChanges,superiors:Map<string,{id:string;companyId:string}[]>){
  for(const [header,kind,field,sheet] of ORGANISATION_COLUMNS){
   const value=values[header];if(!value)continue;
   const found=options.organisation.filter(row=>row.companyId===companyId&&row.kind===kind&&row.code.toUpperCase()===value.toUpperCase());
@@ -136,10 +147,13 @@ function extendedChanges(options:Awaited<ReturnType<typeof informationCorrection
  for(const [header,field] of [...LABEL_COLUMNS,...PLAIN_COLUMNS]){const value=values[header];if(value)changes[field]=value;}
  const superior=values['Direct Superior'];
  if(superior){
-  // View-scoped: a superior the user cannot view reads exactly like an unknown Employee ID.
-  const managers=superiors.get(companyId+'|'+superior)??[];
-  if(managers.length!==1)throw new InformationCorrectionError('Direct Superior: the Employee ID is unknown in this company or not visible to you.');
-  changes.managerEmploymentId=managers[0];
+  // View-scoped: a superior the user cannot view reads exactly like an unknown Employee ID. The employee's own
+  // (resulting) company wins when the same Employee ID is used there; otherwise the ID must name exactly one
+  // employee across the companies the user can view.
+  const visible=superiors.get(superior)??[],own=visible.filter(m=>m.companyId===companyId),managers=own.length?own:visible;
+  if(!managers.length)throw new InformationCorrectionError('Direct Superior: the Employee ID is unknown or not visible to you.');
+  if(managers.length>1)throw new InformationCorrectionError('Direct Superior: the Employee ID matches employees in more than one company. Set this superior on the Personnel record instead.');
+  changes.managerEmploymentId=managers[0].id;
  }
 }
 type ConfirmedRow={row:number;status:'applied'|'failed'|'unchanged';errors:string[]};

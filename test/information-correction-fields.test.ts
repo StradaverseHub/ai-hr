@@ -92,10 +92,23 @@ describe('ccd3a65c further Information-Only Correction fields',()=>{
   expect(preview.plan.rows[2].errors).toEqual(['Direct Superior: an employee cannot report to themselves.']);
   const cycle=await upload([{'Company Code':'DEMO','Employee ID':'E0012','Direct Superior':'E0051','Correction Reason':reason}]);
   expect(cycle.plan.rows[0].errors).toEqual(['Direct Superior: this would create a reporting loop.']);
-  const scoped=await upload([{'Company Code':'DEMO','Employee ID':'E0051','Direct Superior':'E0900','Correction Reason':reason}]);
-  expect(scoped.plan.rows[0].errors).toEqual(['Direct Superior: the Employee ID is unknown in this company or not visible to you.']);
+  // Owner decision 15 Nov 2026: a Direct Superior may work for another company the user can view.
+  const crossCompany=await upload([{'Company Code':'DEMO','Employee ID':'E0051','Direct Superior':'E0900','Correction Reason':reason}]);
+  expect(crossCompany.plan.rows[0].errors).toEqual([]);
+  expect(crossCompany.plan.rows[0].preview?.changed).toEqual(['managerEmploymentId']);
+  const unknown=await upload([{'Company Code':'DEMO','Employee ID':'E0051','Direct Superior':'E9999','Correction Reason':reason}]);
+  expect(unknown.plan.rows[0].errors).toEqual(['Direct Superior: the Employee ID is unknown or not visible to you.']);
+  // The same Employee ID in two other companies cannot be told apart.
+  const [elsewhere2]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Other Two Sdn Bhd',companyLabel:'OTHER2'}).returning();
+  await fixture('E0900',elsewhere2.id);
+  const ambiguous=await upload([{'Company Code':'DEMO','Employee ID':'E0051','Direct Superior':'E0900','Correction Reason':reason}]);
+  expect(ambiguous.plan.rows[0].errors).toEqual(['Direct Superior: the Employee ID matches employees in more than one company. Set this superior on the Personnel record instead.']);
+  // An Employee ID used in the employee's own company wins over the same ID elsewhere.
+  await fixture('E0900');
+  const own=await upload([{'Company Code':'DEMO','Employee ID':'E0051','Direct Superior':'E0900','Correction Reason':reason}]);
+  expect(own.plan.rows[0].errors).toEqual([]);
   const marked=await upload([{'Company Code':'DEMO','Employee ID':'E0051','Direct Superior':'E0063','Correction Reason':reason}]);
-  expect(marked.plan.rows[0].errors).toEqual([expect.stringMatching(/^Direct Superior: (a test record cannot be a Direct Superior|the Employee ID is unknown in this company or not visible to you)\.$/)]);
+  expect(marked.plan.rows[0].errors).toEqual([expect.stringMatching(/^Direct Superior: (a test record cannot be a Direct Superior|the Employee ID is unknown or not visible to you)\.$/)]);
   expect((await openLine(other)).map(line=>line.managerEmploymentId)).toEqual([id]);
   const unit=await upload([{'Company Code':'DEMO','Employee ID':'E0051','Probation Period':3,'Probation Period Unit':'Year','Correction Reason':reason}]);
   expect(unit.plan.rows[0].errors).toEqual(['Probation Period Unit: use Month, Week or Day.']);

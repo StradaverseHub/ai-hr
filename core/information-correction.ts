@@ -241,7 +241,8 @@ async function validateExtendedTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<
   const [manager]=await tx.select({id:employment.id,companyId:employment.companyId,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate,blacklistedAt:employment.blacklistedAt,isTestRecord:employment.isTestRecord})
    .from(employment).where(and(eq(employment.id,id),eq(employment.tenantId,ctx.tenantId),workforceEmploymentPredicate(sql`${employment.id}`,'view'))).limit(1);
   // An unknown and an invisible superior read the same, so the preview reveals nobody the user cannot view.
-  if(!manager||manager.companyId!==companyAt)fail('Direct Superior: the Employee ID is unknown in this company or not visible to you.');
+  // A Direct Superior may work for any company the user can view (owner decision, 15 Nov 2026), as on the Personnel record.
+  if(!manager)fail('Direct Superior: the Employee ID is unknown or not visible to you.');
   if(manager.isTestRecord)fail('Direct Superior: a test record cannot be a Direct Superior.');
   if(manager.terminatedOn||manager.hiredOn>today||['resigned','blacklisted'].includes(deriveEmploymentStatus(manager,today)))fail('Direct Superior: this employee is not an active employee.');
   if(await wouldCreateAdminCycle(tx,s.emp.id,id,effectiveOn))fail('Direct Superior: this would create a reporting loop.');
