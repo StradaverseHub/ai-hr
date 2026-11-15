@@ -191,3 +191,21 @@ State at the head of `claude/rea-web-app-reconstruction-2c12ee` (pushed):
 Next, in order: slice 23 (referral rewards: fixed per job, payable after probation, HR-approved, one-off payroll earning; agency fees
 tracked and approved only), slice 24 (AI match summary suggestions; needs the owner's provider-data approval), slice 25 (agency portal).
 Owner review: D-065, D-066, D-067.
+
+## Checkpoint — slice 23 built and verified (2026-11-16)
+
+State at the head of `claude/rea-web-app-reconstruction-2c12ee` (pushed):
+- `origin/main` (`8244cfa81`) merged at `7b84427c4`; the recruitment block now ends at `5725` (when 1793330005425).
+- Probation branches now claim 5740–5750, so the recruitment block must stay at or below 5739; if those reach an installation first,
+  5720–5725 need renumbering above its watermark at admission (see `MIGRATION-ALLOCATION.md`).
+- Slice 23 (`5725`): a job's fixed referral reward frozen on each referral; Recruitment › Rewards and fees, where administrators
+  approve a reward after the hire's probation (to one of the referrer's active employments) and payroll administrators send it once as
+  one earning in Individual Transactions; My referrals shows each reward's state; agency fees recorded from the invoice and decided by a
+  second administrator, never paid through payroll. D-068.
+- CI: the full 62-file set ran on `64e6eb70f`; its 8 failures are fixed and the affected files, type check and build pass on
+  `35386fb6c` and `23bfe430d`. Details in `parity-report.md`.
+- Not rendered; nothing on staging.
+
+Next, in order: slice 24 (AI match summary suggestions; needs the owner's provider-data approval), slice 25 (agency portal).
+Owner review: D-065, D-066, D-067, D-068.
+

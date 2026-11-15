@@ -747,3 +747,24 @@ Decisions D-067; spec cases 143–148.
 Not rendered (case 148): this machine has no installed dependencies and the survey is sent only through an installation with an active
 relay. The public survey page itself is anonymous and can be rendered on any installation once a survey has been sent. Nothing is on
 staging.
+
+## Slice 23 — referral rewards and agency fees (2026-11-16)
+
+`origin/main` (`8244cfa81`) was merged at `7b84427c4` without a renumber (main's newest, `5695`, sorts below `5700`). Migration `5725`
+(idx 5125, when 1793330005425) applied after all 878 earlier migrations on a throwaway local Postgres 16 before CI; its facts function was
+re-created there after the fix below. Decisions D-068; spec cases 149–155.
+
+| Check | Result |
+| --- | --- |
+| Run 43753308090 on `64e6eb70f` (62 files: the slice 22 set plus the two new reward files; type check; build) | 54 files PASS; type check, build and 8 tests in 3 files FAIL |
+| Cause 1 (type check, build): BigInt literals in `reward-model.ts` are not allowed by the project's compile target | Fixed in `35386fb6c`: whole-cent integer arithmetic |
+| Cause 2 (5 reward tests): `app.recruitment_reward_facts` read the hire's record variable before it was assigned when no employee record existed yet (55000) | Fixed in `35386fb6c`: the hire's facts are built only when the hire exists |
+| Cause 3 (same tests): the fixture linked a made-up draft id; 5703's hand-off guard requires a real draft of the company | Fixed: the test creates a real employee draft |
+| Cause 4 (2 tests): the careers definer pin and the referral column pin correctly flagged 5725's new portal function and frozen columns | Pins updated |
+| Cause 5 (1 assertion): a non-administrator gets `not_found` for a job row security hides, not `forbidden` | Expectation corrected |
+| Run 43754899214 on `35386fb6c` (the 4 affected files; type check; build) | Type check, build and 3 files PASS; the careers pin listed two functions in the wrong order |
+| Run 43756868066 on `23bfe430d` (`recruitment-careers`) | PASS |
+
+The other 58 files passed on `64e6eb70f` and were not rerun after the fixes; the fixes changed only the facts function body, the
+reward model's arithmetic and the four test files. Not rendered (case 155): this machine has no installed dependencies. Nothing is on
+staging.
