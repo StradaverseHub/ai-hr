@@ -182,9 +182,12 @@ export function resolveShellNavigation({
   ];
   const rewardRows = modulePackById('rewards')!.navLinks!
     .filter(row => rewardDestinations.includes(row.href) && moduleAllows(row.href));
+  // The lifecycle pack's own builder rows are replaced by the V9 presentation above, including the builder views
+  // placed in the shared HR Automation section (automationRows), so they are dropped here like every onboarding row.
+  const v9AutomationHrefs = new Set<string>(V9_AUTOMATION_NAVIGATION.map(item => item.href));
   const destinations: ChildItem[] = [...authorizedRows.filter(row => {
     const placement = navigationPlacement(row.href);
-    return !placement || !('module' in placement) || placement.module !== 'onboarding';
+    return !v9AutomationHrefs.has(row.href) && (!placement || !('module' in placement) || placement.module !== 'onboarding');
   }), ...ADDITIONAL_ROWS.filter(canSeeChild), ...lifecycleNavigation, ...lifecycleShared, ...scopedLifecycleRows, ...automationRows, ...rewardRows];
   return { destinations, lifecycleNavigation, canSeeChild };
 }

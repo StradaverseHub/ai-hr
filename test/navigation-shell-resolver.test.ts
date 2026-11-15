@@ -90,7 +90,7 @@ describe('shared shell policy preserves the pre-extraction visibility contract',
 
   it('uses scoped lifecycle facts independently for page, configure, and intake', () => {
     const facts = {enabledModules:[],probationAccess:{page:true,configure:false},contractStaffAccess:{page:false,configure:false,intake:true}};
-    expect(inFamily(facts,'/lifecycle/')).toEqual(['/lifecycle/probation','/lifecycle/contracts/intake']);
+    expect(inFamily(facts,'/lifecycle/')).toEqual(['/lifecycle/probation','/lifecycle/probation/postings','/lifecycle/contracts/intake']);
     expect(inFamily({probationAccess:{page:false,configure:true}},'/lifecycle/probation')).toEqual([
       '/lifecycle/probation/settings','/lifecycle/probation/forms','/lifecycle/probation/routes','/lifecycle/probation/intake',
     ]);

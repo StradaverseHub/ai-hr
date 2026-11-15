@@ -58,7 +58,7 @@ export function TemplatesWorkspace({filter,access,emails,letters,refs}:{filter:A
 /** Email template editor (prototype EmailDrawer, plain text): name, on/off, subject and message with merge fields, CC. */
 export function EmailEditor({initial,refs,onClose}:{initial:ListedEmailTemplate;refs:Refs;onClose:()=>void}){
  const t=useTranslations('automation'),router=useRouter(),[busy,start]=useTransition();
- const [draft,setDraft]=useState(initial.template),[revision,setRevision]=useState(initial.revision),[dirty,setDirty]=useState(false),[message,setMessage]=useState<{kind:'error'|'status';text:string;problems?:string[]}|null>(null);
+ const [draft,setDraft]=useState(initial.template),[revision,setRevision]=useState(initial.revision),[dirty,setDirty]=useState(initial.revision===0),[message,setMessage]=useState<{kind:'error'|'status';text:string;problems?:string[]}|null>(null);
  const fields=useRef<Record<string,HTMLInputElement|HTMLTextAreaElement|null>>({}),readOnly=initial.retired||busy;
  const change=(patch:Partial<AutomationEmailTemplate>)=>{setDraft(d=>({...d,...patch}));setDirty(true);setMessage(null);};
  const references={routingExists:(id:string)=>refs.routings.some(r=>r.id===id&&!r.retired),groupExists:(id:string)=>refs.groups.some(g=>g.id===id),personExists:(id:string)=>refs.people.some(p=>p.id===id)};

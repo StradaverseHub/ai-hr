@@ -29,7 +29,7 @@ const text = (value: unknown) => typeof value === 'string' ? value : '';
 /** The shared workflow editor for a module on the shared engine (Probation first). Saves through the shared store. */
 export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,onClose}:{catalogue:AutomationModuleCatalogue;initial:AutomationWorkflow;revision:number;refs:WorkflowEditorReferences;onClose:()=>void}){
  const t=useTranslations('automation'),router=useRouter(),[busy,start]=useTransition();
- const [draft,setDraft]=useState(initial),[revision,setRevision]=useState(savedRevision),[dirty,setDirty]=useState(false),[note,setNote]=useState(''),[message,setMessage]=useState<Message|null>(null),[people,setPeople]=useState(refs.people);
+ const [draft,setDraft]=useState(initial),[revision,setRevision]=useState(savedRevision),[dirty,setDirty]=useState(savedRevision===0),[note,setNote]=useState(''),[message,setMessage]=useState<Message|null>(null),[people,setPeople]=useState(refs.people);
  const fields=useRef<Record<string,HTMLInputElement|HTMLTextAreaElement|null>>({});
  const readOnly=initial.status==='retired'||busy;
  const change=(edit:(workflow:AutomationWorkflow)=>void)=>{setDraft(current=>{const next=structuredClone(current);edit(next);return next;});setDirty(true);setMessage(null);};
