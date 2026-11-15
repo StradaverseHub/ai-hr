@@ -5974,10 +5974,38 @@
       "breakpoints": true
     },
     {
+      "idx": 5142,
+      "version": "7",
+      "when": 1793330005442,
+      "tag": "5742_probation_settings_scope",
+      "breakpoints": true
+    },
+    {
       "idx": 5143,
       "version": "7",
       "when": 1793330005443,
       "tag": "5743_automation_email_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 5144,
+      "version": "7",
+      "when": 1793330005444,
+      "tag": "5744_probation_case_at_activation",
+      "breakpoints": true
+    },
+    {
+      "idx": 5145,
+      "version": "7",
+      "when": 1793330005445,
+      "tag": "5745_probation_outcome_override_event",
+      "breakpoints": true
+    },
+    {
+      "idx": 5146,
+      "version": "7",
+      "when": 1793330005446,
+      "tag": "5746_probation_tracker_scale_and_extensions",
       "breakpoints": true
     }
   ]

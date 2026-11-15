@@ -250,7 +250,11 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    // company key follows ADR-0174) and shared email templates.
    '5740_automation_shared_definitions',
    '5741_personnel_postings',
+   '5742_probation_settings_scope',
    '5743_automation_email_templates',
+   '5744_probation_case_at_activation',
+   '5745_probation_outcome_override_event',
+   '5746_probation_tracker_scale_and_extensions',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);

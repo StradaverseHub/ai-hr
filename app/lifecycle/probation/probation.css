@@ -39,3 +39,4 @@
  .v9-workspace.probation .probation-list-table table tbody td{height:auto;min-height:0;overflow-wrap:anywhere}
  .probation .probation-list-table .v9-badge{white-space:normal;max-width:100%}
 }
+.probation-stats a[data-flag=overridden]{border-inline-start-color:var(--chart-4,var(--primary))}

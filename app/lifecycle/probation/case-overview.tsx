@@ -15,8 +15,11 @@ export function CaseOverview({view}:{view:ProbationCaseView}){
  const t=useTranslations('probation'),router=useRouter(),[busy,start]=useTransition(),[kind,setKind]=useState<'followup'|'development'|'extension_recommendation'|'nonconfirmation_recommendation'>('followup'),[note,setNote]=useState(''),[error,setError]=useState('');
  const operations=view.roles.includes('pbp')||view.roles.includes('gbs'),development=view.runtimeEnabled&&(operations||view.roles.includes('lm'));
  const save=()=>{setError('');start(async()=>{const result=await addFollowup({caseId:view.record.id,kind,note});if(!result.ok){setError(result.detail??t('errors.unavailable'));return;}setNote('');router.refresh();});};
- return <main><header className="v9-heading"><div><h1>{view.record.facts.employeeName}</h1><p>{t('title')} · {view.record.facts.employeeCode??'—'} · {t('caseStates.'+view.record.state)}</p></div><Link className="v9-button" href="/lifecycle/probation"><ArrowLeft size={16}/>{t('backTracker')}</Link></header>
+ return <main><header className="v9-heading"><div><h1>{view.record.facts.employeeName}</h1><p>{t('title')} · {view.record.facts.employeeCode??'—'} · {view.startStatus==='waiting_for_start'?t('caseStates.waitingForStart'):view.startStatus==='did_not_join'?t('caseStates.didNotJoin'):t('caseStates.'+view.record.state)}</p></div><Link className="v9-button" href="/lifecycle/probation"><ArrowLeft size={16}/>{t('backTracker')}</Link></header>
   {!view.runtimeEnabled&&<p className="v9-notice">{t(view.sourceMoved?'sourceMoved':'runtimePaused')}</p>}
+  {view.parts.some(part=>part.override&&part.state!=='cancelled')&&<p className="v9-notice v9-warning" role="status"><span className="v9-badge v9-badge-amber">{t('tracker.flags.overridden')}</span> {t('overrideNotice')}</p>}
+  {view.startStatus==='waiting_for_start'&&<p className="v9-notice" role="status">{t('startStatus.waiting',{date:view.record.startOn})}</p>}
+  {view.startStatus==='did_not_join'&&<p className="v9-notice" role="status">{t('startStatus.didNotJoin')}</p>}
   {error&&<p className="v9-notice v9-error" role="alert">{error}</p>}
   <section className="v9-panel"><ProbationFacts view={view}/></section>
   {view.record.facts.gradeId!==view.record.facts.currentGradeId&&<p className="v9-notice v9-warning">{t('gradeChanged')}</p>}

@@ -25,6 +25,63 @@ decision 4). Allocated by the Probation Confirmation build lead for lane B; peer
 5741. The installed ledgers were not read by this session; recheck installed watermarks and peer claims at admission. This
 allocation grants no installation authority.
 
+# Probation tracker at group scale, configurable maximum extensions, declined signature order — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-probation-core-20261116` appends `5746_probation_tracker_scale_and_extensions` at idx
+5146 / when 1793330005446 (assigned by the build coordinator, directly above `5745`). SHA256 `26f406ecb44d03d22e6bbd3f89eede44c8a933f635f533d4f5cbd4ab0efb934b`.
+It gives the probation case access rule one set-based owner, `app.probation_visible_among(cases)` over
+`app.probation_holders_set(employments)` and `app.probation_company_ancestors(companies)`, and re-creates the
+owner-owned `app.probation_case_access` (membership of that set) and `app.probation_holders` (answered from the holder
+set); it adds `app.probation_visible_case_ids()`, the tracker readers `app.probation_tracker_cases()` /
+`app.probation_tracker_page(cases)`, and `app.probation_max_extensions`.
+It re-creates, as `CREATE OR REPLACE` of their 0949 bodies with one comparison each changed, the owner-owned
+`probation_submission_ready`, `probation_part_command`, `probation_record_effect`, `probation_commands`,
+`probation_personnel_intent`, `probation_adjudicate_offline_final` and `probation_config_write_legacy_organisation` so the
+maximum number of extensions is the case's pinned setting (0-2, default 2), and `probation_signing_access`,
+`probation_part_command` and `probation_commands` for the owner's declined-signature order (the Line Manager's recorded
+decline moves the part on; the PBP confirmation no longer gates it). Row security, grants, tables and purpose-owned
+objects are unchanged. 5742 (unapplied) was edited in place to allow the maximum-extensions field; its SHA above is
+updated. The installed ledgers were not read; recheck watermarks and peer claims at admission. No installation authority.
+
+# Probation suggestion-overridden event — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-probation-core-20261116` appends `5745_probation_outcome_override_event` at idx 5145 /
+when 1793330005445 (lane C's reserved slot, directly above `5744`). SHA256 `450ad5d958411186348239940f3f16302bc17f7642a6e2e6bb3a63212a41a3ed`. It adds
+`app.probation_record_override(uuid)` (SECURITY DEFINER, EXECUTE to `ai_hr_app`): in the Line Manager's submitting
+transaction it records one `probation.outcome_overridden` domain_event per submission when the existing
+`data.override` flag is set, with no rater text, for the shared engine's outcomeOverridden trigger. No table, row,
+existing function, grant or purpose-owned object changes. The installed ledgers were not read; recheck watermarks and
+peer claims at admission. No installation authority.
+
+# Probation case at activation and Did not join — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-probation-core-20261116` appends `5744_probation_case_at_activation` at idx 5144 / when
+1793330005444 (lane C's reserved slot, directly above `5742` at when 1793330005442). SHA256 `bade792a24fe3f31bc5c8afc1a40404d8919313711a2a050b1c6083b2095494a`.
+It adds the internal `app.probation_source_from_start` (a future starter's Personnel source reads the assignment that
+takes effect on the start date when none is in effect today; started employments read exactly as before) and
+`app.probation_did_not_join`, and replaces the owner-owned `app.probation_personnel_source_unchecked` (2111),
+`app.probation_issue` and `app.probation_withdraw` (0949): nothing is issued before the start date, and a hire voided,
+ended on or before its start date, or exited before it started closes as withdrawn with `closure` 'did_not_join'
+(ADR `docs/adr/2026-11-15-probation-shared-automation.md`, decision 6). No table, row, grant or purpose-owned object
+changes. The installed ledgers were not read; recheck watermarks and peer claims at admission. No installation authority.
+
+# Probation settings scope: group standard and company overrides — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-probation-core-20261116` (lane C of the Probation Confirmation build, from
+`claude/probation-confirmation-aihr-b81c70` at `faf21b686`) appends `5742_probation_settings_scope` at idx 5142 / when
+1793330005442 on the board block's offset (tag T, idx T − 600, when 1793330004800 + (T − 5100)), directly above
+`5740` (when 1793330005440), the journal's maximum. SHA256 `31a7330425407814c8cba249f8b6a7db1febffe4bc51aec74cd9c23602bc9b31`.
+It creates two new, empty tables (`probation_settings_scope_version`, append-only; `probation_settings_scope_member`,
+whose (tenant_id, company_id) key keeps a company in at most one company setting) with forced row security, owner
+policies, SELECT-only grants to `ai_hr_app` and the ADR-0174 composite company key; adds `app.probation_settings_*`
+SECURITY DEFINER functions (authority, save, retire, refresh, internal resolution); and renames the owner-owned
+`app.probation_config_write` (2111) to `app.probation_config_write_company` behind a new wrapper that refuses a direct
+company settings version once a group standard is published. No existing row is rewritten: the group standard starts
+absent and every company keeps its published version until an administrator publishes one (ADR
+`docs/adr/2026-11-15-probation-shared-automation.md`, decision 3). No purpose-owned object changes. Lane C also holds
+5744/5745 (idx 5144/5145, when 1793330005444/…445) if needed. The installed ledgers were not read by this session;
+recheck installed watermarks and peer claims at admission. This allocation grants no installation authority.
+
 # Shared HR automation definitions — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/probation-confirmation-aihr-b81c70` (from local main, merged with `origin/main` at `94d2f5bbe`) appends

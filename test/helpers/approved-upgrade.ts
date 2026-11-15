@@ -190,10 +190,15 @@ export const APPROVED_UPGRADE_TAIL=[
  // Board 4604dccc: payroll history binds a record to the company of its month (dated history), 15 Nov 2026.
  {idx:5080,when:1793330005380,tag:'5680_payroll_history_dated_company'},
  // Probation reshape onto shared HR automation (ADR 2026-11-15-probation-shared-automation), 16 Nov 2026: shared
- // workflow/routing definitions, Personnel postings and shared email templates. New empty tables and functions only.
+ // workflow/routing definitions, Personnel postings and shared email templates (new empty tables and functions), and
+ // the Probation settings scope, case at activation, override event and tracker-at-scale changes (5742, 5744-5746).
  {idx:5140,when:1793330005440,tag:'5740_automation_shared_definitions'},
  {idx:5141,when:1793330005441,tag:'5741_personnel_postings'},
+ {idx:5142,when:1793330005442,tag:'5742_probation_settings_scope'},
  {idx:5143,when:1793330005443,tag:'5743_automation_email_templates'},
+ {idx:5144,when:1793330005444,tag:'5744_probation_case_at_activation'},
+ {idx:5145,when:1793330005445,tag:'5745_probation_outcome_override_event'},
+ {idx:5146,when:1793330005446,tag:'5746_probation_tracker_scale_and_extensions'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -228,7 +233,11 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5680_payroll_history_dated_company':'664b422a2a2128357932b0e0b036fa69ad731eb6c31aa6c4a8ce2a5b6e080faf',
  '5740_automation_shared_definitions':'72baaa106846be4ede55607235a4555a0a0f38f6f0958183077c9e9f6dca0569',
  '5741_personnel_postings':'bac24f1f803408ee29db5915e69d47a72f981c45b5b6c5fee469831dcb800cb5',
+ '5742_probation_settings_scope':'31a7330425407814c8cba249f8b6a7db1febffe4bc51aec74cd9c23602bc9b31',
  '5743_automation_email_templates':'5b82f328178b8bc5357acb830eceffd89337e13dd563eaec8f931f1f29bce3cd',
+ '5744_probation_case_at_activation':'bade792a24fe3f31bc5c8afc1a40404d8919313711a2a050b1c6083b2095494a',
+ '5745_probation_outcome_override_event':'450ad5d958411186348239940f3f16302bc17f7642a6e2e6bb3a63212a41a3ed',
+ '5746_probation_tracker_scale_and_extensions':'26f406ecb44d03d22e6bbd3f89eede44c8a933f635f533d4f5cbd4ab0efb934b',
  '4800_ai_shared_leave_groups_read':'774dce41ba113549ec5415586d104b8d5b7712934216f2beb4d9aa0e9f00ffc5',
  '4601_last_login_event_index':'868e30d4a2840d4939a46f303ce999b2e041ae3cb6823eb8b712179ccf7d5788',
  '4600_attendance_clock_policy_group_scope':'b30a62bec597f53266232abe569a040a9a421eaa2239eac232d0e44041352be6',
