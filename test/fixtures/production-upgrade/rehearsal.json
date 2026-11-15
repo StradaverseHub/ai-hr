@@ -1,14 +1,14 @@
 {
   "purpose": "Production upgrade rehearsal inputs. Repository and owner-supplied identities only; no host, credential or production data.",
   "baseline": {
-    "installedSource": "1299e6724d7e713a3dc65d53c7c37c6c8eead276",
-    "installedSourceRecord": "Read-only production check 15 Nov 2026: BUILD_ID DclsIg7to3z2BkPmG6SnT, release prod-2026-11-14.1 installed 14 Nov; ledger 850 / 1793330005360 / d3d105e1 read from production and equal to the 1299e6724d journal.",
-    "ledgerEntries": 850,
-    "ledgerWatermark": 1793330005360,
+    "installedSource": "e55138825ac2f27b502ff72dc7be3dfb3533ce76",
+    "installedSourceRecord": "Read-only production check 16 Nov 2026: release prod-2026-11-15.1 (e55138825a) installed 15 Nov; ledger 851 / 1793330005380 / 6412cd24 read from production and equal to the e55138825a journal.",
+    "ledgerEntries": 851,
+    "ledgerWatermark": 1793330005380,
     "ledgerDigestFormat": "sha256 of the ledger rows ordered by id, each 'hash created_at', joined by a single newline, no trailing newline",
-    "expectedLedgerDigest": "d3d105e16de356981c6bea53de72e50ebf27e355e9ca7c0110880ae7c2795893",
-    "populatorSource": "1299e6724d7e713a3dc65d53c7c37c6c8eead276",
-    "populatorSourceReason": "prod-2026-11-14.1 is installed and its journal is exactly the 850-entry ledger.",
+    "expectedLedgerDigest": "6412cd2405704e8f7012fcb6e1667f964f041e7e4f010211656abf3caa1c6d12",
+    "populatorSource": "e55138825ac2f27b502ff72dc7be3dfb3533ce76",
+    "populatorSourceReason": "prod-2026-11-15.1 is installed and its journal is exactly the 851-entry ledger.",
     "productionRoles": [
       "ai_hr_app",
       "ai_hr_architecture_grade_guard",
@@ -36,7 +36,7 @@
       "employments": 4213,
       "payrollBatches": 361,
       "payslips": 21874,
-      "domainEvents": 69411
+      "domainEvents": 69412
     }
   },
   "sizes": {
