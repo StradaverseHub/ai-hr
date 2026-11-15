@@ -502,3 +502,23 @@ Branch `claude/prod-fixes-labels-info-transfer-20261114`, cut from main `9b4f22c
 ### Re-binding for the cross-company Direct Superior fix (15 November 2026)
 
 `claude/info-correction-cross-company-superior-20261115`, cut from main/alpha `1c55f9453` (binding `a097a7ff…`), at `51d5934c0`, lets the Information-Only Correction (screen and Excel import) accept a Direct Superior employed by another company the user can view, after a production KKSB import refused 118 rows whose superiors are CHCE employees. The covered files changed are `messages/*.json` (one reworded import-problem message in each of the six catalogs); the import and correction owners change only which visible employment an Employee ID resolves to. No query, row, field or value read for, or sent to, any provider changes. Under the owner's standing pre-approval of 12 November 2026 ("Once done, release to staging, coordinate with the other sessions. And I approve fully on the rebinding and the AI approval, dont have to wait for my decision") and the owner's instruction in this session (15 November 2026, "i approve, directly fix it"), the 28 approvals carry forward from `a097a7ff…` to the exact fingerprint `83cc60b670cf52ffb3ff41c2dd0edb4fa759596380360a445f39847705ed5cda` over 1594 files; the agent source manifest, regenerated after the re-bind, is `899373fc475950165c2ba28bded80294758e8b0f7cb8eaaa955e9759db9deea7` over 491 files. No provider transform, outbound field, approved purpose or transport changes. Staging only; no production authority.
+
+### Re-binding for board 4604dccc revision 2, earlier Group Join Date corrections (15 November 2026)
+
+`claude/fb-4604dccc-dates-r2`, cut from main/alpha `e55138825` (binding `83cc60b6…`), at `285434e08`, lets the
+Information-Only Correction calendar follow the entered Group Join Date, aligns the dated records on a Group Join Date
+Correction and its Roll Back, orders a Group Join Date Correction first in the Movement import, and names the Group Join
+Date in movement refusals. The changed files (core/movement.ts, core/movement-import.ts, core/movement-history.ts,
+core/hire-correction.ts, core/information-correction.ts, lib/movement-import-issues.ts) are in the provider-data scope
+only through the import graph. No provider transform, outbound field, purpose or transport changed. The 28 approvals
+were carried forward to `5260028f…` and the agent manifest regenerated (`1226e711…`), under the owner's
+standing pre-approval for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding for boards 4604dccc revision 3 and 511aa74a, combined (16 November 2026)
+
+`claude/board-4604dccc-511aa74a-combined`, cut from main/alpha `94d2f5bbe` (binding `5260028f…`), merges
+`claude/fb-4604dccc-r3` (payroll history no longer blocks Information-Only Correction, Movement corrections or join-date
+movements; migration 5690) and `claude/fb-511aa74a-rehired` (the Rehired movement; migration 5695). The changed files
+are in the provider-data scope only through the import graph. No provider transform, outbound field, purpose or
+transport changed. The 28 approvals were carried forward to `c62cade8…` and the agent manifest regenerated
+(`d3afe9c7…`), under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.

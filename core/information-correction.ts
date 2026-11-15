@@ -18,13 +18,14 @@ import {withAccessDisplayRead} from './access-configuration-lock';
 import {allocationCompanyCode} from './cost-allocation-import';
 import {labelCompanyIdsSql,labelUsableByCompany,visibleLabelIdsCondition} from './system-labels';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {payrollPreservationRefusal} from './closed-payroll-correction-authority';
 import {alignHistoryStartTx,MovementHistoryError,DATED_ASSIGNMENT_FIELDS,planDatedCorrection,writeDatedCorrectionTx,closedPayrollInSpanTx,companyRecordOnTx,type DatedAssignmentField,type DatedCorrectionPlan} from './movement-history';
 import {recordedMovementChangesTx,type RecordedMovementChange} from './movement';
 import {closedPeriodsTx,overlapsClosedPeriod} from './comp';
 import {contractPeriodIssues} from '../lib/contract-period';
 import {isCalendarDate} from '../lib/calendar-date';
 import {PERSONNEL_EMPLOYMENT_TYPES} from '../lib/personnel-choice-vocabulary';
-import {INFORMATION_FIELDS,INFORMATION_ALL_FIELDS,INFORMATION_ASSIGNMENT_FIELDS,INFORMATION_LABEL_FIELDS,INFORMATION_PERIOD_FIELDS,INFORMATION_PERIOD_PAIRS,INFORMATION_FIELD_CAPTIONS,type InformationField,type InformationOptions,type InformationChanges,type InformationWarning,type InformationValues,type InformationPreview,type InformationConflict,type InformationTimelineRecord} from '../lib/information-correction';
+import {INFORMATION_FIELDS,INFORMATION_SCREEN_FIELDS,INFORMATION_ALL_FIELDS,INFORMATION_ASSIGNMENT_FIELDS,INFORMATION_LABEL_FIELDS,INFORMATION_PERIOD_FIELDS,INFORMATION_PERIOD_PAIRS,INFORMATION_FIELD_CAPTIONS,type InformationField,type InformationOptions,type InformationChanges,type InformationWarning,type InformationValues,type InformationPreview,type InformationConflict,type InformationTimelineRecord} from '../lib/information-correction';
 const correctionActor=alias(person,'correction_actor'),correctionAccount=alias(appUser,'correction_account');
 export const INFORMATION_CORRECTED_EVENT='employment.information.corrected';
 export class InformationCorrectionError extends Error {constructor(message:string){super(message);this.name='InformationCorrectionError';}}
@@ -152,8 +153,8 @@ async function validateTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof s
  // Board 4604dccc — the dated fields' existing values are the record on the Effective Date, not today's.
  const before={...values(s),...at},after={...before};
  // The single-employee correction keeps its five facts; the further details are corrected through the template.
- const allowed:readonly InformationField[]=extended?INFORMATION_ALL_FIELDS:INFORMATION_FIELDS;
- if(!extended&&Object.keys(changes).some(field=>(INFORMATION_ALL_FIELDS as readonly string[]).includes(field)&&!(INFORMATION_FIELDS as readonly string[]).includes(field)))fail('Use the Information-Only Correction template to correct these details.');
+ const allowed:readonly InformationField[]=extended?INFORMATION_ALL_FIELDS:INFORMATION_SCREEN_FIELDS;
+ if(!extended&&Object.keys(changes).some(field=>(INFORMATION_ALL_FIELDS as readonly string[]).includes(field)&&!(INFORMATION_SCREEN_FIELDS as readonly string[]).includes(field)))fail('Use the Information-Only Correction template to correct these details.');
  for(const field of allowed){const value=changes[field];if(value!==undefined){if(typeof value!=='string'||!value.trim())fail('Empty correction values cannot clear existing information.');after[field]=value.trim();}}
  for(const key of ['hiredOn','joinDate','contractEndDate','internshipEndDate'] as const)if(after[key]&&!isCalendarDate(after[key]!))fail('Use a valid date in YYYY-MM-DD format.');
  if(after.hiredOn!>todayInKualaLumpur()||(after.joinDate&&after.joinDate>todayInKualaLumpur()))fail('Joining dates cannot be in the future.');
@@ -295,9 +296,10 @@ async function previewTx(tx:Tx,ctx:SessionContext,input:PreviewInput,extended=fa
  if(effectiveOn>today)fail('Effective Date cannot be in the future.');
  const v=await validateTx(tx,ctx,state,input.changes,extended,await valuesAtTx(tx,ctx,state,effectiveOn));
  const earliest=v.after.hiredOn!;
- if(effectiveOn<earliest)fail(`Effective Date cannot be before ${earliest}, the Group Join Date, when the employee's history starts.`);
+ if(effectiveOn<earliest)fail(`Effective Date cannot be before ${earliest}, the Group Join Date, when the employee's history starts. If the employee joined earlier, correct the Group Join Date in this same correction.`);
  const backdated=effectiveOn<today;
- if(INFORMATION_ALL_FIELDS.some(f=>v.before[f]!==v.after[f])){const [history]=await tx.execute<{ready:boolean}>(sql`select app.information_payroll_ready(${state.emp.id}::uuid) as ready`);if(!history?.ready)fail('Original historical information cannot be verified after intervening changes. Ask the payroll administrator to reconcile the historical document evidence before correcting this record.');}
+ // Board 4604dccc r3 — payroll history no longer blocks a correction: app.preserve_information_payroll (migration 5690)
+ // fixes each existing payslip's details from the recorded history before the write, and closed payroll is never changed.
  const companyRows=tx.select({id:company.id,label:company.companyLabel,registration:company.registrationNo,name:company.legalName,country:company.country,currency:company.currency,archivedAt:company.archivedAt}).from(company).where(inArray(company.id,[v.before.companyId!,v.after.companyId!])).orderBy(asc(company.id));
  const companyRefs=write?await companyRows.for('share'):await companyRows;
  const gradeIds=[...new Set([v.before.gradeId,v.after.gradeId].filter((id):id is string=>!!id))];
@@ -433,7 +435,9 @@ export async function correctInformationTx(tx:Tx,ctx:SessionContext,input:{emplo
 }
 async function applyTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stateTx>>,p:InformationPreview,dated:{labelsNotCurrent:string[];superiorUntil:string|null},input:{method:'manual'|'excel';batchId?:string;filename?:string}){
  // The preimage protects every existing persisted output before any master information changes.
- const [preserved]=await tx.execute<{count:number}>(sql`select app.preserve_information_payroll(${s.emp.id}::uuid) as count`);
+ let preserved:{count:number}|undefined;
+ try{[preserved]=await tx.execute<{count:number}>(sql`select app.preserve_information_payroll(${s.emp.id}::uuid) as count`);}
+ catch(error){const refusal=payrollPreservationRefusal(error);if(refusal)fail(refusal);throw error;}
  if(!preserved)fail('Historical payroll metadata could not be protected.');
  const effectiveOn=p.effectiveOn;
  // Board 154511c4 — the dated records start on the (corrected) Group Join Date. Aligned first (board 4604dccc), so
@@ -486,7 +490,7 @@ async function applyTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stat
   ...(effectiveOn<todayInKualaLumpur()?{dated:true}:{}),
   ...(replaced.length?{assignment:replaced}:{}),...(datedWrite?.inserted.length?{inserted:datedWrite.inserted}:{}),
   ...(aligned?{alignedStart:p.alignStart,aligned:aligned.aligned}:{}),...(superiorLine?{reportingLine:superiorLine}:{}),
-  employeeCode:p.employeeCode,before:p.before,after:p.after,beforeLabels:p.beforeLabels,afterLabels:p.afterLabels,fields:p.changed,reason:p.reason,effectiveOn,nextBoundary,...(p.until?{until:p.until}:{}),
+  employeeCode:p.employeeCode,employeeName:p.name,before:p.before,after:p.after,beforeLabels:p.beforeLabels,afterLabels:p.afterLabels,fields:p.changed,reason:p.reason,effectiveOn,nextBoundary,...(p.until?{until:p.until}:{}),
   ...(dated.labelsNotCurrent.length?{labelsNotCurrent:dated.labelsNotCurrent}:{}),...(p.closedPayrollPeriods?.length?{closedPayrollPeriods:p.closedPayrollPeriods,closedPayrollAcknowledged:true}:{}),
   method:input.method,batchId:input.batchId??null,filename:input.filename??null,snapshotCount:preserved.count,assignmentVersionId,previousAssignmentId:s.current.id}});
  const [at]=await tx.select({companyId:assignment.companyId}).from(assignment).where(and(eq(assignment.employmentId,s.emp.id),isNull(assignment.supersededAt),sql`${assignment.validFrom}<=${effectiveOn}::date`,sql`(${assignment.validTo} is null or ${assignment.validTo}>${effectiveOn}::date)`)).orderBy(desc(assignment.validFrom)).limit(1);

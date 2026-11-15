@@ -6,7 +6,7 @@ import {contractDateAuthorityTx,withAcceptedContractRecordIntentTx,withContractM
 import {setCompensation} from './comp';
 import {setEmploymentPayComponent,endEmploymentPayComponent,tryLockPayrollHistoryReadTx} from '../packs/payroll/service';
 import { hasExitDateAuthorityTx } from './exit-date-authority';
-import { hasClosedPayrollCorrectionAuthorityTx } from './closed-payroll-correction-authority';
+import { hasClosedPayrollCorrectionAuthorityTx, MovementClosedPayrollAcknowledgementError, payrollPreservationRefusal } from './closed-payroll-correction-authority';
 import {assertCostAllocationTransferTx} from './employment-cost-allocations';
 import {lockAccessAdministratorSetTx,lockAccessConfigurationTx,lockProfileValueWritesTx} from './access-configuration-lock';
 import {joinWorkforceBarrierTx,lockEmploymentLeaveDependenciesTx,lockOrgReportingTx,lockPersonValueWritesTx} from './workforce-lock-mode';
@@ -3574,32 +3574,26 @@ export async function setEmploymentInfo(
       set.finalConfirmationDate = derivedFinal;
     }
 
-    // c063eea9 (2) — A JOIN DATE CANNOT MOVE ACROSS ISSUED PAYSLIPS. The two date movements are the only
-    // writers of hired_on / join_date after creation, and they are TAGGED, so the closed-payroll gate below
-    // (untagged saves only) never asked them anything: a Group Join Date Correction could move the first
-    // day of employment to a date inside a month payroll had already paid, leaving payslips computed for an
-    // employment period the record no longer says existed (or missing days it now says did). Refused with
-    // the periods named, for any payslip — draft, processed or closed — between the old and the new date.
-    // A Group Join Date Correction that carries the Join Date with it (the synchronised case above) moves
-    // the same days, so asking about hired_on covers both.
-    if (movement?.type === 'groupJoinDateCorrection' && set.hiredOn !== undefined && set.hiredOn !== before.hiredOn) {
-      const periods = await payslipPeriodsBetweenTx(tx, p.employmentId, before.hiredOn, set.hiredOn as string);
-      if (periods.length) {
-        throw new Error(
-          `Payslips already exist between ${before.hiredOn} and ${set.hiredOn} (payroll ${periods.join(', ')}), so the Group Join Date cannot be moved across them. Issued payslips are never changed by a correction, so the date can only move once no payslip covers the days in between.`,
-        );
-      }
-    }
+    // c063eea9 (2), revised by board 4604dccc r3 — a join date moving across payslips. The two date movements are the
+    // only writers of hired_on / join_date after creation, and they are TAGGED, so the closed-payroll gate below
+    // (untagged saves only) never asks them. Payroll history no longer refuses them: a payroll that is not closed is
+    // flagged for the normal recalculation step (markPayrollRunsForEmploymentChangeTx below, for hired_on); a CLOSED
+    // payroll in between needs HR's confirmation that it stays as paid (Movement's correction authority, entered only
+    // after that confirmation), and each payslip's details are fixed first (app.preserve_information_payroll, 5690).
+    // Closed payroll rows are never changed.
+    const crossing: [string, string][] = [];
+    if (movement?.type === 'groupJoinDateCorrection' && set.hiredOn !== undefined && set.hiredOn !== before.hiredOn) crossing.push([before.hiredOn, set.hiredOn as string]);
     if (movement?.type === 'joinDateChange' && 'joinDate' in set) {
       const oldJoin = before.joinDate ?? before.hiredOn;
       const newJoin = set.joinDate as string | null;
-      if (newJoin && newJoin !== oldJoin) {
-        const periods = await payslipPeriodsBetweenTx(tx, p.employmentId, oldJoin, newJoin);
-        if (periods.length) {
-          throw new Error(
-            `Payslips already exist between ${oldJoin} and ${newJoin} (payroll ${periods.join(', ')}), so the Join Date cannot be moved across them. Issued payslips are never changed by a correction, so the date can only move once no payslip covers the days in between.`,
-          );
-        }
+      if (newJoin && newJoin !== oldJoin) crossing.push([oldJoin, newJoin]);
+    }
+    if (crossing.length) {
+      const closed = [...new Set((await Promise.all(crossing.map(([from, to]) => payslipPeriodsBetweenTx(tx, p.employmentId, from, to, 'closed')))).flat())].sort();
+      if (closed.length) {
+        if (!hasClosedPayrollCorrectionAuthorityTx(tx, p.employmentId)) throw new MovementClosedPayrollAcknowledgementError(closed);
+        try { await tx.execute(sql`select app.preserve_information_payroll(${p.employmentId}::uuid)`); }
+        catch (error) { const refusal = payrollPreservationRefusal(error); if (refusal) throw new Error(refusal); throw error; }
       }
     }
 

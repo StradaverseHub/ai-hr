@@ -779,7 +779,8 @@
         "dateToLabel": "{name} hingga",
         "choicePending": "Mengemas kini senarai…",
         "choiceFailed": "Senarai tidak dapat dikemas kini. Cuba lagi."
-      }
+      },
+      "rehiredAs": "Diambil semula sebagai {code}"
     },
     "switcher": {
       "ariaLabel": "Cari pekerja",
@@ -1743,7 +1744,8 @@
           "employmentTypeChange": "Perubahan Jenis Pekerjaan",
           "gradeChange": "Perubahan Gred",
           "joinDateChange": "Perubahan Tarikh Menyertai",
-          "groupJoinDateCorrection": "Pembetulan Tarikh Menyertai Kumpulan"
+          "groupJoinDateCorrection": "Pembetulan Tarikh Menyertai Kumpulan",
+          "rehire": "Diambil Semula"
         },
         "form": {
           "eventType": "Jenis Acara",
@@ -1793,6 +1795,7 @@
           "closedPayrollTitle": "Gaji bagi {periods} telah ditutup.",
           "closedPayrollBody": "Pembetulan ini mengemas kini rekod pekerja dan pemprosesan akan datang. Gaji yang telah ditutup, slip gaji yang telah dikeluarkan dan penyerahan berkanun mengekalkan angka muktamad dan tidak akan dikira semula. Jika sesuatu amaun perlu diselaraskan, gunakan proses pembetulan gaji. Gaji yang dibetulkan berkuat kuasa mulai bulan pertama selepas gaji yang telah ditutup.",
           "closedPayrollAcknowledge": "Saya faham bahawa gaji yang telah ditutup tidak akan berubah.",
+          "dateClosedPayrollOptional": "Jika tarikh ini merentasi bulan gaji yang telah ditutup, tandakan di bawah. Gaji yang ditutup, slip gaji dan penyerahan berkanun kekal tepat seperti yang dibayar.",
           "mustChange": "Wajib diubah",
           "endDateRequiredContract": "Diperlukan kerana Jenis Pekerja baharu ialah Kontrak. Kontrak bermula pada tarikh berkuat kuasa dan mesti tamat selepasnya.",
           "endDateRequiredIntern": "Diperlukan kerana Jenis Pekerja baharu ialah Pelatih. Latihan mesti tamat selepas tarikh berkuat kuasa.",
@@ -1911,7 +1914,75 @@
         "payrollClosedBadge": "Gaji ditutup: {periods}",
         "informationCorrected": "Maklumat dibetulkan",
         "informationNeedsReview": "Pembetulan perlu disemak",
-        "historyBadge": "Sejarah"
+        "historyBadge": "Sejarah",
+        "rehire": {
+          "intro": "Diambil Semula memulakan tempoh pekerjaan baharu untuk {name}. Tempoh sebelumnya ({code}, {start} hingga {end}), peletakan jawatan, slip gaji dan Borang EA kekal seperti sedia ada. Butiran peribadi, No. KP, nombor KWSP/PERKESO/cukai, butiran bank dan log masuk dibawa ke hadapan.",
+          "effectiveDate": "Tarikh Berkuat Kuasa Diambil Semula",
+          "effectiveDateHint": "Selepas {date}, hari bekerja terakhir",
+          "employeeCode": "ID Pekerja Baharu",
+          "employeeCodeHint": "Dicadangkan daripada penomboran syarikat; anda boleh mengubahnya",
+          "employeeCodeAutoHint": "Dikeluarkan daripada penomboran syarikat apabila anda menyimpan",
+          "employeeCodeManualHint": "Syarikat ini tiada penomboran ID Pekerja. Masukkan ID Pekerja baharu.",
+          "groupJoinDate": "Tarikh Sertai Kumpulan",
+          "groupJoinDateHint": "Lalai kepada tarikh Diambil Semula. Tetapkan tarikh lebih awal hanya jika perkhidmatan bersambung",
+          "none": "Tiada",
+          "selectPlaceholder": "Pilih…",
+          "cancel": "Batal",
+          "save": "Simpan Diambil Semula",
+          "unavailable": "Diambil Semula hanya boleh direkodkan untuk pekerja yang Meletak Jawatan tanpa pekerjaan semasa.",
+          "previousId": "Pekerja kembali · ID terdahulu {code}",
+          "rollBack": "Batalkan",
+          "rollBackTitle": "Batalkan peristiwa Diambil Semula ini?",
+          "rollBackDescription": "Tempoh pekerjaan baharu dan ID Pekerjanya akan dibuang. Tempoh sebelumnya kekal Meletak Jawatan dan tidak berubah. Ini dibenarkan hanya selagi tempoh baharu belum mempunyai rekod gaji, kehadiran, cuti atau permohonan.",
+          "rolledBack": "Peristiwa Diambil Semula dibatalkan. Tempoh sebelumnya tidak berubah.",
+          "error": {
+            "permission": "Anda tiada kebenaran untuk merekod peristiwa Diambil Semula bagi pekerja ini.",
+            "typeInactive": "Jenis peristiwa Diambil Semula dimatikan dalam Tetapan Pergerakan.",
+            "notResigned": "Diambil Semula hanya boleh direkodkan untuk pekerja berstatus Meletak Jawatan.",
+            "blacklisted": "Pekerja ini disenarai hitam. Kosongkan senarai hitam sebelum merekod Diambil Semula.",
+            "currentEmployment": "Individu ini sudah mempunyai pekerjaan semasa atau akan datang.",
+            "alreadyRehired": "Tempoh pekerjaan ini telah diambil semula sebagai {code}. Rekod sebarang peristiwa seterusnya pada tempoh itu.",
+            "dateInvalid": "Masukkan Tarikh Berkuat Kuasa Diambil Semula yang sah.",
+            "dateNotAfterEnd": "Tarikh Berkuat Kuasa Diambil Semula mesti selepas {date}.",
+            "groupJoinDateInvalid": "Tarikh Sertai Kumpulan mesti tarikh yang sah pada atau sebelum Tarikh Berkuat Kuasa Diambil Semula.",
+            "companyUnavailable": "Pilih syarikat, unit perniagaan, jawatan, gred dan penyelia langsung yang anda tadbir.",
+            "departmentRequired": "Pilih jabatan.",
+            "employmentTypeInvalid": "Pilih jenis pekerjaan.",
+            "salaryInvalid": "Masukkan gaji pokok sifar atau lebih.",
+            "employeeCodeRequired": "Masukkan ID Pekerja baharu.",
+            "employeeCodeNotAllowed": "Penomboran ID Pekerja syarikat ini tidak membenarkan ID Pekerja manual.",
+            "employeeCodeInvalid": "ID Pekerja hanya boleh mengandungi huruf, nombor dan sengkang, sehingga 30 aksara.",
+            "employeeCodeTaken": "ID Pekerja {code} sudah digunakan.",
+            "managerInvalid": "Pilih penyelia langsung yang lain.",
+            "reasonRequired": "Masukkan sebab pembatalan.",
+            "rollbackUnavailable": "Tempoh pekerjaan ini tidak dimulakan oleh peristiwa Diambil Semula.",
+            "rollbackBlocked": "Peristiwa Diambil Semula ini tidak boleh dibatalkan kerana tempoh baharu sudah mempunyai {blockers}."
+          },
+          "blocker": {
+            "payroll": "rekod gaji",
+            "attendance": "rekod kehadiran",
+            "leave": "cuti yang diambil",
+            "request": "permohonan",
+            "lifecycle": "rekod keluar",
+            "movement": "pergerakan atau perubahan gaji kemudian",
+            "reports": "pekerja yang melapor kepadanya",
+            "other": "aktiviti lain yang direkodkan"
+          }
+        },
+        "periods": {
+          "title": "Tempoh Pekerjaan",
+          "period": "Tempoh",
+          "employeeId": "ID Pekerja",
+          "company": "Syarikat",
+          "dates": "Tarikh",
+          "status": "Status",
+          "current": "Semasa",
+          "previous": "Terdahulu",
+          "range": "{start} hingga {end}",
+          "onwards": "{start} dan seterusnya",
+          "rehiredAs": "Diambil semula sebagai {code}",
+          "rehiredFrom": "Diambil semula daripada {code}"
+        }
       },
       "salaryCurrency": "Mata wang",
       "emergency": {
@@ -2379,7 +2450,7 @@
           "preview_stale_revalidate": "Pekerja, pilihan atau data rujukan berubah. Semak urutan dipilih semula.",
           "movement_import_timeout": "Semakan melebihi had masa. Bahagikan fail dan cuba semula.",
           "movement_has_no_changes": "Peristiwa ini tidak mengubah pekerja.",
-          "event_before_hire": "Peristiwa biasa tidak boleh mendahului Tarikh Menyertai Kumpulan.",
+          "event_before_hire": "Tarikh ini sebelum Tarikh Sertai Kumpulan pekerja (%date%). Jika pekerja menyertai lebih awal, betulkan Tarikh Sertai Kumpulan dahulu (baris Pembetulan Tarikh Sertai Kumpulan dalam fail ini dikira), atau gunakan tarikh yang lebih lewat.",
           "event_after_exit": "Peristiwa biasa tidak boleh selepas tarikh tamat pekerjaan direkodkan.",
           "same_date_conflicting_changes": "Dua peristiwa dipilih mengubah medan sama pada tarikh sama. Selesaikan konflik dahulu.",
           "duplicate_event_in_sequence": "Urutan dipilih mengandungi peristiwa berulang.",
@@ -2460,7 +2531,7 @@
           "movement_already_in_company": "Pekerja sudah berada dalam syarikat ini pada tarikh ini.",
           "movement_label_other_company": "Nilai ini tidak boleh digunakan dalam syarikat pekerja pada tarikh ini. Pilih nilai yang tersedia untuk syarikat itu",
           "movement_backdated_reason_required": "Pergerakan ini bertarikh sebelum pergerakan kemudian. Masukkan Catatan yang menerangkan sebab ia disisipkan.",
-          "movement_before_join_date": "Tarikh ini sebelum Tarikh Sertai Kumpulan pekerja. Betulkan tarikh sertai dahulu, atau gunakan tarikh yang lebih lewat.",
+          "movement_before_join_date": "Tarikh ini sebelum Tarikh Sertai Kumpulan pekerja (%date%). Jika pekerja menyertai lebih awal, betulkan Tarikh Sertai Kumpulan dahulu (baris Pembetulan Tarikh Sertai Kumpulan dalam fail ini dikira), atau gunakan tarikh yang lebih lewat.",
           "movement_history_fields": "Sejarah hanya boleh direkodkan untuk Syarikat, Jabatan, Jawatan, Unit Perniagaan dan Lokasi Kerja, dengan nilai Sebelum bagi setiap satu.",
           "movement_history_before_required": "Masukkan nilai Sebelum bagi setiap medan yang ditetapkan oleh baris sejarah ini.",
           "movement_history_future": "Sejarah hanya boleh direkodkan untuk tarikh sehingga hari ini.",
@@ -3545,6 +3616,8 @@
       "effectiveTitle": "Bilakah pembetulan ini terpakai?",
       "effectiveDate": "Tarikh Berkuat Kuasa",
       "effectiveDateHint": "Sebarang tarikh dari {start} hingga hari ini ({today}). Lalai ialah hari ini.",
+      "effectiveDateFollowsJoin": "Tarikh terawal: {start}, Tarikh Sertai Kumpulan yang dimasukkan di bawah.",
+      "historyClosedPayroll": "Gaji yang ditutup kekal tidak berubah: {periods}.",
       "effectiveDateJoin": "Memilih {start}, Tarikh Sertai Kumpulan, membetulkan butiran pengambilan asal pekerja. Syarikat, Jenis Pekerjaan, Unit Perniagaan, Jabatan, Jawatan, label organisasi dan Penyelia Langsung terpakai dari Tarikh Berkuat Kuasa hingga perubahan tercatat seterusnya.",
       "timeline": {
         "title": "Rekod mengikut susunan Tarikh Berkuat Kuasa",

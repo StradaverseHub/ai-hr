@@ -170,6 +170,8 @@ type RlRow = typeof reportingLine.$inferSelect;
 
 const INFORMATION_CORRECTED = 'employment.information.corrected';
 const INFORMATION_BOUNDARY_REAPPLIED = 'employment.information.boundary.reapplied';
+// Board 4604dccc r2 — a Group Join Date Correction moved the start of the dated records (core/movement-history.ts).
+const HISTORY_START_ALIGNED = 'employment.history.start.aligned';
 /** The event types that create (or re-create) a version this module walks. */
 const LEDGER_TYPES = [
   'employment.hired',
@@ -182,6 +184,7 @@ const LEDGER_TYPES = [
   // hire value through it for the fields it did not set, and stops for the fields it set.
   INFORMATION_CORRECTED,
   INFORMATION_BOUNDARY_REAPPLIED,
+  HISTORY_START_ALIGNED,
 ];
 
 
@@ -342,7 +345,9 @@ async function loadPlanTx(tx: Tx, tenantId: string, employmentId: string): Promi
   // Board 4604dccc — a dated information correction re-inserts the versions it carries a value through; those
   // replacements lead back to the record that created them, exactly like a hire correction's.
   const information = events.filter((e) => e.eventType === INFORMATION_CORRECTED);
-  const origin = originMapOf([...corrections, ...information].map((e) => e.payload));
+  // Board 4604dccc r2 — rows re-inserted when a Group Join Date Correction aligned the dated records lead back the same way.
+  const aligned = events.filter((e) => e.eventType === HISTORY_START_ALIGNED);
+  const origin = originMapOf([...corrections, ...information, ...aligned].map((e) => e.payload));
   const creatorOf = new Map<string, LedgerEvent>();
   for (const e of information) {
     const p = e.payload ?? {};

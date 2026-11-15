@@ -19,6 +19,8 @@ export function movementImportIssueText(issues:string|readonly string[],resolve:
  return parts.map(part=>{
   const [code,...detail]=part.split(':'),translated=resolve('people.import.movement.issues.'+code,'');
   // A message that names a date (e.g. the record that blocks a backdated change) carries it as the detail.
+  // Board 4604dccc r2 — a row recorded before its code carried the date drops the bracketed date rather than showing "()".
+  if(translated&&translated.includes('%date%')&&!detail.join(':'))return translated.replace(/\s*[(（]%date%[)）]/g,'').split('%date%').join('');
   if(translated&&translated.includes('%date%'))return translated.split('%date%').join(movementIssueDate(detail.join(':')));
   if(translated&&translated.includes('%detail%'))return translated.split('%detail%').join(detail.join(':'));
   return translated?translated+(detail.length?' · '+movementImportFieldLabel(detail.join(':'),resolve):''):resolve('people.import.movement.v2.refused','This change could not be applied. Correct the highlighted field and check the complete sequence again.')+(detail.length?' · '+movementImportFieldLabel(detail[0],resolve):'');

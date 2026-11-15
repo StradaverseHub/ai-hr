@@ -55,7 +55,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
  const withoutImportMarker=(rows:Record<string,unknown>)=>Object.fromEntries(Object.entries(rows).map(([table,list])=>[table,
   (list as {row:Record<string,unknown>}[]).map(({row})=>{
    const rest={...row};
-   for(const column of ['import_pending_attempt_id',...(table==='company'?['leave_team_minimum_present']:[])]){
+   for(const column of ['import_pending_attempt_id',...(table==='company'?['leave_team_minimum_present']:[]),...(table==='employment'?['rehired_from_employment_id']:[])]){
     if(!(column in rest))continue;
     expect(rest[column],table+'.'+column+' on a retained row').toBeNull();
     delete rest[column];
@@ -246,6 +246,10 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5660_pay_component_bonus_epf_bonus_2012',
    // Board 4604dccc (15 November 2026): payroll history binds a record to the company of its month.
    '5680_payroll_history_dated_company',
+   // Board 4604dccc r3 (15 November 2026): payslip snapshots from recorded history.
+   '5690_information_payslip_snapshot_from_history',
+   // Board 511aa74a (15 November 2026): the employment period link of a Rehired event.
+   '5695_employment_rehire_link',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -296,6 +300,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.bulk_job_input_shape_valid(jsonb)','app.bulk_job_lease_capability(uuid,uuid,text)','app.bulk_job_seal_verify(uuid,text)',
    'app.bulk_job_step_digest(text,integer,jsonb,text,jsonb,text)','app.bulk_job_value_digest(jsonb)','app.domain_event_chain_arm()',
    'app.domain_event_chain_seal_now()','app.employee_import_revert_release(uuid,boolean)','app.employment_void_reference_blockers(uuid[])',
+   // Board 511aa74a (5695): the rehire link guard is a trigger function, owner only.
+   'app.employment_rehire_link_guard()',
    'app.import_discard_batch(uuid,uuid,uuid,text,integer)','app.import_marker_visible(uuid)','app.import_settle(uuid,uuid,integer)',
    'app.label_import_marker_visible(uuid)','app.leave_ledger_stage_stamp()','app.movement_revert_capture_never_commits()',
    'app.movement_revert_capture_row()','app.notification_event_processing_enqueue()','app.org_structure_statement_lock()',
@@ -344,6 +350,9 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.bulk_job_worker_ready(text)','app.bulk_job_worker_update(uuid,jsonb)','app.contract_renewal_open(uuid)',
    'app.delegated_approval_subjects(uuid[],text,text)','app.domain_event_chain_arm()','app.domain_event_chain_flush(uuid)',
    'app.domain_event_chain_seal_now()','app.domain_event_chain_sealing()','app.employee_import_revert_release(uuid,boolean)',
+   // Board 511aa74a (5695): the rehire link guard, its Roll Back writer and blockers, and the person-state count.
+   'app.employment_rehire_link_guard()','app.employment_rehire_person_state(uuid,date)','app.employment_rehire_rollback(uuid,text)',
+   'app.employment_rehire_rollback_blockers(uuid)',
    'app.employment_void_reference_blockers(uuid[])','app.home_leave_presentation_index(text)','app.home_own_clock_day(uuid,date,date)',
    'app.home_own_schedule_range(uuid,date,date)','app.import_activation_conflicts(uuid)','app.import_discard_batch(uuid,uuid,uuid,text,integer)',
    'app.import_hidden_attempt_ids()','app.import_log_actor_facts(text,uuid[])','app.import_marker_released(uuid)',

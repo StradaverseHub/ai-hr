@@ -240,6 +240,8 @@ export async function payslipPeriodsBetweenTx(
   employmentId: string,
   oldDate: string,
   newDate: string,
+  // Board 4604dccc r3 — 'closed' lists only closed payroll (the months HR confirms stay as paid).
+  only?: 'closed',
 ): Promise<string[]> {
   if (oldDate === newDate) return [];
   const lo = oldDate < newDate ? oldDate : newDate;
@@ -248,7 +250,7 @@ export async function payslipPeriodsBetweenTx(
     .select({ period: payrollBatch.payPeriod, coverageFrom: payslip.coverageFrom, coverageTo: payslip.coverageTo })
     .from(payslip)
     .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
-    .where(eq(payslip.employmentId, employmentId));
+    .where(only === 'closed' ? and(eq(payslip.employmentId, employmentId), eq(payrollBatch.status, 'closed')) : eq(payslip.employmentId, employmentId));
   const hit = new Set<string>();
   for (const r of rows) {
     const monthOverlaps = `${r.period}-01` < hi && lo < nextMonthStart(r.period);

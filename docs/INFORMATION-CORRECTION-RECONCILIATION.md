@@ -1,5 +1,9 @@
 # Original metadata reconciliation
 
+Since board 4604dccc revision 3 (migration 5690, ADR 2026-11-16 payslip snapshots from recorded history) this is no
+longer a prerequisite: a correction fixes each payslip's details from the recorded history itself. Use this tool only to
+record independently verified originals for payslips that have no snapshot yet; it never overwrites one.
+
 Use this only when Information-Only Correction refuses a legacy employee because changes after payroll
 finalization make the original display information uncertain. Never copy today's master values into an
 old document snapshot. Retained original documents or independently verified original HR records must

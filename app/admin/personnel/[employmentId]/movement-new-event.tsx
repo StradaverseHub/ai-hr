@@ -31,6 +31,7 @@ import {MOVEMENT_FORM_IDS, movementFormFields} from '@/lib/movement-form-contrac
 import {isComparisonKind} from '@/core/movement-kinds';
 import {MOVEMENT_PENDING_INPUT_FIELDS,type MovementPendingFormValues} from '@/lib/movement-pending-input';
 import {MOVEMENT_DOCUMENT_MIME_TYPES,defaultMovementFieldRule,type MovementFieldRule,type MovementRuleField} from '@/lib/movement-field-rules';
+import {RehireEventForm,type RehireFormProps} from './rehire-form';
 const movementField=(name:keyof typeof MOVEMENT_FORM_IDS)=>MOVEMENT_FORM_IDS[name];
 export type MovementOption = { id: string; name: string };
 /** b7b22514 — a Direct Superior candidate, carrying the company that decides whether an Entity Transfer
@@ -170,6 +171,7 @@ export function MovementNewEvent({
   cancelHref,
   pageContext,
   edit,
+  rehire,
 }: {
   employmentId: string;
   today: string;
@@ -222,6 +224,9 @@ export function MovementNewEvent({
   cancelHref: string;
   pageContext?:MovementPageContext;
   edit?: MovementEditTarget;
+  /** Board 511aa74a — present only when this employee may be rehired (Resigned, nothing current). The
+   *  Rehired type then renders its own form (a new employment, core/rehire.ts), never the movement writer. */
+  rehire?: Omit<RehireFormProps, 'kindCode'>;
 }) {
   const t = useTranslations('people.detail.movement');
   const tPay = useTranslations('people.detail');
@@ -289,6 +294,7 @@ export function MovementNewEvent({
       case 'employmentTypeChange': return t('eventType.employmentTypeChange');
       case 'joinDateChange': return t('eventType.joinDateChange');
       case 'groupJoinDateCorrection': return t('eventType.groupJoinDateCorrection');
+      case 'rehire': return t('eventType.rehire');
       default: return k.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase());
     }
   };
@@ -588,6 +594,35 @@ export function MovementNewEvent({
     <a href={cancelHref} className={btnGhost}>{t('form.cancel')}</a>
   </div>;
 
+  if (behaviour === 'rehire' && !edit) {
+    return (
+      <div>
+        <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            {label(movementField('kind'))}
+            <select {...personnelWorkflowControl(movementField('kind'), 'movement', 'edit')} form="movement-rehire-type" value={kind} onChange={(e) => setKind(e.target.value)} className={inputCls}>
+              {kindOptions.map((k) => (
+                <option key={k} value={k}>
+                  {kindLabel(k)}
+                </option>
+              ))}
+            </select>
+            {byCode.get(kind)?.description && (
+              <span data-testid="movement-type-description" className="text-xs text-muted-foreground">
+                {byCode.get(kind)!.description}
+              </span>
+            )}
+          </label>
+        </div>
+        {rehire ? (
+          <RehireEventForm {...rehire} kindCode={kind} />
+        ) : (
+          <p role="alert" className="px-4 pb-4 text-sm text-destructive">{t('rehire.unavailable')}</p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <form aria-busy={pagePending} action={pageContext ? pageAction : saved ? submitPendingCorrection : edit ? editMovementEventAction : createMovementEventAction}
       ref={form=>{if(saved&&form&&!initialFields.current)initialFields.current=new Map(Array.from(new FormData(form).entries()).filter((entry):entry is [string,string]=>typeof entry[1]==='string'));}}
@@ -649,6 +684,18 @@ export function MovementNewEvent({
           <p className="mt-1">{t('form.closedPayrollBody')}</p>
           <label className="mt-2 flex items-start gap-2">
             <input type="checkbox" name="acknowledgeClosedPayroll" value="1" required className="mt-1" />
+            <span>{t('form.closedPayrollAcknowledge')}</span>
+          </label>
+        </div>
+      )}
+
+      {/* Board 4604dccc r3 — a Group Join Date Correction or Join Date Change no longer stops at closed payroll: HR
+          confirms it stays as paid. The service asks for this box only when a closed month lies in between. */}
+      {!edit && (behaviour === 'groupJoinDateCorrection' || behaviour === 'joinDateChange') && (
+        <div className="border-b border-border bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
+          <p>{t('form.dateClosedPayrollOptional')}</p>
+          <label className="mt-2 flex items-start gap-2">
+            <input type="checkbox" name="acknowledgeClosedPayroll" value="1" className="mt-1" />
             <span>{t('form.closedPayrollAcknowledge')}</span>
           </label>
         </div>

@@ -1285,6 +1285,10 @@ export const employment = pgTable(
     voidReason: text('void_reason'),
     voidedImportAttemptId: uuid('voided_import_attempt_id'),
     voidedEmployeeCode: text('voided_employee_code'),
+    // Board 511aa74a (migration 5695) — the previous employment period of the SAME person this one rehired from.
+    // NULL for every other employment. Written only by core/rehire.ts (guard trigger); one live rehire per period
+    // (employment_rehired_from_uq). A rolled-back rehire is voided and keeps its link for audit.
+    rehiredFromEmploymentId: uuid('rehired_from_employment_id'),
     createdAt: createdAt(),
   },
   (t) => [

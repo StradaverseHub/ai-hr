@@ -160,7 +160,7 @@ describe('actual mounted Personnel form inventory',()=>{
     expect(audit(source.replaceAll(binding,'INFORMATION_FIELD_IDS[unregisteredKey]')).issues.some(issue=>issue.message.includes('Unresolved Personnel binding'))).toBe(true);
     const wrongMap=(from:string,specifier:string)=>{const text=reader(from,specifier);return specifier==='@/lib/information-correction'?text?.replace('employment.employment_dates_and_service.hiredon','unregistered.personnel.fact'):text;};
     expect(audit(source,wrongMap).issues.some(issue=>issue.message.includes('Unknown Personnel form field'))).toBe(true);
-    const unbounded=(from:string,specifier:string)=>{const text=reader(from,specifier);return specifier==='@/lib/information-correction'?text?.replace(/export const INFORMATION_FIELDS=\[[^\n]+\] as const;/,'export const INFORMATION_FIELDS=unboundedCorrectionKeys();'):text;};
+    const unbounded=(from:string,specifier:string)=>{const text=reader(from,specifier);return specifier==='@/lib/information-correction'?text?.replace(/export const INFORMATION_SCREEN_FIELDS=\[[^\n]+\] as const;/,'export const INFORMATION_SCREEN_FIELDS=unboundedCorrectionKeys();'):text;};
     expect(audit(source,unbounded).issues.some(issue=>issue.message.includes('Unresolved Personnel binding'))).toBe(true);
     const reason='<textarea name="informationCorrectionReason"';expect(source).toContain(reason);
     expect(audit(source.replace(reason,'<textarea name="informationCorrectionReason"/>'+reason)).issues.some(issue=>issue.message.includes('occurrence changed'))).toBe(true);
