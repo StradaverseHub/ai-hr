@@ -12,8 +12,8 @@ import {withTenant,type SessionContext} from '../db/client';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {addDaysIso} from '../lib/roster-month';
-import {holidayDatesByEmployment} from '../core/holidays';
-import {DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,defaultProbationRoutes,probationSummaryRows,type ProbationTrackerFlag} from '../packs/probation/service';
+import {workingDatesForSpan} from '../packs/leave/service';
+import {DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,defaultProbationRoutes,probationSummaryRows,probationTrackerWorkingDays,type ProbationTrackerFlag} from '../packs/probation/service';
 
 const COMPANIES=72,PER_COMPANY=15;
 let b:Base,admin:SessionContext;
@@ -169,14 +169,18 @@ describe('tracker read at real-group shape',()=>{
   for(const flag of Object.keys(previousFlags) as Flag[]){
    const before=await previousReader(visible,{flag}),page=await timed('tracker read all companies flag '+flag,()=>probationSummaryRows(admin,{flag,limit:100}));
    expect(page.rows.map(r=>r.id)).toEqual(before.ids.slice(0,100));expect(page.total).toBe(before.counts.total);
-   // Where a flag read spends its time: page details (one statement) and the holiday read behind working days overdue.
+   // Working days overdue stream in after the list (one holiday resolution per company calendar on the page).
    if(page.rows.length){
     await timed('  page details flag '+flag,()=>withTenant(admin,tx=>tx.execute(sql`select count(*) from app.probation_tracker_page(array[${sql.join(page.rows.map(r=>sql`${r.id}::uuid`),sql`, `)}]::uuid[])`)));
-    const kpis=page.rows.filter(row=>row.parts.some(part=>part.type===1&&part.workingDaysOverdue!==undefined));
-    if(kpis.length)await timed(`  holiday read flag ${flag} (${kpis.length} employments, ${new Set(kpis.map(r=>r.companyId)).size} companies)`,()=>withTenant(admin,tx=>holidayDatesByEmployment(tx,{employmentIds:kpis.map(r=>r.employmentId),startDate:kpis.flatMap(r=>r.parts).map(p=>p.dueOn).sort()[0],endDate:today})));
+    const companies=new Set(page.rows.filter(row=>row.parts.some(part=>part.type===1&&part.calendarDaysOverdue!==undefined)).map(row=>row.companyId)).size;
+    const working=await timed(`  working days overdue, streamed after the list, flag ${flag} (${companies} companies)`,()=>probationTrackerWorkingDays(admin,page.rows));
+    const kpis=page.rows.flatMap(row=>row.parts.filter(part=>part.type===1&&part.calendarDaysOverdue!==undefined).map(part=>({row,part})));
+    expect(Object.keys(working).sort()).toEqual(kpis.map(item=>item.part.id).sort());
+    // The batched count is the leave owner's working-day span (independent check on one part per flag).
+    if(kpis.length){const{row,part}=kpis[0];const span=await withTenant(admin,tx=>workingDatesForSpan(tx,row.employmentId,addDaysIso(part.dueOn,1),today));expect(working[part.id]).toBe(span.length);}
    }
   }
- },105000); // Run 43746146505 measured this test at 34.9 s on the CI runner, almost all of it the 0949 reference rule evaluated per case for each viewer (3.3-5.2 s each); about 3x.
+ },115000); // Run 43751555870 measured this test at 38.4 s on the CI runner, almost all of it the 0949 reference rule evaluated per case for each viewer (3.5-5.2 s each); about 3x.
  it('shows nothing to a person without case access',async()=>{
   const[p]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional outsider',${randomUUID()+'@scale.example.test'}) returning id`);
   const userId=await createAppUser(b.tenantId,p.id,'employee');

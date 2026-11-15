@@ -205,7 +205,7 @@ export function logProbationFollowup(ctx:SessionContext,input:{caseId:string;par
 export function overrideProbationRoute(ctx:SessionContext,input:{partId:string;revision:number;route:SigningRoute;reason:string}){return withProbationTenant(ctx,async tx=>{await tx.execute(sql`select app.probation_route_override(${uuid(input.partId)}::uuid,${json(input.route)}::jsonb,${input.reason},${input.revision})`);});}
 export function replaceProbationSigner(ctx:SessionContext,input:{partId:string;stepId:string;holderId:string;kind:'delegation'|'holder_changed'|'missing_holder';validFrom:string;validTo:string|null;reason:string}){return withProbationTenant(ctx,async tx=>{await tx.execute(sql`select app.probation_delegate_add(${uuid(input.partId)}::uuid,${input.stepId},${uuid(input.holderId)}::uuid,${input.kind},${requireDay(input.validFrom)}::date,${input.validTo?requireDay(input.validTo):null}::date,${input.reason})`);});}
 export type ProbationTrackerFlag='overdue'|'end_passed'|'ending14'|'low_result'|'kpi_submit'|'kpi_ack'|'overridden';
-export type ProbationSummaryRow={letterWaiting:ProbationLetterTask|null;closure?:string|null;extensionMax?:number;startStatus?:'waiting_for_start'|'did_not_join'|null;action?:import('../lib/probation-tracker').ProbationRowAction;id:string;employmentId:string;companyId:string;revision:number;employeeName:string;employeeCode:string|null;title:string|null;businessGroupId:string|null;businessGroup:string|null;organisationMapping?:ProbationOrganisationMapping;organisationLegacy?:{businessGroupId:string|null;businessGroup:string|null;businessUnitId:string|null;businessUnit:string|null};businessUnitId:string|null;businessUnit:string|null;departmentId:string|null;department:string|null;pbpUserId:string|null;grade:string;startOn:string;endOn:string;planMonths:number;planFlag:boolean;extensionCount:number;state:string;kpiAcknowledged:boolean;parts:{id:string;type:1|2|3;cycle:number;state:string;dueOn:string;managerSubmittedAt:string|null;staffSubmittedAt:string|null;acknowledgedAt:string|null;scoreBand:number|null;override:boolean;waitingRole:string|null;waitingName:string|null;workingDaysOverdue?:number;calendarDaysOverdue?:number}[];canOpen:true};
+export type ProbationSummaryRow={letterWaiting:ProbationLetterTask|null;closure?:string|null;extensionMax?:number;startStatus?:'waiting_for_start'|'did_not_join'|null;action?:import('../lib/probation-tracker').ProbationRowAction;id:string;employmentId:string;companyId:string;revision:number;employeeName:string;employeeCode:string|null;title:string|null;businessGroupId:string|null;businessGroup:string|null;organisationMapping?:ProbationOrganisationMapping;organisationLegacy?:{businessGroupId:string|null;businessGroup:string|null;businessUnitId:string|null;businessUnit:string|null};businessUnitId:string|null;businessUnit:string|null;departmentId:string|null;department:string|null;pbpUserId:string|null;grade:string;startOn:string;endOn:string;planMonths:number;planFlag:boolean;extensionCount:number;state:string;kpiAcknowledged:boolean;parts:{id:string;type:1|2|3;cycle:number;state:string;dueOn:string;managerSubmittedAt:string|null;staffSubmittedAt:string|null;acknowledgedAt:string|null;scoreBand:number|null;override:boolean;waitingRole:string|null;waitingName:string|null;calendarDaysOverdue?:number}[];canOpen:true};
 type ProbationTrackerFacet={bg:string|null;bgName:string|null;bu:string|null;buName:string|null;department:string|null;departmentName:string|null;grade:string;pbp:string|null;pbpName:string|null;state:string};
 const trackerScope=(ctx:SessionContext)=>ctx.entitlementsExempt===undefined&&!isModuleEnabled(ctx,'lifecycle')?(ctx.entitlements?.scopedModules.lifecycle??[]):null;
 /** Facet columns over the visible tracker cases (migration 5746): the PBP is named from the case's own PBP holder in one join. */
@@ -241,14 +241,24 @@ export function probationSummaryRows(ctx:SessionContext,filters:{companyId?:stri
  const counts=result.counts,rows=result.rows;
  const details=rows.length?await tx.execute<{case_id:string;parts:ProbationSummaryRow['parts'];letter:ProbationLetterTask|null;names:{role:string;name:string}[]}>(sql`select case_id,parts,letter,names from app.probation_tracker_page(array[${sql.join(rows.map(r=>sql`${r.id}::uuid`),sql`, `)}]::uuid[])`):[];
  for(const row of rows){const detail=details.find(d=>d.case_id===row.id);row.parts=detail?.parts??[];row.letterWaiting=detail?.letter??null;for(const part of row.parts)part.waitingName=detail?.names.find(n=>n.role===part.waitingRole)?.name??null;}
- const overdueKpis:{part:ProbationSummaryRow['parts'][number];employmentId:string;from:string}[]=[];
- for(const row of rows)for(const part of row.parts){if(part.dueOn>=today||['locked','completed_offline','cancelled'].includes(part.state))continue;part.calendarDaysOverdue=Math.round((Date.parse(today+'T00:00:00Z')-Date.parse(part.dueOn+'T00:00:00Z'))/86400000);if(part.type===1)overdueKpis.push({part,employmentId:row.employmentId,from:addDaysIso(part.dueOn,1)});}
- const counts2=await workingDayCountsTx(tx,overdueKpis.map(item=>({employmentId:item.employmentId,from:item.from,to:today})));
- overdueKpis.forEach((item,index)=>{item.part.workingDaysOverdue=counts2[index];});
+ // Working days overdue (KPI parts) come from the holiday owner, one resolution per company calendar: they are read
+ // after the list by probationTrackerWorkingDays so the list never waits for them (72 companies: about 1 s).
+ for(const row of rows)for(const part of row.parts){if(part.dueOn>=today||['locked','completed_offline','cancelled'].includes(part.state))continue;part.calendarDaysOverdue=Math.round((Date.parse(today+'T00:00:00Z')-Date.parse(part.dueOn+'T00:00:00Z'))/86400000);}
  const{probationRowStartStatus,probationRowAction}=await import('../lib/probation-tracker');
  for(const row of rows){row.startStatus=probationRowStartStatus(row,today);row.action=probationRowAction(row,today);}
  return{rows,offset,limit,hasMore:offset+rows.length<counts.total,total:counts.total,totals:{overdue:counts.overdue,end_passed:counts.end_passed,ending14:counts.ending14,low_result:counts.low_result,kpi_submit:counts.kpi_submit,kpi_ack:counts.kpi_ack,overridden:counts.overridden},options:trackerOptionsFrom(result.facets)};
 });}
+/**
+ * Working days overdue for the overdue KPI parts of tracker rows the caller has just read through probationSummaryRows
+ * (server-side rows of the same request, never client input), keyed by part id. The tracker streams this in after the
+ * list. Parts that are not overdue KPI parts are absent.
+ */
+export function probationTrackerWorkingDays(ctx:SessionContext,rows:readonly Pick<ProbationSummaryRow,'employmentId'|'parts'>[]):Promise<Record<string,number>>{
+ const today=todayInKualaLumpur();
+ const kpis=rows.flatMap(row=>row.parts.filter(part=>part.type===1&&part.dueOn<today&&!['locked','completed_offline','cancelled'].includes(part.state)).map(part=>({partId:part.id,employmentId:row.employmentId,from:addDaysIso(part.dueOn,1)})));
+ if(!kpis.length)return Promise.resolve({});
+ return withProbationTenant(ctx,async tx=>{const counts=await workingDayCountsTx(tx,kpis.map(item=>({employmentId:item.employmentId,from:item.from,to:today})));return Object.fromEntries(kpis.map((item,index)=>[item.partId,counts[index]]));});
+}
 /**
  * Working days in [from, to] for many employments at once (the tracker's "working days overdue"): holidays from the
  * holiday owner in one batched read, and each company's attendance working and half-working week days in one read.
