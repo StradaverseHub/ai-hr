@@ -1,7 +1,7 @@
 import {lockPayComponentCatalogReadTx} from './pay-component-catalog-lock';
 import {individualTxnPricingMarkerTx,priceIndividualTxnInputTx,type IndividualCalculationMethod} from '../packs/payroll/individual-calculation';
 import { assertPayComponentCompaniesTx } from './pay-component-company';
-import {payrollEmploymentPredicate,type PayrollEligibilityRun} from './payroll-employment-eligibility';
+import {payrollEmploymentEnd,payrollEmploymentPredicate,type PayrollEligibilityRun} from './payroll-employment-eligibility';
 /**
  * 1.2.2 Individual Transaction (ADR-0056, amended by f1564110 Phase 2) — a pure dated one-off payroll
  * transaction ledger.
@@ -27,7 +27,7 @@ import {payrollEmploymentPredicate,type PayrollEligibilityRun} from './payroll-e
  * Substrate discipline: every write appends a DomainEvent. Payloads are redaction-safe (reference ids + kind,
  * no cleartext amounts — ADR-0030 Layer-0 precedent, mirroring setEmploymentPayComponent).
  */
-import { and, asc, desc, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { assertPayComponentReady } from '../lib/pay-component-contract';
@@ -126,6 +126,36 @@ export class InvalidTxnDateError extends Error {
   constructor(public readonly txnDate: string) {
     super('Enter a valid Effective Date in YYYY-MM-DD format.');
     this.name = 'InvalidTxnDateError';
+  }
+}
+
+/**
+ * ad6ed930 — the Effective Date is after the employee's last day (payrollEmploymentEnd: the earliest of termination,
+ * resignation and last working date). The Individual Transaction window caps its date picker there for convenience;
+ * this is the server's refusal, with the date, so the window can say "This employee left on …". `leftOn` is ISO.
+ */
+export class TxnAfterLeavingDateError extends Error {
+  constructor(public readonly employmentId: string, public readonly txnDate: string, public readonly leftOn: string) {
+    super(`This employee left on ${leftOn}. Choose an effective date on or before that day.`);
+    this.name = 'TxnAfterLeavingDateError';
+  }
+}
+
+/**
+ * ad6ed930 — refuse any (employment, Effective Date) pair dated after that employment's last day. One set-based read
+ * for the whole submission (no per-row query). Employments with no last day pass untouched.
+ */
+export async function assertTxnDatesWithinEmploymentTx(tx: Tx, employmentIds: readonly string[], txnDates: readonly string[]): Promise<void> {
+  if (employmentIds.length === 0 || txnDates.length === 0) return;
+  const latest = [...txnDates].sort()[txnDates.length - 1]!;
+  const rows = await tx
+    .select({ id: employment.id, leftOn: sql<string | null>`${payrollEmploymentEnd}::text` })
+    .from(employment)
+    .where(and(inArray(employment.id, [...employmentIds]), sql`${payrollEmploymentEnd} < ${latest}::date`));
+  for (const r of rows) {
+    if (!r.leftOn) continue;
+    const after = txnDates.filter((d) => d > r.leftOn!).sort()[0];
+    if (after) throw new TxnAfterLeavingDateError(r.id, after, r.leftOn);
   }
 }
 
@@ -1122,6 +1152,12 @@ export function createIndividualTxnsBulk(
      * is exactly what "Cancel writes nothing" has to mean for a Continue that could not be honoured.
      */
     widenScopeIfNeeded?: boolean;
+    /**
+     * ad6ed930 — refuse an Effective Date after the payee's last day (TxnAfterLeavingDateError). Set by the Individual
+     * Transaction window, whose date picker caps at that day; the server is the authority for it. Imports and back
+     * pay keep their existing rules (omitted ⇒ unchanged).
+     */
+    refuseAfterLeavingDate?: boolean;
   },
 ): Promise<{ ids: string[]; widenedEmploymentIds: string[] }> {
   return withTenant(ctx, (tx) => createIndividualTxnsBulkTx(tx, ctx, p));
@@ -1200,6 +1236,7 @@ export async function createIndividualTxnsBulkTx(
     // Phase 3 — component picks validated in ONE query (exists / not archived / kind match); a new payable
     // (earning/deduction) row REQUIRES a component while INDIVIDUAL_TXN_PAY_ENABLED is on.
     await assertTxnComponents(tx, validated, individualTxnPayEnabled(ctx));
+    if (p.refuseAfterLeavingDate) await assertTxnDatesWithinEmploymentTx(tx, employmentIds, validated.map((r) => r.txnDate));
 
     await assertPayComponentCompaniesTx(tx, ctx, employmentIds.flatMap(employmentId => validated.map(row => ({componentId:row.componentId,employmentId,effectiveDate:row.txnDate}))));
 
@@ -1425,6 +1462,9 @@ export function updateIndividualTxn(
      *  row falls back to "the regular run may collect me"). On a row already attached to a run, the named
      *  cycle must agree with that run's type — see InvalidTxnCycleError('run_mismatch'). */
     intendedCycleId?: string | null;
+    /** ad6ed930 — as on createIndividualTxnsBulk: refuse MOVING the Effective Date after the employee's last day. A
+     *  row already dated there stays editable (its other fields), so saved transactions keep working as before. */
+    refuseAfterLeavingDate?: boolean;
   },
 ): Promise<{ id: string }> {
   return withTenant(ctx, async (tx) => {
@@ -1440,6 +1480,7 @@ export function updateIndividualTxn(
     if (p.unit != null && !isTxnUnit(p.unit)) throw new InvalidTxnUnitError(p.unit);
     const nextDate = p.txnDate ?? existing.txnDate;
     assertTransactionDate(nextDate);
+    if (p.refuseAfterLeavingDate && nextDate !== existing.txnDate) await assertTxnDatesWithinEmploymentTx(tx, [existing.employmentId], [nextDate]);
     // C6 — the retained edit path is the OTHER surviving write surface (the create-form path is removed).
     // Enforce the same amount>0 magnitude rule the bulk save enforces, so both write paths agree.
     if (p.calculationMethod!=='formula' && p.amount !== undefined && !(p.amount > 0)) throw new AmountNotPositiveError(p.amount);

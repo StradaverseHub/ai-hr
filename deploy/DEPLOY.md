@@ -239,6 +239,22 @@ timedatectl | grep "Time zone"      # expect Asia/Kuala_Lumpur (+08)
 
 Install as the deploy user (no root needed):
 
+**The crontab must start with these two environment lines** (cron passes them to every job; Node's
+`--env-file` never overrides a variable that is already set, so they win over `.env.production`):
+
+```cron
+AIHR_DB_PROCESS_ROLE=worker
+AIHR_DB_POOL_MAX=2
+```
+
+`AIHR_DB_PROCESS_ROLE=worker` makes each job connect directly with a small pool (docs/SCALE-AND-RELEASE-RULES.md
+rule 5). The worker pool may be at most 8 (`db/capacity.ts`), but `.env.production` carries the WEB pool size
+(10 on staging), so without `AIHR_DB_POOL_MAX` every job refuses to start with "AIHR_DB_POOL_MAX must be an
+integer from 1 to 8". That is what happened on staging from 11 to 14 November 2026: every cron job (the minutely
+provision runner, the 15-minute payroll loop tick and all nightly sweeps) failed for three days until the second
+line was added. The heartbeat files under `/home/ubuntu/aihr-cron-logs/heartbeat/` show each job's last success.
+
+
 ```bash
 crontab -e
 ```

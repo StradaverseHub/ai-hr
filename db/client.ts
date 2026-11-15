@@ -16,6 +16,7 @@ import {AsyncLocalStorage} from 'node:async_hooks';
 import {cancelStatementsAtDeadline,currentDatabaseReadDeadline,currentDatabaseWorkload,databaseReadSignal,inIdempotentDatabaseRead,withBackgroundDatabaseWork} from './workload';
 import {applicationDatabaseBudget,databaseAdmissionShares} from './capacity';
 import {applicationDatabaseUrl} from './pooling';
+import {processConnectionOptions} from './worker-connection';
 import {markDatabaseCapacityFailure,retryAdmissionRefusal,retryIdempotentRead} from './read-retry';
 import {SharedReadSession,currentSharedRead,independentTransactionsRequired,markSharedCarrierTransaction,runInSharedRead,scopePreamble,sharedReadDriver,type SharedReadCarrierControl,type SharedReadPreambleRead,type SharedReadStats} from './shared-read';
 export {declareSharedReadWindow,declareSharedReadPreamble,withOwnerPreambleReads} from './shared-read';
@@ -222,7 +223,8 @@ function sharedReadIdentity(ctx: SessionContext, grants: Grant[], roleNames: str
 export function createDb(connectionString: string, options?: { max?: number; admissionWaitMs?: number }) {
   let client = pgPools.get(connectionString);
   if (!client) {
-    client = postgres(connectionString, { max: options?.max ?? applicationBudget.poolMax });
+    // A worker-role process also gets dead-peer detection (db/worker-connection.ts); the web keeps driver defaults.
+    client = postgres(connectionString, { max: options?.max ?? applicationBudget.poolMax, ...processConnectionOptions(applicationBudget.role) });
     pgPools.set(connectionString, client);
   }
   // Direct table-based select/insert/update/delete retain their own schema and types. Registering

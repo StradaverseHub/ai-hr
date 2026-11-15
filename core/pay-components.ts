@@ -190,6 +190,8 @@ export function seedPayComponentCatalog(ctx: SessionContext) {
           name: c.name,
           kind: c.kind,
           ...flagsOf(c),
+          // 2026-11-14 — on INSERT only, like the ORP flags: a re-seed never re-ticks an existing row.
+          ...(c.epfBonus2012 ? { epfBonus2012: true } : {}),
           orpOvertime: isFixedAllowanceComponent(c.code, c.kind, null),
           orpUnpaidLeave: false,
         });

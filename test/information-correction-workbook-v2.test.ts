@@ -1,6 +1,7 @@
 /** ccd3a65c — Information-Only Correction template version 2 and version 1 detection. Pure: no database. */
 import {describe,expect,it} from 'vitest';
 import * as XLSX from 'xlsx';
+import JSZip from 'jszip';
 import {INFORMATION_HEADERS,INFORMATION_HEADERS_V2,type InformationHeader} from '../lib/information-correction';
 import {informationWorkbook,parseInformationWorkbook,parseInformationWorkbookVersioned} from '../lib/information-correction-workbook';
 
@@ -60,5 +61,36 @@ describe('ccd3a65c Information-Only Correction template version 2',()=>{
   // A downloaded template, filled in, parses as version 2.
   XLSX.utils.sheet_add_aoa(b.Sheets.Corrections,[v2({...base,'Branch':'KL'})],{origin:'A2'});
   expect(parseInformationWorkbookVersioned(XLSX.write(b,{type:'buffer',bookType:'xlsx'}))).toMatchObject({version:2,rows:[{values:{'Branch':'KL'},errors:[]}]});
+ });
+});
+
+/** Board 2026-11-14 (production): a six-employee file whose Text-formatted blank cells made Excel record a sheet
+ * hundreds of rows deep was refused as "between 1 and 200 employee rows". Limits now count rows that hold entries. */
+async function inflate(content:Buffer,ref:string,blankStyledCells:string[]){
+ const zip=await JSZip.loadAsync(content),path='xl/worksheets/sheet1.xml',xml=await zip.file(path)!.async('string');
+ const blanks=blankStyledCells.map(at=>`<row r="${/\d+/.exec(at)![0]}"><c r="${at}" s="0"/></row>`).join('');
+ zip.file(path,xml.replace(/<dimension ref="[^"]*"\/>/,`<dimension ref="${ref}"/>`).replace('</sheetData>',blanks+'</sheetData>'));
+ return zip.generateAsync({type:'nodebuffer'});
+}
+describe('Information-Only Correction counts rows with entries, not formatted blanks',()=>{
+ const six=Array.from({length:6},(_,i)=>v2({...base,'Employee ID':String(15+i).padStart(6,'0'),'Department':'HR'}));
+ it('reads six employees from a sheet Excel records as 1,000 rows deep',async()=>{
+  const content=await inflate(book(INFORMATION_HEADERS_V2,six),'A1:AZ1000',['B900','AZ1000']);
+  expect(XLSX.utils.decode_range(XLSX.read(content,{type:'buffer'}).Sheets.Corrections['!ref']!).e.r).toBeGreaterThan(200);
+  const rows=parseInformationWorkbook(content);
+  expect(rows.map(row=>row.employeeCode)).toEqual(['000015','000016','000017','000018','000019','000020']);
+  expect(rows.every(row=>row.errors.length===0)).toBe(true);
+ });
+ it('still refuses a 201st employee row, naming the row it reached',()=>{
+  const many=Array.from({length:201},(_,i)=>v2({...base,'Employee ID':String(i+1).padStart(6,'0')}));
+  expect(()=>parseInformationWorkbook(book(INFORMATION_HEADERS_V2,many))).toThrow('Enter at most 200 employee rows. This file has entries down to row 202');
+ });
+ it('names a stray entry after the last template column',()=>{
+  const b=XLSX.read(book(INFORMATION_HEADERS_V2,six),{type:'buffer'}),sheet=b.Sheets.Corrections,col=INFORMATION_HEADERS_V2.length+1;
+  sheet[XLSX.utils.encode_cell({r:3,c:col})]={t:'s',v:'note'};sheet['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:6,c:col}});
+  expect(()=>parseInformationWorkbook(XLSX.write(b,{type:'buffer',bookType:'xlsx'}))).toThrow(`entries in column ${XLSX.utils.encode_col(col)}, after the last template column`);
+ });
+ it('refuses a header-only file as having no employee rows',()=>{
+  expect(()=>parseInformationWorkbook(book(INFORMATION_HEADERS_V2,[]))).toThrow('The file has no employee rows.');
  });
 });

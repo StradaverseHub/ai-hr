@@ -11,18 +11,21 @@
  * rolls back each open transaction, and the work it held becomes claimable again (a bulk-job lease once it expires,
  * the Bank and Individual advisory locks when their session ends).
  *
- * The default limit (20 min) exceeds the longest unit the kernel itself allows: a bulk-job prepare holds a 900 s
- * lease (core/bulk-job-worker.ts PREPARE_LEASE_SECONDS), every other bulk unit a 60 s lease. The setting cannot go
- * below 960 s, so a legitimate prepare is never cut short and restarted again and again.
+ * The limits come from measurement (deploy/systemd/BANK-IMPORT.md, "Stall watchdog"). The longest legitimate phase
+ * measured is the first tick of a maximum Bank & Statutory workbook (250,000 rows): it decodes the whole file and
+ * stores every row in one transaction, with no lease. It took 228-339 s on 4-vCPU GitHub runners, about 1,020 s
+ * when scaled by 3 for the 2-vCPU staging host. The default (30 min) leaves room above that; the minimum (20 min)
+ * stays above it and above the 900 s bulk-job prepare lease (core/bulk-job-worker.ts PREPARE_LEASE_SECONDS), so a
+ * legitimate phase is never cut short and restarted again and again.
  *
  * Dependency-free so the runner can load it before any database module. */
 
 export type ImportWorkerPhase='start'|'bank'|'individual'|'bulk'|'pause'|'stop';
 
 export const IMPORT_WORKER_STALL_ENV='AIHR_IMPORT_WORKER_STALL_SECONDS';
-export const IMPORT_WORKER_STALL_DEFAULT_SECONDS=1200;
-/** Above the 900 s bulk-job prepare lease with a minute of margin. */
-export const IMPORT_WORKER_STALL_MIN_SECONDS=960;
+export const IMPORT_WORKER_STALL_DEFAULT_SECONDS=1800;
+/** Above the maximum Bank workbook first tick scaled to staging (about 1,020 s) and the 900 s bulk-job prepare lease. */
+export const IMPORT_WORKER_STALL_MIN_SECONDS=1200;
 export const IMPORT_WORKER_STALL_MAX_SECONDS=21600;
 export const IMPORT_WORKER_STALL_EXIT_CODE=70;
 const CHECK_EVERY_MS=30_000;

@@ -22,7 +22,7 @@ import {attendancePolicyDurationFormulaProjection} from '../packs/attendance/pol
 import {randomUUID,createHash} from 'node:crypto';
 import {attendancePolicyExecutionProposal,attendancePolicyDurationExecutionProposal} from '../packs/attendance/policy-execution-proposal';
 import {and,asc,eq,sql} from 'drizzle-orm';
-import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
+import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
@@ -30,6 +30,7 @@ import {assignDefaultShift,createShift,setRestDay} from '../core/roster';
 import {prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {createPinnedHrDay} from './helpers/pinned-hr-day';
 import {lockAttendancePolicyImportTx,activateOvertimePattern,checkIn,checkOut,ensureStandardRule,canonicalOvertimeInputTx,canonicalOvertimePayrollInputTx,canonicalOvertimeToilInputTx,createOvertimeCalculationOwner,getOvertimePattern,stopOvertimePatternVersion,readOvertimeCalculationTx,readOvertimePatternCalculationTx,calculateOvertimePatternDay,
  checkInTx,checkOutTx,lockOvertimeSourceTx,reserveOvertimeSettlementTx,saveOvertimePatternDraft,scheduleAttendanceGroupPolicy,validateOvertimePatternActivation,requestAttendanceCorrection,decideAttendanceCorrection,cancelAttendanceApplication,canSubmitUnclockedAttendanceWork,setAttendancePolicy} from '../packs/attendance/service';
 import {adminCtx,entitledCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
@@ -37,10 +38,12 @@ import {createAttendancePolicyStorageFixtures} from './attendance-policy-storage
 
 
 let b:Base,ctx:SessionContext;
-const day=(offset:number)=>new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+offset*86400000).toISOString().slice(0,10);
+// One HR day per case (read once from the HR date owner); see test/helpers/pinned-hr-day.ts.
+const hrDay=createPinnedHrDay(),day=hrDay.day;
 
 beforeAll(migrateTestDb);afterAll(closeAll);
-beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'attendance','active');ctx=adminCtx(b);});
+afterEach(()=>hrDay.release());
+beforeEach(async()=>{hrDay.pin();await resetDb();b=await seedBase();await setModule(b.tenantId,'attendance','active');ctx=adminCtx(b);});
 const {capturedClock,fixture,header,part}=createAttendancePolicyStorageFixtures({get b(){return b;},get ctx(){return ctx;},day});
 
 type Fixture=Awaited<ReturnType<typeof fixture>>;

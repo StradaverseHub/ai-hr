@@ -15,7 +15,7 @@
  * of this comparison would have taken the typed path and the test would have compared the typed kernel
  * against itself — the reason this file was converted.)
  */
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
@@ -136,6 +136,11 @@ describe('Wave 3 #9-3 — typed components are byte-identical to the legacy kern
 
     // ── Back-fill the components, then the typed path (module on) ──
     await seedPayComponentCatalog(a);
+    // 2026-11-14 — only the EPF Bonus 2012 tick puts money on the EPF bonus stream, so the byte-identity with the
+    // legacy `payroll_input.bonus` rests on the seeded BONUS row carrying that tick (localization/my/pay-components.ts;
+    // migration 5660 for existing tenants). Pinned here so a seed without it fails this file, not a payroll.
+    expect((await owner.db.select({ t: schema.payComponent.epfBonus2012 }).from(schema.payComponent)
+      .where(and(eq(schema.payComponent.tenantId, b.tenantId), eq(schema.payComponent.code, 'BONUS'))))[0]?.t).toBe(true);
     await backfillEmploymentComponentsFromCompensation(a);
     await backfillBatchComponentsFromInput(a, batchId);
     // Grant the module, then RE-RESOLVE: the snapshot is point-in-time, so `a` would still say off.

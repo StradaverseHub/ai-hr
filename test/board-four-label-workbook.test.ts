@@ -31,7 +31,7 @@ describe('System Labels Excel contract',()=>{
   it('rejects oversize, malformed archives and over-limit rows',()=>{
     expect(()=>readSystemLabelWorkbook(Buffer.alloc(LABEL_WORKBOOK_MAX_BYTES+1))).toThrow();
     expect(()=>readSystemLabelWorkbook(Buffer.from('not a workbook'))).toThrow();
-    expect(()=>readSystemLabelWorkbook(workbook('division',[['Code','Label','Description','Sort Order'],...Array.from({length:501},(_,i)=>[String(i),'X','',''])]))).toThrow('limit');
+    expect(()=>readSystemLabelWorkbook(workbook('division',[['Code','Label','Description','Sort Order'],...Array.from({length:7001},(_,i)=>[String(i),'X','',''])]))).toThrow('limit'); // Board 2026-11-14: one list may fill the 7000-row workbook allowance.
   });
   it('exports spreadsheet-safe errors with exact source row references',()=>{
     const bytes=systemLabelErrorWorkbook([{sheet:'division',row:2,values:{Code:'=HYPERLINK("bad")'},before:null,after:{},outcome:'error',message:'=1+1'}]);

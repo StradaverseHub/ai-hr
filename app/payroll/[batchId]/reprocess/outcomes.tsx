@@ -44,7 +44,12 @@ export async function ReprocessOutcomeRemarks({
   const noncashReason = outcome.validationDetails?.length === 1 ? outcome.validationDetails[0].gap : '';
   // 3244584c — WHY the employee no longer belongs to the month, with the date that decided it.
   const exclusionDate = outcome.validationDetails?.[0]?.date;
-  const fullReason = outcome.status === 'excluded' || outcome.status === 'not_eligible'
+  // ad6ed930 — a transaction dated after the employee's last day is not a formula fault: the remark names the
+  // leaving date and the way forward, and does not send HR to Payroll Items.
+  const leftOn = outcome.reasonCode === 'PAY_ITEM_FORMULA_FAILED' && outcome.formulaFailure?.reason === 'after_leaving_date'
+    ? outcome.formulaFailure.leftOn ?? null : null;
+  const fullReason = leftOn ? t('reprocessPayItemAfterLeavingDate', { date: formatDate(leftOn) })
+    : outcome.status === 'excluded' || outcome.status === 'not_eligible'
     ? t(`reprocessExclusion_${outcome.reasonCode}${exclusionDate ? 'Dated' : ''}`, exclusionDate ? { date: formatDate(exclusionDate) } : {})
     : outcome.status === 'skipped' ? t('reprocessNothingPayableFull')
     : outcome.status === 'reprocessed' ? t('reprocessSucceededReason')
@@ -74,12 +79,12 @@ export async function ReprocessOutcomeRemarks({
       })}</p>
     </div>)}
     {failure && <div className="rounded-md bg-red-50 px-2 py-1.5 text-red-800 dark:bg-red-500/10 dark:text-red-300" role="alert" data-testid="reprocess-formula-failure">
-      <p><strong>{t('reprocessPayItemFormulaFailed', { name: failure.name, code: failure.code, count: failure.dates.length, dates: failure.dates.map(d => formatDate(d)).join(', ') })}</strong></p>
-      {PAY_ITEM_REPRICE_REASONS.has(failure.reason) && <p>{t(`reprocessPayItemReason_${failure.reason}`)}</p>}
+      <p><strong>{t(leftOn ? 'reprocessPayItemDatedAfterLeaving' : 'reprocessPayItemFormulaFailed', { name: failure.name, code: failure.code, count: failure.dates.length, dates: failure.dates.map(d => formatDate(d)).join(', ') })}</strong></p>
+      {!leftOn && PAY_ITEM_REPRICE_REASONS.has(failure.reason) && <p>{t(`reprocessPayItemReason_${failure.reason}`)}</p>}
       {failure.detail && <p className="text-red-700/80 dark:text-red-300/80">{failure.detail}</p>}
     </div>}
     {failure && <p className="space-x-3">
-      <Link href={`/admin/pay-components/${encodeURIComponent(failure.code)}`} className="text-primary hover:underline">{t('reprocessOpenPayItem')}</Link>
+      {!leftOn && <Link href={`/admin/pay-components/${encodeURIComponent(failure.code)}`} className="text-primary hover:underline">{t('reprocessOpenPayItem')}</Link>}
       <Link href="/payroll/transactions/individual" className="text-primary hover:underline">{t('reprocessOpenTransactions')}</Link>
     </p>}
     {outcome.status === 'excluded' && outcome.historyId && <p className="text-muted-foreground">{t('reprocessExcludedRemoved')}</p>}

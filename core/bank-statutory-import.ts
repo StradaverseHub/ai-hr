@@ -56,15 +56,44 @@ export function bankStatutoryRefusal(error:unknown):string|null{
  return null;
 }
 
+type TaxSelectionRead=Awaited<ReturnType<NonNullable<CountryPack['statutory']['getTaxSelection']>>>;
+const residencyOf=(selection:TaxSelectionRead)=>selection.transitionState==='resolved'&&selection.scheme&&selection.scheme!=='none'?String(selection.scheme):'';
 /** Income tax residency exactly as the tab shows it: the resolved employer-scoped scheme, else "". */
 export async function readTaxResidencyTx(tx:Tx,ctx:SessionContext,subject:BankStatutorySubject,row:{taxCircumstance?:string|null}|null){
  if(!row)return'';
  if(row.taxCircumstance==='none')return'none';
  if(!subject.pack.statutory.getTaxSelection)return'';
  try{
-  const selection=await subject.pack.statutory.getTaxSelection(ctx,subject.employmentId,undefined,{tx,readOnly:true});
-  return selection.transitionState==='resolved'&&selection.scheme&&selection.scheme!=='none'?String(selection.scheme):'';
+  return residencyOf(await subject.pack.statutory.getTaxSelection(ctx,subject.employmentId,undefined,{tx,readOnly:true}));
  }catch{return'';}
+}
+/**
+ * Set-wise `readTaxResidencyTx` for a batch of subjects (the Bank & Statutory validation tick), answer i for
+ * item i. Each answer is the one the single read gives: no statutory row is "", circumstance None is "none",
+ * a pack without tax selections is "", and otherwise the pack's BORROWED read-only selection in the caller's
+ * transaction and session, with any refusal read as "". The pack's set-wise borrowed read
+ * (`getTaxSelections`, the Personnel export's) runs once per pack for the whole batch, so the statement count
+ * does not grow with the rows. It runs the same employment, authority, company, profile and selection reads
+ * as the single read under the same row security, so nothing becomes visible that the single read would not
+ * show. A pack without the set-wise read keeps the single read per subject.
+ */
+export async function readTaxResidenciesTx(tx:Tx,ctx:SessionContext,items:readonly {subject:BankStatutorySubject;row:{taxCircumstance?:string|null}|null}[]):Promise<string[]>{
+ const answers=items.map(()=>''),byPack=new Map<CountryPack,number[]>();
+ items.forEach(({subject,row},index)=>{
+  if(!row)return;
+  if(row.taxCircumstance==='none'){answers[index]='none';return;}
+  if(!subject.pack.statutory.getTaxSelection)return;
+  const group=byPack.get(subject.pack);if(group)group.push(index);else byPack.set(subject.pack,[index]);
+ });
+ for(const[pack,indexes]of byPack){
+  const getMany=pack.statutory.getTaxSelections;
+  if(!getMany){for(const index of indexes)answers[index]=await readTaxResidencyTx(tx,ctx,items[index].subject,items[index].row);continue;}
+  let read:(employmentId:string)=>Promise<TaxSelectionRead>;
+  // A failed set-wise read leaves every answer "", as each single read's own failure would.
+  try{read=await getMany(ctx,indexes.map(index=>items[index].subject.employmentId),{tx,readOnly:true});}catch{continue;}
+  for(const index of indexes){try{answers[index]=residencyOf(await read(items[index].subject.employmentId));}catch{answers[index]='';}}
+ }
+ return answers;
 }
 /** The employee's Bank & Statutory values as the tab presents them, read inside the caller's transaction. */
 export async function readBankStatutoryStateTx(tx:Tx,ctx:SessionContext,subject:BankStatutorySubject,options:{lock?:boolean}={}):Promise<{state:BankStatutoryState;row:Awaited<ReturnType<CountryPack['statutory']['get']>>}>{

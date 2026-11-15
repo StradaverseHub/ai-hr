@@ -34,11 +34,13 @@ test('Staging release pins the private alias and refuses endpoint or directory o
  assert.doesNotThrow(()=>bindStaging(env));
 });
 
-test('arrival and cleanup checksum dry runs share the 600 s deadline, never the old 120 s', async()=>{
+test('arrival, cleanup and resume checksum dry runs share the 600 s deadline, never the old 120 s', async()=>{
  const {CHECKSUM_TIMEOUT_MS}=await import('./operator-release.mjs');
  assert.equal(CHECKSUM_TIMEOUT_MS,600000);
  const source=(await import('node:fs')).readFileSync(new URL('./operator-release.mjs',import.meta.url),'utf8');
+ // One canonical definition; arrival, cleanup-session, final and resume-arrival checks all call it.
  const dryRuns=source.match(/'--dry-run','--checksum'[^\n]*?timeout:([A-Z_0-9]+)/g)??[];
- assert.equal(dryRuns.length,3);
+ assert.equal(dryRuns.length,1);
  for(const call of dryRuns)assert.match(call,/timeout:CHECKSUM_TIMEOUT_MS$/);
+ assert.equal(source.match(/sourceChecksumDryRun\(official,transport,candidatePath\)/g)?.length,4);
 });

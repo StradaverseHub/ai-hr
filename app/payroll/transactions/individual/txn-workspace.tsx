@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { Badge, Button, Card, EmployeeName, Field, inputCls } from '@/components/ui';
 import { CollapsibleEmployeePanel } from '@/components/collapsible-employee-panel';
 import { formatMoney } from '@/lib/money';
+import { formatDate } from '@/lib/utils';
 import { isTransactionEffectiveDate } from '@/lib/transaction-effective-date';
 import { payFormulaInputIsKeyedQuantity } from '@/lib/pay-formula-input';
 import {
@@ -125,6 +126,13 @@ export type TxnEmployee = {
   companyId: string;
   /** Derived from termination, matching the View page convention — the employment-status filter. */
   status: 'active' | 'ended';
+  /**
+   * ad6ed930 — the employee's last day as payroll reads it (earliest of termination, resignation and last working
+   * date), or null. The Effective Date picker is capped there; the save refuses a later date on the server.
+   */
+  leftOn?: string | null;
+  /** ad6ed930 — the last day is already behind us (before today, tenant time): a New transaction starts on it. */
+  hasLeft?: boolean;
 };
 
 export type TxnBatch = {
@@ -494,6 +502,20 @@ export function TxnWorkspace({
 
   const byId = useMemo(() => new Map(employees.map((e) => [e.employmentId, e])), [employees]);
   const selected = selectedId ? (byId.get(selectedId) ?? null) : null;
+  // ad6ed930 — the selected employee's last day, when they have one.
+  const leftOn = selected?.leftOn ?? null;
+  const leaver = !!selected?.hasLeft && leftOn != null;
+  /**
+   * Resolve a refusal key to the operator's sentence. The after-the-last-day refusal names the date: the server's
+   * own (errorValues.leftOn) when it sent one, else the selected employee's, which is the same fact read for the list.
+   */
+  const tErr = (key: string, values?: Record<string, string>): string => {
+    if (key === 'txnAfterLeavingDate') {
+      const date = values?.leftOn ?? leftOn;
+      if (date) return t('txnAfterLeavingDate', { date: formatDate(date) });
+    }
+    return t(key as never, values as never);
+  };
   const currencyOf = useMemo(() => new Map(companies.map((c) => [c.id, c.currency])), [companies]);
   const currency = selected ? (currencyOf.get(selected.companyId) ?? null) : null;
   const rm = useCallback((v: string | number) => formatMoney(v, currency), [currency]);
@@ -1137,7 +1159,14 @@ export function TxnWorkspace({
     });
   };
 
-  const startCreate = () => openForm(blankForm(periodFilter && isPeriod(periodFilter) ? periodFilter : currentPeriod));
+  // ad6ed930 — for someone who has left, a new entry starts in their leaving month on their last day (the latest date
+  // the save accepts). The operator can still pick an earlier date or a later payroll month for a late claim.
+  const startCreate = () =>
+    openForm(
+      leaver
+        ? { ...blankForm(leftOn!.slice(0, 7)), txnDate: leftOn! }
+        : blankForm(periodFilter && isPeriod(periodFilter) ? periodFilter : currentPeriod),
+    );
 
   // ── 4e403268 — the mode switch ──
   /**
@@ -1254,6 +1283,11 @@ export function TxnWorkspace({
     if (!opt) return 'rowIncomplete';
     if (!f.txnDate) return 'rowIncomplete';
     if (!isTransactionEffectiveDate(f.txnDate)) return 'invalidEffectiveDate';
+    // ad6ed930 — after the last day. An edit that keeps a row's own stored date is left to the server, as it is
+    // there: only MOVING a date past the last day is refused.
+    if (leftOn && f.txnDate > leftOn && (f.mode === 'create' || panel.rows.find((r) => r.id === f.id)?.txnDate !== f.txnDate)) {
+      return 'txnAfterLeavingDate';
+    }
     if (f.quantity.trim() !== '' && !Number.isFinite(Number(f.quantity))) return 'rowIncomplete';
     // 2da9937a — THE MAGNITUDE RULE IS NARROWED, NOT DELETED. On an item that works its own amount out the
     // operator has no Amount box to be wrong about, so "amount must be greater than zero" would be a
@@ -1295,6 +1329,7 @@ export function TxnWorkspace({
     if (!isPeriod(d.payPeriod)) return 'periodInvalid';
     if (!itemByValue.get(d.item)) return 'rowIncomplete';
     if (d.lines.length === 0) return 'dayGridEmpty';
+    if (leftOn && d.lines.some((l) => l.txnDate > leftOn)) return 'txnAfterLeavingDate';
     if (dailyDerivedCurrent?.error) return dailyDerivedCurrent.error;
     if (dailyDuplicateKeys.length > 0) return 'duplicateRow';
     for (const l of d.lines) {
@@ -1419,7 +1454,7 @@ export function TxnWorkspace({
     if (!daily) return;
     const bad = dailyInvalid(daily);
     if (bad) {
-      setFormError(t(bad as never));
+      setFormError(tErr(bad));
       return;
     }
     const d = daily;
@@ -1427,7 +1462,7 @@ export function TxnWorkspace({
       const res = await runDailySave(d, confirmed);
       if (!res.ok) {
         if (askScopeConfirm(res, () => submitDaily(res.confirmAddToRun))) return;
-        setFormError(t(res.error as never, res.errorValues as never));
+        setFormError(tErr(res.error, res.errorValues));
         return;
       }
       clearFormError();
@@ -1446,7 +1481,7 @@ export function TxnWorkspace({
     if (!form) return;
     const bad = formInvalid(form);
     if (bad) {
-      setFormError(t(bad as never));
+      setFormError(tErr(bad));
       return;
     }
     const f = form;
@@ -1454,7 +1489,7 @@ export function TxnWorkspace({
       const res = await runSave(f, confirmed);
       if (!res.ok) {
         if (askScopeConfirm(res, () => submitForm(addAnother, res.confirmAddToRun))) return;
-        setFormError(t(res.error as never, res.errorValues as never));
+        setFormError(tErr(res.error, res.errorValues));
         return;
       }
       clearFormError();
@@ -1462,7 +1497,7 @@ export function TxnWorkspace({
       refreshPanel();
       if (res.recalcBatchId) setRecalcBatchId(res.recalcBatchId);
       toast.success(savedMessage(t(f.mode === 'edit' ? 'updated' : 'created'), res, confirmed));
-      if (addAnother && f.mode === 'create') openForm(blankForm(f.payPeriod));
+      if (addAnother && f.mode === 'create') openForm(leaver ? { ...blankForm(f.payPeriod), txnDate: leftOn! } : blankForm(f.payPeriod));
       else closeForm();
     });
   };
@@ -1528,7 +1563,7 @@ export function TxnWorkspace({
         toast.success(t('deleted'));
         if (form?.id === id) closeForm();
       } else {
-        toast.error(t(res.error as never, res.errorValues as never));
+        toast.error(tErr(res.error, res.errorValues));
       }
     });
   };
@@ -1586,7 +1621,7 @@ export function TxnWorkspace({
       const badDaily = dailyInvalid(daily);
       if (badDaily) {
         cancelGate();
-        setFormError(t(badDaily as never));
+        setFormError(tErr(badDaily));
         return;
       }
       const d = daily;
@@ -1602,7 +1637,7 @@ export function TxnWorkspace({
           // the switch the operator asked for; Cancel leaves them on the entry with nothing written.
           cancelGate();
           if (askScopeConfirm(res, () => saveThenSwitch(res.confirmAddToRun))) return;
-          setFormError(t(res.error as never, res.errorValues as never));
+          setFormError(tErr(res.error, res.errorValues));
         }
       });
       return;
@@ -1611,7 +1646,7 @@ export function TxnWorkspace({
     const bad = formInvalid(form);
     if (bad) {
       cancelGate();
-      setFormError(t(bad as never));
+      setFormError(tErr(bad));
       return;
     }
     const f = form;
@@ -1626,7 +1661,7 @@ export function TxnWorkspace({
       } else {
         cancelGate();
         if (askScopeConfirm(res, () => saveThenSwitch(res.confirmAddToRun))) return;
-        setFormError(t(res.error as never, res.errorValues as never));
+        setFormError(tErr(res.error, res.errorValues));
       }
     });
   };
@@ -1939,6 +1974,13 @@ export function TxnWorkspace({
                 closeLabel={t('close')}
               >
               <div className="space-y-3">
+                {/* ad6ed930 — who the entry is for, and that they have left, before anything is keyed. */}
+                {leaver && selected && (
+                  <p className="text-xs text-muted-foreground" data-testid="txn-leaver-identity">
+                    {selected.name}
+                    {selected.employeeCode ? ` (${selected.employeeCode})` : ''} · {selected.company} · {t('leaverLeftOn', { date: formatDate(leftOn!) })}
+                  </p>
+                )}
                 {form.sourceId && <p className="text-xs text-muted-foreground">{t('duplicateHint')}</p>}
 
                 {/* 4e403268 — the request's Input Method selector. Offered on a NEW entry only: an existing
@@ -1960,15 +2002,20 @@ export function TxnWorkspace({
                 )}
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  <Field label={t('monthLabel')}>
-                    <input
-                      type="month"
-                      value={form.payPeriod}
-                      disabled={form.mode === 'edit'}
-                      onChange={(e) => patchForm({ payPeriod: e.target.value })}
-                      className={inputCls}
-                    />
-                  </Field>
+                  <div className="space-y-1.5">
+                    <Field label={t('monthLabel')}>
+                      <input
+                        type="month"
+                        value={form.payPeriod}
+                        disabled={form.mode === 'edit'}
+                        onChange={(e) => patchForm({ payPeriod: e.target.value })}
+                        className={inputCls}
+                      />
+                    </Field>
+                    {leaver && form.mode === 'create' && (
+                      <p className="text-xs text-muted-foreground">{t('leaverMonthHint')}</p>
+                    )}
+                  </div>
                   {/* c11e81aa — THE PAY CYCLE FIELD NAMES A CONFIGURED CYCLE, and it opens EMPTY.
                       The empty option is not decoration: it is the answer every row on production
                       carries, and without it the control could never read "the operator chose nothing"
@@ -2065,11 +2112,15 @@ export function TxnWorkspace({
                         type="date"
                         aria-describedby={effectiveDateHintId}
                         value={form.txnDate}
+                        // ad6ed930 — capped at the last day; the save refuses a later date regardless.
+                        max={leftOn ?? undefined}
                         onChange={(e) => patchForm({ txnDate: e.target.value })}
                         className={inputCls}
                       />
                     </Field>
-                    <p id={effectiveDateHintId} className="text-xs text-muted-foreground">{t('effectiveDateHint')}</p>
+                    <p id={effectiveDateHintId} className="text-xs text-muted-foreground">
+                      {leftOn ? t('leaverDateHint', { date: formatDate(leftOn) }) : t('effectiveDateHint')}
+                    </p>
                   </div>
                   {/* 2da9937a — a calculating item OWNS the Input Type: the quantity has to land in the
                       input its rule reads, so the select is fixed to it rather than left to be got wrong. */}
@@ -2138,7 +2189,16 @@ export function TxnWorkspace({
                     {derivedZeroDivisor}
                   </p>
                 )}
-                {derivedError && <p className="text-xs text-destructive">{t(derivedError as never)}</p>}
+                {/* ad6ed930 — what can still be paid to someone who has left, and where a late entry lands. */}
+                {leaver && (
+                  <p
+                    className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300"
+                    data-testid="txn-leaver-info"
+                  >
+                    {t('leaverInfo', { date: formatDate(leftOn!) })}
+                  </p>
+                )}
+                {derivedError && <p className="text-xs text-destructive">{tErr(derivedError)}</p>}
                 {requireComponent && <p className="text-xs text-muted-foreground">{t('componentRequiredHint')}</p>}
                 {/* c11e81aa — THE BANNER NOW ALSO FIRES WHEN THE NAMED CYCLE HAS NO RUN YET, AND NAMES IT.
                     It used to fire only when the month had no run at all and promise "the regular run";
@@ -2342,6 +2402,7 @@ export function TxnWorkspace({
                                 type="date"
                                 aria-label={t('colEffectiveDate')}
                                 value={l.txnDate}
+                                max={leftOn ?? undefined}
                                 onChange={(e) => patchDailyLine(l.key, { txnDate: e.target.value })}
                                 className={inputCls}
                               />
@@ -2461,7 +2522,7 @@ export function TxnWorkspace({
                   </p>
                 )}
                 {dailyDerivedCurrent?.error && (
-                  <p className="text-xs text-destructive">{t(dailyDerivedCurrent.error as never)}</p>
+                  <p className="text-xs text-destructive">{tErr(dailyDerivedCurrent.error)}</p>
                 )}
                 {/* An item with NO rule at all — ABSENT and UNPAID LEAVE on this tenant today. The grid
                     still records the days; the amount is simply the operator's to key until a formula is

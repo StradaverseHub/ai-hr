@@ -28,7 +28,7 @@ last-resort guard with automatic retry.
    set `AIHR_IMPORT_WORKER_REQUIRED=1` wherever it is installed so a deploy fails without it.
 5. **Admission and pooling.** Web transactions keep all tenant settings transaction-local (PgBouncer runs in
    transaction mode). Every non-web process (timers, cron jobs, workers) sets `AIHR_DB_PROCESS_ROLE=worker` so it
-   connects directly. Measured on 4-vCPU runners: about one web worker per 2 vCPU and a shared pool of about
+   connects directly, with `AIHR_DB_POOL_MAX` at most 8 (cron: set it in the crontab, deploy/DEPLOY.md). Measured on 4-vCPU runners: about one web worker per 2 vCPU and a shared pool of about
    16 connections; more workers added stalls, not throughput (8 workers ran out of memory on `/assistant`).
 6. **Row-secured reads run with PostgreSQL JIT off.** JIT compilation cost 1.3 s on an audit count that runs in 11 ms,
    680 ms on every Approvals leave list and 18.8 s on one Home statement. Web and worker tenant transactions set

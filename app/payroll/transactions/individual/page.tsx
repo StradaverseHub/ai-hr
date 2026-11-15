@@ -7,6 +7,7 @@ import { listPayComponents } from '@/core/pay-components';
 import { listPayrollCycles } from '@/core/payroll-cycle';
 import { payRuleAllowsDayByDay, payRuleDerivesAmount, payRuleInputUnit, payRuleReadsOperand, type PayRule } from '@/core/pay-rule';
 import { todayInKualaLumpur } from '@/lib/hr-date';
+import { payrollLeavingDate } from '@/lib/payroll-leaving-date';
 import { ErrorBanner, PageHeader, pageWideCls } from '@/components/ui';
 import { TxnWorkspace, type TxnBatch, type TxnEmployee, type TxnPayrollCycle } from './txn-workspace';
 import { IndividualImportButtons } from '../import-excel/individual-import';
@@ -105,6 +106,7 @@ export default async function IndividualTransactionPage({
     cycles.map((c) => ({ id: c.id, companyId, name: c.name, runType: c.runType })),
   );
 
+  const today = todayInKualaLumpur();
   const txnEmployees: TxnEmployee[] = employees.map((e) => ({
     employmentId: e.employmentId,
     name: e.name,
@@ -120,6 +122,10 @@ export default async function IndividualTransactionPage({
     companyId: e.companyId,
     // Derive employment status from termination (matches the View page convention) — the status filter.
     status: e.terminatedOn == null ? 'active' : 'ended',
+    // ad6ed930 — the last day payroll reads (payrollEmploymentEnd's rule over the same three columns), so the
+    // New transaction window can start a leaver's entry there and cap its date picker. The save re-checks it.
+    leftOn: payrollLeavingDate(e),
+    hasLeft: (payrollLeavingDate(e) ?? '9999-12-31') < today,
   }));
   const txnBatches: TxnBatch[] = writableBatches.map((b) => ({
     id: b.id,
@@ -210,7 +216,7 @@ export default async function IndividualTransactionPage({
         panelCookieKey={INDIVIDUAL_PANEL_COOKIE}
         // Resolved on the SERVER through the tenant timezone: a browser an hour either side of MYT
         // midnight would otherwise default a new transaction into the wrong month.
-        currentPeriod={todayInKualaLumpur().slice(0, 7)}
+        currentPeriod={today.slice(0, 7)}
       />
     </div>
   );

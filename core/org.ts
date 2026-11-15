@@ -102,11 +102,23 @@ export class CrossCompanyError extends Error {
 /** A dated assignment change earlier than the version in force. Carries that version's start date so the
  *  Movement import can say which record blocks it (production 13 Nov 2026: the generic refusal hid it). */
 export class AssignmentBeforeCurrentStartError extends Error {
-  constructor(readonly currentStart: string) {
-    super('Effective date cannot be before the current assignment start date');
+  constructor(readonly currentStart: string, readonly effectiveDate?: string) {
+    // Board 2026-11-14 (production DB-V-55964A / 079831 / D6EDA6): the screen showed only a database reference
+    // when a termination predated the record in force. Name both dates, as the date pickers show them.
+    super(`${effectiveDate ? `The date ${displayCalendarDate(effectiveDate)} is` : 'This date is'} before the current assignment record, which starts on ${displayCalendarDate(currentStart)}. Use a date on or after ${displayCalendarDate(currentStart)}, or correct the later record in Employment History first.`);
     this.name = 'AssignmentBeforeCurrentStartError';
   }
 }
+/** A termination dated before a reporting line (as manager or subordinate) that is still open began. */
+export class ReportingLineAfterTerminationError extends Error {
+  constructor(readonly lineStart: string, readonly terminationDate: string) {
+    super(`The date ${displayCalendarDate(terminationDate)} is before a reporting line for this employee, which starts on ${displayCalendarDate(lineStart)}. Use a date on or after ${displayCalendarDate(lineStart)}, or correct that reporting line first.`);
+    this.name = 'ReportingLineAfterTerminationError';
+  }
+}
+const DISPLAY_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** A calendar date as the date pickers show it (14-Nov-2026), from its parts so no timezone can shift it. */
+function displayCalendarDate(iso: string) { const [y, m, d] = iso.split('-'); return `${d}-${DISPLAY_MONTHS[Number(m) - 1]}-${y}`; }
 
 /** A company move to the company the employee is already in. */
 export class EmploymentAlreadyInCompanyError extends Error {
@@ -538,6 +550,7 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
   return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
+
 /**
  * r78c — this service now has NO production caller. Its two callers were transferAction (deleted: an
  * unreferenced `use server` endpoint) and setLocationAction (rerouted through the movement recorder, which
@@ -649,6 +662,7 @@ export async function transferEmployee(
 
     const organisation=await deriveCompanyOrganisationTx(tx,ctx,{companyId:emp!.companyId,asOf:p.effectiveDate});
     // CLOSE current (set valid_to), then INSERT the new version — ranges don't overlap.
+    if (p.effectiveDate < cur.validFrom) throw new AssignmentBeforeCurrentStartError(cur.validFrom, p.effectiveDate);
     await tx.update(assignment).set({ validTo: p.effectiveDate }).where(eq(assignment.id, cur.id));
     const [next] = await tx
       .insert(assignment)
@@ -797,6 +811,8 @@ export async function terminateEmploymentTx(
     )
     .limit(1);
   if (cur) {
+    // Board 2026-11-14: a termination dated before the version in force would end it before it began.
+    if (p.terminationDate < cur.validFrom) throw new AssignmentBeforeCurrentStartError(cur.validFrom, p.terminationDate);
     await tx.update(assignment).set({ validTo: p.terminationDate }).where(eq(assignment.id, cur.id));
   }
 
@@ -805,6 +821,25 @@ export async function terminateEmploymentTx(
   // DOWN-walk never traverses THROUGH a terminated manager (which would surface their former subtree).
   // The recursive helper also filters terminated_on at each hop (belt-and-suspenders); ending the edges
   // keeps the graph itself clean for the org chart and approver lookups. Each closure is evented.
+  // Board 2026-11-14: the same refusal for a reporting line that starts after the termination date.
+  const [laterLine] = await tx
+    .select({ validFrom: reportingLine.validFrom })
+    .from(reportingLine)
+    .where(
+      and(
+        eq(reportingLine.lineType, 'administrative'),
+        isNull(reportingLine.validTo),
+        isNull(reportingLine.supersededAt),
+        gt(reportingLine.validFrom, p.terminationDate),
+        or(
+          eq(reportingLine.managerEmploymentId, p.employmentId),
+          eq(reportingLine.subordinateEmploymentId, p.employmentId),
+        ),
+      ),
+    )
+    .orderBy(desc(reportingLine.validFrom))
+    .limit(1);
+  if (laterLine) throw new ReportingLineAfterTerminationError(laterLine.validFrom, p.terminationDate);
   const endedLines = await tx
     .update(reportingLine)
     .set({ validTo: p.terminationDate })
@@ -2209,7 +2244,7 @@ export async function setEmploymentAssignment(
     if (!cur) throw new Error('No open assignment to change');
     // Effective date cannot predate the current version's start (would invert the dated range).
     if (p.effectiveDate < cur.validFrom) {
-      throw new AssignmentBeforeCurrentStartError(cur.validFrom);
+      throw new AssignmentBeforeCurrentStartError(cur.validFrom, p.effectiveDate);
     }
 
     const nextDepartmentId = p.departmentId ?? cur.departmentId;

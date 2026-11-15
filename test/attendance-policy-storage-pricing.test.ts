@@ -22,7 +22,7 @@ import {attendancePolicyDurationFormulaProjection} from '../packs/attendance/pol
 import {randomUUID,createHash} from 'node:crypto';
 import {attendancePolicyExecutionProposal,attendancePolicyDurationExecutionProposal} from '../packs/attendance/policy-execution-proposal';
 import {and,asc,eq,sql} from 'drizzle-orm';
-import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
+import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
@@ -30,6 +30,8 @@ import {assignDefaultShift,createShift,setRestDay} from '../core/roster';
 import {prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {addCalendarDays} from '../lib/hr-date-calendar';
+import {createPinnedHrDay} from './helpers/pinned-hr-day';
 import {lockAttendancePolicyImportTx,activateOvertimePattern,checkIn,checkOut,ensureStandardRule,canonicalOvertimeInputTx,canonicalOvertimePayrollInputTx,canonicalOvertimeToilInputTx,createOvertimeCalculationOwner,getOvertimePattern,stopOvertimePatternVersion,readOvertimeCalculationTx,readOvertimePatternCalculationTx,calculateOvertimePatternDay,
  checkInTx,checkOutTx,lockOvertimeSourceTx,reserveOvertimeSettlementTx,saveOvertimePatternDraft,scheduleAttendanceGroupPolicy,validateOvertimePatternActivation,requestAttendanceCorrection,decideAttendanceCorrection,cancelAttendanceApplication,canSubmitUnclockedAttendanceWork,setAttendancePolicy} from '../packs/attendance/service';
 import {adminCtx,entitledCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
@@ -37,10 +39,13 @@ import {createAttendancePolicyStorageFixtures} from './attendance-policy-storage
 
 
 let b:Base,ctx:SessionContext;
-const day=(offset:number)=>new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+offset*86400000).toISOString().slice(0,10);
+// One HR day per case (read once from the HR date owner), so a case crossing Kuala Lumpur midnight
+// cannot build its fixture on one date and assert on the next (gate run 43456019606).
+const hrDay=createPinnedHrDay(),day=hrDay.day;
 
 beforeAll(migrateTestDb);afterAll(closeAll);
-beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'attendance','active');ctx=adminCtx(b);});
+afterEach(()=>hrDay.release());
+beforeEach(async()=>{hrDay.pin();await resetDb();b=await seedBase();await setModule(b.tenantId,'attendance','active');ctx=adminCtx(b);});
 const {capturedClock,fixture,header,part}=createAttendancePolicyStorageFixtures({get b(){return b;},get ctx(){return ctx;},day});
 
 type Fixture=Awaited<ReturnType<typeof fixture>>;
@@ -214,6 +219,19 @@ describe('immutable non-payable policy part storage',()=>{
     bindingKind:'attendanceGroupPolicy',policyRevisionId:f.revisionId,policyPartCount:0}).returning();return saved;
   });
   expect(policy).toMatchObject({bindingKind:'attendanceGroupPolicy',policyPartCount:0,outcome:'refused',durationOutcome:'refused',transferable:false});
+ });
+ it('keeps one case date when the wall clock crosses Kuala Lumpur midnight between capture and source lock',async()=>{
+  // Reproduces gate run 43456019606: the capture for day(3) is written at 23:59:58 and the source is
+  // locked for day(3) after midnight. The HR date owner itself moves to the next day, but the case does not.
+  const f=await fixture(),pinned=hrDay.today();
+  vi.setSystemTime(new Date(`${pinned}T23:59:58+08:00`));
+  await capturedClock(f.employmentId,day(3),'in','23:50:00');
+  vi.setSystemTime(new Date(`${addCalendarDays(pinned,1)}T00:00:02+08:00`));
+  expect(todayInKualaLumpur()).toBe(addCalendarDays(pinned,1));
+  const source=await withTenant(ctx,tx=>lockOvertimeSourceTx(tx,ctx,{employmentId:f.employmentId,date:day(3)}));
+  expect(source).toMatchObject({employmentId:f.employmentId,attendanceDate:day(3)});
+  const [captured]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,day(3))));
+  expect(captured).toBeDefined();
  });
  it('stores both declared midnight parts beneath one parent, without creating a payment or moving its source head',async()=>{
   const f=await fixture();

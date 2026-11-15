@@ -1,7 +1,7 @@
 vi.mock('../app/performance/assessment-rewrite-actions',()=>({rewriteAssessmentFieldAction:vi.fn()}));
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider, createTranslator } from 'next-intl';
 import en from '../messages/en.json';
 import { defaultPolicy } from '../packs/performance/onehr/model';
@@ -14,13 +14,14 @@ vi.mock('next/navigation',async importActual=>({...await importActual<typeof imp
 vi.mock('../lib/scope',()=>({scopedSession:ports.session}));
 // D-P1-32 PT-X2: the session page reads the Calibration strip's gate facts; none here, so the strip draws nothing.
 vi.mock('../packs/performance/service',()=>({getOnehrCalibration:ports.calibration,getPerformanceAreaFacts:async()=>({performanceOn:false,items:[],ownFeedbackReport:'none'})}));
-vi.mock('../app/performance/onehr-actions',()=>({assessmentCalibrationPersonAction:ports.person,assessmentTalentPersonAction:vi.fn().mockResolvedValue({error:'No person frame in this fixture.'}),assessmentTalentInsightAction:vi.fn().mockResolvedValue({pending:true,source:null,data:null}),saveCalibrationBandAction:vi.fn(),assessmentInsightAction:vi.fn(),onehrReviewAction:vi.fn(),agreeDepartmentAction:vi.fn(),onehrCalibrationAction:vi.fn(),onehrFeedbackAction:vi.fn(),onehrDraftAction:vi.fn(),saveAssessmentDraftAction:vi.fn(),saveAssessmentKpiSettingAction:vi.fn().mockResolvedValue({revision:2})}));
+vi.mock('../app/performance/onehr-actions',()=>({assessmentCalibrationPersonAction:ports.person,assessmentTalentPersonAction:vi.fn().mockResolvedValue({error:'No person frame in this fixture.'}),assessmentTalentInsightAction:vi.fn().mockResolvedValue({pending:true,source:null,data:null}),saveCalibrationBandAction:vi.fn(),assessmentInsightAction:vi.fn(),onehrReviewAction:vi.fn(),agreeDepartmentAction:vi.fn(),onehrCalibrationAction:vi.fn(),onehrFeedbackAction:vi.fn(),onehrDraftAction:vi.fn(),saveAssessmentDraftAction:vi.fn().mockResolvedValue({revision:2}),saveAssessmentKpiSettingAction:vi.fn().mockResolvedValue({revision:2})}));
 vi.mock('../app/performance/actions',()=>({uploadAttachmentAction:vi.fn()}));
 import CalibrationPage from '../app/performance/assessment/calibration/[sessionId]/page';
 import { AssessmentCalibrationView } from '../app/performance/onehr/calibration-view';
 import { KpiEditor } from '../app/performance/onehr/kpi-editor';
 import { OnehrReviewView } from '../app/performance/onehr/review-view';
 import { ItemNavigator } from '../app/performance/workspace/item-navigator';
+import { AssessmentDraftForm, flushAssessmentDrafts } from '../app/performance/onehr/draft-form';
 const show=(element:React.ReactNode)=>render(<NextIntlClientProvider locale="en" messages={en}>{element}</NextIntlClientProvider>);
 /** Every element of `type` in a returned element tree, walking props.children (the page wraps the view, PT-X2). */
 function elementsOf(node:React.ReactNode,type:unknown):React.ReactElement[]{
@@ -37,7 +38,11 @@ async function calibrationScreen(){
  return AssessmentCalibrationView(views[0]!.props as Parameters<typeof AssessmentCalibrationView>[0]);
 }
 beforeEach(()=>{vi.clearAllMocks();ports.session.mockResolvedValue({s:{tenantId:'tenant'}});});
-afterEach(cleanup);
+/** Unmount only after every mounted draft form's 600 ms autosave has run, through the form's own flush owner.
+ * A debounce left pending outlived the jsdom environment and its setState failed the no-DB batch with
+ * "window is not defined" after all tests had passed (gate run 43467857134). */
+async function unmountSettled(){await act(async()=>{await flushAssessmentDrafts();});cleanup();}
+afterEach(unmountSettled);
 
 describe('OneHR native workflow controls',()=>{
  it('reads edits made before the phone navigator mounts and tracks subsequent target changes',()=>{
@@ -54,12 +59,12 @@ describe('OneHR native workflow controls',()=>{
   expect(screen.getByLabelText(en.onehr.target)).toBeTruthy();
   expect(screen.queryByRole('option',{name:en.onehr.mechanismA})).toBeNull();
  });
- it('generates library thresholds without losing other unsaved fields and omits the unused excellence multiplier',()=>{
+ it('generates library thresholds without losing other unsaved fields and omits the unused excellence multiplier',async()=>{
   const id=crypto.randomUUID(),libraryId=crypto.randomUUID(),managerId=crypto.randomUUID(),k={id,libraryId,title:'Delivery',description:'Original wording',weightBp:10000,unit:'units',moderatorEmploymentId:managerId,scoring:{mechanism:'A' as const,method:'more' as const,target:100,rates:[80,90,100,110,120] as [number,number,number,number,number]},setting:'draft' as const,settingRemark:'',actual:null,note:'',approvedActual:null,moderationRemark:'',locked:false};
   show(<KpiEditor reviewId={crypto.randomUUID()} revision={1} kpis={[k]} moderators={[{id:managerId,name:'Manager'}]} reviewerEmploymentId={managerId} mechanism="A" labels={en.onehr as unknown as Record<string,string>} library={[{id:libraryId,revision:1,title:'Delivery',description:'Original wording',category:'',unit:'units',weightBp:10000,scoring:k.scoring,spread:{rate:[80,90,100,110,120]}}]}/>);
   fireEvent.change(screen.getByLabelText(en.onehr.description),{target:{value:'Retain my unsaved wording'}});fireEvent.change(screen.getByLabelText(en.onehr.target),{target:{value:'250'}});fireEvent.click(screen.getByRole('button',{name:en.onehr.generateTargets}));
   expect((screen.getByLabelText(`${en.onehr.threshold} 3`) as HTMLInputElement).value).toBe('250');expect((screen.getByLabelText(`${en.onehr.threshold} 1`) as HTMLInputElement).value).toBe('200');expect((screen.getByLabelText(en.onehr.description) as HTMLTextAreaElement).value).toBe('Retain my unsaved wording');
-  cleanup();show(<KpiEditor reviewId={crypto.randomUUID()} revision={1} kpis={[]} moderators={[]} reviewerEmploymentId={null} mechanism="B" variant="excellence" labels={en.onehr as unknown as Record<string,string>}/>);fireEvent.click(screen.getByRole('button',{name:en.onehr.addKpi}));expect(screen.queryByLabelText(en.onehr.multiple)).toBeNull();expect(screen.getByLabelText(en.onehr.excellence)).toBeTruthy();
+  await unmountSettled();show(<KpiEditor reviewId={crypto.randomUUID()} revision={1} kpis={[]} moderators={[]} reviewerEmploymentId={null} mechanism="B" variant="excellence" labels={en.onehr as unknown as Record<string,string>}/>);fireEvent.click(screen.getByRole('button',{name:en.onehr.addKpi}));expect(screen.queryByLabelText(en.onehr.multiple)).toBeNull();expect(screen.getByLabelText(en.onehr.excellence)).toBeTruthy();
  });
  it('keeps a locked performance axis visible while leaving only potential editable',async()=>{
   ports.calibration.mockResolvedValue({session:{name:'BU review',tier:'bu',revision:2,performanceLockedAt:'now',potentialLockedAt:null,lockedAt:null},cycle:{name:'Annual'},axes:{pm:true,pot:true},units:[],modules:{pm:true,tm:true},reference:null,rows:[{canWrite:{pm:true,pot:true},talent:{revision:0,promotionEligible:false,standingReason:null},name:'Employee',grade:'12',finalized:false,managerPerformance:'ME',managerPotential:'High',currentPerformance:'ME',currentPotential:'High',entry:{...emptyTalentActions(),id:'entry',reviewId:'review',performance:null,potential:null,performanceLockedAt:'now',potentialLockedAt:null,lockedAt:null,performanceNote:'',potentialNote:''}}]});
@@ -125,7 +130,7 @@ describe('OneHR native workflow controls',()=>{
   show(await OnehrReviewView({v:v as unknown as Parameters<typeof OnehrReviewView>[0]['v']}));
   expect(screen.getByLabelText(en.onehr.quarterlyCheckIn)).toBeTruthy();expect(screen.getByRole('option',{name:en.onehr.checkInAnswers.at_risk})).toBeTruthy();
   expect(screen.queryByRole('button',{name:en.onehr.submitResults})).toBeNull();expect(screen.queryByLabelText(en.onehr.actual)).toBeNull();
-  cleanup();policy.kind='year_end';policy.modules.evidence=true;
+  await unmountSettled();policy.kind='year_end';policy.modules.evidence=true;
   show(await OnehrReviewView({v:v as unknown as Parameters<typeof OnehrReviewView>[0]['v'],section:'pm'}));
   const file=screen.getByLabelText(en.onehr.evidenceFile) as HTMLInputElement;
   const upload=document.getElementById('kpi-file-kpi') as HTMLFormElement,result=document.querySelector('form[data-assessment-draft]') as HTMLFormElement;
@@ -140,11 +145,20 @@ describe('OneHR native workflow controls',()=>{
   show(await OnehrReviewView({v:v as unknown as Parameters<typeof OnehrReviewView>[0]['v']}));
   expect(screen.getByText('Delivered the release.')).toBeTruthy();expect(screen.getByLabelText(en.onehr.evidenceResponse)).toBeTruthy();expect(screen.getByLabelText(en.onehr.correctsEvidence)).toBeTruthy();expect(screen.getByLabelText(en.onehr.evidenceFile)).toBeTruthy();
   expect(document.querySelector('input[name="overallRating"]')).toBeNull();
-  cleanup();
+  await unmountSettled();
   const skillView={...v,competencySelfSections:{},competencyManagerSections:{},policy:{...policy,modules:{...policy.modules,tm:true}},competencies:[{id:'analysis-3',principle:'Analysis',text:'Analyse current work',skillTitle:'Analysis',skillLevel:3,future:false,self:null,manager:null,selfRemark:'',managerRemark:''},{id:'analysis-4',principle:'Analysis',text:'Lead an analysis',skillTitle:'Analysis',skillLevel:4,future:true,self:null,manager:null,selfRemark:'',managerRemark:''}]};
   show(await OnehrReviewView({v:skillView as unknown as Parameters<typeof OnehrReviewView>[0]['v'],section:'tm'}));
   expect(screen.getByRole('group',{name:'Analysis Level 3'})).toBeTruthy();expect(screen.getByRole('group',{name:'Analysis Level 4'})).toBeTruthy();
   expect(screen.getByText(en.onehr.competencyScope.current)).toBeTruthy();expect(screen.getByText(en.onehr.competencyScope.future)).toBeTruthy();
 
+ });
+ it('settles a pending draft autosave before the screen unmounts',async()=>{
+  // Last on purpose: a debounce still pending here would otherwise run after the environment is torn down.
+  const save=vi.fn().mockResolvedValue({revision:2});
+  show(<AssessmentDraftForm revision={1} save={save} action={async()=>{}} labels={{saving:'Saving',saved:'Saved',privateDraft:'Private draft',failed:'Failed'}}><label>Note<input name="note" defaultValue=""/></label></AssessmentDraftForm>);
+  fireEvent.change(screen.getByLabelText('Note'),{target:{value:'Unsaved wording'}});
+  expect(screen.getByRole('status').textContent).toBe('Saving');expect(save).not.toHaveBeenCalled();
+  await unmountSettled();
+  expect(save).toHaveBeenCalledOnce();expect((save.mock.calls[0][0] as FormData).get('note')).toBe('Unsaved wording');
  });
 });

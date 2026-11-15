@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
-import { buildSystemLabelUploadTemplate, readSystemLabelWorkbook } from '../lib/system-label-workbook';
+import { buildSystemLabelUploadTemplate, buildSystemLabelWorkbook, readSystemLabelWorkbook } from '../lib/system-label-workbook';
 import { LABEL_TEMPLATE_DEFINITIONS, LABEL_TEMPLATE_NOTE } from '../lib/system-label-definition';
 
 const make=()=>buildSystemLabelUploadTemplate({samples:{division:[{Code:'00123',Label:'Live label',Description:'Current example',Status:'Active'}]}});
@@ -68,12 +68,27 @@ describe('Labels clean upload template',()=>{
       expect(()=>readSystemLabelWorkbook(bytes)).toThrow('Protected Excel workbooks');
     }
   });
-  it('preserves the full 500 data-row allowance after the note and header',async()=>{
+  it('accepts a list beyond the template\'s 500 formatted rows, up to the 7000-row workbook allowance',async()=>{
+    // Board 2026-11-14: one list may use the whole workbook allowance (production Positions holds 1,349 codes).
     const wb=XLSX.read(await make(),{type:'buffer'});
-    XLSX.utils.sheet_add_aoa(wb.Sheets.Division,Array.from({length:500},(_,index)=>[`C${index}`,'Label','','']),{origin:'A3'});
-    expect(readSystemLabelWorkbook(rewrite(wb))).toHaveLength(500);
-    XLSX.utils.sheet_add_aoa(wb.Sheets.Division,[['ONE_TOO_MANY','Label','','']],{origin:'A503'});
-    expect(()=>readSystemLabelWorkbook(rewrite(wb))).toThrow('500 data rows');
+    XLSX.utils.sheet_add_aoa(wb.Sheets.Division,Array.from({length:1349},(_,index)=>[`C${index}`,'Label','','']),{origin:'A3'});
+    expect(readSystemLabelWorkbook(rewrite(wb))).toHaveLength(1349);
+    XLSX.utils.sheet_add_aoa(wb.Sheets.Division,Array.from({length:7000-1349+1},(_,index)=>[`D${index}`,'Label','','']),{origin:'A1352'});
+    expect(()=>readSystemLabelWorkbook(rewrite(wb))).toThrow('Workbook limit: 7000 data rows');
+  });
+  it('exports a 1,349-row Positions list that its own importer reads back in full',async()=>{
+    // Board 2026-11-14 (production): every Positions export was refused by a 500-row per-list cap.
+    const rows=Array.from({length:1349},(_,index)=>({Code:`J${String(index+1).padStart(4,'0')}`,Label:'ACCOUNT ASSISTANT',Description:'ACCOUNT ASSISTANT',Status:'Active'}));
+    const bytes=await buildSystemLabelWorkbook({kinds:['position'],includeStatus:true,references:{companies:[],grades:[],employees:[]},rows:{position:rows}});
+    const read=readSystemLabelWorkbook(bytes).filter(row=>row.sheet==='position');
+    expect(read).toHaveLength(1349);
+    expect(read.at(-1)).toMatchObject({row:1350,values:{Code:'J1349',Label:'ACCOUNT ASSISTANT'}});
+  });
+  it('ignores formatted blank cells far below the entries',async()=>{
+    const wb=XLSX.read(await make(),{type:'buffer'}),sheet=wb.Sheets.Division;
+    XLSX.utils.sheet_add_aoa(sheet,[['C1','Label','','']],{origin:'A3'});
+    sheet.A9000={t:'s',v:''};sheet['!ref']='A1:D9000';
+    expect(readSystemLabelWorkbook(rewrite(wb)).filter(row=>row.sheet==='division')).toHaveLength(1);
   });
   it('grants protection only to the worksheet resolved as Sample, never to a guessed ZIP path',async()=>{
     const zip=await JSZip.loadAsync(await make()),entry=zip.file('xl/_rels/workbook.xml.rels')!,xml=await entry.async('string');

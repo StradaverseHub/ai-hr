@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import {readSpreadsheetArchive} from './spreadsheet-archive';
 import {INFORMATION_HEADERS,INFORMATION_HEADERS_V2,type InformationHeader,type InformationImportRow,type InformationOptions} from './information-correction';
 import {isCalendarDate} from './calendar-date';
+import {trimWorksheetToData} from './spreadsheet-data-extent';
 export const INFORMATION_MAX_ROWS=200;
 /** Codes are text cells so leading zeros survive. */
 const CODE_HEADERS=new Set<InformationHeader>(['Employee ID','Company Code','New Company Code','Job Grade','Business Unit','Department','Position','Direct Superior']);
@@ -27,8 +28,13 @@ export function parseInformationWorkbookVersioned(content:Buffer):{version:1|2;r
  readSpreadsheetArchive(content,{maxBytes:10485760,maxExpandedBytes:33554432,maxEntries:128});
  const book=XLSX.read(content,{type:'buffer',cellDates:false,cellFormula:true});
  const sheet=book.Sheets.Corrections;if(!sheet||!sheet['!ref'])throw new Error('Use the Corrections sheet from the Information-Only Correction template.');
- const range=XLSX.utils.decode_range(sheet['!ref']);
- if(range.s.r!==0||range.s.c!==0||range.e.r<1||range.e.r>INFORMATION_MAX_ROWS||range.e.c>=INFORMATION_HEADERS_V2.length)throw new Error('Use the Information-Only Correction template with between 1 and 200 employee rows.');
+ // Board 2026-11-14: measure the rows and columns that hold entries, not the range Excel records for formatted blank
+ // cells (a Text-formatted block kept a six-employee file "over 200 rows"). Each limit now names its own cause.
+ const range=trimWorksheetToData(sheet);
+ if(!range||range.s.r!==0||range.s.c!==0)throw new Error('Use the Corrections sheet from the Information-Only Correction template, with its headers in row 1.');
+ if(range.e.r<1)throw new Error('The file has no employee rows.');
+ if(range.e.r>INFORMATION_MAX_ROWS)throw new Error(`Enter at most ${INFORMATION_MAX_ROWS} employee rows. This file has entries down to row ${range.e.r+1}; split it into separate files.`);
+ if(range.e.c>=INFORMATION_HEADERS_V2.length)throw new Error(`The Corrections sheet has entries in column ${XLSX.utils.encode_col(range.e.c)}, after the last template column. Remove them or download a new template.`);
  if(range.e.c<INFORMATION_HEADERS.length-1)throw new Error('The template columns changed. Download a new template.');
  const version=templateVersion(sheet,range.e.c);
  const headers:readonly InformationHeader[]=version===1?INFORMATION_HEADERS:INFORMATION_HEADERS_V2;

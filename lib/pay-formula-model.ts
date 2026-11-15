@@ -13,3 +13,7 @@ export type PayFormulaEvaluationDetail=PayFormulaEvaluationSummary&{formulaId:st
 export type PayFormulaView={id:string;formulaId:string;status:'draft'|'tested'|'active'|'inactive'|'deleted';activeRevisionId:string|null;latest:PayFormulaRevision;versions:PayFormulaRevision[];tests:PayFormulaTest[];usage:{id:string;code:string;name:string}[];idLocked:boolean;updatedAt:string;capabilities:PayFormulaCapabilities;evaluations?:PayFormulaEvaluationSummary[]};
 export type ActiveFormula={id:string;formulaId:string;revisionId:string;ordinal:number;program:FormulaProgram;contentHash:string;dependencies:string[];evaluatorVersion:string;registryVersion:string;dependencyFingerprint:string};
 export class PayFormulaError extends Error{constructor(message:string,public readonly code='FORMULA_INVALID'){super(message);this.name='PayFormulaError';}}
+/** ad6ed930 — the effective date asked for is after the employee's last day (payrollEmploymentEnd). Named so the
+ * Individual Transaction window and the reprocess outcome can say so, with the date, instead of blaming the Pay Item's
+ * set-up. `leftOn` is ISO yyyy-mm-dd. Still a PayFormulaError, so every existing fail-closed catch keeps refusing. */
+export class PayFormulaAfterLeavingDateError extends PayFormulaError{constructor(public readonly leftOn:string){super(`This employee left on ${leftOn}. Choose an effective date on or before that day.`,'AFTER_LEAVING_DATE');this.name='PayFormulaAfterLeavingDateError';}}

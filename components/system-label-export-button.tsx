@@ -13,7 +13,12 @@ export function SystemLabelExportButton({kind}:{kind:string}){
       setError('');
       try{
         const response=await fetch(`/admin/settings/system-labels/current-data?kind=${encodeURIComponent(kind)}&inactive=1`,{cache:'no-store'});
-        if(!response.ok||!response.headers.get('Content-Type')?.includes('spreadsheetml'))throw new Error(t('failed'));
+        if(!response.ok||!response.headers.get('Content-Type')?.includes('spreadsheetml')){
+          // The route returns its refusal as a plain, public sentence (publicErrorMessage); show it rather than a bare "failed".
+          const json=!response.ok&&response.headers.get('Content-Type')?.includes('application/json');
+          const reason=json?await response.json().then((body:unknown)=>typeof (body as {error?:unknown})?.error==='string'?(body as {error:string}).error:'').catch(()=>''):'';
+          setError(reason||t('failed'));return;
+        }
         const url=URL.createObjectURL(await response.blob());
         const link=document.createElement('a');link.href=url;link.download=`system-labels-${kind}.xlsx`;document.body.appendChild(link);link.click();link.remove();
         // Allow the browser to start consuming the download before releasing its object URL.

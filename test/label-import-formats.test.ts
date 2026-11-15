@@ -53,7 +53,7 @@ describe('bounded real XLS and XLSX Labels admission',()=>{
   const zip=new JSZip();zip.file('unrelated.txt','Not Excel');const bytes=await zip.generateAsync({type:'nodebuffer'});expect(()=>readSystemLabelWorkbook(bytes)).toThrow(/Invalid Excel archive/);
   for(const type of ['biff8','xlsx'] as const){
    expect(()=>readSystemLabelWorkbook(make(type,wb=>{wb.SheetNames=['Reference'];wb.Sheets={Reference:wb.Sheets.division};}))).toThrow(/no recognised/);
-   expect(()=>readSystemLabelWorkbook(make(type,wb=>{wb.Sheets.division=XLSX.utils.aoa_to_sheet([headers,...Array.from({length:501},(_,i)=>[String(i),'X','',''])]);}))).toThrow(/limit/);
+   expect(()=>readSystemLabelWorkbook(make(type,wb=>{wb.Sheets.division=XLSX.utils.aoa_to_sheet([headers,...Array.from({length:7001},(_,i)=>[String(i),'X','',''])]);}))).toThrow(/limit/); // Board 2026-11-14: 7000-row workbook allowance per list.
   }
  });
  it('rejects encrypted ZIP flags and bounded archive expansion before SheetJS reads worksheets',async()=>{
