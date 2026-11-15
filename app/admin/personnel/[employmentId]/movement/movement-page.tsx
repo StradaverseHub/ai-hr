@@ -8,5 +8,5 @@ export async function PersonnelMovementPage({employmentId,mode,movementId,search
  await requireAdmin();
  if(!['history','new','correct-hire','edit','view'].includes(mode)||(mode==='edit'||mode==='view')!==!!movementId)notFound();
  const action=mode==='history'?{}:mode==='new'?{newEvent:'1'}:mode==='correct-hire'?{correctHire:'1'}:mode==='edit'?{editMovement:movementId}:{movement:movementId};
- return EmployeePage({params:Promise.resolve({employmentId}),searchParams:Promise.resolve({tab:'careerMovement',movementPage:mode,error:mode==='history'?search.error:undefined,showCorrected:search.showCorrected==='1'?'1':undefined,from:search.from==='org'?'org':undefined,...action})});
+ return EmployeePage({params:Promise.resolve({employmentId}),searchParams:Promise.resolve({tab:'careerMovement',movementPage:mode,error:mode==='history'?search.error:undefined,showCorrected:search.showCorrected==='1'?'1':undefined,from:search.from==='org'?'org':undefined,...(mode==='new'&&search.posting?{posting:search.posting}:{}),...action})});
 }
