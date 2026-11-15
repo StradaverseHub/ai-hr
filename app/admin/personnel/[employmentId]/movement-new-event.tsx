@@ -864,7 +864,8 @@ export function MovementNewEvent({
         </div>
       )}
 
-      {isComparison && !posting && (
+      {isComparison && (posting ? null : (
+        // Personnel postings carry only dates and remarks, so a posting offers no comparison grid.
         // Board 154511c4 — hidden (not unmounted) while recording history: the server ignores these After values then.
         <div className="border-t border-border" hidden={historyMode}>
           <div className="hidden bg-muted/50 px-4 py-2 text-xs uppercase tracking-wide text-muted-foreground sm:grid sm:grid-cols-[11rem_minmax(0,1fr)_minmax(0,1fr)] sm:gap-4">
@@ -880,7 +881,7 @@ export function MovementNewEvent({
             {isEntityTransfer ? t('form.entityTransferHint') : t('form.comparisonHint')}
           </p>
         </div>
-      )}
+      ))}
 
       <div className="flex items-center justify-end gap-2 border-t border-border p-4">
         <a href={cancelHref} className={btnGhost}>
