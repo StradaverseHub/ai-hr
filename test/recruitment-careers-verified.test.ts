@@ -18,7 +18,7 @@ import type { SessionContext } from '../db/client';
 import { jobGrade } from '../db/schema';
 import { pgSqlState } from '../lib/db-error';
 import {
-  applicationCandidateEmails, createJob, destroyCandidates, saveCandidateEmailSettings, setCareersPublished, setJobCareersPage, submitCareersApplication,
+  applicationCandidateEmails, createJob, destroyCandidates, recruitmentSettings, rejectApplication, saveCandidateEmailSettings, setCareersPublished, setJobCareersPage, submitCareersApplication,
   updateCareersSettings, RecruitmentError, type CareersSubmission,
 } from '../packs/recruitment/service';
 import { GET as jobRoute, POST as postRoute } from '../app/careers/[address]/jobs/[jobId]/route';
@@ -221,10 +221,8 @@ describe('case 141 — careers receipts', () => {
     expect(await submit(jobId, { verificationToken: again })).toEqual({ ok: true, outcome: 'received' });
     expect(await emails()).toHaveLength(1);
     // Removal (after closing the application) deletes the receipt and the verifications naming the candidate.
-    await owner.client.begin(async (tx) => {
-      await tx`set local session_replication_role = replica`;
-      await tx`update recruitment_application set state = 'archived' where id = ${application_id}::uuid`;
-    });
+    const reason = (await recruitmentSettings(admin, base.companyId)).reasons.find((x) => x.displayed)!;
+    await rejectApplication(admin, application_id, reason.id);
     expect(await destroyCandidates(admin, base.companyId, [r.candidate_id], 'on')).toEqual({ removed: 1 });
     expect(await emails()).toHaveLength(0);
     expect((await owner.db.execute<{ n: number }>(sql`select count(*)::int as n from app.recruitment_careers_verification where candidate_id = ${r.candidate_id}::uuid`))[0].n).toBe(0);
