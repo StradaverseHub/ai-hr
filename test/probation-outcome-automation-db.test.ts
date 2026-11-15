@@ -9,7 +9,7 @@ import {adminCtx,closeAll,setModule,migrateTestDb,owner,resetDb,seedBase,type Ba
 import {probationOutcomeFixture} from './helpers/probation-outcome-fixture';
 import {newProbationLetterTemplate} from '../lib/probation-letter-template';
 import type {SessionContext,Tx} from '../db/client';
-import {saveProbationLetterTemplate,readProbationLetter,actOnProbationLetter,releaseProbationLetter,sweepProbation} from '../packs/probation/service';
+import {saveProbationLetterTemplate,readProbationLetter,actOnProbationLetter,releaseProbationLetter,sweepProbation,applyProbationOutcome} from '../packs/probation/service';
 
 let b:Base,admin:SessionContext,fixture:ReturnType<typeof probationOutcomeFixture>;
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -92,6 +92,44 @@ describe('Probation outcome on the shared workflow runner (W2)',()=>{
   // No published template: today's auto-draft routes the outcome to the PBP with the existing message.
   const [outcome]=await owner.db.execute<{failure:string|null}>(sql`select failure from probation_outcome where id=${decision.id}::uuid`);
   expect(outcome.failure).toBe('The review is recorded. Select and complete the approved outcome letter before signing and release.');
+ });
+});
+
+describe('a run that fails after it created the posting (F7)',()=>{
+ it('never falls back to writing the movement on the GBS retry: the outcome completes with the pending posting',async()=>{
+  const key='confirm-'+randomUUID().slice(0,8);
+  const {ids,staff,decision,admin:pbp}=await fixture.recordedConfirm([{id:'nobody',name:'Fictional empty group',members:[],limit:10}],{beforeRecord:async ctx=>{
+   await letterTemplate(ctx,key);
+   // The step after the posting reaches nobody: its group is empty and so is the case's fallback group.
+   await owner.db.execute(sql`update probation_case set data=jsonb_set(data,'{config,fallbackGroupId}','"nobody"') where employment_id=(select e.id from employment e join person p on p.id=e.person_id where p.full_name='Fictional Staff' and e.tenant_id=${b.tenantId}::uuid)`);
+   await liveWorkflow([{type:'generateDocument',params:{letterTemplateId:key}},{type:'createPosting',params:{eventType:'Confirmation'}},{type:'notify',params:{subject:'Confirmed',body:'Confirmed'},to:[{kind:'group',groupId:'nobody'}]}],[{field:'outcome',op:'is',values:['Confirm']}]);
+  }});
+  admin=pbp;
+  const [outcome]=await owner.db.execute<{letter:string|null}>(sql`select letter_part_id::text as letter from probation_outcome where id=${decision.id}::uuid`);
+  let letter=await readProbationLetter(admin,ids.caseId,outcome.letter!);const hr=letter.signing!.document.route.steps.find(s=>s.role==='pbp')!;
+  await actOnProbationLetter(admin,{caseId:ids.caseId,partId:letter.id,revision:letter.storageRevision,stepId:hr.id,action:'signed',method:'typed',value:'Fictional PBP',consent:true});
+  letter=await readProbationLetter(staff.ctx,ids.caseId,outcome.letter!);const ack=letter.signing!.document.route.steps.find(s=>s.role==='employee')!;
+  await actOnProbationLetter(staff.ctx,{caseId:ids.caseId,partId:letter.id,revision:letter.storageRevision,stepId:ack.id,action:'signed',method:'typed',value:'Fictional Staff',consent:true});
+  letter=await readProbationLetter(admin,ids.caseId,outcome.letter!);
+  await releaseProbationLetter(admin,{caseId:ids.caseId,partId:letter.id,outcomeRevision:letter.outcomeRevision!,reason:'Release the signed letter'});
+  const runner={...admin,userId:undefined,roles:[],grants:undefined} as SessionContext;
+  const port={withTenant:async<T>(context:SessionContext,run:(tx:Tx)=>Promise<T>)=>owner.withTenant(context,run)};
+  await sweepProbation(runner,port);await sweepProbation(runner,port);
+  const state=()=>owner.db.execute<{outcomeState:string;failure:string|null;movement:string|null;caseState:string;pending:{id:string}|null;confirmed:string|null}>(sql`
+   select o.state as "outcomeState",o.failure,o.movement_ref as movement,c.data->>'state' as "caseState",c.data->'pendingPosting' as pending,e.confirmation_date::text as confirmed
+   from probation_outcome o join probation_case c on c.id=o.case_id join employment e on e.id=c.employment_id where o.id=${decision.id}::uuid`);
+  // Resumed: the posting was created, the notice found nobody, the run failed and asked for a check by hand.
+  expect(await runsOf(ids.caseId)).toEqual([expect.objectContaining({status:'failed'})]);
+  const postings=await owner.db.execute<{id:string;status:string}>(sql`select id,status from personnel_posting where source_ref=${ids.caseId}::uuid`);
+  expect(postings).toEqual([expect.objectContaining({status:'pending'})]);
+  const [failed]=await state();
+  expect(failed).toMatchObject({confirmed:null});expect(failed.outcomeState).not.toBe('completed');expect(failed.failure).toContain('release by hand');
+  // The GBS retry completes the outcome with that posting; the movement is never written beside it.
+  expect(await applyProbationOutcome(admin,decision.id)).toMatchObject({queued:true});
+  await sweepProbation(runner,port);
+  const [after]=await state();
+  expect(after).toEqual({outcomeState:'completed',failure:null,movement:'posting:'+postings[0].id,caseState:'confirmed',pending:{id:postings[0].id,eventType:'confirmation'},confirmed:null});
+  expect(await owner.db.execute(sql`select 1 from personnel_posting where source_ref=${ids.caseId}::uuid`)).toHaveLength(1);
  });
 });
 

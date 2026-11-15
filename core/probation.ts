@@ -504,19 +504,24 @@ async function decideOutcomeAutomationTx(tx:Tx,ctx:SessionContext,view:Probation
 /**
  * New path (W2): an outcome decided with shared workflows resumes their frozen remaining steps once its letter is
  * released and filed, then records the effect without writing the movement (a Personnel posting waits for approval).
- * Outcomes without a run (decided before this shipped, or no workflow matched) and outcomes whose run failed (handled by
- * hand) keep the path below unchanged.
+ * Outcomes without a run (decided before this shipped, or no workflow matched) and outcomes whose run failed before it
+ * created anything (handled by hand) keep the path below unchanged.
+ * F7: once a run has created a Personnel posting (or the offboarding hand-off), the outcome never falls back to writing
+ * the movement directly. If a later step failed, the GBS retry records the effect with that posting (still pending
+ * approval) instead, so the movement cannot be written twice; the failed step itself was asked to be checked by hand.
  */
 async function applyAutomatedOutcomeTx(tx:Tx,ctx:SessionContext,view:ProbationCaseView,part:ProbationPartView,outcome:{id:string;outcome:string}):Promise<{completed:boolean;waitingOn?:string}|null>{
  const{probationOutcomeAutomationTx,resumeProbationOutcomeTx}=await import('./probation-automation');
- // A run that failed asked the PBP to check and release by hand: that outcome then completes on the path below.
- const before=await probationOutcomeAutomationTx(tx,outcome.id);if(!before.runs||before.failed)return null;
+ // A run that failed before it created a posting or hand-off asked the PBP to check and release by hand: that outcome
+ // then completes on the path below.
+ const before=await probationOutcomeAutomationTx(tx,outcome.id),failedWithEffect=before.failed>0&&!!(before.postingId||before.handoffId);
+ if(!before.runs||before.failed&&!failedWithEffect)return null;
  if(outcome.outcome==='confirm'&&view.record.endOn>todayInKualaLumpur())return{completed:false,waitingOn:view.record.endOn};
  const[letter]=await tx.execute<{id:string;revision:number}>(sql`select d.id,o.revision from probation_outcome o join document_signing_document d on d.tenant_id=o.tenant_id and d.subject_type='probation' and d.subject_id=o.letter_part_id where o.id=${outcome.id}::uuid and o.tenant_id=${ctx.tenantId}::uuid`);
  const extensionMonths=part.offlineDecision?.acceptedAt?part.offlineDecision.extensionMonths:part.extensionMonths;
- if(letter)await resumeProbationOutcomeTx(tx,ctx,{record:view.record,partId:part.id,outcome:{id:outcome.id,revision:letter.revision,outcome:outcome.outcome,extensionMonths},documentId:letter.id});
+ if(letter&&!failedWithEffect)await resumeProbationOutcomeTx(tx,ctx,{record:view.record,partId:part.id,outcome:{id:outcome.id,revision:letter.revision,outcome:outcome.outcome,extensionMonths},documentId:letter.id});
  const after=await probationOutcomeAutomationTx(tx,outcome.id);
- if(after.failed||after.waiting)return{completed:false};
+ if(after.waiting||after.failed&&!failedWithEffect)return{completed:false};
  let next:{endOn:string}|null=null,newPart:ProbationPart|null=null;
  if(outcome.outcome==='extend'){if(extensionMonths!==3&&extensionMonths!==6)throw new ProbationError('invalid','The actual PBP-approved extension length is required.');const start=addDaysIso(view.record.endOn,1),end=addDaysIso(addCalendarMonths(start,extensionMonths),-1);next={endOn:end};const working=new Set(await workingDatesForSpan(tx,view.record.employmentId,addDaysIso(end,-366),addDaysIso(end,366)));const{newProbationPart,probationDueDay}=await import('../lib/probation-model');newPart=newProbationPart(randomUUID(),3,view.record.extensionCount+1,probationDueDay(end,day=>working.has(day),view.record.config.nonWorkingDayRule),view.record.config.issueLeadDays);}
  await tx.execute(sql`select app.probation_record_posting_effect(${outcome.id}::uuid,${after.postingId}::uuid,${outcome.outcome==='not_confirm'?after.handoffId:null}::uuid,${json(next)}::jsonb,${json(newPart)}::jsonb)`);
