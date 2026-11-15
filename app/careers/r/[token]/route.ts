@@ -65,9 +65,10 @@ export async function POST(request: NextRequest, context: Params) {
       return state ? careersResponse(400, careersResponseHtml(view, token, state)) : careersResponse(404, careersResponseNotFoundHtml(view));
     }
     const r = await answerCandidateResponse(token, answer, clientHash);
+    if (r.status === 'answered') return careersResponse(200, careersResponseHtml(view, token, r.state, true));
+    if (r.status === 'closed') return careersResponse(409, careersResponseHtml(view, token, r.state));
     if (r.status === 'limited') return careersResponse(429, careersResponseLimitedHtml(view, token), { 'retry-after': '3600' });
-    if (r.status === 'not_found') return careersResponse(404, careersResponseNotFoundHtml(view));
-    return careersResponse(r.status === 'answered' ? 200 : 409, careersResponseHtml(view, token, r.state, r.status === 'answered'));
+    return careersResponse(404, careersResponseNotFoundHtml(view));
   } catch (e) {
     logCareersFailure('response-answer', e);
     return careersResponse(503, unavailableHtml(view, 'submit'), { 'retry-after': '60' });
