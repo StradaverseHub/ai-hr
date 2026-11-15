@@ -4,35 +4,24 @@
  *
  * A letter template version is stored by core/probation-letter.ts in probation_builder_definition. Its strict schema
  * does not accept a `routing` field yet, so this file cannot persist a routing without editing that file. Until lane D2
- * adds `routing: probationLetterRoutingSchema.optional()` to the template schema (and the checks below to its
+ * adds `routing: documentRoutingSchema.optional()` (lib/document-signing-routing-schema.ts) to the template schema (and the checks below to its
  * validation) and sets PROBATION_LETTER_ROUTING_STORED, a template with an empty routing saves exactly as today and a
  * non-empty routing is refused with a plain message instead of being dropped silently.
  */
-import {z} from 'zod';
 import type {SessionContext} from '../db/client';
 import {withScopedLifecycleTenant} from './module-gate';
 import {automationReferencesTx} from './automation-builder';
 import {ProbationError} from '../lib/probation-model';
 import type {ProbationTemplate} from '../lib/probation-workflow';
 import {saveProbationLetterTemplate} from './probation-letter';
-import {DOCUMENT_ROUTING_ACTIONS,MAX_DOCUMENT_ROUTING_ORDER,MAX_DOCUMENT_ROUTING_PEOPLE,MAX_DOCUMENT_ROUTING_STEPS,documentRoutingProblems,documentRoutingSignatureProblems,type DocumentRouting} from '../lib/document-signing-routing';
+import {documentRoutingProblems,documentRoutingSignatureProblems,type DocumentRouting} from '../lib/document-signing-routing';
+import {documentRoutingSchema} from '../lib/document-signing-routing-schema';
 
 /** Lane D2 sets this once core/probation-letter.ts stores `routing` with each template version. */
 export const PROBATION_LETTER_ROUTING_STORED = false;
 
-const id = z.string().min(1).max(120);
-/** Shape of the routing on a template version; lane D2 adds it to the letter template schema. */
-export const probationLetterRoutingSchema = z.array(z.object({
-  id, order: z.number().int().min(1).max(MAX_DOCUMENT_ROUTING_ORDER), action: z.enum(DOCUMENT_ROUTING_ACTIONS), owner: z.boolean(),
-  pick: z.enum(['any', 'roundRobin']).optional(),
-  who: z.discriminatedUnion('kind', [
-    z.object({kind: z.literal('routing'), routingId: z.uuid()}).strict(),
-    z.object({kind: z.literal('group'), groupId: z.string().min(1).max(200)}).strict(),
-    z.object({kind: z.literal('people'), userIds: z.array(z.uuid()).min(1).max(MAX_DOCUMENT_ROUTING_PEOPLE)}).strict(),
-    z.object({kind: z.literal('employee')}).strict(),
-    z.object({kind: z.literal('directSuperior')}).strict(),
-  ]),
-}).strict()).max(MAX_DOCUMENT_ROUTING_STEPS);
+/** Shape of the routing on a template version; lane D2 adds it to the letter template schema (import it from lib to avoid a cycle). */
+export const probationLetterRoutingSchema = documentRoutingSchema;
 
 export type ProbationRoutedTemplate = ProbationTemplate & {routing?: DocumentRouting};
 export function probationTemplateRouting(template: Pick<ProbationRoutedTemplate, 'routing'>): DocumentRouting { return template.routing ?? []; }

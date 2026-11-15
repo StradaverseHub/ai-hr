@@ -5,6 +5,7 @@ import {
 } from '../lib/document-signing-model';
 import {documentRoutingProblems,documentRoutingSignatureProblems,resolveDocumentRouting,type DocumentRouting,type DocumentRoutingResolveContext} from '../lib/document-signing-routing';
 import type {Routing} from '../lib/automation/routing';
+import {documentRoutingSchema} from '../lib/document-signing-routing-schema';
 
 /** Pure rules of template-routing documents (lib/document-signing-model.ts) and routing per template version. */
 const hash='a'.repeat(64),rules={requiredRoles:[] as string[]},at='2026-11-16T03:00:00Z';
@@ -127,6 +128,12 @@ describe('signing and review routing per template version',()=>{
   expect(unresolved).toEqual([{stepId:'s4',meantFor:'Their Direct Superior',reason:'No Direct Superior is recorded.',fallbackGroupId:'g-gbs',holderId:'u-gbs'}]);
   expect(chosen).toEqual(['g-gbs:any','g-bp:roundRobin','people:any','g-gbs:any']);
   expect(()=>validateSigningRoute(route,rules)).not.toThrow();
+ });
+ it('stores only the declared routing shape',()=>{
+  expect(documentRoutingSchema.safeParse(valid).success).toBe(true);
+  expect(documentRoutingSchema.safeParse([{...valid[0],who:{kind:'role',role:'hr'}}]).success).toBe(false);
+  expect(documentRoutingSchema.safeParse([{...valid[0],extra:true}]).success).toBe(false);
+  expect(documentRoutingSchema.safeParse([{...valid[1],who:{kind:'routing',routingId:'not-an-id'}}]).success).toBe(false);
  });
  it('leaves a step without a holder when neither the step nor the fallback group resolves',()=>{
   const ctx:DocumentRoutingResolveContext={employeeUserId:null,directSuperiorUserId:null,facts:{},routing:()=>null,groupMembers:()=>null,choose:c=>c[0]??null,fallback:null,describe:()=>'The employee'};
