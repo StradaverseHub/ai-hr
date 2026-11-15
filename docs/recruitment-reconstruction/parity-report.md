@@ -730,3 +730,20 @@ Tests: `test/recruitment-candidate-response.test.ts`; slice 20 expectations upda
 | 43705357817 | Type check, build; 3 affected files (41 tests) | PASS |
 
 Not rendered (case 142 and the link pages): no local installation with the embedded sign-in and a relay.
+
+## Slice 22 — anonymous candidate survey (2026-11-15)
+
+`origin/main` (`e55138825`, board 4604dccc) was merged at `c3b891e7f` without a renumber (main's newest, `5680`, sorts below `5700`).
+Migration `5724` (idx 5124, when 1793330005424) applied after all 875 earlier migrations on a throwaway local Postgres 16 before CI.
+Decisions D-067; spec cases 143–148.
+
+| Check | Result |
+| --- | --- |
+| Run 43714371926 on `3ec72d635` (60 files: every `test/recruitment-*` file plus `company-referrers`, module, i18n, migration-journal and pack suites; type check; build) | Type check and build PASS; 6 tests FAIL in 3 files |
+| Cause 1 (4 survey-page tests): postgres.js bound the answers' JSON string to `$2::jsonb` as a JSON *string*, so 5724 refused every answer (22023) and the page answered 503 | Fixed in `982cefdaf`: bound as text and cast `::text::jsonb` |
+| Cause 2 (2 tests): the recruitment table-count pins in `recruitment-slices-service` and `recruitment-candidate-privacy` (81 → 82, the survey answer table) | Pins updated; the sentinel and bystander scans now cover the new table |
+| Run 43716161965 on `982cefdaf` (the 4 affected files; type check) | PASS |
+
+Not rendered (case 148): this machine has no installed dependencies and the survey is sent only through an installation with an active
+relay. The public survey page itself is anonymous and can be rendered on any installation once a survey has been sent. Nothing is on
+staging.

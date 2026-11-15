@@ -178,3 +178,16 @@ State at the head of `claude/rea-web-app-reconstruction-2c12ee` (pushed):
 Next, in order: slice 22 (optional anonymous candidate survey after hire or rejection; spec to write), slice 23 (referral rewards),
 slice 24 (AI match summary suggestions; needs the owner's provider-data approval), slice 25 (agency portal, reusing slice 21a's
 verification). Owner review: D-065, D-066.
+
+## Checkpoint — slice 22 built and verified (2026-11-15)
+
+State at the head of `claude/rea-web-app-reconstruction-2c12ee` (pushed):
+- `origin/main` (`e55138825`) merged at `c3b891e7f`; the recruitment block now ends at `5724` (when 1793330005424).
+- Slice 22 (`5724`): the optional anonymous candidate survey after a hire or a rejection e-mail, the link made by the sweep at send time,
+  the anonymous survey page `/careers/s/<token>`, and Reports › Candidate survey for administrators (nothing below 5 answers). D-067.
+- CI: type check and build pass on `3ec72d635`; the four files that failed there pass on `982cefdaf`. Details in `parity-report.md`.
+- Not rendered; nothing on staging.
+
+Next, in order: slice 23 (referral rewards: fixed per job, payable after probation, HR-approved, one-off payroll earning; agency fees
+tracked and approved only), slice 24 (AI match summary suggestions; needs the owner's provider-data approval), slice 25 (agency portal).
+Owner review: D-065, D-066, D-067.
