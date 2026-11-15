@@ -105,6 +105,42 @@ documents name the new numbers; the earlier sections here and the dated sections
 of their time as history. The full mapping and the survey are the top entry of `docs/MIGRATION-ALLOCATION.md`. A local
 database migrated with the 52NN numbers must be rebuilt, not upgraded.
 
+## Checkpoint — paused after slice 19 (2026-11-15)
+
+State at `70ad780fe` (pushed; branch `claude/rea-web-app-reconstruction-2c12ee`):
+- Built, reviewed, rendered and committed: slices 1–19. Migrations `5700`–`5720` (idx 5100–5120, when
+  1793330005400–1793330005420). Latest CI on `bde982fbe` (runs 43582353939, 43582378924, 43583984796): type check and
+  build pass; the only failures are the six AI files waiting on the owner's provider-data approval.
+- Slice 19 (candidate e-mail) was tested with faked transports; queuing was not rendered because the local server has
+  no embedded sign-in or active relay (see parity report). Careers receipts were moved to slice 21 (D-064).
+- `origin/main` was 43 commits ahead on 2026-11-15; its newest migration `5660_pay_component_bonus_epf_bonus_2012`
+  (idx 5060, when 1793330005360) still sorts below this block, so the next merge needs no renumber. Recheck the journal
+  tail and the allocation document at merge time; `5660` must reach an installation before `5700`–`5720`.
+- Nothing is on staging. Staging only on the owner's request, through the shared staging queue.
+
+Next, in order (owner decisions D-063, 2026-11-14; plan in `specification.md`):
+1. Merge `origin/main`, re-run the recruitment CI set (scratchpad lists are gone; rebuild the list from
+   `test/recruitment-*` plus the cross-cutting and mail suites named in the slice 19 parity entry).
+2. Slice 20 — interview invitations, reminders, cancellations and offer e-mails (spec written, cases 133–136).
+3. Slice 21 — verified applicants (one-time e-mail code, strict per-address and per-IP limits), signed accept links
+   for interviews and offers, and careers receipts (spec to write).
+4. Slice 22 — optional anonymous candidate survey after hire or rejection.
+5. Slice 23 — referral rewards: fixed per job, payable after probation, HR-approved, one-off payroll earning; agency
+   fees tracked and approved only.
+6. Slice 24 — AI match summary suggestions only (no ranking, scoring or rejecting; no AI interviews); needs the owner
+   to re-record the provider-data approval.
+7. Slice 25 — agency portal, reusing slice 21's verification.
+
+Owner items still open: re-record the provider-data approval; the open discrepancy decisions; the last-working-day
+rule; move raw Moka evidence to private storage; a data-processing agreement covering candidates before any company
+switches candidate e-mail on.
+
+Local environment (disposable): private Postgres cluster at `/private/tmp/aihr-recruit-render-2c12ee` on port 55440
+(drop `ai_hr_test_tpl` before each DB test run; run tests through `scripts/local-resource-lock.py --test-slots 1`);
+render database `ai_hr_dev` rebuilt from `ai_hr_test_tpl` + `db/seed.ts` + the render fixture (the fixture script lived
+in the session scratchpad and must be recreated); launch entry `recruitment-render` on port 3020 (stopped). The bulk
+import worker runs as `node --import tsx scripts/bank-import-runner.ts` (not with `--conditions=react-server`).
+
 ## Next actions, in order (original plan)
 
 1. Resolve B-001: the owner signs in to a Moka **test tenant** in the built-in browser pane. Then use read-only observation (`read_page`, screenshots, network list) per role and journey, recording EV-0xx entries.
