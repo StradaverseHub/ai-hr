@@ -193,6 +193,8 @@ const REGISTRY: Record<string, RegistryTable> = {
       { reason: PLUMBING, fields: ['id', 'tenantId', 'personId', 'createdAt'] },
       { reason: VOID_REASON, fields: ['voidedAt', 'voidedBy', 'voidReason', 'voidedImportAttemptId', 'voidedEmployeeCode'] },
       { reason: STAGED_IMPORT_REASON, fields: ['importPendingAttemptId'] },
+      // Board 511aa74a — the Rehired period link is set only by the Rehired command (a database guard refuses any other writer).
+      { reason: 'set only by the Rehired movement (core/rehire.ts) under the 5695 link guard; an import can never link or relink employment periods', fields: ['rehiredFromEmploymentId'] },
       { reason: 'HR-only guarded data classification is changed through setEmploymentTestRecord; workbooks and generic imports cannot change it.', fields: ['isTestRecord'] },
       {
         reason:

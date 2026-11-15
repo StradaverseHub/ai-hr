@@ -9,7 +9,7 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { publicErrorMessage } from '@/lib/public-error';
 import { movementPageHref } from '@/lib/personnel-movement-navigation';
-import { reprojectEntitlementForEmployment } from '@/core/leave';
+import { reprojectEntitlementForEmployment } from '@/packs/leave/service';
 import { RehireError, rehireEmployment, rollBackRehire, type RehireRefusal } from '@/core/rehire';
 import { WorkforceAccessError } from '@/core/workforce-access';
 
