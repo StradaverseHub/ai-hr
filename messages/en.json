@@ -40879,7 +40879,7 @@
         },
         "interview_invitation": {
           "subject": "Interview invitation: {jobTitle}",
-          "body": "Dear {candidateName},\n\nThank you for your application for the {jobTitle} position at {companyName}. We would like to invite you to an interview.\n\n{interviewRound} · {interviewType}\nDate: {interviewDate}\nTime: {interviewTime}\nDuration: {interviewDuration}\nPlace: {interviewPlace}\n\nPlease reply to this e-mail to confirm that you can attend, or to ask for another time.\n\nKind regards,\n{senderName}"
+          "body": "Dear {candidateName},\n\nThank you for your application for the {jobTitle} position at {companyName}. We would like to invite you to an interview.\n\n{interviewRound} · {interviewType}\nDate: {interviewDate}\nTime: {interviewTime}\nDuration: {interviewDuration}\nPlace: {interviewPlace}\n\nPlease reply to this e-mail to confirm that you can attend, or to ask for another time.\n\n{responseLink}\n\nKind regards,\n{senderName}"
         },
         "interview_reminder": {
           "subject": "Reminder: your interview for {jobTitle}",
@@ -40891,7 +40891,7 @@
         },
         "offer": {
           "subject": "Your offer for {jobTitle}",
-          "body": "Dear {candidateName},\n\nWe are pleased to offer you the {jobTitle} position at {companyName}.\n\n{offerDetails}\n\nPlease reply to this e-mail to accept the offer or if you have any questions.\n\nKind regards,\n{senderName}"
+          "body": "Dear {candidateName},\n\nWe are pleased to offer you the {jobTitle} position at {companyName}.\n\n{offerDetails}\n\nPlease reply to this e-mail to accept the offer or if you have any questions.\n\n{responseLink}\n\nKind regards,\n{senderName}"
         }
       },
       "settingsNote": "E-mail candidates about their own application: a receipt when they apply and, when a person chooses, a rejection letter. E-mails go through this installation's mail service from its address; you set the name candidates see and the address their replies go to.",
@@ -41048,7 +41048,13 @@
       "invitationNoReminder": "Reminders are off for this company: no reminder follows.",
       "invitationIncomplete": "Enter the date and time to see the e-mail.",
       "sendCancellation": "E-mail the candidate that this interview is cancelled",
-      "cancellationNote": "To {address}. Nothing is sent unless you tick this."
+      "cancellationNote": "To {address}. Nothing is sent unless you tick this.",
+      "responseLine": {
+        "interview": "Accept or decline this interview here: {url}",
+        "offer": "Accept or decline this offer here: {url}"
+      },
+      "responseReply": "The candidate replied by link: {answer} ({at})",
+      "responseByLink": "Answered by the candidate by link"
     }
   },
   "careersPublic": {
@@ -41135,6 +41141,29 @@
     "codeEmail": {
       "subject": "Your code to apply for {jobTitle}: {code}",
       "body": "Your code to apply for {jobTitle} at {companyName} is:\n\n{code}\n\nIt expires in 10 minutes. If you did not ask for this code, you can ignore this email.\n\n{senderName}"
+    },
+    "response": {
+      "title": "Your reply",
+      "interviewIntro": "Interview for {job} at {company}",
+      "offerIntro": "Your offer for {job} at {company}",
+      "when": "{date}, {start}, Kuala Lumpur time (GMT+8), {minutes} minutes",
+      "accept": "Accept",
+      "decline": "Decline",
+      "current": "Your current answer: {answer}",
+      "accepted": "Accepted",
+      "declined": "Declined",
+      "thanks": "Thank you. Your answer is recorded: {answer}. You can change it on this page while the link is open.",
+      "offerNote": "The company will contact you to confirm next steps.",
+      "closed": "This link no longer takes answers. Reply to the company's e-mail if you need to.",
+      "notFoundTitle": "Link not found",
+      "notFound": "This link is not valid. Check that you copied the whole link from the e-mail.",
+      "limited": "Too many answers from this connection. Try again later.",
+      "types": {
+        "onsite": "On-site interview",
+        "video": "Video interview",
+        "phone": "Phone interview"
+      },
+      "round": "Round {round}"
     }
   },
   "bulkJobs": {

@@ -40879,7 +40879,7 @@
         },
         "interview_invitation": {
           "subject": "เชิญสัมภาษณ์: {jobTitle}",
-          "body": "เรียน {candidateName}\n\nขอบคุณที่สมัครตำแหน่ง {jobTitle} ที่ {companyName} เราขอเชิญคุณเข้ารับการสัมภาษณ์\n\n{interviewRound} · {interviewType}\nวันที่: {interviewDate}\nเวลา: {interviewTime}\nระยะเวลา: {interviewDuration}\nสถานที่: {interviewPlace}\n\nโปรดตอบกลับอีเมลนี้เพื่อยืนยันว่าคุณเข้าร่วมได้ หรือเพื่อขอเวลาอื่น\n\nขอแสดงความนับถือ\n{senderName}"
+          "body": "เรียน {candidateName}\n\nขอบคุณที่สมัครตำแหน่ง {jobTitle} ที่ {companyName} เราขอเชิญคุณเข้ารับการสัมภาษณ์\n\n{interviewRound} · {interviewType}\nวันที่: {interviewDate}\nเวลา: {interviewTime}\nระยะเวลา: {interviewDuration}\nสถานที่: {interviewPlace}\n\nโปรดตอบกลับอีเมลนี้เพื่อยืนยันว่าคุณเข้าร่วมได้ หรือเพื่อขอเวลาอื่น\n\n{responseLink}\n\nขอแสดงความนับถือ\n{senderName}"
         },
         "interview_reminder": {
           "subject": "แจ้งเตือน: การสัมภาษณ์ตำแหน่ง {jobTitle} ของคุณ",
@@ -40891,7 +40891,7 @@
         },
         "offer": {
           "subject": "ข้อเสนองานตำแหน่ง {jobTitle} ของคุณ",
-          "body": "เรียน {candidateName}\n\nเรายินดีเสนอตำแหน่ง {jobTitle} ที่ {companyName} ให้แก่คุณ\n\n{offerDetails}\n\nโปรดตอบกลับอีเมลนี้เพื่อตอบรับข้อเสนอ หรือหากคุณมีคำถามใด ๆ\n\nขอแสดงความนับถือ\n{senderName}"
+          "body": "เรียน {candidateName}\n\nเรายินดีเสนอตำแหน่ง {jobTitle} ที่ {companyName} ให้แก่คุณ\n\n{offerDetails}\n\nโปรดตอบกลับอีเมลนี้เพื่อตอบรับข้อเสนอ หรือหากคุณมีคำถามใด ๆ\n\n{responseLink}\n\nขอแสดงความนับถือ\n{senderName}"
         }
       },
       "settingsNote": "ส่งอีเมลถึงผู้สมัครเกี่ยวกับใบสมัครของพวกเขาเอง: อีเมลยืนยันเมื่อสมัคร และจดหมายปฏิเสธเมื่อมีผู้เลือกส่ง อีเมลส่งผ่านบริการอีเมลของระบบนี้จากที่อยู่ของระบบ คุณกำหนดชื่อที่ผู้สมัครเห็นและที่อยู่สำหรับการตอบกลับได้",
@@ -41048,7 +41048,13 @@
       "invitationNoReminder": "บริษัทนี้ปิดการแจ้งเตือน: จะไม่มีการแจ้งเตือน",
       "invitationIncomplete": "กรอกวันที่และเวลาเพื่อดูอีเมล",
       "sendCancellation": "ส่งอีเมลแจ้งผู้สมัครว่าการสัมภาษณ์นี้ถูกยกเลิก",
-      "cancellationNote": "ถึง {address} จะไม่มีการส่งใด ๆ เว้นแต่คุณเลือกช่องนี้"
+      "cancellationNote": "ถึง {address} จะไม่มีการส่งใด ๆ เว้นแต่คุณเลือกช่องนี้",
+      "responseLine": {
+        "interview": "ตอบรับหรือปฏิเสธการสัมภาษณ์นี้ได้ที่: {url}",
+        "offer": "ตอบรับหรือปฏิเสธข้อเสนองานนี้ได้ที่: {url}"
+      },
+      "responseReply": "ผู้สมัครตอบกลับทางลิงก์: {answer} ({at})",
+      "responseByLink": "ผู้สมัครตอบกลับทางลิงก์"
     }
   },
   "careersPublic": {
@@ -41135,6 +41141,29 @@
     "codeEmail": {
       "subject": "รหัสสำหรับสมัครตำแหน่ง {jobTitle}: {code}",
       "body": "รหัสสำหรับสมัครตำแหน่ง {jobTitle} ที่ {companyName} ของคุณคือ\n\n{code}\n\nรหัสจะหมดอายุใน 10 นาที หากคุณไม่ได้ขอรหัสนี้ คุณไม่ต้องดำเนินการใด ๆ กับอีเมลนี้\n\n{senderName}"
+    },
+    "response": {
+      "title": "คำตอบของคุณ",
+      "interviewIntro": "การสัมภาษณ์ตำแหน่ง {job} ที่ {company}",
+      "offerIntro": "ข้อเสนองานตำแหน่ง {job} ที่ {company}",
+      "when": "{date} {start} เวลากัวลาลัมเปอร์ (GMT+8) {minutes} นาที",
+      "accept": "ตอบรับ",
+      "decline": "ปฏิเสธ",
+      "current": "คำตอบปัจจุบันของคุณ: {answer}",
+      "accepted": "ตอบรับแล้ว",
+      "declined": "ปฏิเสธแล้ว",
+      "thanks": "ขอบคุณ บันทึกคำตอบของคุณแล้ว: {answer} คุณเปลี่ยนคำตอบได้ที่หน้านี้ขณะที่ลิงก์ยังเปิดอยู่",
+      "offerNote": "บริษัทจะติดต่อคุณเพื่อยืนยันขั้นตอนถัดไป",
+      "closed": "ลิงก์นี้ไม่รับคำตอบแล้ว หากจำเป็น โปรดตอบกลับอีเมลของบริษัท",
+      "notFoundTitle": "ไม่พบลิงก์",
+      "notFound": "ลิงก์นี้ไม่ถูกต้อง โปรดตรวจสอบว่าคุณคัดลอกลิงก์จากอีเมลครบถ้วน",
+      "limited": "มีคำตอบจากการเชื่อมต่อนี้มากเกินไป โปรดลองอีกครั้งภายหลัง",
+      "types": {
+        "onsite": "สัมภาษณ์ที่สถานที่",
+        "video": "สัมภาษณ์ทางวิดีโอ",
+        "phone": "สัมภาษณ์ทางโทรศัพท์"
+      },
+      "round": "รอบที่ {round}"
     }
   },
   "bulkJobs": {

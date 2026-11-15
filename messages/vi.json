@@ -40879,7 +40879,7 @@
         },
         "interview_invitation": {
           "subject": "Thư mời phỏng vấn: {jobTitle}",
-          "body": "Kính gửi {candidateName},\n\nCảm ơn bạn đã ứng tuyển vị trí {jobTitle} tại {companyName}. Chúng tôi trân trọng mời bạn tham dự buổi phỏng vấn.\n\n{interviewRound} · {interviewType}\nNgày: {interviewDate}\nGiờ: {interviewTime}\nThời lượng: {interviewDuration}\nĐịa điểm: {interviewPlace}\n\nVui lòng trả lời e-mail này để xác nhận bạn có thể tham dự, hoặc đề nghị thời gian khác.\n\nTrân trọng,\n{senderName}"
+          "body": "Kính gửi {candidateName},\n\nCảm ơn bạn đã ứng tuyển vị trí {jobTitle} tại {companyName}. Chúng tôi trân trọng mời bạn tham dự buổi phỏng vấn.\n\n{interviewRound} · {interviewType}\nNgày: {interviewDate}\nGiờ: {interviewTime}\nThời lượng: {interviewDuration}\nĐịa điểm: {interviewPlace}\n\nVui lòng trả lời e-mail này để xác nhận bạn có thể tham dự, hoặc đề nghị thời gian khác.\n\n{responseLink}\n\nTrân trọng,\n{senderName}"
         },
         "interview_reminder": {
           "subject": "Nhắc lịch: buổi phỏng vấn vị trí {jobTitle}",
@@ -40891,7 +40891,7 @@
         },
         "offer": {
           "subject": "Thư mời nhận việc vị trí {jobTitle}",
-          "body": "Kính gửi {candidateName},\n\nChúng tôi vui mừng mời bạn nhận vị trí {jobTitle} tại {companyName}.\n\n{offerDetails}\n\nVui lòng trả lời e-mail này để chấp nhận lời mời hoặc nếu bạn có bất kỳ câu hỏi nào.\n\nTrân trọng,\n{senderName}"
+          "body": "Kính gửi {candidateName},\n\nChúng tôi vui mừng mời bạn nhận vị trí {jobTitle} tại {companyName}.\n\n{offerDetails}\n\nVui lòng trả lời e-mail này để chấp nhận lời mời hoặc nếu bạn có bất kỳ câu hỏi nào.\n\n{responseLink}\n\nTrân trọng,\n{senderName}"
         }
       },
       "settingsNote": "Gửi e-mail cho ứng viên về chính đơn ứng tuyển của họ: thư xác nhận khi họ ứng tuyển và, khi có người chọn, thư từ chối. E-mail được gửi qua dịch vụ thư của hệ thống này từ địa chỉ của hệ thống; bạn đặt tên ứng viên nhìn thấy và địa chỉ nhận thư trả lời.",
@@ -41048,7 +41048,13 @@
       "invitationNoReminder": "Công ty này đã tắt nhắc lịch: sẽ không có nhắc lịch.",
       "invitationIncomplete": "Nhập ngày và giờ để xem e-mail.",
       "sendCancellation": "Gửi e-mail cho ứng viên rằng buổi phỏng vấn này đã bị hủy",
-      "cancellationNote": "Gửi tới {address}. Không gửi gì trừ khi bạn đánh dấu ô này."
+      "cancellationNote": "Gửi tới {address}. Không gửi gì trừ khi bạn đánh dấu ô này.",
+      "responseLine": {
+        "interview": "Chấp nhận hoặc từ chối buổi phỏng vấn này tại đây: {url}",
+        "offer": "Chấp nhận hoặc từ chối thư mời này tại đây: {url}"
+      },
+      "responseReply": "Ứng viên đã trả lời qua liên kết: {answer} ({at})",
+      "responseByLink": "Ứng viên đã trả lời qua liên kết"
     }
   },
   "careersPublic": {
@@ -41135,6 +41141,29 @@
     "codeEmail": {
       "subject": "Mã ứng tuyển {jobTitle} của bạn: {code}",
       "body": "Mã để ứng tuyển vị trí {jobTitle} tại {companyName} của bạn là:\n\n{code}\n\nMã hết hạn sau 10 phút. Nếu bạn không yêu cầu mã này, hãy bỏ qua email này.\n\n{senderName}"
+    },
+    "response": {
+      "title": "Câu trả lời của bạn",
+      "interviewIntro": "Phỏng vấn vị trí {job} tại {company}",
+      "offerIntro": "Thư mời nhận việc vị trí {job} tại {company}",
+      "when": "{date}, {start}, giờ Kuala Lumpur (GMT+8), {minutes} phút",
+      "accept": "Chấp nhận",
+      "decline": "Từ chối",
+      "current": "Câu trả lời hiện tại của bạn: {answer}",
+      "accepted": "Đã chấp nhận",
+      "declined": "Đã từ chối",
+      "thanks": "Cảm ơn bạn. Câu trả lời của bạn đã được ghi nhận: {answer}. Bạn có thể thay đổi trên trang này khi liên kết còn hiệu lực.",
+      "offerNote": "Công ty sẽ liên hệ với bạn để xác nhận các bước tiếp theo.",
+      "closed": "Liên kết này không còn nhận câu trả lời. Hãy trả lời e-mail của công ty nếu cần.",
+      "notFoundTitle": "Không tìm thấy liên kết",
+      "notFound": "Liên kết này không hợp lệ. Hãy kiểm tra bạn đã sao chép toàn bộ liên kết trong e-mail.",
+      "limited": "Quá nhiều câu trả lời từ kết nối này. Hãy thử lại sau.",
+      "types": {
+        "onsite": "Phỏng vấn trực tiếp",
+        "video": "Phỏng vấn qua video",
+        "phone": "Phỏng vấn qua điện thoại"
+      },
+      "round": "Vòng {round}"
     }
   },
   "bulkJobs": {

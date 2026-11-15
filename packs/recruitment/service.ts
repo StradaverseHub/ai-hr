@@ -81,10 +81,12 @@ export {
   careersPublicJob, submitCareersApplication, careersClientLimited,
   // Slice 21a: verified applicants (5722).
   careersApplyMode, requestCareersCode, checkCareersCode,
+  // Slice 21b: candidate response links (5723).
+  candidateResponseView, answerCandidateResponse,
 } from './careers';
 export type {
   CareersSettings, CareersNoticeVersionView, JobCareersStatus, ApplicationCareers, CareersPublicJobRow, CareersPublicPage, CareersPublicJob,
-  CareersPageQuery, CareersSubmission, CareersSubmitResult, CareersCodeRequest, CareersCodeCheck,
+  CareersPageQuery, CareersSubmission, CareersSubmitResult, CareersCodeRequest, CareersCodeCheck, CandidateResponseState, CandidateResponseResult,
 } from './careers';
 export {
   CAREERS_DISPLAY_NAME_MAX, CAREERS_HEADLINE_MAX, CAREERS_INTRODUCTION_MAX, CAREERS_NOTICE_MAX, CAREERS_NAME_MAX, CAREERS_MESSAGE_MAX,

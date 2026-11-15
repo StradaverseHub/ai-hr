@@ -17,6 +17,7 @@ import { careersJobPath, careersPagePath } from '../../lib/careers-route';
 import { CAREERS_CSS, CAREERS_HEADERS } from '../../lib/careers-security';
 import {
   CAREERS_MESSAGE_MAX, CAREERS_NAME_MAX, careersPageCount, type CareersFieldError, type CareersFormField, type CareersPublicJob, type CareersPublicPage,
+  type CandidateResponseState,
 } from '@/packs/recruitment/service';
 
 type Dict = Record<string, unknown>;
@@ -318,4 +319,37 @@ export function careersCodeStepHtml(view: CareersView, address: string, data: Ca
     + `<p class="help">${esc(v.codeHelp)}</p></div><button class="btn" type="submit">${esc(v.check)}</button></form>`
     + `<form method="post" action="${esc(link(view, here))}"><input type="hidden" name="intent" value="code"><input type="hidden" name="email" value="${esc(state.email)}">`
     + `<p class="muted">${esc(v.resendNote)}</p><button class="btn ghost" type="submit">${esc(v.resend)}</button></form>`);
+}
+
+// ── Slice 21b: a candidate's response link ───────────────────────────────────────────────────────────────────────
+
+/** The link page: what it is about, the answer given, and Accept / Decline while it is open. `answered`: just answered. */
+export function careersResponseHtml(view: CareersView, token: string, state: CandidateResponseState, answered = false): string {
+  const w = view.words.response;
+  const here = `/careers/r/${token}`;
+  const answerWord = (a: 'accepted' | 'declined') => (a === 'accepted' ? w.accepted : w.declined);
+  const intro = state.kind === 'interview' ? w.interviewIntro : w.offerIntro;
+  const i = state.interview;
+  const when = i ? fill(w.when, {
+    date: new Intl.DateTimeFormat(view.locale, { dateStyle: 'full', timeZone: HR_LOCAL_TZ }).format(new Date(i.startsAt)),
+    start: new Intl.DateTimeFormat(view.locale, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: HR_LOCAL_TZ }).format(new Date(i.startsAt)),
+    minutes: i.durationMinutes,
+  }) : '';
+  const body = `<h1>${esc(w.title)}</h1><p class="lead">${fill(intro, { job: state.jobTitle, company: state.companyName })}</p>`
+    + (i ? `<ul class="meta"><li>${fill(w.round, { round: i.roundNo })}</li><li>${esc(w.types[i.type])}</li><li>${esc(when)}</li></ul>` : '')
+    + (answered && state.answer ? `<p role="status" class="card">${fill(w.thanks, { answer: answerWord(state.answer) })}${state.kind === 'offer' ? ` ${esc(w.offerNote)}` : ''}</p>`
+      : state.answer ? `<p class="muted">${fill(w.current, { answer: answerWord(state.answer) })}</p>` : '')
+    + (state.open
+      ? `<form method="post" action="${esc(link(view, here))}" class="card"><button class="btn" type="submit" name="answer" value="accepted">${esc(w.accept)}</button> `
+        + `<button class="btn ghost" type="submit" name="answer" value="declined">${esc(w.decline)}</button></form>`
+      : `<p class="muted" role="status">${esc(w.closed)}</p>`);
+  return documentHtml(view, { title: w.title, here, body });
+}
+export function careersResponseNotFoundHtml(view: CareersView): string {
+  const w = view.words.response;
+  return documentHtml(view, { title: w.notFoundTitle, here: '/careers', body: `<h1>${esc(w.notFoundTitle)}</h1><p>${esc(w.notFound)}</p>` });
+}
+export function careersResponseLimitedHtml(view: CareersView, token: string): string {
+  const w = view.words;
+  return documentHtml(view, { title: w.limitedTitle, here: `/careers/r/${token}`, body: `<h1>${esc(w.limitedTitle)}</h1><p>${esc(w.response.limited)}</p>` });
 }

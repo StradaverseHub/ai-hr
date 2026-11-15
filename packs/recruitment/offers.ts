@@ -89,6 +89,8 @@ export type OfferView = {
   offer: null | {
     id: string; status: OfferStatus; label: OfferLabel; round: number; lastRejectionComment: string | null; createdBy: string | null; isCreator: boolean;
     sentAt: string | null; sentChannel: string | null; expiresOn: string | null; decision: CandidateDecision; decidedAt: string | null;
+    /** Slice 21b: the candidate's reply by link to this send (HR records the decision). */
+    candidateReply: { answer: 'accepted' | 'declined'; answeredAt: string } | null;
   };
   fields: (OfferFieldDef & { value: OfferValue | null; hidden: boolean })[];
   steps: { position: number; approverName: string | null; state: ApprovalStepView['state']; comment: string | null; actedAt: string | null; isViewer: boolean }[];
@@ -113,6 +115,7 @@ export async function applicationOffer(s: SessionContext, applicationId: string)
     const settings = await companySettingsTx(tx, app.company_id);
     const sentOn = offer?.sentAt ? todayInKualaLumpur(offer.sentAt) : null;
     const open = !!offer && offer.candidateDecision === 'pending';
+    const [reply] = offer?.sentAt ? await tx.execute<{ r: { answer: 'accepted' | 'declined'; answeredAt: string } | null }>(sql`select app.recruitment_offer_candidate_reply(${offer.id}::uuid) as r`) : [];
     const myPending = steps.some((st) => st.state === 'pending' && st.approverUserId === s.userId);
     return {
       applicationId: app.id, candidateName: app.candidate_name, jobTitle: app.job_title, companyId: app.company_id, applicationState: app.state,
@@ -123,6 +126,7 @@ export async function applicationOffer(s: SessionContext, applicationId: string)
         sentAt: offer.sentAt?.toISOString() ?? null, sentChannel: offer.sentChannel ?? null,
         expiresOn: sentOn && offer.validDays ? offerExpiresOn(sentOn, offer.validDays) : null,
         decision: offer.candidateDecision, decidedAt: offer.decidedAt?.toISOString() ?? null,
+        candidateReply: reply?.r ? { answer: reply.r.answer, answeredAt: new Date(reply.r.answeredAt).toISOString() } : null,
       } : null,
       fields: fields.map((f) => ({ ...f, value: values.get(f.id) ?? null, hidden: f.private && !seesPrivate })),
       steps: steps.map((st) => {

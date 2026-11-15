@@ -1,3 +1,12 @@
+# Recruitment slice 21b — 15 November 2026 MYT (unapplied)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` appends `5723_recruitment_candidate_response_links` at idx 5123 / when
+1793330005423, directly after `5722`. Owner-only `app.recruitment_response_link` and `app.recruitment_response_attempt`; a frozen
+`response_url` on `recruitment_candidate_email` (invitations and offer e-mails) with the body-text and content CHECKs restated; the
+issue, view, answer and HR-reply definers; owner-only policies (UPDATE on `recruitment_interview`, SELECT on `recruitment_job_opening`)
+keyed by 5720's context; 5721's placeholders, guard, statement check and purge and 5719's interview place guard restated.
+PRECONDITION: applies after `5722`. Unapplied outside throwaway and CI databases. This allocation grants no installation authority.
+
 # Recruitment slice 21a — 15 November 2026 MYT (unapplied)
 
 Branch `claude/rea-web-app-reconstruction-2c12ee` appends `5722_recruitment_careers_verified_applicants` at idx 5122 / when

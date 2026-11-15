@@ -514,9 +514,11 @@ function OfferSection({ offer, applicationId, here, t, locale, email, te }: {
             </form>
           )}
           {offer.can.recordDecision && (
-            <form action={recordOfferDecisionAction} className="flex items-end gap-2">{hidden('offerId', o.id)}{hidden('applicationId', applicationId)}{hidden('returnTo', here)}
+            <form action={recordOfferDecisionAction} className="flex flex-wrap items-end gap-2">{hidden('offerId', o.id)}{hidden('applicationId', applicationId)}{hidden('returnTo', here)}
+              {/* Slice 21b: the candidate's reply by link is shown and pre-selected; a person records the decision. */}
+              {o.candidateReply && <p className="w-full text-sm" role="status">{te('responseReply', { answer: t(`offer.labels.${o.candidateReply.answer}`), at: klDateTime(locale, o.candidateReply.answeredAt) })}</p>}
               <Field label={t('offer.decision')}>
-                <select name="decision" className={cn(selectCls, 'w-40')} defaultValue="accepted">
+                <select name="decision" className={cn(selectCls, 'w-40')} defaultValue={o.candidateReply?.answer ?? 'accepted'}>
                   <option value="accepted">{t('offer.labels.accepted')}</option>
                   <option value="declined">{t('offer.labels.declined')}</option>
                 </select>

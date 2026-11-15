@@ -40879,7 +40879,7 @@
         },
         "interview_invitation": {
           "subject": "Jemputan temu duga: {jobTitle}",
-          "body": "Kepada {candidateName},\n\nTerima kasih atas permohonan anda untuk jawatan {jobTitle} di {companyName}. Kami ingin menjemput anda ke temu duga.\n\n{interviewRound} · {interviewType}\nTarikh: {interviewDate}\nMasa: {interviewTime}\nTempoh: {interviewDuration}\nTempat: {interviewPlace}\n\nSila balas e-mel ini untuk mengesahkan kehadiran anda, atau untuk meminta masa lain.\n\nSekian, terima kasih,\n{senderName}"
+          "body": "Kepada {candidateName},\n\nTerima kasih atas permohonan anda untuk jawatan {jobTitle} di {companyName}. Kami ingin menjemput anda ke temu duga.\n\n{interviewRound} · {interviewType}\nTarikh: {interviewDate}\nMasa: {interviewTime}\nTempoh: {interviewDuration}\nTempat: {interviewPlace}\n\nSila balas e-mel ini untuk mengesahkan kehadiran anda, atau untuk meminta masa lain.\n\n{responseLink}\n\nSekian, terima kasih,\n{senderName}"
         },
         "interview_reminder": {
           "subject": "Peringatan: temu duga anda untuk {jobTitle}",
@@ -40891,7 +40891,7 @@
         },
         "offer": {
           "subject": "Tawaran anda untuk {jobTitle}",
-          "body": "Kepada {candidateName},\n\nKami dengan sukacitanya menawarkan jawatan {jobTitle} di {companyName} kepada anda.\n\n{offerDetails}\n\nSila balas e-mel ini untuk menerima tawaran ini atau jika anda mempunyai sebarang pertanyaan.\n\nSekian, terima kasih,\n{senderName}"
+          "body": "Kepada {candidateName},\n\nKami dengan sukacitanya menawarkan jawatan {jobTitle} di {companyName} kepada anda.\n\n{offerDetails}\n\nSila balas e-mel ini untuk menerima tawaran ini atau jika anda mempunyai sebarang pertanyaan.\n\n{responseLink}\n\nSekian, terima kasih,\n{senderName}"
         }
       },
       "settingsNote": "E-mel calon tentang permohonan mereka sendiri: resit apabila mereka memohon dan, apabila seseorang memilih, surat penolakan. E-mel dihantar melalui perkhidmatan mel pemasangan ini daripada alamatnya; anda tetapkan nama yang dilihat calon dan alamat untuk balasan mereka.",
@@ -41048,7 +41048,13 @@
       "invitationNoReminder": "Peringatan dimatikan untuk syarikat ini: tiada peringatan menyusul.",
       "invitationIncomplete": "Masukkan tarikh dan masa untuk melihat e-mel.",
       "sendCancellation": "E-mel kepada calon bahawa temu duga ini dibatalkan",
-      "cancellationNote": "Kepada {address}. Tiada apa-apa dihantar melainkan anda menanda ini."
+      "cancellationNote": "Kepada {address}. Tiada apa-apa dihantar melainkan anda menanda ini.",
+      "responseLine": {
+        "interview": "Terima atau tolak temu duga ini di sini: {url}",
+        "offer": "Terima atau tolak tawaran ini di sini: {url}"
+      },
+      "responseReply": "Calon membalas melalui pautan: {answer} ({at})",
+      "responseByLink": "Dijawab oleh calon melalui pautan"
     }
   },
   "careersPublic": {
@@ -41135,6 +41141,29 @@
     "codeEmail": {
       "subject": "Kod anda untuk memohon {jobTitle}: {code}",
       "body": "Kod anda untuk memohon jawatan {jobTitle} di {companyName} ialah:\n\n{code}\n\nKod ini tamat tempoh dalam 10 minit. Jika anda tidak meminta kod ini, abaikan e-mel ini.\n\n{senderName}"
+    },
+    "response": {
+      "title": "Jawapan anda",
+      "interviewIntro": "Temu duga untuk {job} di {company}",
+      "offerIntro": "Tawaran anda untuk {job} di {company}",
+      "when": "{date}, {start}, waktu Kuala Lumpur (GMT+8), {minutes} minit",
+      "accept": "Terima",
+      "decline": "Tolak",
+      "current": "Jawapan semasa anda: {answer}",
+      "accepted": "Diterima",
+      "declined": "Ditolak",
+      "thanks": "Terima kasih. Jawapan anda telah direkodkan: {answer}. Anda boleh mengubahnya di halaman ini selagi pautan masih terbuka.",
+      "offerNote": "Syarikat akan menghubungi anda untuk mengesahkan langkah seterusnya.",
+      "closed": "Pautan ini tidak lagi menerima jawapan. Balas e-mel syarikat jika perlu.",
+      "notFoundTitle": "Pautan tidak ditemui",
+      "notFound": "Pautan ini tidak sah. Pastikan anda menyalin keseluruhan pautan daripada e-mel.",
+      "limited": "Terlalu banyak jawapan daripada sambungan ini. Cuba lagi kemudian.",
+      "types": {
+        "onsite": "Temu duga bersemuka",
+        "video": "Temu duga video",
+        "phone": "Temu duga telefon"
+      },
+      "round": "Pusingan {round}"
     }
   },
   "bulkJobs": {

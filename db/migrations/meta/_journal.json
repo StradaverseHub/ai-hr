@@ -6112,6 +6112,13 @@
       "when": 1793330005422,
       "tag": "5722_recruitment_careers_verified_applicants",
       "breakpoints": true
+    },
+    {
+      "idx": 5123,
+      "version": "7",
+      "when": 1793330005423,
+      "tag": "5723_recruitment_candidate_response_links",
+      "breakpoints": true
     }
   ]
 }

@@ -27,13 +27,13 @@ export type InterviewPlaceholder = (typeof INTERVIEW_PLACEHOLDERS)[number];
 export const CANDIDATE_EMAIL_PLACEHOLDERS: Record<CandidateEmailKind, readonly string[]> = {
   application_received: BASE_PLACEHOLDERS,
   rejection: BASE_PLACEHOLDERS,
-  interview_invitation: [...BASE_PLACEHOLDERS, ...INTERVIEW_PLACEHOLDERS],
+  interview_invitation: [...BASE_PLACEHOLDERS, ...INTERVIEW_PLACEHOLDERS, 'responseLink'],
   interview_reminder: [...BASE_PLACEHOLDERS, ...INTERVIEW_PLACEHOLDERS],
   interview_cancelled: [...BASE_PLACEHOLDERS, 'interviewRound', 'interviewType', 'interviewDate', 'interviewTime'],
-  offer: [...BASE_PLACEHOLDERS, 'offerDetails'],
+  offer: [...BASE_PLACEHOLDERS, 'offerDetails', 'responseLink'],
 };
-export type Placeholder = BasePlaceholder | InterviewPlaceholder | 'offerDetails';
-export type CandidateEmailValues = Record<BasePlaceholder, string> & Partial<Record<InterviewPlaceholder | 'offerDetails', string>>;
+export type Placeholder = BasePlaceholder | InterviewPlaceholder | 'offerDetails' | 'responseLink';
+export type CandidateEmailValues = Record<BasePlaceholder, string> & Partial<Record<InterviewPlaceholder | 'offerDetails' | 'responseLink', string>>;
 /** The longest value each placeholder can take: candidate names and job titles are at most 200 (5701), the sender name 80; the company
  *  name has no stored limit, so the renderer cuts every value to these lengths and a template's worst case is known at save time.
  *  Slice 20: the interview values are formatted here (below) from bounded parts; the place is at most a room (120), an address name
@@ -42,6 +42,8 @@ export type CandidateEmailValues = Record<BasePlaceholder, string> & Partial<Rec
 export const CANDIDATE_EMAIL_VALUE_MAX: Record<Placeholder, number> = {
   candidateName: 200, jobTitle: 200, companyName: 200, senderName: 80,
   interviewRound: 80, interviewType: 80, interviewDate: 120, interviewTime: 160, interviewDuration: 80, interviewPlace: 3200, offerDetails: 10000,
+  // Slice 21b: one sentence with the response link (at most 400 characters, 5723).
+  responseLink: 600,
 };
 /** What 5720 freezes at most: the rendered subject and text. A template whose worst case (every placeholder at its longest value)
  *  exceeds these is refused on save (email_too_long), so a render can never exceed the frozen columns. The HTML is then at most
@@ -309,8 +311,16 @@ export function interviewEmailValues(f: InterviewEmailFacts, labels: InterviewEm
   };
 }
 /** Link-like text with exactly the given map link removed (the frozen text's rule in 5721: every other link still refuses). */
-export function linkishExcept(text: string, mapUrl: string | null): boolean {
-  return linkish(mapUrl ? text.split(mapUrl).join(' ') : text);
+export function linkishExcept(text: string, mapUrl: string | null, responseUrl: string | null = null): boolean {
+  let t = mapUrl ? text.split(mapUrl).join(' ') : text;
+  if (responseUrl) t = t.split(responseUrl).join(' ');
+  return linkish(t);
+}
+/** Slice 21b: the response link's sentence ("Accept or decline here: {url}"), or '' without a link. 5723 holds the URL itself to
+ *  https://<host>/careers/r/<43-character token>. */
+export const RESPONSE_URL_PATTERN = /^https:\/\/[A-Za-z0-9.-]+(:[0-9]{1,5})?\/careers\/r\/[A-Za-z0-9_-]{43}$/;
+export function responseLinkValue(sentence: string, url: string | null): string {
+  return url && RESPONSE_URL_PATTERN.test(url) ? sentence.split('{url}').join(url) : '';
 }
 
 /** One offer field as an offer e-mail states it: its label and the value people entered, as entered (money as currency and amount,
@@ -330,11 +340,15 @@ export function offerDetailsText(lines: readonly OfferEmailLine[]): string | nul
  * exactly that map link (the e-mail is then not sent).
  */
 export function renderInterviewEmail(kind: InterviewEmailKind, locale: CandidateEmailLocale, template: ValidTemplate,
-  base: Record<BasePlaceholder, string>, facts: InterviewEmailFacts, labels: InterviewEmailLabels): { mail: RenderedCandidateEmail; mapUrl: string | null; valueLink: boolean } {
+  base: Record<BasePlaceholder, string>, facts: InterviewEmailFacts, labels: InterviewEmailLabels,
+  response: { sentence: string; url: string | null } | null = null): { mail: RenderedCandidateEmail; mapUrl: string | null; valueLink: boolean } {
   const iv = interviewEmailValues(facts, labels);
   const mapUrl = kind === 'interview_cancelled' ? null : iv.mapUrl;
-  const mail = renderCandidateEmail(kind, locale, template, { ...base, ...iv.values });
-  return { mail, mapUrl, valueLink: linkish(mail.subject) || linkishExcept(mail.text, mapUrl) };
+  // Slice 21b: only an invitation carries the response link.
+  const responseUrl = kind === 'interview_invitation' && response ? response.url : null;
+  const responseLink = kind === 'interview_invitation' && response ? responseLinkValue(response.sentence, response.url) : '';
+  const mail = renderCandidateEmail(kind, locale, template, { ...base, ...iv.values, responseLink });
+  return { mail, mapUrl, valueLink: linkish(mail.subject) || linkishExcept(mail.text, mapUrl, responseUrl) };
 }
 
 /** The place an interview names, from what the schedule form offers (slice 18's resolvePlace rule: a room names its address; a place

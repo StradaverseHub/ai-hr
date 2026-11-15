@@ -14,6 +14,11 @@ const ADDRESS = new RegExp(`^${CAREERS_ADDRESS_SOURCE}$`);
 const JOB_ID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const PAGE_PATH = new RegExp(`^/careers/(${CAREERS_ADDRESS_SOURCE})$`);
 const JOB_PATH = new RegExp(`^/careers/(${CAREERS_ADDRESS_SOURCE})/jobs/(${JOB_ID})$`);
+/** Slice 21b: a candidate's response link `/careers/r/<token>` (43 base64url characters). "r" can never be a careers address (3–40
+ *  characters), so it shadows none. */
+const RESPONSE_TOKEN = '[A-Za-z0-9_-]{43}';
+const RESPONSE_PATH = new RegExp(`^/careers/r/(${RESPONSE_TOKEN})$`);
+export const isCareersResponseToken = (value: unknown): value is string => typeof value === 'string' && new RegExp(`^${RESPONSE_TOKEN}$`).test(value);
 
 export const isCareersAddress = (value: unknown): value is string => typeof value === 'string' && ADDRESS.test(value);
 export const isCareersJobId = (value: unknown): value is string => typeof value === 'string' && new RegExp(`^${JOB_ID}$`).test(value);
@@ -23,6 +28,7 @@ export function isCareersRoute(path: string, method = 'GET'): boolean {
   const m = method.toUpperCase();
   if (PAGE_PATH.test(path)) return m === 'GET' || m === 'HEAD';
   if (JOB_PATH.test(path)) return m === 'GET' || m === 'HEAD' || m === 'POST';
+  if (RESPONSE_PATH.test(path)) return m === 'GET' || m === 'HEAD' || m === 'POST';
   return false;
 }
 

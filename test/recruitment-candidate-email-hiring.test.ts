@@ -71,7 +71,9 @@ const messages = (locale: string) => JSON.parse(readFileSync(fileURLToPath(new U
 const fill = (s: string, v: Record<string, string>) => Object.entries(v).reduce((acc, [k, x]) => acc.split(`{${k}}`).join(x), s);
 const expected = (kind: string, v: Record<string, string>) => {
   const d = messages('en').recruitment.candidateEmail.defaults[kind];
-  return { subject: fill(d.subject, v), text: fill(d.body, v) };
+  // Slice 21b: no response link is issued in tests (no https origin), so {responseLink} is empty.
+  const w = { responseLink: '', ...v };
+  return { subject: fill(d.subject, w), text: fill(d.body, w) };
 };
 const companyName = async () => (await owner.db.execute<{ name: string }>(sql`select legal_name as name from company where id = ${base.companyId}::uuid`))[0].name;
 /** An interview day five days ahead (Kuala Lumpur), at 10:30 for 45 minutes, and the words the default e-mail states for it (Intl, en). */

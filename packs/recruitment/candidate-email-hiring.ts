@@ -25,9 +25,13 @@ import { actorOf, appendEvents } from '../../db/events';
 import { withRecruitmentTenant } from '../../core/module-gate';
 import { messagesForLocale } from '../../i18n/catalogs';
 import { candidateEmailAvailable } from '../../lib/recruitment-candidate-email-ipc';
+import { createHash } from 'node:crypto';
+import { appOrigin, configuredPublicOrigin } from '../../lib/real-auth';
+import { internalSelected } from '../../lib/internal-auth/config';
+import { newCareersToken } from '../../lib/careers-client';
 import { RecruitmentError, isUuid } from './model';
 import {
-  CANDIDATE_EMAIL_HOURLY_CAP, interviewFactsFromForm, linkish, offerDetailsText, reminderDueAt, renderCandidateEmail, renderInterviewEmail, usableRecipient,
+  CANDIDATE_EMAIL_HOURLY_CAP, interviewFactsFromForm, linkish, linkishExcept, offerDetailsText, responseLinkValue, reminderDueAt, renderCandidateEmail, renderInterviewEmail, usableRecipient,
   type CandidateEmailKind, type CandidateEmailLocale, type InterviewEmailFacts, type InterviewEmailLabels,
   type InterviewPlaceOption, type OfferEmailLine, type RenderedCandidateEmail,
 } from './candidate-email-model';
@@ -35,6 +39,38 @@ import { composersTx, ids, previewFingerprint, queueRefusal, userOf, type Candid
 import { validateInterviewInput } from './hiring-model';
 
 const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
+
+// ── Slice 21b: response links (5723) ────────────────────────────────────────────────────────────────────────────
+/** A preview shows this in place of the candidate's personal token (which exists only once the e-mail is queued); the frozen e-mail
+ *  differs from the preview by exactly the token. */
+export const PREVIEW_RESPONSE_TOKEN = 'your-personal-link-appears-here-when-sent--';
+/** The installation's https origin, or null (no link is then offered). */
+function responseOrigin(): string | null {
+  // The embedded sign-in's origin, or an explicitly configured AUTH_PUBLIC_ORIGIN; never a legacy fallback.
+  const origin = internalSelected() ? appOrigin() : configuredPublicOrigin();
+  return origin && /^https:\/\/[A-Za-z0-9.-]+(:[0-9]{1,5})?$/.test(origin) ? origin : null;
+}
+const usesResponseLink = (t: { subject: string; body: string }) => `${t.subject}\n${t.body}`.includes('{responseLink}');
+async function responseSentence(locale: CandidateEmailLocale, kind: 'interview' | 'offer'): Promise<string> {
+  const m = await messagesForLocale(locale) as unknown as { recruitment: { candidateEmail: { responseLine: Record<'interview' | 'offer', string> } } };
+  return m.recruitment.candidateEmail.responseLine[kind];
+}
+/** The preview's stand-in link, or null when no link would be sent. */
+function previewResponseUrl(template: { subject: string; body: string }): string | null {
+  const origin = responseOrigin();
+  return origin && usesResponseLink(template) ? `${origin}/careers/r/${PREVIEW_RESPONSE_TOKEN}` : null;
+}
+/** Issue the real link for an interview just scheduled or an offer just sent (5723 checks both), returning its URL; the stand-in URL in
+ *  the rendered preview is then replaced by it. */
+async function issueResponseLink(tx: Tx, kind: 'interview' | 'offer', targetId: string): Promise<string> {
+  const origin = responseOrigin();
+  if (!origin) throw new RecruitmentError('email_changed');
+  const token = newCareersToken();
+  await tx.execute(sql`select app.recruitment_response_link_issue(${kind}, ${targetId}::uuid, ${createHash('sha256').update(token, 'utf8').digest('hex')})`);
+  return `${origin}/careers/r/${token}`;
+}
+const swapLink = (m: RenderedCandidateEmail, from: string, to: string): RenderedCandidateEmail =>
+  ({ subject: m.subject.split(from).join(to), text: m.text.split(from).join(to), html: m.html.split(from).join(to) });
 /** The words interview values are made of, in an e-mail language (messages recruitment.candidateEmail.interview; read raw — the
  *  {names} are the model's, not ICU arguments). */
 export async function interviewEmailLabels(locale: CandidateEmailLocale): Promise<InterviewEmailLabels> {
@@ -82,6 +118,7 @@ const baseOf = (c: CandidateEmailComposer, r: { full_name: string; title: string
 type Row = {
   kind: CandidateEmailKind; job_id: string; application_id: string; candidate_id: string; recipient: string; mail: RenderedCandidateEmail;
   interview_id?: string | null; interview_starts_at?: string | null; offer_id?: string | null; map_url?: string | null; next_attempt_at?: string | null;
+  response_url?: string | null;
 };
 async function insertEmailsTx(tx: Tx, s: SessionContext, companyId: string, composers: ReadonlyMap<CandidateEmailKind, CandidateEmailComposer>, rows: readonly Row[]): Promise<string[]> {
   if (!rows.length) return [];
@@ -93,16 +130,16 @@ async function insertEmailsTx(tx: Tx, s: SessionContext, companyId: string, comp
     return { kind: r.kind, locale: c.locale, sender_name: c.senderName, reply_to: c.replyTo, job_id: r.job_id, application_id: r.application_id,
       candidate_id: r.candidate_id, recipient: r.recipient, subject: r.mail.subject, body_text: r.mail.text, body_html: r.mail.html,
       interview_id: r.interview_id ?? null, interview_starts_at: r.interview_starts_at ?? null, offer_id: r.offer_id ?? null, map_url: r.map_url ?? null,
-      next_attempt_at: r.next_attempt_at ?? null };
+      next_attempt_at: r.next_attempt_at ?? null, response_url: r.response_url ?? null };
   });
   const inserted = await tx.execute<{ id: string; application_id: string; kind: string }>(sql`
     insert into recruitment_candidate_email (tenant_id, company_id, job_id, application_id, candidate_id, kind, locale, recipient, subject, body_text, body_html,
-      sender_name, reply_to, queued_by_user_id, next_attempt_at, interview_id, interview_starts_at, offer_id, map_url)
+      sender_name, reply_to, queued_by_user_id, next_attempt_at, interview_id, interview_starts_at, offer_id, map_url, response_url)
     select ${s.tenantId}::uuid, ${companyId}::uuid, x.job_id, x.application_id, x.candidate_id, x.kind, x.locale, x.recipient, x.subject, x.body_text, x.body_html,
-      x.sender_name, x.reply_to, ${user}::uuid, coalesce(x.next_attempt_at, now()), x.interview_id, x.interview_starts_at, x.offer_id, x.map_url
+      x.sender_name, x.reply_to, ${user}::uuid, coalesce(x.next_attempt_at, now()), x.interview_id, x.interview_starts_at, x.offer_id, x.map_url, x.response_url
     from jsonb_to_recordset(${JSON.stringify(set)}::jsonb) as x(kind text, locale text, sender_name text, reply_to text, job_id uuid, application_id uuid,
       candidate_id uuid, recipient text, subject text, body_text text, body_html text, interview_id uuid, interview_starts_at timestamptz, offer_id uuid,
-      map_url text, next_attempt_at timestamptz)
+      map_url text, next_attempt_at timestamptz, response_url text)
     returning id, application_id, kind`).catch(queueRefusal);
   await appendEvents(tx, inserted.map((r) => ({
     tenantId: s.tenantId, aggregateType: 'recruitment-application', aggregateId: r.application_id, eventType: 'recruitment-candidate-email.queued',
@@ -165,7 +202,8 @@ export async function previewInterviewInvitation(s: SessionContext, input: { app
     const wanted = [v.value.addressId, v.value.roomId].filter((x): x is string => !!x);
     const places = wanted.length ? await placesTx(tx, s, a.company_id, wanted) : [];
     const facts = interviewFactsFromForm(v.value, places);
-    const { mail, valueLink } = renderInterviewEmail('interview_invitation', c.locale, c.template, baseOf(c, a), facts, await interviewEmailLabels(c.locale));
+    const { mail, valueLink } = renderInterviewEmail('interview_invitation', c.locale, c.template, baseOf(c, a), facts, await interviewEmailLabels(c.locale),
+      { sentence: await responseSentence(c.locale, 'interview'), url: previewResponseUrl(c.template) });
     return { status: 'ready', subject: mail.subject, text: mail.text, blocked: !usableRecipient(a.email) ? 'no_address' : valueLink ? 'value_link' : null };
   });
 }
@@ -198,12 +236,17 @@ export async function queueInterviewInvitationTx(tx: Tx, s: SessionContext, inte
   if (!invitation) throw new RecruitmentError('email_off');
   if (row.destroyed || !usableRecipient(row.email)) return 'no_email';
   const facts = factsOf(row);
-  const inv = renderInterviewEmail('interview_invitation', invitation.locale, invitation.template, baseOf(invitation, row), facts, await interviewEmailLabels(invitation.locale));
+  const stand = previewResponseUrl(invitation.template);
+  const inv = renderInterviewEmail('interview_invitation', invitation.locale, invitation.template, baseOf(invitation, row), facts, await interviewEmailLabels(invitation.locale),
+    { sentence: await responseSentence(invitation.locale, 'interview'), url: stand });
   if (inv.valueLink) return 'value_link';
   if (posted.subject !== inv.mail.subject || posted.text !== inv.mail.text) throw new RecruitmentError('email_changed');
+  // Slice 21b: the candidate's own link replaces the preview's stand-in (5723 confirms it was issued for this interview now).
+  const responseUrl = stand ? await issueResponseLink(tx, 'interview', row.id) : null;
+  if (stand && responseUrl) inv.mail = swapLink(inv.mail, stand, responseUrl);
   const startsAt = facts.startsAt.toISOString();
   const rows: Row[] = [{ kind: 'interview_invitation', job_id: row.job_id, application_id: row.application_id, candidate_id: row.candidate_id, recipient: row.email!,
-    mail: inv.mail, interview_id: row.id, interview_starts_at: startsAt, map_url: inv.mapUrl }];
+    mail: inv.mail, interview_id: row.id, interview_starts_at: startsAt, map_url: inv.mapUrl, response_url: responseUrl }];
   const composers = new Map<CandidateEmailKind, CandidateEmailComposer>([['interview_invitation', invitation]]);
   const due = invitation.reminderEnabled ? reminderDueAt(facts.startsAt, invitation.reminderHours, new Date()) : null;
   if (due) {
@@ -270,6 +313,8 @@ export type OfferEmailPreview = {
   fingerprint: string; fieldsInEmail: number;
   /** The rendered HTML (what is frozen with the text; the page shows the text). */
   html: string;
+  /** Slice 21b: the stand-in link the preview shows (the frozen e-mail carries the candidate's own), or null without a link. */
+  previewResponseUrl: string | null;
 };
 /**
  * The offer e-mail of an application's offer as "Send offer by e-mail" shows it, read inside `tx` under the caller's row security: only
@@ -305,12 +350,14 @@ export async function offerEmailPreviewTx(tx: Tx, s: SessionContext, application
   const lines: OfferEmailLine[] = fields.filter((f) => f.has_value && f.value !== null).map((f) => ({ label: f.label, value: f.value! }));
   const hidden = !o.sees_private && fields.some((f) => f.private);
   const details = offerDetailsText(lines);
-  const mail = renderCandidateEmail('offer', c.locale, c.template, { ...baseOf(c, o), offerDetails: details ?? '' });
+  const stand = previewResponseUrl(c.template);
+  const responseLink = responseLinkValue(await responseSentence(c.locale, 'offer'), stand);
+  const mail = renderCandidateEmail('offer', c.locale, c.template, { ...baseOf(c, o), offerDetails: details ?? '', responseLink });
   const usable = usableRecipient(o.email);
   const blocked: OfferEmailBlock | null = !usable ? 'no_address' : hidden ? 'private_hidden' : details === null ? 'too_long'
-    : linkish(mail.subject) || linkish(mail.text) ? 'value_link' : null;
+    : linkish(mail.subject) || linkishExcept(mail.text, null, stand) ? 'value_link' : null;
   return { offerId: o.id, recipient: usable ? o.email : null, blocked, subject: mail.subject, text: mail.text, html: mail.html, senderName: c.senderName,
-    replyTo: c.replyTo, fingerprint: usable && !blocked ? previewFingerprint(c, o.email!, mail) : '', fieldsInEmail: fields.length };
+    replyTo: c.replyTo, fingerprint: usable && !blocked ? previewFingerprint(c, o.email!, mail) : '', fieldsInEmail: fields.length, previewResponseUrl: stand };
 }
 export async function offerEmailPreview(s: SessionContext, applicationId: unknown): Promise<OfferEmailPreview | null> {
   if (!isUuid(applicationId) || !(await candidateEmailAvailable(s.tenantId))) return null;
@@ -329,6 +376,9 @@ export async function queueOfferEmailTx(tx: Tx, s: SessionContext, offer: { id: 
   if (!fingerprint || fingerprint !== preview.fingerprint) throw new RecruitmentError('email_changed');
   const c = await composerOf(tx, s, offer.companyId, 'offer');
   if (!c) throw new RecruitmentError('email_off');
+  // Slice 21b: the candidate's own link replaces the preview's stand-in (5723 confirms it was issued for this offer's send now).
+  const responseUrl = preview.previewResponseUrl ? await issueResponseLink(tx, 'offer', offer.id) : null;
+  const mail = preview.previewResponseUrl && responseUrl ? swapLink(preview, preview.previewResponseUrl, responseUrl) : { subject: preview.subject, text: preview.text, html: preview.html };
   await insertEmailsTx(tx, s, offer.companyId, new Map([['offer', c]]), [{ kind: 'offer', job_id: offer.jobId, application_id: offer.applicationId,
-    candidate_id: offer.candidateId, recipient: preview.recipient!, mail: { subject: preview.subject, text: preview.text, html: preview.html }, offer_id: offer.id }]);
+    candidate_id: offer.candidateId, recipient: preview.recipient!, mail, offer_id: offer.id, response_url: responseUrl }]);
 }

@@ -40879,7 +40879,7 @@
         },
         "interview_invitation": {
           "subject": "面试邀请：{jobTitle}",
-          "body": "{candidateName}，您好：\n\n感谢您申请{companyName}的{jobTitle}职位。我们诚邀您参加面试。\n\n{interviewRound} · {interviewType}\n日期：{interviewDate}\n时间：{interviewTime}\n时长：{interviewDuration}\n地点：{interviewPlace}\n\n请回复本邮件确认能否出席，或提出其他时间。\n\n此致\n{senderName}"
+          "body": "{candidateName}，您好：\n\n感谢您申请{companyName}的{jobTitle}职位。我们诚邀您参加面试。\n\n{interviewRound} · {interviewType}\n日期：{interviewDate}\n时间：{interviewTime}\n时长：{interviewDuration}\n地点：{interviewPlace}\n\n请回复本邮件确认能否出席，或提出其他时间。\n\n{responseLink}\n\n此致\n{senderName}"
         },
         "interview_reminder": {
           "subject": "提醒：您的{jobTitle}职位面试",
@@ -40891,7 +40891,7 @@
         },
         "offer": {
           "subject": "您的{jobTitle}职位录用通知",
-          "body": "{candidateName}，您好：\n\n我们很高兴向您发出{companyName}{jobTitle}职位的录用通知。\n\n{offerDetails}\n\n如接受录用或有任何疑问，请回复本邮件。\n\n此致\n{senderName}"
+          "body": "{candidateName}，您好：\n\n我们很高兴向您发出{companyName}{jobTitle}职位的录用通知。\n\n{offerDetails}\n\n如接受录用或有任何疑问，请回复本邮件。\n\n{responseLink}\n\n此致\n{senderName}"
         }
       },
       "settingsNote": "就候选人自己的申请给他们发送电子邮件：申请时发送确认函，并在有人选择时发送拒绝信。邮件通过本系统的邮件服务从其地址发出；您可设置候选人看到的发件人名称和回复地址。",
@@ -41048,7 +41048,13 @@
       "invitationNoReminder": "本公司已关闭提醒：不会发送提醒。",
       "invitationIncomplete": "请输入日期和时间以查看邮件。",
       "sendCancellation": "向候选人发送面试取消邮件",
-      "cancellationNote": "发送至 {address}。除非勾选，否则不会发送。"
+      "cancellationNote": "发送至 {address}。除非勾选，否则不会发送。",
+      "responseLine": {
+        "interview": "在此接受或拒绝此面试：{url}",
+        "offer": "在此接受或拒绝此录用通知：{url}"
+      },
+      "responseReply": "候选人已通过链接回复：{answer}（{at}）",
+      "responseByLink": "候选人已通过链接回复"
     }
   },
   "careersPublic": {
@@ -41135,6 +41141,29 @@
     "codeEmail": {
       "subject": "您申请{jobTitle}的验证码：{code}",
       "body": "您申请{companyName}{jobTitle}职位的验证码是：\n\n{code}\n\n该验证码10分钟内有效。如果您没有申请此验证码，请忽略本邮件。\n\n{senderName}"
+    },
+    "response": {
+      "title": "您的回复",
+      "interviewIntro": "{company}的{job}职位面试",
+      "offerIntro": "您在{company}的{job}职位录用通知",
+      "when": "{date} {start}，吉隆坡时间（GMT+8），{minutes}分钟",
+      "accept": "接受",
+      "decline": "拒绝",
+      "current": "您当前的回复：{answer}",
+      "accepted": "已接受",
+      "declined": "已拒绝",
+      "thanks": "谢谢。您的回复已记录：{answer}。在链接有效期间，您可以在此页面更改。",
+      "offerNote": "公司将与您联系确认后续步骤。",
+      "closed": "此链接已不再接受回复。如有需要，请回复公司的邮件。",
+      "notFoundTitle": "未找到链接",
+      "notFound": "此链接无效。请确认您复制了邮件中的完整链接。",
+      "limited": "来自此连接的回复过多。请稍后再试。",
+      "types": {
+        "onsite": "现场面试",
+        "video": "视频面试",
+        "phone": "电话面试"
+      },
+      "round": "第{round}轮"
     }
   },
   "bulkJobs": {

@@ -12,6 +12,7 @@
  *     same null ("not found"); every well-formed accepted, repeated or honeypot submission is the same "received".
  * Nothing here sends a message (D-029), calls a model or scores a candidate.
  */
+import { createHash } from 'node:crypto';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import type { SessionContext, Tx } from '../../db/client';
@@ -454,4 +455,39 @@ async function queueCareersReceipt(address: string, jobId: string, applicationId
   if (linkish(mail.subject) || linkish(mail.text)) return;
   await careersDb().unsafe('select app.recruitment_careers_queue_receipt($1::text, $2::uuid, $3::text, $4::text, $5::text) as r',
     [tokenHash, applicationId, mail.subject, mail.text, mail.html]);
+}
+
+// ── Slice 21b: response links (5723) ───────────────────────────────────────────────────────────────────────────────
+
+/** What a candidate's response link shows: the job and company, the interview's time and type (or "your offer"), whether it still
+ *  takes an answer and the answer given. No other data. */
+export type CandidateResponseState = {
+  kind: 'interview' | 'offer'; jobTitle: string; companyName: string; open: boolean; answer: 'accepted' | 'declined' | null;
+  interview?: { startsAt: string; durationMinutes: number; type: 'onsite' | 'video' | 'phone'; roundNo: number };
+};
+const tokenDigest = (token: string) => createHash('sha256').update(token, 'utf8').digest('hex');
+const responseState = (r: Record<string, unknown>): CandidateResponseState => ({
+  kind: r.kind === 'offer' ? 'offer' : 'interview', jobTitle: String(r.jobTitle ?? ''), companyName: String(r.companyName ?? ''), open: r.open === true,
+  answer: r.answer === 'accepted' || r.answer === 'declined' ? r.answer : null,
+  ...(r.interview && typeof r.interview === 'object' ? { interview: (() => {
+    const i = r.interview as Record<string, unknown>;
+    return { startsAt: iso(String(i.startsAt)), durationMinutes: Number(i.durationMinutes), type: i.type as 'onsite' | 'video' | 'phone', roundNo: Number(i.roundNo) };
+  })() } : {}),
+});
+/** The link's state, or null for an unknown token. Read-only (opening a link changes nothing: mail scanners open links). */
+export async function candidateResponseView(token: string): Promise<CandidateResponseState | null> {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
+  const [row] = await careersDb().unsafe<{ r: Record<string, unknown> | null }[]>('select app.recruitment_response_view($1::text) as r', [tokenDigest(token)]);
+  return row?.r ? responseState(row.r) : null;
+}
+export type CandidateResponseResult = { status: 'answered' | 'closed'; state: CandidateResponseState } | { status: 'limited' | 'not_found' };
+/** The candidate's Accept or Decline (a POST). */
+export async function answerCandidateResponse(token: string, answer: 'accepted' | 'declined', clientHash: string): Promise<CandidateResponseResult> {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return { status: 'not_found' };
+  const [row] = await careersDb().unsafe<{ r: { status: string; state?: Record<string, unknown> } }[]>('select app.recruitment_response_answer($1::text, $2::text, $3::text) as r',
+    [tokenDigest(token), answer, clientHash]);
+  const r = row?.r;
+  if (r?.status === 'answered' || r?.status === 'closed') return { status: r.status, state: responseState(r.state ?? {}) };
+  if (r?.status === 'limited') return { status: 'limited' };
+  return { status: 'not_found' };
 }
