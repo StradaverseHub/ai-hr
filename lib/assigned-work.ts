@@ -17,7 +17,10 @@ export class AssignedWorkPrincipalUnavailableError extends Error{
  * never a band, rating, score, amount, remark or plan body — the link opens the owning screen, which
  * applies its own authorization again.
  */
-export const PACK_TASK_KINDS=['performanceReview','assessmentWork','careerPlan','calibration','rewardReview'] as const;
+export const PACK_TASK_KINDS=['performanceReview','assessmentWork','careerPlan','calibration','rewardReview',
+ // Probation (core/probation.ts pendingProbationTasks): Approve steps, and every other Probation task (employee, Line
+ // Manager, PBP and GBS tasks, letter Sign steps). Both open the case view.
+ 'probationApproval','probationTask'] as const;
 export type PackTaskKind=typeof PACK_TASK_KINDS[number];
 export type PackTaskItem={id:string;kind:PackTaskKind;subjectName:string|null;createdAt:string;linkPath:string};
 /** A pack's task provider. `scopeIds` is the company-switcher selection; undefined means no filter. */

@@ -5829,7 +5829,13 @@
     "rewards": "Khen thưởng",
     "reviewRewards": "Xét duyệt khen thưởng",
     "focusedDescription": "Yêu cầu này hiện được giao cho bạn xử lý.",
-    "viewAllAssigned": "Xem tất cả phê duyệt"
+    "viewAllAssigned": "Xem tất cả phê duyệt",
+    "probation": "Probation",
+    "probationPart": "Part {part} review",
+    "probationDue": "due {date}",
+    "probationOpen": "Open review",
+    "probationCapped": "Showing the first {shown} approvals.",
+    "probationSeeAll": "See all in the Probation tracker"
   },
   "performance": {
     "list": {
@@ -15254,7 +15260,9 @@
       "rewardReview": "Xem xét đãi ngộ",
       "probation": "Xác nhận thử việc",
       "contract_staff": "Quản lý hợp đồng",
-      "contractDateCorrection": "Điều chỉnh ngày hợp đồng"
+      "contractDateCorrection": "Điều chỉnh ngày hợp đồng",
+      "probationApproval": "Approve probation review",
+      "probationTask": "Probation task"
     },
     "tasksEmpty": "Không có mục nào cần bạn xử lý",
     "title": "Thông báo",
@@ -17455,7 +17463,8 @@
     "moduleLabel": {
       "leave": "Nghỉ phép",
       "attendance": "Chấm công",
-      "claims": "Yêu cầu bồi hoàn"
+      "claims": "Yêu cầu bồi hoàn",
+      "probation": "Probation"
     },
     "taskLabel": {
       "leaveApplication": "Phê duyệt Đơn xin nghỉ",
@@ -17465,7 +17474,10 @@
       "claimsClaim": "Phê duyệt Yêu cầu bồi hoàn",
       "leaveRequestCreation": "Tạo đơn xin nghỉ phép",
       "leaveAmendmentRequest": "Yêu cầu sửa đơn nghỉ phép",
-      "leaveCancellationRequest": "Yêu cầu hủy nghỉ phép"
+      "leaveCancellationRequest": "Yêu cầu hủy nghỉ phép",
+      "probationReview": "Probation review (Head of Department, PBP, GBS)",
+      "probationApprove": "Probation approval (Head of Department, PBP, GBS)",
+      "probationLetterSign": "Probation letter signature"
     },
     "groupLabel": {
       "leaveRequest": "Đơn xin nghỉ phép",
@@ -32285,7 +32297,9 @@
       "assessmentWork": "Đánh giá năng lực",
       "careerPlan": "Xem xét kế hoạch nghề nghiệp",
       "calibration": "Hiệu chỉnh hiệu suất",
-      "rewardReview": "Xem xét đãi ngộ"
+      "rewardReview": "Xem xét đãi ngộ",
+      "probationApproval": "Probation approval",
+      "probationTask": "Probation task"
     },
     "quickActions": {
       "leave": "Đăng ký nghỉ phép",
@@ -35821,7 +35835,8 @@
       "missing": "Cần xác định người phụ trách",
       "frozenFacts": "Đánh giá này giữ thông tin nhân viên và thời hạn thử việc đã chốt cho nội dung được ký.",
       "combinedConsent": "Tôi xác nhận đây là chữ ký của tôi cho các vai trò sau: {roles}.",
-      "combinedHistory": "Được ghi nhận bằng cùng một chữ ký"
+      "combinedHistory": "Được ghi nhận bằng cùng một chữ ký",
+      "onBehalfOf": "on behalf of {name}"
     },
     "controls": {
       "title": "Thao tác đánh giá được phép",
@@ -35893,7 +35908,9 @@
         "review_letter": "Review letter",
         "record_action": "Record action",
         "log_followup": "Log follow-up"
-      }
+      },
+      "mineOnly": "Showing only cases with work waiting on you.",
+      "mineClear": "Show all cases"
     },
     "applyFilters": "Áp dụng bộ lọc",
     "clearFilters": "Xóa bộ lọc",
@@ -36400,7 +36417,28 @@
       "waiting": "Waiting for start date. The case opened at activation; no reviews, tasks or reminders start before {date}. Part 1 counts from the start date.",
       "didNotJoin": "Closed as Did not join: the hire was withdrawn or the employment ended before the start date."
     },
-    "overrideNotice": "The Line Manager chose a different outcome from the suggestion and wrote a justification."
+    "overrideNotice": "The Line Manager chose a different outcome from the suggestion and wrote a justification.",
+    "formRouting": {
+      "title": "Review and approval routing",
+      "help": "Who approves and signs each part, and in what order. Lower numbers go first; steps sharing a number run one after another in the order listed. A case keeps the routing of the form version it started on.",
+      "legacy": "This form version has no approval steps of its own, so its cases use the published signing routes configuration. Set approval steps here to route new cases from this form instead.",
+      "useForm": "Set approval steps on this form",
+      "core": "Always first, and not editable: {steps}.",
+      "coreKpi": "Line Manager sets and signs the KPIs → Employee acknowledges",
+      "coreReview": "Employee self-review → Line Manager assessment and signature → Employee acknowledges",
+      "order": "Order",
+      "action": "Action",
+      "who": "Who",
+      "actions": {
+        "approve_sign": "Approve and sign"
+      },
+      "remove": "Remove the {who} step",
+      "add": "Add approval step",
+      "none": "No approval steps.",
+      "partThreeRequired": "Part 3 needs at least one approval step.",
+      "reserved": "Approval steps resolve to the Head of Department or the People Business Partner, through their current holders, delegations and the policy below. Routings, assignment groups, named people and the Direct Superior cannot sign probation reviews yet.",
+      "policyInherit": "Use the signing routes configuration’s setting"
+    }
   },
   "templateEditor": {
     "newField": "Trường mới",

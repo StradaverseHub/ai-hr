@@ -21,13 +21,13 @@ beforeEach(()=>{calls.summary=[];});
 describe('Today queue reads',()=>{
  it('Manager Today reads the scoped queue without notice acknowledgements',async()=>{
   const queue=await readManagerQueue(session,'co-a,co-b');
-  expect(calls.summary).toEqual([[['co-a','co-b'],{attendance:true,claims:true,performance:true,rewards:false},{noticeAcknowledgements:false}]]);
+  expect(calls.summary).toEqual([[['co-a','co-b'],{attendance:true,claims:true,performance:true,rewards:false,probation:true},{noticeAcknowledgements:false}]]);
   expect(queue).toMatchObject({approvalTotal:3,failed:false});
   expect(queue.decisions.map(task=>task.id)).toEqual(['l1']);
  });
  it('Employee Today reads the queue exactly as the Tasks page does',async()=>{
   const waiting=await readWaitingForYou(session);
-  expect(calls.summary).toEqual([[undefined,{attendance:true,claims:true,performance:true,rewards:false}]]);
+  expect(calls.summary).toEqual([[undefined,{attendance:true,claims:true,performance:true,rewards:false,probation:true}]]);
   expect(waiting.total).toBe(3);
  });
 });

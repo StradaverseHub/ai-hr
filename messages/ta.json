@@ -5829,7 +5829,13 @@
     "rewards": "வெகுமதிகள்",
     "reviewRewards": "வெகுமதிகளை மதிப்பாய்வு செய்",
     "focusedDescription": "இந்தக் கோரிக்கை தற்போது உங்களுக்கு ஒதுக்கப்பட்டுள்ளது.",
-    "viewAllAssigned": "அனைத்து ஒப்புதல்களையும் பார்க்கவும்"
+    "viewAllAssigned": "அனைத்து ஒப்புதல்களையும் பார்க்கவும்",
+    "probation": "Probation",
+    "probationPart": "Part {part} review",
+    "probationDue": "due {date}",
+    "probationOpen": "Open review",
+    "probationCapped": "Showing the first {shown} approvals.",
+    "probationSeeAll": "See all in the Probation tracker"
   },
   "performance": {
     "list": {
@@ -15254,7 +15260,9 @@
       "rewardReview": "வெகுமதிகளை மதிப்பாய்வு செய்யவும்",
       "probation": "சோதனைக் காலப் பணி உறுதிப்படுத்தல்",
       "contract_staff": "ஒப்பந்த மேலாண்மை",
-      "contractDateCorrection": "ஒப்பந்த தேதி திருத்தம்"
+      "contractDateCorrection": "ஒப்பந்த தேதி திருத்தம்",
+      "probationApproval": "Approve probation review",
+      "probationTask": "Probation task"
     },
     "tasksEmpty": "உங்கள் நடவடிக்கை தேவைப்படுவது எதுவும் இல்லை",
     "title": "அறிவிப்புகள்",
@@ -17455,7 +17463,8 @@
     "moduleLabel": {
       "leave": "விடுப்பு",
       "attendance": "வருகை",
-      "claims": "உரிமைகோரல்கள்"
+      "claims": "உரிமைகோரல்கள்",
+      "probation": "Probation"
     },
     "taskLabel": {
       "leaveApplication": "விடுப்பு விண்ணப்ப ஒப்புதல்",
@@ -17465,7 +17474,10 @@
       "claimsClaim": "உரிமைகோரல் ஒப்புதல்",
       "leaveRequestCreation": "விடுப்பு விண்ணப்பம் உருவாக்கம்",
       "leaveAmendmentRequest": "விடுப்பு திருத்தக் கோரிக்கை",
-      "leaveCancellationRequest": "விடுப்பு ரத்து கோரிக்கை"
+      "leaveCancellationRequest": "விடுப்பு ரத்து கோரிக்கை",
+      "probationReview": "Probation review (Head of Department, PBP, GBS)",
+      "probationApprove": "Probation approval (Head of Department, PBP, GBS)",
+      "probationLetterSign": "Probation letter signature"
     },
     "groupLabel": {
       "leaveRequest": "விடுப்பு கோரிக்கை",
@@ -32285,7 +32297,9 @@
       "assessmentWork": "செயல்திறன் மதிப்பீடு",
       "careerPlan": "தொழில் திட்ட மதிப்பாய்வு",
       "calibration": "செயல்திறன் அளவுத்திருத்தம்",
-      "rewardReview": "வெகுமதி மதிப்பாய்வு"
+      "rewardReview": "வெகுமதி மதிப்பாய்வு",
+      "probationApproval": "Probation approval",
+      "probationTask": "Probation task"
     },
     "quickActions": {
       "leave": "விடுப்புக்கு விண்ணப்பி",
@@ -35821,7 +35835,8 @@
       "missing": "பொறுப்பாளரைத் தீர்மானிக்க வேண்டும்",
       "frozenFacts": "இந்த மதிப்பாய்வு கையொப்பமிட்ட உள்ளடக்கத்திற்காகப் பதிவு செய்த பணியாளர் மற்றும் சோதனைக் கால விவரங்களைத் தக்கவைக்கும்.",
       "combinedConsent": "பின்வரும் பங்குகளுக்கு இது எனது கையொப்பம் என்பதை உறுதிப்படுத்துகிறேன்: {roles}.",
-      "combinedHistory": "அதே கையொப்பம் இதற்கும் பொருந்தும்"
+      "combinedHistory": "அதே கையொப்பம் இதற்கும் பொருந்தும்",
+      "onBehalfOf": "on behalf of {name}"
     },
     "controls": {
       "title": "அங்கீகரிக்கப்பட்ட மதிப்பாய்வுக் கட்டுப்பாடுகள்",
@@ -35893,7 +35908,9 @@
         "review_letter": "Review letter",
         "record_action": "Record action",
         "log_followup": "Log follow-up"
-      }
+      },
+      "mineOnly": "Showing only cases with work waiting on you.",
+      "mineClear": "Show all cases"
     },
     "applyFilters": "வடிகட்டிகளைப் பயன்படுத்தவும்",
     "clearFilters": "வடிகட்டிகளை அழிக்கவும்",
@@ -36400,7 +36417,28 @@
       "waiting": "Waiting for start date. The case opened at activation; no reviews, tasks or reminders start before {date}. Part 1 counts from the start date.",
       "didNotJoin": "Closed as Did not join: the hire was withdrawn or the employment ended before the start date."
     },
-    "overrideNotice": "The Line Manager chose a different outcome from the suggestion and wrote a justification."
+    "overrideNotice": "The Line Manager chose a different outcome from the suggestion and wrote a justification.",
+    "formRouting": {
+      "title": "Review and approval routing",
+      "help": "Who approves and signs each part, and in what order. Lower numbers go first; steps sharing a number run one after another in the order listed. A case keeps the routing of the form version it started on.",
+      "legacy": "This form version has no approval steps of its own, so its cases use the published signing routes configuration. Set approval steps here to route new cases from this form instead.",
+      "useForm": "Set approval steps on this form",
+      "core": "Always first, and not editable: {steps}.",
+      "coreKpi": "Line Manager sets and signs the KPIs → Employee acknowledges",
+      "coreReview": "Employee self-review → Line Manager assessment and signature → Employee acknowledges",
+      "order": "Order",
+      "action": "Action",
+      "who": "Who",
+      "actions": {
+        "approve_sign": "Approve and sign"
+      },
+      "remove": "Remove the {who} step",
+      "add": "Add approval step",
+      "none": "No approval steps.",
+      "partThreeRequired": "Part 3 needs at least one approval step.",
+      "reserved": "Approval steps resolve to the Head of Department or the People Business Partner, through their current holders, delegations and the policy below. Routings, assignment groups, named people and the Direct Superior cannot sign probation reviews yet.",
+      "policyInherit": "Use the signing routes configuration’s setting"
+    }
   },
   "templateEditor": {
     "newField": "புதிய புலம்",

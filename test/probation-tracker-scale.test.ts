@@ -12,7 +12,8 @@ import {withTenant,type SessionContext} from '../db/client';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {addDaysIso} from '../lib/roster-month';
-import {DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,defaultProbationRoutes,probationSummaryRows,type ProbationTrackerFlag} from '../packs/probation/service';
+import {workingDatesForSpan} from '../packs/leave/service';
+import {DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,defaultProbationRoutes,probationSummaryRows,probationTrackerWorkingDays,type ProbationTrackerFlag} from '../packs/probation/service';
 
 const COMPANIES=72,PER_COMPANY=15;
 let b:Base,admin:SessionContext;
@@ -35,6 +36,16 @@ async function installReference(){
  for(const statement of readFileSync('test/helpers/probation-access-reference.sql','utf8').split(/\n(?=CREATE OR REPLACE FUNCTION )/).filter(text=>text.includes('CREATE OR REPLACE FUNCTION')))await owner.db.execute(sql.raw(statement));
  await owner.db.execute(sql.raw(`CREATE OR REPLACE FUNCTION app.probation_visible_reference() RETURNS SETOF uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT c.id FROM public.probation_case c WHERE c.tenant_id=app.current_tenant_id() AND app.probation_case_access_reference(c.id) $$`));
  await owner.db.execute(sql.raw('GRANT EXECUTE ON FUNCTION app.probation_visible_reference() TO ai_hr_app'));
+}
+/** Logs the plans of the statements inside the visible-set function for one viewer (auto_explain at NOTICE level, owner session). */
+async function explainNested(ctx:SessionContext){
+ try{
+  await owner.withTenant(ctx,async tx=>{
+   await tx.execute(sql.raw("LOAD 'auto_explain'"));
+   for(const setting of ["set local auto_explain.log_min_duration=50","set local auto_explain.log_nested_statements=on","set local auto_explain.log_analyze=on","set local auto_explain.log_level='notice'"])await tx.execute(sql.raw(setting));
+   await timed('visible set under auto_explain (viewer, owner session)',()=>tx.execute(sql`select count(*) from app.probation_visible_among(null)`));
+  });
+ }catch(error){console.log('[probation-tracker-scale] auto_explain unavailable: '+(error instanceof Error?error.message:String(error)));}
 }
 async function previousVisible(ctx:SessionContext){
  return timed('previous access rule (0949, per case) '+(ctx.userId===admin.userId?'GBS':'viewer'),async()=>(await withTenant(ctx,tx=>tx.execute<{id:string}>(sql`select app.probation_visible_reference() as id`))).map(r=>r.id).sort());
@@ -120,8 +131,14 @@ describe('tracker read at real-group shape',()=>{
   await owner.db.execute(sql`insert into probation_access(tenant_id,user_id,company_id,role,valid_from,reason) select ${b.tenantId}::uuid,${pbp.ctx.userId}::uuid,id,'pbp','2026-01-01','Scale fixture PBP' from unnest(array[${sql.join(companies.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) id`);
   await owner.db.execute(sql`insert into probation_delegate(tenant_id,part_id,step_id,holder_id,kind,reason,created_by,valid_from) values(${b.tenantId}::uuid,${subject.part}::uuid,'pbp',${delegate.ctx.userId}::uuid,'delegation','Scale fixture delegation',${admin.userId}::uuid,'2026-01-01')`);
   const outsider=await viewer('Fictional Scale Outsider');
-  for(const[name,ctx,least]of [['employee',{...admin,userId:employee,personId:subject.person,roles:['employee'],grants:undefined} as SessionContext,1],['Line Manager',manager.ctx,40],['PBP',pbp.ctx,1],['delegate',delegate.ctx,1],['outsider',outsider.ctx,0]] as const){
-   const before=await previousVisible(ctx),after=await currentVisible(ctx);
+  // Head of Department: the first company's employments get an assignment in a department this viewer heads.
+  const hod=await viewer('Fictional Scale Department Head');
+  const[hodEmployment]=await owner.db.execute<{id:string}>(sql`insert into employment(tenant_id,person_id,company_id,hired_on) values(${b.tenantId}::uuid,${hod.person}::uuid,${companies[0]}::uuid,'2025-01-01') returning id`);
+  const[department]=await owner.db.execute<{id:string}>(sql`insert into department(tenant_id,company_id,name,head_employment_id) values(${b.tenantId}::uuid,${companies[0]}::uuid,'Fictional Scale Operations',${hodEmployment.id}::uuid) returning id`);
+  await owner.db.execute(sql`insert into assignment(tenant_id,employment_id,company_id,department_id,employment_type,valid_from) select ${b.tenantId}::uuid,c.employment_id,c.company_id,${department.id}::uuid,'full_time','2025-01-01' from probation_case c where c.tenant_id=${b.tenantId}::uuid and c.company_id=${companies[0]}::uuid`);
+  for(const[name,ctx,least]of [['employee',{...admin,userId:employee,personId:subject.person,roles:['employee'],grants:undefined} as SessionContext,1],['Line Manager',manager.ctx,40],['PBP',pbp.ctx,1],['delegate',delegate.ctx,1],['Head of Department',hod.ctx,15],['outsider',outsider.ctx,0]] as const){
+   const before=await previousVisible(ctx),after=await currentVisible(ctx);await currentVisible(ctx); // a second, warm read separates a cold first statement from the path cost
+   if(name==='employee')await explainNested(ctx);
    expect(after,name).toEqual(before);expect(after.length,name).toBeGreaterThanOrEqual(least);
    if(before.length){const previous=await previousReader(before,{}),page=await timed('tracker read '+name,()=>probationSummaryRows(ctx,{limit:100}));expect(page.rows.map(r=>r.id),name).toEqual(previous.ids.slice(0,100));expect(page.total,name).toBe(previous.counts.total);}
   }
@@ -152,8 +169,18 @@ describe('tracker read at real-group shape',()=>{
   for(const flag of Object.keys(previousFlags) as Flag[]){
    const before=await previousReader(visible,{flag}),page=await timed('tracker read all companies flag '+flag,()=>probationSummaryRows(admin,{flag,limit:100}));
    expect(page.rows.map(r=>r.id)).toEqual(before.ids.slice(0,100));expect(page.total).toBe(before.counts.total);
+   // Working days overdue stream in after the list (one holiday resolution per company calendar on the page).
+   if(page.rows.length){
+    await timed('  page details flag '+flag,()=>withTenant(admin,tx=>tx.execute(sql`select count(*) from app.probation_tracker_page(array[${sql.join(page.rows.map(r=>sql`${r.id}::uuid`),sql`, `)}]::uuid[])`)));
+    const companies=new Set(page.rows.filter(row=>row.parts.some(part=>part.type===1&&part.calendarDaysOverdue!==undefined)).map(row=>row.companyId)).size;
+    const working=await timed(`  working days overdue, streamed after the list, flag ${flag} (${companies} companies)`,()=>probationTrackerWorkingDays(admin,page.rows));
+    const kpis=page.rows.flatMap(row=>row.parts.filter(part=>part.type===1&&part.calendarDaysOverdue!==undefined).map(part=>({row,part})));
+    expect(Object.keys(working).sort()).toEqual(kpis.map(item=>item.part.id).sort());
+    // The batched count is the leave owner's working-day span (independent check on one part per flag).
+    if(kpis.length){const{row,part}=kpis[0];const span=await withTenant(admin,tx=>workingDatesForSpan(tx,row.employmentId,addDaysIso(part.dueOn,1),today));expect(working[part.id]).toBe(span.length);}
+   }
   }
- },120000); // Measuring run: every read is logged as a [probation-tracker-scale] line; set to about 3x the measured worst total once known.
+ },115000); // Run 43751555870 measured this test at 38.4 s on the CI runner, almost all of it the 0949 reference rule evaluated per case for each viewer (3.5-5.2 s each); about 3x.
  it('shows nothing to a person without case access',async()=>{
   const[p]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional outsider',${randomUUID()+'@scale.example.test'}) returning id`);
   const userId=await createAppUser(b.tenantId,p.id,'employee');

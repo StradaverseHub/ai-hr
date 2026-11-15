@@ -8,6 +8,7 @@
  * fails closed. Deciding stays on the approvals pages. Not imported by the production Assistant. */
 import type {SessionContext} from '../../db/client';
 import {isModuleEnabled} from '../entitlements';
+import {probationModuleOn} from '../../packs/probation/service';
 import {listPendingTasks,type PendingTaskKind} from '../approvals-inbox';
 
 /** The suggestable review action for a queue kind, where one exists (lib/ai/agent-action-registry.ts). */
@@ -20,7 +21,7 @@ function queueHref(linkPath:string):string{
  return url.pathname+(category?'?'+new URLSearchParams({category}):'');
 }
 const pendingFor=(ctx:SessionContext,companyId:string)=>listPendingTasks(ctx,[companyId],{attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),
- performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')},{noticeAcknowledgements:false});
+ performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards'),probation:probationModuleOn(ctx)},{noticeAcknowledgements:false});
 function summarise(tasks:Awaited<ReturnType<typeof pendingFor>>):ApprovalQueueSummary{
  const groups=new Map<string,{kind:string;count:number;href:string;reviewAction:string|null}>();
  for(const task of tasks){const row=groups.get(task.kind)??{kind:task.kind,count:0,href:queueHref(task.linkPath),reviewAction:REVIEW_ACTION[task.kind]??null};row.count++;groups.set(task.kind,row);}

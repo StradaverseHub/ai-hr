@@ -15,6 +15,41 @@ functions; no existing object, row, grant or purpose-owned object changes (ADR
 coordinator. The installed ledgers were not read by this session; recheck
 installed watermarks and peer claims at admission. This allocation grants no installation authority.
 
+# Probation work queues and form approval routing — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-queues-routing-20261116` (lane E) appends `5751_probation_queues_and_form_routing` at idx
+5151 / when 1793330005451 (assigned by the build coordinator). SHA256 `378318141f25744883a7be53c5435f12acec38c60558bf24eff550d234809134`.
+It adds `app.probation_task_list(category, limit)` (granted to `ai_hr_app`): the caller's current Probation work,
+bounded (at most 200 candidates confirmed per read) and set-based, each candidate confirmed by the case view's own
+`app.probation_commands`; re-creates `app.probation_inbox()` (same shape) to answer from it; and re-creates the
+owner-owned `app.probation_prepare_signing` (2111 body) and `app.probation_resolve_route_unchecked` (5749 body) so a
+Part's route is frozen from its pinned form version's approval rows when the version has them (older versions keep
+the route configuration), and so a GBS step held by the group, once assigned to a person on a Part, follows that
+person's general Probation delegation (with `app.probation_visible_among` from 5749 and `app.probation_signing_access`
+from 5746 re-created with the matching additions). No table, row, grant or purpose-owned object changes. The file is extended within lane E (form approval routing) before integration; this
+paragraph carries the current bytes' hash. The installed ledgers were not read; recheck watermarks and peer claims at
+admission. No installation authority.
+
+# Probation tracker plan robustness — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-queues-routing-20261116` (lane E) appends `5750_probation_tracker_plan_robustness` at idx
+5150 / when 1793330005450 (assigned by the build coordinator). SHA256 `5acc2142a000baade0f4e01c5345fbc1114e9cc980f3a62689004cdfc9851123`.
+It re-creates the owner-owned internal `app.probation_holders_set(uuid[])` (5746) with the same rule and output and an
+evaluation shape that needs no table statistics (jsonb maps instead of joins between materialised sets). No table, row,
+grant or purpose-owned object changes. The installed ledgers were not read; recheck watermarks and peer claims at
+admission. No installation authority.
+
+# Probation delegation (decision 7) — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-probation-core-20261116` (lane C, round E) appends `5749_probation_delegation` at idx 5149 /
+when 1793330005449 (assigned by the build coordinator; 5747/5748 belong to the signing-runtime lane). SHA256 `a57888eba4421d3ca4b2a3fdbe55065196005cfdffa7ed011615c6cef93e9dfd`.
+It adds the internal `app.probation_general_delegate(holder, subject employment, task)` and re-creates the owner-owned
+`app.probation_resolve_route_unchecked` (0949 body plus one branch) and `app.probation_visible_among` (5746 body plus the
+delegate branch): a general delegation with Probation explicitly ticked moves a Head of Department, PBP or GBS Review,
+Approve or letter Sign step to the delegate on behalf of the holder; whole-scope delegations do not include Probation;
+Line Manager and employee steps never move. No table, row, grant or purpose-owned object changes. The installed
+ledgers were not read; recheck watermarks and peer claims at admission. No installation authority.
+
 # Shared HR automation email templates — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/probation-lane-screens-20261116` (lane A of the Probation Confirmation build, from
@@ -45,7 +80,7 @@ allocation grants no installation authority.
 # Probation tracker at group scale, configurable maximum extensions, declined signature order — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/probation-lane-probation-core-20261116` appends `5746_probation_tracker_scale_and_extensions` at idx
-5146 / when 1793330005446 (assigned by the build coordinator, directly above `5745`). SHA256 `26f406ecb44d03d22e6bbd3f89eede44c8a933f635f533d4f5cbd4ab0efb934b`.
+5146 / when 1793330005446 (assigned by the build coordinator, directly above `5745`). SHA256 `6de6b3a28d10dd05bbb6dd37a84d6a30e42e67748636514ff94c4d04330b6432`.
 It gives the probation case access rule one set-based owner, `app.probation_visible_among(cases)` over
 `app.probation_holders_set(employments)` and `app.probation_company_ancestors(companies)`, and re-creates the
 owner-owned `app.probation_case_access` (membership of that set) and `app.probation_holders` (answered from the holder

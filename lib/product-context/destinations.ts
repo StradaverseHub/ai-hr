@@ -99,7 +99,6 @@ const SIDEBAR:readonly (readonly [string,string,DestinationAudience,string|null]
  ['/lifecycle/probation/intake','probationIntake','admin','lifecycle'],
  ['/lifecycle/probation/settings','probationSettings','admin','lifecycle'],
  ['/lifecycle/probation/forms','probationForms','admin','lifecycle'],
- ['/lifecycle/probation/routes','probationRoutes','admin','lifecycle'],
  ['/lifecycle/probation/workflows','probationWorkflows','admin','lifecycle'],
  ['/lifecycle/probation/templates','probationTemplates','admin','lifecycle'],
  ['/lifecycle/contracts','contractManagement','admin','lifecycle'],

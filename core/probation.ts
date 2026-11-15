@@ -57,7 +57,12 @@ export function saveProbationConfiguration(ctx:SessionContext,input:{companyId:s
   data={...input.data as ProbationSettings,gradeHFormPublished:setup.gradeHFormAvailable};
   validateProbationConfig(data);
  }
- if(input.kind==='form')validateProbationForm(input.data as ProbationForm);
+ if(input.kind==='form'){
+  const form=input.data as ProbationForm;validateProbationForm(form);
+  // The form version's named alternate signer must be a current login of this tenant (the route configuration's rule).
+  const alternate=form.duplicateRolePolicy?.mode==='named_alternate'?form.duplicateRolePolicy.alternateUserId:null;
+  if(alternate){const[row]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from app_user u where u.id=${uuid(alternate)}::uuid and u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id)) as ok`);if(!row?.ok)throw new ProbationError('invalid','Choose a current person as the named alternate signer.');}
+ }
  const[row]=await tx.execute<{id:string}>(sql`select app.probation_config_write(${uuid(input.companyId)}::uuid,${input.kind},${json(data)}::jsonb,${input.publish},${input.expectedVersion}) as id`);return row.id;
 });}
 export function defaultProbationRoutes():ProbationRouteConfiguration{const holders={employee:null,lm:null,hod:null,pbp:null,gbs:null};return{version:1,duplicateRolePolicy:{mode:'escalate'},parts:{'1':probationRoute(1,holders),'2':probationRoute(2,holders),'3':probationRoute(3,holders)}};}
@@ -205,7 +210,7 @@ export function logProbationFollowup(ctx:SessionContext,input:{caseId:string;par
 export function overrideProbationRoute(ctx:SessionContext,input:{partId:string;revision:number;route:SigningRoute;reason:string}){return withProbationTenant(ctx,async tx=>{await tx.execute(sql`select app.probation_route_override(${uuid(input.partId)}::uuid,${json(input.route)}::jsonb,${input.reason},${input.revision})`);});}
 export function replaceProbationSigner(ctx:SessionContext,input:{partId:string;stepId:string;holderId:string;kind:'delegation'|'holder_changed'|'missing_holder';validFrom:string;validTo:string|null;reason:string}){return withProbationTenant(ctx,async tx=>{await tx.execute(sql`select app.probation_delegate_add(${uuid(input.partId)}::uuid,${input.stepId},${uuid(input.holderId)}::uuid,${input.kind},${requireDay(input.validFrom)}::date,${input.validTo?requireDay(input.validTo):null}::date,${input.reason})`);});}
 export type ProbationTrackerFlag='overdue'|'end_passed'|'ending14'|'low_result'|'kpi_submit'|'kpi_ack'|'overridden';
-export type ProbationSummaryRow={letterWaiting:ProbationLetterTask|null;closure?:string|null;extensionMax?:number;startStatus?:'waiting_for_start'|'did_not_join'|null;action?:import('../lib/probation-tracker').ProbationRowAction;id:string;employmentId:string;companyId:string;revision:number;employeeName:string;employeeCode:string|null;title:string|null;businessGroupId:string|null;businessGroup:string|null;organisationMapping?:ProbationOrganisationMapping;organisationLegacy?:{businessGroupId:string|null;businessGroup:string|null;businessUnitId:string|null;businessUnit:string|null};businessUnitId:string|null;businessUnit:string|null;departmentId:string|null;department:string|null;pbpUserId:string|null;grade:string;startOn:string;endOn:string;planMonths:number;planFlag:boolean;extensionCount:number;state:string;kpiAcknowledged:boolean;parts:{id:string;type:1|2|3;cycle:number;state:string;dueOn:string;managerSubmittedAt:string|null;staffSubmittedAt:string|null;acknowledgedAt:string|null;scoreBand:number|null;override:boolean;waitingRole:string|null;waitingName:string|null;workingDaysOverdue?:number;calendarDaysOverdue?:number}[];canOpen:true};
+export type ProbationSummaryRow={letterWaiting:ProbationLetterTask|null;closure?:string|null;extensionMax?:number;startStatus?:'waiting_for_start'|'did_not_join'|null;action?:import('../lib/probation-tracker').ProbationRowAction;id:string;employmentId:string;companyId:string;revision:number;employeeName:string;employeeCode:string|null;title:string|null;businessGroupId:string|null;businessGroup:string|null;organisationMapping?:ProbationOrganisationMapping;organisationLegacy?:{businessGroupId:string|null;businessGroup:string|null;businessUnitId:string|null;businessUnit:string|null};businessUnitId:string|null;businessUnit:string|null;departmentId:string|null;department:string|null;pbpUserId:string|null;grade:string;startOn:string;endOn:string;planMonths:number;planFlag:boolean;extensionCount:number;state:string;kpiAcknowledged:boolean;parts:{id:string;type:1|2|3;cycle:number;state:string;dueOn:string;managerSubmittedAt:string|null;staffSubmittedAt:string|null;acknowledgedAt:string|null;scoreBand:number|null;override:boolean;waitingRole:string|null;waitingName:string|null;calendarDaysOverdue?:number}[];canOpen:true};
 type ProbationTrackerFacet={bg:string|null;bgName:string|null;bu:string|null;buName:string|null;department:string|null;departmentName:string|null;grade:string;pbp:string|null;pbpName:string|null;state:string};
 const trackerScope=(ctx:SessionContext)=>ctx.entitlementsExempt===undefined&&!isModuleEnabled(ctx,'lifecycle')?(ctx.entitlements?.scopedModules.lifecycle??[]):null;
 /** Facet columns over the visible tracker cases (migration 5746): the PBP is named from the case's own PBP holder in one join. */
@@ -216,7 +221,9 @@ const trackerFacetColumns=sql`c.data->'facts'->>'businessGroupId' as bg,c.data->
  * returns the filter facets; a second statement adds, for that page only, who is waiting, letters and holder names.
  * The cost of the page details does not grow with the offset.
  */
-export function probationSummaryRows(ctx:SessionContext,filters:{companyId?:string;businessGroupId?:string;businessUnitId?:string;departmentId?:string;grade?:string;pbpUserId?:string;state?:string;search?:string;flag?:ProbationTrackerFlag;offset?:number;limit?:number}={}){return withProbationTenant(ctx,async tx=>{
+export function probationSummaryRows(ctx:SessionContext,filters:{companyId?:string;businessGroupId?:string;businessUnitId?:string;departmentId?:string;grade?:string;pbpUserId?:string;state?:string;search?:string;flag?:ProbationTrackerFlag;
+ /** Only cases with work waiting on the caller (app.probation_task_list, the same owner as My Action Centre). */
+ mine?:boolean;offset?:number;limit?:number}={}){return withProbationTenant(ctx,async tx=>{
  const limit=Math.max(1,Math.min(100,Math.floor(filters.limit??50))),offset=Math.max(0,Math.min(100000,Math.floor(filters.offset??0)));
  const scope=trackerScope(ctx);
  const today=todayInKualaLumpur();
@@ -230,7 +237,7 @@ export function probationSummaryRows(ctx:SessionContext,filters:{companyId?:stri
  kpi_ack:anyPart(sql`p.data->>'type'='1' and p.data->>'managerSubmittedAt' is not null and p.data->>'acknowledgedAt' is null and p.data->>'state' not in('completed_offline','cancelled')`),
  overridden:anyPart(sql`p.data->>'override'='true' and p.data->>'state'<>'cancelled'`)};
  const scoped=sql`where c.tenant_id=${ctx.tenantId}::uuid ${scope?sql`and c.company_id=any(array[${sql.join(scope.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`:sql``}`;
- const conditions=sql`${scoped} ${filters.companyId?sql`and c.company_id=${uuid(filters.companyId)}::uuid`:sql``} ${filters.businessGroupId?sql`and c.data->'facts'->>'businessGroupId'=${uuid(filters.businessGroupId)}`:sql``} ${filters.businessUnitId?sql`and c.data->'facts'->>'businessUnitId'=${uuid(filters.businessUnitId)}`:sql``} ${filters.departmentId?sql`and c.data->'facts'->>'departmentId'=${uuid(filters.departmentId)}`:sql``} ${filters.grade?sql`and c.data->>'gradeAtStart'=${filters.grade}`:sql``} ${filters.pbpUserId?sql`and c.data->'facts'->'holders'->>'pbp'=${uuid(filters.pbpUserId)}`:sql``} ${filters.state?sql`and c.data->>'state'=${filters.state}`:sql``} ${filters.search?sql`and position(lower(${filters.search.trim().slice(0,100)}) in lower(c.data->'facts'->>'employeeName'))>0`:sql``}`;
+ const conditions=sql`${scoped} ${filters.companyId?sql`and c.company_id=${uuid(filters.companyId)}::uuid`:sql``} ${filters.businessGroupId?sql`and c.data->'facts'->>'businessGroupId'=${uuid(filters.businessGroupId)}`:sql``} ${filters.businessUnitId?sql`and c.data->'facts'->>'businessUnitId'=${uuid(filters.businessUnitId)}`:sql``} ${filters.departmentId?sql`and c.data->'facts'->>'departmentId'=${uuid(filters.departmentId)}`:sql``} ${filters.grade?sql`and c.data->>'gradeAtStart'=${filters.grade}`:sql``} ${filters.pbpUserId?sql`and c.data->'facts'->'holders'->>'pbp'=${uuid(filters.pbpUserId)}`:sql``} ${filters.state?sql`and c.data->>'state'=${filters.state}`:sql``} ${filters.search?sql`and position(lower(${filters.search.trim().slice(0,100)}) in lower(c.data->'facts'->>'employeeName'))>0`:sql``} ${filters.mine?sql`and c.id in(select (task->>'caseId')::uuid from jsonb_array_elements(app.probation_task_list(null,200)->'items') task)`:sql``}`;
  type Counts={total:number;overdue:number;end_passed:number;ending14:number;low_result:number;kpi_submit:number;kpi_ack:number;overridden:number};
  const[result]=await tx.execute<{counts:Counts;rows:ProbationSummaryRow[];facets:ProbationTrackerFacet[]}>(sql`with vc as materialized (select * from app.probation_tracker_cases()),
   base as materialized (select c.* from vc c ${conditions}),
@@ -241,11 +248,45 @@ export function probationSummaryRows(ctx:SessionContext,filters:{companyId?:stri
  const counts=result.counts,rows=result.rows;
  const details=rows.length?await tx.execute<{case_id:string;parts:ProbationSummaryRow['parts'];letter:ProbationLetterTask|null;names:{role:string;name:string}[]}>(sql`select case_id,parts,letter,names from app.probation_tracker_page(array[${sql.join(rows.map(r=>sql`${r.id}::uuid`),sql`, `)}]::uuid[])`):[];
  for(const row of rows){const detail=details.find(d=>d.case_id===row.id);row.parts=detail?.parts??[];row.letterWaiting=detail?.letter??null;for(const part of row.parts)part.waitingName=detail?.names.find(n=>n.role===part.waitingRole)?.name??null;}
- for(const row of rows)for(const part of row.parts){if(part.dueOn>=today||['locked','completed_offline','cancelled'].includes(part.state))continue;part.calendarDaysOverdue=Math.round((Date.parse(today+'T00:00:00Z')-Date.parse(part.dueOn+'T00:00:00Z'))/86400000);if(part.type===1)part.workingDaysOverdue=(await workingDatesForSpan(tx,row.employmentId,addDaysIso(part.dueOn,1),today)).length;}
+ // Working days overdue (KPI parts) come from the holiday owner, one resolution per company calendar: they are read
+ // after the list by probationTrackerWorkingDays so the list never waits for them (72 companies: about 1 s).
+ for(const row of rows)for(const part of row.parts){if(part.dueOn>=today||['locked','completed_offline','cancelled'].includes(part.state))continue;part.calendarDaysOverdue=Math.round((Date.parse(today+'T00:00:00Z')-Date.parse(part.dueOn+'T00:00:00Z'))/86400000);}
  const{probationRowStartStatus,probationRowAction}=await import('../lib/probation-tracker');
  for(const row of rows){row.startStatus=probationRowStartStatus(row,today);row.action=probationRowAction(row,today);}
  return{rows,offset,limit,hasMore:offset+rows.length<counts.total,total:counts.total,totals:{overdue:counts.overdue,end_passed:counts.end_passed,ending14:counts.ending14,low_result:counts.low_result,kpi_submit:counts.kpi_submit,kpi_ack:counts.kpi_ack,overridden:counts.overridden},options:trackerOptionsFrom(result.facets)};
 });}
+/**
+ * Working days overdue for the overdue KPI parts of tracker rows the caller has just read through probationSummaryRows
+ * (server-side rows of the same request, never client input), keyed by part id. The tracker streams this in after the
+ * list. Parts that are not overdue KPI parts are absent.
+ */
+export function probationTrackerWorkingDays(ctx:SessionContext,rows:readonly Pick<ProbationSummaryRow,'employmentId'|'parts'>[]):Promise<Record<string,number>>{
+ const today=todayInKualaLumpur();
+ const kpis=rows.flatMap(row=>row.parts.filter(part=>part.type===1&&part.dueOn<today&&!['locked','completed_offline','cancelled'].includes(part.state)).map(part=>({partId:part.id,employmentId:row.employmentId,from:addDaysIso(part.dueOn,1)})));
+ if(!kpis.length)return Promise.resolve({});
+ return withProbationTenant(ctx,async tx=>{const counts=await workingDayCountsTx(tx,kpis.map(item=>({employmentId:item.employmentId,from:item.from,to:today})));return Object.fromEntries(kpis.map((item,index)=>[item.partId,counts[index]]));});
+}
+/**
+ * Working days in [from, to] for many employments at once (the tracker's "working days overdue"): holidays from the
+ * holiday owner in one batched read, and each company's attendance working and half-working week days in one read.
+ * Same answer as workingDatesForSpan(...).length, which stays the exact path when the tenant uses rotations or rosters.
+ */
+async function workingDayCountsTx(tx:Tx,spans:{employmentId:string;from:string;to:string}[]):Promise<number[]>{
+ if(!spans.length)return [];
+ const ids=[...new Set(spans.map(span=>span.employmentId))];
+ const [rotations]=await tx.execute<{any:boolean}>(sql`select exists(select 1 from attendance_rotation) as any`);
+ if(rotations?.any){const out:number[]=[];for(const span of spans)out.push((await workingDatesForSpan(tx,span.employmentId,span.from,span.to)).length);return out;}
+ const start=spans.reduce((min,span)=>span.from<min?span.from:min,spans[0].from),end=spans.reduce((max,span)=>span.to>max?span.to:max,spans[0].to);
+ const{holidayDatesByEmployment}=await import('./holidays');
+ const holidays=await holidayDatesByEmployment(tx,{employmentIds:ids,startDate:start,endDate:end});
+ const weeks=await tx.execute<{id:string;working:number[]|null;half:number[]|null}>(sql`select distinct on(e.id) e.id,p.working_days as working,p.half_working_days as half from employment e join company c on c.id=e.company_id left join attendance_policy p on p.company_id=e.company_id where e.id=any(array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) order by e.id`);
+ const week=new Map(weeks.map(row=>[row.id,new Set([...(row.working??[1,2,3,4,5]),...(row.half??[])])]));
+ return spans.map(span=>{
+  const off=holidays.get(span.employmentId)??new Set<string>(),days=week.get(span.employmentId)??new Set([1,2,3,4,5]);let count=0;
+  for(let day=span.from;day<=span.to;day=addDaysIso(day,1)){const iso=((new Date(day+'T00:00:00Z').getUTCDay()+6)%7)+1;if(!off.has(day)&&days.has(iso))count++;}
+  return count;
+ });
+}
 export type ProbationAdministrationOptions={organisationMapping?:ProbationOrganisationMapping;organisationCatalogs?:Record<ProbationOrganisationMapping,import('../lib/probation-organisation').ProbationOrganisationCatalog>;personnelBusinessUnits?:{id:string;name:string;companyId:string}[];businessGroups:{id:string;name:string;companyId?:string}[];grades:string[];companies:{id:string;name:string}[];users:{id:string;name:string}[];departments:{id:string;name:string;companyId:string}[];businessUnits:{id:string;name:string;companyId:string}[]};
 export function probationAdministrationOptions(ctx:SessionContext):Promise<ProbationAdministrationOptions>{return withProbationTenant(ctx,async tx=>{
  const companies=await tx.execute<{id:string;name:string}>(sql`select c.id,c.legal_name as name from company c where c.tenant_id=${ctx.tenantId}::uuid and c.archived_at is null and app.probation_config_admin(c.id) order by c.legal_name,c.id`);
@@ -465,7 +506,35 @@ export function probationNavigationAccess(ctx:SessionContext):Promise<{page:bool
 
 export function probationSignerCandidates(ctx:SessionContext,caseId:string,search=''){return withProbationTenant(ctx,tx=>tx.execute<{id:string;name:string}>(sql`select * from app.probation_signer_candidates(${uuid(caseId)}::uuid,${search.slice(0,100)})`));}
 export type ProbationInbox={count:number;items:{caseId:string;partId:string;employeeName:string;kind:string;href:string}[]};
-export function probationInbox(ctx:SessionContext):Promise<ProbationInbox>{if(ctx.entitlementsExempt===undefined&&!isModuleEnabled(ctx,'lifecycle')&&!ctx.entitlements?.scopedModules.lifecycle?.some(company=>isModuleEnabled(ctx,'lifecycle',company)))return Promise.resolve({count:0,items:[]});return withProbationTenant(ctx,async tx=>{const[row]=await tx.execute<{data:ProbationInbox}>(sql`select app.probation_inbox() as data`);return row.data;});}
+/** Whether Probation work can exist for this caller: Lifecycle on for the tenant or for any scoped company (throws like isModuleEnabled). */
+export function probationModuleOn(ctx:SessionContext):boolean{return ctx.entitlementsExempt!==undefined||isModuleEnabled(ctx,'lifecycle')||!!ctx.entitlements?.scopedModules.lifecycle?.some(company=>isModuleEnabled(ctx,'lifecycle',company));}
+export function probationInbox(ctx:SessionContext):Promise<ProbationInbox>{if(!probationModuleOn(ctx))return Promise.resolve({count:0,items:[]});return withProbationTenant(ctx,async tx=>{const[row]=await tx.execute<{data:ProbationInbox}>(sql`select app.probation_inbox() as data`);return row.data;});}
+/** One current Probation task of the caller, as the case view offers it (app.probation_task_list, migration 5751). */
+export type ProbationTaskItem={caseId:string;partId:string;companyId:string;employeeName:string;kind:string;category:'approval'|'task';href:string;dueOn:string|null;updatedAt:string;partType:string|null};
+/** `capped`: more than 200 candidates exist; the screens link to the tracker filtered to the caller's work. */
+export type ProbationTaskList={count:number;capped:boolean;items:ProbationTaskItem[]};
+/** The caller's current Probation work, bounded (at most 200 confirmed, `limit` returned) and set-based. */
+export function probationTaskList(ctx:SessionContext,options:{category?:'approval'|'task';limit?:number;companyIds?:readonly string[]}={}):Promise<ProbationTaskList>{
+ if(!probationModuleOn(ctx))return Promise.resolve({count:0,capped:false,items:[]});
+ const limit=Math.max(1,Math.min(200,Math.floor(options.limit??200)));
+ return withProbationTenant(ctx,async tx=>{
+  const[row]=await tx.execute<{data:ProbationTaskList}>(sql`select app.probation_task_list(${options.category??null}::text,${limit}::integer) as data`);
+  const data=row.data;
+  if(!options.companyIds)return data;
+  const companies=new Set(options.companyIds),items=data.items.filter(item=>companies.has(item.companyId));
+  return {count:items.length,capped:data.capped,items};
+ });
+}
+/** The kind of task label for one Probation task in the shared task list (lib/assigned-work.ts PACK_TASK_KINDS). */
+const probationPackKind=(item:ProbationTaskItem)=>item.category==='approval'?'probationApproval' as const:'probationTask' as const;
+/**
+ * WP-A1 provider for Probation (core/approvals-inbox.ts PACK_TASK_SOURCES): the caller's Approve steps and other
+ * Probation tasks, each linking to the case view, which authorizes again. createdAt is the part's last change.
+ */
+export async function pendingProbationTasks(ctx:SessionContext,scopeIds:string[]|undefined):Promise<import('../lib/assigned-work').PackTaskItem[]>{
+ const list=await probationTaskList(ctx,{companyIds:scopeIds});
+ return list.items.map(item=>({id:item.partId,kind:probationPackKind(item),subjectName:item.employeeName,createdAt:new Date(item.updatedAt).toISOString(),linkPath:item.href}));
+}
 
 async function sealProbationRenderTx(tx:Tx,ctx:SessionContext,requestId:string):Promise<'sealed'|'held'|'paused'>{
  const[row]=await tx.execute<{data:{sealed?:boolean;held?:boolean;paused?:boolean;kind:'review'|'letter';partId:string;caseId:string;contentHash:string;data:Record<string,unknown>}}>(sql`select app.probation_owner_render_context(${requestId}::uuid) as data`);const context=row.data;if(context.paused)return'paused';if(context.held)return'held';if(context.sealed)return'sealed';

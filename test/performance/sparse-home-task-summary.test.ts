@@ -13,7 +13,7 @@ import {withOwnerTaskReads} from '../../core/account-task-bundle';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from '../harness';
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();});
-const modules:InboxModules={attendance:false,claims:false,performance:false,rewards:false};
+const modules:InboxModules={attendance:false,claims:false,performance:false,rewards:false,probation:false};
 const options={noticeAcknowledgements:false};
 const original=(ctx:SessionContext,scope?:string[])=>listPendingTasks(ctx,scope,modules,options);
 const candidate=async(ctx:SessionContext,scope?:string[])=>{

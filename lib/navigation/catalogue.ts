@@ -165,7 +165,6 @@ export const REVIEWED_SHELL_BINDINGS:Readonly<Record<string,Binding>> = {
   "scoped/contracts/contractManagement": {"id": "shell.contractManagement", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:contractManagement", "status": "declared"},
   "scoped/probation/probationSettings": {"id": "shell.probationSettings", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationSettings", "status": "declared"},
   "scoped/probation/probationForms": {"id": "shell.probationForms", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationForms", "status": "declared"},
-  "scoped/probation/probationRoutes": {"id": "shell.probationRoutes", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationRoutes", "status": "declared"},
   "scoped/probation/probationPostings": {"id": "shell.probationPostings", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationPostings", "status": "declared"},
   "automation/automationWorkflows": {"id": "shell.automationWorkflows", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:automationWorkflows", "status": "declared"},
   "automation/automationTemplates": {"id": "shell.automationTemplates", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:automationTemplates", "status": "declared"},

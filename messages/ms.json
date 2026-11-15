@@ -5829,7 +5829,13 @@
     "rewards": "Ganjaran",
     "reviewRewards": "Semak ganjaran",
     "focusedDescription": "Permohonan ini sedang ditugaskan kepada anda.",
-    "viewAllAssigned": "Lihat semua kelulusan"
+    "viewAllAssigned": "Lihat semua kelulusan",
+    "probation": "Probation",
+    "probationPart": "Part {part} review",
+    "probationDue": "due {date}",
+    "probationOpen": "Open review",
+    "probationCapped": "Showing the first {shown} approvals.",
+    "probationSeeAll": "See all in the Probation tracker"
   },
   "performance": {
     "list": {
@@ -15254,7 +15260,9 @@
       "rewardReview": "Semak ganjaran",
       "probation": "Pengesahan Percubaan",
       "contract_staff": "Pengurusan Kontrak",
-      "contractDateCorrection": "Pembetulan tarikh kontrak"
+      "contractDateCorrection": "Pembetulan tarikh kontrak",
+      "probationApproval": "Approve probation review",
+      "probationTask": "Probation task"
     },
     "tasksEmpty": "Tiada apa-apa memerlukan tindakan anda",
     "title": "Pemberitahuan",
@@ -17455,7 +17463,8 @@
     "moduleLabel": {
       "leave": "Cuti",
       "attendance": "Kehadiran",
-      "claims": "Tuntutan"
+      "claims": "Tuntutan",
+      "probation": "Probation"
     },
     "taskLabel": {
       "leaveApplication": "Kelulusan Permohonan Cuti",
@@ -17465,7 +17474,10 @@
       "claimsClaim": "Kelulusan Tuntutan",
       "leaveRequestCreation": "Penciptaan Permohonan Cuti",
       "leaveAmendmentRequest": "Permohonan Pindaan Cuti",
-      "leaveCancellationRequest": "Permohonan Pembatalan Cuti"
+      "leaveCancellationRequest": "Permohonan Pembatalan Cuti",
+      "probationReview": "Probation review (Head of Department, PBP, GBS)",
+      "probationApprove": "Probation approval (Head of Department, PBP, GBS)",
+      "probationLetterSign": "Probation letter signature"
     },
     "groupLabel": {
       "leaveRequest": "Permohonan Cuti",
@@ -32285,7 +32297,9 @@
       "assessmentWork": "Penilaian prestasi",
       "careerPlan": "Semakan pelan kerjaya",
       "calibration": "Kalibrasi prestasi",
-      "rewardReview": "Semakan ganjaran"
+      "rewardReview": "Semakan ganjaran",
+      "probationApproval": "Probation approval",
+      "probationTask": "Probation task"
     },
     "quickActions": {
       "leave": "Mohon cuti",
@@ -35821,7 +35835,8 @@
       "missing": "Pemegang perlu ditentukan",
       "frozenFacts": "Semakan ini mengekalkan butiran pekerja dan tempoh percubaan yang disimpan untuk kandungan bertandatangannya.",
       "combinedConsent": "Saya mengesahkan bahawa ini tandatangan saya untuk peranan berikut: {roles}.",
-      "combinedHistory": "Dilindungi oleh tandatangan yang sama"
+      "combinedHistory": "Dilindungi oleh tandatangan yang sama",
+      "onBehalfOf": "on behalf of {name}"
     },
     "controls": {
       "title": "Kawalan semakan yang dibenarkan",
@@ -35893,7 +35908,9 @@
         "review_letter": "Review letter",
         "record_action": "Record action",
         "log_followup": "Log follow-up"
-      }
+      },
+      "mineOnly": "Showing only cases with work waiting on you.",
+      "mineClear": "Show all cases"
     },
     "applyFilters": "Gunakan penapis",
     "clearFilters": "Kosongkan penapis",
@@ -36400,7 +36417,28 @@
       "waiting": "Waiting for start date. The case opened at activation; no reviews, tasks or reminders start before {date}. Part 1 counts from the start date.",
       "didNotJoin": "Closed as Did not join: the hire was withdrawn or the employment ended before the start date."
     },
-    "overrideNotice": "The Line Manager chose a different outcome from the suggestion and wrote a justification."
+    "overrideNotice": "The Line Manager chose a different outcome from the suggestion and wrote a justification.",
+    "formRouting": {
+      "title": "Review and approval routing",
+      "help": "Who approves and signs each part, and in what order. Lower numbers go first; steps sharing a number run one after another in the order listed. A case keeps the routing of the form version it started on.",
+      "legacy": "This form version has no approval steps of its own, so its cases use the published signing routes configuration. Set approval steps here to route new cases from this form instead.",
+      "useForm": "Set approval steps on this form",
+      "core": "Always first, and not editable: {steps}.",
+      "coreKpi": "Line Manager sets and signs the KPIs → Employee acknowledges",
+      "coreReview": "Employee self-review → Line Manager assessment and signature → Employee acknowledges",
+      "order": "Order",
+      "action": "Action",
+      "who": "Who",
+      "actions": {
+        "approve_sign": "Approve and sign"
+      },
+      "remove": "Remove the {who} step",
+      "add": "Add approval step",
+      "none": "No approval steps.",
+      "partThreeRequired": "Part 3 needs at least one approval step.",
+      "reserved": "Approval steps resolve to the Head of Department or the People Business Partner, through their current holders, delegations and the policy below. Routings, assignment groups, named people and the Direct Superior cannot sign probation reviews yet.",
+      "policyInherit": "Use the signing routes configuration’s setting"
+    }
   },
   "templateEditor": {
     "newField": "Medan baharu",

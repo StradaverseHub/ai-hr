@@ -56,7 +56,9 @@ function moduleChecks(s:SessionContext):ModuleChecks{
  let failed=false;
  return {on:code=>{try{return isModuleEnabled(s,code);}catch(error){if(error instanceof EntitlementsResolutionFailedError){failed=true;return false;}throw error;}},failed:()=>failed};
 }
-const inboxModules=(m:ModuleChecks)=>({attendance:m.on('attendance'),claims:m.on('claims'),performance:m.on('performance'),rewards:m.on('rewards')});
+const inboxModules=(m:ModuleChecks,s:SessionContext)=>({attendance:m.on('attendance'),claims:m.on('claims'),performance:m.on('performance'),rewards:m.on('rewards'),
+ // Probation lives in Lifecycle, which may be on only for some companies (the provider decides per company).
+ probation:m.on('lifecycle')||!!s.entitlements?.scopedModules.lifecycle?.length});
 
 // ── Needs you ───────────────────────────────────────────────────────────────────────────────────────────────
 export type PreparedKind='leaveApply'|'leaveCancel'|'leaveDecision';
@@ -153,8 +155,8 @@ async function readNeedsYouOwners(s:SessionContext,p:Readonly<{scopeIds:readonly
  const [tasks,ownLeave,cancellations,decisions,proposals,readiness,digest,loops,letterRequests]=await Promise.all([
   // Home only renders five decisions. Keep its exact count without transporting every Claim.
   // The existing explicit All view retains its complete-queue contract.
-  settle(()=>p.all?listPendingTasks(s,[...p.scopeIds],inboxModules(modules)).then(items=>({items,total:items.length,claimTotal:items.filter(item=>item.kind==='claim').length}))
-   :pendingTaskSummary(s,[...p.scopeIds],inboxModules(modules))),
+  settle(()=>p.all?listPendingTasks(s,[...p.scopeIds],inboxModules(modules,s)).then(items=>({items,total:items.length,claimTotal:items.filter(item=>item.kind==='claim').length}))
+   :pendingTaskSummary(s,[...p.scopeIds],inboxModules(modules,s))),
   leave?settle(()=>readHomeOwnLeaveReviewIndex(s)):null,
   leave?settle(bundled(read=>read.cancellations,()=>readHomeLeaveCancellationReviewIndex(s))):null,
   leave?settle(bundled(read=>read.decisions,()=>readHomeLeaveDecisionReviewIndex(s))):null,

@@ -59,7 +59,7 @@ describe('Home assigned-decision metadata is an uncapped projection at its sourc
 
    expect(JSON.stringify(rows)).not.toContain('8923.45');expect(await pendingClaimTaskMetadata(ctx,[])).toEqual([]);
   });
-  const modules={attendance:false,claims:true,performance:false,rewards:false};
+  const modules={attendance:false,claims:true,performance:false,rewards:false,probation:false};
   const previewTotal=(await pendingTaskSummary(ctx,undefined,modules)).total;
   await onlyColumns('claim_request',['id','tenant_id','employment_id','status'],async()=>{
    await expectDenied(pendingClaimTaskSummary(ctx,undefined));

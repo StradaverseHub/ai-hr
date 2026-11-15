@@ -33,7 +33,7 @@ export function todayLayoutFor(roles:readonly string[]|null|undefined,admin:bool
 /** Decisions whose outcome reaches the next payroll: they are due by its cut-off. */
 export const PAY_AFFECTING_TASKS:ReadonlySet<string>=new Set(['claim','attendance','replacementLeave']);
 /** Decisions about a person's employment, leave or record. */
-const PEOPLE_TASKS:ReadonlySet<string>=new Set(['leave','leaveCancellation','resignation','hrReview','managerReview','profile']);
+const PEOPLE_TASKS:ReadonlySet<string>=new Set(['leave','leaveCancellation','resignation','hrReview','managerReview','profile','probationApproval','probationTask']);
 
 /** What leaving an entry undone costs, most serious first: a statutory filing or a payroll that cannot run; then pay that
  * comes out wrong; then a decision about a person; then records and set-up; then everything else. */
@@ -93,7 +93,7 @@ export type LoopCardFacts=Readonly<{kind:string;endDate?:string;overdue?:boolean
 
 /** Where a group of the same decisions is decided: the approvals page filtered to that kind, or the one item's page. */
 const APPROVAL_CATEGORY:Readonly<Record<string,string>>={leave:'leave',leaveCancellation:'leaveCancellation',attendance:'all',claim:'claim',
- resignation:'resignations',managerReview:'managerReviews',hrReview:'hrReviews',replacementLeave:'replacementLeave'};
+ resignation:'resignations',managerReview:'managerReviews',hrReview:'hrReviews',replacementLeave:'replacementLeave',probationApproval:'probation'};
 /** Where every waiting task of every kind is listed (app/tasks/page.tsx, the approvals queue's own summary). */
 export const TASKS_HREF='/tasks';
 export function taskGroupHref(kind:string,links:readonly string[],count:number):string{

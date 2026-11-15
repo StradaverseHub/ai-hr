@@ -316,7 +316,7 @@ describe('deciding actions are mapped to the inbox work that makes them the call
   for(const action of deciding)expect((DECIDER_WORK[action.id]??MODULE_WORK[action.module]??[]).length,action.id).toBeGreaterThan(0);
   expect(DECIDER_WORK).toEqual({'approvals.leave.decide':['leave'],'approvals.claim.decide':['claim'],'approvals.attendance.decide':['attendance'],'approvals.toil.decide':['replacementLeave']});
   // Every pack task kind belongs to the module that owns it, and no kind is invented.
-  expect([...MODULE_WORK.performance,...MODULE_WORK.rewards].sort()).toEqual([...PACK_TASK_KINDS].sort());
+  expect([...MODULE_WORK.performance,...MODULE_WORK.rewards,...MODULE_WORK.lifecycle].sort()).toEqual([...PACK_TASK_KINDS].sort());
   // Own, administrator, lifecycle staff and automatic classes are not per-item deciders.
   for(const actor of ['self','hr_admin','tenant_admin','payroll_admin','rewards_admin','workforce_maintainer','lifecycle_staff','agent_principal'])
    expect(DECIDER_ACTORS.has(actor),actor).toBe(false);

@@ -69,7 +69,7 @@ const RUNS=6,WARMUP=1;
 type Read=Readonly<{label:string;stage:number;deps?:readonly string[];run:(ctx:SessionContext,got:Map<string,unknown>)=>unknown}>;
 type Page=Readonly<{id:string;persona:'admin'|'employee';firstPaint:boolean;historical?:true;reads:readonly Read[]}>;
 const scopeOf=(got:Map<string,unknown>)=>got.get('scope') as string[];
-const modules=(ctx:SessionContext)=>({attendance:isModuleEnabledOrFalse(ctx,'attendance'),claims:isModuleEnabledOrFalse(ctx,'claims'),performance:isModuleEnabledOrFalse(ctx,'performance'),rewards:isModuleEnabledOrFalse(ctx,'rewards')});
+const modules=(ctx:SessionContext)=>({attendance:isModuleEnabledOrFalse(ctx,'attendance'),claims:isModuleEnabledOrFalse(ctx,'claims'),performance:isModuleEnabledOrFalse(ctx,'performance'),rewards:isModuleEnabledOrFalse(ctx,'rewards'),probation:false});
 const canApprove=(ctx:SessionContext)=>isAdmin(ctx)||(ctx.roles??[]).includes('manager');
 const on=(ctx:SessionContext,code:string)=>isModuleEnabledOrFalse(ctx,code);
 const skip=async()=>undefined;
