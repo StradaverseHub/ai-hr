@@ -513,3 +513,12 @@ core/hire-correction.ts, core/information-correction.ts, lib/movement-import-iss
 only through the import graph. No provider transform, outbound field, purpose or transport changed. The 28 approvals
 were carried forward to `5260028f…` and the agent manifest regenerated (`1226e711…`), under the owner's
 standing pre-approval for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding for boards 4604dccc revision 3 and 511aa74a, combined (16 November 2026)
+
+`claude/board-4604dccc-511aa74a-combined`, cut from main/alpha `94d2f5bbe` (binding `5260028f…`), merges
+`claude/fb-4604dccc-r3` (payroll history no longer blocks Information-Only Correction, Movement corrections or join-date
+movements; migration 5690) and `claude/fb-511aa74a-rehired` (the Rehired movement; migration 5695). The changed files
+are in the provider-data scope only through the import graph. No provider transform, outbound field, purpose or
+transport changed. The 28 approvals were carried forward to `c62cade8…` and the agent manifest regenerated
+(`d3afe9c7…`), under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.
