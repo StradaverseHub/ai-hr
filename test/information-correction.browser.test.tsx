@@ -30,7 +30,7 @@ it('requires a reason and an explicit before/after confirmation before saving th
  expect(await screen.findByText('2025-01-15')).toBeVisible();expect(screen.getByText('2025-01-01')).toBeVisible();expect(actions.save).not.toHaveBeenCalled();
  console.info('Manual review:',await page.screenshot({path:'../.vitest-attachments/information-only-manual-review.png'}));
  fireEvent.click(screen.getByRole('button',{name:'Confirm information-only correction'}));
- await waitFor(()=>expect(actions.save).toHaveBeenCalledWith({employmentId:preview.employmentId,changes:{hiredOn:'2025-01-01'},reason:preview.reason,fingerprint:preview.fingerprint}));
+ await waitFor(()=>expect(actions.save).toHaveBeenCalledWith({employmentId:preview.employmentId,changes:{hiredOn:'2025-01-01'},reason:preview.reason,fingerprint:preview.fingerprint,effectiveOn:preview.effectiveOn,acknowledgeClosedPayroll:false}));
  expect(await screen.findByText(en.people.informationCorrection.saved)).toBeVisible();
 });
 it('shows why an employee cannot be loaded for an information correction', async () => {
