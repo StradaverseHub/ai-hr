@@ -47,11 +47,14 @@ export function newDeploymentId(random: (n: number) => Buffer = randomBytes): st
   return id;
 }
 
+/** process.env or a test double; only NEXT_DEPLOYMENT_ID is read and written. */
+export type Env = Record<string, string | undefined>;
+
 export type DeploymentIdentityConfig = { deploymentId?: string; generateBuildId?: () => Promise<string> };
 
 export function nextDeploymentIdentity(
   phase: string,
-  { env = process.env, distDir = path.join(process.cwd(), '.next'), random }: { env?: NodeJS.ProcessEnv; distDir?: string; random?: (n: number) => Buffer } = {},
+  { env = process.env, distDir = path.join(process.cwd(), '.next'), random }: { env?: Env; distDir?: string; random?: (n: number) => Buffer } = {},
 ): DeploymentIdentityConfig {
   if (phase === PHASE_PRODUCTION_BUILD) {
     const inherited = env.NEXT_DEPLOYMENT_ID;

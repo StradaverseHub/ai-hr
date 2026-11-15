@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { DEPLOYMENT_ID_PATTERN, newDeploymentId, nextDeploymentIdentity } from '../lib/next-deployment-identity';
+import { DEPLOYMENT_ID_PATTERN, type Env, newDeploymentId, nextDeploymentIdentity } from '../lib/next-deployment-identity';
 
 const dist = (buildId: string | null, manifestId?: string) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'zd-id-'));
@@ -19,7 +19,7 @@ const dist = (buildId: string | null, manifestId?: string) => {
 
 describe('build phase', () => {
   it('chooses one id, uses it for both deploymentId and BUILD_ID, and exports it for build workers', async () => {
-    const env: NodeJS.ProcessEnv = {};
+    const env: Env = {};
     const c = nextDeploymentIdentity('phase-production-build', { env });
     expect(c.deploymentId).toMatch(DEPLOYMENT_ID_PATTERN);
     expect(c.deploymentId).toHaveLength(21);
@@ -50,13 +50,13 @@ describe('build phase', () => {
 
 describe('server phase', () => {
   it('serves the id the build compiled in, overriding a stray inherited value', () => {
-    const env: NodeJS.ProcessEnv = { NEXT_DEPLOYMENT_ID: 'someOtherBuildId0000' };
+    const env: Env = { NEXT_DEPLOYMENT_ID: 'someOtherBuildId0000' };
     expect(nextDeploymentIdentity('phase-production-server', { env, distDir: dist('Abc_def-0123456789xyz\n', 'Abc_def-0123456789xyz') })).toEqual({ deploymentId: 'Abc_def-0123456789xyz' });
     expect(env.NEXT_DEPLOYMENT_ID).toBe('Abc_def-0123456789xyz');
   });
 
   it('leaves a build from before skew protection unprotected rather than skewed', () => {
-    const env: NodeJS.ProcessEnv = {};
+    const env: Env = {};
     expect(nextDeploymentIdentity('phase-production-server', { env, distDir: dist('pi86G0t5I0ar_ymBCm8xn') })).toEqual({});
     expect(nextDeploymentIdentity('phase-production-server', { env, distDir: dist('pi86G0t5I0ar_ymBCm8xn', 'differentIdFromBuild0') })).toEqual({});
     expect(nextDeploymentIdentity('phase-production-server', { env, distDir: dist(null) })).toEqual({});

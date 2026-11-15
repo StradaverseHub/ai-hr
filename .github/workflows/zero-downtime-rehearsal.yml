@@ -261,7 +261,8 @@ jobs:
         run: |
           set -euo pipefail
           id=$(cat .next/BUILD_ID)
-          NEXT_DEPLOYMENT_ID=strayInheritedValue000 nohup node node_modules/next/dist/bin/next start -H 127.0.0.1 -p 3200 > "$RUNNER_TEMP/next.log" 2>&1 &
+          # A throwaway share-gate password: without one a production build refuses to serve (middleware.ts).
+          SHARE_PASSWORD=rehearsal-only-$RANDOM NEXT_DEPLOYMENT_ID=strayInheritedValue000 nohup node node_modules/next/dist/bin/next start -H 127.0.0.1 -p 3200 > "$RUNNER_TEMP/next.log" 2>&1 &
           for i in $(seq 1 90); do curl -s -o /dev/null http://127.0.0.1:3200/health && break; sleep 1; done
           for p in /login /; do
             code=$(curl -s -o "$RUNNER_TEMP/page.html" -w '%{http_code}' "http://127.0.0.1:3200$p")
@@ -270,5 +271,5 @@ jobs:
           hdr=$(curl -s -D - -o /dev/null -H 'RSC: 1' -H "x-deployment-id: $id" http://127.0.0.1:3200/login | tr -d '\r' | sed -n 's/^x-nextjs-deployment-id: //Ip')
           html=$(curl -s http://127.0.0.1:3200/login | sed -n 's/.*<html[^>]*data-dpl-id="\([^"]*\)".*/\1/p' | head -1)
           echo "header=$hdr html=$html"
-          [ "$hdr" = "$id" ] || [ "$html" = "$id" ] || { tail -40 "$RUNNER_TEMP/next.log"; exit 1; }
+          [ "$hdr" = "$id" ] || [ "$html" = "$id" ] || { head -c 600 "$RUNNER_TEMP/page.html"; echo; tail -40 "$RUNNER_TEMP/next.log"; exit 1; }
           echo "PASS: next start serves deploymentId $id"
