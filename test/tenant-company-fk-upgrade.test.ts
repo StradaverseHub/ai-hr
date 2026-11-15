@@ -262,6 +262,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5751_probation_queues_and_form_routing',
    '5752_probation_letter_routing',
    '5753_probation_outcome_automation',
+   // Lane F (16 November 2026): real email for shared workflow steps.
+   '5754_automation_email_delivery',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -304,6 +306,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.probation_letter_routed(jsonb)','app.probation_letter_routing_signatures_ok(jsonb)','app.probation_letter_routing_valid(jsonb)',
    // 5753: the posting-approval trigger function, owner only.
    'app.probation_posting_approved()',
+   // 5754: the workflow email immutability trigger function, owner only.
+   'app.automation_email_immutable()',
    // 5748: the run-log bound check, owner only.
    'app.automation_run_log_valid(jsonb)',
    // 5741: the approval-commit trigger and two internal posting value helpers, never granted to the application role.
@@ -354,6 +358,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    // Probation core (5742, 5744-5746, 5749, 5751; 16 November 2026): settings scope, case at activation, override event, set-based access and tracker, delegation, work queues.
    // 5752: routed Probation letters (routing context, route freeze and three owner-only template checks).
    // 5753: Probation outcomes on the shared workflow runner (context, notify, outcome runs, posting effect, posting-approval trigger).
+   // 5754: shared workflow email (queue, the private sender's target, start and finish, and the owner-only immutability trigger).
    'app._access_bootstrap_eligible(uuid,uuid)','app._access_workforce_list_rows(uuid[])','app._ai_control_context_for_purpose(text,boolean,boolean)',
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()','app._assert_assistant_rewards_presentation_v1(text)',
    'app._assistant_assigned_index_login(uuid,boolean)','app._assistant_presentation_feature_unpaused_v1()','app._assistant_rewards_calendar_choice_payload_v1()',
@@ -374,6 +379,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.attendance_workflow_open_final_window(uuid)','app.attendance_workflow_preview_bind()','app.attendance_workflow_stage_clock()',
    'app.attendance_workflow_superior_diagnostic(uuid,integer)','app.automation_active_users(uuid[])','app.automation_assignment_groups()',
    'app.automation_can_configure(text)','app.automation_can_configure_any()','app.automation_can_run(text,uuid)',
+   'app.automation_email_finish(uuid,uuid,text,text)','app.automation_email_immutable()','app.automation_email_queue(text,uuid,text,uuid[],uuid[],text,text)',
+   'app.automation_email_start(uuid,uuid,text,jsonb)','app.automation_email_target(uuid,uuid,text)',
    'app.automation_email_template_save(uuid,text,text,boolean,text,text,jsonb,boolean,integer,text)','app.automation_routing_save(uuid,text,jsonb,boolean,integer,text)','app.automation_run_log_valid(jsonb)',
    'app.automation_run_save(uuid,text,text,integer,uuid,jsonb,jsonb,text)','app.automation_run_start(uuid,text,uuid,integer,uuid,text,text,text,jsonb,jsonb)','app.automation_run_subject_access(text,uuid)',
    'app.automation_runner_waiting(text,uuid,uuid)','app.automation_runner_workflows(text,text,uuid)','app.automation_workflow_save(uuid,text,text,boolean,jsonb,integer,text)',
@@ -711,6 +718,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'automation_run':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
    // Probation reshape (5740, 5741, 5743; 16 November 2026): four append-only tables, read-only to the application.
    'automation_email_template_version':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   // 5754: queued workflow email, owner only (the application writes through app.automation_email_queue).
+   'automation_email_delivery':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
    'automation_routing_version':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
    'automation_workflow_version':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
    'personnel_posting':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
@@ -727,6 +736,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   };
   const boardPolicyRow=(row:(typeof afterPerformancePrivileges.policies)[number])=>({...row,roles:ownerAcl(row.roles),qual:digest(row.qual),with_check:digest(row.with_check)});
   const boardPolicies=[
+   {schemaname:'public',tablename:'automation_email_delivery',policyname:'automation_email_delivery_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
    {schemaname:'public',tablename:'automation_email_template_version',policyname:'automation_email_template_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
    {schemaname:'public',tablename:'automation_email_template_version',policyname:'automation_email_template_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'bac4a95592bbda57aed591f6db313641',with_check:null},
    {schemaname:'public',tablename:'automation_routing_version',policyname:'automation_routing_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},

@@ -6056,6 +6056,13 @@
       "when": 1793330005453,
       "tag": "5753_probation_outcome_automation",
       "breakpoints": true
+    },
+    {
+      "idx": 5154,
+      "version": "7",
+      "when": 1793330005454,
+      "tag": "5754_automation_email_delivery",
+      "breakpoints": true
     }
   ]
 }

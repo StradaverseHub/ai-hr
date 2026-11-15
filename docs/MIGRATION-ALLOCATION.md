@@ -1,3 +1,15 @@
+# Real email for shared workflow steps — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-finish-20261116` (lane F of the Probation Confirmation build) appends
+`5754_automation_email_delivery` at idx 5154 / when 1793330005454 (assigned by the build coordinator). SHA256
+`bd1dc53c5461299006b240e7fb3fd25801a5aaaa3b6807be8995f858ffe57c05`. It adds the owner-only table
+`automation_email_delivery` (forced row security, no application grant, no company column), the owner-only trigger
+function `app.automation_email_immutable()` and four functions granted to `ai_hr_app`: `app.automation_email_queue`
+(authorized by `app.automation_can_run(module, subject)`, under the shared workforce barrier) and the private sender's
+`app.automation_email_target`, `app.automation_email_start` and `app.automation_email_finish` (the 0714 lease, start and
+receipt contract). No existing table, row, grant or purpose-owned object changes. The installed ledgers were not read;
+recheck watermarks and peer claims at admission. This allocation grants no installation authority.
+
 # Probation outcomes on the shared workflow runner — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/probation-lane-runtime-wiring-20261116` (lane D2) appends `5753_probation_outcome_automation` at idx 5153 / when

@@ -5,11 +5,11 @@ import { spawn } from 'node:child_process';
 import type { SessionContext } from '../db/client';
 import type { StartedJobRun } from '../core/job-run';
 async function main(){
- const [{createDb},{loadSweepScope,describeSkips},{resolveEntitlementsTx,isModuleEnabled},{sweepOnboarding,refreshOnboardingPersonnel,v9Sweep,v9DeliverEmails},{sweepProbation},{sweepContractManagement},{sweepAssessmentReminders},{dispatchNotificationsFromSweep},{deliverNotificationEmails,deliverAttendanceCcEmails},{deliverLetterEmailsFromSweep},{sweepLetterAutomationFromSweep},{projectLetterNotificationsFromSweep},{createNoticeSweepAccess},{NOTIFICATION_ROLE_MISSING,notificationDowngradeReady},{startJobRun,completeJobRun,jobOutcome},{notificationProjectionCounters,recordCommittedProjectionBatch,NOTIFICATION_PROJECTION_JOB_KEY},{drainNotificationProjection},{readNotificationProjectionBacklog}]=await Promise.all([
+ const [{createDb},{loadSweepScope,describeSkips},{resolveEntitlementsTx,isModuleEnabled},{sweepOnboarding,refreshOnboardingPersonnel,v9Sweep,v9DeliverEmails},{sweepProbation},{sweepContractManagement},{sweepAssessmentReminders},{dispatchNotificationsFromSweep},{deliverNotificationEmails,deliverAttendanceCcEmails},{deliverLetterEmailsFromSweep},{sweepLetterAutomationFromSweep},{projectLetterNotificationsFromSweep},{createNoticeSweepAccess},{NOTIFICATION_ROLE_MISSING,notificationDowngradeReady},{startJobRun,completeJobRun,jobOutcome},{notificationProjectionCounters,recordCommittedProjectionBatch,NOTIFICATION_PROJECTION_JOB_KEY},{drainNotificationProjection},{readNotificationProjectionBacklog},{deliverAutomationEmails}]=await Promise.all([
   import('../db/client'),import('../core/sweep-scope'),import('../core/entitlements'),import('../packs/lifecycle/service'),import('../packs/probation/service'),
   import('../packs/contracts/service'),import('../packs/performance/service'),import('../core/notifications'),import('../core/notification-email-delivery'),
   import('../core/letter-email-delivery'),import('../core/letter-automation'),import('../core/letter-notifications'),import('../core/notice-projection'),import('./lib/notification-sweep-role'),
-  import('../core/job-run'),import('../lib/notification-scheduling-evidence'),import('../core/orchestrator-harness'),import('./lib/notification-projection-backlog')]);
+  import('../core/job-run'),import('../lib/notification-scheduling-evidence'),import('../core/orchestrator-harness'),import('./lib/notification-projection-backlog'),import('../core/automation-email-delivery')]);
  const url=process.env.MIGRATION_DATABASE_URL;if(!url)throw new Error('Migration database required');
  const owner=createDb(url);let failed=0,tenantsProcessed=0,tenantsFailed=0,tenantsSkipped=0,fatal=false;
  const counters=notificationProjectionCounters();let run:StartedJobRun|undefined;
@@ -36,6 +36,8 @@ async function main(){
     // Publishing definitions does not activate either module or replay past reminder occurrences.
     if(isModuleEnabled(ctx,'lifecycle')||(entitlements.scopedModules.lifecycle??[]).some(companyId=>isModuleEnabled(ctx,'lifecycle',companyId))){
      try{const probation=await sweepProbation(ctx,owner);if(probation.failed>0)failed++;console.log(JSON.stringify({tenantId:tenant.id,probation}));}catch{failed++;console.error('Probation maintenance failed for tenant '+tenant.id);}
+     // Shared workflow email (5754): intents the sweep and today's commands queued, sent outside every transaction.
+     try{const automationMail=await deliverAutomationEmails(ctx,owner);if(automationMail.failed>0)failed++;console.log(JSON.stringify({tenantId:tenant.id,automationMail}));}catch{failed++;console.error('Workflow email delivery failed for tenant '+tenant.id);}
      try{const contracts=await sweepContractManagement(ctx,owner);if(contracts.failed>0)failed++;console.log(JSON.stringify({tenantId:tenant.id,contracts}));}catch{failed++;console.error('Contract maintenance failed for tenant '+tenant.id);}
     }
     const letterAutomation=await sweepLetterAutomationFromSweep(ctx,owner);if(letterAutomation.failed>0)failed++;console.log(JSON.stringify({tenantId:tenant.id,letterAutomation}));

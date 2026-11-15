@@ -12,8 +12,11 @@
  *  - Create posting: a Personnel posting (core/personnel-posting.ts) approved by the case's pinned "who approves
  *    Personnel postings" group (default GBS People Ops). Only approval writes the movement.
  *  - Start offboarding: one company-initiated exit case per probation case (the existing idempotent hand-off).
- *  - Notify / Send email: the existing Probation notification transport (in-app); Send email renders the shared email
- *    template, and a template turned off is skipped and noted by the runner.
+ *  - Notify / Send email: an in-app notice through the existing Probation notification transport AND a real email,
+ *    recorded as a durable intent in the same transaction (core/automation-email-delivery.ts, migration 5754) and sent
+ *    later by the existing out-of-band delivery worker. To and CC stay apart in the email; a routing or group reaches
+ *    everyone matched; a recipient nobody resolves for is recorded and the fallback group receives the message (To).
+ *    Send email renders the shared email template (subject and body); a template turned off is skipped and noted.
  *  - A failed run asks the PBP to check and release by hand (the outcome's failure, shown on the case).
  * Organisation conditions and routings use ids (labels shown in the builder). Condition values saved earlier as names
  * still match through the runner's aliases (one-off read-time compatibility).
@@ -116,9 +119,9 @@ export function probationMergeValues(record: ProbationAutomationCase, context: P
   };
 }
 
-function recipientsFor(list: readonly AutomationRecipient[], context: ProbationAutomationContext, facts: ProbationEventFacts, pending: string[] | null) {
+function recipientsFor(list: readonly AutomationRecipient[], context: ProbationAutomationContext, facts: ProbationEventFacts, pending: string[] | null, withFallback = true) {
   const groups = new Map(context.groups.map(g => [g.id, g.members])), routings = new Map(context.routings.map(r => [r.id, r]));
-  const fallback = context.fallbackGroupId ? {groupId: context.fallbackGroupId, members: groups.get(context.fallbackGroupId) ?? []} : null;
+  const fallback = withFallback && context.fallbackGroupId ? {groupId: context.fallbackGroupId, members: groups.get(context.fallbackGroupId) ?? []} : null;
   return resolveAutomationRecipients(list, {
     role: role => role === 'employee' ? (context.holders.employee ? [context.holders.employee] : []) : role === 'directSuperior' ? (context.holders.lm ? [context.holders.lm] : []) : null,
     // W5: a business group is the business unit (Personnel v2 mapping, the PBP rule) or its group company (builder options).
@@ -129,6 +132,17 @@ function recipientsFor(list: readonly AutomationRecipient[], context: ProbationA
     fallback,
     describe: r => r.kind === 'role' ? (r.role === 'employee' ? 'The employee' : 'Their Direct Superior') : r.kind === 'routing' ? `The routing “${routings.get(r.routingId)?.name ?? 'removed routing'}”` : r.kind === 'group' ? `The assignment group ${r.groupId}` : r.kind === 'person' ? 'A named person' : 'Whoever’s step is pending',
   });
+}
+/**
+ * The email's own To and CC (F1): To = the To recipients plus, when any recipient resolved to nobody, the fallback group;
+ * CC = the CC recipients who are not already in To.
+ */
+export function probationEmailAddressees(to: readonly AutomationRecipient[], cc: readonly AutomationRecipient[], context: ProbationAutomationContext, facts: ProbationEventFacts, pending: string[] | null) {
+  const all = recipientsFor([...to, ...cc], context, facts, pending);
+  const toIds = recipientsFor(to, context, facts, pending, false).userIds, ccIds = recipientsFor(cc, context, facts, pending, false).userIds;
+  const fallbackMembers = all.fallbackUsed && context.fallbackGroupId ? context.groups.find(g => g.id === context.fallbackGroupId)?.members ?? [] : [];
+  const toAll = [...new Set([...toIds, ...fallbackMembers])];
+  return {all, to: toAll, cc: ccIds.filter(id => !toAll.includes(id))};
 }
 
 /** Latest published-or-retired version of each letter template key for the company (bounded). */
@@ -147,23 +161,38 @@ type ExecutorInput = {
 function probationRuntime(tx: Tx, input: ExecutorInput): {executors: AutomationExecutors; guards: AutomationRuntimeGuards} {
   const {ctx, record, context, facts, effects} = input;
   const templates = new Map(context.emailTemplates.map(t => [t.id, t]));
-  const deliver = async (run: AutomationRun, step: AutomationStep, list: readonly AutomationRecipient[]) => {
-    const resolved = recipientsFor(list, context, facts, input.pending);
-    if (resolved.userIds.length) await tx.execute(sql`select app.probation_automation_notify(${record.id}::uuid, ${facts.partId ?? null}::uuid, ${run.id + ':' + step.id}, ${input.trigger}, ${`{${resolved.userIds.join(',')}}`}::uuid[])`);
-    return resolved;
+  const merge = probationMergeValues(record, context, facts);
+  // The email keeps {{case.link}} as a token: the private sender makes it an absolute link for its installation.
+  const emailMerge = {...merge, 'case.link': ''};
+  /** In-app notice (5753) and the durable email intent (5754), in this transaction. */
+  const deliver = async (run: AutomationRun, step: AutomationStep, to: readonly AutomationRecipient[], cc: readonly AutomationRecipient[], subject: string, body: string) => {
+    const addressees = probationEmailAddressees(to, cc, context, facts, input.pending), resolved = addressees.all;
+    if (!resolved.userIds.length) return {resolved, email: null};
+    const key = run.id + ':' + step.id;
+    await tx.execute(sql`select app.probation_automation_notify(${record.id}::uuid, ${facts.partId ?? null}::uuid, ${key}, ${input.trigger}, ${`{${resolved.userIds.join(',')}}`}::uuid[])`);
+    const {queueAutomationEmailTx} = await import('./automation-email-delivery');
+    const email = await queueAutomationEmailTx(tx, {module: 'probation', subjectId: record.id, key, to: addressees.to, cc: addressees.cc,
+      subject: fillAutomationMergeFields(subject, merge).replace(/\s+/g, ' ').trim() || 'Probation update', body: fillAutomationMergeFields(body, emailMerge).replace(/\{\{\s*case\.link\s*\}\}/g, '{{case.link}}')});
+    return {resolved, email};
   };
+  const unresolvedOf = (resolved: ReturnType<typeof recipientsFor>, email: {unreachable: string[]} | null) => [
+    ...resolved.unresolved.map(u => ({meantFor: u.meantFor, reason: u.reason})),
+    ...(email?.unreachable.length ? [{meantFor: `${email.unreachable.length} ${email.unreachable.length === 1 ? 'person' : 'people'} by email`, reason: 'No sign-in email is recorded, so they get the in-app notice only.'}] : []),
+  ];
+  const sent = (email: {queued: number; to: string[]; cc: string[]} | null) => email?.queued ? ` Email queued for ${email.to.length + email.cc.length} ${email.to.length + email.cc.length === 1 ? 'person' : 'people'}.` : email ? ' No email was queued: nobody has a sign-in email, or it was queued before.' : '';
   const executors: AutomationExecutors = {
     notify: async ({run, step}: AutomationStepContext): Promise<AutomationStepOutcome> => {
-      const resolved = await deliver(run, step, [...step.to, ...step.cc]);
+      const subject = text(step.params.subject);
+      const {resolved, email} = await deliver(run, step, step.to, step.cc, subject, text(step.params.body));
       if (!resolved.userIds.length) return {status: 'failed', reason: 'Nobody could be notified, and the fallback group has no members.'};
-      return {status: 'done', message: `Notified: ${fillAutomationMergeFields(text(step.params.subject), probationMergeValues(record, context, facts))}`, recipients: resolved.userIds, unresolved: resolved.unresolved.map(u => ({meantFor: u.meantFor, reason: u.reason}))};
+      return {status: 'done', message: `Notified: ${fillAutomationMergeFields(subject, merge)}.${sent(email)}`, recipients: resolved.userIds, unresolved: unresolvedOf(resolved, email)};
     },
     sendEmail: async ({run, step}) => {
       const template = templates.get(text(step.params.emailTemplateId));
       if (!template) return {status: 'skipped', reason: 'the email template no longer exists.'};
-      const resolved = await deliver(run, step, [...step.to, ...step.cc, ...template.cc]);
+      const {resolved, email} = await deliver(run, step, step.to, [...step.cc, ...template.cc], template.subject, template.body);
       if (!resolved.userIds.length) return {status: 'failed', reason: 'Nobody could receive the email, and the fallback group has no members.'};
-      return {status: 'done', message: `Sent “${fillAutomationMergeFields(template.subject, probationMergeValues(record, context, facts))}” through the Probation notifications.`, recipients: resolved.userIds, unresolved: resolved.unresolved.map(u => ({meantFor: u.meantFor, reason: u.reason}))};
+      return {status: 'done', message: `Sent “${fillAutomationMergeFields(template.subject, merge)}” in AI-HR.${sent(email)}`, recipients: resolved.userIds, unresolved: unresolvedOf(resolved, email)};
     },
     generateDocument: async ({step}) => {
       const outcome = facts.outcome;
