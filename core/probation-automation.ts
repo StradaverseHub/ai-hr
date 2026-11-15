@@ -121,7 +121,8 @@ function recipientsFor(list: readonly AutomationRecipient[], context: ProbationA
   const fallback = context.fallbackGroupId ? {groupId: context.fallbackGroupId, members: groups.get(context.fallbackGroupId) ?? []} : null;
   return resolveAutomationRecipients(list, {
     role: role => role === 'employee' ? (context.holders.employee ? [context.holders.employee] : []) : role === 'directSuperior' ? (context.holders.lm ? [context.holders.lm] : []) : null,
-    facts: {businessGroup: context.org.businessGroupId, company: context.org.companyId, department: context.org.departmentId, jobTitle: context.org.jobTitle},
+    // W5: a business group is the business unit (Personnel v2 mapping, the PBP rule) or its group company (builder options).
+    facts: {businessGroup: [context.org.businessGroupId, context.org.businessGroupCompanyId].filter((v): v is string => !!v), company: context.org.companyId, department: context.org.departmentId, jobTitle: context.org.jobTitle},
     routing: id => routings.get(id) ?? null, groupMembers: id => groups.get(id) ?? null,
     person: userId => /^[0-9a-f-]{36}$/i.test(userId),
     pending: () => pending?.length ? {userIds: pending, label: facts.pendingStep ?? 'Pending step'} : null,
@@ -257,4 +258,43 @@ export async function resumeProbationOutcomeTx(tx: Tx, ctx: SessionContext, inpu
   const {executors, guards} = probationRuntime(tx, {ctx, trigger: 'outcomeDecided', record: input.record, context, facts, letters: new Map(), pending: null, effects});
   const runs = await resumeAutomationRunsTx(tx, {module: 'probation', subjectId: input.record.id, documentId: input.documentId, executors, guards, read, aliases});
   return {runs, effects};
+}
+
+/** The case as the runner reads it, from storage (row security applies to the caller). */
+export async function probationAutomationCaseTx(tx: Tx, caseId: string): Promise<ProbationAutomationCase | null> {
+  const [row] = await tx.execute<{data: ProbationAutomationCase}>(sql`select data from probation_case where id = ${caseId}::uuid and tenant_id = app.current_tenant_id()`);
+  return row?.data ?? null;
+}
+/** Probation triggers that have at least one live shared workflow (one bounded read per trigger). */
+export async function liveProbationTriggersTx(tx: Tx, caseId: string, triggers: readonly string[]): Promise<Set<string>> {
+  const live = new Set<string>();
+  for (const trigger of triggers) {
+    const [row] = await tx.execute<{n: number}>(sql`select count(*)::int as n from app.automation_runner_workflows('probation', ${trigger}, ${caseId}::uuid)`);
+    if (row?.n) live.add(trigger);
+  }
+  return live;
+}
+/**
+ * Raises catalogue events after a Probation command or sweep step (W3). Only triggers with a live workflow do any work;
+ * each runs in its own savepoint so a workflow problem never undoes the command that raised it (the run records it).
+ */
+export async function emitProbationEventsSafelyTx(tx: Tx, ctx: SessionContext, caseId: string, events: {trigger: string; occurrence: string; facts: ProbationEventFacts; pending?: string[] | null; anchors?: Record<string, string | null>; today?: string}[], knownLive?: Set<string>): Promise<void> {
+  if (!events.length || knownLive && !events.some(e => knownLive.has(e.trigger))) return;
+  await tx.execute(sql`savepoint probation_events`);
+  try {
+    const live = knownLive ?? await liveProbationTriggersTx(tx, caseId, [...new Set(events.map(e => e.trigger))]);
+    const record = live.size ? await probationAutomationCaseTx(tx, caseId) : null;
+    if (record) for (const event of events) if (live.has(event.trigger)) {
+      await tx.execute(sql`savepoint probation_event`);
+      try { await emitProbationEventTx(tx, ctx, {...event, record}); await tx.execute(sql`release savepoint probation_event`); }
+      catch { await tx.execute(sql`rollback to savepoint probation_event`); await tx.execute(sql`release savepoint probation_event`); }
+    }
+    await tx.execute(sql`release savepoint probation_events`);
+  } catch { await tx.execute(sql`rollback to savepoint probation_events`); await tx.execute(sql`release savepoint probation_events`); }
+}
+const PENDING_LABEL: Record<string, string> = {lm: 'Line Manager', employee: 'Employee', hod: 'HOD', pbp: 'PBP'};
+/** "Pending step" condition value and the users holding it, from a signing document's current pending steps. */
+export function probationPendingStep(steps: readonly {role: string; holderId: string | null}[]): {label: string; users: string[]} {
+  if (!steps.length) return {label: 'Nobody (all steps done)', users: []};
+  return {label: PENDING_LABEL[steps[0].role] ?? steps[0].role, users: [...new Set(steps.flatMap(s => s.holderId ? [s.holderId] : []))]};
 }
