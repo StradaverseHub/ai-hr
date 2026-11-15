@@ -225,7 +225,7 @@ describe('case 141 — careers receipts', () => {
     await rejectApplication(admin, application_id, reason.id);
     // The restated removal function itself (the service also waits for the retention period, which is slice 5's concern).
     const [removed] = await withTenant(admin, (tx) => tx.execute<{ r: Record<string, number> }>(sql`select app.recruitment_destroy_candidate(${r.candidate_id}::uuid) as r`));
-    expect(removed.r).toMatchObject({ candidateEmails: 1, careersVerifications: 2 });
+    expect(removed.r).toMatchObject({ candidateEmails: 1, careersVerifications: 1 }); // the repeat's verification named no candidate
     expect(await emails()).toHaveLength(0);
     expect((await owner.db.execute<{ n: number }>(sql`select count(*)::int as n from app.recruitment_careers_verification where candidate_id = ${r.candidate_id}::uuid`))[0].n).toBe(0);
   });
