@@ -265,7 +265,7 @@ async function rehireEmployeeCodeTx(tx: Tx, ctx: SessionContext, companyId: stri
  * Record a Rehired event: a new employment for the same person from the effective date. One transaction: the
  * hire, the salary, the payment method, the link and the Rehired event commit together or not at all.
  */
-export function rehireEmployment(ctx: SessionContext, input: RehireInput) {
+export async function rehireEmployment(ctx: SessionContext, input: RehireInput) {
   assertRehireAdmin(ctx);
   return withTenant(ctx, (tx) => rehireEmploymentTx(tx, ctx, input));
 }
@@ -425,7 +425,7 @@ export async function rehireRollbackBlockersTx(tx: Tx, employmentId: string): Pr
  * voided (its Employee ID released, its rows kept for audit); the previous period is untouched and stays
  * Resigned. Otherwise refused with the blockers named.
  */
-export function rollBackRehire(ctx: SessionContext, p: { employmentId: string; reason: string }) {
+export async function rollBackRehire(ctx: SessionContext, p: { employmentId: string; reason: string }) {
   assertRehireAdmin(ctx);
   const reason = (p.reason ?? '').trim();
   if (reason.length < 3 || reason.length > 1000) throw new RehireError('reason_required');

@@ -298,6 +298,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.bulk_job_input_shape_valid(jsonb)','app.bulk_job_lease_capability(uuid,uuid,text)','app.bulk_job_seal_verify(uuid,text)',
    'app.bulk_job_step_digest(text,integer,jsonb,text,jsonb,text)','app.bulk_job_value_digest(jsonb)','app.domain_event_chain_arm()',
    'app.domain_event_chain_seal_now()','app.employee_import_revert_release(uuid,boolean)','app.employment_void_reference_blockers(uuid[])',
+   // Board 511aa74a (5695): the rehire link guard is a trigger function, owner only.
+   'app.employment_rehire_link_guard()',
    'app.import_discard_batch(uuid,uuid,uuid,text,integer)','app.import_marker_visible(uuid)','app.import_settle(uuid,uuid,integer)',
    'app.label_import_marker_visible(uuid)','app.leave_ledger_stage_stamp()','app.movement_revert_capture_never_commits()',
    'app.movement_revert_capture_row()','app.notification_event_processing_enqueue()','app.org_structure_statement_lock()',
@@ -346,6 +348,9 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.bulk_job_worker_ready(text)','app.bulk_job_worker_update(uuid,jsonb)','app.contract_renewal_open(uuid)',
    'app.delegated_approval_subjects(uuid[],text,text)','app.domain_event_chain_arm()','app.domain_event_chain_flush(uuid)',
    'app.domain_event_chain_seal_now()','app.domain_event_chain_sealing()','app.employee_import_revert_release(uuid,boolean)',
+   // Board 511aa74a (5695): the rehire link guard, its Roll Back writer and blockers, and the person-state count.
+   'app.employment_rehire_link_guard()','app.employment_rehire_person_state(uuid,date)','app.employment_rehire_rollback(uuid,text)',
+   'app.employment_rehire_rollback_blockers(uuid)',
    'app.employment_void_reference_blockers(uuid[])','app.home_leave_presentation_index(text)','app.home_own_clock_day(uuid,date,date)',
    'app.home_own_schedule_range(uuid,date,date)','app.import_activation_conflicts(uuid)','app.import_discard_batch(uuid,uuid,uuid,text,integer)',
    'app.import_hidden_attempt_ids()','app.import_log_actor_facts(text,uuid[])','app.import_marker_released(uuid)',

@@ -101,7 +101,7 @@ describe('Rehired starts a new employment period for the same person',()=>{
   const result=await rehireEmployment(ctx(),input(old.employmentId,{employeeCode:'EMP-STAT-2'}));
   expect(result.personId).toBe(old.personId);
   const statutory=await withTenant(ctx(),tx=>pack.statutory.get(ctx(),result.personId,tx));
-  expect(statutory).toMatchObject({icNumber:'900101-01-1234',epfNumber:'EPF-FICTIONAL-1',bankAccountNo:'000-FICTIONAL-1'});
+  expect(statutory).toMatchObject({icNumber:'900101011234',epfNumber:'EPF-FICTIONAL-1',bankAccountNo:'000-FICTIONAL-1'});
   expect(await owner.db.select().from(schema.employeeStatutoryMy).where(eq(schema.employeeStatutoryMy.personId,old.personId))).toHaveLength(1);
   const fresh=await owner.db.select().from(schema.leaveLedger).where(eq(schema.leaveLedger.employmentId,result.employmentId));
   expect(fresh.every(entry=>entry.entryType==='accrual'&&entry.effectiveOn>=day(-5))).toBe(true);

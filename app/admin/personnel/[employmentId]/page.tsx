@@ -3170,7 +3170,16 @@ export default async function EmployeePage({
         >
           {t('movement.exportExcel')}
         </ExportDownloadLink>
-        {(canCreateMovement || canRehire) && (
+        {canCreateMovement && (
+          <Link
+            href={movementPageHref(employmentId,'new',undefined,movementContext)}
+            className={btnPrimary}
+          >
+            {t('movement.newEvent')}
+          </Link>
+        )}
+        {/* Board 511aa74a — a Resigned (often terminated) employee keeps one event: Rehired. */}
+        {!canCreateMovement && canRehire && (
           <Link
             href={movementPageHref(employmentId,'new',undefined,movementContext)}
             className={btnPrimary}

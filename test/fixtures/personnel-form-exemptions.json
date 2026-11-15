@@ -893,9 +893,9 @@
       "tag": "input",
       "context": "MovementHistoryActions",
       "hidden": true,
-      "occurrences": 1,
+      "occurrences": 2,
       "name": "employmentId",
-      "reason": "Guarded action record/subject pointer (employmentId) used by MovementHistoryActions (Employment History Roll Back); the server owner checks subject/record scope. This does not edit a Personnel fact."
+      "reason": "Guarded action record/subject pointer (employmentId) used by MovementHistoryActions (Employment History Roll Back); the server owner checks subject/record scope. This does not edit a Personnel fact. Board 511aa74a: the Rehired Roll Back form carries the same pointer to the rehired period."
     },
     {
       "tag": "input",
@@ -909,9 +909,9 @@
       "tag": "input",
       "context": "MovementHistoryActions",
       "hidden": true,
-      "occurrences": 1,
+      "occurrences": 2,
       "name": "movementPage",
-      "reason": "Fixed navigation mode for the action return."
+      "reason": "Fixed navigation mode for the action return. Board 511aa74a: the Rehired Roll Back form carries the same return mode."
     },
     {
       "tag": "input",
