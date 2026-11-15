@@ -51,15 +51,15 @@ ALTER TABLE public.automation_run FORCE ROW LEVEL SECURITY;
 CREATE POLICY automation_run_owner ON public.automation_run FOR ALL TO ai_hr_owner USING (app.acting_as_owner()) WITH CHECK (app.acting_as_owner());
 --> statement-breakpoint
 CREATE FUNCTION app.automation_run_subject_access(p_module text, p_subject uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-  SELECT app.current_tenant_id() IS NOT NULL AND CASE p_module
-    WHEN 'probation' THEN app.probation_active_user() AND coalesce(app.probation_case_access(p_subject), false)
-    ELSE false END;
+  SELECT coalesce(app.current_tenant_id() IS NOT NULL AND CASE p_module
+    WHEN 'probation' THEN app.probation_active_user() AND app.probation_case_access(p_subject)
+    ELSE false END, false);
 $$;
 --> statement-breakpoint
 CREATE FUNCTION app.automation_can_run(p_module text, p_subject uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-  SELECT app.current_tenant_id() IS NOT NULL AND p_subject IS NOT NULL AND CASE p_module
+  SELECT coalesce(app.current_tenant_id() IS NOT NULL AND p_subject IS NOT NULL AND CASE p_module
     WHEN 'probation' THEN app.probation_storage_runner() OR app.automation_run_subject_access(p_module, p_subject)
-    ELSE false END;
+    ELSE false END, false);
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.automation_run_subject_access(text,uuid), app.automation_can_run(text,uuid) FROM PUBLIC;

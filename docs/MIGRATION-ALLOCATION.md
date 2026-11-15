@@ -4,8 +4,8 @@ Branch `claude/probation-lane-signing-runtime-20261116` (lane D1 of the Probatio
 `claude/probation-confirmation-aihr-b81c70` at `bf4b9c315`) appends `5747_document_signing_review_routing` at idx 5147 /
 when 1793330005447 and `5748_automation_runs` at idx 5148 / when 1793330005448 on the board block's offset (tag T, idx
 T − 600, when 1793330004800 + (T − 5100)), above `5743_automation_email_templates` (when 1793330005443). SHA256
-`7fec99312b9b49efa0af448ff2438321396e47a19c3a0a4bf1e89d902b76cf99` (5747) and
-`6014e399d4166a04d5c029ebdc48f930d7cd77d2600bc89852b195391776d241` (5748). 5747 replaces four ai_hr_owner functions of 0948
+`7fef112b3edec88c5ac54c7a17d8fa8354a96d618e353fa7b24894c925fc20dd` (5747) and
+`a79d667b088520329538cceeb1a4d3bab53031ced3014df765377e2d1dfae20a` (5748). 5747 replaces four ai_hr_owner functions of 0948
 (`app.document_signing_step_fulfilled`, `_validate`, `_store`, `_act`) in place with the same signatures and grants and
 adds eight read-only `app.document_signing_*` helpers; no table, row or grant changes and existing documents keep their
 behaviour. 5748 creates one new, empty table (`automation_run`) with forced row security, a SELECT-only grant to

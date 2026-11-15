@@ -224,7 +224,7 @@ BEGIN
   IF (prior-'at'-'actorName')=(p_action-'at'-'actorName') THEN RETURN d.data; END IF;
   RAISE EXCEPTION 'Signing action reference already used';
  END IF;
- routed:=jsonb_typeof(d.data->'routing')='object';
+ routed:=coalesce(jsonb_typeof(d.data->'routing')='object',false);
  v_kind:=coalesce(p_action->>'action','');
  IF v_kind='resent' THEN
   -- The owner sends a returned template-routing document round again unchanged.
