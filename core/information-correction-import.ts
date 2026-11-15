@@ -147,12 +147,10 @@ function extendedChanges(options:Awaited<ReturnType<typeof informationCorrection
  for(const [header,field] of [...LABEL_COLUMNS,...PLAIN_COLUMNS]){const value=values[header];if(value)changes[field]=value;}
  const superior=values['Direct Superior'];
  if(superior){
-  // View-scoped: a superior the user cannot view reads exactly like an unknown Employee ID. The employee's own
-  // (resulting) company wins when the same Employee ID is used there; otherwise the ID must name exactly one
-  // employee across the companies the user can view.
-  const visible=superiors.get(superior)??[],own=visible.filter(m=>m.companyId===companyId),managers=own.length?own:visible;
-  if(!managers.length)throw new InformationCorrectionError('Direct Superior: the Employee ID is unknown or not visible to you.');
-  if(managers.length>1)throw new InformationCorrectionError('Direct Superior: the Employee ID matches employees in more than one company. Set this superior on the Personnel record instead.');
+  // View-scoped: a superior the user cannot view reads exactly like an unknown Employee ID. Employee IDs are unique
+  // per tenant (employment_employee_code_uq), so a visible match names one employee in whichever company employs them.
+  const managers=superiors.get(superior)??[];
+  if(managers.length!==1)throw new InformationCorrectionError('Direct Superior: the Employee ID is unknown or not visible to you.');
   changes.managerEmploymentId=managers[0].id;
  }
 }

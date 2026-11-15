@@ -39347,7 +39347,6 @@
       "periodUnit": "Enter the period and its unit together ({unit}).",
       "notOption": "\"{value}\" is not an option for this company. Check the {sheet} reference sheet.",
       "superiorUnknown": "The Employee ID is unknown or not visible to you.",
-      "superiorAmbiguous": "The Employee ID matches employees in more than one company. Set this superior on the Personnel record instead.",
       "organisationFormula": "Organisation columns cannot contain formulas or error cells.",
       "organisationTooLong": "Organisation value: maximum 1,000 characters.",
       "companyRequired": "Company Code is required.",

@@ -39347,7 +39347,6 @@
       "periodUnit": "Nhập thời hạn và đơn vị của nó cùng nhau ({unit}).",
       "notOption": "\"{value}\" không phải là lựa chọn cho công ty này. Hãy kiểm tra trang tham chiếu {sheet}.",
       "superiorUnknown": "Mã nhân viên không xác định hoặc bạn không xem được.",
-      "superiorAmbiguous": "Mã nhân viên này trùng với nhân viên ở nhiều công ty. Hãy đặt cấp trên này trong hồ sơ Nhân sự.",
       "organisationFormula": "Các cột tổ chức không được chứa công thức hoặc ô lỗi.",
       "organisationTooLong": "Giá trị tổ chức: tối đa 1,000 ký tự.",
       "companyRequired": "Company Code là bắt buộc.",

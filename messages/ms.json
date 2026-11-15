@@ -39347,7 +39347,6 @@
       "periodUnit": "Masukkan tempoh dan unitnya bersama-sama ({unit}).",
       "notOption": "\"{value}\" bukan pilihan untuk syarikat ini. Semak helaian rujukan {sheet}.",
       "superiorUnknown": "ID Pekerja tidak dikenali atau tidak kelihatan kepada anda.",
-      "superiorAmbiguous": "ID Pekerja ini sepadan dengan pekerja dalam lebih daripada satu syarikat. Tetapkan penyelia ini pada rekod Personel.",
       "organisationFormula": "Lajur organisasi tidak boleh mengandungi formula atau sel ralat.",
       "organisationTooLong": "Nilai organisasi: maksimum 1,000 aksara.",
       "companyRequired": "Company Code wajib diisi.",

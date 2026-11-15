@@ -39347,7 +39347,6 @@
       "periodUnit": "请同时输入期限及其单位（{unit}）。",
       "notOption": "\"{value}\" 不是此公司的选项。请查看 {sheet} 参考工作表。",
       "superiorUnknown": "该员工编号未知，或您无权查看。",
-      "superiorAmbiguous": "该员工编号对应多个公司的员工。请改在人员记录中设置此上级。",
       "organisationFormula": "组织列不能包含公式或错误单元格。",
       "organisationTooLong": "组织值：最多 1,000 个字符。",
       "companyRequired": "Company Code 为必填项。",
