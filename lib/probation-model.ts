@@ -87,6 +87,8 @@ export type ProbationCase={
   revision:number;config:ProbationConfig;planMonths:number;planFlag:boolean;extensionCount:number;kpiAcknowledged:boolean;
   state:'kpi_setting'|'in_review'|'pending_approval'|'outcome_pending'|'confirmed'|'extended'|'not_confirmed'|'withdrawn';
   parts:ProbationPart[];pendingOutcome:ProbationOutcome|null;milestones?:{kpiReminderOn:string;kpiOverdueOn:string};
+  /** Why a withdrawn case closed (migration 5744): the hire did not join, or a Personnel exit after the start. */
+  closure?:'did_not_join'|'exit';
 };
 function validDay(day:string):void{if(!isCalendarDate(day))reject('Enter a valid calendar date.');}
 export function addProbationMonths(day:string,months:number):string{
