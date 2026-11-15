@@ -27,11 +27,13 @@ const ctx=()=>adminCtx(b);
 const HIRED='2026-01-06';
 async function hire(code:string){
  const e=await hireEmployee(ctx(),{person:{fullName:'Fictional '+code,primaryEmail:`${randomUUID().slice(0,8)}@fixture.test`},employeeCode:code,companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId,employmentType:'full_time',hiredOn:HIRED,gradeId:g1});
+ // The hire was keyed in January, before that month's payroll (the fixture runs today).
+ await owner.db.update(schema.assignment).set({createdAt:new Date(`${HIRED}T02:00:00Z`)}).where(eq(schema.assignment.employmentId,e.employmentId as string));
  return e.employmentId as string;
 }
 async function closedSlip(employmentId:string,period:string){
  const [pp]=await owner.db.insert(schema.payPeriod).values({tenantId:b.tenantId,companyId:b.companyId,period,status:'closed'}).returning({id:schema.payPeriod.id});
- const [batch]=await owner.db.insert(schema.payrollBatch).values({tenantId:b.tenantId,companyId:b.companyId,payPeriodId:pp.id,payPeriod:period,runSeq:1,runType:'regular',batchDate:`${period}-28`,status:'closed',closedAt:new Date()}).returning({id:schema.payrollBatch.id});
+ const [batch]=await owner.db.insert(schema.payrollBatch).values({tenantId:b.tenantId,companyId:b.companyId,payPeriodId:pp.id,payPeriod:period,runSeq:1,runType:'regular',batchDate:`${period}-28`,status:'closed',createdAt:new Date(`${period}-25T02:00:00Z`),closedAt:new Date(`${period}-28T02:00:00Z`)}).returning({id:schema.payrollBatch.id});
  await owner.db.insert(schema.payslip).values({tenantId:b.tenantId,batchId:batch.id,employmentId,basicSalary:'4000.00',grossPay:'4000.00',totalDeductions:'500.00',netPay:'3500.00',employerCost:'4500.00',statutory:{}});
 }
 async function correct(id:string,changes:InformationChanges,effectiveOn:string){

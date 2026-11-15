@@ -3,7 +3,7 @@
 Branch `claude/fb-4604dccc-r3` (from `origin/main` = `origin/alpha` at `94d2f5bbe`) appends
 `5690_information_payslip_snapshot_from_history` at idx 5090 / when 1793330005390, the board block's offset (tag T, idx
 T − 600, when 1793330004800 + (T − 5100)) above `5680` (when 1793330005380), the journal's maximum and the staging
-watermark read on 15 November 2026 (851 ledger rows). SHA256 `f68bbcd17b6271ddd9c7e8c1108db5b09082f7823f812f8dc02e336d0a3e795c`. It replaces the owner-owned functions
+watermark read on 15 November 2026 (851 ledger rows). SHA256 `c0ea9c5f84f2dca7466aabdffb2d47d8af6ebd671add371ee49f00d93aedb892`. It replaces the owner-owned functions
 `app.preserve_information_payroll(uuid)` and `app.information_payroll_ready(uuid)` (0698, 0873, rewritten by 5055); no
 table, grant, policy or row changes. `5695` is reserved for board 511aa74a (Rehired) and must install after this entry.
 A scan of the 500 most recently active origin heads on 15 November 2026 found no claim on tags 5681–5699; the

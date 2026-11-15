@@ -8,7 +8,7 @@
 --  * Group Join Date, Join Date and Job Grade: the "before" value of the earliest recorded change after T
 --    (employment.info.updated / employment.grade.changed / employment.information.corrected); none means unchanged.
 --  * Employment Type, Business Unit, Department, Position: the assignment row that was the live record at T
---    (created by T, not superseded by T, the latest started by T's date); none found means the record as displayed today.
+--    (created by T, not superseded by T, open on T's date); none found means the record as displayed today.
 --  * Everything else is the metadata the document shows today (it has no recorded history).
 -- document_metadata.snapshotBasis lists which fields were reconstructed and which were kept as displayed.
 -- Existing snapshots are never changed. The staged-row predicate from 5055 is kept on every payslip read.
@@ -77,11 +77,12 @@ BEGIN
    AND ev.payload->'before' ? 'joinDate'
    ORDER BY ev.sequence LIMIT 1) jo0 ON true
  LEFT JOIN LATERAL (SELECT coalesce(jo0.found,false) AS found,jo0.value) jo ON true
- -- The assignment that was the live record at T: of the rows that existed then (created by T, not yet superseded),
- -- the latest that had started by T's date. valid_to is not read: a later version closes it in place.
+ -- The assignment that was the open record at T (what the document read then): existed by T, not yet superseded,
+ -- started by T's date and not ended by it. None (the employment had ended, or a later backdated change closed it
+ -- before T's date) keeps the record as displayed today: a value the document never showed is never invented.
  LEFT JOIN LATERAL (SELECT x.id,x.employment_type,x.business_unit_id,x.department_id,x.position_id FROM public.assignment x
    WHERE x.employment_id=e.id AND x.tenant_id=e.tenant_id AND x.created_at<=s.t AND (x.superseded_at IS NULL OR x.superseded_at>s.t)
-   AND x.valid_from<=(s.t AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+   AND x.valid_from<=(s.t AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (x.valid_to IS NULL OR x.valid_to>(s.t AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
    ORDER BY x.valid_from DESC,x.created_at DESC LIMIT 1) ha ON true
  LEFT JOIN public.business_unit hbu ON hbu.id=ha.business_unit_id
  LEFT JOIN public.department hd ON hd.id=ha.department_id
