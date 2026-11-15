@@ -1,0 +1,248 @@
+name: zero-downtime-rehearsal
+run-name: Zero-downtime release rehearsal · ${{ github.sha }}
+# ADR-0181. Diagnostic evidence for the zero-downtime web release mechanism; it connects to no
+# staging or production host and grants no release authority.
+on:
+  push:
+    branches: ['claude/zero-downtime-*']
+    paths:
+      - 'deploy/zero-downtime/**'
+      - 'scripts/releases/migration-release-mode.mjs'
+      - 'lib/next-deployment-identity.ts'
+      - 'next.config.ts'
+      - '.github/workflows/zero-downtime-rehearsal.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: zero-downtime-rehearsal-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  mechanism:
+    # Real systemd + real Nginx + the real controller and unit file, with stand-in releases.
+    if: ${{ github.repository == 'StradaverseHub/ai-hr' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Host shaped like the production app VM
+        run: |
+          set -euxo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq nginx >/dev/null
+          sudo useradd --system --no-create-home --shell /usr/sbin/nologin aihr
+          sudo mkdir -p /opt/node24/bin /etc/aihr
+          sudo ln -sf "$(command -v node)" /opt/node24/bin/node
+          echo 'PORT=3000' | sudo tee /etc/aihr/runtime.env >/dev/null
+          echo 'PORT=3101' | sudo tee /etc/aihr/web-slot-blue.env >/dev/null
+          echo 'PORT=3102' | sudo tee /etc/aihr/web-slot-green.env >/dev/null
+          sudo install -m 0644 deploy/zero-downtime/aihr-web@.service /etc/systemd/system/aihr-web@.service
+          # The legacy in-place web, as production runs it today (aihr on port 3000 from /opt/ai-hr).
+          sudo node deploy/zero-downtime/rehearsal/make-standin-release.mjs /opt/ai-hr legacyBuildA0000000001 --repo "$PWD"
+          sudo chown -R root:aihr /opt/ai-hr && sudo mkdir -p /opt/ai-hr/.next/cache && sudo chown aihr:aihr /opt/ai-hr/.next/cache
+          sudo tee /etc/systemd/system/aihr.service >/dev/null <<'UNIT'
+          [Service]
+          User=aihr
+          WorkingDirectory=/opt/ai-hr
+          EnvironmentFile=/etc/aihr/runtime.env
+          ExecStart=/opt/node24/bin/node /opt/ai-hr/node_modules/next/dist/bin/next start -H 127.0.0.1 -p ${PORT}
+          KillSignal=SIGTERM
+          TimeoutStopSec=90
+          [Install]
+          WantedBy=multi-user.target
+          UNIT
+          sudo systemctl daemon-reload && sudo systemctl start aihr
+          # Nginx site in the converted shape (README step 1): upstream file at the legacy port.
+          printf 'upstream aihr_web {\n    server 127.0.0.1:3000;\n    keepalive 32;\n}\n' | sudo tee /etc/nginx/aihr-upstream.conf >/dev/null
+          echo 'include /etc/nginx/aihr-upstream.conf;' | sudo tee /etc/nginx/conf.d/aihr-upstream-include.conf >/dev/null
+          printf 'proxy_http_version 1.1;\nproxy_set_header Connection "";\nproxy_set_header Host $host;\nproxy_buffering off;\nproxy_read_timeout 300s;\n' | sudo tee /etc/nginx/aihr-proxy-params.conf >/dev/null
+          {
+            echo 'server {'; echo '  listen 80 default_server;'
+            sed -n '/^    location/,/^    }/p' deploy/zero-downtime/nginx-aihr-web.conf
+            echo '}'
+          } | sudo tee /etc/nginx/sites-available/default >/dev/null
+          sudo nginx -t && sudo systemctl reload nginx
+          for i in $(seq 1 30); do curl -fs http://127.0.0.1/health && break; sleep 1; done
+          curl -fs http://127.0.0.1/login | grep -q 'data-dpl-id="legacyBuildA0000000001"'
+      - name: Probe through Nginx for the whole rehearsal
+        run: |
+          nohup node deploy/zero-downtime/probe.mjs --base http://127.0.0.1 --path /login --path /health --path / \
+            --concurrency 16 --slow-path '/slow?ms=20000' --slow-every 1 --out "$RUNNER_TEMP/probe.json" > "$RUNNER_TEMP/probe.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/probe.pid"
+          sleep 3
+      - name: Adopt the legacy web into slot blue without stopping it first
+        run: |
+          set -euxo pipefail
+          sudo AIHR_WEB_VERIFY_URL=http://127.0.0.1/login AIHR_WEB_DRAIN_SECONDS=25 bash deploy/zero-downtime/release-web.sh adopt 3000
+          sudo bash deploy/zero-downtime/release-web.sh status
+          [ "$(systemctl is-active aihr || true)" != active ]
+          [ "$(systemctl is-enabled aihr-web@blue)" = enabled ]
+      - name: Stage, classify, start and switch to build B
+        run: |
+          set -euxo pipefail
+          node deploy/zero-downtime/rehearsal/make-standin-release.mjs "$RUNNER_TEMP/pkg-b" buildB00000000000000002 --repo "$PWD"
+          sudo bash deploy/zero-downtime/release-web.sh stage "$RUNNER_TEMP/pkg-b"
+          sudo bash deploy/zero-downtime/release-web.sh mode buildB00000000000000002
+          sudo AIHR_WEB_VERIFY_URL=http://127.0.0.1/login bash deploy/zero-downtime/release-web.sh start buildB00000000000000002
+          sudo AIHR_WEB_VERIFY_URL=http://127.0.0.1/login AIHR_WEB_DRAIN_SECONDS=25 bash deploy/zero-downtime/release-web.sh switch
+          curl -fs http://127.0.0.1/login | grep -q 'data-dpl-id="buildB00000000000000002"'
+          # A tab opened on build A still loads A's chunk after A's process is gone (static union).
+          [ "$(systemctl is-active aihr-web@blue || true)" != active ]
+          curl -fs http://127.0.0.1/_next/static/chunks/legacyBuildA0000000001.js | grep -q legacyBuildA0000000001
+          [ "$(systemctl is-enabled aihr-web@green)" = enabled ] && [ "$(systemctl is-enabled aihr-web@blue || true)" != enabled ]
+      - name: A breaking migration is refused for online release
+        run: |
+          set -euxo pipefail
+          node deploy/zero-downtime/rehearsal/make-standin-release.mjs "$RUNNER_TEMP/pkg-c" buildC00000000000000003 --repo "$PWD"
+          node -e '
+            const fs=require("fs"),p=process.argv[1]+"/db/migrations/meta/_journal.json",j=JSON.parse(fs.readFileSync(p));
+            const last=j.entries.at(-1);j.entries.push({...last,idx:last.idx+1,when:last.when+1,tag:"9999_rehearsal_drop"});
+            fs.writeFileSync(p,JSON.stringify(j));fs.writeFileSync(process.argv[1]+"/db/migrations/9999_rehearsal_drop.sql","ALTER TABLE employment DROP COLUMN employee_code;");' "$RUNNER_TEMP/pkg-c"
+          sudo bash deploy/zero-downtime/release-web.sh stage "$RUNNER_TEMP/pkg-c"
+          set +e; sudo bash deploy/zero-downtime/release-web.sh mode buildC00000000000000003; rc=$?; set -e
+          [ "$rc" = 3 ]
+          set +e; sudo bash deploy/zero-downtime/release-web.sh migrate buildC00000000000000003; rc=$?; set -e
+          [ "$rc" != 0 ]
+          curl -fs http://127.0.0.1/login | grep -q 'data-dpl-id="buildB00000000000000002"'
+      - name: Roll back to A, then forward to B again
+        run: |
+          set -euxo pipefail
+          sudo AIHR_WEB_VERIFY_URL=http://127.0.0.1/login AIHR_WEB_DRAIN_SECONDS=25 bash deploy/zero-downtime/release-web.sh rollback
+          curl -fs http://127.0.0.1/login | grep -q 'data-dpl-id="legacyBuildA0000000001"'
+          sudo AIHR_WEB_VERIFY_URL=http://127.0.0.1/login bash deploy/zero-downtime/release-web.sh start buildB00000000000000002
+          sudo AIHR_WEB_VERIFY_URL=http://127.0.0.1/login AIHR_WEB_DRAIN_SECONDS=25 bash deploy/zero-downtime/release-web.sh switch
+          curl -fs http://127.0.0.1/login | grep -q 'data-dpl-id="buildB00000000000000002"'
+          sudo bash deploy/zero-downtime/release-web.sh status
+      - name: Zero failed requests across every transition
+        run: |
+          set -euo pipefail
+          sleep 3
+          kill -TERM "$(cat "$RUNNER_TEMP/probe.pid")"
+          for i in $(seq 1 150); do kill -0 "$(cat "$RUNNER_TEMP/probe.pid")" 2>/dev/null || break; sleep 1; done
+          cat "$RUNNER_TEMP/probe.json"
+          node -e '
+            const s=require(process.argv[1]);
+            const ids=Object.keys(s.deployments).sort();
+            const want=["buildB00000000000000002","legacyBuildA0000000001"];
+            if(s.failed!==0) throw new Error(s.failed+" failed requests");
+            if(s.requests<2000) throw new Error("too few requests: "+s.requests);
+            if(JSON.stringify(ids)!==JSON.stringify(want)) throw new Error("deployments seen: "+ids);
+            if(s.slow.ok<3||s.slow.ok!==s.slow.started) throw new Error("long requests: "+JSON.stringify(s.slow));
+            console.log("PASS requests="+s.requests+" failed=0 p99="+s.p99Ms+"ms max="+s.maxLatencyMs+"ms slow="+s.slow.ok);' "$RUNNER_TEMP/probe.json"
+      - name: Journals
+        if: always()
+        run: |
+          sudo cat /opt/aihr-web/history.log || true
+          sudo journalctl -u aihr -u 'aihr-web@*' --no-pager | tail -80 || true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: zero-downtime-mechanism
+          path: ${{ runner.temp }}/probe.*
+          retention-days: 14
+
+  migration-lock-bound:
+    # The online migration path must never queue live traffic behind a lock wait.
+    if: ${{ github.repository == 'StradaverseHub/ai-hr' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: rehearsal
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 2s --health-retries 30
+    env:
+      PGPASSWORD: rehearsal
+      DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+      TEST_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+      TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-alpha
+        with:
+          node: '22.23.3'
+          path: .
+          mobile: 'false'
+      - name: A migration behind a long reader gives up within lock_timeout
+        run: |
+          set -euo pipefail
+          psql -h 127.0.0.1 -U postgres -c "create table rehearsal_employment(id int primary key, code text); insert into rehearsal_employment select g, 'E'||g from generate_series(1,1000) g;"
+          D="$PWD/.zd-rehearsal"; mkdir -p "$D/migrations/meta"   # inside the workspace so the config resolves drizzle-kit
+          printf 'ALTER TABLE rehearsal_employment ADD COLUMN note text;\n' > "$D/migrations/0000_note.sql"
+          echo '{"version":"7","dialect":"postgresql","entries":[{"idx":0,"version":"7","when":1700000000000,"tag":"0000_note","breakpoints":true}]}' > "$D/migrations/meta/_journal.json"
+          printf "import {defineConfig} from 'drizzle-kit';\nexport default defineConfig({dialect:'postgresql',out:'%s/migrations',dbCredentials:{url:process.env.MIGRATION_DATABASE_URL!}});\n" "$D" > "$D/drizzle.config.ts"
+          # A reader holding ACCESS SHARE for 40 s, as a long report would.
+          psql -h 127.0.0.1 -U postgres -c "begin; select count(*) from rehearsal_employment; select pg_sleep(40); commit;" &
+          sleep 2
+          URL=$(node -e 'const u=new URL("postgres://postgres:rehearsal@127.0.0.1:5432/postgres");u.searchParams.set("lock_timeout","2s");process.stdout.write(u.toString())')
+          t0=$(date +%s)
+          set +e; MIGRATION_DATABASE_URL="$URL" pnpm exec drizzle-kit migrate --config "$D/drizzle.config.ts" > "$RUNNER_TEMP/migrate.log" 2>&1; rc=$?; set -e
+          t=$(( $(date +%s) - t0 )); cat "$RUNNER_TEMP/migrate.log"
+          echo "rc=$rc elapsed=${t}s"
+          [ "$rc" != 0 ] || { echo "migration should have failed behind the reader"; exit 1; }
+          grep -qiE '55P03|lock timeout' "$RUNNER_TEMP/migrate.log"
+          [ "$t" -lt 20 ] || { echo "waited ${t}s: lock_timeout did not apply"; exit 1; }
+          # Readers were never queued behind the waiting ALTER for longer than the bound.
+          t0=$(date +%s%N); psql -h 127.0.0.1 -U postgres -Atc "select count(*) from rehearsal_employment" >/dev/null; echo "reader ms=$(( ($(date +%s%N)-t0)/1000000 ))"
+          wait
+          MIGRATION_DATABASE_URL="$URL" pnpm exec drizzle-kit migrate --config "$D/drizzle.config.ts"
+          psql -h 127.0.0.1 -U postgres -Atc "select column_name from information_schema.columns where table_name='rehearsal_employment' and column_name='note'" | grep -q note
+          echo "PASS: bounded wait failed fast, retry after the reader applied it"
+
+  next-skew:
+    # The real application build carries deploymentId === BUILD_ID, and next start serves it.
+    if: ${{ github.repository == 'StradaverseHub/ai-hr' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      TZ: Asia/Kuala_Lumpur
+      DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+      MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+      TEST_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+      TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-alpha
+        with:
+          node: '22.23.3'
+          path: .
+          mobile: 'false'
+      # Not an admitted 8192 MB build (that set is owner-reviewed capacity, .github/ci/build-heap.test.mjs):
+      # the previous explicit 6144 MB bound, which needs no admission.
+      - name: Production build
+        run: pnpm build
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+      - name: deploymentId equals BUILD_ID in the build and in the client
+        run: |
+          set -euo pipefail
+          id=$(cat .next/BUILD_ID); echo "BUILD_ID=$id"
+          [[ "$id" =~ ^[A-Za-z0-9_-]{21}$ ]]
+          node -e 'const m=require("./.next/routes-manifest.json");if(m.deploymentId!==process.argv[1])throw new Error("routes-manifest deploymentId "+m.deploymentId);' "$id"
+          grep -rl --include='*.js' -F "$id" .next/static | head -3 | grep -q .
+      - name: next start serves the same id
+        run: |
+          set -euo pipefail
+          id=$(cat .next/BUILD_ID)
+          NEXT_DEPLOYMENT_ID=strayInheritedValue000 nohup node node_modules/next/dist/bin/next start -H 127.0.0.1 -p 3200 > "$RUNNER_TEMP/next.log" 2>&1 &
+          for i in $(seq 1 90); do curl -s -o /dev/null http://127.0.0.1:3200/health && break; sleep 1; done
+          for p in /login /; do
+            code=$(curl -s -o "$RUNNER_TEMP/page.html" -w '%{http_code}' "http://127.0.0.1:3200$p")
+            echo "$p $code dpl=$(sed -n 's/.*<html[^>]*data-dpl-id="\([^"]*\)".*/\1/p' "$RUNNER_TEMP/page.html" | head -1)"
+          done
+          hdr=$(curl -s -D - -o /dev/null -H 'RSC: 1' -H "x-deployment-id: $id" http://127.0.0.1:3200/login | tr -d '\r' | sed -n 's/^x-nextjs-deployment-id: //Ip')
+          html=$(curl -s http://127.0.0.1:3200/login | sed -n 's/.*<html[^>]*data-dpl-id="\([^"]*\)".*/\1/p' | head -1)
+          echo "header=$hdr html=$html"
+          [ "$hdr" = "$id" ] || [ "$html" = "$id" ] || { tail -40 "$RUNNER_TEMP/next.log"; exit 1; }
+          echo "PASS: next start serves deploymentId $id"
