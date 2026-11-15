@@ -36,6 +36,16 @@ async function installReference(){
  await owner.db.execute(sql.raw(`CREATE OR REPLACE FUNCTION app.probation_visible_reference() RETURNS SETOF uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT c.id FROM public.probation_case c WHERE c.tenant_id=app.current_tenant_id() AND app.probation_case_access_reference(c.id) $$`));
  await owner.db.execute(sql.raw('GRANT EXECUTE ON FUNCTION app.probation_visible_reference() TO ai_hr_app'));
 }
+/** Logs the plans of the statements inside the visible-set function for one viewer (auto_explain at NOTICE level, owner session). */
+async function explainNested(ctx:SessionContext){
+ try{
+  await owner.withTenant(ctx,async tx=>{
+   await tx.execute(sql.raw("LOAD 'auto_explain'"));
+   for(const setting of ["set local auto_explain.log_min_duration=50","set local auto_explain.log_nested_statements=on","set local auto_explain.log_analyze=on","set local auto_explain.log_level='notice'"])await tx.execute(sql.raw(setting));
+   await timed('visible set under auto_explain (viewer, owner session)',()=>tx.execute(sql`select count(*) from app.probation_visible_among(null)`));
+  });
+ }catch(error){console.log('[probation-tracker-scale] auto_explain unavailable: '+(error instanceof Error?error.message:String(error)));}
+}
 async function previousVisible(ctx:SessionContext){
  return timed('previous access rule (0949, per case) '+(ctx.userId===admin.userId?'GBS':'viewer'),async()=>(await withTenant(ctx,tx=>tx.execute<{id:string}>(sql`select app.probation_visible_reference() as id`))).map(r=>r.id).sort());
 }
@@ -127,6 +137,7 @@ describe('tracker read at real-group shape',()=>{
   await owner.db.execute(sql`insert into assignment(tenant_id,employment_id,company_id,department_id,employment_type,valid_from) select ${b.tenantId}::uuid,c.employment_id,c.company_id,${department.id}::uuid,'full_time','2025-01-01' from probation_case c where c.tenant_id=${b.tenantId}::uuid and c.company_id=${companies[0]}::uuid`);
   for(const[name,ctx,least]of [['employee',{...admin,userId:employee,personId:subject.person,roles:['employee'],grants:undefined} as SessionContext,1],['Line Manager',manager.ctx,40],['PBP',pbp.ctx,1],['delegate',delegate.ctx,1],['Head of Department',hod.ctx,15],['outsider',outsider.ctx,0]] as const){
    const before=await previousVisible(ctx),after=await currentVisible(ctx);await currentVisible(ctx); // a second, warm read separates a cold first statement from the path cost
+   if(name==='employee')await explainNested(ctx);
    expect(after,name).toEqual(before);expect(after.length,name).toBeGreaterThanOrEqual(least);
    if(before.length){const previous=await previousReader(before,{}),page=await timed('tracker read '+name,()=>probationSummaryRows(ctx,{limit:100}));expect(page.rows.map(r=>r.id),name).toEqual(previous.ids.slice(0,100));expect(page.total,name).toBe(previous.counts.total);}
   }

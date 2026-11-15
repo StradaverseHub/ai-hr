@@ -286,6 +286,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const privateFunctions=[
    // 5741: the approval-commit trigger and two internal posting value helpers, never granted to the application role.
    'app.personnel_posting_approval_complete()','app.personnel_posting_day(jsonb)','app.personnel_posting_values_ok(text,jsonb)',
+   // Probation core (5742, 5744-5746, 5749): internal helpers, never granted to the application role.
+   'app.probation_company_ancestors(uuid[])','app.probation_config_write_company(uuid,text,jsonb,boolean,integer)','app.probation_did_not_join(uuid)','app.probation_general_delegate(uuid,uuid,text)','app.probation_holders_set(uuid[])','app.probation_settings_materialize(uuid[])','app.probation_settings_scope_check(text,jsonb)','app.probation_source_from_start(jsonb,uuid)','app.probation_visible_among(uuid[])',
    // Board window 4 (5124): a trigger function, never granted to the application role.
    // 5129: the set-wise effective-snapshot owner, inlined into app.payroll_history_effective and the batch aggregate.
    // Board release block 5400-5560: three trigger functions, owner only.
@@ -379,6 +381,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.personnel_posting_day(jsonb)','app.personnel_posting_edit(uuid,integer,jsonb)','app.personnel_posting_groups(text[])',
    'app.personnel_posting_people(uuid[])','app.personnel_posting_record_movement(uuid,text)','app.personnel_posting_values_ok(text,jsonb)',
    'app.personnel_posting_visible(text,uuid,text)','app.personnel_private_search_entries(text,uuid[])','app.personnel_search_candidates(uuid[],boolean,boolean,text,text,text,text,text[])',
+   // Probation core (5742, 5744-5746, 5749; 16 November 2026): settings scope, case at activation, override event, set-based access and tracker, delegation.
+   'app.probation_company_ancestors(uuid[])','app.probation_config_write_company(uuid,text,jsonb,boolean,integer)','app.probation_did_not_join(uuid)','app.probation_general_delegate(uuid,uuid,text)','app.probation_holders_set(uuid[])','app.probation_max_extensions(jsonb)','app.probation_record_override(uuid)','app.probation_settings_materialize(uuid[])','app.probation_settings_scope_admin()','app.probation_settings_scope_check(text,jsonb)','app.probation_settings_scope_refresh(uuid)','app.probation_settings_scope_retire(uuid,integer,text)','app.probation_settings_scope_save(uuid,text,text,uuid[],jsonb,boolean,integer,text)','app.probation_source_from_start(jsonb,uuid)','app.probation_tracker_cases()','app.probation_tracker_page(uuid[])','app.probation_visible_among(uuid[])','app.probation_visible_case_ids()',
    'app.register_import_release(uuid,boolean)','app.reward_access_observation_due(uuid)','app.reward_access_self_change_guard()',
    'app.reward_actor_holds_role(text)','app.reward_actor_page_level(text)','app.reward_config_apply_confirmed_pat(uuid,uuid)',
    'app.reward_config_architecture_for_source(uuid,uuid,uuid,date)','app.reward_config_change_recipients(uuid)','app.reward_config_change_record(text,text,uuid,text,uuid[],text,text,boolean,integer,jsonb,uuid,uuid[],text)',
