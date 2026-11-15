@@ -39909,5 +39909,85 @@
       "notPending": "Posting {posting} is no longer waiting for approval.",
       "backToPostings": "Back to Personnel postings"
     }
+  },
+  "probationLetters": {
+    "routing": {
+      "title": "Signing and review routing",
+      "help": "Who reviews, approves and signs this letter, and in what order. Steps with the same order number happen at the same time, and the letter moves on when all of them are done. Who each step resolves to comes from Assignment groups and Routing rules. A Review step can edit the letter until the first signature; after that the text is locked. Anyone can send the letter back with a comment: every signature is cleared and it returns to the step that owns the document (or the People Business Partner if none is ticked).",
+      "empty": "No signing routing set. This letter uses the signing route below, as today.",
+      "notStored": "Signing and review routing is switched on together with the new letter flow. Until then this letter uses the signing route below.",
+      "stepTitle": "Step {n}",
+      "order": "Order",
+      "action": "Action",
+      "who": "Who",
+      "owner": "Owns the document",
+      "pick": "Choose one person by",
+      "pickAny": "Any member",
+      "pickRoundRobin": "Round robin",
+      "oneOfGroup": "A routing or group gives one person for this step, chosen by the rule above.",
+      "actions": {
+        "review": "Review",
+        "approve": "Approve",
+        "sign": "Sign"
+      },
+      "hint": {
+        "review": "Can edit the letter until the first signature. Shown in Approval Items.",
+        "approve": "A decision with no signature. Shown in Approval Items.",
+        "sign": "Signs the letter. The last step releases it. Signers can’t edit the text.",
+        "owner": "Send-backs come to this step."
+      },
+      "whoEmployee": "The employee",
+      "whoDirectSuperior": "Their Direct Superior",
+      "whoRouting": "Routing: {name}",
+      "whoGroup": "Assignment group: {name}",
+      "whoPeople": "Named people",
+      "unknown": "No longer available",
+      "people": "People at this step",
+      "removePerson": "Remove {name}",
+      "remove": "Remove step {n}",
+      "add": "Add signing step",
+      "problems": "Problems",
+      "blocks": "Signature blocks",
+      "blocksHelp": "Who signs comes from the signing routing above. This only decides where that signature prints.",
+      "noBlocks": "This version has no signature block yet. Add one in the content.",
+      "blockLabel": "Signature block {n}",
+      "chooseStep": "Choose a signing step…",
+      "stepOption": "Step {order} · Sign · {who}",
+      "oldSetting": "{role} (old setting — choose a step)",
+      "stepRemoved": "Signing step removed — choose another"
+    },
+    "preview": {
+      "caseLabel": "Preview values for",
+      "chooseCase": "Choose a case",
+      "loading": "Loading the case’s values…",
+      "noOutcome": "This case has no decided outcome yet, so merge fields show as placeholders.",
+      "notPublished": "Case values can be previewed for a saved, published version that matches the case’s outcome. Merge fields show as placeholders.",
+      "unavailable": "The preview values are unavailable right now."
+    },
+    "history": {
+      "routingSteps": "{count, plural, =0 {no routing} one {# routing step} other {# routing steps}}"
+    }
+  },
+  "automationRuntime": {
+    "status": {
+      "running": "Running",
+      "waiting": "Waiting for the document",
+      "done": "Finished",
+      "skipped": "Skipped",
+      "failed": "Stopped"
+    },
+    "log": {
+      "started": "Started",
+      "skipped": "Skipped",
+      "stepDone": "Step done",
+      "stepSkipped": "Step skipped",
+      "stepFailed": "Step failed",
+      "waiting": "Waiting",
+      "resumed": "Continued",
+      "done": "Finished",
+      "failed": "Stopped"
+    },
+    "noWorkflow": "No workflow matched this case, so it was sent to the People Business Partner.",
+    "fallback": "Meant for {meantFor}; sent to the fallback group because nobody was found."
   }
 }

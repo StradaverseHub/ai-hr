@@ -255,6 +255,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5744_probation_case_at_activation',
    '5745_probation_outcome_override_event',
    '5746_probation_tracker_scale_and_extensions',
+   '5747_document_signing_review_routing',
+   '5748_automation_runs',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -283,6 +285,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // callable by the application role, and none is callable by PUBLIC. The policy-side and trigger-WHEN helpers are
   // granted to exactly the roles their policies or the domain_event writers are (test/policy-helper-function-grants).
   const privateFunctions=[
+   // 5748: the run-log bound check, owner only.
+   'app.automation_run_log_valid(jsonb)',
    // 5741: the approval-commit trigger and two internal posting value helpers, never granted to the application role.
    'app.personnel_posting_approval_complete()','app.personnel_posting_day(jsonb)','app.personnel_posting_values_ok(text,jsonb)',
    // Board window 4 (5124): a trigger function, never granted to the application role.
@@ -327,6 +331,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    // daa76ed4/96a54ed2 (5140-5144, origin/alpha 65e23a1e7): the attendance resolution, escalation, on-behalf and final-window functions.
    // 5160 (origin/alpha de15677b0): the sweep's net-swing threshold reader.
    // Probation reshape (5740, 5741, 5743; 16 November 2026): shared automation and Personnel postings functions.
+   // 5747/5748: document signing review-routing helpers and the shared workflow-run functions.
    'app._access_bootstrap_eligible(uuid,uuid)','app._access_workforce_list_rows(uuid[])','app._ai_control_context_for_purpose(text,boolean,boolean)',
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()','app._assert_assistant_rewards_presentation_v1(text)',
    'app._assistant_assigned_index_login(uuid,boolean)','app._assistant_presentation_feature_unpaused_v1()','app._assistant_rewards_calendar_choice_payload_v1()',
@@ -346,17 +351,22 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.attendance_workflow_hierarchy_v5(uuid,integer)','app.attendance_workflow_on_behalf_allowed(uuid,integer,text)','app.attendance_workflow_on_behalf_slot(uuid,uuid)',
    'app.attendance_workflow_open_final_window(uuid)','app.attendance_workflow_preview_bind()','app.attendance_workflow_stage_clock()',
    'app.attendance_workflow_superior_diagnostic(uuid,integer)','app.automation_active_users(uuid[])','app.automation_assignment_groups()',
-   'app.automation_can_configure(text)','app.automation_can_configure_any()','app.automation_email_template_save(uuid,text,text,boolean,text,text,jsonb,boolean,integer,text)',
-   'app.automation_routing_save(uuid,text,jsonb,boolean,integer,text)','app.automation_workflow_save(uuid,text,text,boolean,jsonb,integer,text)','app.bulk_job_access(uuid)',
-   'app.bulk_job_admit()','app.bulk_job_attribution()','app.bulk_job_capability_held(uuid)',
-   'app.bulk_job_clear_inputs(uuid,boolean)','app.bulk_job_enqueue(text,uuid,uuid[],text,bytea,jsonb)','app.bulk_job_event_attribution()',
-   'app.bulk_job_fence(uuid,text)','app.bulk_job_held(uuid)','app.bulk_job_input_conforms(jsonb,integer,jsonb)',
-   'app.bulk_job_input_shape_valid(jsonb)','app.bulk_job_lease_capability(uuid,uuid,text)','app.bulk_job_mark_watched(uuid)',
-   'app.bulk_job_notice_recipients(uuid)','app.bulk_job_pending_steps(uuid,integer)','app.bulk_job_request_cancel(uuid,text)',
-   'app.bulk_job_scope_current(text,uuid[])','app.bulk_job_seal_verify(uuid,text)','app.bulk_job_step_digest(text,integer,jsonb,text,jsonb,text)',
-   'app.bulk_job_step_update(uuid,integer[],jsonb)','app.bulk_job_steps_put(uuid,boolean,jsonb)','app.bulk_job_value_digest(jsonb)',
-   'app.bulk_job_waiting(uuid)','app.bulk_job_worker_ready(text)','app.bulk_job_worker_update(uuid,jsonb)',
-   'app.contract_renewal_open(uuid)','app.delegated_approval_subjects(uuid[],text,text)','app.domain_event_chain_arm()',
+   'app.automation_can_configure(text)','app.automation_can_configure_any()','app.automation_can_run(text,uuid)',
+   'app.automation_email_template_save(uuid,text,text,boolean,text,text,jsonb,boolean,integer,text)','app.automation_routing_save(uuid,text,jsonb,boolean,integer,text)','app.automation_run_log_valid(jsonb)',
+   'app.automation_run_save(uuid,text,text,integer,uuid,jsonb,jsonb,text)','app.automation_run_start(uuid,text,uuid,integer,uuid,text,text,text,jsonb,jsonb)','app.automation_run_subject_access(text,uuid)',
+   'app.automation_runner_waiting(text,uuid,uuid)','app.automation_runner_workflows(text,text,uuid)','app.automation_workflow_save(uuid,text,text,boolean,jsonb,integer,text)',
+   'app.bulk_job_access(uuid)','app.bulk_job_admit()','app.bulk_job_attribution()',
+   'app.bulk_job_capability_held(uuid)','app.bulk_job_clear_inputs(uuid,boolean)','app.bulk_job_enqueue(text,uuid,uuid[],text,bytea,jsonb)',
+   'app.bulk_job_event_attribution()','app.bulk_job_fence(uuid,text)','app.bulk_job_held(uuid)',
+   'app.bulk_job_input_conforms(jsonb,integer,jsonb)','app.bulk_job_input_shape_valid(jsonb)','app.bulk_job_lease_capability(uuid,uuid,text)',
+   'app.bulk_job_mark_watched(uuid)','app.bulk_job_notice_recipients(uuid)','app.bulk_job_pending_steps(uuid,integer)',
+   'app.bulk_job_request_cancel(uuid,text)','app.bulk_job_scope_current(text,uuid[])','app.bulk_job_seal_verify(uuid,text)',
+   'app.bulk_job_step_digest(text,integer,jsonb,text,jsonb,text)','app.bulk_job_step_update(uuid,integer[],jsonb)','app.bulk_job_steps_put(uuid,boolean,jsonb)',
+   'app.bulk_job_value_digest(jsonb)','app.bulk_job_waiting(uuid)','app.bulk_job_worker_ready(text)',
+   'app.bulk_job_worker_update(uuid,jsonb)','app.contract_renewal_open(uuid)','app.delegated_approval_subjects(uuid[],text,text)',
+   'app.document_signing_can_edit(jsonb,uuid)','app.document_signing_content_visible(uuid,boolean)','app.document_signing_locked(jsonb)',
+   'app.document_signing_owner(jsonb)','app.document_signing_owner_step(jsonb)','app.document_signing_pending_steps(jsonb)',
+   'app.document_signing_returned(jsonb)','app.document_signing_round_actions(jsonb)','app.domain_event_chain_arm()',
    'app.domain_event_chain_flush(uuid)','app.domain_event_chain_seal_now()','app.domain_event_chain_sealing()',
    'app.employee_import_revert_release(uuid,boolean)','app.employment_void_reference_blockers(uuid[])','app.home_leave_presentation_index(text)',
    'app.home_own_clock_day(uuid,date,date)','app.home_own_schedule_range(uuid,date,date)','app.import_activation_conflicts(uuid)',
@@ -666,6 +676,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // policies it adds (5580's configuration-editor and owner policies and 5600's owner policies included) (qual/with_check as md5 digests, the migration owner written OWNER) and the one it retires
   // (5400 drops the second-person PAT confirmation policy). Nothing else in the privilege graph may change.
   const boardRelations:Record<string,{rls:boolean;force:boolean;acl:string|null}>={
+   'automation_run':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
    // Probation reshape (5740, 5741, 5743; 16 November 2026): four append-only tables, read-only to the application.
    'automation_email_template_version':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
    'automation_routing_version':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
@@ -685,6 +696,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {schemaname:'public',tablename:'automation_email_template_version',policyname:'automation_email_template_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'bac4a95592bbda57aed591f6db313641',with_check:null},
    {schemaname:'public',tablename:'automation_routing_version',policyname:'automation_routing_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
    {schemaname:'public',tablename:'automation_routing_version',policyname:'automation_routing_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'f20caae34239109c303ca06035783833',with_check:null},
+   {schemaname:'public',tablename:'automation_run',policyname:'automation_run_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
+   {schemaname:'public',tablename:'automation_run',policyname:'automation_run_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'e9cbf47fa5ad06022706718f7647f2b1',with_check:null},
    {schemaname:'public',tablename:'automation_workflow_version',policyname:'automation_workflow_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
    {schemaname:'public',tablename:'automation_workflow_version',policyname:'automation_workflow_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'bac4a95592bbda57aed591f6db313641',with_check:null},
    {schemaname:'public',tablename:'company_registration_classification',policyname:'company_registration_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'SELECT',qual:'3f508ac9bab3a400ba652cdcbc225fec',with_check:null},
