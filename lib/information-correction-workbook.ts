@@ -1,19 +1,21 @@
 import * as XLSX from 'xlsx';
 import {readSpreadsheetArchive} from './spreadsheet-archive';
-import {INFORMATION_HEADERS,INFORMATION_HEADERS_V2,type InformationHeader,type InformationImportRow,type InformationOptions} from './information-correction';
+import {INFORMATION_HEADERS,INFORMATION_HEADERS_V2,INFORMATION_HEADERS_V3,type InformationHeader,type InformationImportRow,type InformationOptions} from './information-correction';
 import {isCalendarDate} from './calendar-date';
 import {trimWorksheetToData} from './spreadsheet-data-extent';
 export const INFORMATION_MAX_ROWS=200;
 /** Codes are text cells so leading zeros survive. */
 const CODE_HEADERS=new Set<InformationHeader>(['Employee ID','Company Code','New Company Code','Job Grade','Business Unit','Department','Position','Direct Superior']);
-const DATE_HEADERS=new Set<InformationHeader>(['Group Join Date','Join Date','Contract End Date','Internship End Date','Confirmation Date']);
+const DATE_HEADERS=new Set<InformationHeader>(['Group Join Date','Join Date','Contract End Date','Internship End Date','Confirmation Date','Effective Date']);
 /** ccd3a65c — each period value travels with its unit; one without the other is refused. */
 export const INFORMATION_PERIOD_COLUMNS=[['Probation Period','Probation Period Unit'],['Extended Probation Period','Extended Probation Period Unit'],['Notice Before Confirmation','Notice Before Confirmation Unit'],['Notice After Confirmation','Notice After Confirmation Unit']] as const satisfies readonly (readonly [InformationHeader,InformationHeader])[];
 /** Which template a Corrections sheet is, by its exact header row. Version 1 keeps today's behaviour,
- * including ignoring a trailing Business Unit/Parent company column, so an old file never starts writing it. */
-function templateVersion(sheet:XLSX.WorkSheet,lastColumn:number):1|2{
+ * including ignoring a trailing Business Unit/Parent company column, so an old file never starts writing it.
+ * Board 4604dccc — version 3 is version 2 with a trailing Effective Date; a version 2 file still reads, as today. */
+function templateVersion(sheet:XLSX.WorkSheet,lastColumn:number):1|2|3{
  const header=(c:number)=>{const cell=sheet[XLSX.utils.encode_cell({r:0,c})];if(cell?.f)throw new Error('The template columns changed. Download a new template.');return cell?.v;};
  if(header(INFORMATION_HEADERS.length-1)===INFORMATION_HEADERS[INFORMATION_HEADERS.length-1])return 1;
+ if(lastColumn===INFORMATION_HEADERS_V3.length-1&&INFORMATION_HEADERS_V3.every((name,c)=>header(c)===name))return 3;
  if(lastColumn!==INFORMATION_HEADERS_V2.length-1||INFORMATION_HEADERS_V2.some((name,c)=>header(c)!==name))throw new Error('The template columns changed. Download a new template.');
  return 2;
 }
@@ -23,7 +25,7 @@ function cellDate(book:XLSX.WorkBook,cell:XLSX.CellObject){
 }
 /** Strict worksheet envelope. Formulas and errors never supply correction values, even with cached values. */
 export function parseInformationWorkbook(content:Buffer):InformationImportRow[]{return parseInformationWorkbookVersioned(content).rows;}
-export function parseInformationWorkbookVersioned(content:Buffer):{version:1|2;rows:InformationImportRow[]}{
+export function parseInformationWorkbookVersioned(content:Buffer):{version:1|2|3;rows:InformationImportRow[]}{
  if(content.length>10485760)throw new Error('Choose an Excel file no larger than 10 MB.');
  readSpreadsheetArchive(content,{maxBytes:10485760,maxExpandedBytes:33554432,maxEntries:128});
  const book=XLSX.read(content,{type:'buffer',cellDates:false,cellFormula:true});
@@ -34,10 +36,10 @@ export function parseInformationWorkbookVersioned(content:Buffer):{version:1|2;r
  if(!range||range.s.r!==0||range.s.c!==0)throw new Error('Use the Corrections sheet from the Information-Only Correction template, with its headers in row 1.');
  if(range.e.r<1)throw new Error('The file has no employee rows.');
  if(range.e.r>INFORMATION_MAX_ROWS)throw new Error(`Enter at most ${INFORMATION_MAX_ROWS} employee rows. This file has entries down to row ${range.e.r+1}; split it into separate files.`);
- if(range.e.c>=INFORMATION_HEADERS_V2.length)throw new Error(`The Corrections sheet has entries in column ${XLSX.utils.encode_col(range.e.c)}, after the last template column. Remove them or download a new template.`);
+ if(range.e.c>=INFORMATION_HEADERS_V3.length)throw new Error(`The Corrections sheet has entries in column ${XLSX.utils.encode_col(range.e.c)}, after the last template column. Remove them or download a new template.`);
  if(range.e.c<INFORMATION_HEADERS.length-1)throw new Error('The template columns changed. Download a new template.');
  const version=templateVersion(sheet,range.e.c);
- const headers:readonly InformationHeader[]=version===1?INFORMATION_HEADERS:INFORMATION_HEADERS_V2;
+ const headers:readonly InformationHeader[]=version===1?INFORMATION_HEADERS:version===2?INFORMATION_HEADERS_V2:INFORMATION_HEADERS_V3;
  if(version===1&&range.e.c>=INFORMATION_HEADERS.length+2)throw new Error('Use the nine-column template with between 1 and 200 employee rows.');
  headers.forEach((header,c)=>{const cell=sheet[XLSX.utils.encode_cell({r:0,c})];if(cell?.v!==header||cell.f)throw new Error('The template columns changed. Download a new template.');});
  const ignoredColumns:Array<{column:number;field:'businessUnit'|'parentCompany'}>=[];
@@ -56,7 +58,7 @@ export function parseInformationWorkbookVersioned(content:Buffer):{version:1|2;r
     if(!isCalendarDate(date))errors.push(`${header}: use YYYY-MM-DD or an Excel date.`);else values[header]=date;
    }else {const value=String(cell.v).trim();if(value.length>1000)errors.push(`${header}: maximum 1,000 characters.`);else values[header]=value;}
   }
-  if(version===2)for(const [value,unit] of INFORMATION_PERIOD_COLUMNS)if((values[value]===undefined)!==(values[unit]===undefined)&&!errors.some(error=>error.startsWith(value+':')||error.startsWith(unit+':')))errors.push(`${value}: enter the period and its unit together (${unit}).`);
+  if(version!==1)for(const [value,unit] of INFORMATION_PERIOD_COLUMNS)if((values[value]===undefined)!==(values[unit]===undefined)&&!errors.some(error=>error.startsWith(value+':')||error.startsWith(unit+':')))errors.push(`${value}: enter the period and its unit together (${unit}).`);
   const ignoredOrganisation:NonNullable<InformationImportRow['ignoredOrganisation']>={};for(const column of ignoredColumns){const cell=sheet[XLSX.utils.encode_cell({r,c:column.column})];if(cell?.f||cell?.t==='e'){errors.push('Organisation columns cannot contain formulas or error cells.');continue;}const value=String(cell?.v??'').trim();if(value.length>1000)errors.push('Organisation value: maximum 1,000 characters.');else if(value)ignoredOrganisation[column.field]=value;}
   if(!Object.keys(values).length&&!errors.length&&!Object.keys(ignoredOrganisation).length)continue;
   const companyCode=values['Company Code']??'',employeeCode=values['Employee ID']??'';
@@ -71,15 +73,16 @@ export function parseInformationWorkbookVersioned(content:Buffer):{version:1|2;r
  return {version,rows};
 }
 const LABEL_CAPTIONS={orgDivision:'Division',orgBranch:'Branch',orgRegion:'Region',orgLine:'Line',orgSection:'Section',orgTeam:'Team',orgBase:'Base',employmentCategory:'Category'} as const;
-/** Version 2 template (ccd3a65c): the five facts plus the employment details corrected through their owners. */
+/** Version 3 template (board 4604dccc): version 2 (ccd3a65c, the five facts plus the employment details corrected
+ * through their owners) and a trailing Effective Date. */
 export function informationWorkbook(options:InformationOptions):Uint8Array{
  const book=XLSX.utils.book_new();
- const sheet=XLSX.utils.aoa_to_sheet([[...INFORMATION_HEADERS_V2]]);sheet['!cols']=INFORMATION_HEADERS_V2.map(()=>({wch:24}));
+ const sheet=XLSX.utils.aoa_to_sheet([[...INFORMATION_HEADERS_V3]]);sheet['!cols']=INFORMATION_HEADERS_V3.map(()=>({wch:24}));
  XLSX.utils.book_append_sheet(book,sheet,'Corrections');
  XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([
  ['Information-Only Correction'],['One row per existing employee. Maximum 200 rows. One file can correct many fields for many employees.'],['Company Code checks the existing company. New Company Code is optional.'],['Employee ID and codes must be text; preserve leading zeros. Employee Name is reference only.'],['Blank correction fields keep existing values. This template does not clear values. Supply a reason on every row.'],['Dates: YYYY-MM-DD text or actual Excel dates. No formulas.'],['Contract End Date applies to Contract employees and Internship End Date to Intern employees (the type after this correction). Each must be later than the start or join date.'],
- ['Business Unit, Department and Position: use the codes listed for the employee\'s company on the reference sheets. Business Unit is refused where the Group structure sets it.'],['Division to Category: use a value from the Organisation Labels sheet.'],['Periods: enter the number and its unit (Month, Week or Day) together.'],['Direct Superior: the Employee ID of an active employee of the same company.'],
- ['Corrections apply from the day you confirm them. No movement event is added and earlier history keeps its values.'],['Completed transactions are never recalculated. Future processing may use the corrected information.'],
+ ['Business Unit, Department and Position: use the codes listed for the employee\'s company on the reference sheets. Business Unit is refused where the Group structure sets it.'],['Division to Category: use a value from the Organisation Labels sheet.'],['Periods: enter the number and its unit (Month, Week or Day) together.'],['Direct Superior: the Employee ID of an active employee in any company you can view.'],
+ ['Effective Date (optional): the date the corrected Company, Employment Type, Business Unit, Department, Position, labels and Direct Superior apply from, between the Group Join Date and today. Blank means today. The Group Join Date corrects the original hire details.'],['Corrected details apply from the Effective Date until the next recorded change. Later movements and corrections keep their own dates and values. No movement event is added.'],['A correction that contradicts a later movement\'s recorded Before value is refused for that row. Closed payroll in the corrected period must be acknowledged when you confirm the import.'],['Completed transactions are never recalculated. Future processing may use the corrected information.'],
  ['Basic Salary, Tender Resignation Date, Resignation Date and Last Working Date: correct the recorded event with the Movement import, Action "Update".'],['Payment Method: use the Bank and Statutory import.'],['Use Employment Movement for genuine transfers and operational changes.']]),'Instructions');
  XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['Company Code','Company Name'],...options.companies.map(c=>[c.code,c.name])]),'Companies');
  XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['Job Grade Code','Job Grade Name'],...options.grades.map(g=>[g.code,g.name])]),'Job Grades');

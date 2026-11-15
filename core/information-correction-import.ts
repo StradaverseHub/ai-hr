@@ -13,6 +13,17 @@ import {publicErrorMessage} from '../lib/public-error';
 import {pgSqlState} from '../lib/db-error';
 const rowError=(error:unknown)=>error instanceof InformationCorrectionError?error.message:publicErrorMessage(error);
 /** Employments by company and Employee ID, for every key in one statement; `view` adds the Workforce view check. */
+/** Every employment the user can view whose Employee ID is one of `codes`, in any company, keyed by code. A Direct
+ * Superior may work for another company of the group (owner decision, 15 Nov 2026), as the Personnel record's
+ * Direct Superior field already allows. One statement for the whole file. */
+async function visibleEmploymentsByCodeTx(tx:Tx,ctx:SessionContext,codes:string[]){
+ const found=new Map<string,{id:string;companyId:string}[]>(),unique=[...new Set(codes)];
+ if(!unique.length)return found;
+ const rows=await tx.select({id:employment.id,companyId:employment.companyId,code:employment.employeeCode}).from(employment).where(and(eq(employment.tenantId,ctx.tenantId),
+  sql`${employment.employeeCode} in (${sql.join(unique.map(code=>sql`${code}`),sql`,`)})`,workforceEmploymentPredicate(sql`${employment.id}`,'view')));
+ for(const row of rows){const key=row.code!;found.set(key,[...(found.get(key)??[]),{id:row.id,companyId:row.companyId}]);}
+ return found;
+}
 async function employmentsByCodeTx(tx:Tx,ctx:SessionContext,keys:{companyId:string;code:string}[],view:boolean){
  const found=new Map<string,string[]>(),unique=[...new Map(keys.map(key=>[key.companyId+'|'+key.code,key])).values()];
  if(!unique.length)return found;
@@ -30,14 +41,14 @@ export async function previewInformationUpload(ctx:SessionContext,input:{name:st
  // Every row's employee and every Direct Superior are resolved in one statement each, with the predicates of the
  // per-row lookups they replace, instead of one transaction per row (SCALE rule 2). Each row is then reviewed by the
  // correction owner, and its organisation warnings are read in one transaction after the reviews.
- const employeeKeys:{companyId:string;code:string}[]=[],superiorKeys:{companyId:string;code:string}[]=[];
+ const employeeKeys:{companyId:string;code:string}[]=[],superiorCodes:string[]=[];
  for(const row of rows){
   const co=companyOf(row.companyCode);if(!co||row.errors.length)continue;
   employeeKeys.push({companyId:co.id,code:row.employeeCode});
-  const superior=version===2?row.values['Direct Superior']:undefined,destination=row.values['New Company Code']?companyOf(row.values['New Company Code']):co;
-  if(superior&&destination)superiorKeys.push({companyId:destination.id,code:superior});
+  const superior=version!==1?row.values['Direct Superior']:undefined;
+  if(superior)superiorCodes.push(superior);
  }
- const {employees,superiors}=employeeKeys.length?await withTenant(ctx,async tx=>({employees:await employmentsByCodeTx(tx,ctx,employeeKeys,false),superiors:await employmentsByCodeTx(tx,ctx,superiorKeys,true)})):{employees:new Map<string,string[]>(),superiors:new Map<string,string[]>()};
+ const {employees,superiors}=employeeKeys.length?await withTenant(ctx,async tx=>({employees:await employmentsByCodeTx(tx,ctx,employeeKeys,false),superiors:await visibleEmploymentsByCodeTx(tx,ctx,superiorCodes)})):{employees:new Map<string,string[]>(),superiors:new Map<string,{id:string;companyId:string}[]>()};
  for(const row of rows){
   const co=companyOf(row.companyCode);
   if(!co){row.errors.push('Company Code is unknown, ambiguous or outside your permission.');continue;}
@@ -55,8 +66,9 @@ export async function previewInformationUpload(ctx:SessionContext,input:{name:st
    if(row.values['Employment Type'])changes.employmentType=row.values['Employment Type'];
    if(row.values['Contract End Date'])changes.contractEndDate=row.values['Contract End Date'];
    if(row.values['Internship End Date'])changes.internshipEndDate=row.values['Internship End Date'];
-   if(version===2)extendedChanges(options,row.values,changes.companyId??co.id,changes,superiors);
-   row.preview=await previewInformationCorrection(ctx,{employmentId:matches[0],changes,reason:row.values['Correction Reason']!},{extended:true});
+   if(version!==1)extendedChanges(options,row.values,changes.companyId??co.id,changes,superiors);
+   // Board 4604dccc — version 3's Effective Date; blank (and every version 1 or 2 file) means today.
+   row.preview=await previewInformationCorrection(ctx,{employmentId:matches[0],changes,reason:row.values['Correction Reason']!,...(row.values['Effective Date']?{effectiveOn:row.values['Effective Date']}:{})},{extended:true});
   }catch(error){row.errors.push(rowError(error));}
  }
  // Each reviewed row's warnings in its own savepoint, so one refusal stays that row's error, as before.
@@ -75,7 +87,9 @@ export async function previewInformationUpload(ctx:SessionContext,input:{name:st
  // An operation-key retry returns the stored plan, never a fresh preview with the old attempt ID.
  return {attemptId:created.attemptId,plan:created.plan};
 }
-export async function confirmInformationUpload(ctx:SessionContext,input:{attemptId:string;previewHash:string}):Promise<InformationImportResult>{
+/** Board 4604dccc — `acknowledgeClosedPayroll` is the batch-level confirmation for the rows whose corrected period
+ * has closed payroll (listed on the review). Without it those rows fail with the closed months named. */
+export async function confirmInformationUpload(ctx:SessionContext,input:{attemptId:string;previewHash:string;acknowledgeClosedPayroll?:boolean}):Promise<InformationImportResult>{
  const load=()=>withTenant(ctx,async tx=>{
   const attempt=await lockImportAttemptTx(tx,ctx,input.attemptId,'information_correction');
   const [access]=await tx.execute<{ok:boolean}>(sql`select app.import_attempt_access(${attempt.id}::uuid,'maintain',true) as ok`);
@@ -101,7 +115,7 @@ export async function confirmInformationUpload(ctx:SessionContext,input:{attempt
     const prior=(await importAttemptItemsTx(tx,held.id)).find(item=>item.itemKey===String(row.row));
     if(prior){if(prior.status==='failed')throw new ImportHistoryError(prior.errors.join(' '));return;}
     const changes=Object.fromEntries(preview.changed.map(f=>[f,preview.after[f]])) as InformationChanges;
-    const saved=await correctInformationTx(tx,ctx,{employmentId:preview.employmentId,changes,reason:preview.reason,fingerprint:preview.fingerprint,method:'excel',batchId:held.id,filename:held.sourceName});
+    const saved=await correctInformationTx(tx,ctx,{employmentId:preview.employmentId,changes,reason:preview.reason,fingerprint:preview.fingerprint,method:'excel',batchId:held.id,filename:held.sourceName,effectiveOn:preview.effectiveOn,acknowledgeClosedPayroll:input.acknowledgeClosedPayroll===true});
     if(!saved.changed)throw new ImportHistoryError('The employee no longer needs this correction. Review again.');
     await recordImportItemTx(tx,ctx,{attemptId:held.id,companyId:preview.before.companyId!,employmentId:preview.employmentId,itemKey:String(row.row),label:preview.employeeCode+' · '+preview.name,ordinal:row.row,status:'applied',before:{values:changedLabels(preview.beforeLabels,preview.changed),reason:preview.reason},after:{values:changedLabels(preview.afterLabels,preview.changed),reason:preview.reason,organisationWarnings:row.warnings??[]}});
    });
@@ -123,7 +137,7 @@ const LABEL_COLUMNS=INFORMATION_LABEL_FIELDS.map(field=>[INFORMATION_FIELD_CAPTI
 const PLAIN_COLUMNS=(['probationValue','probationUnit','extendedProbationValue','extendedProbationUnit','confirmationDate','noticeBeforeConfirmationValue','noticeBeforeConfirmationUnit','noticeAfterConfirmationValue','noticeAfterConfirmationUnit'] as const).map(field=>[INFORMATION_FIELD_CAPTIONS[field],field] as const);
 /** ccd3a65c — version 2 cells resolved against the resulting company's options. Labels, periods and dates are
  * passed as typed; the correction command validates them and names the column. */
-function extendedChanges(options:Awaited<ReturnType<typeof informationCorrectionOptions>>,values:Partial<Record<InformationHeader,string>>,companyId:string,changes:InformationChanges,superiors:Map<string,string[]>){
+function extendedChanges(options:Awaited<ReturnType<typeof informationCorrectionOptions>>,values:Partial<Record<InformationHeader,string>>,companyId:string,changes:InformationChanges,superiors:Map<string,{id:string;companyId:string}[]>){
  for(const [header,kind,field,sheet] of ORGANISATION_COLUMNS){
   const value=values[header];if(!value)continue;
   const found=options.organisation.filter(row=>row.companyId===companyId&&row.kind===kind&&row.code.toUpperCase()===value.toUpperCase());
@@ -133,10 +147,11 @@ function extendedChanges(options:Awaited<ReturnType<typeof informationCorrection
  for(const [header,field] of [...LABEL_COLUMNS,...PLAIN_COLUMNS]){const value=values[header];if(value)changes[field]=value;}
  const superior=values['Direct Superior'];
  if(superior){
-  // View-scoped: a superior the user cannot view reads exactly like an unknown Employee ID.
-  const managers=superiors.get(companyId+'|'+superior)??[];
-  if(managers.length!==1)throw new InformationCorrectionError('Direct Superior: the Employee ID is unknown in this company or not visible to you.');
-  changes.managerEmploymentId=managers[0];
+  // View-scoped: a superior the user cannot view reads exactly like an unknown Employee ID. Employee IDs are unique
+  // per tenant (employment_employee_code_uq), so a visible match names one employee in whichever company employs them.
+  const managers=superiors.get(superior)??[];
+  if(managers.length!==1)throw new InformationCorrectionError('Direct Superior: the Employee ID is unknown or not visible to you.');
+  changes.managerEmploymentId=managers[0].id;
  }
 }
 type ConfirmedRow={row:number;status:'applied'|'failed'|'unchanged';errors:string[]};

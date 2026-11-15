@@ -57,3 +57,7 @@ HR blamed the payroll history.
 - Correcting a later Correct-information change that started the current record still requires reversing it
   first (on the same day, a second correction replaces it).
 - New translations need translation review.
+
+## Superseded in part (board 4604dccc, 2026-11-15)
+
+Decision 6 and the third Consequence are superseded by [dated information-only corrections](2026-11-15-dated-information-corrections.md): the join-date tickbox becomes the Effective Date, and an information correction no longer blocks an earlier-dated movement.

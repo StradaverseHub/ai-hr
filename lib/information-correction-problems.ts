@@ -33,7 +33,7 @@ const FIELD_RULES: readonly ImportProblemRule[] = [
   { re: /^maximum 1,000 characters\.$/, key: 'tooLong' },
   { re: /^enter the period and its unit together \((.+)\)\.$/, key: 'periodUnit', values: m => ({ unit: m[1] }), correction: 'periodUnit' },
   { re: /^"(.*)" is not an option for this company\. Check the (.+) reference sheet\.$/, key: 'notOption', values: m => ({ value: m[1], sheet: m[2] }), value: m => m[1], correction: 'chooseReference' },
-  { re: /^the Employee ID is unknown in this company or not visible to you\.$/, key: 'superiorUnknown' },
+  { re: /^the Employee ID is unknown or not visible to you\.$/, key: 'superiorUnknown' },
 ];
 /** Whole sentences. */
 const RULES: readonly ImportProblemRule[] = [

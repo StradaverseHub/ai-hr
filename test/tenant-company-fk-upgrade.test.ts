@@ -244,6 +244,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5640_lifecycle_v9_email_hold_company_tenant',
    // Statutory follow-ups (14 November 2026): EPF Bonus 2012 on the seeded-shape default BONUS pay item.
    '5660_pay_component_bonus_epf_bonus_2012',
+   // Board 4604dccc (15 November 2026): payroll history binds a record to the company of its month.
+   '5680_payroll_history_dated_company',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);

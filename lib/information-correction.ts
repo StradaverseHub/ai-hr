@@ -22,24 +22,40 @@ export const INFORMATION_PERIOD_PAIRS=[['probationValue','probationUnit'],['exte
 export const INFORMATION_LEAVE_FIELDS=['companyId','hiredOn','joinDate','gradeId','employmentType',...INFORMATION_ASSIGNMENT_FIELDS,...INFORMATION_LABEL_FIELDS,'confirmationDate'] as const satisfies readonly InformationField[];
 export type InformationValues=Record<InformationField,string|null>;
 export type InformationChanges=Partial<Record<InformationField,string>>;
-/** Board 154511c4 — what the review warns about: from which date the company changes, and a dated history that
- * starts before the (new) Group Join Date. */
-export type InformationWarning={code:'companyFromToday'|'companyFromJoinDate'|'historyStartAligned';date:string;from?:string};
+/** Board 154511c4 — what the review warns about: from which date (and, board 4604dccc, until which recorded change)
+ * the company changes, and a dated history that starts before the (new) Group Join Date. */
+export type InformationWarning={code:'companyFrom'|'historyStartAligned';date:string;from?:string;to?:string};
+/** Board 4604dccc — one dated record in the review, in Effective Date order: what this correction does to it. */
+export type InformationTimelineRecord={date:string;kind:string;label:string|null;company:string|null;status:'corrected'|'unchanged'|'conflict'};
+/** Board 4604dccc — a later movement whose recorded "from" value the correction would contradict. */
+export type InformationConflict={movementId:string;date:string;field:InformationField;kind:string;label:string|null};
 export type InformationPreview={effectiveOn:string;employmentId:string;employeeCode:string;name:string;fingerprint:string;before:InformationValues;after:InformationValues;beforeLabels:InformationValues;afterLabels:InformationValues;reason:string;changed:InformationField[];
- /** Board 154511c4 — the company correction applies to the whole dated history (the employee was always in it). */
+ /** Board 154511c4 — the correction reaches back to the start of the dated history. Kept on events for older readers. */
  fromJoinDate?:true;warnings?:InformationWarning[];
  /** Board 154511c4 — saving moves the start of the dated records (company/position, salary, reporting line) to the Group Join Date. */
- alignStart?:{from:string;to:string}};
+ alignStart?:{from:string;to:string};
+ /** Board 4604dccc — the earliest Effective Date (the start of the employee's dated history, the Group Join Date). */
+ earliestEffectiveOn?:string;
+ /** Board 4604dccc — the dated records in Effective Date order, flagged by what this correction does to each. */
+ timeline?:InformationTimelineRecord[];
+ /** Board 4604dccc — later movements this correction contradicts. A correction with conflicts is not saved. */
+ conflicts?:InformationConflict[];
+ /** Board 4604dccc — closed payroll months in the corrected period; saving requires an acknowledgement. */
+ closedPayrollPeriods?:string[];
+ /** Board 4604dccc — the corrected period of each dated field that stops at a later recorded change. */
+ until?:Partial<Record<InformationField,string>>};
 export type InformationOptions={companies:{id:string;code:string;name:string}[];grades:{id:string;code:string;name:string}[];employmentTypes:string[];organisation?:{companyId:string;companyCode:string;kind:'department'|'position'|'business_unit';id:string;code:string;name:string}[];labels?:{field:typeof INFORMATION_LABEL_FIELDS[number];value:string;label:string}[]};
 /** Version 1 (five facts) stays readable so an old file's ignored Business Unit never starts writing. */
 export const INFORMATION_HEADERS=['Company Code','Employee ID','Employee Name','New Company Code','Group Join Date','Join Date','Job Grade','Employment Type','Correction Reason'] as const;
 /** Version 2 Corrections sheet (ccd3a65c), detected by its exact header row. */
 export const INFORMATION_HEADERS_V2=['Company Code','Employee ID','Employee Name','New Company Code','Group Join Date','Join Date','Job Grade','Employment Type','Contract End Date','Internship End Date','Business Unit','Department','Position','Division','Branch','Region','Line','Section','Team','Base','Category','Probation Period','Probation Period Unit','Extended Probation Period','Extended Probation Period Unit','Confirmation Date','Notice Before Confirmation','Notice Before Confirmation Unit','Notice After Confirmation','Notice After Confirmation Unit','Direct Superior','Correction Reason'] as const;
-export type InformationHeader=typeof INFORMATION_HEADERS_V2[number];
+/** Board 4604dccc — version 3: version 2 plus an optional trailing Effective Date (blank means today). */
+export const INFORMATION_HEADERS_V3=[...INFORMATION_HEADERS_V2,'Effective Date'] as const;
+export type InformationHeader=typeof INFORMATION_HEADERS_V3[number];
 /** The template column that carries each field; row errors name these captions. */
 export const INFORMATION_FIELD_CAPTIONS:Record<InformationField,InformationHeader>={companyId:'New Company Code',hiredOn:'Group Join Date',joinDate:'Join Date',gradeId:'Job Grade',employmentType:'Employment Type',contractEndDate:'Contract End Date',internshipEndDate:'Internship End Date',businessUnitId:'Business Unit',departmentId:'Department',positionId:'Position',orgDivision:'Division',orgBranch:'Branch',orgRegion:'Region',orgLine:'Line',orgSection:'Section',orgTeam:'Team',orgBase:'Base',employmentCategory:'Category',probationValue:'Probation Period',probationUnit:'Probation Period Unit',extendedProbationValue:'Extended Probation Period',extendedProbationUnit:'Extended Probation Period Unit',confirmationDate:'Confirmation Date',noticeBeforeConfirmationValue:'Notice Before Confirmation',noticeBeforeConfirmationUnit:'Notice Before Confirmation Unit',noticeAfterConfirmationValue:'Notice After Confirmation',noticeAfterConfirmationUnit:'Notice After Confirmation Unit',managerEmploymentId:'Direct Superior'};
 export type InformationImportRow={row:number;companyCode:string;employeeCode:string;values:Partial<Record<InformationHeader,string>>;errors:string[];warnings?:string[];ignoredOrganisation?:{businessUnit?:string;parentCompany?:string};preview?:InformationPreview};
-export type InformationImportPlan={version:1;templateVersion?:1|2;previewHash:string;counts:{total:number;valid:number;invalid:number};issues:{rowNum:number;reason:string}[];rows:InformationImportRow[]};
+export type InformationImportPlan={version:1;templateVersion?:1|2|3;previewHash:string;counts:{total:number;valid:number;invalid:number};issues:{rowNum:number;reason:string}[];rows:InformationImportRow[]};
 export type InformationImportResult={attemptId:string;succeeded:number;failed:number;unchanged:number;rows:{row:number;status:'applied'|'failed'|'unchanged';errors:string[]}[]};
 /** ccd3a65c — one row of the Import Log of an Information-Only Correction file. */
 export type InformationLogRow={row:number;employeeCode:string;name:string|null;result:'saved'|'unchanged'|'not_saved'|'not_confirmed';changes:{field:InformationField;before:string|null;after:string|null}[];reason:string|null;errors:string[]};

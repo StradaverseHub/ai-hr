@@ -5953,6 +5953,13 @@
       "breakpoints": true
     },
     {
+      "idx": 5080,
+      "version": "7",
+      "when": 1793330005380,
+      "tag": "5680_payroll_history_dated_company",
+      "breakpoints": true
+    },
+    {
       "idx": 5100,
       "version": "7",
       "when": 1793330005400,

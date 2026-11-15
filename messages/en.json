@@ -1904,7 +1904,9 @@
           "reason": "Reason",
           "originalHeading": "Originally recorded",
           "correctedHeading": "Corrected",
-          "noneValue": "None"
+          "noneValue": "None",
+          "effectiveFrom": "Effective from",
+          "effectiveFromPointer": "Hire details are always corrected as at the hire date. To correct from another date, use Information-Only Correction with an Effective Date."
         },
         "payrollClosedBadge": "Payroll closed: {periods}",
         "informationCorrected": "Information corrected",
@@ -2470,7 +2472,10 @@
           "movement_history_payroll_company": "Payroll for %detail% was closed under a different company. Reopen that payroll or check the Before company.",
           "movement_history_overtaken": "A later history movement or correction has changed this period since. Delete that change first.",
           "history_closed_payroll": "Closed payroll covers %detail%. It stays as issued; only the employment record changes.",
-          "movement_history_change_on_date": "A change to this field is already recorded on this date. Correct or delete that change instead."
+          "movement_history_change_on_date": "A change to this field is already recorded on this date. Correct or delete that change instead.",
+          "movement_correction_boundary": "An information-only correction on %date% could not be kept after this movement. Review that correction first.",
+          "movement_correction_boundary_label": "An information-only correction from %date% sets a company that cannot use the department, position, business unit, cost centre or work location this movement sets. Correct that information first, or choose values the company can use.",
+          "movement_correction_company_record": "An information-only correction dated %date% recorded a different company before that date, so this movement cannot be placed before it. Correct the company from the Join Date with Information-Only Correction first, or use a date on or after %date%."
         },
         "v2": {
           "type": "Movement type",
@@ -3532,12 +3537,40 @@
       "templateFields": "Fields this template corrects (new ones highlighted). Blank cells keep the existing value.",
       "templateFieldsLabel": "Fields this template corrects",
       "ownersNote": "Basic Salary and resignation dates are corrected on the event that recorded them: use the Movement import with Action \"Update\". Payment Method is in the Bank and Statutory import.",
-      "fromJoinDate": "The employee was in this company from the join date (correct the whole history, not just from today). Only when the employee has been in one company throughout; change only the company in this correction.",
       "warnings": {
-        "companyFromToday": "The company changes from {date}. Before that date the employee stays in the current company. If the employee was always in the new company, tick “from the join date”; to record an earlier period in another company, import it as a history movement.",
-        "companyFromJoinDate": "The company changes for the whole history, from {date}.",
-        "historyStartAligned": "The employee’s dated records (company and position, salary, reporting line) start on {from}. Saving moves their start to the Group Join Date, {date}."
-      }
+        "historyStartAligned": "The employee’s dated records (company and position, salary, reporting line) start on {from}. Saving moves their start to the Group Join Date, {date}.",
+        "companyFrom": "The company changes from {date}.",
+        "companyFromUntil": "The company changes from {date} until {to}, when a later record changes it."
+      },
+      "effectiveTitle": "When does this correction apply?",
+      "effectiveDate": "Effective Date",
+      "effectiveDateHint": "Any date from {start} up to today ({today}). Defaults to today.",
+      "effectiveDateJoin": "Choosing {start}, the Group Join Date, corrects the employee’s original hire details. Company, Employment Type, Business Unit, Department, Position, organisation labels and Direct Superior apply from the Effective Date until the next recorded change.",
+      "timeline": {
+        "title": "Records in Effective Date order",
+        "intro": "These corrected details apply from {date} until the next recorded change. Later records keep their own dates and values. Nothing is overwritten or deleted.",
+        "date": "Effective Date",
+        "record": "Record",
+        "company": "Company",
+        "status": "What happens",
+        "kinds": {
+          "hired": "Hire",
+          "thisCorrection": "This correction",
+          "informationCorrection": "Information-Only Correction",
+          "record": "Assignment record"
+        },
+        "statuses": {
+          "corrected": "Corrected by this change",
+          "unchanged": "Unchanged",
+          "conflict": "Conflicts with this change"
+        }
+      },
+      "conflictTitle": "This correction cannot be saved",
+      "conflict": "{record} on {date} records {field} changing from a different value. Correct that movement first (Movement Event ID {id}), or choose an Effective Date after {date}.",
+      "closedPayroll": "Payroll for {periods} is already closed in the corrected period. Closed payroll, payslips, EA Forms and statutory submissions are not recalculated.",
+      "closedPayrollAcknowledge": "I confirm that closed payroll stays as issued.",
+      "importClosedPayroll": "These rows correct a period with closed payroll. Confirm below to save them; without the confirmation they are not saved.",
+      "importClosedPayrollRow": "Row {row} · {employee} · {periods}"
     }
   },
   "leave": {
@@ -41937,7 +41970,7 @@
       "tooLong": "Maximum 1,000 characters.",
       "periodUnit": "Enter the period and its unit together ({unit}).",
       "notOption": "\"{value}\" is not an option for this company. Check the {sheet} reference sheet.",
-      "superiorUnknown": "The Employee ID is unknown in this company or not visible to you.",
+      "superiorUnknown": "The Employee ID is unknown or not visible to you.",
       "organisationFormula": "Organisation columns cannot contain formulas or error cells.",
       "organisationTooLong": "Organisation value: maximum 1,000 characters.",
       "companyRequired": "Company Code is required.",

@@ -168,6 +168,8 @@ type LedgerEvent = {
 type AsgRow = typeof assignment.$inferSelect;
 type RlRow = typeof reportingLine.$inferSelect;
 
+const INFORMATION_CORRECTED = 'employment.information.corrected';
+const INFORMATION_BOUNDARY_REAPPLIED = 'employment.information.boundary.reapplied';
 /** The event types that create (or re-create) a version this module walks. */
 const LEDGER_TYPES = [
   'employment.hired',
@@ -176,7 +178,12 @@ const LEDGER_TYPES = [
   'assignment.entity-backfilled',
   'reporting-line.set',
   HIRE_CORRECTED_EVENT,
+  // Board 4604dccc — an information-only correction is a dated boundary like a movement: the walk carries a
+  // hire value through it for the fields it did not set, and stops for the fields it set.
+  INFORMATION_CORRECTED,
+  INFORMATION_BOUNDARY_REAPPLIED,
 ];
+
 
 /** One replaced row, as the correction event records it. */
 type Replacement = {
@@ -244,6 +251,9 @@ const zeroLength = (r: { validFrom: string; validTo: string | null }) => r.valid
 function inheritedByEvent(origin: LedgerEvent | null, field: string): boolean {
   if (!origin) return false;
   const p = origin.payload ?? {};
+  // Board 4604dccc — a version an information-only correction (or its re-application after an earlier movement)
+  // created inherited every field except the ones that correction set.
+  if (origin.eventType === INFORMATION_CORRECTED) return !(Array.isArray(p.fields) && p.fields.includes(field));
   // A data-repair split (scripts/backfill-assignment-company.ts) copies EVERY dimension of the head it
   // splits, by construction — so each field of the tail was inherited.
   if (origin.eventType === 'assignment.entity-backfilled') return !!p.splitFromAssignmentId;
@@ -329,8 +339,21 @@ async function loadPlanTx(tx: Tx, tenantId: string, employmentId: string): Promi
     .orderBy(asc(domainEvent.sequence));
 
   const corrections = events.filter((e) => e.eventType === HIRE_CORRECTED_EVENT);
-  const origin = originMapOf(corrections.map((e) => e.payload));
+  // Board 4604dccc — a dated information correction re-inserts the versions it carries a value through; those
+  // replacements lead back to the record that created them, exactly like a hire correction's.
+  const information = events.filter((e) => e.eventType === INFORMATION_CORRECTED);
+  const origin = originMapOf([...corrections, ...information].map((e) => e.payload));
   const creatorOf = new Map<string, LedgerEvent>();
+  for (const e of information) {
+    const p = e.payload ?? {};
+    for (const id of [...(Array.isArray(p.inserted) ? p.inserted : []), ...(typeof p.assignmentVersionId === 'string' && !(Array.isArray(p.assignment) && p.assignment.some((r: Replacement) => r?.replacementId === p.assignmentVersionId)) ? [p.assignmentVersionId] : [])])
+      creatorOf.set(id, e);
+  }
+  for (const e of events) {
+    if (e.eventType !== INFORMATION_BOUNDARY_REAPPLIED) continue;
+    for (const b of (Array.isArray(e.payload?.boundaries) ? e.payload.boundaries : []) as { insertedId?: string; fields?: string[] }[])
+      if (b?.insertedId) creatorOf.set(b.insertedId, { ...e, eventType: INFORMATION_CORRECTED, payload: { fields: b.fields ?? [] } });
+  }
   for (const e of events) {
     if (
       e.eventType === 'employment.assignment.changed' ||

@@ -2,7 +2,7 @@
 import {describe,expect,it} from 'vitest';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
-import {INFORMATION_HEADERS,INFORMATION_HEADERS_V2,type InformationHeader} from '../lib/information-correction';
+import {INFORMATION_HEADERS,INFORMATION_HEADERS_V2,INFORMATION_HEADERS_V3,type InformationHeader} from '../lib/information-correction';
 import {informationWorkbook,parseInformationWorkbook,parseInformationWorkbookVersioned} from '../lib/information-correction-workbook';
 
 function book(headers:readonly string[],rows:unknown[][]){const b=XLSX.utils.book_new();XLSX.utils.book_append_sheet(b,XLSX.utils.aoa_to_sheet([[...headers],...rows]),'Corrections');return XLSX.write(b,{type:'buffer',bookType:'xlsx'}) as Buffer;}
@@ -47,20 +47,21 @@ describe('ccd3a65c Information-Only Correction template version 2',()=>{
   expect(rows[0]).toMatchObject({ignoredOrganisation:{businessUnit:'BU-01'},errors:[]});
   expect(rows[0].values).not.toHaveProperty('Business Unit');
  });
- it('builds a version 2 template with reference sheets per company and the owner pointers',()=>{
+ it('builds the template (version 3 since board 4604dccc) with reference sheets per company and the owner pointers',()=>{
   const file=informationWorkbook({companies:[{id:'c1',code:'DEMO',name:'Demo Sdn Bhd'}],grades:[{id:'g',code:'G1',name:'Junior'}],employmentTypes:['full_time'],
    organisation:[{companyId:'c1',companyCode:'DEMO',kind:'department',id:'d',code:'Finance',name:'Finance'},{companyId:'c1',companyCode:'DEMO',kind:'business_unit',id:'u',code:'BU-01',name:'Retail'}],
    labels:[{field:'orgBranch',value:'KL',label:'Kuala Lumpur'}]});
   const b=XLSX.read(file,{type:'array'});
   expect(b.SheetNames).toEqual(['Corrections','Instructions','Companies','Job Grades','Employment Types','Business Units','Departments','Positions','Organisation Labels','Period Units']);
-  expect(XLSX.utils.sheet_to_json<string[]>(b.Sheets.Corrections,{header:1})[0]).toEqual([...INFORMATION_HEADERS_V2]);
+  expect(XLSX.utils.sheet_to_json<string[]>(b.Sheets.Corrections,{header:1})[0]).toEqual([...INFORMATION_HEADERS_V3]);
   expect(XLSX.utils.sheet_to_json<string[]>(b.Sheets.Departments,{header:1})).toEqual([['Company Code','Department Code','Department Name'],['DEMO','Finance','Finance']]);
   expect(XLSX.utils.sheet_to_json<string[]>(b.Sheets['Organisation Labels'],{header:1})).toEqual([['Column','Value','Label'],['Branch','KL','Kuala Lumpur']]);
   const instructions=XLSX.utils.sheet_to_json<string[]>(b.Sheets.Instructions,{header:1}).flat().join(' ');
   expect(instructions).toContain('Movement import, Action "Update"');expect(instructions).toContain('Bank and Statutory import');
-  // A downloaded template, filled in, parses as version 2.
-  XLSX.utils.sheet_add_aoa(b.Sheets.Corrections,[v2({...base,'Branch':'KL'})],{origin:'A2'});
-  expect(parseInformationWorkbookVersioned(XLSX.write(b,{type:'buffer',bookType:'xlsx'}))).toMatchObject({version:2,rows:[{values:{'Branch':'KL'},errors:[]}]});
+  expect(instructions).toContain('Effective Date (optional)');expect(instructions).toContain('Blank means today');
+  // A downloaded template, filled in, parses as version 3.
+  XLSX.utils.sheet_add_aoa(b.Sheets.Corrections,[[...v2({...base,'Branch':'KL'}),'2026-03-01']],{origin:'A2'});
+  expect(parseInformationWorkbookVersioned(XLSX.write(b,{type:'buffer',bookType:'xlsx'}))).toMatchObject({version:3,rows:[{values:{'Branch':'KL','Effective Date':'2026-03-01'},errors:[]}]});
  });
 });
 
@@ -92,5 +93,27 @@ describe('Information-Only Correction counts rows with entries, not formatted bl
  });
  it('refuses a header-only file as having no employee rows',()=>{
   expect(()=>parseInformationWorkbook(book(INFORMATION_HEADERS_V2,[]))).toThrow('The file has no employee rows.');
+ });
+});
+
+/** Board 4604dccc — version 3 appends an optional Effective Date; version 1 and 2 files still read, blank meaning today. */
+describe('Information-Only Correction template version 3',()=>{
+ const v3=(cells:Partial<Record<InformationHeader,unknown>>)=>INFORMATION_HEADERS_V3.map(header=>cells[header]??'');
+ it('reads the Effective Date as text or an Excel date, and leaves it out when blank',()=>{
+  const {version,rows}=parseInformationWorkbookVersioned(book(INFORMATION_HEADERS_V3,[v3({...base,'Effective Date':'2026-01-01'}),v3({...base,'Employee ID':'00013','Effective Date':45658}),v3({...base,'Employee ID':'00014','Department':'HR'})]));
+  expect(version).toBe(3);
+  expect(rows.map(row=>row.values['Effective Date'])).toEqual(['2026-01-01','2025-01-01',undefined]);
+  expect(rows.every(row=>!row.errors.length)).toBe(true);
+ });
+ it('names a malformed Effective Date as a row error',()=>{
+  const rows=parseInformationWorkbook(book(INFORMATION_HEADERS_V3,[v3({...base,'Effective Date':'01/02/2026x'})]));
+  expect(rows[0].errors).toEqual(['Effective Date: use YYYY-MM-DD or an Excel date.']);
+ });
+ it('still reads a version 2 file, with no Effective Date',()=>{
+  const {version,rows}=parseInformationWorkbookVersioned(book(INFORMATION_HEADERS_V2,[v2({...base,'Department':'HR'})]));
+  expect(version).toBe(2);expect(rows[0].values).not.toHaveProperty('Effective Date');
+ });
+ it('refuses a renamed trailing column',()=>{
+  expect(()=>parseInformationWorkbook(book([...INFORMATION_HEADERS_V2,'Effective On'],[[...v2(base),'2026-01-01']]))).toThrow('template columns changed');
  });
 });

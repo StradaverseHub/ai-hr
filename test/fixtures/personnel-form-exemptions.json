@@ -873,11 +873,19 @@
     },
     {
       "tag": "input",
-      "name": "informationCorrectionFromJoinDate",
+      "name": "informationCorrectionEffectiveOn",
       "context": "InformationForm",
       "hidden": false,
       "occurrences": 1,
-      "reason": "Board 154511c4: chooses whether a company-only correction applies to the whole dated history (from the join date) or from today; it selects the correction's scope and never submits an employee fact itself."
+      "reason": "Board 4604dccc: the Effective Date of the information-only correction (from the Group Join Date to today, replacing the 154511c4 from-the-join-date tickbox). It dates the correction command and is validated by the service; it never submits an employee fact itself."
+    },
+    {
+      "tag": "input",
+      "name": "informationCorrectionClosedPayroll",
+      "context": "InformationForm",
+      "hidden": false,
+      "occurrences": 1,
+      "reason": "Board 4604dccc: acknowledgement that closed payroll in the corrected period stays as issued (the movement closed-payroll acknowledgement pattern); the server refuses without it and it never submits an employee fact."
     }
   ],
   "app/admin/personnel/[employmentId]/movement-history-actions.tsx": [

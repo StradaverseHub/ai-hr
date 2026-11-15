@@ -90,6 +90,10 @@ const CODES:Record<string,{column?:MovementColumn;correction?:MovementCorrection
  movement_history_future:{column:'effectiveDate'},
  movement_history_earlier_change:{column:'effectiveDate'},
  movement_history_splits_movement:{column:'effectiveDate'},
+ // Board 4604dccc — an information-only correction after this date could not be put back over the movement.
+ movement_correction_boundary:{column:'effectiveDate'},
+ movement_correction_company_record:{column:'effectiveDate'},
+ movement_correction_boundary_label:{correction:'chooseReference'},
  system_field_required:{column:'systemField',correction:'systemField'},
  unknown_system_field:{column:'systemField',correction:'systemField'},
  not_applicable:{correction:'systemField'},

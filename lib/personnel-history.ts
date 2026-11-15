@@ -5,7 +5,7 @@ export function latestPersonnelHistory<T extends {id:string;effectiveDate:string
  return [...rows].sort((a,b)=>b.effectiveDate.localeCompare(a.effectiveDate)||(b.recordedAt??'').localeCompare(a.recordedAt??'')||(b.sortSequence??0)-(a.sortSequence??0)||a.id.localeCompare(b.id));
 }
 type Event={id:string;eventType:string;sequence:number;payload:unknown};
-type Row={id:string;kind:string;sequence:number;groupId:string|null;reversed:unknown;scheduled:boolean;appliedAt:unknown};
+type Row={id:string;kind:string;sequence:number;groupId:string|null;reversed:unknown;scheduled:boolean;appliedAt:unknown;effectiveDate?:string};
 export type InformationHistoryCorrection={eventId:string;fields:InformationField[];values:Partial<Record<InformationField,string|null>>;needsReview:boolean};
 const object=(value:unknown):Record<string,unknown>=>value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:{};
 const groupOf=(event:Event)=>object(object(event.payload).movement).groupId;
@@ -34,6 +34,9 @@ export function personnelInformationCorrections(events:readonly Event[],rows:rea
  const span=(row:Row)=>Math.max(row.sequence,(row.groupId?lastSequenceByGroup.get(row.groupId):undefined)??row.sequence);
  for(const correction of ordered.filter(event=>event.eventType==='employment.information.corrected')){
   const p=object(correction.payload),after=object(p.after),fields=Array.isArray(p.fields)?p.fields:[];
+  // Board 4604dccc — a dated correction (Effective Date before the day it was made) decorates only the rows inside
+  // its own period: from its Effective Date until the field's next recorded change.
+  const dated=p.dated===true&&typeof p.effectiveOn==='string'?{from:p.effectiveOn,until:object(p.until)}:null;
   for(const field of INFORMATION_FIELDS){
    if(!fields.includes(field)||!(typeof after[field]==='string'||after[field]===null))continue;
    const writers=ordered.filter(event=>sets(event,field));
@@ -46,6 +49,7 @@ export function personnelInformationCorrections(events:readonly Event[],rows:rea
    const from=source?source.sequence:0,next=writers.find(event=>event.sequence>from&&event.sequence!==source?.sequence),until=next?.sequence??Infinity;
    for(const row of rows){
     if(row.reversed||(row.scheduled&&!row.appliedAt)||span(row)<from||span(row)>=until)continue;
+    if(dated&&row.effectiveDate&&(row.effectiveDate<dated.from||(typeof dated.until[field]==='string'&&row.effectiveDate>=(dated.until[field] as string))))continue;
     const list=result.get(row.id)??[];
     let item=list.find(item=>item.eventId===correction.id&&!item.needsReview);
     if(!item){item={eventId:correction.id,fields:[],values:{},needsReview:false};list.push(item);}

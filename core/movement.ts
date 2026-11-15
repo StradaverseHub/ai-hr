@@ -93,7 +93,7 @@ import {
 import { movementFieldRuleViolations, type MovementFieldRule, type MovementFieldRuleViolation } from '../lib/movement-field-rules';
 // Board 154511c4 — history recorded backwards from the current record. Its event projects a movement row and
 // its row replacements join the hire correction's in the chain Roll Back follows.
-import { MOVEMENT_HISTORY_EVENT, MOVEMENT_HISTORY_REVERTED_EVENT, isAssignmentReplacementEvent, reverseHistoryMovementTx } from './movement-history';
+import { MOVEMENT_HISTORY_EVENT, MOVEMENT_HISTORY_REVERTED_EVENT, MovementHistoryError, isAssignmentReplacementEvent, reverseHistoryMovementTx, liftCorrectionBoundariesTx, reapplyCorrectionBoundariesTx, companyRecordOnTx } from './movement-history';
 // c063eea9 — the hire-details correction. It owns its event and the trace the Hired row wears; this module
 // loads the event (it projects no row of its own) and follows its row replacements when rolling back.
 import {
@@ -1376,8 +1376,9 @@ function flatValueAtSequence(
  */
 /** Board 154511c4 — the employee's dated company was rewritten in place (a history movement, or a company
  * correction applied from the join date): read the company from the dated version, not the sequence replay. */
+// Board 4604dccc — and any correction dated before the day it was made (`dated`): its company holds only over its own period.
 const hasDatedCompanyHistory = (events: RawEvent[]): boolean =>
-  events.some((e) => e.eventType === MOVEMENT_HISTORY_EVENT || (e.eventType === 'employment.information.corrected' && (e.payload as { fromJoinDate?: boolean } | null)?.fromJoinDate === true));
+  events.some((e) => e.eventType === MOVEMENT_HISTORY_EVENT || (e.eventType === 'employment.information.corrected' && ((e.payload as { fromJoinDate?: boolean } | null)?.fromJoinDate === true || (e.payload as { dated?: boolean } | null)?.dated === true)));
 
 const isCompanyReplayEvent = (e: RawEvent): boolean =>
   e.eventType === 'employment.information.corrected' ||
@@ -1501,6 +1502,35 @@ async function placementColumnsTx(tx: Tx, employmentId: string, companyId: strin
       basicAmount: comp?.basicSalary ?? null,
     };
   };
+}
+
+/**
+ * Board 4604dccc — every applied, not rolled-back movement with the values it recorded changing "from" and "to",
+ * oldest first. The information-only correction reads it to refuse a correction that contradicts a later
+ * movement's recorded Before values, and to list the records its review shows. The caller holds the employee's
+ * maintain authority; this reads only the employee's own ledger (one projection, no per-row query).
+ */
+export type RecordedMovementChange={id:string;kind:string;label:string|null;effectiveDate:string;history:boolean;fields:string[];before:Record<string,string|null|undefined>;after:Record<string,string|null|undefined>};
+export async function recordedMovementChangesTx(tx:Tx,tenantId:string,employmentId:string):Promise<RecordedMovementChange[]>{
+  const {events,rows,statusOf,resolvedTypes}=await projectRows(tx,tenantId,employmentId);
+  const out:RecordedMovementChange[]=[];
+  for(const r of rows){
+    if(r.reversed||statusOf(r)!=='applied')continue;
+    const before:Record<string,string|null|undefined>={},after:Record<string,string|null|undefined>={},fields=new Set<string>();
+    const set=(f:string,b:unknown,a:unknown,known=true)=>{fields.add(f);if(known)before[f]=(b??null) as string|null;after[f]=(a??null) as string|null;};
+    for(const e of [...groupEventsOf(events,r)].sort((x,y)=>x.sequence-y.sequence)){
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const p=(e.payload??{}) as Record<string,any>;
+      if(e.eventType==='employment.assignment.changed'&&p.before&&p.after){for(const f of ['companyId','departmentId','positionId','businessUnitId','locationId','employmentType'])if(f in p.after&&p.after[f]!==p.before[f])set(f,p.before[f],p.after[f]);}
+      else if(e.eventType==='assignment.transferred'){for(const f of ['departmentId','locationId'])if(p.to?.[f]!==p.from?.[f])set(f,p.from?.[f],p.to?.[f]);}
+      else if(e.eventType==='employment.company.transferred'){if(p.after?.companyId!==p.before?.companyId)set('companyId',p.before?.companyId,p.after?.companyId);}
+      else if(e.eventType==='employment.info.updated'){for(const f of Array.isArray(p.fields)?p.fields:[])set(f,p.before?.[f],p.after?.[f]);}
+      else if(e.eventType==='reporting-line.set'&&r.kind!=='hired'){set('managerEmploymentId',undefined,p.managerEmploymentId,false);}
+      else if(e.eventType===MOVEMENT_HISTORY_EVENT){for(const f of Array.isArray(p.fields)?p.fields:[])set(f,p.before?.[f],p.after?.[f]);}
+    }
+    out.push({id:r.id,kind:r.kind,label:resolvedTypes.get(r.kind)?.label??null,effectiveDate:r.effectiveDate,history:!!r.history,fields:[...fields],before,after});
+  }
+  return out;
 }
 
 /** Minimal promotion fact for authorized workflow consumers. Uses the same reversal,
@@ -2531,6 +2561,13 @@ async function storeCorrectionDocumentsTx(
  * Pending to Applied. Without `allSecondary` the first leg would take the primary tag and the employee
  * would sprout a second, duplicate history row on the morning the movement took effect.
  */
+/**
+ * Board 4604dccc (ADR 2026-11-15 dated information corrections) — an information-only correction is a dated boundary, not a wall. A placement
+ * movement dated before one lifts the correction-created versions after its date, writes through the ordinary
+ * legs below, and puts each correction back on its own Effective Date (core/movement-history.ts). Every caller
+ * of the comparison writer gets this: New Event, the import's ordered sequence, the effective-order replay of
+ * later movements and an older event's correction.
+ */
 async function applyComparisonMovementTx(
   tx: Tx,
   ctx: SessionContext,
@@ -2540,6 +2577,42 @@ async function applyComparisonMovementTx(
 ) {
   // Acquire the person owner before any info/assignment leg can lock employment.
   await lockEmploymentStatutoryOwnerTx(tx,p.employmentId);
+  const placement = movementHasOrganisationInput(p) || (p.companyId !== undefined && p.companyId !== null);
+  const lifted = placement && isCalendarDate(p.effectiveDate) && p.effectiveDate <= todayInKualaLumpur()
+    ? await liftCorrectionBoundariesTx(tx, ctx, p.employmentId, p.effectiveDate)
+    : null;
+  if (placement) await assertCompanyRecordAgreesTx(tx, ctx, p);
+  const written = await applyComparisonLegsTx(tx, ctx, p, kind, opts);
+  if (lifted) await reapplyCorrectionBoundariesTx(tx, ctx, p.employmentId, lifted);
+  return written;
+}
+
+/**
+ * The placement legs record the employee's organisation tags as at the movement date, and the tag owner refuses a
+ * company that app.company_org_employment_company does not give for that date. That SQL owner still answers from the
+ * "before" company of the earliest information correction dated after the day (ADR-0163's rule, which predates dated
+ * corrections). Where the two disagree the movement is refused here with a named row code instead of a database
+ * error; the SQL owner's rule is a recorded follow-up (ADR 2026-11-15 dated information corrections, Consequences).
+ */
+async function assertCompanyRecordAgreesTx(tx: Tx, ctx: SessionContext, p: CreateMovementInput) {
+  if (!isCalendarDate(p.effectiveDate)) return;
+  const [later] = await tx.select({ effectiveOn: sql<string>`${domainEvent.payload}->>'effectiveOn'` }).from(domainEvent)
+    .where(and(eq(domainEvent.tenantId, ctx.tenantId), eq(domainEvent.subjectEmploymentId, p.employmentId), eq(domainEvent.eventType, 'employment.information.corrected'), sql`${domainEvent.payload}->>'effectiveOn' > ${p.effectiveDate}`))
+    .orderBy(asc(domainEvent.sequence)).limit(1);
+  if (!later) return;
+  const [emp] = await tx.select({ companyId: employment.companyId }).from(employment).where(eq(employment.id, p.employmentId)).limit(1);
+  const recorded = p.kind === 'entityTransfer' && p.companyId ? p.companyId : emp?.companyId;
+  const owner = await companyRecordOnTx(tx, ctx.tenantId, p.employmentId, p.effectiveDate);
+  if (recorded && owner && owner !== recorded) throw new MovementHistoryError('movement_correction_company_record:' + later.effectiveOn);
+}
+
+async function applyComparisonLegsTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: CreateMovementInput,
+  kind: ComparisonKind,
+  opts?: { groupId?: string; allSecondary?: boolean },
+) {
   const remarks = p.remarks?.trim() || null;
   const endDate = p.endDate?.trim() || null;
   const groupId = opts?.groupId ?? randomUUID();
