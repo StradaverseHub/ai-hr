@@ -50,6 +50,10 @@ Probation and Contracts (ADR-0172).
    whole-scope delegations do not include it. Only Review, Approve and letter Sign steps (HOD, PBP, GBS) are
    delegable; Line Manager and employee steps are not. `probation_delegate` stays for per-case fixes.
 
+8. **A declined employee signature moves the part on immediately** (owner, 16 November 2026; handoff B3). The Line
+   Manager records the decline with a reason; the part advances at once with "Declined to sign" on the signature page,
+   and the PBP's confirmation is a follow-up task that no longer gates the part. The employee never records it.
+
 Kept from AI-HR although the prototype omits them: the reviewed activation flow (rehearsal digest, installation
 reference, single transaction) and the duplicate-role signing policy.
 
