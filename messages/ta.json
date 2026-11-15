@@ -35707,7 +35707,9 @@
       "confirmed": "உறுதிசெய்யப்பட்டது",
       "extended": "நீட்டிக்கப்பட்டது",
       "not_confirmed": "உறுதிப்படுத்தவில்லை",
-      "withdrawn": "திரும்பப்பெறப்பட்டது"
+      "withdrawn": "திரும்பப்பெறப்பட்டது",
+      "waitingForStart": "Waiting for start date",
+      "didNotJoin": "Did not join"
     },
     "partStates": {
       "not_issued": "வெளியிடப்படவில்லை",
@@ -35873,7 +35875,16 @@
         "ending14": "14 நாட்களுக்குள் முடிகிறது",
         "low_result": "குறைந்த முடிவு",
         "kpi_submit": "KPI-கள் சமர்ப்பிக்கப்படவில்லை",
-        "kpi_ack": "KPI-கள் ஏற்றுக்கொள்ளப்படவில்லை"
+        "kpi_ack": "KPI-கள் ஏற்றுக்கொள்ளப்படவில்லை",
+        "overridden": "Suggestion overridden"
+      },
+      "extensionsUsed": "{used} / {max}",
+      "startsOn": "Starts {date}",
+      "actions": {
+        "open": "Open",
+        "review_letter": "Review letter",
+        "record_action": "Record action",
+        "log_followup": "Log follow-up"
       }
     },
     "applyFilters": "வடிகட்டிகளைப் பயன்படுத்தவும்",
@@ -36054,6 +36065,32 @@
         "pending": "நிலுவையில் உள்ளது",
         "held": "மதிப்பாய்வுக்காக நிறுத்தி வைக்கப்பட்டுள்ளது",
         "failed": "மீண்டும் முயல வேண்டும்"
+      },
+      "extensionsUsed": {
+        "title": "Confirm extensions already used",
+        "help": "Personnel Management keeps only the total Extended Probation Period, so the number of extensions already used cannot be worked out. Confirm 0, 1 or 2 for each case by choosing the actual extension events in the employee's review.",
+        "period": "Extended Probation Period (Personnel)",
+        "periodValue": "{original} → {extended}",
+        "used": "Extensions used",
+        "count": "{count} of {max}",
+        "notConfirmed": "Not confirmed",
+        "confirm": "Confirm",
+        "review": "Review"
+      },
+      "activationByCompany": {
+        "title": "Activation by company",
+        "help": "Employees on Probation in Personnel Management (full time) against open probation cases. A difference means someone has no case yet or a case is still open after Personnel moved on. Switching a company on still goes through the reviewed rehearsal below.",
+        "columns": {
+          "company": "Company",
+          "personnel": "Probation in Personnel",
+          "cases": "Open cases",
+          "status": "Status"
+        },
+        "match": "✓",
+        "missing": "{count, plural, one {1 employee on Probation has no case} other {# employees on Probation have no case}}",
+        "extra": "{count, plural, one {1 case more than Personnel shows} other {# cases more than Personnel shows}}",
+        "live": "Live since {date}",
+        "preparation": "Preparation"
       }
     },
     "workflows": {
@@ -36349,7 +36386,12 @@
         "lmWaitsForEmployee": "Manager waits for the employee self-assessment",
         "overrides": "Narrow KPI gate rules"
       }
-    }
+    },
+    "startStatus": {
+      "waiting": "Waiting for start date. The case opened at activation; no reviews, tasks or reminders start before {date}. Part 1 counts from the start date.",
+      "didNotJoin": "Closed as Did not join: the hire was withdrawn or the employment ended before the start date."
+    },
+    "overrideNotice": "The Line Manager chose a different outcome from the suggestion and wrote a justification."
   },
   "templateEditor": {
     "newField": "புதிய புலம்",

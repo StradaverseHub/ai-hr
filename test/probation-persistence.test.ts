@@ -190,6 +190,10 @@ describe('real evaluation to signed letter custody',()=>{
   let part=await current(staff.ctx);await saveProbationDraft(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'employee',patch:{employee:assessment}});part=await current(staff.ctx);await actOnProbation(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'submit_employee'});
   part=await current(manager.ctx);await saveProbationDraft(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'lm',patch:{manager:assessment,reviewOn:today,conductedBy:manager.userId,outcome,justification:'Observed evidence supports the actual outcome',...(outcome==='extend'?{extensionMonths:3 as const}:{})}});part=await current(manager.ctx);
   await actOnProbation(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'submit_manager',method:'typed',value:'Fictional Manager',consent:true});
+  // Band 3 suggests Confirm, so Extend and Not confirm are overrides: one audited event each, no rater text (migration 5745).
+  const overrideEvents=await owner.db.execute<{payload:Record<string,unknown>}>(sql`select payload from domain_event where aggregate_id=${ids.caseId}::uuid and event_type='probation.outcome_overridden'`);
+  expect(overrideEvents.map(e=>e.payload)).toEqual(outcome==='confirm'?[]:[expect.objectContaining({partId:ids.part,chosen:outcome,scoreBand:3,justified:true})]);
+  expect(JSON.stringify(overrideEvents)).not.toContain('Observed evidence supports');
   part=await current(staff.ctx);expect(part.canEditEmployeeComments).toBe(true);expect(part.canEditSelfAssessment).toBe(false);await expect(actOnProbation(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'acknowledge',method:'typed',value:'Fictional Staff',consent:true})).rejects.toThrow();await saveProbationDraft(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'employee',patch:{employeeComments:'I acknowledge the submitted review.'}});part=await current(staff.ctx);const evaluation=part.signing!,evaluationAck=evaluation.document.route.steps.find(step=>step.role==='employee')!;await expect(withTenant(staff.ctx,tx=>recordDocumentSigningActionTx(tx,staff.ctx,{id:evaluation.id,stepId:evaluationAck.id,revision:evaluation.document.contentRevision,hash:evaluation.document.contentHash,action:'signed',comment:'A different unsaved acknowledgement',method:'typed',value:'Fictional Staff',consent:true}))).rejects.toThrow();await actOnProbation(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'acknowledge',method:'typed',value:'Fictional Staff',consent:true});
   const workflowId=await saveProbationWorkflow(admin,{companyId:b.companyId,publish:true,expectedVersion:0,workflow:{
    id:randomUUID(),module:'probation',name:'Review a pending signing route',status:'published',description:'Scoped People Partner route notice',
@@ -675,5 +679,30 @@ describe('scoped Probation employee-name filtering',()=>{
   expect((await probationSummaryRows(staff.ctx,{search:'Alice'})).rows).toEqual([]);
   await owner.db.execute(sql`update employment set grade_id=null where id=${second.employmentId}::uuid`);
   expect((await probationSummaryRows(admin,{businessGroupId:bg,grade:'15'})).rows[0].grade).toBe('15');
+ });
+});
+
+describe('declined signature',()=>{
+ it('lets the Line Manager record that the employee declined, never the employee, and the PBP confirm it so the part moves on',async()=>{
+  const{ids,staff,manager,peer}=await privateCase();
+  await setReportingLine(admin,{subordinateEmploymentId:staff.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:'2026-01-01'});
+  await owner.db.execute(sql`update department set head_employment_id=${peer.employmentId}::uuid where id=${b.deptA}::uuid`);
+  await owner.db.execute(sql`insert into probation_access(tenant_id,user_id,company_id,role,valid_from,reason) values(${b.tenantId}::uuid,${admin.userId}::uuid,${b.companyId}::uuid,'pbp','2026-01-01','Actual canonical PBP opt-in'),(${b.tenantId}::uuid,${admin.userId}::uuid,${b.companyId}::uuid,'gbs','2026-01-01','Actual canonical GBS opt-in')`);
+  const current=async(ctx:SessionContext)=>(await probationCase(ctx,ids.caseId)).parts[0];
+  const assessment=Object.fromEntries(DEFAULT_PROBATION_FORM.criteria.map(c=>[c.id,{rating:4,evidence:'Observed fictional evidence for this criterion'}]));
+  let part=await current(staff.ctx);await saveProbationDraft(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'employee',patch:{employee:assessment}});
+  part=await current(staff.ctx);await actOnProbation(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'submit_employee'});
+  part=await current(manager.ctx);await saveProbationDraft(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'lm',patch:{manager:assessment,reviewOn:todayInKualaLumpur(),conductedBy:manager.userId,outcome:'confirm',justification:'Observed evidence supports confirmation'}});
+  part=await current(manager.ctx);await actOnProbation(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'submit_manager',method:'typed',value:'Fictional Manager',consent:true});
+  part=await current(staff.ctx);expect(part.allowedCommands).not.toContain('request_refusal');
+  await expect(actOnProbation(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'request_refusal',reason:'Employee cannot record this'})).rejects.toThrow();
+  part=await current(manager.ctx);expect(part.allowedCommands).toContain('request_refusal');
+  await actOnProbation(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'request_refusal',reason:'The employee declined to sign after the review meeting'});
+  part=await current(admin);expect(part.allowedCommands).toContain('confirm_refusal');expect(part.acknowledgedAt).toBeNull();
+  await actOnProbation(admin,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'confirm_refusal',reason:'PBP confirms the declined signature'});
+  part=await current(admin);
+  expect(part.acknowledgedAt).not.toBeNull();
+  expect(part.signing!.document.actions).toContainEqual(expect.objectContaining({role:'employee',action:'declined'}));
+  expect(part.allowedCommands).not.toContain('confirm_refusal');
  });
 });

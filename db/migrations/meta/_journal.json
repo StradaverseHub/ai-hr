@@ -5972,6 +5972,20 @@
       "when": 1793330005442,
       "tag": "5742_probation_settings_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 5144,
+      "version": "7",
+      "when": 1793330005444,
+      "tag": "5744_probation_case_at_activation",
+      "breakpoints": true
+    },
+    {
+      "idx": 5145,
+      "version": "7",
+      "when": 1793330005445,
+      "tag": "5745_probation_outcome_override_event",
+      "breakpoints": true
     }
   ]
 }

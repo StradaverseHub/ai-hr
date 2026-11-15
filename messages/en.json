@@ -35707,7 +35707,9 @@
       "confirmed": "Confirmed",
       "extended": "Extended",
       "not_confirmed": "Not confirmed",
-      "withdrawn": "Withdrawn"
+      "withdrawn": "Withdrawn",
+      "waitingForStart": "Waiting for start date",
+      "didNotJoin": "Did not join"
     },
     "partStates": {
       "not_issued": "Not issued",
@@ -35806,7 +35808,7 @@
     "signing": {
       "title": "Signing route and history",
       "signed": "Signed",
-      "declined": "Acknowledgement declined — confirmed",
+      "declined": "Declined to sign",
       "pending": "Pending",
       "missing": "Holder needs resolution",
       "frozenFacts": "This review retains the employee and probation-period details captured for its signed content.",
@@ -35824,8 +35826,8 @@
       "kpi_exception": "Record KPI-gate exception",
       "employee_wait_exception": "Record self-assessment wait exception",
       "confirm_extension": "Confirm extension",
-      "request_refusal": "Record employee refusal discussion",
-      "confirm_refusal": "Confirm acknowledgement refusal"
+      "request_refusal": "Employee declined to sign",
+      "confirm_refusal": "Confirm the declined signature"
     },
     "followup": {
       "title": "Follow-up and development record",
@@ -35873,7 +35875,16 @@
         "ending14": "Ending within 14 days",
         "low_result": "Low result",
         "kpi_submit": "KPIs not submitted",
-        "kpi_ack": "KPIs not acknowledged"
+        "kpi_ack": "KPIs not acknowledged",
+        "overridden": "Suggestion overridden"
+      },
+      "extensionsUsed": "{used} / {max}",
+      "startsOn": "Starts {date}",
+      "actions": {
+        "open": "Open",
+        "review_letter": "Review letter",
+        "record_action": "Record action",
+        "log_followup": "Log follow-up"
       }
     },
     "applyFilters": "Apply filters",
@@ -36054,6 +36065,32 @@
         "pending": "Pending",
         "held": "Held for review",
         "failed": "Needs a retry"
+      },
+      "extensionsUsed": {
+        "title": "Confirm extensions already used",
+        "help": "Personnel Management keeps only the total Extended Probation Period, so the number of extensions already used cannot be worked out. Confirm 0, 1 or 2 for each case by choosing the actual extension events in the employee's review.",
+        "period": "Extended Probation Period (Personnel)",
+        "periodValue": "{original} → {extended}",
+        "used": "Extensions used",
+        "count": "{count} of {max}",
+        "notConfirmed": "Not confirmed",
+        "confirm": "Confirm",
+        "review": "Review"
+      },
+      "activationByCompany": {
+        "title": "Activation by company",
+        "help": "Employees on Probation in Personnel Management (full time) against open probation cases. A difference means someone has no case yet or a case is still open after Personnel moved on. Switching a company on still goes through the reviewed rehearsal below.",
+        "columns": {
+          "company": "Company",
+          "personnel": "Probation in Personnel",
+          "cases": "Open cases",
+          "status": "Status"
+        },
+        "match": "✓",
+        "missing": "{count, plural, one {1 employee on Probation has no case} other {# employees on Probation have no case}}",
+        "extra": "{count, plural, one {1 case more than Personnel shows} other {# cases more than Personnel shows}}",
+        "live": "Live since {date}",
+        "preparation": "Preparation"
       }
     },
     "workflows": {
@@ -36349,7 +36386,12 @@
         "lmWaitsForEmployee": "Manager waits for the employee self-assessment",
         "overrides": "Narrow KPI gate rules"
       }
-    }
+    },
+    "startStatus": {
+      "waiting": "Waiting for start date. The case opened at activation; no reviews, tasks or reminders start before {date}. Part 1 counts from the start date.",
+      "didNotJoin": "Closed as Did not join: the hire was withdrawn or the employment ended before the start date."
+    },
+    "overrideNotice": "The Line Manager chose a different outcome from the suggestion and wrote a justification."
   },
   "templateEditor": {
     "newField": "New field",

@@ -1,3 +1,25 @@
+# Probation suggestion-overridden event — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-probation-core-20261116` appends `5745_probation_outcome_override_event` at idx 5145 /
+when 1793330005445 (lane C's reserved slot, directly above `5744`). SHA256 `450ad5d958411186348239940f3f16302bc17f7642a6e2e6bb3a63212a41a3ed`. It adds
+`app.probation_record_override(uuid)` (SECURITY DEFINER, EXECUTE to `ai_hr_app`): in the Line Manager's submitting
+transaction it records one `probation.outcome_overridden` domain_event per submission when the existing
+`data.override` flag is set, with no rater text, for the shared engine's outcomeOverridden trigger. No table, row,
+existing function, grant or purpose-owned object changes. The installed ledgers were not read; recheck watermarks and
+peer claims at admission. No installation authority.
+
+# Probation case at activation and Did not join — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-probation-core-20261116` appends `5744_probation_case_at_activation` at idx 5144 / when
+1793330005444 (lane C's reserved slot, directly above `5742` at when 1793330005442). SHA256 `bade792a24fe3f31bc5c8afc1a40404d8919313711a2a050b1c6083b2095494a`.
+It adds the internal `app.probation_source_from_start` (a future starter's Personnel source reads the assignment that
+takes effect on the start date when none is in effect today; started employments read exactly as before) and
+`app.probation_did_not_join`, and replaces the owner-owned `app.probation_personnel_source_unchecked` (2111),
+`app.probation_issue` and `app.probation_withdraw` (0949): nothing is issued before the start date, and a hire voided,
+ended on or before its start date, or exited before it started closes as withdrawn with `closure` 'did_not_join'
+(ADR `docs/adr/2026-11-15-probation-shared-automation.md`, decision 6). No table, row, grant or purpose-owned object
+changes. The installed ledgers were not read; recheck watermarks and peer claims at admission. No installation authority.
+
 # Probation settings scope: group standard and company overrides — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/probation-lane-probation-core-20261116` (lane C of the Probation Confirmation build, from

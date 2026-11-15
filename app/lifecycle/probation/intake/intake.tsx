@@ -4,7 +4,7 @@ import {useEffect,useState,useTransition} from 'react';
 import Link from 'next/link';
 import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
-import type {ProbationIntakeWorkspace,ProbationIntakeCandidate} from '@/packs/probation/service';
+import type {ProbationIntakeWorkspace,ProbationIntakeCandidate,ProbationActivationCount} from '@/packs/probation/service';
 import type {ProbationIntakePart,ProbationExclusionFlags} from '@/lib/probation-intake-model';
 import {PreparationNav} from '../preparation-nav';
 import {DraftGuard} from '../draft-guard';
@@ -13,14 +13,16 @@ import {OfflineFinalProposal} from './offline-final-proposal';
 import {CutoverPreparation} from './cutover-preparation';
 import {PriorExtensions} from './prior-extensions';
 import {PartMapping} from './part-mapping';
-export function Intake({company,companies,workspace,canPrepare,selectedId}:{company:{id:string;name:string};companies:{id:string;name:string}[];workspace:ProbationIntakeWorkspace;canPrepare:boolean;selectedId?:string}){
+export function Intake({company,companies,workspace,activation=[],canPrepare,selectedId}:{company:{id:string;name:string};companies:{id:string;name:string}[];workspace:ProbationIntakeWorkspace;activation?:ProbationActivationCount[];canPrepare:boolean;selectedId?:string}){
  const t=useTranslations('probation'),[pending,setPending]=useState(false),[approvalPending,setApprovalPending]=useState(false),[search,setSearch]=useState('');
  const candidate=workspace.candidates.find(c=>c.source.employmentId===selectedId),visible=workspace.candidates.filter(c=>(c.source.employeeName+' '+(c.source.employeeCode??'')).toLocaleLowerCase().includes(search.toLocaleLowerCase()));
  return <main className="v9-main v9-stack"><header><h1>{t('intake.title')}</h1><p className="v9-muted">{t('intake.help')}</p></header><form method="get" className="probation-actions"><label className="v9-field"><span>{t('facts.company')}</span><select name="company" defaultValue={company.id}>{companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><button className="v9-button">{t('switchCompany')}</button></form>{canPrepare&&<PreparationNav companyId={company.id}/>}
  <p className="v9-notice">{t('intake.stagingOnly')}</p>{workspace.truncated&&<p role="alert" className="v9-notice v9-warning">{t('intake.truncated')}</p>}<p>{t('intake.excludedCount',{count:workspace.excludedCount})}</p>
  <label className="v9-field"><span>{t('tracker.search')}</span><input type="search" value={search} onChange={e=>setSearch(e.target.value)}/></label>
  <section className="v9-panel v9-stack"><h2>{t('intake.cohort')}</h2>{!visible.length&&<p>{t('intake.empty')}</p>}{visible.map(c=><Link key={c.source.employmentId} className="v9-button probation-intake-row" aria-current={selectedId===c.source.employmentId?'page':undefined} href={'?company='+encodeURIComponent(company.id)+'&employment='+encodeURIComponent(c.source.employmentId)}><span>{c.source.employeeName} · {c.source.employeeCode??'—'}</span><span>{t('intake.states.'+c.classification)}</span></Link>)}</section>
+ <ExtensionsUsed company={company} candidates={workspace.candidates} selectedId={selectedId}/>
  {candidate&&<CandidateStage key={candidate.source.employmentId+':'+candidate.sourceDigest+':'+candidate.disposition?.revision} candidate={candidate} onDirtyChange={setPending} blocked={approvalPending}/>}
+ <ActivationByCompany companies={companies} counts={activation} current={company.id}/>
  {canPrepare&&<CutoverPreparation companyId={company.id} blocked={pending} onDirtyChange={setApprovalPending}/>}
  </main>;
 }
@@ -48,4 +50,26 @@ function IntakeEvidence({employmentId,blocked,onDirtyChange}:{employmentId:strin
  useEffect(()=>{onDirtyChange(!!file||!!reason.trim());return()=>onDirtyChange(false);},[file,reason,onDirtyChange]);
  const upload=()=>{if(!file||!reason.trim())return;if(file.size<1||file.size>10*1024*1024){setError(t('files.tooLarge'));return;}const body=new FormData();body.set('file',file);body.set('reason',reason);setError('');start(async()=>{const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),30000);try{const response=await fetch('/lifecycle/probation/intake/'+employmentId+'/evidence',{method:'POST',body,signal:abort.signal});if(!response.ok){setError(t('files.uploadRefused'));return;}setFile(null);setReason('');setKey(k=>k+1);router.refresh();}catch{setError(t('files.uploadRefused'));}finally{clearTimeout(timer);}});};
  return <div className="v9-stack"><DraftGuard dirty={!!file||!!reason.trim()}/><p className="v9-muted">{t('files.uploadHelp')}</p>{error&&<p role="alert">{error}</p>}<label className="v9-field"><span>{t('files.pdf')}</span><input key={inputKey} type="file" accept="application/pdf,.pdf" disabled={busy||blocked} onChange={e=>setFile(e.target.files?.[0]??null)}/></label><label className="v9-field"><span>{t('reason')}</span><textarea value={reason} maxLength={5000} disabled={busy||blocked} onChange={e=>setReason(e.target.value)}/></label><ActionButton guardNavigation aria-busy={busy} type="button" className="v9-button" disabled={busy||blocked||!file||reason.trim().length<3} onClick={upload}>{busy?t('saving'):t('files.upload')}</ActionButton>{(file||reason)&&<ActionButton guardNavigation={false} aria-busy={busy} type="button" className="v9-button" disabled={busy} onClick={()=>{setFile(null);setReason('');setKey(k=>k+1);}}>{t('signers.discard')}</ActionButton>}</div>;
+}
+
+/** Step 2 (mockup screen 11): Personnel keeps only a total length, so each case with an Extended Probation Period needs
+ * its extensions used (0, 1 or 2) confirmed. The count is confirmed in the employee's review below by choosing the
+ * actual extension events (the PBP-validated history rule), never typed free. */
+function ExtensionsUsed({company,candidates,selectedId}:{company:{id:string};candidates:ProbationIntakeWorkspace['candidates'];selectedId?:string}){
+ const t=useTranslations('probation'),rows=candidates.filter(c=>c.source.extendedEndOn&&c.classification!=='excluded');
+ if(!rows.length)return null;
+ return <section className="v9-panel v9-stack" aria-labelledby="probation-extensions-used"><h2 id="probation-extensions-used">{t('intake.extensionsUsed.title')}</h2><p className="v9-muted">{t('intake.extensionsUsed.help')}</p>
+  <div className="probation-list-table"><table><thead><tr><th>{t('columns.employee')}</th><th>{t('intake.extensionsUsed.period')}</th><th>{t('intake.extensionsUsed.used')}</th><th>{t('columns.action')}</th></tr></thead><tbody>
+   {rows.map(c=>{const confirmed=c.disposition?.kind==='unfinished'&&c.disposition.validatedHistory===true;return <tr key={c.source.employmentId}><td data-label={t('columns.employee')}><strong>{c.source.employeeName}</strong><p className="v9-muted">{c.source.employeeCode??'—'}</p></td><td data-label={t('intake.extensionsUsed.period')}>{t('intake.extensionsUsed.periodValue',{original:c.source.originalEndOn??'—',extended:c.source.extendedEndOn??'—'})}</td><td data-label={t('intake.extensionsUsed.used')}>{confirmed?<strong>{t('intake.extensionsUsed.count',{count:c.disposition!.extensionCount??0,max:2})}</strong>:<span className="v9-badge v9-badge-amber">{t('intake.extensionsUsed.notConfirmed')}</span>}</td><td><Link className="v9-button" aria-current={selectedId===c.source.employmentId?'page':undefined} href={'?company='+encodeURIComponent(company.id)+'&employment='+encodeURIComponent(c.source.employmentId)}>{confirmed?t('intake.extensionsUsed.review'):t('intake.extensionsUsed.confirm')}</Link></td></tr>;})}
+  </tbody></table></div></section>;
+}
+
+/** Step 3: activation by company, with the Personnel Probation count against the open cases (the stricter reviewed
+ * activation stays in the rehearsal below). */
+function ActivationByCompany({companies,counts,current}:{companies:{id:string;name:string}[];counts:ProbationActivationCount[];current:string}){
+ const t=useTranslations('probation');if(!counts.length)return null;
+ return <section className="v9-panel v9-stack" aria-labelledby="probation-activation-by-company"><h2 id="probation-activation-by-company">{t('intake.activationByCompany.title')}</h2><p className="v9-muted">{t('intake.activationByCompany.help')}</p>
+  <div className="probation-list-table"><table><thead><tr>{(['company','personnel','cases','status'] as const).map(key=><th key={key}>{t('intake.activationByCompany.columns.'+key)}</th>)}</tr></thead><tbody>
+   {companies.map(company=>{const row=counts.find(r=>r.companyId===company.id);if(!row)return null;const gap=row.personnelProbation-row.openCases;return <tr key={company.id} aria-current={company.id===current?'true':undefined}><td data-label={t('intake.activationByCompany.columns.company')}><Link href={'?company='+encodeURIComponent(company.id)}>{company.name}</Link></td><td data-label={t('intake.activationByCompany.columns.personnel')}>{row.personnelProbation}</td><td data-label={t('intake.activationByCompany.columns.cases')}>{row.openCases}{gap===0?<span className="v9-badge"> {t('intake.activationByCompany.match')}</span>:<p className="v9-notice v9-warning">{gap>0?t('intake.activationByCompany.missing',{count:gap}):t('intake.activationByCompany.extra',{count:-gap})}</p>}</td><td data-label={t('intake.activationByCompany.columns.status')}>{row.live?t('intake.activationByCompany.live',{date:row.activationOn??'—'}):t('intake.activationByCompany.preparation')}</td></tr>;})}
+  </tbody></table></div></section>;
 }
