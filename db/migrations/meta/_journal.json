@@ -5958,6 +5958,13 @@
       "when": 1793330005380,
       "tag": "5680_payroll_history_dated_company",
       "breakpoints": true
+    },
+    {
+      "idx": 5140,
+      "version": "7",
+      "when": 1793330005440,
+      "tag": "5740_automation_shared_definitions",
+      "breakpoints": true
     }
   ]
 }

@@ -1,3 +1,19 @@
+# Shared HR automation definitions — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-confirmation-aihr-b81c70` (from local main, merged with `origin/main` at `94d2f5bbe`) appends
+`5740_automation_shared_definitions` at idx 5140 / when 1793330005440 on the board block's offset (tag T, idx T − 600,
+when 1793330004800 + (T − 5100)), above the journal's maximum `5680` (when 1793330005380). SHA256
+`828019499262f6fb8df3c677044e948e078174a2ab99ff1b682a9a273c0f87ce`. It creates two new, empty, append-only tables
+(`automation_workflow_version`, `automation_routing_version`) with forced row security, SELECT-only grants to `ai_hr_app`,
+owner policies, and six `app.automation_*` SECURITY DEFINER functions (authority, two saves, two reference reads); no
+existing object, row, grant or purpose-owned object changes (ADR `docs/adr/2026-11-15-probation-shared-automation.md`).
+A scan of the 600 most recently committed origin heads on 16 November 2026 found claims on tags 5690
+(`claude/fb-4604dccc-r3`), 5695 (`claude/fb-511aa74a-rehired`) and 5700–5724 (`claude/rea-web-app-reconstruction-2c12ee`,
+when up to 1793330005424), none on 5725–5799 or when 1793330005425–1793330005499; older 9xxx draft numbers on stale
+`claude/bulkjob-*` heads are already integrated under 50xx/51xx tags. If the recruitment lane is installed first this
+entry still sorts above it. The installed ledgers were not read by this session; recheck installed watermarks and peer
+claims at admission. This allocation grants no installation authority.
+
 # Board 4604dccc: payroll history binds to the company of its month — 15 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/board-4604dccc-effective-date-20261115` (from `origin/alpha` at `1299e6724`, equal to `origin/main`) appends
