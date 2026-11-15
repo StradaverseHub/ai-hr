@@ -1,3 +1,20 @@
+# Probation settings scope: group standard and company overrides — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-probation-core-20261116` (lane C of the Probation Confirmation build, from
+`claude/probation-confirmation-aihr-b81c70` at `faf21b686`) appends `5742_probation_settings_scope` at idx 5142 / when
+1793330005442 on the board block's offset (tag T, idx T − 600, when 1793330004800 + (T − 5100)), directly above
+`5740` (when 1793330005440), the journal's maximum. SHA256 `748ab4f7cb2911116cbc416619467f9ce9b0e676358fcc6971ec203f1412e008`.
+It creates two new, empty tables (`probation_settings_scope_version`, append-only; `probation_settings_scope_member`,
+whose (tenant_id, company_id) key keeps a company in at most one company setting) with forced row security, owner
+policies, SELECT-only grants to `ai_hr_app` and the ADR-0174 composite company key; adds `app.probation_settings_*`
+SECURITY DEFINER functions (authority, save, retire, refresh, internal resolution); and renames the owner-owned
+`app.probation_config_write` (2111) to `app.probation_config_write_company` behind a new wrapper that refuses a direct
+company settings version once a group standard is published. No existing row is rewritten: the group standard starts
+absent and every company keeps its published version until an administrator publishes one (ADR
+`docs/adr/2026-11-15-probation-shared-automation.md`, decision 3). No purpose-owned object changes. Lane C also holds
+5744/5745 (idx 5144/5145, when 1793330005444/…445) if needed. The installed ledgers were not read by this session;
+recheck installed watermarks and peer claims at admission. This allocation grants no installation authority.
+
 # Shared HR automation definitions — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/probation-confirmation-aihr-b81c70` (from local main, merged with `origin/main` at `94d2f5bbe`) appends

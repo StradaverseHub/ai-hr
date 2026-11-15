@@ -1,2 +1,3 @@
 import {Preparation} from '../preparation';
-export default async function Page({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){return <Preparation kind="settings" query={await searchParams}/>;}
+import {SettingsScope} from '../settings-scope';
+export default async function Page({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){const query=await searchParams;return <main><SettingsScope query={query}/><Preparation kind="settings" query={query} embedded/></main>;}
