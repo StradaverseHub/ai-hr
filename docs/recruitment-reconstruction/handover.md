@@ -162,3 +162,19 @@ State at `48843bac6` (pushed; branch `claude/rea-web-app-reconstruction-2c12ee`)
 
 Next, in order: slice 21 (verified applicants with a one-time e-mail code, signed accept links for interviews and offers, careers
 receipts; spec to write), then slices 22–25 as listed in the previous checkpoint. Owner items unchanged, plus a review of D-065.
+
+## Checkpoint — slice 21 built and verified (2026-11-15)
+
+State at the head of `claude/rea-web-app-reconstruction-2c12ee` (pushed):
+- Slice 21a (`5722`): e-mail code before applying while the company's candidate e-mail is on; careers receipts. Slice 21b (`5723`):
+  response links in invitations and offer e-mails. Decisions in D-066. Results in `parity-report.md`.
+- CI: type check and build pass; every recruitment unit and DB test passes; the only known failures remain the AI files waiting on
+  the owner's provider-data approval.
+- Not rendered: slices 19–21's e-mail and careers verification screens need an installation with the embedded sign-in and an active
+  relay. Nothing is on staging.
+- `origin/main` has moved since the last merge (`1299e6724`); merge it before the next slice and recheck the journal tail: the
+  recruitment block now ends at `5723` (when 1793330005423).
+
+Next, in order: slice 22 (optional anonymous candidate survey after hire or rejection; spec to write), slice 23 (referral rewards),
+slice 24 (AI match summary suggestions; needs the owner's provider-data approval), slice 25 (agency portal, reusing slice 21a's
+verification). Owner review: D-065, D-066.

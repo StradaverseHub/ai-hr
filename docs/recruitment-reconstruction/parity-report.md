@@ -708,3 +708,25 @@ Verified on a throwaway local Postgres 16 chain apply before CI.
 | 43702152649 | `recruitment-careers-verified`, type check | PASS: 8 tests |
 
 Not rendered (case 142): no local render cluster with an embedded relay.
+
+## Slice 21b — Candidate response links — commits 6b3396941 … (2026-11-15)
+
+Built: migration `5723` (idx 5123, when 1793330005423). Invitations and offer e-mails carry one link, `/careers/r/<token>` on the
+installation's own https origin (embedded sign-in's origin or an explicit AUTH_PUBLIC_ORIGIN; no link without one); the token's
+sha256 is stored. GET shows the job, company and interview time or "your offer" and changes nothing; Accept / Decline is a POST, 20 an
+hour per client. An interview answer sets the candidate response while the interview is open, not started and its application
+active; an offer answer is the candidate's reply, shown on the Offer tab and pre-selected for HR, who record the decision (the reply
+is kept on the link, so 5703's offer guard is untouched — a change from the spec's "recorded on the offer"). The preview shows a
+stand-in link; the frozen e-mail carries the candidate's own, and the database refuses any other link and any link not issued with
+the e-mail.
+
+Tests: `test/recruitment-candidate-response.test.ts`; slice 20 expectations updated for the `{responseLink}` paragraph.
+
+| Run | Job | Result |
+| --- | --- | --- |
+| 43704449195 (6b3396941) | DB (24 files, 334 tests) | PASS |
+| 43704449195 | Unit (31 files) | 445 PASS; FAIL 1: the rules test compared placeholders with 5721 instead of 5723's restatement |
+| 43704449195 | Type check, build | FAIL: the link route read `state` without narrowing the result (fixed with the test in the next commit) |
+| 43705357817 | Type check, build; 3 affected files (41 tests) | PASS |
+
+Not rendered (case 142 and the link pages): no local installation with the embedded sign-in and a relay.
