@@ -20,16 +20,39 @@ export type WorkflowEditorReferences = {
   emailTemplates: { id: string; name: string; active: boolean; retired: boolean; subject: string }[];
   /** Letter templates of one company the viewer configures; null when none could be read. */
   letterTemplates: NamedOption[] | null;
-  /** Choices for condition fields whose values the module lists at run time (business group, company…). */
-  conditionValues: Record<string, string[]>;
+  /** Choices for condition fields whose values the module lists at run time. Organisation fields (business group, company,
+   * department) store ids and show names; the runner still reads values saved earlier as names (aliases). */
+  conditionValues: Record<string, ConditionChoice[]>;
 };
+export type ConditionChoice = { value: string; label: string };
 type Message = { kind: 'error' | 'status'; text: string; problems?: string[] };
+/** Organisation condition fields whose stored values are ids (F5). */
+const ID_FIELDS = new Set(['businessGroup', 'company', 'department']);
+/**
+ * A condition saved before ids (a business group, company or department name) is shown and saved again as the id of the
+ * one choice carrying that name. A name that matches no choice, or several, stays as it is (shown as not available).
+ */
+export function conditionsWithIds(workflow: AutomationWorkflow, choices: Readonly<Record<string, readonly ConditionChoice[]>>): AutomationWorkflow {
+  const convert = (conditions: AutomationWorkflow['conditions']) => conditions.map(condition => {
+    if (!ID_FIELDS.has(condition.field)) return condition;
+    const options = choices[condition.field] ?? [];
+    const values = condition.values.map(value => {
+      if (options.some(option => option.value === value)) return value;
+      const named = options.filter(option => option.label === value);
+      return named.length === 1 ? named[0].value : value;
+    });
+    return values.every((value, i) => value === condition.values[i]) ? condition : {...condition, values: [...new Set(values)]};
+  });
+  const conditions = convert(workflow.conditions), steps = workflow.steps.map(step => { const own = convert(step.conditions); return own.every((c, i) => c === step.conditions[i]) ? step : {...step, conditions: own}; });
+  return conditions.every((c, i) => c === workflow.conditions[i]) && steps.every((s, i) => s === workflow.steps[i]) ? workflow : {...workflow, conditions, steps};
+}
 const text = (value: unknown) => typeof value === 'string' ? value : '';
 
 /** The shared workflow editor for a module on the shared engine (Probation first). Saves through the shared store. */
 export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,onClose}:{catalogue:AutomationModuleCatalogue;initial:AutomationWorkflow;revision:number;refs:WorkflowEditorReferences;onClose:()=>void}){
  const t=useTranslations('automation'),router=useRouter(),[busy,start]=useTransition();
- const [draft,setDraft]=useState(initial),[revision,setRevision]=useState(savedRevision),[dirty,setDirty]=useState(savedRevision===0),[note,setNote]=useState(''),[message,setMessage]=useState<Message|null>(null),[people,setPeople]=useState(refs.people);
+ const [converted]=useState(()=>conditionsWithIds(initial,refs.conditionValues));
+ const [draft,setDraft]=useState(converted),[revision,setRevision]=useState(savedRevision),[dirty,setDirty]=useState(savedRevision===0||converted!==initial),[note,setNote]=useState(''),[message,setMessage]=useState<Message|null>(null),[people,setPeople]=useState(refs.people);
  const fields=useRef<Record<string,HTMLInputElement|HTMLTextAreaElement|null>>({});
  const readOnly=initial.status==='retired'||busy;
  const change=(edit:(workflow:AutomationWorkflow)=>void)=>{setDraft(current=>{const next=structuredClone(current);edit(next);return next;});setDirty(true);setMessage(null);};

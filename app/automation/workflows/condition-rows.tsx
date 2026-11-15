@@ -14,11 +14,12 @@ const numeric = (op: AutomationConditionOp) => op === 'lt' || op === 'lte' || op
  * the trigger cannot supply stays visible (and is reported as a problem) until it is changed or removed.
  * `is` / `is not` take several values: is matches any, is not matches none.
  */
-export function ConditionRows({catalogue,trigger,conditions,onChange,valuesFor,addLabel,hint,disabled=false,label}:{catalogue:AutomationModuleCatalogue;trigger:string;conditions:readonly AutomationCondition[];onChange:(next:AutomationCondition[])=>void;valuesFor:(field:string)=>readonly string[];addLabel:string;hint?:string;disabled?:boolean;label:string}){
+export function ConditionRows({catalogue,trigger,conditions,onChange,valuesFor,addLabel,hint,disabled=false,label}:{catalogue:AutomationModuleCatalogue;trigger:string;conditions:readonly AutomationCondition[];onChange:(next:AutomationCondition[])=>void;valuesFor:(field:string)=>readonly {value:string;label:string}[];addLabel:string;hint?:string;disabled?:boolean;label:string}){
  const t=useTranslations('automation');
  const fields=conditionFieldsForTrigger(catalogue,trigger);
- const choices=(field:string)=>{const spec=catalogue.conditionFields.find(f=>f.id===field);return [...(spec?.values??valuesFor(field))];};
- const fresh=(field:string,op?:AutomationConditionOp):AutomationCondition=>{const spec=catalogue.conditionFields.find(f=>f.id===field),useOp=op??spec?.ops[0]??'is',first=choices(field)[0];return{field,op:useOp,values:first!==undefined?[first]:numeric(useOp)?['0']:[]};};
+ // Catalogue values are their own labels; runtime choices (organisation ids, grades) carry a label.
+ const choices=(field:string)=>{const spec=catalogue.conditionFields.find(f=>f.id===field);return spec?.values?spec.values.map(value=>({value,label:value})):[...valuesFor(field)];};
+ const fresh=(field:string,op?:AutomationConditionOp):AutomationCondition=>{const spec=catalogue.conditionFields.find(f=>f.id===field),useOp=op??spec?.ops[0]??'is',first=choices(field)[0];return{field,op:useOp,values:first!==undefined?[first.value]:numeric(useOp)?['0']:[]};};
  const update=(index:number,next:AutomationCondition)=>onChange(conditions.map((c,i)=>i===index?next:c));
  return <div className="v9-stack automation-conditions" role="group" aria-label={label}>
   {conditions.map((condition,index)=>{
@@ -34,7 +35,7 @@ export function ConditionRows({catalogue,trigger,conditions,onChange,valuesFor,a
     {numeric(condition.op)
      ?<input aria-label={t('conditions.valueFor',{field:fieldLabel})} type="number" min={0} step={1} value={condition.values[0]??''} disabled={disabled} onChange={e=>update(index,{...condition,values:[e.target.value]})}/>
      :values.length
-      ?<MultiSelect label={t('conditions.valueFor',{field:fieldLabel})} value={condition.values} options={values.map(v=>({value:v,label:v}))} disabled={disabled} onChange={next=>update(index,{...condition,values:next})}/>
+      ?<MultiSelect label={t('conditions.valueFor',{field:fieldLabel})} value={condition.values} options={values} disabled={disabled} onChange={next=>update(index,{...condition,values:next})}/>
       :<TypedValues label={t('conditions.valueFor',{field:fieldLabel})} placeholder={t('conditions.typeValues')} values={condition.values} disabled={disabled} onChange={next=>update(index,{...condition,values:next})}/>}
     <button type="button" className="v9-button" aria-label={t('conditions.remove')} disabled={disabled} onClick={()=>onChange(conditions.filter((_,i)=>i!==index))}>×</button>
    </div>;})}

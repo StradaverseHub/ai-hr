@@ -24,7 +24,11 @@ export default async function Page({searchParams}:{searchParams:Promise<Record<s
   refs.people=await automationPeopleNames(ctx,personIds);
   refs.emailTemplates=emails.map(e=>({id:e.template.id,name:e.template.name,active:e.template.active,retired:e.retired,subject:e.template.subject}));
   refs.letterTemplates=letters?.templates??null;
-  refs.conditionValues={businessGroup:options.businessGroups.map(o=>o.name),company:options.companies.map(o=>o.name),department:[...new Set(options.departments.map(o=>o.name))],jobGrade:options.jobGrades,extensionsUsed:['0','1','2']};
+  // Organisation conditions store ids and show names (F5); a department name used in several companies names its company.
+  const companyName=new Map(options.companies.map(o=>[o.id,o.name])),repeated=new Set(options.departments.filter((d,i,all)=>all.findIndex(x=>x.name===d.name)!==i).map(d=>d.name));
+  const plain=(values:readonly string[])=>values.map(value=>({value,label:value}));
+  refs.conditionValues={businessGroup:options.businessGroups.map(o=>({value:o.id,label:o.name})),company:options.companies.map(o=>({value:o.id,label:o.name})),
+   department:options.departments.map(o=>({value:o.id,label:repeated.has(o.name)?`${o.name} · ${companyName.get(o.companyId)??''}`.replace(/ · $/,''):o.name})),jobGrade:plain(options.jobGrades),extensionsUsed:plain(['0','1','2'])};
   const present=new Set([...stored.map(w=>w.workflow.id),...emails.map(e=>e.template.id),...routings.map(r=>r.routing.id)]);
   defaultsMissing=[...PROBATION_DEFAULTS.workflows,...PROBATION_DEFAULTS.emailTemplates,...PROBATION_DEFAULTS.routings].filter(d=>!present.has(d.id)).length;
  }

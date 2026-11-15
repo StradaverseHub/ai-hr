@@ -20,7 +20,7 @@ const refs:WorkflowEditorReferences={
  groups:[{id:'g-gbs',name:'GBS People Ops'}],people:[],
  emailTemplates:[{id:'00000000-0000-4000-8000-0000000000e1',name:'Your probation letter',active:true,retired:false,subject:'Your probation letter'}],
  letterTemplates:[{id:'confirm-letter',name:'Confirmation letter'}],
- conditionValues:{businessGroup:['Fictional Group'],company:['Fictional Company Sdn Bhd'],department:['Finance'],jobGrade:['12'],extensionsUsed:['0','1','2']},
+ conditionValues:{businessGroup:[{value:'00000000-0000-4000-8000-0000000000c0',label:'Fictional Group'}],company:[{value:'00000000-0000-4000-8000-0000000000c1',label:'Fictional Company Sdn Bhd'}],department:[{value:'00000000-0000-4000-8000-0000000000d1',label:'Finance'}],jobGrade:[{value:'12',label:'12'}],extensionsUsed:['0','1','2'].map(value=>({value,label:value}))},
 };
 const workflow=(over:Partial<AutomationWorkflow>={}):AutomationWorkflow=>({id:'00000000-0000-4000-8000-0000000000a1',module:'probation',name:'Outcome · Confirm',description:'',status:'paused',required:true,
  trigger:{event:'outcomeDecided',days:0,workdays:false,repeat:false},skipWhen:'never',conditions:[{field:'outcome',op:'is',values:['Confirm']}],
@@ -67,6 +67,22 @@ describe('shared workflow editor',()=>{
   fireEvent.click(screen.getByRole('button',{name:'Save changes'}));
   await waitFor(()=>expect(m.save).toHaveBeenCalledTimes(1));
   expect(m.save.mock.calls[0][0]).toMatchObject({expectedRevision:1,reason:'Edited in the workflow builder',workflow:{status:'paused',conditions:[{field:'outcome',op:'is',values:['Confirm','Extend','Non-confirmation']}]}});
+ });
+
+ it('stores business group, company and department conditions as ids and shows their names; a value saved as a name becomes its id',async()=>{
+  show(workflow({conditions:[{field:'outcome',op:'is',values:['Confirm']},{field:'company',op:'is',values:['Fictional Company Sdn Bhd']}]}));
+  expect(screen.getByRole('button',{name:'Condition value for Company'})).toHaveTextContent('Fictional Company Sdn Bhd');
+  fireEvent.click(screen.getByRole('button',{name:'Add condition'}));
+  const fields=screen.getAllByRole('combobox',{name:'Condition field'});
+  fireEvent.change(fields[fields.length-1],{target:{value:'department'}});
+  expect(screen.getByRole('button',{name:'Condition value for Department'})).toHaveTextContent('Finance');
+  fireEvent.click(screen.getByRole('button',{name:'Save changes'}));
+  await waitFor(()=>expect(m.save).toHaveBeenCalledTimes(1));
+  expect(m.save.mock.calls[0][0].workflow.conditions).toEqual([
+   {field:'outcome',op:'is',values:['Confirm']},
+   {field:'company',op:'is',values:['00000000-0000-4000-8000-0000000000c1']},
+   {field:'department',op:'is',values:['00000000-0000-4000-8000-0000000000d1']},
+  ]);
  });
 
  it('blocks Make it live while there are problems, and makes a clean workflow live',async()=>{
