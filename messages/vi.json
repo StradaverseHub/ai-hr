@@ -41116,7 +41116,26 @@
     "applicationsUnavailable": "Hiện chưa thể ứng tuyển trực tuyến. Vui lòng thử lại sau.",
     "busyTitle": "Hệ thống đang bận",
     "busyBody": "Hiện có nhiều người đang dùng trang này. Vui lòng thử lại sau giây lát.",
-    "tooManyReads": "Có quá nhiều yêu cầu trang từ kết nối này. Vui lòng thử lại sau một phút."
+    "tooManyReads": "Có quá nhiều yêu cầu trang từ kết nối này. Vui lòng thử lại sau một phút.",
+    "verify": {
+      "intro": "Để ứng tuyển, trước tiên hãy xác nhận địa chỉ email của bạn. Chúng tôi sẽ gửi cho bạn một mã 6 chữ số.",
+      "sendCode": "Gửi mã cho tôi",
+      "sent": "Nếu {email} có thể nhận email, chúng tôi đã gửi một mã 6 chữ số tới địa chỉ đó. Mã hết hạn sau 10 phút.",
+      "codeLabel": "Mã trong email",
+      "codeHelp": "Nhập 6 chữ số. Hãy kiểm tra thư mục spam nếu bạn không thấy email.",
+      "check": "Tiếp tục",
+      "resendNote": "Không nhận được email sau vài phút? Hãy yêu cầu mã mới.",
+      "resend": "Gửi mã mới",
+      "wrongCode": "Mã không đúng. Hãy kiểm tra email và thử lại.",
+      "codeExpired": "Mã này đã hết hạn hoặc bị nhập sai quá nhiều lần. Hãy yêu cầu mã mới.",
+      "codeInvalid": "Nhập 6 chữ số trong email.",
+      "expired": "Xác nhận email của bạn đã hết hạn. Hãy xác nhận lại địa chỉ email để ứng tuyển.",
+      "verifiedNote": "Đã xác nhận. Hồ sơ của bạn sẽ dùng địa chỉ này."
+    },
+    "codeEmail": {
+      "subject": "Mã ứng tuyển {jobTitle} của bạn: {code}",
+      "body": "Mã để ứng tuyển vị trí {jobTitle} tại {companyName} của bạn là:\n\n{code}\n\nMã hết hạn sau 10 phút. Nếu bạn không yêu cầu mã này, hãy bỏ qua email này.\n\n{senderName}"
+    }
   },
   "bulkJobs": {
     "notification": {

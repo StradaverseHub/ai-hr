@@ -192,7 +192,11 @@ function fieldError(view: CareersView, field: CareersFormField, error: CareersFi
   return `<p class="error" id="${field}-error">${text}</p>`;
 }
 
-export function careersJobHtml(view: CareersView, address: string, data: CareersPublicJob, form: CareersFormState = emptyForm, accepting = true): string {
+/** Slice 21a: the verified address and its token, carried by the application form once the code step succeeded. */
+export type CareersVerified = { email: string; token: string };
+
+export function careersJobHtml(view: CareersView, address: string, data: CareersPublicJob, form: CareersFormState = emptyForm, accepting = true,
+  verified: CareersVerified | null = null): string {
   const w = view.words;
   const pagePath = careersPagePath(address);
   const here = careersJobPath(address, data.job.id);
@@ -220,8 +224,12 @@ export function careersJobHtml(view: CareersView, address: string, data: Careers
     return (Object.keys(e).length ? `<p class="alert" role="alert">${esc(w.errors.summary)}</p>` : `<p class="muted">${esc(w.requiredNote)}</p>`)
     + `<form method="post" enctype="multipart/form-data" action="${esc(link(view, here))}" novalidate>`
     + `<input type="hidden" name="noticeVersion" value="${esc(data.notice.version)}">`
+    + (verified ? `<input type="hidden" name="intent" value="apply"><input type="hidden" name="verificationToken" value="${esc(verified.token)}">` : '')
     + field('fullName', 'text', w.fullName, ` maxlength="${CAREERS_NAME_MAX}" autocomplete="name"`, true)
-    + field('email', 'email', w.email, ' maxlength="254" autocomplete="email"', true)
+    + (verified
+      ? `<div class="field"><label for="email">${esc(w.email)}</label><input type="email" id="email" name="email" value="${esc(verified.email)}" readonly aria-describedby="email-verified">`
+        + `<p class="help" id="email-verified">${esc(w.verify.verifiedNote)}</p></div>`
+      : field('email', 'email', w.email, ' maxlength="254" autocomplete="email"', true))
     + field('mobile', 'tel', w.mobile, ' maxlength="40" autocomplete="tel"', false, w.mobileHelp)
     + `<div class="field"><label for="resume">${esc(w.resume)}</label><input type="file" id="resume" name="resume" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"${invalid('resume')}>`
     + `<p class="help">${esc(w.resumeHelp)}</p>${fieldError(view, 'resume', e.resume)}</div>`
@@ -260,4 +268,54 @@ export function careersTooLargeHtml(view: CareersView, address: string, jobId: s
   const w = view.words;
   const here = careersJobPath(address, jobId);
   return documentHtml(view, { title: w.tooLargeTitle, here, body: `<h1>${esc(w.tooLargeTitle)}</h1><p>${esc(w.tooLarge)}</p><p><a href="${esc(link(view, here))}">${esc(w.backToJob)}</a></p>` });
+}
+
+// ── Slice 21a: the e-mail and code steps (while the company's candidate e-mail is on) ─────────────────────────────
+
+function stepPage(view: CareersView, address: string, data: CareersPublicJob, inner: string): string {
+  const w = view.words;
+  const pagePath = careersPagePath(address);
+  const here = careersJobPath(address, data.job.id);
+  const job = data.job;
+  const body = `<nav class="crumbs" aria-label="${esc(w.breadcrumb)}"><ol><li><a href="${esc(link(view, pagePath))}">${esc(data.displayName)}</a></li>`
+    + `<li aria-current="page">${esc(job.title)}</li></ol></nav>`
+    + `<h1>${esc(job.title)}</h1><ul class="meta"><li>${esc(w.jobNumber)}: ${esc(job.jobNumber)}</li><li>${esc(employment(view, job.employmentType))}</li>`
+    + `<li>${esc(job.workLocation)}</li><li>${fill(w.postedOn, { date: postedDate(view, job.postedAt) })}</li></ul>`
+    + (job.description ? `<section class="card" aria-labelledby="about"><h2 id="about">${esc(w.description)}</h2><p class="text">${esc(job.description)}</p></section>` : '')
+    + `<section class="card" aria-labelledby="apply"><h2 id="apply">${esc(w.applyTitle)}</h2>${inner}</section>`;
+  return documentHtml(view, { title: `${job.title} · ${data.displayName}`, brand: { name: data.displayName, href: link(view, pagePath) }, here, body });
+}
+
+/** Step 1: the applicant's e-mail, to receive a code. `error`: a malformed address, or a verification that ran out. */
+export function careersEmailStepHtml(view: CareersView, address: string, data: CareersPublicJob, state: { email?: string; error?: 'email' | 'expired' } = {}): string {
+  const w = view.words;
+  const v = w.verify;
+  const here = careersJobPath(address, data.job.id);
+  const invalid = state.error === 'email' ? ' aria-invalid="true" aria-describedby="email-error"' : '';
+  return stepPage(view, address, data,
+    (state.error === 'expired' ? `<p class="alert" role="alert">${esc(v.expired)}</p>` : '')
+    + `<p>${esc(v.intro)}</p>`
+    + `<form method="post" action="${esc(link(view, here))}" novalidate><input type="hidden" name="intent" value="code">`
+    + `<div class="field"><label for="email">${esc(w.email)} <span class="req" aria-hidden="true">*</span></label>`
+    + `<input type="email" id="email" name="email" value="${esc(state.email ?? '')}" maxlength="254" autocomplete="email" required${invalid}>`
+    + (state.error === 'email' ? `<p class="error" id="email-error">${esc(w.errors.emailInvalid)}</p>` : '')
+    + `</div><button class="btn" type="submit">${esc(v.sendCode)}</button></form>`);
+}
+
+/** Step 2: the code. The same page whether or not a code was sent (D-066). */
+export function careersCodeStepHtml(view: CareersView, address: string, data: CareersPublicJob, state: { email: string; error?: 'wrong' | 'expired' | 'invalid' }): string {
+  const w = view.words;
+  const v = w.verify;
+  const here = careersJobPath(address, data.job.id);
+  const message = state.error === 'wrong' ? v.wrongCode : state.error === 'expired' ? v.codeExpired : state.error === 'invalid' ? v.codeInvalid : null;
+  return stepPage(view, address, data,
+    `<p role="status">${fill(v.sent, { email: state.email })}</p>`
+    + `<form method="post" action="${esc(link(view, here))}" novalidate><input type="hidden" name="intent" value="verify">`
+    + `<input type="hidden" name="email" value="${esc(state.email)}">`
+    + `<div class="field"><label for="code">${esc(v.codeLabel)} <span class="req" aria-hidden="true">*</span></label>`
+    + `<input type="text" id="code" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required`
+    + (message ? ' aria-invalid="true" aria-describedby="code-error">' + `<p class="error" id="code-error">${esc(message)}</p>` : '>')
+    + `<p class="help">${esc(v.codeHelp)}</p></div><button class="btn" type="submit">${esc(v.check)}</button></form>`
+    + `<form method="post" action="${esc(link(view, here))}"><input type="hidden" name="intent" value="code"><input type="hidden" name="email" value="${esc(state.email)}">`
+    + `<p class="muted">${esc(v.resendNote)}</p><button class="btn ghost" type="submit">${esc(v.resend)}</button></form>`);
 }

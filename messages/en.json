@@ -41116,7 +41116,26 @@
     "applicationsUnavailable": "Online applications are not available right now. Try again later.",
     "busyTitle": "Busy right now",
     "busyBody": "Many people are using this page right now. Try again in a moment.",
-    "tooManyReads": "Too many page requests from this connection. Try again in a minute."
+    "tooManyReads": "Too many page requests from this connection. Try again in a minute.",
+    "verify": {
+      "intro": "To apply, first confirm your email address. We will send you a 6-digit code.",
+      "sendCode": "Send me a code",
+      "sent": "If {email} can receive email, we have sent a 6-digit code to it. It expires in 10 minutes.",
+      "codeLabel": "Code from the email",
+      "codeHelp": "Enter the 6 digits. Check your spam folder if you cannot find the email.",
+      "check": "Continue",
+      "resendNote": "No email after a few minutes? Ask for a new code.",
+      "resend": "Send a new code",
+      "wrongCode": "That code is not right. Check the email and try again.",
+      "codeExpired": "This code has expired or was used too many times. Ask for a new code.",
+      "codeInvalid": "Enter the 6 digits from the email.",
+      "expired": "Your email confirmation has expired. Confirm your email address again to apply.",
+      "verifiedNote": "Confirmed. Your application will use this address."
+    },
+    "codeEmail": {
+      "subject": "Your code to apply for {jobTitle}: {code}",
+      "body": "Your code to apply for {jobTitle} at {companyName} is:\n\n{code}\n\nIt expires in 10 minutes. If you did not ask for this code, you can ignore this email.\n\n{senderName}"
+    }
   },
   "bulkJobs": {
     "notification": {

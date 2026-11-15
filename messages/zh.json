@@ -41116,7 +41116,26 @@
     "applicationsUnavailable": "目前无法在线申请，请稍后再试。",
     "busyTitle": "当前访问繁忙",
     "busyBody": "目前访问此页面的人数较多，请稍后再试。",
-    "tooManyReads": "此网络连接的页面请求过多，请一分钟后再试。"
+    "tooManyReads": "此网络连接的页面请求过多，请一分钟后再试。",
+    "verify": {
+      "intro": "申请前，请先确认您的电子邮箱。我们会向您发送一个6位数验证码。",
+      "sendCode": "发送验证码",
+      "sent": "如果 {email} 可以接收邮件，我们已向其发送了一个6位数验证码，10分钟内有效。",
+      "codeLabel": "邮件中的验证码",
+      "codeHelp": "请输入6位数字。如未收到邮件，请查看垃圾邮件文件夹。",
+      "check": "继续",
+      "resendNote": "几分钟后仍未收到邮件？请重新获取验证码。",
+      "resend": "重新发送验证码",
+      "wrongCode": "验证码不正确。请查看邮件后重试。",
+      "codeExpired": "此验证码已过期或尝试次数过多。请重新获取验证码。",
+      "codeInvalid": "请输入邮件中的6位数字。",
+      "expired": "您的邮箱确认已过期。请重新确认邮箱后再申请。",
+      "verifiedNote": "已确认。您的申请将使用此邮箱。"
+    },
+    "codeEmail": {
+      "subject": "您申请{jobTitle}的验证码：{code}",
+      "body": "您申请{companyName}{jobTitle}职位的验证码是：\n\n{code}\n\n该验证码10分钟内有效。如果您没有申请此验证码，请忽略本邮件。\n\n{senderName}"
+    }
   },
   "bulkJobs": {
     "notification": {

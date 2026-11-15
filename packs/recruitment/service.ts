@@ -79,10 +79,12 @@ export type { ReferralStatus, ReferralRefusal, ReferralProgress } from './referr
 export {
   careersSettings, updateCareersSettings, setCareersPublished, setJobCareersPage, jobCareersStatus, applicationCareers, careersPublicPage,
   careersPublicJob, submitCareersApplication, careersClientLimited,
+  // Slice 21a: verified applicants (5722).
+  careersApplyMode, requestCareersCode, checkCareersCode,
 } from './careers';
 export type {
   CareersSettings, CareersNoticeVersionView, JobCareersStatus, ApplicationCareers, CareersPublicJobRow, CareersPublicPage, CareersPublicJob,
-  CareersPageQuery, CareersSubmission, CareersSubmitResult,
+  CareersPageQuery, CareersSubmission, CareersSubmitResult, CareersCodeRequest, CareersCodeCheck,
 } from './careers';
 export {
   CAREERS_DISPLAY_NAME_MAX, CAREERS_HEADLINE_MAX, CAREERS_INTRODUCTION_MAX, CAREERS_NOTICE_MAX, CAREERS_NAME_MAX, CAREERS_MESSAGE_MAX,

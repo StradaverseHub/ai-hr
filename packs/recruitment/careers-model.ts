@@ -152,7 +152,7 @@ export function validateCareersApplication(input: CareersApplicationInput):
 }
 
 /** What the visitor sees after a well-formed submission. Received covers stored, a repeat and the honeypot alike (D-027). */
-export const CAREERS_OUTCOMES = ['received', 'not_found', 'rate_limited', 'company_limit', 'notice_changed'] as const;
+export const CAREERS_OUTCOMES = ['received', 'not_found', 'rate_limited', 'company_limit', 'notice_changed', 'unverified'] as const;
 export type CareersOutcome = (typeof CAREERS_OUTCOMES)[number];
 
 /** The page number from the query string: a whole number from 1; anything else is page 1. */

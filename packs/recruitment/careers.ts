@@ -20,9 +20,13 @@ import { withRecruitmentTenant } from '../../core/module-gate';
 import { resolveDocumentUpload } from '../../core/employee-documents';
 import { pgSqlState } from '../../lib/db-error';
 import { careersJobPath } from '../../lib/careers-route';
-import { careersApplicationsAccepted } from '../../lib/careers-client';
+import { careersApplicationsAccepted, careersCodeHash, careersTokenHash, newCareersCode, newCareersToken } from '../../lib/careers-client';
+import { candidateEmailAvailable, candidateEmailSender } from '../../lib/recruitment-candidate-email-ipc';
+import { messagesForLocale } from '../../i18n/catalogs';
 import { RecruitmentError, isUuid, type JobEmploymentType } from './model';
-import { CANDIDATE_FILE_MAX_BYTES, CANDIDATE_FILE_MIME } from './privacy-model';
+import { CANDIDATE_FILE_MAX_BYTES, CANDIDATE_FILE_MIME, normEmail } from './privacy-model';
+import { CANDIDATE_EMAIL_LOCALES, linkish, renderCandidateEmail, usableRecipient, type CandidateEmailLocale, type ValidTemplate } from './candidate-email-model';
+import { candidateEmailDefault } from './candidate-email';
 import {
   CAREERS_PAGE_SIZE, careersFileNameOk, careersPublishMissing, validateCareersApplication, validateCareersSettings, type CareersApplicationInput, type CareersFieldError,
   type CareersFormField, type CareersOutcome, type CareersPublishRequirement, type CareersSettingsInput,
@@ -298,6 +302,8 @@ export async function careersClientLimited(clientHash: string): Promise<boolean>
 
 export type CareersSubmission = CareersApplicationInput & {
   address: string; jobId: string;
+  /** Slice 21a: the verification token the code step gave this form (hidden field); required while the company's candidate e-mail is on. */
+  verificationToken?: string | null;
   /** The keyed hash of the client address (lib/careers-client.ts), asked for only once the form is valid; the address
    *  itself never reaches this module. It may throw (no verified source), which the caller answers as unavailable. */
   clientHash: () => string;
@@ -337,12 +343,115 @@ export async function submitCareersApplication(input: CareersSubmission): Promis
   if (!isUuid(input.jobId)) return { ok: true, outcome: 'not_found' };
   const clientHash = input.clientHash();
   if (!/^[0-9a-f]{64}$/.test(clientHash)) throw new Error('Careers client hash unavailable');
-  const [row] = await careersDb().unsafe<{ r: { status: CareersOutcome } }[]>(
-    'select app.recruitment_careers_submit($1::text, $2::uuid, $3::text, $4::text, $5::text, $6::text, $7::text, $8::integer, $9::boolean, $10::text, $11::text, $12::bytea) as r',
+  const tokenHash = input.verificationToken ? careersTokenHash(input.verificationToken) : null;
+  // Slice 21a: one definer decides whether a verification is required (the company's candidate e-mail is on) and consumes it.
+  const [row] = await careersDb().unsafe<{ r: { status: CareersOutcome; applicationId?: string; verified?: boolean } }[]>(
+    'select app.recruitment_careers_apply($13::text, $1::text, $2::uuid, $3::text, $4::text, $5::text, $6::text, $7::text, $8::integer, $9::boolean, $10::text, $11::text, $12::bytea) as r',
     [input.address, input.jobId, clientHash, v.value.fullName, v.value.email, v.value.mobile, v.value.message, v.value.noticeVersion, v.value.honeypot,
-      resume?.fileName ?? null, resume?.mimeType ?? null, resume?.content ?? null]);
-  const status = row?.r?.status;
+      resume?.fileName ?? null, resume?.mimeType ?? null, resume?.content ?? null, tokenHash]);
+  const r = row?.r;
+  const status = r?.status;
   if (status === 'notice_changed') return { ok: false, fields: { consent: 'notice_changed' } };
-  if (status === 'received' || status === 'not_found' || status === 'rate_limited' || status === 'company_limit') return { ok: true, outcome: status };
+  if (status === 'received' && r?.verified && r.applicationId && tokenHash) {
+    // The application is stored; its receipt is best effort (a failure here never undoes the application).
+    await queueCareersReceipt(input.address, input.jobId, r.applicationId, tokenHash, v.value.fullName).catch((e) => {
+      console.error('recruitment careers receipt failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+    });
+  }
+  if (status === 'received' || status === 'not_found' || status === 'rate_limited' || status === 'company_limit' || status === 'unverified') return { ok: true, outcome: status };
   throw new Error('Careers submission returned no outcome');
+}
+
+// ── Slice 21a: verified applicants (D-063, D-066) ─────────────────────────────────────────────────────────────────
+
+/** What the careers server knows about writing to an applicant of a public job. */
+type CareersEmailContext = {
+  tenantId: string; companyId: string; jobTitle: string; companyName: string; required: boolean; senderName: string | null; replyTo: string | null;
+  locale: CandidateEmailLocale; receipt: ValidTemplate | null;
+};
+async function careersEmailContext(address: string, jobId: string): Promise<CareersEmailContext | null> {
+  if (!isUuid(jobId)) return null;
+  const [row] = await careersDb().unsafe<{ r: CareersEmailContext | null }[]>('select app.recruitment_careers_email_context($1::text, $2::uuid) as r', [address, jobId]);
+  const r = row?.r ?? null;
+  if (!r) return null;
+  return { ...r, locale: (CANDIDATE_EMAIL_LOCALES as readonly string[]).includes(r.locale) ? r.locale : 'en' };
+}
+
+/**
+ * How this job takes applications: 'verify' (the company's candidate e-mail is on and this installation can send: e-mail code
+ * first), 'open' (slice 8's form, unverified), 'unavailable' (the company requires verification but this installation cannot send
+ * now: no form) or null (not public).
+ */
+export async function careersApplyMode(address: string, jobId: string): Promise<'verify' | 'open' | 'unavailable' | null> {
+  const c = await careersEmailContext(address, jobId);
+  if (!c) return null;
+  if (!c.required) return 'open';
+  return (await candidateEmailAvailable(c.tenantId)) ? 'verify' : 'unavailable';
+}
+
+export type CareersCodeRequest = 'sent' | 'invalid_email' | 'client_limited' | 'not_found' | 'not_required' | 'unavailable';
+/**
+ * Send a 6-digit code to the address typed. 'sent' whatever happened past validation (sent, the address's limit reached, a relay
+ * refusal): the page is the same, so it never reveals an address or a limit (D-066). The code itself never reaches the database.
+ */
+export async function requestCareersCode(input: { address: string; jobId: string; email: string; clientHash: () => string }): Promise<CareersCodeRequest> {
+  const email = (input.email ?? '').trim().toLowerCase();
+  if (!usableRecipient(email)) return 'invalid_email';
+  const c = await careersEmailContext(input.address, input.jobId);
+  if (!c) return 'not_found';
+  if (!c.required) return 'not_required';
+  if (!(await candidateEmailAvailable(c.tenantId))) return 'unavailable';
+  const clientHash = input.clientHash();
+  const code = newCareersCode();
+  const [row] = await careersDb().unsafe<{ r: { status: string } }[]>('select app.recruitment_careers_issue_code($1::text, $2::uuid, $3::text, $4::text, $5::text) as r',
+    [input.address, input.jobId, clientHash, email, careersCodeHash(input.jobId, normEmail(email)!, code)]);
+  const status = row?.r?.status;
+  if (status === 'client_limited') return 'client_limited';
+  if (status === 'not_found') return 'not_found';
+  if (status === 'not_required') return 'not_required';
+  if (status !== 'issued') return 'sent';
+  try {
+    const sender = await candidateEmailSender(c.tenantId);
+    if (!sender || !c.senderName || !c.replyTo) return 'sent';
+    const mail = await careersCodeEmail(c, code);
+    await sender.send({ to: email, subject: mail.subject, text: mail.text, html: mail.html, senderName: c.senderName, replyTo: c.replyTo,
+      messageId: `<recruitment-careers-code.${newCareersToken().slice(0, 22)}@${sender.host}>` });
+  } catch (e) {
+    console.error('recruitment careers code not sent', e instanceof Error ? e.name : typeof e);
+  }
+  return 'sent';
+}
+/** The code e-mail: code-owned wording in the company's candidate e-mail language (messages careersPublic.codeEmail), no link. */
+async function careersCodeEmail(c: CareersEmailContext, code: string) {
+  const m = await messagesForLocale(c.locale) as unknown as { careersPublic: { codeEmail: ValidTemplate } };
+  const t = m.careersPublic.codeEmail;
+  const template = { subject: t.subject.split('{code}').join(code), body: t.body.split('{code}').join(code) };
+  return renderCandidateEmail('application_received', c.locale, template, { candidateName: '', jobTitle: c.jobTitle, companyName: c.companyName, senderName: c.senderName ?? '' });
+}
+
+export type CareersCodeCheck = { status: 'verified'; token: string } | { status: 'wrong' | 'expired' | 'client_limited' | 'not_found' | 'invalid' };
+/** Check the code typed. A right code yields a verification token (valid 30 minutes for this address and job). */
+export async function checkCareersCode(input: { address: string; jobId: string; email: string; code: string; clientHash: () => string }): Promise<CareersCodeCheck> {
+  const email = (input.email ?? '').trim().toLowerCase();
+  const code = (input.code ?? '').replace(/\s+/g, '');
+  if (!usableRecipient(email) || !/^\d{6}$/.test(code) || !isUuid(input.jobId)) return { status: 'invalid' };
+  const token = newCareersToken();
+  const [row] = await careersDb().unsafe<{ r: { status: string } }[]>(
+    'select app.recruitment_careers_check_code($1::text, $2::uuid, $3::text, $4::text, $5::text, $6::text) as r',
+    [input.address, input.jobId, input.clientHash(), email, careersCodeHash(input.jobId, normEmail(email)!, code), careersTokenHash(token)!]);
+  const status = row?.r?.status;
+  if (status === 'verified') return { status, token };
+  if (status === 'wrong' || status === 'expired' || status === 'client_limited' || status === 'not_found') return { status };
+  throw new Error('Careers code check returned no outcome');
+}
+
+/** The receipt of a verified careers application: the company's wording (or the default) rendered with slice 19's renderer. */
+async function queueCareersReceipt(address: string, jobId: string, applicationId: string, tokenHash: string, fullName: string): Promise<void> {
+  const c = await careersEmailContext(address, jobId);
+  if (!c || !c.required || !c.senderName) return;
+  const template = c.receipt ?? await candidateEmailDefault('application_received', c.locale);
+  const mail = renderCandidateEmail('application_received', c.locale, template, { candidateName: fullName, jobTitle: c.jobTitle, companyName: c.companyName, senderName: c.senderName });
+  if (linkish(mail.subject) || linkish(mail.text)) return;
+  await careersDb().unsafe('select app.recruitment_careers_queue_receipt($1::text, $2::uuid, $3::text, $4::text, $5::text) as r',
+    [tokenHash, applicationId, mail.subject, mail.text, mail.html]);
 }

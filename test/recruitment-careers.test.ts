@@ -34,6 +34,12 @@ const REVIEWED_DEFINERS: string[] = [
   // 5710: each reads one job opening by id in the caller's tenant (the check refuses unless the caller operates that job;
   // the submission guard checks the job's status for a row the caller may write).
   'app.recruitment_agency_check(uuid,uuid,text,text,text,text,uuid,boolean)',
+  // 5722 (slice 21a): the verified-applicant definers — each resolves the site by address and filters the job by the site's tenant
+  // and company; they return statuses only, and the e-mail context returns the job title, company name and sender settings only.
+  'app.recruitment_careers_apply(text,text,uuid,text,text,text,text,text,integer,boolean,text,text,bytea)',
+  'app.recruitment_careers_check_code(text,uuid,text,text,text,text)',
+  'app.recruitment_careers_email_context(text,uuid)',
+  'app.recruitment_careers_issue_code(text,uuid,text,text,text)',
   // 5708: the careers functions themselves — each returns only the spec's public fields.
   'app.recruitment_careers_job(text,uuid)',
   'app.recruitment_careers_page(text,text,text,text,integer)',
@@ -677,14 +683,22 @@ describe('row security on the careers tables', () => {
         exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where a.grantee = 0) as pub
       from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'app' and p.proname like 'recruitment\\_careers\\_%' order by 1`);
     expect(fns.map((f) => [f.f, f.definer, f.app, f.pub])).toEqual([
+      // Slice 21a (5722): the app role submits only through apply, which decides whether a verification is required.
+      ['app.recruitment_careers_apply(text,text,uuid,text,text,text,text,text,integer,boolean,text,text,bytea)', true, true, false],
+      ['app.recruitment_careers_check_code(text,uuid,text,text,text,text)', true, true, false],
       ['app.recruitment_careers_client_limited(text)', true, true, false],
+      ['app.recruitment_careers_email_context(text,uuid)', true, true, false],
+      ['app.recruitment_careers_email_digest(text)', false, false, false],
+      ['app.recruitment_careers_issue_code(text,uuid,text,text,text)', true, true, false],
       ['app.recruitment_careers_job(text,uuid)', true, true, false],
       ['app.recruitment_careers_open(uuid,uuid)', true, true, false],
       ['app.recruitment_careers_page(text,text,text,text,integer)', true, true, false],
       ['app.recruitment_careers_prune()', true, false, false],
       ['app.recruitment_careers_published(uuid,uuid)', true, true, false],
+      ['app.recruitment_careers_queue_receipt(text,uuid,text,text,text)', true, true, false],
       ['app.recruitment_careers_site_at(text)', true, false, false],
-      ['app.recruitment_careers_submit(text,uuid,text,text,text,text,text,integer,boolean,text,text,bytea)', true, true, false],
+      ['app.recruitment_careers_submit(text,uuid,text,text,text,text,text,integer,boolean,text,text,bytea)', true, false, false],
+      ['app.recruitment_careers_verification_required(uuid,uuid)', false, false, false],
     ]);
     for (const f of fns) expect(f.config.some((c) => c.startsWith('search_path=pg_catalog')), f.f).toBe(true);
     // The app role reads nothing private directly.
@@ -736,7 +750,7 @@ describe('the owner-only, marker-bound policies under a production-like owner', 
       expect((one.r as { notice: { version: number } }).notice.version).toBe(1);
       const [ok] = await tx`select app.recruitment_careers_submit(${ADDRESS}, ${jobId}::uuid, ${hashOf('owner')}, 'Fictional Owner Applicant', 'owner.applicant@example.test',
         '+60 12-000 1111', 'Fictional message', 1, false, 'cv.pdf', 'application/pdf', ${pdf()}::bytea) as r`;
-      expect(ok.r).toEqual({ status: 'received' });
+      expect(ok.r).toMatchObject({ status: 'received' }); // 5722: the result also names the application and candidate (owner callers only)
       const [repeat] = await tx`select app.recruitment_careers_submit(${ADDRESS}, ${jobId}::uuid, ${hashOf('owner-2')}, 'Fictional Owner Applicant', 'OWNER.applicant@example.test',
         null, null, 1, false) as r`;
       expect(repeat.r).toEqual({ status: 'received' });

@@ -1550,3 +1550,79 @@ ADR (docs/adr/2026-11-14-recruitment-candidate-email.md) records why candidate e
      the send; offers not approved cannot be e-mailed (service and database).
 136. Rendered: scheduling with an invitation preview; the reminder visible as queued; a cancellation e-mail; an offer
      e-mail preview and send.
+
+## Slice 21 — Verified applicants, careers receipts and accept links (owner: group 2, 2026-11-14; D-026, D-063, D-064, D-066; EV-043)
+
+The owner decided (D-063) that applicants get no accounts: they verify their e-mail with a one-time code before applying, under
+strict per-address and per-IP limits, and accept interviews and offers through signed links. Careers-page receipts, deferred in
+slice 19 (D-064), go out once the address is verified. The slice lands in two parts: **21a** (verification and receipts) and
+**21b** (accept links).
+
+### 21a — When verification applies
+
+- A company's careers applications need a verified e-mail exactly while its candidate e-mail can be sent: the company's switch
+  is on and this installation can send (slice 19). Otherwise the careers form works as in slice 8 (unverified, no receipt): a
+  company without candidate e-mail has no way to send a code, and turning e-mail off must not close its careers page (D-066).
+- The database enforces it: while the company's switch is on, an application is stored only with a verification the same
+  e-mail earned for the same job in the last 30 minutes, used once.
+
+### 21a — The code
+
+- The job page asks for the e-mail first ("Send me a code"). The server sends a 6-digit code to that address through the
+  installation relay with the company's sender name and reply-to, in the company's candidate e-mail language. Wording is
+  code-owned (six languages, not company-editable): the job title, the company, the code, that it expires in 10 minutes, and
+  "if you did not ask for this, ignore this e-mail". No link.
+- The page then asks for the code. Whatever happened (sent, address limit reached, invalid address that still looks well
+  formed) the visitor sees the same "If this address can receive e-mail, we sent a code" page, so the page never tells whether
+  an address exists or was limited. Only a malformed address returns a field message.
+- A code is stored only as a keyed hash; it expires after 10 minutes; at most 5 wrong entries per code (then it is spent);
+  a new code replaces any earlier unused one for the same address and job.
+- Limits: per company and address, 3 codes an hour and 10 a Kuala Lumpur day; per client address (the slice 8 keyed hash),
+  10 codes an hour and 30 code checks an hour (429 above them, as slice 8). Codes, checks and verifications are pruned after
+  2 days by the slice 8 prune.
+- A correct code yields a verification (a random token, stored hashed) valid 30 minutes for that address and job; the form
+  then shows the e-mail fixed and the rest of slice 8's form. The token is consumed by the application it creates.
+
+### 21a — Careers receipts
+
+- A verified careers application queues the company's "Application received" e-mail to the verified address automatically
+  (D-063: receipts are automatic), at most one per application, recorded as queued by the applicant (no person). The rendered
+  content is frozen as in slice 19; delivery is slice 19's sweep. A repeated application or a honeypot hit stores nothing and
+  queues nothing (the same thank-you page).
+- HR's list shows it as "Queued by the applicant".
+
+### 21a — Data
+
+- One migration (5722): code, check and verification tables in `app` (owner-only, forced RLS, no grant); definer functions to
+  issue and check codes and to submit a verified application (the slice 8 submission is no longer granted to the app role
+  directly: one wrapper decides whether verification is required); a definer to queue the careers receipt for an application
+  the same transaction created from a consumed verification; `queued_by_user_id` may be empty only for such a receipt.
+
+### 21a — Acceptance cases
+
+137. While a company's candidate e-mail is on, an application without a verification is refused by the service and the
+     database; with it off, slice 8's form works unchanged and queues nothing.
+138. A code goes only to the address typed, expires in 10 minutes, allows 5 wrong entries, and is replaced by a new one; the
+     response is the same whether or not a code was sent (address limit, unknown company setting).
+139. The per-address (3/hour, 10/day) and per-client (10 codes, 30 checks an hour) limits hold; no raw address or code is
+     stored.
+140. A verification is valid 30 minutes for that address and job only and is used once; the application stores the
+     verified address.
+141. A verified application queues exactly one receipt to the verified address with the company's wording; a repeated
+     application or honeypot queues none; candidate removal deletes it.
+142. Rendered: the e-mail step, the code step and the form in a signed-out browser.
+
+### 21b — Accept links (specified here, built after 21a)
+
+- Invitation and offer e-mails carry one link on the installation's own careers host, `/careers/r/<token>`: a random token
+  stored hashed, for one interview or one offer, valid until the interview starts or the offer expires, never after the
+  interview is cancelled or the offer re-issued, decided or withdrawn. The link is the second link a candidate e-mail may carry
+  (D-066), frozen and checked as the map link is.
+- Opening the link (GET) only shows the job title, the company, and the interview time and place or "your offer"; it changes
+  nothing (mail scanners open links). The candidate presses Accept or Decline (POST).
+- Interviews: the response sets the interview's candidate response (Pending → Accepted or Declined), recorded as by the
+  candidate; a person may still change it.
+- Offers: the response is recorded as the candidate's reply on the offer and shown to HR, who records the decision with the
+  existing "Record decision" (prefilled). A link never moves or archives an application (people decide; D-066).
+- Limits: 20 link requests an hour per client address; a token is used at most once per answer and can be changed until the
+  interview starts or HR records the offer decision.

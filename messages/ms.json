@@ -41116,7 +41116,26 @@
     "applicationsUnavailable": "Permohonan dalam talian tidak tersedia buat masa ini. Cuba lagi kemudian.",
     "busyTitle": "Sibuk buat masa ini",
     "busyBody": "Ramai orang sedang menggunakan halaman ini. Cuba lagi sebentar lagi.",
-    "tooManyReads": "Terlalu banyak permintaan halaman daripada sambungan ini. Cuba lagi dalam seminit."
+    "tooManyReads": "Terlalu banyak permintaan halaman daripada sambungan ini. Cuba lagi dalam seminit.",
+    "verify": {
+      "intro": "Untuk memohon, sahkan alamat e-mel anda dahulu. Kami akan menghantar kod 6 digit kepada anda.",
+      "sendCode": "Hantar kod kepada saya",
+      "sent": "Jika {email} boleh menerima e-mel, kami telah menghantar kod 6 digit kepadanya. Kod tamat tempoh dalam 10 minit.",
+      "codeLabel": "Kod daripada e-mel",
+      "codeHelp": "Masukkan 6 digit itu. Semak folder spam jika anda tidak menjumpai e-mel tersebut.",
+      "check": "Teruskan",
+      "resendNote": "Tiada e-mel selepas beberapa minit? Minta kod baharu.",
+      "resend": "Hantar kod baharu",
+      "wrongCode": "Kod itu tidak betul. Semak e-mel dan cuba lagi.",
+      "codeExpired": "Kod ini telah tamat tempoh atau terlalu banyak kali dicuba. Minta kod baharu.",
+      "codeInvalid": "Masukkan 6 digit daripada e-mel.",
+      "expired": "Pengesahan e-mel anda telah tamat tempoh. Sahkan alamat e-mel anda sekali lagi untuk memohon.",
+      "verifiedNote": "Disahkan. Permohonan anda akan menggunakan alamat ini."
+    },
+    "codeEmail": {
+      "subject": "Kod anda untuk memohon {jobTitle}: {code}",
+      "body": "Kod anda untuk memohon jawatan {jobTitle} di {companyName} ialah:\n\n{code}\n\nKod ini tamat tempoh dalam 10 minit. Jika anda tidak meminta kod ini, abaikan e-mel ini.\n\n{senderName}"
+    }
   },
   "bulkJobs": {
     "notification": {

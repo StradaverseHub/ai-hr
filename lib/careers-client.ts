@@ -21,7 +21,7 @@
  * relaxes the limits across a restart. No new required setting. The raw address is never returned, stored or logged.
  * An IPv6 address counts by its /64 network, so rotating addresses inside one allocation do not reset the limit.
  */
-import { createHash, createHmac, hkdfSync, randomBytes } from 'node:crypto';
+import { createHash, createHmac, hkdfSync, randomBytes, randomInt } from 'node:crypto';
 import { isIP } from 'node:net';
 import { trustedRequestSource } from './request-budget';
 
@@ -91,4 +91,33 @@ export function careersReadBudgetKey(request: Request, env: NodeJS.ProcessEnv = 
   } catch {
     return null;
   }
+}
+
+// ── Slice 21a: one-time codes and verification tokens ─────────────────────────────────────────────────────────────
+const CODE_INFO = 'ai-hr/recruitment-careers/verification/v1';
+let processCodeKey: Buffer | null = null;
+/** A separate purpose-bound key (HKDF of the same server secret) for code and token hashes; a per-process key in development only. */
+function careersCodeKey(env: NodeJS.ProcessEnv): Buffer {
+  const secret = env.AUTH_SESSION_KEY?.trim() || env.WORKOS_COOKIE_PASSWORD?.trim();
+  if (secret) return Buffer.from(hkdfSync('sha256', secret, 'ai-hr-careers', CODE_INFO, 32));
+  processCodeKey ??= randomBytes(32);
+  return processCodeKey;
+}
+/** A 6-digit one-time code, uniformly drawn. */
+export function newCareersCode(): string {
+  return String(randomInt(0, 1_000_000)).padStart(6, '0');
+}
+/** A verification token for the hidden form field: 32 random bytes, base64url. */
+export function newCareersToken(): string {
+  return randomBytes(32).toString('base64url');
+}
+/** The keyed hash a code is stored and compared as, bound to the job and the normalised address (a code for one job or address
+ *  never matches another). The database never sees the code. */
+export function careersCodeHash(jobId: string, normalisedEmail: string, code: string, env: NodeJS.ProcessEnv = process.env): string {
+  return createHmac('sha256', careersCodeKey(env)).update(JSON.stringify(['code', jobId, normalisedEmail, code])).digest('hex');
+}
+/** The keyed hash a verification token is stored and looked up as. */
+export function careersTokenHash(token: string, env: NodeJS.ProcessEnv = process.env): string | null {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
+  return createHmac('sha256', careersCodeKey(env)).update(JSON.stringify(['token', token])).digest('hex');
 }

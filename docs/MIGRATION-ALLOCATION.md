@@ -1,3 +1,13 @@
+# Recruitment slice 21a — 15 November 2026 MYT (unapplied)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` appends `5722_recruitment_careers_verified_applicants` at idx 5122 / when
+1793330005422, directly after `5721` (when 1793330005421), the journal's maximum; no peer claim on tags 5722–5799 (rechecked the
+same day). New owner-only `app` tables for careers codes, checks and verifications; `queued_by_user_id` on
+`recruitment_candidate_email` may be empty for an application receipt; new careers definers; 5708's submission restated (its result
+also names the application) and its EXECUTE revoked from the app role; 5708's prune and 5720's candidate removal restated with added
+steps; one owner-only read policy on `recruitment_candidate_email_template`. PRECONDITION: applies after `5721`. Unapplied outside
+throwaway and CI databases. This allocation grants no installation authority.
+
 # Recruitment slice 20 — 15 November 2026 MYT (unapplied)
 
 Branch `claude/rea-web-app-reconstruction-2c12ee` (merged with `origin/main` at `1299e6724`, whose journal ends at
