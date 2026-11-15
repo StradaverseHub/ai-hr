@@ -3599,7 +3599,14 @@ export default async function EmployeePage({
             endDate: posting.current.endDate ?? null,
             remarks: posting.current.remarks ?? null,
             canApprove: posting.canApprove,
-            approverGroupName: posting.approverGroupName,
+            labels: {
+              banner: tPostings!('movement.banner', { posting: posting.label }),
+              hint: posting.canApprove
+                ? tPostings!('movement.approverHint', { group: posting.approverGroupName ?? tPostings!('unknownGroup') })
+                : tPostings!('movement.editorHint', { group: posting.approverGroupName ?? tPostings!('unknownGroup') }),
+              leaveHint: tPostings!('movement.leaveHint'),
+              submit: posting.canApprove ? tPostings!('movement.saveAndApprove') : tPostings!('movement.saveForApproval'),
+            },
           }}
           postingAction={savePostingEventAction}
         />

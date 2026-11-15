@@ -74,7 +74,10 @@ for(const field of PERSONNEL_FIELDS)if(field.allowedValuesOwner?.startsWith('pro
 const base={employmentId:'fictional-subject',today,isBlacklisted:false,current,departments:[{id:'department-a',name:'Main Operations'}],positions:[],businessUnits:[],grades:[],locations:[],managers:[],
  employmentTypes:[{value:'full_time',label:'Full time'}],profileOptions,terminationReasons:[],cancelHref:'/lifecycle/probation/postings',
  types:[{code:'transfer',label:null,behaviourKind:'transfer'},{code:'confirmation',label:null,behaviourKind:'confirmation'},{code:'probationExtension',label:null,behaviourKind:'probationExtension'}]};
-const target=(over:Record<string,unknown>={})=>({id:'00000000-0000-4000-8000-000000001043',label:'PP-1043',revision:3,kind:'confirmation',effectiveDate:'2026-11-24',endDate:null,remarks:null,canApprove:true,approverGroupName:'Fictional People Ops',...over});
+const m=messages.personnelPostings.movement,fill=(text:string,values:Record<string,string>)=>text.replace(/\{(\w+)\}/g,(_,k:string)=>values[k]);
+/** The page pre-translates these from the personnelPostings namespace; the island adds no namespace of its own. */
+const labels=(canApprove:boolean)=>({banner:fill(m.banner,{posting:'PP-1043'}),hint:fill(canApprove?m.approverHint:m.editorHint,{group:'Fictional People Ops'}),leaveHint:m.leaveHint,submit:canApprove?m.saveAndApprove:m.saveForApproval});
+const target=(over:{kind?:string;effectiveDate?:string;endDate?:string|null;remarks?:string|null;canApprove?:boolean}={})=>({id:'00000000-0000-4000-8000-000000001043',label:'PP-1043',revision:3,kind:'confirmation',effectiveDate:'2026-11-24',endDate:null,remarks:null,canApprove:true,...over,labels:labels(over.canApprove??true)});
 
 describe('New Event prefilled from a posting',()=>{
  it('offers Save event and approve to an approver, with only the posting event type and no comparison grid',async()=>{

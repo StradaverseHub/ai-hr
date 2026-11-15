@@ -165,7 +165,8 @@ export type MovementPostingTarget = {
   endDate: string | null;
   remarks: string | null;
   canApprove: boolean;
-  approverGroupName: string | null;
+  /** Pre-translated by the server page (personnelPostings namespace); the island adds no translation namespace. */
+  labels: { banner: string; hint: string; leaveHint: string; submit: string };
 };
 
 export function MovementNewEvent({
@@ -254,7 +255,6 @@ export function MovementNewEvent({
   const byCode = new Map(catalog.map((c) => [c.code, c]));
   /** What a code DOES. Every branch below asks this, never the code itself. */
   const behaviourOf = (k: string): string => byCode.get(k)?.behaviourKind ?? k;
-  const tPosting = useTranslations('personnelPostings');
   const [kind, setKind] = useState<string>(posting?.kind ?? edit?.kind ?? catalog[0]?.code ?? 'transfer');
   const behaviour = behaviourOf(kind);
   const [correctionDate, setCorrectionDate] = useState(posting?.effectiveDate ?? edit?.effectiveDate ?? today);
@@ -654,11 +654,9 @@ export function MovementNewEvent({
         <input type="hidden" name="postingRevision" value={posting.revision}/>
         <input type="hidden" name="postingIntent" value={posting.canApprove?'approve':'edit'}/>
         <div data-testid="movement-posting-banner" className="space-y-1 border-b border-border bg-muted/40 px-4 py-3 text-sm">
-          <p className="font-medium">{tPosting('movement.banner',{posting:posting.label})}</p>
-          <p>{posting.canApprove
-            ?tPosting('movement.approverHint',{group:posting.approverGroupName??tPosting('unknownGroup')})
-            :tPosting('movement.editorHint',{group:posting.approverGroupName??tPosting('unknownGroup')})}</p>
-          <p className="text-xs text-muted-foreground">{tPosting('movement.leaveHint')}</p>
+          <p className="font-medium">{posting.labels.banner}</p>
+          <p>{posting.labels.hint}</p>
+          <p className="text-xs text-muted-foreground">{posting.labels.leaveHint}</p>
         </div>
       </>}
       <input type="hidden" name="employmentId" value={employmentId} />
@@ -889,7 +887,7 @@ export function MovementNewEvent({
         </a>
         {posting ? (
           <ActionButton actionKind="saving" className={btnPrimary}>
-            {posting.canApprove ? tPosting('movement.saveAndApprove') : tPosting('movement.saveForApproval')}
+            {posting.labels.submit}
           </ActionButton>
         ) : behaviour === 'termination' && !edit ? (
           <ConfirmSubmit
