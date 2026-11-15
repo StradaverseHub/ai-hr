@@ -79,8 +79,11 @@ export async function prepareProbationLetterTx(tx:Tx,ctx:SessionContext,input:Pa
  // A routed template version (migration 5752): resolve its routing for this employee, freeze it on the letter, and create
  // the signing document with the routing's owner, send-back, edit-lock and visibility rules. Unrouted: exactly as before.
  const routed=row.data.routing?.length?await freezeLetterRoutingTx(tx,row.data.partId,row.data.routing):null;
+ // The signing document starts on the current resolution of the frozen route (a general Probation delegation already
+ // moves a step to the delegate on behalf of its holder, 5755), which is what the signing store checks it against.
+ const[current]=routed?await tx.execute<{route:SigningRoute|null}>(sql`select app.probation_resolved_route(${row.data.partId}::uuid) as route`):[];
  const created=routed
-  ?await createSigningDocumentTx(tx,ctx,{companyId:row.data.companyId,employmentId:row.data.employmentId,subjectId:row.data.partId,subjectType:'probation',contentHash:row.data.contentHash,route:routed.route,guardrails:{requiredRoles:[]},routing:{templateId:row.data.templateKey??preview.templateId,templateVersion:row.data.templateVersion??preview.templateVersion,caseOwnerId:routed.caseOwnerId,fallbackGroupId:routed.fallbackGroupId}})
+  ?await createSigningDocumentTx(tx,ctx,{companyId:row.data.companyId,employmentId:row.data.employmentId,subjectId:row.data.partId,subjectType:'probation',contentHash:row.data.contentHash,route:current?.route??routed.route,guardrails:{requiredRoles:[]},routing:{templateId:row.data.templateKey??preview.templateId,templateVersion:row.data.templateVersion??preview.templateVersion,caseOwnerId:routed.caseOwnerId,fallbackGroupId:routed.fallbackGroupId}})
   :await createSigningDocumentTx(tx,ctx,{companyId:row.data.companyId,employmentId:row.data.employmentId,subjectId:row.data.partId,subjectType:'probation',contentHash:row.data.contentHash,route:row.data.route,guardrails:row.data.guardrails});
  await tx.execute(sql`select app.probation_letter_transition(${row.data.partId}::uuid)`);
  await emitLetterEventTx(tx,ctx,{caseId:null,partId:row.data.partId,name:preview.templateName??null,document:created.document});

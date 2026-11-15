@@ -133,7 +133,9 @@ export function resolveDocumentRouting(routing: DocumentRouting, ctx: DocumentRo
   const unresolved: DocumentRoutingUnresolved[] = [];
   const steps: SigningStep[] = sortedDocumentRouting(routing).map(step => {
     const rule = step.pick ?? 'any', candidates = candidatesFor(step.who, ctx);
-    let holderId = candidates.userIds.length ? ctx.choose(candidates.userIds, rule, candidates.groupId) : null;
+    // The employee and the Direct Superior are fixed holders; only routings, groups and named people are assigned.
+    const fixed = step.who.kind === 'employee' || step.who.kind === 'directSuperior';
+    let holderId = candidates.userIds.length ? fixed ? candidates.userIds[0] : ctx.choose(candidates.userIds, rule, candidates.groupId) : null;
     let meantFor: string | undefined;
     if (!holderId) {
       meantFor = ctx.describe(step.who);
