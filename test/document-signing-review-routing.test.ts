@@ -126,7 +126,8 @@ describe('signing and review routing per template version',()=>{
    {id:'s4',role:'lm',kind:'approve',stage:3,holderId:'u-gbs',required:true,meantFor:'Their Direct Superior'},
   ]);
   expect(unresolved).toEqual([{stepId:'s4',meantFor:'Their Direct Superior',reason:'No Direct Superior is recorded.',fallbackGroupId:'g-gbs',holderId:'u-gbs'}]);
-  expect(chosen).toEqual(['g-gbs:any','g-bp:roundRobin','people:any','g-gbs:any']);
+  // The employee is a fixed holder (lane F2): only routings, groups, named people and the fallback group are assigned.
+  expect(chosen).toEqual(['g-gbs:any','g-bp:roundRobin','g-gbs:any']);
   expect(()=>validateSigningRoute(route,rules)).not.toThrow();
  });
  it('stores only the declared routing shape',()=>{
