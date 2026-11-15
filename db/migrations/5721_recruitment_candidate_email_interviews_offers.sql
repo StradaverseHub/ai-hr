@@ -346,8 +346,8 @@ BEGIN
  END IF;
  -- Held for at most 7 days since it was queued (or retried): then it fails as relay unavailable, final, so the purge applies. A
  -- reminder instead fails once its interview has started (it is held at most 72 hours before that; its queue time may be weeks old).
- IF p_outcome = 'held' AND CASE WHEN e.kind = 'interview_reminder' THEN e.interview_starts_at <= now()
-   ELSE greatest(e.queued_at, coalesce(e.retried_at, e.queued_at)) < now() - interval '7 days' END THEN
+ IF p_outcome = 'held' AND (CASE WHEN e.kind = 'interview_reminder' THEN e.interview_starts_at <= now()
+   ELSE greatest(e.queued_at, coalesce(e.retried_at, e.queued_at)) < now() - interval '7 days' END) THEN
   p_outcome := 'failed';
  END IF;
  IF p_outcome = 'held' THEN
