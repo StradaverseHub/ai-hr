@@ -668,6 +668,12 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // policies it adds (5580's configuration-editor and owner policies and 5600's owner policies included) (qual/with_check as md5 digests, the migration owner written OWNER) and the one it retires
   // (5400 drops the second-person PAT confirmation policy). Nothing else in the privilege graph may change.
   const boardRelations:Record<string,{rls:boolean;force:boolean;acl:string|null}>={
+   // Probation reshape (5740, 5741, 5743, 5748): new append-friendly tables, read-only to the application role.
+   'automation_email_template_version':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   'automation_routing_version':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   'automation_run':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   'automation_workflow_version':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   'personnel_posting':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
    'lc_v9_email_hold':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=arw/OWNER}'},
    'reward_config_change':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
    'reward_limit_version':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
@@ -678,6 +684,14 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   };
   const boardPolicyRow=(row:(typeof afterPerformancePrivileges.policies)[number])=>({...row,roles:ownerAcl(row.roles),qual:digest(row.qual),with_check:digest(row.with_check)});
   const boardPolicies=[
+   {schemaname:'public',tablename:'automation_email_template_version',policyname:'automation_email_template_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
+   {schemaname:'public',tablename:'automation_email_template_version',policyname:'automation_email_template_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'bac4a95592bbda57aed591f6db313641',with_check:null},
+   {schemaname:'public',tablename:'automation_routing_version',policyname:'automation_routing_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
+   {schemaname:'public',tablename:'automation_routing_version',policyname:'automation_routing_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'f20caae34239109c303ca06035783833',with_check:null},
+   {schemaname:'public',tablename:'automation_run',policyname:'automation_run_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
+   {schemaname:'public',tablename:'automation_run',policyname:'automation_run_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'e9cbf47fa5ad06022706718f7647f2b1',with_check:null},
+   {schemaname:'public',tablename:'automation_workflow_version',policyname:'automation_workflow_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
+   {schemaname:'public',tablename:'automation_workflow_version',policyname:'automation_workflow_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'bac4a95592bbda57aed591f6db313641',with_check:null},
    {schemaname:'public',tablename:'company_registration_classification',policyname:'company_registration_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'SELECT',qual:'3f508ac9bab3a400ba652cdcbc225fec',with_check:null},
    {schemaname:'public',tablename:'job_architecture_catalogue_revision',policyname:'reward_config_architecture_catalogue',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'SELECT',qual:'dbbe81253dcbe78bcb5b57df467675ae',with_check:null},
    {schemaname:'public',tablename:'job_architecture_position_revision',policyname:'reward_config_architecture_position',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'SELECT',qual:'ee611118f080c3f4c23c582744c9e6fc',with_check:null},
@@ -685,6 +699,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {schemaname:'public',tablename:'lc_v9_email_hold',policyname:'v9_email_hold_read',permissive:'PERMISSIVE',roles:'{public}',cmd:'SELECT',qual:'a891360032acbd07afa1f1c6e6c5be0a',with_check:null},
    {schemaname:'public',tablename:'lc_v9_email_hold',policyname:'v9_email_hold_release',permissive:'PERMISSIVE',roles:'{public}',cmd:'UPDATE',qual:'943f46d6c51979e6a3e15d49c833cfd3',with_check:'63096f37cc862794aecf97d68e8a8239'},
    {schemaname:'public',tablename:'lc_v9_email_hold',policyname:'v9_email_hold_storage_owner',permissive:'PERMISSIVE',roles:'{OWNER}',cmd:'ALL',qual:'b326b5062b2f0e69046810717534cb09',with_check:'b326b5062b2f0e69046810717534cb09'},
+   {schemaname:'public',tablename:'personnel_posting',policyname:'personnel_posting_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
+   {schemaname:'public',tablename:'personnel_posting',policyname:'personnel_posting_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'8b0333122d2e162cc1eff24b8b0fc365',with_check:null},
    {schemaname:'public',tablename:'reward_config_change',policyname:'reward_config_change_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'59492f3697ba1af7263dfebcdb7c1b78',with_check:'59492f3697ba1af7263dfebcdb7c1b78'},
    {schemaname:'public',tablename:'reward_config_change',policyname:'reward_config_change_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'b0652841b761793f00814566b72e654b',with_check:null},
    {schemaname:'public',tablename:'reward_governance',policyname:'reward_pat_draft_governance_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'042db60115c525438a1583b0609fcebb',with_check:'042db60115c525438a1583b0609fcebb'},
