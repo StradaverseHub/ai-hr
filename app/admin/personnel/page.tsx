@@ -113,7 +113,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
     query, page: pq, isAdmin: (access.s.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin'),
     overviewInput: (scopeIds) => ({ companyIds: scopeIds, ...query.filters, limit: pq.limit, offset: pq.offset }),
   }) });
-  const { session, scopeIds, maintainIds, canCreate, overview, privateCriteria, companies, departments, idConfigs, photoIds } = data;
+  const { session, scopeIds, maintainIds, canCreate, overview, privateCriteria, companies, departments, idConfigs, photoIds, rehiredAs } = data;
   const isAdmin = (session.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
   const { rows: drafts, count: draftCardCount } = data.drafts;
   const savedColumns = data.savedColumns;
@@ -430,7 +430,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
           emptyClearHref={hasFilters||privateCriteria?'/admin/personnel':undefined}
           labels={Object.fromEntries(Object.entries(COLUMN_LABEL_KEY).map(([key,label])=>[key,t(label)])) as Record<EmployeeColumnKey,string>}
           parameters={[...personnelQueryParams(sp)]} sort={query.filters.columnSort} direction={query.filters.sortDirection}
-          employees={employees.map(e=>{const st=deriveEmploymentStatus(e,today);return {employmentId:e.employmentId,name:e.name,email:e.email,employeeCode:e.employeeCode,status:st,statusLabel:tStatus(st),text:Object.fromEntries(columns.map(key=>[key,textCell(e,key)])),photoPersonId:photoIds.get(e.employmentId)??null};})}
+          employees={employees.map(e=>{const st=deriveEmploymentStatus(e,today);return {employmentId:e.employmentId,name:e.name,email:e.email,employeeCode:e.employeeCode,status:st,statusLabel:tStatus(st),text:Object.fromEntries(columns.map(key=>[key,textCell(e,key)])),photoPersonId:photoIds.get(e.employmentId)??null,rehiredAs:rehiredAs.has(e.employmentId)?t('rehiredAs',{code:rehiredAs.get(e.employmentId)!.employeeCode??'—'}):null};})}
           drafts={drafts.map(d=>({draftId:d.id,label:d.label||t('draftUntitled'),avatarName:d.label||'?',subtitle:d.missing.length?t('draftMissing',{count:d.missing.length}):t('draftReady'),reservedEmployeeCode:d.reservedEmployeeCode,companyName:d.companyName??t('draftNoCompany'),statusLabel:t('statusDraft')}))}
           empty={q?t('emptySearch',{q}):hasFilters?t('emptyFiltered'):t('emptyNoEmployeesAdmin')}/>
 

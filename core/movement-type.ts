@@ -341,7 +341,9 @@ export async function activeMovementEventTypeChoicesTx(tx:Tx,tenantId:string){
  const byCode=new Map(overlays.map(row=>[row.code,row]));
  const resolvedChoices=[];
  for(const code of new Set([...MOVEMENT_KINDS,...overlays.map(row=>row.code)])){
-  const resolved=resolveMovementTypeRow(code,byCode.get(code));if(resolved?.active)resolvedChoices.push(resolved);
+  // Board 511aa74a — Rehired is recorded on New Event only (its own command, core/rehire.ts); the movement import
+  // never offers it, so its workbook catalogue (and fingerprint) is the one it was before the kind existed.
+  const resolved=resolveMovementTypeRow(code,byCode.get(code));if(resolved?.active&&resolved.behaviourKind!=='rehire')resolvedChoices.push(resolved);
  }
  if(resolvedChoices.length>1000)throw new MovementTypeError('movement_catalog_too_large');
  const controls=await movementTypeControlsTx(tx,tenantId,resolvedChoices);

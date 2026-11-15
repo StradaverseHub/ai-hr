@@ -5958,6 +5958,13 @@
       "when": 1793330005380,
       "tag": "5680_payroll_history_dated_company",
       "breakpoints": true
+    },
+    {
+      "idx": 5095,
+      "version": "7",
+      "when": 1793330005395,
+      "tag": "5695_employment_rehire_link",
+      "breakpoints": true
     }
   ]
 }

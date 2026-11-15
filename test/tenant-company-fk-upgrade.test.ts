@@ -55,7 +55,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
  const withoutImportMarker=(rows:Record<string,unknown>)=>Object.fromEntries(Object.entries(rows).map(([table,list])=>[table,
   (list as {row:Record<string,unknown>}[]).map(({row})=>{
    const rest={...row};
-   for(const column of ['import_pending_attempt_id',...(table==='company'?['leave_team_minimum_present']:[])]){
+   for(const column of ['import_pending_attempt_id',...(table==='company'?['leave_team_minimum_present']:[]),...(table==='employment'?['rehired_from_employment_id']:[])]){
     if(!(column in rest))continue;
     expect(rest[column],table+'.'+column+' on a retained row').toBeNull();
     delete rest[column];
@@ -246,6 +246,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5660_pay_component_bonus_epf_bonus_2012',
    // Board 4604dccc (15 November 2026): payroll history binds a record to the company of its month.
    '5680_payroll_history_dated_company',
+   // Board 511aa74a (15 November 2026): the employment period link of a Rehired event.
+   '5695_employment_rehire_link',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);

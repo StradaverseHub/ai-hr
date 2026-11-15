@@ -120,6 +120,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  // employees.cost_allocation.maintain is a bounded complete replace/clear review. These broad native
  // exports retain backlog status: oversized or incompletely visible timelines/catalogs hand off.
  "app/admin/personnel/[employmentId]/cost-allocation-actions.ts":{"previewCostAllocationsAction":"backlog:automatic","readCostAllocationsAction":"backlog:automatic","saveCostAllocationsAction":"backlog:approve"},
+ "app/admin/personnel/[employmentId]/rehire-actions.ts":{"rehireEmploymentAction":"backlog:approve","rollBackRehireAction":"backlog:approve"},
  "app/admin/personnel/[employmentId]/cp38-actions.ts":{"addCp38Action":"backlog:approve","editCp38Action":"backlog:approve","terminateCp38Action":"backlog:approve"},
  "app/admin/personnel/[employmentId]/dependent-actions.ts":{"addDependentAction":"registered:employees.family.maintain","archiveDependentAction":"registered:employees.family.maintain","editDependentAction":"registered:employees.family.maintain"},
  "app/admin/personnel/[employmentId]/emergency-contact-actions.ts":{"addEmergencyContactAction":"registered:employees.emergency_contact.maintain","deleteEmergencyContactAction":"registered:employees.emergency_contact.maintain","editEmergencyContactAction":"registered:employees.emergency_contact.maintain"},

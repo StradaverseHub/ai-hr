@@ -777,7 +777,8 @@
         "dateToLabel": "{name}止",
         "choicePending": "正在更新列表…",
         "choiceFailed": "无法更新列表，请重试。"
-      }
+      },
+      "rehiredAs": "已重新雇用为 {code}"
     },
     "switcher": {
       "ariaLabel": "搜索员工",
@@ -1741,7 +1742,8 @@
           "employmentTypeChange": "雇佣类型变更",
           "gradeChange": "职级变更",
           "joinDateChange": "入职日期变更",
-          "groupJoinDateCorrection": "集团入职日期更正"
+          "groupJoinDateCorrection": "集团入职日期更正",
+          "rehire": "重新雇用"
         },
         "form": {
           "eventType": "事件类型",
@@ -1909,7 +1911,75 @@
         "payrollClosedBadge": "薪资已关闭：{periods}",
         "informationCorrected": "资料已更正",
         "informationNeedsReview": "更正需要审核",
-        "historyBadge": "历史"
+        "historyBadge": "历史",
+        "rehire": {
+          "intro": "重新雇用将为 {name} 开始新的雇用期。上一雇用期（{code}，{start} 至 {end}）、辞职、工资单和 EA 表格均保持不变。个人资料、身份证、EPF/SOCSO/税号、银行资料和登录账号将沿用。",
+          "effectiveDate": "重新雇用生效日期",
+          "effectiveDateHint": "须晚于最后工作日 {date}",
+          "employeeCode": "新员工编号",
+          "employeeCodeHint": "根据公司编号规则建议；您可以修改",
+          "employeeCodeAutoHint": "保存时按公司编号规则发放",
+          "employeeCodeManualHint": "该公司未设置员工编号规则。请输入新员工编号。",
+          "groupJoinDate": "集团入职日期",
+          "groupJoinDateHint": "默认为重新雇用日期。仅在服务年资延续时设置更早的日期",
+          "none": "无",
+          "selectPlaceholder": "请选择…",
+          "cancel": "取消",
+          "save": "保存重新雇用",
+          "unavailable": "仅可为状态为已辞职且没有当前雇用的员工记录重新雇用。",
+          "previousId": "回归员工 · 原编号 {code}",
+          "rollBack": "回滚",
+          "rollBackTitle": "回滚此重新雇用事件？",
+          "rollBackDescription": "新的雇用期及其员工编号将被移除。上一雇用期保持已辞职且不变。仅在新雇用期尚无薪资、考勤、休假或申请记录时允许。",
+          "rolledBack": "重新雇用事件已回滚。上一雇用期未更改。",
+          "error": {
+            "permission": "您无权为该员工记录重新雇用事件。",
+            "typeInactive": "重新雇用事件类型已在异动设置中停用。",
+            "notResigned": "仅可为状态为已辞职的员工记录重新雇用。",
+            "blacklisted": "该员工已被列入黑名单。请先解除黑名单再记录重新雇用。",
+            "currentEmployment": "此人已有当前或未来的雇用。",
+            "alreadyRehired": "此雇用期已重新雇用为 {code}。请在该雇用期记录后续事件。",
+            "dateInvalid": "请输入有效的重新雇用生效日期。",
+            "dateNotAfterEnd": "重新雇用生效日期必须晚于 {date}。",
+            "groupJoinDateInvalid": "集团入职日期必须是有效日期，且不晚于重新雇用生效日期。",
+            "companyUnavailable": "请选择您管理的公司、业务单位、职位、职级和直属上级。",
+            "departmentRequired": "请选择部门。",
+            "employmentTypeInvalid": "请选择雇用类型。",
+            "salaryInvalid": "请输入零或以上的基本工资。",
+            "employeeCodeRequired": "请输入新员工编号。",
+            "employeeCodeNotAllowed": "该公司的员工编号规则不允许手动输入员工编号。",
+            "employeeCodeInvalid": "员工编号只能包含字母、数字和短横线，最多 30 个字符。",
+            "employeeCodeTaken": "员工编号 {code} 已被使用。",
+            "managerInvalid": "请选择其他直属上级。",
+            "reasonRequired": "请输入回滚原因。",
+            "rollbackUnavailable": "此雇用期并非由重新雇用事件开始。",
+            "rollbackBlocked": "无法回滚此重新雇用事件，因为新的雇用期已有{blockers}。"
+          },
+          "blocker": {
+            "payroll": "薪资记录",
+            "attendance": "考勤记录",
+            "leave": "已休假期",
+            "request": "申请",
+            "lifecycle": "离职记录",
+            "movement": "后续异动或薪资变更",
+            "reports": "下属员工",
+            "other": "其他已记录的活动"
+          }
+        },
+        "periods": {
+          "title": "雇用期",
+          "period": "期间",
+          "employeeId": "员工编号",
+          "company": "公司",
+          "dates": "日期",
+          "status": "状态",
+          "current": "当前",
+          "previous": "以往",
+          "range": "{start} 至 {end}",
+          "onwards": "{start} 起",
+          "rehiredAs": "已重新雇用为 {code}",
+          "rehiredFrom": "重新雇用自 {code}"
+        }
       },
       "salaryCurrency": "货币",
       "emergency": {

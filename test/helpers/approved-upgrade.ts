@@ -189,6 +189,8 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5060,when:1793330005360,tag:'5660_pay_component_bonus_epf_bonus_2012'},
  // Board 4604dccc: payroll history binds a record to the company of its month (dated history), 15 Nov 2026.
  {idx:5080,when:1793330005380,tag:'5680_payroll_history_dated_company'},
+ // Board 511aa74a Rehired: the employment period link, its guard and the rehire Roll Back void (15 Nov 2026).
+ {idx:5095,when:1793330005395,tag:'5695_employment_rehire_link'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -221,6 +223,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5640_lifecycle_v9_email_hold_company_tenant':'66d191aaee14e910480bd7ce7240bd23a76f02e57c66f1c129f40b2562e7d6c7',
  '5660_pay_component_bonus_epf_bonus_2012':'b61c1f10cf2016da97ad257cdbd7b6f8ad8daf261a322fa5260dc0c54f6b6ddf',
  '5680_payroll_history_dated_company':'664b422a2a2128357932b0e0b036fa69ad731eb6c31aa6c4a8ce2a5b6e080faf',
+ '5695_employment_rehire_link':'58e9b0b1f01d0f03e2815ee43152e0bd0137114f7cdf1d79ace22ccb899407d6',
  '4800_ai_shared_leave_groups_read':'774dce41ba113549ec5415586d104b8d5b7712934216f2beb4d9aa0e9f00ffc5',
  '4601_last_login_event_index':'868e30d4a2840d4939a46f303ce999b2e041ae3cb6823eb8b712179ccf7d5788',
  '4600_attendance_clock_policy_group_scope':'b30a62bec597f53266232abe569a040a9a421eaa2239eac232d0e44041352be6',
@@ -367,6 +370,8 @@ export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;col
  {tag:'5142_attendance_on_behalf',table:'attendance_correction',columns:['submitted_by_user_id','submitted_by_person_id','submitted_by_name']},
  // 5161 (draft 9770): the team minimum is unset (no minimum) on every company that predates it.
  {tag:'5161_leave_team_minimum_present',table:'company',columns:['leave_team_minimum_present']},
+ // Board 511aa74a (5695): no employment that predates it was rehired from another period.
+ {tag:'5695_employment_rehire_link',table:'employment',columns:['rehired_from_employment_id']},
  ...['department','position','cost_center','business_unit','label_company_assignment','profile_option','job_grade','grade_group','grade_group_member']
   .map(table=>({tag:'5070_system_label_import_staged_job',table,columns:['import_pending_attempt_id']})),
 ]);

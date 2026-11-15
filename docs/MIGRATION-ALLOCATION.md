@@ -1,3 +1,22 @@
+# Board 511aa74a: Rehired links a new employment period to the previous one — 15 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/fb-511aa74a-rehired` (from `origin/main` at `94d2f5bbe`, equal to `origin/alpha`) appends
+`5695_employment_rehire_link` at idx 5095 / when 1793330005395, the coordinator-reserved slot of the board block's offset
+(tag T, idx T − 600, when 1793330004800 + (T − 5100)) above `5680` (when 1793330005380), the journal's maximum on main;
+5690 is reserved for board 4604dccc. SHA256 `58e9b0b1f01d0f03e2815ee43152e0bd0137114f7cdf1d79ace22ccb899407d6`. It adds the nullable
+`employment.rehired_from_employment_id` (no default, no backfill; composite same-tenant foreign key, not-self CHECK and the
+partial unique index `employment_rehired_from_uq` on live rows), the owner-owned guard `app.employment_rehire_link_guard()`
+on two `employment` triggers (only the rehire command writes the column, once), widens `employment_void_complete_ck` so a
+void may name the rehire link instead of an import attempt, replaces the owner-owned 0676 trigger function
+`app.employment_void_guard()` with one added branch for the rehire Roll Back, and adds three SECURITY DEFINER functions
+with EXECUTE for `ai_hr_app` only: `app.employment_rehire_rollback_blockers(uuid)`, `app.employment_rehire_rollback(uuid,text)`
+and `app.employment_rehire_person_state(uuid,date)`. `employment` keeps its row security and table-level grants (0001),
+which cover the new column. No purpose-owned object, policy or existing row changes. The approved upgrade tail pin, its hash
+and the populated null-column proof (`test/helpers/approved-upgrade.ts`, `test/tenant-company-fk-upgrade.test.ts`) carry
+the tag. Tags 5681–5699 were unclaimed on the 500 most recently active origin heads on 15 November 2026 (coordinator scan);
+the installed ledgers were not read by this session. Recheck the installed watermarks and peer claims at admission; this
+allocation grants no installation authority.
+
 # Board 4604dccc: payroll history binds to the company of its month — 15 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/board-4604dccc-effective-date-20261115` (from `origin/alpha` at `1299e6724`, equal to `origin/main`) appends
