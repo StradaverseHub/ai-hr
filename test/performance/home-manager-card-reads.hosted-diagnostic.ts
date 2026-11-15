@@ -228,7 +228,7 @@ async function fullPageOwners(ctx:SessionContext,scopeIds:string[]):Promise<Reco
  const assistant=await import('../../core/assistant-grant'),inbox=await import('../../core/approvals-inbox');
  const loops=await import('../../core/loops/cards'),letters=await import('../../core/letter-requests'),reviews=await import('../../core/home-leave-review-presentation');
  const {isModuleEnabled}=await import('../../core/entitlements');
- const modules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')};
+ const modules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards'),probation:false};
  const inPage=<T,>(read:()=>Promise<T>)=>()=>database.withSharedReadSnapshot(ctx,read,undefined,requestScope.requestReadScope());
  return {
   'page.identity':inPage(()=>home.readEmployeeHomeIdentity(ctx)),
@@ -281,7 +281,7 @@ async function todayReaders(today:string){
  const ownEmployment=(ctx:SessionContext)=>own.readOwnContext(ctx,undefined).then(value=>value.identity.selectedEmploymentId);
  const readers=async(ctx:SessionContext):Promise<Record<string,()=>Promise<unknown>>>=>{
   const scopeIds=(await allowedCompanies(ctx)).map(company=>company.id),audience=todayAudience(ctx);
-  const modules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')};
+  const modules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards'),probation:false};
   return {
    needsYou:()=>reads.readNeedsYou(ctx,{scopeIds,audience,today,locale:'en'}).then(value=>({failed:value.failed,tasks:value.tasks.length,taskTotal:value.taskTotal,loops:value.loops.length})),
    teamAttendance:()=>inPage(ctx,()=>attendance.teamAttendanceToday(ctx,{date:today,scopeIds})).then(value=>({total:value.present+value.late+value.halfDay+value.absent})),
