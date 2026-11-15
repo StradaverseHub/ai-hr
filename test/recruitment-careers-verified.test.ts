@@ -14,11 +14,11 @@ vi.mock('../lib/recruitment-candidate-email-ipc', async (original) => ({
 }));
 import { NextRequest } from 'next/server';
 import { sql } from 'drizzle-orm';
-import type { SessionContext } from '../db/client';
+import { withTenant, type SessionContext } from '../db/client';
 import { jobGrade } from '../db/schema';
 import { pgSqlState } from '../lib/db-error';
 import {
-  applicationCandidateEmails, createJob, destroyCandidates, recruitmentSettings, rejectApplication, saveCandidateEmailSettings, setCareersPublished, setJobCareersPage, submitCareersApplication,
+  applicationCandidateEmails, createJob, recruitmentSettings, rejectApplication, saveCandidateEmailSettings, setCareersPublished, setJobCareersPage, submitCareersApplication,
   updateCareersSettings, RecruitmentError, type CareersSubmission,
 } from '../packs/recruitment/service';
 import { GET as jobRoute, POST as postRoute } from '../app/careers/[address]/jobs/[jobId]/route';
@@ -223,7 +223,9 @@ describe('case 141 — careers receipts', () => {
     // Removal (after closing the application) deletes the receipt and the verifications naming the candidate.
     const reason = (await recruitmentSettings(admin, base.companyId)).reasons.find((x) => x.displayed)!;
     await rejectApplication(admin, application_id, reason.id);
-    expect(await destroyCandidates(admin, base.companyId, [r.candidate_id], 'on')).toEqual({ removed: 1 });
+    // The restated removal function itself (the service also waits for the retention period, which is slice 5's concern).
+    const [removed] = await withTenant(admin, (tx) => tx.execute<{ r: Record<string, number> }>(sql`select app.recruitment_destroy_candidate(${r.candidate_id}::uuid) as r`));
+    expect(removed.r).toMatchObject({ candidateEmails: 1, careersVerifications: 2 });
     expect(await emails()).toHaveLength(0);
     expect((await owner.db.execute<{ n: number }>(sql`select count(*)::int as n from app.recruitment_careers_verification where candidate_id = ${r.candidate_id}::uuid`))[0].n).toBe(0);
   });
