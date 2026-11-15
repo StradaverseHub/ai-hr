@@ -84,7 +84,7 @@ GRANT SELECT ON public.automation_workflow_version, public.automation_routing_ve
 --> statement-breakpoint
 CREATE FUNCTION app.automation_workflow_save(p_workflow uuid, p_module text, p_status text, p_required boolean, p_definition jsonb, p_expected integer, p_reason text)
 RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE t uuid := app.current_tenant_id(); prior public.automation_workflow_version; next integer;
+DECLARE t uuid := app.current_tenant_id(); prior public.automation_workflow_version; v_revision integer;
 BEGIN
   IF t IS NULL OR app.current_user_id() IS NULL THEN RAISE EXCEPTION 'A signed-in tenant user is required' USING ERRCODE='42501'; END IF;
   PERFORM app.access_workforce_write_lock();
@@ -107,18 +107,18 @@ BEGIN
      OR jsonb_array_length(p_definition->'conditions') > 20
      OR jsonb_array_length(p_definition->'steps') NOT BETWEEN 1 AND 40
   THEN RAISE EXCEPTION 'The workflow definition is incomplete or too large' USING ERRCODE='22023'; END IF;
-  next := coalesce(prior.revision, 0) + 1;
+  v_revision := coalesce(prior.revision, 0) + 1;
   INSERT INTO public.automation_workflow_version (tenant_id, workflow_id, revision, module, status, required, definition, reason, saved_by)
-  VALUES (t, p_workflow, next, p_module, p_status, p_required, p_definition - 'status' - 'required', btrim(p_reason), app.current_user_id());
+  VALUES (t, p_workflow, v_revision, p_module, p_status, p_required, p_definition - 'status' - 'required', btrim(p_reason), app.current_user_id());
   INSERT INTO public.domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, actor_id, payload)
-  VALUES (t, 'automation_workflow', p_workflow, CASE WHEN next = 1 THEN 'automation.workflow.created' ELSE 'automation.workflow.saved' END, 'user'::actor_type, app.current_user_id(),
-    jsonb_build_object('module', p_module, 'revision', next, 'status', p_status, 'previousStatus', prior.status, 'required', p_required));
-  RETURN next;
+  VALUES (t, 'automation_workflow', p_workflow, CASE WHEN v_revision = 1 THEN 'automation.workflow.created' ELSE 'automation.workflow.saved' END, 'user'::actor_type, app.current_user_id(),
+    jsonb_build_object('module', p_module, 'revision', v_revision, 'status', p_status, 'previousStatus', prior.status, 'required', p_required));
+  RETURN v_revision;
 END $$;
 --> statement-breakpoint
 CREATE FUNCTION app.automation_routing_save(p_routing uuid, p_name text, p_rows jsonb, p_retired boolean, p_expected integer, p_reason text)
 RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE t uuid := app.current_tenant_id(); prior public.automation_routing_version; next integer;
+DECLARE t uuid := app.current_tenant_id(); prior public.automation_routing_version; v_revision integer;
 BEGIN
   IF t IS NULL OR app.current_user_id() IS NULL THEN RAISE EXCEPTION 'A signed-in tenant user is required' USING ERRCODE='42501'; END IF;
   PERFORM app.access_workforce_write_lock();
@@ -136,13 +136,13 @@ BEGIN
   -- Every element is now an object with an object match, so reading its keys cannot fail.
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(p_rows) r, jsonb_object_keys(r->'match') k WHERE k NOT IN ('businessGroup','company','department','jobTitle'))
   THEN RAISE EXCEPTION 'The routing is incomplete or too large' USING ERRCODE='22023'; END IF;
-  next := coalesce(prior.revision, 0) + 1;
+  v_revision := coalesce(prior.revision, 0) + 1;
   INSERT INTO public.automation_routing_version (tenant_id, routing_id, revision, name, routing_rows, retired, reason, saved_by)
-  VALUES (t, p_routing, next, btrim(p_name), p_rows, p_retired, btrim(p_reason), app.current_user_id());
+  VALUES (t, p_routing, v_revision, btrim(p_name), p_rows, p_retired, btrim(p_reason), app.current_user_id());
   INSERT INTO public.domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, actor_id, payload)
-  VALUES (t, 'automation_routing', p_routing, CASE WHEN next = 1 THEN 'automation.routing.created' ELSE 'automation.routing.saved' END, 'user'::actor_type, app.current_user_id(),
-    jsonb_build_object('revision', next, 'retired', p_retired, 'rows', jsonb_array_length(p_rows)));
-  RETURN next;
+  VALUES (t, 'automation_routing', p_routing, CASE WHEN v_revision = 1 THEN 'automation.routing.created' ELSE 'automation.routing.saved' END, 'user'::actor_type, app.current_user_id(),
+    jsonb_build_object('revision', v_revision, 'retired', p_retired, 'rows', jsonb_array_length(p_rows)));
+  RETURN v_revision;
 END $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.automation_workflow_save(uuid,text,text,boolean,jsonb,integer,text), app.automation_routing_save(uuid,text,jsonb,boolean,integer,text) FROM PUBLIC;

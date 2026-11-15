@@ -3,7 +3,7 @@
 Branch `claude/probation-confirmation-aihr-b81c70` (from local main, merged with `origin/main` at `94d2f5bbe`) appends
 `5740_automation_shared_definitions` at idx 5140 / when 1793330005440 on the board block's offset (tag T, idx T − 600,
 when 1793330004800 + (T − 5100)), above the journal's maximum `5680` (when 1793330005380). SHA256
-`828019499262f6fb8df3c677044e948e078174a2ab99ff1b682a9a273c0f87ce`. It creates two new, empty, append-only tables
+`72baaa106846be4ede55607235a4555a0a0f38f6f0958183077c9e9f6dca0569`. It creates two new, empty, append-only tables
 (`automation_workflow_version`, `automation_routing_version`) with forced row security, SELECT-only grants to `ai_hr_app`,
 owner policies, and six `app.automation_*` SECURITY DEFINER functions (authority, two saves, two reference reads); no
 existing object, row, grant or purpose-owned object changes (ADR `docs/adr/2026-11-15-probation-shared-automation.md`).
