@@ -21,7 +21,7 @@ export const AUTOMATION_FLOOR = {
     stepTypes: ['doc', 'waitSign', 'waitFile', 'email', 'notify'],
     waitSignBy: ['hr', 'employee'],
     recipientRoles: ['employeeWork', 'employeePersonal', 'employee', 'supervisor', 'pbp', 'ta', 'peopleOps', 'taskOwners', 'hrSignatory', 'starter'],
-    recipientForms: ['person:<uuid>', 'group:<name>', '<email address>'],
+    recipientForms: ['person:<uuid>', 'group:<name>', 'address:<email>'],
     workflowStatuses: ['draft', 'published', 'retired'],
     templateTypes: ['Form', 'Letter', 'Acknowledgement', 'Attachment'],
     templateHrStep: ['none', 'before', 'after'],

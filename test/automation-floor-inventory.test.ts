@@ -40,8 +40,9 @@ describe('Automation floor · On/Off Boarding V9',()=>{
  });
  it('pins named recipient roles and the person, group and literal-address forms',()=>{
   same(enumValues((def(bare(v9RoleSchema)).options??[])[0]),f.recipientRoles);
-  for(const value of ['person:10000000-0000-4000-8000-000000000001','group:GBS People Ops','people.ops@example.com'])expect(v9RoleSchema.safeParse(value).success).toBe(true);
+  for(const value of ['person:10000000-0000-4000-8000-000000000001','group:GBS People Ops','address:people.ops@example.com'])expect(v9RoleSchema.safeParse(value).success).toBe(true);
   expect(v9RoleSchema.safeParse('ceo').success).toBe(false);
+  expect(v9RoleSchema.safeParse('people.ops@example.com').success).toBe(false);
   expect(f.recipientForms).toHaveLength(3);
  });
  it('pins template types, HR signature step, matching rules, blocks and fields',()=>{
