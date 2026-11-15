@@ -260,6 +260,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5749_probation_delegation',
    '5750_probation_tracker_plan_robustness',
    '5751_probation_queues_and_form_routing',
+   '5752_probation_letter_routing',
+   '5753_probation_outcome_automation',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -298,6 +300,10 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.probation_settings_scope_check(text,jsonb)',
    'app.probation_source_from_start(jsonb,uuid)',
    'app.probation_visible_among(uuid[])',
+   // 5752: routed letter template checks, owner only.
+   'app.probation_letter_routed(jsonb)','app.probation_letter_routing_signatures_ok(jsonb)','app.probation_letter_routing_valid(jsonb)',
+   // 5753: the posting-approval trigger function, owner only.
+   'app.probation_posting_approved()',
    // 5748: the run-log bound check, owner only.
    'app.automation_run_log_valid(jsonb)',
    // 5741: the approval-commit trigger and two internal posting value helpers, never granted to the application role.
@@ -346,6 +352,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    // Probation reshape (5740, 5741, 5743; 16 November 2026): shared automation and Personnel postings functions.
    // 5747/5748: document signing review-routing helpers and the shared workflow-run functions.
    // Probation core (5742, 5744-5746, 5749, 5751; 16 November 2026): settings scope, case at activation, override event, set-based access and tracker, delegation, work queues.
+   // 5752: routed Probation letters (routing context, route freeze and three owner-only template checks).
+   // 5753: Probation outcomes on the shared workflow runner (context, notify, outcome runs, posting effect, posting-approval trigger).
    'app._access_bootstrap_eligible(uuid,uuid)','app._access_workforce_list_rows(uuid[])','app._ai_control_context_for_purpose(text,boolean,boolean)',
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()','app._assert_assistant_rewards_presentation_v1(text)',
    'app._assistant_assigned_index_login(uuid,boolean)','app._assistant_presentation_feature_unpaused_v1()','app._assistant_rewards_calendar_choice_payload_v1()',
@@ -402,34 +410,38 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.personnel_posting_day(jsonb)','app.personnel_posting_edit(uuid,integer,jsonb)','app.personnel_posting_groups(text[])',
    'app.personnel_posting_people(uuid[])','app.personnel_posting_record_movement(uuid,text)','app.personnel_posting_values_ok(text,jsonb)',
    'app.personnel_posting_visible(text,uuid,text)','app.personnel_private_search_entries(text,uuid[])','app.personnel_search_candidates(uuid[],boolean,boolean,text,text,text,text,text[])',
-   'app.probation_company_ancestors(uuid[])','app.probation_config_write_company(uuid,text,jsonb,boolean,integer)','app.probation_did_not_join(uuid)',
-   'app.probation_general_delegate(uuid,uuid,text)','app.probation_holders_set(uuid[])','app.probation_max_extensions(jsonb)',
-   'app.probation_record_override(uuid)','app.probation_settings_materialize(uuid[])','app.probation_settings_scope_admin()',
-   'app.probation_settings_scope_check(text,jsonb)','app.probation_settings_scope_refresh(uuid)','app.probation_settings_scope_retire(uuid,integer,text)',
-   'app.probation_settings_scope_save(uuid,text,text,uuid[],jsonb,boolean,integer,text)','app.probation_source_from_start(jsonb,uuid)','app.probation_task_list(text,integer)',
-   'app.probation_tracker_cases()','app.probation_tracker_page(uuid[])','app.probation_visible_among(uuid[])',
-   'app.probation_visible_case_ids()','app.register_import_release(uuid,boolean)','app.reward_access_observation_due(uuid)',
-   'app.reward_access_self_change_guard()','app.reward_actor_holds_role(text)','app.reward_actor_page_level(text)',
-   'app.reward_config_apply_confirmed_pat(uuid,uuid)','app.reward_config_architecture_for_source(uuid,uuid,uuid,date)','app.reward_config_change_recipients(uuid)',
-   'app.reward_config_change_record(text,text,uuid,text,uuid[],text,text,boolean,integer,jsonb,uuid,uuid[],text)','app.reward_config_change_visible(text,uuid[])','app.reward_config_companies(integer)',
-   'app.reward_config_company_eligible(uuid,integer)','app.reward_config_company_structure(uuid,date)','app.reward_config_create_planned_unit(uuid,uuid,uuid)',
-   'app.reward_config_creating()','app.reward_config_editor(uuid)','app.reward_config_editor_anywhere()',
-   'app.reward_config_grade_choices()','app.reward_config_identity_guard()','app.reward_config_library_capture_revision()',
-   'app.reward_config_library_input_guard()','app.reward_config_library_locked(uuid)','app.reward_config_library_used_by(uuid)',
-   'app.reward_config_library_viewer()','app.reward_config_page_allowed(uuid,text,text)','app.reward_config_pat_affected_units(uuid,integer)',
-   'app.reward_config_pat_confirm_apply()','app.reward_config_pat_history(uuid,integer)','app.reward_config_pat_input_guard()',
-   'app.reward_config_planned_policy_snapshot(jsonb,jsonb,jsonb,jsonb)','app.reward_config_policy_source(uuid)','app.reward_config_reprice_draft_pat(uuid,uuid)',
-   'app.reward_config_snapshot_pay_change_kind(uuid)','app.reward_config_source_org_tags(uuid,date)','app.reward_config_uploaded_binding()',
-   'app.reward_config_uploaded_binding_check(text,text,jsonb,jsonb)','app.reward_config_viewer(uuid)','app.reward_level_rank(text)',
-   'app.reward_limit_controls_access()','app.reward_limit_pin_on_submit(uuid,uuid)','app.reward_limit_reapply(uuid[],uuid,text)',
-   'app.reward_limit_version_guard()','app.reward_offcycle_balances(uuid)','app.reward_offcycle_company_funding(uuid,boolean)',
-   'app.reward_offcycle_cycle_readiness(uuid)','app.reward_offcycle_limit_pin(uuid,uuid)','app.reward_offcycle_limit_version(uuid)',
-   'app.reward_offcycle_year_save(uuid,integer,date,date)','app.reward_preparation_notices_v2()','app.reward_role_default_level(text,text)',
-   'app.reward_role_level(text,text)','app.reward_role_level_options(text,text)','app.reward_role_permission_immediate()',
-   'app.reward_role_permission_level_shape()','app.reward_role_permission_locked(text,text)','app.reward_role_permission_reader()',
-   'app.reward_role_permission_request_shape()','app.reward_role_permission_seat()','app.reward_setup_page_allowed(uuid,text,text)',
-   'app.reward_unit_level(uuid,text)','app.reward_unit_limit_version(uuid)','app.sweep_swing_thresholds(uuid[])',
-   'app.system_label_import_conflicts(uuid)','app.system_label_import_discard_batch(uuid,uuid,uuid,uuid,integer)','app.system_label_import_release_attempt(uuid,uuid)',
+   'app.probation_automation_context(uuid)','app.probation_automation_notify(uuid,uuid,text,text,uuid[])','app.probation_company_ancestors(uuid[])',
+   'app.probation_config_write_company(uuid,text,jsonb,boolean,integer)','app.probation_did_not_join(uuid)','app.probation_general_delegate(uuid,uuid,text)',
+   'app.probation_holders_set(uuid[])','app.probation_letter_freeze_route(uuid,jsonb,jsonb)','app.probation_letter_routed(jsonb)',
+   'app.probation_letter_routing_context(uuid)','app.probation_letter_routing_signatures_ok(jsonb)','app.probation_letter_routing_valid(jsonb)',
+   'app.probation_max_extensions(jsonb)','app.probation_outcome_automation(uuid)','app.probation_posting_approved()',
+   'app.probation_record_override(uuid)','app.probation_record_posting_effect(uuid,uuid,uuid,jsonb,jsonb)','app.probation_settings_materialize(uuid[])',
+   'app.probation_settings_scope_admin()','app.probation_settings_scope_check(text,jsonb)','app.probation_settings_scope_refresh(uuid)',
+   'app.probation_settings_scope_retire(uuid,integer,text)','app.probation_settings_scope_save(uuid,text,text,uuid[],jsonb,boolean,integer,text)','app.probation_source_from_start(jsonb,uuid)',
+   'app.probation_task_list(text,integer)','app.probation_tracker_cases()','app.probation_tracker_page(uuid[])',
+   'app.probation_visible_among(uuid[])','app.probation_visible_case_ids()','app.register_import_release(uuid,boolean)',
+   'app.reward_access_observation_due(uuid)','app.reward_access_self_change_guard()','app.reward_actor_holds_role(text)',
+   'app.reward_actor_page_level(text)','app.reward_config_apply_confirmed_pat(uuid,uuid)','app.reward_config_architecture_for_source(uuid,uuid,uuid,date)',
+   'app.reward_config_change_recipients(uuid)','app.reward_config_change_record(text,text,uuid,text,uuid[],text,text,boolean,integer,jsonb,uuid,uuid[],text)','app.reward_config_change_visible(text,uuid[])',
+   'app.reward_config_companies(integer)','app.reward_config_company_eligible(uuid,integer)','app.reward_config_company_structure(uuid,date)',
+   'app.reward_config_create_planned_unit(uuid,uuid,uuid)','app.reward_config_creating()','app.reward_config_editor(uuid)',
+   'app.reward_config_editor_anywhere()','app.reward_config_grade_choices()','app.reward_config_identity_guard()',
+   'app.reward_config_library_capture_revision()','app.reward_config_library_input_guard()','app.reward_config_library_locked(uuid)',
+   'app.reward_config_library_used_by(uuid)','app.reward_config_library_viewer()','app.reward_config_page_allowed(uuid,text,text)',
+   'app.reward_config_pat_affected_units(uuid,integer)','app.reward_config_pat_confirm_apply()','app.reward_config_pat_history(uuid,integer)',
+   'app.reward_config_pat_input_guard()','app.reward_config_planned_policy_snapshot(jsonb,jsonb,jsonb,jsonb)','app.reward_config_policy_source(uuid)',
+   'app.reward_config_reprice_draft_pat(uuid,uuid)','app.reward_config_snapshot_pay_change_kind(uuid)','app.reward_config_source_org_tags(uuid,date)',
+   'app.reward_config_uploaded_binding()','app.reward_config_uploaded_binding_check(text,text,jsonb,jsonb)','app.reward_config_viewer(uuid)',
+   'app.reward_level_rank(text)','app.reward_limit_controls_access()','app.reward_limit_pin_on_submit(uuid,uuid)',
+   'app.reward_limit_reapply(uuid[],uuid,text)','app.reward_limit_version_guard()','app.reward_offcycle_balances(uuid)',
+   'app.reward_offcycle_company_funding(uuid,boolean)','app.reward_offcycle_cycle_readiness(uuid)','app.reward_offcycle_limit_pin(uuid,uuid)',
+   'app.reward_offcycle_limit_version(uuid)','app.reward_offcycle_year_save(uuid,integer,date,date)','app.reward_preparation_notices_v2()',
+   'app.reward_role_default_level(text,text)','app.reward_role_level(text,text)','app.reward_role_level_options(text,text)',
+   'app.reward_role_permission_immediate()','app.reward_role_permission_level_shape()','app.reward_role_permission_locked(text,text)',
+   'app.reward_role_permission_reader()','app.reward_role_permission_request_shape()','app.reward_role_permission_seat()',
+   'app.reward_setup_page_allowed(uuid,text,text)','app.reward_unit_level(uuid,text)','app.reward_unit_limit_version(uuid)',
+   'app.sweep_swing_thresholds(uuid[])','app.system_label_import_conflicts(uuid)','app.system_label_import_discard_batch(uuid,uuid,uuid,uuid,integer)',
+   'app.system_label_import_release_attempt(uuid,uuid)',
   ];
   const beforeFunctions=new Set(beforePerformancePrivileges.functions.map(row=>row.fn));
   expect(afterPerformancePrivileges.functions.filter(row=>!beforeFunctions.has(row.fn)).map(row=>row.fn).sort()).toEqual(addedFunctions);

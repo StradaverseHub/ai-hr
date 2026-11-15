@@ -41,12 +41,20 @@ export function automationConditionProblems(condition: AutomationCondition): str
   return problems;
 }
 
-export function evaluateAutomationCondition(condition: AutomationCondition, value: AutomationFactValue): AutomationConditionResult {
+/**
+ * Other identities of a case value, for `is` / `isNot` only: a module whose stored condition values changed basis (for
+ * example organisation names saved before ids) supplies the case's former identities so both keep matching. Empty
+ * by default; it never makes an unavailable field match.
+ */
+export type AutomationFactAliases = (field: string) => readonly string[];
+const noAliases: AutomationFactAliases = () => [];
+export function evaluateAutomationCondition(condition: AutomationCondition, value: AutomationFactValue, aliases: readonly string[] = []): AutomationConditionResult {
   if (value === undefined) return { condition, ok: false, actual: null, unavailable: true };
   const actual = value ?? '';
+  const matches = (values: readonly string[]) => values.includes(actual) || aliases.some(alias => values.includes(alias));
   let ok: boolean;
-  if (condition.op === 'is') ok = condition.values.includes(actual);
-  else if (condition.op === 'isNot') ok = !condition.values.includes(actual);
+  if (condition.op === 'is') ok = matches(condition.values);
+  else if (condition.op === 'isNot') ok = !matches(condition.values);
   else {
     const target = condition.values.length === 1 && NUMERIC.test(condition.values[0]) ? Number(condition.values[0]) : NaN;
     const current = NUMERIC.test(actual) ? Number(actual) : NaN;
@@ -56,8 +64,8 @@ export function evaluateAutomationCondition(condition: AutomationCondition, valu
 }
 
 /** All conditions must match. An empty list matches every case. Returns each result for the dry run and case activity. */
-export function evaluateAutomationConditions(conditions: readonly AutomationCondition[], read: (field: string) => AutomationFactValue): { ok: boolean; results: AutomationConditionResult[] } {
-  const results = conditions.map(condition => evaluateAutomationCondition(condition, read(condition.field)));
+export function evaluateAutomationConditions(conditions: readonly AutomationCondition[], read: (field: string) => AutomationFactValue, aliases: AutomationFactAliases = noAliases): { ok: boolean; results: AutomationConditionResult[] } {
+  const results = conditions.map(condition => { const value = read(condition.field); return evaluateAutomationCondition(condition, value, value === undefined ? [] : aliases(condition.field)); });
   return { ok: results.every(result => result.ok), results };
 }
 

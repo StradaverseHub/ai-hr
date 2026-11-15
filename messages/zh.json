@@ -36239,7 +36239,22 @@
       "open": "打开结果函",
       "preparationClosed": "已请求或完成发出操作。请从案例查看已保存的函件和归档状态。",
       "templateTie": "有多个同等匹配的模板。请明确选择已审核的模板。",
-      "filingPending": "发出请求已保存。现有后台任务会生成并归档已签署 PDF 后再执行结果。任何失败都会保持可见，以便重试。"
+      "filingPending": "发出请求已保存。现有后台任务会生成并归档已签署 PDF 后再执行结果。任何失败都会保持可见，以便重试。",
+      "contentPrivate": "This letter is private until it reaches you. You can see who it is with and its status.",
+      "routingFallback": "Nobody could be found for some steps, so the fallback group took them:",
+      "sentBack": "{name} sent this letter back: {reason}",
+      "resend": "Send round again",
+      "meantFor": "meant for {who}",
+      "routedStep": {
+        "review": "Review",
+        "approve": "Approve",
+        "sign": "Sign",
+        "acknowledge": "Acknowledge"
+      },
+      "decision": {
+        "reviewed": "Mark as reviewed",
+        "approved": "Approve"
+      }
     },
     "dates": {
       "title": "试用期日期审核",

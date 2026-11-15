@@ -36239,7 +36239,22 @@
       "open": "முடிவுக் கடிதத்தைத் திற",
       "preparationClosed": "வெளியீடு ஏற்கெனவே கோரப்பட்டுள்ளது அல்லது முடிக்கப்பட்டுள்ளது. பதிவிலிருந்து சேமித்த கடிதத்தையும் கோப்பாக்க நிலையையும் மதிப்பாய்வு செய்யவும்.",
       "templateTie": "ஒன்றுக்கு மேற்பட்ட வார்ப்புருக்கள் சமமாகப் பொருந்துகின்றன. மதிப்பாய்வு செய்த வார்ப்புருவை வெளிப்படையாகத் தேர்ந்தெடுக்கவும்.",
-      "filingPending": "வெளியீட்டுக் கோரிக்கை சேமிக்கப்பட்டது. முடிவைச் செயல்படுத்தும் முன் ஏற்கெனவே உள்ள பின்னணிப் பணி கையொப்பமிட்ட PDF கோப்பை உருவாக்கிப் பதிவில் சேர்க்கும். தோல்விகள் மீண்டும் முயலுவதற்காகத் தொடர்ந்து காட்டப்படும்."
+      "filingPending": "வெளியீட்டுக் கோரிக்கை சேமிக்கப்பட்டது. முடிவைச் செயல்படுத்தும் முன் ஏற்கெனவே உள்ள பின்னணிப் பணி கையொப்பமிட்ட PDF கோப்பை உருவாக்கிப் பதிவில் சேர்க்கும். தோல்விகள் மீண்டும் முயலுவதற்காகத் தொடர்ந்து காட்டப்படும்.",
+      "contentPrivate": "This letter is private until it reaches you. You can see who it is with and its status.",
+      "routingFallback": "Nobody could be found for some steps, so the fallback group took them:",
+      "sentBack": "{name} sent this letter back: {reason}",
+      "resend": "Send round again",
+      "meantFor": "meant for {who}",
+      "routedStep": {
+        "review": "Review",
+        "approve": "Approve",
+        "sign": "Sign",
+        "acknowledge": "Acknowledge"
+      },
+      "decision": {
+        "reviewed": "Mark as reviewed",
+        "approved": "Approve"
+      }
     },
     "dates": {
       "title": "தகுதிகாண் தேதிகளை மதிப்பாய்வு செய்",

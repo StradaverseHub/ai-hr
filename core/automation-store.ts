@@ -70,7 +70,7 @@ async function references(tx: Tx, people: readonly string[]): Promise<Automation
   // Three bounded statements, one after another on the transaction's connection.
   const routingRows = await tx.execute<{ id: string; retired: boolean }>(sql`select distinct on (routing_id) routing_id as id, retired from automation_routing_version where tenant_id = app.current_tenant_id() order by routing_id, revision desc limit ${MAX_LISTED_ROUTINGS}`);
   const groupRows = await tx.execute<{ id: string }>(sql`select group_id as id from app.automation_assignment_groups()`);
-  const personRows = people.length ? await tx.execute<{ id: string }>(sql`select app.automation_active_users as id from app.automation_active_users(${`{${people.join(',')}}`}::uuid[])`) : [];
+  const personRows = people.length ? await tx.execute<{ id: string }>(sql`select u.id from app.automation_active_users(${`{${people.join(',')}}`}::uuid[]) as u(id)`) : [];
   const routings = new Set(routingRows.filter(r => !r.retired).map(r => r.id)), groups = new Set(groupRows.map(r => r.id)), persons = new Set(personRows.map(r => r.id));
   return { routingExists: id => routings.has(id), groupExists: id => groups.has(id), personExists: id => persons.has(id) };
 }

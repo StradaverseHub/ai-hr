@@ -21,14 +21,22 @@ export type RoutingMatch = Partial<Record<RoutingDimension, string[]>>;
 export type RoutingTarget = { kind: 'group'; groupId: string } | { kind: 'people'; userIds: string[] };
 export type RoutingRow = { match: RoutingMatch; assignTo: RoutingTarget };
 export type Routing = { id: string; name: string; rows: RoutingRow[] };
-export type RoutingFacts = Partial<Record<RoutingDimension, string | null>>;
+/**
+ * The employee's value per dimension. A module may give several identities of one value (for example a business group as
+ * its business unit id and its group company id, or an id and a name saved before ids); a row matches when it names any.
+ */
+export type RoutingFacts = Partial<Record<RoutingDimension, string | readonly string[] | null>>;
 
 const WEIGHT: Record<RoutingDimension, number> = { businessGroup: 8, company: 4, department: 2, jobTitle: 1 };
 export const MAX_ROUTING_ROWS = 500;
 export const MAX_ROUTING_PEOPLE = 50;
 
 export function routingRowMatches(row: RoutingRow, facts: RoutingFacts): boolean {
-  return ROUTING_DIMENSIONS.every(dimension => { const values = row.match[dimension]; return !values?.length || values.includes(facts[dimension] ?? ''); });
+  return ROUTING_DIMENSIONS.every(dimension => {
+    const values = row.match[dimension], fact = facts[dimension];
+    if (!values?.length) return true;
+    return (typeof fact === 'string' || fact === null || fact === undefined ? [fact ?? ''] : fact).some(value => values.includes(value));
+  });
 }
 export function routingRowSpecificity(row: RoutingRow): number {
   return ROUTING_DIMENSIONS.reduce((total, dimension) => total + (row.match[dimension]?.length ? WEIGHT[dimension] : 0), 0);

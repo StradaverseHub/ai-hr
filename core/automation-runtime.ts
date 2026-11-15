@@ -16,7 +16,7 @@ import {AutomationError} from './automation-store';
 import {automationCatalogue} from '../lib/automation/catalogues';
 import type {AutomationModule} from '../lib/automation/catalogue';
 import type {AutomationWorkflow} from '../lib/automation/workflow';
-import type {AutomationFactValue} from '../lib/automation/conditions';
+import type {AutomationFactAliases,AutomationFactValue} from '../lib/automation/conditions';
 import {resumeAutomationRuns,runAutomationEvent,type AutomationEventResult,type AutomationExecutors,type AutomationPendingStep,type AutomationRun,type AutomationRunLogEntry,type AutomationRunStatus,type AutomationRunStore,type AutomationRuntimeEvent,type AutomationRuntimeGuards,type LiveAutomationWorkflow} from '../lib/automation/runtime';
 
 type RunRow = {
@@ -74,8 +74,8 @@ export async function runAutomationEventTx(tx: Tx, input: {module: AutomationMod
 }
 
 /** After a document is released: continues every run of the case waiting for it, with each run's frozen remaining steps. */
-export async function resumeAutomationRunsTx(tx: Tx, input: {module: AutomationModule; subjectId: string; documentId: string; executors: AutomationExecutors; guards?: AutomationRuntimeGuards; read: (field: string) => AutomationFactValue; now?: () => string}): Promise<AutomationRun[]> {
-  return resumeAutomationRuns({module: input.module, subjectId: input.subjectId, documentId: input.documentId, store: sqlAutomationRunStore(tx), executors: input.executors, guards: input.guards, read: input.read, now: input.now ?? (() => new Date().toISOString())});
+export async function resumeAutomationRunsTx(tx: Tx, input: {module: AutomationModule; subjectId: string; documentId: string; executors: AutomationExecutors; guards?: AutomationRuntimeGuards; read: (field: string) => AutomationFactValue; aliases?: AutomationFactAliases; now?: () => string}): Promise<AutomationRun[]> {
+  return resumeAutomationRuns({module: input.module, subjectId: input.subjectId, documentId: input.documentId, store: sqlAutomationRunStore(tx), executors: input.executors, guards: input.guards, read: input.read, aliases: input.aliases, now: input.now ?? (() => new Date().toISOString())});
 }
 
 /** Case activity: the runs of one case the reader may see (row security: configurers and people with case access). */

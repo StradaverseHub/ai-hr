@@ -36239,7 +36239,22 @@
       "open": "เปิดจดหมายแจ้งผล",
       "preparationClosed": "มีการร้องขอหรือดำเนินการออกจดหมายแล้ว ตรวจสอบจดหมายที่บันทึกไว้และสถานะการจัดเก็บจากกรณี",
       "templateTie": "มีแม่แบบที่ตรงเงื่อนไขเท่ากันมากกว่าหนึ่งรายการ โปรดเลือกแม่แบบที่ตรวจทานแล้วอย่างชัดเจน",
-      "filingPending": "บันทึกคำขอออกจดหมายแล้ว งานเบื้องหลังที่มีอยู่จะสร้างและจัดเก็บ PDF ที่ลงนามก่อนนำผลไปใช้ หากเกิดข้อผิดพลาดจะแสดงไว้ให้ลองใหม่"
+      "filingPending": "บันทึกคำขอออกจดหมายแล้ว งานเบื้องหลังที่มีอยู่จะสร้างและจัดเก็บ PDF ที่ลงนามก่อนนำผลไปใช้ หากเกิดข้อผิดพลาดจะแสดงไว้ให้ลองใหม่",
+      "contentPrivate": "This letter is private until it reaches you. You can see who it is with and its status.",
+      "routingFallback": "Nobody could be found for some steps, so the fallback group took them:",
+      "sentBack": "{name} sent this letter back: {reason}",
+      "resend": "Send round again",
+      "meantFor": "meant for {who}",
+      "routedStep": {
+        "review": "Review",
+        "approve": "Approve",
+        "sign": "Sign",
+        "acknowledge": "Acknowledge"
+      },
+      "decision": {
+        "reviewed": "Mark as reviewed",
+        "approved": "Approve"
+      }
     },
     "dates": {
       "title": "ทบทวนวันที่ทดลองงาน",
