@@ -102,6 +102,8 @@ export type DocumentRoutingResolveContext = {
   groupMembers: (groupId: string) => readonly string[] | null;
   /** Picks one person for a step (V9 `assign` semantics; see the module comment). `groupId` is null for named people. */
   choose: (candidates: readonly string[], rule: DocumentRoutingPick, groupId: string | null) => string | null;
+  /** Why the last `choose` found nobody (for example everyone is on leave or at the open-task limit), when known. */
+  choiceProblem?: () => string | null;
   fallback: {groupId: string; members: readonly string[]} | null;
   /** Plain description of a "who", recorded when the fallback takes a step. */
   describe: (who: DocumentRoutingWho) => string;
@@ -135,8 +137,9 @@ export function resolveDocumentRouting(routing: DocumentRouting, ctx: DocumentRo
     let meantFor: string | undefined;
     if (!holderId) {
       meantFor = ctx.describe(step.who);
+      const reason = candidates.reason ?? (candidates.userIds.length ? ctx.choiceProblem?.() : null) ?? 'Nobody available could take this step.';
       holderId = ctx.fallback?.members.length ? ctx.choose(ctx.fallback.members, rule, ctx.fallback.groupId) : null;
-      unresolved.push({stepId: step.id, meantFor, reason: candidates.reason ?? 'Nobody available could take this step.', fallbackGroupId: ctx.fallback?.groupId ?? null, holderId});
+      unresolved.push({stepId: step.id, meantFor, reason, fallbackGroupId: ctx.fallback?.groupId ?? null, holderId});
     }
     const role = step.who.kind === 'employee' ? 'employee' : step.who.kind === 'directSuperior' ? 'lm' : step.who.kind === 'routing' ? `routing:${step.who.routingId}` : step.who.kind === 'group' ? `group:${step.who.groupId}` : 'people';
     return {id: step.id, role, kind: step.action, stage: step.order, holderId, required: true, ...(step.owner ? {owner: true} : {}), ...(meantFor ? {meantFor} : {})};

@@ -10,7 +10,8 @@ import {validateSigningRoute,signingComplete,pendingSigningSteps,signingSendBack
 import {ProbationError} from '../lib/probation-model';
 import type {ProbationTemplate} from '../lib/probation-workflow';
 import {PROBATION_LETTER_KEYS} from '../lib/probation-letter-template';
-import {createSigningDocumentTx,readSigningDocumentTx,recordDocumentSigningActionTx,refreshCanonicalProbationSigningRouteTx,resendSigningDocumentTx,signingContentVisibleTx,canEditSigningContent,signingDocumentOwner,documentRoutingProblems,documentRoutingSignatureProblems,resolveDocumentRouting,type DocumentRouting,type DocumentRoutingPick,type DocumentRoutingWho} from '../packs/document-signing/service';
+import {createSigningDocumentTx,readSigningDocumentTx,recordDocumentSigningActionTx,refreshCanonicalProbationSigningRouteTx,resendSigningDocumentTx,signingContentVisibleTx,canEditSigningContent,signingDocumentOwner,documentRoutingProblems,documentRoutingSignatureProblems,resolveDocumentRouting,type DocumentRouting,type DocumentRoutingWho} from '../packs/document-signing/service';
+import {routedStepChooser,type RoutedAssignmentFacts} from '../lib/routed-step-assignment';
 import {documentRoutingSchema} from '../lib/document-signing-routing-schema';
 import {automationReferencesTx} from './automation-builder';
 import type {Routing} from '../lib/automation/routing';
@@ -92,20 +93,26 @@ function describeWho(who:DocumentRoutingWho,routings:Routing[]):string{
  if(who.kind==='routing')return `The routing “${routings.find(r=>r.id===who.routingId)?.name??'removed routing'}”`;
  if(who.kind==='group')return `The assignment group ${who.groupId}`;return 'The named people';
 }
+/** The V9 assignment owner's chooser over this case's groups and named people (5755). */
+export async function routedStepChooserTx(tx:Tx,caseId:string,groupIds:readonly string[],people:readonly string[]){
+ const[row]=await tx.execute<{data:RoutedAssignmentFacts}>(sql`select app.probation_assignment_facts(${caseId}::uuid,${`{${[...new Set(groupIds)].map(id=>'"'+id.replace(/["\\]/g,'')+'"').join(',')}}`}::text[],${`{${[...new Set(people)].join(',')}}`}::uuid[]) as data`);
+ return routedStepChooser(row.data);
+}
 /**
  * Resolves a routed letter's routing on the database's facts for this employee and freezes it (5752). One person per
- * step: `any` = the first active member in member order; `roundRobin` = the member holding the fewest steps on recent
- * routed Probation letters (member order breaks ties). Leave and open-task limits of the V9 assignment owner are not
- * applied here. Nobody found → the fallback group (the case's settings, else GBS People Ops) takes the step and the
- * step records who it was meant for.
+ * step, chosen by the V9 assignment owner's rule (lib/routed-step-assignment.ts, facts from 5755): nobody on leave
+ * today or at the group's open-task limit, then the lowest open load; `roundRobin` breaks ties by least recent
+ * assignment, `any` by member order. Nobody found → the fallback group (the case's settings, else GBS People Ops)
+ * takes the step, chosen the same way, and the step records who it was meant for and why.
  */
 async function freezeLetterRoutingTx(tx:Tx,partId:string,routing:DocumentRouting){
  const[context]=await tx.execute<{data:LetterRoutingContext}>(sql`select app.probation_letter_routing_context(${partId}::uuid) as data`);
  const c=context.data,groups=new Map(c.groups.map(g=>[g.id,g.members])),routings=new Map(c.routings.map(r=>[r.id,r]));
- const choose=(candidates:readonly string[],rule:DocumentRoutingPick)=>{if(!candidates.length)return null;if(rule!=='roundRobin')return candidates[0];return [...candidates].map((id,i)=>({id,i,n:c.recent[id]??0})).sort((a,b)=>a.n-b.n||a.i-b.i)[0].id;};
+ const[part]=await tx.execute<{caseId:string}>(sql`select case_id as "caseId" from probation_part where id=${partId}::uuid and tenant_id=app.current_tenant_id()`);
+ const chooser=await routedStepChooserTx(tx,part.caseId,[...groups.keys()],routing.flatMap(step=>step.who.kind==='people'?step.who.userIds:[]));
  const fallbackMembers=c.fallbackGroupId?groups.get(c.fallbackGroupId)??[]:[];
  const resolved=resolveDocumentRouting(routing,{employeeUserId:c.employeeUserId,directSuperiorUserId:c.directSuperiorUserId,facts:{businessGroup:[c.facts.businessGroup,c.facts.businessGroupCompany].filter((v):v is string=>!!v),company:c.facts.company,department:c.facts.department,jobTitle:c.facts.jobTitle},
-  routing:id=>routings.get(id)??null,groupMembers:id=>groups.get(id)??null,choose,fallback:c.fallbackGroupId?{groupId:c.fallbackGroupId,members:fallbackMembers}:null,describe:who=>describeWho(who,c.routings)});
+  routing:id=>routings.get(id)??null,groupMembers:id=>groups.get(id)??null,choose:chooser.choose,choiceProblem:chooser.problem,fallback:c.fallbackGroupId?{groupId:c.fallbackGroupId,members:fallbackMembers}:null,describe:who=>describeWho(who,c.routings)});
  await tx.execute(sql`select app.probation_letter_freeze_route(${partId}::uuid,${json(resolved.route)}::jsonb,${json(resolved.unresolved)}::jsonb)`);
  return{route:resolved.route,caseOwnerId:c.caseOwnerId,fallbackGroupId:c.fallbackGroupId};
 }

@@ -264,6 +264,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5753_probation_outcome_automation',
    // Lane F (16 November 2026): real email for shared workflow steps.
    '5754_automation_email_delivery',
+   '5755_probation_routed_assignment',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -359,6 +360,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    // 5752: routed Probation letters (routing context, route freeze and three owner-only template checks).
    // 5753: Probation outcomes on the shared workflow runner (context, notify, outcome runs, posting effect, posting-approval trigger).
    // 5754: shared workflow email (queue, the private sender's target, start and finish, and the owner-only immutability trigger).
+   // 5755: routed Probation steps (assignment facts for the V9 assignment owner).
    'app._access_bootstrap_eligible(uuid,uuid)','app._access_workforce_list_rows(uuid[])','app._ai_control_context_for_purpose(text,boolean,boolean)',
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()','app._assert_assistant_rewards_presentation_v1(text)',
    'app._assistant_assigned_index_login(uuid,boolean)','app._assistant_presentation_feature_unpaused_v1()','app._assistant_rewards_calendar_choice_payload_v1()',
@@ -417,7 +419,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.personnel_posting_day(jsonb)','app.personnel_posting_edit(uuid,integer,jsonb)','app.personnel_posting_groups(text[])',
    'app.personnel_posting_people(uuid[])','app.personnel_posting_record_movement(uuid,text)','app.personnel_posting_values_ok(text,jsonb)',
    'app.personnel_posting_visible(text,uuid,text)','app.personnel_private_search_entries(text,uuid[])','app.personnel_search_candidates(uuid[],boolean,boolean,text,text,text,text,text[])',
-   'app.probation_automation_context(uuid)','app.probation_automation_notify(uuid,uuid,text,text,uuid[])','app.probation_company_ancestors(uuid[])',
+   'app.probation_assignment_facts(uuid,text[],uuid[])','app.probation_automation_context(uuid)','app.probation_automation_notify(uuid,uuid,text,text,uuid[])','app.probation_company_ancestors(uuid[])',
    'app.probation_config_write_company(uuid,text,jsonb,boolean,integer)','app.probation_did_not_join(uuid)','app.probation_general_delegate(uuid,uuid,text)',
    'app.probation_holders_set(uuid[])','app.probation_letter_freeze_route(uuid,jsonb,jsonb)','app.probation_letter_routed(jsonb)',
    'app.probation_letter_routing_context(uuid)','app.probation_letter_routing_signatures_ok(jsonb)','app.probation_letter_routing_valid(jsonb)',

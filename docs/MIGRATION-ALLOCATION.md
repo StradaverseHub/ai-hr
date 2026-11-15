@@ -1,3 +1,12 @@
+# Routed Probation steps: assignment, delegation, form approval choices — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-finish-20261116` (lane F) appends `5755_probation_routed_assignment` at idx 5155 / when
+1793330005455 (assigned by the build coordinator). SHA256 `3f3b4258026722ccf86bed9cf9d54e66711585826110801a0709cceb4cb20a15`. It adds `app.probation_assignment_facts(uuid,text[],uuid[])`, granted to `ai_hr_app` and authorized by
+`app.automation_can_run('probation', case)`: group limits and active members, open load, last routed assignment and
+leave today for the V9 assignment owner's choice of one person per routed step. No table, row, grant or purpose-owned
+object changes. The installed ledgers were not read; recheck watermarks and peer claims at admission. This allocation
+grants no installation authority.
+
 # Real email for shared workflow steps — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/probation-lane-finish-20261116` (lane F of the Probation Confirmation build) appends
