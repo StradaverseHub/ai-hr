@@ -194,6 +194,10 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5140,when:1793330005440,tag:'5740_automation_shared_definitions'},
  {idx:5141,when:1793330005441,tag:'5741_personnel_postings'},
  {idx:5143,when:1793330005443,tag:'5743_automation_email_templates'},
+ // Probation lane D1 (16 Nov 2026): document signing Review steps, owner, send back and re-send (functions replaced
+ // in place), and shared workflow runs (one new empty table and its definers).
+ {idx:5147,when:1793330005447,tag:'5747_document_signing_review_routing'},
+ {idx:5148,when:1793330005448,tag:'5748_automation_runs'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -229,6 +233,8 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5740_automation_shared_definitions':'72baaa106846be4ede55607235a4555a0a0f38f6f0958183077c9e9f6dca0569',
  '5741_personnel_postings':'bac24f1f803408ee29db5915e69d47a72f981c45b5b6c5fee469831dcb800cb5',
  '5743_automation_email_templates':'5b82f328178b8bc5357acb830eceffd89337e13dd563eaec8f931f1f29bce3cd',
+ '5747_document_signing_review_routing':'7fec99312b9b49efa0af448ff2438321396e47a19c3a0a4bf1e89d902b76cf99',
+ '5748_automation_runs':'6014e399d4166a04d5c029ebdc48f930d7cd77d2600bc89852b195391776d241',
  '4800_ai_shared_leave_groups_read':'774dce41ba113549ec5415586d104b8d5b7712934216f2beb4d9aa0e9f00ffc5',
  '4601_last_login_event_index':'868e30d4a2840d4939a46f303ce999b2e041ae3cb6823eb8b712179ccf7d5788',
  '4600_attendance_clock_policy_group_scope':'b30a62bec597f53266232abe569a040a9a421eaa2239eac232d0e44041352be6',

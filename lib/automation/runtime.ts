@@ -157,6 +157,17 @@ async function fail(run: AutomationRun, deps: AutomationRunDeps, at: AutomationP
   return run;
 }
 
+function stepExecutor(executors: AutomationExecutors, type: string): AutomationStepExecutor | undefined {
+  switch (type) {
+    case 'notify': return executors.notify;
+    case 'sendEmail': return executors.sendEmail;
+    case 'generateDocument': return executors.generateDocument;
+    case 'createPosting': return executors.createPosting;
+    case 'startOffboarding': return executors.startOffboarding;
+    default: return undefined;
+  }
+}
+
 /** Executes the run's frozen remaining steps in order until it finishes, waits for a document or fails. */
 export async function advanceAutomationRun(current: AutomationRun, deps: AutomationRunDeps): Promise<AutomationRun> {
   const run = structuredClone(current);
@@ -175,8 +186,8 @@ export async function advanceAutomationRun(current: AutomationRun, deps: Automat
       const state = deps.guards?.documentTemplate?.(step);
       if (state === 'missing' || state === 'retired') return fail(run, deps, next, state === 'retired' ? 'The document template is retired, so the document was not generated. Nothing after this step ran.' : 'No document template is chosen or it no longer exists, so the document was not generated. Nothing after this step ran.');
     }
-    const executor = (deps.executors as Record<string, AutomationStepExecutor | undefined>)[step.type];
-    if (!executor || step.type === 'notifyFailure') return fail(run, deps, next, `This module cannot run “${step.type}” steps.`);
+    const executor = stepExecutor(deps.executors, step.type);
+    if (!executor) return fail(run, deps, next, `This module cannot run “${step.type}” steps.`);
     const outcome = await executor({run, step, index, read: deps.read});
     if (outcome.status === 'failed') return fail(run, deps, next, outcome.reason);
     if (outcome.status === 'skipped') { append(run, {...entry, kind: 'stepSkipped', message: `Skipped: ${outcome.reason}`}); continue; }

@@ -57,7 +57,7 @@ export function sqlAutomationRunStore(tx: Tx): AutomationRunStore {
 export async function liveAutomationWorkflowsTx(tx: Tx, module: AutomationModule, trigger: string, subjectId: string): Promise<LiveAutomationWorkflow[]> {
   return guarded(async () => {
     const rows = await tx.execute<{workflow_id: string; revision: number; required: boolean; definition: Omit<AutomationWorkflow, 'status' | 'required'>}>(sql`select workflow_id, revision, required, definition from app.automation_runner_workflows(${module}, ${trigger}, ${subjectId}::uuid)`);
-    return rows.map(r => ({revision: r.revision, workflow: {...r.definition, id: r.workflow_id, module, status: 'live', required: r.required}}));
+    return rows.map(r => ({revision: r.revision, workflow: {...r.definition, id: r.workflow_id, module, status: 'live' as const, required: r.required}}));
   });
 }
 
