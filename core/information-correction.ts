@@ -18,7 +18,7 @@ import {withAccessDisplayRead} from './access-configuration-lock';
 import {allocationCompanyCode} from './cost-allocation-import';
 import {labelCompanyIdsSql,labelUsableByCompany,visibleLabelIdsCondition} from './system-labels';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {alignHistoryStartTx,MovementHistoryError,DATED_ASSIGNMENT_FIELDS,planDatedCorrection,writeDatedCorrectionTx,closedPayrollInSpanTx,type DatedAssignmentField,type DatedCorrectionPlan} from './movement-history';
+import {alignHistoryStartTx,MovementHistoryError,DATED_ASSIGNMENT_FIELDS,planDatedCorrection,writeDatedCorrectionTx,closedPayrollInSpanTx,companyRecordOnTx,type DatedAssignmentField,type DatedCorrectionPlan} from './movement-history';
 import {recordedMovementChangesTx,type RecordedMovementChange} from './movement';
 import {closedPeriodsTx,overlapsClosedPeriod} from './comp';
 import {contractPeriodIssues} from '../lib/contract-period';
@@ -492,8 +492,7 @@ async function applyTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stat
  // The organisation tag owner checks the company against app.company_org_employment_company, whose correction
  // before-image rule predates dated corrections (ADR 2026-11-15, Consequences): record only where they agree.
  const tagCompany=at?.companyId??currentCompany;
- const [owner]=await tx.execute<{companyId:string|null}>(sql`select app.company_org_employment_company(${s.emp.id}::uuid,${effectiveOn}::date) as "companyId"`);
- if(owner?.companyId===tagCompany)await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:s.emp.id,companyId:tagCompany,asOf:effectiveOn,trigger:'correction'});
+ if(await companyRecordOnTx(tx,ctx.tenantId,s.emp.id,effectiveOn)===tagCompany)await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:s.emp.id,companyId:tagCompany,asOf:effectiveOn,trigger:'correction'});
 }
 /** Board 4604dccc — the Direct Superior from the Effective Date until the next recorded line, which stays as it is. */
 async function boundedSuperiorTx(tx:Tx,ctx:SessionContext,employmentId:string,managerId:string,from:string,to:string){

@@ -462,3 +462,19 @@ export async function reapplyCorrectionBoundariesTx(tx:Tx,ctx:SessionContext,emp
   payload:{employmentId,movementDate:lifted.movementDate,boundaries:placed,lifted:lifted.boundaries.map(b=>b.liftedId)}});
  return placed;
 }
+
+/**
+ * The company app.company_org_employment_company gives for `day` (that SQL owner is not executable by the web role):
+ * the "before" company of the earliest information correction, by sequence, dated after `day`; else the live
+ * assignment covering `day`; else today's company. The organisation tag owner checks a recorded company against it.
+ */
+export async function companyRecordOnTx(tx:Tx,tenantId:string,employmentId:string,day:string):Promise<string|null>{
+ const [correction]=await tx.select({companyId:sql<string|null>`nullif(${domainEvent.payload}->'before'->>'companyId','')`}).from(domainEvent)
+  .where(and(eq(domainEvent.tenantId,tenantId),eq(domainEvent.subjectEmploymentId,employmentId),eq(domainEvent.eventType,'employment.information.corrected'),sql`${domainEvent.payload}->>'effectiveOn' > ${day}`))
+  .orderBy(asc(domainEvent.sequence)).limit(1);
+ if(correction?.companyId)return correction.companyId;
+ const [row]=await tx.select({companyId:assignment.companyId}).from(assignment).where(and(eq(assignment.employmentId,employmentId),isNull(assignment.supersededAt),sql`${assignment.validFrom}<=${day}::date`,sql`(${assignment.validTo} is null or ${assignment.validTo}>${day}::date)`)).orderBy(sql`${assignment.validFrom} desc`,asc(assignment.id)).limit(1);
+ if(row?.companyId)return row.companyId;
+ const [emp]=await tx.select({companyId:employment.companyId}).from(employment).where(eq(employment.id,employmentId)).limit(1);
+ return emp?.companyId??null;
+}

@@ -93,7 +93,7 @@ import {
 import { movementFieldRuleViolations, type MovementFieldRule, type MovementFieldRuleViolation } from '../lib/movement-field-rules';
 // Board 154511c4 — history recorded backwards from the current record. Its event projects a movement row and
 // its row replacements join the hire correction's in the chain Roll Back follows.
-import { MOVEMENT_HISTORY_EVENT, MOVEMENT_HISTORY_REVERTED_EVENT, MovementHistoryError, isAssignmentReplacementEvent, reverseHistoryMovementTx, liftCorrectionBoundariesTx, reapplyCorrectionBoundariesTx } from './movement-history';
+import { MOVEMENT_HISTORY_EVENT, MOVEMENT_HISTORY_REVERTED_EVENT, MovementHistoryError, isAssignmentReplacementEvent, reverseHistoryMovementTx, liftCorrectionBoundariesTx, reapplyCorrectionBoundariesTx, companyRecordOnTx } from './movement-history';
 // c063eea9 — the hire-details correction. It owns its event and the trace the Hired row wears; this module
 // loads the event (it projects no row of its own) and follows its row replacements when rolling back.
 import {
@@ -2602,8 +2602,8 @@ async function assertCompanyRecordAgreesTx(tx: Tx, ctx: SessionContext, p: Creat
   if (!later) return;
   const [emp] = await tx.select({ companyId: employment.companyId }).from(employment).where(eq(employment.id, p.employmentId)).limit(1);
   const recorded = p.kind === 'entityTransfer' && p.companyId ? p.companyId : emp?.companyId;
-  const [owner] = await tx.execute<{ companyId: string | null }>(sql`select app.company_org_employment_company(${p.employmentId}::uuid,${p.effectiveDate}::date) as "companyId"`);
-  if (recorded && owner?.companyId && owner.companyId !== recorded) throw new MovementHistoryError('movement_correction_company_record:' + later.effectiveOn);
+  const owner = await companyRecordOnTx(tx, ctx.tenantId, p.employmentId, p.effectiveDate);
+  if (recorded && owner && owner !== recorded) throw new MovementHistoryError('movement_correction_company_record:' + later.effectiveOn);
 }
 
 async function applyComparisonLegsTx(
