@@ -93,6 +93,7 @@ describe('Probation outcome on the shared workflow runner (W2)',()=>{
   const [outcome]=await owner.db.execute<{failure:string|null}>(sql`select failure from probation_outcome where id=${decision.id}::uuid`);
   expect(outcome.failure).toBe('The review is recorded. Select and complete the approved outcome letter before signing and release.');
  });
+});
 
 describe('Probation review events on the shared runner (W3)',()=>{
  it('runs live workflows when the Line Manager submits and when all approvals are complete, once each',async()=>{

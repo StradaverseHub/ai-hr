@@ -268,6 +268,10 @@ export async function probationAutomationCaseTx(tx: Tx, caseId: string): Promise
 /** Probation triggers that have at least one live shared workflow (one bounded read per trigger). */
 export async function liveProbationTriggersTx(tx: Tx, caseId: string, triggers: readonly string[]): Promise<Set<string>> {
   const live = new Set<string>();
+  // The caller must be able to run this case's workflows (the storage runner or someone with case access); a signer
+  // acting without case access raises no events.
+  const [allowed] = await tx.execute<{ok: boolean}>(sql`select app.automation_can_run('probation', ${caseId}::uuid) as ok`);
+  if (allowed?.ok !== true) return live;
   for (const trigger of triggers) {
     const [row] = await tx.execute<{n: number}>(sql`select count(*)::int as n from app.automation_runner_workflows('probation', ${trigger}, ${caseId}::uuid)`);
     if (row?.n) live.add(trigger);
