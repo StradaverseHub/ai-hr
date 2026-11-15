@@ -200,7 +200,7 @@ export async function reverseHistoryMovementTx(tx:Tx,ctx:SessionContext,e:{id:st
 
 /** Events whose `assignment` replacements Roll Back must follow (see originMapOf / liveIncarnationOf). */
 // An information correction applied from the join date records its replacements in the same shape.
-export const isAssignmentReplacementEvent=(eventType:string,hireCorrected:string)=>eventType===hireCorrected||eventType===MOVEMENT_HISTORY_EVENT||eventType===MOVEMENT_HISTORY_REVERTED_EVENT||eventType==='employment.information.corrected'||eventType===INFORMATION_BOUNDARY_REAPPLIED_EVENT;
+export const isAssignmentReplacementEvent=(eventType:string,hireCorrected:string)=>eventType===hireCorrected||eventType===HISTORY_START_ALIGNED_EVENT||eventType===MOVEMENT_HISTORY_EVENT||eventType===MOVEMENT_HISTORY_REVERTED_EVENT||eventType==='employment.information.corrected'||eventType===INFORMATION_BOUNDARY_REAPPLIED_EVENT;
 
 /**
  * Board 154511c4 — Correct information "in this company from the join date": the employee was ALWAYS in `to`,
@@ -244,6 +244,35 @@ export async function rewriteCompanyFromStartTx(tx:Tx,ctx:SessionContext,employm
  * updated in place); the replacements are recorded in the shape Roll Back follows.
  */
 export type StartAlignment={from:string;to:string};
+/** Board 4604dccc r2 — the dated records were moved to start on a corrected Group Join Date by a Group Join Date
+ * Correction (or its Roll Back). Records its replacements in the shape Roll Back follows (originMapOf). */
+export const HISTORY_START_ALIGNED_EVENT='employment.history.start.aligned';
+/** The readable refusal when the dated records cannot start on the Group Join Date. */
+export function alignmentRefusal(code:string){
+ const [kind,...rest]=code.split(':'),detail=rest.join(':');
+ if(kind==='movement_history_earlier_change')return `A change recorded on ${detail} is before the Group Join Date. Correct or roll back that change first, or use an earlier Group Join Date.`;
+ if(kind==='movement_history_payroll_company')return `Payroll for ${detail} was closed before the Group Join Date. Reopen that payroll, or use an earlier Group Join Date.`;
+ return 'The employee\'s dated records could not be aligned to the Group Join Date.';
+}
+/**
+ * Board 4604dccc r2 — after a Group Join Date Correction (or its Roll Back) moved employment.hired_on, the dated
+ * records (first company/position version, salary revision, reporting lines) start on it too, exactly as
+ * Information-Only Correction does (board 154511c4). Moving it earlier lets movements dated between the new and the
+ * old Group Join Date be recorded; moving it later is refused when a recorded change or closed payroll lies in the
+ * dropped period. `refuse` turns a refusal into the caller's own error type.
+ */
+export async function alignHistoryToGroupJoinDateTx(tx:Tx,ctx:SessionContext,employmentId:string,trigger:'groupJoinDateCorrection'|'rollback',refuse:(message:string)=>Error){
+ const [emp]=await tx.select({hiredOn:employment.hiredOn}).from(employment).where(eq(employment.id,employmentId)).limit(1);
+ const from=await historyStartTx(tx,employmentId);
+ if(!emp||!from||from===emp.hiredOn)return null;
+ let result:Awaited<ReturnType<typeof alignHistoryStartTx>>;
+ try{result=await alignHistoryStartTx(tx,employmentId,emp.hiredOn);}
+ catch(error){if(error instanceof MovementHistoryError)throw refuse(alignmentRefusal(error.message));throw error;}
+ if(!result.replaced.length&&!result.aligned.length)return null;
+ await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:employmentId,eventType:HISTORY_START_ALIGNED_EVENT,actor:actorOf(ctx),subjectEmploymentId:employmentId,
+  payload:{employmentId,trigger,alignedStart:{from,to:emp.hiredOn},assignment:result.replaced,aligned:result.aligned}});
+ return {from,to:emp.hiredOn};
+}
 export async function historyStartTx(tx:Tx,employmentId:string){
  const [first]=await tx.select({validFrom:assignment.validFrom}).from(assignment).where(and(eq(assignment.employmentId,employmentId),isNull(assignment.supersededAt))).orderBy(asc(assignment.validFrom)).limit(1);
  return first?.validFrom??null;

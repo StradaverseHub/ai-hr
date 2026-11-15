@@ -23,7 +23,7 @@ import {MOVEMENT_FORM_IDS,movementFormFields,type MovementFormField} from '../li
 import {personnelFormField,personnelFormChoices} from '../lib/personnel-form-contract';
 import {personnelImportOptionLookup} from '../lib/personnel-import-lookup';
 import {MOVEMENT_IMPORT_LIMITS,parseMovementImport,movementImportCellIssues,movementImportDate,type MovementImportAction,type MovementImportRecord,type MovementImportRow,type MovementImportEmployee,type MovementImportPreview,type MovementImportResult} from '../lib/movement-import-contract';
-import {createMovementEventTx,movementCurrentStateTx,applyDueMovementsTx,rehearseMovementSequenceTx,applyMovementSequenceTx,MovementSequenceDeferred,movementLedgerMarkerTx,movementRowsAfterSequenceTx,movementCorrectionBaseTx,editMovementEventTx,reverseMovementForImportTx,MovementClosedPayrollAcknowledgementError,MovementFieldRuleError,MovementNoChangeError,MovementNotCorrectableError,MovementReasonRequiredError,type MovementSequenceCreate,type CreateMovementInput} from './movement';
+import {createMovementEventTx,MovementBeforeGroupJoinDateError,movementCurrentStateTx,applyDueMovementsTx,rehearseMovementSequenceTx,applyMovementSequenceTx,MovementSequenceDeferred,movementLedgerMarkerTx,movementRowsAfterSequenceTx,movementCorrectionBaseTx,editMovementEventTx,reverseMovementForImportTx,MovementClosedPayrollAcknowledgementError,MovementFieldRuleError,MovementNoChangeError,MovementNotCorrectableError,MovementReasonRequiredError,type MovementSequenceCreate,type CreateMovementInput} from './movement';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {allocationCompanyCode,matchAllocationCompany} from './cost-allocation-import';
 import {recordImportItemTx} from './import-history';
@@ -253,7 +253,7 @@ async function inputTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,empl
  const effectiveDate=record.importVersion===2&&resolved.behaviourKind==='blacklist'?todayInKualaLumpur():movementImportDate(record.cells.effectiveDate!)!;
  const [dates]=known?[{hiredOn:known.hiredOn!,terminatedOn:known.terminatedOn??null,lastWorkingDate:known.lastWorkingDate??null,resignationDate:known.resignationDate??null}]:await tx.select({hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,lastWorkingDate:employment.lastWorkingDate,resignationDate:employment.resignationDate}).from(employment).where(eq(employment.id,employmentId)).limit(1);
  if(!dates)throw new Error('employee_not_available');
- if(!['groupJoinDateCorrection','blacklist','historicalHire'].includes(resolved.behaviourKind)&&effectiveDate<dates.hiredOn)throw new Error('event_before_hire');
+ if(!['groupJoinDateCorrection','blacklist','historicalHire'].includes(resolved.behaviourKind)&&effectiveDate<dates.hiredOn)throw new Error('event_before_hire:'+dates.hiredOn);
  const exit=[dates.terminatedOn,dates.lastWorkingDate,dates.resignationDate].filter((date):date is string=>!!date).sort()[0];
  if(!correctingExit&&exit&&effectiveDate>exit&&(isComparisonKind(resolved.behaviourKind)||['secondment','actingPosition'].includes(resolved.behaviourKind)))throw new Error('event_after_exit');
  if(resolved.behaviourKind==='blacklist'&&effectiveDate!==todayInKualaLumpur())throw new Error('blacklist_date_must_be_today');
@@ -328,7 +328,7 @@ export function movementWriterRefusalCode(error:unknown):string|null{
  if(error instanceof DestinationCompanyNotAdministered)return 'company_not_available';
  if(error instanceof MovementNoChangeError)return 'movement_has_no_changes';
  if(error instanceof MovementReasonRequiredError)return 'movement_backdated_reason_required';
- if(error instanceof Error&&error.message==='Use Historical Hire to record dates before the current Group Join Date.')return 'movement_before_join_date';
+ if(error instanceof MovementBeforeGroupJoinDateError)return 'movement_before_join_date:'+error.groupJoinDate;
  return null;
 }
 function message(error:unknown){
@@ -392,10 +392,14 @@ function checkBefore(record:MovementImportRecord,state:Record<string,string|null
 }
 function recordDay(row:MovementImportRecord){return row.importVersion===2&&row.cells.kind==='blacklist'?todayInKualaLumpur():movementImportDate(row.cells.effectiveDate??'')??'9999';}
 /** Board 154511c4 — history rows first, newest first (each one is judged against the record the newer ones
- * leave), then ordinary movements in effective-date order exactly as before. */
+ * leave), then ordinary movements in effective-date order exactly as before (a Group Join Date Correction first). */
 function sortSequence(rows:MovementImportRecord[]){
  const history=rows.filter(row=>row.history).sort((a,b)=>recordDay(b).localeCompare(recordDay(a))||b.row-a.row);
- return [...history,...rows.filter(row=>!row.history).sort((a,b)=>recordDay(a).localeCompare(recordDay(b))||a.row-b.row)];
+ // Board 4604dccc r2 — a Group Join Date Correction (the system type; custom types never map onto it) goes before the
+ // employee's other new rows, so each of them is checked against the corrected Group Join Date, and a row before it
+ // is refused naming that date rather than the old one.
+ const startFirst=(row:MovementImportRecord)=>row.cells.kind==='groupJoinDateCorrection'?0:1;
+ return [...history,...rows.filter(row=>!row.history).sort((a,b)=>startFirst(a)-startFirst(b)||recordDay(a).localeCompare(recordDay(b))||a.row-b.row)];
 }
 const HISTORY_SKIP=new Set(['kind','effectiveDate','remarks']);
 const historyFieldsOf=(record:MovementImportRecord)=>Object.keys(record.cells).filter(key=>!HISTORY_SKIP.has(key)&&record.cells[key as MovementFormField]!=null);
