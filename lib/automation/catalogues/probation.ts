@@ -10,7 +10,8 @@
  */
 import type {AutomationModuleCatalogue} from '../catalogue';
 
-const PARTS = ['Part 1 · Week 1 Success Plan', 'Part 2 · Mid-Probation Review', 'Part 3 · Final Confirmation Review'] as const;
+export const PROBATION_PART_LABELS = ['Part 1 · Week 1 Success Plan', 'Part 2 · Mid-Probation Review', 'Part 3 · Final Confirmation Review'] as const;
+const PARTS = PROBATION_PART_LABELS;
 const PART_TRIGGERS = ['dueAfterStart', 'formIssued', 'dueBeforeReview', 'lmSubmitted', 'acknowledged', 'approvalsComplete', 'returned', 'lowResult', 'outcomeOverridden', 'declinedToSign', 'outcomeDecided', 'approvalPending', 'kpiOverdue'] as const;
 const OUTCOME_TRIGGERS = ['outcomeDecided', 'letterActionNeeded', 'letterSentBack', 'letterReleased', 'letterReleasePending'] as const;
 const SCORE_TRIGGERS = ['lmSubmitted', 'lowResult', 'outcomeOverridden'] as const;

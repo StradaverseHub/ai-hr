@@ -22,7 +22,7 @@
  *    it runs and the module's `notifyFailure` hook is called; a Send email step whose template is turned off (or gone) is
  *    skipped and noted; no matching workflow at all is reported to the caller.
  */
-import {evaluateAutomationConditions,type AutomationFactValue} from './conditions';
+import {evaluateAutomationConditions,type AutomationFactAliases,type AutomationFactValue} from './conditions';
 import type {AutomationModule,AutomationModuleCatalogue} from './catalogue';
 import {routingRecipients,type Routing,type RoutingFacts} from './routing';
 import {addAutomationDays,freezeAutomationWorkflow,type AutomationRecipient,type AutomationStep,type AutomationWorkflow} from './workflow';
@@ -36,6 +36,8 @@ export type AutomationRuntimeEvent = {
   /** Today in the module's HR calendar (YYYY-MM-DD), from the repository's HR date owner. */
   today: string;
   read: (field: string) => AutomationFactValue;
+  /** Former identities of a case value (conditions saved on an older basis); see AutomationFactAliases. */
+  aliases?: AutomationFactAliases;
   /** The date a dated trigger counts from, or null when the case has none. */
   anchor: (anchor: string) => string | null;
   /** The skip-when option that applies to this case now, or null. */
@@ -93,7 +95,7 @@ export type AutomationRuntimeGuards = {
   /** State of the document template a Generate document step names. */
   documentTemplate?: (step: AutomationStep) => 'available' | 'missing' | 'retired';
 };
-export type AutomationRunDeps = {executors: AutomationExecutors; guards?: AutomationRuntimeGuards; read: (field: string) => AutomationFactValue; now: () => string};
+export type AutomationRunDeps = {executors: AutomationExecutors; guards?: AutomationRuntimeGuards; read: (field: string) => AutomationFactValue; aliases?: AutomationFactAliases; now: () => string};
 
 /** Persists runs. `start` is idempotent on (workflow, subject, event key): an existing run is returned with created false. */
 export type AutomationRunStore = {
@@ -127,7 +129,7 @@ export function decideAutomationRuns(catalogue: AutomationModuleCatalogue, workf
     const dueDate = spec?.dated ? automationDueDate(catalogue, workflow, event) : null;
     if (spec?.dated && !dueDate) { decisions.push({...base, outcome: 'noDate', eventKey: null, dueDate, reason: 'This case has no date to count from.'}); continue; }
     if (dueDate && event.today < dueDate) { decisions.push({...base, outcome: 'notDue', eventKey: null, dueDate, reason: `Due on ${dueDate}.`}); continue; }
-    if (!evaluateAutomationConditions(workflow.conditions, event.read).ok) { decisions.push({...base, outcome: 'noMatch', eventKey: null, dueDate, reason: 'The conditions do not match this case.'}); continue; }
+    if (!evaluateAutomationConditions(workflow.conditions, event.read, event.aliases).ok) { decisions.push({...base, outcome: 'noMatch', eventKey: null, dueDate, reason: 'The conditions do not match this case.'}); continue; }
     const eventKey = automationEventKey(workflow, event, dueDate);
     const skip = event.skipReason(workflow.skipWhen);
     decisions.push(skip ? {...base, outcome: 'skip', eventKey, dueDate, reason: `Skipped: ${skip}`} : {...base, outcome: 'run', eventKey, dueDate, reason: 'It runs for this case.'});
@@ -176,7 +178,7 @@ export async function advanceAutomationRun(current: AutomationRun, deps: Automat
     const next = run.remaining[0], {step, index} = next, at = deps.now();
     const entry = {at, step: index + 1, stepId: step.id, type: step.type};
     run.remaining = run.remaining.slice(1); run.cursor = index + 1;
-    const own = evaluateAutomationConditions(step.conditions, deps.read);
+    const own = evaluateAutomationConditions(step.conditions, deps.read, deps.aliases);
     if (!own.ok) { append(run, {...entry, kind: 'stepSkipped', message: 'Skipped: the step’s conditions do not match this case.'}); continue; }
     if (step.type === 'sendEmail') {
       const state = deps.guards?.emailTemplate?.(step);
@@ -234,7 +236,7 @@ export async function runAutomationEvent(input: {
     const started = await input.store.start(fresh);
     if (!started.created) { alreadyRan.push(started.run); continue; }
     if (started.run.status !== 'running') { runs.push(started.run); continue; }
-    const advanced = await advanceAutomationRun(started.run, {executors: input.executors, guards: input.guards, read: input.event.read, now: input.now});
+    const advanced = await advanceAutomationRun(started.run, {executors: input.executors, guards: input.guards, read: input.event.read, aliases: input.event.aliases, now: input.now});
     await input.store.save(advanced, 'running');
     runs.push(advanced);
   }
@@ -243,11 +245,11 @@ export async function runAutomationEvent(input: {
 /** Resumes every run of this case waiting for the released document. */
 export async function resumeAutomationRuns(input: {
   module: AutomationModule; subjectId: string; documentId: string; store: AutomationRunStore; executors: AutomationExecutors;
-  guards?: AutomationRuntimeGuards; read: (field: string) => AutomationFactValue; now: () => string;
+  guards?: AutomationRuntimeGuards; read: (field: string) => AutomationFactValue; aliases?: AutomationFactAliases; now: () => string;
 }): Promise<AutomationRun[]> {
   const out: AutomationRun[] = [];
   for (const run of await input.store.waiting(input.module, input.subjectId, input.documentId)) {
-    const resumed = await resumeAutomationRun(run, input.documentId, {executors: input.executors, guards: input.guards, read: input.read, now: input.now});
+    const resumed = await resumeAutomationRun(run, input.documentId, {executors: input.executors, guards: input.guards, read: input.read, aliases: input.aliases, now: input.now});
     if (resumed === run) continue;
     await input.store.save(resumed, 'waiting');
     out.push(resumed);

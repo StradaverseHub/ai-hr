@@ -197,7 +197,11 @@ export function actOnProbation(ctx:SessionContext,input:{caseId:string;partId:st
   if(part.state!=='completed_offline')await fileCompletedPartTx(tx,ctx,view.record.id,part.id);
   if(part.type===3){
    const[outcome]=await tx.execute<{id:string;revision:number;outcome:string}>(sql`select id,revision,outcome from probation_outcome where part_id=${part.id}::uuid and tenant_id=${ctx.tenantId}::uuid`);
-   if(outcome&&outcome.outcome!=='other'){
+   // Shared workflows (W2, migrations 5748/5753): "The probation outcome is decided". A matching live workflow takes over
+   // the letter, posting and offboarding; with none, the case keeps today's path (auto-drafted letter, else the PBP).
+   const decided=outcome?await decideOutcomeAutomationTx(tx,ctx,view,part,outcome):false;
+   if(outcome?.outcome==='other')await tx.execute(sql`select app.probation_outcome_failure(${outcome.id}::uuid,'The outcome is Other: no letter is prepared. Decide the next step for this case by hand.')`);
+   if(outcome&&outcome.outcome!=='other'&&!decided){
     await tx.execute(sql`savepoint probation_letter_autodraft`);
     try{const[choice]=await tx.execute<{data:{suggestedTemplateId:string|null;tie:boolean}}>(sql`select app.probation_letter_template_choices(${outcome.id}::uuid) as data`);if(!choice.data.suggestedTemplateId||choice.data.tie)throw new Error('Letter selection needs review');const{prepareProbationLetterTx}=await import('./probation-letter');await prepareProbationLetterTx(tx,ctx,{outcomeId:outcome.id,templateId:choice.data.suggestedTemplateId,revision:outcome.revision,edits:{}});await tx.execute(sql`release savepoint probation_letter_autodraft`);}
     catch{await tx.execute(sql`rollback to savepoint probation_letter_autodraft`);await tx.execute(sql`release savepoint probation_letter_autodraft`);await tx.execute(sql`select app.probation_outcome_failure(${outcome.id}::uuid,'The review is recorded. Select and complete the approved outcome letter before signing and release.')`);}
@@ -457,11 +461,43 @@ export async function sweepProbation(ctx:SessionContext,connection:import('./not
  return{processed,failed};
 }
 
+/** Runs the outcome's shared workflows in a savepoint; any unexpected error leaves the outcome on today's path. */
+async function decideOutcomeAutomationTx(tx:Tx,ctx:SessionContext,view:ProbationCaseView,part:ProbationPartView,outcome:{id:string;revision:number;outcome:string}):Promise<boolean>{
+ const score=scoreProbationForm(view.form,part.manager),suggestion=score?(score.band>=3?'confirm':score.band===2?'extend':'not_confirm'):null;
+ await tx.execute(sql`savepoint probation_outcome_automation`);
+ try{
+  const{runProbationOutcomeDecidedTx}=await import('./probation-automation');
+  const result=await runProbationOutcomeDecidedTx(tx,ctx,{record:view.record,partId:part.id,dueOn:part.dueOn??null,outcome:{...outcome,extensionMonths:part.offlineDecision?.acceptedAt?part.offlineDecision.extensionMonths:part.extensionMonths},resultBand:score?.band??null,overridden:suggestion?suggestion!==outcome.outcome:null});
+  await tx.execute(sql`release savepoint probation_outcome_automation`);return result.matched;
+ }catch{await tx.execute(sql`rollback to savepoint probation_outcome_automation`);await tx.execute(sql`release savepoint probation_outcome_automation`);return false;}
+}
+/**
+ * New path (W2): an outcome decided with shared workflows resumes their frozen remaining steps once its letter is
+ * released and filed, then records the effect without writing the movement (a Personnel posting waits for approval).
+ * Outcomes without a run (decided before this shipped, or no workflow matched) and outcomes whose run failed (handled by
+ * hand) keep the path below unchanged.
+ */
+async function applyAutomatedOutcomeTx(tx:Tx,ctx:SessionContext,view:ProbationCaseView,part:ProbationPartView,outcome:{id:string;outcome:string}):Promise<{completed:boolean;waitingOn?:string}|null>{
+ const{probationOutcomeAutomationTx,resumeProbationOutcomeTx}=await import('./probation-automation');
+ // A run that failed asked the PBP to check and release by hand: that outcome then completes on the path below.
+ const before=await probationOutcomeAutomationTx(tx,outcome.id);if(!before.runs||before.failed)return null;
+ if(outcome.outcome==='confirm'&&view.record.endOn>todayInKualaLumpur())return{completed:false,waitingOn:view.record.endOn};
+ const[letter]=await tx.execute<{id:string;revision:number}>(sql`select d.id,o.revision from probation_outcome o join document_signing_document d on d.tenant_id=o.tenant_id and d.subject_type='probation' and d.subject_id=o.letter_part_id where o.id=${outcome.id}::uuid and o.tenant_id=${ctx.tenantId}::uuid`);
+ const extensionMonths=part.offlineDecision?.acceptedAt?part.offlineDecision.extensionMonths:part.extensionMonths;
+ if(letter)await resumeProbationOutcomeTx(tx,ctx,{record:view.record,partId:part.id,outcome:{id:outcome.id,revision:letter.revision,outcome:outcome.outcome,extensionMonths},documentId:letter.id});
+ const after=await probationOutcomeAutomationTx(tx,outcome.id);
+ if(after.failed||after.waiting)return{completed:false};
+ let next:{endOn:string}|null=null,newPart:ProbationPart|null=null;
+ if(outcome.outcome==='extend'){if(extensionMonths!==3&&extensionMonths!==6)throw new ProbationError('invalid','The actual PBP-approved extension length is required.');const start=addDaysIso(view.record.endOn,1),end=addDaysIso(addCalendarMonths(start,extensionMonths),-1);next={endOn:end};const working=new Set(await workingDatesForSpan(tx,view.record.employmentId,addDaysIso(end,-366),addDaysIso(end,366)));const{newProbationPart,probationDueDay}=await import('../lib/probation-model');newPart=newProbationPart(randomUUID(),3,view.record.extensionCount+1,probationDueDay(end,day=>working.has(day),view.record.config.nonWorkingDayRule),view.record.config.issueLeadDays);}
+ await tx.execute(sql`select app.probation_record_posting_effect(${outcome.id}::uuid,${after.postingId}::uuid,${outcome.outcome==='not_confirm'?after.handoffId:null}::uuid,${json(next)}::jsonb,${json(newPart)}::jsonb)`);
+ return{completed:true};
+}
 async function applyProbationOutcomeTx(tx:Tx,ctx:SessionContext,outcomeId:string){
  const[outcome]=await tx.execute<{id:string;caseId:string;partId:string;outcome:string;state:string;releasedAt:string|null}>(sql`select id,case_id as "caseId",part_id as "partId",outcome,state,released_at::text as "releasedAt" from probation_outcome where tenant_id=${ctx.tenantId}::uuid and id=${uuid(outcomeId)}::uuid`);
  if(!outcome||!outcome.releasedAt)throw new ProbationError('invalid','Release the authorised signed letter before applying the outcome.');
  if(outcome.state==='completed')return{completed:true};const view=await caseTx(tx,ctx,outcome.caseId),part=view.parts.find(p=>p.id===outcome.partId);if(!part)throw new ProbationError('invalid','Outcome source review unavailable.');
  if(!view.runtimeEnabled||view.sourceMoved||view.sourceChanged||view.record.facts.resignationOn||view.record.facts.terminatedOn)throw new ProbationError('conflict','The current Personnel source requires outcome reconciliation.');
+ const automated=await applyAutomatedOutcomeTx(tx,ctx,view,part,outcome);if(automated)return automated;
  let movement:string|null=null,handoff:string|null=null,next:{endOn:string}|null=null,newPart:ProbationPart|null=null;
  if(outcome.outcome==='not_confirm'){const{createProbationOffboardingTx}=await import('../packs/lifecycle/service');handoff=await createProbationOffboardingTx(tx,ctx,view.record.id);}
  else if(outcome.outcome==='confirm'||outcome.outcome==='extend'){

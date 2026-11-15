@@ -1,3 +1,15 @@
+# Probation outcomes on the shared workflow runner — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-runtime-wiring-20261116` (lane D2) appends `5753_probation_outcome_automation` at idx 5153 / when
+1793330005453 (assigned by the build coordinator). SHA256 `764d407852799a3f0722417f062a602e996ba7907fd2e88d1005c563d748df93`. It adds four functions granted to
+`ai_hr_app`, each authorized by `app.automation_can_run('probation', case)` or the Probation owner path
+(`app.probation_automation_context`, `app.probation_automation_notify`, `app.probation_outcome_automation`,
+`app.probation_record_posting_effect`), re-creates `app.probation_notification_recipients` (5752 body plus the
+`automation` occurrence kind) and adds the owner-only trigger function `app.probation_posting_approved()` with the trigger
+`probation_posting_approved` on `personnel_posting` (clears a Probation case's pending posting when its posting is
+approved). No table, row or grant changes. The installed ledgers were not read; recheck watermarks and peer claims at
+admission. This allocation grants no installation authority.
+
 # Probation letters with signing and review routing — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/probation-lane-runtime-wiring-20261116` (lane D2 of the Probation Confirmation build, from the integration
