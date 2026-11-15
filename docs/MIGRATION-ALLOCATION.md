@@ -1,3 +1,18 @@
+# Probation tracker at group scale, configurable maximum extensions, declined signature order — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-probation-core-20261116` appends `5746_probation_tracker_scale_and_extensions` at idx
+5146 / when 1793330005446 (assigned by the build coordinator, directly above `5745`). SHA256 `c69c8d909cc319559e1f869dadbff3460f9a1359f92b5d69893acf723ee1e749`.
+It adds `app.probation_visible_case_ids()` (the probation case access rule decided once per statement, set-based) and
+the tracker readers `app.probation_tracker_cases()` / `app.probation_tracker_parts()`, and `app.probation_max_extensions`.
+It re-creates, as `CREATE OR REPLACE` of their 0949 bodies with one comparison each changed, the owner-owned
+`probation_submission_ready`, `probation_part_command`, `probation_record_effect`, `probation_commands`,
+`probation_personnel_intent`, `probation_adjudicate_offline_final` and `probation_config_write_legacy_organisation` so the
+maximum number of extensions is the case's pinned setting (0-2, default 2), and `probation_signing_access`,
+`probation_part_command` and `probation_commands` for the owner's declined-signature order (the Line Manager's recorded
+decline moves the part on; the PBP confirmation no longer gates it). Row security, grants, tables and purpose-owned
+objects are unchanged. 5742 (unapplied) was edited in place to allow the maximum-extensions field; its SHA above is
+updated. The installed ledgers were not read; recheck watermarks and peer claims at admission. No installation authority.
+
 # Probation suggestion-overridden event — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/probation-lane-probation-core-20261116` appends `5745_probation_outcome_override_event` at idx 5145 /
@@ -25,7 +40,7 @@ changes. The installed ledgers were not read; recheck watermarks and peer claims
 Branch `claude/probation-lane-probation-core-20261116` (lane C of the Probation Confirmation build, from
 `claude/probation-confirmation-aihr-b81c70` at `faf21b686`) appends `5742_probation_settings_scope` at idx 5142 / when
 1793330005442 on the board block's offset (tag T, idx T − 600, when 1793330004800 + (T − 5100)), directly above
-`5740` (when 1793330005440), the journal's maximum. SHA256 `748ab4f7cb2911116cbc416619467f9ce9b0e676358fcc6971ec203f1412e008`.
+`5740` (when 1793330005440), the journal's maximum. SHA256 `31a7330425407814c8cba249f8b6a7db1febffe4bc51aec74cd9c23602bc9b31`.
 It creates two new, empty tables (`probation_settings_scope_version`, append-only; `probation_settings_scope_member`,
 whose (tenant_id, company_id) key keeps a company in at most one company setting) with forced row security, owner
 policies, SELECT-only grants to `ai_hr_app` and the ADR-0174 composite company key; adds `app.probation_settings_*`

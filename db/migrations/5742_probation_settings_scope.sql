@@ -143,9 +143,9 @@ BEGIN
  IF jsonb_typeof(p_data) IS DISTINCT FROM 'object' OR pg_column_size(p_data)>262144 THEN RAISE EXCEPTION 'Probation settings are incomplete or too large' USING ERRCODE='22023';END IF;
  IF p_scope='standard' THEN
   IF EXISTS(SELECT 1 FROM unnest(ARRAY['eligibleGrades','gradeHEnabled','defaultMonths','plans','kpiGate','kpiDueWorkingDays','kpiReminderWorkingDay','issueLeadDays','firstReminderDays','dailyReminderDays','lowBand','lmWaitsForEmployee','maxExtensions','extensionMonths']) f WHERE NOT p_data?f) THEN RAISE EXCEPTION 'The group standard must set every field' USING ERRCODE='22023';END IF;
-  IF p_data->>'maxExtensions' IS DISTINCT FROM '2' OR p_data->'extensionMonths' IS DISTINCT FROM '[3,6]'::jsonb THEN RAISE EXCEPTION 'Extension options stay 3 or 6 months, at most twice' USING ERRCODE='22023';END IF;
+  IF p_data->'extensionMonths' IS DISTINCT FROM '[3,6]'::jsonb THEN RAISE EXCEPTION 'Extension options stay 3 or 6 months' USING ERRCODE='22023';END IF;
   IF p_data?'overrides' AND p_data->'overrides' IS DISTINCT FROM '[]'::jsonb THEN RAISE EXCEPTION 'Narrow KPI gate rules belong in a company setting' USING ERRCODE='22023';END IF;
- ELSIF EXISTS(SELECT 1 FROM jsonb_object_keys(p_data) key WHERE key NOT IN('eligibleGrades','gradeHEnabled','defaultMonths','plans','kpiGate','issueLeadDays','nonWorkingDayRule','fallbackGroupId','postingApproverGroupId','kpiDueWorkingDays','kpiReminderWorkingDay','firstReminderDays','dailyReminderDays','lowBand','lmWaitsForEmployee','overrides')) THEN
+ ELSIF EXISTS(SELECT 1 FROM jsonb_object_keys(p_data) key WHERE key NOT IN('eligibleGrades','gradeHEnabled','defaultMonths','plans','kpiGate','issueLeadDays','nonWorkingDayRule','fallbackGroupId','postingApproverGroupId','maxExtensions','kpiDueWorkingDays','kpiReminderWorkingDay','firstReminderDays','dailyReminderDays','lowBand','lmWaitsForEmployee','overrides')) THEN
   RAISE EXCEPTION 'A company setting may override only probation settings fields' USING ERRCODE='22023';
  END IF;
  FOR k,v IN SELECT key,value FROM jsonb_each(p_data) LOOP
@@ -153,6 +153,8 @@ BEGIN
    IF jsonb_typeof(v) IS DISTINCT FROM 'number' THEN RAISE EXCEPTION 'Probation timings must be whole numbers' USING ERRCODE='22023';END IF;
    IF (v#>>'{}')!~'^[0-9]{1,3}$' THEN RAISE EXCEPTION 'Probation timings must be whole numbers' USING ERRCODE='22023';END IF;
    IF (v#>>'{}')::integer<1 OR (v#>>'{}')::integer>(CASE WHEN k='lowBand' THEN 5 ELSE 366 END) THEN RAISE EXCEPTION 'Probation timings are out of range' USING ERRCODE='22023';END IF;
+  ELSIF k='maxExtensions' THEN
+   IF jsonb_typeof(v) IS DISTINCT FROM 'number' OR (v#>>'{}') NOT IN('0','1','2') THEN RAISE EXCEPTION 'Choose a maximum of 0, 1 or 2 extensions' USING ERRCODE='22023';END IF;
   ELSIF k='kpiGate' THEN
    IF coalesce(v#>>'{}','') NOT IN('block','warn','off') OR jsonb_typeof(v) IS DISTINCT FROM 'string' THEN RAISE EXCEPTION 'Choose a KPI acknowledgement gate' USING ERRCODE='22023';END IF;
   ELSIF k='nonWorkingDayRule' THEN

@@ -14,11 +14,13 @@ describe('group standard ⊕ company override',()=>{
   const later=resolveProbationSettings({...standard,defaultMonths:3,issueLeadDays:45},{issueLeadDays:21});
   expect(later).toMatchObject({defaultMonths:3,issueLeadDays:21});
  });
- it('ignores keys that are not settings fields and keeps the fixed extension rules',()=>{
+ it('ignores keys that are not settings fields, keeps the extension lengths fixed and lets the maximum be 0 to 2',()=>{
   const resolved=resolveProbationSettings(standard,{issueLeadDays:14,maxExtensions:1,extensionMonths:[1]} as never);
-  expect(resolved).toMatchObject({issueLeadDays:14,maxExtensions:2,extensionMonths:[3,6]});
-  expect(probationOverrideFields({issueLeadDays:14,maxExtensions:1} as never)).toEqual(['issueLeadDays']);
-  expect(PROBATION_SCOPED_FIELDS).not.toContain('maxExtensions');
+  expect(resolved).toMatchObject({issueLeadDays:14,maxExtensions:1,extensionMonths:[3,6]});
+  expect(probationOverrideFields({issueLeadDays:14,extensionMonths:[1]} as never)).toEqual(['issueLeadDays']);
+  expect(PROBATION_SCOPED_FIELDS).toContain('maxExtensions');expect(PROBATION_SCOPED_FIELDS).not.toContain('extensionMonths');
+  expect(()=>validateProbationConfig({...DEFAULT_PROBATION_CONFIG,maxExtensions:0})).not.toThrow();
+  expect(()=>validateProbationConfig({...DEFAULT_PROBATION_CONFIG,maxExtensions:3})).toThrow();
  });
  it('flags an override equal to the standard so it can be removed',()=>{
   expect(redundantProbationOverrides(standard,{issueLeadDays:30,kpiGate:'warn',plans:structuredClone(standard.plans)})).toEqual(['plans','issueLeadDays']);

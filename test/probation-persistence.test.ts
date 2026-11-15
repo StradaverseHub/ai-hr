@@ -682,8 +682,7 @@ describe('scoped Probation employee-name filtering',()=>{
  });
 });
 
-describe('declined signature',()=>{
- it('lets the Line Manager record that the employee declined, never the employee, and the PBP confirm it so the part moves on',async()=>{
+async function submittedForAcknowledgement(){
   const{ids,staff,manager,peer}=await privateCase();
   await setReportingLine(admin,{subordinateEmploymentId:staff.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:'2026-01-01'});
   await owner.db.execute(sql`update department set head_employment_id=${peer.employmentId}::uuid where id=${b.deptA}::uuid`);
@@ -694,15 +693,36 @@ describe('declined signature',()=>{
   part=await current(staff.ctx);await actOnProbation(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'submit_employee'});
   part=await current(manager.ctx);await saveProbationDraft(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'lm',patch:{manager:assessment,reviewOn:todayInKualaLumpur(),conductedBy:manager.userId,outcome:'confirm',justification:'Observed evidence supports confirmation'}});
   part=await current(manager.ctx);await actOnProbation(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'submit_manager',method:'typed',value:'Fictional Manager',consent:true});
-  part=await current(staff.ctx);expect(part.allowedCommands).not.toContain('request_refusal');
+  return{ids,staff,manager,current};
+}
+describe('declined signature',()=>{
+ it('lets the Line Manager record that the employee declined, which moves the part on at once, never the employee, and the PBP confirm it without gating',async()=>{
+  const{ids,staff,manager,current}=await submittedForAcknowledgement();let part=await current(staff.ctx);
+  expect(part.allowedCommands).not.toContain('request_refusal');
   await expect(actOnProbation(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'request_refusal',reason:'Employee cannot record this'})).rejects.toThrow();
   part=await current(manager.ctx);expect(part.allowedCommands).toContain('request_refusal');
   await actOnProbation(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'request_refusal',reason:'The employee declined to sign after the review meeting'});
-  part=await current(admin);expect(part.allowedCommands).toContain('confirm_refusal');expect(part.acknowledgedAt).toBeNull();
+  // Owner decision 16 Nov 2026: the recorded decline fulfils the acknowledgement and moves the part on at once.
+  part=await current(admin);
+  expect(part.acknowledgedAt).not.toBeNull();expect(part.state).toBe('pending_approval');
+  expect(part.signing!.document.actions).toContainEqual(expect.objectContaining({role:'employee',action:'declined',actorId:manager.userId}));
+  expect(part.allowedCommands).toContain('confirm_refusal');
+  await expect(actOnProbation(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'confirm_refusal',reason:'Manager cannot confirm'})).rejects.toThrow();
+  part=await current(admin);
   await actOnProbation(admin,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'confirm_refusal',reason:'PBP confirms the declined signature'});
   part=await current(admin);
-  expect(part.acknowledgedAt).not.toBeNull();
-  expect(part.signing!.document.actions).toContainEqual(expect.objectContaining({role:'employee',action:'declined'}));
-  expect(part.allowedCommands).not.toContain('confirm_refusal');
+  expect(part.state).toBe('pending_approval');expect(part.allowedCommands).not.toContain('confirm_refusal');
+  const[confirmed]=await owner.db.execute<{n:number}>(sql`select count(*)::int n from probation_followup where part_id=${ids.part}::uuid and kind='refusal_confirmed'`);expect(confirmed.n).toBe(1);
+  const[audit]=await owner.db.execute<{n:number}>(sql`select count(*)::int n from domain_event where aggregate_id=${ids.caseId}::uuid and event_type='probation.confirm_refusal'`);expect(audit.n).toBe(1);
+ });
+ it('still moves on a part that was already waiting for PBP confirmation under the previous order',async()=>{
+  const{ids,manager,current}=await submittedForAcknowledgement();
+  let part=await current(manager.ctx);
+  await owner.db.execute(sql`insert into probation_followup(tenant_id,case_id,part_id,actor_user_id,kind,note,content_revision) values(${b.tenantId}::uuid,${ids.caseId}::uuid,${ids.part}::uuid,${manager.userId}::uuid,'refusal_request','Recorded before the change',${part.contentRevision})`);
+  part=await current(admin);expect(part.acknowledgedAt).toBeNull();expect(part.allowedCommands).toContain('confirm_refusal');
+  await actOnProbation(admin,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'confirm_refusal',reason:'PBP confirms the earlier recorded refusal'});
+  part=await current(admin);
+  expect(part.acknowledgedAt).not.toBeNull();expect(part.state).toBe('pending_approval');
+  expect(part.signing!.document.actions).toContainEqual(expect.objectContaining({role:'employee',action:'declined',actorId:admin.userId}));
  });
 });

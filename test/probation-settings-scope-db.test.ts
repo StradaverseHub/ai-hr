@@ -64,7 +64,7 @@ describe('group standard and company settings',()=>{
   await expect(saveProbationConfiguration(admin,{companyId:b.companyId,kind:'settings',data:DEFAULT_PROBATION_CONFIG,publish:true,expectedVersion:(await probationSetup(admin,b.companyId)).latestVersion.settings})).rejects.toThrow();
   await saveProbationConfiguration(admin,{companyId:b.companyId,kind:'form',data:DEFAULT_PROBATION_FORM,publish:false,expectedVersion:0});
   await expect(saveProbationSettingsScope(admin,{settingKey:null,scope:'standard',name:'Second standard',companyIds:[],data:standardData(),publish:true,expectedVersion:0})).rejects.toThrow();
-  await expect(withTenant(admin,tx=>tx.execute(sql`select app.probation_settings_scope_save(${randomUUID()}::uuid,'company','Bad',array[${third}::uuid],'{"maxExtensions":1}'::jsonb,true,0,null)`))).rejects.toThrow();
+  await expect(withTenant(admin,tx=>tx.execute(sql`select app.probation_settings_scope_save(${randomUUID()}::uuid,'company','Bad',array[${third}::uuid],'{"extensionMonths":[1]}'::jsonb,true,0,null)`))).rejects.toThrow();
   await expect(withTenant(admin,tx=>tx.execute(sql`select app.probation_settings_scope_save(${randomUUID()}::uuid,'company','Bad',array[${third}::uuid],'{"issueLeadDays":"30"}'::jsonb,true,0,null)`))).rejects.toThrow();
   await expect(saveProbationSettingsScope(admin,{settingKey:retail.settingKey,scope:'company',name:'Retail',companyIds:[second],data:{lowBand:4},publish:true,expectedVersion:0})).rejects.toThrow(/changed/);
   await expect(withTenant(admin,tx=>tx.execute(sql`insert into probation_settings_scope_member(tenant_id,company_id,setting_key,version_id) values(${b.tenantId}::uuid,${third}::uuid,${randomUUID()}::uuid,${retail.id}::uuid)`))).rejects.toThrow();
@@ -88,6 +88,12 @@ describe('group standard and company settings',()=>{
   expect((await resolved(b.companyId))?.data).toMatchObject({issueLeadDays:45,kpiGate:'warn',scope:{standardId:v2.id,standardVersion:2}});
   expect((await resolved(second))?.data).toMatchObject({issueLeadDays:21,kpiGate:'warn',scope:{standardVersion:2,overrideId:retail.id}});
 
+  // Maximum extensions is a setting (migration 5746): a company may allow fewer; the running case keeps the 2 it pinned.
+  const projects=await saveProbationSettingsScope(admin,{settingKey:null,scope:'company',name:'Projects',companyIds:[b.companyId],data:{maxExtensions:0},publish:true,expectedVersion:0});
+  expect((await resolved(b.companyId))?.data).toMatchObject({maxExtensions:0,scope:{overrideId:projects.id}});
+  const[pinnedMax]=await owner.db.execute<{max:number}>(sql`select app.probation_max_extensions(data) as max from probation_case where id=${caseId}::uuid`);expect(pinnedMax.max).toBe(2);
+  const[zero]=await owner.db.execute<{max:number}>(sql`select app.probation_max_extensions(jsonb_build_object('config',jsonb_build_object('maxExtensions',0))) as max`);expect(zero.max).toBe(0);
+  await expect(saveProbationSettingsScope(admin,{settingKey:projects.settingKey,scope:'company',name:'Projects',companyIds:[b.companyId],data:{maxExtensions:3},publish:true,expectedVersion:1})).rejects.toThrow();
   await retireProbationCompanySetting(admin,{settingKey:retail.settingKey,expectedVersion:1,reason:'Retail follows the group standard again'});
   expect((await resolved(second))?.data).toMatchObject({issueLeadDays:45,scope:{overrideId:null,fields:[]}});
   expect((await probationSettingsScope(admin)).members).toEqual([]);

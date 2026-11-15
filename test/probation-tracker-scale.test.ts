@@ -26,23 +26,36 @@ const previousFlags:Record<Flag,ReturnType<typeof sql>>={
  kpi_submit:sql`exists(select 1 from probation_part p where p.case_id=c.id and p.tenant_id=c.tenant_id and p.data->>'type'='1' and p.data->>'managerSubmittedAt' is null and p.data->>'state' not in('completed_offline','cancelled'))`,
  kpi_ack:sql`exists(select 1 from probation_part p where p.case_id=c.id and p.tenant_id=c.tenant_id and p.data->>'type'='1' and p.data->>'managerSubmittedAt' is not null and p.data->>'acknowledgedAt' is null and p.data->>'state' not in('completed_offline','cancelled'))`,
 };
-async function previousReader(ctx:SessionContext,filters:{companyId?:string;flag?:Flag}){
- return withTenant(ctx,async tx=>{
-  const where=sql`where c.tenant_id=${ctx.tenantId}::uuid ${filters.companyId?sql`and c.company_id=${filters.companyId}::uuid`:sql``}`;
-  const[counts]=await tx.execute<Record<'total'|Flag,number>>(sql`select count(*) filter(where ${filters.flag?previousFlags[filters.flag]:sql`true`})::integer as total,count(*) filter(where ${previousFlags.overdue})::integer as overdue,count(*) filter(where ${previousFlags.end_passed})::integer as end_passed,count(*) filter(where ${previousFlags.ending14})::integer as ending14,count(*) filter(where ${previousFlags.low_result})::integer as low_result,count(*) filter(where ${previousFlags.kpi_submit})::integer as kpi_submit,count(*) filter(where ${previousFlags.kpi_ack})::integer as kpi_ack from probation_case c ${where}`);
-  const ids=await tx.execute<{id:string}>(sql`select c.id from probation_case c ${where} ${filters.flag?sql`and ${previousFlags[filters.flag]}`:sql``} order by (c.data->>'endOn')::date,c.id`);
-  return{counts,ids:ids.map(r=>r.id)};
- });
+/**
+ * The previous reader's access rule is row security calling app.probation_case_access per row. It is evaluated once
+ * here, under the viewer's own session, to fix the visible population; the previous tile expressions and order then
+ * run over exactly that population as the owner (no row security), so the comparison does not repeat the slow
+ * per-row predicate for every tile.
+ */
+async function previousVisible(ctx:SessionContext){
+ const started=Date.now(),rows=await withTenant(ctx,tx=>tx.execute<{id:string}>(sql`select id from probation_case`));
+ timing('previous access (row security per row, once)',started);return rows.map(r=>r.id);
 }
+async function previousReader(visible:string[],filters:{companyId?:string;flag?:Flag}){
+ const ids=sql`array[${visible.length?sql.join(visible.map(id=>sql`${id}::uuid`),sql`, `):sql``}]::uuid[]`;
+ const where=sql`where c.tenant_id=${b.tenantId}::uuid and c.id=any(${ids}) ${filters.companyId?sql`and c.company_id=${filters.companyId}::uuid`:sql``}`;
+ const[counts]=await owner.db.execute<Record<'total'|Flag,number>>(sql`select count(*) filter(where ${filters.flag?previousFlags[filters.flag]:sql`true`})::integer as total,count(*) filter(where ${previousFlags.overdue})::integer as overdue,count(*) filter(where ${previousFlags.end_passed})::integer as end_passed,count(*) filter(where ${previousFlags.ending14})::integer as ending14,count(*) filter(where ${previousFlags.low_result})::integer as low_result,count(*) filter(where ${previousFlags.kpi_submit})::integer as kpi_submit,count(*) filter(where ${previousFlags.kpi_ack})::integer as kpi_ack from probation_case c ${where}`);
+ const rows=await owner.db.execute<{id:string}>(sql`select c.id from probation_case c ${where} ${filters.flag?sql`and ${previousFlags[filters.flag]}`:sql``} order by (c.data->>'endOn')::date,c.id`);
+ return{counts,ids:rows.map(r=>r.id)};
+}
+const timings:string[]=[];
+function timing(label:string,started:number){const line=`[probation-tracker-scale] ${label}: ${Date.now()-started} ms`;timings.push(line);console.log(line);}
+async function timed<T>(label:string,work:()=>Promise<T>){const started=Date.now();const result=await work();timing(label,started);return result;}
 /** First, second and last pages of the current reader; the previous reader's full ordered list must contain them in place. */
 async function currentPages(ctx:SessionContext,filters:{companyId?:string;flag?:ProbationTrackerFlag},total:number){
  const offsets=[...new Set([0,100,Math.max(0,Math.floor((total-1)/100)*100)])];
- const pages=[];for(const offset of offsets)pages.push({offset,page:await probationSummaryRows(ctx,{...filters,offset,limit:100})});
+ const pages=[];for(const offset of offsets)pages.push({offset,page:await timed(`tracker read ${filters.companyId?'one company':'all companies'} offset ${offset}`,()=>probationSummaryRows(ctx,{...filters,offset,limit:100}))});
  return pages;
 }
 
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{
+ const seeded=Date.now();
  await resetDb();b=await seedBase();await setModule(b.tenantId,'lifecycle','active');admin=adminCtx(b);
  const[hr]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional Scale People Ops',${randomUUID()+'@scale.example.test'}) returning id`);
  await owner.db.execute(sql`update app_user set person_id=${hr.id}::uuid where id=${admin.userId}::uuid`);admin={...admin,personId:hr.id};
@@ -78,6 +91,7 @@ beforeEach(async()=>{
   from cases c cross join lateral (values
    (gen_random_uuid(),1,(array['issued','locked','completed_offline','cancelled'])[1+c.n%4],c.start_on+7),
    (gen_random_uuid(),3,(array['not_issued','issued','pending_approval','locked','cancelled'])[1+c.n%5],c.start_on+(array[150,190,210,400])[1+c.n%4])) x(pid,type,state,due)`);
+ timing('fixture seed (72 companies, 1,080 cases, 2,160 parts)',seeded);
 });
 
 describe('tracker read at real-group shape',()=>{
@@ -86,8 +100,9 @@ describe('tracker read at real-group shape',()=>{
   expect(shape.companies).toBeGreaterThanOrEqual(70);expect(shape.cases).toBeGreaterThanOrEqual(1000);
   const[expected]=await owner.db.execute<{overridden:number;company:string}>(sql`select count(distinct c.id) filter(where p.data->>'override'='true' and p.data->>'state'<>'cancelled')::int overridden,(select company_id::text from probation_case where tenant_id=${b.tenantId}::uuid group by company_id order by count(*) desc,company_id limit 1) company from probation_case c join probation_part p on p.case_id=c.id where c.tenant_id=${b.tenantId}::uuid`);
   expect(expected.overridden).toBeGreaterThan(0);
+  const visible=await previousVisible(admin);
   for(const companyId of [undefined,expected.company]){
-   const previous=await previousReader(admin,{companyId});
+   const previous=await previousReader(visible,{companyId});
    expect(previous.ids.length).toBeGreaterThan(0);
    const pages=await currentPages(admin,{companyId},previous.counts.total);
    for(const{offset,page}of pages){
@@ -99,15 +114,15 @@ describe('tracker read at real-group shape',()=>{
     expect(page.rows.every(row=>row.extensionMax===2&&row.startStatus!=='waiting_for_start')).toBe(true);
    }
    expect(pages.at(-1)!.page.hasMore).toBe(false);
-   const overriddenPage=await probationSummaryRows(admin,{companyId,flag:'overridden',limit:100});
+   const overriddenPage=await timed('tracker read overridden '+(companyId?'one company':'all companies'),()=>probationSummaryRows(admin,{companyId,flag:'overridden',limit:100}));
    expect(overriddenPage.total).toBe(pages[0].page.totals.overridden);
    expect(overriddenPage.rows.every(row=>row.parts.some(part=>part.override&&part.state!=='cancelled'))).toBe(true);
   }
   for(const flag of Object.keys(previousFlags) as Flag[]){
-   const before=await previousReader(admin,{flag}),page=await probationSummaryRows(admin,{flag,limit:100});
+   const before=await previousReader(visible,{flag}),page=await timed('tracker read all companies flag '+flag,()=>probationSummaryRows(admin,{flag,limit:100}));
    expect(page.rows.map(r=>r.id)).toEqual(before.ids.slice(0,100));expect(page.total).toBe(before.counts.total);
   }
- },180000); // 72 companies and 1,080 cases, about fifteen tracker reads; not yet measured on CI, so generous headroom.
+ },120000); // Measured per read and logged ([probation-tracker-scale] lines); the previous reader's per-row access is evaluated once. Keep about 3x the measured worst total.
  it('shows nothing to a person without case access',async()=>{
   const[p]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional outsider',${randomUUID()+'@scale.example.test'}) returning id`);
   const userId=await createAppUser(b.tenantId,p.id,'employee');

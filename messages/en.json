@@ -36337,7 +36337,7 @@
       "override": "Override",
       "sameAsStandard": "Same as the standard",
       "changed": "Changed",
-      "extensionsFixed": "Extensions: {months} months, at most {max}. Fixed for every company.",
+      "extensionsFixed": "Extension lengths stay {months} months for every company. Running cases keep the maximum they started with.",
       "diffTitle": "How companies differ from this standard",
       "diffHelp": "Publishing the standard gives these companies its values for new cases, unless a company setting overrides the field. Add company settings first for companies that must keep their values.",
       "previewTitle": "Before you publish",
@@ -36384,7 +36384,8 @@
         "dailyReminderDays": "Daily reminders from · days before due",
         "lowBand": "Low-result band threshold",
         "lmWaitsForEmployee": "Manager waits for the employee self-assessment",
-        "overrides": "Narrow KPI gate rules"
+        "overrides": "Narrow KPI gate rules",
+        "maxExtensions": "Maximum extensions"
       }
     },
     "startStatus": {

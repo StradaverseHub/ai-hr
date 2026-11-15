@@ -83,6 +83,7 @@ function ScopeEditor({view,options,selection,label,show,companyName,busy,run}:{v
  const singleCompany=companyIds.length===1?companyIds[0]:null;
  const editor=(field:ProbationScopedField,value:unknown,change:(value:unknown)=>void)=>{
   const id='probation-scope-'+field;
+  if(field==='maxExtensions')return <input id={id} aria-label={label(field)} type="number" min={0} max={2} value={Number(value)} disabled={busy} onChange={e=>change(Number(e.target.value))}/>;
   if(NUMBERS.has(field))return <input id={id} aria-label={label(field)} type="number" min={1} max={field==='lowBand'?5:366} value={Number(value)} disabled={busy} onChange={e=>change(Number(e.target.value))}/>;
   if(field==='kpiGate')return <select id={id} aria-label={label(field)} value={String(value)} disabled={busy} onChange={e=>change(e.target.value)}>{(['block','warn','off'] as const).map(mode=><option key={mode} value={mode}>{t('kpiModes.'+mode)}</option>)}</select>;
   if(field==='nonWorkingDayRule')return <select id={id} aria-label={label(field)} value={String(value??'previous')} disabled={busy} onChange={e=>change(e.target.value)}>{(['previous','next'] as const).map(rule=><option key={rule} value={rule}>{t('settingsScope.nonWorking.'+rule)}</option>)}</select>;

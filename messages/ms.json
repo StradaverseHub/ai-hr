@@ -36384,7 +36384,8 @@
         "dailyReminderDays": "Daily reminders from · days before due",
         "lowBand": "Low-result band threshold",
         "lmWaitsForEmployee": "Manager waits for the employee self-assessment",
-        "overrides": "Narrow KPI gate rules"
+        "overrides": "Narrow KPI gate rules",
+        "maxExtensions": "Maximum extensions"
       }
     },
     "startStatus": {

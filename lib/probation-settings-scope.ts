@@ -13,7 +13,7 @@ import type {ProbationSettings} from '../core/probation';
 /** Fields a company setting may override, in the order the editor shows them. */
 export const PROBATION_SCOPED_FIELDS=[
  'eligibleGrades','gradeHEnabled','defaultMonths','plans','kpiGate','issueLeadDays','nonWorkingDayRule','fallbackGroupId','postingApproverGroupId',
- 'kpiDueWorkingDays','kpiReminderWorkingDay','firstReminderDays','dailyReminderDays','lowBand','lmWaitsForEmployee','overrides',
+ 'maxExtensions','kpiDueWorkingDays','kpiReminderWorkingDay','firstReminderDays','dailyReminderDays','lowBand','lmWaitsForEmployee','overrides',
 ] as const;
 export type ProbationScopedField=typeof PROBATION_SCOPED_FIELDS[number];
 export type ProbationSettingsOverride=Partial<Pick<ProbationSettings,ProbationScopedField>>;
