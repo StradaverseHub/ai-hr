@@ -35,6 +35,7 @@ async function hire(code:string,hiredOn=KEYED){
  return e.employmentId as string;
 }
 const versions=async(id:string)=>(await owner.db.select({validFrom:schema.assignment.validFrom,validTo:schema.assignment.validTo,departmentId:schema.assignment.departmentId}).from(schema.assignment).where(and(eq(schema.assignment.employmentId,id),isNull(schema.assignment.supersededAt))).orderBy(asc(schema.assignment.validFrom))).map(v=>[v.validFrom,v.departmentId]);
+const types=async(id:string)=>(await owner.db.select({validFrom:schema.assignment.validFrom,employmentType:schema.assignment.employmentType}).from(schema.assignment).where(and(eq(schema.assignment.employmentId,id),isNull(schema.assignment.supersededAt))).orderBy(asc(schema.assignment.validFrom))).map(v=>[v.validFrom,v.employmentType]);
 const dates=async(id:string)=>(await owner.db.select({hiredOn:schema.employment.hiredOn,joinDate:schema.employment.joinDate}).from(schema.employment).where(eq(schema.employment.id,id)))[0];
 async function correct(id:string,changes:InformationChanges,effectiveOn:string){
  const review=await previewInformationCorrection(ctx(),{employmentId:id,changes,reason:'Fictional correction',effectiveOn});
@@ -50,23 +51,23 @@ async function groupJoinCorrection(id:string){
 describe('Information-Only Correction to earlier dates',()=>{
  it('moves the Group Join Date, the Join Date and the Effective Date earlier in one save',async()=>{
   const id=await hire('R2-ONE');
-  const review=await correct(id,{hiredOn:REAL,joinDate:REAL,departmentId:b.deptB},REAL);
+  const review=await correct(id,{hiredOn:REAL,joinDate:REAL,employmentType:'part_time'},REAL);
   expect(review.effectiveOn).toBe(REAL);
   expect(await dates(id)).toEqual({hiredOn:REAL,joinDate:REAL});
   // The dated records start on the corrected Group Join Date and carry the corrected value from it.
-  expect(await versions(id)).toEqual([[REAL,b.deptB]]);
+  expect(await types(id)).toEqual([[REAL,'part_time']]);
   const [event]=await owner.db.select({payload:schema.domainEvent.payload}).from(schema.domainEvent).where(and(eq(schema.domainEvent.subjectEmploymentId,id),eq(schema.domainEvent.eventType,'employment.information.corrected')));
   expect(event.payload).toMatchObject({effectiveOn:REAL,before:{hiredOn:KEYED,joinDate:KEYED},after:{hiredOn:REAL,joinDate:REAL}});
  });
  it('accepts an Effective Date before the Join Date when it is on or after the Group Join Date',async()=>{
   const id=await hire('R2-JOIN');
-  await correct(id,{hiredOn:REAL,departmentId:b.deptB},'2026-02-01');
+  await correct(id,{hiredOn:REAL,employmentType:'part_time'},'2026-02-01');
   expect(await dates(id)).toEqual({hiredOn:REAL,joinDate:KEYED});
-  expect(await versions(id)).toEqual([[REAL,b.deptA],['2026-02-01',b.deptB]]);
+  expect(await types(id)).toEqual([[REAL,'full_time'],['2026-02-01','part_time']]);
  });
  it('refuses an Effective Date before the corrected Group Join Date, naming it and the fix',async()=>{
   const id=await hire('R2-EARLY');
-  await expect(previewInformationCorrection(ctx(),{employmentId:id,changes:{hiredOn:REAL,departmentId:b.deptB},reason:'Fictional correction',effectiveOn:'2025-12-01'}))
+  await expect(previewInformationCorrection(ctx(),{employmentId:id,changes:{hiredOn:REAL,employmentType:'part_time'},reason:'Fictional correction',effectiveOn:'2025-12-01'}))
    .rejects.toThrow(/before 2026-01-02, the Group Join Date.*correct the Group Join Date in this same correction/);
   expect(await dates(id)).toEqual({hiredOn:KEYED,joinDate:KEYED});
  });
