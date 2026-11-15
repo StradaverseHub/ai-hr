@@ -18,6 +18,7 @@ import {hireEmployee} from '../core/org';
 import {createMovementEvent,movementHistory,reverseMovementEvent} from '../core/movement';
 import {previewMovementImport,commitMovementImport} from '../core/movement-import';
 import {previewInformationCorrection,correctInformation} from '../core/information-correction';
+import {correctHireDetails,hireCorrectionView} from '../core/hire-correction';
 import {movementImportIssueText} from '../lib/movement-import-issues';
 import type {InformationChanges} from '../lib/information-correction';
 import type {MovementImportRecord} from '../lib/movement-import-contract';
@@ -81,6 +82,14 @@ describe('Group Join Date Correction moves the start of the dated records',()=>{
   expect(aligned.payload).toMatchObject({trigger:'groupJoinDateCorrection',alignedStart:{from:KEYED,to:REAL}});
   await createMovementEvent(ctx(),{employmentId:id,kind:'transfer',effectiveDate:'2026-02-01',departmentId:b.deptB,remarks:'Fictional transfer'});
   expect(await versions(id)).toEqual([[REAL,b.deptA],['2026-02-01',b.deptB]]);
+ });
+ it('Organisation Hire Correction then corrects as at the corrected Group Join Date',async()=>{
+  const id=await hire('R2-HIRE');
+  await createMovementEvent(ctx(),{employmentId:id,kind:'groupJoinDateCorrection',effectiveDate:REAL,remarks:'Corrected from the personnel file'});
+  const view=await hireCorrectionView(ctx(),id);
+  expect(view).toMatchObject({hiredOn:REAL,groupJoinDate:REAL});
+  await correctHireDetails(ctx(),{employmentId:id,changes:{departmentId:b.deptB},reason:'Fictional hire correction'});
+  expect(await versions(id)).toEqual([[REAL,b.deptB]]);
  });
  it('refuses a movement before the Group Join Date, naming the date',async()=>{
   const id=await hire('R2-BEFORE');
