@@ -36239,7 +36239,22 @@
       "open": "Open outcome letter",
       "preparationClosed": "Release has already been requested or completed. Review the saved letter and filing status from the case.",
       "templateTie": "More than one template matches equally. Choose the reviewed template explicitly.",
-      "filingPending": "The release request is saved. The existing background worker will render and file the signed PDF before applying the outcome. Any failure stays visible for retry."
+      "filingPending": "The release request is saved. The existing background worker will render and file the signed PDF before applying the outcome. Any failure stays visible for retry.",
+      "contentPrivate": "This letter is private until it reaches you. You can see who it is with and its status.",
+      "routingFallback": "Nobody could be found for some steps, so the fallback group took them:",
+      "sentBack": "{name} sent this letter back: {reason}",
+      "resend": "Send round again",
+      "meantFor": "meant for {who}",
+      "routedStep": {
+        "review": "Review",
+        "approve": "Approve",
+        "sign": "Sign",
+        "acknowledge": "Acknowledge"
+      },
+      "decision": {
+        "reviewed": "Mark as reviewed",
+        "approved": "Approve"
+      }
     },
     "dates": {
       "title": "Probation date review",

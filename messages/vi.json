@@ -36239,7 +36239,22 @@
       "open": "Mở thư kết quả",
       "preparationClosed": "Đã yêu cầu hoặc hoàn tất phát hành. Xem thư đã lưu và trạng thái nộp hồ sơ từ hồ sơ thử việc.",
       "templateTie": "Có nhiều mẫu có mức độ phù hợp bằng nhau. Hãy chọn rõ mẫu đã được rà soát.",
-      "filingPending": "Yêu cầu phát hành đã được lưu. Tác vụ nền hiện có sẽ tạo và nộp PDF đã ký trước khi áp dụng kết quả. Mọi lỗi vẫn hiển thị để thử lại."
+      "filingPending": "Yêu cầu phát hành đã được lưu. Tác vụ nền hiện có sẽ tạo và nộp PDF đã ký trước khi áp dụng kết quả. Mọi lỗi vẫn hiển thị để thử lại.",
+      "contentPrivate": "This letter is private until it reaches you. You can see who it is with and its status.",
+      "routingFallback": "Nobody could be found for some steps, so the fallback group took them:",
+      "sentBack": "{name} sent this letter back: {reason}",
+      "resend": "Send round again",
+      "meantFor": "meant for {who}",
+      "routedStep": {
+        "review": "Review",
+        "approve": "Approve",
+        "sign": "Sign",
+        "acknowledge": "Acknowledge"
+      },
+      "decision": {
+        "reviewed": "Mark as reviewed",
+        "approved": "Approve"
+      }
     },
     "dates": {
       "title": "Rà soát ngày thử việc",

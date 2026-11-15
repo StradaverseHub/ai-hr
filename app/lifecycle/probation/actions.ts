@@ -1,7 +1,7 @@
 'use server';
 import {revalidatePath} from 'next/cache';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
-import {admitProbation,actOnProbation,saveProbationDraft,logProbationFollowup,saveProbationConfiguration,installProbationDrafts,bootstrapProbationPreparer,assignProbationAccess,replaceProbationSigner,overrideProbationRoute,saveProbationLetterTemplate,previewProbationLetter,prepareProbationLetter,actOnProbationLetter,releaseProbationLetter,saveProbationWorkflow,previewProbationWorkflow,requestProbationDateShift,applyProbationDateShift,reconcileProbationDates,saveProbationIntakeDisposition,prepareProbationCutoverPlan,approveProbationCutover,requestProbationActivation,probationActivationRequest,supersedeProbationDateShift,proposeProbationOfflineFinalDecision,adjudicateProbationOfflineFinalDecision,probationPublicationRetirement,retireProbationPublication,requestProbationLegacyReconciliation,approveProbationLegacyReconciliation,saveProbationSettingsScope,retireProbationCompanySetting,refreshProbationCompanySettings} from '@/packs/probation/service';
+import {admitProbation,actOnProbation,saveProbationDraft,logProbationFollowup,saveProbationConfiguration,installProbationDrafts,bootstrapProbationPreparer,assignProbationAccess,replaceProbationSigner,overrideProbationRoute,saveProbationLetterTemplate,previewProbationLetter,prepareProbationLetter,actOnProbationLetter,resendProbationLetter,releaseProbationLetter,saveProbationWorkflow,previewProbationWorkflow,requestProbationDateShift,applyProbationDateShift,reconcileProbationDates,saveProbationIntakeDisposition,prepareProbationCutoverPlan,approveProbationCutover,requestProbationActivation,probationActivationRequest,supersedeProbationDateShift,proposeProbationOfflineFinalDecision,adjudicateProbationOfflineFinalDecision,probationPublicationRetirement,retireProbationPublication,requestProbationLegacyReconciliation,approveProbationLegacyReconciliation,saveProbationSettingsScope,retireProbationCompanySetting,refreshProbationCompanySettings} from '@/packs/probation/service';
 async function execute<T>(work:()=>Promise<T>){
  try{const result=await work();revalidatePath('/lifecycle/probation','layout');return{ok:true as const,result};}
  catch(error){return{ok:false as const,code:error instanceof Error&&error.name==='ProbationError'?'review':'unavailable',detail:error instanceof Error&&error.name==='ProbationError'?error.message:undefined};}
@@ -24,6 +24,8 @@ export async function previewLetter(input:Parameters<typeof previewProbationLett
 export async function prepareLetter(input:Parameters<typeof prepareProbationLetter>[1]){return execute(async()=>prepareProbationLetter(await requireScopedLifecycleModule(),input));}
 
 export async function signLetter(input:Parameters<typeof actOnProbationLetter>[1]){return execute(async()=>actOnProbationLetter(await requireScopedLifecycleModule(),input));}
+
+export async function resendLetter(input:Parameters<typeof resendProbationLetter>[1]){return execute(async()=>resendProbationLetter(await requireScopedLifecycleModule(),input));}
 
 export async function releaseLetter(input:Parameters<typeof releaseProbationLetter>[1]){return execute(async()=>releaseProbationLetter(await requireScopedLifecycleModule(),input));}
 

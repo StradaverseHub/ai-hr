@@ -1,3 +1,19 @@
+# Probation letters with signing and review routing — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-runtime-wiring-20261116` (lane D2 of the Probation Confirmation build, from the integration
+branch at `79d307613`) appends `5752_probation_letter_routing` at idx 5152 / when 1793330005452 (assigned by the build
+coordinator). SHA256 `c8fa1384eb8fc2eb4111a00ae1210fff9f01ac5cc1687ae22ba635b0f86bb819`. It adds two functions granted to `ai_hr_app`
+(`app.probation_letter_routing_context(uuid)`, `app.probation_letter_freeze_route(uuid,jsonb,jsonb)`) and three owner-only
+template checks (`app.probation_letter_routed`, `_routing_valid`, `_routing_signatures_ok`), and re-creates in place, with
+the same signatures and grants, the owner-owned `app.probation_definition_save_legacy_organisation`,
+`app.probation_prepare_letter`, `app.probation_resolve_route_unchecked`, `app.probation_signing_action_allowed`,
+`app.probation_signing_access`, `app.probation_letter_transition`, `app.probation_signatures_complete`,
+`app.probation_pending_signers`, `app.probation_letter_tasks`, `app.probation_notification_recipients` and
+`app.probation_part_access`, each keeping
+its previous body for letters and templates without routing. No table, row, grant or purpose-owned object changes. The
+installed ledgers were not read; recheck watermarks and peer claims at admission. This allocation grants no installation
+authority.
+
 # Document signing review routing and shared workflow runs — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/probation-lane-signing-runtime-20261116` (lane D1 of the Probation Confirmation build, from

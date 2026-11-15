@@ -36239,7 +36239,22 @@
       "open": "Buka surat keputusan",
       "preparationClosed": "Pengeluaran telah diminta atau diselesaikan. Semak surat tersimpan dan status pemfailan daripada kes.",
       "templateTie": "Lebih daripada satu templat sepadan pada tahap yang sama. Pilih templat yang disemak secara nyata.",
-      "filingPending": "Permintaan pengeluaran disimpan. Pekerja latar sedia ada akan menjana dan memfailkan PDF ditandatangani sebelum melaksanakan keputusan. Sebarang kegagalan kekal kelihatan untuk dicuba semula."
+      "filingPending": "Permintaan pengeluaran disimpan. Pekerja latar sedia ada akan menjana dan memfailkan PDF ditandatangani sebelum melaksanakan keputusan. Sebarang kegagalan kekal kelihatan untuk dicuba semula.",
+      "contentPrivate": "This letter is private until it reaches you. You can see who it is with and its status.",
+      "routingFallback": "Nobody could be found for some steps, so the fallback group took them:",
+      "sentBack": "{name} sent this letter back: {reason}",
+      "resend": "Send round again",
+      "meantFor": "meant for {who}",
+      "routedStep": {
+        "review": "Review",
+        "approve": "Approve",
+        "sign": "Sign",
+        "acknowledge": "Acknowledge"
+      },
+      "decision": {
+        "reviewed": "Mark as reviewed",
+        "approved": "Approve"
+      }
     },
     "dates": {
       "title": "Semakan tarikh percubaan",

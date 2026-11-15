@@ -1,6 +1,6 @@
 import {validateFieldValue,type Block,type Field,type Document,type Signature} from './lifecycle-v9-model';
 import {ProbationError} from './probation-model';
-import {signingComplete,type SigningDocument} from './document-signing-model';
+import {currentRoundActions,signingComplete,type SigningDocument} from './document-signing-model';
 export function probationLetterDocument(input:{id:string;name:string;templateId:string;templateVersion:number;blocks:Block[];fields:Field[];merge:Record<string,string>;createdAt:string;signing?:SigningDocument|null}):Document{
  const mergeValues=Object.fromEntries(Object.entries(input.merge).map(([key,value])=>[key,value==null?'':String(value)]));
  if(!mergeValues['company.name']&&mergeValues.companyName)mergeValues['company.name']=mergeValues.companyName;
@@ -9,7 +9,7 @@ export function probationLetterDocument(input:{id:string;name:string;templateId:
  const employee=current.find(a=>a.role==='employee'),hr=current.find(a=>a.role!=='employee');
  // Acknowledgement values belong to the authenticated signature contribution, never posted HR text.
  mergeValues.acknowledgedBy=employee?.actorName??'';mergeValues.acknowledgedOn=employee?.at??'';
- return{id:input.id,templateId:input.templateId,version:input.templateVersion,name:input.name,status:input.signing&&signingComplete(input.signing,{requiredRoles:input.signing.route.steps.filter(s=>s.required).map(s=>s.role)})?'signed':'draft',blocks:structuredClone(input.blocks),fields:structuredClone(input.fields),values:Object.fromEntries(input.fields.map(f=>[f.id,mergeValues[f.pmKey??f.id]??''])),edits:{},mergeValues,hrSignature:signature(hr),employeeSignature:signature(employee),createdAt:input.createdAt,sentAt:null,hrStep:'before',employeeAck:true,templateType:'Letter'};
+ return{id:input.id,templateId:input.templateId,version:input.templateVersion,name:input.name,status:input.signing&&signingComplete(input.signing,{requiredRoles:input.signing.route.steps.filter(s=>s.required).map(s=>s.role)})?'signed':'draft',blocks:structuredClone(input.blocks),fields:structuredClone(input.fields),values:Object.fromEntries(input.fields.map(f=>[f.id,mergeValues[f.pmKey??f.id]??''])),edits:{},mergeValues,hrSignature:signature(hr),employeeSignature:signature(employee),...(input.signing?.routing?{stepSignatures:Object.fromEntries(currentRoundActions(input.signing).filter(a=>a.action==='signed'&&a.signature).map(a=>[a.stepId,signature(a)!]))}:{}),createdAt:input.createdAt,sentAt:null,hrStep:'before',employeeAck:true,templateType:'Letter'};
 }
 
 /** Required and conditional values are checked before freezing an HR-authored letter. */

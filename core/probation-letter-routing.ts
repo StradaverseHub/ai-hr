@@ -17,8 +17,8 @@ import {saveProbationLetterTemplate} from './probation-letter';
 import {documentRoutingProblems,documentRoutingSignatureProblems,type DocumentRouting} from '../lib/document-signing-routing';
 import {documentRoutingSchema} from '../lib/document-signing-routing-schema';
 
-/** Lane D2 sets this once core/probation-letter.ts stores `routing` with each template version. */
-export const PROBATION_LETTER_ROUTING_STORED = false;
+/** core/probation-letter.ts stores `routing` with each template version (lane D2, migration 5752). */
+export const PROBATION_LETTER_ROUTING_STORED = true;
 
 /** Shape of the routing on a template version; lane D2 adds it to the letter template schema (import it from lib to avoid a cycle). */
 export const probationLetterRoutingSchema = documentRoutingSchema;

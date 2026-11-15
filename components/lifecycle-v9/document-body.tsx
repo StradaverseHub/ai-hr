@@ -1,5 +1,5 @@
 'use client';
-import { v9SignaturePresentation } from '@/lib/lifecycle-v9-signature-presentation';
+import { v9SignatureBlockRole, v9SignaturePresentation } from '@/lib/lifecycle-v9-signature-presentation';
 import { v9Letterhead } from '@/lib/lifecycle-v9-letterhead';
 import type { ReactNode } from 'react';
 import { merge, type Document, type Field } from '@/lib/lifecycle-v9-model';
@@ -26,7 +26,7 @@ export function DocumentBody({ document, values = document.values, editableBy, d
       const rows = (block.rows ?? '').split('\n').filter(Boolean).map(row => row.split('|').map(s => s.trim()));
       content = <div className="v9-table-scroll"><table className="v9-table"><thead><tr>{columns.map((column, i) => <th key={i}>{column}</th>)}</tr></thead><tbody>{rows.map((row, i) => <tr key={i}>{row.map((cell, j) => <td key={j}>{merge(cell, { ...document.mergeValues, ...values }).text}</td>)}</tr>)}</tbody></table></div>;
     } else if (block.type === 'signature') {
-      const presentation=v9SignaturePresentation(document,block.role==='hr'?'hr':'employee'),signature=presentation.signature;
+      const presentation=v9SignaturePresentation(document,v9SignatureBlockRole(block.role)),signature=presentation.signature;
       content = <div className="v9-signature"><p>{merge(block.label??'',{...document.mergeValues,...values}).text}</p>{signature?.method === 'drawn' && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(signature.value) ? <img src={signature.value} width={300} height={100} alt={`Signature of ${signature.by.name}`}/> : signature ? <div className="v9-signature-mark">{signature.value}</div> : <div className="v9-signature-line" aria-hidden="true"/>}<strong>{presentation.name}</strong><p>{presentation.detail}</p><p className="v9-muted">{presentation.status}</p></div>;
     } else content = null;
     return <div className="v9-form-full" key={block.id}>{content}</div>;
