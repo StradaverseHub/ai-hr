@@ -509,7 +509,7 @@ export const SCOPED_LIFECYCLE_NAVIGATION: readonly ScopedLifecycleNavigationItem
   {module:'contracts',access:'page',href:'/lifecycle/contracts',labelKey:'contractManagement',icon:ScrollText,exactHref:true,ownedSubpaths:['/lifecycle/contracts']},
   {module:'probation',access:'configure',href:'/lifecycle/probation/settings',labelKey:'probationSettings',icon:Timer},
   {module:'probation',access:'configure',href:'/lifecycle/probation/forms',labelKey:'probationForms',icon:Timer},
-  {module:'probation',access:'configure',href:'/lifecycle/probation/routes',labelKey:'probationRoutes',icon:Timer},
+  // The Routes page retired (lane E): approval routing is set on each form version; /lifecycle/probation/routes redirects to Forms.
   {module:'probation',access:'configureOrIntake',href:'/lifecycle/probation/intake',labelKey:'probationIntake',icon:Timer},
   {module:'contracts',access:'intake',href:'/lifecycle/contracts/intake',labelKey:'contractIntake',icon:ScrollText},
   {module:'contracts',access:'configure',href:'/lifecycle/contracts/settings',labelKey:'contractSettings',icon:ScrollText},

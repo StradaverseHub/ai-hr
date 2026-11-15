@@ -792,3 +792,36 @@ describe('Probation work in My Action Centre (migration 5751)',()=>{
   expect(await probationInbox(delegate.ctx)).toMatchObject({items:[expect.objectContaining({caseId:ids.caseId,partId:ids.part,kind:'approve',href})]});
  });
 });
+describe('form approval routing (migration 5751)',()=>{
+ const submitWith=async(form:((data:Record<string,unknown>)=>Record<string,unknown>)|null)=>{
+  const{ids,staff,manager,peer}=await privateCase();
+  if(form){const[row]=await owner.db.execute<{data:Record<string,unknown>}>(sql`select data from probation_configuration where id=(select form_id from probation_case where id=${ids.caseId}::uuid)`);
+   await owner.db.execute(sql`update probation_configuration set data=${JSON.stringify(form(row.data))}::jsonb where id=(select form_id from probation_case where id=${ids.caseId}::uuid)`);}
+  await setReportingLine(admin,{subordinateEmploymentId:staff.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:'2026-01-01'});
+  await owner.db.execute(sql`update department set head_employment_id=${peer.employmentId}::uuid where id=${b.deptA}::uuid`);
+  await owner.db.execute(sql`insert into probation_access(tenant_id,user_id,company_id,role,valid_from,reason) values(${b.tenantId}::uuid,${admin.userId}::uuid,${b.companyId}::uuid,'pbp','2026-01-01','Actual canonical PBP opt-in'),(${b.tenantId}::uuid,${admin.userId}::uuid,${b.companyId}::uuid,'gbs','2026-01-01','Actual canonical GBS opt-in')`);
+  const current=async(ctx:SessionContext)=>(await probationCase(ctx,ids.caseId)).parts[0];
+  const assessment=Object.fromEntries(DEFAULT_PROBATION_FORM.criteria.map(c=>[c.id,{rating:4,evidence:'Observed fictional evidence for this criterion'}]));
+  let part=await current(staff.ctx);await saveProbationDraft(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'employee',patch:{employee:assessment}});
+  part=await current(staff.ctx);await actOnProbation(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'submit_employee'});
+  part=await current(manager.ctx);await saveProbationDraft(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'lm',patch:{manager:assessment,reviewOn:todayInKualaLumpur(),conductedBy:manager.userId,outcome:'confirm',justification:'Observed evidence supports confirmation'}});
+  part=await current(manager.ctx);await actOnProbation(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'submit_manager',method:'typed',value:'Fictional Manager',consent:true});
+  const[frozen]=await owner.db.execute<{route:{steps:{id:string;role:string;kind:string;stage:number}[]};policy:{mode:string}|null}>(sql`select data->'route' as route,data->'routePolicy' as policy from probation_part where id=${ids.part}::uuid`);
+  return frozen;
+ };
+ it('freezes the default rows as exactly the configured default route, without a policy of its own',async()=>{
+  const frozen=await submitWith(null);
+  expect(frozen.route.steps.map(step=>[step.id,step.role,step.kind,step.stage])).toEqual([['lm','lm','sign',0],['employee','employee','acknowledge',1],['hod','hod','approve',2],['pbp','pbp','approve',3]]);
+  expect(frozen.policy).toBeNull();
+ });
+ it('follows the version\'s rows (same order: listed order) and freezes the version\'s duplicate-role policy',async()=>{
+  const rows={'1':[],'2':[],'3':[{id:'pbp',order:1,action:'approve_sign',who:'pbp'},{id:'hod',order:1,action:'approve_sign',who:'hod'}]};
+  const frozen=await submitWith(data=>({...data,approvals:rows,duplicateRolePolicy:{mode:'sign_once'}}));
+  expect(frozen.route.steps.map(step=>[step.role,step.stage])).toEqual([['lm',0],['employee',1],['pbp',2],['hod',3]]);
+  expect(frozen.policy).toEqual({mode:'sign_once'});
+ });
+ it('keeps a version saved before form routing on the published route configuration',async()=>{
+  const frozen=await submitWith(data=>{const{approvals,duplicateRolePolicy,...rest}=data;void approvals;void duplicateRolePolicy;return rest;});
+  expect(frozen.route.steps.map(step=>step.role)).toEqual(['lm','employee','hod','pbp']);expect(frozen.policy).toBeNull();
+ });
+});

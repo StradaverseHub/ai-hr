@@ -1372,15 +1372,6 @@
       "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
     },
     {
-      "id": "shell.probationRoutes",
-      "sourceOwner": "lib/navigation/shell-inventory.ts",
-      "sourceKey": "shell-slot:probationRoutes",
-      "declaredHref": "/lifecycle/probation/routes",
-      "status": "uncovered",
-      "owner": "lib/navigation/shell-inventory.ts",
-      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
-    },
-    {
       "id": "shell.probationPostings",
       "sourceOwner": "lib/navigation/shell-inventory.ts",
       "sourceKey": "shell-slot:probationPostings",

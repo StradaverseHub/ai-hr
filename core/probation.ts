@@ -57,7 +57,12 @@ export function saveProbationConfiguration(ctx:SessionContext,input:{companyId:s
   data={...input.data as ProbationSettings,gradeHFormPublished:setup.gradeHFormAvailable};
   validateProbationConfig(data);
  }
- if(input.kind==='form')validateProbationForm(input.data as ProbationForm);
+ if(input.kind==='form'){
+  const form=input.data as ProbationForm;validateProbationForm(form);
+  // The form version's named alternate signer must be a current login of this tenant (the route configuration's rule).
+  const alternate=form.duplicateRolePolicy?.mode==='named_alternate'?form.duplicateRolePolicy.alternateUserId:null;
+  if(alternate){const[row]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from app_user u where u.id=${uuid(alternate)}::uuid and u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id)) as ok`);if(!row?.ok)throw new ProbationError('invalid','Choose a current person as the named alternate signer.');}
+ }
  const[row]=await tx.execute<{id:string}>(sql`select app.probation_config_write(${uuid(input.companyId)}::uuid,${input.kind},${json(data)}::jsonb,${input.publish},${input.expectedVersion}) as id`);return row.id;
 });}
 export function defaultProbationRoutes():ProbationRouteConfiguration{const holders={employee:null,lm:null,hod:null,pbp:null,gbs:null};return{version:1,duplicateRolePolicy:{mode:'escalate'},parts:{'1':probationRoute(1,holders),'2':probationRoute(2,holders),'3':probationRoute(3,holders)}};}

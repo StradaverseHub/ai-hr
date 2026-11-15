@@ -12,6 +12,12 @@
 --    'task' is everything else (employee, Line Manager, PBP and GBS tasks, letter Sign steps). NULL is both.
 -- 2. app.probation_inbox() keeps its shape ({count, items} of at most 20) and now answers from (1); before, it
 --    checked case access and commands for every case of the tenant.
+-- 3. Form approval routing (handoff B3): app.probation_prepare_signing builds a Part's route from the approval rows of the
+--    case's pinned form version (core steps, then rows by order, rows sharing an order in listed order) when that version
+--    has them; versions saved before this, and Parts already frozen, keep the published route configuration. The form
+--    version's duplicate-role policy (when set) is frozen on the Part as routePolicy, and
+--    app.probation_resolve_route_unchecked reads it before the route configuration's. Both are the previous bodies
+--    (2111 and 5749) with only these additions.
 -- No table, row, grant or purpose-owned object changes.
 CREATE FUNCTION app.probation_task_list(p_category text,p_limit integer) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE t uuid:=app.current_tenant_id();me uuid:=app.current_user_id();day date:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date;
@@ -107,3 +113,105 @@ GRANT EXECUTE ON FUNCTION app.probation_task_list(text,integer) TO ai_hr_app;
 CREATE OR REPLACE FUNCTION app.probation_inbox() RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT jsonb_build_object('count',x->'count','items',x->'items') FROM app.probation_task_list(NULL,20) x;
 $$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.probation_prepare_signing(p_part uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE p probation_part;c probation_case;kpis jsonb;source jsonb;policy jsonb;scoped_route jsonb;manager jsonb;form_rows jsonb;form_policy jsonb;form_route jsonb;
+BEGIN
+ PERFORM app.probation_write_lock();
+ SELECT * INTO p FROM probation_part WHERE id=p_part AND tenant_id=app.current_tenant_id() FOR UPDATE;IF NOT FOUND THEN RAISE EXCEPTION 'Part unavailable';END IF;SELECT * INTO c FROM probation_case WHERE id=p.case_id AND tenant_id=p.tenant_id;
+ IF app.probation_part_role(p.id,'lm') IS NOT TRUE OR p.data->>'managerSubmittedAt' IS NOT NULL OR app.probation_submission_ready(p.id,'lm') IS NOT TRUE THEN RAISE EXCEPTION 'Only the ready current manager submission may freeze content';END IF;
+ PERFORM app.probation_assert_case_runtime(c.id);
+ IF p.data?'signingFacts' THEN RETURN;END IF;
+ source:=app.probation_personnel_source(c.employment_id);IF source->>'startOn' IS DISTINCT FROM c.data->>'startOn' OR source->>'endOn' IS NOT NULL AND source->>'endOn' IS DISTINCT FROM c.data->>'endOn' THEN RAISE EXCEPTION 'Reconcile changed canonical Personnel dates before this submission';END IF;
+ IF coalesce(p.data->>'routeOverride','false')<>'true' THEN
+ SELECT data INTO policy FROM probation_configuration WHERE id=c.route_id AND tenant_id=c.tenant_id;SELECT data INTO manager FROM probation_rater_draft WHERE part_id=p.id AND rater='lm' AND tenant_id=p.tenant_id;
+ SELECT r->'route' INTO scoped_route FROM jsonb_array_elements(coalesce(policy->'rules','[]')) WITH ORDINALITY rules(r,n) WHERE r->>'part'=p.data->>'type' AND (r->>'businessGroupId' IS NULL OR r->>'businessGroupId'=(app.probation_organisation_facts(source,policy))->>'businessGroupId') AND (r->>'businessUnitId' IS NULL OR r->>'businessUnitId'=(app.probation_organisation_facts(source,policy))->>'businessUnitId') AND (r->>'grade' IS NULL OR r->>'grade'=c.data->>'gradeAtStart') AND (r->>'outcome' IS NULL OR r->>'outcome'=manager->>'outcome') ORDER BY num_nonnulls(r->>'businessGroupId',r->>'businessUnitId',r->>'grade',r->>'outcome') DESC,n DESC LIMIT 1;
+  -- Form approval routing (5751): when the case's pinned form version carries approval rows, they decide this Part's
+  -- route after the core steps (Line Manager signs, employee acknowledges); rows run by order, then as listed.
+  SELECT f.data->'approvals'->(p.data->>'type'),f.data->'duplicateRolePolicy' INTO form_rows,form_policy FROM probation_configuration f WHERE f.id=c.form_id AND f.tenant_id=c.tenant_id AND f.kind='form';
+  IF jsonb_typeof(form_rows)='array' THEN
+   form_route:=jsonb_build_object('version',1,'steps',jsonb_build_array(
+     jsonb_build_object('id','lm','role','lm','kind','sign','stage',0,'required',true),
+     jsonb_build_object('id','employee','role','employee','kind','acknowledge','stage',1,'required',true))
+    ||coalesce((SELECT jsonb_agg(jsonb_build_object('id',x.r->>'who','role',x.r->>'who','kind','approve','stage',1+x.rank,'required',true) ORDER BY x.rank)
+     FROM (SELECT r,row_number() OVER(ORDER BY (r->>'order')::integer,n) AS rank FROM jsonb_array_elements(form_rows) WITH ORDINALITY rows(r,n)) x),'[]'::jsonb));
+   PERFORM app.probation_validate_evaluation_route(form_route,(p.data->>'type')::integer);
+  END IF;
+  UPDATE probation_part SET data=jsonb_set(data,'{route}',coalesce(form_route,scoped_route,policy->'parts'->(p.data->>'type')))
+   ||CASE WHEN form_route IS NOT NULL AND jsonb_typeof(form_policy)='object' THEN jsonb_build_object('routePolicy',form_policy) ELSE '{}'::jsonb END WHERE id=p.id;END IF;
+ SELECT d.data->'kpis' INTO kpis FROM probation_part k JOIN probation_rater_draft d ON d.part_id=k.id AND d.tenant_id=k.tenant_id AND d.rater='lm' WHERE k.case_id=c.id AND k.tenant_id=c.tenant_id AND k.data->>'type'='1' AND k.data->>'state' IN('locked','completed_offline') ORDER BY k.created_at DESC LIMIT 1;
+ UPDATE probation_part SET data=data||jsonb_build_object('signingFacts',source,'signingPeriod',jsonb_build_object('startOn',c.data->>'startOn','endOn',c.data->>'endOn','gradeAtStart',c.data->>'gradeAtStart'),'signingKpis',coalesce(kpis,'[]')) WHERE id=p.id;
+ PERFORM app.probation_audit(c.id,p.id,'content_frozen');
+END $$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.probation_resolve_route_unchecked(p_part uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE general uuid;p probation_part;c probation_case;holders jsonb;route jsonb;steps jsonb:='[]';step jsonb;delegated probation_delegate;
+ holder uuid;identity uuid;seen uuid[]:='{}';represented uuid;alternate uuid;policy jsonb;mode text;covering jsonb;
+ day date:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date;stored document_signing_document;historic jsonb;frozen_hash text;
+BEGIN
+ SELECT * INTO p FROM probation_part WHERE id=p_part AND tenant_id=app.current_tenant_id();
+ IF NOT FOUND THEN RETURN NULL;END IF;
+ SELECT * INTO c FROM probation_case WHERE id=p.case_id AND tenant_id=p.tenant_id;
+ IF app.probation_case_company_current(c.id) IS NOT TRUE THEN RETURN p.data->'route';END IF;
+ holders:=app.probation_holders(c.employment_id);route:=p.data->'route';
+ -- 5751: a route frozen from form approval rows carries the form version's policy; otherwise the route configuration's.
+ policy:=p.data->'routePolicy';
+ IF jsonb_typeof(policy) IS DISTINCT FROM 'object' THEN SELECT data->'duplicateRolePolicy' INTO policy FROM probation_configuration WHERE id=c.route_id AND tenant_id=c.tenant_id;END IF;
+ mode:=coalesce(policy->>'mode','escalate');
+ SELECT * INTO stored FROM document_signing_document WHERE subject_id=p.id AND subject_type='probation' AND tenant_id=p.tenant_id;
+ IF stored.id IS NOT NULL THEN frozen_hash:=encode(sha256(convert_to(app.probation_content(p.id)::text,'UTF8')),'hex');END IF;
+ FOR step IN SELECT value FROM jsonb_array_elements(route->'steps') WITH ORDINALITY AS authored(value,ordinal) ORDER BY (value->>'stage')::integer,ordinal LOOP
+  step:=step-ARRAY['coveredStepIds','coveredByStepId','holderPersonId','representedId'];general:=NULL;
+  SELECT original INTO historic FROM jsonb_array_elements(stored.data->'route'->'steps') original
+   WHERE original->>'id'=step->>'id' AND stored.data->>'contentHash'=frozen_hash AND app.document_signing_step_fulfilled(stored.data,original);
+  IF historic IS NOT NULL THEN
+   steps:=steps||jsonb_build_array(historic);
+   IF historic->>'required'='true' AND historic->>'holderPersonId' IS NOT NULL THEN seen:=array_append(seen,(historic->>'holderPersonId')::uuid);END IF;
+   CONTINUE;
+  END IF;
+  holder:=(holders->>(step->>'role'))::uuid;
+  SELECT * INTO delegated FROM probation_delegate WHERE tenant_id=p.tenant_id AND part_id=p.id AND step_id=step->>'id' AND valid_from<=day AND (valid_to IS NULL OR valid_to>=day)
+   AND EXISTS(SELECT 1 FROM app_user u WHERE u.id=probation_delegate.holder_id AND u.tenant_id=probation_delegate.tenant_id AND u.person_id IS NOT NULL AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))
+   ORDER BY created_at DESC,id DESC LIMIT 1;
+  IF delegated.id IS NOT NULL THEN holder:=delegated.holder_id;step:=step||jsonb_build_object('representedId',delegated.represented_id);
+  -- Decision 7: a general delegation with Probation ticked moves a Head of Department, PBP or GBS Review, Approve or
+  -- letter Sign step to the delegate, on behalf of the holder. Line Manager and employee steps never move.
+  ELSIF holder IS NOT NULL AND step->>'role' IN('hod','pbp','gbs') AND step->>'kind' IN('approve','review','sign') THEN
+   general:=app.probation_general_delegate(holder,c.employment_id,CASE WHEN step->>'kind'='review' THEN 'probation.review' WHEN p.data->>'documentKind'='letter' THEN 'probation.letter_sign' ELSE 'probation.approve' END);
+   IF general IS NOT NULL THEN step:=step||jsonb_build_object('representedId',holder);holder:=general;END IF;
+  END IF;
+  SELECT u.person_id INTO identity FROM app_user u WHERE u.id=holder AND u.tenant_id=c.tenant_id;
+  IF step->>'kind'='approve' AND step->>'required'='true' AND identity=ANY(seen) THEN
+   covering:=NULL;
+   IF mode='sign_once' AND delegated.id IS NULL AND general IS NULL THEN
+    SELECT previous INTO covering FROM jsonb_array_elements(steps) previous WHERE previous->>'kind'='approve' AND previous->>'required'='true' AND previous->>'holderId'=holder::text
+     AND previous->>'role'<>step->>'role' AND previous->>'coveredByStepId' IS NULL AND previous->'coveredStepIds' IS NULL
+     AND (previous->>'stage')::integer<(step->>'stage')::integer
+     AND (stored.id IS NULL OR NOT app.document_signing_step_fulfilled(stored.data,previous))
+     AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(route->'steps') intervening WHERE intervening->>'required'='true'
+      AND intervening->>'id' NOT IN(previous->>'id',step->>'id') AND (intervening->>'stage')::integer BETWEEN (previous->>'stage')::integer AND (step->>'stage')::integer)
+     ORDER BY (previous->>'stage')::integer DESC LIMIT 1;
+   END IF;
+   IF covering IS NOT NULL THEN
+    SELECT jsonb_agg(CASE WHEN previous->>'id'=covering->>'id' THEN previous||jsonb_build_object('coveredStepIds',jsonb_build_array(step->>'id')) ELSE previous END ORDER BY ordinal)
+    INTO steps FROM jsonb_array_elements(steps) WITH ORDINALITY AS emitted(previous,ordinal);
+    step:=step||jsonb_build_object('coveredByStepId',covering->>'id');
+   ELSE
+    represented:=holder;
+    IF mode='named_alternate' THEN
+     alternate:=(policy->>'alternateUserId')::uuid;
+     SELECT u.person_id INTO identity FROM app_user u WHERE u.id=alternate AND u.tenant_id=c.tenant_id;
+     holder:=CASE WHEN identity IS NOT NULL AND NOT(identity=ANY(seen)) AND app.probation_signer_candidate(c.id,alternate) THEN alternate ELSE NULL END;
+    ELSE
+     holder:=app.probation_escalated_signer(c.id,holder,seen);
+    END IF;
+    SELECT u.person_id INTO identity FROM app_user u WHERE u.id=holder AND u.tenant_id=c.tenant_id;
+    step:=step||jsonb_build_object('representedId',represented);
+   END IF;
+  END IF;
+  steps:=steps||jsonb_build_array(step||jsonb_build_object('holderId',holder));
+  IF step->>'required'='true' AND identity IS NOT NULL THEN seen:=array_append(seen,identity);END IF;
+ END LOOP;
+ RETURN jsonb_set(route,'{steps}',steps);
+END $$;
