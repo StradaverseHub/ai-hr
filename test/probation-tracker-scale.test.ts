@@ -120,8 +120,13 @@ describe('tracker read at real-group shape',()=>{
   await owner.db.execute(sql`insert into probation_access(tenant_id,user_id,company_id,role,valid_from,reason) select ${b.tenantId}::uuid,${pbp.ctx.userId}::uuid,id,'pbp','2026-01-01','Scale fixture PBP' from unnest(array[${sql.join(companies.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) id`);
   await owner.db.execute(sql`insert into probation_delegate(tenant_id,part_id,step_id,holder_id,kind,reason,created_by,valid_from) values(${b.tenantId}::uuid,${subject.part}::uuid,'pbp',${delegate.ctx.userId}::uuid,'delegation','Scale fixture delegation',${admin.userId}::uuid,'2026-01-01')`);
   const outsider=await viewer('Fictional Scale Outsider');
-  for(const[name,ctx,least]of [['employee',{...admin,userId:employee,personId:subject.person,roles:['employee'],grants:undefined} as SessionContext,1],['Line Manager',manager.ctx,40],['PBP',pbp.ctx,1],['delegate',delegate.ctx,1],['outsider',outsider.ctx,0]] as const){
-   const before=await previousVisible(ctx),after=await currentVisible(ctx);
+  // Head of Department: the first company's employments get an assignment in a department this viewer heads.
+  const hod=await viewer('Fictional Scale Department Head');
+  const[hodEmployment]=await owner.db.execute<{id:string}>(sql`insert into employment(tenant_id,person_id,company_id,hired_on) values(${b.tenantId}::uuid,${hod.person}::uuid,${companies[0]}::uuid,'2025-01-01') returning id`);
+  const[department]=await owner.db.execute<{id:string}>(sql`insert into department(tenant_id,company_id,name,head_employment_id) values(${b.tenantId}::uuid,${companies[0]}::uuid,'Fictional Scale Operations',${hodEmployment.id}::uuid) returning id`);
+  await owner.db.execute(sql`insert into assignment(tenant_id,employment_id,company_id,department_id,employment_type,valid_from) select ${b.tenantId}::uuid,c.employment_id,c.company_id,${department.id}::uuid,'full_time','2025-01-01' from probation_case c where c.tenant_id=${b.tenantId}::uuid and c.company_id=${companies[0]}::uuid`);
+  for(const[name,ctx,least]of [['employee',{...admin,userId:employee,personId:subject.person,roles:['employee'],grants:undefined} as SessionContext,1],['Line Manager',manager.ctx,40],['PBP',pbp.ctx,1],['delegate',delegate.ctx,1],['Head of Department',hod.ctx,15],['outsider',outsider.ctx,0]] as const){
+   const before=await previousVisible(ctx),after=await currentVisible(ctx);await currentVisible(ctx); // a second, warm read separates a cold first statement from the path cost
    expect(after,name).toEqual(before);expect(after.length,name).toBeGreaterThanOrEqual(least);
    if(before.length){const previous=await previousReader(before,{}),page=await timed('tracker read '+name,()=>probationSummaryRows(ctx,{limit:100}));expect(page.rows.map(r=>r.id),name).toEqual(previous.ids.slice(0,100));expect(page.total,name).toBe(previous.counts.total);}
   }
@@ -153,7 +158,7 @@ describe('tracker read at real-group shape',()=>{
    const before=await previousReader(visible,{flag}),page=await timed('tracker read all companies flag '+flag,()=>probationSummaryRows(admin,{flag,limit:100}));
    expect(page.rows.map(r=>r.id)).toEqual(before.ids.slice(0,100));expect(page.total).toBe(before.counts.total);
   }
- },120000); // Measuring run: every read is logged as a [probation-tracker-scale] line; set to about 3x the measured worst total once known.
+ },105000); // Run 43746146505 measured this test at 34.9 s on the CI runner, almost all of it the 0949 reference rule evaluated per case for each viewer (3.3-5.2 s each); about 3x.
  it('shows nothing to a person without case access',async()=>{
   const[p]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional outsider',${randomUUID()+'@scale.example.test'}) returning id`);
   const userId=await createAppUser(b.tenantId,p.id,'employee');

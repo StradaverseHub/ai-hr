@@ -241,11 +241,35 @@ export function probationSummaryRows(ctx:SessionContext,filters:{companyId?:stri
  const counts=result.counts,rows=result.rows;
  const details=rows.length?await tx.execute<{case_id:string;parts:ProbationSummaryRow['parts'];letter:ProbationLetterTask|null;names:{role:string;name:string}[]}>(sql`select case_id,parts,letter,names from app.probation_tracker_page(array[${sql.join(rows.map(r=>sql`${r.id}::uuid`),sql`, `)}]::uuid[])`):[];
  for(const row of rows){const detail=details.find(d=>d.case_id===row.id);row.parts=detail?.parts??[];row.letterWaiting=detail?.letter??null;for(const part of row.parts)part.waitingName=detail?.names.find(n=>n.role===part.waitingRole)?.name??null;}
- for(const row of rows)for(const part of row.parts){if(part.dueOn>=today||['locked','completed_offline','cancelled'].includes(part.state))continue;part.calendarDaysOverdue=Math.round((Date.parse(today+'T00:00:00Z')-Date.parse(part.dueOn+'T00:00:00Z'))/86400000);if(part.type===1)part.workingDaysOverdue=(await workingDatesForSpan(tx,row.employmentId,addDaysIso(part.dueOn,1),today)).length;}
+ const overdueKpis:{part:ProbationSummaryRow['parts'][number];employmentId:string;from:string}[]=[];
+ for(const row of rows)for(const part of row.parts){if(part.dueOn>=today||['locked','completed_offline','cancelled'].includes(part.state))continue;part.calendarDaysOverdue=Math.round((Date.parse(today+'T00:00:00Z')-Date.parse(part.dueOn+'T00:00:00Z'))/86400000);if(part.type===1)overdueKpis.push({part,employmentId:row.employmentId,from:addDaysIso(part.dueOn,1)});}
+ const counts2=await workingDayCountsTx(tx,overdueKpis.map(item=>({employmentId:item.employmentId,from:item.from,to:today})));
+ overdueKpis.forEach((item,index)=>{item.part.workingDaysOverdue=counts2[index];});
  const{probationRowStartStatus,probationRowAction}=await import('../lib/probation-tracker');
  for(const row of rows){row.startStatus=probationRowStartStatus(row,today);row.action=probationRowAction(row,today);}
  return{rows,offset,limit,hasMore:offset+rows.length<counts.total,total:counts.total,totals:{overdue:counts.overdue,end_passed:counts.end_passed,ending14:counts.ending14,low_result:counts.low_result,kpi_submit:counts.kpi_submit,kpi_ack:counts.kpi_ack,overridden:counts.overridden},options:trackerOptionsFrom(result.facets)};
 });}
+/**
+ * Working days in [from, to] for many employments at once (the tracker's "working days overdue"): holidays from the
+ * holiday owner in one batched read, and each company's attendance working and half-working week days in one read.
+ * Same answer as workingDatesForSpan(...).length, which stays the exact path when the tenant uses rotations or rosters.
+ */
+async function workingDayCountsTx(tx:Tx,spans:{employmentId:string;from:string;to:string}[]):Promise<number[]>{
+ if(!spans.length)return [];
+ const ids=[...new Set(spans.map(span=>span.employmentId))];
+ const [rotations]=await tx.execute<{any:boolean}>(sql`select exists(select 1 from attendance_rotation) as any`);
+ if(rotations?.any){const out:number[]=[];for(const span of spans)out.push((await workingDatesForSpan(tx,span.employmentId,span.from,span.to)).length);return out;}
+ const start=spans.reduce((min,span)=>span.from<min?span.from:min,spans[0].from),end=spans.reduce((max,span)=>span.to>max?span.to:max,spans[0].to);
+ const{holidayDatesByEmployment}=await import('./holidays');
+ const holidays=await holidayDatesByEmployment(tx,{employmentIds:ids,startDate:start,endDate:end});
+ const weeks=await tx.execute<{id:string;working:number[]|null;half:number[]|null}>(sql`select distinct on(e.id) e.id,p.working_days as working,p.half_working_days as half from employment e join company c on c.id=e.company_id left join attendance_policy p on p.company_id=e.company_id where e.id=any(array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) order by e.id`);
+ const week=new Map(weeks.map(row=>[row.id,new Set([...(row.working??[1,2,3,4,5]),...(row.half??[])])]));
+ return spans.map(span=>{
+  const off=holidays.get(span.employmentId)??new Set<string>(),days=week.get(span.employmentId)??new Set([1,2,3,4,5]);let count=0;
+  for(let day=span.from;day<=span.to;day=addDaysIso(day,1)){const iso=((new Date(day+'T00:00:00Z').getUTCDay()+6)%7)+1;if(!off.has(day)&&days.has(iso))count++;}
+  return count;
+ });
+}
 export type ProbationAdministrationOptions={organisationMapping?:ProbationOrganisationMapping;organisationCatalogs?:Record<ProbationOrganisationMapping,import('../lib/probation-organisation').ProbationOrganisationCatalog>;personnelBusinessUnits?:{id:string;name:string;companyId:string}[];businessGroups:{id:string;name:string;companyId?:string}[];grades:string[];companies:{id:string;name:string}[];users:{id:string;name:string}[];departments:{id:string;name:string;companyId:string}[];businessUnits:{id:string;name:string;companyId:string}[]};
 export function probationAdministrationOptions(ctx:SessionContext):Promise<ProbationAdministrationOptions>{return withProbationTenant(ctx,async tx=>{
  const companies=await tx.execute<{id:string;name:string}>(sql`select c.id,c.legal_name as name from company c where c.tenant_id=${ctx.tenantId}::uuid and c.archived_at is null and app.probation_config_admin(c.id) order by c.legal_name,c.id`);

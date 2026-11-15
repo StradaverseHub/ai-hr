@@ -140,11 +140,14 @@ BEGIN
   SELECT live.id FROM live WHERE live.current_company AND (live.employment_id IN(SELECT held.employment_id FROM held) OR live.id IN(SELECT delegated.case_id FROM delegated))
  ) x;
  RETURN QUERY SELECT unnest(visible);
- RETURN QUERY WITH candidates AS MATERIALIZED (
-  SELECT c.id FROM public.probation_case c
-  WHERE c.tenant_id=t AND (p_cases IS NULL OR c.id=ANY(p_cases)) AND NOT c.id=ANY(visible) AND app.probation_company_entitled(c.company_id)
-   AND EXISTS(SELECT 1 FROM public.probation_part p JOIN public.document_signing_document d ON d.tenant_id=p.tenant_id AND d.subject_type='probation' AND d.subject_id=p.id
-    WHERE p.case_id=c.id AND p.tenant_id=c.tenant_id AND p.data->>'state'='pending_approval'))
+ -- Residual: an escalated approver on a case that is otherwise invisible to them. Candidates are found as one set (cases
+ -- with a part waiting for approval that has a signing document), then checked per candidate.
+ RETURN QUERY WITH waiting AS MATERIALIZED (
+  SELECT DISTINCT p.case_id FROM public.probation_part p JOIN public.document_signing_document d ON d.tenant_id=p.tenant_id AND d.subject_type='probation' AND d.subject_id=p.id
+  WHERE p.tenant_id=t AND p.data->>'state'='pending_approval' AND (p_cases IS NULL OR p.case_id=ANY(p_cases))),
+ candidates AS MATERIALIZED (
+  SELECT c.id FROM public.probation_case c JOIN waiting w ON w.case_id=c.id
+  WHERE c.tenant_id=t AND NOT c.id=ANY(visible) AND app.probation_company_entitled(c.company_id))
  SELECT candidates.id FROM candidates WHERE app.probation_current_escalated_actor(candidates.id);
 END $$;
 --> statement-breakpoint
