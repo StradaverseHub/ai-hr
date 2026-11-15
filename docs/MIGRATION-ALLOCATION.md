@@ -70,7 +70,7 @@ changes. The installed ledgers were not read; recheck watermarks and peer claims
 Branch `claude/probation-lane-probation-core-20261116` (lane C of the Probation Confirmation build, from
 `claude/probation-confirmation-aihr-b81c70` at `faf21b686`) appends `5742_probation_settings_scope` at idx 5142 / when
 1793330005442 on the board block's offset (tag T, idx T − 600, when 1793330004800 + (T − 5100)), directly above
-`5740` (when 1793330005440), the journal's maximum. SHA256 `31a7330425407814c8cba249f8b6a7db1febffe4bc51aec74cd9c23602bc9b31`.
+`5740` (when 1793330005440), the journal's maximum. SHA256 `5b21bd348acedd68cd3267a973a8a62ec9c4f953ff7230e078db6ce50037655c`.
 It creates two new, empty tables (`probation_settings_scope_version`, append-only; `probation_settings_scope_member`,
 whose (tenant_id, company_id) key keeps a company in at most one company setting) with forced row security, owner
 policies, SELECT-only grants to `ai_hr_app` and the ADR-0174 composite company key; adds `app.probation_settings_*`

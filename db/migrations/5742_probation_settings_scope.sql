@@ -52,7 +52,7 @@ CREATE TABLE public.probation_settings_scope_member (
  setting_key uuid NOT NULL,
  version_id uuid NOT NULL,
  PRIMARY KEY (tenant_id, company_id),
- FOREIGN KEY (company_id, tenant_id) REFERENCES public.company(id, tenant_id),
+ CONSTRAINT probation_settings_scope_member_company_tenant_fk FOREIGN KEY (company_id, tenant_id) REFERENCES public.company(id, tenant_id),
  FOREIGN KEY (tenant_id, version_id) REFERENCES public.probation_settings_scope_version(tenant_id, id)
 );
 --> statement-breakpoint

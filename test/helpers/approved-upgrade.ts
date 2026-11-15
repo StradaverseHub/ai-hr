@@ -233,7 +233,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5680_payroll_history_dated_company':'664b422a2a2128357932b0e0b036fa69ad731eb6c31aa6c4a8ce2a5b6e080faf',
  '5740_automation_shared_definitions':'72baaa106846be4ede55607235a4555a0a0f38f6f0958183077c9e9f6dca0569',
  '5741_personnel_postings':'bac24f1f803408ee29db5915e69d47a72f981c45b5b6c5fee469831dcb800cb5',
- '5742_probation_settings_scope':'31a7330425407814c8cba249f8b6a7db1febffe4bc51aec74cd9c23602bc9b31',
+ '5742_probation_settings_scope':'5b21bd348acedd68cd3267a973a8a62ec9c4f953ff7230e078db6ce50037655c',
  '5743_automation_email_templates':'5b82f328178b8bc5357acb830eceffd89337e13dd563eaec8f931f1f29bce3cd',
  '5744_probation_case_at_activation':'bade792a24fe3f31bc5c8afc1a40404d8919313711a2a050b1c6083b2095494a',
  '5745_probation_outcome_override_event':'450ad5d958411186348239940f3f16302bc17f7642a6e2e6bb3a63212a41a3ed',
