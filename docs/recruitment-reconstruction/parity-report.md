@@ -686,3 +686,25 @@ sign-in and an active mail relay (as for slice 19's case 132), which the local s
 | 43694134042 | Unit (31 files, 446 tests) | PASS |
 | 43694134042 | DB (22 files, 320 tests) | 318 PASS; FAIL 2 in the new slice 20 test only (a duplicate-reminder fixture without its map link; a hiring manager's refusal reads not_found) (fixed 48843bac6) |
 | 43695948469 (48843bac6) | 10 affected files (slice 19 and 20 e-mail, interview set-up, slices service, tasks, agencies, reports, hiring rules) | PASS: 255 tests |
+
+## Slice 21a — Verified careers applicants and careers receipts — commits 5fd274bff … (2026-11-15)
+
+Built: migration `5722` (idx 5122, when 1793330005422): a 6-digit e-mail code before applying while the company's candidate e-mail is
+on (10 minutes, 5 wrong entries, replaced by a new one; 3 an hour and 10 a day per address, 10 codes and 30 checks an hour per
+client; the same page whatever happened); a 30-minute, single-use verification for that address and job, enforced by the database
+(the app role no longer reaches 5708's submission directly); the company's receipt queued automatically for a verified application,
+as by the applicant; hashes only, pruned after 2 days, deleted with the candidate. Companies with candidate e-mail off keep slice 8's
+form (D-066). The code e-mail wording is code-owned in six languages. Spec "Slice 21" (21a and 21b).
+
+Tests: `test/recruitment-careers-verified.test.ts` (cases 137–141, routes and a faked relay) and updated slice 8, 5 and 19 tests.
+Verified on a throwaway local Postgres 16 chain apply before CI.
+
+| Run | Job | Result |
+| --- | --- | --- |
+| 43698675216 (5fd274bff) | Type check, build, 31 unit files (446 tests) | PASS |
+| 43698675216 | DB (23 files, 328 tests) | 317 PASS; FAIL 11: the new test lacked the trusted request-source setting (most), the owner rehearsal called the revoked submission, slice 19's careers case expected acceptance, the removal summary gained a count (fixed 5a01bf182) |
+| 43700441949 (5a01bf182) | 7 affected files | 104 PASS; FAIL 1: an archive fixture without its reason (fixed d21aa7581) |
+| 43700814530 (d21aa7581) | 4 affected files, type check | 70 PASS; FAIL 1: removal through the service waits for retention — the test now calls the restated removal function directly |
+| 43702152649 | `recruitment-careers-verified`, type check | PASS: 8 tests |
+
+Not rendered (case 142): no local render cluster with an embedded relay.
