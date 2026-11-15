@@ -77,6 +77,8 @@ const emails = () => owner.db.execute<{ kind: string; recipient: string; subject
 beforeAll(migrateTestDb);
 afterAll(async () => { await closeCareersPool(); await closeAll(); });
 beforeEach(async () => {
+  // The verified request source a reviewed proxy sets (as test/recruitment-careers.test.ts).
+  vi.stubEnv('AIHR_TRUST_REQUEST_SOURCE', '1');
   relay.available = true;
   relay.sent.length = 0;
   clientSeq++;

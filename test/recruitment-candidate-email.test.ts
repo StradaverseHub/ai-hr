@@ -217,7 +217,7 @@ describe('case 128 — receipts: none for careers applications (D-064); HR-added
   const ADDRESS = 'fictional-qze-careers';
   const hashOf = (label: string) => createHash('sha256').update(`fictional-client:${label}`).digest('hex');
 
-  it('a careers application queues nothing, even with candidate e-mail on; no careers receipt path exists', async () => {
+  it('slice 21a (5722): with candidate e-mail on, an unverified careers application is refused and queues nothing (receipts need a verified address)', async () => {
     await emailOn();
     await updateCareersSettings(admin, base.companyId, { address: ADDRESS, displayName: 'Fictional QZE Careers', headline: 'h', introduction: 'i', notice: 'Fictional notice.' });
     await setCareersPublished(admin, base.companyId, true);
@@ -225,8 +225,8 @@ describe('case 128 — receipts: none for careers applications (D-064); HR-added
     const { id: jobId } = await createJob(admin, job());
     await setJobCareersPage(admin, jobId, true);
     expect(await submitCareersApplication({ address: ADDRESS, jobId, fullName: 'Fictional QZE Visitor', email: 'qze.visitor@example.test', mobile: '', message: '',
-      consent: 'on', noticeVersion: '1', website: '', resume: null, clientHash: () => hashOf('qze'), currentNoticeVersion: 1 })).toEqual({ ok: true, outcome: 'received' });
-    expect(await owner.db.execute(sql`select 1 from recruitment_candidate where tenant_id = ${base.tenantId}::uuid and email = 'qze.visitor@example.test'`)).toHaveLength(1);
+      consent: 'on', noticeVersion: '1', website: '', resume: null, clientHash: () => hashOf('qze'), currentNoticeVersion: 1 })).toEqual({ ok: true, outcome: 'unverified' });
+    expect(await owner.db.execute(sql`select 1 from recruitment_candidate where tenant_id = ${base.tenantId}::uuid and email = 'qze.visitor@example.test'`)).toHaveLength(0);
     expect(await emails()).toHaveLength(0);
     expect(await owner.db.execute(sql`select 1 from pg_proc where proname like 'recruitment_careers_receipt%'`)).toEqual([]);
     expect(await owner.db.execute(sql`select 1 from pg_trigger where tgrelid = 'public.recruitment_careers_application'::regclass and not tgisinternal

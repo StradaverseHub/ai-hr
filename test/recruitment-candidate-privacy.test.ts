@@ -562,7 +562,7 @@ describe('case 26 — destruction', () => {
     expect(await counts()).toEqual(before);
     const [event] = await owner.db.execute<{ payload: Record<string, unknown> }>(sql`
       select payload from domain_event where event_type = 'recruitment-candidate.personal-data-removed' and aggregate_id = ${t.candX}::uuid`);
-    expect(event.payload).toEqual({ companyId: base.companyId, files: 2, restricted: 1, entries: 2, tags: 1, consents: 1, scorecards: 1, offerValues: 4, referrals: 0, careersMessages: 0, agencySubmissions: 0, agencyMatchedSubmissions: 0, screeningNotes: 0, screeningComments: 0, backgroundChecksCancelled: 0, backgroundCheckFiles: 0, backgroundCheckDetails: 0, poolMemberships: 0, blockedMarks: 0, blockedEntries: 0, customValues: 0, customRestrictedValues: 0, toAssign: 0, importNotes: 0, candidateEmails: 0, applications: 2, offers: 1 });
+    expect(event.payload).toEqual({ companyId: base.companyId, files: 2, restricted: 1, entries: 2, tags: 1, consents: 1, scorecards: 1, offerValues: 4, referrals: 0, careersMessages: 0, agencySubmissions: 0, agencyMatchedSubmissions: 0, screeningNotes: 0, screeningComments: 0, backgroundChecksCancelled: 0, backgroundCheckFiles: 0, backgroundCheckDetails: 0, poolMemberships: 0, blockedMarks: 0, blockedEntries: 0, customValues: 0, customRestrictedValues: 0, toAssign: 0, importNotes: 0, candidateEmails: 0, careersVerifications: 0, applications: 2, offers: 1 });
 
     // The record is closed afterwards, and a second removal finds nothing to remove.
     expect(await code(updateCandidateProfile(admin, t.candX, { fullName: 'Fictional again' }))).toBe('candidate_removed');

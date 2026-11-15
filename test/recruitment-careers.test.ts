@@ -748,12 +748,12 @@ describe('the owner-only, marker-bound policies under a production-like owner', 
       expect((page.r as { jobs: { id: string }[] }).jobs.map((j) => j.id)).toEqual([jobId]);
       const [one] = await tx`select app.recruitment_careers_job(${ADDRESS}, ${jobId}::uuid) as r`;
       expect((one.r as { notice: { version: number } }).notice.version).toBe(1);
-      const [ok] = await tx`select app.recruitment_careers_submit(${ADDRESS}, ${jobId}::uuid, ${hashOf('owner')}, 'Fictional Owner Applicant', 'owner.applicant@example.test',
+      const [ok] = await tx`select app.recruitment_careers_apply(null, ${ADDRESS}, ${jobId}::uuid, ${hashOf('owner')}, 'Fictional Owner Applicant', 'owner.applicant@example.test',
         '+60 12-000 1111', 'Fictional message', 1, false, 'cv.pdf', 'application/pdf', ${pdf()}::bytea) as r`;
       expect(ok.r).toMatchObject({ status: 'received' }); // 5722: the result also names the application and candidate (owner callers only)
-      const [repeat] = await tx`select app.recruitment_careers_submit(${ADDRESS}, ${jobId}::uuid, ${hashOf('owner-2')}, 'Fictional Owner Applicant', 'OWNER.applicant@example.test',
+      const [repeat] = await tx`select app.recruitment_careers_apply(null, ${ADDRESS}, ${jobId}::uuid, ${hashOf('owner-2')}, 'Fictional Owner Applicant', 'OWNER.applicant@example.test',
         null, null, 1, false) as r`;
-      expect(repeat.r).toEqual({ status: 'received' });
+      expect(repeat.r).toMatchObject({ status: 'received' });
       // The app role still reads none of it directly.
       expect(await tx`select 1 from recruitment_candidate`).toEqual([]);
       expect(await markers()).toBe(0);
@@ -769,8 +769,8 @@ describe('the owner-only, marker-bound policies under a production-like owner', 
       expect(marked.length).toBe(14);
       for (const p of marked) await tx.unsafe(`drop policy ${p.name} on ${p.tbl}`);
       await anonymous();
-      const [refused] = await tx`select app.recruitment_careers_submit(${ADDRESS}, ${jobId}::uuid, ${hashOf('owner-3')}, 'Fictional Second', 'second@example.test', null, null, 1, false) as r`;
-      expect(refused.r).toEqual({ status: 'not_found' });
+      const [refused] = await tx`select app.recruitment_careers_apply(null, ${ADDRESS}, ${jobId}::uuid, ${hashOf('owner-3')}, 'Fictional Second', 'second@example.test', null, null, 1, false) as r`;
+      expect(refused.r).toMatchObject({ status: 'not_found' });
       const [stillPublic] = await tx`select app.recruitment_careers_page(${ADDRESS}, null, null, null, 1) as r`;
       expect((stillPublic.r as { jobs: { id: string }[] }).jobs.map((j) => j.id)).toEqual([jobId]);
       await tx`reset role`;
