@@ -5829,7 +5829,13 @@
     "rewards": "ค่าตอบแทนและรางวัล",
     "reviewRewards": "ตรวจสอบค่าตอบแทนและรางวัล",
     "focusedDescription": "คำขอนี้ได้รับมอบหมายให้คุณดำเนินการในขณะนี้",
-    "viewAllAssigned": "ดูการอนุมัติทั้งหมด"
+    "viewAllAssigned": "ดูการอนุมัติทั้งหมด",
+    "probation": "Probation",
+    "probationPart": "Part {part} review",
+    "probationDue": "due {date}",
+    "probationOpen": "Open review",
+    "probationCapped": "Showing the first {shown} approvals.",
+    "probationSeeAll": "See all in the Probation tracker"
   },
   "performance": {
     "list": {
@@ -15254,7 +15260,9 @@
       "rewardReview": "ตรวจทานผลตอบแทน",
       "probation": "การยืนยันผ่านทดลองงาน",
       "contract_staff": "การจัดการสัญญา",
-      "contractDateCorrection": "การแก้ไขวันที่สัญญา"
+      "contractDateCorrection": "การแก้ไขวันที่สัญญา",
+      "probationApproval": "Approve probation review",
+      "probationTask": "Probation task"
     },
     "tasksEmpty": "ไม่มีรายการที่ต้องดำเนินการ",
     "title": "การแจ้งเตือน",
@@ -32289,7 +32297,9 @@
       "assessmentWork": "การประเมินผลงาน",
       "careerPlan": "การตรวจทานแผนอาชีพ",
       "calibration": "การปรับเทียบผลงาน",
-      "rewardReview": "การตรวจทานผลตอบแทน"
+      "rewardReview": "การตรวจทานผลตอบแทน",
+      "probationApproval": "Probation approval",
+      "probationTask": "Probation task"
     },
     "quickActions": {
       "leave": "ยื่นใบลา",
@@ -35898,7 +35908,9 @@
         "review_letter": "Review letter",
         "record_action": "Record action",
         "log_followup": "Log follow-up"
-      }
+      },
+      "mineOnly": "Showing only cases with work waiting on you.",
+      "mineClear": "Show all cases"
     },
     "applyFilters": "ใช้ตัวกรอง",
     "clearFilters": "ล้างตัวกรอง",

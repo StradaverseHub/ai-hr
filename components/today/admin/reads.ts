@@ -59,7 +59,7 @@ export const readExceptions=cache((s:SessionContext,key:string)=>shared(s,()=>re
 function queueModules(s:SessionContext){
  let failed=false;
  const on=(code:string)=>{try{return isModuleEnabled(s,code);}catch(error){if(error instanceof EntitlementsResolutionFailedError){failed=true;return false;}throw error;}};
- return {modules:{attendance:on('attendance'),claims:on('claims'),performance:on('performance'),rewards:on('rewards')},failed:()=>failed};
+ return {modules:{attendance:on('attendance'),claims:on('claims'),performance:on('performance'),rewards:on('rewards'),probation:on('lifecycle')||!!s.entitlements?.scopedModules.lifecycle?.length},failed:()=>failed};
 }
 /** The manager's decisions: the approvals queue for the companies in view, WITHOUT notice acknowledgements (those are
  * the person's own, not decisions), split into what /approvals lists (counted, linked there) and the other work each

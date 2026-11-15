@@ -1,3 +1,14 @@
+# Probation work queues and form approval routing — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-queues-routing-20261116` (lane E) appends `5751_probation_queues_and_form_routing` at idx
+5151 / when 1793330005451 (assigned by the build coordinator). SHA256 `2e03e7ca2d31736db62b9f1f862ca1a1d4ba67046bf3d26f84848ac4329b177f`.
+It adds `app.probation_task_list(category, limit)` (granted to `ai_hr_app`): the caller's current Probation work,
+bounded (at most 200 candidates confirmed per read) and set-based, each candidate confirmed by the case view's own
+`app.probation_commands`; and re-creates `app.probation_inbox()` (same shape) to answer from it. No table, row, grant
+or purpose-owned object changes. The file is extended within lane E (form approval routing) before integration; this
+paragraph carries the current bytes' hash. The installed ledgers were not read; recheck watermarks and peer claims at
+admission. No installation authority.
+
 # Probation tracker plan robustness — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/probation-lane-queues-routing-20261116` (lane E) appends `5750_probation_tracker_plan_robustness` at idx

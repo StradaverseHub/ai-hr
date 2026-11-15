@@ -14,8 +14,9 @@ import {dispatchNotifications,notificationStillTargets} from '../core/notificati
 import {createNoticeSweepAccess} from '../core/notice-projection';
 import {PROBATION_WORKFLOW_EVENTS} from '../lib/probation-workflow';
 import {newProbationLetterTemplate} from '../lib/probation-letter-template';
-import {probationCase,saveProbationDraft,applyProbationOutcome,requestProbationDateShift,applyProbationDateShift,previewProbationWorkflow,uploadProbationEvidence,actOnProbation,saveProbationLetterTemplate,probationLetterTemplateChoices,prepareProbationLetter,readProbationLetter,actOnProbationLetter,releaseProbationLetter,probationIntakeWorkspace,saveProbationIntakeDisposition,uploadProbationCutoverEvidence,readProbationCutoverEvidence,prepareProbationCutover,approveProbationCutover,activatePreparedProbationCutover,saveProbationWorkflow,probationRequiredWorkflowStatus,requestProbationLegacyReconciliation,approveProbationLegacyReconciliation,applyProbationLegacyReconciliation,probationIntakeCompanies,probationNavigationAccess,probationInbox,supersedeProbationDateShift,pauseProbationCompany,reconcileProbationDates,probationPublicationRetirement,retireProbationPublication,proposeProbationOfflineFinalDecision,adjudicateProbationOfflineFinalDecision} from '../packs/probation/service';
+import {probationTaskList,probationCase,saveProbationDraft,applyProbationOutcome,requestProbationDateShift,applyProbationDateShift,previewProbationWorkflow,uploadProbationEvidence,actOnProbation,saveProbationLetterTemplate,probationLetterTemplateChoices,prepareProbationLetter,readProbationLetter,actOnProbationLetter,releaseProbationLetter,probationIntakeWorkspace,saveProbationIntakeDisposition,uploadProbationCutoverEvidence,readProbationCutoverEvidence,prepareProbationCutover,approveProbationCutover,activatePreparedProbationCutover,saveProbationWorkflow,probationRequiredWorkflowStatus,requestProbationLegacyReconciliation,approveProbationLegacyReconciliation,applyProbationLegacyReconciliation,probationIntakeCompanies,probationNavigationAccess,probationInbox,supersedeProbationDateShift,pauseProbationCompany,reconcileProbationDates,probationPublicationRetirement,retireProbationPublication,proposeProbationOfflineFinalDecision,adjudicateProbationOfflineFinalDecision} from '../packs/probation/service';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
+import {listPendingTasks} from '../core/approvals-inbox';
 import {adminCtx,entitledCtx,closeAll,setModule,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {bootstrapProbationPreparer,installProbationDrafts,probationSetup,saveProbationConfiguration,DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,defaultProbationRoutes,canConfigureProbationWorkflows,probationEmployeeNameSuggestions,probationSummaryRows,sweepProbation} from '../packs/probation/service';
 let b:Base,admin:SessionContext;
@@ -753,5 +754,41 @@ describe('general delegation of Probation approvals (decision 7)',()=>{
   expect(part.signing!.document.actions).toContainEqual(expect.objectContaining({role:'hod',action:'signed',actorId:delegate.userId,representedId:peer.userId}));
   // The original holder no longer holds the step while the delegation covers it.
   await expect(actOnProbation(peer.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,stepId:hod.id,command:'approve',method:'typed',value:'Fictional Peer',consent:true})).rejects.toThrow();
+ });
+});
+describe('Probation work in My Action Centre (migration 5751)',()=>{
+ it('lists each current step once as an Approval Item or a task, from the same commands the case view offers, and moves an Approve step to a Probation delegate',async()=>{
+  const{ids,staff,peer,current}=await submittedForAcknowledgement();
+  const modules={attendance:false,claims:false,performance:false,rewards:false,probation:true};
+  const href=`/lifecycle/probation/${ids.caseId}/${ids.part}`;
+  const onCase=(list:{items:{caseId:string}[]})=>list.items.filter(item=>item.caseId===ids.caseId);
+  // The employee's acknowledgement is a task, never an approval, and reaches the shared task list as probationTask.
+  expect(onCase(await probationTaskList(staff.ctx))).toEqual([expect.objectContaining({partId:ids.part,kind:'acknowledge',category:'task',href})]);
+  expect(onCase(await probationTaskList(staff.ctx,{category:'approval'}))).toEqual([]);
+  expect((await listPendingTasks(staff.ctx,undefined,modules)).filter(task=>task.kind.startsWith('probation'))).toEqual([expect.objectContaining({id:ids.part,kind:'probationTask',linkPath:href})]);
+  expect(onCase(await probationTaskList(peer.ctx))).toEqual([]);
+  let part=await current(staff.ctx);
+  await saveProbationDraft(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'employee',patch:{employeeComments:'I acknowledge the review discussion.'}});
+  part=await current(staff.ctx);await actOnProbation(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'acknowledge',method:'typed',value:'Fictional Staff',consent:true});
+  expect(onCase(await probationTaskList(staff.ctx))).toEqual([]);
+  // The Head of Department's Approve step is an Approval Item (probationApproval), exactly what the case view offers.
+  expect((await current(peer.ctx)).allowedCommands).toContain('approve');
+  expect(onCase(await probationTaskList(peer.ctx,{category:'approval'}))).toEqual([expect.objectContaining({partId:ids.part,kind:'approve',category:'approval',href,companyId:b.companyId})]);
+  expect(onCase(await probationTaskList(peer.ctx,{category:'task'}))).toEqual([]);
+  expect((await listPendingTasks(peer.ctx,undefined,modules)).filter(task=>task.kind==='probationApproval').map(task=>task.id)).toEqual([ids.part]);
+  expect((await listPendingTasks(peer.ctx,undefined,{...modules,probation:false})).filter(task=>task.kind.startsWith('probation'))).toEqual([]);
+  expect((await probationTaskList(peer.ctx,{category:'approval',companyIds:[randomUUID()]})).items).toEqual([]);
+  // The tracker filtered to the caller's work shows the same case.
+  expect((await probationSummaryRows(peer.ctx,{mine:true,limit:100})).rows.map(row=>row.id)).toEqual([ids.caseId]);
+  // A general delegation with Probation ticked moves the Approve step (and the Approval Item) to the delegate.
+  const delegate=await person('Fictional Queue Delegate'),outsider=await person('Fictional Queue Outsider');
+  const[line]=await owner.db.execute<{id:string}>(sql`insert into reporting_line(tenant_id,subordinate_employment_id,manager_employment_id,line_type,valid_from) values(${b.tenantId}::uuid,${peer.employmentId}::uuid,${delegate.employmentId}::uuid,'delegate',${addDaysIso(todayInKualaLumpur(),-1)}::date) returning id`);
+  expect(onCase(await probationTaskList(delegate.ctx))).toEqual([]);
+  await owner.db.execute(sql`insert into reporting_line_scope(tenant_id,reporting_line_id,module,task_type) values(${b.tenantId}::uuid,${line.id}::uuid,'probation','probation.approve')`);
+  expect(onCase(await probationTaskList(delegate.ctx,{category:'approval'}))).toEqual([expect.objectContaining({partId:ids.part,kind:'approve'})]);
+  expect(onCase(await probationTaskList(peer.ctx))).toEqual([]);
+  expect(onCase(await probationTaskList(outsider.ctx))).toEqual([]);
+  // The former inbox keeps its shape and answers from the same owner.
+  expect(await probationInbox(delegate.ctx)).toMatchObject({items:[expect.objectContaining({caseId:ids.caseId,partId:ids.part,kind:'approve',href})]});
  });
 });

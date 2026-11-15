@@ -120,7 +120,7 @@ it('reads the shell bell, Home, the worker gate, Personnel movement history and 
  const stop=accessLockSampler(b.tenantId);
  // The root layout's bell: a passive background read in the request's shared snapshot.
  const bell=await withBackgroundReadWork(b.tenantId,()=>withSharedReadSnapshot(ctx,()=>pendingTaskSummary(ctx,[b.companyId],
-  {attendance:false,claims:false,performance:false,rewards:false},{deferClaimPreview:true})));
+  {attendance:false,claims:false,performance:false,rewards:false,probation:false},{deferClaimPreview:true})));
  const gate=await workerRunGate(ctx,RECOMMENDER_WORKER);
  const audience=todayAudience(ctx),needsYou=await readNeedsYou(ctx,{scopeIds:[b.companyId],audience,today,locale:'en'});
  const history=await movementHistory(ctx,subject.employmentId),hired=history[0];

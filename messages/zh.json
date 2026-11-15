@@ -5829,7 +5829,13 @@
     "rewards": "薪酬奖励",
     "reviewRewards": "审核薪酬奖励",
     "focusedDescription": "此申请目前由您处理。",
-    "viewAllAssigned": "查看所有审批"
+    "viewAllAssigned": "查看所有审批",
+    "probation": "Probation",
+    "probationPart": "Part {part} review",
+    "probationDue": "due {date}",
+    "probationOpen": "Open review",
+    "probationCapped": "Showing the first {shown} approvals.",
+    "probationSeeAll": "See all in the Probation tracker"
   },
   "performance": {
     "list": {
@@ -15254,7 +15260,9 @@
       "rewardReview": "审阅薪酬奖励",
       "probation": "试用期转正确认",
       "contract_staff": "合同管理",
-      "contractDateCorrection": "合同日期更正"
+      "contractDateCorrection": "合同日期更正",
+      "probationApproval": "Approve probation review",
+      "probationTask": "Probation task"
     },
     "tasksEmpty": "没有需要您处理的事项",
     "title": "通知",
@@ -32289,7 +32297,9 @@
       "assessmentWork": "绩效考核",
       "careerPlan": "职业发展计划审阅",
       "calibration": "绩效校准",
-      "rewardReview": "薪酬奖励审阅"
+      "rewardReview": "薪酬奖励审阅",
+      "probationApproval": "Probation approval",
+      "probationTask": "Probation task"
     },
     "quickActions": {
       "leave": "申请休假",
@@ -35898,7 +35908,9 @@
         "review_letter": "Review letter",
         "record_action": "Record action",
         "log_followup": "Log follow-up"
-      }
+      },
+      "mineOnly": "Showing only cases with work waiting on you.",
+      "mineClear": "Show all cases"
     },
     "applyFilters": "应用筛选",
     "clearFilters": "清除筛选",

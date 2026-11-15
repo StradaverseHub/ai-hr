@@ -1606,7 +1606,7 @@ it('completes every manager Home card and Today section read without a handled f
    const rewardsService=await import('../../packs/rewards/service'),lifecycleService=await import('../../packs/lifecycle/service');
    const {pendingProfileTaskMetadata,pendingProfileTasksFromCandidates}=await import('../../core/profile'),{pendingNoticeAcknowledgementTasks}=await import('../../core/notice');
    const {pendingResignationTaskMetadata}=await import('../../core/offboarding'),{pendingReviewTaskMetadata}=await import('../../core/employment-review');
-   const ctx=actor.ctx,inboxModules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')};
+   const ctx=actor.ctx,inboxModules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards'),probation:false};
    const modules={...inboxModules,lifecycle:isModuleEnabled(ctx,'lifecycle')};
    const bundle=await withSharedReadSnapshot(ctx,()=>bundles.readAccountTaskBundle(ctx,modules));
    // The statement answers exactly when the owners' own assigned-work principal proof holds (a login that is no

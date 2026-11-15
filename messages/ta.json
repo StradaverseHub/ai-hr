@@ -5829,7 +5829,13 @@
     "rewards": "வெகுமதிகள்",
     "reviewRewards": "வெகுமதிகளை மதிப்பாய்வு செய்",
     "focusedDescription": "இந்தக் கோரிக்கை தற்போது உங்களுக்கு ஒதுக்கப்பட்டுள்ளது.",
-    "viewAllAssigned": "அனைத்து ஒப்புதல்களையும் பார்க்கவும்"
+    "viewAllAssigned": "அனைத்து ஒப்புதல்களையும் பார்க்கவும்",
+    "probation": "Probation",
+    "probationPart": "Part {part} review",
+    "probationDue": "due {date}",
+    "probationOpen": "Open review",
+    "probationCapped": "Showing the first {shown} approvals.",
+    "probationSeeAll": "See all in the Probation tracker"
   },
   "performance": {
     "list": {
@@ -15254,7 +15260,9 @@
       "rewardReview": "வெகுமதிகளை மதிப்பாய்வு செய்யவும்",
       "probation": "சோதனைக் காலப் பணி உறுதிப்படுத்தல்",
       "contract_staff": "ஒப்பந்த மேலாண்மை",
-      "contractDateCorrection": "ஒப்பந்த தேதி திருத்தம்"
+      "contractDateCorrection": "ஒப்பந்த தேதி திருத்தம்",
+      "probationApproval": "Approve probation review",
+      "probationTask": "Probation task"
     },
     "tasksEmpty": "உங்கள் நடவடிக்கை தேவைப்படுவது எதுவும் இல்லை",
     "title": "அறிவிப்புகள்",
@@ -32289,7 +32297,9 @@
       "assessmentWork": "செயல்திறன் மதிப்பீடு",
       "careerPlan": "தொழில் திட்ட மதிப்பாய்வு",
       "calibration": "செயல்திறன் அளவுத்திருத்தம்",
-      "rewardReview": "வெகுமதி மதிப்பாய்வு"
+      "rewardReview": "வெகுமதி மதிப்பாய்வு",
+      "probationApproval": "Probation approval",
+      "probationTask": "Probation task"
     },
     "quickActions": {
       "leave": "விடுப்புக்கு விண்ணப்பி",
@@ -35898,7 +35908,9 @@
         "review_letter": "Review letter",
         "record_action": "Record action",
         "log_followup": "Log follow-up"
-      }
+      },
+      "mineOnly": "Showing only cases with work waiting on you.",
+      "mineClear": "Show all cases"
     },
     "applyFilters": "வடிகட்டிகளைப் பயன்படுத்தவும்",
     "clearFilters": "வடிகட்டிகளை அழிக்கவும்",

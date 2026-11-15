@@ -84,7 +84,7 @@ export const readAskAllowed=cache((s:SessionContext)=>shared(s,()=>mayUseAssista
  * off, as the Tasks page's quiet check does. */
 export const readWaitingForYou=cache((s:SessionContext)=>shared(s,()=>{
  const on=(code:string)=>moduleState(s,code,null)==='on';
- return pendingTaskSummary(s,undefined,{attendance:on('attendance'),claims:on('claims'),performance:on('performance'),rewards:on('rewards')});
+ return pendingTaskSummary(s,undefined,{attendance:on('attendance'),claims:on('claims'),performance:on('performance'),rewards:on('rewards'),probation:on('lifecycle')||!!s.entitlements?.scopedModules.lifecycle?.length});
 }));
 
 /** The Notice Board, ported from the retired dashboard (owner decision, 12 Nov 2026): the person's newest live notices

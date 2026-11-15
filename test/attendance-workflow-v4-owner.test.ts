@@ -135,7 +135,7 @@ describe('v4 uses the immutable participant and final Attendance owners',()=>{
  });
  it('exposes a real named v4 assignment through the canonical inbox without granting unrelated queues',async()=>{
   const f=await fixture('all_required');
-  const modules={attendance:true,claims:true,performance:false,rewards:false};
+  const modules={attendance:true,claims:true,performance:false,rewards:false,probation:false};
   expect(await pendingAttendanceTaskMetadata(f.second.ctx,[base.companyId])).toEqual(await legacyPendingAttendanceTaskMetadata(f.second.ctx,[base.companyId]));
   await verifyWorkflowOnlyAttendanceHeader(f.second.ctx,f.id,f.worker.employmentId);
   expect(await listPendingTasks(f.second.ctx,[base.companyId],modules)).toEqual([

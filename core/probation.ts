@@ -216,7 +216,9 @@ const trackerFacetColumns=sql`c.data->'facts'->>'businessGroupId' as bg,c.data->
  * returns the filter facets; a second statement adds, for that page only, who is waiting, letters and holder names.
  * The cost of the page details does not grow with the offset.
  */
-export function probationSummaryRows(ctx:SessionContext,filters:{companyId?:string;businessGroupId?:string;businessUnitId?:string;departmentId?:string;grade?:string;pbpUserId?:string;state?:string;search?:string;flag?:ProbationTrackerFlag;offset?:number;limit?:number}={}){return withProbationTenant(ctx,async tx=>{
+export function probationSummaryRows(ctx:SessionContext,filters:{companyId?:string;businessGroupId?:string;businessUnitId?:string;departmentId?:string;grade?:string;pbpUserId?:string;state?:string;search?:string;flag?:ProbationTrackerFlag;
+ /** Only cases with work waiting on the caller (app.probation_task_list, the same owner as My Action Centre). */
+ mine?:boolean;offset?:number;limit?:number}={}){return withProbationTenant(ctx,async tx=>{
  const limit=Math.max(1,Math.min(100,Math.floor(filters.limit??50))),offset=Math.max(0,Math.min(100000,Math.floor(filters.offset??0)));
  const scope=trackerScope(ctx);
  const today=todayInKualaLumpur();
@@ -230,7 +232,7 @@ export function probationSummaryRows(ctx:SessionContext,filters:{companyId?:stri
  kpi_ack:anyPart(sql`p.data->>'type'='1' and p.data->>'managerSubmittedAt' is not null and p.data->>'acknowledgedAt' is null and p.data->>'state' not in('completed_offline','cancelled')`),
  overridden:anyPart(sql`p.data->>'override'='true' and p.data->>'state'<>'cancelled'`)};
  const scoped=sql`where c.tenant_id=${ctx.tenantId}::uuid ${scope?sql`and c.company_id=any(array[${sql.join(scope.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`:sql``}`;
- const conditions=sql`${scoped} ${filters.companyId?sql`and c.company_id=${uuid(filters.companyId)}::uuid`:sql``} ${filters.businessGroupId?sql`and c.data->'facts'->>'businessGroupId'=${uuid(filters.businessGroupId)}`:sql``} ${filters.businessUnitId?sql`and c.data->'facts'->>'businessUnitId'=${uuid(filters.businessUnitId)}`:sql``} ${filters.departmentId?sql`and c.data->'facts'->>'departmentId'=${uuid(filters.departmentId)}`:sql``} ${filters.grade?sql`and c.data->>'gradeAtStart'=${filters.grade}`:sql``} ${filters.pbpUserId?sql`and c.data->'facts'->'holders'->>'pbp'=${uuid(filters.pbpUserId)}`:sql``} ${filters.state?sql`and c.data->>'state'=${filters.state}`:sql``} ${filters.search?sql`and position(lower(${filters.search.trim().slice(0,100)}) in lower(c.data->'facts'->>'employeeName'))>0`:sql``}`;
+ const conditions=sql`${scoped} ${filters.companyId?sql`and c.company_id=${uuid(filters.companyId)}::uuid`:sql``} ${filters.businessGroupId?sql`and c.data->'facts'->>'businessGroupId'=${uuid(filters.businessGroupId)}`:sql``} ${filters.businessUnitId?sql`and c.data->'facts'->>'businessUnitId'=${uuid(filters.businessUnitId)}`:sql``} ${filters.departmentId?sql`and c.data->'facts'->>'departmentId'=${uuid(filters.departmentId)}`:sql``} ${filters.grade?sql`and c.data->>'gradeAtStart'=${filters.grade}`:sql``} ${filters.pbpUserId?sql`and c.data->'facts'->'holders'->>'pbp'=${uuid(filters.pbpUserId)}`:sql``} ${filters.state?sql`and c.data->>'state'=${filters.state}`:sql``} ${filters.search?sql`and position(lower(${filters.search.trim().slice(0,100)}) in lower(c.data->'facts'->>'employeeName'))>0`:sql``} ${filters.mine?sql`and c.id in(select (task->>'caseId')::uuid from jsonb_array_elements(app.probation_task_list(null,200)->'items') task)`:sql``}`;
  type Counts={total:number;overdue:number;end_passed:number;ending14:number;low_result:number;kpi_submit:number;kpi_ack:number;overridden:number};
  const[result]=await tx.execute<{counts:Counts;rows:ProbationSummaryRow[];facets:ProbationTrackerFacet[]}>(sql`with vc as materialized (select * from app.probation_tracker_cases()),
   base as materialized (select c.* from vc c ${conditions}),
@@ -499,7 +501,35 @@ export function probationNavigationAccess(ctx:SessionContext):Promise<{page:bool
 
 export function probationSignerCandidates(ctx:SessionContext,caseId:string,search=''){return withProbationTenant(ctx,tx=>tx.execute<{id:string;name:string}>(sql`select * from app.probation_signer_candidates(${uuid(caseId)}::uuid,${search.slice(0,100)})`));}
 export type ProbationInbox={count:number;items:{caseId:string;partId:string;employeeName:string;kind:string;href:string}[]};
-export function probationInbox(ctx:SessionContext):Promise<ProbationInbox>{if(ctx.entitlementsExempt===undefined&&!isModuleEnabled(ctx,'lifecycle')&&!ctx.entitlements?.scopedModules.lifecycle?.some(company=>isModuleEnabled(ctx,'lifecycle',company)))return Promise.resolve({count:0,items:[]});return withProbationTenant(ctx,async tx=>{const[row]=await tx.execute<{data:ProbationInbox}>(sql`select app.probation_inbox() as data`);return row.data;});}
+/** Whether Probation work can exist for this caller: Lifecycle on for the tenant or for any scoped company (throws like isModuleEnabled). */
+export function probationModuleOn(ctx:SessionContext):boolean{return ctx.entitlementsExempt!==undefined||isModuleEnabled(ctx,'lifecycle')||!!ctx.entitlements?.scopedModules.lifecycle?.some(company=>isModuleEnabled(ctx,'lifecycle',company));}
+export function probationInbox(ctx:SessionContext):Promise<ProbationInbox>{if(!probationModuleOn(ctx))return Promise.resolve({count:0,items:[]});return withProbationTenant(ctx,async tx=>{const[row]=await tx.execute<{data:ProbationInbox}>(sql`select app.probation_inbox() as data`);return row.data;});}
+/** One current Probation task of the caller, as the case view offers it (app.probation_task_list, migration 5751). */
+export type ProbationTaskItem={caseId:string;partId:string;companyId:string;employeeName:string;kind:string;category:'approval'|'task';href:string;dueOn:string|null;updatedAt:string;partType:string|null};
+/** `capped`: more than 200 candidates exist; the screens link to the tracker filtered to the caller's work. */
+export type ProbationTaskList={count:number;capped:boolean;items:ProbationTaskItem[]};
+/** The caller's current Probation work, bounded (at most 200 confirmed, `limit` returned) and set-based. */
+export function probationTaskList(ctx:SessionContext,options:{category?:'approval'|'task';limit?:number;companyIds?:readonly string[]}={}):Promise<ProbationTaskList>{
+ if(!probationModuleOn(ctx))return Promise.resolve({count:0,capped:false,items:[]});
+ const limit=Math.max(1,Math.min(200,Math.floor(options.limit??200)));
+ return withProbationTenant(ctx,async tx=>{
+  const[row]=await tx.execute<{data:ProbationTaskList}>(sql`select app.probation_task_list(${options.category??null}::text,${limit}::integer) as data`);
+  const data=row.data;
+  if(!options.companyIds)return data;
+  const companies=new Set(options.companyIds),items=data.items.filter(item=>companies.has(item.companyId));
+  return {count:items.length,capped:data.capped,items};
+ });
+}
+/** The kind of task label for one Probation task in the shared task list (lib/assigned-work.ts PACK_TASK_KINDS). */
+const probationPackKind=(item:ProbationTaskItem)=>item.category==='approval'?'probationApproval' as const:'probationTask' as const;
+/**
+ * WP-A1 provider for Probation (core/approvals-inbox.ts PACK_TASK_SOURCES): the caller's Approve steps and other
+ * Probation tasks, each linking to the case view, which authorizes again. createdAt is the part's last change.
+ */
+export async function pendingProbationTasks(ctx:SessionContext,scopeIds:string[]|undefined):Promise<import('../lib/assigned-work').PackTaskItem[]>{
+ const list=await probationTaskList(ctx,{companyIds:scopeIds});
+ return list.items.map(item=>({id:item.partId,kind:probationPackKind(item),subjectName:item.employeeName,createdAt:new Date(item.updatedAt).toISOString(),linkPath:item.href}));
+}
 
 async function sealProbationRenderTx(tx:Tx,ctx:SessionContext,requestId:string):Promise<'sealed'|'held'|'paused'>{
  const[row]=await tx.execute<{data:{sealed?:boolean;held?:boolean;paused?:boolean;kind:'review'|'letter';partId:string;caseId:string;contentHash:string;data:Record<string,unknown>}}>(sql`select app.probation_owner_render_context(${requestId}::uuid) as data`);const context=row.data;if(context.paused)return'paused';if(context.held)return'held';if(context.sealed)return'sealed';

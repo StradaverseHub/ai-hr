@@ -5829,7 +5829,13 @@
     "rewards": "Ganjaran",
     "reviewRewards": "Semak ganjaran",
     "focusedDescription": "Permohonan ini sedang ditugaskan kepada anda.",
-    "viewAllAssigned": "Lihat semua kelulusan"
+    "viewAllAssigned": "Lihat semua kelulusan",
+    "probation": "Probation",
+    "probationPart": "Part {part} review",
+    "probationDue": "due {date}",
+    "probationOpen": "Open review",
+    "probationCapped": "Showing the first {shown} approvals.",
+    "probationSeeAll": "See all in the Probation tracker"
   },
   "performance": {
     "list": {
@@ -15254,7 +15260,9 @@
       "rewardReview": "Semak ganjaran",
       "probation": "Pengesahan Percubaan",
       "contract_staff": "Pengurusan Kontrak",
-      "contractDateCorrection": "Pembetulan tarikh kontrak"
+      "contractDateCorrection": "Pembetulan tarikh kontrak",
+      "probationApproval": "Approve probation review",
+      "probationTask": "Probation task"
     },
     "tasksEmpty": "Tiada apa-apa memerlukan tindakan anda",
     "title": "Pemberitahuan",
@@ -32289,7 +32297,9 @@
       "assessmentWork": "Penilaian prestasi",
       "careerPlan": "Semakan pelan kerjaya",
       "calibration": "Kalibrasi prestasi",
-      "rewardReview": "Semakan ganjaran"
+      "rewardReview": "Semakan ganjaran",
+      "probationApproval": "Probation approval",
+      "probationTask": "Probation task"
     },
     "quickActions": {
       "leave": "Mohon cuti",
@@ -35898,7 +35908,9 @@
         "review_letter": "Review letter",
         "record_action": "Record action",
         "log_followup": "Log follow-up"
-      }
+      },
+      "mineOnly": "Showing only cases with work waiting on you.",
+      "mineClear": "Show all cases"
     },
     "applyFilters": "Gunakan penapis",
     "clearFilters": "Kosongkan penapis",

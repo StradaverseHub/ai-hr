@@ -5829,7 +5829,13 @@
     "rewards": "Khen thưởng",
     "reviewRewards": "Xét duyệt khen thưởng",
     "focusedDescription": "Yêu cầu này hiện được giao cho bạn xử lý.",
-    "viewAllAssigned": "Xem tất cả phê duyệt"
+    "viewAllAssigned": "Xem tất cả phê duyệt",
+    "probation": "Probation",
+    "probationPart": "Part {part} review",
+    "probationDue": "due {date}",
+    "probationOpen": "Open review",
+    "probationCapped": "Showing the first {shown} approvals.",
+    "probationSeeAll": "See all in the Probation tracker"
   },
   "performance": {
     "list": {
@@ -15254,7 +15260,9 @@
       "rewardReview": "Xem xét đãi ngộ",
       "probation": "Xác nhận thử việc",
       "contract_staff": "Quản lý hợp đồng",
-      "contractDateCorrection": "Điều chỉnh ngày hợp đồng"
+      "contractDateCorrection": "Điều chỉnh ngày hợp đồng",
+      "probationApproval": "Approve probation review",
+      "probationTask": "Probation task"
     },
     "tasksEmpty": "Không có mục nào cần bạn xử lý",
     "title": "Thông báo",
@@ -32289,7 +32297,9 @@
       "assessmentWork": "Đánh giá năng lực",
       "careerPlan": "Xem xét kế hoạch nghề nghiệp",
       "calibration": "Hiệu chỉnh hiệu suất",
-      "rewardReview": "Xem xét đãi ngộ"
+      "rewardReview": "Xem xét đãi ngộ",
+      "probationApproval": "Probation approval",
+      "probationTask": "Probation task"
     },
     "quickActions": {
       "leave": "Đăng ký nghỉ phép",
@@ -35898,7 +35908,9 @@
         "review_letter": "Review letter",
         "record_action": "Record action",
         "log_followup": "Log follow-up"
-      }
+      },
+      "mineOnly": "Showing only cases with work waiting on you.",
+      "mineClear": "Show all cases"
     },
     "applyFilters": "Áp dụng bộ lọc",
     "clearFilters": "Xóa bộ lọc",

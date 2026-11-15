@@ -260,6 +260,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     claims: claimsEnabled,
     performance: isModuleEnabledOrFalse(session, 'performance'),
     rewards: isModuleEnabledOrFalse(session, 'rewards'),
+    probation: isModuleEnabledOrFalse(session, 'lifecycle') || !!session.entitlements?.scopedModules.lifecycle?.length,
   }, { deferClaimPreview: true }),undefined,requestReadScope())).then((approvalSummary):ShellApprovalResult=>({
     state:'ready',
     items:approvalSummary.items,
