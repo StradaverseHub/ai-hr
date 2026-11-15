@@ -10,7 +10,8 @@ import {probationOutcomeFixture} from './helpers/probation-outcome-fixture';
 import {newProbationLetterTemplate} from '../lib/probation-letter-template';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {SessionContext} from '../db/client';
-import {saveProbationLetterTemplate,prepareProbationLetter,readProbationLetter} from '../packs/probation/service';
+import {saveProbationLetterTemplate,prepareProbationLetter,readProbationLetter,actOnProbationLetter} from '../packs/probation/service';
+import {addDaysIso} from '../lib/roster-month';
 import type {DocumentRouting} from '../lib/document-signing-routing';
 
 let b:Base,admin:SessionContext,fixture:ReturnType<typeof probationOutcomeFixture>;
@@ -65,3 +66,45 @@ describe('routed letter assignment (F2)',()=>{
   await expect(owner.withTenant(stranger,tx=>tx.execute(sql`select app.probation_assignment_facts(${ids.caseId}::uuid,'{probation-people}'::text[],'{}'::uuid[])`))).rejects.toThrow();
  });
 });
+
+describe('routed letter delegation (F3, decision 7)',()=>{
+ const routing:DocumentRouting=[
+  {id:'sign-hod',order:1,action:'sign',owner:true,who:{kind:'people',userIds:[]}},
+  {id:'sign-staff',order:2,action:'sign',owner:false,who:{kind:'employee'}},
+ ];
+ async function delegated(module:'probation'|'leave'){
+  const {ids,staff,peer,decision,admin:pbp}=await fixture.recordedConfirm();admin=pbp;
+  const delegate=await fixture.person('Fictional Letter Delegate');
+  const[line]=await owner.db.execute<{id:string}>(sql`insert into reporting_line(tenant_id,subordinate_employment_id,manager_employment_id,line_type,valid_from) values(${b.tenantId}::uuid,${peer.employmentId}::uuid,${delegate.employmentId}::uuid,'delegate',${addDaysIso(todayInKualaLumpur(),-1)}::date) returning id`);
+  await owner.db.execute(sql`insert into reporting_line_scope(tenant_id,reporting_line_id,module,task_type) values(${b.tenantId}::uuid,${line.id}::uuid,${module},${module==='probation'?'probation.letter_sign':null})`);
+  // The Head of Department (the fixture's department head) holds the routed Sign step.
+  const steps=routing.map(step=>step.id==='sign-hod'?{...step,who:{kind:'people' as const,userIds:[peer.userId]}}:step);
+  const templateId=await saveProbationLetterTemplate(admin,{companyId:b.companyId,template:routedTemplate('delegate-'+randomUUID().slice(0,8),steps),publish:true,expectedVersion:0});
+  const prepared=await prepareProbationLetter(admin,{outcomeId:decision.id,templateId,revision:decision.revision,edits:{}});
+  return{ids,staff,peer,delegate,prepared};
+ }
+ it('moves the Head of Department\'s routed Sign step to the delegate on behalf of the holder; the employee step never moves',async()=>{
+  const{ids,staff,peer,delegate,prepared}=await delegated('probation');
+  let letter=await readProbationLetter(delegate.ctx,ids.caseId,prepared.partId);
+  expect(letter.route!.steps.map(s=>({id:s.id,holderId:s.holderId,representedId:s.representedId??null}))).toEqual([
+   {id:'sign-hod',holderId:delegate.userId,representedId:peer.userId},
+   {id:'sign-staff',holderId:staff.userId,representedId:null},
+  ]);
+  await actOnProbationLetter(delegate.ctx,{caseId:ids.caseId,partId:letter.id,revision:letter.storageRevision,stepId:'sign-hod',action:'signed',method:'typed',value:'Fictional Letter Delegate',consent:true});
+  letter=await readProbationLetter(admin,ids.caseId,prepared.partId);
+  expect(letter.signing!.document.actions).toContainEqual(expect.objectContaining({stepId:'sign-hod',action:'signed',actorId:delegate.userId,representedId:peer.userId}));
+ });
+ it('keeps the holder when the delegation does not tick Probation, and a per-part replacement wins over the delegation',async()=>{
+  const other=await delegated('leave');
+  let letter=await readProbationLetter(admin,other.ids.caseId,other.prepared.partId);
+  expect(letter.route!.steps.find(s=>s.id==='sign-hod')).toMatchObject({holderId:other.peer.userId});
+  expect(letter.route!.steps.find(s=>s.id==='sign-hod')!.representedId).toBeUndefined();
+  await resetDb();b=await seedBase();await setModule(b.tenantId,'lifecycle','active');admin=adminCtx(b);fixture=probationOutcomeFixture(b,admin);
+  const ticked=await delegated('probation');
+  const replacement=await fixture.person('Fictional Part Replacement');
+  await owner.db.execute(sql`insert into probation_delegate(tenant_id,part_id,step_id,holder_id,represented_id,kind,reason,created_by,valid_from) values(${b.tenantId}::uuid,${ticked.prepared.partId}::uuid,'sign-hod',${replacement.userId}::uuid,${ticked.peer.userId}::uuid,'delegation','Fictional per-part replacement',${admin.userId}::uuid,${addDaysIso(todayInKualaLumpur(),-1)}::date)`);
+  letter=await readProbationLetter(admin,ticked.ids.caseId,ticked.prepared.partId);
+  expect(letter.route!.steps.find(s=>s.id==='sign-hod')).toMatchObject({holderId:replacement.userId,representedId:ticked.peer.userId});
+ });
+});
+

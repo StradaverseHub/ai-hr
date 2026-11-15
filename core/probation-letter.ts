@@ -144,7 +144,9 @@ async function readLetterTx(tx:Tx,ctx:SessionContext,caseId:string,partId:string
  }
  // Routed letters (5752) are private until they reach you (handoff A2): everyone with access sees the routing and status;
  // the content only when the database says so (owner, your turn, you acted, or released).
- const routed=!!signing?.document.routing,contentVisible=!signing||await signingContentVisibleTx(tx,signing.id,row.released);
+ // 5755 (decision 7): whoever's turn it is on the current resolution (a Probation delegate acting on behalf of the frozen
+ // holder) sees the content too; the database's part access has already admitted them.
+ const routed=!!signing?.document.routing,contentVisible=!signing||await signingContentVisibleTx(tx,signing.id,row.released)||routed&&!!currentRoute&&!!ctx.userId&&pendingSigningSteps({...signing.document,route:currentRoute}).some(step=>step.holderId===ctx.userId);
  const hidden={letterBlocks:[] as Block[],letterFields:[] as Field[],letterMerge:{} as Record<string,string>};
  const shown=contentVisible?row.data:{...row.data,...hidden};
  const routing={routed,contentVisible,owner:routed&&signing?signingDocumentOwner(signing.document):null,canEditContent:routed&&!!signing&&canEditSigningContent(signing.document,ctx.userId??null),unresolved:row.data.letterRoutingUnresolved??[]};
