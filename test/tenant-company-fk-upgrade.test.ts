@@ -246,6 +246,11 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5660_pay_component_bonus_epf_bonus_2012',
    // Board 4604dccc (15 November 2026): payroll history binds a record to the company of its month.
    '5680_payroll_history_dated_company',
+   // Probation reshape onto shared HR automation (16 November 2026): shared definitions, Personnel postings (whose
+   // company key follows ADR-0174) and shared email templates.
+   '5740_automation_shared_definitions',
+   '5741_personnel_postings',
+   '5743_automation_email_templates',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
