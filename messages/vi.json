@@ -38709,7 +38709,8 @@
       "talentPool": "Nguồn ứng viên",
       "reports": "Báo cáo",
       "approvals": "Phê duyệt",
-      "screening": "Cần sàng lọc"
+      "screening": "Cần sàng lọc",
+      "rewards": "Thưởng và phí"
     },
     "errors": {
       "forbidden": "Bạn không quản lý tuyển dụng của công ty này.",
@@ -38829,7 +38830,16 @@
       "email_value_link": "Một giá trị trong e-mail này (tên ứng viên, chức danh, địa điểm hoặc giá trị thư mời) trông giống liên kết hoặc địa chỉ web, nên không thể gửi. Không có thay đổi nào.",
       "email_private_field": "Một trường thư mời được đánh dấu cho e-mail là riêng tư và bạn không xem được. Không có thay đổi nào; hãy nhờ người xem được trường đó gửi.",
       "email_use_send": "E-mail ứng viên đang bật cho công ty này: hãy dùng Gửi thư mời nhận việc qua e-mail, chức năng này hiển thị e-mail trước. Không có thay đổi nào.",
-      "email_survey_link": "E-mail khảo sát phải có chỗ giữ liên kết khảo sát (surveyLink trong dấu ngoặc nhọn) đúng một lần trong nội dung và không có trong tiêu đề."
+      "email_survey_link": "E-mail khảo sát phải có chỗ giữ liên kết khảo sát (surveyLink trong dấu ngoặc nhọn) đúng một lần trong nội dung và không có trong tiêu đề.",
+      "reward_not_ready": "Chưa thể duyệt khoản thưởng này: người được tuyển phải vẫn đang làm việc và đã qua thời gian thử việc.",
+      "reward_decided": "Mục này đã được quyết định hoặc đã gửi. Hãy tải lại trang để xem trạng thái.",
+      "reward_payee_unavailable": "Người giới thiệu không có hợp đồng lao động đang hiệu lực nào nhận được khoản thưởng này bằng loại tiền đó. Hãy từ chối khoản thưởng.",
+      "reward_month_closed": "Tháng lương đó đã có kỳ tính lương không còn nhận giao dịch. Hãy chọn tháng sau.",
+      "reward_payroll_off": "Bảng lương trên hệ thống này chưa chi trả giao dịch cá nhân, nên khoản thưởng sẽ được ghi nhận nhưng không được trả.",
+      "fee_not_eligible": "Chỉ có thể ghi phí đại lý cho ứng viên đã được tuyển từ một hồ sơ đại lý đã được chấp nhận.",
+      "fee_decided": "Phí đại lý này đã được quyết định và không thể thay đổi.",
+      "reward_self": "Người khác phải thực hiện việc này: bạn là người giới thiệu, người được tuyển hoặc người nhận, hoặc bạn là người ghi phí này gần nhất.",
+      "decline_reason": "Hãy nêu lý do từ chối."
     },
     "overview": {
       "purpose": "Công việc tuyển dụng hôm nay tại các công ty mà bạn quản lý tuyển dụng.",
@@ -39001,7 +39011,14 @@
         "problem": "Điền mọi vòng trước vòng cuối cùng bạn dùng, mỗi vòng với một biểu mẫu đang bật của công ty này."
       },
       "fieldRequired": "Hãy điền trường này.",
-      "fieldInvalid": "Hãy kiểm tra giá trị này."
+      "fieldInvalid": "Hãy kiểm tra giá trị này.",
+      "referralReward": {
+        "title": "Thưởng giới thiệu",
+        "note": "Một khoản cố định theo đơn vị tiền của công ty cho nhân viên có người được giới thiệu được tuyển, trả sau khi người được tuyển qua thời gian thử việc. Mỗi lần giới thiệu giữ số tiền hiển thị khi giới thiệu. Để trống nếu không có thưởng.",
+        "amount": "Số tiền thưởng",
+        "none": "Không có thưởng",
+        "save": "Lưu thưởng giới thiệu"
+      }
     },
     "candidates": {
       "purpose": "Hồ sơ theo giai đoạn. Chuyển ứng viên sang giai đoạn tiếp theo, chọn giai đoạn khác hoặc từ chối kèm lý do.",
@@ -39940,7 +39957,17 @@
         "not_progressing": "Không tiếp tục",
         "removed": "Đã xoá"
       },
-      "jobUnavailable": "Vị trí này không còn mở để giới thiệu."
+      "jobUnavailable": "Vị trí này không còn mở để giới thiệu.",
+      "reward": "Thưởng giới thiệu",
+      "rewardValue": "{amount}, trả sau khi người được tuyển qua thời gian thử việc",
+      "rewardColumn": "Thưởng",
+      "rewardStates": {
+        "if_hired": "Nếu được tuyển và qua thử việc",
+        "waiting": "Đang chờ hết thử việc",
+        "approved": "Đã duyệt",
+        "sent": "Đã gửi vào lương tháng {month}",
+        "not_payable": "Không được trả"
+      }
     },
     "careers": {
       "source": "Trang tuyển dụng",
@@ -41209,6 +41236,69 @@
       "surveyDelayDays": "Gửi sau (ngày, {min}–{max})",
       "surveyHint": "Sau khi từ chối, khảo sát chỉ gửi cho ứng viên đã nhận e-mail từ chối, tính từ lúc e-mail đó được gửi. Kết quả nằm ở Báo cáo › Khảo sát ứng viên.",
       "surveyLinkMarker": "[liên kết khảo sát riêng, được thêm khi gửi e-mail]"
+    },
+    "rewards": {
+      "purpose": "Thưởng giới thiệu sau thời gian thử việc và phí đại lý. Mọi số tiền ở đây đều do một người nhập.",
+      "saved": "Đã lưu.",
+      "views": "Các chế độ xem thưởng và phí",
+      "view": {
+        "rewards": "Thưởng giới thiệu",
+        "fees": "Phí đại lý",
+        "payroll": "Gửi vào lương"
+      },
+      "company": "Công ty",
+      "show": "Hiển thị",
+      "noRewards": "Chưa có lượt giới thiệu nào được tuyển kèm thưởng.",
+      "rewardsNote": "Khoản thưởng sẵn sàng khi người được tuyển vẫn đang làm việc và đã hết thử việc. Duyệt sẽ chuyển cho quản trị viên lương; từ chối là quyết định cuối cùng.",
+      "removedHire": "Ứng viên đã bị xóa",
+      "referredBy": "Được giới thiệu bởi {name}",
+      "unknownPerson": "Người không xác định",
+      "state": {
+        "waiting_record": "Đang chờ hồ sơ nhân viên",
+        "waiting_probation": "Đang chờ hết thử việc",
+        "ready": "Sẵn sàng duyệt",
+        "hire_left": "Người được tuyển đã nghỉ",
+        "approved": "Đã duyệt",
+        "sent": "Đã gửi vào lương",
+        "declined": "Đã từ chối"
+      },
+      "dueOn": "Có thể trả từ {date}",
+      "noProbationDate": "Nhân viên này không có ngày thử việc nào được ghi nhận. Hãy kiểm tra rằng thời gian thử việc đã kết thúc trước khi duyệt.",
+      "approvedBy": "Được duyệt bởi {name} vào {date}",
+      "declinedBy": "Bị từ chối bởi {name} vào {date}",
+      "sentFor": "đã gửi vào lương tháng {month}",
+      "payee": "Trả qua",
+      "choosePayee": "Chọn hợp đồng lao động",
+      "approve": "Duyệt",
+      "noPayee": "Người giới thiệu không có hợp đồng lao động đang hiệu lực nào nhận được khoản thưởng này.",
+      "decline": "Từ chối",
+      "reason": "Lý do",
+      "confirmDecline": "Từ chối",
+      "noFees": "Chưa có ứng viên nào được tuyển từ đại lý.",
+      "feesNote": "Ghi phí theo hóa đơn của đại lý. Một quản trị viên khác duyệt hoặc từ chối. Không có khoản thanh toán nào được thực hiện từ đây.",
+      "hiredOn": "Được tuyển vào {date}",
+      "feeState": {
+        "recorded": "Đang chờ duyệt",
+        "approved": "Đã duyệt",
+        "declined": "Đã từ chối"
+      },
+      "recordedBy": "Được ghi bởi {name} vào {date}",
+      "invoice": "Hóa đơn {ref}",
+      "correctFee": "Sửa phí",
+      "recordFee": "Ghi phí",
+      "amount": "Số tiền",
+      "currency": "Đơn vị tiền",
+      "invoiceRef": "Số hóa đơn",
+      "note": "Ghi chú",
+      "saveFee": "Lưu phí",
+      "otherDecides": "Bạn là người ghi phí này gần nhất, nên một quản trị viên khác sẽ duyệt hoặc từ chối.",
+      "payrollNote": "Các khoản thưởng giới thiệu đã duyệt cho nhân viên của công ty này. Gửi sẽ ghi một khoản thu nhập trong Giao dịch cá nhân cho tháng lương bạn chọn.",
+      "ledgerOff": "Bảng lương trên hệ thống này chưa chi trả giao dịch cá nhân. Chưa thể gửi thưởng cho đến khi tính năng này được bật.",
+      "noPayroll": "Không có khoản thưởng đã duyệt nào đang chờ gửi vào lương.",
+      "payMonth": "Tháng lương",
+      "component": "Khoản thu nhập",
+      "chooseComponent": "Chọn khoản",
+      "send": "Gửi vào lương"
     }
   },
   "careersPublic": {

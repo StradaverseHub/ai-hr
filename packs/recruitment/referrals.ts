@@ -10,7 +10,8 @@
  *   - HR (withRecruitmentTenant): the job's "Show on the referral portal" setting and the company's protection period
  *     (recruitment administrators only), and the referral shown on an application to its readers.
  * Every refusal of a referral reaches the referrer as one code (referral_refused, D-023); the database records the
- * specific reason in its audit event. Nothing here calls a model or calculates a reward (D-021).
+ * specific reason in its audit event. Nothing here calls a model or calculates a reward (D-021); slice 23 only shows the
+ * job's typed reward and the referrer's own reward states (./rewards owns the decisions).
  */
 import { and, eq, sql } from 'drizzle-orm';
 import type { SessionContext } from '../../db/client';
@@ -23,6 +24,7 @@ import { CANDIDATE_FILE_MAX_BYTES, CANDIDATE_FILE_MIME } from './privacy-model';
 import {
   REFERRAL_PROTECTION_DEFAULT_DAYS, referralStatus, validateProtectionDays, validateReferralInput, type ReferralFormInput, type ReferralStatus,
 } from './referral-model';
+import { myRewardState, type MyRewardState } from './reward-model';
 import { recruitmentCompanySetting, recruitmentJobOpening } from './schema';
 import { actorId, assertCompanyTx, jobTx } from './data';
 
@@ -42,14 +44,19 @@ export async function referralEligible(s: SessionContext): Promise<boolean> {
 export type ReferralPortalJob = {
   jobId: string; companyId: string; companyName: string; title: string; jobNumber: string; workLocation: string;
   employmentType: JobEmploymentType; recruitmentType: RecruitmentType; jobLevels: string[]; description: string | null;
+  /** Slice 23: the job's referral reward, paid after the hire passes probation; null when the job has none. */
+  reward: { amount: string; currency: string } | null;
 };
 type PortalRow = {
   job_id: string; company_id: string; company_name: string; title: string; job_number: string; work_location: string; employment_type: JobEmploymentType;
   recruitment_type: RecruitmentType; job_levels: string[] | null; description: string | null;
 };
-const portalJob = (r: PortalRow): ReferralPortalJob => ({
+type RewardRow = { job_id: string; amount: string; currency: string };
+const rewardsByJob = (rows: RewardRow[]) => new Map(rows.map((r) => [r.job_id, { amount: Number(r.amount).toFixed(2), currency: r.currency }]));
+const portalJob = (r: PortalRow, rewards: Map<string, { amount: string; currency: string }>): ReferralPortalJob => ({
   jobId: r.job_id, companyId: r.company_id, companyName: r.company_name, title: r.title, jobNumber: r.job_number, workLocation: r.work_location,
   employmentType: r.employment_type, recruitmentType: r.recruitment_type, jobLevels: r.job_levels ?? [], description: r.description,
+  reward: rewards.get(r.job_id) ?? null,
 });
 
 /**
@@ -62,7 +69,8 @@ export async function referralPortal(s: SessionContext): Promise<{ eligible: boo
     const [eligible] = await tx.execute<{ ok: boolean }>(sql`select app.recruitment_referral_eligible() as ok`);
     if (eligible?.ok !== true) return { eligible: false, jobs: [] };
     const rows = await tx.execute<PortalRow>(sql`select * from app.recruitment_referral_portal(null)`);
-    return { eligible: true, jobs: rows.map(portalJob) };
+    const rewards = rewardsByJob(await tx.execute<RewardRow>(sql`select job_id, amount::text as amount, currency from app.recruitment_referral_portal_rewards(null)`));
+    return { eligible: true, jobs: rows.map((r) => portalJob(r, rewards)) };
   });
 }
 
@@ -71,7 +79,9 @@ export async function referralPortalJob(s: SessionContext, jobId: unknown): Prom
   if (!s.userId || !isUuid(jobId)) return null;
   return withRecruitmentTenant(s, async (tx) => {
     const [row] = await tx.execute<PortalRow>(sql`select * from app.recruitment_referral_portal(${jobId}::uuid)`);
-    return row ? portalJob(row) : null;
+    if (!row) return null;
+    const rewards = rewardsByJob(await tx.execute<RewardRow>(sql`select job_id, amount::text as amount, currency from app.recruitment_referral_portal_rewards(${jobId}::uuid)`));
+    return portalJob(row, rewards);
   });
 }
 
@@ -128,6 +138,8 @@ export type MyReferralRow = {
   /** The name as the referrer entered it; null once the candidate's data was removed. */
   candidateName: string | null;
   status: ReferralStatus;
+  /** Slice 23: the reward frozen on this referral and where it stands (never a reason, a person or an employment). */
+  reward: { amount: string; currency: string; state: MyRewardState; payPeriod: string | null } | null;
 };
 
 /** My referrals: the caller's own referrals only, newest first, with the coarse status (never stage names or HR notes). */
@@ -138,6 +150,8 @@ export async function myReferrals(s: SessionContext): Promise<MyReferralRow[]> {
       referral_id: string; company_name: string; job_title: string; job_number: string; referred_at: string | Date; candidate_name: string | null; removed: boolean;
       state: 'active' | 'hired' | 'archived'; stage_type: string | null; stage_position: number | null; interview_position: number | null; offer_position: number | null;
     }>(sql`select * from app.recruitment_my_referrals()`);
+    const rewards = new Map((await tx.execute<{ referral_id: string; amount: string; currency: string; decision: 'approved' | 'declined' | null; pay_period: string | null }>(
+      sql`select referral_id, amount::text as amount, currency, decision, pay_period from app.recruitment_my_referral_rewards()`)).map((w) => [w.referral_id, w]));
     return rows.map((r) => ({
       id: r.referral_id, companyName: r.company_name, jobTitle: r.job_title, jobNumber: r.job_number, referredAt: iso(r.referred_at),
       candidateName: r.removed ? null : r.candidate_name,
@@ -145,6 +159,12 @@ export async function myReferrals(s: SessionContext): Promise<MyReferralRow[]> {
         state: r.state, removed: r.removed, stageType: r.stage_type, stagePosition: r.stage_position, interviewPosition: r.interview_position,
         offerPosition: r.offer_position,
       }),
+      reward: (() => {
+        const w = rewards.get(r.referral_id);
+        if (!w) return null;
+        const state = myRewardState({ applicationState: r.state, removed: r.removed, decision: w.decision, payPeriod: w.pay_period });
+        return { amount: Number(w.amount).toFixed(2), currency: w.currency, state, payPeriod: state === 'sent' ? w.pay_period : null };
+      })(),
     }));
   });
 }

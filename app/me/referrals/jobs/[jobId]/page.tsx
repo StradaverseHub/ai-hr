@@ -1,9 +1,9 @@
 import Link from 'next/link';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { Card, PageHeader, pageWideCls } from '@/components/ui';
 import { CANDIDATE_FILE_ACCEPT, REFERRAL_REASON_MAX, referralEligible, referralPortalJob } from '@/packs/recruitment/service';
-import { NotEligibleNote, referralRead } from '../../shared';
+import { NotEligibleNote, referralRead, rewardMoney } from '../../shared';
 import { ReferralForm } from './referral-form';
 
 export const dynamic = 'force-dynamic';
@@ -37,6 +37,7 @@ export default async function ReferJobPage({ params }: { params: Promise<{ jobId
     [jt('employmentType'), jt(`employmentTypes.${job.employmentType}`)],
     [jt('recruitmentType'), jt(`recruitmentTypes.${job.recruitmentType}`)],
     [t('jobLevel'), job.jobLevels.join(', ') || '—'],
+    ...(job.reward ? [[t('reward'), t('rewardValue', { amount: rewardMoney(await getLocale(), job.reward.amount, job.reward.currency) })] as [string, string]] : []),
   ];
   return (
     <div className={pageWideCls}>

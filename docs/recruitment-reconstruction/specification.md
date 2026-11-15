@@ -1709,3 +1709,98 @@ below are this reconstruction's (D-067).
      administrators of the company read answers.
 147. Results hide everything below 5 answers and the split below 5 a side; averages and shares match independently computed values.
 148. Rendered: the settings block, the survey page, the closed page and the results tab.
+
+## Slice 23 — Referral rewards and agency fees (owner: group 2, 2026-11-14; D-021, D-063, D-068; EV-038)
+
+The owner decided (D-063): a referral reward is a fixed amount per job, payable once the hire has passed probation, approved by
+HR and sent to payroll as a one-off earning; agency fees are tracked and approved, never paid through payroll. Moka's evidence
+(EV-038) shows basic, special and job-level rewards, payment after probation and a points export; only the fixed job-level
+reward is built. The rules below that the owner did not state are this reconstruction's (D-068). No model calculates, suggests
+or approves an amount; every amount is one a person typed.
+
+### Setting a reward (job page, recruitment administrators)
+
+- A job has an optional **Referral reward**: an amount in the job company's currency, greater than 0 and at most 1,000,000.00,
+  two decimals. Empty means no reward. Only the job company's recruitment administrators change it; each change is audited.
+- The referral portal shows the reward on the job ("Referral reward: MYR 500.00, paid after the hire passes probation").
+- The amount and currency are **frozen on the referral when it is made**. Changing the job's reward later never changes a
+  referral already made, and a referral made while the job had no reward earns none.
+
+### When a reward becomes due
+
+A reward exists for a referral with a frozen amount whose application is Hired. Its state is worked out, not stored, until a
+person decides:
+
+- **Waiting for the employee record:** the hire's employee draft (slice 3 hand-off) has not been completed into an employment.
+- **Waiting for probation:** the hire's employment is active and its probation is not over. Probation is over on the
+  employment's confirmation date; without one, the day after its probation end date; without either, it is shown as "No
+  probation date recorded" and is due from the start date, with that warning beside the approval.
+- **Ready for approval:** the hire's employment is active (the repository's rule) and probation is over.
+- **Hire left:** the hire's employment ended before probation was over. It cannot be approved, only declined.
+
+### HR approval (Recruitment › Rewards and fees, recruitment administrators of the job's company)
+
+- **Approve** a ready reward, choosing which of the referrer's active employments receives it (preselected when there is one).
+  The receiving employment's company must use the same currency as the reward. Refused when the referrer has no active
+  employment ("The referrer has left; decline this reward").
+- **Decline** any reward not yet decided, with a reason (1–500 characters), for example a probation that was not confirmed.
+- A decision is final. The approver is never the referrer or the hire. Each decision is audited.
+
+### Sending to payroll (payroll administrators of the receiving company)
+
+- A payroll administrator of the receiving employment's company sees approved rewards waiting for payroll there: the employee,
+  the amount, who approved it and when. They do not see the hire, the candidate or the job.
+- **Send to payroll** asks for the pay month (the current Kuala Lumpur month or one of the next two) and an earning pay
+  component of that company. It records one one-off earning in payroll's Individual Transactions for the receiving employment,
+  dated today, with the note "Employee referral reward", source System and the reward as its reference, in the same transaction
+  that marks the reward sent. The payroll statutory treatment is the chosen component's.
+- Refused when: the sender is the referrer; the receiving employment is no longer active; the month already has a payroll run
+  that can no longer take transactions; or paying individual transactions is switched off for the installation (the earning would
+  be recorded but not paid).
+- A reward is sent once. Changing or removing the transaction afterwards is ordinary payroll work in Individual Transactions; the
+  reward keeps showing "Sent to payroll" with the month.
+
+### The referrer's view (My referrals)
+
+- Each referral shows its reward: none, the amount with "waiting for probation", "approved", "sent to payroll" (with the month)
+  or "not payable" (no reason is shown; the reason is HR's).
+
+### Agency fees (Recruitment › Rewards and fees, recruitment administrators)
+
+- A hire whose application came from an accepted agency submission (slice 10) can have one **agency fee**: the amount and
+  currency from the agency's invoice, an optional invoice reference (at most 100 characters) and note (at most 500). The fee rate
+  on the agency contract is never turned into an amount.
+- While undecided, any administrator may correct it. Another administrator, not the last person who recorded or corrected it,
+  **approves** or **declines** it (with a reason). A decision is final.
+- Approval records that the fee may be paid. Nothing is sent to payroll or to an agency; payment happens outside AI HR.
+
+### Data
+
+- One migration (5725):
+  - the job's reward column; the referral's frozen amount and currency, set by a trigger from the job when the referral is
+    inserted and never changed afterwards;
+  - `public.recruitment_referral_reward`: one row per decided reward, inserted by the company's recruitment administrators and
+    checked against the referral, the hire's employment and the referrer's employment; its payroll columns are written once by
+    a payroll administrator of the receiving company together with the matching payroll transaction; no deletion;
+  - `public.recruitment_agency_fee`: one row per hired agency application, kept by the company's recruitment administrators,
+    with the four-eyes approval enforced in the database;
+  - definers that read the hire's employment (through the completed employee draft) and the referrer's active employments
+    for an application the caller administers, the portal's rewards and the referrer's own reward states.
+
+### Slice 23 acceptance cases
+
+149. A job's reward is set and cleared by its company's administrators only. A referral freezes the job's amount and currency;
+     changing the job's reward afterwards changes no referral, and a referral made without a reward earns none.
+150. A hired referral's reward reads waiting for the employee record, waiting for probation, ready or hire left from the
+     employment's own dates, with independently computed due dates.
+151. Approval needs a ready reward, an active receiving employment of the referrer with the reward's currency, and an approver who
+     is neither the referrer nor the hire; decline needs a reason; a second decision is refused. A forged amount, receiving
+     employment or approver is refused by the database.
+152. A payroll administrator of the receiving company sends an approved reward once: one earning row with the reward's amount,
+     component, month and reference, and the reward marked sent in the same transaction. A non-payroll user, the referrer, a closed
+     month, a month out of range or a switched-off ledger is refused and nothing is written.
+153. My referrals shows each reward state and never a decline reason; another person's rewards are never shown.
+154. An agency fee is recorded only for a hired application from an accepted agency submission; it is decided once, by an
+     administrator other than the last editor; nothing reaches payroll.
+155. Rendered: the job's reward field, the portal reward line, the Rewards and fees page for an administrator and for a payroll
+     administrator, and My referrals.

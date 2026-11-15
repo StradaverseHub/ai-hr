@@ -1,21 +1,22 @@
 import Link from 'next/link';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { Card, PageHeader, pageWideCls } from '@/components/ui';
 import { referralPortal } from '@/packs/recruitment/service';
-import { NotEligibleNote, ReferralTabs, referralRead } from './shared';
+import { NotEligibleNote, ReferralTabs, referralRead, rewardMoney } from './shared';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * Refer a candidate (Recruitment slice 7): the Open jobs HR put on the referral portal, in the companies where the
  * signed-in person has an active employment and Recruitment. Per job only the portal fields: title, number, company,
- * work location, employment type, recruitment type and job level — never salary, the hiring team or how many applied.
+ * work location, employment type, recruitment type and job level — never salary, the hiring team or how many applied —
+ * and, since slice 23, the job's referral reward when it has one.
  */
 export default async function ReferralPortalPage() {
   const { s } = await scopedSession();
-  const [portal, t, job] = await Promise.all([
-    referralRead(referralPortal(s)), getTranslations('recruitment.referrals'), getTranslations('recruitment.job'),
+  const [portal, t, job, locale] = await Promise.all([
+    referralRead(referralPortal(s)), getTranslations('recruitment.referrals'), getTranslations('recruitment.job'), getLocale(),
   ]);
   return (
     <div className={pageWideCls}>
@@ -34,6 +35,8 @@ export default async function ReferralPortalPage() {
                   <dl className="grid grid-cols-2 gap-2 text-sm">
                     <div><dt className="text-xs text-muted-foreground">{job('workLocation')}</dt><dd>{j.workLocation}</dd></div>
                     <div><dt className="text-xs text-muted-foreground">{job('employmentType')}</dt><dd>{job(`employmentTypes.${j.employmentType}`)}</dd></div>
+                    {j.reward && <div className="col-span-2" data-referral-reward><dt className="text-xs text-muted-foreground">{t('reward')}</dt>
+                      <dd>{t('rewardValue', { amount: rewardMoney(locale, j.reward.amount, j.reward.currency) })}</dd></div>}
                   </dl>
                   <Link href={`/me/referrals/jobs/${j.jobId}`} className="mt-auto inline-flex min-h-11 w-fit items-center rounded-md border px-4 text-sm font-medium hover:bg-muted">{t('refer')}</Link>
                 </Card>

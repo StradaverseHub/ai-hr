@@ -46,3 +46,7 @@ export async function ReferralTabs({ active }: { active: 'jobs' | 'mine' }) {
 }
 
 export const klDay = (locale: string, iso: string) => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'Asia/Kuala_Lumpur' }).format(new Date(iso));
+
+/** Slice 23: a typed reward amount in its currency, in the viewer's language (never calculated). */
+export const rewardMoney = (locale: string, amount: string, currency: string) =>
+  new Intl.NumberFormat(locale, { style: 'currency', currency, minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(amount));

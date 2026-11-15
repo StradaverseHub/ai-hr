@@ -1,3 +1,14 @@
+# Recruitment slice 23: referral rewards and agency fees — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` appends `5725_recruitment_referral_rewards_agency_fees` at idx 5125 / when 1793330005425,
+the next slot of the recruitment block directly after `5724`, after merging `origin/main` at `8244cfa81` (whose newest entry, `5695`, sorts
+below the block). SHA256 `e8fbbdd749862e0caf6fd4dc357de5483b51dbaf15e94a90b5c67b5c18376e2b` at allocation (the file may still change before it is applied anywhere). A scan of every committed
+journal on the 4,237 origin heads on 16 November 2026 found no claim on 5725–5739 or when 1793330005425–1793330005439, but six
+`claude/probation-*` heads now claim 5740–5750 (when 1793330005440–1793330005450). The recruitment block therefore stops at 5739. If those
+probation migrations reach an installation before this block, 5720–5725 sort below that installation's watermark and must be renumbered
+above it at admission rather than applied as they are. The installed ledgers were not read by this session. Recheck the installed
+watermarks and peer claims at admission; this allocation grants no installation authority.
+
 # Recruitment slice 22: anonymous candidate survey — 15 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/rea-web-app-reconstruction-2c12ee` appends `5724_recruitment_candidate_survey` at idx 5124 / when 1793330005424, the next slot

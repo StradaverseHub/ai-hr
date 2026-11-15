@@ -4,10 +4,10 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import type { SessionContext } from '@/db/client';
 import { requireModule } from '@/lib/authz';
 import { scopedSession } from '@/lib/scope';
-import { ErrorBanner, Field, PageHeader, StatusBadge, btnGhost, btnPrimary } from '@/components/ui';
+import { ErrorBanner, Field, Input, PageHeader, StatusBadge, btnGhost, btnPrimary } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { getJob, jobCareersStatus, JOB_MEMBER_ROLES, JOB_STATUS_TRANSITIONS, RecruitmentError, type JobDetail } from '@/packs/recruitment/service';
-import { addJobMemberAction, changeJobStatusAction, removeJobMemberAction, setJobCareersPageAction, setJobReferralPortalAction, updateJobAction } from '../../actions';
+import { addJobMemberAction, changeJobStatusAction, removeJobMemberAction, setJobCareersPageAction, setJobReferralPortalAction, setJobReferralRewardAction, updateJobAction } from '../../actions';
 import { Notice, klDate, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../../shared';
 import { JobInfoFields } from '../job-fields';
 import { CustomFieldInputs, CustomFieldValues } from '../../custom-fields-ui';
@@ -140,6 +140,21 @@ export default async function RecruitmentPositionPage({ params, searchParams }: 
           </label>
           {job.showOnReferralPortal && job.status !== 'open' && <p className="text-xs text-muted-foreground">{t('referralPortal.notOpen')}</p>}
           <button type="submit" className={btnGhost}>{t('referralPortal.save')}</button>
+        </form>
+      )}
+
+      {tab === 'settings' && (
+        <form action={setJobReferralRewardAction} className="space-y-3 rounded-xl border border-border bg-card p-4" aria-labelledby="referral-reward-title">
+          {hidden('jobId', job.id)}{hidden('returnTo', here)}
+          <div>
+            <h2 id="referral-reward-title" className="text-sm font-semibold">{t('referralReward.title')}</h2>
+            <p className="text-sm text-muted-foreground">{t('referralReward.note')}</p>
+          </div>
+          <Field label={t('referralReward.amount')} className="max-w-xs">
+            <Input name="referralReward" inputMode="decimal" defaultValue={job.referralReward == null ? '' : Number(job.referralReward).toFixed(2)} maxLength={16}
+              placeholder={t('referralReward.none')} />
+          </Field>
+          <button type="submit" className={btnGhost}>{t('referralReward.save')}</button>
         </form>
       )}
 

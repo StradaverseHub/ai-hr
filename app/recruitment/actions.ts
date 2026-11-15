@@ -21,6 +21,7 @@ import {
   addCandidateEntry, addCandidateTag, deleteCandidateFile, destroyCandidates, recordConsent, removeCandidateEntry, removeCandidateTag,
   saveCandidateRestricted, saveTag, saveTagGroup, updateCandidateProfile, updatePrivacySettings, uploadCandidateFile, CANDIDATE_FILE_MAX_BYTES,
   checkDuplicateCandidate, RECRUITMENT_ERROR_CODES, type DuplicateCheck, setJobReferralPortal, updateReferralSettings,
+  setJobReferralReward, decideReferralReward, sendRewardToPayroll, recordAgencyFee, decideAgencyFee,
   setCareersPublished, setJobCareersPage, updateCareersSettings, markRecruitmentTasksRead,
   acceptAgencySubmission, addAgencyContractUser, assignAgencyContract, deleteAgencyTag, recordAgencySubmission, rejectAgencySubmission, removeAgencyAssignment,
   removeAgencyContractFile, removeAgencyContractUser, saveAgency, saveAgencyConsultant, saveAgencyContract, saveAgencyTag, updateAgencyAssignment,
@@ -139,6 +140,38 @@ export async function changeJobStatusAction(f: FormData) {
 export async function setJobReferralPortalAction(f: FormData) {
   const jobId = str(f, 'jobId');
   return run(back(f, `/recruitment/positions/${encodeURIComponent(jobId)}?tab=settings`), (s) => setJobReferralPortal(s, jobId, f.get('showOnReferralPortal') === 'on'));
+}
+
+/** Slice 23: the job's referral reward (recruitment administrators; empty clears it; the service and 5725 refuse others). */
+export async function setJobReferralRewardAction(f: FormData) {
+  const jobId = str(f, 'jobId');
+  return run(back(f, `/recruitment/positions/${encodeURIComponent(jobId)}?tab=settings`), (s) => setJobReferralReward(s, jobId, str(f, 'referralReward')));
+}
+
+/** Slice 23: decide a hired referral's reward (administrators of the job's company, never the referrer or the hire). */
+export async function decideReferralRewardAction(f: FormData) {
+  return run(back(f, '/recruitment/rewards'), (s) => decideReferralReward(s, {
+    referralId: str(f, 'referralId'), decision: str(f, 'decision'), payeeEmploymentId: str(f, 'payeeEmploymentId') || undefined, reason: str(f, 'reason'),
+  }));
+}
+
+/** Slice 23: send an approved reward to payroll as one earning (payroll administrators of the receiving company). */
+export async function sendRewardToPayrollAction(f: FormData) {
+  return run(back(f, '/recruitment/rewards?view=payroll'), (s) => sendRewardToPayroll(s, {
+    rewardId: str(f, 'rewardId'), payPeriod: str(f, 'payPeriod'), componentId: str(f, 'componentId'),
+  }));
+}
+
+/** Slice 23: record or correct an agency fee (administrators). */
+export async function recordAgencyFeeAction(f: FormData) {
+  return run(back(f, '/recruitment/rewards?view=fees'), (s) => recordAgencyFee(s, str(f, 'applicationId'), {
+    amount: str(f, 'amount'), currency: str(f, 'currency'), invoiceRef: str(f, 'invoiceRef'), note: str(f, 'note'),
+  }));
+}
+
+/** Slice 23: approve or decline an agency fee (an administrator other than its last recorder). */
+export async function decideAgencyFeeAction(f: FormData) {
+  return run(back(f, '/recruitment/rewards?view=fees'), (s) => decideAgencyFee(s, { feeId: str(f, 'feeId'), decision: str(f, 'decision'), reason: str(f, 'reason') }));
 }
 
 /** Slice 8: the job's "Show on careers page" switch (recruitment administrators; the service and 5708 refuse others). */

@@ -124,6 +124,14 @@ export const RECRUITMENT_ERROR_CODES = [
   'email_no_address', 'email_value_link', 'email_private_field', 'email_use_send',
   // Slice 22: a survey template names {surveyLink} once in its body and never in its subject.
   'email_survey_link',
+  // Slice 23: the reward is not ready for approval (the hire's probation is not over, or the hire left); the reward or fee was
+  // already decided (or the reward already sent); the referrer has no active employment that can receive it (or the receiver
+  // left); the pay month's run can no longer take transactions; payroll does not pay individual transactions here; the
+  // application is not a hired one from an accepted agency submission; the agency fee was already decided.
+  'reward_not_ready', 'reward_decided', 'reward_payee_unavailable', 'reward_month_closed', 'reward_payroll_off', 'fee_not_eligible',
+  'fee_decided',
+  // …the caller is the referrer, the hire or the receiver, or recorded the fee last (another person decides); a decline needs a reason.
+  'reward_self', 'decline_reason',
 ] as const;
 export type RecruitmentErrorCode = (typeof RECRUITMENT_ERROR_CODES)[number];
 

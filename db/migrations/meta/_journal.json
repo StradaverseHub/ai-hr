@@ -6147,6 +6147,13 @@
       "when": 1793330005424,
       "tag": "5724_recruitment_candidate_survey",
       "breakpoints": true
+    },
+    {
+      "idx": 5125,
+      "version": "7",
+      "when": 1793330005425,
+      "tag": "5725_recruitment_referral_rewards_agency_fees",
+      "breakpoints": true
     }
   ]
 }

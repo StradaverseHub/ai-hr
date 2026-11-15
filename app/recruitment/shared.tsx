@@ -56,13 +56,14 @@ const TABS = [
   { key: 'talentPool', href: '/recruitment/talent-pool', adminOnly: true },
   { key: 'reports', href: '/recruitment/reports', adminOnly: false },
   { key: 'approvals', href: '/recruitment/approvals', adminOnly: false },
+  { key: 'rewards', href: '/recruitment/rewards', adminOnly: true },
   { key: 'settings', href: '/recruitment/settings', adminOnly: true },
 ] as const;
 export type RecruitmentTabKey = (typeof TABS)[number]['key'];
 
 /**
  * The module's own sub-navigation (one menu entry, F1): Overview, Candidates, Interviews, Positions, Talent pool,
- * Reports, Approvals and Settings. A job-team member sees Candidates, Interviews and Positions (their own jobs); Reports
+ * Reports, Approvals, Rewards and fees (slice 23, administrators) and Settings. A job-team member sees Candidates, Interviews and Positions (their own jobs); Reports
  * shows for administrators and for a job's recruiter, assistant or hiring manager (`reports`; never an interviewer
  * alone); Approvals shows when a step waits for the viewer; Talent pool and Settings are administrator-only. Overview
  * shows for everyone with Recruitment access since slice 9 (its Tasks panel); its tiles stay administrator-only. To screen
@@ -75,7 +76,7 @@ export async function RecruitmentTabs({ active, admin = true, approvals = 0, rep
   const t = await getTranslations('recruitment.tabs');
   const label: Record<RecruitmentTabKey, string> = {
     overview: t('overview'), candidates: t('candidates'), screening: t('screening'), interviews: t('interviews'), positions: t('positions'), talentPool: t('talentPool'),
-    reports: t('reports'), approvals: t('approvals'), settings: t('settings'),
+    reports: t('reports'), approvals: t('approvals'), rewards: t('rewards'), settings: t('settings'),
   };
   const shown = TABS.filter((tab) => (admin || !tab.adminOnly || (tab.key === 'talentPool' && pools)) && (tab.key !== 'approvals' || approvals > 0 || active === 'approvals')
     && (tab.key !== 'reports' || admin || reports || active === 'reports') && (tab.key !== 'screening' || screening > 0 || active === 'screening'));

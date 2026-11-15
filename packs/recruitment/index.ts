@@ -188,6 +188,9 @@ export const recruitmentPack: ModulePack = {
     { table: 'recruitment_candidate_email', note: 'one candidate e-mail: frozen recipient and content (purged 90 days after its final state), delivery state, actor, lease' },
     // Slice 22 (5724)
     { table: 'recruitment_candidate_survey_response', note: 'an anonymous survey answer: company, outcome, Kuala Lumpur month, ratings, recommend, comment; no person, job or time; administrators read; kept 24 months' },
+    // Slice 23 (5725)
+    { table: 'recruitment_referral_reward', note: 'one decided referral reward: frozen amount, approval or decline (with reason), receiving employment, and the payroll earning it was sent as; never deleted' },
+    { table: 'recruitment_agency_fee', note: 'one agency fee per hired agency application: invoice amount, reference and note, decided once by a second administrator; never paid through payroll' },
   ],
 };
 registerPack(recruitmentPack);

@@ -97,6 +97,8 @@ export const recruitmentJobOpening = pgTable('recruitment_job_opening', {
   statusChangedAt: ts('status_changed_at').notNull().defaultNow(),
   /** Slice 7 (5707): listed on the employee referral portal while Open. Changed by recruitment administrators only. */
   showOnReferralPortal: boolean('show_on_referral_portal').notNull().default(false),
+  // Slice 23 (5725): the job's referral reward in the company's currency; null = none. Administrators only.
+  referralReward: numeric('referral_reward', { precision: 12, scale: 2 }),
   /** Slice 8 (5708): listed on the company's public careers page while Open and the page is published. Administrators only;
    *  careersPostedAt is set by the database when the flag is turned on and cleared when it is turned off. */
   showOnCareersPage: boolean('show_on_careers_page').notNull().default(false),
@@ -531,6 +533,9 @@ export const recruitmentReferral = pgTable('recruitment_referral', {
   reason: text('reason'),
   confirmedAt: ts('confirmed_at').notNull(),
   createdAt: ts('created_at').notNull().defaultNow(),
+  // Slice 23 (5725): the job's reward frozen when the referral was made (null = none), set by the database.
+  rewardAmount: numeric('reward_amount', { precision: 12, scale: 2 }),
+  rewardCurrency: text('reward_currency'),
 });
 
 // ── Slice 8 (db/migrations/5708_recruitment_careers_page.sql) ───────────────────────────────────────────────────
@@ -1045,4 +1050,47 @@ export const recruitmentCandidateEmail = pgTable('recruitment_candidate_email', 
   mapUrl: text('map_url'),
   // Slice 22 (5724): the outcome a survey follows (hired or rejected); null for every other kind.
   surveyOutcome: text('survey_outcome'),
+});
+
+// ── Slice 23 (db/migrations/5725_recruitment_referral_rewards_agency_fees.sql) ───────────────────────────────────
+
+/** One decided referral reward. Inserted by a recruitment administrator of the job's company (the database checks the
+ *  facts); its payroll columns are written once by a payroll administrator of the receiving company. Never deleted. */
+export const recruitmentReferralReward = pgTable('recruitment_referral_reward', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  referralId: uuid('referral_id').notNull(),
+  amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+  currency: text('currency').notNull(),
+  decision: text('decision').$type<'approved' | 'declined'>().notNull(),
+  reason: text('reason'),
+  hireEmploymentId: uuid('hire_employment_id'),
+  payeeEmploymentId: uuid('payee_employment_id'),
+  payeeCompanyId: uuid('payee_company_id'),
+  decidedByUserId: uuid('decided_by_user_id').notNull(),
+  decidedAt: ts('decided_at').notNull().defaultNow(),
+  txnId: uuid('txn_id'),
+  payPeriod: text('pay_period'),
+  sentByUserId: uuid('sent_by_user_id'),
+  sentAt: ts('sent_at'),
+});
+
+/** One agency fee per hired agency application: recorded from the invoice, decided once by a second administrator. */
+export const recruitmentAgencyFee = pgTable('recruitment_agency_fee', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  applicationId: uuid('application_id').notNull(),
+  submissionId: uuid('submission_id').notNull(),
+  amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
+  currency: text('currency').notNull(),
+  invoiceRef: text('invoice_ref'),
+  note: text('note'),
+  recordedByUserId: uuid('recorded_by_user_id').notNull(),
+  recordedAt: ts('recorded_at').notNull().defaultNow(),
+  decision: text('decision').$type<'approved' | 'declined'>(),
+  decisionReason: text('decision_reason'),
+  decidedByUserId: uuid('decided_by_user_id'),
+  decidedAt: ts('decided_at'),
 });

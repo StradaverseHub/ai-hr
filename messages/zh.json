@@ -38709,7 +38709,8 @@
       "talentPool": "人才库",
       "reports": "报表",
       "approvals": "审批",
-      "screening": "待筛选"
+      "screening": "待筛选",
+      "rewards": "奖励与费用"
     },
     "errors": {
       "forbidden": "您不负责该公司的招聘。",
@@ -38829,7 +38830,16 @@
       "email_value_link": "此邮件中的某个值（候选人姓名、职位名称、地点或录用字段值）看起来像链接或网址，无法发送。未执行任何操作。",
       "email_private_field": "某个标记为邮件中的录用字段为私密字段，您无法查看。未执行任何操作；请让能查看该字段的人发送。",
       "email_use_send": "本公司已开启候选人邮件：请使用“通过邮件发送录用通知”，它会先显示邮件内容。未执行任何操作。",
-      "email_survey_link": "调查邮件的正文必须恰好包含一次调查链接占位符（用花括号括起的 surveyLink），主题中不能包含。"
+      "email_survey_link": "调查邮件的正文必须恰好包含一次调查链接占位符（用花括号括起的 surveyLink），主题中不能包含。",
+      "reward_not_ready": "此奖励尚不能批准：受聘者必须仍在职并已通过试用期。",
+      "reward_decided": "此项已被决定或已发送。请重新加载页面查看其状态。",
+      "reward_payee_unavailable": "推荐人没有可按该币种领取此奖励的在职雇佣记录。请改为拒绝此奖励。",
+      "reward_month_closed": "该发薪月份已有无法再接受交易的工资运行。请选择较晚的月份。",
+      "reward_payroll_off": "此系统的工资尚未支付个别交易，因此奖励会被记录但不会发放。",
+      "fee_not_eligible": "只有来自已接受的中介提交且已被录用的候选人才能记录中介费。",
+      "fee_decided": "此中介费已被决定，无法更改。",
+      "reward_self": "必须由其他人执行：您是推荐人、受聘者或收款人，或者您是最后记录此费用的人。",
+      "decline_reason": "请填写拒绝原因。"
     },
     "overview": {
       "purpose": "您所管理招聘的各公司今天的招聘工作。",
@@ -39001,7 +39011,14 @@
         "problem": "请填写所用最后一轮之前的每一轮，每轮使用本公司已启用的评估表。"
       },
       "fieldRequired": "请填写此字段。",
-      "fieldInvalid": "请检查此值。"
+      "fieldInvalid": "请检查此值。",
+      "referralReward": {
+        "title": "推荐奖励",
+        "note": "以公司币种计的固定金额，发给其推荐被录用的员工，在受聘者通过试用期后发放。推荐会保留推荐时显示的金额。留空表示无奖励。",
+        "amount": "奖励金额",
+        "none": "无奖励",
+        "save": "保存推荐奖励"
+      }
     },
     "candidates": {
       "purpose": "按阶段查看申请。可推进候选人、选择其他阶段，或注明原因后拒绝。",
@@ -39940,7 +39957,17 @@
         "not_progressing": "未继续",
         "removed": "已移除"
       },
-      "jobUnavailable": "此职位已不再开放推荐。"
+      "jobUnavailable": "此职位已不再开放推荐。",
+      "reward": "推荐奖励",
+      "rewardValue": "{amount}，在受聘者通过试用期后发放",
+      "rewardColumn": "奖励",
+      "rewardStates": {
+        "if_hired": "如被录用并通过试用期",
+        "waiting": "等待试用期结束",
+        "approved": "已批准",
+        "sent": "已发送至 {month} 工资",
+        "not_payable": "不予发放"
+      }
     },
     "careers": {
       "source": "招聘页面",
@@ -41209,6 +41236,69 @@
       "surveyDelayDays": "多少天后发送（{min}–{max}天）",
       "surveyHint": "拒绝后，调查只发送给已收到拒绝邮件的候选人，从该邮件发送时起计算。结果见“报表 › 候选人调查”。",
       "surveyLinkMarker": "[个人调查链接，发送邮件时添加]"
+    },
+    "rewards": {
+      "purpose": "试用期后的推荐奖励及中介费。此处所有金额均由人工输入。",
+      "saved": "已保存。",
+      "views": "奖励与费用视图",
+      "view": {
+        "rewards": "推荐奖励",
+        "fees": "中介费",
+        "payroll": "发送至工资"
+      },
+      "company": "公司",
+      "show": "显示",
+      "noRewards": "尚无带奖励且已录用的推荐。",
+      "rewardsNote": "受聘者仍在职且试用期结束后，奖励即可批准。批准后将交给工资管理员；拒绝为最终决定。",
+      "removedHire": "已移除的候选人",
+      "referredBy": "推荐人：{name}",
+      "unknownPerson": "未知人员",
+      "state": {
+        "waiting_record": "等待员工记录",
+        "waiting_probation": "等待试用期结束",
+        "ready": "待批准",
+        "hire_left": "受聘者已离职",
+        "approved": "已批准",
+        "sent": "已发送至工资",
+        "declined": "已拒绝"
+      },
+      "dueOn": "自 {date} 起可发放",
+      "noProbationDate": "此员工没有记录试用期日期。批准前请确认试用期已结束。",
+      "approvedBy": "由 {name} 于 {date} 批准",
+      "declinedBy": "由 {name} 于 {date} 拒绝",
+      "sentFor": "已发送至 {month} 工资",
+      "payee": "发放雇佣记录",
+      "choosePayee": "选择雇佣记录",
+      "approve": "批准",
+      "noPayee": "推荐人没有可领取此奖励的在职雇佣记录。",
+      "decline": "拒绝",
+      "reason": "原因",
+      "confirmDecline": "拒绝",
+      "noFees": "尚无来自中介的已录用候选人。",
+      "feesNote": "根据中介发票记录费用。由另一位管理员批准或拒绝。此处不会进行任何付款。",
+      "hiredOn": "录用于 {date}",
+      "feeState": {
+        "recorded": "等待批准",
+        "approved": "已批准",
+        "declined": "已拒绝"
+      },
+      "recordedBy": "由 {name} 于 {date} 记录",
+      "invoice": "发票 {ref}",
+      "correctFee": "更正费用",
+      "recordFee": "记录费用",
+      "amount": "金额",
+      "currency": "币种",
+      "invoiceRef": "发票编号",
+      "note": "备注",
+      "saveFee": "保存费用",
+      "otherDecides": "您是最后记录此费用的人，因此由另一位管理员批准或拒绝。",
+      "payrollNote": "本公司员工已批准的推荐奖励。发送后将在所选发薪月份的个别交易中记录一笔收入。",
+      "ledgerOff": "此系统的工资尚未支付个别交易。在启用之前无法发送奖励。",
+      "noPayroll": "没有等待发送至工资的已批准奖励。",
+      "payMonth": "发薪月份",
+      "component": "收入项目",
+      "chooseComponent": "选择项目",
+      "send": "发送至工资"
     }
   },
   "careersPublic": {

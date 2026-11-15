@@ -327,3 +327,15 @@ export {
   emptySurveyTally, addSurveyTallies,
 } from './candidate-email-model';
 export type { SurveyRating, SurveyRecommend, SurveyAnswers, SurveyTally, SurveyFigures, SurveySummary } from './candidate-email-model';
+// Slice 23 — referral rewards (a job's fixed reward, HR approval after probation, one payroll earning) and agency fees (recorded
+// and approved, never paid through payroll) (5725; D-063, D-068).
+export {
+  setJobReferralReward, referralRewards, decideReferralReward, rewardPayrollCompanies, rewardPayrollQueue, sendRewardToPayroll,
+  agencyFees, recordAgencyFee, decideAgencyFee,
+} from './rewards';
+export type { ReferralRewardRow, RewardDecisionInput, PayrollRewardRow, PayrollRewardQueue, SendRewardInput, AgencyFeeRow } from './rewards';
+export {
+  REFERRAL_REWARD_MAX, AGENCY_FEE_MAX, REWARD_REASON_MAX, FEE_INVOICE_MAX, FEE_NOTE_MAX, REWARD_PAY_MONTHS_AHEAD, REWARD_TXN_NOTE, REWARD_STATES,
+  MY_REWARD_STATES, rewardSourceRef, parseAmount, parseJobReward, rewardPayMonths, rewardState, myRewardState, validateAgencyFee,
+} from './reward-model';
+export type { RewardState, MyRewardState, RewardFacts, RewardHireFacts, RewardPayee, AgencyFeeInput, ValidAgencyFee } from './reward-model';

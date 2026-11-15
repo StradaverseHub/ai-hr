@@ -38709,7 +38709,8 @@
       "talentPool": "Talent pool",
       "reports": "Reports",
       "approvals": "Approvals",
-      "screening": "To screen"
+      "screening": "To screen",
+      "rewards": "Rewards and fees"
     },
     "errors": {
       "forbidden": "You do not manage recruitment for this company.",
@@ -38829,7 +38830,16 @@
       "email_value_link": "A value in this e-mail (the candidate's name, the job title, the place or an offer value) looks like a link or web address, so it cannot be e-mailed. Nothing was done.",
       "email_private_field": "An offer field marked for e-mail is private and hidden from you. Nothing was done; ask someone who can see it to send the offer.",
       "email_use_send": "Candidate e-mail is on for this company: use Send offer by e-mail, which shows the e-mail first. Nothing was done.",
-      "email_survey_link": "A survey e-mail must contain the survey link placeholder (surveyLink in braces) exactly once in its text, and not in its subject."
+      "email_survey_link": "A survey e-mail must contain the survey link placeholder (surveyLink in braces) exactly once in its text, and not in its subject.",
+      "reward_not_ready": "This reward cannot be approved yet: the hire must still be employed and have passed probation.",
+      "reward_decided": "This was already decided or sent. Reload the page to see where it stands.",
+      "reward_payee_unavailable": "The referrer has no active employment that can receive this reward in its currency. Decline the reward instead.",
+      "reward_month_closed": "That pay month already has a payroll run that can no longer take transactions. Choose a later month.",
+      "reward_payroll_off": "Payroll does not pay individual transactions on this installation yet, so the reward would be recorded but not paid.",
+      "fee_not_eligible": "An agency fee can be recorded only for a hired candidate who came from an accepted agency submission.",
+      "fee_decided": "This agency fee was already decided and cannot change.",
+      "reward_self": "Another person must do this: you are the referrer, the hire or the receiver, or you recorded this fee last.",
+      "decline_reason": "Give a reason for declining."
     },
     "overview": {
       "purpose": "Today's hiring work across the companies whose recruitment you manage.",
@@ -39001,7 +39011,14 @@
         "problem": "Fill every round before the last one you use, each with an enabled form of this company."
       },
       "fieldRequired": "Fill in this field.",
-      "fieldInvalid": "Check this value."
+      "fieldInvalid": "Check this value.",
+      "referralReward": {
+        "title": "Referral reward",
+        "note": "A fixed amount in the company currency for an employee whose referral is hired, paid after the hire passes probation. A referral keeps the amount shown when it was made. Leave empty for no reward.",
+        "amount": "Reward amount",
+        "none": "No reward",
+        "save": "Save referral reward"
+      }
     },
     "candidates": {
       "purpose": "Applications by stage. Move a candidate forward, choose another stage or reject with a reason.",
@@ -39940,7 +39957,17 @@
         "not_progressing": "Not progressing",
         "removed": "Removed"
       },
-      "jobUnavailable": "This job is no longer open for referrals."
+      "jobUnavailable": "This job is no longer open for referrals.",
+      "reward": "Referral reward",
+      "rewardValue": "{amount}, paid after the hire passes probation",
+      "rewardColumn": "Reward",
+      "rewardStates": {
+        "if_hired": "If hired and past probation",
+        "waiting": "Waiting for probation",
+        "approved": "Approved",
+        "sent": "Sent to payroll for {month}",
+        "not_payable": "Not payable"
+      }
     },
     "careers": {
       "source": "Careers page",
@@ -41209,6 +41236,69 @@
       "surveyDelayDays": "Send after (days, {min}–{max})",
       "surveyHint": "After a rejection, the survey goes only to candidates who were sent the rejection e-mail, counted from when it was sent. Results are under Reports › Candidate survey.",
       "surveyLinkMarker": "[personal survey link, added when the e-mail is sent]"
+    },
+    "rewards": {
+      "purpose": "Referral rewards after probation and agency fees. Every amount here was typed by a person.",
+      "saved": "Saved.",
+      "views": "Rewards and fees views",
+      "view": {
+        "rewards": "Referral rewards",
+        "fees": "Agency fees",
+        "payroll": "Send to payroll"
+      },
+      "company": "Company",
+      "show": "Show",
+      "noRewards": "No hired referrals with a reward yet.",
+      "rewardsNote": "A reward becomes ready once the hire is still employed and probation is over. Approving sends it to payroll administrators; declining is final.",
+      "removedHire": "Removed candidate",
+      "referredBy": "Referred by {name}",
+      "unknownPerson": "Unknown person",
+      "state": {
+        "waiting_record": "Waiting for the employee record",
+        "waiting_probation": "Waiting for probation",
+        "ready": "Ready for approval",
+        "hire_left": "Hire left",
+        "approved": "Approved",
+        "sent": "Sent to payroll",
+        "declined": "Declined"
+      },
+      "dueOn": "Payable from {date}",
+      "noProbationDate": "No probation date is recorded for this employee. Check that probation is over before approving.",
+      "approvedBy": "Approved by {name} on {date}",
+      "declinedBy": "Declined by {name} on {date}",
+      "sentFor": "sent to payroll for {month}",
+      "payee": "Paid through",
+      "choosePayee": "Choose the employment",
+      "approve": "Approve",
+      "noPayee": "The referrer has no active employment that can receive this reward.",
+      "decline": "Decline",
+      "reason": "Reason",
+      "confirmDecline": "Decline",
+      "noFees": "No hired candidates from agencies yet.",
+      "feesNote": "Record the fee from the agency invoice. Another administrator approves or declines it. Nothing is paid from here.",
+      "hiredOn": "Hired on {date}",
+      "feeState": {
+        "recorded": "Waiting for approval",
+        "approved": "Approved",
+        "declined": "Declined"
+      },
+      "recordedBy": "Recorded by {name} on {date}",
+      "invoice": "Invoice {ref}",
+      "correctFee": "Correct the fee",
+      "recordFee": "Record the fee",
+      "amount": "Amount",
+      "currency": "Currency",
+      "invoiceRef": "Invoice reference",
+      "note": "Note",
+      "saveFee": "Save fee",
+      "otherDecides": "You recorded this fee last, so another administrator approves or declines it.",
+      "payrollNote": "Approved referral rewards for employees of this company. Sending records one earning in Individual Transactions for the pay month you choose.",
+      "ledgerOff": "Payroll does not pay individual transactions on this installation yet. Rewards cannot be sent until it does.",
+      "noPayroll": "No approved rewards are waiting for payroll.",
+      "payMonth": "Pay month",
+      "component": "Earning component",
+      "chooseComponent": "Choose a component",
+      "send": "Send to payroll"
     }
   },
   "careersPublic": {

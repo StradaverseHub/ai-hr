@@ -129,8 +129,9 @@ describe('case 35 — the portal lists exactly the Open, portal jobs of the comp
     expect(portal.jobs.map((j) => j.jobId)).toEqual([shown]);
     expect(await referralEligible(worker)).toBe(true);
     // Only the portal fields: never salary, the team or counts.
+    // Slice 23 adds the job's referral reward (null without one).
     expect(Object.keys(portal.jobs[0]).sort()).toEqual(['companyId', 'companyName', 'description', 'employmentType', 'jobId', 'jobLevels', 'jobNumber',
-      'recruitmentType', 'title', 'workLocation']);
+      'recruitmentType', 'reward', 'title', 'workLocation']);
     expect(portal.jobs[0]).toMatchObject({ title: 'Fictional shown job', companyName: 'Acme Sdn Bhd', workLocation: 'Kuala Lumpur', jobLevels: ['Fictional grade 1'] });
     for (const id of [hidden, onHold, closed, otherCompany, tenant2Job]) expect(await referralPortalJob(worker, id), id).toBeNull();
     // Employed in both companies: both companies' portal jobs; still never the other tenant's.
@@ -451,7 +452,9 @@ describe('case 43 — My referrals', () => {
       ['Fictional Echo', 'not_progressing'],
     ]);
     expect(list.every((r) => r.jobTitle === 'Fictional analyst role' && r.companyName === 'Acme Sdn Bhd')).toBe(true);
-    expect(Object.keys(list[0]).sort()).toEqual(['candidateName', 'companyName', 'id', 'jobNumber', 'jobTitle', 'referredAt', 'status']);
+    // Slice 23 adds the frozen reward (null: this job carries none).
+    expect(Object.keys(list[0]).sort()).toEqual(['candidateName', 'companyName', 'id', 'jobNumber', 'jobTitle', 'referredAt', 'reward', 'status']);
+    expect(list.every((r) => r.reward === null)).toBe(true);
     // Sentinel check over the page data: no reason, stage name, archive reason, interview, score or offer field.
     const data = JSON.stringify(list);
     for (const forbidden of [SENTINEL, ...settings.stages.map((s) => s.name), settings.reasons[0].internal, settings.reasons[0].external, 'startsAt', 'rating', 'offer_value', 'salary']) {

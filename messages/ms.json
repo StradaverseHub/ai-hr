@@ -38709,7 +38709,8 @@
       "talentPool": "Kumpulan bakat",
       "reports": "Laporan",
       "approvals": "Kelulusan",
-      "screening": "Untuk disaring"
+      "screening": "Untuk disaring",
+      "rewards": "Ganjaran dan yuran"
     },
     "errors": {
       "forbidden": "Anda tidak menguruskan pengambilan bagi syarikat ini.",
@@ -38829,7 +38830,16 @@
       "email_value_link": "Satu nilai dalam e-mel ini (nama calon, jawatan, tempat atau nilai tawaran) kelihatan seperti pautan atau alamat web, jadi ia tidak boleh dihantar melalui e-mel. Tiada apa-apa dilakukan.",
       "email_private_field": "Satu medan tawaran yang ditanda untuk e-mel adalah peribadi dan tersembunyi daripada anda. Tiada apa-apa dilakukan; minta seseorang yang boleh melihatnya menghantar tawaran.",
       "email_use_send": "E-mel calon dihidupkan untuk syarikat ini: gunakan Hantar tawaran melalui e-mel, yang menunjukkan e-mel terlebih dahulu. Tiada apa-apa dilakukan.",
-      "email_survey_link": "E-mel tinjauan mesti mengandungi pemegang tempat pautan tinjauan (surveyLink dalam kurungan) tepat sekali dalam teksnya, dan tidak dalam subjeknya."
+      "email_survey_link": "E-mel tinjauan mesti mengandungi pemegang tempat pautan tinjauan (surveyLink dalam kurungan) tepat sekali dalam teksnya, dan tidak dalam subjeknya.",
+      "reward_not_ready": "Ganjaran ini belum boleh diluluskan: pekerja yang diambil mesti masih bekerja dan telah melepasi tempoh percubaan.",
+      "reward_decided": "Perkara ini sudah diputuskan atau dihantar. Muat semula halaman untuk melihat statusnya.",
+      "reward_payee_unavailable": "Perujuk tidak mempunyai pekerjaan aktif yang boleh menerima ganjaran ini dalam mata wangnya. Tolak ganjaran ini.",
+      "reward_month_closed": "Bulan gaji itu sudah mempunyai larian gaji yang tidak lagi menerima transaksi. Pilih bulan kemudian.",
+      "reward_payroll_off": "Gaji belum membayar transaksi individu pada pemasangan ini, jadi ganjaran akan direkodkan tetapi tidak dibayar.",
+      "fee_not_eligible": "Yuran agensi hanya boleh direkodkan untuk calon yang diambil daripada penyerahan agensi yang diterima.",
+      "fee_decided": "Yuran agensi ini sudah diputuskan dan tidak boleh diubah.",
+      "reward_self": "Orang lain mesti melakukannya: anda ialah perujuk, pekerja yang diambil atau penerima, atau anda yang terakhir merekodkan yuran ini.",
+      "decline_reason": "Berikan sebab penolakan."
     },
     "overview": {
       "purpose": "Kerja pengambilan hari ini merentas syarikat yang pengambilannya anda uruskan.",
@@ -39001,7 +39011,14 @@
         "problem": "Isi setiap pusingan sebelum pusingan terakhir yang digunakan, masing-masing dengan borang syarikat ini yang didayakan."
       },
       "fieldRequired": "Isi medan ini.",
-      "fieldInvalid": "Semak nilai ini."
+      "fieldInvalid": "Semak nilai ini.",
+      "referralReward": {
+        "title": "Ganjaran rujukan",
+        "note": "Amaun tetap dalam mata wang syarikat untuk pekerja yang rujukannya diambil bekerja, dibayar selepas pekerja itu melepasi tempoh percubaan. Rujukan mengekalkan amaun yang ditunjukkan semasa ia dibuat. Biarkan kosong jika tiada ganjaran.",
+        "amount": "Amaun ganjaran",
+        "none": "Tiada ganjaran",
+        "save": "Simpan ganjaran rujukan"
+      }
     },
     "candidates": {
       "purpose": "Permohonan mengikut peringkat. Gerakkan calon ke hadapan, pilih peringkat lain atau tolak dengan sebab.",
@@ -39940,7 +39957,17 @@
         "not_progressing": "Tidak diteruskan",
         "removed": "Dialih keluar"
       },
-      "jobUnavailable": "Jawatan ini tidak lagi dibuka untuk rujukan."
+      "jobUnavailable": "Jawatan ini tidak lagi dibuka untuk rujukan.",
+      "reward": "Ganjaran rujukan",
+      "rewardValue": "{amount}, dibayar selepas pekerja yang diambil melepasi tempoh percubaan",
+      "rewardColumn": "Ganjaran",
+      "rewardStates": {
+        "if_hired": "Jika diambil dan melepasi percubaan",
+        "waiting": "Menunggu tempoh percubaan",
+        "approved": "Diluluskan",
+        "sent": "Dihantar ke gaji untuk {month}",
+        "not_payable": "Tidak dibayar"
+      }
     },
     "careers": {
       "source": "Halaman kerjaya",
@@ -41209,6 +41236,69 @@
       "surveyDelayDays": "Hantar selepas (hari, {min}–{max})",
       "surveyHint": "Selepas penolakan, tinjauan hanya dihantar kepada calon yang telah menerima e-mel penolakan, dikira dari masa ia dihantar. Keputusan ada di Laporan › Tinjauan calon.",
       "surveyLinkMarker": "[pautan tinjauan peribadi, ditambah semasa e-mel dihantar]"
+    },
+    "rewards": {
+      "purpose": "Ganjaran rujukan selepas tempoh percubaan dan yuran agensi. Setiap amaun di sini ditaip oleh seseorang.",
+      "saved": "Disimpan.",
+      "views": "Paparan ganjaran dan yuran",
+      "view": {
+        "rewards": "Ganjaran rujukan",
+        "fees": "Yuran agensi",
+        "payroll": "Hantar ke gaji"
+      },
+      "company": "Syarikat",
+      "show": "Tunjukkan",
+      "noRewards": "Belum ada rujukan yang diambil bekerja dengan ganjaran.",
+      "rewardsNote": "Ganjaran sedia apabila pekerja yang diambil masih bekerja dan tempoh percubaan telah tamat. Kelulusan menghantarnya kepada pentadbir gaji; penolakan adalah muktamad.",
+      "removedHire": "Calon yang dibuang",
+      "referredBy": "Dirujuk oleh {name}",
+      "unknownPerson": "Orang tidak diketahui",
+      "state": {
+        "waiting_record": "Menunggu rekod pekerja",
+        "waiting_probation": "Menunggu tempoh percubaan",
+        "ready": "Sedia untuk kelulusan",
+        "hire_left": "Pekerja telah berhenti",
+        "approved": "Diluluskan",
+        "sent": "Dihantar ke gaji",
+        "declined": "Ditolak"
+      },
+      "dueOn": "Boleh dibayar mulai {date}",
+      "noProbationDate": "Tiada tarikh tempoh percubaan direkodkan untuk pekerja ini. Semak bahawa tempoh percubaan telah tamat sebelum meluluskan.",
+      "approvedBy": "Diluluskan oleh {name} pada {date}",
+      "declinedBy": "Ditolak oleh {name} pada {date}",
+      "sentFor": "dihantar ke gaji untuk {month}",
+      "payee": "Dibayar melalui",
+      "choosePayee": "Pilih pekerjaan",
+      "approve": "Luluskan",
+      "noPayee": "Perujuk tidak mempunyai pekerjaan aktif yang boleh menerima ganjaran ini.",
+      "decline": "Tolak",
+      "reason": "Sebab",
+      "confirmDecline": "Tolak",
+      "noFees": "Belum ada calon yang diambil daripada agensi.",
+      "feesNote": "Rekodkan yuran daripada invois agensi. Pentadbir lain meluluskan atau menolaknya. Tiada bayaran dibuat dari sini.",
+      "hiredOn": "Diambil pada {date}",
+      "feeState": {
+        "recorded": "Menunggu kelulusan",
+        "approved": "Diluluskan",
+        "declined": "Ditolak"
+      },
+      "recordedBy": "Direkodkan oleh {name} pada {date}",
+      "invoice": "Invois {ref}",
+      "correctFee": "Betulkan yuran",
+      "recordFee": "Rekodkan yuran",
+      "amount": "Amaun",
+      "currency": "Mata wang",
+      "invoiceRef": "Rujukan invois",
+      "note": "Catatan",
+      "saveFee": "Simpan yuran",
+      "otherDecides": "Anda yang terakhir merekodkan yuran ini, jadi pentadbir lain meluluskan atau menolaknya.",
+      "payrollNote": "Ganjaran rujukan yang diluluskan untuk pekerja syarikat ini. Penghantaran merekodkan satu pendapatan dalam Transaksi Individu untuk bulan gaji yang anda pilih.",
+      "ledgerOff": "Gaji belum membayar transaksi individu pada pemasangan ini. Ganjaran tidak boleh dihantar sehingga ia berbuat demikian.",
+      "noPayroll": "Tiada ganjaran yang diluluskan menunggu gaji.",
+      "payMonth": "Bulan gaji",
+      "component": "Komponen pendapatan",
+      "chooseComponent": "Pilih komponen",
+      "send": "Hantar ke gaji"
     }
   },
   "careersPublic": {
