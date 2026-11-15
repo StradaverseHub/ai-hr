@@ -14,7 +14,10 @@ export const MOVEMENT_IMPORT_HEADERS=['Employee ID',...MOVEMENT_IMPORT_FIELDS.ma
 /** 646355e5 slice C — `action` (blank = create) and `movementId`/`reason` come from the version 4 columns; an
  * Update or Delete names ONE existing movement, resolved only within the row's tenant, company and employee. */
 export type MovementImportAction='create'|'update'|'delete';
-export type MovementImportRecord={row:number;employeeCode:string;cells:Partial<Record<MovementFormField,string>>;ignoredOrganisation?:{parentCompany?:string;businessUnit?:string};errors:string[];incrementAmount?:string;importVersion?:2;source?:{sheet:string;row:number};companyCode?:string;companyId?:string;employeeName?:string;before?:Record<string,string>;sourceRows?:number[];action?:MovementImportAction;movementId?:string;reason?:string;
+export type MovementImportRecord={row:number;employeeCode:string;
+ /** Board 4604dccc r3 — set by the check (always) and the commit (the user's closed-payroll box), never by a file:
+  *  a Group Join Date Correction / Join Date Change row may then move across closed payroll, which stays as paid. */
+ acknowledgeClosedPayroll?:boolean;cells:Partial<Record<MovementFormField,string>>;ignoredOrganisation?:{parentCompany?:string;businessUnit?:string};errors:string[];incrementAmount?:string;importVersion?:2;source?:{sheet:string;row:number};companyCode?:string;companyId?:string;employeeName?:string;before?:Record<string,string>;sourceRows?:number[];action?:MovementImportAction;movementId?:string;reason?:string;
  /** Board 154511c4 — classified as history for this employee (see core/movement-history.ts classifyHistoryRows). */
  history?:boolean};
 export type MovementImportRow={row:number;employeeCode:string;eventType:string;effectiveDate:string;status:'valid'|'invalid'|'excluded'|'imported'|'failed';errors:string[];warnings?:string[];source?:{sheet:string;row:number};sourceRows?:number[];companyCode?:string;baselineDate?:string;before?:Record<string,string|null>;proposed?:Record<string,string|null>;scheduled?:boolean;payrollFlaggedPeriods?:string[];action?:MovementImportAction;movementId?:string;closedPayrollPeriods?:string[];

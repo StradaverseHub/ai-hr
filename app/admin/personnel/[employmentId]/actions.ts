@@ -531,6 +531,8 @@ export async function createMovementEventAction(formData: FormData) {
     const p = parseMovementForm(formData);
     const res = await createMovementEvent(s, {
       employmentId, ...p, documents: await parseMovementDocuments(formData),
+      // Board 4604dccc r3 — the closed-payroll confirmation box; only the two date movements read it.
+      acknowledgeClosedPayroll: formData.get('acknowledgeClosedPayroll') === '1',
     }, {captureGradeBefore:true});
     if (res && 'payrollFlaggedPeriods' in res && Array.isArray(res.payrollFlaggedPeriods)) {
       payrollFlagged = res.payrollFlaggedPeriods as string[];

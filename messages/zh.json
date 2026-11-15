@@ -1791,6 +1791,7 @@
           "closedPayrollTitle": "{periods} 的薪资已关闭。",
           "closedPayrollBody": "此更正会更新员工记录及之后的处理。已关闭的薪资、已发布的工资单和法定申报将保留最终数字，不会重新计算。如需调整金额，请使用薪资更正流程。更正后的工资自已关闭薪资之后的第一个月起生效。",
           "closedPayrollAcknowledge": "我了解已关闭的薪资不会改变。",
+          "dateClosedPayrollOptional": "如果此日期跨越已关闭的薪资月份，请在下方勾选。已关闭的薪资、工资单和法定申报将完全保持支付时的状态。",
           "mustChange": "必须更改",
           "endDateRequiredContract": "因为新的员工类型为合同，所以必填。合同自生效日期开始，结束日期必须晚于生效日期。",
           "endDateRequiredIntern": "因为新的员工类型为实习，所以必填。实习结束日期必须晚于生效日期。",
@@ -3544,6 +3545,7 @@
       "effectiveDate": "生效日期",
       "effectiveDateHint": "可选择 {start} 至今天（{today}）之间的任何日期。默认为今天。",
       "effectiveDateFollowsJoin": "最早日期：{start}，即下方输入的集团入职日期。",
+      "historyClosedPayroll": "已关闭的薪资保持不变：{periods}。",
       "effectiveDateJoin": "选择集团入职日期 {start} 将更正员工的原始入职资料。公司、雇佣类型、业务单位、部门、职位、组织标签和直属上司自生效日期起适用，直至下一次记录的变更。",
       "timeline": {
         "title": "按生效日期排列的记录",

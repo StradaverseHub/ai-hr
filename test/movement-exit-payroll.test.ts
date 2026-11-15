@@ -53,12 +53,16 @@ describe('646355e5 — ended employment retains finalised payroll before correct
   expect((await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,batch.id)))[0]).toEqual(batch);
   const after=await payslipForReview(ctx,{companyIds:[b.companyId],payslipId:slip.id});expect(after).toEqual(before);expect(await document(after!)).toEqual(pdfBefore);
  });
- it('refuses to invent original metadata after a legacy primary-only exit changed status after closure',async()=>{
+ // Board 4604dccc r3 (migration 5690) — a later change no longer refuses: the snapshot is taken from the recorded
+ // history as at the payroll, nothing unknowable is invented (it keeps what the document shows), payroll is untouched.
+ it('preserves the payslip details from recorded history after a legacy primary-only exit changed status after closure',async()=>{
   const {employmentId}=await hire(),ctx=adminCtx(b),{slip}=await closedSlip(employmentId);
   await terminateEmployment(ctx,{employmentId,terminationDate:day(-2),terminationReason:'Fictional legacy direct exit'});
-  const [ready]=await withTenant(ctx,tx=>tx.execute<{ready:boolean}>(sql`select app.information_payroll_ready(${employmentId}::uuid) as ready`));expect(ready.ready).toBe(false);
-  await expect(withTenant(ctx,tx=>tx.execute(sql`select app.preserve_information_payroll(${employmentId}::uuid)`))).rejects.toThrow();
-  expect(await owner.db.select().from(s.informationPayslipSnapshot).where(eq(s.informationPayslipSnapshot.employmentId,employmentId))).toHaveLength(0);
+  const [ready]=await withTenant(ctx,tx=>tx.execute<{ready:boolean}>(sql`select app.information_payroll_ready(${employmentId}::uuid) as ready`));expect(ready.ready).toBe(true);
+  await withTenant(ctx,tx=>tx.execute(sql`select app.preserve_information_payroll(${employmentId}::uuid)`));
+  const snapshots=await owner.db.select().from(s.informationPayslipSnapshot).where(eq(s.informationPayslipSnapshot.employmentId,employmentId));
+  expect(snapshots).toHaveLength(1);
+  expect((snapshots[0].documentMetadata as {snapshotBasis?:{reconstructed:string[];asDisplayed:string[]}}).snapshotBasis).toBeTruthy();
   expect((await owner.db.select().from(s.payslip).where(eq(s.payslip.id,slip.id)))[0]).toEqual(slip);
  });
 });

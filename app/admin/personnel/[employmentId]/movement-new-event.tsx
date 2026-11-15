@@ -654,6 +654,18 @@ export function MovementNewEvent({
         </div>
       )}
 
+      {/* Board 4604dccc r3 — a Group Join Date Correction or Join Date Change no longer stops at closed payroll: HR
+          confirms it stays as paid. The service asks for this box only when a closed month lies in between. */}
+      {!edit && (behaviour === 'groupJoinDateCorrection' || behaviour === 'joinDateChange') && (
+        <div className="border-b border-border bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
+          <p>{t('form.dateClosedPayrollOptional')}</p>
+          <label className="mt-2 flex items-start gap-2">
+            <input type="checkbox" name="acknowledgeClosedPayroll" value="1" className="mt-1" />
+            <span>{t('form.closedPayrollAcknowledge')}</span>
+          </label>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           {label(movementField('kind'))}

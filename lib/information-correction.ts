@@ -11,9 +11,13 @@ export const INFORMATION_PERIOD_FIELDS=['probationValue','probationUnit','extend
 export const INFORMATION_REPORTING_FIELDS=['managerEmploymentId'] as const;
 export const INFORMATION_EXTENDED_FIELDS=[...INFORMATION_ASSIGNMENT_FIELDS,...INFORMATION_LABEL_FIELDS,...INFORMATION_PERIOD_FIELDS,...INFORMATION_REPORTING_FIELDS] as const;
 export const INFORMATION_ALL_FIELDS=[...INFORMATION_FIELDS,...INFORMATION_EXTENDED_FIELDS] as const;
+/** Board 4604dccc r3 — the single-employee screen also corrects Business Unit, Department and Position (dated from the
+ *  Effective Date, as the template already does). Template headers and V1 behaviour stay keyed on INFORMATION_FIELDS. */
+export const INFORMATION_SCREEN_FIELDS=[...INFORMATION_FIELDS,'businessUnitId','departmentId','positionId'] as const;
+export type InformationScreenField=typeof INFORMATION_SCREEN_FIELDS[number];
 export type InformationField=typeof INFORMATION_ALL_FIELDS[number];
 export type InformationCoreField=typeof INFORMATION_FIELDS[number];
-export const INFORMATION_FIELD_IDS={"companyId":"employment.organisation_assignment.companyname","hiredOn":"employment.employment_dates_and_service.hiredon","joinDate":"employment.employment_dates_and_service.joindate","gradeId":"employment.organisation_assignment.gradename","employmentType":"employment.organisation_assignment.employmenttype","contractEndDate":"employment.employment_dates_and_service.contractenddate","internshipEndDate":"employment.draft_only_employment_fields.internshipenddate"} as const;
+export const INFORMATION_FIELD_IDS={"companyId":"employment.organisation_assignment.companyname","hiredOn":"employment.employment_dates_and_service.hiredon","joinDate":"employment.employment_dates_and_service.joindate","gradeId":"employment.organisation_assignment.gradename","employmentType":"employment.organisation_assignment.employmenttype","contractEndDate":"employment.employment_dates_and_service.contractenddate","internshipEndDate":"employment.draft_only_employment_fields.internshipenddate","businessUnitId":"employment.organisation_assignment.businessunitname","departmentId":"employment.organisation_assignment.departmentname","positionId":"employment.organisation_assignment.positionname"} as const;
 /** The period value/unit pairs of the template. A value without its unit (or the reverse) is refused. */
 export const INFORMATION_PERIOD_PAIRS=[['probationValue','probationUnit'],['extendedProbationValue','extendedProbationUnit'],['noticeBeforeConfirmationValue','noticeBeforeConfirmationUnit'],['noticeAfterConfirmationValue','noticeAfterConfirmationUnit']] as const;
 /** Fields whose correction changes what leave processing reads (core/leave.ts and core/org-criteria.ts: service

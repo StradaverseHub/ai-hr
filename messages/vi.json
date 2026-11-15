@@ -1791,6 +1791,7 @@
           "closedPayrollTitle": "Bảng lương {periods} đã được khóa sổ.",
           "closedPayrollBody": "Việc điều chỉnh này cập nhật hồ sơ nhân viên và các lần xử lý sau. Bảng lương đã khóa, phiếu lương đã phát hành và các hồ sơ nộp theo luật định giữ nguyên số liệu cuối cùng và sẽ không được tính lại. Nếu cần điều chỉnh số tiền, hãy dùng quy trình điều chỉnh lương. Mức lương đã điều chỉnh có hiệu lực từ tháng đầu tiên sau kỳ lương đã khóa.",
           "closedPayrollAcknowledge": "Tôi hiểu rằng bảng lương đã khóa sẽ không thay đổi.",
+          "dateClosedPayrollOptional": "Nếu ngày này vượt qua tháng lương đã chốt, hãy đánh dấu bên dưới. Bảng lương đã chốt, phiếu lương và hồ sơ nộp theo luật định giữ nguyên như khi đã trả.",
           "mustChange": "Bắt buộc thay đổi",
           "endDateRequiredContract": "Bắt buộc vì Loại nhân viên mới là Hợp đồng. Hợp đồng bắt đầu từ ngày hiệu lực và phải kết thúc sau ngày đó.",
           "endDateRequiredIntern": "Bắt buộc vì Loại nhân viên mới là Thực tập. Kỳ thực tập phải kết thúc sau ngày hiệu lực.",
@@ -3544,6 +3545,7 @@
       "effectiveDate": "Ngày hiệu lực",
       "effectiveDateHint": "Bất kỳ ngày nào từ {start} đến hôm nay ({today}). Mặc định là hôm nay.",
       "effectiveDateFollowsJoin": "Ngày sớm nhất: {start}, Ngày gia nhập tập đoàn đã nhập bên dưới.",
+      "historyClosedPayroll": "Bảng lương đã chốt giữ nguyên: {periods}.",
       "effectiveDateJoin": "Chọn {start}, Ngày gia nhập tập đoàn, sẽ sửa thông tin tuyển dụng ban đầu của nhân viên. Công ty, Loại hình lao động, Đơn vị kinh doanh, Phòng ban, Chức vụ, nhãn tổ chức và Cấp trên trực tiếp áp dụng từ Ngày hiệu lực đến thay đổi được ghi nhận tiếp theo.",
       "timeline": {
         "title": "Các bản ghi theo thứ tự Ngày hiệu lực",
