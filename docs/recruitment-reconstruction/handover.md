@@ -147,3 +147,18 @@ import worker runs as `node --import tsx scripts/bank-import-runner.ts` (not wit
 2. Resolve B-002 and B-003 with the owner.
 3. Write `specification.md` per observed journey, then build vertical slices following `architecture.md`. The first slice is the pack, catalog row, default-off gate, nav item, `SCREENS` entry, i18n in 6 locales and the registry tests.
 4. Verify on GitHub Actions (`alpha-focused-checks.yml`), not local slots.
+
+## Checkpoint — slice 20 built and verified (2026-11-15)
+
+State at `48843bac6` (pushed; branch `claude/rea-web-app-reconstruction-2c12ee`):
+- `origin/main` (`1299e6724`) merged at `12b68a8df` without a renumber (main's newest, `5660`, sorts below `5700`).
+- Slice 20 built: migration `5721` (idx 5121, when 1793330005421), invitations with a server-rendered live preview, automatic
+  reminders, withdrawal on cancellation, cancellation e-mails, "Send offer by e-mail" with "In e-mail" offer fields. Decisions D-065.
+- CI: type check and build pass on `5b9b4cf0d`; all unit tests pass; the DB tests pass after the last test fixes (run 43695948469 for the
+  affected files). Results and the fixes CI found are in `parity-report.md`. The only known failures remain the AI files waiting on
+  the owner's provider-data approval.
+- Not rendered (case 136): no local render cluster, and queuing needs an installation with the embedded sign-in and an active relay.
+- Nothing is on staging.
+
+Next, in order: slice 21 (verified applicants with a one-time e-mail code, signed accept links for interviews and offers, careers
+receipts; spec to write), then slices 22–25 as listed in the previous checkpoint. Owner items unchanged, plus a review of D-065.

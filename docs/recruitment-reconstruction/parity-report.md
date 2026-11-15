@@ -658,9 +658,9 @@ source manifests were regenerated with the repo scripts.
 | 43687717855 | Selected tests (51 files: every `test/recruitment-*`, migration ordering and installed watermark, i18n, pack registry) | PASS |
 | 43687717855 | Whole-repo type check | PASS |
 | 43687717855 | Production build | PASS |
-| 43687722673 | Selected tests (63 files: mail transports, navigation and AI suites) | RESULT_B |
+| 43687722673 | Selected tests (63 files: mail transports, navigation and AI suites) | 59 PASS; FAIL: 4 of the known 6 AI files waiting on the owner's provider-data approval (module-agent-evaluation-progress, module-agent-prompt-release, module-specialist-release-lifecycle, provider-analysis-policy) |
 
-## Slice 20 — Candidate e-mail (interview invitations, reminders, cancellations, offers) — commit 80a66c098
+## Slice 20 — Candidate e-mail (interview invitations, reminders, cancellations, offers) — commits 80a66c098 … 48843bac6
 
 Built: migration `5721` (idx 5121, when 1793330005421); invitation with a server-rendered live preview in the schedule form (the form
 posts the subject and text it showed; a difference refuses); the automatic reminder (on by default, 24 hours before, 2–72) frozen with
@@ -675,6 +675,14 @@ Tests: `test/recruitment-candidate-email-hiring.test.ts` (cases 133–135 agains
 Not rendered (case 136): the local render cluster from slice 19 no longer exists, and queuing needs an installation with the embedded
 sign-in and an active mail relay (as for slice 19's case 132), which the local server does not have.
 
-| Run (80a66c098) | Job | Result |
+| Run | Job | Result |
 | --- | --- | --- |
-RESULT_C
+| 43689634616 (80a66c098) | Type check | FAIL: offer-field fixtures in recruitment-hiring-rules lacked `includeInEmail` (fixed d4c4c93fe) |
+| 43689634616 | Unit tests | FAIL: two slice 19 expectations (settings shape) and a wrapped-array comparison (fixed d4c4c93fe); DB stage not reached |
+| 43691141570 (d4c4c93fe) | Type check, build, 31 unit files | PASS |
+| 43691141570 | DB tests | FAIL before tests: 5721 did not apply — a CASE inside an IF condition in `finish` (PL/pgSQL read its THEN as the IF's). Reproduced and confirmed on a throwaway local Postgres 16 chain apply (fixed e44b5c612) |
+| 43692883716 (e44b5c612) | DB tests | FAIL: the withdrawal trigger inserted text into the `actor_type` enum, so every interview cancellation failed (19 tests in interview set-up, tasks, agencies and reports), plus two slice 19 pins (12 → 36 templates, the `withdrawn` count) (fixed 5b9b4cf0d) |
+| 43694134042 (5b9b4cf0d) | Type check, build | PASS |
+| 43694134042 | Unit (31 files, 446 tests) | PASS |
+| 43694134042 | DB (22 files, 320 tests) | 318 PASS; FAIL 2 in the new slice 20 test only (a duplicate-reminder fixture without its map link; a hiring manager's refusal reads not_found) (fixed 48843bac6) |
+| 43695948469 (48843bac6) | 10 affected files (slice 19 and 20 e-mail, interview set-up, slices service, tasks, agencies, reports, hiring rules) | PASS: 255 tests |
