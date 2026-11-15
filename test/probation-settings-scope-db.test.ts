@@ -96,7 +96,8 @@ describe('group standard and company settings',()=>{
   await expect(saveProbationSettingsScope(admin,{settingKey:projects.settingKey,scope:'company',name:'Projects',companyIds:[b.companyId],data:{maxExtensions:3},publish:true,expectedVersion:1})).rejects.toThrow();
   await retireProbationCompanySetting(admin,{settingKey:retail.settingKey,expectedVersion:1,reason:'Retail follows the group standard again'});
   expect((await resolved(second))?.data).toMatchObject({issueLeadDays:45,scope:{overrideId:null,fields:[]}});
-  expect((await probationSettingsScope(admin)).members).toEqual([]);
+  // The Projects setting added above for the pinned case's company stays; only the retired Retail setting's member is gone.
+  expect((await probationSettingsScope(admin)).members).toEqual([{companyId:b.companyId,settingKey:projects.settingKey,settingName:'Projects',fields:['maxExtensions']}]);
   expect(await refreshProbationCompanySettings(admin,second)).toBe(0);
  });
 

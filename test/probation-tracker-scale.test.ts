@@ -6,6 +6,7 @@
  */
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -27,14 +28,19 @@ const previousFlags:Record<Flag,ReturnType<typeof sql>>={
  kpi_ack:sql`exists(select 1 from probation_part p where p.case_id=c.id and p.tenant_id=c.tenant_id and p.data->>'type'='1' and p.data->>'managerSubmittedAt' is not null and p.data->>'acknowledgedAt' is null and p.data->>'state' not in('completed_offline','cancelled'))`,
 };
 /**
- * The previous reader's access rule is row security calling app.probation_case_access per row. It is evaluated once
- * here, under the viewer's own session, to fix the visible population; the previous tile expressions and order then
- * run over exactly that population as the owner (no row security), so the comparison does not repeat the slow
- * per-row predicate for every tile.
+ * The previous access rule, exactly as migration 0949 defined it (test/helpers/probation-access-reference.sql), applied
+ * per case inside one SECURITY DEFINER reader, so it is independent of the set-based owner of the rule (migration 5746).
  */
+async function installReference(){
+ for(const statement of readFileSync('test/helpers/probation-access-reference.sql','utf8').split(/\n(?=CREATE OR REPLACE FUNCTION )/).filter(text=>text.includes('CREATE OR REPLACE FUNCTION')))await owner.db.execute(sql.raw(statement));
+ await owner.db.execute(sql.raw(`CREATE OR REPLACE FUNCTION app.probation_visible_reference() RETURNS SETOF uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT c.id FROM public.probation_case c WHERE c.tenant_id=app.current_tenant_id() AND app.probation_case_access_reference(c.id) $$`));
+ await owner.db.execute(sql.raw('GRANT EXECUTE ON FUNCTION app.probation_visible_reference() TO ai_hr_app'));
+}
 async function previousVisible(ctx:SessionContext){
- const started=Date.now(),rows=await withTenant(ctx,tx=>tx.execute<{id:string}>(sql`select id from probation_case`));
- timing('previous access (row security per row, once)',started);return rows.map(r=>r.id);
+ return timed('previous access rule (0949, per case) '+(ctx.userId===admin.userId?'GBS':'viewer'),async()=>(await withTenant(ctx,tx=>tx.execute<{id:string}>(sql`select app.probation_visible_reference() as id`))).map(r=>r.id).sort());
+}
+async function currentVisible(ctx:SessionContext){
+ return timed('visible set (5746, set-based) '+(ctx.userId===admin.userId?'GBS':'viewer'),async()=>(await withTenant(ctx,tx=>tx.execute<{id:string}>(sql`select app.probation_visible_case_ids() as id`))).map(r=>r.id).sort());
 }
 async function previousReader(visible:string[],filters:{companyId?:string;flag?:Flag}){
  const ids=sql`array[${visible.length?sql.join(visible.map(id=>sql`${id}::uuid`),sql`, `):sql``}]::uuid[]`;
@@ -53,7 +59,7 @@ async function currentPages(ctx:SessionContext,filters:{companyId?:string;flag?:
  return pages;
 }
 
-beforeAll(migrateTestDb);afterAll(closeAll);
+beforeAll(async()=>{await migrateTestDb();await installReference();});afterAll(closeAll);
 beforeEach(async()=>{
  const seeded=Date.now();
  await resetDb();b=await seedBase();await setModule(b.tenantId,'lifecycle','active');admin=adminCtx(b);
@@ -101,6 +107,31 @@ describe('tracker read at real-group shape',()=>{
   const[expected]=await owner.db.execute<{overridden:number;company:string}>(sql`select count(distinct c.id) filter(where p.data->>'override'='true' and p.data->>'state'<>'cancelled')::int overridden,(select company_id::text from probation_case where tenant_id=${b.tenantId}::uuid group by company_id order by count(*) desc,company_id limit 1) company from probation_case c join probation_part p on p.case_id=c.id where c.tenant_id=${b.tenantId}::uuid`);
   expect(expected.overridden).toBeGreaterThan(0);
   const visible=await previousVisible(admin);
+  expect(await currentVisible(admin)).toEqual(visible);
+  // Every role in the fixture: employee, Line Manager, PBP, delegate and an outsider see exactly what the 0949 rule shows.
+  const viewer=async(name:string)=>{const[p]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,${name},${randomUUID()+'@scale.example.test'}) returning id`);const userId=await createAppUser(b.tenantId,p.id,'employee');return{person:p.id,ctx:{...admin,userId,personId:p.id,roles:['employee'],grants:undefined} as SessionContext};};
+  const companies=(await owner.db.execute<{id:string}>(sql`select id from company where tenant_id=${b.tenantId}::uuid and legal_name like 'Fictional Scale Company %' order by legal_name limit 3`)).map(r=>r.id);
+  const[subject]=await owner.db.execute<{person:string;employment:string;part:string}>(sql`select e.person_id as person,e.id as employment,(select p.id from probation_part p where p.case_id=c.id order by p.id limit 1) as part from probation_case c join employment e on e.id=c.employment_id where c.tenant_id=${b.tenantId}::uuid order by c.id limit 1`);
+  const employee=await createAppUser(b.tenantId,subject.person,'employee');
+  const manager=await viewer('Fictional Scale Line Manager'),pbp=await viewer('Fictional Scale People Partner'),delegate=await viewer('Fictional Scale Delegate');
+  const[managerEmployment]=await owner.db.execute<{id:string}>(sql`insert into employment(tenant_id,person_id,company_id,hired_on) values(${b.tenantId}::uuid,${manager.person}::uuid,${companies[0]}::uuid,'2025-01-01') returning id`);
+  await owner.db.execute(sql`insert into reporting_line(tenant_id,subordinate_employment_id,manager_employment_id,line_type,valid_from) select ${b.tenantId}::uuid,c.employment_id,${managerEmployment.id}::uuid,'administrative','2026-01-01' from probation_case c where c.tenant_id=${b.tenantId}::uuid order by c.id limit 40`);
+  await owner.db.execute(sql`update lc_v9_config set data=jsonb_set(data,'{bpRules}',${JSON.stringify([{rules:{company:companies},userId:pbp.ctx.userId}])}::jsonb) where tenant_id=${b.tenantId}::uuid`);
+  await owner.db.execute(sql`insert into probation_access(tenant_id,user_id,company_id,role,valid_from,reason) select ${b.tenantId}::uuid,${pbp.ctx.userId}::uuid,id,'pbp','2026-01-01','Scale fixture PBP' from unnest(array[${sql.join(companies.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) id`);
+  await owner.db.execute(sql`insert into probation_delegate(tenant_id,part_id,step_id,holder_id,kind,reason,created_by,valid_from) values(${b.tenantId}::uuid,${subject.part}::uuid,'pbp',${delegate.ctx.userId}::uuid,'delegation','Scale fixture delegation',${admin.userId}::uuid,'2026-01-01')`);
+  const outsider=await viewer('Fictional Scale Outsider');
+  for(const[name,ctx,least]of [['employee',{...admin,userId:employee,personId:subject.person,roles:['employee'],grants:undefined} as SessionContext,1],['Line Manager',manager.ctx,40],['PBP',pbp.ctx,1],['delegate',delegate.ctx,1],['outsider',outsider.ctx,0]] as const){
+   const before=await previousVisible(ctx),after=await currentVisible(ctx);
+   expect(after,name).toEqual(before);expect(after.length,name).toBeGreaterThanOrEqual(least);
+   if(before.length){const previous=await previousReader(before,{}),page=await timed('tracker read '+name,()=>probationSummaryRows(ctx,{limit:100}));expect(page.rows.map(r=>r.id),name).toEqual(previous.ids.slice(0,100));expect(page.total,name).toBe(previous.counts.total);}
+  }
+  // Profile the set-based pieces for the GBS viewer and log the plans of the two tracker readers.
+  const caseIds=visible.slice(0,100);
+  await timed('holders for all 1,080 employments (owner call)',()=>owner.withTenant(admin,tx=>tx.execute(sql`select count(*) from app.probation_holders_set(array(select employment_id from probation_case where tenant_id=${b.tenantId}::uuid))`)));
+  await timed('tracker page details for 100 cases',()=>withTenant(admin,tx=>tx.execute(sql`select count(*) from app.probation_tracker_page(array[${sql.join(caseIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`)));
+  for(const statement of [sql`explain (analyze,buffers) select count(*) from app.probation_tracker_cases()`,sql`explain (analyze,buffers) select * from app.probation_tracker_page(array[${sql.join(caseIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`]){
+   const plan=await withTenant(admin,tx=>tx.execute<{'QUERY PLAN':string}>(statement));console.log('[probation-tracker-scale] plan\n'+plan.map(r=>r['QUERY PLAN']).join('\n'));
+  }
   for(const companyId of [undefined,expected.company]){
    const previous=await previousReader(visible,{companyId});
    expect(previous.ids.length).toBeGreaterThan(0);
@@ -122,7 +153,7 @@ describe('tracker read at real-group shape',()=>{
    const before=await previousReader(visible,{flag}),page=await timed('tracker read all companies flag '+flag,()=>probationSummaryRows(admin,{flag,limit:100}));
    expect(page.rows.map(r=>r.id)).toEqual(before.ids.slice(0,100));expect(page.total).toBe(before.counts.total);
   }
- },120000); // Measured per read and logged ([probation-tracker-scale] lines); the previous reader's per-row access is evaluated once. Keep about 3x the measured worst total.
+ },120000); // Measuring run: every read is logged as a [probation-tracker-scale] line; set to about 3x the measured worst total once known.
  it('shows nothing to a person without case access',async()=>{
   const[p]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional outsider',${randomUUID()+'@scale.example.test'}) returning id`);
   const userId=await createAppUser(b.tenantId,p.id,'employee');

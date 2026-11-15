@@ -3,9 +3,10 @@
 --
 -- Row security on probation_case and probation_part calls app.probation_case_access per row, and again for every part a
 -- tile counts, so the tracker evaluated the full holder resolution thousands of times per read (72 companies and 1,080
--- cases timed out at 180 s). The tracker now decides the visible case set once per statement, set-based, and reads
--- cases and their review parts through two SECURITY DEFINER readers over that set. Row security and
--- app.probation_case_access stay unchanged for every other reader.
+-- cases timed out at 180 s). The access rule now has one owner, app.probation_visible_among(cases), set-based and backed
+-- by one set-based holder resolution (app.probation_holders_set, which app.probation_holders now answers from);
+-- app.probation_case_access(case) is membership of that set for one case, so row security keeps working unchanged in
+-- shape, and the tracker asks for the whole set once per read and for one page of details in one statement.
 --
 -- The maximum number of extensions becomes a setting (0-2, default 2). The seven owner-owned functions that compared
 -- extensionCount with the literal 2 (submission readiness, part commands and their command list, recorded effect,
@@ -17,25 +18,30 @@
 -- already waiting for PBP confirmation when this ships still advances through confirm_refusal (the previous order),
 -- or through the Line Manager recording the decline again. The employee never records it.
 -- No table, row, grant or purpose-owned object changes.
--- 1. The cases the signed-in user may see, decided once as a set (the same rule as app.probation_case_access, which
---    row security evaluates per row and per part). Branches: storage runner; the employee themself on a case whose
---    employment moved company; and, on current cases in an entitled company, the employee, Line Manager, Head of
---    Department, PBP (canonical BP rule plus a PBP opt-in mapping), GBS (People Ops member plus a GBS mapping), an active
---    delegate, and as a residual the escalated approver (evaluated per case only for cases that are not otherwise
---    visible and have a part waiting for approval).
-CREATE FUNCTION app.probation_visible_case_ids() RETURNS SETOF uuid LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE t uuid:=app.current_tenant_id();me uuid:=app.current_user_id();day date:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date;
- my_person uuid;usable boolean:=false;unique_me boolean:=false;named boolean:=false;ops boolean:=false;rules_ok boolean:=true;visible uuid[];
+-- 1. Company ancestry for many companies at once (same walk as app.company_org_descendant_for_tenant, which the
+--    access rules otherwise call once per company and mapping pair). Internal.
+CREATE FUNCTION app.probation_company_ancestors(p_companies uuid[]) RETURNS TABLE(company_id uuid,ancestor_id uuid) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH RECURSIVE up(company_id,id,path) AS (
+  SELECT c.id,c.id,ARRAY[c.id] FROM public.company c WHERE c.tenant_id=app.current_tenant_id() AND c.id=ANY(p_companies)
+  UNION ALL
+  SELECT up.company_id,p.id,up.path||p.id FROM up CROSS JOIN LATERAL (SELECT app.company_org_parent_for_tenant(app.current_tenant_id(),up.id) AS parent_id) x
+   JOIN public.company p ON p.id=x.parent_id AND p.tenant_id=app.current_tenant_id() WHERE NOT p.id=ANY(up.path))
+ SELECT company_id,id FROM up;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.probation_company_ancestors(uuid[]) FROM PUBLIC, ai_hr_app;
+--> statement-breakpoint
+-- 2. Holders, set-based. This is now the one owner of the employee / Line Manager / Head of Department / PBP
+--    resolution; app.probation_holders(employment) below answers from it for one employment. Same rules as before:
+--    a holder is the person's only usable login; the Line Manager comes from the current administrative reporting line;
+--    the Head of Department from the current assignment's department; the PBP from the canonical BP rules (most
+--    specific unique rule; none when a rule is malformed) with a named login and a current PBP opt-in mapping.
+CREATE FUNCTION app.probation_holders_set(p_employments uuid[]) RETURNS TABLE(employment_id uuid,company_id uuid,department_id uuid,business_unit_id uuid,employee uuid,lm uuid,hod uuid,pbp uuid)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+#variable_conflict use_column
+DECLARE t uuid:=app.current_tenant_id();day date:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date;rules_ok boolean:=true;
 BEGIN
- IF t IS NULL THEN RETURN;END IF;
- IF app.probation_storage_runner() THEN RETURN QUERY SELECT c.id FROM public.probation_case c WHERE c.tenant_id=t;RETURN;END IF;
- IF coalesce(app.probation_active_user(),false) IS NOT TRUE THEN RETURN;END IF;
- SELECT u.person_id,(u.archived_at IS NULL AND NOT app.login_blocked(u.id)) INTO my_person,usable FROM public.app_user u WHERE u.id=me AND u.tenant_id=t;
- -- app.probation_user_for(employment)=me exactly when the employment is my person's and I am that person's only usable login.
- unique_me:=coalesce(usable,false) AND my_person IS NOT NULL AND (SELECT count(*) FROM public.app_user u WHERE u.person_id=my_person AND u.tenant_id=t AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))=1;
- named:=EXISTS(SELECT 1 FROM public.person p WHERE p.id=my_person AND p.tenant_id=t AND length(btrim(p.full_name))>0);
- ops:=coalesce(usable,false) AND coalesce(app.lifecycle_canonical_people_ops_member((SELECT co.id FROM public.company co WHERE co.tenant_id=t ORDER BY co.id LIMIT 1),me),false);
- -- app.lifecycle_canonical_pbp_user answers NULL for every employment when a BP rule is malformed (it raises inside).
+ IF t IS NULL OR coalesce(cardinality(p_employments),0)=0 THEN RETURN;END IF;
  SELECT coalesce(bool_and(jsonb_typeof(v.data->'bpRules') IS NULL OR jsonb_typeof(v.data->'bpRules')='array'),true) INTO rules_ok FROM public.lc_v9_config v WHERE v.tenant_id=t;
  IF rules_ok THEN
   SELECT coalesce(bool_and((r->'rules' IS NULL OR jsonb_typeof(r->'rules')='object')
@@ -44,78 +50,174 @@ BEGIN
    AND (r->'rules'->'department' IS NULL OR jsonb_typeof(r->'rules'->'department')='array')),true) INTO rules_ok
   FROM public.lc_v9_config v CROSS JOIN LATERAL jsonb_array_elements(coalesce(v.data->'bpRules','[]'::jsonb)) r WHERE v.tenant_id=t;
  END IF;
+ RETURN QUERY
+ WITH emp AS MATERIALIZED (
+  SELECT e.id,e.person_id,e.company_id,x.department_id,x.business_unit_id,
+   (SELECT r.manager_employment_id FROM public.reporting_line r WHERE r.tenant_id=t AND r.subordinate_employment_id=e.id AND r.line_type='administrative'
+     AND r.valid_from<=current_date AND (r.valid_to IS NULL OR r.valid_to>current_date) AND r.superseded_at IS NULL LIMIT 1) AS manager_id,
+   (SELECT d.head_employment_id FROM public.department d WHERE d.id=x.department_id AND d.tenant_id=e.tenant_id) AS head_id
+  FROM public.employment e
+  LEFT JOIN LATERAL (SELECT a.department_id,a.business_unit_id FROM public.assignment a WHERE a.employment_id=e.id AND a.tenant_id=e.tenant_id AND a.superseded_at IS NULL
+   AND a.valid_from<=day AND (a.valid_to IS NULL OR a.valid_to>day) ORDER BY a.valid_from DESC,a.id LIMIT 1) x ON true
+  WHERE e.tenant_id=t AND e.id=ANY(p_employments)),
+ linked AS MATERIALIZED (SELECT l.id,l.person_id FROM public.employment l WHERE l.tenant_id=t AND l.id IN(SELECT emp.id FROM emp UNION SELECT emp.manager_id FROM emp UNION SELECT emp.head_id FROM emp)),
+ logins AS MATERIALIZED (
+  SELECT u.person_id,CASE WHEN count(*)=1 THEN (array_agg(u.id))[1] END AS user_id FROM public.app_user u
+  WHERE u.tenant_id=t AND u.person_id IN(SELECT linked.person_id FROM linked) AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) GROUP BY u.person_id),
+ user_for AS MATERIALIZED (SELECT linked.id,logins.user_id FROM linked JOIN logins ON logins.person_id=linked.person_id),
+ rules AS MATERIALIZED (SELECT r.value AS r FROM public.lc_v9_config v CROSS JOIN LATERAL jsonb_array_elements(coalesce(v.data->'bpRules','[]'::jsonb)) r WHERE v.tenant_id=t AND rules_ok),
+ bp AS MATERIALIZED (
+  SELECT emp.id,rules.r->>'userId' AS user_id,
+   (CASE WHEN coalesce(jsonb_array_length(rules.r->'rules'->'businessGroup'),0)>0 THEN 4 ELSE 0 END+CASE WHEN coalesce(jsonb_array_length(rules.r->'rules'->'company'),0)>0 THEN 2 ELSE 0 END+CASE WHEN coalesce(jsonb_array_length(rules.r->'rules'->'department'),0)>0 THEN 1 ELSE 0 END) AS score
+  FROM emp CROSS JOIN rules
+  WHERE (coalesce(jsonb_array_length(rules.r->'rules'->'company'),0)=0 OR rules.r->'rules'->'company' ? emp.company_id::text)
+   AND (coalesce(jsonb_array_length(rules.r->'rules'->'businessGroup'),0)=0 OR rules.r->'rules'->'businessGroup' ? emp.business_unit_id::text)
+   AND (coalesce(jsonb_array_length(rules.r->'rules'->'department'),0)=0 OR rules.r->'rules'->'department' ? emp.department_id::text)
+   AND NOT EXISTS(SELECT 1 FROM jsonb_each(coalesce(rules.r->'rules','{}'::jsonb)) extra WHERE extra.key NOT IN('company','businessGroup','department') AND extra.value<>'[]'::jsonb)),
+ bp_top AS (SELECT bp.id,max(bp.score) AS score FROM bp GROUP BY bp.id),
+ bp_pick AS (SELECT bp.id,min(bp.user_id) AS user_id FROM bp JOIN bp_top ON bp_top.id=bp.id AND bp_top.score=bp.score GROUP BY bp.id HAVING count(DISTINCT coalesce(bp.user_id,chr(1)))=1),
+ bp_user AS MATERIALIZED (
+  SELECT bp_pick.id,u.id AS user_id FROM bp_pick JOIN public.app_user u ON u.id=CASE WHEN bp_pick.user_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN bp_pick.user_id::uuid END
+   AND u.tenant_id=t AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+   JOIN public.person n ON n.id=u.person_id AND n.tenant_id=u.tenant_id AND length(btrim(n.full_name))>0),
+ pbp_maps AS MATERIALIZED (SELECT m.* FROM public.probation_access m WHERE m.tenant_id=t AND m.role='pbp' AND m.user_id IN(SELECT bp_user.user_id FROM bp_user) AND m.valid_from<=day AND (m.valid_to IS NULL OR m.valid_to>=day)),
+ anc AS MATERIALIZED (SELECT * FROM app.probation_company_ancestors(ARRAY(SELECT DISTINCT emp.company_id FROM emp JOIN bp_user ON bp_user.id=emp.id))),
+ pbp AS (
+  SELECT bp_user.id,bp_user.user_id FROM bp_user JOIN emp ON emp.id=bp_user.id
+  WHERE EXISTS(SELECT 1 FROM pbp_maps m JOIN anc ON anc.company_id=emp.company_id AND anc.ancestor_id=m.company_id
+   WHERE m.user_id=bp_user.user_id AND (m.department_id IS NULL OR m.department_id=emp.department_id) AND (m.business_unit_id IS NULL OR m.business_unit_id=emp.business_unit_id)))
+ SELECT emp.id,emp.company_id,emp.department_id,emp.business_unit_id,ue.user_id,ul.user_id,uh.user_id,pbp.user_id
+ FROM emp LEFT JOIN user_for ue ON ue.id=emp.id LEFT JOIN user_for ul ON ul.id=emp.manager_id LEFT JOIN user_for uh ON uh.id=emp.head_id LEFT JOIN pbp ON pbp.id=emp.id;
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.probation_holders_set(uuid[]) FROM PUBLIC, ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.probation_holders(p_employment uuid) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE h record;
+BEGIN
+ SELECT * INTO h FROM app.probation_holders_set(ARRAY[p_employment]);
+ IF NOT FOUND THEN RETURN '{}'::jsonb;END IF;
+ RETURN jsonb_build_object('employee',h.employee,'lm',h.lm,'hod',h.hod,'pbp',h.pbp,'pbpAmbiguous',false,'companyId',h.company_id,'departmentId',h.department_id,'businessUnitId',h.business_unit_id);
+END $$;
+--> statement-breakpoint
+-- 3. The case access rule, decided for a set of cases (NULL = every case in the tenant). It is the one owner of the
+--    rule: app.probation_case_access(case) is membership of this set for one case, row security keeps calling that,
+--    and the tracker asks for the whole set once. Storage runner sees all; otherwise only an active user, on an
+--    entitled company: on a case whose employment moved company, only the employee themself; on a current case, the
+--    employee, Line Manager, Head of Department or PBP holder, a GBS People Ops member with a covering GBS mapping, an
+--    active delegate, or (evaluated per case, only where nothing else applies) the escalated approver.
+CREATE FUNCTION app.probation_visible_among(p_cases uuid[]) RETURNS SETOF uuid LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id();me uuid:=app.current_user_id();day date:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date;
+ my_person uuid;usable boolean:=false;ops boolean:=false;visible uuid[];
+BEGIN
+ IF t IS NULL THEN RETURN;END IF;
+ IF app.probation_storage_runner() THEN RETURN QUERY SELECT c.id FROM public.probation_case c WHERE c.tenant_id=t AND (p_cases IS NULL OR c.id=ANY(p_cases));RETURN;END IF;
+ IF coalesce(app.probation_active_user(),false) IS NOT TRUE THEN RETURN;END IF;
+ SELECT u.person_id,(u.archived_at IS NULL AND NOT app.login_blocked(u.id)) INTO my_person,usable FROM public.app_user u WHERE u.id=me AND u.tenant_id=t;
+ IF EXISTS(SELECT 1 FROM public.probation_access m WHERE m.tenant_id=t AND m.user_id=me AND m.role='gbs') THEN
+  ops:=coalesce(usable,false) AND coalesce(app.lifecycle_canonical_people_ops_member((SELECT co.id FROM public.company co WHERE co.tenant_id=t ORDER BY co.id LIMIT 1),me),false);
+ END IF;
  SELECT coalesce(array_agg(x.id),'{}'::uuid[]) INTO visible FROM (
-  WITH entitled AS MATERIALIZED (SELECT co.id FROM public.company co WHERE co.tenant_id=t AND app.probation_company_entitled(co.id)),
-  mappings AS MATERIALIZED (SELECT m.id,m.role,m.company_id,m.department_id,m.business_unit_id FROM public.probation_access m
-   WHERE m.tenant_id=t AND m.user_id=me AND m.role IN('pbp','gbs') AND m.valid_from<=day AND (m.valid_to IS NULL OR m.valid_to>=day)),
-  reach AS MATERIALIZED (SELECT co.id AS company_id,m.id AS mapping_id FROM entitled co CROSS JOIN mappings m WHERE app.is_company_descendant(co.id,m.company_id)),
-  cs AS MATERIALIZED (
-   SELECT c.id,c.employment_id,e.person_id,e.company_id AS employment_company,e.tenant_id,
-    coalesce(e.company_id=c.company_id AND c.data->>'sourceCompanyMoved' IS DISTINCT FROM 'true',false) AS current_company
-   FROM public.probation_case c JOIN entitled en ON en.id=c.company_id
-   LEFT JOIN public.employment e ON e.id=c.employment_id AND e.tenant_id=c.tenant_id
-   WHERE c.tenant_id=t),
-  cur AS MATERIALIZED (
-   SELECT cs.*,a.department_id,a.business_unit_id FROM cs
-   LEFT JOIN LATERAL (SELECT x.department_id,x.business_unit_id FROM public.assignment x WHERE x.employment_id=cs.employment_id AND x.tenant_id=cs.tenant_id AND x.superseded_at IS NULL AND x.valid_from<=day AND (x.valid_to IS NULL OR x.valid_to>day) ORDER BY x.valid_from DESC,x.id LIMIT 1) a ON true
-   WHERE cs.current_company),
-  bp_match AS (
-   SELECT cur.id,r->>'userId' AS user_id,
-    (CASE WHEN coalesce(jsonb_array_length(r->'rules'->'businessGroup'),0)>0 THEN 4 ELSE 0 END+CASE WHEN coalesce(jsonb_array_length(r->'rules'->'company'),0)>0 THEN 2 ELSE 0 END+CASE WHEN coalesce(jsonb_array_length(r->'rules'->'department'),0)>0 THEN 1 ELSE 0 END) AS score
-   FROM cur JOIN public.lc_v9_config v ON v.tenant_id=t AND rules_ok AND named AND usable
-   CROSS JOIN LATERAL jsonb_array_elements(coalesce(v.data->'bpRules','[]'::jsonb)) r
-   WHERE EXISTS(SELECT 1 FROM mappings m WHERE m.role='pbp')
-    AND (coalesce(jsonb_array_length(r->'rules'->'company'),0)=0 OR r->'rules'->'company' ? cur.employment_company::text)
-    AND (coalesce(jsonb_array_length(r->'rules'->'businessGroup'),0)=0 OR r->'rules'->'businessGroup' ? cur.business_unit_id::text)
-    AND (coalesce(jsonb_array_length(r->'rules'->'department'),0)=0 OR r->'rules'->'department' ? cur.department_id::text)
-    AND NOT EXISTS(SELECT 1 FROM jsonb_each(coalesce(r->'rules','{}'::jsonb)) extra WHERE extra.key NOT IN('company','businessGroup','department') AND extra.value<>'[]'::jsonb)),
-  bp_top AS (SELECT b.id,max(b.score) AS score FROM bp_match b GROUP BY b.id),
-  bp_pick AS (SELECT b.id FROM bp_match b JOIN bp_top tp ON tp.id=b.id AND tp.score=b.score GROUP BY b.id HAVING count(DISTINCT coalesce(b.user_id,chr(1)))=1 AND min(b.user_id)=me::text)
-  SELECT cs.id FROM cs WHERE NOT cs.current_company AND cs.person_id IS NOT NULL AND cs.person_id=my_person
+  WITH cs AS MATERIALIZED (
+   SELECT c.id,c.employment_id,c.company_id,e.person_id,coalesce(e.company_id=c.company_id AND c.data->>'sourceCompanyMoved' IS DISTINCT FROM 'true',false) AS current_company
+   FROM public.probation_case c LEFT JOIN public.employment e ON e.id=c.employment_id AND e.tenant_id=c.tenant_id
+   WHERE c.tenant_id=t AND (p_cases IS NULL OR c.id=ANY(p_cases))),
+  ent AS MATERIALIZED (SELECT co.id FROM public.company co WHERE co.tenant_id=t AND co.id IN(SELECT DISTINCT cs.company_id FROM cs) AND app.probation_company_entitled(co.id)),
+  live AS MATERIALIZED (SELECT cs.* FROM cs JOIN ent ON ent.id=cs.company_id),
+  h AS MATERIALIZED (SELECT * FROM app.probation_holders_set(ARRAY(SELECT live.employment_id FROM live WHERE live.current_company))),
+  gbs AS MATERIALIZED (SELECT m.* FROM public.probation_access m WHERE ops AND m.tenant_id=t AND m.user_id=me AND m.role='gbs' AND m.valid_from<=day AND (m.valid_to IS NULL OR m.valid_to>=day)),
+  anc AS MATERIALIZED (SELECT * FROM app.probation_company_ancestors(ARRAY(SELECT DISTINCT h.company_id FROM h WHERE EXISTS(SELECT 1 FROM gbs))))
+  SELECT live.id FROM live WHERE NOT live.current_company AND live.person_id=my_person
   UNION
-  SELECT cur.id FROM cur WHERE
-   (unique_me AND cur.person_id=my_person)
-   OR (unique_me AND EXISTS(SELECT 1 FROM public.employment m WHERE m.tenant_id=t AND m.person_id=my_person AND m.id=(
-     SELECT r.manager_employment_id FROM public.reporting_line r WHERE r.tenant_id=t AND r.subordinate_employment_id=cur.employment_id
-      AND r.line_type='administrative' AND r.valid_from<=current_date AND (r.valid_to IS NULL OR r.valid_to>current_date) AND r.superseded_at IS NULL LIMIT 1)))
-   OR (unique_me AND EXISTS(SELECT 1 FROM public.department d JOIN public.employment h ON h.id=d.head_employment_id AND h.tenant_id=t
-     WHERE d.id=cur.department_id AND d.tenant_id=cur.tenant_id AND h.person_id=my_person))
-   OR (cur.id IN(SELECT id FROM bp_pick) AND EXISTS(SELECT 1 FROM mappings m JOIN reach rc ON rc.mapping_id=m.id AND rc.company_id=cur.employment_company
-     WHERE m.role='pbp' AND (m.department_id IS NULL OR m.department_id=cur.department_id) AND (m.business_unit_id IS NULL OR m.business_unit_id=cur.business_unit_id)))
-   OR (ops AND EXISTS(SELECT 1 FROM mappings m JOIN reach rc ON rc.mapping_id=m.id AND rc.company_id=cur.employment_company
-     WHERE m.role='gbs' AND (m.department_id IS NULL OR m.department_id=cur.department_id) AND (m.business_unit_id IS NULL OR m.business_unit_id=cur.business_unit_id)))
-   OR EXISTS(SELECT 1 FROM public.probation_delegate d JOIN public.probation_part p ON p.id=d.part_id AND p.tenant_id=d.tenant_id
-     WHERE p.case_id=cur.id AND d.tenant_id=t AND d.holder_id=me AND d.valid_from<=day AND (d.valid_to IS NULL OR d.valid_to>=day))
+  SELECT live.id FROM live JOIN h ON h.employment_id=live.employment_id WHERE live.current_company AND (
+   me IN(h.employee,h.lm,h.hod,h.pbp)
+   OR EXISTS(SELECT 1 FROM gbs m JOIN anc ON anc.company_id=h.company_id AND anc.ancestor_id=m.company_id
+    WHERE (m.department_id IS NULL OR m.department_id=h.department_id) AND (m.business_unit_id IS NULL OR m.business_unit_id=h.business_unit_id)))
+  UNION
+  SELECT live.id FROM live WHERE live.current_company AND EXISTS(SELECT 1 FROM public.probation_delegate d JOIN public.probation_part p ON p.id=d.part_id AND p.tenant_id=d.tenant_id
+   WHERE p.case_id=live.id AND d.tenant_id=t AND d.holder_id=me AND d.valid_from<=day AND (d.valid_to IS NULL OR d.valid_to>=day))
  ) x;
  RETURN QUERY SELECT unnest(visible);
- -- Residual: an escalated approver on a case that is otherwise invisible to them.
  RETURN QUERY WITH candidates AS MATERIALIZED (
   SELECT c.id FROM public.probation_case c
-  WHERE c.tenant_id=t AND NOT c.id=ANY(visible) AND app.probation_company_entitled(c.company_id)
+  WHERE c.tenant_id=t AND (p_cases IS NULL OR c.id=ANY(p_cases)) AND NOT c.id=ANY(visible) AND app.probation_company_entitled(c.company_id)
    AND EXISTS(SELECT 1 FROM public.probation_part p JOIN public.document_signing_document d ON d.tenant_id=p.tenant_id AND d.subject_type='probation' AND d.subject_id=p.id
     WHERE p.case_id=c.id AND p.tenant_id=c.tenant_id AND p.data->>'state'='pending_approval'))
  SELECT candidates.id FROM candidates WHERE app.probation_current_escalated_actor(candidates.id);
 END $$;
 --> statement-breakpoint
+REVOKE ALL ON FUNCTION app.probation_visible_among(uuid[]) FROM PUBLIC, ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.probation_case_access(p_case uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_case IS NOT NULL AND EXISTS(SELECT 1 FROM app.probation_visible_among(ARRAY[p_case]));
+$$;
+--> statement-breakpoint
+CREATE FUNCTION app.probation_visible_case_ids() RETURNS SETOF uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.probation_visible_among(NULL);
+$$;
+--> statement-breakpoint
 REVOKE ALL ON FUNCTION app.probation_visible_case_ids() FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.probation_visible_case_ids() TO ai_hr_app;
 --> statement-breakpoint
--- 2. Tracker readers over that set: cases, and the review parts of those cases (letter parts never carry a due date,
---    band, KPI or override, so no tracker tile reads them). Each statement decides visibility once.
-CREATE FUNCTION app.probation_tracker_cases() RETURNS SETOF public.probation_case LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT c.* FROM public.probation_case c WHERE c.tenant_id=app.current_tenant_id() AND c.id IN(SELECT app.probation_visible_case_ids());
+-- 4. Tracker readers. probation_tracker_cases: the visible cases with their review parts (letter parts never carry a
+--    due date, band, KPI or override, so no tile reads them). probation_tracker_page: for one page of visible cases,
+--    the parts with who is waiting, the letter waiting, and holder names, all set-based.
+CREATE FUNCTION app.probation_tracker_cases() RETURNS TABLE(id uuid,tenant_id uuid,company_id uuid,employment_id uuid,revision integer,data jsonb,review_parts jsonb,pbp_name text) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH v AS MATERIALIZED (SELECT app.probation_visible_case_ids() AS id),
+ parts AS MATERIALIZED (SELECT p.case_id,jsonb_agg(p.data ORDER BY p.id) AS parts FROM public.probation_part p
+  WHERE p.tenant_id=app.current_tenant_id() AND p.case_id IN(SELECT v.id FROM v) AND coalesce(p.data->>'documentKind','review')='review' GROUP BY p.case_id)
+ SELECT c.id,c.tenant_id,c.company_id,c.employment_id,c.revision,c.data,coalesce(parts.parts,'[]'::jsonb),n.full_name
+ FROM public.probation_case c LEFT JOIN parts ON parts.case_id=c.id
+ LEFT JOIN public.app_user u ON u.id=CASE WHEN c.data->'facts'->'holders'->>'pbp' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN (c.data->'facts'->'holders'->>'pbp')::uuid END AND u.tenant_id=c.tenant_id
+ LEFT JOIN public.person n ON n.id=u.person_id AND n.tenant_id=u.tenant_id
+ WHERE c.tenant_id=app.current_tenant_id() AND c.id IN(SELECT v.id FROM v);
 $$;
 --> statement-breakpoint
-CREATE FUNCTION app.probation_tracker_parts() RETURNS SETOF public.probation_part LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT p.* FROM public.probation_part p WHERE p.tenant_id=app.current_tenant_id() AND coalesce(p.data->>'documentKind','review')='review' AND p.case_id IN(SELECT app.probation_visible_case_ids());
-$$;
+CREATE FUNCTION app.probation_tracker_page(p_cases uuid[]) RETURNS TABLE(case_id uuid,parts jsonb,letter jsonb,names jsonb) LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+#variable_conflict use_column
+DECLARE t uuid:=app.current_tenant_id();day date:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date;allowed uuid[];
+BEGIN
+ IF t IS NULL OR coalesce(cardinality(p_cases),0) NOT BETWEEN 1 AND 200 THEN RETURN;END IF;
+ allowed:=ARRAY(SELECT app.probation_visible_among(p_cases));
+ RETURN QUERY
+ WITH c AS MATERIALIZED (SELECT pc.id,pc.employment_id,pc.company_id,pc.tenant_id,pc.data FROM public.probation_case pc WHERE pc.tenant_id=t AND pc.id=ANY(allowed)),
+ cur AS MATERIALIZED (SELECT c.id,c.employment_id FROM c JOIN public.employment e ON e.id=c.employment_id AND e.tenant_id=c.tenant_id AND e.company_id=c.company_id WHERE c.data->>'sourceCompanyMoved' IS DISTINCT FROM 'true'),
+ h AS MATERIALIZED (SELECT * FROM app.probation_holders_set(ARRAY(SELECT cur.employment_id FROM cur))),
+ parts AS (
+  SELECT p.case_id,jsonb_agg(jsonb_build_object('id',p.id,'type',(p.data->>'type')::integer,'cycle',(p.data->>'cycle')::integer,'state',p.data->>'state','dueOn',p.data->>'dueOn','managerSubmittedAt',p.data->>'managerSubmittedAt','staffSubmittedAt',p.data->>'staffSubmittedAt','acknowledgedAt',p.data->>'acknowledgedAt','scoreBand',(p.data->>'scoreBand')::integer,'override',coalesce((p.data->>'override')::boolean,false),
+   'waitingRole',CASE WHEN p.data->>'state' IN('locked','completed_offline','cancelled','not_issued') THEN NULL WHEN p.data->>'type'<>'1' AND p.data->>'staffSubmittedAt' IS NULL AND p.data->>'employeeWaitException' IS NULL THEN 'employee' WHEN p.data->>'managerSubmittedAt' IS NULL THEN 'lm' WHEN p.data->>'acknowledgedAt' IS NULL THEN 'employee'
+    ELSE coalesce((SELECT s->>'role' FROM public.document_signing_document d CROSS JOIN LATERAL jsonb_array_elements(d.data->'route'->'steps') s WHERE d.subject_type='probation' AND d.subject_id=p.id AND d.tenant_id=p.tenant_id AND NOT app.document_signing_step_fulfilled(d.data,s) AND s->>'coveredByStepId' IS NULL ORDER BY (s->>'stage')::integer,s->>'id' LIMIT 1),'gbs') END,
+   'waitingName',NULL) ORDER BY (p.data->>'cycle')::integer,(p.data->>'type')::integer,p.id) AS parts
+  FROM public.probation_part p WHERE p.tenant_id=t AND p.case_id=ANY(allowed) AND coalesce(p.data->>'documentKind','review')='review' GROUP BY p.case_id),
+ names AS (
+  SELECT x.case_id,jsonb_agg(DISTINCT jsonb_build_object('role',x.role,'name',x.name)) AS names FROM (
+   SELECT cur.id AS case_id,r.role,n.full_name AS name FROM cur JOIN h ON h.employment_id=cur.employment_id
+    CROSS JOIN LATERAL (VALUES('employee',h.employee),('lm',h.lm),('hod',h.hod),('pbp',h.pbp)) r(role,user_id)
+    JOIN public.app_user u ON u.id=r.user_id AND u.tenant_id=t JOIN public.person n ON n.id=u.person_id AND n.tenant_id=u.tenant_id
+   UNION ALL
+   SELECT cur.id,x.step_id,n.full_name FROM cur JOIN public.probation_part r ON r.case_id=cur.id AND r.tenant_id=t
+    JOIN public.probation_delegate x ON x.part_id=r.id AND x.tenant_id=t AND x.valid_from<=day AND (x.valid_to IS NULL OR x.valid_to>=day)
+    JOIN public.app_user u ON u.id=x.holder_id AND u.tenant_id=t JOIN public.person n ON n.id=u.person_id AND n.tenant_id=u.tenant_id
+   UNION ALL
+   -- Escalated holders, only for parts that can be waiting on someone (the tracker names no one on settled parts).
+   SELECT cur.id,s->>'role',n.full_name FROM cur JOIN public.probation_part part ON part.case_id=cur.id AND part.tenant_id=t
+    AND part.data->>'state' NOT IN('locked','completed_offline','cancelled','not_issued')
+    CROSS JOIN LATERAL jsonb_array_elements(app.probation_resolve_route_unchecked(part.id)->'steps') s
+    JOIN public.app_user u ON u.id=(s->>'holderId')::uuid AND u.tenant_id=part.tenant_id JOIN public.person n ON n.id=u.person_id AND n.tenant_id=u.tenant_id
+    WHERE s->>'representedId' IS NOT NULL
+  ) x GROUP BY x.case_id)
+ SELECT c.id,coalesce(parts.parts,'[]'::jsonb),
+  CASE WHEN EXISTS(SELECT 1 FROM public.probation_part l WHERE l.case_id=c.id AND l.tenant_id=t AND l.data->>'documentKind'='letter') THEN (SELECT to_jsonb(lt) FROM app.probation_letter_tasks(c.id) lt LIMIT 1) END,
+  coalesce(names.names,'[]'::jsonb)
+ FROM c LEFT JOIN parts ON parts.case_id=c.id LEFT JOIN names ON names.case_id=c.id;
+END $$;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION app.probation_tracker_cases(),app.probation_tracker_parts() FROM PUBLIC;
+REVOKE ALL ON FUNCTION app.probation_tracker_cases(),app.probation_tracker_page(uuid[]) FROM PUBLIC;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.probation_tracker_cases(),app.probation_tracker_parts() TO ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.probation_tracker_cases(),app.probation_tracker_page(uuid[]) TO ai_hr_app;
 --> statement-breakpoint
--- 3. Maximum extensions is a setting (0 to 2, default 2). Every rule that counted against the literal 2 reads the value
+-- 5. Maximum extensions is a setting (0 to 2, default 2). Every rule that counted against the literal 2 reads the value
 --    the case pinned in data.config when it started; running cases keep their pinned value.
 CREATE FUNCTION app.probation_max_extensions(p_case_data jsonb) RETURNS integer LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT CASE WHEN jsonb_typeof(p_case_data->'config'->'maxExtensions')='number' AND (p_case_data->'config'->>'maxExtensions') IN('0','1','2') THEN (p_case_data->'config'->>'maxExtensions')::integer ELSE 2 END;

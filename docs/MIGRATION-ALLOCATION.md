@@ -1,9 +1,12 @@
 # Probation tracker at group scale, configurable maximum extensions, declined signature order — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/probation-lane-probation-core-20261116` appends `5746_probation_tracker_scale_and_extensions` at idx
-5146 / when 1793330005446 (assigned by the build coordinator, directly above `5745`). SHA256 `c69c8d909cc319559e1f869dadbff3460f9a1359f92b5d69893acf723ee1e749`.
-It adds `app.probation_visible_case_ids()` (the probation case access rule decided once per statement, set-based) and
-the tracker readers `app.probation_tracker_cases()` / `app.probation_tracker_parts()`, and `app.probation_max_extensions`.
+5146 / when 1793330005446 (assigned by the build coordinator, directly above `5745`). SHA256 `1a1b55987745626f3275bfa520eed6f120d5bcfbcbd353067c9ccc094fca0c96`.
+It gives the probation case access rule one set-based owner, `app.probation_visible_among(cases)` over
+`app.probation_holders_set(employments)` and `app.probation_company_ancestors(companies)`, and re-creates the
+owner-owned `app.probation_case_access` (membership of that set) and `app.probation_holders` (answered from the holder
+set); it adds `app.probation_visible_case_ids()`, the tracker readers `app.probation_tracker_cases()` /
+`app.probation_tracker_page(cases)`, and `app.probation_max_extensions`.
 It re-creates, as `CREATE OR REPLACE` of their 0949 bodies with one comparison each changed, the owner-owned
 `probation_submission_ready`, `probation_part_command`, `probation_record_effect`, `probation_commands`,
 `probation_personnel_intent`, `probation_adjudicate_offline_final` and `probation_config_write_legacy_organisation` so the
