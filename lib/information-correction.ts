@@ -13,7 +13,7 @@ export const INFORMATION_EXTENDED_FIELDS=[...INFORMATION_ASSIGNMENT_FIELDS,...IN
 export const INFORMATION_ALL_FIELDS=[...INFORMATION_FIELDS,...INFORMATION_EXTENDED_FIELDS] as const;
 /** Board 4604dccc r3 — the single-employee screen also corrects Business Unit, Department and Position (dated from the
  *  Effective Date, as the template already does). Template headers and V1 behaviour stay keyed on INFORMATION_FIELDS. */
-export const INFORMATION_SCREEN_FIELDS=[...INFORMATION_FIELDS,'businessUnitId','departmentId','positionId'] as const;
+export const INFORMATION_SCREEN_FIELDS=['companyId','hiredOn','joinDate','gradeId','employmentType','contractEndDate','internshipEndDate','businessUnitId','departmentId','positionId'] as const;
 export type InformationScreenField=typeof INFORMATION_SCREEN_FIELDS[number];
 export type InformationField=typeof INFORMATION_ALL_FIELDS[number];
 export type InformationCoreField=typeof INFORMATION_FIELDS[number];

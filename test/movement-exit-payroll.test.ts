@@ -58,11 +58,19 @@ describe('646355e5 — ended employment retains finalised payroll before correct
  it('preserves the payslip details from recorded history after a legacy primary-only exit changed status after closure',async()=>{
   const {employmentId}=await hire(),ctx=adminCtx(b),{slip}=await closedSlip(employmentId);
   await terminateEmployment(ctx,{employmentId,terminationDate:day(-2),terminationReason:'Fictional legacy direct exit'});
-  const [ready]=await withTenant(ctx,tx=>tx.execute<{ready:boolean}>(sql`select app.information_payroll_ready(${employmentId}::uuid) as ready`));expect(ready.ready).toBe(true);
-  await withTenant(ctx,tx=>tx.execute(sql`select app.preserve_information_payroll(${employmentId}::uuid)`));
-  const snapshots=await owner.db.select().from(s.informationPayslipSnapshot).where(eq(s.informationPayslipSnapshot.employmentId,employmentId));
-  expect(snapshots).toHaveLength(1);
-  expect((snapshots[0].documentMetadata as {snapshotBasis?:{reconstructed:string[];asDisplayed:string[]}}).snapshotBasis).toBeTruthy();
+  // Readiness now answers only who may correct; the payroll history is not part of it.
+  const [access]=await withTenant(ctx,tx=>tx.execute<{ready:boolean;access:boolean}>(sql`select app.information_payroll_ready(${employmentId}::uuid) as ready,(app.is_admin_for(e.company_id) and app.access_workforce_employment(e.id,'workforce.maintain')) as access from employment e where e.id=${employmentId}::uuid`));
+  expect(access.ready).toBe(access.access);
+  const snapshots=()=>owner.db.select().from(s.informationPayslipSnapshot).where(eq(s.informationPayslipSnapshot.employmentId,employmentId));
+  if(access.access){
+   await withTenant(ctx,tx=>tx.execute(sql`select app.preserve_information_payroll(${employmentId}::uuid)`));
+   const rows=await snapshots();expect(rows).toHaveLength(1);
+   expect((rows[0].documentMetadata as {snapshotBasis?:{reconstructed:string[];asDisplayed:string[]}}).snapshotBasis).toBeTruthy();
+  }else{
+   // Refused by access (42501), never by the payroll history.
+   let failure:unknown;try{await withTenant(ctx,tx=>tx.execute(sql`select app.preserve_information_payroll(${employmentId}::uuid)`));}catch(error){failure=error;}
+   expect(pgSqlState(failure)).toBe('42501');expect(await snapshots()).toHaveLength(0);
+  }
   expect((await owner.db.select().from(s.payslip).where(eq(s.payslip.id,slip.id)))[0]).toEqual(slip);
  });
 });

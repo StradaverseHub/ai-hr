@@ -535,8 +535,8 @@
       "context": "MovementNewEvent",
       "name": "acknowledgeClosedPayroll",
       "hidden": false,
-      "occurrences": 1,
-      "reason": "646355e5 (ADR-0164) closed-payroll acknowledgement on a movement correction: an instruction to the correction service (MovementClosedPayrollAcknowledgementError), not a Personnel fact. The checkbox shipped with 646355e5 without an exemption entry."
+      "occurrences": 2,
+      "reason": "646355e5 (ADR-0164) closed-payroll acknowledgement on a movement correction: an instruction to the correction service (MovementClosedPayrollAcknowledgementError), not a Personnel fact. The checkbox shipped with 646355e5 without an exemption entry. Board 4604dccc r3 adds the second occurrence: the same confirmation on a new Group Join Date Correction / Join Date Change."
     },
     {
       "tag": "input",

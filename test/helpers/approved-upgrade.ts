@@ -189,6 +189,8 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5060,when:1793330005360,tag:'5660_pay_component_bonus_epf_bonus_2012'},
  // Board 4604dccc: payroll history binds a record to the company of its month (dated history), 15 Nov 2026.
  {idx:5080,when:1793330005380,tag:'5680_payroll_history_dated_company'},
+ // Board 4604dccc r3: payslip snapshots from recorded history; payroll history no longer blocks a correction, 15 Nov 2026.
+ {idx:5090,when:1793330005390,tag:'5690_information_payslip_snapshot_from_history'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -221,6 +223,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5640_lifecycle_v9_email_hold_company_tenant':'66d191aaee14e910480bd7ce7240bd23a76f02e57c66f1c129f40b2562e7d6c7',
  '5660_pay_component_bonus_epf_bonus_2012':'b61c1f10cf2016da97ad257cdbd7b6f8ad8daf261a322fa5260dc0c54f6b6ddf',
  '5680_payroll_history_dated_company':'664b422a2a2128357932b0e0b036fa69ad731eb6c31aa6c4a8ce2a5b6e080faf',
+ '5690_information_payslip_snapshot_from_history':'f68bbcd17b6271ddd9c7e8c1108db5b09082f7823f812f8dc02e336d0a3e795c',
  '4800_ai_shared_leave_groups_read':'774dce41ba113549ec5415586d104b8d5b7712934216f2beb4d9aa0e9f00ffc5',
  '4601_last_login_event_index':'868e30d4a2840d4939a46f303ce999b2e041ae3cb6823eb8b712179ccf7d5788',
  '4600_attendance_clock_policy_group_scope':'b30a62bec597f53266232abe569a040a9a421eaa2239eac232d0e44041352be6',
