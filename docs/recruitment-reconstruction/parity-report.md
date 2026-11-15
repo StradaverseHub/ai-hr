@@ -756,7 +756,7 @@ re-created there after the fix below. Decisions D-068; spec cases 149–155.
 
 | Check | Result |
 | --- | --- |
-| Run 43753308090 on `64e6eb70f` (62 files: the slice 22 set plus the two new reward files; type check; build) | 54 files PASS; type check, build and 8 tests in 3 files FAIL |
+| Run 43753308090 on `64e6eb70f` (62 files: the slice 22 set plus the two new reward files; type check; build) | 59 files PASS; type check, build and 8 tests in 3 files FAIL |
 | Cause 1 (type check, build): BigInt literals in `reward-model.ts` are not allowed by the project's compile target | Fixed in `35386fb6c`: whole-cent integer arithmetic |
 | Cause 2 (5 reward tests): `app.recruitment_reward_facts` read the hire's record variable before it was assigned when no employee record existed yet (55000) | Fixed in `35386fb6c`: the hire's facts are built only when the hire exists |
 | Cause 3 (same tests): the fixture linked a made-up draft id; 5703's hand-off guard requires a real draft of the company | Fixed: the test creates a real employee draft |
