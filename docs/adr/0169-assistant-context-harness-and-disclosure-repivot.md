@@ -161,7 +161,32 @@ The owner chose **option 2, with review** ("Option 2, with review"). This settle
 - an updated data register (threat-model R21/WP12);
 - an updated threat model.
 
-**Still open:** who performs the privacy/legal review. Its approval binds to the exact source, as existing provider approvals do; a later change needs fresh approval.
+**Reviewer (owner decision, 2 November 2026):** the owner performs the privacy/legal review and gives the approval. Its approval binds to the exact source, as existing provider approvals do; a later change needs fresh approval.
+
+Recommended, and recorded so the decision is informed: the owner remains the approver, but three items are legal judgements that a qualified Malaysian privacy lawyer or data protection officer should advise on before approval:
+- the PDPA cross-border transfer assessment;
+- the data processing agreement terms (zero retention, no training, sub-processors, the intermediary question);
+- obligations under Malaysia's AI governance bill once tabled.
+
+The other items (disclosure contract, identifier denylist, data register, threat model) can be prepared by engineering for the owner's review.
+
+**Owner sign-off (2 November 2026).** The owner answered the review package (`docs/reviews/adr-0169-privacy-review-package-2026-11.md`); the exported answers are kept verbatim in `docs/reviews/evidence/adr-0169-owner-answers-2026-11-02.md`. Final answer: "Go ahead, signed off". Decisions:
+- **Processor route (1):** "It can be any, direct upstream, OpenRouter, UnifyAPI. Depending on which provider the customer chooses." The route is a per-tenant choice. Each configured provider must still meet the zero-retention and no-training terms, and adding a provider adapter that does not exist today needs its own provider-digest approval.
+- **Fixed region (2), generic sensitive labels (10), in-app notice for recommendations (12), bounded retention with a minimised trace (13), data register and threat model changes (14, and §9 "Yes"), engage counsel (15):** engineering defaults accepted.
+- **Fixes 3–7 and 11:** acknowledged.
+- **Third-party reads in the pilot (8):** "Proceed".
+- **Pay reads in the pilot (9):** "Proceed but only based on the user's access".
+
+**Conditions recorded with the sign-off** (engineering, so the approval is applied as intended):
+- The counsel answer boxes for §5–§8 were returned empty, while decision 15 (engage counsel before approval) was accepted. Counsel's advice on the PDPA cross-border transfer and the data processing agreement remains an open condition before any real tenant data reaches a provider.
+- The whole-stack security and attack review was still to run at sign-off. No tenant switch is turned on until it passes.
+- The approval binds to the exact source at the time the harness is wired; a later change needs fresh approval, as for existing provider approvals. Nothing is enabled by this record alone: every tenant stays off until it opts in.
+
+**Staging exception (owner, 2 November 2026).** The owner confirmed that staging holds only fictional data ("Its all fictional data") and asked that the AI be switched on for every staging company, to test multi-company behaviour ("Can switch on for every company in staging"). This is consistent with §5.1, which already permits fictional data, so the counsel condition does not apply to staging. Terms:
+- **Staging only:** every staging tenant may be switched on. Production and any environment holding real people's data stay off, and the counsel condition still applies to them.
+- **Staging must stay fictional:** if real personal data is ever loaded into staging, switch the AI off there first.
+- **Order:** switching on follows the wiring step, the whole-stack security review and the fixes, as the owner instructed for staging deployment.
+- **Provider settings:** zero data retention and no training, as in all test runs.
 
 ## 6. Sequencing and acceptance
 
