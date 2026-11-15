@@ -249,13 +249,14 @@ jobs:
         run: pnpm build
         env:
           NODE_OPTIONS: ${{ steps.build-heap.outputs.node_options }}
-      - name: deploymentId equals BUILD_ID in the build and in the client
+      - name: deploymentId equals BUILD_ID in the build output
         run: |
           set -euo pipefail
           id=$(cat .next/BUILD_ID); echo "BUILD_ID=$id"
           [[ "$id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{20}$ ]]
           ID="$id" node -e 'const m=require("./.next/routes-manifest.json");if(m.deploymentId!==process.env.ID)throw new Error("routes-manifest deploymentId "+m.deploymentId);'
-          grep -rl --include='*.js' -F -e "$id" .next/static | head -3 | grep -q .
+          # Next 16 hands the client its id through <html data-dpl-id> and response headers (checked
+          # below under next start), not by inlining it into chunks (observed in run 43716252420).
       - name: next start serves the same id
         run: |
           set -euo pipefail
