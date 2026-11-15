@@ -130,7 +130,9 @@ describe('signing and review routing per template version',()=>{
   expect(()=>validateSigningRoute(route,rules)).not.toThrow();
  });
  it('stores only the declared routing shape',()=>{
-  expect(documentRoutingSchema.safeParse(valid).success).toBe(true);
+  // Stored routing ids are uuids; the fixtures above use short ids for readability.
+  const stored=valid.map(step=>step.who.kind==='routing'?{...step,who:{kind:'routing' as const,routingId:'0b6f3f8e-4c1a-4f7e-9a51-2d1c9e7b6a10'}}:step);
+  expect(documentRoutingSchema.safeParse(stored).success).toBe(true);
   expect(documentRoutingSchema.safeParse([{...valid[0],who:{kind:'role',role:'hr'}}]).success).toBe(false);
   expect(documentRoutingSchema.safeParse([{...valid[0],extra:true}]).success).toBe(false);
   expect(documentRoutingSchema.safeParse([{...valid[1],who:{kind:'routing',routingId:'not-an-id'}}]).success).toBe(false);

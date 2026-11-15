@@ -164,5 +164,7 @@ END $$;
 REVOKE ALL ON FUNCTION app.automation_runner_workflows(text,text,uuid), app.automation_runner_waiting(text,uuid,uuid), app.automation_run_log_valid(jsonb),
   app.automation_run_start(uuid,text,uuid,integer,uuid,text,text,text,jsonb,jsonb), app.automation_run_save(uuid,text,text,integer,uuid,jsonb,jsonb,text) FROM PUBLIC;
 --> statement-breakpoint
+REVOKE ALL ON FUNCTION app.automation_run_log_valid(jsonb) FROM ai_hr_app;
+--> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.automation_runner_workflows(text,text,uuid), app.automation_runner_waiting(text,uuid,uuid),
   app.automation_run_start(uuid,text,uuid,integer,uuid,text,text,text,jsonb,jsonb), app.automation_run_save(uuid,text,text,integer,uuid,jsonb,jsonb,text) TO ai_hr_app;

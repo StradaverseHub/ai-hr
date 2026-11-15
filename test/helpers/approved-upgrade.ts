@@ -234,7 +234,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5741_personnel_postings':'bac24f1f803408ee29db5915e69d47a72f981c45b5b6c5fee469831dcb800cb5',
  '5743_automation_email_templates':'5b82f328178b8bc5357acb830eceffd89337e13dd563eaec8f931f1f29bce3cd',
  '5747_document_signing_review_routing':'7fef112b3edec88c5ac54c7a17d8fa8354a96d618e353fa7b24894c925fc20dd',
- '5748_automation_runs':'a79d667b088520329538cceeb1a4d3bab53031ced3014df765377e2d1dfae20a',
+ '5748_automation_runs':'06de500ccad8a64f68b37b7bd211404f2f717837b511949cc75aa16c8d733065',
  '4800_ai_shared_leave_groups_read':'774dce41ba113549ec5415586d104b8d5b7712934216f2beb4d9aa0e9f00ffc5',
  '4601_last_login_event_index':'868e30d4a2840d4939a46f303ce999b2e041ae3cb6823eb8b712179ccf7d5788',
  '4600_attendance_clock_policy_group_scope':'b30a62bec597f53266232abe569a040a9a421eaa2239eac232d0e44041352be6',
