@@ -1,4 +1,4 @@
 /** GENERATED static source manifest of the AI behaviour surface (scripts/ai-agent-source-scope.mjs).
  * Regenerate/check after all integration; no runtime source reads. */
-export const MODULE_AGENT_SOURCE_DIGEST = "b066245a2376a3a25e2eb5363c1d4dd0604ddc559028c377eff1735f1cd76d64" as const;
+export const MODULE_AGENT_SOURCE_DIGEST = "5abd0b300b56f2db0a2e333294fbfd70fce2ecd888c4d815a33492dbd0dfe14e" as const;
 export const MODULE_AGENT_SOURCE_FILE_COUNT = 491 as const;

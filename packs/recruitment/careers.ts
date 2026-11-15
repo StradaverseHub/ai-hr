@@ -508,7 +508,8 @@ export async function answerCandidateSurvey(token: string, form: Readonly<Record
   if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return { status: 'closed' };
   const v = validateSurveyAnswers(form);
   if (!v.ok) return { status: 'invalid', fields: v.fields };
-  const [row] = await careersDb().unsafe<{ r: string }[]>('select app.recruitment_survey_answer($1::text, $2::jsonb, $3::text) as r',
+  // Sent as text and parsed by Postgres: a string bound straight to jsonb would arrive as a JSON string, not an object.
+  const [row] = await careersDb().unsafe<{ r: string }[]>('select app.recruitment_survey_answer($1::text, $2::text::jsonb, $3::text) as r',
     [tokenDigest(token), JSON.stringify(v.value), clientHash]);
   const status = row?.r;
   if (status === 'answered' || status === 'closed' || status === 'limited') return { status };
