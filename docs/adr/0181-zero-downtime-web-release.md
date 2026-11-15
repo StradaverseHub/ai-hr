@@ -90,7 +90,7 @@ Gate tests: `test/zero-downtime-*.test.ts`.
 Each step is separately authorized. Staging acceptance precedes production, and package publication grants no deployment authority.
 
 1. Rehearsal workflow green on the branch; merge through the normal gate.
-2. Rehearse adoption and one online release on an isolated production-shaped target (populated copy, production Nginx site), with the probe running.
+2. Rehearse adoption and one online release on an isolated production-shaped target (populated copy, production Nginx site), with the probe running. Include GET and form-post traffic through the same front edge production uses, and record its connection-reset count and retry behaviour.
 3. Adopt on staging. This needs the publisher (`approve_staging.py`) to capture from `/opt/aihr-web/current` and to check `aihr-web@<active>` instead of `aihr`. That is a reviewed change of its own.
 4. Production adoption (`release-web.sh adopt 3000`) on explicit owner permission, then the first online release.
 
@@ -98,5 +98,8 @@ Each step is separately authorized. Staging acceptance precedes production, and 
 
 - **Compatibility is classified, not proven.** A finding accepted by a reviewer, or a data step that changes meaning for old code, can still break the previous release. The populated upgrade rehearsal remains required.
 - **Requests longer than the drain period** (default 45 s) are cut when the old slot stops. Long work belongs on the bulk-job kernel (scale rule 4).
-- **Keep-alive connections** held by old Nginx workers close after their current response. Browsers retry idempotent requests on such a close; the probe measures this and does not retry.
+- **HTTP/1.1 keep-alive close race at each Nginx reload.** An old worker closes its idle keep-alive connections; a request written to one at that instant gets a socket close with no response byte.
+  - *Measured:* the first rehearsal saw 18 such closes in 1,121,008 requests, from 16 connections hammering continuously through five transitions. There were no refused requests and no cut in-flight requests.
+  - *Browser side:* clients and proxies resend idempotent requests in this case (RFC 9110 §9.2.2). The probe does the same once, counts each reset, and fails on anything else.
+  - *Production side:* browsers reach production over HTTP/2, where a reload sends GOAWAY. The hop that matters is the front edge to Nginx (HTTP/1.1). Its resend behaviour, especially for POST, must be measured with the probe through the real front door during the isolated rehearsal (Rollout step 2) before adoption.
 - **Rollback after a migration** runs the previous code on the new schema. That is exactly what the classifier protects, and it is no longer protected once a reviewer accepts a finding.

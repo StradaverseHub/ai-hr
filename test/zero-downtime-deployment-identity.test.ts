@@ -32,10 +32,15 @@ describe('build phase', () => {
   it('draws a different id for every build, so a rebuild of the same commit is a different acceptance target', () => {
     const ids = new Set(Array.from({ length: 200 }, () => nextDeploymentIdentity('phase-production-build', { env: {} }).deploymentId));
     expect(ids.size).toBe(200);
-    // 64 distinct URL-safe symbols: every 6-bit value maps to its own character.
-    const symbols = new Set(Array.from({ length: 64 }, (_, v) => newDeploymentId(() => Buffer.alloc(21, v))[0]));
+    // After the first character, 64 distinct URL-safe symbols: every 6-bit value has its own.
+    const symbols = new Set(Array.from({ length: 64 }, (_, v) => newDeploymentId(() => Buffer.alloc(21, v))[1]));
     expect(symbols.size).toBe(64);
     expect([...symbols].join('')).toMatch(/^[A-Za-z0-9_-]{64}$/);
+  });
+
+  it('never starts an id with - or _, which command-line tools would read as an option', () => {
+    for (let v = 0; v < 256; v++) expect(newDeploymentId(() => Buffer.alloc(21, v))[0]).toMatch(/[A-Za-z0-9]/);
+    for (let i = 0; i < 500; i++) expect(nextDeploymentIdentity('phase-production-build', { env: {} }).deploymentId).toMatch(/^[A-Za-z0-9]/);
   });
 
   it('refuses an inherited id Next would reject', () => {

@@ -127,10 +127,11 @@ jobs:
             const ids=Object.keys(s.deployments).sort();
             const want=["buildB00000000000000002","legacyBuildA0000000001"];
             if(s.failed!==0) throw new Error(s.failed+" failed requests");
+            console.log("connection resets retried like a browser (HTTP/1.1 keep-alive close at reload): "+s.connectionResets);
             if(s.requests<2000) throw new Error("too few requests: "+s.requests);
             if(JSON.stringify(ids)!==JSON.stringify(want)) throw new Error("deployments seen: "+ids);
             if(s.slow.ok<3||s.slow.ok!==s.slow.started) throw new Error("long requests: "+JSON.stringify(s.slow));
-            console.log("PASS requests="+s.requests+" failed=0 p99="+s.p99Ms+"ms max="+s.maxLatencyMs+"ms slow="+s.slow.ok);' "$RUNNER_TEMP/probe.json"
+            console.log("PASS requests="+s.requests+" failed=0 resets_retried="+s.connectionResets+" p99="+s.p99Ms+"ms max="+s.maxLatencyMs+"ms slow="+s.slow.ok);' "$RUNNER_TEMP/probe.json"
       - name: Journals
         if: always()
         run: |
@@ -184,13 +185,24 @@ jobs:
           sleep 2
           PLAIN=postgres://postgres:rehearsal@127.0.0.1:5432/postgres
           # Control: without the bound the same migration is still waiting behind the reader after 8 s.
-          set +e; MIGRATION_DATABASE_URL="$PLAIN" timeout 8 pnpm exec drizzle-kit migrate --config "$D/drizzle.config.ts" > "$RUNNER_TEMP/migrate-unbounded.log" 2>&1; rc=$?; set -e
-          echo "unbounded rc=$rc (124 = still waiting when stopped)"
+          reader_ms() { local t0; t0=$(date +%s%N); psql -h 127.0.0.1 -U postgres -Atc "select count(*) from rehearsal_employment" >/dev/null; echo $(( ($(date +%s%N)-t0)/1000000 )); }
+          set +e; MIGRATION_DATABASE_URL="$PLAIN" timeout 8 pnpm exec drizzle-kit migrate --config "$D/drizzle.config.ts" > "$RUNNER_TEMP/migrate-unbounded.log" 2>&1 & ctl=$!
+          sleep 3; queued=$( (time -p psql -h 127.0.0.1 -U postgres -Atc "set statement_timeout='3s'; select count(*) from rehearsal_employment" >/dev/null) 2>&1 | grep -c 'statement timeout' )
+          wait $ctl; rc=$?; set -e
+          echo "unbounded rc=$rc (124 = still waiting when stopped); a new reader was queued behind it: $( [ "$queued" -gt 0 ] && echo yes || echo no )"
           [ "$rc" = 124 ] || { cat "$RUNNER_TEMP/migrate-unbounded.log"; echo "control did not wait: the reader is not blocking"; exit 1; }
+          # timeout kills pnpm, not necessarily the backend: end the orphaned ALTER so it cannot keep queueing readers.
+          psql -h 127.0.0.1 -U postgres -Atc "select pg_terminate_backend(pid) from pg_stat_activity where query ilike 'ALTER TABLE%rehearsal_employment%' and pid<>pg_backend_pid()" >/dev/null
+          sleep 1
           URL=$(node -e 'const u=new URL(process.argv[1]);u.searchParams.set("lock_timeout","2s");process.stdout.write(u.toString())' "$PLAIN")
           t0=$(date +%s)
-          set +e; MIGRATION_DATABASE_URL="$URL" pnpm exec drizzle-kit migrate --config "$D/drizzle.config.ts" > "$RUNNER_TEMP/migrate.log" 2>&1; rc=$?; set -e
+          set +e; MIGRATION_DATABASE_URL="$URL" pnpm exec drizzle-kit migrate --config "$D/drizzle.config.ts" > "$RUNNER_TEMP/migrate.log" 2>&1 & mig=$!
+          # A reader arriving while the bounded ALTER waits is delayed at most by the bound.
+          sleep 1; during=$(reader_ms)
+          wait $mig; rc=$?; set -e
           t=$(( $(date +%s) - t0 )); cat "$RUNNER_TEMP/migrate.log"
+          echo "reader during the bounded attempt ms=$during"
+          [ "$during" -lt 4000 ] || { echo "a reader waited ${during} ms behind the bounded migration"; exit 1; }
           echo "bounded rc=$rc elapsed=${t}s"
           [ "$rc" != 0 ] || { echo "migration should have failed behind the reader"; exit 1; }
           [ "$t" -lt 20 ] || { echo "waited ${t}s: lock_timeout did not apply"; exit 1; }
@@ -198,8 +210,8 @@ jobs:
           docker logs "${{ job.services.postgres.id }}" 2>&1 | grep 'canceling statement due to lock timeout' | tail -2 | grep .
           # Nothing applied: one transaction, so the column is absent and the ledger unchanged.
           [ -z "$(psql -h 127.0.0.1 -U postgres -Atc "select 1 from information_schema.columns where table_name='rehearsal_employment' and column_name='note'")" ]
-          # Readers were never queued behind the waiting ALTER for longer than the bound.
-          t0=$(date +%s%N); psql -h 127.0.0.1 -U postgres -Atc "select count(*) from rehearsal_employment" >/dev/null; echo "reader ms=$(( ($(date +%s%N)-t0)/1000000 ))"
+          after=$(reader_ms); echo "reader after the bounded attempt ms=$after"
+          [ "$after" -lt 1000 ] || { echo "a reader still queued (${after} ms) after the bounded attempt gave up"; exit 1; }
           wait
           MIGRATION_DATABASE_URL="$URL" pnpm exec drizzle-kit migrate --config "$D/drizzle.config.ts"
           psql -h 127.0.0.1 -U postgres -Atc "select column_name from information_schema.columns where table_name='rehearsal_employment' and column_name='note'" | grep -q note
@@ -241,9 +253,9 @@ jobs:
         run: |
           set -euo pipefail
           id=$(cat .next/BUILD_ID); echo "BUILD_ID=$id"
-          [[ "$id" =~ ^[A-Za-z0-9_-]{21}$ ]]
-          node -e 'const m=require("./.next/routes-manifest.json");if(m.deploymentId!==process.argv[1])throw new Error("routes-manifest deploymentId "+m.deploymentId);' "$id"
-          grep -rl --include='*.js' -F "$id" .next/static | head -3 | grep -q .
+          [[ "$id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{20}$ ]]
+          ID="$id" node -e 'const m=require("./.next/routes-manifest.json");if(m.deploymentId!==process.env.ID)throw new Error("routes-manifest deploymentId "+m.deploymentId);'
+          grep -rl --include='*.js' -F -e "$id" .next/static | head -3 | grep -q .
       - name: next start serves the same id
         run: |
           set -euo pipefail

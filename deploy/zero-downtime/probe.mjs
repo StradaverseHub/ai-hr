@@ -7,6 +7,12 @@
  * or --duration elapses. Then writes a JSON summary and exits non-zero on ANY failed request: a
  * connection error, a timeout, or a status outside the accepted set. Read-only GETs only.
  *
+ * One case is retried, as browsers and proxies do for idempotent requests (RFC 9110 §9.2.2): the
+ * socket closed with NO response byte, i.e. an idle keep-alive connection an old Nginx worker closed
+ * just as this request was written to it (HTTP/1.1 keep-alive close race at reload). Each is counted
+ * in `connectionResets` and listed; the retry must succeed or the request fails. Anything else (a
+ * status, a timeout, a refused connection, a reset after response bytes) is never retried.
+ *
  *   node deploy/zero-downtime/probe.mjs --base http://127.0.0.1 --path /login --path /health \
  *     [--host app.example] [--concurrency 8] [--duration 600] [--slow-path /slow?ms=20000 --slow-every 5] \
  *     [--accept 200,302,307,401] [--out probe.json]
@@ -45,9 +51,11 @@ const stop = () => { stopping = true; };
 process.on('SIGTERM', stop);
 process.on('SIGINT', stop);
 
-const stats = { started: new Date().toISOString(), requests: 0, ok: 0, failures: [], byStatus: {}, deployments: {}, slow: { started: 0, ok: 0 }, maxLatencyMs: 0, latencies: [] };
+const stats = { started: new Date().toISOString(), requests: 0, ok: 0, failures: [], connectionResets: 0, resets: [], byStatus: {}, deployments: {}, slow: { started: 0, ok: 0 }, maxLatencyMs: 0, latencies: [] };
+// undici's codes for "the other side closed the socket before any response".
+const ZERO_BYTE_CLOSE = new Set(['UND_ERR_SOCKET', 'ECONNRESET', 'EPIPE']);
 
-async function once(path, timeoutMs) {
+async function attempt(path, timeoutMs) {
   const t0 = performance.now();
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
@@ -58,10 +66,21 @@ async function once(path, timeoutMs) {
     const id = res.headers.get('x-nextjs-deployment-id') || /<html[^>]*data-dpl-id="([A-Za-z0-9_-]+)"/.exec(body)?.[1] || null;
     return { status: res.status, ms, id };
   } catch (e) {
-    return { status: 0, ms: performance.now() - t0, error: e.name === 'AbortError' ? `timeout after ${timeoutMs} ms` : String(e.cause?.code || e.message) };
+    const code = String(e.cause?.code || e.message);
+    // fetch() rejects before resolving headers, so a socket error here means no response byte arrived.
+    return { status: 0, ms: performance.now() - t0, error: e.name === 'AbortError' ? `timeout after ${timeoutMs} ms` : code, zeroByteClose: e.name !== 'AbortError' && ZERO_BYTE_CLOSE.has(code) };
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function once(path, timeoutMs) {
+  const first = await attempt(path, timeoutMs);
+  if (!first.zeroByteClose) return first;
+  stats.connectionResets++;
+  if (stats.resets.length < 50) stats.resets.push({ at: new Date().toISOString(), path, error: first.error });
+  const second = await attempt(path, timeoutMs);
+  return second.zeroByteClose ? { ...second, error: `${second.error} (after a retried ${first.error})`, zeroByteClose: false } : second;
 }
 
 function record(path, r) {

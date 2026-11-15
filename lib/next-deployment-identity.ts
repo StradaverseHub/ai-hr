@@ -33,11 +33,17 @@ const PHASE_PRODUCTION_BUILD = 'phase-production-build';
 const PHASE_PRODUCTION_SERVER = 'phase-production-server';
 const ALPHABET = 'useandom-26T198340PX75pxJACKVERYMINDBUSHWOLF_GQZbfghjklqvwyzrict';
 
-/** The same 21-character URL-safe shape as Next's default nanoid build id. */
+const FIRST = ALPHABET.replace(/[-_]/g, '');
+
+/**
+ * The same 21-character URL-safe shape as Next's default nanoid build id, except that it never starts
+ * with '-' or '_'. The id is passed as an argument to release tooling (release-web.sh, node -e,
+ * rsync paths); a leading '-' is read as an option (observed: a real build id "-ydHp…" made node exit 9).
+ */
 export function newDeploymentId(random: (n: number) => Buffer = randomBytes): string {
   const bytes = random(21);
-  let id = '';
-  for (let i = 0; i < 21; i++) id += ALPHABET[bytes[i] & 63];
+  let id = FIRST[bytes[0] % FIRST.length];
+  for (let i = 1; i < 21; i++) id += ALPHABET[bytes[i] & 63];
   return id;
 }
 
