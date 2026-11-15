@@ -13,11 +13,19 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-// @ts-expect-error — plain ESM operator script without type declarations
-import * as mode from '../scripts/releases/migration-release-mode.mjs';
+import * as modeModule from '../scripts/releases/migration-release-mode.mjs';
 
 type Finding = { tag: string; statement: number; rule: string; object: string; annotation: string | null };
-type Report = { mode: 'online' | 'maintenance'; findings: Finding[]; notices: Finding[] };
+type Report = { mode: 'online' | 'maintenance'; findings: Finding[]; notices: Finding[]; newTables: string[]; pending?: string[] };
+type Migration = { tag: string; sql: string };
+type Acceptance = { tag: string; statement: number; rule: string; reason: string };
+// The operator script is plain ESM; this is the contract the tests hold it to.
+const mode = modeModule as unknown as {
+  splitStatements(sql: string): Array<{ text: string; annotations: string[]; literals: string[] }>;
+  classifyMigrations(migrations: Migration[], history?: Migration[]): Report;
+  applyAcceptances(report: Report, accepted: Acceptance[]): Report;
+  classifyRelease(baseDir: string, candidateDir: string): Report & { pending: string[] };
+};
 
 const classify = (pending: string[], history: string[] = []): Report =>
   mode.classifyMigrations(
@@ -35,7 +43,7 @@ describe('statement splitting', () => {
       /* ALTER TABLE person DROP COLUMN name; */
       INSERT INTO t VALUES ('a;b', 'it''s; DROP TABLE x');
       ALTER TABLE "Employment" ADD COLUMN note text`);
-    expect(s.map((x: { text: string }) => x.text)).toEqual([
+    expect(s.map((x) => x.text)).toEqual([
       'CREATE FUNCTION app.f() RETURNS void LANGUAGE plpgsql AS $body$',
       "INSERT INTO t VALUES ('?0', '?1')",
       'ALTER TABLE "employment" ADD COLUMN note text',
@@ -200,7 +208,7 @@ describe('pending set from two installed journals', () => {
     const r = mode.classifyRelease(base, cand);
     expect(r.pending).toEqual(['0002_b']);
     expect(r.mode).toBe('online');
-    expect(r.notices.map((n: Finding) => n.rule)).toEqual(['widened-check']);
+    expect(r.notices.map((n) => n.rule)).toEqual(['widened-check']);
   });
 
   it('refuses a candidate whose history diverges from the running release', () => {

@@ -73,13 +73,23 @@ step audit-chain-gate node --import tsx scripts/check-audit-chain-gate.ts || die
 # The lock-bounded migration. lock_timeout rides on the connection URL: postgres.js sends unknown URL
 # query parameters as startup parameters (node_modules/postgres/src/index.js, `connection`), and
 # drizzle-kit connects with that URL. The rehearsal workflow proves the bound against a held lock.
+#
+# Retry is decided from the LEDGER, not from drizzle-kit's output: drizzle-kit exits 1 without printing
+# the server error (observed in the rehearsal: a 2 s lock timeout behind a reader, empty message). All
+# pending entries apply in one transaction, so an unchanged ledger after a failure means nothing was
+# applied and the attempt can be repeated; a ledger that moved stops everything for a human. A genuine
+# SQL error therefore costs a few fast, harmless retries before the same stop.
+LEDGER_JS='import postgres from "postgres";const p=postgres(process.env.MIGRATION_DATABASE_URL,{max:1,onnotice:()=>{}});const [r]=await p`select count(*)::int as c from drizzle.__drizzle_migrations`;await p.end();process.stdout.write(String(r.c))'
+ledger() { run_in node --input-type=module -e "$LEDGER_JS"; }
+before=$(ledger) || die "cannot read the migration ledger; nothing ran"
+echo "ledger before=$before"
 attempt=1
 while :; do
   if AIHR_BOUND_LOCKS=$LOCK_TIMEOUT step "migrate-attempt-$attempt" pnpm db:migrate; then break; fi
-  if ! grep -qE '55P03|lock timeout|canceling statement due to lock timeout' "$LOG_DIR/migrate-attempt-$attempt.log"; then
-    die "migration failed for a reason other than a lock wait; nothing further ran. The previous release is still serving."
-  fi
-  [ "$attempt" -lt "$ATTEMPTS" ] || die "migration could not take its locks in $ATTEMPTS attempts (lock_timeout=$LOCK_TIMEOUT); retry later or in a window"
+  now=$(ledger) || die "migration failed and the ledger cannot be read; stop and inspect. The previous release is still serving."
+  [ "$now" = "$before" ] || die "migration failed but the ledger moved ($before -> $now); stop and inspect. The previous release is still serving."
+  [ "$attempt" -lt "$ATTEMPTS" ] || die "migration did not apply in $ATTEMPTS attempts (lock_timeout=$LOCK_TIMEOUT); ledger unchanged at $before, nothing applied, the previous release is still serving. Read $LOG_DIR and the database log; retry later or use a window"
+  echo "  ledger unchanged at $before: nothing applied; retrying"
   sleep $(( attempt * 5 ))
   attempt=$(( attempt + 1 ))
 done
@@ -93,4 +103,4 @@ after backfill-plan-history node --import tsx scripts/backfill-plan-history.ts
 after backfill-country-modules node --import tsx scripts/backfill-country-modules.ts
 after audit-chain-gate-after node --import tsx scripts/check-audit-chain-gate.ts
 after seed-guides node --import tsx db/seed-guides.ts --all
-echo "MIGRATE_ONLINE_RESULT=pass logs=$LOG_DIR"
+echo "MIGRATE_ONLINE_RESULT=pass ledger=$before->$(ledger) logs=$LOG_DIR"

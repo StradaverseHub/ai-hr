@@ -98,5 +98,6 @@ test('one identical bounded profile everywhere it applies: every admission is 81
   assert.equal(jobs.length,1,name);assert.deepEqual([...jobs[0].matchAll(/runs-on:\s*(\S+)/g)].map(m=>m[1]),['ubuntu-24.04'],name);
   assert.doesNotMatch(jobs[0],/container:|services:/,name);
  }
- assert.deepEqual(admitting,['ai-orchestrator-walkthrough.yml','alpha-focused-checks.yml','alpha-staging.yml']);
+ // zero-downtime-rehearsal.yml (ADR-0181): one real build to prove deploymentId === BUILD_ID under next start.
+ assert.deepEqual(admitting,['ai-orchestrator-walkthrough.yml','alpha-focused-checks.yml','alpha-staging.yml','zero-downtime-rehearsal.yml']);
 });

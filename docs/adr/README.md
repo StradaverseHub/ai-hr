@@ -185,3 +185,4 @@ Read only records relevant to the task. A newer decision supersedes an older one
 - [Proposal — Entra sign-in and cloud/hybrid workforce provisioning](entra-workforce-integration-proposal.md) (design only; unnumbered pending integration)
 
 - [ADR-0172: Subject-owned, content-bound document signing](0172-subject-owned-content-bound-signing.md)
+- [ADR-0181 — Zero-downtime web releases: two slots behind Nginx, classified online migrations, code rollback then fix forward (owner, 15 Nov 2026)](0181-zero-downtime-web-release.md)

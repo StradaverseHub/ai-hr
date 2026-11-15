@@ -63,7 +63,7 @@ jobs:
             sed -n '/^    location/,/^    }/p' deploy/zero-downtime/nginx-aihr-web.conf
             echo '}'
           } | sudo tee /etc/nginx/sites-available/default >/dev/null
-          sudo nginx -t && sudo systemctl reload nginx
+          sudo nginx -t && sudo systemctl restart nginx
           for i in $(seq 1 30); do curl -fs http://127.0.0.1/health && break; sleep 1; done
           curl -fs http://127.0.0.1/login | grep -q 'data-dpl-id="legacyBuildA0000000001"'
       - name: Probe through Nginx for the whole rehearsal
@@ -182,14 +182,22 @@ jobs:
           # A reader holding ACCESS SHARE for 40 s, as a long report would.
           psql -h 127.0.0.1 -U postgres -c "begin; select count(*) from rehearsal_employment; select pg_sleep(40); commit;" &
           sleep 2
-          URL=$(node -e 'const u=new URL("postgres://postgres:rehearsal@127.0.0.1:5432/postgres");u.searchParams.set("lock_timeout","2s");process.stdout.write(u.toString())')
+          PLAIN=postgres://postgres:rehearsal@127.0.0.1:5432/postgres
+          # Control: without the bound the same migration is still waiting behind the reader after 8 s.
+          set +e; MIGRATION_DATABASE_URL="$PLAIN" timeout 8 pnpm exec drizzle-kit migrate --config "$D/drizzle.config.ts" > "$RUNNER_TEMP/migrate-unbounded.log" 2>&1; rc=$?; set -e
+          echo "unbounded rc=$rc (124 = still waiting when stopped)"
+          [ "$rc" = 124 ] || { cat "$RUNNER_TEMP/migrate-unbounded.log"; echo "control did not wait: the reader is not blocking"; exit 1; }
+          URL=$(node -e 'const u=new URL(process.argv[1]);u.searchParams.set("lock_timeout","2s");process.stdout.write(u.toString())' "$PLAIN")
           t0=$(date +%s)
           set +e; MIGRATION_DATABASE_URL="$URL" pnpm exec drizzle-kit migrate --config "$D/drizzle.config.ts" > "$RUNNER_TEMP/migrate.log" 2>&1; rc=$?; set -e
           t=$(( $(date +%s) - t0 )); cat "$RUNNER_TEMP/migrate.log"
-          echo "rc=$rc elapsed=${t}s"
+          echo "bounded rc=$rc elapsed=${t}s"
           [ "$rc" != 0 ] || { echo "migration should have failed behind the reader"; exit 1; }
-          grep -qiE '55P03|lock timeout' "$RUNNER_TEMP/migrate.log"
           [ "$t" -lt 20 ] || { echo "waited ${t}s: lock_timeout did not apply"; exit 1; }
+          # drizzle-kit prints no server message (observed); the server log names the cause.
+          docker logs "${{ job.services.postgres.id }}" 2>&1 | grep 'canceling statement due to lock timeout' | tail -2 | grep .
+          # Nothing applied: one transaction, so the column is absent and the ledger unchanged.
+          [ -z "$(psql -h 127.0.0.1 -U postgres -Atc "select 1 from information_schema.columns where table_name='rehearsal_employment' and column_name='note'")" ]
           # Readers were never queued behind the waiting ALTER for longer than the bound.
           t0=$(date +%s%N); psql -h 127.0.0.1 -U postgres -Atc "select count(*) from rehearsal_employment" >/dev/null; echo "reader ms=$(( ($(date +%s%N)-t0)/1000000 ))"
           wait
@@ -218,12 +226,17 @@ jobs:
           node: '22.23.3'
           path: .
           mobile: 'false'
-      # Not an admitted 8192 MB build (that set is owner-reviewed capacity, .github/ci/build-heap.test.mjs):
-      # the previous explicit 6144 MB bound, which needs no admission.
+      # The same bounded admission as the release builds (6144 MB runs out of memory in Next's type
+      # check, observed in run 43714563880). Registered in .github/ci/build-heap.test.mjs.
+      - name: Admit bounded next build heap
+        id: build-heap
+        run: node .github/ci/build-heap.mjs admit
+        env:
+          AIHR_CI_BUILD_HEAP_MB: '8192'
       - name: Production build
         run: pnpm build
         env:
-          NODE_OPTIONS: --max-old-space-size=6144
+          NODE_OPTIONS: ${{ steps.build-heap.outputs.node_options }}
       - name: deploymentId equals BUILD_ID in the build and in the client
         run: |
           set -euo pipefail
