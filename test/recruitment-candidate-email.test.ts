@@ -152,7 +152,7 @@ describe('case 127 — administrators set the sender and the wording; placeholde
     expect(await rows(w.bystander, sql`select 1 from recruitment_candidate_email_setting`)).toHaveLength(0);
     const v = await candidateEmailSettings(admin, base.companyId);
     expect(v).toMatchObject({ available: true, enabled: true, senderName: SENDER, replyTo: REPLY_TO, locale: 'en', defaultSenderName: expect.any(String) });
-    expect(v.templates).toHaveLength(12);
+    expect(v.templates).toHaveLength(36); // six kinds (slice 20 added four) in six languages
     // The reply-to is checked with the transport's own canonical rule.
     expect(await code(saveCandidateEmailSettings(admin, base.companyId, { enabled: true, replyTo: 'Talent <talent@example.test>' }))).toBe('invalid_input');
     expect(await code(saveCandidateEmailSettings(admin, base.companyId, { enabled: true, replyTo: 'qzé@example.test' }))).toBe('invalid_input');
@@ -439,7 +439,7 @@ describe('case 130 — the sweep sends the frozen content to the frozen address 
     expect(JSON.stringify(await owner.db.execute(sql`select payload from domain_event where tenant_id = ${base.tenantId}::uuid and event_type like 'recruitment-candidate-email.%'`)))
       .not.toMatch(/qze|@example\.test/i);
     expect((await deliver(f.sender)).claimed).toBe(0);
-    expect((await candidateEmailSettings(admin, base.companyId)).counts).toEqual({ queued: 0, sending: 0, sent: 1, failed: 0, uncertain: 0 });
+    expect((await candidateEmailSettings(admin, base.companyId)).counts).toEqual({ queued: 0, sending: 0, sent: 1, failed: 0, uncertain: 0, withdrawn: 0 });
   });
 
   it('4xx retries with backoff up to five attempts, 5xx fails, anything else is uncertain and never replayed; before a connection it fails with its own code', async () => {

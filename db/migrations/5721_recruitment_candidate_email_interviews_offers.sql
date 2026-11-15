@@ -414,7 +414,7 @@ BEGIN
   RETURNING e.id, e.tenant_id, e.company_id, e.application_id, e.kind)
  INSERT INTO public.domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, actor_id, payload)
   SELECT w.tenant_id, 'recruitment-application', w.application_id, 'recruitment-candidate-email.withdrawn',
-   CASE WHEN app.current_user_id() IS NULL THEN 'system' ELSE 'user' END, app.current_user_id(),
+   (CASE WHEN app.current_user_id() IS NULL THEN 'system' ELSE 'user' END)::public.actor_type, app.current_user_id(),
    jsonb_build_object('companyId', w.company_id, 'emailId', w.id, 'kind', w.kind, 'reason', 'interview_cancelled')
   FROM withdrawn w;
  DELETE FROM app.recruitment_candidate_email_context WHERE txid = txid_current() AND purpose = 'worker' AND scope_id = ANY (v_tenants);
