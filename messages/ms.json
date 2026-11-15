@@ -2472,7 +2472,8 @@
           "history_closed_payroll": "Gaji yang ditutup meliputi %detail%. Ia kekal seperti yang dikeluarkan; hanya rekod pekerjaan berubah.",
           "movement_history_change_on_date": "Perubahan pada medan ini sudah direkodkan pada tarikh ini. Betulkan atau padam perubahan itu.",
           "movement_correction_boundary": "Pembetulan maklumat sahaja pada %date% tidak dapat dikekalkan selepas pergerakan ini. Semak pembetulan itu dahulu.",
-          "movement_correction_boundary_label": "Pembetulan maklumat sahaja mulai %date% menetapkan syarikat yang tidak boleh menggunakan jabatan, jawatan, unit perniagaan, pusat kos atau lokasi kerja yang ditetapkan oleh pergerakan ini. Betulkan maklumat itu dahulu, atau pilih nilai yang boleh digunakan oleh syarikat itu."
+          "movement_correction_boundary_label": "Pembetulan maklumat sahaja mulai %date% menetapkan syarikat yang tidak boleh menggunakan jabatan, jawatan, unit perniagaan, pusat kos atau lokasi kerja yang ditetapkan oleh pergerakan ini. Betulkan maklumat itu dahulu, atau pilih nilai yang boleh digunakan oleh syarikat itu.",
+          "movement_correction_company_record": "Pembetulan maklumat sahaja bertarikh %date% merekodkan syarikat yang berbeza sebelum tarikh itu, jadi pergerakan ini tidak boleh diletakkan sebelumnya. Betulkan syarikat dari Tarikh Sertai dengan Pembetulan Maklumat Sahaja dahulu, atau gunakan tarikh pada atau selepas %date%."
         },
         "v2": {
           "type": "Jenis Pergerakan",

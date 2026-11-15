@@ -1,3 +1,16 @@
+# Board 4604dccc: payroll history binds to the company of its month — 15 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/board-4604dccc-effective-date-20261115` (from `origin/alpha` at `1299e6724`, equal to `origin/main`) appends
+`5680_payroll_history_dated_company` at idx 5080 / when 1793330005380, the next slot of the board block's offset (tag T,
+idx T − 600, when 1793330004800 + (T − 5100)) directly after `5660` (when 1793330005360), the journal's maximum. SHA256
+`664b422a2a2128357932b0e0b036fa69ad731eb6c31aa6c4a8ce2a5b6e080faf`. It replaces only the owner-owned trigger function `app.payroll_history_bind_record()` (0602) so a payroll history
+record binds when the employment is in that company today or a live dated assignment places it there during the
+record's month; no table, grant, policy, purpose-owned object or row changes. A scan of the 500 most recently updated
+origin heads on 15 November 2026 found no claim on tags 5661–5699 or when 1793330005361–1793330005399; the recruitment
+lane on `claude/rea-web-app-reconstruction-2c12ee` holds tags 5700–5721 at when 1793330005400 and above, so if it is
+installed first this entry must move above it. The installed ledgers were not read by this session. Recheck the
+installed watermarks and peer claims at admission; this allocation grants no installation authority.
+
 # Statutory follow-ups: EPF Bonus 2012 on the default BONUS pay item — 14 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/statutory-followups-20261114` (from `origin/main` at `e197b8c07`, merged with `origin/main` at `9b4f22c09`) appends

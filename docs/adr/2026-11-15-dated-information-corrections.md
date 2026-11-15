@@ -38,9 +38,11 @@ before the current assignment record"), and payroll history import looked only a
 5. **Corrections are dated boundaries for movements.** Before a comparison movement dated D writes placement legs,
    versions after D that start on an information correction's Effective Date and were not created by a movement,
    history movement or other assignment writer are merged back into the version covering D; the movement writes
-   through its ordinary legs; then each boundary is split back in on its own date with the values it set (the fields
-   that differed from its predecessor plus the fields the correction named). `employment.company_id` follows the
-   record with the latest Effective Date. The re-application is recorded as `employment.information.boundary.reapplied`.
+   through its ordinary legs; then each boundary is split back in on its own date with the values it changed relative
+   to the record before it. A boundary that no longer changes anything (an earlier correction already gave the period
+   before it the same values) is not put back: a record corrected the old way (from today) and then from the join date
+   must end in the company a later-imported transfer sets. `employment.company_id` follows the record with the latest
+   Effective Date. The re-application is recorded as `employment.information.boundary.reapplied`.
    This sits in the comparison writer, so New Event, the Movement import's ordered sequence, the effective-order replay
    of later movements and an older event's correction all place movements before or after corrections by date.
    `AssignmentBeforeCurrentStartError` still guards every other writer and any version that is not a correction boundary.
@@ -49,7 +51,8 @@ before the current assignment record"), and payroll history import looked only a
    correction did not set and stops for fields it set.
 7. **Payroll history import.** An employee is found under the company their dated history places them in during the
    month (current company, or a live assignment version in the importing company), read in one statement for the file.
-   A month in another company's period is refused, naming that company.
+   A month in another company's period is refused, naming that company. Migration 5680 lets the 0602 record-binding
+   trigger accept the company of the record's month by the same dated rule (it required today's company).
 8. **Review.** The review lists the dated records in Effective Date order, flagged corrected, unchanged or conflict,
    with closed payroll to acknowledge. History shows the Effective Date.
 
@@ -60,6 +63,14 @@ before the current assignment record"), and payroll history import looked only a
 - The single-company-admin payroll history case (an administrator of the earlier company only, for an employee now in
   another company) is not opened here: the employment row and payslip writes are fenced by the current company
   (`can_see_employment`, `can_admin_payroll_employment`). Opening it is a security decision for the owner.
+- The dated fields' existing values in the review are the record on the Effective Date, so a correction compares with
+  that record (the form reloads them when the date changes).
 - Statutory readers that use a correction's before-image (ADR-0163) key on `effectiveOn`; a correction bounded by a
   later change still returns current master data after its stop.
+- The SQL company-on-date owner `app.company_org_employment_company` and its set-based copies (personnel overview and
+  search, onboarding, staged import, rewards) still answer a day from the "before" company of the earliest correction
+  dated after it. Where that disagrees with the dated record, the organisation-tag owner would refuse a placement
+  movement's write: the movement is refused with `movement_correction_company_record` (named, not a database error) and
+  the correction records no organisation tag for that day. Moving those readers to the dated record is a follow-up
+  migration across all of them.
 - New translations need translation review.

@@ -18,10 +18,11 @@ async function withCorrectionFeedback<T>(run: () => Promise<T>): Promise<T | { c
   }
 }
 
-export async function informationContextAction(employmentId: string) {
+/** Board 4604dccc — `effectiveOn` shows the record as it stood on the chosen Effective Date. */
+export async function informationContextAction(employmentId: string, effectiveOn?: string) {
   const ctx = await requireAdmin();
   return withCorrectionFeedback(async () => {
-    const preview = await readInformationCorrection(ctx, employmentId);
+    const preview = await readInformationCorrection(ctx, employmentId, typeof effectiveOn === 'string' ? effectiveOn : undefined);
     return { preview, options: await informationCorrectionOptions(ctx), history: await informationCorrectionHistory(ctx, employmentId) };
   });
 }

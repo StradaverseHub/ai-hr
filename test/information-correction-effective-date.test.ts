@@ -186,4 +186,18 @@ describe('the reporter\'s migration scenario',()=>{
   expect(julyUnderA.months[0].ok).toBe(false);
   expect(julyUnderA.issues.map(i=>i.description)).toContain('Employee ED-MIG belonged to Beta Fictional Sdn Bhd during 2026-07, not Acme Sdn Bhd. Import this month under Beta Fictional Sdn Bhd.');
  });
+ it('repairs a record already corrected the old way (from today): correct from the join date, then import the transfer',async()=>{
+  const id=await hire('ED-OLD',JOIN,coB);
+  await correct(id,{companyId:b.companyId});
+  const today=todayInKualaLumpur();
+  expect((await versions(id)).map(v=>[v.validFrom,v.companyId])).toEqual([[JOIN,coB],[today,b.companyId]]);
+  // The form compares with the record on the Effective Date: Company B then, although Company A today.
+  const review=await correct(id,{companyId:b.companyId},JOIN);
+  expect(review.before.companyId).toBe(coB);expect(review.until).toEqual({companyId:today});
+  expect((await versions(id)).map(v=>[v.validFrom,v.companyId])).toEqual([[JOIN,b.companyId],[today,b.companyId]]);
+  await createMovementEvent(ctx(),{employmentId:id,kind:'entityTransfer',effectiveDate:TRANSFER,companyId:coB,remarks:'Fictional transfer recorded after the corrections'});
+  // The old correction no longer changes anything after the join-date correction, so the transfer's company stands.
+  expect((await versions(id)).map(v=>[v.validFrom,v.companyId])).toEqual([[JOIN,b.companyId],[TRANSFER,coB]]);
+  expect(await companyOf(id)).toBe(coB);
+ });
 });

@@ -154,7 +154,8 @@ describe('actual mounted Personnel form inventory',()=>{
     const file='app/admin/personnel/information-correction-form.tsx',source=readFileSync(new URL('../'+file,import.meta.url),'utf8');
     const reader=personnelImportSourceReader(root);
     const audit=(text:string,resolveImportSource=reader)=>auditPersonnelFormSource(file,text,PERSONNEL_FIELDS,{exemptions:exemptions[file],resolveImportSource});
-    expect(audit(source)).toMatchObject({controls:6,issues:[]});
+    // Board 4604dccc: the join-date tickbox became the Effective Date, plus the closed-payroll acknowledgement.
+    expect(audit(source)).toMatchObject({controls:7,issues:[]});
     const binding='INFORMATION_FIELD_IDS[field]';expect(source).toContain(binding);
     expect(audit(source.replaceAll(binding,'INFORMATION_FIELD_IDS[unregisteredKey]')).issues.some(issue=>issue.message.includes('Unresolved Personnel binding'))).toBe(true);
     const wrongMap=(from:string,specifier:string)=>{const text=reader(from,specifier);return specifier==='@/lib/information-correction'?text?.replace('employment.employment_dates_and_service.hiredon','unregistered.personnel.fact'):text;};

@@ -2472,7 +2472,8 @@
           "history_closed_payroll": "Closed payroll covers %detail%. It stays as issued; only the employment record changes.",
           "movement_history_change_on_date": "A change to this field is already recorded on this date. Correct or delete that change instead.",
           "movement_correction_boundary": "An information-only correction on %date% could not be kept after this movement. Review that correction first.",
-          "movement_correction_boundary_label": "An information-only correction from %date% sets a company that cannot use the department, position, business unit, cost centre or work location this movement sets. Correct that information first, or choose values the company can use."
+          "movement_correction_boundary_label": "An information-only correction from %date% sets a company that cannot use the department, position, business unit, cost centre or work location this movement sets. Correct that information first, or choose values the company can use.",
+          "movement_correction_company_record": "An information-only correction dated %date% recorded a different company before that date, so this movement cannot be placed before it. Correct the company from the Join Date with Information-Only Correction first, or use a date on or after %date%."
         },
         "v2": {
           "type": "Movement type",

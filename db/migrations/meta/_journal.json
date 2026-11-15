@@ -5951,6 +5951,13 @@
       "when": 1793330005360,
       "tag": "5660_pay_component_bonus_epf_bonus_2012",
       "breakpoints": true
+    },
+    {
+      "idx": 5080,
+      "version": "7",
+      "when": 1793330005380,
+      "tag": "5680_payroll_history_dated_company",
+      "breakpoints": true
     }
   ]
 }

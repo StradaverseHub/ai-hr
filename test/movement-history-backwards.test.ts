@@ -123,20 +123,23 @@ describe('the Movement import',()=>{
   expect(result.imported).toBe(2);
   expect((await versions(id)).map(v=>[v.validFrom,v.companyId])).toEqual([[HIRED,coC],['2025-12-01',coB],[TRANSFER,b.companyId]]);
  });
- it('places a transfer dated before a correction by its date (board 4604dccc; it used to be refused)',async()=>{
+ it('names the correction a company change cannot be placed before (board 4604dccc; no database error)',async()=>{
   const id=await hire('HB-IMP');const ctx=adminCtx(b);
-  // A forward transfer dated before a correction that started the current record.
+  // A transfer to a third company dated before a correction whose recorded "before" company is the original one.
   await correctInformation(ctx,{employmentId:id,changes:{companyId:coB},reason:'Fictional correction',fingerprint:(await previewInformationCorrection(ctx,{employmentId:id,changes:{companyId:coB},reason:'Fictional correction'})).fingerprint,method:'manual'});
   const [{validFrom:started}]=(await versions(id)).slice(-1);
   const records=[{...row(2,TRANSFER,coC,b.companyId),before:{}}];
   const preview=await previewMovementImport(ctx,{companyId:coB,csv:'',records});
-  expect(preview.employees[0].rows[0].errors).toEqual([]);
-  const result=await commitMovementImport(ctx,{companyId:coB,csv:'',records,selection:preview.selection,inputHash:preview.inputHash,fingerprints:Object.fromEntries(preview.employees.map(e=>[e.employeeCode,e.fingerprint!])),acknowledgeExcluded:false});
-  expect(result.imported).toBe(1);
-  // The transfer holds from its date; the correction still holds from its own date, so it is the current record.
-  expect((await versions(id)).map(v=>[v.validFrom,v.companyId])).toEqual([[HIRED,b.companyId],[TRANSFER,coC],[started,coB]]);
-  const [emp]=await owner.db.select({companyId:schema.employment.companyId}).from(schema.employment).where(eq(schema.employment.id,id));
-  expect(emp.companyId).toBe(coB);
+  expect(preview.employees[0].rows[0].errors).toEqual([`movement_correction_company_record:${started}`]);
+ });
+ it('places a department transfer dated before a correction by its date',async()=>{
+  const id=await hire('HB-IMQ');const ctx=adminCtx(b);
+  await correctInformation(ctx,{employmentId:id,changes:{companyId:coB},reason:'Fictional correction',fingerprint:(await previewInformationCorrection(ctx,{employmentId:id,changes:{companyId:coB},reason:'Fictional correction'})).fingerprint,method:'manual'});
+  const [{validFrom:started}]=(await versions(id)).slice(-1);
+  const [deptOther]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:b.companyId,name:'Fictional Other'}).returning({id:schema.department.id});
+  await share('department',deptOther.id);
+  await createMovementEvent(ctx,{employmentId:id,kind:'transfer',effectiveDate:TRANSFER,departmentId:deptOther.id,remarks:'Fictional transfer'});
+  expect((await versions(id)).map(v=>[v.validFrom,v.companyId])).toEqual([[HIRED,b.companyId],[TRANSFER,b.companyId],[started,coB]]);
  });
 });
 

@@ -2472,7 +2472,8 @@
           "history_closed_payroll": "已关闭的薪资涵盖 %detail%。薪资保持已发放状态；只更改雇佣记录。",
           "movement_history_change_on_date": "此字段在该日期已有记录的更改。请更正或删除该更改。",
           "movement_correction_boundary": "%date% 的仅信息更正无法在此异动后保留。请先检查该更正。",
-          "movement_correction_boundary_label": "自 %date% 起的仅信息更正所设定的公司无法使用此异动设定的部门、职位、业务单位、成本中心或工作地点。请先更正该信息，或选择该公司可用的值。"
+          "movement_correction_boundary_label": "自 %date% 起的仅信息更正所设定的公司无法使用此异动设定的部门、职位、业务单位、成本中心或工作地点。请先更正该信息，或选择该公司可用的值。",
+          "movement_correction_company_record": "%date% 的仅信息更正记录了该日期之前的另一家公司，因此无法将此异动放在其之前。请先使用仅信息更正从入职日期起更正公司，或使用 %date% 当日或之后的日期。"
         },
         "v2": {
           "type": "人事异动类型",

@@ -125,17 +125,32 @@ function ownerFailure(error:unknown,field:InformationField):never{
 /** Extended fields need the owners' Access/leave configuration locks; take them before any row lock. */
 const OWNER_FIELDS=new Set<string>([...INFORMATION_LABEL_FIELDS,...INFORMATION_PERIOD_FIELDS,'managerEmploymentId']);
 export const informationChangesUseOwners=(changes:InformationChanges)=>Object.keys(changes).some(field=>OWNER_FIELDS.has(field));
+/** Board 4604dccc — the dated fields as recorded on `day`: the assignment version covering it (or the first one,
+ * for a day before the dated history starts) and the administrative line in force. Today is the current record. */
+async function valuesAtTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stateTx>>,day:string):Promise<Partial<InformationValues>>{
+ if(day>=todayInKualaLumpur())return {};
+ const live=[...s.assignments].filter(v=>v.validTo===null||v.validTo>v.validFrom).sort((a,b)=>a.validFrom.localeCompare(b.validFrom));
+ const row=live.filter(v=>v.validFrom<=day&&(v.validTo===null||v.validTo>day)).at(-1)??live[0];
+ if(!row)return {};
+ const [line]=await tx.select({managerEmploymentId:reportingLine.managerEmploymentId}).from(reportingLine).where(and(eq(reportingLine.tenantId,ctx.tenantId),eq(reportingLine.subordinateEmploymentId,s.emp.id),eq(reportingLine.lineType,'administrative'),isNull(reportingLine.supersededAt),sql`${reportingLine.validFrom}<=${day}::date`,sql`(${reportingLine.validTo} is null or ${reportingLine.validTo}>${day}::date)`)).orderBy(desc(reportingLine.validFrom),asc(reportingLine.id)).limit(1);
+ return {companyId:row.companyId??s.emp.companyId,employmentType:row.employmentType,businessUnitId:row.businessUnitId,departmentId:row.departmentId,positionId:row.positionId,managerEmploymentId:line?.managerEmploymentId??null};
+}
 /** Loading the form may expose invalid legacy values so the user can correct them. A read: the 'maintain' check
  * joins the Access lock shared (withAccessDisplayRead, SCALE rule 1) and no row is locked. */
-export function readInformationCorrection(ctx:SessionContext,employmentId:string){
+export function readInformationCorrection(ctx:SessionContext,employmentId:string,effectiveOn?:string){
  return withAccessDisplayRead(()=>withTenant(ctx,async tx=>{
-  const state=await stateTx(tx,ctx,employmentId,'read'),before=values(state),beforeLabels=await labelsTx(tx,before);
+  const state=await stateTx(tx,ctx,employmentId,'read'),today=todayInKualaLumpur(),current=values(state);
+  // Board 4604dccc — the form shows the record on the chosen Effective Date (clamped to the Group Join Date..today).
+  const chosen=typeof effectiveOn==='string'&&isCalendarDate(effectiveOn)&&effectiveOn<today?(effectiveOn<current.hiredOn!?current.hiredOn!:effectiveOn):today;
+  const before={...current,...await valuesAtTx(tx,ctx,state,chosen)},beforeLabels=await labelsTx(tx,before);
+  if(chosen!==today)return {effectiveOn:chosen,today,earliestEffectiveOn:current.hiredOn,before,beforeLabels};
   // Board 4604dccc — the Effective Date defaults to today; the earliest is the start of the dated history.
-  return {effectiveOn:todayInKualaLumpur(),earliestEffectiveOn:before.hiredOn,before,beforeLabels};
+  return {effectiveOn:today,today,earliestEffectiveOn:current.hiredOn,before,beforeLabels};
  }));
 }
-async function validateTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stateTx>>,changes:InformationChanges,extended:boolean){
- const before=values(s),after={...before};
+async function validateTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stateTx>>,changes:InformationChanges,extended:boolean,at:Partial<InformationValues>={}){
+ // Board 4604dccc — the dated fields' existing values are the record on the Effective Date, not today's.
+ const before={...values(s),...at},after={...before};
  // The single-employee correction keeps its five facts; the further details are corrected through the template.
  const allowed:readonly InformationField[]=extended?INFORMATION_ALL_FIELDS:INFORMATION_FIELDS;
  if(!extended&&Object.keys(changes).some(field=>(INFORMATION_ALL_FIELDS as readonly string[]).includes(field)&&!(INFORMATION_FIELDS as readonly string[]).includes(field)))fail('Use the Information-Only Correction template to correct these details.');
@@ -271,12 +286,13 @@ async function previewTx(tx:Tx,ctx:SessionContext,input:PreviewInput,extended=fa
  const reason=typeof input.reason==='string'?input.reason.trim():'';
  if(reason.length<3||reason.length>1000)fail('Provide a correction reason between 3 and 1,000 characters.');
  const write=mode==='write';
- const state=await stateTx(tx,ctx,input.employmentId,mode),v=await validateTx(tx,ctx,state,input.changes,extended);
+ const state=await stateTx(tx,ctx,input.employmentId,mode);
  // Board 4604dccc — the Effective Date: from the start of the dated history (the Group Join Date) up to today.
  const today=todayInKualaLumpur();
  const effectiveOn=typeof input.effectiveOn==='string'&&input.effectiveOn.trim()?input.effectiveOn.trim():today;
  if(!isCalendarDate(effectiveOn))fail('Effective Date: use a valid date in YYYY-MM-DD format.');
  if(effectiveOn>today)fail('Effective Date cannot be in the future.');
+ const v=await validateTx(tx,ctx,state,input.changes,extended,await valuesAtTx(tx,ctx,state,effectiveOn));
  const earliest=v.after.hiredOn!;
  if(effectiveOn<earliest)fail(`Effective Date cannot be before ${earliest}, the Group Join Date, when the employee's history starts.`);
  const backdated=effectiveOn<today;
@@ -305,7 +321,7 @@ async function previewTx(tx:Tx,ctx:SessionContext,input:PreviewInput,extended=fa
  for(const id of new Set(plan.affected.filter(x=>Object.keys(x.values).length).flatMap(x=>[versions[x.index].companyId,x.values.companyId]).filter((id):id is string=>!!id)))await administratorTx(tx,ctx,id);
  await datedLabelsTx(tx,ctx,versions,plan);
  // Later recorded changes: the movements whose recorded "from" values must agree, and the later corrections.
- const needsLedger=backdated||!extended;
+ const needsLedger=backdated;
  const recorded:RecordedMovementChange[]=needsLedger?await recordedMovementChangesTx(tx,ctx.tenantId,state.emp.id):[];
  const corrections=needsLedger?await tx.select({payload:domainEvent.payload}).from(domainEvent).where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.subjectEmploymentId,state.emp.id),eq(domainEvent.eventType,INFORMATION_CORRECTED_EVENT))):[];
  const correctionDates=corrections.map(row=>(row.payload??{}) as {effectiveOn?:string;fields?:string[]}).filter(p=>typeof p.effectiveOn==='string');
@@ -358,7 +374,7 @@ async function previewTx(tx:Tx,ctx:SessionContext,input:PreviewInput,extended=fa
  if(alignStart)warnings.push({code:'historyStartAligned',date:alignStart.to,from:alignStart.from});
  // The review's records, in Effective Date order, flagged by what this correction does to each.
  const timeline:InformationTimelineRecord[]=[];
- if(!extended){
+ if(backdated){
   const correctionDays=new Set(correctionDates.filter(p=>(p.fields??[]).some(f=>DATED_FIELDS.has(f))).map(p=>p.effectiveOn!));
   const affected=new Map(plan.affected.map(a=>[a.index,a.values]));
   const ids=[...new Set(versions.flatMap((row,i)=>[row.companyId,affected.get(i)?.companyId]).filter((id):id is string=>!!id))];
@@ -473,7 +489,11 @@ async function applyTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stat
   ...(dated.labelsNotCurrent.length?{labelsNotCurrent:dated.labelsNotCurrent}:{}),...(p.closedPayrollPeriods?.length?{closedPayrollPeriods:p.closedPayrollPeriods,closedPayrollAcknowledged:true}:{}),
   method:input.method,batchId:input.batchId??null,filename:input.filename??null,snapshotCount:preserved.count,assignmentVersionId,previousAssignmentId:s.current.id}});
  const [at]=await tx.select({companyId:assignment.companyId}).from(assignment).where(and(eq(assignment.employmentId,s.emp.id),isNull(assignment.supersededAt),sql`${assignment.validFrom}<=${effectiveOn}::date`,sql`(${assignment.validTo} is null or ${assignment.validTo}>${effectiveOn}::date)`)).orderBy(desc(assignment.validFrom)).limit(1);
- await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:s.emp.id,companyId:at?.companyId??currentCompany,asOf:effectiveOn,trigger:'correction'});
+ // The organisation tag owner checks the company against app.company_org_employment_company, whose correction
+ // before-image rule predates dated corrections (ADR 2026-11-15, Consequences): record only where they agree.
+ const tagCompany=at?.companyId??currentCompany;
+ const [owner]=await tx.execute<{companyId:string|null}>(sql`select app.company_org_employment_company(${s.emp.id}::uuid,${effectiveOn}::date) as "companyId"`);
+ if(owner?.companyId===tagCompany)await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:s.emp.id,companyId:tagCompany,asOf:effectiveOn,trigger:'correction'});
 }
 /** Board 4604dccc — the Direct Superior from the Effective Date until the next recorded line, which stays as it is. */
 async function boundedSuperiorTx(tx:Tx,ctx:SessionContext,employmentId:string,managerId:string,from:string,to:string){

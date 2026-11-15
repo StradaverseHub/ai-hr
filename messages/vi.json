@@ -2472,7 +2472,8 @@
           "history_closed_payroll": "Bảng lương đã đóng bao gồm %detail%. Bảng lương giữ nguyên như đã phát hành; chỉ hồ sơ tuyển dụng thay đổi.",
           "movement_history_change_on_date": "Một thay đổi cho trường này đã được ghi nhận vào ngày này. Hãy sửa hoặc xóa thay đổi đó.",
           "movement_correction_boundary": "Không thể giữ lần sửa thông tin đơn thuần ngày %date% sau biến động này. Hãy xem lại lần sửa đó trước.",
-          "movement_correction_boundary_label": "Lần sửa thông tin đơn thuần từ %date% đặt một công ty không thể dùng phòng ban, chức vụ, đơn vị kinh doanh, trung tâm chi phí hoặc nơi làm việc mà biến động này đặt. Hãy sửa thông tin đó trước, hoặc chọn giá trị công ty đó có thể dùng."
+          "movement_correction_boundary_label": "Lần sửa thông tin đơn thuần từ %date% đặt một công ty không thể dùng phòng ban, chức vụ, đơn vị kinh doanh, trung tâm chi phí hoặc nơi làm việc mà biến động này đặt. Hãy sửa thông tin đó trước, hoặc chọn giá trị công ty đó có thể dùng.",
+          "movement_correction_company_record": "Lần sửa thông tin đơn thuần ngày %date% đã ghi một công ty khác trước ngày đó, nên không thể đặt biến động này trước nó. Hãy sửa công ty từ Ngày gia nhập bằng Sửa thông tin đơn thuần trước, hoặc dùng ngày từ %date% trở đi."
         },
         "v2": {
           "type": "Loại Biến động",

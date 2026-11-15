@@ -351,11 +351,11 @@ export async function writeDatedCorrectionTx(tx:Tx,employmentId:string,effective
   if(index===plan.cover&&row.validFrom<effectiveOn){
    // The covering version keeps its id and its earlier days; the corrected piece starts on the Effective Date.
    await tx.update(assignment).set({validTo:effectiveOn}).where(eq(assignment.id,id));
-   const [piece]=await tx.insert(assignment).values({...copy,...values,validFrom:effectiveOn}).returning({id:assignment.id});
+   const [piece]=await tx.insert(assignment).values({...copy,...(values as Partial<typeof assignment.$inferInsert>),validFrom:effectiveOn}).returning({id:assignment.id});
    inserted.push(piece.id);if(row.validTo===null)currentId=piece.id;
   }else{
    await tx.update(assignment).set({supersededAt:now}).where(eq(assignment.id,id));
-   const [whole]=await tx.insert(assignment).values({...copy,...values}).returning({id:assignment.id});
+   const [whole]=await tx.insert(assignment).values({...copy,...(values as Partial<typeof assignment.$inferInsert>)}).returning({id:assignment.id});
    replaced.push({supersededId:id,replacementId:whole.id});if(row.validTo===null)currentId=whole.id;
   }
  }
@@ -409,10 +409,14 @@ export async function liftCorrectionBoundariesTx(tx:Tx,ctx:SessionContext,employ
  if(later.some(v=>!explicit.has(v.validFrom)||owned.has(v.id)))return null;
  const cover=rows.filter(v=>v.validFrom<=date).at(-1);
  if(!cover||cover.validTo!==later[0].validFrom)return null;
+ // Each boundary keeps what it changes relative to the record before it. A boundary that no longer changes anything
+ // (an earlier correction already gave the period before it the same values) is not put back: corrections correct
+ // facts, and the reporter's case (company corrected from today, then from the join date, then the real transfer
+ // imported) must end in the transferred company, not in a stale correction's value.
  const boundaries:LiftedBoundary[]=later.map((v,i)=>{
-  const prev=i===0?cover:later[i-1],set=explicit.get(v.validFrom)!;
+  const prev=i===0?cover:later[i-1];
   const values:LiftedBoundary['values']={};
-  for(const f of PLACEMENT_COLUMNS)if(v[f]!==prev[f]||set.has(f))values[f]=v[f]??null;
+  for(const f of PLACEMENT_COLUMNS)if(v[f]!==prev[f])values[f]=v[f]??null;
   return{date:v.validFrom,values,liftedId:v.id};
  });
  await tx.update(assignment).set({supersededAt:new Date()}).where(inArray(assignment.id,later.map(v=>v.id)));
@@ -443,7 +447,7 @@ export async function reapplyCorrectionBoundariesTx(tx:Tx,ctx:SessionContext,emp
   }
   const {id,createdAt:_c,recordedAt:_r,supersededAt:_s,...copy}=cover;
   await tx.update(assignment).set({validTo:boundary.date}).where(eq(assignment.id,id));
-  const [row]=await tx.insert(assignment).values({...copy,...boundary.values,validFrom:boundary.date}).returning({id:assignment.id});
+  const [row]=await tx.insert(assignment).values({...copy,...(boundary.values as Partial<typeof assignment.$inferInsert>),validFrom:boundary.date}).returning({id:assignment.id});
   placed.push({date:boundary.date,fields:changed,splitId:id,insertedId:row.id,liftedId:boundary.liftedId});
  }
  // employment.company_id follows the record with the latest Effective Date.
