@@ -1,3 +1,12 @@
+# Probation tracker plan robustness — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-queues-routing-20261116` (lane E) appends `5750_probation_tracker_plan_robustness` at idx
+5150 / when 1793330005450 (assigned by the build coordinator). SHA256 `5acc2142a000baade0f4e01c5345fbc1114e9cc980f3a62689004cdfc9851123`.
+It re-creates the owner-owned internal `app.probation_holders_set(uuid[])` (5746) with the same rule and output and an
+evaluation shape that needs no table statistics (jsonb maps instead of joins between materialised sets). No table, row,
+grant or purpose-owned object changes. The installed ledgers were not read; recheck watermarks and peer claims at
+admission. No installation authority.
+
 # Probation delegation (decision 7) — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/probation-lane-probation-core-20261116` (lane C, round E) appends `5749_probation_delegation` at idx 5149 /

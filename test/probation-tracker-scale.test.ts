@@ -12,6 +12,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {addDaysIso} from '../lib/roster-month';
+import {holidayDatesByEmployment} from '../core/holidays';
 import {DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,defaultProbationRoutes,probationSummaryRows,type ProbationTrackerFlag} from '../packs/probation/service';
 
 const COMPANIES=72,PER_COMPANY=15;
@@ -168,6 +169,12 @@ describe('tracker read at real-group shape',()=>{
   for(const flag of Object.keys(previousFlags) as Flag[]){
    const before=await previousReader(visible,{flag}),page=await timed('tracker read all companies flag '+flag,()=>probationSummaryRows(admin,{flag,limit:100}));
    expect(page.rows.map(r=>r.id)).toEqual(before.ids.slice(0,100));expect(page.total).toBe(before.counts.total);
+   // Where a flag read spends its time: page details (one statement) and the holiday read behind working days overdue.
+   if(page.rows.length){
+    await timed('  page details flag '+flag,()=>withTenant(admin,tx=>tx.execute(sql`select count(*) from app.probation_tracker_page(array[${sql.join(page.rows.map(r=>sql`${r.id}::uuid`),sql`, `)}]::uuid[])`)));
+    const kpis=page.rows.filter(row=>row.parts.some(part=>part.type===1&&part.workingDaysOverdue!==undefined));
+    if(kpis.length)await timed(`  holiday read flag ${flag} (${kpis.length} employments, ${new Set(kpis.map(r=>r.companyId)).size} companies)`,()=>withTenant(admin,tx=>holidayDatesByEmployment(tx,{employmentIds:kpis.map(r=>r.employmentId),startDate:kpis.flatMap(r=>r.parts).map(p=>p.dueOn).sort()[0],endDate:today})));
+   }
   }
  },105000); // Run 43746146505 measured this test at 34.9 s on the CI runner, almost all of it the 0949 reference rule evaluated per case for each viewer (3.3-5.2 s each); about 3x.
  it('shows nothing to a person without case access',async()=>{
