@@ -1,7 +1,7 @@
 # Probation tracker at group scale, configurable maximum extensions, declined signature order — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/probation-lane-probation-core-20261116` appends `5746_probation_tracker_scale_and_extensions` at idx
-5146 / when 1793330005446 (assigned by the build coordinator, directly above `5745`). SHA256 `1a1b55987745626f3275bfa520eed6f120d5bcfbcbd353067c9ccc094fca0c96`.
+5146 / when 1793330005446 (assigned by the build coordinator, directly above `5745`). SHA256 `26f406ecb44d03d22e6bbd3f89eede44c8a933f635f533d4f5cbd4ab0efb934b`.
 It gives the probation case access rule one set-based owner, `app.probation_visible_among(cases)` over
 `app.probation_holders_set(employments)` and `app.probation_company_ancestors(companies)`, and re-creates the
 owner-owned `app.probation_case_access` (membership of that set) and `app.probation_holders` (answered from the holder

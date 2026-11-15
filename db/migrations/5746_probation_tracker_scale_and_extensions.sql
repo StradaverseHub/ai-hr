@@ -126,16 +126,18 @@ BEGIN
   live AS MATERIALIZED (SELECT cs.* FROM cs JOIN ent ON ent.id=cs.company_id),
   h AS MATERIALIZED (SELECT * FROM app.probation_holders_set(ARRAY(SELECT live.employment_id FROM live WHERE live.current_company))),
   gbs AS MATERIALIZED (SELECT m.* FROM public.probation_access m WHERE ops AND m.tenant_id=t AND m.user_id=me AND m.role='gbs' AND m.valid_from<=day AND (m.valid_to IS NULL OR m.valid_to>=day)),
-  anc AS MATERIALIZED (SELECT * FROM app.probation_company_ancestors(ARRAY(SELECT DISTINCT h.company_id FROM h WHERE EXISTS(SELECT 1 FROM gbs))))
+  anc AS MATERIALIZED (SELECT * FROM app.probation_company_ancestors(ARRAY(SELECT DISTINCT h.company_id FROM h WHERE EXISTS(SELECT 1 FROM gbs)))),
+  -- Each GBS mapping covers the companies below it, optionally narrowed to a department or unit: decided per company once.
+  gbs_cover AS MATERIALIZED (SELECT DISTINCT anc.company_id,m.department_id,m.business_unit_id FROM gbs m JOIN anc ON anc.ancestor_id=m.company_id),
+  held AS MATERIALIZED (
+   SELECT h.employment_id FROM h WHERE me IN(h.employee,h.lm,h.hod,h.pbp)
+    OR EXISTS(SELECT 1 FROM gbs_cover g WHERE g.company_id=h.company_id AND (g.department_id IS NULL OR g.department_id=h.department_id) AND (g.business_unit_id IS NULL OR g.business_unit_id=h.business_unit_id))),
+  delegated AS MATERIALIZED (
+   SELECT DISTINCT p.case_id FROM public.probation_delegate d JOIN public.probation_part p ON p.id=d.part_id AND p.tenant_id=d.tenant_id
+   WHERE d.tenant_id=t AND d.holder_id=me AND d.valid_from<=day AND (d.valid_to IS NULL OR d.valid_to>=day))
   SELECT live.id FROM live WHERE NOT live.current_company AND live.person_id=my_person
   UNION
-  SELECT live.id FROM live JOIN h ON h.employment_id=live.employment_id WHERE live.current_company AND (
-   me IN(h.employee,h.lm,h.hod,h.pbp)
-   OR EXISTS(SELECT 1 FROM gbs m JOIN anc ON anc.company_id=h.company_id AND anc.ancestor_id=m.company_id
-    WHERE (m.department_id IS NULL OR m.department_id=h.department_id) AND (m.business_unit_id IS NULL OR m.business_unit_id=h.business_unit_id)))
-  UNION
-  SELECT live.id FROM live WHERE live.current_company AND EXISTS(SELECT 1 FROM public.probation_delegate d JOIN public.probation_part p ON p.id=d.part_id AND p.tenant_id=d.tenant_id
-   WHERE p.case_id=live.id AND d.tenant_id=t AND d.holder_id=me AND d.valid_from<=day AND (d.valid_to IS NULL OR d.valid_to>=day))
+  SELECT live.id FROM live WHERE live.current_company AND (live.employment_id IN(SELECT held.employment_id FROM held) OR live.id IN(SELECT delegated.case_id FROM delegated))
  ) x;
  RETURN QUERY SELECT unnest(visible);
  RETURN QUERY WITH candidates AS MATERIALIZED (
