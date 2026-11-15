@@ -89,9 +89,9 @@ describe('templates: placeholders, limits and links', () => {
     expect(templatePlaceholders('{a} and {b}')).toEqual({ names: ['a', 'b'], stray: false });
     expect(templatePlaceholders('}{a}')).toEqual({ names: ['a'], stray: true });
   });
-  it('both kinds allow exactly the four base placeholders (slice 20 adds kinds with their own)', () => {
-    expect(CANDIDATE_EMAIL_KINDS).toEqual(['application_received', 'rejection']);
-    for (const k of CANDIDATE_EMAIL_KINDS) expect([...CANDIDATE_EMAIL_PLACEHOLDERS[k]]).toEqual(['candidateName', 'jobTitle', 'companyName', 'senderName']);
+  it('the receipt and rejection allow exactly the four base placeholders (slice 20 adds kinds with their own)', () => {
+    expect(CANDIDATE_EMAIL_KINDS).toEqual(['application_received', 'rejection', 'interview_invitation', 'interview_reminder', 'interview_cancelled', 'offer']);
+    for (const k of ['application_received', 'rejection'] as const) expect([...CANDIDATE_EMAIL_PLACEHOLDERS[k]]).toEqual(['candidateName', 'jobTitle', 'companyName', 'senderName']);
   });
 });
 
@@ -183,8 +183,9 @@ describe('settings, delays, states and backoff', () => {
     expect(['4', '-1', '1.5', 'x', ''].map(parseRejectionDelay)).toEqual([null, null, null, null, null]);
   });
   it('shows retry as queued and leased as sending; only failed or uncertain e-mails with content kept are retried', () => {
-    expect((['queued', 'leased', 'sending', 'sent', 'retry', 'failed', 'uncertain'] as const).map(candidateEmailDisplayState))
-      .toEqual(['queued', 'sending', 'sending', 'sent', 'queued', 'failed', 'uncertain']);
+    expect((['queued', 'leased', 'sending', 'sent', 'retry', 'failed', 'uncertain', 'withdrawn'] as const).map(candidateEmailDisplayState))
+      .toEqual(['queued', 'sending', 'sending', 'sent', 'queued', 'failed', 'uncertain', 'withdrawn']);
+    expect(candidateEmailRetryable('withdrawn', false)).toBe(false);
     expect(candidateEmailRetryable('failed', false)).toBe(true);
     expect(candidateEmailRetryable('uncertain', false)).toBe(true);
     expect(candidateEmailRetryable('uncertain', true)).toBe(false);

@@ -38718,7 +38718,11 @@
       "email_hourly_limit": "Syarikat ini telah membaris gilir 500 e-mel calon dalam sejam yang lalu. Tiada apa-apa dilakukan; cuba lagi kemudian, atau teruskan tanpa e-mel.",
       "email_changed": "Pratonton e-mel telah berubah (kata-kata, penghantar, butiran atau alamat calon). Tiada apa-apa dilakukan; buka semula dan semak apa yang akan dihantar.",
       "email_not_retryable": "Hanya e-mel yang gagal atau tidak pasti dan kandungannya masih disimpan boleh dihantar semula.",
-      "email_too_long": "Dengan nama dan jawatan yang paling panjang diisi, kata-kata ini akan terlalu panjang. Pendekkan atau gunakan kurang pemegang tempat."
+      "email_too_long": "Dengan nama dan jawatan yang paling panjang diisi, kata-kata ini akan terlalu panjang. Pendekkan atau gunakan kurang pemegang tempat.",
+      "email_no_address": "Calon tiada alamat e-mel yang boleh digunakan. Tiada apa-apa dilakukan.",
+      "email_value_link": "Satu nilai dalam e-mel ini (nama calon, jawatan, tempat atau nilai tawaran) kelihatan seperti pautan atau alamat web, jadi ia tidak boleh dihantar melalui e-mel. Tiada apa-apa dilakukan.",
+      "email_private_field": "Satu medan tawaran yang ditanda untuk e-mel adalah peribadi dan tersembunyi daripada anda. Tiada apa-apa dilakukan; minta seseorang yang boleh melihatnya menghantar tawaran.",
+      "email_use_send": "E-mel calon dihidupkan untuk syarikat ini: gunakan Hantar tawaran melalui e-mel, yang menunjukkan e-mel terlebih dahulu. Tiada apa-apa dilakukan."
     },
     "overview": {
       "purpose": "Kerja pengambilan hari ini merentas syarikat yang pengambilannya anda uruskan.",
@@ -39057,7 +39061,9 @@
         },
         "addField": "Tambah medan",
         "choicesHint": "Hanya untuk medan pilihan tunggal",
-        "flowsTitle": "Aliran kelulusan"
+        "flowsTitle": "Aliran kelulusan",
+        "includeInEmail": "Dalam e-mel",
+        "includeInEmailNote": "Dalam e-mel: tawaran yang dihantar melalui e-mel menyatakan nilai medan ini seperti yang dimasukkan. Medan wang juga, hanya apabila ditanda."
       },
       "privacy": {
         "retentionTitle": "Penyimpanan dan permohonan berulang",
@@ -39303,7 +39309,17 @@
       "validFor": "Sah selama {days} hari dari hari ini",
       "decision": "Keputusan calon",
       "recordDecision": "Rekod keputusan",
-      "noSending": "AI HR tidak menghantar tawaran melalui e-mel atau SMS. Hantar sendiri, kemudian tandakan sebagai dihantar di sini."
+      "noSending": "AI HR tidak menghantar tawaran melalui e-mel atau SMS. Hantar sendiri, kemudian tandakan sebagai dihantar di sini.",
+      "sendByEmail": "Hantar tawaran melalui e-mel",
+      "sendByEmailNote": "Kepada {address}. Ia hanya menyatakan medan yang ditanda Dalam e-mel, seperti yang dimasukkan, dan dihantar tepat seperti yang ditunjukkan.",
+      "markSentOther": "Atau rekodkan bahawa ia dihantar dengan cara lain",
+      "noEmailFields": "Tiada medan tawaran yang ditanda Dalam e-mel, jadi e-mel tidak menyatakan butiran tawaran. Pentadbir menanda medan dalam Tetapan, Tawaran.",
+      "emailBlocked": {
+        "no_address": "Calon tiada alamat e-mel yang boleh digunakan, jadi tawaran tidak boleh dihantar melalui e-mel.",
+        "value_link": "Satu nilai dalam e-mel ini kelihatan seperti pautan atau alamat web, jadi tawaran tidak boleh dihantar melalui e-mel.",
+        "private_hidden": "Satu medan yang ditanda Dalam e-mel adalah peribadi dan tersembunyi daripada anda. Minta seseorang yang boleh melihatnya menghantar tawaran.",
+        "too_long": "Butiran tawaran terlalu panjang untuk satu e-mel."
+      }
     },
     "hire": {
       "linked": "Pengambilan baharu dimulakan: ID pekerja {code}, oleh {by}, {at}.",
@@ -40860,6 +40876,22 @@
         "rejection": {
           "subject": "Permohonan anda untuk {jobTitle}",
           "body": "Kepada {candidateName},\n\nTerima kasih atas minat anda terhadap jawatan {jobTitle} di {companyName} dan atas masa yang anda luangkan untuk permohonan ini.\n\nSetelah pertimbangan yang teliti, kami memutuskan untuk tidak meneruskan permohonan anda bagi jawatan ini.\n\nKami mendoakan kejayaan anda.\n\nSekian, terima kasih.\n{senderName}"
+        },
+        "interview_invitation": {
+          "subject": "Jemputan temu duga: {jobTitle}",
+          "body": "Kepada {candidateName},\n\nTerima kasih atas permohonan anda untuk jawatan {jobTitle} di {companyName}. Kami ingin menjemput anda ke temu duga.\n\n{interviewRound} · {interviewType}\nTarikh: {interviewDate}\nMasa: {interviewTime}\nTempoh: {interviewDuration}\nTempat: {interviewPlace}\n\nSila balas e-mel ini untuk mengesahkan kehadiran anda, atau untuk meminta masa lain.\n\nSekian, terima kasih,\n{senderName}"
+        },
+        "interview_reminder": {
+          "subject": "Peringatan: temu duga anda untuk {jobTitle}",
+          "body": "Kepada {candidateName},\n\nIni ialah peringatan tentang temu duga anda untuk jawatan {jobTitle} di {companyName}.\n\n{interviewRound} · {interviewType}\nTarikh: {interviewDate}\nMasa: {interviewTime}\nTempoh: {interviewDuration}\nTempat: {interviewPlace}\n\nJika anda tidak dapat hadir, sila balas e-mel ini.\n\nSekian, terima kasih,\n{senderName}"
+        },
+        "interview_cancelled": {
+          "subject": "Temu duga dibatalkan: {jobTitle}",
+          "body": "Kepada {candidateName},\n\nDukacita dimaklumkan bahawa temu duga anda untuk jawatan {jobTitle} di {companyName} telah dibatalkan.\n\n{interviewRound} · {interviewType}\nTarikh: {interviewDate}\nMasa: {interviewTime}\n\nJika kami dapat menawarkan masa lain, kami akan menghubungi anda. Anda juga boleh membalas e-mel ini.\n\nSekian, terima kasih,\n{senderName}"
+        },
+        "offer": {
+          "subject": "Tawaran anda untuk {jobTitle}",
+          "body": "Kepada {candidateName},\n\nKami dengan sukacitanya menawarkan jawatan {jobTitle} di {companyName} kepada anda.\n\n{offerDetails}\n\nSila balas e-mel ini untuk menerima tawaran ini atau jika anda mempunyai sebarang pertanyaan.\n\nSekian, terima kasih,\n{senderName}"
         }
       },
       "settingsNote": "E-mel calon tentang permohonan mereka sendiri: resit apabila mereka memohon dan, apabila seseorang memilih, surat penolakan. E-mel dihantar melalui perkhidmatan mel pemasangan ini daripada alamatnya; anda tetapkan nama yang dilihat calon dan alamat untuk balasan mereka.",
@@ -40884,11 +40916,19 @@
       "showLanguage": "Tunjuk",
       "kinds": {
         "application_received": "Permohonan diterima",
-        "rejection": "Penolakan"
+        "rejection": "Penolakan",
+        "interview_invitation": "Jemputan temu duga",
+        "interview_reminder": "Peringatan temu duga",
+        "interview_cancelled": "Temu duga dibatalkan",
+        "offer": "Tawaran"
       },
       "kindNotes": {
         "application_received": "Dihantar apabila HR menambah calon dan menandakan Hantar resit. Tidak sekali-kali untuk calon yang diimport. Pemohon halaman kerjaya belum menerima resit: alamat mereka belum disahkan.",
-        "rejection": "Dihantar hanya apabila orang yang menolak atau mengarkibkan menandakan Hantar e-mel penolakan selepas melihatnya."
+        "rejection": "Dihantar hanya apabila orang yang menolak atau mengarkibkan menandakan Hantar e-mel penolakan selepas melihatnya.",
+        "interview_invitation": "Dihantar apabila orang yang menjadualkan temu duga menanda E-mel jemputan kepada calon selepas melihatnya. Ia menyatakan pusingan, jenis, tarikh, masa, tempoh dan tempat (dengan pautan peta alamat), tidak sekali-kali penemu duga.",
+        "interview_reminder": "Dihantar secara automatik sebelum temu duga yang jemputannya telah dihantar melalui e-mel, pada masa yang ditetapkan di atas. Ditarik balik jika temu duga dibatalkan terlebih dahulu.",
+        "interview_cancelled": "Dihantar hanya apabila orang yang membatalkan temu duga menanda E-mel kepada calon selepas melihatnya. Tidak sekali-kali apabila temu duga dibatalkan kerana permohonannya ditutup.",
+        "offer": "Dihantar apabila seseorang memilih Hantar tawaran melalui e-mel pada tawaran yang diluluskan, selepas melihatnya. Ia hanya menyatakan medan tawaran yang ditanda Dalam e-mel, seperti yang dimasukkan."
       },
       "subject": "Subjek (sehingga {max} aksara)",
       "body": "Kandungan (sehingga {max} aksara)",
@@ -40925,7 +40965,13 @@
         "retried": "E-mel dibaris gilir untuk dihantar semula.",
         "rejectedValueLink": "Ditolak. Tiada e-mel dihantar: nama calon atau jawatan kelihatan seperti pautan atau alamat web.",
         "rejectedNotPreviewed": "Ditolak. Tiada e-mel dihantar: pratontonnya tidak ditunjukkan.",
-        "receiptValueLink": "Disimpan. Tiada resit dihantar: nama calon atau jawatan kelihatan seperti pautan atau alamat web."
+        "receiptValueLink": "Disimpan. Tiada resit dihantar: nama calon atau jawatan kelihatan seperti pautan atau alamat web.",
+        "invitationQueued": "Dijadualkan. E-mel jemputan telah dibaris gilir.",
+        "invitationNoEmail": "Dijadualkan. Tiada jemputan dihantar: calon tiada alamat e-mel yang boleh digunakan.",
+        "invitationValueLink": "Dijadualkan. Tiada jemputan dihantar: nama calon, jawatan atau tempat kelihatan seperti pautan atau alamat web.",
+        "cancelledQueued": "Dibatalkan. E-mel pembatalan telah dibaris gilir.",
+        "cancelledNoEmail": "Dibatalkan. Tiada e-mel dihantar: calon tiada alamat e-mel yang boleh digunakan.",
+        "offerQueued": "Tawaran direkodkan sebagai dihantar melalui e-mel, dan e-mel telah dibaris gilir."
       },
       "tab": "E-mel",
       "listEmpty": "Tiada e-mel dibaris gilir untuk calon ini tentang permohonan ini.",
@@ -40935,12 +40981,14 @@
         "sending": "Sedang dihantar",
         "sent": "Dihantar",
         "failed": "Gagal",
-        "uncertain": "Tidak pasti"
+        "uncertain": "Tidak pasti",
+        "withdrawn": "Ditarik balik"
       },
       "stateNotes": {
         "sent": "Perkhidmatan mel menerimanya. Penghantaran ke peti masuk calon tidak disahkan.",
         "uncertain": "Perkhidmatan mel mungkin atau mungkin tidak menerimanya. Ia tidak dihantar semula secara automatik.",
-        "failed": "Ia tidak dihantar."
+        "failed": "Ia tidak dihantar.",
+        "withdrawn": "Ia tidak dihantar: temu duganya dibatalkan terlebih dahulu."
       },
       "errorCodes": {
         "relayUnavailable": "Perkhidmatan mel tidak tersedia.",
@@ -40964,7 +41012,43 @@
       "showContent": "Tunjuk e-mel",
       "retry": "Hantar semula",
       "retryAck": "Saya faham calon mungkin menerima e-mel ini dua kali.",
-      "valueLink": "E-mel ini tidak boleh dihantar: nama calon atau jawatan kelihatan seperti pautan atau alamat web."
+      "valueLink": "E-mel ini tidak boleh dihantar: nama calon atau jawatan kelihatan seperti pautan atau alamat web.",
+      "interview": {
+        "round": "Pusingan {round}",
+        "types": {
+          "onsite": "Temu duga bersemuka",
+          "video": "Temu duga video",
+          "phone": "Temu duga telefon"
+        },
+        "weekdays": {
+          "mon": "Isnin",
+          "tue": "Selasa",
+          "wed": "Rabu",
+          "thu": "Khamis",
+          "fri": "Jumaat",
+          "sat": "Sabtu",
+          "sun": "Ahad"
+        },
+        "date": "{weekday}, {date}",
+        "time": "{start} hingga {end}, waktu Kuala Lumpur (GMT+8)",
+        "duration": "{minutes} minit",
+        "remote": {
+          "video": "Melalui panggilan video: kami akan menghantar butiran sertaan melalui balasan.",
+          "phone": "Melalui telefon: kami akan menghubungi anda di nombor yang anda berikan."
+        },
+        "map": "Peta: {url}",
+        "noPlace": "Kami akan menghantar alamat melalui balasan."
+      },
+      "reminderEnabled": "Hantar peringatan temu duga",
+      "reminderHours": "Jam sebelum temu duga ({min} hingga {max})",
+      "reminderHint": "Dihantar secara automatik kepada calon yang jemputannya dihantar melalui e-mel. Temu duga yang dijadualkan lebih dekat daripada ini tidak mendapat peringatan.",
+      "sendInvitation": "E-mel jemputan kepada calon",
+      "invitationNote": "Kepada {address}. Pratonton mengikut apa yang anda masukkan dan sama seperti yang dihantar.",
+      "invitationReminder": "Peringatan menyusul {hours} jam sebelum temu duga.",
+      "invitationNoReminder": "Peringatan dimatikan untuk syarikat ini: tiada peringatan menyusul.",
+      "invitationIncomplete": "Masukkan tarikh dan masa untuk melihat e-mel.",
+      "sendCancellation": "E-mel kepada calon bahawa temu duga ini dibatalkan",
+      "cancellationNote": "Kepada {address}. Tiada apa-apa dihantar melainkan anda menanda ini."
     }
   },
   "careersPublic": {

@@ -38718,7 +38718,11 @@
       "email_hourly_limit": "Công ty này đã xếp hàng 500 e-mail gửi ứng viên trong giờ qua. Chưa thực hiện gì; hãy thử lại sau, hoặc tiếp tục mà không gửi e-mail.",
       "email_changed": "Bản xem trước e-mail đã thay đổi (nội dung, người gửi, thông tin hoặc địa chỉ ứng viên). Chưa thực hiện gì; hãy mở lại và kiểm tra nội dung sẽ được gửi.",
       "email_not_retryable": "Chỉ có thể gửi lại e-mail thất bại hoặc không chắc chắn mà nội dung vẫn còn được lưu.",
-      "email_too_long": "Khi điền tên và chức danh dài nhất, nội dung này sẽ quá dài. Hãy rút ngắn hoặc dùng ít phần giữ chỗ hơn."
+      "email_too_long": "Khi điền tên và chức danh dài nhất, nội dung này sẽ quá dài. Hãy rút ngắn hoặc dùng ít phần giữ chỗ hơn.",
+      "email_no_address": "Ứng viên không có địa chỉ e-mail dùng được. Không có thay đổi nào.",
+      "email_value_link": "Một giá trị trong e-mail này (tên ứng viên, chức danh, địa điểm hoặc giá trị thư mời) trông giống liên kết hoặc địa chỉ web, nên không thể gửi. Không có thay đổi nào.",
+      "email_private_field": "Một trường thư mời được đánh dấu cho e-mail là riêng tư và bạn không xem được. Không có thay đổi nào; hãy nhờ người xem được trường đó gửi.",
+      "email_use_send": "E-mail ứng viên đang bật cho công ty này: hãy dùng Gửi thư mời nhận việc qua e-mail, chức năng này hiển thị e-mail trước. Không có thay đổi nào."
     },
     "overview": {
       "purpose": "Công việc tuyển dụng hôm nay tại các công ty mà bạn quản lý tuyển dụng.",
@@ -39057,7 +39061,9 @@
         },
         "addField": "Thêm trường",
         "choicesHint": "Chỉ dành cho trường chọn một",
-        "flowsTitle": "Quy trình phê duyệt"
+        "flowsTitle": "Quy trình phê duyệt",
+        "includeInEmail": "Trong e-mail",
+        "includeInEmailNote": "Trong e-mail: thư mời gửi qua e-mail nêu giá trị của trường này đúng như đã nhập. Trường tiền cũng vậy, chỉ khi được đánh dấu."
       },
       "privacy": {
         "retentionTitle": "Lưu giữ dữ liệu và ứng tuyển lặp lại",
@@ -39303,7 +39309,17 @@
       "validFor": "Hiệu lực {days} ngày kể từ hôm nay",
       "decision": "Quyết định của ứng viên",
       "recordDecision": "Ghi nhận quyết định",
-      "noSending": "AI HR không gửi đề nghị qua email hay SMS. Hãy tự gửi rồi đánh dấu đã gửi tại đây."
+      "noSending": "AI HR không gửi đề nghị qua email hay SMS. Hãy tự gửi rồi đánh dấu đã gửi tại đây.",
+      "sendByEmail": "Gửi thư mời nhận việc qua e-mail",
+      "sendByEmailNote": "Gửi tới {address}. Thư chỉ nêu các trường được đánh dấu Trong e-mail, đúng như đã nhập, và được gửi đúng như hiển thị.",
+      "markSentOther": "Hoặc ghi nhận rằng đã gửi bằng cách khác",
+      "noEmailFields": "Không có trường nào được đánh dấu Trong e-mail, nên e-mail không nêu chi tiết thư mời. Quản trị viên đánh dấu các trường trong Cài đặt, Thư mời nhận việc.",
+      "emailBlocked": {
+        "no_address": "Ứng viên không có địa chỉ e-mail dùng được, nên không thể gửi thư mời qua e-mail.",
+        "value_link": "Một giá trị trong e-mail này trông giống liên kết hoặc địa chỉ web, nên không thể gửi thư mời qua e-mail.",
+        "private_hidden": "Một trường được đánh dấu Trong e-mail là riêng tư và bạn không xem được. Hãy nhờ người xem được trường đó gửi thư mời.",
+        "too_long": "Chi tiết thư mời quá dài cho một e-mail."
+      }
     },
     "hire": {
       "linked": "Đã bắt đầu tuyển mới: mã nhân viên {code}, bởi {by}, {at}.",
@@ -40860,6 +40876,22 @@
         "rejection": {
           "subject": "Đơn ứng tuyển của bạn cho vị trí {jobTitle}",
           "body": "Kính gửi {candidateName},\n\nCảm ơn bạn đã quan tâm đến vị trí {jobTitle} tại {companyName} và đã dành thời gian cho đơn ứng tuyển.\n\nSau khi cân nhắc kỹ lưỡng, chúng tôi quyết định không tiếp tục với đơn ứng tuyển của bạn cho vị trí này.\n\nChúc bạn thành công trong quá trình tìm việc.\n\nTrân trọng,\n{senderName}"
+        },
+        "interview_invitation": {
+          "subject": "Thư mời phỏng vấn: {jobTitle}",
+          "body": "Kính gửi {candidateName},\n\nCảm ơn bạn đã ứng tuyển vị trí {jobTitle} tại {companyName}. Chúng tôi trân trọng mời bạn tham dự buổi phỏng vấn.\n\n{interviewRound} · {interviewType}\nNgày: {interviewDate}\nGiờ: {interviewTime}\nThời lượng: {interviewDuration}\nĐịa điểm: {interviewPlace}\n\nVui lòng trả lời e-mail này để xác nhận bạn có thể tham dự, hoặc đề nghị thời gian khác.\n\nTrân trọng,\n{senderName}"
+        },
+        "interview_reminder": {
+          "subject": "Nhắc lịch: buổi phỏng vấn vị trí {jobTitle}",
+          "body": "Kính gửi {candidateName},\n\nĐây là lời nhắc về buổi phỏng vấn của bạn cho vị trí {jobTitle} tại {companyName}.\n\n{interviewRound} · {interviewType}\nNgày: {interviewDate}\nGiờ: {interviewTime}\nThời lượng: {interviewDuration}\nĐịa điểm: {interviewPlace}\n\nNếu bạn không thể tham dự, vui lòng trả lời e-mail này.\n\nTrân trọng,\n{senderName}"
+        },
+        "interview_cancelled": {
+          "subject": "Buổi phỏng vấn đã bị hủy: {jobTitle}",
+          "body": "Kính gửi {candidateName},\n\nChúng tôi rất tiếc phải thông báo rằng buổi phỏng vấn của bạn cho vị trí {jobTitle} tại {companyName} đã bị hủy.\n\n{interviewRound} · {interviewType}\nNgày: {interviewDate}\nGiờ: {interviewTime}\n\nNếu có thể sắp xếp thời gian khác, chúng tôi sẽ liên hệ với bạn. Bạn cũng có thể trả lời e-mail này.\n\nTrân trọng,\n{senderName}"
+        },
+        "offer": {
+          "subject": "Thư mời nhận việc vị trí {jobTitle}",
+          "body": "Kính gửi {candidateName},\n\nChúng tôi vui mừng mời bạn nhận vị trí {jobTitle} tại {companyName}.\n\n{offerDetails}\n\nVui lòng trả lời e-mail này để chấp nhận lời mời hoặc nếu bạn có bất kỳ câu hỏi nào.\n\nTrân trọng,\n{senderName}"
         }
       },
       "settingsNote": "Gửi e-mail cho ứng viên về chính đơn ứng tuyển của họ: thư xác nhận khi họ ứng tuyển và, khi có người chọn, thư từ chối. E-mail được gửi qua dịch vụ thư của hệ thống này từ địa chỉ của hệ thống; bạn đặt tên ứng viên nhìn thấy và địa chỉ nhận thư trả lời.",
@@ -40884,11 +40916,19 @@
       "showLanguage": "Hiển thị",
       "kinds": {
         "application_received": "Đã nhận đơn ứng tuyển",
-        "rejection": "Từ chối"
+        "rejection": "Từ chối",
+        "interview_invitation": "Thư mời phỏng vấn",
+        "interview_reminder": "Nhắc lịch phỏng vấn",
+        "interview_cancelled": "Hủy phỏng vấn",
+        "offer": "Thư mời nhận việc"
       },
       "kindNotes": {
         "application_received": "Gửi khi HR thêm ứng viên và đánh dấu Gửi thư xác nhận. Không bao giờ gửi cho ứng viên được nhập. Người ứng tuyển qua trang tuyển dụng chưa nhận thư xác nhận: địa chỉ của họ chưa được xác minh.",
-        "rejection": "Chỉ gửi khi người từ chối hoặc lưu trữ đánh dấu Gửi e-mail từ chối sau khi xem."
+        "rejection": "Chỉ gửi khi người từ chối hoặc lưu trữ đánh dấu Gửi e-mail từ chối sau khi xem.",
+        "interview_invitation": "Gửi khi người lên lịch phỏng vấn đánh dấu Gửi e-mail mời ứng viên sau khi xem. Thư nêu vòng, hình thức, ngày, giờ, thời lượng và địa điểm (kèm liên kết bản đồ của địa chỉ), không bao giờ nêu người phỏng vấn.",
+        "interview_reminder": "Tự động gửi trước buổi phỏng vấn đã gửi thư mời qua e-mail, vào thời điểm đặt ở trên. Bị rút lại nếu buổi phỏng vấn bị hủy trước.",
+        "interview_cancelled": "Chỉ gửi khi người hủy buổi phỏng vấn đánh dấu Gửi e-mail cho ứng viên sau khi xem. Không bao giờ gửi khi buổi phỏng vấn bị hủy do hồ sơ đã đóng.",
+        "offer": "Gửi khi một người chọn Gửi thư mời nhận việc qua e-mail trên một lời mời đã được duyệt, sau khi xem. Thư chỉ nêu các trường được đánh dấu Trong e-mail, đúng như đã nhập."
       },
       "subject": "Tiêu đề (tối đa {max} ký tự)",
       "body": "Nội dung (tối đa {max} ký tự)",
@@ -40925,7 +40965,13 @@
         "retried": "E-mail đã được xếp hàng để gửi lại.",
         "rejectedValueLink": "Đã từ chối. Không gửi e-mail: tên ứng viên hoặc chức danh trông giống liên kết hoặc địa chỉ web.",
         "rejectedNotPreviewed": "Đã từ chối. Không gửi e-mail: bản xem trước chưa được hiển thị.",
-        "receiptValueLink": "Đã lưu. Không gửi thư xác nhận: tên ứng viên hoặc chức danh trông giống liên kết hoặc địa chỉ web."
+        "receiptValueLink": "Đã lưu. Không gửi thư xác nhận: tên ứng viên hoặc chức danh trông giống liên kết hoặc địa chỉ web.",
+        "invitationQueued": "Đã lên lịch. E-mail mời đã được đưa vào hàng đợi.",
+        "invitationNoEmail": "Đã lên lịch. Không gửi thư mời: ứng viên không có địa chỉ e-mail dùng được.",
+        "invitationValueLink": "Đã lên lịch. Không gửi thư mời: tên ứng viên, chức danh hoặc địa điểm trông giống liên kết hoặc địa chỉ web.",
+        "cancelledQueued": "Đã hủy. E-mail thông báo hủy đã được đưa vào hàng đợi.",
+        "cancelledNoEmail": "Đã hủy. Không gửi e-mail: ứng viên không có địa chỉ e-mail dùng được.",
+        "offerQueued": "Thư mời nhận việc được ghi nhận là đã gửi qua e-mail, và e-mail đã được đưa vào hàng đợi."
       },
       "tab": "E-mail",
       "listEmpty": "Chưa có e-mail nào được xếp hàng cho ứng viên này về đơn ứng tuyển này.",
@@ -40935,12 +40981,14 @@
         "sending": "Đang gửi",
         "sent": "Đã gửi",
         "failed": "Thất bại",
-        "uncertain": "Không chắc chắn"
+        "uncertain": "Không chắc chắn",
+        "withdrawn": "Đã rút lại"
       },
       "stateNotes": {
         "sent": "Dịch vụ thư đã nhận. Chưa xác nhận đã đến hộp thư của ứng viên.",
         "uncertain": "Dịch vụ thư có thể đã nhận hoặc chưa. E-mail không được tự động gửi lại.",
-        "failed": "E-mail chưa được gửi."
+        "failed": "E-mail chưa được gửi.",
+        "withdrawn": "Không được gửi: buổi phỏng vấn đã bị hủy trước."
       },
       "errorCodes": {
         "relayUnavailable": "Dịch vụ thư không khả dụng.",
@@ -40964,7 +41012,43 @@
       "showContent": "Xem e-mail",
       "retry": "Gửi lại",
       "retryAck": "Tôi hiểu rằng ứng viên có thể nhận e-mail này hai lần.",
-      "valueLink": "Không thể gửi e-mail này: tên ứng viên hoặc chức danh trông giống liên kết hoặc địa chỉ web."
+      "valueLink": "Không thể gửi e-mail này: tên ứng viên hoặc chức danh trông giống liên kết hoặc địa chỉ web.",
+      "interview": {
+        "round": "Vòng {round}",
+        "types": {
+          "onsite": "Phỏng vấn trực tiếp",
+          "video": "Phỏng vấn qua video",
+          "phone": "Phỏng vấn qua điện thoại"
+        },
+        "weekdays": {
+          "mon": "Thứ Hai",
+          "tue": "Thứ Ba",
+          "wed": "Thứ Tư",
+          "thu": "Thứ Năm",
+          "fri": "Thứ Sáu",
+          "sat": "Thứ Bảy",
+          "sun": "Chủ Nhật"
+        },
+        "date": "{weekday}, {date}",
+        "time": "{start} đến {end}, giờ Kuala Lumpur (GMT+8)",
+        "duration": "{minutes} phút",
+        "remote": {
+          "video": "Qua cuộc gọi video: chúng tôi sẽ gửi thông tin tham gia khi trả lời.",
+          "phone": "Qua điện thoại: chúng tôi sẽ gọi cho bạn theo số bạn đã cung cấp."
+        },
+        "map": "Bản đồ: {url}",
+        "noPlace": "Chúng tôi sẽ gửi địa chỉ cho bạn khi trả lời."
+      },
+      "reminderEnabled": "Gửi nhắc lịch phỏng vấn",
+      "reminderHours": "Số giờ trước buổi phỏng vấn ({min} đến {max})",
+      "reminderHint": "Tự động gửi cho ứng viên đã nhận thư mời qua e-mail. Buổi phỏng vấn được lên lịch gần hơn khoảng này sẽ không có nhắc lịch.",
+      "sendInvitation": "Gửi e-mail mời ứng viên",
+      "invitationNote": "Gửi tới {address}. Bản xem trước theo những gì bạn nhập và đúng như nội dung được gửi.",
+      "invitationReminder": "Nhắc lịch sẽ được gửi {hours} giờ trước buổi phỏng vấn.",
+      "invitationNoReminder": "Công ty này đã tắt nhắc lịch: sẽ không có nhắc lịch.",
+      "invitationIncomplete": "Nhập ngày và giờ để xem e-mail.",
+      "sendCancellation": "Gửi e-mail cho ứng viên rằng buổi phỏng vấn này đã bị hủy",
+      "cancellationNote": "Gửi tới {address}. Không gửi gì trừ khi bạn đánh dấu ô này."
     }
   },
   "careersPublic": {

@@ -6098,6 +6098,13 @@
       "when": 1793330005420,
       "tag": "5720_recruitment_candidate_email",
       "breakpoints": true
+    },
+    {
+      "idx": 5121,
+      "version": "7",
+      "when": 1793330005421,
+      "tag": "5721_recruitment_candidate_email_interviews_offers",
+      "breakpoints": true
     }
   ]
 }

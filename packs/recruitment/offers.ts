@@ -9,7 +9,9 @@
  *   - Approval: the company flow is copied into a round at submission; approvers act in order, only on their own
  *     pending step, never on an offer they created; a rejection returns the offer to Draft with the comment; Withdraw
  *     is available while pending; a change to a field that needs approval re-runs approval from step 1.
- *   - "Mark as sent" and the candidate's decision are recorded by a person. Nothing is emailed or texted.
+ *   - "Mark as sent" and the candidate's decision are recorded by a person. Slice 20: while candidate e-mail is on, an Approved offer
+ *     goes by e-mail only through "Send offer by e-mail" (sendOfferByEmail), which shows the e-mail first; Mark as sent stays for
+ *     other channels. Nothing is texted.
  *   - Hire hand-off: the server reads the pre-fill from the application; the employee draft is created by the
  *     existing personnel writer when HR saves, and only then linked here. Recruitment never creates a person,
  *     employee or employment.
@@ -33,6 +35,9 @@ import {
 import { actorId, assertCompanyTx, assertJobLevelTx, assertNoReviewMarkTx, ensureRecruitmentDefaultsTx, jobLevelTx, processStagesTx, reviewRefusal, userLabelsTx } from './data';
 import { applicationRowTx, companySettingsTx } from './interviews';
 import { cancelFutureInterviewsTx } from './interview-closing';
+import { candidateEmailAvailable } from '../../lib/recruitment-candidate-email-ipc';
+import { composersTx } from './candidate-email';
+import { offerEmailPreviewTx, queueOfferEmailTx } from './candidate-email-hiring';
 
 const offerEvent = (tx: Tx, s: SessionContext, aggregateId: string, eventType: string, payload: Record<string, unknown>) =>
   appendEvent(tx, { tenantId: s.tenantId, aggregateType: 'recruitment-offer', aggregateId, eventType, actor: actorOf(s), payload });
@@ -40,7 +45,7 @@ const offerEvent = (tx: Tx, s: SessionContext, aggregateId: string, eventType: s
 export async function offerFieldsTx(tx: Tx, companyId: string): Promise<OfferFieldDef[]> {
   const rows = await tx.select().from(recruitmentOfferField).where(eq(recruitmentOfferField.companyId, companyId))
     .orderBy(asc(recruitmentOfferField.position), asc(recruitmentOfferField.label));
-  return rows.map((f) => ({ id: f.id, label: f.label, type: f.fieldType, choices: f.choices, required: f.required, needsApproval: f.needsApproval, private: f.private, enabled: f.enabled }));
+  return rows.map((f) => ({ id: f.id, label: f.label, type: f.fieldType, choices: f.choices, required: f.required, needsApproval: f.needsApproval, private: f.private, enabled: f.enabled, includeInEmail: f.includeInEmail }));
 }
 
 type ValueRow = typeof recruitmentOfferValue.$inferSelect;
@@ -292,20 +297,54 @@ export async function decideOffer(s: SessionContext, offerId: unknown, decision:
   });
 }
 
-/** "Mark as sent": a person records the channel, the time and themself. Only an approved offer. Nothing is sent. */
+/** "Mark as sent": a person records the channel, the time and themself. Only an approved offer. Nothing is sent. Slice 20: while the
+ *  company's candidate e-mail is on (and this installation can send), the e-mail channel is "Send offer by e-mail" (email_use_send). */
 export async function markOfferSent(s: SessionContext, offerId: unknown, channel: unknown): Promise<void> {
   if (!(OFFER_SEND_CHANNELS as readonly unknown[]).includes(channel)) throw new RecruitmentError('invalid_input', ['channel']);
   const user = actorId(s);
+  const canEmail = channel === 'email' && (await candidateEmailAvailable(s.tenantId));
+  await withRecruitmentTenant(s, async (tx) => {
+    const offer = await lockOfferTx(tx, s, offerId);
+    await assertJobLevelTx(tx, offer.companyId, offer.jobId, 'operate', offer.applicationId);
+    if (offer.candidateDecision !== 'pending') throw new RecruitmentError('offer_closed');
+    if (offer.status !== 'approved' || offer.sentAt) throw new RecruitmentError('offer_state');
+    if (canEmail && (await composersTx(tx, s.tenantId, [offer.companyId], 'offer')).has(offer.companyId)) throw new RecruitmentError('email_use_send');
+    await assertNoReviewMarkTx(tx, offer.applicationId);
+    const settings = await companySettingsTx(tx, offer.companyId);
+    await tx.update(recruitmentOffer).set({ sentAt: sql`now()`, sentChannel: channel as 'email', sentByUserId: user, validDays: settings.offerValidDays, updatedByUserId: user })
+      .where(eq(recruitmentOffer.id, offer.id)).catch(reviewRefusal);
+    await offerEvent(tx, s, offer.id, 'recruitment-offer.marked-sent', { companyId: offer.companyId, applicationId: offer.applicationId, channel, validDays: settings.offerValidDays });
+  });
+}
+
+/**
+ * Slice 20: "Send offer by e-mail" — a person sends an Approved, unsent offer with no candidate decision to the candidate's recorded
+ * address, after seeing the e-mail (the fingerprint of the preview posted; a difference refuses as email_changed). In one transaction:
+ * the offer is recorded as sent by e-mail by this person (as Mark as sent records it, with the company's validity) and the e-mail is
+ * queued (5721 checks both). A blocked e-mail (no usable address, a link-like value, a marked private field hidden from the sender, too
+ * long) refuses with its reason and records nothing.
+ */
+export async function sendOfferByEmail(s: SessionContext, offerId: unknown, fingerprint: unknown): Promise<void> {
+  const user = actorId(s);
+  if (!(await candidateEmailAvailable(s.tenantId))) throw new RecruitmentError('email_unavailable');
   await withRecruitmentTenant(s, async (tx) => {
     const offer = await lockOfferTx(tx, s, offerId);
     await assertJobLevelTx(tx, offer.companyId, offer.jobId, 'operate', offer.applicationId);
     if (offer.candidateDecision !== 'pending') throw new RecruitmentError('offer_closed');
     if (offer.status !== 'approved' || offer.sentAt) throw new RecruitmentError('offer_state');
     await assertNoReviewMarkTx(tx, offer.applicationId);
+    // Rendered before the offer is marked sent (the preview exists only for an unsent offer), from what this person may read.
+    const preview = await offerEmailPreviewTx(tx, s, offer.applicationId);
+    if (!preview) throw new RecruitmentError('email_off');
+    const [app] = await tx.select({ candidateId: recruitmentApplication.candidateId }).from(recruitmentApplication).where(eq(recruitmentApplication.id, offer.applicationId));
+    if (!app) throw new RecruitmentError('not_found');
     const settings = await companySettingsTx(tx, offer.companyId);
-    await tx.update(recruitmentOffer).set({ sentAt: sql`now()`, sentChannel: channel as 'email', sentByUserId: user, validDays: settings.offerValidDays, updatedByUserId: user })
+    await tx.update(recruitmentOffer).set({ sentAt: sql`now()`, sentChannel: 'email', sentByUserId: user, validDays: settings.offerValidDays, updatedByUserId: user })
       .where(eq(recruitmentOffer.id, offer.id)).catch(reviewRefusal);
-    await offerEvent(tx, s, offer.id, 'recruitment-offer.marked-sent', { companyId: offer.companyId, applicationId: offer.applicationId, channel, validDays: settings.offerValidDays });
+    await queueOfferEmailTx(tx, s, { id: offer.id, applicationId: offer.applicationId, companyId: offer.companyId, jobId: offer.jobId, candidateId: app.candidateId },
+      preview, typeof fingerprint === 'string' ? fingerprint : '');
+    await offerEvent(tx, s, offer.id, 'recruitment-offer.marked-sent', { companyId: offer.companyId, applicationId: offer.applicationId, channel: 'email',
+      validDays: settings.offerValidDays, emailed: true });
   });
 }
 
@@ -410,13 +449,14 @@ export async function updateOfferSettings(s: SessionContext, companyId: unknown,
 /** Create (no id) or edit an offer field. The type is fixed at creation; a single-choice field needs choices. */
 export async function saveOfferField(s: SessionContext, input: {
   id?: unknown; companyId?: unknown; label?: unknown; type?: unknown; choices?: unknown; required?: unknown; needsApproval?: unknown; private?: unknown; enabled?: unknown;
+  includeInEmail?: unknown;
 }): Promise<void> {
   const label = typeof input.label === 'string' ? input.label.trim() : '';
   if (!label || label.length > 120) throw new RecruitmentError('missing_fields', ['label']);
   const on = (v: unknown) => v === true || v === 'on' || v === 'true';
   const choices = (typeof input.choices === 'string' ? input.choices.split('\n') : Array.isArray(input.choices) ? input.choices.map(String) : [])
     .map((c) => c.trim()).filter(Boolean);
-  const flags = { required: on(input.required), needsApproval: on(input.needsApproval), private: on(input.private), enabled: on(input.enabled) };
+  const flags = { required: on(input.required), needsApproval: on(input.needsApproval), private: on(input.private), enabled: on(input.enabled), includeInEmail: on(input.includeInEmail) };
   const user = actorId(s);
   await withRecruitmentTenant(s, async (tx) => {
     if (input.id == null || input.id === '') {

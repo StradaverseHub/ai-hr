@@ -38718,7 +38718,11 @@
       "email_hourly_limit": "本公司在过去一小时内已排队 500 封候选人邮件。未执行任何操作；请稍后再试，或不发送邮件继续。",
       "email_changed": "邮件预览已更改（内容、发件人、候选人信息或地址）。未执行任何操作；请重新打开并检查将发送的内容。",
       "email_not_retryable": "只有失败或不确定且内容仍保留的邮件才能重新发送。",
-      "email_too_long": "填入最长的姓名和职位后，此内容会过长。请缩短内容或减少占位符。"
+      "email_too_long": "填入最长的姓名和职位后，此内容会过长。请缩短内容或减少占位符。",
+      "email_no_address": "候选人没有可用的邮箱地址。未执行任何操作。",
+      "email_value_link": "此邮件中的某个值（候选人姓名、职位名称、地点或录用字段值）看起来像链接或网址，无法发送。未执行任何操作。",
+      "email_private_field": "某个标记为邮件中的录用字段为私密字段，您无法查看。未执行任何操作；请让能查看该字段的人发送。",
+      "email_use_send": "本公司已开启候选人邮件：请使用“通过邮件发送录用通知”，它会先显示邮件内容。未执行任何操作。"
     },
     "overview": {
       "purpose": "您所管理招聘的各公司今天的招聘工作。",
@@ -39057,7 +39061,9 @@
         },
         "addField": "添加字段",
         "choicesHint": "仅用于单选字段",
-        "flowsTitle": "审批流程"
+        "flowsTitle": "审批流程",
+        "includeInEmail": "邮件中",
+        "includeInEmailNote": "邮件中：通过邮件发送的录用通知会按录入内容列出该字段的值。金额字段也仅在标记后列出。"
       },
       "privacy": {
         "retentionTitle": "保留期限与重复申请",
@@ -39303,7 +39309,17 @@
       "validFor": "自今日起 {days} 天内有效",
       "decision": "候选人决定",
       "recordDecision": "记录决定",
-      "noSending": "AI HR 不会通过邮件或短信发送录用通知。请自行发送后在此标记为已发送。"
+      "noSending": "AI HR 不会通过邮件或短信发送录用通知。请自行发送后在此标记为已发送。",
+      "sendByEmail": "通过邮件发送录用通知",
+      "sendByEmailNote": "发送至 {address}。仅包含标记为“邮件中”的字段，按录入内容显示，并按所示内容发送。",
+      "markSentOther": "或记录已通过其他方式发送",
+      "noEmailFields": "没有标记为“邮件中”的录用字段，因此邮件不含录用详情。管理员可在“设置 › 录用”中标记字段。",
+      "emailBlocked": {
+        "no_address": "候选人没有可用的邮箱地址，无法通过邮件发送录用通知。",
+        "value_link": "此邮件中的某个值看起来像链接或网址，无法通过邮件发送录用通知。",
+        "private_hidden": "某个标记为“邮件中”的字段为私密字段，您无法查看。请让能查看该字段的人发送录用通知。",
+        "too_long": "录用详情过长，无法放入一封邮件。"
+      }
     },
     "hire": {
       "linked": "已开始新员工建档：员工编号 {code}，由 {by} 于 {at} 发起。",
@@ -40860,6 +40876,22 @@
         "rejection": {
           "subject": "关于您申请{jobTitle}职位的结果",
           "body": "{candidateName}，您好：\n\n感谢您对{companyName}{jobTitle}职位的关注，以及您为申请所付出的时间。\n\n经过慎重考虑，我们决定不再推进您对该职位的申请。\n\n祝您求职顺利。\n\n此致\n{senderName}"
+        },
+        "interview_invitation": {
+          "subject": "面试邀请：{jobTitle}",
+          "body": "{candidateName}，您好：\n\n感谢您申请{companyName}的{jobTitle}职位。我们诚邀您参加面试。\n\n{interviewRound} · {interviewType}\n日期：{interviewDate}\n时间：{interviewTime}\n时长：{interviewDuration}\n地点：{interviewPlace}\n\n请回复本邮件确认能否出席，或提出其他时间。\n\n此致\n{senderName}"
+        },
+        "interview_reminder": {
+          "subject": "提醒：您的{jobTitle}职位面试",
+          "body": "{candidateName}，您好：\n\n特此提醒您参加{companyName}{jobTitle}职位的面试。\n\n{interviewRound} · {interviewType}\n日期：{interviewDate}\n时间：{interviewTime}\n时长：{interviewDuration}\n地点：{interviewPlace}\n\n如您无法出席，请回复本邮件。\n\n此致\n{senderName}"
+        },
+        "interview_cancelled": {
+          "subject": "面试已取消：{jobTitle}",
+          "body": "{candidateName}，您好：\n\n很抱歉地通知您，您在{companyName}的{jobTitle}职位面试已取消。\n\n{interviewRound} · {interviewType}\n日期：{interviewDate}\n时间：{interviewTime}\n\n如能为您安排其他时间，我们会与您联系。您也可以回复本邮件。\n\n此致\n{senderName}"
+        },
+        "offer": {
+          "subject": "您的{jobTitle}职位录用通知",
+          "body": "{candidateName}，您好：\n\n我们很高兴向您发出{companyName}{jobTitle}职位的录用通知。\n\n{offerDetails}\n\n如接受录用或有任何疑问，请回复本邮件。\n\n此致\n{senderName}"
         }
       },
       "settingsNote": "就候选人自己的申请给他们发送电子邮件：申请时发送确认函，并在有人选择时发送拒绝信。邮件通过本系统的邮件服务从其地址发出；您可设置候选人看到的发件人名称和回复地址。",
@@ -40884,11 +40916,19 @@
       "showLanguage": "显示",
       "kinds": {
         "application_received": "已收到申请",
-        "rejection": "拒绝"
+        "rejection": "拒绝",
+        "interview_invitation": "面试邀请",
+        "interview_reminder": "面试提醒",
+        "interview_cancelled": "面试已取消",
+        "offer": "录用通知"
       },
       "kindNotes": {
         "application_received": "HR 添加候选人并勾选“发送确认函”时发送。导入的候选人从不发送。招聘页面的申请人暂不发送确认函：其地址尚未验证。",
-        "rejection": "仅在拒绝或归档的人查看邮件后勾选“发送拒绝邮件”时发送。"
+        "rejection": "仅在拒绝或归档的人查看邮件后勾选“发送拒绝邮件”时发送。",
+        "interview_invitation": "安排面试的人在查看后勾选“向候选人发送面试邀请邮件”时发送。邮件说明轮次、类型、日期、时间、时长和地点（附地址的地图链接），绝不包含面试官。",
+        "interview_reminder": "对已通过邮件发送邀请的面试，在上方设定的时间自动发送。如面试先被取消则撤回。",
+        "interview_cancelled": "仅在取消面试的人查看后勾选“向候选人发送邮件”时发送。因申请关闭而自动取消的面试不会发送。",
+        "offer": "有人在已批准的录用通知上查看后选择“通过邮件发送录用通知”时发送。仅包含标记为“邮件中”的字段，按录入内容显示。"
       },
       "subject": "主题（最多 {max} 个字符）",
       "body": "正文（最多 {max} 个字符）",
@@ -40925,7 +40965,13 @@
         "retried": "该邮件已重新排队发送。",
         "rejectedValueLink": "已拒绝。未发送邮件：候选人姓名或职位名称看起来像链接或网址。",
         "rejectedNotPreviewed": "已拒绝。未发送邮件：未显示其预览。",
-        "receiptValueLink": "已保存。未发送确认函：候选人姓名或职位名称看起来像链接或网址。"
+        "receiptValueLink": "已保存。未发送确认函：候选人姓名或职位名称看起来像链接或网址。",
+        "invitationQueued": "已安排。邀请邮件已排队。",
+        "invitationNoEmail": "已安排。未发送邀请：候选人没有可用的邮箱地址。",
+        "invitationValueLink": "已安排。未发送邀请：候选人姓名、职位名称或地点看起来像链接或网址。",
+        "cancelledQueued": "已取消。取消邮件已排队。",
+        "cancelledNoEmail": "已取消。未发送邮件：候选人没有可用的邮箱地址。",
+        "offerQueued": "录用通知已记录为通过邮件发送，邮件已排队。"
       },
       "tab": "邮件",
       "listEmpty": "尚未就此申请为该候选人排队任何邮件。",
@@ -40935,12 +40981,14 @@
         "sending": "发送中",
         "sent": "已发送",
         "failed": "失败",
-        "uncertain": "不确定"
+        "uncertain": "不确定",
+        "withdrawn": "已撤回"
       },
       "stateNotes": {
         "sent": "邮件服务已接收。未确认是否已送达候选人收件箱。",
         "uncertain": "邮件服务可能已收到，也可能未收到。系统不会自动重发。",
-        "failed": "未发送。"
+        "failed": "未发送。",
+        "withdrawn": "未发送：面试已先被取消。"
       },
       "errorCodes": {
         "relayUnavailable": "邮件服务不可用。",
@@ -40964,7 +41012,43 @@
       "showContent": "显示邮件",
       "retry": "重新发送",
       "retryAck": "我了解候选人可能会收到两次此邮件。",
-      "valueLink": "无法发送此邮件：候选人姓名或职位名称看起来像链接或网址。"
+      "valueLink": "无法发送此邮件：候选人姓名或职位名称看起来像链接或网址。",
+      "interview": {
+        "round": "第{round}轮",
+        "types": {
+          "onsite": "现场面试",
+          "video": "视频面试",
+          "phone": "电话面试"
+        },
+        "weekdays": {
+          "mon": "星期一",
+          "tue": "星期二",
+          "wed": "星期三",
+          "thu": "星期四",
+          "fri": "星期五",
+          "sat": "星期六",
+          "sun": "星期日"
+        },
+        "date": "{date}（{weekday}）",
+        "time": "{start}至{end}，吉隆坡时间（GMT+8）",
+        "duration": "{minutes}分钟",
+        "remote": {
+          "video": "视频通话：我们会通过回复邮件发送参会信息。",
+          "phone": "电话：我们会拨打您提供的号码。"
+        },
+        "map": "地图：{url}",
+        "noPlace": "我们会通过回复邮件发送地址。"
+      },
+      "reminderEnabled": "发送面试提醒",
+      "reminderHours": "面试前的小时数（{min}至{max}）",
+      "reminderHint": "自动发送给已通过邮件收到邀请的候选人。距现在不足此时间的面试不发送提醒。",
+      "sendInvitation": "向候选人发送面试邀请邮件",
+      "invitationNote": "发送至 {address}。预览随您的输入更新，与实际发送内容完全一致。",
+      "invitationReminder": "面试前{hours}小时将发送提醒。",
+      "invitationNoReminder": "本公司已关闭提醒：不会发送提醒。",
+      "invitationIncomplete": "请输入日期和时间以查看邮件。",
+      "sendCancellation": "向候选人发送面试取消邮件",
+      "cancellationNote": "发送至 {address}。除非勾选，否则不会发送。"
     }
   },
   "careersPublic": {

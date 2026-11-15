@@ -274,6 +274,8 @@ export const recruitmentOfferField = pgTable('recruitment_offer_field', {
   needsApproval: boolean('needs_approval').notNull().default(false),
   private: boolean('private').notNull().default(false),
   enabled: boolean('enabled').notNull().default(true),
+  // Slice 20 (5721): an offer e-mail states this field.
+  includeInEmail: boolean('include_in_email').notNull().default(false),
   position: integer('position').notNull().default(1000),
   seedKey: text('seed_key'),
   ...audit,
@@ -985,6 +987,9 @@ export const recruitmentCandidateEmailSetting = pgTable('recruitment_candidate_e
   senderName: text('sender_name'),
   replyTo: text('reply_to'),
   locale: text('locale').notNull().default('en'),
+  // Slice 20 (5721): interview reminders.
+  reminderEnabled: boolean('reminder_enabled').notNull().default(true),
+  reminderHours: integer('reminder_hours').notNull().default(24),
   ...audit,
 });
 
@@ -1029,4 +1034,9 @@ export const recruitmentCandidateEmail = pgTable('recruitment_candidate_email', 
   retriedByUserId: uuid('retried_by_user_id'),
   retryCount: integer('retry_count').notNull().default(0),
   contentPurgedAt: ts('content_purged_at'),
+  // Slice 20 (5721): what an interview or offer e-mail is about, the interview's start as e-mailed, and the address's map link.
+  interviewId: uuid('interview_id'),
+  interviewStartsAt: ts('interview_starts_at'),
+  offerId: uuid('offer_id'),
+  mapUrl: text('map_url'),
 });

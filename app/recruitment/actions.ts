@@ -38,6 +38,7 @@ import {
   addInterviewers, deleteInterviewAddress, deleteInterviewQuestion, deleteInterviewRoom, deleteInterviewerGroup, saveInterviewAddress, saveInterviewQuestion,
   saveInterviewRoom, saveInterviewerGroup, setInterviewQuestionRetired,
   saveCandidateEmailSettings, saveCandidateEmailTemplate, resetCandidateEmailTemplate, retryCandidateEmail,
+  previewInterviewInvitation, sendOfferByEmail, type InvitationPreview, type InterviewEmailOutcome,
 } from '@/packs/recruitment/service';
 import { getLocale } from 'next-intl/server';
 
@@ -241,20 +242,42 @@ const appPage = (f: FormData, tab: string) => back(f, `/recruitment/applications
  * Schedule an interview (slice 2; slice 18 review). The save RETURNS a refusal (a room already booked at that time, an unavailable
  * room, groups leaving nobody …) so the form keeps everything typed; a successful save redirects to the Interviews tab.
  */
+/** Slice 20: what a schedule form's interview e-mail outcome tells the person (scheduled or cancelled either way). */
+const interviewEmailNotice = (prefix: 'invitation' | 'cancelled', outcome: InterviewEmailOutcome | null) =>
+  outcome === 'queued' ? `${prefix}-queued` : outcome === 'no_email' ? `${prefix}-no-email` : outcome === 'value_link' ? `${prefix}-value-link` : 'saved';
+
 export async function scheduleInterviewFormAction(prev: FormRefusal, f: FormData): Promise<FormRefusal> {
   const s = await getSession();
+  let emailed: InterviewEmailOutcome | null = null;
   try {
-    await scheduleInterview(s, {
+    ({ email: emailed } = await scheduleInterview(s, {
       applicationId: str(f, 'applicationId'), roundNo: str(f, 'roundNo'), type: str(f, 'type'), startsAt: str(f, 'startsAt'),
       durationMinutes: str(f, 'durationMinutes'), site: str(f, 'site'), meetingRoom: str(f, 'meetingRoom'),
       interviewerIds: f.getAll('interviewerIds').map(String), formId: str(f, 'formId'),
       groupIds: f.getAll('groupIds').map(String), addressId: str(f, 'addressId'), roomId: str(f, 'roomId'),
-    });
+    }, {
+      // Slice 20: the invitation the form showed (its subject and text, exactly as shown).
+      send: f.get('sendInvitation') === 'on', subject: String(f.get('invitationSubject') ?? ''), text: String(f.get('invitationText') ?? ''),
+    }));
   } catch (e) {
     return refusal(prev, f, e);
   }
   revalidatePath('/recruitment', 'layout');
-  redirect(withParam(appPage(f, 'interviews'), 'notice', 'saved'));
+  redirect(withParam(appPage(f, 'interviews'), 'notice', interviewEmailNotice('invitation', emailed)));
+}
+
+/** Slice 20: the invitation e-mail for what the schedule form holds so far (read-only; called as the person types). */
+export async function previewInvitationAction(input: Record<string, string>): Promise<InvitationPreview> {
+  const s = await getSession();
+  try {
+    return await previewInterviewInvitation(s, {
+      applicationId: input.applicationId, roundNo: input.roundNo, type: input.type, startsAt: input.startsAt, durationMinutes: input.durationMinutes,
+      addressId: input.addressId, roomId: input.roomId, site: (input.site ?? '').trim(), meetingRoom: (input.meetingRoom ?? '').trim(),
+    });
+  } catch (e) {
+    if (!(e instanceof RecruitmentError)) console.error('recruitment invitation preview failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+    return { status: 'unavailable' };
+  }
 }
 
 /** Slice 18: add people and/or interviewer groups to an open interview (each current member once). */
@@ -265,7 +288,9 @@ export async function addInterviewersAction(f: FormData) {
 }
 
 export async function cancelInterviewAction(f: FormData) {
-  return run(appPage(f, 'interviews'), (s) => cancelInterview(s, str(f, 'interviewId')));
+  const url = appPage(f, 'interviews');
+  return run(url, (s) => cancelInterview(s, str(f, 'interviewId'), { send: f.get('sendEmail') === 'on', fingerprint: str(f, 'emailFingerprint') }),
+    (r) => withParam(url, 'notice', interviewEmailNotice('cancelled', r.email)));
 }
 
 export async function setCandidateResponseAction(f: FormData) {
@@ -323,6 +348,11 @@ export async function decideOfferAction(f: FormData) {
 export async function markOfferSentAction(f: FormData) {
   return run(appPage(f, 'offer'), (s) => markOfferSent(s, str(f, 'offerId'), str(f, 'channel')));
 }
+/** Slice 20: "Send offer by e-mail" with the fingerprint of the e-mail shown. */
+export async function sendOfferByEmailAction(f: FormData) {
+  const url = appPage(f, 'offer');
+  return run(url, (s) => sendOfferByEmail(s, str(f, 'offerId'), str(f, 'emailFingerprint')), withParam(url, 'notice', 'offer-email-queued'));
+}
 export async function recordOfferDecisionAction(f: FormData) {
   return run(appPage(f, 'offer'), (s) => recordOfferDecision(s, str(f, 'offerId'), str(f, 'decision')));
 }
@@ -335,6 +365,7 @@ export async function saveOfferFieldAction(f: FormData) {
   return run(back(f, '/recruitment/settings?section=offers'), (s) => saveOfferField(s, {
     id: str(f, 'fieldId'), companyId: str(f, 'companyId'), label: str(f, 'label'), type: str(f, 'type'), choices: String(f.get('choices') ?? ''),
     required: f.get('required') === 'on', needsApproval: f.get('needsApproval') === 'on', private: f.get('private') === 'on', enabled: f.get('enabled') === 'on',
+    includeInEmail: f.get('includeInEmail') === 'on',
   }));
 }
 export async function saveApprovalFlowAction(f: FormData) {
@@ -963,7 +994,8 @@ const emailSettingsPage = (f: FormData) => `/recruitment/settings?${new URLSearc
 export async function saveCandidateEmailSettingsFormAction(prev: FormRefusal, f: FormData): Promise<FormRefusal> {
   const s = await getSession();
   try {
-    await saveCandidateEmailSettings(s, str(f, 'companyId'), { enabled: f.get('enabled') === 'on', senderName: str(f, 'senderName'), replyTo: str(f, 'replyTo'), locale: str(f, 'locale') });
+    await saveCandidateEmailSettings(s, str(f, 'companyId'), { enabled: f.get('enabled') === 'on', senderName: str(f, 'senderName'), replyTo: str(f, 'replyTo'), locale: str(f, 'locale'),
+      reminderEnabled: f.get('reminderEnabled') === 'on', reminderHours: str(f, 'reminderHours') });
   } catch (e) {
     return refusal(prev, f, e);
   }

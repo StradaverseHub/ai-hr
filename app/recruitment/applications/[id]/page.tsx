@@ -8,11 +8,13 @@ import { cn } from '@/lib/utils';
 import {
   applicationAgency, applicationBackgroundChecks, applicationCandidateEmails, applicationCareers, applicationWaiting, applicationPools, applicationReview, applicationHire, applicationHistory, applicationInterviews, applicationOffer, applicationReferral, applicationScreening, candidateProfile, interviewFormOptions, CANDIDATE_RESPONSES, INTERVIEW_TYPES,
   OFFER_SEND_CHANNELS, RecruitmentError, type ApplicationCandidateEmails, type ApplicationHire, type InterviewFormOptions, type InterviewStatus, type OfferView,
+  invitationOffer, interviewCancellationPreviews, offerEmailPreview, type CancellationEmailPreview, type InvitationOffer, type OfferEmailPreview,
 } from '@/packs/recruitment/service';
 import {
   addInterviewersAction, cancelInterviewAction, markOfferSentAction, recordOfferDecisionAction, saveOfferAction, scheduleInterviewFormAction, setCandidateResponseAction,
-  submitOfferAction, withdrawOfferAction, retryCandidateEmailAction,
+  submitOfferAction, withdrawOfferAction, retryCandidateEmailAction, sendOfferByEmailAction,
 } from '../../actions';
+import { InvitationPanel, type InvitationLabels } from './invitation-panel';
 import { ActionForm, FieldProblem } from '../../action-form';
 import { Notice, Pill, SubTabs, klDate, klDateTime, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../../shared';
 import { pgSqlState } from '@/lib/db-error';
@@ -76,6 +78,17 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
       return null;
     }),
   ]);
+  // Slice 20: the invitation the schedule form offers, the cancellation e-mail of each open interview, and the offer e-mail. Each only
+  // while the company's candidate e-mail is on; a failure leaves the page without that e-mail, never takes it down.
+  const quiet = <T,>(what: string, work: Promise<T>, fallback: T): Promise<T> => work.catch((e) => {
+    if (!(e instanceof RecruitmentError)) console.error(`recruitment ${what} failed`, e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+    return fallback;
+  });
+  const [invitation, cancellations, offerEmail] = await Promise.all([
+    options ? quiet('invitation offer', invitationOffer(s, id), null) : Promise.resolve(null),
+    interviews.canSchedule ? quiet('cancellation previews', interviewCancellationPreviews(s, id), {} as Record<string, CancellationEmailPreview>) : Promise.resolve({} as Record<string, CancellationEmailPreview>),
+    offer?.can.markSent ? quiet('offer e-mail preview', offerEmailPreview(s, id), null) : Promise.resolve(null),
+  ]);
   const reviewer = !!offer;
   const tab: Tab = sp.tab === 'offer' && reviewer ? 'offer' : sp.tab === 'history' && history ? 'history' : sp.tab === 'screening' && screening ? 'screening'
     : sp.tab === 'checks' && checks ? 'checks' : sp.tab === 'emails' && emails ? 'emails'
@@ -95,7 +108,11 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
           : sp.notice === 'check-authorised' ? t('checks.authorisedNotice') : sp.notice === 'check-started' ? t('checks.startedNotice')
             : sp.notice === 'check-completed' ? t('checks.completedNotice') : sp.notice === 'check-cancelled' ? t('checks.cancelledNotice')
               : sp.notice === 'pool-added' ? t('pools.notice.added') : sp.notice === 'pool-removed' ? t('pools.notice.removed') : sp.notice === 'blocked' ? t('pools.notice.blocked')
-                : sp.notice === 'review-resolved' ? t('pools.notice.resolved') : sp.notice === 'email-retried' ? te('notice.retried') : undefined} />
+                : sp.notice === 'review-resolved' ? t('pools.notice.resolved') : sp.notice === 'email-retried' ? te('notice.retried')
+                  : sp.notice === 'invitation-queued' ? te('notice.invitationQueued') : sp.notice === 'invitation-no-email' ? te('notice.invitationNoEmail')
+                    : sp.notice === 'invitation-value-link' ? te('notice.invitationValueLink') : sp.notice === 'cancelled-queued' ? te('notice.cancelledQueued')
+                      : sp.notice === 'cancelled-no-email' ? te('notice.cancelledNoEmail') : sp.notice === 'cancelled-value-link' ? te('valueLink')
+                        : sp.notice === 'offer-email-queued' ? te('notice.offerQueued') : undefined} />
       <ErrorBanner message={errorText} />
       <ReviewBanner review={review} here={here} locale={locale} />
       {waiting && (
@@ -203,8 +220,9 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
                       </select>
                       <button type="submit" className={btnGhost}>{t('iv.saveResponse')}</button>
                     </form>}
-                    {iv.canCancel && <form action={cancelInterviewAction}>
+                    {iv.canCancel && <form action={cancelInterviewAction} className="flex flex-wrap items-start gap-2">
                       {hidden('interviewId', iv.id)}{hidden('applicationId', id)}{hidden('returnTo', here)}
+                      {cancellations[iv.id] && <CancellationEmail preview={cancellations[iv.id]} t={te} />}
                       <button type="submit" className={btnGhost}>{t('iv.cancel')}</button>
                     </form>}
                   </div>
@@ -235,11 +253,11 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
               </li>
             ))}
           </ul>
-          {options && <ScheduleForm options={options} t={t} />}
+          {options && <ScheduleForm options={options} t={t} invitation={invitation ? { offer: invitation, labels: invitationLabels(invitation, te) } : null} />}
         </div>
       )}
 
-      {tab === 'offer' && offer && <OfferSection offer={offer} applicationId={id} here={here} t={t} locale={locale} />}
+      {tab === 'offer' && offer && <OfferSection offer={offer} applicationId={id} here={here} t={t} locale={locale} email={offerEmail} te={te} />}
 
       {tab === 'checks' && checks && <BackgroundChecksSection checks={checks} here={here} locale={locale} isAdmin={access.isAdmin} />}
 
@@ -265,7 +283,38 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
 
 type T = Awaited<ReturnType<typeof getTranslations<'recruitment'>>>;
 
-function ScheduleForm({ options, t }: { options: InterviewFormOptions; t: T }) {
+/** Slice 20: the schedule form's invitation labels (the subject line is a raw template the panel fills on the client). */
+function invitationLabels(offer: InvitationOffer, te: TE): InvitationLabels {
+  return {
+    send: te('sendInvitation'), note: te('invitationNote', { address: offer.recipient ?? '' }),
+    reminder: offer.reminderHours !== null ? te('invitationReminder', { hours: offer.reminderHours }) : null,
+    noReminder: offer.reminderHours === null ? te('invitationNoReminder') : null, incomplete: te('invitationIncomplete'), preview: te('preview'),
+    fromLine: te('fromLine', { name: offer.senderName, replyTo: offer.replyTo }), subjectLine: te.raw('subjectLine') as string,
+    blocked: { no_address: te('noAddress'), value_link: te('notice.invitationValueLink') },
+  };
+}
+
+/** Slice 20: "E-mail the candidate that this interview is cancelled", with the e-mail as it would be sent (nothing unless ticked). */
+function CancellationEmail({ preview, t }: { preview: CancellationEmailPreview; t: TE }) {
+  if (preview.blocked) return <p className="text-xs text-muted-foreground">{preview.blocked === 'no_address' ? t('noAddress') : t('valueLink')}</p>;
+  return (
+    <details className="min-w-0 flex-1 rounded-md border border-border px-2 py-1 text-sm">
+      <summary className="cursor-pointer text-xs font-medium">{t('sendCancellation')}</summary>
+      <label className="mt-2 flex items-start gap-2 text-xs">
+        <input type="checkbox" name="sendEmail" className="mt-0.5 accent-primary" />
+        <span>{t('sendCancellation')}<span className="block text-muted-foreground">{t('cancellationNote', { address: preview.recipient ?? '' })}</span></span>
+      </label>
+      <input type="hidden" name="emailFingerprint" value={preview.fingerprint} />
+      <div className="mt-2 space-y-1 rounded-md bg-muted/40 p-2">
+        <p className="text-xs font-medium text-muted-foreground">{t('preview')}</p>
+        <p className="font-medium">{t('subjectLine', { subject: preview.subject })}</p>
+        <p className="max-h-60 overflow-auto whitespace-pre-wrap">{preview.text}</p>
+      </div>
+    </details>
+  );
+}
+
+function ScheduleForm({ options, t, invitation }: { options: InterviewFormOptions; t: T; invitation: { offer: InvitationOffer; labels: InvitationLabels } | null }) {
   const problem = { required: t('job.required'), invalid: t('iv.fieldInvalid') };
   return (
     // Slice 18 review: the save returns its refusal (a room already booked, groups leaving nobody …) and the form keeps what was typed.
@@ -342,6 +391,7 @@ function ScheduleForm({ options, t }: { options: InterviewFormOptions; t: T }) {
             <p className="text-xs text-muted-foreground">{t('iv.groupNote')}</p>
           </fieldset>
         )}
+        {invitation && <InvitationPanel applicationId={options.applicationId} offer={invitation.offer} labels={invitation.labels} />}
       </div>
       <p className="text-xs text-muted-foreground">{t('iv.timeZoneNote')}</p>
       <button type="submit" className={btnPrimary}>{t('iv.schedule')}</button>
@@ -349,7 +399,9 @@ function ScheduleForm({ options, t }: { options: InterviewFormOptions; t: T }) {
   );
 }
 
-function OfferSection({ offer, applicationId, here, t, locale }: { offer: OfferView; applicationId: string; here: string; t: T; locale: string }) {
+function OfferSection({ offer, applicationId, here, t, locale, email, te }: {
+  offer: OfferView; applicationId: string; here: string; t: T; locale: string; email: OfferEmailPreview | null; te: TE;
+}) {
   const o = offer.offer;
   const hidden = (name: string, value: string) => <input type="hidden" name={name} value={value} />;
   const labelTone = !o ? 'neutral' : o.label === 'accepted' || o.label === 'approved' ? 'good' : o.label === 'declined' || o.label === 'expired' ? 'bad' : o.label === 'pending' ? 'warn' : 'info';
@@ -431,15 +483,34 @@ function OfferSection({ offer, applicationId, here, t, locale }: { offer: OfferV
             <form action={withdrawOfferAction}>{hidden('offerId', o.id)}{hidden('applicationId', applicationId)}{hidden('returnTo', here)}
               <button type="submit" className={btnGhost}>{t('offer.withdraw')}</button></form>
           )}
+          {offer.can.markSent && email && (
+            // Slice 20: candidate e-mail is on — the offer goes by e-mail only from here, after seeing it.
+            <form action={sendOfferByEmailAction} className="w-full space-y-2">{hidden('offerId', o.id)}{hidden('applicationId', applicationId)}{hidden('returnTo', here)}
+              <input type="hidden" name="emailFingerprint" value={email.fingerprint} />
+              <p className="text-sm font-medium">{te('preview')}</p>
+              {email.fieldsInEmail === 0 && <p className="text-xs text-muted-foreground">{t('offer.noEmailFields')}</p>}
+              <div className="space-y-1 rounded-md bg-muted/40 p-2 text-sm">
+                <p className="text-xs text-muted-foreground">{te('fromLine', { name: email.senderName, replyTo: email.replyTo })}</p>
+                <p className="font-medium">{te('subjectLine', { subject: email.subject })}</p>
+                <p className="max-h-80 overflow-auto whitespace-pre-wrap">{email.text}</p>
+              </div>
+              {email.blocked ? <p className="text-sm text-destructive">{t(`offer.emailBlocked.${email.blocked}`)}</p> : (
+                <div className="flex flex-wrap items-center gap-2">
+                  <button type="submit" className={btnPrimary}>{t('offer.sendByEmail')}</button>
+                  <span className="text-xs text-muted-foreground">{t('offer.sendByEmailNote', { address: email.recipient ?? '' })} {t('offer.validFor', { days: offer.validDays })}</span>
+                </div>
+              )}
+            </form>
+          )}
           {offer.can.markSent && (
             <form action={markOfferSentAction} className="flex items-end gap-2">{hidden('offerId', o.id)}{hidden('applicationId', applicationId)}{hidden('returnTo', here)}
-              <Field label={t('offer.channel')}>
-                <select name="channel" className={cn(selectCls, 'w-36')} defaultValue="email">
-                  {OFFER_SEND_CHANNELS.map((c) => <option key={c} value={c}>{t(`offer.channels.${c}`)}</option>)}
+              <Field label={email ? t('offer.markSentOther') : t('offer.channel')}>
+                <select name="channel" className={cn(selectCls, 'w-36')} defaultValue={email ? 'other' : 'email'}>
+                  {OFFER_SEND_CHANNELS.filter((c) => !email || c !== 'email').map((c) => <option key={c} value={c}>{t(`offer.channels.${c}`)}</option>)}
                 </select>
               </Field>
-              <button type="submit" className={btnPrimary}>{t('offer.markSent')}</button>
-              <span className="text-xs text-muted-foreground">{t('offer.validFor', { days: offer.validDays })}</span>
+              <button type="submit" className={email ? btnGhost : btnPrimary}>{t('offer.markSent')}</button>
+              {!email && <span className="text-xs text-muted-foreground">{t('offer.validFor', { days: offer.validDays })}</span>}
             </form>
           )}
           {offer.can.recordDecision && (
@@ -455,7 +526,7 @@ function OfferSection({ offer, applicationId, here, t, locale }: { offer: OfferV
           )}
         </section>
       )}
-      <p className="text-xs text-muted-foreground">{t('offer.noSending')}</p>
+      {!email && <p className="text-xs text-muted-foreground">{t('offer.noSending')}</p>}
     </div>
   );
 }
@@ -493,7 +564,7 @@ function CandidateEmailsSection({ emails, applicationId, here, t, locale }: { em
             <li key={e.id} className="space-y-2 rounded-xl border border-border bg-card p-4 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="font-medium">{t(`kinds.${e.kind}`)}</span>
-                <Pill tone={e.state === 'sent' ? 'good' : e.state === 'failed' ? 'bad' : e.state === 'uncertain' ? 'warn' : 'info'}>{t(`states.${e.state}`)}</Pill>
+                <Pill tone={e.state === 'sent' ? 'good' : e.state === 'failed' ? 'bad' : e.state === 'uncertain' ? 'warn' : e.state === 'withdrawn' ? 'neutral' : 'info'}>{t(`states.${e.state}`)}</Pill>
               </div>
               <p className="text-xs text-muted-foreground">
                 {e.byApplicant ? t('queuedByApplicant', { at: klDateTime(locale, e.queuedAt) }) : t('queuedBy', { name: e.queuedBy ?? t('unnamedUser'), at: klDateTime(locale, e.queuedAt) })}
@@ -502,7 +573,7 @@ function CandidateEmailsSection({ emails, applicationId, here, t, locale }: { em
                 {e.attempts > 0 && <> · {t('attempts', { n: e.attempts })}</>}
               </p>
               {e.retriedAt && <p className="text-xs text-muted-foreground">{t('retriedBy', { name: e.retriedBy ?? t('unnamedUser'), at: klDateTime(locale, e.retriedAt) })}</p>}
-              {(e.state === 'sent' || e.state === 'failed' || e.state === 'uncertain') && <p className="text-xs text-muted-foreground">{t(`stateNotes.${e.state}`)}</p>}
+              {(e.state === 'sent' || e.state === 'failed' || e.state === 'uncertain' || e.state === 'withdrawn') && <p className="text-xs text-muted-foreground">{t(`stateNotes.${e.state}`)}</p>}
               {e.error && e.state !== 'sent' && <p className="text-xs text-muted-foreground">{t(`errorCodes.${e.error as 'uncertain'}`)}</p>}
               {e.purged ? <p className="text-xs text-muted-foreground">{t('purged')}</p> : (
                 <details>

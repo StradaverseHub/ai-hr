@@ -7,9 +7,11 @@
  */
 import { isCanonicalEmailAddress } from '../../lib/email-address';
 
-/** The kinds this slice sends. Slice 20 adds 'interview_invitation', 'interview_reminder', 'interview_cancelled' and 'offer'
- *  here, in CANDIDATE_EMAIL_PLACEHOLDERS (with their interview and offer fields), in the messages defaults and in 5720's CHECKs. */
-export const CANDIDATE_EMAIL_KINDS = ['application_received', 'rejection'] as const;
+/** The kinds candidate e-mail sends: slice 19's receipt and rejection, and slice 20's interview invitation, reminder and cancellation
+ *  and offer (5721 adds them to the CHECKs and restates the placeholder allowlist). */
+export const CANDIDATE_EMAIL_KINDS = ['application_received', 'rejection', 'interview_invitation', 'interview_reminder', 'interview_cancelled', 'offer'] as const;
+export const INTERVIEW_EMAIL_KINDS = ['interview_invitation', 'interview_reminder', 'interview_cancelled'] as const;
+export type InterviewEmailKind = (typeof INTERVIEW_EMAIL_KINDS)[number];
 export type CandidateEmailKind = (typeof CANDIDATE_EMAIL_KINDS)[number];
 
 /** The six app languages a template may be written in. */
@@ -19,14 +21,28 @@ export type CandidateEmailLocale = (typeof CANDIDATE_EMAIL_LOCALES)[number];
 /** The values every candidate e-mail may name: the candidate's own name, the job's title, the company and the sender. */
 export const BASE_PLACEHOLDERS = ['candidateName', 'jobTitle', 'companyName', 'senderName'] as const;
 export type BasePlaceholder = (typeof BASE_PLACEHOLDERS)[number];
+/** Slice 20: what an interview e-mail may state — never the interviewers. The cancellation names the interview, not its place. */
+export const INTERVIEW_PLACEHOLDERS = ['interviewRound', 'interviewType', 'interviewDate', 'interviewTime', 'interviewDuration', 'interviewPlace'] as const;
+export type InterviewPlaceholder = (typeof INTERVIEW_PLACEHOLDERS)[number];
 export const CANDIDATE_EMAIL_PLACEHOLDERS: Record<CandidateEmailKind, readonly string[]> = {
   application_received: BASE_PLACEHOLDERS,
   rejection: BASE_PLACEHOLDERS,
+  interview_invitation: [...BASE_PLACEHOLDERS, ...INTERVIEW_PLACEHOLDERS],
+  interview_reminder: [...BASE_PLACEHOLDERS, ...INTERVIEW_PLACEHOLDERS],
+  interview_cancelled: [...BASE_PLACEHOLDERS, 'interviewRound', 'interviewType', 'interviewDate', 'interviewTime'],
+  offer: [...BASE_PLACEHOLDERS, 'offerDetails'],
 };
-export type CandidateEmailValues = Record<BasePlaceholder, string>;
+export type Placeholder = BasePlaceholder | InterviewPlaceholder | 'offerDetails';
+export type CandidateEmailValues = Record<BasePlaceholder, string> & Partial<Record<InterviewPlaceholder | 'offerDetails', string>>;
 /** The longest value each placeholder can take: candidate names and job titles are at most 200 (5701), the sender name 80; the company
- *  name has no stored limit, so the renderer cuts every value to these lengths and a template's worst case is known at save time. */
-export const CANDIDATE_EMAIL_VALUE_MAX: Record<BasePlaceholder, number> = { candidateName: 200, jobTitle: 200, companyName: 200, senderName: 80 };
+ *  name has no stored limit, so the renderer cuts every value to these lengths and a template's worst case is known at save time.
+ *  Slice 20: the interview values are formatted here (below) from bounded parts; the place is at most a room (120), an address name
+ *  (120), an address (500), a region (120) and a map link (2,000) with separators; offer details are refused above 10,000 characters
+ *  (offerDetailsText) rather than cut, so a cut can never change an amount. */
+export const CANDIDATE_EMAIL_VALUE_MAX: Record<Placeholder, number> = {
+  candidateName: 200, jobTitle: 200, companyName: 200, senderName: 80,
+  interviewRound: 80, interviewType: 80, interviewDate: 120, interviewTime: 160, interviewDuration: 80, interviewPlace: 3200, offerDetails: 10000,
+};
 /** What 5720 freezes at most: the rendered subject and text. A template whose worst case (every placeholder at its longest value)
  *  exceeds these is refused on save (email_too_long), so a render can never exceed the frozen columns. The HTML is then at most
  *  6 x the text plus its wrapper (an escaped character is at most 6 characters), well inside its 200,000. */
@@ -48,10 +64,10 @@ export const CANDIDATE_EMAIL_PURGE_DAYS = 90;
 /** The application page lists at most this many e-mails (an application gets a receipt and a rejection; retries reuse rows). */
 export const CANDIDATE_EMAIL_LIST_LIMIT = 50;
 
-export const CANDIDATE_EMAIL_STATES = ['queued', 'leased', 'sending', 'sent', 'retry', 'failed', 'uncertain'] as const;
+export const CANDIDATE_EMAIL_STATES = ['queued', 'leased', 'sending', 'sent', 'retry', 'failed', 'uncertain', 'withdrawn'] as const;
 export type CandidateEmailState = (typeof CANDIDATE_EMAIL_STATES)[number];
-/** What a person sees: queued (waiting, or waiting to try again), sending, sent, failed or uncertain. */
-export type CandidateEmailDisplayState = 'queued' | 'sending' | 'sent' | 'failed' | 'uncertain';
+/** What a person sees: queued (waiting, or waiting to try again), sending, sent, failed, uncertain or (slice 20) withdrawn. */
+export type CandidateEmailDisplayState = 'queued' | 'sending' | 'sent' | 'failed' | 'uncertain' | 'withdrawn';
 export function candidateEmailDisplayState(state: CandidateEmailState): CandidateEmailDisplayState {
   return state === 'retry' ? 'queued' : state === 'leased' ? 'sending' : state;
 }
@@ -92,7 +108,7 @@ const len = (s: string) => [...s].length;
 export function worstCaseLength(kind: CandidateEmailKind, text: string): number {
   const allowed = new Set(CANDIDATE_EMAIL_PLACEHOLDERS[kind]);
   let n = len(text.replace(PLACEHOLDER, ''));
-  for (const m of text.matchAll(PLACEHOLDER)) n += allowed.has(m[1]) ? CANDIDATE_EMAIL_VALUE_MAX[m[1] as BasePlaceholder] : 0;
+  for (const m of text.matchAll(PLACEHOLDER)) n += allowed.has(m[1]) ? CANDIDATE_EMAIL_VALUE_MAX[m[1] as Placeholder] : 0;
   return n;
 }
 export type ValidTemplate = { subject: string; body: string };
@@ -149,8 +165,9 @@ export function defaultSenderName(companyName: string): string {
     .slice(0, CANDIDATE_EMAIL_SENDER_NAME_MAX).join('').trimEnd();
 }
 
-export type CandidateEmailSettingsInput = { enabled?: unknown; senderName?: unknown; replyTo?: unknown; locale?: unknown };
-export type ValidCandidateEmailSettings = { enabled: boolean; senderName: string | null; replyTo: string | null; locale: CandidateEmailLocale };
+export type CandidateEmailSettingsInput = { enabled?: unknown; senderName?: unknown; replyTo?: unknown; locale?: unknown; reminderEnabled?: unknown; reminderHours?: unknown };
+export type ValidCandidateEmailSettings = { enabled: boolean; senderName: string | null; replyTo: string | null; locale: CandidateEmailLocale;
+  reminderEnabled: boolean; reminderHours: number };
 /** The company's switch, sender display name (≤80, none of the characters the transport refuses; empty = the company name),
  *  reply-to (required when on) and language. */
 export function validateCandidateEmailSettings(input: CandidateEmailSettingsInput):
@@ -159,14 +176,18 @@ export function validateCandidateEmailSettings(input: CandidateEmailSettingsInpu
   const senderName = typeof input.senderName === 'string' && input.senderName.trim() ? input.senderName.trim() : null;
   const replyTo = typeof input.replyTo === 'string' && input.replyTo.trim() ? input.replyTo.trim().toLowerCase() : null;
   const locale = input.locale == null || input.locale === '' ? 'en' : input.locale;
+  // Slice 20: reminders are on unless switched off (an absent field keeps the default); hours 2–72, default 24.
+  const reminderEnabled = input.reminderEnabled === undefined ? true : input.reminderEnabled === true || input.reminderEnabled === 'on' || input.reminderEnabled === 'true';
+  const reminderHours = input.reminderHours == null || input.reminderHours === '' ? REMINDER_HOURS_DEFAULT : parseReminderHours(input.reminderHours);
   if (enabled && !replyTo) return { ok: false, code: 'missing_fields', fields: ['replyTo'] };
   const fields = [
     ...(senderName && ([...senderName].length > CANDIDATE_EMAIL_SENDER_NAME_MAX || SENDER_NAME_REFUSED.test(senderName)) ? ['senderName'] : []),
     ...(replyTo && !validReplyTo(replyTo) ? ['replyTo'] : []),
     ...((CANDIDATE_EMAIL_LOCALES as readonly unknown[]).includes(locale) ? [] : ['locale']),
+    ...(reminderHours === null ? ['reminderHours'] : []),
   ];
   if (fields.length) return { ok: false, code: 'invalid_input', fields };
-  return { ok: true, value: { enabled, senderName, replyTo, locale: locale as CandidateEmailLocale } };
+  return { ok: true, value: { enabled, senderName, replyTo, locale: locale as CandidateEmailLocale, reminderEnabled, reminderHours: reminderHours! } };
 }
 
 /** A rejection delay chosen in the dialog: 0–3 whole days. */
@@ -176,8 +197,8 @@ export function parseRejectionDelay(value: unknown): RejectionEmailDelay | null 
 }
 
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
-const clip = (name: string, value: string) => [...value].slice(0, CANDIDATE_EMAIL_VALUE_MAX[name as BasePlaceholder] ?? 0).join('');
-const fill = (template: string, values: Readonly<Record<string, string>>, allowed: ReadonlySet<string>, wrap: (v: string) => string = (v) => v) =>
+const clip = (name: string, value: string) => [...value].slice(0, CANDIDATE_EMAIL_VALUE_MAX[name as Placeholder] ?? 0).join('');
+const fill = (template: string, values: Readonly<Record<string, string | undefined>>, allowed: ReadonlySet<string>, wrap: (v: string) => string = (v) => v) =>
   // One pass: a value that itself contains "{jobTitle}" is never expanded again. A name outside the allowlist (refused on save; a
   // code default never has one) renders as nothing.
   template.replace(PLACEHOLDER, (_m, name: string) => (allowed.has(name) ? wrap(clip(name, values[name] ?? '')) : ''));
@@ -195,7 +216,139 @@ export function renderCandidateEmail(kind: CandidateEmailKind, locale: Candidate
   const text = fill(body, values, allowed).replace(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/g, ' ');
   const paragraphs = body.split(/\n{2,}/).map((p) => p.replace(/^\n+|\n+$/g, '')).filter((p) => p.trim() !== '');
   const html = `<!doctype html><html lang="${escapeHtml(locale)}"><head><meta charset="utf-8"></head><body>`
-    + paragraphs.map((p) => `<p>${p.split('\n').map((line) => fill(escapeHtml(line), values, allowed, (v) => escapeHtml(v.replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ')))).join('<br>')}</p>`).join('')
+    + paragraphs.map((p) => `<p>${p.split('\n').map((line) => fill(escapeHtml(line), values, allowed,
+      // A value's own line breaks (slice 20: one offer field per line) become <br>; every other control character a space.
+      (v) => escapeHtml(v.replace(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/g, ' ')).replace(/\n/g, '<br>'))).join('<br>')}</p>`).join('')
     + '</body></html>';
   return { subject, text, html };
+}
+
+// ── Slice 20: interviews and offers ───────────────────────────────────────────────────────────────────────────────
+
+/** Reminder settings: on by default, 24 hours before; 2–72 hours. */
+export const REMINDER_HOURS_DEFAULT = 24;
+export const REMINDER_HOURS_MIN = 2;
+export const REMINDER_HOURS_MAX = 72;
+export function parseReminderHours(value: unknown): number | null {
+  const n = typeof value === 'number' ? value : typeof value === 'string' && /^\d{1,2}$/.test(value.trim()) ? Number(value.trim()) : NaN;
+  return Number.isInteger(n) && n >= REMINDER_HOURS_MIN && n <= REMINDER_HOURS_MAX ? n : null;
+}
+/** When a reminder is due: the interview's start minus the company's hours — or none when that moment is not ahead of `now` (an
+ *  interview scheduled closer than that gets its invitation only). 5721 pins the same time. */
+export function reminderDueAt(startsAt: Date, hours: number, now: Date): Date | null {
+  const due = new Date(startsAt.getTime() - hours * 3_600_000);
+  return due.getTime() > now.getTime() ? due : null;
+}
+
+/** The words an interview e-mail's values are made of, in the e-mail's language (messages recruitment.candidateEmail.interview). Simple
+ *  {name} templates, filled here, so the preview a browser shows and the e-mail the server freezes are the same characters. */
+export type InterviewEmailLabels = {
+  /** "Round {round}" */
+  round: string;
+  types: Record<'onsite' | 'video' | 'phone', string>;
+  /** Monday first … Sunday last. */
+  weekdays: readonly string[];
+  /** "{weekday}, {date}" with {date} as YYYY-MM-DD */
+  date: string;
+  /** "{start} to {end}, Kuala Lumpur time (GMT+8)" with 24-hour HH:MM */
+  time: string;
+  /** "{minutes} minutes" */
+  duration: string;
+  /** Where a video or phone interview is: the details come by reply (no link in this slice). */
+  remote: Record<'video' | 'phone', string>;
+  /** "Map: {url}" */
+  map: string;
+  /** No place was recorded for an on-site interview. */
+  noPlace: string;
+};
+export type InterviewEmailFacts = {
+  roundNo: number; type: 'onsite' | 'video' | 'phone'; startsAt: Date; durationMinutes: number;
+  /** Slice 18: the address and room the interview names (on-site only), or slice 2's free-text site and meeting room. */
+  room: string | null; address: { name: string; address: string; region: string; mapUrl: string | null } | null;
+  site: string | null; meetingRoom: string | null;
+};
+const sub = (template: string, values: Record<string, string>) => template.replace(/\{([a-zA-Z]+)\}/g, (m, k: string) => (k in values ? values[k] : m));
+const pad = (n: number) => String(n).padStart(2, '0');
+/** Kuala Lumpur wall-clock parts of an instant: UTC+8 all year (no daylight saving), computed without Intl so every runtime agrees. */
+export function klParts(at: Date): { date: string; time: string; weekday: number } {
+  const kl = new Date(at.getTime() + 8 * 3_600_000);
+  return { date: `${kl.getUTCFullYear()}-${pad(kl.getUTCMonth() + 1)}-${pad(kl.getUTCDate())}`, time: `${pad(kl.getUTCHours())}:${pad(kl.getUTCMinutes())}`,
+    weekday: (kl.getUTCDay() + 6) % 7 };
+}
+const oneLine = (v: string) => v.replace(/\s+/g, ' ').trim();
+/**
+ * The interview values an invitation, reminder or cancellation states (never the interviewers): the round, the type, the date and
+ * time in Kuala Lumpur time with the zone named, the duration, and the place — for an on-site interview the room, the address's name,
+ * address and region and its https map link (the one link a candidate e-mail may carry, D-065), or the free-text site and meeting room;
+ * for a video or phone interview a sentence that the details follow. `mapUrl` is the link the place names (null without one).
+ */
+export function interviewEmailValues(f: InterviewEmailFacts, labels: InterviewEmailLabels): { values: Record<InterviewPlaceholder, string>; mapUrl: string | null } {
+  const start = klParts(f.startsAt);
+  const end = klParts(new Date(f.startsAt.getTime() + f.durationMinutes * 60_000));
+  let place: string;
+  let mapUrl: string | null = null;
+  if (f.type !== 'onsite') place = labels.remote[f.type];
+  else if (f.address) {
+    mapUrl = f.address.mapUrl;
+    place = [f.room, f.address.name, f.address.address, f.address.region].filter((x): x is string => !!x && !!x.trim()).map(oneLine).join(', ')
+      + (mapUrl ? ` · ${sub(labels.map, { url: mapUrl })}` : '');
+  } else {
+    const parts = [f.meetingRoom, f.site].filter((x): x is string => !!x && !!x.trim()).map(oneLine);
+    place = parts.length ? parts.join(', ') : labels.noPlace;
+  }
+  return {
+    mapUrl,
+    values: {
+      interviewRound: sub(labels.round, { round: String(f.roundNo) }),
+      interviewType: labels.types[f.type],
+      interviewDate: sub(labels.date, { weekday: labels.weekdays[start.weekday] ?? '', date: start.date }),
+      interviewTime: sub(labels.time, { start: start.time, end: end.time }),
+      interviewDuration: sub(labels.duration, { minutes: String(f.durationMinutes) }),
+      interviewPlace: place,
+    },
+  };
+}
+/** Link-like text with exactly the given map link removed (the frozen text's rule in 5721: every other link still refuses). */
+export function linkishExcept(text: string, mapUrl: string | null): boolean {
+  return linkish(mapUrl ? text.split(mapUrl).join(' ') : text);
+}
+
+/** One offer field as an offer e-mail states it: its label and the value people entered, as entered (money as currency and amount,
+ *  never computed or reformatted). */
+export type OfferEmailLine = { label: string; value: string };
+/** The offer details block: one "Label: value" line per field marked "include in e-mail", in the company's field order. Null when it
+ *  would be longer than CANDIDATE_EMAIL_VALUE_MAX.offerDetails (refused, never cut: a cut could change an amount). */
+export function offerDetailsText(lines: readonly OfferEmailLine[]): string | null {
+  const text = lines.map((l) => `${oneLine(l.label)}: ${l.value.replace(/[\u0000-\u001f\u007f-\u009f]+/g, ' ').trim()}`).join('\n');
+  return [...text].length > CANDIDATE_EMAIL_VALUE_MAX.offerDetails ? null : text;
+}
+
+/**
+ * An interview e-mail as the candidate receives it — the ONE function the schedule form's live preview (in the browser), the
+ * cancellation preview, the frozen invitation, reminder and cancellation all call. `mapUrl` is what 5721 freezes (never for a
+ * cancellation, which names no place); `valueLink` when a value would make the subject link-like or the text link-like other than by
+ * exactly that map link (the e-mail is then not sent).
+ */
+export function renderInterviewEmail(kind: InterviewEmailKind, locale: CandidateEmailLocale, template: ValidTemplate,
+  base: Record<BasePlaceholder, string>, facts: InterviewEmailFacts, labels: InterviewEmailLabels): { mail: RenderedCandidateEmail; mapUrl: string | null; valueLink: boolean } {
+  const iv = interviewEmailValues(facts, labels);
+  const mapUrl = kind === 'interview_cancelled' ? null : iv.mapUrl;
+  const mail = renderCandidateEmail(kind, locale, template, { ...base, ...iv.values });
+  return { mail, mapUrl, valueLink: linkish(mail.subject) || linkishExcept(mail.text, mapUrl) };
+}
+
+/** The place an interview names, from what the schedule form offers (slice 18's resolvePlace rule: a room names its address; a place
+ *  only for an on-site interview). Used by the browser preview; the server reads the saved interview's place instead. */
+export type InterviewPlaceOption = { id: string; name: string; address: string; region: string; mapUrl: string | null; rooms: { id: string; name: string }[] };
+export function interviewFactsFromForm(form: { roundNo: number; type: 'onsite' | 'video' | 'phone'; startsAt: Date; durationMinutes: number; addressId: string | null;
+  roomId: string | null; site: string | null; meetingRoom: string | null }, places: readonly InterviewPlaceOption[]): InterviewEmailFacts {
+  const onsite = form.type === 'onsite';
+  const byRoom = form.roomId ? places.find((p) => p.rooms.some((r) => r.id === form.roomId)) ?? null : null;
+  const place = onsite ? byRoom ?? (form.addressId ? places.find((p) => p.id === form.addressId) ?? null : null) : null;
+  const room = onsite && byRoom ? byRoom.rooms.find((r) => r.id === form.roomId)?.name ?? null : null;
+  return {
+    roundNo: form.roundNo, type: form.type, startsAt: form.startsAt, durationMinutes: form.durationMinutes,
+    room: room ?? form.meetingRoom, address: place ? { name: place.name, address: place.address, region: place.region, mapUrl: place.mapUrl } : null,
+    site: form.site, meetingRoom: form.meetingRoom,
+  };
 }

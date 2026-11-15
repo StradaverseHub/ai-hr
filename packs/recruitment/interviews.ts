@@ -32,6 +32,7 @@ import {
   addressOfCompanyTx, formQuestionsTx, groupMembersTx, interviewPlaceError, roomOfCompanyTx, schedulingSetupTx, type SchedulingAddress, type SchedulingGroup,
 } from './interview-setup';
 import { INTERVIEWERS_MAX, expandInterviewers, resolvePlace, type GuidanceQuestion } from './interview-setup-model';
+import { queueInterviewCancellationTx, queueInterviewInvitationTx, type InterviewEmailOutcome } from './candidate-email-hiring';
 
 const iso = (d: Date | string) => new Date(d).toISOString();
 const event = (tx: Tx, s: SessionContext, aggregateId: string, eventType: string, payload: Record<string, unknown>) =>
@@ -118,8 +119,12 @@ export async function interviewFormOptions(s: SessionContext, applicationId: str
  * Slice 18: chosen interviewer groups add each CURRENT member who still has access, once (the group itself is not recorded); an
  * on-site interview may name one of the company's addresses and optionally one of its enabled rooms. The database refuses a room
  * already booked at an overlapping time (5719 exclusion constraint) as `room_booked`.
+ * Slice 20: `email.send` queues the invitation the form previewed (its subject and text posted; a difference refuses as email_changed)
+ * and the reminder that follows, in this transaction (./candidate-email-hiring). `email` in the result says what happened to it.
  */
-export async function scheduleInterview(s: SessionContext, input: InterviewInput): Promise<{ id: string }> {
+export type InvitationChoice = { send?: unknown; subject?: unknown; text?: unknown };
+export async function scheduleInterview(s: SessionContext, input: InterviewInput, invitation?: InvitationChoice): Promise<{ id: string; email: InterviewEmailOutcome | null }> {
+  const wantsEmail = invitation?.send === true || invitation?.send === 'on' || invitation?.send === 'true';
   const valid = validateInterviewInput(input);
   if (!valid.ok) throw new RecruitmentError(valid.code, valid.fields);
   const v = valid.value;
@@ -166,7 +171,10 @@ export async function scheduleInterview(s: SessionContext, input: InterviewInput
       companyId: app.company_id, applicationId: app.id, roundNo: v.roundNo, type: v.type, startsAt: iso(v.startsAt), interviewers: expanded.interviewerIds,
       groups: v.groupIds.length, skippedMembers: expanded.skipped.length, addressId: place.addressId, roomId: place.roomId,
     });
-    return row;
+    const email = wantsEmail ? await queueInterviewInvitationTx(tx, s, row.id, {
+      subject: typeof invitation?.subject === 'string' ? invitation.subject : '', text: typeof invitation?.text === 'string' ? invitation.text.replace(/\r\n?/g, '\n') : '',
+    }) : null;
+    return { id: row.id, email };
   });
 }
 
@@ -189,14 +197,21 @@ async function interviewTx(tx: Tx, s: SessionContext, interviewId: unknown) {
   return row;
 }
 
-export async function cancelInterview(s: SessionContext, interviewId: unknown): Promise<void> {
+/**
+ * Cancel an interview (its waiting invitation and reminder are withdrawn by 5721's trigger in the same statement). Slice 20: with
+ * `email.send` the cancellation e-mail the person previewed (its fingerprint posted) is queued in this transaction.
+ */
+export type CancellationChoice = { send?: unknown; fingerprint?: unknown };
+export async function cancelInterview(s: SessionContext, interviewId: unknown, email?: CancellationChoice): Promise<{ email: InterviewEmailOutcome | null }> {
   const user = actorId(s);
-  await withRecruitmentTenant(s, async (tx) => {
+  const wantsEmail = email?.send === true || email?.send === 'on' || email?.send === 'true';
+  return withRecruitmentTenant(s, async (tx) => {
     const i = await interviewTx(tx, s, interviewId);
     await assertJobLevelTx(tx, i.companyId, i.jobId, 'operate', i.applicationId);
     if (i.cancelledAt) throw new RecruitmentError('interview_closed');
     await tx.update(recruitmentInterview).set({ cancelledAt: sql`now()`, cancelledByUserId: user, updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentInterview.id, i.id));
     await event(tx, s, i.id, 'recruitment-interview.cancelled', { companyId: i.companyId, applicationId: i.applicationId });
+    return { email: wantsEmail ? await queueInterviewCancellationTx(tx, s, i.id, typeof email?.fingerprint === 'string' ? email.fingerprint : '') : null };
   });
 }
 

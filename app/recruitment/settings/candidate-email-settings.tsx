@@ -3,6 +3,7 @@ import type { SessionContext } from '@/db/client';
 import { Field, Input, btnGhost, btnPrimary } from '@/components/ui';
 import {
   CANDIDATE_EMAIL_BODY_MAX, CANDIDATE_EMAIL_KINDS, CANDIDATE_EMAIL_LOCALES, CANDIDATE_EMAIL_SENDER_NAME_MAX, CANDIDATE_EMAIL_SUBJECT_MAX, candidateEmailSettings,
+  REMINDER_HOURS_MAX, REMINDER_HOURS_MIN,
 } from '@/packs/recruitment/service';
 import { localeNames, type Locale } from '@/i18n/config';
 import { resetCandidateEmailTemplateAction, saveCandidateEmailSettingsFormAction, saveCandidateEmailTemplateFormAction } from '../actions';
@@ -11,7 +12,7 @@ import { Pill, klDateTime, selectCls } from '../shared';
 
 /**
  * Settings › Candidate e-mail (slice 19, administrators; D-063): the company's switch, sender display name, reply-to and the language
- * of its candidate e-mails, and the wording of each kind in one chosen language at a time (default wording until the company changes
+ * of its candidate e-mails, its interview reminders (slice 20: on by default, 24 hours before), and the wording of each kind in one chosen language at a time (default wording until the company changes
  * it). On an installation without the embedded relay the page says candidate e-mail is unavailable and the switch cannot be turned
  * on. Each form keeps what was typed when a save is refused (an unknown placeholder, a link, a missing reply-to).
  */
@@ -55,12 +56,21 @@ export async function CandidateEmailSettingsSection({ s, companyId, lang }: { s:
             </select>
             <span className="text-xs text-muted-foreground">{t('localeHint')}</span>
           </Field>
+          {/* Slice 20: interview reminders (automatic, D-063), only for interviews whose invitation was e-mailed. */}
+          <div className="space-y-1">
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="reminderEnabled" defaultChecked={view.reminderEnabled} />{t('reminderEnabled')}</label>
+            <Field label={t('reminderHours', { min: REMINDER_HOURS_MIN, max: REMINDER_HOURS_MAX })}>
+              <Input name="reminderHours" type="number" min={REMINDER_HOURS_MIN} max={REMINDER_HOURS_MAX} step={1} defaultValue={view.reminderHours} className="w-28" />
+              <FieldProblem name="reminderHours" {...problem} />
+            </Field>
+            <span className="text-xs text-muted-foreground">{t('reminderHint')}</span>
+          </div>
           <div className="flex items-end"><button type="submit" className={btnPrimary}>{t('save')}</button></div>
         </ActionForm>
         <div>
           <h3 className="text-xs font-medium text-muted-foreground">{t('countsTitle')}</h3>
           <p className="mt-1 flex flex-wrap gap-2 text-sm">
-            {(['queued', 'sending', 'sent', 'failed', 'uncertain'] as const).map((k) => (
+            {(['queued', 'sending', 'sent', 'failed', 'uncertain', 'withdrawn'] as const).map((k) => (
               <Pill key={k} tone={k === 'failed' ? 'bad' : k === 'uncertain' ? 'warn' : undefined}>{t(`states.${k}`)}: {view.counts[k]}</Pill>
             ))}
           </p>

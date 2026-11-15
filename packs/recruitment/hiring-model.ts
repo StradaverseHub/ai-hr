@@ -268,6 +268,8 @@ export const DEFAULT_OFFER_VALID_DAYS = 15;
 
 export type OfferFieldDef = {
   id: string; label: string; type: OfferFieldType; choices: string[]; required: boolean; needsApproval: boolean; private: boolean; enabled: boolean;
+  /** Slice 20: an offer e-mail states this field (administrators mark it; off by default). */
+  includeInEmail: boolean;
 };
 /** The seeded, generic offer-field set. Pay is a money field a person types; nothing computes it. */
 export const DEFAULT_OFFER_FIELDS: readonly { seedKey: string; label: string; type: OfferFieldType; required: boolean; needsApproval: boolean; private: boolean }[] = [

@@ -118,6 +118,10 @@ export const RECRUITMENT_ERROR_CODES = [
   'email_unavailable', 'email_off', 'email_placeholder', 'email_link', 'email_hourly_limit', 'email_changed', 'email_not_retryable',
   // …a template's worst case (every placeholder at its longest value) would not fit what is stored.
   'email_too_long',
+  // Slice 20: an e-mail the person asked for cannot be sent — the candidate has no usable address; a value would make it link-like (a
+  // name, job title, place or offer value); an offer field marked for e-mail is private and hidden from the sender; an offer goes by
+  // e-mail with "Send offer by e-mail" (which shows it first), not "Mark as sent", while candidate e-mail is on.
+  'email_no_address', 'email_value_link', 'email_private_field', 'email_use_send',
 ] as const;
 export type RecruitmentErrorCode = (typeof RECRUITMENT_ERROR_CODES)[number];
 

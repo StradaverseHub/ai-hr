@@ -27,7 +27,7 @@ export type {
 } from './interviews';
 // Slice 3 — offers and the hire hand-off.
 export {
-  applicationOffer, saveOffer, submitOffer, withdrawOffer, decideOffer, markOfferSent, recordOfferDecision, offerSettings, updateOfferSettings,
+  applicationOffer, saveOffer, submitOffer, withdrawOffer, decideOffer, markOfferSent, sendOfferByEmail, recordOfferDecision, offerSettings, updateOfferSettings,
   saveOfferField, saveApprovalFlow, offerForApprover, applicationHire, hireHandoffPrefill, linkHireDraft,
 } from './offers';
 export type { OfferView, OfferSettings, HirePrefill, ApplicationHire, PendingOfferApproval } from './offers';
@@ -303,3 +303,12 @@ export {
   validateCandidateEmailTemplate, validateCandidateEmailSettings, candidateEmailDisplayState, linkish, usableRecipient, defaultSenderName,
 } from './candidate-email-model';
 export type { CandidateEmailKind, CandidateEmailLocale, CandidateEmailDisplayState, RenderedCandidateEmail } from './candidate-email-model';
+// Slice 20 — candidate e-mail about interviews and offers: the schedule form's invitation offer and live preview (rendered on the server
+// with the function that freezes it), cancellation and offer previews, and the reminder settings (5721; D-065).
+export { invitationOffer, previewInterviewInvitation, interviewCancellationPreviews, offerEmailPreview, interviewEmailLabels } from './candidate-email-hiring';
+export type { InvitationOffer, InvitationPreview, CancellationEmailPreview, OfferEmailPreview, OfferEmailBlock, InterviewEmailOutcome } from './candidate-email-hiring';
+export {
+  INTERVIEW_EMAIL_KINDS, REMINDER_HOURS_DEFAULT, REMINDER_HOURS_MIN, REMINDER_HOURS_MAX, renderInterviewEmail, interviewFactsFromForm, interviewEmailValues,
+  offerDetailsText, reminderDueAt, klParts, linkishExcept,
+} from './candidate-email-model';
+export type { InterviewEmailLabels, InterviewEmailFacts, InterviewPlaceOption, OfferEmailLine } from './candidate-email-model';

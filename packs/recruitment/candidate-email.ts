@@ -26,16 +26,16 @@ import {
   CANDIDATE_EMAIL_HOURLY_CAP, CANDIDATE_EMAIL_KINDS, CANDIDATE_EMAIL_LIST_LIMIT, CANDIDATE_EMAIL_LOCALES, CANDIDATE_EMAIL_PLACEHOLDERS,
   candidateEmailDisplayState, candidateEmailRetryable, parseRejectionDelay, renderCandidateEmail, validateCandidateEmailSettings,
   validateCandidateEmailTemplate,
-  linkish, usableRecipient,
+  linkish, usableRecipient, REMINDER_HOURS_DEFAULT,
   type CandidateEmailDisplayState, type CandidateEmailKind, type CandidateEmailLocale, type CandidateEmailSettingsInput, type CandidateEmailState,
   type RenderedCandidateEmail, type ValidTemplate,
 } from './candidate-email-model';
 
-const ids = (values: readonly string[]) => {
+export const ids = (values: readonly string[]) => {
   if (!values.every(isUuid)) throw new RecruitmentError('invalid_input');
   return `{${values.join(',')}}`;
 };
-const userOf = (s: SessionContext) => {
+export const userOf = (s: SessionContext) => {
   if (!s.userId) throw new RecruitmentError('forbidden');
   return s.userId;
 };
@@ -43,7 +43,7 @@ const isKind = (v: unknown): v is CandidateEmailKind => typeof v === 'string' &&
 const isLocale = (v: unknown): v is CandidateEmailLocale => typeof v === 'string' && (CANDIDATE_EMAIL_LOCALES as readonly string[]).includes(v);
 const iso = (v: string | Date | null) => (v === null ? null : new Date(v).toISOString());
 
-async function assertAdminTx(tx: Tx, companyId: unknown): Promise<string> {
+export async function assertAdminTx(tx: Tx, companyId: unknown): Promise<string> {
   if (!isUuid(companyId)) throw new RecruitmentError('forbidden');
   const [row] = await tx.execute<{ ok: boolean }>(sql`select app.can_admin_recruitment_for(${companyId}::uuid) as ok`);
   if (row?.ok !== true) throw new RecruitmentError('forbidden');
@@ -64,15 +64,18 @@ export type CandidateEmailComposer = {
   template: ValidTemplate; custom: boolean;
   /** Changes whenever the wording, language or sender changes: posted with a form, it proves the preview is what will be sent. */
   fingerprint: string;
+  /** Slice 20: the company's interview reminders (on by default, 24 hours before). */
+  reminderEnabled: boolean; reminderHours: number;
 };
-const fingerprintOf = (c: Omit<CandidateEmailComposer, 'fingerprint' | 'companyId' | 'custom'>) =>
+const fingerprintOf = (c: Omit<CandidateEmailComposer, 'fingerprint' | 'companyId' | 'custom' | 'reminderEnabled' | 'reminderHours'>) =>
   createHash('sha256').update(JSON.stringify([c.kind, c.locale, c.template.subject, c.template.body, c.senderName, c.replyTo, c.companyName])).digest('hex').slice(0, 32);
 
 /** The composers of companies whose switch is on, read under the caller's row security (administrators and the company's job teams). */
-async function composersTx(tx: Tx, tenantId: string, companyIds: readonly string[], kind: CandidateEmailKind): Promise<Map<string, CandidateEmailComposer>> {
+export async function composersTx(tx: Tx, tenantId: string, companyIds: readonly string[], kind: CandidateEmailKind): Promise<Map<string, CandidateEmailComposer>> {
   if (!companyIds.length) return new Map();
-  const rows = await tx.execute<{ company_id: string; locale: CandidateEmailLocale; reply_to: string; sender_name: string; company_name: string; subject: string | null; body: string | null }>(sql`
-    select s.company_id, s.locale, s.reply_to, app.recruitment_candidate_email_sender(s.sender_name, co.legal_name) as sender_name, co.legal_name as company_name,
+  const rows = await tx.execute<{ company_id: string; locale: CandidateEmailLocale; reply_to: string; sender_name: string; company_name: string; subject: string | null; body: string | null;
+    reminder_enabled: boolean; reminder_hours: number }>(sql`
+    select s.company_id, s.locale, s.reply_to, s.reminder_enabled, s.reminder_hours, app.recruitment_candidate_email_sender(s.sender_name, co.legal_name) as sender_name, co.legal_name as company_name,
       t.subject, t.body
     from recruitment_candidate_email_setting s
     join company co on co.id = s.company_id and co.tenant_id = s.tenant_id
@@ -82,7 +85,8 @@ async function composersTx(tx: Tx, tenantId: string, companyIds: readonly string
   for (const r of rows) {
     const template = r.subject !== null && r.body !== null ? { subject: r.subject, body: r.body } : await candidateEmailDefault(kind, r.locale);
     const base = { kind, locale: r.locale, senderName: r.sender_name, replyTo: r.reply_to, companyName: r.company_name, template };
-    out.set(r.company_id, { ...base, companyId: r.company_id, custom: r.subject !== null, fingerprint: fingerprintOf(base) });
+    out.set(r.company_id, { ...base, companyId: r.company_id, custom: r.subject !== null, fingerprint: fingerprintOf(base),
+      reminderEnabled: r.reminder_enabled, reminderHours: Number(r.reminder_hours) });
   }
   return out;
 }
@@ -103,15 +107,18 @@ export function previewCandidateEmail(c: CandidateEmailComposer, who: { candidat
 }
 /** The fingerprint of ONE application's preview: the composer (wording, language, sender), the recipient and the rendered words. Posted
  *  with the form; any change between preview and submit (wording, sender, the candidate's name or address, the job title) refuses. */
-const previewFingerprint = (c: CandidateEmailComposer, recipient: string, m: RenderedCandidateEmail) =>
+export const previewFingerprint = (c: CandidateEmailComposer, recipient: string, m: RenderedCandidateEmail) =>
   createHash('sha256').update(JSON.stringify([c.fingerprint, recipient, m.subject, m.text])).digest('hex').slice(0, 32);
 
 /** A database refusal of a queue (5720's checks) as the person's sentence. */
-function queueRefusal(e: unknown): never {
+export function queueRefusal(e: unknown): never {
   let cur = e as { constraint_name?: unknown; cause?: unknown } | null | undefined;
   for (let i = 0; cur && typeof cur === 'object' && i < 4; i++, cur = cur.cause as typeof cur) {
     if (cur.constraint_name === 'recruitment_candidate_email_hourly_limit') throw new RecruitmentError('email_hourly_limit');
     if (cur.constraint_name === 'recruitment_candidate_email_settings' || cur.constraint_name === 'recruitment_candidate_email_recipient') throw new RecruitmentError('email_changed');
+    // Slice 20 (5721): what an interview or offer e-mail is about changed under it (the interview, its place, the offer).
+    if (cur.constraint_name === 'recruitment_candidate_email_interview' || cur.constraint_name === 'recruitment_candidate_email_offer'
+      || cur.constraint_name === 'recruitment_candidate_email_reminder_time') throw new RecruitmentError('email_changed');
   }
   throw e;
 }
@@ -251,6 +258,8 @@ export type CandidateEmailSettingsView = {
   /** This installation can send (embedded relay with an active relay for the tenant). */
   available: boolean;
   enabled: boolean; senderName: string | null; replyTo: string | null; locale: CandidateEmailLocale;
+  /** Slice 20: interview reminders (on by default) and how many hours before (2–72, default 24). */
+  reminderEnabled: boolean; reminderHours: number;
   /** The display name used when none is set: the company name (≤80). */
   defaultSenderName: string;
   updatedAt: string | null; updatedBy: string | null;
@@ -272,8 +281,9 @@ export async function candidateEmailSettings(s: SessionContext, companyId: strin
   const available = await candidateEmailAvailable(s.tenantId);
   return withRecruitmentTenant(s, async (tx) => {
     await assertAdminTx(tx, companyId);
-    const [st] = await tx.execute<{ enabled: boolean; sender_name: string | null; reply_to: string | null; locale: CandidateEmailLocale; updated_at: string; updated_by_user_id: string }>(sql`
-      select enabled, sender_name, reply_to, locale, updated_at, updated_by_user_id from recruitment_candidate_email_setting
+    const [st] = await tx.execute<{ enabled: boolean; sender_name: string | null; reply_to: string | null; locale: CandidateEmailLocale; updated_at: string; updated_by_user_id: string;
+      reminder_enabled: boolean; reminder_hours: number }>(sql`
+      select enabled, sender_name, reply_to, locale, updated_at, updated_by_user_id, reminder_enabled, reminder_hours from recruitment_candidate_email_setting
       where company_id = ${companyId}::uuid and tenant_id = ${s.tenantId}::uuid`);
     const [co] = await tx.execute<{ name: string }>(sql`select app.recruitment_candidate_email_sender(null, co.legal_name) as name from company co
       where co.id = ${companyId}::uuid and co.tenant_id = ${s.tenantId}::uuid`);
@@ -293,10 +303,11 @@ export async function candidateEmailSettings(s: SessionContext, companyId: strin
           updatedAt: o ? iso(o.updated_at) : null, updatedBy: o ? labels.get(o.updated_by_user_id) ?? null : null });
       }
     }
-    const counts: Record<CandidateEmailDisplayState, number> = { queued: 0, sending: 0, sent: 0, failed: 0, uncertain: 0 };
+    const counts: Record<CandidateEmailDisplayState, number> = { queued: 0, sending: 0, sent: 0, failed: 0, uncertain: 0, withdrawn: 0 };
     for (const c of counted) counts[candidateEmailDisplayState(c.status)] += Number(c.n);
     return {
       available, enabled: st?.enabled ?? false, senderName: st?.sender_name ?? null, replyTo: st?.reply_to ?? null, locale: st?.locale ?? 'en',
+      reminderEnabled: st?.reminder_enabled ?? true, reminderHours: st ? Number(st.reminder_hours) : REMINDER_HOURS_DEFAULT,
       defaultSenderName: co?.name ?? '', updatedAt: st ? iso(st.updated_at) : null, updatedBy: st ? labels.get(st.updated_by_user_id) ?? null : null,
       placeholders: CANDIDATE_EMAIL_PLACEHOLDERS, templates, counts,
     };
@@ -318,12 +329,15 @@ export async function saveCandidateEmailSettings(s: SessionContext, companyId: u
         where co.id = ${company}::uuid and co.tenant_id = ${s.tenantId}::uuid`);
       if (!co?.name) throw new RecruitmentError('missing_fields', ['senderName']);
     }
-    await tx.execute(sql`insert into recruitment_candidate_email_setting (company_id, tenant_id, enabled, sender_name, reply_to, locale, created_by_user_id, updated_by_user_id)
-      values (${company}::uuid, ${s.tenantId}::uuid, ${v.value.enabled}, ${v.value.senderName}, ${v.value.replyTo}, ${v.value.locale}, ${user}::uuid, ${user}::uuid)
+    await tx.execute(sql`insert into recruitment_candidate_email_setting (company_id, tenant_id, enabled, sender_name, reply_to, locale, reminder_enabled, reminder_hours,
+        created_by_user_id, updated_by_user_id)
+      values (${company}::uuid, ${s.tenantId}::uuid, ${v.value.enabled}, ${v.value.senderName}, ${v.value.replyTo}, ${v.value.locale}, ${v.value.reminderEnabled},
+        ${v.value.reminderHours}, ${user}::uuid, ${user}::uuid)
       on conflict (company_id) do update set enabled = excluded.enabled, sender_name = excluded.sender_name, reply_to = excluded.reply_to, locale = excluded.locale,
-        updated_by_user_id = excluded.updated_by_user_id`);
+        reminder_enabled = excluded.reminder_enabled, reminder_hours = excluded.reminder_hours, updated_by_user_id = excluded.updated_by_user_id`);
     await appendEvents(tx, [{ tenantId: s.tenantId, aggregateType: 'recruitment-company', aggregateId: company, eventType: 'recruitment-candidate-email.settings-saved',
-      actor: actorOf(s), payload: { companyId: company, enabled: v.value.enabled, locale: v.value.locale, senderNameSet: v.value.senderName !== null } }]);
+      actor: actorOf(s), payload: { companyId: company, enabled: v.value.enabled, locale: v.value.locale, senderNameSet: v.value.senderName !== null,
+      reminderEnabled: v.value.reminderEnabled, reminderHours: v.value.reminderHours } }]);
   });
 }
 

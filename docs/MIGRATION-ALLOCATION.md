@@ -1,3 +1,15 @@
+# Recruitment slice 20 — 15 November 2026 MYT (unapplied)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` (merged with `origin/main` at `1299e6724`, whose journal ends at
+`5660_pay_component_bonus_epf_bonus_2012`, idx 5060 / when 1793330005360) appends
+`5721_recruitment_candidate_email_interviews_offers` at idx 5121 / when 1793330005421, directly after `5720` (when 1793330005420),
+the journal's maximum. A scan of every committed journal on the origin heads that day found no claim on tags 5721–5799 or when
+1793330005421–1793330005499. It alters 5720's tables (new kinds, columns, constraints, the 'withdrawn' state, reminder settings),
+adds `include_in_email` to `recruitment_offer_field`, restates five 5720 functions, adds three owner-only read policies and one
+statement trigger on `recruitment_interview`. PRECONDITION: applies after `5720` (and so after `5640` and `5660`). Unapplied outside
+throwaway and CI databases. Recheck the installed ledgers and peer claims at admission; this allocation grants no installation
+authority.
+
 # Statutory follow-ups: EPF Bonus 2012 on the default BONUS pay item — 14 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/statutory-followups-20261114` (from `origin/main` at `e197b8c07`, merged with `origin/main` at `9b4f22c09`) appends

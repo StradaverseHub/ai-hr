@@ -49,7 +49,7 @@ export async function OfferSettingsSection({ s, companyId, here }: { s: SessionC
           <table className="w-full text-sm">
             <thead className={theadCls}><tr>
               <th className={thCls}>{t('label')}</th><th className={thCls}>{t('type')}</th><th className={thCls}>{t('required')}</th><th className={thCls}>{t('needsApproval')}</th>
-              <th className={thCls}>{t('private')}</th><th className={thCls}>{t('enabled')}</th><th className={thCls}><span className="sr-only">{t('save')}</span></th>
+              <th className={thCls}>{t('private')}</th><th className={thCls}>{t('includeInEmail')}</th><th className={thCls}>{t('enabled')}</th><th className={thCls}><span className="sr-only">{t('save')}</span></th>
             </tr></thead>
             <tbody className={tbodyCls}>
               {settings.fields.map((f) => {
@@ -59,7 +59,7 @@ export async function OfferSettingsSection({ s, companyId, here }: { s: SessionC
                     <td className="px-3 py-2"><Input form={form} name="label" defaultValue={f.label} maxLength={120} required aria-label={t('label')} />
                       {f.type === 'single_choice' && <textarea form={form} name="choices" defaultValue={f.choices.join('\n')} rows={2} className={`${textareaCls} mt-1`} aria-label={t('choices')} />}</td>
                     <td className="px-3 py-2">{t(`types.${f.type}`)}</td>
-                    {(['required', 'needsApproval', 'private', 'enabled'] as const).map((flag) => (
+                    {(['required', 'needsApproval', 'private', 'includeInEmail', 'enabled'] as const).map((flag) => (
                       <td key={flag} className="px-3 py-2"><input form={form} type="checkbox" name={flag} defaultChecked={f[flag]} aria-label={t(flag)} /></td>
                     ))}
                     <td className="px-3 py-2"><form id={form} action={saveOfferFieldAction}>{hidden('fieldId', f.id)}{hidden('returnTo', here)}
@@ -80,8 +80,9 @@ export async function OfferSettingsSection({ s, companyId, here }: { s: SessionC
           </Field>
           <Field label={t('choices')}><textarea name="choices" rows={2} className={textareaCls} placeholder={t('choicesHint')} /></Field>
           <div className="flex flex-wrap gap-4 text-sm sm:col-span-2">
-            {(['required', 'needsApproval', 'private'] as const).map((flag) => <label key={flag} className="flex items-center gap-2"><input type="checkbox" name={flag} />{t(flag)}</label>)}
+            {(['required', 'needsApproval', 'private', 'includeInEmail'] as const).map((flag) => <label key={flag} className="flex items-center gap-2"><input type="checkbox" name={flag} />{t(flag)}</label>)}
           </div>
+          <p className="text-xs text-muted-foreground sm:col-span-3">{t('includeInEmailNote')}</p>
           <button type="submit" className={btnPrimary}>{t('addField')}</button>
         </form>
       </section>

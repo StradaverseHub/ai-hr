@@ -38718,7 +38718,11 @@
       "email_hourly_limit": "This company has queued 500 candidate e-mails in the last hour. Nothing was done; try again later, or continue without the e-mail.",
       "email_changed": "The e-mail preview changed (wording, sender, the candidate's details or address). Nothing was done; open it again and check what will be sent.",
       "email_not_retryable": "Only a failed or uncertain e-mail whose content is still kept can be sent again.",
-      "email_too_long": "With the longest names and titles filled in, this wording would be too long. Shorten it or use fewer placeholders."
+      "email_too_long": "With the longest names and titles filled in, this wording would be too long. Shorten it or use fewer placeholders.",
+      "email_no_address": "The candidate has no usable e-mail address recorded. Nothing was done.",
+      "email_value_link": "A value in this e-mail (the candidate's name, the job title, the place or an offer value) looks like a link or web address, so it cannot be e-mailed. Nothing was done.",
+      "email_private_field": "An offer field marked for e-mail is private and hidden from you. Nothing was done; ask someone who can see it to send the offer.",
+      "email_use_send": "Candidate e-mail is on for this company: use Send offer by e-mail, which shows the e-mail first. Nothing was done."
     },
     "overview": {
       "purpose": "Today's hiring work across the companies whose recruitment you manage.",
@@ -39057,7 +39061,9 @@
         },
         "addField": "Add field",
         "choicesHint": "Only for a single-choice field",
-        "flowsTitle": "Approval flows"
+        "flowsTitle": "Approval flows",
+        "includeInEmail": "In e-mail",
+        "includeInEmailNote": "In e-mail: an offer sent by e-mail states this field's value as entered. Money fields too, only when marked."
       },
       "privacy": {
         "retentionTitle": "Retention and repeated applications",
@@ -39303,7 +39309,17 @@
       "validFor": "Valid for {days} days from today",
       "decision": "Candidate decision",
       "recordDecision": "Record decision",
-      "noSending": "AI HR does not email or text the offer. Send it yourself, then mark it as sent here."
+      "noSending": "AI HR does not email or text the offer. Send it yourself, then mark it as sent here.",
+      "sendByEmail": "Send offer by e-mail",
+      "sendByEmailNote": "To {address}. It states only the fields marked In e-mail, as entered, and is sent exactly as shown.",
+      "markSentOther": "Or record that it was sent another way",
+      "noEmailFields": "No offer field is marked In e-mail, so the e-mail states no offer details. An administrator marks fields in Settings, Offers.",
+      "emailBlocked": {
+        "no_address": "The candidate has no usable e-mail address recorded, so the offer cannot be e-mailed.",
+        "value_link": "A value in this e-mail looks like a link or web address, so the offer cannot be e-mailed.",
+        "private_hidden": "A field marked In e-mail is private and hidden from you. Ask someone who can see it to send the offer.",
+        "too_long": "The offer details are too long for one e-mail."
+      }
     },
     "hire": {
       "linked": "New hire started: employee ID {code}, by {by}, {at}.",
@@ -40860,6 +40876,22 @@
         "rejection": {
           "subject": "Your application for {jobTitle}",
           "body": "Dear {candidateName},\n\nThank you for your interest in the {jobTitle} position at {companyName} and for the time you spent on your application.\n\nAfter careful consideration, we have decided not to move forward with your application for this position.\n\nWe wish you every success in your search.\n\nKind regards,\n{senderName}"
+        },
+        "interview_invitation": {
+          "subject": "Interview invitation: {jobTitle}",
+          "body": "Dear {candidateName},\n\nThank you for your application for the {jobTitle} position at {companyName}. We would like to invite you to an interview.\n\n{interviewRound} · {interviewType}\nDate: {interviewDate}\nTime: {interviewTime}\nDuration: {interviewDuration}\nPlace: {interviewPlace}\n\nPlease reply to this e-mail to confirm that you can attend, or to ask for another time.\n\nKind regards,\n{senderName}"
+        },
+        "interview_reminder": {
+          "subject": "Reminder: your interview for {jobTitle}",
+          "body": "Dear {candidateName},\n\nThis is a reminder of your interview for the {jobTitle} position at {companyName}.\n\n{interviewRound} · {interviewType}\nDate: {interviewDate}\nTime: {interviewTime}\nDuration: {interviewDuration}\nPlace: {interviewPlace}\n\nIf you can no longer attend, please reply to this e-mail.\n\nKind regards,\n{senderName}"
+        },
+        "interview_cancelled": {
+          "subject": "Interview cancelled: {jobTitle}",
+          "body": "Dear {candidateName},\n\nWe are sorry to let you know that your interview for the {jobTitle} position at {companyName} has been cancelled.\n\n{interviewRound} · {interviewType}\nDate: {interviewDate}\nTime: {interviewTime}\n\nIf we can offer you another time, we will contact you. You can also reply to this e-mail.\n\nKind regards,\n{senderName}"
+        },
+        "offer": {
+          "subject": "Your offer for {jobTitle}",
+          "body": "Dear {candidateName},\n\nWe are pleased to offer you the {jobTitle} position at {companyName}.\n\n{offerDetails}\n\nPlease reply to this e-mail to accept the offer or if you have any questions.\n\nKind regards,\n{senderName}"
         }
       },
       "settingsNote": "E-mail candidates about their own application: a receipt when they apply and, when a person chooses, a rejection letter. E-mails go through this installation's mail service from its address; you set the name candidates see and the address their replies go to.",
@@ -40884,11 +40916,19 @@
       "showLanguage": "Show",
       "kinds": {
         "application_received": "Application received",
-        "rejection": "Rejection"
+        "rejection": "Rejection",
+        "interview_invitation": "Interview invitation",
+        "interview_reminder": "Interview reminder",
+        "interview_cancelled": "Interview cancelled",
+        "offer": "Offer"
       },
       "kindNotes": {
         "application_received": "Sent when HR adds a candidate and ticks Send receipt. Never for imported candidates. Careers-page applicants get no receipt yet: their address is not verified.",
-        "rejection": "Sent only when the person rejecting or archiving ticks Send rejection e-mail after seeing it."
+        "rejection": "Sent only when the person rejecting or archiving ticks Send rejection e-mail after seeing it.",
+        "interview_invitation": "Sent when the person scheduling an interview ticks E-mail the candidate an invitation after seeing it. It states the round, type, date, time, duration and place (with the address's map link), never the interviewers.",
+        "interview_reminder": "Sent automatically before an interview whose invitation was e-mailed, at the time set above. Withdrawn if the interview is cancelled first.",
+        "interview_cancelled": "Sent only when the person cancelling an interview ticks E-mail the candidate after seeing it. Never when an interview is cancelled because its application closed.",
+        "offer": "Sent when a person chooses Send offer by e-mail on an approved offer, after seeing it. It states only the offer fields marked In e-mail, as people entered them."
       },
       "subject": "Subject (up to {max} characters)",
       "body": "Body (up to {max} characters)",
@@ -40925,7 +40965,13 @@
         "retried": "The e-mail is queued to be sent again.",
         "rejectedValueLink": "Rejected. No e-mail was sent: the candidate's name or the job title looks like a link or web address.",
         "rejectedNotPreviewed": "Rejected. No e-mail was sent: its preview was not shown.",
-        "receiptValueLink": "Saved. No receipt was sent: the candidate's name or the job title looks like a link or web address."
+        "receiptValueLink": "Saved. No receipt was sent: the candidate's name or the job title looks like a link or web address.",
+        "invitationQueued": "Scheduled. The invitation e-mail is queued.",
+        "invitationNoEmail": "Scheduled. No invitation was sent: the candidate has no usable e-mail address.",
+        "invitationValueLink": "Scheduled. No invitation was sent: the candidate's name, the job title or the place looks like a link or web address.",
+        "cancelledQueued": "Cancelled. The cancellation e-mail is queued.",
+        "cancelledNoEmail": "Cancelled. No e-mail was sent: the candidate has no usable e-mail address.",
+        "offerQueued": "The offer is recorded as sent by e-mail, and the e-mail is queued."
       },
       "tab": "E-mails",
       "listEmpty": "No e-mail has been queued for this candidate about this application.",
@@ -40935,12 +40981,14 @@
         "sending": "Sending",
         "sent": "Sent",
         "failed": "Failed",
-        "uncertain": "Uncertain"
+        "uncertain": "Uncertain",
+        "withdrawn": "Withdrawn"
       },
       "stateNotes": {
         "sent": "The mail service accepted it. Delivery to the candidate's inbox is not confirmed.",
         "uncertain": "The mail service may or may not have received it. It is not sent again automatically.",
-        "failed": "It was not sent."
+        "failed": "It was not sent.",
+        "withdrawn": "It was not sent: its interview was cancelled first."
       },
       "errorCodes": {
         "relayUnavailable": "The mail service was unavailable.",
@@ -40964,7 +41012,43 @@
       "showContent": "Show the e-mail",
       "retry": "Send again",
       "retryAck": "I understand the candidate may receive this e-mail twice.",
-      "valueLink": "This e-mail cannot be sent: the candidate's name or the job title looks like a link or web address."
+      "valueLink": "This e-mail cannot be sent: the candidate's name or the job title looks like a link or web address.",
+      "interview": {
+        "round": "Round {round}",
+        "types": {
+          "onsite": "On-site interview",
+          "video": "Video interview",
+          "phone": "Phone interview"
+        },
+        "weekdays": {
+          "mon": "Monday",
+          "tue": "Tuesday",
+          "wed": "Wednesday",
+          "thu": "Thursday",
+          "fri": "Friday",
+          "sat": "Saturday",
+          "sun": "Sunday"
+        },
+        "date": "{weekday}, {date}",
+        "time": "{start} to {end}, Kuala Lumpur time (GMT+8)",
+        "duration": "{minutes} minutes",
+        "remote": {
+          "video": "By video call: we will send you the joining details by reply.",
+          "phone": "By phone: we will call you on the number you gave us."
+        },
+        "map": "Map: {url}",
+        "noPlace": "We will send you the address by reply."
+      },
+      "reminderEnabled": "Send interview reminders",
+      "reminderHours": "Hours before the interview ({min} to {max})",
+      "reminderHint": "Sent automatically to candidates whose invitation was e-mailed. An interview scheduled closer than this gets no reminder.",
+      "sendInvitation": "E-mail the candidate an invitation",
+      "invitationNote": "To {address}. The preview follows what you enter and is exactly what is sent.",
+      "invitationReminder": "A reminder follows {hours} hours before the interview.",
+      "invitationNoReminder": "Reminders are off for this company: no reminder follows.",
+      "invitationIncomplete": "Enter the date and time to see the e-mail.",
+      "sendCancellation": "E-mail the candidate that this interview is cancelled",
+      "cancellationNote": "To {address}. Nothing is sent unless you tick this."
     }
   },
   "careersPublic": {
