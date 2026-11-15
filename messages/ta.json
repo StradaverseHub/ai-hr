@@ -17455,7 +17455,8 @@
     "moduleLabel": {
       "leave": "விடுப்பு",
       "attendance": "வருகை",
-      "claims": "உரிமைகோரல்கள்"
+      "claims": "உரிமைகோரல்கள்",
+      "probation": "Probation"
     },
     "taskLabel": {
       "leaveApplication": "விடுப்பு விண்ணப்ப ஒப்புதல்",
@@ -17465,7 +17466,10 @@
       "claimsClaim": "உரிமைகோரல் ஒப்புதல்",
       "leaveRequestCreation": "விடுப்பு விண்ணப்பம் உருவாக்கம்",
       "leaveAmendmentRequest": "விடுப்பு திருத்தக் கோரிக்கை",
-      "leaveCancellationRequest": "விடுப்பு ரத்து கோரிக்கை"
+      "leaveCancellationRequest": "விடுப்பு ரத்து கோரிக்கை",
+      "probationReview": "Probation review (Head of Department, PBP, GBS)",
+      "probationApprove": "Probation approval (Head of Department, PBP, GBS)",
+      "probationLetterSign": "Probation letter signature"
     },
     "groupLabel": {
       "leaveRequest": "விடுப்பு கோரிக்கை",
@@ -35821,7 +35825,8 @@
       "missing": "பொறுப்பாளரைத் தீர்மானிக்க வேண்டும்",
       "frozenFacts": "இந்த மதிப்பாய்வு கையொப்பமிட்ட உள்ளடக்கத்திற்காகப் பதிவு செய்த பணியாளர் மற்றும் சோதனைக் கால விவரங்களைத் தக்கவைக்கும்.",
       "combinedConsent": "பின்வரும் பங்குகளுக்கு இது எனது கையொப்பம் என்பதை உறுதிப்படுத்துகிறேன்: {roles}.",
-      "combinedHistory": "அதே கையொப்பம் இதற்கும் பொருந்தும்"
+      "combinedHistory": "அதே கையொப்பம் இதற்கும் பொருந்தும்",
+      "onBehalfOf": "on behalf of {name}"
     },
     "controls": {
       "title": "அங்கீகரிக்கப்பட்ட மதிப்பாய்வுக் கட்டுப்பாடுகள்",

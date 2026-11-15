@@ -17455,7 +17455,8 @@
     "moduleLabel": {
       "leave": "Nghỉ phép",
       "attendance": "Chấm công",
-      "claims": "Yêu cầu bồi hoàn"
+      "claims": "Yêu cầu bồi hoàn",
+      "probation": "Probation"
     },
     "taskLabel": {
       "leaveApplication": "Phê duyệt Đơn xin nghỉ",
@@ -17465,7 +17466,10 @@
       "claimsClaim": "Phê duyệt Yêu cầu bồi hoàn",
       "leaveRequestCreation": "Tạo đơn xin nghỉ phép",
       "leaveAmendmentRequest": "Yêu cầu sửa đơn nghỉ phép",
-      "leaveCancellationRequest": "Yêu cầu hủy nghỉ phép"
+      "leaveCancellationRequest": "Yêu cầu hủy nghỉ phép",
+      "probationReview": "Probation review (Head of Department, PBP, GBS)",
+      "probationApprove": "Probation approval (Head of Department, PBP, GBS)",
+      "probationLetterSign": "Probation letter signature"
     },
     "groupLabel": {
       "leaveRequest": "Đơn xin nghỉ phép",
@@ -35821,7 +35825,8 @@
       "missing": "Cần xác định người phụ trách",
       "frozenFacts": "Đánh giá này giữ thông tin nhân viên và thời hạn thử việc đã chốt cho nội dung được ký.",
       "combinedConsent": "Tôi xác nhận đây là chữ ký của tôi cho các vai trò sau: {roles}.",
-      "combinedHistory": "Được ghi nhận bằng cùng một chữ ký"
+      "combinedHistory": "Được ghi nhận bằng cùng một chữ ký",
+      "onBehalfOf": "on behalf of {name}"
     },
     "controls": {
       "title": "Thao tác đánh giá được phép",

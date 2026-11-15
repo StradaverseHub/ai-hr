@@ -17455,7 +17455,8 @@
     "moduleLabel": {
       "leave": "การลา",
       "attendance": "การเข้างาน",
-      "claims": "การเบิกจ่าย"
+      "claims": "การเบิกจ่าย",
+      "probation": "Probation"
     },
     "taskLabel": {
       "leaveApplication": "การอนุมัติคำขอลา",
@@ -17465,7 +17466,10 @@
       "claimsClaim": "การอนุมัติการเบิกจ่าย",
       "leaveRequestCreation": "การสร้างคำขอลา",
       "leaveAmendmentRequest": "คำขอแก้ไขการลา",
-      "leaveCancellationRequest": "คำขอยกเลิกการลา"
+      "leaveCancellationRequest": "คำขอยกเลิกการลา",
+      "probationReview": "Probation review (Head of Department, PBP, GBS)",
+      "probationApprove": "Probation approval (Head of Department, PBP, GBS)",
+      "probationLetterSign": "Probation letter signature"
     },
     "groupLabel": {
       "leaveRequest": "คำขอลา",
@@ -35821,7 +35825,8 @@
       "missing": "ต้องแก้ไขผู้รับผิดชอบ",
       "frozenFacts": "การประเมินนี้คงรายละเอียดพนักงานและช่วงทดลองงานที่บันทึกไว้สำหรับเนื้อหาที่ลงนาม",
       "combinedConsent": "ฉันขอยืนยันว่านี่คือลายเซ็นของฉันสำหรับบทบาทต่อไปนี้: {roles}",
-      "combinedHistory": "ครอบคลุมด้วยลายเซ็นเดียวกัน"
+      "combinedHistory": "ครอบคลุมด้วยลายเซ็นเดียวกัน",
+      "onBehalfOf": "on behalf of {name}"
     },
     "controls": {
       "title": "การควบคุมการประเมินที่ได้รับอนุญาต",

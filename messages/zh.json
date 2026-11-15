@@ -17455,7 +17455,8 @@
     "moduleLabel": {
       "leave": "请假",
       "attendance": "考勤",
-      "claims": "报销"
+      "claims": "报销",
+      "probation": "Probation"
     },
     "taskLabel": {
       "leaveApplication": "请假申请审批",
@@ -17465,7 +17466,10 @@
       "claimsClaim": "报销审批",
       "leaveRequestCreation": "请假申请提交",
       "leaveAmendmentRequest": "请假修改申请",
-      "leaveCancellationRequest": "请假取消申请"
+      "leaveCancellationRequest": "请假取消申请",
+      "probationReview": "Probation review (Head of Department, PBP, GBS)",
+      "probationApprove": "Probation approval (Head of Department, PBP, GBS)",
+      "probationLetterSign": "Probation letter signature"
     },
     "groupLabel": {
       "leaveRequest": "请假申请",
@@ -35821,7 +35825,8 @@
       "missing": "需确定负责人",
       "frozenFacts": "此评审保留为签署内容捕获的员工及试用期详情。",
       "combinedConsent": "我确认这是我为以下角色所作的签署：{roles}。",
-      "combinedHistory": "由同一次签署涵盖"
+      "combinedHistory": "由同一次签署涵盖",
+      "onBehalfOf": "on behalf of {name}"
     },
     "controls": {
       "title": "获授权的评审控制",

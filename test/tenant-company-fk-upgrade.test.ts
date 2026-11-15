@@ -255,6 +255,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5744_probation_case_at_activation',
    '5745_probation_outcome_override_event',
    '5746_probation_tracker_scale_and_extensions',
+   '5749_probation_delegation',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);

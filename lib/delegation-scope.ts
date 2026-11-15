@@ -11,9 +11,14 @@
  *
  * A delegation with NO scope rows = whole-scope (all approvals) — the back-compat default. A scope row with
  * a NULL task_type covers the WHOLE module; with a task_type, just that task.
+ *
+ * Probation (ADR docs/adr/2026-11-15-probation-shared-automation.md, decision 7) is the exception: a whole-scope
+ * delegation does NOT include it. Only a delegation with Probation explicitly ticked moves Probation Review, Approve
+ * and letter Sign steps held by a Head of Department, PBP or GBS People Ops member to the delegate (on behalf of
+ * the holder). Line Manager and employee steps never move by delegation. The SQL guard is app.probation_general_delegate.
  */
 
-export type DelegationModule = 'leave' | 'attendance' | 'claims';
+export type DelegationModule = 'leave' | 'attendance' | 'claims' | 'probation';
 
 export type DelegationTaskType =
   | 'leave.application'
@@ -25,13 +30,20 @@ export type DelegationTaskType =
   | 'leave.request.amendment'
   | 'leave.cancellation_request.creation'
   | 'attendance.correction'
-  | 'claims.claim';
+  | 'claims.claim'
+  | 'probation.review'
+  | 'probation.approve'
+  | 'probation.letter_sign';
 
 export const DELEGATION_SCOPE: { module: DelegationModule; tasks: DelegationTaskType[] }[] = [
   { module: 'leave', tasks: ['leave.application', 'leave.cancellation', 'leave.replacement'] },
   { module: 'attendance', tasks: ['attendance.correction'] },
   { module: 'claims', tasks: ['claims.claim'] },
+  { module: 'probation', tasks: ['probation.review', 'probation.approve', 'probation.letter_sign'] },
 ];
+
+/** Modules a whole-scope (no scope rows) delegation does not cover; they must be ticked explicitly. */
+export const EXPLICIT_ONLY_DELEGATION_MODULES: readonly DelegationModule[] = ['probation'];
 
 export const moduleOfTask: Record<DelegationTaskType, DelegationModule> = {
   'leave.application': 'leave',
@@ -42,6 +54,9 @@ export const moduleOfTask: Record<DelegationTaskType, DelegationModule> = {
   'leave.cancellation_request.creation': 'leave',
   'attendance.correction': 'attendance',
   'claims.claim': 'claims',
+  'probation.review': 'probation',
+  'probation.approve': 'probation',
+  'probation.letter_sign': 'probation',
 };
 
 const TASK_SET = new Set<string>(Object.keys(moduleOfTask));
@@ -65,6 +80,9 @@ export const taskLabelKey: Record<DelegationTaskType, string> = {
   'leave.cancellation_request.creation': 'leaveCancellationRequest',
   'attendance.correction': 'attendanceCorrection',
   'claims.claim': 'claimsClaim',
+  'probation.review': 'probationReview',
+  'probation.approve': 'probationApprove',
+  'probation.letter_sign': 'probationLetterSign',
 };
 
 // ── R51 (20f09fc3) — expandable task GROUPS in the scope picker ─────────────────────────────────────

@@ -199,6 +199,8 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5144,when:1793330005444,tag:'5744_probation_case_at_activation'},
  {idx:5145,when:1793330005445,tag:'5745_probation_outcome_override_event'},
  {idx:5146,when:1793330005446,tag:'5746_probation_tracker_scale_and_extensions'},
+ // Probation delegation (decision 7), 16 Nov 2026.
+ {idx:5149,when:1793330005449,tag:'5749_probation_delegation'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -238,6 +240,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5744_probation_case_at_activation':'bade792a24fe3f31bc5c8afc1a40404d8919313711a2a050b1c6083b2095494a',
  '5745_probation_outcome_override_event':'450ad5d958411186348239940f3f16302bc17f7642a6e2e6bb3a63212a41a3ed',
  '5746_probation_tracker_scale_and_extensions':'6de6b3a28d10dd05bbb6dd37a84d6a30e42e67748636514ff94c4d04330b6432',
+ '5749_probation_delegation':'a57888eba4421d3ca4b2a3fdbe55065196005cfdffa7ed011615c6cef93e9dfd',
  '4800_ai_shared_leave_groups_read':'774dce41ba113549ec5415586d104b8d5b7712934216f2beb4d9aa0e9f00ffc5',
  '4601_last_login_event_index':'868e30d4a2840d4939a46f303ce999b2e041ae3cb6823eb8b712179ccf7d5788',
  '4600_attendance_clock_policy_group_scope':'b30a62bec597f53266232abe569a040a9a421eaa2239eac232d0e44041352be6',

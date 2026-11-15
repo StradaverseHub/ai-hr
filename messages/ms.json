@@ -17455,7 +17455,8 @@
     "moduleLabel": {
       "leave": "Cuti",
       "attendance": "Kehadiran",
-      "claims": "Tuntutan"
+      "claims": "Tuntutan",
+      "probation": "Probation"
     },
     "taskLabel": {
       "leaveApplication": "Kelulusan Permohonan Cuti",
@@ -17465,7 +17466,10 @@
       "claimsClaim": "Kelulusan Tuntutan",
       "leaveRequestCreation": "Penciptaan Permohonan Cuti",
       "leaveAmendmentRequest": "Permohonan Pindaan Cuti",
-      "leaveCancellationRequest": "Permohonan Pembatalan Cuti"
+      "leaveCancellationRequest": "Permohonan Pembatalan Cuti",
+      "probationReview": "Probation review (Head of Department, PBP, GBS)",
+      "probationApprove": "Probation approval (Head of Department, PBP, GBS)",
+      "probationLetterSign": "Probation letter signature"
     },
     "groupLabel": {
       "leaveRequest": "Permohonan Cuti",
@@ -35821,7 +35825,8 @@
       "missing": "Pemegang perlu ditentukan",
       "frozenFacts": "Semakan ini mengekalkan butiran pekerja dan tempoh percubaan yang disimpan untuk kandungan bertandatangannya.",
       "combinedConsent": "Saya mengesahkan bahawa ini tandatangan saya untuk peranan berikut: {roles}.",
-      "combinedHistory": "Dilindungi oleh tandatangan yang sama"
+      "combinedHistory": "Dilindungi oleh tandatangan yang sama",
+      "onBehalfOf": "on behalf of {name}"
     },
     "controls": {
       "title": "Kawalan semakan yang dibenarkan",

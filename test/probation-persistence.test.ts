@@ -693,7 +693,7 @@ async function submittedForAcknowledgement(){
   part=await current(staff.ctx);await actOnProbation(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'submit_employee'});
   part=await current(manager.ctx);await saveProbationDraft(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'lm',patch:{manager:assessment,reviewOn:todayInKualaLumpur(),conductedBy:manager.userId,outcome:'confirm',justification:'Observed evidence supports confirmation'}});
   part=await current(manager.ctx);await actOnProbation(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'submit_manager',method:'typed',value:'Fictional Manager',consent:true});
-  return{ids,staff,manager,current};
+  return{ids,staff,manager,peer,current};
 }
 describe('declined signature',()=>{
  it('lets the Line Manager record that the employee declined, which moves the part on at once, never the employee, and the PBP confirm it without gating',async()=>{
@@ -724,5 +724,34 @@ describe('declined signature',()=>{
   part=await current(admin);
   expect(part.acknowledgedAt).not.toBeNull();expect(part.state).toBe('pending_approval');
   expect(part.signing!.document.actions).toContainEqual(expect.objectContaining({role:'employee',action:'declined',actorId:admin.userId}));
+ });
+});
+
+describe('general delegation of Probation approvals (decision 7)',()=>{
+ it('moves a Head of Department approval to a delegate only when Probation is ticked, on behalf of the holder',async()=>{
+  const{ids,staff,peer,current}=await submittedForAcknowledgement();
+  let part=await current(staff.ctx);
+  await saveProbationDraft(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'employee',patch:{employeeComments:'I acknowledge the review discussion.'}});
+  part=await current(staff.ctx);await actOnProbation(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'acknowledge',method:'typed',value:'Fictional Staff',consent:true});
+  const delegate=await person('Fictional Delegate Approver');
+  const yesterday=addDaysIso(todayInKualaLumpur(),-1);
+  const[line]=await owner.db.execute<{id:string}>(sql`insert into reporting_line(tenant_id,subordinate_employment_id,manager_employment_id,line_type,valid_from) values(${b.tenantId}::uuid,${peer.employmentId}::uuid,${delegate.employmentId}::uuid,'delegate',${yesterday}::date) returning id`);
+  // A whole-scope delegation (no scope rows) never includes Probation.
+  part=await current(admin);let hod=part.route.steps.find(step=>step.role==='hod')!;
+  expect(hod).toMatchObject({holderId:peer.userId});expect(hod.representedId).toBeUndefined();
+  await expect(probationCase(delegate.ctx,ids.caseId)).rejects.toThrow();
+  // A delegation with another module ticked does not either.
+  await owner.db.execute(sql`insert into reporting_line_scope(tenant_id,reporting_line_id,module,task_type) values(${b.tenantId}::uuid,${line.id}::uuid,'leave',null)`);
+  expect((await current(admin)).route.steps.find(step=>step.role==='hod')).toMatchObject({holderId:peer.userId});
+  await owner.db.execute(sql`insert into reporting_line_scope(tenant_id,reporting_line_id,module,task_type) values(${b.tenantId}::uuid,${line.id}::uuid,'probation','probation.approve')`);
+  part=await current(delegate.ctx);hod=part.route.steps.find(step=>step.role==='hod')!;
+  expect(hod).toMatchObject({holderId:delegate.userId,representedId:peer.userId});
+  expect(part.route.steps.find(step=>step.role==='lm')!.holderId).not.toBe(delegate.userId);
+  expect(part.allowedCommands).toContain('approve');
+  await actOnProbation(delegate.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,stepId:hod.id,command:'approve',method:'typed',value:'Fictional Delegate Approver',consent:true,coveredStepIds:hod.coveredStepIds??[]});
+  part=await current(admin);
+  expect(part.signing!.document.actions).toContainEqual(expect.objectContaining({role:'hod',action:'signed',actorId:delegate.userId,representedId:peer.userId}));
+  // The original holder no longer holds the step while the delegation covers it.
+  await expect(actOnProbation(peer.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,stepId:hod.id,command:'approve',method:'typed',value:'Fictional Peer',consent:true})).rejects.toThrow();
  });
 });

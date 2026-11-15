@@ -1,3 +1,14 @@
+# Probation delegation (decision 7) — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-probation-core-20261116` (lane C, round E) appends `5749_probation_delegation` at idx 5149 /
+when 1793330005449 (assigned by the build coordinator; 5747/5748 belong to the signing-runtime lane). SHA256 `a57888eba4421d3ca4b2a3fdbe55065196005cfdffa7ed011615c6cef93e9dfd`.
+It adds the internal `app.probation_general_delegate(holder, subject employment, task)` and re-creates the owner-owned
+`app.probation_resolve_route_unchecked` (0949 body plus one branch) and `app.probation_visible_among` (5746 body plus the
+delegate branch): a general delegation with Probation explicitly ticked moves a Head of Department, PBP or GBS Review,
+Approve or letter Sign step to the delegate on behalf of the holder; whole-scope delegations do not include Probation;
+Line Manager and employee steps never move. No table, row, grant or purpose-owned object changes. The installed
+ledgers were not read; recheck watermarks and peer claims at admission. No installation authority.
+
 # Shared HR automation email templates — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/probation-lane-screens-20261116` (lane A of the Probation Confirmation build, from
