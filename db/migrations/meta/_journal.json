@@ -1550,6 +1550,13 @@
       "breakpoints": true
     },
     {
+      "idx": 240,
+      "version": "7",
+      "when": 1781862219000,
+      "tag": "0240_employment_blacklist",
+      "breakpoints": true
+    },
+    {
       "idx": 225,
       "version": "7",
       "when": 1781862224000,
@@ -1561,13 +1568,6 @@
       "version": "7",
       "when": 1781862229000,
       "tag": "0230_delegation_scope_reason",
-      "breakpoints": true
-    },
-    {
-      "idx": 240,
-      "version": "7",
-      "when": 1781862219000,
-      "tag": "0240_employment_blacklist",
       "breakpoints": true
     },
     {
@@ -6258,6 +6258,13 @@
       "version": "7",
       "when": 1794841005812,
       "tag": "5812_contract_shared_identity_context",
+      "breakpoints": true
+    },
+    {
+      "idx": 5213,
+      "version": "7",
+      "when": 1794841005813,
+      "tag": "5813_contract_shared_email_notifications",
       "breakpoints": true
     },
     {
