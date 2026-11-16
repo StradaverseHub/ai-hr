@@ -36,7 +36,6 @@ import {pendingReviewCandidatesExistSql,pendingReviewTaskMetadata} from './emplo
 import {pendingPerformanceTasks} from '../packs/performance/service';
 import {pendingRewardTasks} from '../packs/rewards/service';
 import {pendingProbationTasks} from '../packs/probation/service';
-import {pendingContractSharedTasks} from '../packs/contracts/service';
 import type {PackTaskAction,PackTaskItem,PackTaskKind,PackTaskProvider} from '../lib/assigned-work';
 import type {AccountTaskBundle,AccountTaskModules,AccountTaskRead} from './account-task-bundle';
 
@@ -122,7 +121,6 @@ const PACK_TASK_SOURCES:readonly {module:'performance'|'rewards'|'probation';loa
   // Probation: one bounded, set-based read of the caller's Approve steps and tasks (migration 5751).
   {module:'probation',load:pendingProbationTasks},
   // The existing Lifecycle flag also gates Contract; each owner independently checks the actual company scope.
-  {module:'probation',load:pendingContractSharedTasks},
 ];
 
 type ApprovalOnlyTaskItem=Omit<PendingTaskItem,'kind'>&{kind:Exclude<PendingTaskKind,'noticeAcknowledgement'>};

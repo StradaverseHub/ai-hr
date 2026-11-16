@@ -215,9 +215,13 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5235,when:1794841005835,tag:'5835_contract_shared_review_wording'},
  {idx:5248,when:1794841005848,tag:'5848_contract_shared_virtual_period'},
  {idx:5296,when:1794841005896,tag:'5896_contract_shared_directory_and_signer_caption'},
+ {idx:5297,when:1794841005897,tag:'5897_contract_shared_period_history'},
+ {idx:5298,when:1794841005898,tag:'5898_contract_shared_work_page'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5898_contract_shared_work_page':'f18a09d0a09539f502171b5d8e201298c75e627869c613f5cc90c9c0b71c0dca',
+ '5897_contract_shared_period_history':'df2f4fd1dea25a1461fcb9e83bcdc21fc5d5658e6b9cb9618fb0f4f0807bbecc',
  '5832_contract_shared_starting_setup':'115b3dcb22d478e7e106a3bac40c8210ca925cf71bcfa726fea975090a42c2ee',
  '5833_contract_shared_tracker_retained_cases':'3d9992098d14c60bd6464b58b9a95a631238feb0bf09b0f4de019ac521934ca5',
  '5848_contract_shared_virtual_period':'d8686bc5d8eb4b862790f32b8a1e088aecf12d69f9a52a0ce0c077b7c2349018',

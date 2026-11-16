@@ -6378,6 +6378,20 @@
       "when": 1794841005896,
       "tag": "5896_contract_shared_directory_and_signer_caption",
       "breakpoints": true
+    },
+    {
+      "idx": 5297,
+      "version": "7",
+      "when": 1794841005897,
+      "tag": "5897_contract_shared_period_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 5298,
+      "version": "7",
+      "when": 1794841005898,
+      "tag": "5898_contract_shared_work_page",
+      "breakpoints": true
     }
   ]
 }
