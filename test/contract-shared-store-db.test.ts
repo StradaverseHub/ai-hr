@@ -22,6 +22,15 @@ async function ordinary(){
 }
 const template=():AutomationDocumentTemplate=>({id:randomUUID(),module:'contract_staff',name:'Contract renewal',description:'Fictional test wording',rules:{decision:['Renew']},blocks:[{id:'intro',type:'text',text:'Dear {employee.name}',section:''}],fields:[],routing:[{id:'review',order:1,action:'review',owner:true,who:{kind:'directSuperior'}}]});
 describe('Contract scoped access and settings',()=>{
+ it('lets a real system Access administrator manage Contract roles without granting a person identity or case authority',async()=>{
+  await owner.db.execute(sql`update app_user set person_id=null where tenant_id=${b.tenantId}::uuid and id=${b.adminUserId}::uuid`);
+  const account={...await entitledCtx(b),personId:undefined};
+  const roleId=randomUUID();
+  await saveContractSharedRole(account,{id:roleId,name:'Access administration without employment',permissions:['view'],expectedRevision:0});
+  expect((await contractSharedAccess(account)).roles.map(role=>role.id)).toContain(roleId);
+  const [rights]=await withTenant(account,tx=>tx.execute<{decide:boolean}>(sql`select app.contract_shared_permitted('decide',${b.companyId}::uuid) as decide`));
+  expect(rights.decide).toBe(false);
+ });
  it('refuses direct table writes and ordinary access-management callers',async()=>{
   const plain=await ordinary();
   await expect(contractSharedAccess(plain)).rejects.toMatchObject({code:'forbidden'});

@@ -6252,6 +6252,13 @@
       "when": 1794841005811,
       "tag": "5811_contract_shared_worker_binding",
       "breakpoints": true
+    },
+    {
+      "idx": 5212,
+      "version": "7",
+      "when": 1794841005812,
+      "tag": "5812_contract_shared_identity_context",
+      "breakpoints": true
     }
   ]
 }

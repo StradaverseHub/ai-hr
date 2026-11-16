@@ -34,7 +34,7 @@ function signingFailure(error:unknown):never{
  const code=pgSqlState(error);
  if(code==='42501')throw new ContractManagementError('forbidden','This Contract item is unavailable.');
  if(code==='40001'||code==='P0001')throw new ContractManagementError('conflict','This Contract item changed. Reload before acting.');
- if(code==='22023')throw new ContractManagementError('invalid','Check the current approval layer and enter a rejection reason when rejecting.');
+ if(code==='22023')throw new ContractManagementError('invalid','Check the current Contract action and its required details.');
  throw error;
 }
 
@@ -51,6 +51,17 @@ async function readLetterTx(tx:SqlExecutor,id:string):Promise<ContractSharedLett
 }
 export async function readContractSharedLetter(ctx:SessionContext,id:string){
  z.uuid().parse(id);try{return await withScopedLifecycleTenant(ctx,tx=>readLetterTx(tx,id));}catch(error){return signingFailure(error);}
+}
+/** No chosen account or email is accepted. The native owner binds only the unique active login for the employee person. */
+export async function bindContractSharedEmployee(ctx:SessionContext,id:string):Promise<ContractSharedLetter>{
+ z.uuid().parse(id);
+ try{return await withScopedLifecycleTenant(ctx,async tx=>{
+  await tx.execute(sql`select app.contract_shared_letter_bind_employee(${id}::uuid)`);
+  return readLetterTx(tx,id);
+ });}catch(error){
+  if(pgSqlState(error)==='22023')throw new ContractManagementError('invalid','The employee needs exactly one verified active AIHR account linked to their Personnel record. No substitute signer can be chosen.');
+  return signingFailure(error);
+ }
 }
 /** Native hash serialization is authoritative; the renderer consumes that exact visible template/body/value snapshot. */
 export function renderContractSharedLetter(letter:ContractSharedLetter):Document|null{

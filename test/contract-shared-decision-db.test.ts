@@ -6,7 +6,7 @@ import {closeAll,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppU
 import {hireEmployee,setEmploymentInfo} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {v9Setup,v9Workspace,v9SaveConfig} from '../packs/lifecycle/service';
-import {adoptContractSharedCase,previewContractSharedDecision,readContractSharedDecisionPreview,submitContractSharedDecision,contractSharedHistory,contractSharedContext,contractPreviewJobHandler,contractAutomationJobHandler,readContractSharedApproval,actContractSharedApproval,readContractSharedLetter,actContractSharedLetter,renderContractSharedLetter} from '../packs/contracts/service';
+import {adoptContractSharedCase,previewContractSharedDecision,readContractSharedDecisionPreview,submitContractSharedDecision,contractSharedHistory,contractSharedContext,contractPreviewJobHandler,contractAutomationJobHandler,readContractSharedApproval,actContractSharedApproval,readContractSharedLetter,actContractSharedLetter,renderContractSharedLetter,bindContractSharedEmployee} from '../packs/contracts/service';
 import {saveAutomationDocumentTemplate,saveAutomationWorkflow,automationBuilderAccess,type AutomationWorkflow} from '../packs/automation/service';
 import {runBulkJobTick} from '../core/bulk-job-worker';
 import {readBulkJob} from '../core/bulk-job';
@@ -72,7 +72,7 @@ const draft={kind:'renew' as const,months:6,payChanges:false,reason:'Continue th
 let f:Awaited<ReturnType<typeof fixture>>;
 beforeEach(async()=>{f=await fixture();});
 describe('protected Contract decision preview and submission',()=>{
- it('executes the accepted workflow revision through real approval receipts and holds the employee letter step without touching Personnel or Payroll',async()=>{
+ it('executes pinned approvals, holds and verifies the employee login, and freezes agreed values without automatic Personnel or Payroll writes',async()=>{
   const requested=await previewContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,draft});
   await finishPreview(requested.jobId,f.proposer);
   const accepted=await submitContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,previewId:requested.previewId});
@@ -92,12 +92,36 @@ describe('protected Contract decision preview and submission',()=>{
   const letter=await readContractSharedLetter(f.admin,generated.id);
   expect(letter.canEdit).toBe(true);expect(letter.pendingAction?.kind).toBe('review');expect(letter.layers[1]).toMatchObject({kind:'sign',unavailable:true,assigneeName:null});
   expect(renderContractSharedLetter(letter)?.blocks[0].text).toBe('Dear {employee.name}');
+  const [otherPerson]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name) values(${f.b.tenantId}::uuid,'Different Personnel identity') returning id`);
+  await owner.db.execute(sql`update employment set person_id=${otherPerson.id}::uuid where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`);
+  const changedSource=await readContractSharedLetter(f.admin,letter.id);
+  expect(changedSource.canEdit).toBe(false);expect(changedSource.pendingAction).toBeNull();expect(changedSource.body?.values['employee.name']).toBe('Fictional Contract subject');
+  await owner.db.execute(sql`update employment set person_id=${f.employee.personId}::uuid where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`);
   const hidden=await readContractSharedLetter(f.proposer,generated.id);expect(hidden.body).toBeNull();expect(hidden.contentHash).toBeNull();
   const reviewed=await actContractSharedLetter(f.admin,{id:letter.id,actionId:randomUUID(),stepId:letter.pendingAction!.stepId,revision:letter.contentRevision,hash:letter.contentHash!,action:'reviewed'});
   expect(reviewed.state).toBe('routing');expect(reviewed.pendingAction).toBeNull();expect(reviewed.valuesFixed).toBe(false);
-  const current=await contractSharedContext(f.proposer,f.caseId);expect(current.flow?.stage).toBe('document');expect(current.flow?.flags).toContain('employee_cannot_sign');expect(current.source.contractNumber).toBe(4);
+  const held=await contractSharedContext(f.proposer,f.caseId);expect(held.flow?.stage).toBe('document');expect(held.flow?.flags).toContain('employee_cannot_sign');expect(held.source.contractNumber).toBe(4);
+  const userId=await createAppUser(f.b.tenantId,f.employee.personId,'employee');
+  const employee:SessionContext={...f.admin,userId,personId:f.employee.personId,roles:['employee'],grants:undefined};
+  const duplicateId=await createAppUser(f.b.tenantId,f.employee.personId,'employee');
+  await expect(bindContractSharedEmployee(employee,letter.id)).rejects.toMatchObject({code:'invalid'});
+  await owner.db.execute(sql`update app_user set archived_at=now() where tenant_id=${f.b.tenantId}::uuid and id=${duplicateId}::uuid`);
+  const ready=await bindContractSharedEmployee(employee,letter.id);
+  expect(ready.pendingAction?.kind).toBe('sign');expect(ready.body).not.toBeNull();
+  await expect(readContractSharedApproval(employee,row.id)).rejects.toMatchObject({code:'forbidden'});
+  // Only the native Payroll writer changes pay; a draft letter follows it until the first actual signature.
+  await setCompensation(f.admin,{employmentId:f.employee.employmentId,basicSalary:5100.11,effectiveFrom:start});
+  const sign={id:letter.id,actionId:randomUUID(),stepId:ready.pendingAction!.stepId,revision:ready.contentRevision,hash:ready.contentHash!,action:'signed' as const,method:'typed' as const,value:'Fictional Contract subject',consent:true};
+  await expect(actContractSharedLetter(employee,sign)).rejects.toMatchObject({code:'conflict'});
+  const refreshed=await readContractSharedLetter(employee,letter.id);expect(refreshed.body?.values['contract.salary']).toBe('5100.11');
+  const signed=await actContractSharedLetter(employee,{...sign,hash:refreshed.contentHash!});
+  expect(signed.state).toBe('released');expect(signed.valuesFixed).toBe(true);
+  expect((await actContractSharedLetter(employee,{...sign,hash:refreshed.contentHash!})).history).toHaveLength(2);
+  await setCompensation(f.admin,{employmentId:f.employee.employmentId,basicSalary:5200.12,effectiveFrom:start});
+  expect((await readContractSharedLetter(employee,letter.id)).body?.values['contract.salary']).toBe('5100.11');
+  const current=await contractSharedContext(f.proposer,f.caseId);expect(current.flow?.stage).toBe('workflow');expect(current.flow?.flags).not.toContain('employee_cannot_sign');expect(current.source.contractNumber).toBe(4);
   const [native]=await owner.db.execute<{count:number;salary:string}>(sql`select (select count(*)::int from personnel_posting where tenant_id=${f.b.tenantId}::uuid) as count,c.basic_salary::text as salary from compensation c where c.tenant_id=${f.b.tenantId}::uuid and c.employment_id=${f.employee.employmentId}::uuid and c.superseded_at is null`);
-  expect(native.count).toBe(0);expect(Number(native.salary)).toBe(4976.21);
+  expect(native.count).toBe(0);expect(Number(native.salary)).toBe(5200.12);
  });
  it('lets a real manager without builder/pay access review the chain without reading private routing inputs or applying effects',async()=>{
   expect((await automationBuilderAccess(f.proposer)).any).toBe(false);
