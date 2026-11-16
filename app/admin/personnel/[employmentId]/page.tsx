@@ -2712,7 +2712,7 @@ export default async function EmployeePage({
             {/* r393 (685d2380 step 2) — the SHARED field group the draft's Payroll tab renders too, in
                 form mode (markup unchanged — pinned by test/r393-draft-payroll-tab.dom.test.tsx). */}
             <PaymentMethodField mode="form" defaultValue={emp.paymentMethod} disabled={!!emp.terminatedOn} />
-            <label className="text-xs text-muted-foreground">{t('paymentMethodEffectiveDate')}<DateField name="paymentMethodEffectiveDate" defaultValue={today} className={inputCls} required disabled={!!emp.terminatedOn}/></label>
+            <label className="text-xs text-muted-foreground">{t('paymentMethodEffectiveDate')}<DateField {...personnelControl('payroll.payment_method_and_payroll_policy.effectiveon','record')} defaultValue={today} className={inputCls} disabled={!!emp.terminatedOn}/></label>
           </form>
         </div>
         <p className="text-xs text-muted-foreground">{t('paymentMethodBankHint')}</p>

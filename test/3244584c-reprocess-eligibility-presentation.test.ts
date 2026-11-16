@@ -128,6 +128,6 @@ describe('3244584c exclusion outcomes and run-level stop reasons', () => {
       expect(typeof m[k], k).toBe('string');
       expect(ph(m[k]), k).toEqual(ph(en[k]));
     }
-    expect(Object.keys(m.recalcChangeCategory).sort()).toEqual(['compensation', 'hire_date', 'statutory', 'termination', 'transfer']);
+    expect(Object.keys(m.recalcChangeCategory).sort()).toEqual(['compensation', 'employment_information', 'hire_date', 'statutory', 'termination', 'transfer']);
   });
 });

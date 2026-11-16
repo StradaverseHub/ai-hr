@@ -2161,7 +2161,7 @@ export async function setEmploymentGrade(
     else {
       // Approved Rewards and other independent grade owners retain their existing authority.
       // Their canonical write uses the financial owner's ordinary RLS, rather than borrowing Workforce.
-      const {markRunsAffectedByEmploymentChangeTx}=await import('./payroll');
+      const {markRunsAffectedByEmploymentChangeTx}=await import('../packs/payroll/service');
       await markRunsAffectedByEmploymentChangeTx(tx,ctx,{employmentIds:[p.employmentId],from:todayInKualaLumpur(),category:'employment_information'});
     }
     return { id: p.employmentId, changed: true as const };

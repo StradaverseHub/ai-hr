@@ -159,7 +159,7 @@ describe('2260a06b · Employment Movement', () => {
     const contract = await hire('contract', '2026-12-31');
     await createMovementEvent(ctx(), { employmentId: contract.employmentId, kind: 'promotion', effectiveDate: PAST, contractEndDate: '2027-06-30' });
     expect((await row(contract.employmentId)).contractEndDate).toBe('2027-06-30');
-    await expect(createMovementEvent(ctx(), { employmentId: contract.employmentId, kind: 'promotion', effectiveDate: PAST, contractEndDate: '2025-06-30' }))
+    await expect(createMovementEvent(ctx(), { employmentId: contract.employmentId, kind: 'promotion', effectiveDate: new Date(Date.parse(PAST+'T00:00:00Z')+86400000).toISOString().slice(0,10), contractEndDate: '2025-06-30' }))
       .rejects.toThrow('Contract end date must be later than the contract start date.');
   });
 

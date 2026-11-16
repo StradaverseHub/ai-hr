@@ -11,8 +11,19 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import type {PaymentMethod} from '../lib/payment-methods';
 
 /** One indexed dated owner. A recorded null clears the method; a missing historical date remains unknown. */
-export function employmentPaymentMethodOnSql(employmentId:SQL,date:string=todayInKualaLumpur()){
- return sql<PaymentMethod|null>`app.employment_payment_method_on(${employmentId},${date}::date)`;
+export function employmentPaymentMethodOnSql(employmentId:SQL,date:string=todayInKualaLumpur(),legacyMethod?:SQL){
+ // Keep this projection visible to PostgreSQL's statement planner. The SET-fenced scalar function
+ // repeats its employment/RLS fallback for every person (5.7s for 983 multi-company rows in hosted
+ // run43951241825). An already authorized outer employment can supply its legacy column directly.
+ // Same history, null/unknown boundary and RLS as app.employment_payment_method_on; scale equivalence
+ // compares both readers for every scope. No current-master substitution when dated history exists.
+ const legacy=legacyMethod??sql`(select e.payment_method::text from employment e where e.id=${employmentId} and e.tenant_id=app.current_tenant_id())`;
+ return sql<PaymentMethod|null>`case when exists(select 1 from employment_payment_method_history h
+   where h.employment_id=${employmentId} and h.tenant_id=app.current_tenant_id()) then
+  (select h.payment_method from employment_payment_method_history h
+   where h.employment_id=${employmentId} and h.tenant_id=app.current_tenant_id() and h.superseded_at is null
+    and h.effective_on<=${date}::date order by h.effective_on desc limit 1)
+  else ${legacy} end`;
 }
 export async function employmentPaymentMethodOnTx(tx:Tx,employmentId:string,date:string){
  if(!isCalendarDate(date))throw new Error('Enter a valid payment method effective date.');

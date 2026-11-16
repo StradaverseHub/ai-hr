@@ -1,4 +1,5 @@
 'use client';
+import {HIRE_INFORMATION_FORM_IDS,HIRE_INFORMATION_FORM_FIELDS} from '@/lib/hire-information-form-contract';
 import {EMPLOYMENT_INFORMATION_ROW,EMPLOYMENT_INFORMATION_HEADER} from '@/lib/employment-information-layout';
 import {PaymentMethodField} from '@/components/payment-method-field';
 import type {HireEmploymentInformationField} from '@/core/hire-employment-information';
@@ -14,7 +15,7 @@ import {DerivedOrganisationFields,useDerivedOrganisation} from '@/components/der
 // six allow-listed field names in any case.
 import { useMemo, useRef, useActionState, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { personnelControl, personnelCarry, personnelWorkflowCarry, personnelWorkflowInput, personnelFormLabel, personnelFormRequired } from '@/lib/personnel-form-contract';
+import { personnelControl, personnelCarry, personnelWorkflowCarry, personnelWorkflowInput, personnelWorkflowControl, personnelFormWidget, personnelFormLabel, personnelFormRequired } from '@/lib/personnel-form-contract';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { correctHireDetailsAction,saveMovementPageAction } from './actions';
 
@@ -149,7 +150,7 @@ export function HireCorrectionForm({
       {pageError&&<p role="alert" className="px-4 py-3 text-sm text-destructive">{pageError}</p>}
       <input type="hidden" name="employmentId" value={employmentId} />
       <input {...personnelCarry('employment_history.original_hire_details_and_corrections.reason')} value={reason} />
-      {informationChanged.map(field=><input key={field.field} type="hidden" name={'hireInformation_'+field.field} value={informationValues[field.field]??''}/>)}
+      {HIRE_INFORMATION_FORM_FIELDS.map(field=>informationChanged.some(item=>item.field===field)&&<input key={field} {...personnelWorkflowCarry(HIRE_INFORMATION_FORM_IDS[field],'hireInformation')} value={informationValues[field]??''}/>)}
       {/* ONLY the changed fields are posted. An untouched select carries no name. */}
       {changed.map((f) => (
         <input key={f.field} {...personnelWorkflowCarry(hireField(f.field),'hireCorrection')} value={values[f.field] ?? ''} />
@@ -166,16 +167,22 @@ export function HireCorrectionForm({
       </div>
 
       <div className="divide-y divide-border">
-        {information.map(field=><div key={field.field} className={EMPLOYMENT_INFORMATION_ROW}>
-          <label htmlFor={'hire-information-'+field.field} className="text-sm text-muted-foreground">{field.label}</label>
-          <div className="text-sm">{field.display}</div>
-          {field.type!=='select'?<input data-personnel-field={field.fieldId} id={'hire-information-'+field.field} type={field.type} min={field.type==='number'?0:undefined} step={field.type==='number'?1:undefined} value={informationValues[field.field]??''} required={field.required} onChange={event=>setInformationValues(previous=>({...previous,[field.field]:event.target.value}))} className={selectCls}/>:
-          <select data-personnel-field={field.fieldId} id={'hire-information-'+field.field} value={informationValues[field.field]??''} required={field.required} onChange={event=>setInformationValues(previous=>({...previous,[field.field]:event.target.value}))} className={selectCls}>
-            {!field.required&&<option value="">{t('none')}</option>}
-            {field.value&&!field.options?.some(option=>option.id===field.value)&&<option value={field.value}>{field.display}</option>}
-            {field.options?.map(option=><option key={option.id} value={option.id}>{option.name}</option>)}
-          </select>}
-        </div>)}
+        {HIRE_INFORMATION_FORM_FIELDS.map(key=>{
+          const field=information.find(item=>item.field===key);if(!field)return null;
+          const fieldId=HIRE_INFORMATION_FORM_IDS[key];
+          const choice=personnelFormWidget(fieldId)==='choice';
+          // Controlled values carry no form name. Only the changed hidden facts above are submitted.
+          return <div key={key} className={EMPLOYMENT_INFORMATION_ROW}>
+            <label htmlFor={'hire-information-'+key} className="text-sm text-muted-foreground">{personnelFormLabel(fieldId,(label,fallback)=>tRoot.has(label)?tRoot(label):fallback)}</label>
+            <div className="text-sm">{field.display}</div>
+            {!choice?<input {...personnelWorkflowInput(fieldId,'hireInformation','draft')} id={'hire-information-'+key} value={informationValues[key]??''} onChange={event=>setInformationValues(previous=>({...previous,[key]:event.target.value}))} className={selectCls}/>:
+            <select {...personnelWorkflowControl(fieldId,'hireInformation','draft')} id={'hire-information-'+key} value={informationValues[key]??''} onChange={event=>setInformationValues(previous=>({...previous,[key]:event.target.value}))} className={selectCls}>
+              {!field.required&&<option value="">{t('none')}</option>}
+              {field.value&&!field.options?.some(option=>option.id===field.value)&&<option value={field.value}>{field.display}</option>}
+              {field.options?.map(option=><option key={option.id} value={option.id}>{option.name}</option>)}
+            </select>}
+          </div>;
+        })}
       </div>
       <DerivedOrganisationFields state={derivedOrganisation}/>
       <div className="divide-y divide-border">
@@ -272,7 +279,7 @@ export function HireCorrectionForm({
       {paymentMethodAtHire!==undefined&&<div className={EMPLOYMENT_INFORMATION_ROW}>
         <div className="text-sm text-muted-foreground">{tRoot('people.detail.paymentMethod')}</div>
         <div className="text-sm">{paymentMethodAtHire?tRoot('people.detail.paymentMethod_'+paymentMethodAtHire):'—'}</div>
-        <div><PaymentMethodField mode="controlled" value={paymentMethod} onChange={setPaymentMethod}/>{methodChanged&&<input type="hidden" name="hirePaymentMethod" value={paymentMethod}/>}</div>
+        <div><PaymentMethodField mode="controlled" value={paymentMethod} onChange={setPaymentMethod}/>{methodChanged&&<input {...personnelWorkflowCarry('payroll.payment_method_and_payroll_policy.paymentmethod','hireCorrection')} value={paymentMethod}/>}</div>
       </div>}
 
       <label className="block px-4 pt-4">

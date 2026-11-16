@@ -1,7 +1,6 @@
 'use client';
 import {EMPLOYMENT_INFORMATION_ROW,EMPLOYMENT_INFORMATION_HEADER} from '@/lib/employment-information-layout';
 import {formatDmy} from '@/lib/date-display';
-import { EmploymentPeriodValueControl, EmploymentPeriodUnitControl } from '@/components/employment-period-fields';
 import { MOVEMENT_EMPLOYMENT_PERIODS, type MovementEmploymentPeriods, type MovementEmploymentPeriodField } from '@/lib/movement-employment-periods';
 import { ActionButton } from '@/components/ui/action-button';
 import {DerivedOrganisationFields,useDerivedOrganisation} from '@/components/derived-organisation-fields';
@@ -597,34 +596,32 @@ export function MovementNewEvent({
           </option>
         ))}
       </select>),
-    afterType === 'contract' ? row('contractEndDate', 'contractEndDate', label(movementField('contractEndDate')), current.contractEndDate ?? null,
+    afterType === 'contract' ? row('contractEndDate', 'contractEndDate', label(movementField('contractEndDate')), current.contractEndDate ? formatDmy(current.contractEndDate) : null,
       <>
         <input key={`contractEndDate-${typeChanges}`} {...personnelWorkflowInput(movementField('contractEndDate'), 'movement', 'edit')}
           defaultValue={typeChanges ? (saved?.contractEndDate ?? '') : (after.contractEndDate ?? '')} className={inputCls} />
         {typeChanges && <p className="text-xs text-muted-foreground">{t('form.endDateRequiredContract')}</p>}
       </>) : null,
-    afterType === 'intern' ? row('internshipEndDate', 'internshipEndDate', label(movementField('internshipEndDate')), current.internshipEndDate ?? null,
+    afterType === 'intern' ? row('internshipEndDate', 'internshipEndDate', label(movementField('internshipEndDate')), current.internshipEndDate ? formatDmy(current.internshipEndDate) : null,
       <>
         <input key={`internshipEndDate-${typeChanges}`} {...personnelWorkflowInput(movementField('internshipEndDate'), 'movement', 'edit')}
           defaultValue={typeChanges ? (saved?.internshipEndDate ?? '') : (after.internshipEndDate ?? '')} className={inputCls} />
         {typeChanges && <p className="text-xs text-muted-foreground">{t('form.endDateRequiredIntern')}</p>}
       </>) : null,
-    row('confirmationDate', 'confirmationDate', label(movementField('confirmationDate')), current.confirmationDate ?? null,
+    row('confirmationDate', 'confirmationDate', label(movementField('confirmationDate')), current.confirmationDate ? formatDmy(current.confirmationDate) : null,
       behaviour === 'confirmation'
-        ? <span className="text-sm text-muted-foreground">{correctionDate}</span>
+        ? <span className="text-sm text-muted-foreground">{formatDmy(correctionDate)}</span>
         : <input {...personnelWorkflowInput(movementField('confirmationDate'), 'movement')}
             aria-label={label(movementField('confirmationDate'))} defaultValue={after.confirmationDate ?? ''} className={inputCls} />),
     ...MOVEMENT_EMPLOYMENT_PERIODS.flatMap(period => [
       row(period.value, period.value, label(movementField(period.value)), current[period.value] ?? null,
-        <EmploymentPeriodValueControl fieldId={movementField(period.value)}
-          {...personnelWorkflowControl(movementField(period.value), 'movement')}
+        <input {...personnelWorkflowInput(movementField(period.value), 'movement')} className={inputCls}
           aria-label={label(movementField(period.value))} defaultValue={after[period.value] ?? ''} />),
       row(period.unit, period.unit, label(movementField(period.unit)),
         periodUnitLabel(period.unit, current[period.unit]),
-        <EmploymentPeriodUnitControl fieldId={movementField(period.unit)} allowEmpty
-          {...personnelWorkflowControl(movementField(period.unit), 'movement')}
+        <select {...personnelWorkflowControl(movementField(period.unit), 'movement')} className={inputCls}
           aria-label={label(movementField(period.unit))}
-          defaultValue={after[period.unit] ?? ''} />),
+          defaultValue={after[period.unit] ?? ''}><option value="">{tRoot('people.detail.employmentInfo.unit')}</option>{personnelFormChoices(movementField(period.unit)).map(option=><option key={option.value} value={option.value}>{tRoot(option.labelKey)}</option>)}</select>),
     ]),
     row('managerEmploymentId', 'manager', label(movementField('managerEmploymentId')), nameOf(managers, current.managerEmploymentId),
       select('managerEmploymentId', after.managerEmploymentId, scopedManagers, t('form.none'))),

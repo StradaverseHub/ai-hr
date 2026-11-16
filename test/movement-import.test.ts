@@ -125,7 +125,7 @@ describe('Movement rollback-only preview and atomic confirmation',()=>{
   const intents=after.events.filter(row=>row.eventType==='employment.movement.scheduled'),pending=(await movementHistory(ctx,id)).filter(row=>row.status==='pending');
   expect(intents).toEqual(expect.arrayContaining([expect.objectContaining({payload:expect.objectContaining({type:'entityTransfer',effectiveDate:day(7)})}),expect.objectContaining({payload:expect.objectContaining({type:'promotion',effectiveDate:day(14)})})]));expect(intents).toHaveLength(2);expect(pending.map(row=>row.id).sort()).toEqual(intents.map(row=>row.id).sort());
   await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,id,day(14)));
-  expect(await movementCurrentState(ctx,id)).toMatchObject({companyId:destination.id,departmentId:department.id,basicSalary:'4200.00'});
+  expect(await movementCurrentState(ctx,id,{asOf:day(14)})).toMatchObject({companyId:destination.id,departmentId:department.id,basicSalary:'4200.00'});
  });
  it('commits future salary and department returns to the present baseline without applying either date early',async()=>{
   const id=await hire(),ctx=adminCtx(b);await setCompensation(ctx,{employmentId:id,basicSalary:3000,effectiveFrom:day(-40)});
@@ -135,13 +135,13 @@ describe('Movement rollback-only preview and atomic confirmation',()=>{
   const after=await state(id);expect(after.employment).toEqual(before.employment);expect(after.assignments).toEqual(before.assignments);expect(after.compensation).toEqual(before.compensation);
   const intents=after.events.filter(row=>row.eventType==='employment.movement.scheduled'),pending=(await movementHistory(ctx,id)).filter(row=>row.status==='pending');
   expect(intents).toEqual(expect.arrayContaining([expect.objectContaining({payload:expect.objectContaining({type:'promotion',effectiveDate:day(7)})}),expect.objectContaining({payload:expect.objectContaining({type:'promotion',effectiveDate:day(14)})})]));expect(intents).toHaveLength(2);expect(pending.map(row=>row.id).sort()).toEqual(intents.map(row=>row.id).sort());
-  await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,id,day(7)));expect(await movementCurrentState(ctx,id)).toMatchObject({departmentId:b.deptB,basicSalary:'3500.00'});
-  await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,id,day(14)));expect(await movementCurrentState(ctx,id)).toMatchObject({departmentId:b.deptA,basicSalary:'3000.00'});
+  await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,id,day(7)));expect(await movementCurrentState(ctx,id,{asOf:day(7)})).toMatchObject({departmentId:b.deptB,basicSalary:'3500.00'});
+  await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,id,day(14)));expect(await movementCurrentState(ctx,id,{asOf:day(14)})).toMatchObject({departmentId:b.deptA,basicSalary:'3000.00'});
  });
  it('refuses pre-hire neutral events and conflicting same-date writes while retaining disjoint same-date changes',async()=>{
   const id=await hire(),before=await state(id);
   expect((await ready(csv([['EMP-0004','secondment',day(-61),'','','Before hire']]))).valid).toBe(0);
-  const conflict=csv([['EMP-0004','promotion',day(-2),'','3500',''],['EMP-0004','increment',day(-2),'','3700','']]);const preview=await ready(conflict);expect(preview.valid).toBe(0);expect(preview.employees[0].rows.find(row=>row.row===2)?.errors).toEqual(['employee_sequence_invalid']);expect(preview.employees[0].rows.find(row=>row.row===3)?.errors).toContain('same_date_conflicting_changes');
+  const conflict=csv([['EMP-0004','promotion',day(-2),'','3500',''],['EMP-0004','increment',day(-2),'','3700','']]);const preview=await ready(conflict);expect(preview.valid).toBe(0);expect(preview.employees[0].rows.find(row=>row.row===2)?.errors).toEqual(['employee_sequence_invalid']);expect(preview.employees[0].rows.find(row=>row.row===3)?.errors.join(' ')).toMatch(/event on .*already changes.*salary.*Movement Event ID/i);
   expect(await state(id)).toEqual(before);
   const disjoint=csv([['EMP-0004','promotion',day(-2),'','3500',''],['EMP-0004','transfer',day(-2),b.deptB,'','']]);expect((await ready(disjoint)).valid).toBe(2);
  });
@@ -186,8 +186,11 @@ describe('Movement rollback-only preview and atomic confirmation',()=>{
   const text=csv([['EMP-0004','transfer',effective,b.deptB,'','Fictional historic transfer']]),preview=await ready(text);expect(preview.valid).toBe(1);expect((await commit(text,preview)).imported).toBe(1);
   expect(await owner.db.select().from(payrollBatch).where(eq(payrollBatch.id,batch.id))).toEqual(beforeBatch);expect(await owner.db.select().from(payslip).where(eq(payslip.batchId,batch.id)).orderBy(asc(payslip.id))).toEqual(beforeSlips);
   const movement=(await movementHistory(ctx,id)).find(row=>row.kind==='transfer');expect(movement).toMatchObject({payrollLocked:true,canReverse:true});
-  // 646355e5 — the closed run no longer locks the row, but a correction without the acknowledgement is refused.
-  await expect(reverseMovementEvent(ctx,{employmentId:id,movementId:movement!.id,reason:'Fictional unacknowledged rollback'})).rejects.toThrow(/already closed/);
+  // The canonical owner protects closed documents without a posted acknowledgement.
+  await reverseMovementEvent(ctx,{employmentId:id,movementId:movement!.id,reason:'Fictional incorrect historical transfer'});
+  expect(await owner.db.select().from(payrollBatch).where(eq(payrollBatch.id,batch.id))).toEqual(beforeBatch);
+  expect(await owner.db.select().from(payslip).where(eq(payslip.batchId,batch.id)).orderBy(asc(payslip.id))).toEqual(beforeSlips);
+  expect((await movementHistory(ctx,id)).find(row=>row.id===movement!.id)?.status).toBe('reversed');
  });
 
  it('rolls back transactional label epochs and an actually armed audit chain during preview',async()=>{

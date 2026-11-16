@@ -1,4 +1,5 @@
 'use client';
+import {personnelControl,personnelCarry,personnelWorkflowControl} from '../lib/personnel-form-contract';
 import {useState} from 'react';
 import {useTranslations} from 'next-intl';
 import {DateField} from './ui/date-field';
@@ -32,7 +33,7 @@ export function SalaryRecordingChoices({options,defaultDate,paymentMethod,defaul
    </select>
   </label>
   {choice==='newEvent'&&<label className="flex flex-col gap-1 text-xs text-muted-foreground">{t('salaryRecording.eventType')}
-   <select name="salaryMovementType" required defaultValue={options.events.some(event=>event.code==='salaryAdjustment')?'salaryAdjustment':options.events[0]?.code??''} className={inputCls}>
+   <select {...personnelWorkflowControl('employment_history.event_information.kind','salaryRecording','record')} defaultValue={options.events.some(event=>event.code==='salaryAdjustment')?'salaryAdjustment':options.events[0]?.code??''} className={inputCls}>
     {!options.events.length&&<option value="">—</option>}
     {options.events.map(event=><option key={event.code} value={event.code}>{event.label}</option>)}
    </select>
@@ -45,12 +46,12 @@ export function SalaryRecordingChoices({options,defaultDate,paymentMethod,defaul
   </label>}
   <div className="grid gap-3 sm:grid-cols-2">
    <label className="flex flex-col gap-1 text-xs text-muted-foreground">{t('paymentMethodEffectiveDate')}
-    <DateField name="effectiveFrom" value={date} onChange={event=>setDate(event.target.value)} readOnly={choice==='updateLatest'} required className={inputCls} label={t('paymentMethodEffectiveDate')}/>
+    <DateField {...personnelControl('payroll.basic_salary_and_salary_history.validfrom','record')} value={date} onChange={event=>setDate(event.target.value)} readOnly={choice==='updateLatest'} className={inputCls} label={t('paymentMethodEffectiveDate')}/>
    </label>
-   <div className="space-y-1"><PaymentMethodField mode="controlled" value={method} onChange={setMethod}/><input type="hidden" name="paymentMethod" value={method}/></div>
+   <div className="space-y-1"><PaymentMethodField mode="controlled" value={method} onChange={setMethod}/><input {...personnelCarry('payroll.payment_method_and_payroll_policy.paymentmethod')} value={method}/></div>
   </div>
   {choice!=='newEvent'&&<label className="flex flex-col gap-1 text-xs text-muted-foreground">{t('movement.correctionReasonLabel')}
-   <textarea name="salaryRecordingReason" required maxLength={1000} className={inputCls}/>
+   <textarea {...personnelWorkflowControl('employment_history.event_information.correctionreason','salaryRecording','record')} maxLength={1000} className={inputCls}/>
   </label>}
   {choice==='amendment'&&<p className="text-xs text-muted-foreground">{t('salaryRecording.amendmentHint')}</p>}
   {closed&&<p className="text-xs text-amber-800 dark:text-amber-300">{t('movement.form.closedPayrollBody')}</p>}

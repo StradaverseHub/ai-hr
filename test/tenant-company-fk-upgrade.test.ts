@@ -291,6 +291,14 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5770_attendance_workflow_approver_codes',
    // Architecture/performance: shared Access for the existing assistant metadata index.
    '5771_assistant_legacy_index_shared_access',
+   '5772_movement_employment_periods',
+   '5773_movement_payroll_protection_and_delete',
+   '5774_employment_payment_method_history',
+   '5775_movement_payment_method_field',
+   '5776_workforce_payroll_input_invalidation',
+   '5777_movement_closed_payroll_metadata',
+   '5778_movement_payroll_windows',
+   '5779_hire_company_allocation_review',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);

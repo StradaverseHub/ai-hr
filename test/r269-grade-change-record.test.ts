@@ -348,7 +348,7 @@ describe('§B · the history carries the date the change took effect; the ledger
     expect(create).toContain('gradeBefore: res.gradeBefore');
     const movement = read('core/movement.ts');
     const previous = movement.indexOf('const [previousGrade] = needsGradeBefore');
-    const apply = movement.indexOf('const result=await execute();',previous);
+    const apply = movement.indexOf('const result = changesMaster',previous);
     expect(previous).toBeGreaterThan(0);
     expect(apply).toBeGreaterThan(previous);
     expect(movement.slice(previous,apply)).toContain('await tx.select({gradeId:employment.gradeId})');

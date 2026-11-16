@@ -1975,7 +1975,7 @@ export function movementDetail(
   employmentId: string,
   movementId: string,
 ): Promise<MovementDetail | null> {
-  return withTenant(ctx, tx => movementDetailTx(tx, ctx, employmentId, movementId));
+  return withAccessDisplayRead(() => withTenant(ctx, tx => movementDetailTx(tx, ctx, employmentId, movementId)));
 }
 
 /**
@@ -2325,7 +2325,7 @@ export function movementCurrentState(
   options?: {asOf:string},
 ): Promise<MovementCurrentState> {
   if(options&&!isCalendarDate(options.asOf))throw new Error('Enter a valid employment information date.');
-  return withTenant(ctx, async tx => {await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');return currentStateTx(tx,employmentId,options?.asOf);});
+  return withAccessDisplayRead(() => withTenant(ctx, async tx => {await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');return currentStateTx(tx,employmentId,options?.asOf);}));
 }
 
 /** Same canonical state read inside a caller-owned movement transaction. */

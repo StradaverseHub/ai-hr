@@ -12,6 +12,7 @@ export function auditPersonnelFormSource(file:string,text:string,fields:readonly
   // or maintain a second descriptor map; unknown modules/keys/nonliteral entries remain unresolved.
   const importedMaps=new Map<string,Readonly<Record<string,string>>>();
   const importedArrays=new Map<string,readonly string[]>();
+  const importedRows=new Map<string,readonly Readonly<Record<string,string>>[]>();
   for(const node of source.statements)if(ts.isImportDeclaration(node)&&ts.isStringLiteral(node.moduleSpecifier)){
     const imports=node.importClause?.namedBindings;if(!imports||!ts.isNamedImports(imports))continue;
     const moduleText=options.resolveImportSource?.(file,node.moduleSpecifier.text);if(moduleText===undefined)continue;
@@ -23,6 +24,19 @@ export function auditPersonnelFormSource(file:string,text:string,fields:readonly
         let value=declaration.initializer;while(ts.isAsExpression(value)||ts.isParenthesizedExpression(value)||ts.isSatisfiesExpression(value))value=value.expression;
         if(ts.isArrayLiteralExpression(value)&&value.elements.length&&value.elements.every(ts.isStringLiteralLike)){
           importedArrays.set(binding.name.text,value.elements.map(element=>(element as ts.StringLiteralLike).text));continue;
+        }
+        if(ts.isArrayLiteralExpression(value)&&value.elements.length&&value.elements.every(ts.isObjectLiteralExpression)){
+          const rows:Record<string,string>[]=[];let literal=true;
+          for(const item of value.elements as ts.NodeArray<ts.ObjectLiteralExpression>){
+            const row:Record<string,string>={};
+            for(const prop of item.properties){
+              if(!ts.isPropertyAssignment(prop)||!(ts.isIdentifier(prop.name)||ts.isStringLiteralLike(prop.name))||!ts.isStringLiteralLike(prop.initializer)||Object.hasOwn(row,prop.name.text)){literal=false;break;}
+              row[prop.name.text]=prop.initializer.text;
+            }
+            if(!Object.keys(row).length)literal=false;rows.push(row);
+          }
+          if(literal)importedRows.set(binding.name.text,rows);
+          continue;
         }
         if(!ts.isObjectLiteralExpression(value))continue;
         const map:Record<string,string>={};let literal=true;
@@ -86,6 +100,17 @@ export function auditPersonnelFormSource(file:string,text:string,fields:readonly
       if(!d&&!shadowed)return importedArrays.get(expression.text)??[];
     }
     if(ts.isElementAccessExpression(expression)||ts.isPropertyAccessExpression(expression)){
+      if(ts.isPropertyAccessExpression(expression)&&ts.isIdentifier(expression.expression)){
+        const parameter=expression.expression.text,fn=enclosingFunction(expression);
+        if(ts.isFunctionLike(fn)&&fn.parameters[0]&&ts.isIdentifier(fn.parameters[0].name)&&fn.parameters[0].name.text===parameter&&ts.isCallExpression(fn.parent)&&fn.parent.arguments[0]===fn&&ts.isPropertyAccessExpression(fn.parent.expression)&&['map','flatMap'].includes(fn.parent.expression.name.text)){
+          const array=fn.parent.expression.expression;
+          if(ts.isIdentifier(array)&&!declaration(array.text,array)){
+            const rows=importedRows.get(array.text),key=expression.name.text;
+            if(rows?.length&&rows.every(row=>Object.hasOwn(row,key)))return rows.map(row=>row[key]);
+          }
+        }
+      }
+
       if(ts.isIdentifier(expression.expression)&&!declaration(expression.expression.text,expression)){
         const map=importedMaps.get(expression.expression.text);
         if(map){const keys=ts.isElementAccessExpression(expression)?expression.argumentExpression?ids(expression.argumentExpression,seen,argumentsByParameter):[]:[expression.name.text];return keys.length&&keys.every(key=>Object.hasOwn(map,key))?keys.map(key=>map[key]):[];}

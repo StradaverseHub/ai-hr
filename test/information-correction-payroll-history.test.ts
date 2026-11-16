@@ -63,9 +63,12 @@ describe('a correction after payroll and later changes',()=>{
   // As issued: the grade and department before the later changes, the Group Join Date before this correction.
   expect(snap.grade).toBe('Fictional Grade One');
   expect(snap.hiredOn).toBe(HIRED);
-  const meta=snap.documentMetadata as {department?:string;jobGrade?:string;snapshotBasis:{reconstructed:string[];asDisplayed:string[]}};
+  const meta=snap.documentMetadata as {department?:string;jobGrade?:string;snapshotBasis:{reconstructed:string[];asDisplayed:string[];unchangedSince:string[]}};
   expect(meta.department).toBe(await deptName(b.deptA));
-  expect(meta.snapshotBasis.reconstructed).toEqual(expect.arrayContaining(['jobGrade','department']));
+  expect(meta.snapshotBasis.reconstructed).toContain('department');
+  // Movement retained this document before changing grade, so that grade needed no reconstruction.
+  expect(meta.jobGrade).toBe('Fictional Grade One');
+  expect(meta.snapshotBasis.unchangedSince).toContain('jobGrade');
   expect(await payroll(id)).toEqual(before);
  });
  it('never changes a snapshot that already exists',async()=>{

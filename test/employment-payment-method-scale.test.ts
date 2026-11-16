@@ -18,7 +18,7 @@ beforeAll(async()=>{
 afterAll(closeAll);
 
 const read=(ctx:SessionContext,dated:boolean,companyId?:string)=>withTenant(ctx,tx=>tx.select({id:employment.id,companyId:employment.companyId,
- method:dated?employmentPaymentMethodOnSql(sql`${employment.id}`,'2026-02-01'):sql<string|null>`${employment.paymentMethod}::text`})
+ method:dated?employmentPaymentMethodOnSql(sql`${employment.id}`,'2026-02-01',sql`${employment.paymentMethod}::text`):sql<string|null>`${employment.paymentMethod}::text`})
  .from(employment).where(companyId?eq(employment.companyId,companyId):undefined).orderBy(asc(employment.id)));
 
 describe('dated payment-method reader at group scale',()=>{
@@ -31,7 +31,11 @@ describe('dated payment-method reader at group scale',()=>{
     const observed=await observeStatements(()=>read(ctx,true,companyId));
     expect(previous.length,`${name}: nonempty authorized source`).toBeGreaterThan(0);
     expect(observed.result,name).toEqual(previous);
-    expect(observed.statements.filter(statement=>statement.sql.includes('employment_payment_method_on')),`${name}: one set-based query`).toHaveLength(1);
+    const canonical=await withTenant(ctx,tx=>tx.select({id:employment.id,companyId:employment.companyId,
+     method:sql<string|null>`app.employment_payment_method_on(${employment.id},'2026-02-01'::date)`})
+     .from(employment).where(companyId?eq(employment.companyId,companyId):undefined).orderBy(asc(employment.id)));
+    expect(observed.result,name+': native dated-owner equivalence').toEqual(canonical);
+    expect(observed.statements.filter(statement=>statement.sql.includes('employment_payment_method_history')),`${name}: one set-based query`).toHaveLength(1);
    }
   }
  },120_000); // Group fixture includes 1,000 RLS-protected rows; leave headroom for hosted runners.

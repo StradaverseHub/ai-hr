@@ -23,8 +23,8 @@ const mount=(props:Parameters<typeof MovementNewEvent>[0])=>render(<NextIntlClie
 describe('an inactive custom Movement keeps its authorized Edit behavior metadata',()=>{
  it('renders the real comparison grid and editable retained facts for the inactive current code',()=>{
   const {container}=mount({...base,types:[active,inactive],edit});
-  expect(screen.getByText(messages.people.detail.movement.form.currentInformation)).toBeInTheDocument();
-  expect(screen.getByText(messages.people.detail.movement.form.afterInformation)).toBeInTheDocument();
+  expect(screen.getByText(messages.people.detail.movement.detail.beforeChanges)).toBeInTheDocument();
+  expect(screen.getByText(messages.people.detail.movement.detail.afterChanges)).toBeInTheDocument();
   expect(container.querySelector('select[name="kind"]')).toHaveValue(inactive.code);
   expect(screen.getByRole('option',{name:inactive.label})).toHaveValue(inactive.code);
   expect(container.querySelector('select[name="departmentId"]')).toHaveValue('department-a');
@@ -36,7 +36,7 @@ describe('an inactive custom Movement keeps its authorized Edit behavior metadat
   const type={...inactive,behaviourKind:'secondment'};
   const {container}=mount({...base,types:[active,type],edit});
   expect(container.querySelector('select[name="kind"]')).toHaveValue(type.code);
-  expect(screen.queryByText(messages.people.detail.movement.form.currentInformation)).toBeNull();
+  expect(screen.queryByText(messages.people.detail.movement.detail.beforeChanges)).toBeNull();
   expect(container.querySelector('input[name="basicSalary"]')).toBeNull();
  });
  it('keeps New Event limited to its active catalogue',()=>{

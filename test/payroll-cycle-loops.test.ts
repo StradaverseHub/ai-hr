@@ -365,10 +365,10 @@ describe('the Salary payroll loop',()=>{
   await run('loop_salary_payroll');
   expect(await bank()).toBe('match');
   // Someone with no payment method makes the bank file impossible to produce; no bank account means nothing to check.
-  await owner.db.update(schema.employment).set({paymentMethod:null}).where(eq(schema.employment.id,fx.people[5].employmentId));
+  await setEmploymentPaymentMethod(a,{employmentId:fx.people[5].employmentId,paymentMethod:null});
   await run('loop_salary_payroll');
   expect(await bank()).toBe('blocked');
-  await owner.db.update(schema.employment).set({paymentMethod:'bank_transfer'}).where(eq(schema.employment.id,fx.people[5].employmentId));
+  await setEmploymentPaymentMethod(a,{employmentId:fx.people[5].employmentId,paymentMethod:'bank_transfer'});
   await owner.db.delete(schema.companyBankProfile).where(eq(schema.companyBankProfile.companyId,b.companyId));
   await run('loop_salary_payroll');
   expect(await bank()).toBe('not_available');

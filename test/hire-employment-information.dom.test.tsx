@@ -15,6 +15,8 @@ describe('Correct Hire employment information controls',()=>{
  it('posts only explicitly changed original-hire fields with the shared before/after headings',()=>{
   const {container}=mount(),form=container.querySelector('form')!;
   expect(new FormData(form).get('hireInformation_companyId')).toBeNull();
+  expect(new FormData(form).has('companyId')).toBe(false);
+  expect(container.querySelector('#hire-information-companyId')).toHaveAccessibleName('Company');
   expect(screen.getByText('Before Changes')).toBeInTheDocument();expect(screen.getByText('After Changes')).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('Company'),{target:{value:'corrected'}});
   const data=new FormData(form);expect(data.get('hireInformation_companyId')).toBe('corrected');expect(data.get('hireInformation_hiredOn')).toBeNull();
@@ -28,7 +30,7 @@ describe('Correct Hire employment information controls',()=>{
    {field:'probationValue',label:'Probation value',value:'3',display:'3',type:'number'},
    {field:'probationUnit',label:'Probation unit',value:'month',display:'Month',type:'select',options:[{id:'month',name:'Month'},{id:'week',name:'Week'}]},
   ]}/></NextIntlClientProvider>);
-  fireEvent.change(screen.getByLabelText('Probation value'),{target:{value:'4'}});fireEvent.change(screen.getByLabelText('Probation unit'),{target:{value:'week'}});
+  fireEvent.change(container.querySelector('input[data-personnel-field="employment.employment_dates_and_service.probationvalue"]')!,{target:{value:'4'}});fireEvent.change(container.querySelector('select[data-personnel-field="employment.employment_dates_and_service.probationunit"]')!,{target:{value:'week'}});
   const data=new FormData(container.querySelector('form')!);expect(data.get('hireInformation_probationValue')).toBe('4');expect(data.get('hireInformation_probationUnit')).toBe('week');
  });
  it('offers the contract end date when the corrected original type changes to Contract',()=>{

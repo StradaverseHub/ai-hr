@@ -194,7 +194,7 @@ const READINESS_ROW_FIELDS = {
         name: schema.person.fullName,
         employeeCode: schema.employment.employeeCode,
         company: schema.company.legalName,
-        paymentMethod: employmentPaymentMethodOnSql(sql`${schema.employment.id}`),
+        paymentMethod: employmentPaymentMethodOnSql(sql`${schema.employment.id}`,undefined,sql`${schema.employment.paymentMethod}::text`),
         ic: schema.employeeStatutoryMy.icNumber,
         passport: schema.employeeStatutoryMy.passportNumber,
         taxNumber: schema.employeeStatutoryMy.taxNumber,
