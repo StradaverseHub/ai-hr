@@ -13,7 +13,7 @@ async function history(){
  const source=randomUUID(),destination=randomUUID(),department=randomUUID(),person=randomUUID(),employment=randomUUID(),request=randomUUID();
  await owner.db.execute(sql`insert into company(id,tenant_id,legal_name) values(${source}::uuid,${b.tenantId}::uuid,'Fictional retained resignation company'),(${destination}::uuid,${b.tenantId}::uuid,'Fictional destination company')`);
  await owner.db.execute(sql`insert into department(id,tenant_id,company_id,name) values(${department}::uuid,${b.tenantId}::uuid,${destination}::uuid,'Destination department')`);
- await owner.db.execute(sql`insert into person(id,tenant_id,full_name) values(${person}::uuid,${b.tenantId}::uuid,'Fictional historical resignation employee')`);
+ await owner.db.execute(sql`insert into person(id,tenant_id,full_name,primary_email) values(${person}::uuid,${b.tenantId}::uuid,'Fictional historical resignation employee',${person+'@resignation-history.example.invalid'})`);
  // A pre-existing employment without an assignment leaves no source department/configuration to mask retention.
  await owner.db.execute(sql`insert into employment(id,tenant_id,person_id,company_id,hired_on) values(${employment}::uuid,${b.tenantId}::uuid,${person}::uuid,${source}::uuid,'2024-01-01')`);
  await setModule(b.tenantId,'lifecycle','disabled');
