@@ -6,7 +6,9 @@ import {closeAll,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppU
 import {hireEmployee,setEmploymentInfo} from '../core/org';
 import {v9Setup,v9Workspace,v9SaveConfig} from '../packs/lifecycle/service';
 import {adoptContractSharedCase,previewContractSharedDecision,submitContractSharedDecision,contractSharedContext,contractPreviewJobHandler,contractAutomationJobHandler,readContractSharedLetter,actContractSharedLetter} from '../packs/contracts/service';
-import {recordContractSharedDecline,activateContractSharedOffboarding} from '../core/contract-shared-ending';
+import {recordContractSharedDecline,readContractSharedEndingActions} from '../core/contract-shared-ending';
+import {reservedSqlExecutor} from '../db/sql-executor';
+import {recordDocumentSigningActionTx} from '../packs/document-signing/service';
 import {saveAutomationDocumentTemplate,saveAutomationWorkflow,type AutomationWorkflow} from '../packs/automation/service';
 import {runBulkJobTick} from '../core/bulk-job-worker';
 import {readBulkJob} from '../core/bulk-job';
@@ -32,7 +34,7 @@ async function fixture(kind:'renew'|'end',twoDocuments=false){
  }
  templateIds.push(await template(kind==='renew','Contract outcome'));
  if(twoDocuments)templateIds.push(await template(false,'Second ending letter'));
- const workflow:AutomationWorkflow={id:randomUUID(),module:'contract_staff',name:'Contract ending decision',description:'',status:'live',required:false,trigger:{event:'decisionSubmitted',days:0,workdays:false,repeat:false},skipWhen:'never',conditions:[],steps:[...templateIds.map(letterTemplateId=>({id:randomUUID(),type:'generateDocument',conditions:[],to:[],cc:[],params:{letterTemplateId}})),{id:randomUUID(),type:'startOffboarding',conditions:[],to:[],cc:[],params:{}}]};
+ const workflow:AutomationWorkflow={id:randomUUID(),module:'contract_staff',name:'Contract ending decision',description:'',status:'live',required:false,trigger:{event:'decisionSubmitted',days:0,workdays:false,repeat:false},skipWhen:'never',conditions:[],steps:[...templateIds.map(letterTemplateId=>({id:randomUUID(),type:'generateDocument',conditions:[],to:[],cc:[],params:{letterTemplateId}})),...(kind==='end'?[{id:randomUUID(),type:'startOffboarding',conditions:[],to:[],cc:[],params:{}}]:[])]};
  await saveAutomationWorkflow(admin,{workflow,expectedRevision:0,reason:'Reviewed ending workflow fixture'});
  const declineTemplate=await template(false,'Declined renewal ending');
  await saveAutomationWorkflow(admin,{workflow:{...workflow,id:randomUUID(),name:'Recorded decline ending',trigger:{...workflow.trigger,event:'employeeDeclined'},steps:[{id:randomUUID(),type:'generateDocument',conditions:[],to:[],cc:[],params:{letterTemplateId:declineTemplate}},{id:randomUUID(),type:'startOffboarding',conditions:[],to:[],cc:[],params:{}}]},expectedRevision:0,reason:'Reviewed employee decline fixture'});
@@ -59,6 +61,38 @@ async function review(f:Awaited<ReturnType<typeof fixture>>,id:string){
  for(const event of events)await finish(event.job,f.admin,'contract_automation');return after;
 }
 describe('shared Contract endings use native Offboarding without automatic Personnel termination',()=>{
+ it('locks the letter before its signing document for a direct canonical signer, without deadlocking a concurrent prepared writer',async()=>{
+  const f=await fixture('renew');
+  const userId=await createAppUser(f.b.tenantId,f.employee.personId,'employee');
+  const employee={...f.admin,userId,personId:f.employee.personId,roles:['employee'] as SessionContext['roles'],grants:undefined};
+  await submit(f,'renew');const [letter]=await letters(f);await review(f,letter.id);
+  const view=await readContractSharedLetter(employee,letter.id);expect(view.pendingAction?.kind).toBe('sign');
+  const [native]=await owner.db.execute<{id:string}>(sql`select signing_document_id as id from contract_shared_letter where tenant_id=${f.b.tenantId}::uuid and id=${letter.id}::uuid`);
+  const blocker=await owner.client.reserve(),signer=await owner.client.reserve();let signing:Promise<unknown>|undefined;
+  try{
+   await blocker`begin`;await signer`begin`;
+   await blocker`select set_config('app.tenant_id',${f.b.tenantId},true),set_config('app.user_id',${f.admin.userId!},true),set_config('jit','off',true)`;
+   await signer`select set_config('app.tenant_id',${f.b.tenantId},true),set_config('app.user_id',${userId},true),set_config('jit','off',true)`;
+   const [pid]=await signer<{pid:number}[]>`select pg_backend_pid() as pid`;
+   await blocker`select id from contract_shared_letter where tenant_id=${f.b.tenantId}::uuid and id=${letter.id}::uuid for update`;
+   signing=recordDocumentSigningActionTx(reservedSqlExecutor(signer),employee,{id:native.id,actionId:randomUUID(),stepId:view.pendingAction!.stepId,revision:view.contentRevision,hash:view.contentHash!,action:'signed',comment:'Accepted exact reviewed terms',method:'typed',value:'Fictional ending subject',consent:true});
+   // Observe the actual second backend waiting for the held letter, rather than guessing by elapsed time.
+   let waiting=false;
+   for(let attempt=0;attempt<200;attempt++){
+    const [state]=await blocker<{waiting:boolean}[]>`select cardinality(pg_blocking_pids(${pid.pid}))>0 as waiting`;
+    if(state.waiting){waiting=true;break;}await new Promise(resolve=>setTimeout(resolve,10));
+   }
+   expect(waiting).toBe(true);
+   // With the old reverse order this backend waits on the signer, creating a deadlock cycle.
+   await blocker`set local lock_timeout='2s'`;
+   await blocker`select id from document_signing_document where tenant_id=${f.b.tenantId}::uuid and id=${native.id}::uuid for update`;
+   await blocker`commit`;await signing;await signer`commit`;
+  }finally{
+   await blocker`rollback`.catch(()=>undefined);await signer`rollback`.catch(()=>undefined);
+   await signing?.catch(()=>undefined);blocker.release();signer.release();
+  }
+  expect((await readContractSharedLetter(employee,letter.id)).state).toBe('released');
+ },120_000);
  it('releases each authored document before handing off the exact final letter, idempotently',async()=>{
   const f=await fixture('end',true);const accepted=await submit(f,'end');
   let docs=await letters(f);expect(docs).toHaveLength(1);expect((await contractSharedContext(f.admin,f.caseId)).flow?.offboardingId).toBeNull();
@@ -76,11 +110,13 @@ describe('shared Contract endings use native Offboarding without automatic Perso
   const f=await fixture('renew');await submit(f,'renew');let docs=await letters(f);await review(f,docs[0].id);
   const waiting=await readContractSharedLetter(f.admin,docs[0].id);expect(waiting.layers.some(layer=>layer.kind==='sign'&&layer.unavailable)).toBe(true);
   const view=await contractSharedContext(f.admin,f.caseId),revision=view.flow!.revision;
+  expect((await readContractSharedEndingActions(f.admin,f.caseId)).canRecordDecline).toBe(true);
   await expect(recordContractSharedDecline(f.admin,{caseId:f.caseId,revision,reason:'not_a_reason',notes:'Told People BP'})).rejects.toThrow();
   const outsiderId=await createAppUser(f.b.tenantId,f.employee.personId,'employee');const outsider={...f.admin,userId:outsiderId,personId:f.employee.personId,roles:['employee'] as SessionContext['roles'],grants:undefined};
   await expect(recordContractSharedDecline(outsider,{caseId:f.caseId,revision,reason:'career_opportunity',notes:''})).rejects.toThrow();
   const request={caseId:f.caseId,revision,reason:'career_opportunity',notes:'Employee told People BP they will not renew.'};
   const declined=await recordContractSharedDecline(f.admin,request);expect(declined.flow.declined).toMatchObject({reason:request.reason,notes:request.notes,by:f.admin.userId});
+  expect((await readContractSharedEndingActions(f.admin,f.caseId)).canRecordDecline).toBe(false);
   expect(await recordContractSharedDecline(f.admin,request)).toMatchObject({eventId:declined.eventId,jobId:declined.jobId});
   const retained=await readContractSharedLetter(f.admin,docs[0].id);expect(retained.state).toBe('declined');expect(retained.history).toEqual(waiting.history);
   const oldRuns=await owner.db.execute<{status:string;waiting_for:string|null}>(sql`select status,waiting_for from automation_run where tenant_id=${f.b.tenantId}::uuid and subject_id=${f.caseId}::uuid and workflow_id=${f.workflow.id}::uuid`);expect(oldRuns).toEqual([{status:'failed',waiting_for:null}]);
