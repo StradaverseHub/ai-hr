@@ -101,3 +101,54 @@ The reporter contested that the saved Group Join Date and Join Date blocked corr
 Kept, by decision: nothing is dated before the corrected Group Join Date (no employment record covers it; leave
 service bands read `hiredOn`); Join Date stays on or after Group Join Date; Historical Hire records an earlier
 separate stint; Organisation Hire Correction gains no date inputs and anchors on the current Group Join Date.
+
+## Revision 4 — the latest saved correction controls (board 4604dccc, plan revision 4, approved 16 November 2026)
+
+The reporter contested that an older correction still won over a newer one saved for an earlier Effective Date
+(corrected from 1 November, then corrected again from 1 March: the March correction stopped on 31 October and
+reports used the older correction first).
+
+1. **Rule.** For Information-Only Correction (screen and Excel version 3) and Organisation Hire Correction, the
+   correction saved LAST (`domain_event.sequence`) controls each field it changes from its Effective Date onward. An
+   earlier-saved correction no longer ends it or overrides it. A recorded movement (transfer, promotion,
+   confirmation, history movement …, as `recordedMovementChangesTx` lists them) still owns its own date for the fields
+   it changes. Events are read in Effective Date order for dates and in saved order only to decide which correction
+   controls. Earlier corrections stay in the correction history and audit trail unchanged.
+2. **Dated assignment fields.** `planDatedCorrection` / `writeDatedCorrectionTx` take `carry`: per corrected field,
+   the later boundary dates that an earlier information correction (or its `employment.information.boundary.reapplied`
+   re-application) created for that field and that no recorded movement owns for that field on the same date. The new
+   correction is carried through them (those versions are superseded and re-inserted, never updated in place, with the
+   replacements on the event as before) and stops only at a recorded movement or any other writer's boundary. A
+   Company correction's boundary also carries its derived Business Unit. The conflict rule (decision 3) is unchanged.
+3. **Labels and Direct Superior.** Only a later recorded movement that changes the field ends the correction
+   (`until`, `labelsNotCurrent`); otherwise the newest correction's value is current. A later Direct Superior line an
+   earlier correction wrote (its recorded `reportingLine`, or its Effective Date and superior) is superseded and the new
+   line runs over it to the next other line, or open-ended.
+4. **Readers.** `employmentInformationAt` (pay formula runtime, Borang A/8A, CP39, PCB2(II), CP21/EA readers in
+   localization/my/reports.ts): the correction in force on a day is the latest saved one that changed the field and is
+   dated on or before it; a before-image is read only from a correction saved after that one and dated after the day
+   (earliest saved wins); else current master data. Corrections saved in Effective Date order give exactly the earlier
+   answer (equivalence test).
+5. **Organisation Hire Correction** is always saved after every existing information correction, so its walk passes
+   through a version an information correction created for the fields that correction set (it stopped there before).
+   Its reporting line at hire is unchanged (it still ends at the next line).
+6. **Review.** `replacedCorrections` lists the earlier corrections dated on or after the new Effective Date and before
+   the field's next recorded movement, for the fields both change (Effective Date, saved at, fields, actor). It is
+   information, never a refusal, on the screen review and each Excel row. The event records `replacedCorrectionSequences`.
+   The caption "Future processing uses these corrected details from {date}" (`effective`) is removed in all six
+   locales; the correction history shows the Effective Date on its own line.
+7. **Payroll** protection is unchanged from revision 3 (5690 snapshots, closed-payroll acknowledgement over the now
+   longer corrected period, closed months under another company refused).
+
+Consequences:
+
+- Corrections already saved are re-read under the new rule. Saved in Effective Date order (or a single correction):
+  nothing changes. Saved out of date order: `employmentInformationAt` answers by the new rule at once; the dated
+  assignment records, labels and lines written by the earlier save stay as written until the next correction or
+  movement rewrites them (no data repair runs).
+- No migration. The SQL readers that copy ADR-0163's before-image rule (`app.company_org_employment_company` and its
+  set-based copies in Personnel overview/search, `app.information_report_records`) still answer "earliest later
+  correction wins". For out-of-order corrections they can disagree with the dated record for the replaced period; the
+  existing named refusal (`movement_correction_company_record`) and the tag-only-where-they-agree rule apply. Moving
+  them to this rule is the follow-up migration already recorded above.
+- New and changed translations need translation review.

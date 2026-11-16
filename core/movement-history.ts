@@ -345,7 +345,9 @@ export async function salaryStartKeptTx(tx:Tx,employmentId:string,start:string):
  * Board 4604dccc (ADR 2026-11-15 dated information corrections) — information-only corrections are DATED. A correction applies from its Effective
  * Date: the version covering that date is split there, and each corrected placement field is carried through
  * the later versions that merely inherited it, stopping where the field changes again (the next recorded
- * change owns its own period). Nothing after a stop is touched. Versions are superseded and re-inserted, never
+ * change owns its own period). Nothing after a stop is touched. Revision 4: a boundary an earlier-saved
+ * information correction created is not a stop (the latest saved correction controls); only a recorded movement
+ * that changes the field (or any other writer's boundary) stops it (`carry`). Versions are superseded and re-inserted, never
  * updated in place, except that the covering version keeps its id and ends on the Effective Date (the shape
  * every assignment writer and Roll Back already use), so a movement's rollback still finds it.
  */
@@ -363,14 +365,20 @@ export type DatedCorrectionPlan={
  affected:{index:number;values:Partial<Record<DatedAssignmentField,string|null>>}[];
 };
 const liveSpan=(v:{validFrom:string;validTo:string|null})=>v.validTo===null||v.validTo>v.validFrom;
+/** Board 4604dccc r4 — per corrected field, the start dates of later versions whose boundary for that field an
+ * earlier-saved information correction created (and no recorded movement owns for that field). The latest saved
+ * correction controls from its Effective Date onward, so it is carried through these instead of stopping there. */
+export type CorrectionCarry=Partial<Record<DatedAssignmentField,readonly string[]>>;
 /** Pure: what a dated correction writes over these live versions (oldest first, zero-length rows excluded). */
-export function planDatedCorrection(versions:readonly DatedVersion[],effectiveOn:string,after:Partial<Record<DatedAssignmentField,string|null>>):DatedCorrectionPlan{
+export function planDatedCorrection(versions:readonly DatedVersion[],effectiveOn:string,after:Partial<Record<DatedAssignmentField,string|null>>,carry:CorrectionCarry={}):DatedCorrectionPlan{
  const cover=versions.findIndex(v=>covers(v,effectiveOn));
  if(cover<0)throw new MovementHistoryError('movement_history_no_period');
  const stops:DatedCorrectionPlan['stops']={},ranges:DatedCorrectionPlan['ranges']={};
  for(const f of Object.keys(after) as DatedAssignmentField[]){
+  const through=new Set(carry[f]??[]);
   let stop=cover+1;
-  while(stop<versions.length&&versions[stop][f]===versions[stop-1][f])stop++;
+  // A field stops where it changes again, unless that change is an earlier-saved correction's boundary.
+  while(stop<versions.length&&(versions[stop][f]===versions[stop-1][f]||through.has(versions[stop].validFrom)))stop++;
   stops[f]=stop;ranges[f]={from:effectiveOn,to:stop<versions.length?versions[stop].validFrom:null};
  }
  const last=Math.max(cover+1,...Object.values(stops).map(n=>n??cover+1));
@@ -390,9 +398,9 @@ export async function datedVersionsTx(tx:Tx,employmentId:string,lock=false){
 }
 export type DatedCorrectionWrite={replaced:{supersededId:string;replacementId:string}[];inserted:string[];currentId:string|null;plan:DatedCorrectionPlan};
 /** Writes a dated correction of the placement fields. The caller has checked authority, payroll and labels. */
-export async function writeDatedCorrectionTx(tx:Tx,employmentId:string,effectiveOn:string,after:Partial<Record<DatedAssignmentField,string|null>>):Promise<DatedCorrectionWrite>{
+export async function writeDatedCorrectionTx(tx:Tx,employmentId:string,effectiveOn:string,after:Partial<Record<DatedAssignmentField,string|null>>,carry:CorrectionCarry={}):Promise<DatedCorrectionWrite>{
  const rows=await datedVersionsTx(tx,employmentId,true);
- const plan=planDatedCorrection(rows,effectiveOn,after);
+ const plan=planDatedCorrection(rows,effectiveOn,after,carry);
  const now=new Date(),replaced:DatedCorrectionWrite['replaced']=[],inserted:string[]=[];
  let currentId:string|null=rows.find(r=>r.validTo===null)?.id??null;
  for(const {index,values} of plan.affected){

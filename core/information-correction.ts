@@ -19,13 +19,13 @@ import {allocationCompanyCode} from './cost-allocation-import';
 import {labelCompanyIdsSql,labelUsableByCompany,visibleLabelIdsCondition} from './system-labels';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {payrollPreservationRefusal} from './closed-payroll-correction-authority';
-import {alignHistoryStartTx,salaryStartKeptTx,MovementHistoryError,DATED_ASSIGNMENT_FIELDS,planDatedCorrection,writeDatedCorrectionTx,closedPayrollInSpanTx,companyRecordOnTx,type DatedAssignmentField,type DatedCorrectionPlan} from './movement-history';
+import {alignHistoryStartTx,salaryStartKeptTx,MovementHistoryError,DATED_ASSIGNMENT_FIELDS,INFORMATION_BOUNDARY_REAPPLIED_EVENT,planDatedCorrection,writeDatedCorrectionTx,closedPayrollInSpanTx,companyRecordOnTx,type CorrectionCarry,type DatedAssignmentField,type DatedCorrectionPlan} from './movement-history';
 import {recordedMovementChangesTx,type RecordedMovementChange} from './movement';
 import {closedPeriodsTx,overlapsClosedPeriod} from './comp';
 import {contractPeriodIssues} from '../lib/contract-period';
 import {isCalendarDate} from '../lib/calendar-date';
 import {PERSONNEL_EMPLOYMENT_TYPES} from '../lib/personnel-choice-vocabulary';
-import {INFORMATION_FIELDS,INFORMATION_SCREEN_FIELDS,INFORMATION_ALL_FIELDS,INFORMATION_ASSIGNMENT_FIELDS,INFORMATION_LABEL_FIELDS,INFORMATION_PERIOD_FIELDS,INFORMATION_PERIOD_PAIRS,INFORMATION_FIELD_CAPTIONS,type InformationField,type InformationOptions,type InformationChanges,type InformationWarning,type InformationValues,type InformationPreview,type InformationConflict,type InformationTimelineRecord} from '../lib/information-correction';
+import {INFORMATION_FIELDS,INFORMATION_SCREEN_FIELDS,INFORMATION_ALL_FIELDS,INFORMATION_ASSIGNMENT_FIELDS,INFORMATION_LABEL_FIELDS,INFORMATION_PERIOD_FIELDS,INFORMATION_PERIOD_PAIRS,INFORMATION_FIELD_CAPTIONS,type InformationField,type InformationOptions,type InformationChanges,type InformationWarning,type InformationValues,type InformationPreview,type InformationConflict,type InformationTimelineRecord,type InformationReplacedCorrection} from '../lib/information-correction';
 const correctionActor=alias(person,'correction_actor'),correctionAccount=alias(appUser,'correction_account');
 export const INFORMATION_CORRECTED_EVENT='employment.information.corrected';
 export class InformationCorrectionError extends Error {constructor(message:string){super(message);this.name='InformationCorrectionError';}}
@@ -284,6 +284,58 @@ async function datedLabelsTx(tx:Tx,ctx:SessionContext,versions:readonly FullAssi
   if(companyChanged&&row.locationId){const [loc]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from location where id=${row.locationId}::uuid and company_id=${company}::uuid and archived_at is null) as ok`);if(!loc?.ok)fail('The work location on a corrected record belongs to another company. Use Employment Movement.');}
  }
 }
+/*
+ * Board 4604dccc r4 (ADR 2026-11-15 dated information corrections, revision 4) — the LATEST SAVED correction controls
+ * each corrected field from its Effective Date onward. An earlier-saved correction no longer ends it or overrides it;
+ * a recorded movement (transfer, promotion, confirmation…) still owns its own date for the fields it changes. Earlier
+ * corrections stay in the correction history and the audit trail; the review names the ones this correction replaces.
+ */
+type CorrectionPayload={effectiveOn?:string;fields?:string[];after?:Record<string,unknown>;reportingLine?:{replacementId?:string};boundaries?:{date?:string;fields?:string[]}[]};
+export type EarlierCorrection={sequence:number;eventType:string;occurredAt:Date;actorName:string|null;payload:CorrectionPayload};
+/** The employee's information corrections and their re-applied boundaries, oldest saved first (one statement). */
+async function earlierCorrectionsTx(tx:Tx,ctx:SessionContext,employmentId:string):Promise<EarlierCorrection[]>{
+ const rows=await tx.select({sequence:domainEvent.sequence,eventType:domainEvent.eventType,occurredAt:domainEvent.occurredAt,actorName:correctionActor.fullName,payload:domainEvent.payload}).from(domainEvent)
+  .leftJoin(correctionAccount,and(eq(correctionAccount.id,domainEvent.actorId),eq(correctionAccount.tenantId,ctx.tenantId))).leftJoin(correctionActor,and(eq(correctionActor.id,correctionAccount.personId),eq(correctionActor.tenantId,ctx.tenantId)))
+  .where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.subjectEmploymentId,employmentId),inArray(domainEvent.eventType,[INFORMATION_CORRECTED_EVENT,INFORMATION_BOUNDARY_REAPPLIED_EVENT]))).orderBy(asc(domainEvent.sequence));
+ return rows.map(r=>({...r,payload:(r.payload??{}) as CorrectionPayload}));
+}
+/** Pure: per dated field this correction sets, the later boundary dates an earlier-saved correction created that no
+ * recorded movement owns for that field. The correction is carried through them (planDatedCorrection). A Company
+ * correction's boundary also carries its derived Business Unit. Any other writer's boundary still stops it. */
+export function correctionCarry(corrections:readonly Pick<EarlierCorrection,'eventType'|'payload'>[],recorded:readonly Pick<RecordedMovementChange,'effectiveDate'|'fields'>[],fields:readonly DatedAssignmentField[],effectiveOn:string):CorrectionCarry{
+ const set=new Map<string,Set<string>>();
+ const add=(date:unknown,changed:unknown)=>{
+  if(typeof date!=='string'||date<=effectiveOn||!Array.isArray(changed))return;
+  const own=set.get(date)??new Set<string>();for(const f of changed)if(typeof f==='string'){own.add(f);if(f==='companyId')own.add('businessUnitId');}set.set(date,own);
+ };
+ for(const c of corrections){
+  if(c.eventType===INFORMATION_CORRECTED_EVENT)add(c.payload.effectiveOn,c.payload.fields);
+  else for(const b of Array.isArray(c.payload.boundaries)?c.payload.boundaries:[])add(b?.date,b?.fields);
+ }
+ const carry:CorrectionCarry={};
+ for(const f of fields){
+  const dates=[...set].filter(([date,own])=>own.has(f)&&!recorded.some(r=>r.effectiveDate===date&&r.fields.includes(f))).map(([date])=>date).sort();
+  if(dates.length)carry[f]=dates;
+ }
+ return carry;
+}
+/** Pure: whether a Direct Superior line was written by an earlier information correction (bounded: the line it
+ * recorded; open-ended: the line from its Effective Date to the superior it set). */
+export function superiorCorrectionLines(corrections:readonly Pick<EarlierCorrection,'eventType'|'payload'>[]){
+ const own=corrections.filter(c=>c.eventType===INFORMATION_CORRECTED_EVENT&&Array.isArray(c.payload.fields)&&c.payload.fields.includes('managerEmploymentId'));
+ return (line:{id:string;validFrom:string;managerEmploymentId:string})=>own.some(c=>c.payload.reportingLine?.replacementId===line.id||(c.payload.effectiveOn===line.validFrom&&c.payload.after?.managerEmploymentId===line.managerEmploymentId));
+}
+/** Pure: the earlier corrections whose period this one now covers for a field it changes: dated on or after this
+ * Effective Date and before the field's next recorded movement (`until`). Informational, never a refusal. */
+export function replacedCorrectionsOf(corrections:readonly EarlierCorrection[],changed:readonly InformationField[],effectiveOn:string,until:Partial<Record<InformationField,string>>):InformationReplacedCorrection[]{
+ return corrections.flatMap(c=>{
+  const on=c.payload.effectiveOn;
+  if(c.eventType!==INFORMATION_CORRECTED_EVENT||typeof on!=='string'||on<effectiveOn)return [];
+  const fields=changed.filter(f=>(c.payload.fields??[]).includes(f)&&(until[f]===undefined||on<until[f]!));
+  return fields.length?[{sequence:c.sequence,effectiveOn:on,savedAt:c.occurredAt.toISOString(),fields,actor:c.actorName??null}]:[];
+ });
+}
+type DatedApply={labelsNotCurrent:string[];superiorUntil:string|null;superiorReplaced:string[];carry:CorrectionCarry};
 async function previewTx(tx:Tx,ctx:SessionContext,input:PreviewInput,extended=false,mode:StateMode='write'){
  const reason=typeof input.reason==='string'?input.reason.trim():'';
  if(reason.length<3||reason.length>1000)fail('Provide a correction reason between 3 and 1,000 characters.');
@@ -315,19 +367,20 @@ async function previewTx(tx:Tx,ctx:SessionContext,input:PreviewInput,extended=fa
  // Board 4604dccc — the dated records as they stand after that alignment, and what this correction writes over them.
  const versions=live.filter(liveSpan).map((row,i)=>i===0&&alignStart?{...row,validFrom:alignStart.to}:row);
  const datedAfter=await datedAfterTx(tx,ctx,changed,v.after,effectiveOn);
+ // Later recorded changes: the movements whose recorded "from" values must agree. Board 4604dccc r4 — and every
+ // earlier correction, which the latest saved correction (this one) replaces from its Effective Date onward.
+ const recorded:RecordedMovementChange[]=backdated?await recordedMovementChangesTx(tx,ctx.tenantId,state.emp.id):[];
+ const corrections=await earlierCorrectionsTx(tx,ctx,state.emp.id);
+ const carry:CorrectionCarry=backdated?correctionCarry(corrections,recorded,Object.keys(datedAfter) as DatedAssignmentField[],effectiveOn):{};
  let plan:DatedCorrectionPlan;
- try{plan=planDatedCorrection(versions,effectiveOn,datedAfter);}
+ try{plan=planDatedCorrection(versions,effectiveOn,datedAfter,carry);}
  catch(error){if(error instanceof MovementHistoryError)fail(`The employee's dated records do not cover ${effectiveOn}. Review Employment Movement.`);throw error;}
  const companyAt=(datedAfter.companyId??versions[plan.cover].companyId??state.emp.companyId)!;
  if(extended)await validateExtendedTx(tx,ctx,state,v.before,v.after,companyAt,effectiveOn);
  // HR administration of every company whose records this correction rewrites, not only today's.
  for(const id of new Set(plan.affected.filter(x=>Object.keys(x.values).length).flatMap(x=>[versions[x.index].companyId,x.values.companyId]).filter((id):id is string=>!!id)))await administratorTx(tx,ctx,id);
  await datedLabelsTx(tx,ctx,versions,plan);
- // Later recorded changes: the movements whose recorded "from" values must agree, and the later corrections.
- const needsLedger=backdated;
- const recorded:RecordedMovementChange[]=needsLedger?await recordedMovementChangesTx(tx,ctx.tenantId,state.emp.id):[];
- const corrections=needsLedger?await tx.select({payload:domainEvent.payload}).from(domainEvent).where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.subjectEmploymentId,state.emp.id),eq(domainEvent.eventType,INFORMATION_CORRECTED_EVENT))):[];
- const correctionDates=corrections.map(row=>(row.payload??{}) as {effectiveOn?:string;fields?:string[]}).filter(p=>typeof p.effectiveOn==='string');
+ const correctionDates=corrections.filter(c=>c.eventType===INFORMATION_CORRECTED_EVENT).map(c=>c.payload).filter(p=>typeof p.effectiveOn==='string');
  const conflicts:InformationConflict[]=[];
  const until:Partial<Record<InformationField,string>>={};
  for(const f of Object.keys(datedAfter) as DatedAssignmentField[]){
@@ -339,20 +392,24 @@ async function previewTx(tx:Tx,ctx:SessionContext,input:PreviewInput,extended=fa
   const from=f in movement.before?movement.before[f]??null:versions[stop-1][f];
   if(from!==datedAfter[f])conflicts.push({movementId:movement.id,date:at,field:f,kind:movement.kind,label:movement.label});
  }
- // Labels (flat columns) and the Direct Superior: a later recorded change owns the current value from its date.
+ // Labels (flat columns) and the Direct Superior: a later recorded movement owns the current value from its date.
+ // Board 4604dccc r4 — an earlier-saved correction no longer ends this one: the newest correction's value is current
+ // unless a later recorded movement changes the field.
  const labelsNotCurrent:string[]=[];
  if(backdated)for(const f of changed.filter(field=>LABEL_FIELD_SET.has(field))){
   const movement=recorded.filter(r=>r.effectiveDate>effectiveOn&&r.fields.includes(f)).sort((a,b)=>a.effectiveDate.localeCompare(b.effectiveDate))[0];
-  const correction=correctionDates.filter(p=>p.effectiveOn!>effectiveOn&&(p.fields??[]).includes(f)).map(p=>p.effectiveOn!).sort()[0];
-  const first=[movement?.effectiveDate,correction].filter((d):d is string=>!!d).sort()[0];
-  if(!first)continue;
-  labelsNotCurrent.push(f);until[f]=first;
-  if(movement&&movement.effectiveDate===first&&(f in movement.before?movement.before[f]??null:v.before[f])!==v.after[f])conflicts.push({movementId:movement.id,date:first,field:f,kind:movement.kind,label:movement.label});
+  if(!movement)continue;
+  labelsNotCurrent.push(f);until[f]=movement.effectiveDate;
+  if((f in movement.before?movement.before[f]??null:v.before[f])!==v.after[f])conflicts.push({movementId:movement.id,date:movement.effectiveDate,field:f,kind:movement.kind,label:movement.label});
  }
- let superiorUntil:string|null=null;
+ let superiorUntil:string|null=null;const superiorReplaced:string[]=[];
  if(backdated&&changed.includes('managerEmploymentId')){
-  const lines=(await tx.select({validFrom:reportingLine.validFrom,validTo:reportingLine.validTo,managerEmploymentId:reportingLine.managerEmploymentId}).from(reportingLine).where(and(eq(reportingLine.tenantId,ctx.tenantId),eq(reportingLine.subordinateEmploymentId,state.emp.id),eq(reportingLine.lineType,'administrative'),isNull(reportingLine.supersededAt))).orderBy(asc(reportingLine.validFrom))).filter(liveSpan);
-  const next=lines.find(l=>l.validFrom>effectiveOn);
+  const lines=(await tx.select({id:reportingLine.id,validFrom:reportingLine.validFrom,validTo:reportingLine.validTo,managerEmploymentId:reportingLine.managerEmploymentId}).from(reportingLine).where(and(eq(reportingLine.tenantId,ctx.tenantId),eq(reportingLine.subordinateEmploymentId,state.emp.id),eq(reportingLine.lineType,'administrative'),isNull(reportingLine.supersededAt))).orderBy(asc(reportingLine.validFrom))).filter(liveSpan);
+  // Board 4604dccc r4 — a later line an earlier correction wrote is replaced; the next other line still ends this one.
+  const correctionLine=superiorCorrectionLines(corrections);
+  const later=lines.filter(l=>l.validFrom>effectiveOn);
+  const next=later.find(l=>!correctionLine(l));
+  superiorReplaced.push(...later.filter(l=>correctionLine(l)&&(!next||l.validFrom<next.validFrom)).map(l=>l.id));
   if(next){
    superiorUntil=next.validFrom;until.managerEmploymentId=next.validFrom;
    const movement=recorded.find(r=>r.effectiveDate===next.validFrom&&r.fields.includes('managerEmploymentId'));
@@ -403,9 +460,10 @@ async function previewTx(tx:Tx,ctx:SessionContext,input:PreviewInput,extended=fa
  const extendedChange=changed.some(f=>!(INFORMATION_FIELDS as readonly string[]).includes(f));
  const fingerprint=hash({state:state.fingerprint,companies:companyRefs,grades:gradeRefs,effectiveOn,...(organisation.status==='legacy'?{}:{organisation}),...(extendedChange?{labels:[beforeLabels,afterLabels]}:{}),...(alignStart?{alignStart}:{})});
  const fromJoinDate=Object.keys(datedAfter).length>0&&effectiveOn===versions[0]?.validFrom;
+ const replacedCorrections=replacedCorrectionsOf(corrections,changed,effectiveOn,until);
  const preview:InformationPreview={effectiveOn,employmentId:state.emp.id,employeeCode:state.emp.employeeCode??'',name:state.name,fingerprint,before:v.before,after:v.after,beforeLabels,afterLabels,reason,changed,earliestEffectiveOn:earliest,
-  ...(fromJoinDate?{fromJoinDate:true as const}:{}),...(warnings.length?{warnings}:{}),...(alignStart?{alignStart}:{}),...(timeline.length?{timeline}:{}),...(conflicts.length?{conflicts}:{}),...(closedPayrollPeriods.length?{closedPayrollPeriods}:{}),...(Object.keys(until).length?{until}:{})};
- return {state,preview,dated:{labelsNotCurrent,superiorUntil}};
+  ...(fromJoinDate?{fromJoinDate:true as const}:{}),...(warnings.length?{warnings}:{}),...(alignStart?{alignStart}:{}),...(timeline.length?{timeline}:{}),...(conflicts.length?{conflicts}:{}),...(closedPayrollPeriods.length?{closedPayrollPeriods}:{}),...(Object.keys(until).length?{until}:{}),...(replacedCorrections.length?{replacedCorrections}:{})};
+ return {state,preview,dated:{labelsNotCurrent,superiorUntil,superiorReplaced,carry}};
 }
 class InformationRehearsal extends Error{constructor(readonly preview:InformationPreview){super('information_preview_rollback');}}
 /** Excel previews of the further details rehearse the owners' writes and roll back, so every refusal the save
@@ -436,7 +494,7 @@ export async function correctInformationTx(tx:Tx,ctx:SessionContext,input:{emplo
  await applyTx(tx,ctx,s,p,dated,input);
  return {preview:p,changed:true};
 }
-async function applyTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stateTx>>,p:InformationPreview,dated:{labelsNotCurrent:string[];superiorUntil:string|null},input:{method:'manual'|'excel';batchId?:string;filename?:string}){
+async function applyTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stateTx>>,p:InformationPreview,dated:DatedApply,input:{method:'manual'|'excel';batchId?:string;filename?:string}){
  // The preimage protects every existing persisted output before any master information changes.
  let preserved:{count:number}|undefined;
  try{[preserved]=await tx.execute<{count:number}>(sql`select app.preserve_information_payroll(${s.emp.id}::uuid) as count`);}
@@ -454,7 +512,7 @@ async function applyTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stat
  const datedAfter=await datedAfterTx(tx,ctx,p.changed,p.after,effectiveOn);
  let datedWrite:Awaited<ReturnType<typeof writeDatedCorrectionTx>>|null=null;
  if(Object.keys(datedAfter).length){
-  try{datedWrite=await writeDatedCorrectionTx(tx,s.emp.id,effectiveOn,datedAfter);}
+  try{datedWrite=await writeDatedCorrectionTx(tx,s.emp.id,effectiveOn,datedAfter,dated.carry);}
   catch(error){if(error instanceof MovementHistoryError)fail(`The employee's dated records do not cover ${effectiveOn}. Review Employment Movement.`);throw error;}
  }
  const assignmentVersionId=datedWrite?(datedWrite.inserted[0]??datedWrite.replaced[0]?.replacementId??null):null;
@@ -477,10 +535,11 @@ async function applyTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stat
   catch(error){ownerFailure(error,info.includes('confirmationDate')&&/onfirm|payroll/.test(String((error as Error)?.message))?'confirmationDate':info[0]);}
  }
  // The Direct Superior through the dated reporting-line owner from the Effective Date, untagged (no movement row).
- // Board 4604dccc — up to the next recorded line when one follows.
- let superiorLine:{supersededId:string|null;replacementId:string;validFrom:string;validTo:string|null}|null=null;
+ // Board 4604dccc — up to the next recorded line when one follows. Revision 4: over the later lines earlier
+ // corrections wrote, which it replaces (superseded, never deleted).
+ let superiorLine:Awaited<ReturnType<typeof boundedSuperiorTx>>|null=null;
  if(p.changed.includes('managerEmploymentId')){
-  if(dated.superiorUntil)superiorLine=await boundedSuperiorTx(tx,ctx,s.emp.id,p.after.managerEmploymentId!,effectiveOn,dated.superiorUntil);
+  if(dated.superiorUntil||dated.superiorReplaced.length)superiorLine=await boundedSuperiorTx(tx,ctx,s.emp.id,p.after.managerEmploymentId!,effectiveOn,dated.superiorUntil,dated.superiorReplaced);
   else{
    try{await writeReportingLine(ctx,{subordinateEmploymentId:s.emp.id,managerEmploymentId:p.after.managerEmploymentId!,lineType:'administrative',validFrom:effectiveOn},tx);}
    catch(error){ownerFailure(error,'managerEmploymentId');}
@@ -495,6 +554,7 @@ async function applyTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stat
   ...(aligned?{alignedStart:p.alignStart,aligned:aligned.aligned,...(aligned.salaryKept?{salaryKept:aligned.salaryKept}:{})}:{}),...(superiorLine?{reportingLine:superiorLine}:{}),
   employeeCode:p.employeeCode,employeeName:p.name,before:p.before,after:p.after,beforeLabels:p.beforeLabels,afterLabels:p.afterLabels,fields:p.changed,reason:p.reason,effectiveOn,nextBoundary,...(p.until?{until:p.until}:{}),
   ...(dated.labelsNotCurrent.length?{labelsNotCurrent:dated.labelsNotCurrent}:{}),...(p.closedPayrollPeriods?.length?{closedPayrollPeriods:p.closedPayrollPeriods,closedPayrollAcknowledged:true}:{}),
+  ...(p.replacedCorrections?.length?{replacedCorrectionSequences:p.replacedCorrections.map(c=>c.sequence)}:{}),
   method:input.method,batchId:input.batchId??null,filename:input.filename??null,snapshotCount:preserved.count,assignmentVersionId,previousAssignmentId:s.current.id}});
  const [at]=await tx.select({companyId:assignment.companyId}).from(assignment).where(and(eq(assignment.employmentId,s.emp.id),isNull(assignment.supersededAt),sql`${assignment.validFrom}<=${effectiveOn}::date`,sql`(${assignment.validTo} is null or ${assignment.validTo}>${effectiveOn}::date)`)).orderBy(desc(assignment.validFrom)).limit(1);
  // The organisation tag owner checks the company against app.company_org_employment_company, whose correction
@@ -502,19 +562,27 @@ async function applyTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stat
  const tagCompany=at?.companyId??currentCompany;
  if(await companyRecordOnTx(tx,ctx.tenantId,s.emp.id,effectiveOn)===tagCompany)await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:s.emp.id,companyId:tagCompany,asOf:effectiveOn,trigger:'correction'});
 }
-/** Board 4604dccc — the Direct Superior from the Effective Date until the next recorded line, which stays as it is. */
-async function boundedSuperiorTx(tx:Tx,ctx:SessionContext,employmentId:string,managerId:string,from:string,to:string){
+/** Board 4604dccc — the Direct Superior from the Effective Date until the next recorded line, which stays as it is.
+ * Revision 4 — the later lines earlier corrections wrote (`replaced`) are superseded and this line runs over them,
+ * to `to` (null: open-ended, when no other line follows). */
+async function boundedSuperiorTx(tx:Tx,ctx:SessionContext,employmentId:string,managerId:string,from:string,to:string|null,replaced:readonly string[]=[]){
  if(await wouldCreateAdminCycle(tx,employmentId,managerId,from,to))fail('Direct Superior: this would create a reporting loop.');
- const lines=(await tx.select().from(reportingLine).where(and(eq(reportingLine.tenantId,ctx.tenantId),eq(reportingLine.subordinateEmploymentId,employmentId),eq(reportingLine.lineType,'administrative'),isNull(reportingLine.supersededAt))).orderBy(asc(reportingLine.validFrom)).for('update')).filter(liveSpan);
+ const all=(await tx.select().from(reportingLine).where(and(eq(reportingLine.tenantId,ctx.tenantId),eq(reportingLine.subordinateEmploymentId,employmentId),eq(reportingLine.lineType,'administrative'),isNull(reportingLine.supersededAt))).orderBy(asc(reportingLine.validFrom)).for('update')).filter(liveSpan);
+ const replacedIds=new Set(replaced),removed=all.filter(l=>replacedIds.has(l.id)),lines=all.filter(l=>!replacedIds.has(l.id));
+ if(removed.length!==replacedIds.size)fail('The employee changed after your review. Review the correction again.');
+ if(removed.length)await tx.update(reportingLine).set({supersededAt:new Date()}).where(inArray(reportingLine.id,removed.map(l=>l.id)));
  const covering=lines.filter(l=>coversDay(l,from)).at(-1);
  let supersededId:string|null=null;
  if(covering){
   if(covering.validFrom===from){await tx.update(reportingLine).set({supersededAt:new Date()}).where(eq(reportingLine.id,covering.id));supersededId=covering.id;}
   else await tx.update(reportingLine).set({validTo:from}).where(eq(reportingLine.id,covering.id));
  }
- const end=covering?.validTo&&covering.validTo<to?covering.validTo:to;
+ // The covering line's end, carried on through the replaced lines that followed it; a real gap still ends the line.
+ let reach:string|null=covering?covering.validTo:to;
+ for(const l of removed)if(reach!==null&&l.validFrom===reach)reach=l.validTo;
+ const end=reach===null?to:to===null?reach:reach<to?reach:to;
  const [row]=await tx.insert(reportingLine).values({tenantId:ctx.tenantId,subordinateEmploymentId:employmentId,managerEmploymentId:managerId,lineType:'administrative',validFrom:from,validTo:end}).returning({id:reportingLine.id});
- return{supersededId,replacementId:row.id,validFrom:from,validTo:end};
+ return{supersededId,replacementId:row.id,validFrom:from,validTo:end,...(removed.length?{replacedLineIds:removed.map(l=>l.id)}:{})};
 }
 export function correctInformation(ctx:SessionContext,input:Parameters<typeof correctInformationTx>[2]){return withTenant(ctx,tx=>correctInformationTx(tx,ctx,input));}
 export function informationCorrectionHistory(ctx:SessionContext,employmentId:string){return withAccessDisplayRead(()=>withTenant(ctx,async tx=>{await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');const [allowed]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from employment where id=${employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid and app.principal_snapshot_current() and app.is_admin_for(company_id)) as ok`);if(!allowed?.ok)fail('You do not have permission to review this correction history.');return tx.select({id:domainEvent.id,at:domainEvent.occurredAt,actorId:domainEvent.actorId,actorName:correctionActor.fullName,payload:domainEvent.payload}).from(domainEvent).leftJoin(correctionAccount,and(eq(correctionAccount.id,domainEvent.actorId),eq(correctionAccount.tenantId,ctx.tenantId))).leftJoin(correctionActor,and(eq(correctionActor.id,correctionAccount.personId),eq(correctionActor.tenantId,ctx.tenantId))).where(and(eq(domainEvent.subjectEmploymentId,employmentId),eq(domainEvent.eventType,INFORMATION_CORRECTED_EVENT))).orderBy(desc(domainEvent.sequence)).limit(100);}));}

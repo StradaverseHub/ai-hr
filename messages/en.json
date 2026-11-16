@@ -3602,7 +3602,6 @@
         "failed": "Failed",
         "unchanged": "Unchanged"
       },
-      "effective": "Future processing uses these corrected details from {date}.",
       "templateFields": "Fields this template corrects (new ones highlighted). Blank cells keep the existing value.",
       "templateFieldsLabel": "Fields this template corrects",
       "ownersNote": "Basic Salary and resignation dates are corrected on the event that recorded them: use the Movement import with Action \"Update\". Payment Method is in the Bank and Statutory import.",
@@ -3617,10 +3616,10 @@
       "effectiveDateHint": "Any date from {start} up to today ({today}). Defaults to today.",
       "effectiveDateFollowsJoin": "Earliest date: {start}, the Group Join Date entered below.",
       "historyClosedPayroll": "Closed payroll kept unchanged: {periods}.",
-      "effectiveDateJoin": "Choosing {start}, the Group Join Date, corrects the employee’s original hire details. Company, Employment Type, Business Unit, Department, Position, organisation labels and Direct Superior apply from the Effective Date until the next recorded change.",
+      "effectiveDateJoin": "Choosing {start}, the Group Join Date, corrects the employee’s original hire details. Company, Employment Type, Business Unit, Department, Position, organisation labels and Direct Superior apply from the Effective Date until the next recorded movement that changes them. This correction replaces earlier corrections from that date onward.",
       "timeline": {
         "title": "Records in Effective Date order",
-        "intro": "These corrected details apply from {date} until the next recorded change. Later records keep their own dates and values. Nothing is overwritten or deleted.",
+        "intro": "These corrected details apply from {date} until the next recorded movement that changes them. Earlier corrections from this date are replaced and stay in the correction history. Movements keep their own dates and values. Nothing is deleted.",
         "date": "Effective Date",
         "record": "Record",
         "company": "Company",
@@ -3636,6 +3635,11 @@
           "unchanged": "Unchanged",
           "conflict": "Conflicts with this change"
         }
+      },
+      "replaced": {
+        "title": "Earlier corrections this one replaces",
+        "intro": "The newest correction controls these details from {date}. The earlier corrections below stay in the correction history.",
+        "item": "Correction effective {date} ({fields}), saved {saved} by {actor}"
       },
       "conflictTitle": "This correction cannot be saved",
       "conflict": "{record} on {date} records {field} changing from a different value. Correct that movement first (Movement Event ID {id}), or choose an Effective Date after {date}.",
