@@ -6,7 +6,6 @@ import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
 import type {ProbationIntakeWorkspace,ProbationIntakeCandidate,ProbationActivationCount,ProbationFormImportRow} from '@/packs/probation/service';
 import type {ProbationIntakePart,ProbationExclusionFlags} from '@/lib/probation-intake-model';
-import {PreparationNav} from '../preparation-nav';
 import {DraftGuard} from '../draft-guard';
 import {stageIntake,proposeOfflineFinal} from '../actions';
 import {OfflineFinalProposal} from './offline-final-proposal';
@@ -17,7 +16,7 @@ import {HtmlFormImport,ImportedFormFindings} from './html-form-import';
 export function Intake({company,companies,workspace,activation=[],imports=[],canPrepare,selectedId}:{company:{id:string;name:string};companies:{id:string;name:string}[];workspace:ProbationIntakeWorkspace;activation?:ProbationActivationCount[];imports?:ProbationFormImportRow[];canPrepare:boolean;selectedId?:string}){
  const t=useTranslations('probation'),[pending,setPending]=useState(false),[approvalPending,setApprovalPending]=useState(false),[search,setSearch]=useState('');
  const candidate=workspace.candidates.find(c=>c.source.employmentId===selectedId),visible=workspace.candidates.filter(c=>(c.source.employeeName+' '+(c.source.employeeCode??'')).toLocaleLowerCase().includes(search.toLocaleLowerCase()));
- return <main className="v9-main v9-stack"><header><h1>{t('intake.title')}</h1><p className="v9-muted">{t('intake.help')}</p></header><form method="get" className="probation-actions"><label className="v9-field"><span>{t('facts.company')}</span><select name="company" defaultValue={company.id}>{companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><button className="v9-button">{t('switchCompany')}</button></form>{canPrepare&&<PreparationNav companyId={company.id}/>}
+ return <main className="v9-main v9-stack"><header><h1>{t('intake.title')}</h1><p className="v9-muted">{t('intake.help')}</p></header><form method="get" className="probation-actions"><label className="v9-field"><span>{t('facts.company')}</span><select name="company" defaultValue={company.id}>{companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><button className="v9-button">{t('switchCompany')}</button></form>
  <p className="v9-notice">{t('intake.stagingOnly')}</p>{workspace.truncated&&<p role="alert" className="v9-notice v9-warning">{t('intake.truncated')}</p>}<p>{t('intake.excludedCount',{count:workspace.excludedCount})}</p>
  <HtmlFormImport companyId={company.id} imports={imports}/>
  <label className="v9-field"><span>{t('tracker.search')}</span><input type="search" value={search} onChange={e=>setSearch(e.target.value)}/></label>

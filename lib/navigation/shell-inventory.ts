@@ -507,10 +507,11 @@ export const SCOPED_LIFECYCLE_NAVIGATION: readonly ScopedLifecycleNavigationItem
   // ADR 2026-11-15-probation-shared-automation, decision 4: postings approved by the posting-approver group (page fact).
   {module:'probation',access:'page',href:'/lifecycle/probation/postings',labelKey:'probationPostings',icon:Timer,exactHref:true,ownedSubpaths:['/lifecycle/probation/postings']},
   {module:'contracts',access:'page',href:'/lifecycle/contracts',labelKey:'contractManagement',icon:ScrollText,exactHref:true,ownedSubpaths:['/lifecycle/contracts']},
-  {module:'probation',access:'configure',href:'/lifecycle/probation/settings',labelKey:'probationSettings',icon:Timer},
-  {module:'probation',access:'configure',href:'/lifecycle/probation/forms',labelKey:'probationForms',icon:Timer},
+  // Handoff B1: Probation Confirmation › Configuration › Probation settings, Form editor, Intake and activation.
+  {module:'probation',access:'configure',href:'/lifecycle/probation/settings',labelKey:'probationSettings',icon:Timer,submenuKey:'sectionConfiguration'},
+  {module:'probation',access:'configure',href:'/lifecycle/probation/forms',labelKey:'probationForms',icon:Timer,submenuKey:'sectionConfiguration'},
   // The Routes page retired (lane E): approval routing is set on each form version; /lifecycle/probation/routes redirects to Forms.
-  {module:'probation',access:'configureOrIntake',href:'/lifecycle/probation/intake',labelKey:'probationIntake',icon:Timer},
+  {module:'probation',access:'configureOrIntake',href:'/lifecycle/probation/intake',labelKey:'probationIntake',icon:Timer,submenuKey:'sectionConfiguration'},
   {module:'contracts',access:'intake',href:'/lifecycle/contracts/intake',labelKey:'contractIntake',icon:ScrollText},
   {module:'contracts',access:'configure',href:'/lifecycle/contracts/settings',labelKey:'contractSettings',icon:ScrollText},
   {module:'contracts',access:'configure',href:'/lifecycle/contracts/workflows',labelKey:'contractWorkflows',icon:ScrollText},
