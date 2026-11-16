@@ -40789,6 +40789,30 @@
       "documentUnavailable": "A selected document is no longer published or available. Select a current template before saving.",
       "removeDocumentLink": "Remove this document’s link from the email body before deselecting it.",
       "noDocuments": "Publish a Contract document template before adding it to an email."
+    },
+    "emailAssets": {
+      "imagesTitle": "Images in email",
+      "imagesHelp": "Upload up to three images, then insert them in the body. Use PNG, JPG, GIF or WebP, up to 1 MB each.",
+      "alt": "Alt text for {name}",
+      "removeImage": "Remove image",
+      "addImage": "Add image",
+      "everyoneTitle": "Files for everyone",
+      "everyoneHelp": "These shared files accompany every email sent from this template.",
+      "removeFile": "Remove file",
+      "addFile": "Add a shared file",
+      "saveFirst": "Save the template before uploading files.",
+      "uploading": "Uploading…",
+      "personTitle": "Files per person",
+      "personHelp": "People Ops uploads each person's file on their Contract case. A required file holds the email until it is uploaded.",
+      "fileLabel": "File label",
+      "required": "Required",
+      "requiredBeforeSending": "Required before sending",
+      "removeSlot": "Remove slot",
+      "addSlot": "Add a file per person",
+      "defaultSlot": "File for this person",
+      "caseTitle": "Email files for this person",
+      "requiredFile": "Upload this file before continuing the email.",
+      "noFile": "No file uploaded."
     }
   },
   "personnelPostings": {
