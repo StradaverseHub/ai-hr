@@ -1,3 +1,17 @@
+# The Probation employee holds only their own steps — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-overrides-20261116` (lane H2 of the Probation Confirmation build) appends
+`5759_probation_employee_own_steps_only` at idx 5159 / when 1793330005459 (assigned by the build coordinator). SHA256
+`df0d15c2435048949c6436329d19db429696906dc2a8760086d9e8688af440f2`. It adds no table, column, function or grant. It re-creates in place, with
+the same signatures, owners and grants, `app.probation_signer_candidate` (0949), `app.probation_general_delegate`
+(5749), `app.probation_assignment_facts` (5755), `app.probation_letter_freeze_route` (5752),
+`app.probation_form_freeze_approvers` and `app.probation_resolve_route_unchecked` (5756), and
+`app.probation_delegate_add` and `app.probation_route_override` (5758), so that the case's own employee is never the
+holder, replacement, delegate or chosen member of a Review, Approve, Approve-and-sign or another person's Sign step on
+their own case (routed choices skip them and fall back to the next member, then the fallback group with "meant for"
+recorded). No existing table, row, grant or purpose-owned object changes. The installed ledgers were not read; recheck
+watermarks and peer claims at admission. This allocation grants no installation authority.
+
 # PBP route overrides and delegation for routed Probation approver steps — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/probation-lane-overrides-20261116` (lane H of the Probation Confirmation build) appends
