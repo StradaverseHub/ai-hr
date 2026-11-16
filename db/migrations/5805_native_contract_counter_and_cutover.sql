@@ -18,7 +18,7 @@ DECLARE c public.contract_case;e public.employment;f jsonb;
 BEGIN
  PERFORM app.access_workforce_write_lock();
  SELECT * INTO c FROM public.contract_case WHERE tenant_id=app.current_tenant_id() AND id=p_case FOR UPDATE;
- IF c.id IS NULL OR app.contract_shared_case_permitted(p_case,'decide') IS NOT TRUE THEN RAISE EXCEPTION 'Contract case is unavailable' USING ERRCODE='42501';END IF;
+ IF c.id IS NULL OR app.contract_shared_case_permitted(p_case,'view') IS NOT TRUE OR app.contract_shared_case_permitted(p_case,'decide') IS NOT TRUE THEN RAISE EXCEPTION 'Contract case is unavailable' USING ERRCODE='42501';END IF;
  SELECT data INTO f FROM public.contract_shared_case WHERE tenant_id=c.tenant_id AND case_id=c.id;
  IF f IS NOT NULL THEN RETURN f;END IF;
  SELECT * INTO e FROM public.employment WHERE tenant_id=c.tenant_id AND id=c.employment_id FOR UPDATE;

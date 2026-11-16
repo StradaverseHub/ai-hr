@@ -236,10 +236,10 @@ export const APPROVED_UPGRADE_TAIL=[
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5804_shared_email_rich_body':'96dd54e4b9bd66c015296ec0874b32c6de2af9af7c40b6f5812eaa7d3e408754',
- '5805_native_contract_counter_and_cutover':'81ec31cfbd893e9211629d24ad60999974859dcc746aeab3871802ca2e1ac140',
+ '5805_native_contract_counter_and_cutover':'caf0bdc349aa0f84c0edfeaeddff55f15318d235ba100c450062e497b929a9ac',
  '5806_contract_shared_projections':'02834a55469bd12ba44b5e6e299cda8f9374f4c22451b69958fac65e32344b25',
  '5800_contract_shared_access':'08671eb8f4654fb52af284d4202fc56f98befc38bca4bcab5b279cdb531dc756',
- '5801_contract_shared_flows':'e87c448c73d9aabc6e571def4580d47507aad04b081b0a706446f2c0f6324145',
+ '5801_contract_shared_flows':'12ff6216ebe82fcc0456ade8cf6a6f40d4daaf101782aa94136927e2f4f54382',
  '5802_contract_shared_builders':'c0fda7bf21a7d01dd214b7527736910eff7e0260962e1f67efda36ab2ffa97d0',
  '5803_shared_document_templates':'adce2251c00b32bb1913ef5c385f40782fdbb2c28274d3cc611c4305f77c0e12',
  '5761_probation_automation_recipients_and_tracker_steps':'c39e471adb80e51b56466c264bc6546dc6ce48a354e30d8e9ef3629a82b2184b',

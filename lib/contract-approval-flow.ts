@@ -29,14 +29,14 @@ export function pendingContractApproval(request:ContractApprovalRequest):Contrac
  const step=pendingSigningSteps(request.document)[0];
  return step?request.assignments.find(assignment=>assignment.layer.id===step.id)??null:null;
 }
-export function contractApprovalCanAct(request:ContractApprovalRequest,input:{userId:string;personId:string;activeUserIds:readonly string[];currentGroupMembers:readonly string[]}):boolean{
+export function contractApprovalCanAct(request:ContractApprovalRequest,input:{layerId:string;userId:string;personId:string;activeUserIds:readonly string[];currentGroupMembers:Readonly<Record<string,readonly string[]>>}):boolean{
  const assignment=pendingContractApproval(request);
- if(!assignment||!input.personId||input.personId===request.subjectPersonId||!input.activeUserIds.includes(input.userId))return false;
- if(assignment.layer.pick==='any'&&assignment.groupId)return input.currentGroupMembers.includes(input.userId);
+ if(!assignment||assignment.layer.id!==input.layerId||!input.personId||input.personId===request.subjectPersonId||!input.activeUserIds.includes(input.userId))return false;
+ if(assignment.layer.pick==='any'&&assignment.groupId)return input.currentGroupMembers[assignment.groupId]?.includes(input.userId)??false;
  const pending=pendingSigningSteps(request.document)[0];
  return (assignment.layer.pick!=='roundRobin'||pending.holderId===input.userId)&&assignment.candidateUserIds.includes(input.userId)&&assignment.candidatePersonIds[input.userId]===input.personId;
 }
-export function actOnContractApproval(request:ContractApprovalRequest,input:{id:string;layerId:string;userId:string;personId:string;name:string;action:'approve'|'reject';reason:string;at:string;activeUserIds:readonly string[];currentGroupMembers:readonly string[]}):ContractApprovalRequest{
+export function actOnContractApproval(request:ContractApprovalRequest,input:{id:string;layerId:string;userId:string;personId:string;name:string;action:'approve'|'reject';reason:string;at:string;activeUserIds:readonly string[];currentGroupMembers:Readonly<Record<string,readonly string[]>>}):ContractApprovalRequest{
  const existing=request.document.actions.find(action=>action.id===input.id);
  if(existing){
   if(existing.actorId===input.userId&&existing.actorPersonId===input.personId&&existing.stepId===input.layerId&&existing.action===(input.action==='approve'?'approved':'returned')&&existing.comment===input.reason.trim())return request;
