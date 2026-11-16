@@ -2142,7 +2142,14 @@
         "emptySource": "ยังไม่ได้บันทึกวันที่",
         "unknownSource": "ไม่ได้บันทึกไว้ในรายการนี้"
       },
-      "costCenterAllocationTitle": "การปันส่วนศูนย์ต้นทุน"
+      "costCenterAllocationTitle": "การปันส่วนศูนย์ต้นทุน",
+      "salaryAmendments": {
+        "title": "การแก้ไขเงินเดือนที่บันทึกไว้",
+        "amount": "เงินเดือนพื้นฐาน",
+        "recordOnly": "บันทึกเท่านั้น — เงินเดือนที่ปิดแล้วไม่เปลี่ยนแปลง",
+        "previous": "ก่อนหน้า",
+        "next": "ถัดไป"
+      }
     },
     "import": {
       "title": "นำเข้าพนักงาน",

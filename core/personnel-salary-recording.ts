@@ -83,9 +83,10 @@ export function recordPersonnelSalary(ctx:SessionContext,raw:PersonnelSalaryReco
   return withProtectedMovementHistoryTx(tx,ctx,p.employmentId,async()=>{
    const terms=await amendDatedCompensationTx(tx,ctx,{employmentId:p.employmentId,basicSalary:p.basicSalary,effectiveFrom:p.effectiveDate,currency:p.currency,payMode:p.payMode,paymentTerm:p.paymentTerm,rateAmount:p.rateAmount,remarks:p.remarks,reason:p.reason!});
    const payrollEffectiveDate=terms.payrollFrom;
-   if(p.paymentMethod!==undefined)await setEmploymentPaymentMethod(ctx,{employmentId:p.employmentId,paymentMethod:p.paymentMethod,effectiveDate:p.effectiveDate,reason:p.reason},tx);
+   const method=p.paymentMethod!==undefined?await setEmploymentPaymentMethod(ctx,{employmentId:p.employmentId,paymentMethod:p.paymentMethod,effectiveDate:p.effectiveDate,reason:p.reason},tx):null;
+   if(!terms.changed&&!method?.changed)throw new Error('Nothing to amend in the selected salary and payment method.');
    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:p.employmentId,eventType:'employment.salary.amended',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,
-    payload:{effectiveDate:p.effectiveDate,payrollEffectiveDate,compensationId:terms.compensationId,sourceCompensationId:p.sourceCompensationId??null,reason:p.reason?.trim(),movementCreated:false}});
+    payload:{effectiveDate:p.effectiveDate,payrollEffectiveDate,compensationId:terms.compensationId,sourceCompensationId:p.sourceCompensationId??null,reason:p.reason?.trim(),movementCreated:false,salaryChanged:terms.changed,paymentMethodChanged:method?.changed===true}});
    return {employmentId:p.employmentId,choice:p.choice,payrollEffectiveDate};
   },message=>new Error(message));
  });

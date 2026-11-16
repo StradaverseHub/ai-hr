@@ -1,3 +1,4 @@
+import {formatDmy} from '../lib/date-display';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
@@ -39,11 +40,11 @@ describe('shared Employment and Movement period controls', () => {
 
   it('shows Confirmation Date as the selected Effective Date on Confirmation itself', () => {
     const { container } = render(provider(<MovementNewEvent {...base} types={[{ code: 'confirmation', label: null, behaviourKind: 'confirmation' }]} />));
-    expect(container.querySelector('[data-field="confirmationDate"]')).toHaveTextContent(todayInKualaLumpur());
+    expect(container.querySelector('[data-field="confirmationDate"]')).toHaveTextContent(formatDmy(todayInKualaLumpur()));
     expect(container.querySelector('[name="confirmationDate"]')).toBeNull();
     const effective = container.querySelector('input[name="effectiveDate"]')!;
     fireEvent.change(effective, { target: { value: '2026-01-01' } });
-    expect(container.querySelector('[data-field="confirmationDate"]')).toHaveTextContent('2026-01-01');
+    expect(container.querySelector('[data-field="confirmationDate"]')).toHaveTextContent(formatDmy('2026-01-01'));
   });
 
   it('retains saved period inputs for a pending edit and omits untouched unrecorded defaults', async () => {

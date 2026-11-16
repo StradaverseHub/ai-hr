@@ -1,6 +1,7 @@
 import {afterEach,describe,expect,it} from 'vitest';
 import {cleanup,fireEvent,render,screen} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
+import {SalaryAmendmentHistory} from '../components/salary-amendment-history';
 import {SalaryRecordingChoices,type SalaryRecordingOptions} from '../components/salary-recording-choices';
 import messages from '../messages/en.json';
 afterEach(cleanup);
@@ -22,5 +23,15 @@ describe('Salary Add/Edit recording decisions',()=>{
  it('explains an amendment without adding an event-type input and requires a reason',()=>{
   const {container}=mount();fireEvent.change(container.querySelector('select[name="salaryRecordingChoice"]')!,{target:{value:'amendment'}});
   expect(screen.getByText(messages.people.detail.salaryRecording.amendmentHint)).toBeInTheDocument();expect(container.querySelector('select[name="salaryMovementType"]')).toBeNull();expect(container.querySelector('textarea[name="salaryRecordingReason"]')).toBeRequired();
+ });
+});
+
+describe('recorded salary amendment presentation',()=>{
+ it('renders the HR business date and amount as record-only, with bounded history navigation',()=>{
+  const labels={title:'Recorded salary amendments',date:'Effective date',amount:'Basic salary',rate:'Rate',payrollFrom:'Open payroll from',recordOnly:'Record only — closed payroll unchanged',reason:'Reason',previous:'Previous',next:'Next'};
+  render(<SalaryAmendmentHistory rows={[{id:'fictional',compensationId:'native-reference',basicSalary:'3400.00',currency:'MYR',rateAmount:null,effectiveFrom:'2026-01-15',payrollFrom:null,until:'2026-03-01',informationOnly:true,reason:'Fictional signed salary correction'}]} page={2} hasMore href={page=>'/salary?page='+page} labels={labels}/>);
+  expect(screen.getByText('3,400.00',{exact:false})).toBeInTheDocument();expect(screen.getByText(labels.recordOnly)).toBeInTheDocument();
+  expect(screen.getByText('Fictional signed salary correction')).toBeInTheDocument();expect(screen.queryByText('2026-01-15')).toBeNull();
+  expect(screen.getByRole('link',{name:'Previous'})).toHaveAttribute('href','/salary?page=1');expect(screen.getByRole('link',{name:'Next'})).toHaveAttribute('href','/salary?page=3');
  });
 });

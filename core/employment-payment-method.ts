@@ -17,7 +17,7 @@ export function employmentPaymentMethodOnSql(employmentId:SQL,date:string=todayI
  // run43951241825). An already authorized outer employment can supply its legacy column directly.
  // Same history, null/unknown boundary and RLS as app.employment_payment_method_on; scale equivalence
  // compares both readers for every scope. No current-master substitution when dated history exists.
- const legacy=legacyMethod??sql`(select e.payment_method::text from employment e where e.id=${employmentId} and e.tenant_id=app.current_tenant_id())`;
+ const legacy=legacyMethod??sql`(select aihr_method_legacy.payment_method::text from employment aihr_method_legacy where aihr_method_legacy.id=${employmentId} and aihr_method_legacy.tenant_id=app.current_tenant_id())`;
  return sql<PaymentMethod|null>`case when exists(select 1 from employment_payment_method_history h
    where h.employment_id=${employmentId} and h.tenant_id=app.current_tenant_id()) then
   (select h.payment_method from employment_payment_method_history h

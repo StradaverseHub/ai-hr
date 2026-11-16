@@ -2142,7 +2142,14 @@
         "emptySource": "Chưa ghi ngày",
         "unknownSource": "Không được ghi nhận trong sự kiện này"
       },
-      "costCenterAllocationTitle": "Phân bổ trung tâm chi phí"
+      "costCenterAllocationTitle": "Phân bổ trung tâm chi phí",
+      "salaryAmendments": {
+        "title": "Các điều chỉnh lương đã ghi nhận",
+        "amount": "Lương cơ bản",
+        "recordOnly": "Chỉ ghi nhận — bảng lương đã chốt không thay đổi",
+        "previous": "Trước",
+        "next": "Tiếp"
+      }
     },
     "import": {
       "title": "Nhập nhân viên",

@@ -1,3 +1,5 @@
+import {withPersonnelRead} from './personnel-read-bounds';
+import {assertWorkforceEmploymentTx} from './workforce-access';
 import {isCalendarDate} from '../lib/calendar-date';
 import {contractCompensationAuthorityTx} from './contract-record-authority';
 /**
@@ -388,7 +390,7 @@ export async function amendDatedCompensationTx(tx:Tx,ctx:SessionContext,p:{emplo
  const remarks=p.remarks?.trim()||p.reason.trim();
  if(unpayableSalaryLeg(mode as PayMode,p.basicSalary,rate)==='no_monthly_basic'&&!remarks)throw new SalaryRemarkRequiredError();
  if(mode!==source.payMode&&!isPeriodBoundary(p.effectiveFrom))throw new PayModePeriodBoundaryError();
- if(amount===semantic.basicSalary&&currency===semantic.currency&&mode===semantic.payMode&&term===semantic.paymentTerm&&rate===semantic.rateAmount)return{compensationId:source.id,sourceId:source.id,changed:false,payrollFrom:null,until,informationOnly:false};
+ if(amount===semantic.basicSalary&&currency===semantic.currency&&mode===semantic.payMode&&term===semantic.paymentTerm&&rate===semantic.rateAmount)return{compensationId:semantic.id,sourceId:source.id,changed:false,payrollFrom:null,until,informationOnly:prior?.payload!=null&&(prior.payload as {informationOnly?:boolean}).informationOnly===true};
  const protectedUntil=await firstOpenDayAfterClosedTx(tx,p.employmentId,p.effectiveFrom,until),payrollFrom=protectedUntil??p.effectiveFrom;
  const informationOnly=until!==null&&payrollFrom>=until;
  if(!informationOnly){
@@ -987,6 +989,30 @@ export type CompensationHistoryRow = {
  * stored columns). The former second query resolving "Last Updated By" was removed with the on-screen
  * audit columns (7c7c2f80) — that detail belongs to the Audit Trail (compensation.updated events).
  */
+export type CompensationAmendmentHistoryRow={
+ id:string;compensationId:string;basicSalary:string;currency:string;rateAmount:string|null;
+ effectiveFrom:string;payrollFrom:string|null;until:string|null;informationOnly:boolean;reason:string|null;
+};
+/** HR business-date references are separate from physical paid salary windows. In particular, a wholly
+ * closed amendment deliberately has a superseded native compensation reference: readers of paid salary
+ * keep their unchanged basis, while HR can still see the correction. One subject-scoped bounded SQL page. */
+export function compensationAmendmentHistory(ctx:SessionContext,employmentId:string,page=1){
+ if(!Number.isSafeInteger(page)||page<1||page>100000)throw new Error('Invalid salary amendment page.');
+ const pageSize=50;
+ return withPersonnelRead(ctx,async tx=>{
+  await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');
+  const found=await tx.select({id:domainEvent.id,compensationId:compensation.id,basicSalary:compensation.basicSalary,
+   currency:compensation.currency,rateAmount:compensation.rateAmount,
+   effectiveFrom:sql<string>`${domainEvent.payload}->>'effectiveFrom'`,payrollFrom:sql<string|null>`${domainEvent.payload}->>'payrollEffectiveFrom'`,
+   until:sql<string|null>`${domainEvent.payload}->>'until'`,informationOnly:sql<boolean>`${domainEvent.payload}->>'informationOnly'='true'`,
+   reason:sql<string|null>`${domainEvent.payload}->>'reason'`})
+   .from(domainEvent).innerJoin(compensation,and(eq(compensation.id,domainEvent.aggregateId),eq(compensation.tenantId,ctx.tenantId),eq(compensation.employmentId,employmentId)))
+   .where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.subjectEmploymentId,employmentId),eq(domainEvent.aggregateType,'compensation'),eq(domainEvent.eventType,'compensation.amended')))
+   .orderBy(desc(domainEvent.sequence)).limit(pageSize+1).offset((page-1)*pageSize);
+  return {page,hasMore:found.length>pageSize,rows:found.slice(0,pageSize)};
+ });
+}
+
 export function compensationHistoryDetailed(
   ctx: SessionContext,
   employmentId: string,

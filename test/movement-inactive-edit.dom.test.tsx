@@ -36,7 +36,8 @@ describe('an inactive custom Movement keeps its authorized Edit behavior metadat
   const type={...inactive,behaviourKind:'secondment'};
   const {container}=mount({...base,types:[active,type],edit});
   expect(container.querySelector('select[name="kind"]')).toHaveValue(type.code);
-  expect(screen.queryByText(messages.people.detail.movement.detail.beforeChanges)).toBeNull();
+  expect(screen.getByText(messages.people.detail.movement.detail.beforeChanges)).toBeInTheDocument();
+  expect(container.querySelector('[data-employment-information="groupJoinDate"] input')).toBeNull();
   expect(container.querySelector('input[name="basicSalary"]')).toBeNull();
  });
  it('keeps New Event limited to its active catalogue',()=>{

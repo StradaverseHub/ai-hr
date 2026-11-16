@@ -164,3 +164,27 @@ are deferred; one set-wise bounded union of changed intervals marks the final em
 
 Full integration, company-assignment follow-up behavior, complete form coverage, security review,
 rendered journeys and release gates are still required. Development checkpoints are not staging acceptance.
+
+
+## Final verification repairs
+
+Recorded salary amendments are a bounded, subject-scoped projection of canonical compensation references
+and their native amendment events. Their business Effective Date is distinct from the first open-payroll
+date. Wholly finalized intervals remain visible as record-only HR corrections; the paid salary reader,
+payslip rows and later explicit salary decisions retain their original values. Repeated method-only
+amendments reference the corrected semantic salary. An unchanged amount and unchanged routing is refused
+without manufacturing a new audit decision. Controlled original-hire inputs retain changed-only submission
+names through the Personnel descriptors, including lifecycle date presentation overrides.
+
+The group-scale full gate found that the SET-fenced scalar dated-method function repeated native permission
+work for every subject. Unchanged-source hosted reproduction43951241825 measured the multi-company
+readiness query at5744ms for983 rows. The planner-visible row-secured projection uses the same dated history
+and unknown/null boundary. A caller that already selected an authorized employment may supply its own
+legacy column, avoiding another employment read. Native dated-reader equivalence is checked for all
+three group-scale personas; no timing limit or authorization predicate is relaxed. Standalone Movement
+information and detail reads enter shared display-lock mode; command transactions retain their owner locks.
+
+Original full-run43943737895 remains failed on8b142d0ad309a5e93144d7695ccc0861669fcef6. Its entire planned
+matrix finished before repairs. Updated behavior fixtures retain closed financial rows byte-for-byte,
+read simulated future state at the simulated date, and assert both affected-input and coverage protections.
+A development checkpoint or passing subset does not establish staging release authority.

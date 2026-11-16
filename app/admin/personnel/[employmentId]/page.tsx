@@ -148,10 +148,12 @@ import { deriveEmploymentStatus } from '@/core/employment-status';
 import {
   closedPayrollPeriodsFor,
   compensationHistoryDetailed,
+  compensationAmendmentHistory,
   overlapsClosedPeriod,
   type CompensationHistoryRow,
 } from '@/core/comp';
 import { SalaryRevisionConfirm } from '@/components/salary-revision-confirm';
+import {SalaryAmendmentHistory} from '@/components/salary-amendment-history';
 import { SalaryHistoryTable, type SalaryRowView } from '@/components/salary-history-table';
 import { PayStructureFields, type PayModeOption } from '@/components/pay-structure-fields';
 import { PERSONNEL_PAY_MODES, PERSONNEL_PAYMENT_TERMS } from '@/lib/personnel-choice-vocabulary';
@@ -413,8 +415,12 @@ export default async function EmployeePage({
   // Pay + statutory (salary, IC, bank, tax) are HR-admin-only on this directory page — never load or
   // render them for a manager viewing a direct report (consultant feedback #5). Compensation reads are
   // also tightened to admin-or-self at the RLS layer (migration 0060); this avoids fetching them at all.
-  const paymentMethodHistory = readProfileCards ? await employmentPaymentMethodHistory(s,employmentId) : [];
-  const salaryHistory = readProfileCards ? await compensationHistoryDetailed(s, employmentId) : [];
+  const amendmentPage=Number(rawSearchParams.salaryAmendmentPage);
+  const [paymentMethodHistory,salaryHistory,salaryAmendments]=await Promise.all([
+    readProfileCards?employmentPaymentMethodHistory(s,employmentId):[],
+    readProfileCards?compensationHistoryDetailed(s,employmentId):[],
+    readProfileCards?compensationAmendmentHistory(s,employmentId,Number.isSafeInteger(amendmentPage)&&amendmentPage>0&&amendmentPage<=100000?amendmentPage:1):{page:1,hasMore:false,rows:[]},
+  ]);
   // 7c7c2f80 — periods of CLOSED payroll runs that paid this employee: drives the per-row "deletable"
   // flag on the salary history (records a closed run relied on are payroll evidence and cannot go).
   const closedPayrollPeriods = readProfileCards || movementPage === 'edit' || spNewEvent ? await closedPayrollPeriodsFor(s, employmentId) : [];
@@ -2687,6 +2693,10 @@ export default async function EmployeePage({
             position: this table sorts and filters, so row order is the reader's choice, not the record's
             status. (The summary strip above states the same figure once more, in words.) */}
         {salaryRowViews.length > 0 && <SalaryHistoryTable rows={salaryRowViews} recordingOptions={salaryRecordingOptions} />}
+        <SalaryAmendmentHistory {...salaryAmendments} href={page=>`/admin/personnel/${employmentId}?tab=payroll&salaryAmendmentPage=${page}#salary-amendments`}
+          labels={{title:t('salaryAmendments.title'),date:t('paymentMethodEffectiveDate'),amount:t('salaryAmendments.amount'),rate:t('rateAmount'),
+           payrollFrom:t('salaryPayrollFrom'),recordOnly:t('salaryAmendments.recordOnly'),reason:t('movement.correctionReasonLabel'),previous:t('salaryAmendments.previous'),next:t('salaryAmendments.next')}}/>
+
       </section>
 
       {/* ── R46 79eb7151, SUPERSEDED by ADR-0078 (642ecc55) — How this employee is paid ─────────────────────

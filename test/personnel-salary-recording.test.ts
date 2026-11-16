@@ -3,7 +3,7 @@ import {eq} from 'drizzle-orm';
 import * as s from '../db/schema';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {hireEmployee} from '../core/org';
-import {setCompensation} from '../core/comp';
+import {setCompensation,compensationAmendmentHistory,compensationHistoryDetailed} from '../core/comp';
 import {recordPersonnelSalary} from '../core/personnel-salary-recording';
 import {createMovementEvent,movementCurrentState,movementDetail,movementHistory} from '../core/movement';
 import {saveMovementEventType} from '../core/movement-type';
@@ -15,7 +15,44 @@ beforeEach(async()=>{
  await setCompensation(ctx,{employmentId:id,basicSalary:3000,effectiveFrom:'2026-01-01'});
 });
 afterAll(closeAll);
+async function closedSalaryMonth(period:string){
+ const [parent]=await owner.db.insert(s.payPeriod).values({tenantId:b.tenantId,companyId:b.companyId,period,status:'closed'}).returning();
+ const [batch]=await owner.db.insert(s.payrollBatch).values({tenantId:b.tenantId,companyId:b.companyId,payPeriodId:parent.id,payPeriod:period,batchDate:period+'-25',status:'closed'}).returning();
+ await owner.db.insert(s.payslip).values({tenantId:b.tenantId,batchId:batch.id,employmentId:id,basicSalary:'3000.00',grossPay:'3000.00',netPay:'3000.00',totalDeductions:'0.00',employerCost:'3000.00',statutory:{fixture:'finalized'}});
+}
 describe('salary recording choices share deterministic owners',()=>{
+ it('shows a wholly closed HR amendment without replacing paid salary, later intent or Employment History',async()=>{
+  const ctx=adminCtx(b);await setCompensation(ctx,{employmentId:id,basicSalary:4000,effectiveFrom:'2026-03-01'});
+  await closedSalaryMonth('2026-01');await closedSalaryMonth('2026-02');
+  const paid=await owner.db.select().from(s.payslip).orderBy(s.payslip.id),batches=await owner.db.select().from(s.payrollBatch).orderBy(s.payrollBatch.id);
+  const physical=await compensationHistoryDetailed(ctx,id),events=(await movementHistory(ctx,id)).map(row=>row.id);
+  await recordPersonnelSalary(ctx,{employmentId:id,choice:'amendment',effectiveDate:'2026-01-15',basicSalary:3400,paymentMethod:'cash',reason:'Fictional corrected signed January salary'});
+  const history=await compensationAmendmentHistory(ctx,id);expect(history).toMatchObject({page:1,hasMore:false,rows:[{basicSalary:'3400.00',currency:'MYR',effectiveFrom:'2026-01-15',payrollFrom:null,until:'2026-03-01',informationOnly:true,reason:'Fictional corrected signed January salary'}]});
+  expect(await compensationHistoryDetailed(ctx,id)).toEqual(physical);
+  expect(await owner.db.select().from(s.payslip).orderBy(s.payslip.id)).toEqual(paid);expect(await owner.db.select().from(s.payrollBatch).orderBy(s.payrollBatch.id)).toEqual(batches);
+  expect((await movementHistory(ctx,id)).map(row=>row.id)).toEqual(events);expect(await movementCurrentState(ctx,id)).toMatchObject({basicSalary:'4000.00'});
+  // A method-only follow-up must reference the corrected semantic salary, not the immutable paid source.
+  await recordPersonnelSalary(ctx,{employmentId:id,choice:'amendment',effectiveDate:'2026-01-15',basicSalary:3400,paymentMethod:'cheque',reason:'Fictional corrected January routing'});
+  const latest=await owner.db.select({payload:s.domainEvent.payload}).from(s.domainEvent).where(eq(s.domainEvent.eventType,'employment.salary.amended')).orderBy(s.domainEvent.sequence);
+  expect(latest.at(-1)?.payload).toMatchObject({compensationId:history.rows[0].compensationId,salaryChanged:false,paymentMethodChanged:true});
+  expect((await compensationAmendmentHistory(ctx,id)).rows).toHaveLength(1);
+ });
+ it('pages the actual native amendment ledger newest-first without returning another employee reference',async()=>{
+  const ctx=adminCtx(b);
+  for(let ordinal=1;ordinal<=51;ordinal++)await recordPersonnelSalary(ctx,{employmentId:id,choice:'amendment',effectiveDate:'2026-02-01',basicSalary:3000+ordinal,reason:'Fictional amendment '+ordinal});
+  const first=await compensationAmendmentHistory(ctx,id),second=await compensationAmendmentHistory(ctx,id,2);
+  expect(first).toMatchObject({page:1,hasMore:true});expect(first.rows).toHaveLength(50);expect(first.rows[0].basicSalary).toBe('3051.00');
+  expect(second).toMatchObject({page:2,hasMore:false,rows:[{basicSalary:'3001.00',reason:'Fictional amendment 1'}]});
+  expect(new Set([...first.rows,...second.rows].map(row=>row.id)).size).toBe(51);
+  const other=(await hireEmployee(ctx,{person:{fullName:'Fictional Other Salary',primaryEmail:'other-salary@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01'})).employmentId;
+  expect((await compensationAmendmentHistory(ctx,other)).rows).toEqual([]);
+ },180_000); // 51 genuine composite native writes exercise ledger pagination; allow hosted transaction overhead.
+ it('refuses a no-op amendment without manufacturing salary or audit history',async()=>{
+  const ctx=adminCtx(b),before=await owner.db.select().from(s.domainEvent).orderBy(s.domainEvent.sequence);
+  await expect(recordPersonnelSalary(ctx,{employmentId:id,choice:'amendment',effectiveDate:'2026-01-01',basicSalary:3000,reason:'Fictional unchanged record'})).rejects.toThrow('Nothing to amend');
+  expect(await owner.db.select().from(s.domainEvent).orderBy(s.domainEvent.sequence)).toEqual(before);expect((await compensationAmendmentHistory(ctx,id)).rows).toEqual([]);
+ });
+
  it('creates the configured event with salary, payment method and Effective Date together',async()=>{
   const ctx=adminCtx(b),type=await saveMovementEventType(ctx,{label:'Fictional Merit Award',behaviourKind:'increment'});
   await recordPersonnelSalary(ctx,{employmentId:id,choice:'newEvent',eventType:type.code,effectiveDate:'2026-02-01',basicSalary:3500,paymentMethod:'cash'});
