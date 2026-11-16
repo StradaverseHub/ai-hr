@@ -126,3 +126,5 @@
 .pcg .pcg-total{font-size:13px;color:var(--muted-foreground)}
 .pcg .pcg-total-bad{color:var(--pcg-bad);font-weight:600}
 .pcg .pcg-section-head{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:baseline;justify-content:space-between}
+/* On phones .probation stacks table cells as blocks; the theme's fixed td height (2.75rem) would then clip wrapped text. */
+@media (max-width:640px){:root .probation .pcg-table tbody td,:root .probation .pcg-table th{height:auto}}
