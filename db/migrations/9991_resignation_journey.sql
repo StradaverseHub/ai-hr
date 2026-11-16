@@ -299,8 +299,16 @@ CREATE FUNCTION app.resignation_handoff_active() RETURNS boolean LANGUAGE plpgsq
 DECLARE id uuid;
 BEGIN id:=nullif(current_setting('app.resignation_handoff',true),'')::uuid;IF id IS NULL THEN RETURN false;END IF;PERFORM app.resignation_offboarding_intent(id);RETURN true;EXCEPTION WHEN OTHERS THEN RETURN false;END $$;
 CREATE FUNCTION app.resignation_offboarding_sequence(p_id uuid) RETURNS bigint LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE n bigint;
-BEGIN PERFORM app.resignation_offboarding_intent(p_id);PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':OFB9',0));SELECT coalesce(max(substring(number from '[0-9]+$')::bigint),0)+1 INTO n FROM lc_v9_case WHERE tenant_id=app.current_tenant_id() AND number ~ '^OFB9-[0-9]+$';RETURN n;END $$;
+DECLARE floor_value bigint;
+BEGIN
+ PERFORM app.resignation_offboarding_intent(p_id);
+ SELECT coalesce(max(substring(number from '[0-9]+$')::bigint),0) INTO floor_value FROM lc_v9_case WHERE tenant_id=app.current_tenant_id() AND number ~ '^OFB9-[0-9]+$';
+ -- Share the canonical counter's row lock with manual V9 allocations, and never
+ -- move it backwards when earlier source constructors left higher case numbers.
+ INSERT INTO lc_counter(tenant_id,prefix,last_value) VALUES(app.current_tenant_id(),'OFB9',floor_value::integer)
+ ON CONFLICT(tenant_id,prefix) DO UPDATE SET last_value=greatest(lc_counter.last_value,excluded.last_value);
+ RETURN app.lc_next_number('OFB9');
+END $$;
 REVOKE ALL ON FUNCTION app.resignation_offboarding_intent(uuid),app.resignation_offboarding_admit(uuid),app.resignation_handoff_active(),app.resignation_offboarding_sequence(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.resignation_offboarding_intent(uuid),app.resignation_offboarding_admit(uuid),app.resignation_handoff_active(),app.resignation_offboarding_sequence(uuid) TO ai_hr_app;
 -- Case construction uses the canonical V9 reader inside the protected, authenticated handoff only.
@@ -476,3 +484,35 @@ CREATE FUNCTION app.resignation_offboarding_template_ids(p_case uuid) RETURNS te
 $$;
 REVOKE ALL ON FUNCTION app.resignation_offboarding_template_ids(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.resignation_offboarding_template_ids(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Keep legacy invoker checks; only the exact signed managed handoff uses its owner-verified subject.
+CREATE OR REPLACE FUNCTION app.lc_v9_integrity() RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $$
+DECLARE row_data jsonb:=to_jsonb(NEW); parent lc_v9_case%ROWTYPE; native_parent lc_onboarding_case%ROWTYPE; subject employment%ROWTYPE; handoff jsonb;
+BEGIN
+ IF TG_TABLE_NAME='lc_v9_case' THEN
+  IF TG_OP='INSERT' AND NEW.module='off' AND NEW.tenant_id=app.current_tenant_id() AND NEW.data->>'resignationSourceCaseId'=nullif(current_setting('app.resignation_handoff',true),'') AND app.resignation_handoff_active() THEN
+   -- The authenticated command intent, not this caller's Personnel read scope,
+   -- owns this exact construction. All other integrity checks still apply.
+   handoff:=app.resignation_offboarding_intent((NEW.data->>'resignationSourceCaseId')::uuid);
+   IF handoff->>'offboardingCaseId' IS NOT NULL OR NEW.employment_id::text IS DISTINCT FROM handoff->>'employmentId' OR NEW.company_id::text IS DISTINCT FROM handoff->'construction'->'employee'->>'company_id' OR NEW.data->'facts'->>'personId' IS DISTINCT FROM handoff->'construction'->'employee'->>'person_id' OR NEW.data->'facts'->>'caseType' IS DISTINCT FROM handoff->>'type' OR NEW.data->'facts'->>'noticeDate' IS DISTINCT FROM handoff->>'noticeDate' OR NEW.data->'facts'->>'lastDay' IS DISTINCT FROM handoff->>'lastDay' THEN RAISE EXCEPTION 'Lifecycle subject does not match the admitted resignation'; END IF;
+  ELSE
+   SELECT * INTO subject FROM employment WHERE id=NEW.employment_id AND tenant_id=NEW.tenant_id AND company_id=NEW.company_id;
+   IF NOT FOUND OR NEW.data->'facts'->>'personId' IS DISTINCT FROM subject.person_id::text THEN RAISE EXCEPTION 'Lifecycle subject does not belong to this company'; END IF;
+  END IF;
+  IF NEW.data->>'id' IS DISTINCT FROM NEW.id::text OR NEW.data->>'module' IS DISTINCT FROM NEW.module OR NEW.data->'facts'->>'company' IS DISTINCT FROM NEW.company_id::text OR NEW.data->'facts'->>'employmentId' IS DISTINCT FROM NEW.employment_id::text THEN RAISE EXCEPTION 'Lifecycle case subject mismatch'; END IF;
+  IF NEW.data->>'version' IS DISTINCT FROM '9' OR coalesce(NEW.data->>'state','') NOT IN ('pending','submitted','cleared','cancelled') OR (NEW.data->>'revision')::integer IS DISTINCT FROM NEW.revision THEN RAISE EXCEPTION 'Invalid lifecycle state or revision'; END IF;
+ ELSIF TG_TABLE_NAME='lc_v9_file' AND row_data->>'onboarding_case_id' IS NOT NULL THEN
+  SELECT * INTO native_parent FROM lc_onboarding_case WHERE id=(row_data->>'onboarding_case_id')::uuid AND tenant_id=NEW.tenant_id AND company_id=NEW.company_id;
+  IF NOT FOUND OR row_data->>'case_id' IS NOT NULL THEN RAISE EXCEPTION 'Lifecycle file does not belong to this company'; END IF;
+ ELSIF TG_TABLE_NAME IN ('lc_v9_case_revision','lc_v9_file','lc_v9_payroll_handover') THEN
+  SELECT * INTO parent FROM lc_v9_case WHERE id=(row_data->>'case_id')::uuid AND tenant_id=(row_data->>'tenant_id')::uuid AND company_id=(row_data->>'company_id')::uuid;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Lifecycle parent does not belong to this company'; END IF;
+  IF TG_TABLE_NAME='lc_v9_payroll_handover' AND row_data->>'employment_id' IS DISTINCT FROM parent.employment_id::text THEN RAISE EXCEPTION 'Payroll subject does not match this case'; END IF;
+  IF TG_TABLE_NAME='lc_v9_payroll_handover' AND row_data->>'status'='reviewed' AND (row_data->>'reviewed_by' IS DISTINCT FROM app.current_user_id()::text OR length(trim(coalesce(row_data->>'review_note','')))=0) THEN RAISE EXCEPTION 'Payroll review needs the actual signed-in reviewer and a note'; END IF;
+  IF TG_TABLE_NAME='lc_v9_case_revision' AND (row_data->'data'->>'id' IS DISTINCT FROM parent.id::text OR row_data->'data'->'facts'->>'company' IS DISTINCT FROM parent.company_id::text OR row_data->'data'->'facts'->>'employmentId' IS DISTINCT FROM parent.employment_id::text) THEN RAISE EXCEPTION 'Lifecycle revision subject mismatch'; END IF;
+ END IF;
+ IF coalesce(row_data->>'actor_user_id',row_data->>'uploaded_by',row_data->>'reviewed_by') IS NOT NULL AND NOT EXISTS(SELECT 1 FROM app_user u WHERE u.id=coalesce(row_data->>'actor_user_id',row_data->>'uploaded_by',row_data->>'reviewed_by')::uuid AND u.tenant_id=(row_data->>'tenant_id')::uuid) THEN RAISE EXCEPTION 'Lifecycle actor does not belong to this tenant'; END IF;
+ RETURN NEW;
+END;
+$$;

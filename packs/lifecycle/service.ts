@@ -31,13 +31,19 @@ export * from './resignation/service';
 /** Managed resignations hand off only native source facts within the caller's admitted transaction. */
 export async function createResignationOffboardingTx(tx:import('../../db/client').Tx,ctx:import('../../db/client').SessionContext,caseId:string):Promise<string>{
  const {sql}=await import('drizzle-orm');
- await tx.execute(sql`select app.resignation_offboarding_admit(${caseId}::uuid)`);
- try{
-  const [row]=await tx.execute<{intent:{employmentId:string;type:'Resignation';noticeDate:string;lastDay:string;offboardingCaseId:string|null}}>(sql`select app.resignation_offboarding_intent(${caseId}::uuid) as intent`);
-  if(row.intent.offboardingCaseId)return row.intent.offboardingCaseId;
-  const {v9CreateOffboardingTx}=await import('./v9/service');
-  return await v9CreateOffboardingTx(tx,ctx,{employmentId:row.intent.employmentId,type:row.intent.type,noticeDate:row.intent.noticeDate,lastDay:row.intent.lastDay},{kind:'resignation',caseId});
- }finally{await tx.execute(sql`select set_config('app.resignation_handoff','',true)`);}
+ // A failed constructor must roll back its writes and local admission before the
+ // workflow records a recoverable domain failure in the surrounding transaction.
+ return tx.transaction(async handoffTx=>{
+  await handoffTx.execute(sql`select app.resignation_offboarding_admit(${caseId}::uuid)`);
+  const [row]=await handoffTx.execute<{intent:{employmentId:string;type:'Resignation';noticeDate:string;lastDay:string;offboardingCaseId:string|null}}>(sql`select app.resignation_offboarding_intent(${caseId}::uuid) as intent`);
+  let result=row.intent.offboardingCaseId;
+  if(!result){
+   const {v9CreateOffboardingTx}=await import('./v9/service');
+   result=await v9CreateOffboardingTx(handoffTx,ctx,{employmentId:row.intent.employmentId,type:row.intent.type,noticeDate:row.intent.noticeDate,lastDay:row.intent.lastDay},{kind:'resignation',caseId});
+  }
+  await handoffTx.execute(sql`select set_config('app.resignation_handoff','',true)`);
+  return result;
+ });
 }
 
 /** Lifecycle owns resignation posting composition; Personnel remains the movement writer. */

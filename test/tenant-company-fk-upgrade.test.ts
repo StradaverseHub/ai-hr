@@ -317,6 +317,13 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const beforePerformancePrivileges=await privileges();
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
   const afterPerformancePrivileges=await privileges();
+  // The exact signed resignation construction changes only this invoker trigger's
+  // subject lookup branch; its identity, owner-only ACL and other callers remain.
+  const [v9Integrity]=await storage.client`select prosecdef as security_definer,
+   has_function_privilege('ai_hr_app',oid,'EXECUTE') as app_execute,
+   exists(select 1 from aclexplode(coalesce(proacl,acldefault('f',proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE') as public_execute
+   from pg_proc where oid='app.lc_v9_integrity()'::regprocedure`;
+  expect(v9Integrity).toEqual({security_definer:false,app_execute:false,public_execute:false});
   // Every function the forward migrations add, with its reviewed EXECUTE privileges: private functions are not
   // callable by the application role, and none is callable by PUBLIC. The policy-side and trigger-WHEN helpers are
   // granted to exactly the roles their policies or the domain_event writers are (test/policy-helper-function-grants).
