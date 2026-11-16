@@ -92,7 +92,7 @@ describe('protected Contract decision preview and submission',()=>{
   const letter=await readContractSharedLetter(f.admin,generated.id);
   expect(letter.canEdit).toBe(true);expect(letter.pendingAction?.kind).toBe('review');expect(letter.layers[1]).toMatchObject({kind:'sign',unavailable:true,assigneeName:null});
   expect(renderContractSharedLetter(letter)?.blocks[0].text).toBe('Dear {employee.name}');
-  const [otherPerson]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name) values(${f.b.tenantId}::uuid,'Different Personnel identity') returning id`);
+  const [otherPerson]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${f.b.tenantId}::uuid,'Different Personnel identity',${randomUUID()+'@preview.test'}) returning id`);
   await owner.db.execute(sql`update employment set person_id=${otherPerson.id}::uuid where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`);
   const changedSource=await readContractSharedLetter(f.admin,letter.id);
   expect(changedSource.canEdit).toBe(false);expect(changedSource.pendingAction).toBeNull();expect(changedSource.body?.values['employee.name']).toBe('Fictional Contract subject');
