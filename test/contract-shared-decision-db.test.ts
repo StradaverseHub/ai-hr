@@ -86,9 +86,11 @@ describe('protected Contract decision preview and submission',()=>{
   expect(accepted.flow).toMatchObject({revision:2,stage:'workflow',decision:{kind:'renew',payChanges:false,salaryCents:null}});
   expect(await submitContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,previewId:requested.previewId})).toEqual(accepted);
   await saveAutomationWorkflow(f.admin,{workflow:{...f.workflow,status:'paused'},expectedRevision:1,reason:'Future runs paused; accepted work keeps its revision'});
+  expect(await submitContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,previewId:requested.previewId})).toEqual(accepted);
   const [event]=await owner.db.execute<{versions:unknown;job:string}>(sql`select workflow_versions as versions,job_id as job from contract_shared_event where tenant_id=${f.b.tenantId}::uuid and id=${accepted.eventId}::uuid`);
   expect(event).toEqual({versions:[{workflowId:f.workflow.id,revision:1}],job:accepted.jobId});
   const history=await contractSharedHistory(f.proposer,f.caseId);expect(history.map(entry=>entry.revision)).toEqual([2,1]);
+  expect(history[0]).toMatchObject({actorId:f.proposer.userId,actorPersonId:f.proposer.personId,actorName:'Fictional Contract proposer'});
   const [native]=await owner.db.execute<{start:string;end:string;number:number;salary:string}>(sql`select e.contract_start_date::text as start,e.contract_end_date::text as end,e.contract_number as number,c.basic_salary::text as salary from employment e join compensation c on c.employment_id=e.id and c.tenant_id=e.tenant_id and c.superseded_at is null where e.id=${f.employee.employmentId}::uuid`);
   expect(native).toMatchObject({start,end,number:4});expect(Number(native.salary)).toBe(4976.21);
  });

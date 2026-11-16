@@ -56,7 +56,7 @@ export function submitContractSharedDecision(ctx:SessionContext,raw:{caseId:stri
   const [saved]=await tx.execute<{preview:ContractDecisionPreview}>(sql`select app.contract_shared_preview_read(${input.previewId}::uuid) as preview`);
   if(saved.preview.caseId!==input.caseId||saved.preview.caseRevision!==input.revision)throw new ContractManagementError('conflict','Review a preview for this case and revision.');
   const decision=contractProposedDecisionSchema.parse(saved.preview.decision);
-  if(decision.kind==='end')await assertTerminationReasonOfferedTx(tx,ctx.tenantId,decision.endReason!);
+  // The native command checks offered reasons for a new decision, after recognizing an already accepted retry.
   const [row]=await tx.execute<{result:{flow:ContractFlow;eventId:string;jobId:string}}>(sql`select app.contract_shared_decision_submit(${input.caseId}::uuid,${input.revision},${JSON.stringify(decision)}::jsonb,${input.previewId}::uuid) as result`);
   return row.result;
  }));
@@ -64,7 +64,7 @@ export function submitContractSharedDecision(ctx:SessionContext,raw:{caseId:stri
 export function contractSharedHistory(ctx:SessionContext,caseId:string,before=2147483647){
  z.uuid().parse(caseId);z.number().int().positive().parse(before);
  return command(()=>withScopedLifecycleTenant(ctx,async tx=>{
-  const rows=await tx.execute<{entry:{revision:number;at:string;actorId:string|null;flow:ContractFlow}}>(sql`select value as entry from app.contract_shared_history(${caseId}::uuid,${before}) value`);
+  const rows=await tx.execute<{entry:{revision:number;at:string;actorId:string|null;actorPersonId:string|null;actorName:string|null;flow:ContractFlow}}>(sql`select value as entry from app.contract_shared_history(${caseId}::uuid,${before}) value`);
   return rows.map(row=>row.entry);
  }));
 }

@@ -6224,6 +6224,20 @@
       "when": 1794841005807,
       "tag": "5807_contract_shared_commands",
       "breakpoints": true
+    },
+    {
+      "idx": 5208,
+      "version": "7",
+      "when": 1794841005808,
+      "tag": "5808_contract_shared_signing",
+      "breakpoints": true
+    },
+    {
+      "idx": 5209,
+      "version": "7",
+      "when": 1794841005809,
+      "tag": "5809_contract_shared_decision_identity",
+      "breakpoints": true
     }
   ]
 }

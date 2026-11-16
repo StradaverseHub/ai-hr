@@ -32,9 +32,9 @@ export function refreshContractLetterValues(letter: ContractLetterFlow, values: 
 }
 export function editContractLetterBlocks(letter: ContractLetterFlow, input: {userId: string; blocks: Record<string, string>; fingerprint: string}): ContractLetterFlow {
   if (!contractLetterCanEdit(letter, input.userId)) throw new SigningError('forbidden', 'Only the current reviewer or document owner can edit before the first signature.');
-  if (!Object.values(input.blocks).some(text => text.trim())) throw new SigningError('invalid', 'The letter cannot be empty.');
   if (Object.keys(input.blocks).some(key => !Object.hasOwn(letter.blocks, key))) throw new SigningError('invalid', 'Only the existing editable content blocks may be changed.');
   const blocks = {...letter.blocks, ...input.blocks};
+  if (!Object.values(blocks).some(text => text.trim())) throw new SigningError('invalid', 'The letter cannot be empty.');
   if (Object.entries(blocks).every(([key, value]) => value === letter.blocks[key])) return letter;
   return {...letter, blocks, document: reviseSigningDocument(letter.document, input.fingerprint)};
 }
@@ -75,5 +75,5 @@ export function contractLetterDocument(letter:ContractLetterFlow):Document{
 export function contractLetterFingerprintSource(letter:ContractLetterFlow,values=letter.values):string{
  if(!letter.definition)throw new SigningError('invalid','This letter has no pinned template snapshot.');
  const canonical=(value:unknown):unknown=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().filter(key=>(value as Record<string,unknown>)[key]!==undefined).map(key=>[key,canonical((value as Record<string,unknown>)[key])])):value;
- return JSON.stringify(canonical({templateId:letter.templateId,templateVersion:letter.templateVersion,generatedOn:letter.generatedOn,definition:letter.definition,blocks:letter.blocks,values}));
+ return JSON.stringify(canonical({id:letter.id,contentRevision:letter.document.contentRevision,templateId:letter.templateId,templateVersion:letter.templateVersion,generatedOn:letter.generatedOn,definition:letter.definition,blocks:letter.blocks,values}));
 }
