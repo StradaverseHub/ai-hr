@@ -19,7 +19,7 @@ import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {pgSqlState} from '../lib/db-error';
 import {withScopedLifecycleTenant} from './module-gate';
-import {createMovementEventTx,movementLedgerMarkerTx,movementRowsAfterSequenceTx} from './movement';
+import {createMovementEventTx,movementLedgerMarkerTx,movementRowsAfterSequenceTx,applyApprovedContractPostingMovementTx} from './movement';
 import {movementNeedsEntitlementReprojection} from './movement-kinds';
 import {
   isPersonnelPostingEvent,normalisePostingValues,postingCurrentValues,postingDisplayStatus,postingLabel,
@@ -110,7 +110,7 @@ async function present(tx: Tx, rows: Row[]): Promise<PersonnelPosting[]> {
   }));
 }
 
-export type PersonnelPostingFilters = { status?: 'pending' | 'approved' | 'all'; employmentId?: string; limit?: number; offset?: number };
+export type PersonnelPostingFilters = { status?: 'pending' | 'approved' | 'all'; source?: PersonnelPostingSource; employmentId?: string; limit?: number; offset?: number };
 export type PersonnelPostingPage = { rows: PersonnelPosting[]; offset: number; limit: number; hasMore: boolean };
 
 /** The queue: postings the user may read (row security), newest first, one bounded page. */
@@ -121,7 +121,7 @@ export async function listPersonnelPostings(ctx: SessionContext, filters: Person
   if (!['pending', 'approved', 'all'].includes(status)) throw new PersonnelPostingError('invalid', 'Unknown posting status.');
   if (filters.employmentId !== undefined && !UUID.test(filters.employmentId)) throw new PersonnelPostingError('invalid', 'Unknown employee.');
   return withScopedLifecycleTenant(ctx, async (tx) => {
-    const where = sql`(${status}::text = 'all' or p.status = ${status}::text) and (${filters.employmentId ?? null}::uuid is null or p.employment_id = ${filters.employmentId ?? null}::uuid)`;
+    const where = sql`(${status}::text = 'all' or p.status = ${status}::text) and (${filters.source??null}::text is null or p.source=${filters.source??null}) and (${filters.employmentId ?? null}::uuid is null or p.employment_id = ${filters.employmentId ?? null}::uuid)`;
     const rows = await tx.execute<Row>(selectRows(where, limit + 1, offset));
     return { rows: await present(tx, [...rows].slice(0, limit)), offset, limit, hasMore: rows.length > limit };
   });
@@ -218,6 +218,12 @@ export async function approvePersonnelPostingTx(tx: Tx, ctx: SessionContext, inp
   const [approved] = await guarded(() => tx.execute<{ data: { id: string; number: number; employmentId: string; eventType: PersonnelPostingEvent; values: PersonnelPostingValues } }>(
     sql`select app.personnel_posting_approve(${input.id}::uuid, ${input.revision}, ${corrected ? JSON.stringify(corrected) : null}::jsonb) as data`));
   const {employmentId, eventType, values: applied, number} = approved.data;
+  if(eventType==='contractRenewal'||eventType==='contractConversion'){
+    const result=await applyApprovedContractPostingMovementTx(tx,ctx,input.id);
+    const [event]=await tx.execute<{id:string}>(sql`select id from domain_event where tenant_id=${ctx.tenantId}::uuid and subject_employment_id=${employmentId}::uuid and payload->'movement'->>'groupId'=${result.groupId} order by sequence limit 1`);
+    if(!event)throw new PersonnelPostingError('invalid','The Contract movement receipt is unavailable.');
+    return {id:input.id,movementId:event.id,employmentId,eventType,values:applied,behaviourKind:eventType};
+  }
   const marker = await movementLedgerMarkerTx(tx, ctx, employmentId);
   const result = await createMovementEventTx(tx, ctx, {
     employmentId, kind: eventType, effectiveDate: applied.effectiveDate,

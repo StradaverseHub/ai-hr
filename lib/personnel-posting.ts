@@ -1,3 +1,5 @@
+import {addCalendarMonths} from './hr-date';
+import {addDaysIso} from './roster-month';
 /**
  * Personnel postings: pure shapes shared by the service (core/personnel-posting.ts), the queue page and the movement
  * page (ADR docs/adr/2026-11-15-probation-shared-automation.md, decision 4; migration 5741).
@@ -5,15 +7,15 @@
  * A posting carries a fixed allowlist of values. The database checks the same allowlist
  * (app.personnel_posting_values_ok); this module lets forms and tests refuse early with readable text.
  */
-export const PERSONNEL_POSTING_EVENTS = ['confirmation', 'probationExtension'] as const;
+export const PERSONNEL_POSTING_EVENTS = ['confirmation', 'probationExtension', 'contractRenewal', 'contractConversion'] as const;
 export type PersonnelPostingEvent = (typeof PERSONNEL_POSTING_EVENTS)[number];
-export const PERSONNEL_POSTING_SOURCES = ['probation'] as const;
+export const PERSONNEL_POSTING_SOURCES = ['probation', 'contract_staff'] as const;
 export type PersonnelPostingSource = (typeof PERSONNEL_POSTING_SOURCES)[number];
 export type PersonnelPostingStatus = 'pending' | 'approved';
 /** What the queue shows: a pending posting that someone corrected reads "Edited · waiting for approval". */
 export type PersonnelPostingDisplayStatus = 'pending' | 'edited' | 'approved';
 
-export type PersonnelPostingValues = { effectiveDate: string; endDate?: string | null; remarks?: string | null };
+export type PersonnelPostingValues = { effectiveDate: string; endDate?: string | null; previousEndDate?: string; contractNumber?: string; remarks?: string | null };
 export const PERSONNEL_POSTING_REMARKS_MAX = 200;
 
 const DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -35,7 +37,8 @@ export const isPersonnelPostingEvent = (value: unknown): value is PersonnelPosti
 /** The allowlisted, normalised values for one event type, or the reason they are refused. */
 export function normalisePostingValues(event: PersonnelPostingEvent, raw: Record<string, unknown>):
   { ok: true; values: PersonnelPostingValues } | { ok: false; problem: 'effectiveDate' | 'endDate' | 'remarks' | 'fields' } {
-  const allowed = new Set(['effectiveDate', 'endDate', 'remarks']);
+  const contract = event === 'contractRenewal' || event === 'contractConversion';
+  const allowed = new Set(['effectiveDate', 'endDate', 'remarks', ...(contract ? ['previousEndDate', 'contractNumber'] : [])]);
   if (Object.keys(raw).some((key) => !allowed.has(key))) return { ok: false, problem: 'fields' };
   const effectiveDate = typeof raw.effectiveDate === 'string' ? raw.effectiveDate.trim() : raw.effectiveDate;
   if (!isPostingDay(effectiveDate)) return { ok: false, problem: 'effectiveDate' };
@@ -44,11 +47,20 @@ export function normalisePostingValues(event: PersonnelPostingEvent, raw: Record
   const remarks = typeof remarksRaw === 'string' ? remarksRaw.trim() || null : null;
   if (remarks && remarks.length > PERSONNEL_POSTING_REMARKS_MAX) return { ok: false, problem: 'remarks' };
   const values: PersonnelPostingValues = { effectiveDate };
-  if (event === 'probationExtension') {
+  if (event === 'probationExtension' || event === 'contractRenewal') {
     const endDate = typeof raw.endDate === 'string' ? raw.endDate.trim() : raw.endDate;
     if (!isPostingDay(endDate)) return { ok: false, problem: 'endDate' };
     values.endDate = endDate;
+    if (event === 'contractRenewal' && endDate < addDaysIso(addCalendarMonths(effectiveDate,3),-1)) return {ok:false,problem:'endDate'};
   } else if (raw.endDate != null && raw.endDate !== '') return { ok: false, problem: 'endDate' };
+  if (contract) {
+    if (!isPostingDay(raw.previousEndDate) || raw.previousEndDate >= effectiveDate) return {ok:false,problem:'effectiveDate'};
+    values.previousEndDate = raw.previousEndDate;
+    if (event === 'contractRenewal') {
+      if (typeof raw.contractNumber !== 'string' || !/^[1-9][0-9]{0,5}$/.test(raw.contractNumber) || Number(raw.contractNumber)>100000) return {ok:false,problem:'fields'};
+      values.contractNumber = raw.contractNumber;
+    } else if (raw.contractNumber != null) return {ok:false,problem:'fields'};
+  }
   if (remarks) values.remarks = remarks;
   return { ok: true, values };
 }
@@ -56,10 +68,10 @@ export function normalisePostingValues(event: PersonnelPostingEvent, raw: Record
 /** "PP-1043": the number people quote. */
 export const postingLabel = (number: number) => `PP-${number}`;
 
-export type PostingChangedField = { field: 'effectiveDate' | 'endDate' | 'remarks'; before: string | null; after: string | null };
+export type PostingChangedField = { field: keyof PersonnelPostingValues; before: string | null; after: string | null };
 /** Which allowlisted fields differ between two value sets, in a stable order. */
 export function postingValueChanges(before: PersonnelPostingValues, after: PersonnelPostingValues): PostingChangedField[] {
-  return (['effectiveDate', 'endDate', 'remarks'] as const).flatMap((field) => {
+  return (['effectiveDate', 'endDate', 'previousEndDate', 'contractNumber', 'remarks'] as const).flatMap((field) => {
     const a = before[field] ?? null, b = after[field] ?? null;
     return a === b ? [] : [{ field, before: a, after: b }];
   });

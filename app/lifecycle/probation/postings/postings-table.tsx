@@ -25,8 +25,8 @@ export function PostingsTable({rows,approveAction}:{rows:PostingTableRow[];appro
  const changeText=(event:PersonnelPostingEvent,values:PersonnelPostingValues)=>event==='confirmation'
   ?t('change.confirmation',{date:formatDmy(values.effectiveDate)})
   :t('change.probationExtension',{end:formatDmy(values.endDate??null),date:formatDmy(values.effectiveDate)});
- const fieldLabel=(field:'effectiveDate'|'endDate'|'remarks')=>field==='effectiveDate'?t('fields.effectiveDate'):field==='endDate'?t('fields.endDate'):t('fields.remarks');
- const shown=(field:'effectiveDate'|'endDate'|'remarks',value:string|null)=>value==null||value===''?'—':field==='remarks'?value:formatDmy(value);
+ const fieldLabel=(field:keyof PersonnelPostingValues)=>field==='effectiveDate'?t('fields.effectiveDate'):field==='endDate'?t('fields.endDate'):field==='contractNumber'?'Contract number':field==='previousEndDate'?'Previous contract end':t('fields.remarks');
+ const shown=(field:keyof PersonnelPostingValues,value:string|null)=>value==null||value===''?'—':field==='remarks'||field==='contractNumber'?value:formatDmy(value);
  const columns=['posting','employee','from','eventType','change','created','status','actions'] as const;
  return <table className="pct-table pct-compact">
   <thead><tr>{columns.map(key=><th key={key} scope="col">{key==='actions'?<span className="pct-sr">{t('columns.actions')}</span>:t('columns.'+key)}</th>)}</tr></thead>

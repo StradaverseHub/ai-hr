@@ -41,6 +41,8 @@ export const MOVEMENT_KINDS = [
   'orgAssignmentChange',
   'reportingLineChange',
   'employmentTypeChange',
+  'contractRenewal',
+  'contractConversion',
   // 89ea527b — the two employment-date movements. Both follow the `confirmation` precedent: the movement's
   // EFFECTIVE DATE *is* the new value of the date it sets, so the history row's Effective Date column and the
   // stored column can never disagree. They are the ONLY writers of employment.hired_on / employment.join_date
@@ -81,6 +83,8 @@ export const COMPARISON_KINDS = [
   'salaryAdjustment',
   'orgAssignmentChange',
   'employmentTypeChange',
+  'contractRenewal',
+  'contractConversion',
   'reportingLineChange',
   'confirmation',
 ] as const;
@@ -109,7 +113,7 @@ export const isComparisonKind = (k: string): k is ComparisonKind =>
  * move the event exists to record. Its family is itself, exactly as Confirmation's is.
  */
 export const INTERCHANGEABLE_COMPARISON_KINDS: readonly ComparisonKind[] = COMPARISON_KINDS.filter(
-  (k) => k !== 'confirmation' && k !== 'entityTransfer',
+  (k) => k !== 'confirmation' && k !== 'entityTransfer' && k !== 'contractRenewal' && k !== 'contractConversion',
 );
 
 /** Same resolved-behavior trigger for manual action and atomic Movement import entitlement parity. */
