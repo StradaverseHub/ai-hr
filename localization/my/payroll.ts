@@ -224,6 +224,11 @@ export function resolveEpfRates(
  * it is a step baked into the Part A rows, so reading the row for the month's whole pay is the same act
  * as resolving the rate on it.
  *
+ * ONE EXCEPTION, ON THE EMPLOYER SIDE ONLY (item 7f5cc653, 2026-11-16; ADR-0024 addendum): when the normal
+ * wage is at or below RM5,000 and the EPF Bonus 2012 stream takes the month above it, the Third Schedule's
+ * Part A bonus note fixes the employer at 13% of the month's actual wages, rounded up to RM1
+ * (`partABonusRetainedEmployer`). bdf7d248's own case (normal RM7,413) is above RM5,000 and is unaffected.
+ *
  * WHAT THIS REPLACED, and why it is not a rounding crumb. Until r210 the band was read on the NORMAL
  * wage alone and `ceil(bonus × rate)` was added beside it. On the reporter's own month — RM7,413.00
  * salary + RM1,650.71 bonus — that gave employee RM1,007 / employer RM1,099, while the single lookup on
@@ -246,7 +251,7 @@ export function epf(
   election?: EpfElection,
   /** Item 69d6ed3c — statutory trace v1. When given, records WHICH lookup this call made (the row, or the
    *  formula) from the same statements that produce the amounts. Never read by the arithmetic. */
-  sink?: EpfLookupSink,
+  sink?: EpfLookupSink & { employerBonusRule?: EpfEmployerBonusRule },
 ) {
   if (election?.mode === 'exempt') {
     if (sink) sink.lookup = { method: 'exempt', base: round2(Math.max(0, wage) + Math.max(0, additional)), scheduleEmployee: 0, scheduleEmployer: 0 };
@@ -281,10 +286,18 @@ export function epf(
   const band = banded ? banded.row : null;
   let employee = band ? band.employee : ceilRinggit(base * cfg.employeeRate);
   let employer = band ? band.employer : ceilRinggit(base * statEmployerRate);
+  // Item 7f5cc653 — the Part A bonus note. When normal wages are at or below the employer threshold and the
+  // EPF Bonus 2012 stream takes the month above it, the EMPLOYER statutory figure is 13% of the month's
+  // actual wages rounded up to RM1 — replacing both the row's 12% figure and the above-RM20,000 formula.
+  // The employee side keeps the row / formula above. Everything below (the voluntary-excess raise and the
+  // typed amount) then runs on this floor exactly as it did on the row.
+  const bonusRule = partABonusRetainedEmployer(wage, additional, cfg);
+  if (bonusRule) employer = bonusRule.amount;
   if (sink) {
     sink.lookup = banded
       ? { method: 'schedule_row', base, band: banded.band, scheduleEmployee: employee, scheduleEmployer: employer }
-      : { method: 'schedule_formula', base, employeeRate: cfg.employeeRate, employerRate: statEmployerRate, scheduleEmployee: employee, scheduleEmployer: employer };
+      : { method: 'schedule_formula', base, employeeRate: cfg.employeeRate, employerRate: bonusRule ? bonusRule.rate : statEmployerRate, scheduleEmployee: employee, scheduleEmployer: employer };
+    if (bonusRule) sink.employerBonusRule = bonusRule;
   }
 
   // i-Topup / voluntary excess can only RAISE a side above the statutory floor. `resolveEpfRates`
@@ -359,6 +372,9 @@ type EpfRuleSink = EpfLookupSink & {
   normalOnly?: EpfLookupTrace;
   /** Part E: the bonus is charged its own employer percentage beside the normal-wage row. */
   bonusEmployer?: { rate: number; amount: number };
+  /** Item 7f5cc653 — Part A: the employer figure came from the bonus note (13% of the month's actual wages,
+   *  rounded up to RM1), not from the row. Absent on every other month and on every trace written before. */
+  employerBonusRule?: EpfEmployerBonusRule;
   /** Flat rate: each stream is rounded separately, so both legs are recorded. */
   flatLegs?: { normal: { employee: number; employer: number }; bonus: { employee: number; employer: number } };
   notApplicable?: 'age_75_plus' | 'exempt';
@@ -424,6 +440,54 @@ function epfContributionAtRate(cents: number, rate: number): number {
   return Number((BigInt(cents) * BigInt(Math.round(rate * 10000)) + BigInt(999999)) / BigInt(1000000));
 }
 
+/** Item 7f5cc653 — the Part A bonus note, as the trace records it. */
+export type EpfEmployerBonusRule = {
+  /** The month's normal EPF wages (EPF Bonus 2012 excluded) — the wage the employer rate was decided on. */
+  normalWage: number;
+  /** The employer threshold (RM5,000) the normal wage was at or below. */
+  threshold: number;
+  /** The low-wage employer rate (13%) the note keeps. */
+  rate: number;
+  /** The month's total EPF wages (normal + EPF Bonus 2012) the rate is applied to. */
+  base: number;
+  /** `base × rate` to the sen, for display only; `amount` is what is charged. */
+  exact: number;
+  /** `base × rate` rounded UP to the next whole ringgit — the employer contribution. */
+  amount: number;
+};
+
+/**
+ * Item 7f5cc653 — KWSP Third Schedule Part A bonus note: "Where the employer pays bonus to an employee who
+ * receives monthly wages of RM5,000.00 and below, and upon receiving the said bonus renders the wages
+ * received for that month to exceed RM5,000.00, the employer's contribution shall be calculated at the rate
+ * of 13% of the amount of wages for the month." (sources and the open primary-text confirmation:
+ * docs/architecture/STATUTORY-SOURCES.md; ADR-0024 addendum 2026-11-16.)
+ *
+ * THE ONE PLACE THIS RULE IS DECIDED, shared by `epf()` (Auto and voluntary excess), the statutory side of
+ * `epfTopupWorking` and `semiAutoEmployer`'s Part A branch, so the categories cannot disagree. Part A only;
+ * Part C keeps its own handling in `semiAutoEmployer`. `bonus` is the EPF bonus stream — since 2026-11-13
+ * only items ticked EPF Bonus 2012 feed it. The rate and threshold come from the ruleset (`cfg`), never a
+ * literal here. The amount is the actual month's wages in integer cents × the rate, rounded UP to RM1
+ * (`epfContributionAtRate`), not a table row: the table has no 13% rows above RM5,000.
+ *
+ * Returns null when the note does not apply — no bonus, normal wages above the threshold, or a month that
+ * stays at or below it — and the caller keeps its ordinary Third Schedule reading. The employee share is
+ * never touched: the note names only the employer's contribution.
+ */
+function partABonusRetainedEmployer(
+  normal: number, bonus: number, cfg: StatutoryRuleset['epf'],
+): EpfEmployerBonusRule | null {
+  const normalWage = round2(Math.max(0, normal));
+  const bonusWage = round2(Math.max(0, bonus));
+  const base = round2(normalWage + bonusWage);
+  const threshold = cfg.employerThreshold;
+  if (!(bonusWage > 0) || normalWage > threshold || base <= threshold) return null;
+  const rate = cfg.employerRateLow;
+  const cents = Math.round(base * 100);
+  const exactSen = (BigInt(cents) * BigInt(Math.round(rate * 10000)) + BigInt(5000)) / BigInt(10000);
+  return { normalWage, threshold, rate, base, exact: Number(exactSen) / 100, amount: epfContributionAtRate(cents, rate) };
+}
+
 export const EPF_PART_C_EMPLOYEE_RATE = 0.055;
 export const epfPartCEmployerRate = (wage: number) => wage <= 5000 ? 0.065 : 0.06;
 
@@ -451,9 +515,15 @@ function epfTopupWorking(
   const legacyForeign = part === 'F' && sel?.wageMonth != null && sel.wageMonth < EPF_PART_F_START;
   const employeeRate = part === 'F' ? cfg.nonCitizenEmployeeRate ?? 0.02
     : part === 'C' ? EPF_PART_C_EMPLOYEE_RATE : part === 'E' ? 0 : cfg.employeeRate;
+  // Item 7f5cc653 — the statutory employer side under an i-Topup is the same Part A floor `epf()` charges:
+  // the bonus note keeps 13% of the actual month (rounded up to RM1) where the row would give 12%, and the
+  // top-up increment is added to that corrected statutory rate (b6dbadc5's "statutory + increment"). The
+  // approved plan: "the same corrected statutory minimum underneath their extra contribution".
+  const bonusRule = part === 'A' ? partABonusRetainedEmployer(normal, bonus, cfg) : null;
   const employerRate = part === 'F' ? cfg.nonCitizenEmployerRate ?? 0.02
     : part === 'E' ? cfg.seniorEmployerRate ?? 0.04
     : part === 'C' ? epfPartCEmployerRate(actualWage)
+    : bonusRule ? bonusRule.rate
     : actualWage <= cfg.employerThreshold ? cfg.employerRateLow : cfg.employerRateHigh;
   const bands = part === 'C' ? EPF_PART_C : part === 'A' ? cfg.partA ?? MY_EPF_THIRD_SCHEDULE_PART_A
     : part === 'E' ? cfg.partE ?? MY_EPF_THIRD_SCHEDULE_PART_E : null;
@@ -481,7 +551,7 @@ function epfTopupWorking(
     category: 'topup_percentage' as const,
     actualWage,
     employee: side(election.employeeRate, employeeRate, band?.employee),
-    employer: side(election.employerRate, employerRate, band?.employer),
+    employer: side(election.employerRate, employerRate, bonusRule ? bonusRule.amount : band?.employer),
     schedulePart: legacyForeign ? undefined : part,
     scheduleEffectiveFrom: !legacyForeign && sel?.wageMonth && sel.wageMonth >= '2022-07'
       ? sel.wageMonth >= EPF_PART_F_START ? '2025-10-01' : '2022-07-01'
@@ -521,8 +591,14 @@ function semiAutoEmployer(
   const highRate = part === 'C' ? 0.06 : cfg.employerRateHigh;
   const threshold = part === 'C' ? 5000 : cfg.employerThreshold;
   const scheduleMax = part === 'C' ? EPF_SCHEDULE_MAX : cfg.scheduleMax ?? EPF_SCHEDULE_MAX;
-  // Parts A and C retain the low-wage employer rate when a bonus takes the month above RM5,000.
-  const crossesWithBonus = (part === 'A' || part === 'C') && base > threshold &&
+  // Parts A and C retain the low-wage employer rate when a bonus takes the month above RM5,000. Part A is
+  // decided by the shared helper (item 7f5cc653) so the elected category and Auto cannot disagree; Part C
+  // keeps its own 6.5% reading here (its note is unverified — docs/architecture/STATUTORY-SOURCES.md).
+  if (part === 'A') {
+    const bonusRule = partABonusRetainedEmployer(wage, additional, cfg);
+    if (bonusRule) return { method: 'schedule_formula', schedulePart: part, rate: bonusRule.rate, amount: bonusRule.amount };
+  }
+  const crossesWithBonus = part === 'C' && base > threshold &&
     round2(base - Math.max(0, additional)) <= threshold;
   const rate = part === 'F' ? cfg.nonCitizenEmployerRate ?? 0.02
     : part === 'E' ? cfg.seniorEmployerRate ?? 0.04
@@ -744,7 +820,7 @@ function epfContributionByRule(
 
   // Citizen / PR < 60: standard Part A — ONE combined-month lookup (bdf7d248).
   if (sink) sink.part = 'A';
-  const combinedSink: EpfLookupSink | undefined = sink ? {} : undefined;
+  const combinedSink: (EpfLookupSink & { employerBonusRule?: EpfEmployerBonusRule }) | undefined = sink ? {} : undefined;
   const e = epf(wage, bonus, cfg, election, combinedSink);
   // Kₜ, the employee EPF attributable to the additional remuneration, for the PCB relief split. Under
   // the combined lookup there is no separate "percentage of the bonus" to report: the bonus leg is the
@@ -758,6 +834,7 @@ function epfContributionByRule(
   const wageOnly = bonus > 0 ? epf(wage, 0, cfg, election, normalSink) : e;
   if (sink) {
     sink.lookup = combinedSink?.lookup;
+    if (combinedSink?.employerBonusRule) sink.employerBonusRule = combinedSink.employerBonusRule;
     if (normalSink?.lookup) sink.normalOnly = normalSink.lookup;
     if (combinedSink?.lookup?.method === 'exempt') sink.notApplicable = 'exempt';
   }

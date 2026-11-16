@@ -6170,28 +6170,35 @@
       "breakpoints": true
     },
     {
-      "idx": 5167,
+      "idx": 5170,
+      "version": "7",
+      "when": 1793330005470,
+      "tag": "5770_attendance_workflow_approver_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 5171,
       "version": "7",
       "when": 1793330100101,
       "tag": "9991_resignation_journey",
       "breakpoints": true
     },
     {
-      "idx": 5168,
+      "idx": 5172,
       "version": "7",
       "when": 1793330100102,
       "tag": "9992_resignation_configuration",
       "breakpoints": true
     },
     {
-      "idx": 5169,
+      "idx": 5173,
       "version": "7",
       "when": 1793330100103,
       "tag": "9993_resignation_postings",
       "breakpoints": true
     },
     {
-      "idx": 5171,
+      "idx": 5174,
       "version": "7",
       "when": 1793330100105,
       "tag": "9995_resignation_email_delivery",

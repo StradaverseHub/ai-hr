@@ -225,14 +225,17 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5164,when:1793330005464,tag:'5764_probation_routed_holders'},
  {idx:5165,when:1793330005465,tag:'5765_probation_letter_signers'},
  {idx:5166,when:1793330005466,tag:'5766_probation_reshape_company_in_use'},
- {idx:5167,when:1793330100101,tag:'9991_resignation_journey'},
- {idx:5168,when:1793330100102,tag:'9992_resignation_configuration'},
- {idx:5169,when:1793330100103,tag:'9993_resignation_postings'},
- {idx:5171,when:1793330100105,tag:'9995_resignation_email_delivery'},
+ // Board 237c31e6: request-bound Attendance approval progress readers.
+ {idx:5170,when:1793330005470,tag:'5770_attendance_workflow_approver_codes'},
+ {idx:5171,when:1793330100101,tag:'9991_resignation_journey'},
+ {idx:5172,when:1793330100102,tag:'9992_resignation_configuration'},
+ {idx:5173,when:1793330100103,tag:'9993_resignation_postings'},
+ {idx:5174,when:1793330100105,tag:'9995_resignation_email_delivery'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
- '9991_resignation_journey':'cf1d8140ecfb45f5975401a51303e3f3fc4b7836621b264b99261a5c3c8abf1f',
+ '5770_attendance_workflow_approver_codes':'f71cf33a9ced5f4e1007de02388a858bd31c64006a422352193bd7c14e367ec0',
+ '9991_resignation_journey':'40ad6a3599d63100844f30754363007c8872a7ac892fd3c67bba2a6424b610ce',
  '9992_resignation_configuration':'6e064c336c441fbbf01017debe9e1a748957976d3d6b2b96470747d07d7dacb5',
  '9993_resignation_postings':'5d26a0f446c3e72ed01861544af395690b08cdce47b9fc739f0b0d7d1b22a4f5',
  '9995_resignation_email_delivery':'ab1b8f55cf60b6ebdc1e02b18a8a44cdb0787c593f2d6bc3977ffee8b77fa8dc',

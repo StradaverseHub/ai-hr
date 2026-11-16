@@ -12,7 +12,7 @@ import type {SessionContext} from '../db/client';
 import {owner,migrateTestDb,resetDb,closeAll,createAppUser,setModule} from './harness';
 import {resignationJourneyFixture} from './helpers/resignation-journey-fixture';
 import {observeNativeRead,type NativeReadQuery} from './helpers/native-read-observer';
-import {commandResignationJourney,resignationInbox,resignationCase} from '../packs/lifecycle/resignation/service';
+import {commandResignationJourney,resignationInbox,resignationCase} from '../packs/lifecycle/service';
 import {listResignationRequests} from '../core/offboarding';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {addDaysIso} from '../lib/roster-month';
