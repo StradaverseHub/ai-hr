@@ -45,7 +45,7 @@ describe('product destination registry',()=>{
   const packs=listPacks('module').flatMap(pack=>{const module=pack as ModulePack;return[...(module.navNodes??[]).flatMap(node=>node.children.map(child=>child.href)),...(module.navLinks??[]).map(link=>link.href)];});
   expect(packs.length).toBeGreaterThan(20);
   // Scoped rows now have a real declaration owner, rather than template literals hidden in the renderer.
-  expect(SCOPED_LIFECYCLE_NAVIGATION).toHaveLength(10);
+  expect(SCOPED_LIFECYCLE_NAVIGATION).toHaveLength(11);
   expect(SCOPED_LIFECYCLE_NAVIGATION.some(row=>row.module==='probation')).toBe(true);
   expect(SCOPED_LIFECYCLE_NAVIGATION.some(row=>row.module==='contracts')).toBe(true);
   const expected=[...literal,...SCOPED_LIFECYCLE_NAVIGATION.map(row=>row.href),...packs,...V9_NAVIGATION.map(row=>row.href),...SECURITY_PAGES.map(row=>row.href)];

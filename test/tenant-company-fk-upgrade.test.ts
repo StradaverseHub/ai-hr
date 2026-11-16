@@ -281,6 +281,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5763_probation_access_roles',
    // Lane K2 (16 November 2026): the shared routings own a case's PBP and Head of Department.
    '5764_probation_routed_holders',
+   // Lane L (16 November 2026): letter signers for unsigned signature blocks and Required signers.
+   '5765_probation_letter_signers',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -466,12 +468,13 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.probation_general_delegate(uuid,uuid,text)','app.probation_holders_set(uuid[])','app.probation_intake_admin(uuid)',
    'app.probation_intake_admin_for(uuid,uuid,uuid)','app.probation_legacy_audience(uuid,uuid)','app.probation_letter_freeze_route(uuid,jsonb,jsonb)',
    'app.probation_letter_routed(jsonb)','app.probation_letter_routing_context(uuid)','app.probation_letter_routing_signatures_ok(jsonb)',
-   'app.probation_letter_routing_valid(jsonb)','app.probation_max_extensions(jsonb)','app.probation_outcome_automation(uuid)',
-   'app.probation_overdue_summary_cases(uuid,date)','app.probation_pending_signer_kinds(uuid)','app.probation_permitted(text,uuid)',
-   'app.probation_permitted_companies(uuid,text[])','app.probation_permitted_scope(text,uuid[])','app.probation_posting_approved()',
-   'app.probation_postings_admin(uuid[])','app.probation_record_low_result_action(uuid,text)','app.probation_record_override(uuid)',
-   'app.probation_record_posting_effect(uuid,uuid,uuid,jsonb,jsonb)','app.probation_routed_holders(uuid[])','app.probation_routing_dimension(jsonb,text[])',
-   'app.probation_routing_weight(jsonb,integer)','app.probation_settings_materialize(uuid[])','app.probation_settings_scope_admin()',
+   'app.probation_letter_routing_valid(jsonb)','app.probation_letter_signers(uuid)','app.probation_max_extensions(jsonb)',
+   'app.probation_outcome_automation(uuid)','app.probation_overdue_summary_cases(uuid,date)','app.probation_pending_signer_kinds(uuid)',
+   'app.probation_permitted(text,uuid)','app.probation_permitted_companies(uuid,text[])','app.probation_permitted_scope(text,uuid[])',
+   'app.probation_posting_approved()','app.probation_postings_admin(uuid[])','app.probation_record_low_result_action(uuid,text)',
+   'app.probation_record_override(uuid)','app.probation_record_posting_effect(uuid,uuid,uuid,jsonb,jsonb)','app.probation_routed_holders(uuid[])',
+   'app.probation_routing_dimension(jsonb,text[])','app.probation_routing_weight(jsonb,integer)','app.probation_settings_materialize(uuid[])',
+   'app.probation_settings_scope_admin()',
    'app.probation_settings_scope_check(text,jsonb)','app.probation_settings_scope_refresh(uuid)','app.probation_settings_scope_retire(uuid,integer,text)',
    'app.probation_settings_scope_save(uuid,text,text,uuid[],jsonb,boolean,integer,text)','app.probation_shared_workflow_triggers()','app.probation_source_from_start(jsonb,uuid)',
    'app.probation_superior_rule()','app.probation_task_list(text,integer)','app.probation_tracker_cases()',

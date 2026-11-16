@@ -168,6 +168,8 @@ export function resolveShellNavigation({
       case 'configure': return access.configure;
       case 'configureOrIntake': return access.configure || access.intake === true;
       case 'intake': return access.intake === true;
+      // Probation Access (/lifecycle/probation/access, lane K): a system administrator who configures Probation. The page checks again.
+      case 'admin': return isAdmin && access.configure;
     }
   });
   // ADR 2026-11-15-probation-shared-automation, decision 1: the shared builders, for anyone who configures at least one

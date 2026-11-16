@@ -170,6 +170,7 @@ export const REVIEWED_SHELL_BINDINGS:Readonly<Record<string,Binding>> = {
   "automation/automationTemplates": {"id": "shell.automationTemplates", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:automationTemplates", "status": "declared"},
   "automation/automationGroups": {"id": "shell.automationGroups", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:automationGroups", "status": "declared"},
   "scoped/probation/probationIntake": {"id": "shell.probationIntake", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationIntake", "status": "declared"},
+  "scoped/probation/probationAccess": {"id": "shell.probationAccess", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationAccess", "status": "declared"},
   "scoped/contracts/contractIntake": {"id": "shell.contractIntake", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:contractIntake", "status": "declared"},
   "scoped/contracts/contractSettings": {"id": "shell.contractSettings", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:contractSettings", "status": "declared"},
   "scoped/contracts/contractWorkflows": {"id": "shell.contractWorkflows", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:contractWorkflows", "status": "declared"},

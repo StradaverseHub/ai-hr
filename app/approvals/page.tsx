@@ -6,6 +6,7 @@ import {leaveCreditClaimReviewBlocks} from '@/lib/leave-credit-claim-review';
 import { hasPendingAttendanceParticipantAssignment } from '@/packs/attendance/service';
 import { pendingRewardReviews } from '@/packs/rewards/service';
 import { probationTaskList } from '@/packs/probation/service';
+import { probationTaskLabel } from '@/lib/probation-task-labels';
 import { formatMinutesToHM } from '@/lib/overtime-duration';
 import { Fragment } from 'react';
 import Link from 'next/link';
@@ -213,6 +214,8 @@ export default async function ApprovalsPage({
   const parsedCategory = parseApprovalCategory(focus?assignedApprovalCategory(focus.kind):categoryParam, { admin });
   const category = attendanceOnly && !['all','attendance','overtime'].includes(parsedCategory) ? 'all' : parsedCategory;
   const t = await getTranslations('approvals');
+  // L5: the Probation category names each step the same way /tasks does (lib/probation-task-labels.ts).
+  const tProbation = await getTranslations('probation');
   const tCreditReview=await getTranslations('replacementRequest.formulaReview');
   const tClock = await getTranslations('attendance.clockData');
   const tHistory = await getTranslations('attendanceHistory');
@@ -491,7 +494,7 @@ export default async function ApprovalsPage({
           scroll to, focus, and briefly highlight the target section. Renders nothing itself. */}
       <AttentionOnArrival />
       {visible('rewards') && rewardReviews.length > 0 && <Card><SectionHeader title={t('rewards')} count={rewardReviews.length} /><ul className="divide-y divide-border">{rewardReviews.map(r => <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm"><span>{r.cycle} · {r.name}</span><Link href={`/rewards/${r.id}?view=approvals`} className="font-medium text-primary hover:underline">{t('reviewRewards')}</Link></li>)}</ul></Card>}
-      {visible('probation') && probationApprovals.items.length > 0 && <Card aria-label={t('probation')}><SectionHeader title={t('probation')} count={probationApprovals.items.length} /><ul className="divide-y divide-border">{probationApprovals.items.map(item => <li key={item.partId} className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm"><span><span className="font-medium">{item.employeeName}</span> · {item.partType ? t('probationPart', { part: item.partType }) : t('probation')}{item.dueOn && <span className="text-muted-foreground"> · {t('probationDue', { date: item.dueOn })}</span>}</span><Link href={item.href} className="font-medium text-primary hover:underline">{t('probationOpen')}</Link></li>)}</ul>{probationApprovals.capped && <p className="border-t border-border p-4 text-sm text-muted-foreground">{t('probationCapped', { shown: probationApprovals.items.length })} <Link href="/lifecycle/probation?mine=1" className="font-medium text-primary hover:underline">{t('probationSeeAll')}</Link></p>}</Card>}
+      {visible('probation') && probationApprovals.items.length > 0 && <Card aria-label={t('probation')}><SectionHeader title={t('probation')} count={probationApprovals.items.length} /><ul className="divide-y divide-border">{probationApprovals.items.map(item => <li key={item.partId} className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm"><span><span className="font-medium">{item.employeeName}</span> · {tProbation(probationTaskLabel(item.kind, item.partType).title, probationTaskLabel(item.kind, item.partType).values)}{item.dueOn && <span className="text-muted-foreground"> · {t('probationDue', { date: item.dueOn })}</span>}</span><Link href={item.href} className="font-medium text-primary hover:underline">{tProbation(probationTaskLabel(item.kind, item.partType).action, probationTaskLabel(item.kind, item.partType).values)}</Link></li>)}</ul>{probationApprovals.capped && <p className="border-t border-border p-4 text-sm text-muted-foreground">{t('probationCapped', { shown: probationApprovals.items.length })} <Link href="/lifecycle/probation?mine=1" className="font-medium text-primary hover:underline">{t('probationSeeAll')}</Link></p>}</Card>}
 
       <div data-tour="approvals-intro">
         <PageHeader

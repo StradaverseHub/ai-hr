@@ -221,6 +221,7 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5162,when:1793330005462,tag:'5762_probation_form_import'},
  {idx:5163,when:1793330005463,tag:'5763_probation_access_roles'},
  {idx:5164,when:1793330005464,tag:'5764_probation_routed_holders'},
+ {idx:5165,when:1793330005465,tag:'5765_probation_letter_signers'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -279,6 +280,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5762_probation_form_import':'7accc885810776b61d2b4b5c292798f62aad1f2434280d80cc787d2946e8215d',
  '5763_probation_access_roles':'3a0bae544f30907238605bbf59f79816a130b08b886a2c9904d9ae137d8f9e40',
  '5764_probation_routed_holders':'30f0d7b6c019127bbce33b44061a88c092ba12c803d307cd19d828bdcba9826a',
+ '5765_probation_letter_signers':'989f12a1f048f924609e6c881c476bb272f256695e8595f7436f1c3f65adfcd5',
  '5754_automation_email_delivery':'bd1dc53c5461299006b240e7fb3fd25801a5aaaa3b6807be8995f858ffe57c05',
  '4800_ai_shared_leave_groups_read':'774dce41ba113549ec5415586d104b8d5b7712934216f2beb4d9aa0e9f00ffc5',
  '4601_last_login_event_index':'868e30d4a2840d4939a46f303ce999b2e041ae3cb6823eb8b712179ccf7d5788',

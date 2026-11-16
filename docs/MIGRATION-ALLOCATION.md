@@ -1,3 +1,16 @@
+<!-- 5765_probation_letter_signers -->
+# Probation letter signers — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-ui-20261116` (lane L of the Probation Confirmation build) appends
+`5765_probation_letter_signers` at idx 5165 / when 1793330005465 (assigned by the build coordinator; 5763/5764 belong to
+lane K, 5766 is reserved for lane L and unused). SHA256 `989f12a1f048f924609e6c881c476bb272f256695e8595f7436f1c3f65adfcd5`. It adds one owner-owned
+function granted to `ai_hr_app`, `app.probation_letter_signers(uuid)`: for a generated Probation letter the caller may
+open (`app.probation_part_access`), each step of the letter's frozen, stored and currently resolved route with the
+holder's name and current job title and the routing or group the step was routed to, bounded to 50 rows, so unsigned
+signature blocks and "Required signers" name the signer instead of "[Signatory]". No table, column, row, grant, policy
+or purpose-owned object changes. The installed ledgers were not read; recheck watermarks and peer claims at admission.
+This allocation grants no installation authority.
+
 <!-- 5764_probation_routed_holders -->
 # One owner for a Probation case's PBP and Head of Department — 16 November 2026 MYT (unapplied, allocated)
 

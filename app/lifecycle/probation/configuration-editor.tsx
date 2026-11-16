@@ -10,7 +10,6 @@ import {SettingsFields} from './settings-fields';
 import {FormFields} from './form-fields';
 import type {ApproverChoices} from './approval-routing-fields';
 import {RouteConfigurationFields} from './route-configuration-fields';
-import {PreparationNav} from './preparation-nav';
 import {RetireVersionControl} from './retire-version-control';
 import {DraftGuard} from './draft-guard';
 import {saveConfiguration,prepareDefaults,assignAccess} from './actions';
@@ -27,7 +26,6 @@ export function ConfigurationEditor({company,options,setup,kind,initial,formVers
  return <Root aria-label={embedded?t('settingsScope.companyVersionTitle'):undefined} className={embedded?'v9-stack':undefined}><DraftGuard dirty={dirty}/><header className="v9-heading"><div>{embedded?<h2>{t('settingsScope.companyVersionTitle')}</h2>:<h1>{t(kind==='settings'?'settings.title':kind==='form'?'form.title':'routes.title')}</h1>}<p>{company.name}</p></div><Link className="v9-button" href="/lifecycle/probation"><ArrowLeft size={16}/>{t('backTracker')}</Link></header>
   {error&&<p className="v9-notice v9-error" role="alert">{error}</p>}
   <form method="get" className="probation-actions"><label className="v9-field"><span>{t('facts.company')}</span><select name="company" defaultValue={company.id}>{options.companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><button type="submit" className="v9-button">{t('switchCompany')}</button></form>
-  <PreparationNav companyId={company.id}/>
   {kind==='form'&&formVersions&&formVersions.versions.length>0&&<form method="get" className="v9-panel v9-stack"><input type="hidden" name="company" value={company.id}/><label className="v9-field"><span>{t('form.startFrom')}</span><select name="formVersion" defaultValue={selectedFormId??formVersions.versions.find(v=>v.data.version===(initial as ProbationForm).version)?.id??''}>{formVersions.versions.map(version=><option key={version.id} value={version.id}>{version.data.name} · {(version.data.targetGrades??[]).join(', ')} · {t('version',{version:version.version})} · {t(version.state==='retired'?'retired':version.state==='published'?'published':'draft')}</option>)}</select></label><p className="v9-muted">{t('form.versionSelectionHelp')}</p>{formVersions.truncated&&<p>{t('form.versionHistoryBound')}</p>}<ActionButton guardNavigation aria-busy={busy} type="submit" className="v9-button" disabled={busy||retirementDirty}>{t('form.loadVersion')}</ActionButton></form>}
   <p className="v9-notice">{setup.enabled?t('settings.activeSince',{date:setup.activationOn??'—'}):t('settings.preparationOnly')}</p>
   {!setup.canConfigure?<section className="v9-panel v9-stack"><p role="alert">{t('access.moduleRequired')}</p></section>:<>

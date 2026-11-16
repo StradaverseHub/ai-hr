@@ -97,6 +97,7 @@ const SIDEBAR:readonly (readonly [string,string,DestinationAudience,string|null]
  ['/lifecycle/probation','probationConfirmation','admin','lifecycle'],
  ['/lifecycle/probation/postings','probationPostings','admin','lifecycle'],
  ['/lifecycle/probation/intake','probationIntake','admin','lifecycle'],
+ ['/lifecycle/probation/access','probationAccess','admin','lifecycle'],
  ['/lifecycle/probation/settings','probationSettings','admin','lifecycle'],
  ['/lifecycle/probation/forms','probationForms','admin','lifecycle'],
  ['/lifecycle/probation/workflows','probationWorkflows','admin','lifecycle'],

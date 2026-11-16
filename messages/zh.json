@@ -600,7 +600,8 @@
     "automationOnOffWorkflows": "On/Off Boarding workflows",
     "automationOnOffTemplates": "On/Off Boarding templates",
     "automationOnOffGroups": "On/Off Boarding assignment groups",
-    "probationPostings": "Personnel postings"
+    "probationPostings": "Personnel postings",
+    "probationAccess": "Access"
   },
   "dashboard": {
     "viewAll": "查看全部"
@@ -36429,7 +36430,8 @@
       "decision": {
         "reviewed": "Mark as reviewed",
         "approved": "Approve"
-      }
+      },
+      "holderOnBehalf": "{name} on behalf of {represented}"
     },
     "dates": {
       "title": "试用期日期审核",
@@ -36678,6 +36680,169 @@
         "skipped": "Skipped",
         "failed": "Failed"
       }
+    },
+    "taskKinds": {
+      "submit_employee": {
+        "title": "Complete your self-assessment · Part {part}",
+        "action": "Open form"
+      },
+      "submit_manager_kpis": {
+        "title": "Set Week 1 KPIs and sign",
+        "action": "Set KPIs"
+      },
+      "submit_manager": {
+        "title": "Complete the Line Manager assessment and sign · Part {part}",
+        "action": "Open assessment"
+      },
+      "acknowledge": {
+        "title": "Acknowledge and sign · Part {part}",
+        "action": "Acknowledge"
+      },
+      "approve": {
+        "title": "Approve Part {part}",
+        "action": "Review and approve"
+      },
+      "record": {
+        "title": "Record the completed Part {part}",
+        "action": "Record"
+      },
+      "confirm_extension": {
+        "title": "Confirm the extension · Part {part}",
+        "action": "Confirm extension"
+      },
+      "confirm_refusal": {
+        "title": "Confirm a declined signature · Part {part}",
+        "action": "Confirm"
+      },
+      "kpi_exception": {
+        "title": "Decide on the KPI acknowledgement hold · Part {part}",
+        "action": "Decide"
+      },
+      "employee_wait_exception": {
+        "title": "Decide whether to continue without the self-assessment · Part {part}",
+        "action": "Decide"
+      },
+      "letter_sign": {
+        "title": "Sign probation letter",
+        "action": "Sign letter"
+      },
+      "letter_review": {
+        "title": "Review probation letter",
+        "action": "Review letter"
+      },
+      "letter_approve": {
+        "title": "Approve probation letter",
+        "action": "Approve letter"
+      },
+      "letter_revise": {
+        "title": "Update probation letter after send-back",
+        "action": "Update letter"
+      },
+      "letter_release": {
+        "title": "Release probation letter",
+        "action": "Release letter"
+      },
+      "low_result_action": {
+        "title": "Record low-result action",
+        "action": "Record action"
+      },
+      "choose_outcome": {
+        "title": "Decide Other outcome",
+        "action": "Decide outcome"
+      },
+      "other": {
+        "title": "Probation task",
+        "action": "Open"
+      }
+    },
+    "caseView": {
+      "heading": "Probation · {stage}",
+      "stage": {
+        "1": "Part 1 · Week 1 Success Plan",
+        "2": "Part 2 · Mid-Probation Review",
+        "3": "Part 3 · Final Confirmation Review",
+        "cycle": "{part} (cycle {cycle})",
+        "outcome": "Outcome"
+      },
+      "short": {
+        "1": "Week 1 KPIs",
+        "2": "Part 2 Mid-Probation",
+        "3": "Part 3 Final review",
+        "outcome": "Outcome"
+      },
+      "tabs": {
+        "label": "Case sections",
+        "1": "Part 1 · Week 1 KPIs",
+        "2": "Part 2 · Mid-Probation",
+        "3": "Part 3 · Final",
+        "cycle": "{part} (cycle {cycle})",
+        "outcome": "Outcome & letters",
+        "files": "Files ({count})",
+        "history": "History",
+        "current": "current stage"
+      },
+      "partsLabel": "Parts",
+      "routeLabel": "Signing route for the current part",
+      "waitingOn": "Waiting on: {who}",
+      "closed": "Case closed.",
+      "opens": "Form opens {date}",
+      "due": "due {date}",
+      "daysLeft": "{count, plural, one {# day left} other {# days left}}",
+      "daysOverdue": "{count, plural, one {# day overdue} other {# days overdue}}",
+      "dueToday": "due today",
+      "who": "{role} · {name} · {what}",
+      "whoNoName": "{role} · {what}",
+      "what": {
+        "kpis": "set Week 1 KPIs and sign",
+        "self": "self-assessment",
+        "assessment": "assessment",
+        "returned": "returned part",
+        "acknowledge": "acknowledge and sign",
+        "approve": "approval",
+        "review": "review",
+        "sign": "signature"
+      },
+      "facts": {
+        "employee": "Employee",
+        "titleGrade": "Job title / grade",
+        "businessGroup": "Business group",
+        "businessUnit": "Business unit",
+        "probation": "Probation",
+        "plan": "Review plan",
+        "extensions": "Extensions used",
+        "people": "People"
+      },
+      "plan": {
+        "6": "6 months · P2 + P3",
+        "3": "3 months · P3 only",
+        "other": "{months} months"
+      },
+      "months": "{months, plural, one {# month} other {# months}}",
+      "peopleLm": "LM {name}",
+      "peoplePbp": "PBP {name}",
+      "steps": {
+        "self": "Employee self-assessment",
+        "lmKpis": "LM sets KPIs and signs",
+        "lmAssess": "LM assessment",
+        "ack": "Employee acknowledges",
+        "approveSign": "Approve and sign · {who}",
+        "approve": "Approve · {who}",
+        "review": "Review · {who}",
+        "sign": "Sign · {who}"
+      },
+      "stepState": {
+        "done": "done",
+        "current": "current",
+        "waiting": "not reached",
+        "overdue": "overdue",
+        "returned": "returned with comments"
+      },
+      "noOutcome": "The outcome is decided at the final review (Part 3 Final review).",
+      "filesEmpty": "No files yet. Completed forms and letters appear here when each part is recorded.",
+      "earlierCycles": "Earlier cycles of this part",
+      "cycleLink": "Cycle {cycle} · {state}",
+      "waitingStart": "Waiting for the start date ({date}). The record was activated in Personnel Management before the start date. Nothing is sent and no step is due until then.",
+      "noPart": "This part is not part of this case's review plan."
     }
   },
   "templateEditor": {
