@@ -18,7 +18,8 @@ import {DraftGuard} from './draft-guard';
 import {saveDraft,performReview,adjudicateOfflineFinal} from './actions';
 import {OfflineFinalProposal} from './intake/offline-final-proposal';
 import {probationTimestamp} from '@/lib/probation-display';
-export function PartEditor({view,part,actor,signerCandidates}:{view:ProbationCaseView;part:ProbationPartView;actor:{id:string;name:string};signerCandidates?:{id:string;name:string}[]}){
+/** `embedded`: inside the case view's part tab (L1), whose header already shows the facts, notices and the parts stepper. */
+export function PartEditor({view,part,actor,signerCandidates,embedded=false}:{view:ProbationCaseView;part:ProbationPartView;actor:{id:string;name:string};signerCandidates?:{id:string;name:string}[];embedded?:boolean}){
  const t=useTranslations('probation'),s=useTranslations('documentSigning'),router=useRouter();
  const [draft,setDraft]=useState<ProbationPart>(()=>structuredClone(part)),[dirty,setDirty]=useState(false),[busy,start]=useTransition(),[error,setError]=useState(''),[saved,setSaved]=useState(false),[reason,setReason]=useState(''),[owner,setOwner]=useState<'employee'|'lm'>('lm'),[confirmedMonths,setConfirmedMonths]=useState<number|null>(part.extensionMonths);
  const [comment,setComment]=useState('');
@@ -52,15 +53,16 @@ export function PartEditor({view,part,actor,signerCandidates}:{view:ProbationCas
   const patch:Partial<ProbationPart>=rater==='employee'?{...(part.canEditSelfAssessment&&!part.staffSubmittedAt?{employee:draft.employee}:{}),...(part.canEditEmployeeComments?{employeeComments:draft.employeeComments}:{})}:part.type===1?{kpis:draft.kpis,support:draft.support}:{manager:draft.manager,reviewOn:draft.reviewOn,conductedBy:actor.id,strengths:draft.strengths,development:draft.development,managerComments:draft.managerComments,outcome:draft.outcome,midpointStatus:draft.midpointStatus,justification:draft.justification,extensionMonths:draft.extensionMonths};
   setError('');start(async()=>{const result=await saveDraft({caseId:view.record.id,partId:part.id,revision:part.storageRevision,rater,patch});if(!result.ok){setError(result.detail??t('errors.unavailable'));return;}setDirty(false);setSaved(true);router.refresh();});
  };
- return <main><DraftGuard dirty={dirty||signerDirty||evidenceDirty}/><header className="v9-heading"><div><h1>{t('partTitle',{part:part.type})}</h1><p>{view.record.facts.employeeName} · {view.record.facts.employeeCode??'—'} · {t('cycle',{cycle:part.cycle})}</p></div><Link className="v9-button" href={'/lifecycle/probation/'+view.record.id}><ArrowLeft size={16}/>{t('backCase')}</Link></header>
-  <section className="v9-panel"><ProbationFacts view={view} part={part}/>{part.submittedFacts&&<p className="v9-muted">{t('assessment.frozenFacts')}</p>}</section>
+ const Root=embedded?'div':'main';
+ return <Root className={embedded?'probation-tabpanel':undefined}><DraftGuard dirty={dirty||signerDirty||evidenceDirty}/>{!embedded&&<header className="v9-heading"><div><h1>{t('partTitle',{part:part.type})}</h1><p>{view.record.facts.employeeName} · {view.record.facts.employeeCode??'—'} · {t('cycle',{cycle:part.cycle})}</p></div><Link className="v9-button" href={'/lifecycle/probation/'+view.record.id}><ArrowLeft size={16}/>{t('backCase')}</Link></header>}
+  {(!embedded||part.submittedFacts)&&<section className="v9-panel"><ProbationFacts view={view} part={part}/>{part.submittedFacts&&<p className="v9-muted">{t('assessment.frozenFacts')}</p>}</section>}
   <div className="v9-notice" role="status">{t('reviewState',{state:t('partStates.'+part.state),due:part.dueOn,revision:part.contentRevision})}</div>
-  {!view.runtimeEnabled&&<p className="v9-notice">{t(view.sourceMoved?'sourceMoved':'runtimePaused')}</p>}
+  {!embedded&&!view.runtimeEnabled&&<p className="v9-notice">{t(view.sourceMoved?'sourceMoved':'runtimePaused')}</p>}
   {error&&<div className="v9-notice v9-error" role="alert">{error} <button type="button" className="v9-button" onClick={()=>router.refresh()}>{t('reload')}</button></div>}
-  {view.record.facts.gradeId!==view.record.facts.currentGradeId&&<p className="v9-notice v9-warning">{t('gradeChanged')}</p>}
-  {view.record.planFlag&&<p className="v9-notice v9-warning">{t('planFlag')}</p>}
+  {!embedded&&view.record.facts.gradeId!==view.record.facts.currentGradeId&&<p className="v9-notice v9-warning">{t('gradeChanged')}</p>}
+  {!embedded&&view.record.planFlag&&<p className="v9-notice v9-warning">{t('planFlag')}</p>}
   {!paperOnly&&part.type!==1&&!view.record.kpiAcknowledged&&<p className="v9-notice v9-warning">{t('kpiGate.'+view.record.config.kpiGate)}</p>}
-  <nav className="probation-steps" aria-label={t('reviewPlan')}>{view.parts.map(p=><Link key={p.id} href={'/lifecycle/probation/'+view.record.id+'/'+p.id} aria-current={p.id===part.id?'step':undefined}>{t('partTitle',{part:p.type})} · {t('partStates.'+p.state)}</Link>)}</nav>
+  {!embedded&&<nav className="probation-steps" aria-label={t('reviewPlan')}>{view.parts.map(p=><Link key={p.id} href={'/lifecycle/probation/'+view.record.id+'/'+p.id} aria-current={p.id===part.id?'step':undefined}>{t('partTitle',{part:p.type})} · {t('partStates.'+p.state)}</Link>)}</nav>}
   {!paperOnly&&(part.canEditEmployee||part.canEditManager)&&<div className="v9-actions" role="group" aria-label={t('assessment.owner')}>{(['employee','lm'] as const).filter(role=>role==='lm'?part.canEditManager:part.canEditEmployee).map(role=><button className="v9-button" aria-pressed={rater===role} key={role} type="button" onClick={()=>{if(dirty&&!window.confirm(t('leaveUnsaved')))return;setDraft(structuredClone(part));setDirty(false);setRater(role);}}>{t('roles.'+role)}</button>)}</div>}
   {!paperOnly&&<><section className="v9-panel v9-stack"><h2>{part.type===1?t('kpis.title'):t('assessment.title',{owner:t('roles.'+rater)})}</h2>
    {part.type===1?<><p className="v9-muted">{t('kpis.help')}</p>{draft.kpis.map((k,index)=><fieldset className="probation-criterion" key={k.id} disabled={!kpiEditable||busy||signerDirty||evidenceDirty}><legend>{t('kpis.item',{index:index+1})}</legend><div className="v9-fields">{(['accountability','measure','target'] as const).map(key=><label className="v9-field" key={key}><span>{t('kpis.'+key)} *</span><textarea value={k[key]} maxLength={5000} required onChange={e=>update({kpis:draft.kpis.map(item=>item.id===k.id?{...item,[key]:e.target.value}:item)})}/></label>)}<label className="v9-field"><span>{t('kpis.targetDate')} *</span><input type="date" value={k.targetDate} onChange={e=>update({kpis:draft.kpis.map(item=>item.id===k.id?{...item,targetDate:e.target.value}:item)})}/></label></div>{kpiEditable&&<button className="v9-button" type="button" onClick={()=>update({kpis:draft.kpis.filter(item=>item.id!==k.id)})}><Trash2 size={14}/>{t('kpis.remove')}</button>}</fieldset>)}
@@ -100,5 +102,5 @@ export function PartEditor({view,part,actor,signerCandidates}:{view:ProbationCas
   {view.runtimeEnabled&&signerCandidates&&view.roles.some(role=>role==='pbp'||role==='gbs')&&!['locked','recorded','completed_offline','cancelled'].includes(part.state)&&<SignerControls blocked={busy||dirty||evidenceDirty} partId={part.id} revision={part.storageRevision} route={part.route} signing={part.signing?.document} candidates={signerCandidates} canOverride={view.roles.includes('pbp')&&!part.managerSubmittedAt} onDirtyChange={setSignerDirty}/>}
   {part.state==='locked'&&!view.files.some(file=>file.partId===part.id&&file.kind==='completed_part'&&file.revision===part.contentRevision&&file.filingState==='filed')&&<p className="v9-notice" role="status">{t('files.pendingPdf')}</p>}
   {view.runtimeEnabled&&view.roles.some(role=>role==='pbp'||role==='gbs')&&['not_issued','issued'].includes(part.state)&&!part.staffSubmittedAt&&!part.managerSubmittedAt&&<EvidenceUpload blocked={busy||dirty||signerDirty} onDirtyChange={setEvidenceDirty} caseId={view.record.id} partId={part.id} revision={part.storageRevision}/>}
- </main>;
+ </Root>;
 }
