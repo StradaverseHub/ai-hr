@@ -2153,7 +2153,13 @@ export async function setEmploymentGrade(
       subjectEmploymentId: p.employmentId,
       payload: { before: before.gradeId, after: p.gradeId, ...(p.movement ? { movement: p.movement } : {}) },
     });
-    await markWorkforcePayrollInputsChangedTx(tx,ctx,{employmentId:p.employmentId,from:p.movement?.effectiveDate??todayInKualaLumpur()});
+    if(p.movement)await markWorkforcePayrollInputsChangedTx(tx,ctx,{employmentId:p.employmentId,from:p.movement.effectiveDate??todayInKualaLumpur()});
+    else {
+      // Approved Rewards and other independent grade owners retain their existing authority.
+      // Their canonical write uses the financial owner's ordinary RLS, rather than borrowing Workforce.
+      const {markRunsAffectedByEmploymentChangeTx}=await import('./payroll');
+      await markRunsAffectedByEmploymentChangeTx(tx,ctx,{employmentIds:[p.employmentId],from:todayInKualaLumpur(),category:'employment_information'});
+    }
     return { id: p.employmentId, changed: true as const };
   };
   return outerTx ? run(outerTx) : withTenant(ctx, run);
@@ -3598,7 +3604,7 @@ export async function setEmploymentInfo(
       const closed = [...new Set((await Promise.all(crossing.map(([from, to]) => payslipPeriodsBetweenTx(tx, p.employmentId, from, to, 'closed')))).flat())].sort();
       if (closed.length) {
         if (!hasClosedPayrollCorrectionAuthorityTx(tx, p.employmentId)) throw new MovementClosedPayrollAcknowledgementError(closed);
-        try { await tx.execute(sql`select app.preserve_information_payroll(${p.employmentId}::uuid)`); }
+        try { await preserveMovementPayrollTx(tx,p.employmentId,message=>new Error(message)); }
         catch (error) { const refusal = payrollPreservationRefusal(error); if (refusal) throw new Error(refusal); throw error; }
       }
     }

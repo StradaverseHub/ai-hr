@@ -562,7 +562,7 @@ describe('rollback — the company AND the join date go back', () => {
 // ─────────────────────────────── payroll ───────────────────────────────
 
 describe('a backdated transfer does not rewrite a closed payroll run', () => {
-  it('the run is untouched and the movement is locked against correction', async () => {
+  it('the run is untouched when the movement is corrected', async () => {
     const hire = await hireOne();
     const period = '2026-01';
     const [pp] = await owner.db
@@ -613,14 +613,16 @@ describe('a backdated transfer does not rewrite a closed payroll run', () => {
     expect(runRow.companyId).toBe(b.companyId); // the run stays with the company that paid it
     expect(runRow.status).toBe('closed');
 
-    // 646355e5 — correcting it is offered, but only behind the closed-payroll acknowledgement.
+    // Corrections preserve the closed run automatically, including the original paying company.
     const row = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'entityTransfer')!;
     expect(row.payrollLocked).toBe(true);
     expect(row.canReverse).toBe(true);
     await expect(
       reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: row.id, reason: 'Wrong entity' }),
-    ).rejects.toThrow(/already closed/);
-    expect((await employmentRow(hire.employmentId)).companyId).toBe(coB);
+    ).resolves.toMatchObject({employmentId:hire.employmentId});
+    expect((await employmentRow(hire.employmentId)).companyId).toBe(b.companyId);
+    expect((await owner.db.select({companyId:schema.payrollBatch.companyId,status:schema.payrollBatch.status}).from(schema.payrollBatch).where(eq(schema.payrollBatch.id,batch.id)))[0]).toEqual(runRow);
+    expect((await owner.db.select({netPay:schema.payslip.netPay,batchId:schema.payslip.batchId}).from(schema.payslip).where(eq(schema.payslip.employmentId,hire.employmentId)))[0]).toEqual(slip);
   });
 });
 

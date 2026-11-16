@@ -112,9 +112,9 @@ import {
   type HireCorrectionTrace,
 } from './hire-correction';
 import {
+  firstOpenDayAfterClosedTx,
   closedPeriodsTx,
   movementPayrollPeriodsTx,
-  nextMonthStart,
   overlapsClosedPeriod,
   processedPeriodsTx,
   setCompensation,
@@ -1705,6 +1705,10 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
       if (group) group.push(event);
       else eventsByGroup.set(groupId, [event]);
     }
+    const latestHireSalary=[...events].reverse().map(event=>event.eventType===HIRE_CORRECTED_EVENT?(event.payload as {salaryCorrection?:{replacementId?:string;validFrom?:string;until?:string|null}})?.salaryCorrection:null).find(value=>typeof value?.replacementId==='string');
+    const salaryIds=[...new Set([...events.filter(event=>event.eventType==='compensation.set').map(event=>event.aggregateId),...(latestHireSalary?.replacementId?[latestHireSalary.replacementId]:[])])];
+    const salaryValues=salaryIds.length?await tx.select({id:compensation.id,amount:compensation.basicSalary,currency:compensation.currency}).from(compensation).where(inArray(compensation.id,salaryIds)):[];
+    const salaryValueById=new Map(salaryValues.map(value=>[value.id,`${value.currency} ${value.amount}`]));
     const dateConflicts=movementDateConflicts(rows,events);
     const movements: MovementHistoryRow[] = rows.map((r) => {
       const primaryEvent = eventsById.get(r.id);
@@ -1727,6 +1731,9 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
       const closedPeriods = financial ? closed.filter((period) => overlapsClosedPeriod([period], payrollFrom, null)).sort() : [];
       const locked = closedPeriods.length > 0;
       const placement=placementAt(r.effectiveDate,spanEnd===-1?r.sequence:spanEnd);
+      const salaryLeg=[...g].reverse().find(event=>event.eventType==='compensation.set');
+      const hireSalaryApplies=latestHireSalary?.replacementId&&(r.kind==='hired'||r.effectiveDate>=(latestHireSalary.validFrom??emp.hiredOn)&&(!latestHireSalary.until||r.effectiveDate<latestHireSalary.until));
+      const salaryReference=salaryLeg?.aggregateId??(hireSalaryApplies?latestHireSalary?.replacementId:null);
       const corrected=correctionView.apply(r.id,{company:placement.company,businessUnit:null,department:null,position:null,grade:null,employmentType:null,manager:null,salary:null});
       return {
         id: r.id,
@@ -1752,6 +1759,7 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
         // After column does — the leg that wrote Division can carry a higher sequence than the leg that
         // owns the row, and bounding on the row's own event alone would show the pre-movement value.
         ...placement,
+        ...(salaryReference&&salaryValueById.has(salaryReference)?{basic:salaryValueById.get(salaryReference)!}:{}),
         company:corrected.company,
         hireCorrection: r.kind === 'hired' ? hireTrace : null,
         recordedExit: primaryEvent ? movementRecordedExitOf(primaryEvent, (code) => resolvedTypes.get(code)?.behaviourKind) : null,
@@ -2083,8 +2091,10 @@ async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:str
     // The entered business day and the first open payroll day are distinct after a closed-payroll correction.
     // Resolve this event's own amount by reference; never substitute the amount paid in the protected month.
     const salaryLeg=[...group].reverse().find(event=>event.eventType==='compensation.set');
-    if(salaryLeg){
-      const [terms]=await tx.select({amount:compensation.basicSalary,currency:compensation.currency,from:compensation.validFrom}).from(compensation).where(eq(compensation.id,salaryLeg.aggregateId)).limit(1);
+    const hireSalaryId=row.kind==='hired'?[...events].reverse().map(event=>event.eventType===HIRE_CORRECTED_EVENT?(event.payload as {salaryCorrection?:{replacementId?:string}})?.salaryCorrection?.replacementId:null).find(id=>typeof id==='string'):null;
+    const salaryReference=hireSalaryId??salaryLeg?.aggregateId;
+    if(salaryReference){
+      const [terms]=await tx.select({amount:compensation.basicSalary,currency:compensation.currency,from:compensation.validFrom}).from(compensation).where(eq(compensation.id,salaryReference)).limit(1);
       if(terms){after.salaryAmount=terms.amount;after.currency=terms.currency;after.salary=`${terms.currency} ${terms.amount}`;if(terms.from!==row.effectiveDate)after.salaryPayrollFrom=terms.from;}
     }
     const before =
@@ -2272,8 +2282,10 @@ async function currentStateTx(tx: Tx, employmentId: string,asOf=todayInKualaLump
 export function movementCurrentState(
   ctx: SessionContext,
   employmentId: string,
+  options?: {asOf:string},
 ): Promise<MovementCurrentState> {
-  return withTenant(ctx, (tx) => movementCurrentStateTx(tx, employmentId));
+  if(options&&!isCalendarDate(options.asOf))throw new Error('Enter a valid employment information date.');
+  return withTenant(ctx, async tx => {await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');return currentStateTx(tx,employmentId,options?.asOf);});
 }
 
 /** Same canonical state read inside a caller-owned movement transaction. */
@@ -2703,7 +2715,7 @@ async function applyComparisonLegsTx(
   const groupId = opts?.groupId ?? randomUUID();
 
   {
-    const cur = {...await currentStateTx(tx,p.employmentId),paymentMethod:await employmentPaymentMethodOnTx(tx,p.employmentId,p.effectiveDate)};
+    const cur = {...await currentStateTx(tx,p.employmentId,opts?.allSecondary?p.effectiveDate:todayInKualaLumpur()),paymentMethod:await employmentPaymentMethodOnTx(tx,p.employmentId,p.effectiveDate)};
     const d = movementDeltas(p, cur);
     const {
       periods, periodsChanged,
@@ -2948,7 +2960,7 @@ async function scheduleMovementTx(
   // Always reread the real subject under current RLS. Only the canonical rollback rehearsal below can
   // supply a verified predecessor state for a future sequence; ordinary New Event/Edit use live state.
   await lockMovementSubjectTx(tx,p.employmentId);
-  const live = await currentStateTx(tx, p.employmentId);
+  const live = await currentStateTx(tx, p.employmentId, admission?.capture ? p.effectiveDate : todayInKualaLumpur());
   const cur = admission?.baseline ?? live;
   const d = movementDeltas(p, cur);
   if (d.nothingChanged) throw new MovementNoChangeError();
@@ -3965,12 +3977,6 @@ const crossesEntityTransfer = (from: string, to: string): boolean =>
 
 /** Undo ONE leg of a movement. `tag` marks every compensating write as a companion of the rollback, so the
  *  projection keeps rendering exactly one row per movement. */
-/** 646355e5 — the first day after the last closed payroll month overlapping [from, to), or null. */
-async function firstOpenDayAfterClosedTx(tx: Tx, employmentId: string, from: string, to: string | null): Promise<string | null> {
-  const closed = (await closedPeriodsTx(tx, employmentId)).filter((period) => overlapsClosedPeriod([period], from, to)).sort();
-  return closed.length ? nextMonthStart(closed[closed.length - 1]) : null;
-}
-
 /** 646355e5 — where a corrected salary starts: its own date, or the first day after closed months. */
 export async function salaryStartAfterClosedPayrollTx(tx: Tx, employmentId: string, effectiveDate: string): Promise<string> {
   const firstOpen = await firstOpenDayAfterClosedTx(tx, employmentId, effectiveDate, null);

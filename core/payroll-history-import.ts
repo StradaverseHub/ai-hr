@@ -463,7 +463,10 @@ async function analyze(
   const segmentsDuring = (emp: (typeof employees)[number], from: string, to: string): CompanySegment[] => {
     const current = currentOf.get(emp.employmentId);
     if (!current) return [];
-    const winFrom = emp.hiredOn > from ? emp.hiredOn : from, winTo = emp.terminatedOn && emp.terminatedOn < to ? emp.terminatedOn : to;
+    // Later payments resolve the final recorded employer on the leaving day. This is dated
+    // evidence, not today's employer filling a missing history interval.
+    const afterLeaving=emp.terminatedOn!==null&&emp.terminatedOn<from;
+    const winFrom = afterLeaving ? emp.terminatedOn! : emp.hiredOn > from ? emp.hiredOn : from, winTo = emp.terminatedOn && emp.terminatedOn < to ? emp.terminatedOn : to;
     if (winFrom > winTo) return [];
     const entity = (rowsOf.get(emp.employmentId) ?? []).map(entitySegmentRow);
     return mergeCompanySegments(entity, current, winFrom, winTo, {requireRecordedHistory:true});
@@ -579,7 +582,7 @@ async function analyze(
           );
         } else {
           const segments = segmentsDuring(emp, first, last);
-          const winFrom = emp.hiredOn > first ? emp.hiredOn : first;
+          const winFrom = emp.terminatedOn && emp.terminatedOn < first ? emp.terminatedOn : emp.hiredOn > first ? emp.hiredOn : first;
           const winTo = emp.terminatedOn && emp.terminatedOn < last ? emp.terminatedOn : last;
           const complete = segments.length > 0 && segments[0].from === winFrom && segments.at(-1)!.to === winTo
             && segments.every((segment,index)=>index === 0 || dayAfter(segments[index-1].to) === segment.from);

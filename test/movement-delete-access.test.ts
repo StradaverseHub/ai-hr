@@ -50,7 +50,7 @@ describe('separate Movement Delete permission',()=>{
  it('locks payroll inputs for historical assignment and issued-payroll companies in one resolver',async()=>{
   const {ctx,employmentId}=await subject();
   const [former]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional Former Employer',registrationNo:'FAKE-FORMER'}).returning();
-  await owner.db.update(s.assignment).set({companyId:former.id}).where(and(eq(s.assignment.employmentId,employmentId),eq(s.assignment.validFrom,'2026-01-01')));
+  await owner.db.update(s.assignment).set({companyId:former.id,departmentId:null,positionId:null,businessUnitId:null,costCenterId:null,locationId:null}).where(and(eq(s.assignment.employmentId,employmentId),eq(s.assignment.validFrom,'2026-01-01')));
   const rows=await withTenant(ctx,tx=>tx.execute<{key:string}>(sql`select k as key from app.payroll_input_lock_keys(array[${employmentId}::uuid],null) k`));
   expect(rows.map(row=>row.key).sort()).toEqual([b.companyId,former.id].map(companyId=>'payroll-inputs:'+b.tenantId+':'+companyId).sort());
  });

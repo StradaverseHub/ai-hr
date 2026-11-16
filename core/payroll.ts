@@ -938,7 +938,7 @@ export type RecalcChangeCategory = (typeof RECALC_CHANGE_CATEGORIES)[number];
 export async function markRunsAffectedByEmploymentChangeTx(
   tx: Tx,
   ctx: SessionContext,
-  p: { employmentIds?: string[]; personId?: string; category: RecalcChangeCategory; from: string | null },
+  p: { employmentIds?: string[]; personId?: string; category: RecalcChangeCategory; from: string | null; until?:string|null },
 ): Promise<{ batchId: string; employmentIds: string[] }[]> {
   const ids = asIdArray(p.employmentIds ?? []);
   if (p.personId) {
@@ -958,6 +958,7 @@ export async function markRunsAffectedByEmploymentChangeTx(
         // those are stale exactly like a processed run's (the others will read the change when computed).
         inArray(payrollBatch.status, ['processed', 'processing']),
         fromPeriod ? gte(payrollBatch.payPeriod, fromPeriod) : undefined,
+        p.until?sql`${payrollBatch.payPeriod}<=to_char(${p.until}::date-1,'YYYY-MM')`:undefined,
         sql`app.can_admin_payroll_for(${payrollBatch.companyId})`,
       ),
     );

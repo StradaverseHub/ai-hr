@@ -102,10 +102,13 @@ describe('pending Movement View shows saved intent separately from applied histo
     await reverseMovementEvent(ctx,{employmentId:id,movementId:cancelled.id,reason:'Fictional cancellation'});
     expect((await movementDetail(ctx,id,cancelled.id))?.pendingIntent).toBeNull();
     await createMovementEvent(ctx,{employmentId:id,kind:'promotion',effectiveDate:day(7),basicSalary:3400});
+    await expect(createMovementEvent(ctx,{employmentId:id,kind:'promotion',effectiveDate:day(7),basicSalary:3500})).rejects.toThrow(/resolve the order/);
+    const replaced=(await movementHistory(ctx,id)).find(row=>row.status==='pending')!;
+    await reverseMovementEvent(ctx,{employmentId:id,movementId:replaced.id,reason:'Explicitly replace pending salary decision'});
     await createMovementEvent(ctx,{employmentId:id,kind:'promotion',effectiveDate:day(7),basicSalary:3500});
     await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,id,day(7)));
     const history = await movementHistory(ctx,id);
-    expect(history.map(row=>row.status)).toEqual(expect.arrayContaining(['reversed','superseded','applied']));
+    expect(history.map(row=>row.status)).toEqual(expect.arrayContaining(['reversed','applied']));
     const before = await snapshot(id);
     for (const row of history) expect((await movementDetail(ctx,id,row.id))?.pendingIntent).toBeNull();
     const applied = history.find(row=>row.kind==='promotion'&&row.status==='applied')!;

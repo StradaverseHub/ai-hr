@@ -6203,6 +6203,13 @@
       "when": 1793330005476,
       "tag": "5776_workforce_payroll_input_invalidation",
       "breakpoints": true
+    },
+    {
+      "idx": 5177,
+      "version": "7",
+      "when": 1793330005477,
+      "tag": "5777_movement_closed_payroll_metadata",
+      "breakpoints": true
     }
   ]
 }

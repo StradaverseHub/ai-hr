@@ -11818,7 +11818,7 @@ export const payrollTxnImportAttempt=pgTable('payroll_txn_import_attempt',{
 export const informationPayslipSnapshot=pgTable('information_payslip_snapshot',{
  payslipId:uuid('payslip_id').primaryKey(),tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),
  companyId:uuid('company_id').notNull().references(()=>company.id),grade:text('grade'),employmentType:text('employment_type'),hiredOn:date('hired_on').notNull(),joinDate:date('join_date'),documentMetadata:jsonb('document_metadata').notNull().$type<Record<string,unknown>>(),
- recordedBy:uuid('recorded_by').notNull().references(()=>appUser.id),recordedAt:createdAt(),
+ recordedBy:uuid('recorded_by').references(()=>appUser.id),recordedAt:createdAt(),
 });
 
 // Reusable formula identities; revisions, tests and lifecycle facts remain append-only.

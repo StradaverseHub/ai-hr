@@ -1,3 +1,10 @@
+# Closed Movement payroll metadata — 17 November 2026 MYT (unapplied candidate)
+
+Reserved 5777, idx 5177, when 1793330005477. SHA256 `bb1ed221d194021c059392f21ad7c01c99cf9c0b05f6698b4ffff6579c2707f4`.
+One private reconstruction implementation serves the unchanged Information-Only Correction wrapper and a
+closed-only Movement wrapper. System snapshots record a null human actor and explicit system metadata,
+authorized through the actual storage-owner predicate. No payroll money changes. Admission checks still required.
+
 # Subject-specific open payroll invalidation — 17 November 2026 MYT (unapplied candidate)
 
 Integrated candidate uses reserved 5776, idx 5176, when 1793330005476, SHA256 `28624ba957c14e02dfb7305c5d94b5627be11d4cc66f65e8903e5a921436589f`.

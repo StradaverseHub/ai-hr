@@ -15,7 +15,7 @@ export async function preserveMovementPayrollTx(tx: Tx, employmentId: string, re
   await lockEmploymentStatutoryOwnerTx(tx,employmentId);
   let count: number;
   try {
-    const [row] = await tx.execute<{ count: number }>(sql`select app.preserve_information_payroll(${employmentId}::uuid) as count`);
+    const [row] = await tx.execute<{ count: number }>(sql`select app.preserve_movement_payroll(${employmentId}::uuid) as count`);
     if (!row) throw new Error('Historical payroll metadata could not be protected.');
     count = Number(row.count);
   } catch (error) {

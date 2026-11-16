@@ -1,3 +1,7 @@
+import {correctHireEmploymentInformationTx,hireEmploymentInformationBaseline,type HireEmploymentInformation} from './hire-employment-information';
+import {withProtectedMovementHistoryTx} from './movement-payroll-protection';
+import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
+import {lockPayrollInputsTx} from './payroll-inputs-lock';
 import { correctHireBasicSalaryTx } from './comp';
 import { compensation } from '../db/schema';
 import {organisationManagedTx} from './organisation-write-policy';
@@ -175,6 +179,13 @@ const HISTORY_START_ALIGNED = 'employment.history.start.aligned';
 /** The event types that create (or re-create) a version this module walks. */
 const LEDGER_TYPES = [
   'employment.hired',
+  'employment.grade.changed',
+  'employment.info.updated',
+  'employment.company.transferred',
+  'employment.movement.reversed',
+  'employment.movement.scheduled',
+  'employment.movement.recorded',
+  'compensation.set',
   'employment.assignment.changed',
   'assignment.transferred',
   'assignment.entity-backfilled',
@@ -304,6 +315,7 @@ type HirePlan = {
   rlNext: { row: RlRow; kind: string | null } | null;
   hiredEvent: LedgerEvent | null;
   corrections: LedgerEvent[];
+  events:LedgerEvent[];
 };
 
 const tagType = (e: LedgerEvent | null): string | null => {
@@ -448,6 +460,7 @@ async function loadPlanTx(tx: Tx, tenantId: string, employmentId: string): Promi
     rlNext,
     hiredEvent: events.find((e) => e.eventType === 'employment.hired') ?? null,
     corrections,
+    events,
   };
 }
 
@@ -612,6 +625,7 @@ export type HireCorrectionView = {
   companyName: string | null;
   /** Read-only context the form points elsewhere for. */
   groupJoinDate: string;
+  gradeId?:string|null;
   joinDate: string | null;
   gradeName: string | null;
   employmentType: string | null;
@@ -668,27 +682,29 @@ export async function hireCorrectionViewTx(tx: Tx, ctx: SessionContext, employme
     const v1 = plan.chain[0];
     const [co] = await tx.select({ name: company.legalName }).from(company).where(eq(company.id, v1.companyId)).limit(1);
     // Job Grade at hire: the hire event's own value where it recorded one (read-only on this form).
-    const hireGradeId: string | null =
-      plan.hiredEvent && plan.hiredEvent.payload && 'gradeId' in plan.hiredEvent.payload
-        ? ((plan.hiredEvent.payload.gradeId as string | null) ?? null)
-        : plan.emp.gradeId;
+    const hireInformation=hireEmploymentInformationBaseline(plan.emp,plan);
+    const hireGradeId=hireInformation.before.gradeId;
     let gradeName: string | null = null;
     if (hireGradeId) {
       const [g] = await tx.select({ name: jobGrade.name }).from(jobGrade).where(eq(jobGrade.id, hireGradeId)).limit(1);
       gradeName = g?.name ?? null;
     }
-    const [salaryAtHire] = await tx.select({ amount: compensation.basicSalary, currency: compensation.currency })
+    let [salaryAtHire] = await tx.select({ amount: compensation.basicSalary, currency: compensation.currency })
       .from(compensation)
       .where(and(eq(compensation.employmentId, employmentId), eq(compensation.tenantId, ctx.tenantId),
         eq(compensation.validFrom, plan.anchor), isNull(compensation.supersededAt),
         sql`app.can_admin_employment(${employmentId}::uuid)`));
+    const [correctedSalary]=await tx.select({amount:compensation.basicSalary,currency:compensation.currency}).from(domainEvent).innerJoin(compensation,eq(compensation.id,domainEvent.aggregateId))
+      .where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.subjectEmploymentId,employmentId),eq(domainEvent.eventType,'compensation.hire-corrected'))).orderBy(sql`${domainEvent.sequence} desc`).limit(1);
+    if(correctedSalary)salaryAtHire=correctedSalary;
     const endDate = await currentEndDateTx(tx, employmentId);
     return {
       hiredOn: plan.anchor,
       companyId: v1.companyId,
       companyName: co?.name ?? null,
       groupJoinDate: plan.emp.hiredOn,
-      joinDate: plan.emp.joinDate,
+      joinDate: hireInformation.before.joinDate,
+      gradeId:hireGradeId,
       gradeName,
       employmentType: v1.row.employmentType,
       salaryAtHire,
@@ -772,6 +788,7 @@ async function labelValidForCompany(
 export type CorrectHireDetailsInput = {
   employmentId: string;
   basicSalary?: number;
+  hireInformation?:HireEmploymentInformation;
   /** Loosely typed ON PURPOSE: only the allow-listed fields are ever read from it (see the module header). */
   changes: HireCorrectionChanges & Record<string, unknown>;
   /** 2260a06b — the current type's end date. A date for the other type is refused. */
@@ -817,7 +834,7 @@ export async function correctHireDetails(
   if (requested.departmentId === null) throw new HireCorrectionError('Department is required.');
 
   return withTenant(ctx, async (tx) => {
-    if (input.basicSalary !== undefined) await tx.execute(sql`select app.access_configuration_write_lock()`);
+    if (input.basicSalary !== undefined || Object.keys(input.hireInformation??{}).length) await tx.execute(sql`select app.access_configuration_write_lock()`);
     else {
       // Reader/writer lock. Correcting one hire's organisation fields: shared Access, and the Workforce check joins
       // it. Department and position at hire select leave cohorts, so it takes the leave configuration lock
@@ -835,6 +852,9 @@ export async function correctHireDetails(
       await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [input.employmentId], { configuration: true });
     }
     await assertWorkforceEmploymentTx(tx,ctx,input.employmentId,'maintain');
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    await lockPayrollInputsTx(tx,{employmentIds:[input.employmentId],companyIds:input.hireInformation?.companyId?[input.hireInformation.companyId]:[]});
+    return withProtectedMovementHistoryTx(tx,ctx,input.employmentId,async()=>{
     // Same lock order as every movement writer: the person's statutory owner, then the employment row.
     // Holding the employment row for the whole correction serialises two corrections of one hire.
     await lockEmploymentStatutoryOwnerTx(tx, input.employmentId);
@@ -846,6 +866,8 @@ export async function correctHireDetails(
       .for('no key update');
     if (!locked) throw new Error('Employment not found');
 
+    const informationChange=input.hireInformation&&Object.keys(input.hireInformation).length
+      ? await correctHireEmploymentInformationTx(tx,ctx,{employmentId:input.employmentId,changes:input.hireInformation,reason},()=>loadPlanTx(tx,ctx.tenantId,input.employmentId)) : null;
     const plan = await loadPlanTx(tx, ctx.tenantId, input.employmentId);
 
     if(await organisationManagedTx(tx))delete requested.businessUnitId;
@@ -877,7 +899,7 @@ export async function correctHireDetails(
         if (after !== current.value) endDateChange = { field: current.field, before: current.stored, after };
       }
     }
-    if (!changes.length && !salaryCorrection && !endDateChange) throw new HireCorrectionNoChangeError();
+    if (!changes.length && !salaryCorrection && !endDateChange && !informationChange) throw new HireCorrectionNoChangeError();
     if (endDateChange) {
       // The profile's own writer: required for the type, later than the start/join date, refused while a
       // contract renewal is open, provisional date kept aligned, and an employment.info.updated audit row.
@@ -1050,6 +1072,7 @@ export async function correctHireDetails(
         hiredOn: plan.anchor,
         reason,
         changes,
+        ...(informationChange?{employmentInformation:informationChange}:{}),
         ...(salaryCorrection ? { salaryCorrection } : {}),
         ...(endDateChange ? { endDateChange } : {}),
         assignment: replaced,
@@ -1066,5 +1089,6 @@ export async function correctHireDetails(
       assignmentVersions: replaced.length,
       endDateChange,
     };
+    },message=>new HireCorrectionError(message));
   });
 }
