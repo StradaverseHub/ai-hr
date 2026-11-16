@@ -101,3 +101,40 @@ describe('Split Overtime at Midnight (10-Nov-2026 22:00 to 11-Nov-2026 02:00)', 
     expect(partitionAttendancePolicyWork(input(false))).toMatchObject({ status: 'ready', minutes: 240, parts: [{ date: '2026-11-10', minutes: 240 }] });
   });
 });
+
+// ── 87bd9656 — None rounding and the Overtime Backdate Control key on the stored policy ────────────────────
+describe('87bd9656 · None in Overtime Rounding Method (the request table)', () => {
+  it.each([
+    [31, 'none', null, 31], [31, 'up', 15, 45], [31, 'down', 15, 30],
+    [46, 'none', null, 46], [46, 'up', 15, 60], [46, 'down', 15, 45],
+  ] as const)('%i eligible minutes, %s, interval %s, gives %i', (actual, mode, step, expected) => {
+    const p = policy().overtime; p.rounding = { mode, step } as AttendanceGroupPolicy['overtime']['rounding'];
+    expect(validateAttendanceGroupPolicy({ ...policy(), overtime: p }, 1440).overtime.rounding).toEqual({ mode, step });
+    expect(finalize(p, actual)).toMatchObject({ status: 'known', minutes: expected });
+  });
+  it('None never carries a step', () => {
+    const p = policy(); p.overtime.rounding = { mode: 'none', step: 15 };
+    expect(() => validateAttendanceGroupPolicy(p, 1440)).toThrow('No rounding requires no step');
+  });
+});
+
+describe('87bd9656 · overtime.backdateLimitDays is optional, whole days 1 to 365', () => {
+  it('a policy stored without it validates byte-identically, and the key stays absent', () => {
+    const stored = policy(), before = JSON.stringify(stored);
+    const read = validateAttendanceGroupPolicy(JSON.parse(before), 1440);
+    expect(JSON.stringify(read)).toBe(before);
+    expect(Object.hasOwn(read.overtime, 'backdateLimitDays')).toBe(false);
+  });
+  it.each([1, 3, 365])('keeps %i days', days => {
+    const p = policy(); p.overtime.backdateLimitDays = days;
+    expect(validateAttendanceGroupPolicy(p, 1440).overtime.backdateLimitDays).toBe(days);
+  });
+  it.each([0, -1, 1.5, 366, null, '3', true])('refuses %s', value => {
+    const p = policy(); (p.overtime as unknown as Record<string, unknown>).backdateLimitDays = value;
+    expect(() => validateAttendanceGroupPolicy(p, 1440)).toThrow();
+  });
+  it('still refuses any other unknown overtime key', () => {
+    const p = policy(); (p.overtime as unknown as Record<string, unknown>).backdateLimit = 3;
+    expect(() => validateAttendanceGroupPolicy(p, 1440)).toThrow('Unsupported property');
+  });
+});

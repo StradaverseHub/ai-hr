@@ -29935,7 +29935,8 @@
         "lateOffset": "Offset lateness once",
         "approval": "Approval mode",
         "autoMethod": "Auto approval method",
-        "rounding": "Duration rounding"
+        "rounding": "Duration rounding",
+        "backdate": "Overtime backdate limit"
       },
       "days": {
         "normal": "Normal Day",
@@ -29943,7 +29944,8 @@
         "rest": "Rest Day",
         "publicHoliday": "Public Holiday",
         "replacementHoliday": "Replacement Public Holiday"
-      }
+      },
+      "backdateDays": "{count, plural, one {# day} other {# days}}"
     },
     "positionSearch": "Search positions",
     "loadMorePositions": "Load more positions",
@@ -39325,7 +39327,26 @@
     "systemReason": "Schedule Group Overtime Setting saved",
     "on": "On",
     "off": "Off",
-    "payrollNote": "Payroll receives the final overtime figures from this setting, the same way it receives overtime today."
+    "payrollNote": "Payroll receives the final overtime figures from this setting, the same way it receives overtime today.",
+    "approvalIntro": "Controls whether Attendance calculates payable overtime, and which minutes it uses.",
+    "roundingIntro": "Controls whether eligible overtime minutes are rounded up, rounded down or not rounded.",
+    "roundNone": "None",
+    "roundingNoneHint": "Not applicable with None. The actual eligible overtime minutes are kept.",
+    "notApplicable": "Not applicable",
+    "minutesValue": "{n} minutes",
+    "roundingExampleTitle": "Worked example",
+    "roundingExampleActual": "Actual eligible overtime",
+    "roundingExampleMethod": "Rounding Method",
+    "roundingExampleInterval": "Interval",
+    "roundingExampleFinal": "Final overtime",
+    "backdateTitle": "Overtime Backdate Control",
+    "backdateIntro": "Controls how far back an overtime application can be dated. Allow Request Backdated Overtime Without Clocking is separate: it only decides whether a clocking is needed.",
+    "backdateControl": "Enable Overtime Backdate Control",
+    "backdateControlHint": "Applies to the employee's own overtime requests on the web and the mobile app, requests through the AI assistant, and Request On Behalf. HR administrators follow the same limit.",
+    "backdateDays": "Allow Backdate Application Within (Days)",
+    "backdateDaysHint": "A whole number from 1 to {max}, counted back from the day the application is submitted. With 3 days, an application submitted on 16-Nov-2026 can be for 13 to 16-Nov-2026.",
+    "backdateDaysValue": "{n, plural, one {# day} other {# days}}",
+    "backdateRefused": "An overtime application can be dated at most {days, plural, one {# day} other {# days}} back. Choose {date} or a later date."
   },
   "attendanceOnBehalf": {
     "requestTitle": "Request On Behalf",

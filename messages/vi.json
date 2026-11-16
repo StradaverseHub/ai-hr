@@ -29935,7 +29935,8 @@
         "lateOffset": "Bù trừ đi muộn một lần",
         "approval": "Chế độ phê duyệt",
         "autoMethod": "Phương thức phê duyệt tự động",
-        "rounding": "Làm tròn thời lượng"
+        "rounding": "Làm tròn thời lượng",
+        "backdate": "Giới hạn đăng ký làm thêm hồi tố"
       },
       "days": {
         "normal": "Ngày thường",
@@ -29943,7 +29944,8 @@
         "rest": "Ngày nghỉ hằng tuần",
         "publicHoliday": "Ngày lễ",
         "replacementHoliday": "Ngày nghỉ lễ bù"
-      }
+      },
+      "backdateDays": "{count, plural, other {# ngày}}"
     },
     "positionSearch": "Tìm chức danh",
     "loadMorePositions": "Tải thêm chức danh",
@@ -39325,7 +39327,26 @@
     "systemReason": "Đã lưu Cài đặt làm thêm giờ của Nhóm lịch",
     "on": "Bật",
     "off": "Tắt",
-    "payrollNote": "Bảng lương nhận số liệu làm thêm cuối cùng từ cài đặt này, giống như cách nhận làm thêm hiện nay."
+    "payrollNote": "Bảng lương nhận số liệu làm thêm cuối cùng từ cài đặt này, giống như cách nhận làm thêm hiện nay.",
+    "approvalIntro": "Quyết định Chấm công có tính làm thêm giờ được trả lương hay không, và dùng những phút nào.",
+    "roundingIntro": "Quyết định số phút làm thêm hợp lệ được làm tròn lên, làm tròn xuống hay không làm tròn.",
+    "roundNone": "Không làm tròn",
+    "roundingNoneHint": "Không áp dụng khi chọn Không làm tròn. Số phút làm thêm hợp lệ thực tế được giữ nguyên.",
+    "notApplicable": "Không áp dụng",
+    "minutesValue": "{n} phút",
+    "roundingExampleTitle": "Ví dụ tính toán",
+    "roundingExampleActual": "Làm thêm hợp lệ thực tế",
+    "roundingExampleMethod": "Phương thức làm tròn",
+    "roundingExampleInterval": "Khoảng",
+    "roundingExampleFinal": "Làm thêm cuối cùng",
+    "backdateTitle": "Kiểm soát đăng ký làm thêm hồi tố",
+    "backdateIntro": "Quyết định đơn làm thêm giờ có thể ghi lùi ngày tối đa bao nhiêu ngày. Cho phép yêu cầu làm thêm hồi tố không cần chấm công là thiết lập riêng: nó chỉ quyết định có cần chấm công hay không.",
+    "backdateControl": "Bật kiểm soát đăng ký làm thêm hồi tố",
+    "backdateControlHint": "Áp dụng cho yêu cầu làm thêm của chính nhân viên trên web và ứng dụng di động, yêu cầu qua trợ lý AI và Yêu cầu thay mặt. Quản trị viên HR cũng tuân theo cùng giới hạn.",
+    "backdateDays": "Cho phép đăng ký hồi tố trong vòng (ngày)",
+    "backdateDaysHint": "Số nguyên từ 1 đến {max}, tính lùi từ ngày nộp đơn. Với 3 ngày, đơn nộp ngày 16-Nov-2026 có thể dành cho ngày 13 đến 16-Nov-2026.",
+    "backdateDaysValue": "{n, plural, other {# ngày}}",
+    "backdateRefused": "Đơn làm thêm giờ chỉ được ghi lùi tối đa {days, plural, other {# ngày}}. Hãy chọn ngày {date} hoặc muộn hơn."
   },
   "attendanceOnBehalf": {
     "requestTitle": "Gửi yêu cầu thay",

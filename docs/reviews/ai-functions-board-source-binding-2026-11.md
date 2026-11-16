@@ -598,3 +598,14 @@ include `core/attendance-workflow.ts`, `core/attendance.ts`, `core/attendance-ap
 `messages/*.json` catalogues, in the provider-data scope only through the import graph. No provider transform, outbound
 field, purpose or transport changed. The 28 approvals were carried forward to `b9a6f0af…` and the agent manifest
 regenerated (`61d2d520…`), under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding for board 87bd9656: Schedule Group Overtime Setting None rounding and Overtime Backdate Control (16 November 2026)
+
+`claude/fb-87bd9656-ot-backdate-20261116`, cut from main/alpha `03b06f0de` (binding `c88b5a04…`), adds None to Overtime
+Rounding Method and the optional `overtime.backdateLimitDays` policy key, enforced in the one attendance submission
+owner. Changed covered files: `core/attendance.ts`, `core/attendance-group-policy.ts`, `lib/attendance-group-policy.ts`,
+`lib/schedule-overtime-setting.ts` and the six `messages/*.json` catalogues; added covered file:
+`lib/overtime-backdate.ts` (a pure date rule and refusal type). All are in the provider-data scope only through the
+import graph. No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried forward
+from `c88b5a04…` to `1b3f89b3…` and the agent manifest regenerated (`0efc1d52…`), under the owner's standing pre-approval
+for staging re-binds (12 November 2026). Staging only.

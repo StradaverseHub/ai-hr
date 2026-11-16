@@ -29935,7 +29935,8 @@
         "lateOffset": "一次性抵扣迟到时间",
         "approval": "审批模式",
         "autoMethod": "自动审批方式",
-        "rounding": "时长舍入"
+        "rounding": "时长舍入",
+        "backdate": "加班补报期限"
       },
       "days": {
         "normal": "正常工作日",
@@ -29943,7 +29944,8 @@
         "rest": "休息日",
         "publicHoliday": "公共假日",
         "replacementHoliday": "补假日"
-      }
+      },
+      "backdateDays": "{count, plural, other {# 天}}"
     },
     "positionSearch": "搜索职位",
     "loadMorePositions": "加载更多职位",
@@ -39325,7 +39327,26 @@
     "systemReason": "排班组加班设置已保存",
     "on": "开",
     "off": "关",
-    "payrollNote": "工资模块从此设置接收最终加班数据，方式与现在接收加班相同。"
+    "payrollNote": "工资模块从此设置接收最终加班数据，方式与现在接收加班相同。",
+    "approvalIntro": "决定考勤是否计算应付加班，以及使用哪些分钟数。",
+    "roundingIntro": "决定符合条件的加班分钟数是向上取整、向下取整还是不取整。",
+    "roundNone": "不取整",
+    "roundingNoneHint": "选择“不取整”时不适用。保留实际符合条件的加班分钟数。",
+    "notApplicable": "不适用",
+    "minutesValue": "{n} 分钟",
+    "roundingExampleTitle": "计算示例",
+    "roundingExampleActual": "实际符合条件的加班",
+    "roundingExampleMethod": "取整方式",
+    "roundingExampleInterval": "间隔",
+    "roundingExampleFinal": "最终加班",
+    "backdateTitle": "加班补报期限控制",
+    "backdateIntro": "决定加班申请最多可以往前补报多少天。“允许无打卡补报加班”是另一项设置：它只决定是否需要打卡记录。",
+    "backdateControl": "启用加班补报期限控制",
+    "backdateControlHint": "适用于员工在网页和手机应用上提交的本人加班申请、通过 AI 助手提交的申请，以及代为申请。HR 管理员同样受此限制。",
+    "backdateDays": "允许补报的天数（天）",
+    "backdateDaysHint": "1 至 {max} 的整数，从提交申请当天往前计算。设为 3 天时，2026年11月16日提交的申请可以选择 2026年11月13日至16日。",
+    "backdateDaysValue": "{n, plural, other {# 天}}",
+    "backdateRefused": "加班申请最多只能往前补报 {days, plural, other {# 天}}。请选择 {date} 或之后的日期。"
   },
   "attendanceOnBehalf": {
     "requestTitle": "代为申请",
