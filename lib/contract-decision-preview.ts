@@ -1,7 +1,7 @@
 /** Contract preflight over the shared evaluators and routing owners. This describes effects; it performs none. */
 import {evaluateAutomationConditions} from './automation/conditions';
 import {CONTRACT_AUTOMATION_CATALOGUE} from './automation/catalogues/contracts';
-import {automationWorkflowProblems,type AutomationWorkflow} from './automation/workflow';
+import {automationWorkflowProblems,type AutomationWorkflow,type AutomationRecipient} from './automation/workflow';
 import {automationDocumentMatches,type AutomationDocumentTemplate} from './automation/document-template';
 import {contractApprovalLayersSchema,contractStepParamProblems,contractWorkflowWarnings} from './contract-automation';
 import {contractAutomationRead,contractAutomationRecipients,type ContractAutomationContext} from './contract-automation-context';
@@ -26,7 +26,7 @@ export type ContractDecisionPlan={
 export type ContractPreviewDefinitions={
  workflows:{workflow:AutomationWorkflow;revision:number}[];
  documents:{template:AutomationDocumentTemplate;version:number}[];
- emails:{id:string;name:string;active:boolean;retired:boolean}[];
+ emails:{id:string;name:string;active:boolean;retired:boolean;cc?:AutomationRecipient[]}[];
  lastAssigned:Record<string,string|null>;
 };
 export const contractStepKey=(workflowId:string,stepId:string)=>workflowId+':'+stepId;
@@ -65,6 +65,8 @@ export function buildContractDecisionPlan(input:{context:ContractAutomationConte
    if(to.fallbackUsed)plan.warnings.push(at+'The fallback group receives a message whose intended recipient is unavailable.');
    if(step.type==='sendEmail'){
     const template=definitions.emails.find(email=>email.id===step.params.emailTemplateId);
+    const copied=contractAutomationRecipients([...step.cc,...(template?.cc??[])],context,{fallback:false});
+    detail.cc=names(copied.userIds.filter(id=>!to.userIds.includes(id)));
     detail.label=template?.name??'Email template unavailable';
     if(!template||!template.active||template.retired)plan.warnings.push(at+detail.label+': this email step will be skipped.');
    }else if(step.type==='requestApproval'){
