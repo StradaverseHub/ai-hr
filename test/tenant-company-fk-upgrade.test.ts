@@ -327,6 +327,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // callable by the application role, and none is callable by PUBLIC. The policy-side and trigger-WHEN helpers are
   // granted to exactly the roles their policies or the domain_event writers are (test/policy-helper-function-grants).
   const privateFunctions=[
+   // Movement5777: shared metadata implementation is private; only the validated public wrappers execute it.
+   'app.preserve_payroll_metadata(uuid,boolean)',
    // 5763: Probation access helpers, owner only.
    'app.probation_access_scope_check(uuid,uuid,date,date)','app.probation_intake_admin_for(uuid,uuid,uuid)','app.probation_permitted_companies(uuid,text[])','app.probation_permitted_scope(text,uuid[])','app.probation_postings_admin(uuid[])','app.probation_superior_rule()',
    // 5764: the routed holder resolver and routing-rule helpers, owner only.
@@ -520,6 +522,9 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.reward_unit_level(uuid,text)','app.reward_unit_limit_version(uuid)','app.sweep_swing_thresholds(uuid[])',
    'app.system_label_import_conflicts(uuid)','app.system_label_import_discard_batch(uuid,uuid,uuid,uuid,integer)','app.system_label_import_release_attempt(uuid,uuid)',
   ];
+  // Movement5773–5779: exact new function inventory, with no PUBLIC execute and one private implementation.
+  addedFunctions.push('app.access_movement_delete_employment(uuid)','app.cost_allocations_after_hire_company_correction(uuid,uuid,text)','app.employment_payment_method_on(uuid,date)','app.preserve_movement_payroll(uuid)','app.preserve_payroll_metadata(uuid,boolean)','app.workforce_payroll_inputs_changed(uuid,date,date,text)','app.workforce_payroll_inputs_changed_windows(uuid,jsonb,text)');
+  addedFunctions.sort();
   const beforeFunctions=new Set(beforePerformancePrivileges.functions.map(row=>row.fn));
   expect(afterPerformancePrivileges.functions.filter(row=>!beforeFunctions.has(row.fn)).map(row=>row.fn).sort()).toEqual(addedFunctions);
   for(const fn of addedFunctions){
@@ -676,6 +681,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const ownerAcl=(acl:string|null)=>acl===null?null:acl.split(ownerRole).join('OWNER');
   const digest=(text:string|null)=>text===null?null:createHash('md5').update(text).digest('hex');
   const combinedRelations:Record<string,{rls:boolean;force:boolean;acl:string|null}>={
+   // Movement5774: only native routing maintenance writes; history is forced-RLS and never deletable by app.
+   'employment_payment_method_history':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=arw/OWNER}'},
    // Board window 4 (5124): stored Preview Assignment snapshots, append-only and forced RLS.
    'attendance_workflow_preview':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
    // daa76ed4 (5141): immutable escalation history, read-only to the application role.
@@ -726,6 +733,15 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {rel:'payroll_run_group',col:'result',acl:'{ai_hr_app=w/OWNER}'},
    {rel:'payroll_run_group',col:'sealed_at',acl:'{ai_hr_app=w/OWNER}'},
   ];
+  // Parse the independently reviewed policy expressions, rather than copying observed hashes.
+  // The temporary table has the same relation name so pg_get_expr uses the same outer-column qualifiers.
+  const methodPolicies=await storage.client.begin(async tx=>{
+   await tx`create temporary table employment_payment_method_history(tenant_id uuid,employment_id uuid) on commit drop`;
+   await tx.unsafe("create policy employment_payment_method_history_owner on pg_temp.employment_payment_method_history for all using(current_user<>'ai_hr_app') with check(current_user<>'ai_hr_app')");
+   await tx.unsafe("create policy employment_payment_method_history_read on pg_temp.employment_payment_method_history for select to ai_hr_app using(tenant_id=app.current_tenant_id() and (app.can_admin_employment(employment_id) or exists(select 1 from public.employment e where e.id=employment_id and app.is_self_person(e.person_id))))");
+   await tx.unsafe("create policy employment_payment_method_history_write on pg_temp.employment_payment_method_history for all to ai_hr_app using(tenant_id=app.current_tenant_id() and app.can_admin_employment(employment_id) and app.access_workforce_employment(employment_id,'workforce.maintain')) with check(tenant_id=app.current_tenant_id() and app.can_admin_employment(employment_id) and app.access_workforce_employment(employment_id,'workforce.maintain'))");
+   return tx`select 'public'::text as schemaname,tablename,policyname,permissive,roles::text,cmd,md5(qual) as qual,md5(with_check) as with_check from pg_policies where schemaname like 'pg_temp_%' and tablename='employment_payment_method_history' order by policyname`;
+  });
   const combinedPolicies=[
    {schemaname:'app',tablename:'movement_revert_capture',policyname:'movement_revert_capture_own_transaction',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'896d23c477ff98ba03c5f769806872cb',with_check:null},
    {schemaname:'app',tablename:'movement_revert_job_outcome',policyname:'movement_revert_job_outcome_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'dd91406dbf38ec27c75ca3c02598b2ad',with_check:null},
@@ -774,6 +790,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {schemaname:'public',tablename:'profile_option',policyname:'profile_option_import_pending',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'9e82774b0d29ab4d626e9af1fff8806d',with_check:null},
    {schemaname:'public',tablename:'reporting_line',policyname:'reporting_line_import_pending',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'ALL',qual:'b1326dc10537d8076dc330a56c78bb62',with_check:null},
   ];
+  combinedPolicies.push(...methodPolicies);
+  combinedPolicies.sort((a,b)=>a.schemaname.localeCompare(b.schemaname)||a.tablename.localeCompare(b.tablename)||a.policyname.localeCompare(b.policyname));
   const isCombinedRelation=(rel:string)=>Object.hasOwn(combinedRelations,rel);
   expect(Object.fromEntries(afterPerformancePrivileges.relations.filter(row=>isCombinedRelation(row.rel)).map(row=>[row.rel,{rls:row.rls,force:row.force,acl:ownerAcl(row.acl)}])))
    .toEqual(combinedRelations);
