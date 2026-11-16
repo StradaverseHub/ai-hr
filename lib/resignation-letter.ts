@@ -87,9 +87,9 @@ const DEFAULT_LABELS: Record<string, string> = {
   'retention.effectiveDate': 'Effective date', 'employee.name': 'Full name', 'employee.salary': 'Current base salary',
 };
 const unique = (values: string[]) => [...new Set(values)];
-const invalid = (message: string): never => {throw new SigningError('invalid', message);};
-const forbidden = (message: string): never => {throw new SigningError('forbidden', message);};
-const conflict = (message: string): never => {throw new SigningError('conflict', message);};
+function invalid(message: string): never {throw new SigningError('invalid', message);}
+function forbidden(message: string): never {throw new SigningError('forbidden', message);}
+function conflict(message: string): never {throw new SigningError('conflict', message);}
 const active = (letter: ResignationLetter) => letter.state === 'review' || letter.state === 'owner';
 const actorValid = (actor: ResignationLetterActor) => Boolean(actor.userId && actor.personId && actor.name.trim()
   && Number.isFinite(Date.parse(actor.at)) && isCalendarDate(actor.today));
@@ -204,7 +204,7 @@ export function generateResignationLetter(input: GenerateResignationLetterInput,
     }
   }
   const generatedOn = input.previous?.generatedOn ?? input.generatedOn;
-  const values = {...input.values, today: input.previous?.mergeValues.today ?? input.values.today ?? generatedOn};
+  const values: Record<string, string> = {...input.values, today: input.previous?.mergeValues.today ?? input.values.today ?? generatedOn};
   const revision = input.previous ? input.previous.revision + 1 : 1;
   const letter: ResignationLetter = {
     id: input.id, kind: input.kind, name: template.name, templateId: template.id, templateVersion: version.version,
