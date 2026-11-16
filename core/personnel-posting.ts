@@ -63,7 +63,14 @@ function mapDatabaseError(e: unknown): never {
   if (e instanceof PersonnelPostingError) throw e;
   const state = pgSqlState(e);
   if (state === '42501') throw new PersonnelPostingError('forbidden', 'You cannot do this with this posting.');
-  if (state === '40001') throw new PersonnelPostingError('conflict', 'This posting changed or was already approved. Reload the page and try again.');
+  if (state === '40001') {
+    const currencyConflicts=new Set(['The salary currency changed since this resignation case; review the agreed offer before creating a posting','The salary currency changed since this resignation case; review the agreed offer before approving this posting']);
+    for(let cause:unknown=e,depth=0;cause&&typeof cause==='object'&&depth<5;cause=(cause as {cause?:unknown}).cause,depth++){
+      const message=(cause as {message?:unknown}).message;
+      if(typeof message==='string'&&currencyConflicts.has(message))throw new PersonnelPostingError('conflict',message);
+    }
+    throw new PersonnelPostingError('conflict', 'This posting changed or was already approved. Reload the page and try again.');
+  }
   if (state === '22023' || state === '23514') throw new PersonnelPostingError('invalid', 'The posting details are incomplete or not allowed.');
   throw e;
 }

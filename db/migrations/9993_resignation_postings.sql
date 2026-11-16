@@ -93,7 +93,7 @@ END $$;
 --> statement-breakpoint
 ALTER FUNCTION app.personnel_posting_create(text,uuid,uuid,text,jsonb,text,text) RENAME TO personnel_posting_create_probation_v1;
 CREATE FUNCTION app.personnel_posting_create(p_source text,p_source_ref uuid,p_employment uuid,p_event text,p_proposed jsonb,p_approver_group text,p_key text) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE t uuid:=app.current_tenant_id(); j public.resignation_journey; old public.personnel_posting; v_id uuid; v_number integer; configured text; baseline jsonb; workflow_step jsonb;
+DECLARE t uuid:=app.current_tenant_id(); j public.resignation_journey; old public.personnel_posting; v_id uuid; v_number integer; configured text; baseline jsonb; workflow_step jsonb; source_currency text; current_currency text;
 BEGIN
  IF p_source<>'offboarding' THEN RETURN app.personnel_posting_create_probation_v1(p_source,p_source_ref,p_employment,p_event,p_proposed,p_approver_group,p_key); END IF;
  IF t IS NULL OR app.current_user_id() IS NULL OR NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Sign in to create a posting' USING ERRCODE='42501'; END IF;
@@ -124,11 +124,20 @@ BEGIN
   IF p_proposed ? 'jobGrade' AND p_proposed->>'jobGrade' IS DISTINCT FROM j.data->'offer'->>'jobGrade' THEN RAISE EXCEPTION 'Posting must use accepted Job Grade' USING ERRCODE='22023'; END IF;
   IF p_proposed ? 'basicSalary' THEN IF (p_proposed->>'basicSalary')::numeric IS DISTINCT FROM (j.data->'offer'->>'basicSalary')::numeric THEN RAISE EXCEPTION 'Posting must use accepted Basic salary' USING ERRCODE='22023'; END IF; END IF;
  END IF;
+ IF p_proposed ? 'basicSalary' THEN
+  source_currency:=nullif(btrim(j.data->'facts'->>'currency'),'');
+  IF source_currency IS NOT NULL THEN
+   IF NOT pg_try_advisory_xact_lock_shared(hashtextextended('leave-dependency-configuration:'||t::text,0)) THEN RAISE EXCEPTION 'Salary source is busy; review this posting again' USING ERRCODE='40001'; END IF;
+   IF NOT pg_try_advisory_xact_lock(hashtextextended('leave-dependency-employment:'||t::text||':'||p_employment::text,0)) THEN RAISE EXCEPTION 'Salary source is busy; review this posting again' USING ERRCODE='40001'; END IF;
+   SELECT c.currency INTO current_currency FROM public.compensation c WHERE c.tenant_id=t AND c.employment_id=p_employment AND c.superseded_at IS NULL AND c.valid_from<=(p_proposed->>'effectiveDate')::date AND (c.valid_to IS NULL OR c.valid_to>(p_proposed->>'effectiveDate')::date) ORDER BY c.valid_from DESC,c.id LIMIT 1;
+   IF current_currency IS DISTINCT FROM source_currency THEN RAISE EXCEPTION 'The salary currency changed since this resignation case; review the agreed offer before creating a posting' USING ERRCODE='40001'; END IF;
+  END IF;
+ END IF;
  IF app.offboarding_posting_references_ok(j.company_id,p_proposed) IS NOT TRUE THEN RAISE EXCEPTION 'Posting references do not match Personnel Management' USING ERRCODE='22023'; END IF;
  SELECT CASE WHEN c.data->'offboarding' ? 'postingApproverGroupId' THEN c.data->'offboarding'->>'postingApproverGroupId' ELSE c.data->>'peopleOpsGroup' END INTO configured FROM public.lc_v9_config c WHERE c.tenant_id=t;
  IF configured IS DISTINCT FROM p_approver_group OR cardinality(app.offboarding_posting_group_members(configured))=0 THEN RAISE EXCEPTION 'Configure a populated Offboarding posting approver group' USING ERRCODE='22023'; END IF;
  SELECT coalesce(max(number),1000)+1 INTO v_number FROM public.personnel_posting WHERE tenant_id=t;
- baseline:=jsonb_build_object('position',j.data->'facts'->'position','jobGrade',j.data->'facts'->'jobGrade','basicSalary',j.data->'facts'->'basicSalary');
+ baseline:=jsonb_build_object('position',j.data->'facts'->'position','jobGrade',j.data->'facts'->'jobGrade','basicSalary',j.data->'facts'->'basicSalary','currency',j.data->'facts'->'currency');
  INSERT INTO public.personnel_posting(tenant_id,company_id,employment_id,number,source,source_ref,event_type,proposed,approver_group_id,created_by,idempotency_key,baseline_values)
  VALUES(t,j.company_id,p_employment,v_number,p_source,p_source_ref,p_event,p_proposed,configured,app.current_user_id(),p_key,baseline) RETURNING id INTO v_id;
  INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload) VALUES(t,'personnel_posting',v_id,'personnel_posting.created','user',app.current_user_id(),p_employment,jsonb_build_object('number',v_number,'source',p_source,'sourceRef',p_source_ref,'eventType',p_event,'proposed',p_proposed,'approverGroupId',configured));
@@ -155,7 +164,7 @@ END $$;
 --> statement-breakpoint
 ALTER FUNCTION app.personnel_posting_approve(uuid,integer,jsonb) RENAME TO personnel_posting_approve_probation_v1;
 CREATE FUNCTION app.personnel_posting_approve(p_id uuid,p_revision integer,p_values jsonb) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE p public.personnel_posting; v jsonb;
+DECLARE p public.personnel_posting; v jsonb; source_currency text; current_currency text;
 BEGIN
  SELECT * INTO p FROM public.personnel_posting WHERE tenant_id=app.current_tenant_id() AND id=p_id;
  IF NOT FOUND OR p.source<>'offboarding' THEN RETURN app.personnel_posting_approve_probation_v1(p_id,p_revision,p_values); END IF;
@@ -168,6 +177,15 @@ BEGIN
  IF NOT EXISTS(SELECT 1 FROM public.resignation_journey j JOIN public.employment e ON e.id=j.employment_id AND e.tenant_id=j.tenant_id WHERE j.tenant_id=p.tenant_id AND j.id=p.source_ref AND j.employment_id=p.employment_id AND j.company_id=p.company_id AND e.company_id=p.company_id AND (p.event_type<>'termination' AND j.stage='retained' OR p.event_type='termination' AND EXISTS(SELECT 1 FROM public.lc_v9_case c WHERE c.tenant_id=j.tenant_id AND c.id=j.offboarding_case_id AND c.employment_id=j.employment_id AND c.data->>'state'='cleared'))) THEN RAISE EXCEPTION 'The posting source or company changed; review before approving' USING ERRCODE='40001'; END IF;
 
  v:=coalesce(p_values,p.edited,p.proposed);IF app.offboarding_posting_values_ok(p.event_type,v) IS NOT TRUE THEN RAISE EXCEPTION 'Posting values are incomplete or not allowed' USING ERRCODE='22023'; END IF;
+ IF v ? 'basicSalary' THEN
+  SELECT nullif(btrim(j.data->'facts'->>'currency'),'') INTO source_currency FROM public.resignation_journey j WHERE j.tenant_id=p.tenant_id AND j.id=p.source_ref;
+  IF source_currency IS NOT NULL THEN
+   IF NOT pg_try_advisory_xact_lock_shared(hashtextextended('leave-dependency-configuration:'||p.tenant_id::text,0)) THEN RAISE EXCEPTION 'Salary source is busy; review this posting again' USING ERRCODE='40001'; END IF;
+   IF NOT pg_try_advisory_xact_lock(hashtextextended('leave-dependency-employment:'||p.tenant_id::text||':'||p.employment_id::text,0)) THEN RAISE EXCEPTION 'Salary source is busy; review this posting again' USING ERRCODE='40001'; END IF;
+   SELECT c.currency INTO current_currency FROM public.compensation c WHERE c.tenant_id=p.tenant_id AND c.employment_id=p.employment_id AND c.superseded_at IS NULL AND c.valid_from<=(v->>'effectiveDate')::date AND (c.valid_to IS NULL OR c.valid_to>(v->>'effectiveDate')::date) ORDER BY c.valid_from DESC,c.id LIMIT 1;
+   IF current_currency IS DISTINCT FROM source_currency THEN RAISE EXCEPTION 'The salary currency changed since this resignation case; review the agreed offer before approving this posting' USING ERRCODE='40001'; END IF;
+  END IF;
+ END IF;
  IF app.offboarding_posting_references_ok(p.company_id,v) IS NOT TRUE THEN RAISE EXCEPTION 'Posting references do not match Personnel Management' USING ERRCODE='22023'; END IF;
  UPDATE public.personnel_posting SET status='approved',approved_by=app.current_user_id(),approved_at=now(),applied=v,revision=p.revision+1 WHERE id=p.id AND tenant_id=p.tenant_id;
  INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload) VALUES(p.tenant_id,'personnel_posting',p.id,'personnel_posting.approved','user',app.current_user_id(),p.employment_id,jsonb_build_object('source',p.source,'sourceRef',p.source_ref,'applied',v,'revision',p.revision+1));

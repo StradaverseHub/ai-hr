@@ -10,7 +10,7 @@ describe('Offboarding Personnel posting boundaries',()=>{
  });
  it('only admits scoped Position/Job Grade pairs and exact decimal Basic salary',()=>{
   expect(normalisePostingValues('promotion',{effectiveDate:day,positionId:id,position:'Engineer',gradeId:id,jobGrade:'G4',basicSalary:'12000.5'},'offboarding')).toMatchObject({ok:true,values:{basicSalary:'12000.50'}});
-  for(const values of [{positionId:id},{position:'Engineer'},{gradeId:id},{jobGrade:'G4'},{basicSalary:'1e6'},{basicSalary:'0'},{basicSalary:'-1'},{basicSalary:'12.345'},{allowances:[]},{endDate:day}])expect(normalisePostingValues('promotion',{effectiveDate:day,...values},'offboarding').ok).toBe(false);
+  for(const values of [{positionId:id},{position:'Engineer'},{gradeId:id},{jobGrade:'G4'},{basicSalary:'1e6'},{basicSalary:'0'},{basicSalary:'-1'},{basicSalary:'12.345'},{allowances:[]},{currency:'USD'},{endDate:day}])expect(normalisePostingValues('promotion',{effectiveDate:day,...values},'offboarding').ok).toBe(false);
   expect(postingSalary('9999999999.99')).toBe('9999999999.99');
   expect(postingSalary('10000000000.00')).toBeNull();
  });
