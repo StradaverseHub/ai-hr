@@ -1254,7 +1254,7 @@ async function completeEmployeeDraftTx(tx:Tx,ctx:SessionContext,id:string):Promi
   // for a reason that was knowable earlier. Each is called only when the draft carries a value: blank is
   // "Not specified" / the Monthly default, which is what a new employment already is.
   if (paymentMethod !== undefined) {
-    await setEmploymentPaymentMethod(ctx, { employmentId, paymentMethod: paymentMethod as 'bank_transfer' | 'cheque' | 'cash' },tx);
+    await setEmploymentPaymentMethod(ctx, { employmentId, effectiveDate:hiredOn, paymentMethod: paymentMethod as 'bank_transfer' | 'cheque' | 'cash' },tx);
   }
   if (policyId !== undefined) {
     await assignPolicy(ctx, { employmentId, policyId },tx);

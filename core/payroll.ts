@@ -1,3 +1,4 @@
+import {employmentPaymentMethodOnSql} from './employment-payment-method';
 import {personnelGroupingReadinessTx} from './personnel-quality';
 import {payrollEmploymentPredicate,outstandingPaymentPredicate,payrollCompensationEffectiveOn,payrollEmploymentEnd,payrollRunContextsTx,type PayrollEligibilityRun} from './payroll-employment-eligibility';
 import {PayrollTaxBasisError} from '../lib/payroll-tax-basis';
@@ -12673,7 +12674,7 @@ export function paymentSummaryForBatch(ctx: SessionContext, batchId: string) {
         // that are actually paid BY bank transfer; cheque and cash rows have to be settled another way.
         // Emitting the method turns a flat list into something the payment run can be split on, instead of
         // whoever opens the CSV having to remember who is not on transfer.
-        paymentMethod: employment.paymentMethod,
+        paymentMethod: employmentPaymentMethodOnSql(sql`${employment.id}`),
         net: payslip.netPay,
       })
       .from(payslip)
@@ -12819,7 +12820,7 @@ export function payslipDetail(ctx: SessionContext, payslipId: string, ownOnly = 
         position: position.title,
         jobGrade: frozenPayslipInformation('grade',sql`${jobGrade.name}`),
         employmentType: frozenPayslipInformation('employmentType',sql`${assignment.employmentType}`),
-        paymentMethod: employment.paymentMethod,
+        paymentMethod: employmentPaymentMethodOnSql(sql`${employment.id}`),
         bankName: employeeStatutoryMy.bankName,
         bankAccountNo: employeeStatutoryMy.bankAccountNo,
         icNumber: employeeStatutoryMy.icNumber,

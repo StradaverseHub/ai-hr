@@ -1,3 +1,5 @@
+import {employmentPaymentMethodOnTx} from './employment-payment-method';
+import {PAYMENT_METHODS,type PaymentMethod} from '../lib/payment-methods';
 import {assertMovementDeleteTx} from './movement-delete-access';
 import { lockPayrollInputsTx } from './payroll-inputs-lock';
 import { preserveMovementPayrollTx, withProtectedMovementHistoryTx } from './movement-payroll-protection';
@@ -56,6 +58,7 @@ import {
   reportingLine,
 } from '../db/schema';
 import {
+  setEmploymentPaymentMethod,
   setEmploymentAssignment,
   setEmploymentBlacklist,
   reverseEmploymentBlacklistTx,
@@ -340,6 +343,7 @@ export type MovementSnapshot = {
   /** Typed canonical salary for report comparisons; display salary remains unchanged. */
   groupJoinDate?: string | null;
   joinDate?: string | null;
+  paymentMethod?:string|null;
   salaryAmount?: string | null;
   currency?: string | null;
 };
@@ -363,7 +367,7 @@ export type MovementRowSummary = Pick<
 >;
 
 export type MovementIntentField = 'tenderResignationDate' | 'resignationEffectiveDate' | 'company' | 'businessUnit' | 'department' | 'position' | 'location' |
-  'confirmationDate' | 'grade' | 'employmentType' | 'manager' | 'basicSalary' | 'currency' | 'payMode' | 'paymentTerm' | MovementFlatField | MovementEndDateField | MovementEmploymentPeriodField;
+  'confirmationDate' | 'grade' | 'employmentType' | 'manager' | 'basicSalary' | 'currency' | 'payMode' | 'paymentTerm' | 'paymentMethod' | MovementFlatField | MovementEndDateField | MovementEmploymentPeriodField;
 
 /** Saved targets only: not an applied snapshot or an invented historical before-state. */
 export type MovementPendingIntent = { values: { field: MovementIntentField; value: string | null }[] };
@@ -427,7 +431,7 @@ const FIELD_RULE_NAMES: Record<string, string> = {
   companyId: 'the company', businessUnitId: 'the business unit', departmentId: 'the department',
   positionId: 'the position', gradeId: 'the grade', employmentType: 'the employment type',
   locationId: 'the work location', managerEmploymentId: 'the reporting manager', basicSalary: 'the basic salary',
-  currency: 'the currency', payMode: 'the pay mode', paymentTerm: 'the payment term', orgDivision: 'the division',
+  currency: 'the currency', payMode: 'the pay mode', paymentTerm: 'the payment term', paymentMethod:'the payment method', orgDivision: 'the division',
   employmentCategory: 'the category', orgRegion: 'the region', orgBranch: 'the branch', orgTeam: 'the team',
   orgSection: 'the section', orgLine: 'the line', orgBase: 'the base',
 };
@@ -451,6 +455,7 @@ const MOVEMENT_EVENT_TYPES = [
   'employment.assignment.changed',
   'employment.grade.changed',
   'compensation.set',
+  'employment.payment-method.changed',
   'employment.info.updated',
   'employment-review.decided',
   'employment.terminated',
@@ -841,6 +846,10 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
           remarks: mv?.remarks ?? null,
         });
         break;
+      case 'employment.payment-method.changed':
+        if(!knownKind(mv?.type))break;
+        rows.push({...base,kind:mv.type,effectiveDate:p.effectiveDate??occDate,endDate:null,remarks:mv.remarks??null});
+        break;
       case 'compensation.set':
         // Initial salary at hire is part of Hired, not a movement (suppresses the every-new-hire
         // "Salary Adjustment" noise; applies to import and seed too).
@@ -1182,6 +1191,7 @@ const REVERSIBLE_EVENT_TYPES = new Set([
   'employment.assignment.changed',
   'employment.grade.changed',
   'compensation.set',
+  'employment.payment-method.changed',
   'employment.info.updated',
   'reporting-line.set',
   'employment.movement.recorded',
@@ -1868,6 +1878,7 @@ async function snapshotAt(
     employmentType: asg?.employmentType ?? null,
     manager: managerName,
     salary: comp ? `${comp.currency} ${comp.basicSalary}` : null,
+    paymentMethod:await employmentPaymentMethodOnTx(tx,emp.id,asOf),
     salaryAmount: comp?.basicSalary ?? null,
     currency: comp?.currency ?? null,
   };
@@ -1918,7 +1929,7 @@ async function pendingIntentTx(tx: Tx, tenantId: string, event: RawEvent): Promi
       .where(and(eq(employment.tenantId, tenantId), eq(person.tenantId, tenantId), eq(employment.id, id))).limit(1);
     return row?.name ?? null;
   });
-  for (const field of ['tenderResignationDate','resignationEffectiveDate','employmentType', 'basicSalary', 'currency', 'payMode', 'paymentTerm', ...MOVEMENT_FLAT_FIELDS, ...MOVEMENT_END_DATE_FIELDS, ...MOVEMENT_EMPLOYMENT_PERIOD_FIELDS, 'confirmationDate'] as const) {
+  for (const field of ['tenderResignationDate','resignationEffectiveDate','employmentType', 'basicSalary', 'currency', 'payMode', 'paymentTerm', 'paymentMethod', ...MOVEMENT_FLAT_FIELDS, ...MOVEMENT_END_DATE_FIELDS, ...MOVEMENT_EMPLOYMENT_PERIOD_FIELDS, 'confirmationDate'] as const) {
     if (!(field in input)) continue; // Omitted is not a clear and not today's value.
     const value: unknown = Reflect.get(input, field);
     if (value === null || typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value))) {
@@ -2121,6 +2132,7 @@ export type MovementCurrentState = {
   currency: string | null;
   payMode: string | null;
   paymentTerm: string | null;
+  paymentMethod?: string | null;
   /** 3ced1040 — the date a Confirmation movement moves. Read like every other current value so the delta
    *  rule covers it: re-confirming on the date already stored is a no-op, not a second history row. */
   confirmationDate: string | null;
@@ -2128,7 +2140,7 @@ export type MovementCurrentState = {
   contractStartDate: string | null;
 } & Record<MovementFlatField | MovementEndDateField, string | null> & Partial<Record<MovementEmploymentPeriodField, string | null>>;
 
-async function currentStateTx(tx: Tx, employmentId: string): Promise<MovementCurrentState> {
+async function currentStateTx(tx: Tx, employmentId: string,asOf=todayInKualaLumpur()): Promise<MovementCurrentState> {
   const [emp] = await tx
     .select({
       probationValue: sql<string | null>`coalesce(${employment.probationValue}, ${employment.probationMonths})::text`,
@@ -2176,7 +2188,7 @@ async function currentStateTx(tx: Tx, employmentId: string): Promise<MovementCur
     .where(
       and(
         eq(assignment.employmentId, employmentId),
-        isNull(assignment.validTo),
+        sql`${assignment.validFrom}<=${asOf}::date and (${assignment.validTo} is null or ${assignment.validTo}>${asOf}::date)`,
         isNull(assignment.supersededAt),
       ),
     )
@@ -2189,7 +2201,7 @@ async function currentStateTx(tx: Tx, employmentId: string): Promise<MovementCur
       and(
         eq(reportingLine.subordinateEmploymentId, employmentId),
         eq(reportingLine.lineType, 'administrative'),
-        isNull(reportingLine.validTo),
+        sql`${reportingLine.validFrom}<=${asOf}::date and (${reportingLine.validTo} is null or ${reportingLine.validTo}>${asOf}::date)`,
         isNull(reportingLine.supersededAt),
       ),
     )
@@ -2206,7 +2218,7 @@ async function currentStateTx(tx: Tx, employmentId: string): Promise<MovementCur
     .where(
       and(
         eq(compensation.employmentId, employmentId),
-        isNull(compensation.validTo),
+        sql`${compensation.validFrom}<=${asOf}::date and (${compensation.validTo} is null or ${compensation.validTo}>${asOf}::date)`,
         isNull(compensation.supersededAt),
       ),
     )
@@ -2228,6 +2240,7 @@ async function currentStateTx(tx: Tx, employmentId: string): Promise<MovementCur
     currency: comp?.currency ?? null,
     payMode: comp?.payMode ?? null,
     paymentTerm: comp?.paymentTerm ?? null,
+    paymentMethod:await employmentPaymentMethodOnTx(tx,employmentId,asOf),
     confirmationDate: emp.confirmationDate,
     contractStartDate: emp.contractStartDate,
     contractEndDate: emp.contractEndDate,
@@ -2297,6 +2310,7 @@ export type CreateMovementInput = {
   currency?: string;
   payMode?: string;
   paymentTerm?: string;
+  paymentMethod?:string|null;
   /**
    * ae9350f2 — `terminationType` is GONE from this input. It is now DERIVED from the reason code below, and
    * an input the dispatcher silently ignores is worse than an absent one — it is a control that saves
@@ -2444,6 +2458,8 @@ function movementDeltas(p: CreateMovementInput, cur: MovementCurrentState) {
   const dCurrency = delta(p.currency, cur.currency);
   const dPayMode = delta(p.payMode, cur.payMode);
   const dPaymentTerm = delta(p.paymentTerm, cur.paymentTerm);
+  const dPaymentMethod = delta(p.paymentMethod,cur.paymentMethod??null);
+  if(dPaymentMethod!==undefined&&dPaymentMethod!==null&&!(PAYMENT_METHODS as readonly string[]).includes(dPaymentMethod))throw new Error('Payment method is invalid.');
 
   /**
    * 3ced1040 — the CONFIRMATION delta. The confirmation date is not a field on the form: it IS the
@@ -2483,7 +2499,7 @@ function movementDeltas(p: CreateMovementInput, cur: MovementCurrentState) {
 
   const nothingChanged =
     !assignmentChanged && !gradeChanged && !flatChanged && !managerChanged && !compChanged &&
-    !confirmationChanged && !companyChanged && !endDatesChanged && !periodsChanged;
+    !confirmationChanged && !companyChanged && !endDatesChanged && !periodsChanged && dPaymentMethod===undefined;
   if (dSalary !== undefined && (!Number.isFinite(dSalary) || dSalary < 0)) {
     throw new Error('A valid basic salary amount is required.');
   }
@@ -2519,12 +2535,13 @@ function movementDeltas(p: CreateMovementInput, cur: MovementCurrentState) {
   // Named in `fields` too, so two pending confirmations of the same employee resolve against each other
   // through supersededScheduledIds exactly as two pending raises do.
   add('confirmationDate', cur.confirmationDate, dConfirmation);
+  add('paymentMethod',cur.paymentMethod??null,dPaymentMethod);
 
   return {
     cur, periods, periodsChanged,
     dCompany, dJoinDate,
     dDept, dPos, dBu, dLoc, dType, dGrade, dManager, flat, endDates,
-    dSalary, dCurrency, dPayMode, dPaymentTerm, dConfirmation,
+    dSalary, dCurrency, dPayMode, dPaymentTerm, dPaymentMethod, dConfirmation,
     assignmentChanged, gradeChanged, flatChanged, managerChanged, compChanged, hasComp,
     confirmationChanged, companyChanged, joinDateChanged, endDatesChanged,
     nothingChanged,
@@ -2673,13 +2690,13 @@ async function applyComparisonLegsTx(
   const groupId = opts?.groupId ?? randomUUID();
 
   {
-    const cur = await currentStateTx(tx, p.employmentId);
+    const cur = {...await currentStateTx(tx,p.employmentId),paymentMethod:await employmentPaymentMethodOnTx(tx,p.employmentId,p.effectiveDate)};
     const d = movementDeltas(p, cur);
     const {
       periods, periodsChanged,
       dCompany, dJoinDate,
       dDept, dPos, dBu, dLoc, dType, dGrade, dManager, flat, endDates,
-      dSalary, dCurrency, dPayMode, dPaymentTerm, dConfirmation,
+      dSalary, dCurrency, dPayMode, dPaymentTerm, dPaymentMethod, dConfirmation,
       assignmentChanged, gradeChanged, flatChanged, compChanged, confirmationChanged,
       companyChanged, joinDateChanged, endDatesChanged,
     } = d;
@@ -2868,6 +2885,8 @@ async function applyComparisonLegsTx(
         tx,
       );
     }
+
+    if(dPaymentMethod!==undefined)await setEmploymentPaymentMethod(ctx,{employmentId:p.employmentId,paymentMethod:dPaymentMethod as PaymentMethod|null,effectiveDate:p.effectiveDate,movement:tag({withRemarks:false})},tx);
 
     // 941c9dac — the change list travels back to the sweep, which stores it on the applied event as the
     // permanent "what changed, from what to what" record of the automatic application.
@@ -3558,7 +3577,7 @@ async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateM
   }
   };
   const changesMaster = !['secondment','actingPosition','historicalHire','rehire'].includes(p.kind) &&
-    (p.effectiveDate <= today || ['joinDateChange','groupJoinDateCorrection','probationExtension','blacklist'].includes(p.kind));
+    (p.effectiveDate <= todayInKualaLumpur() || ['joinDateChange','groupJoinDateCorrection','probationExtension','blacklist'].includes(p.kind));
   const result = changesMaster && !probationMovementAuthorityTx(tx, p)
     ? await withProtectedMovementHistoryTx(tx, ctx, p.employmentId, execute, message => new MovementNotCorrectableError(message))
     : await execute();
@@ -3738,6 +3757,7 @@ export async function applyDueMovementsTx(
     // Without the groupId the legs could not be tied back to this row and the movement would sprout a
     // duplicate history line. Refuse rather than corrupt the history.
     if (!r.groupId) continue;
+    const groupId=r.groupId;
     // ae9350f2 — Termination is the one scheduled kind that is not a comparison kind. It has its own
     // writer (two legs, no Current/After deltas), so it is dispatched explicitly rather than being let
     // through the comparison path, which would compute deltas for fields a termination never moves.
@@ -3766,17 +3786,17 @@ export async function applyDueMovementsTx(
     try {
       await withProtectedMovementHistoryTx(tx, ctx, employmentId, async () => {
       const res = isResignation
-        ? await applyResignationMovementTx(tx,ctx,input,{groupId:r.groupId,allSecondary:true})
+        ? await applyResignationMovementTx(tx,ctx,input,{groupId,allSecondary:true})
         : isTermination
         ? await applyTerminationTx(
             tx,
             ctx,
             employmentId,
             await planTerminationTx(tx, ctx, input, 'apply', r.id),
-            { groupId: r.groupId, allSecondary: true },
+            { groupId, allSecondary: true },
           )
         : await applyComparisonMovementTx(tx, ctx, input, behaviourKind as ComparisonKind, {
-            groupId: r.groupId,
+            groupId,
             allSecondary: true,
           });
       changes = res.changes;
@@ -4091,6 +4111,9 @@ async function replayInputOfTx(tx: Tx, r: ProjectedRow, g: RawEvent[], behaviour
       case 'reporting-line.set':
         input.managerEmploymentId = p.managerEmploymentId ?? null;
         break;
+      case 'employment.payment-method.changed':
+        input.paymentMethod=p.after??null;
+        break;
       case 'compensation.set': {
         const [row] = await tx
           .select({ basicSalary: compensation.basicSalary, currency: compensation.currency, payMode: compensation.payMode, paymentTerm: compensation.paymentTerm })
@@ -4180,6 +4203,11 @@ async function reverseLegTx(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const p = (e.payload ?? {}) as Record<string, any>;
   switch (e.eventType) {
+    case 'employment.payment-method.changed': {
+      if(await employmentPaymentMethodOnTx(tx,employmentId,p.effectiveDate)!==(p.after??null))throw new MovementNotCorrectableError('A later payment-method decision must be reviewed before this event can be changed.');
+      await setEmploymentPaymentMethod(ctx,{employmentId,paymentMethod:p.before??null,effectiveDate:p.effectiveDate,movement:tag,reason:correctionReason},tx);
+      return;
+    }
     case 'assignment.transferred':
     case 'employment.assignment.changed': {
       const [row] = await tx
@@ -5061,6 +5089,7 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
         same(p.currency, cur.currency) &&
         same(p.payMode, cur.payMode) &&
         same(p.paymentTerm, cur.paymentTerm) &&
+        same(p.paymentMethod,cur.paymentMethod??null) &&
         same(p.confirmationDate, cur.confirmationDate) &&
         (!p.employmentType || p.employmentType === cur.employmentType) &&
         (p.basicSalary === undefined || Number(p.basicSalary) === Number(cur.basicSalary ?? NaN)) &&

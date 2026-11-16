@@ -1,3 +1,5 @@
+import {employmentPaymentMethodOnTx,employmentPaymentMethodOnSql} from './employment-payment-method';
+import {lockPayrollInputsTx} from './payroll-inputs-lock';
 import {withSystemLabelCompanyTx} from './system-label-selection';
 import {organisationManagedTx,organisationBusinessUnit} from './organisation-write-policy';
 import {deriveCompanyOrganisationTx,recordEmploymentOrganisationTagsTx,type OrganisationTagTrigger} from './company-organisation';
@@ -3777,7 +3779,7 @@ export async function prepareEmploymentPaymentMethodTx(tx:Tx,ctx:SessionContext,
  if(!(ctx.roles??[]).some(role=>role==='hr_admin'||role==='super_admin'))throw Error('Payment method unavailable');
  await tx.execute(sql`select app.access_configuration_write_lock()`);await lockProfileValueWritesTx(tx,ctx.tenantId);
  await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
- const [row]=await tx.select({employmentId:employment.id,personId:employment.personId,companyId:employment.companyId,paymentMethod:employment.paymentMethod,terminatedOn:employment.terminatedOn,revision:sql<string>`xmin::text`}).from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId))).for('update');
+ const [row]=await tx.select({employmentId:employment.id,personId:employment.personId,companyId:employment.companyId,paymentMethod:employmentPaymentMethodOnSql(sql`${employment.id}`),terminatedOn:employment.terminatedOn,revision:sql<string>`xmin::text`}).from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId))).for('update');
  if(!row||row.terminatedOn)throw Error('Payment method unavailable');
  const [scope]=await tx.execute<{allowed:boolean;country:string}>(sql`select app.is_admin_for(c.id) as allowed,c.country from company c where c.id=${row.companyId}::uuid and c.tenant_id=${ctx.tenantId}::uuid for share`);
  if(scope?.allowed!==true||scope.country!=='MY')throw Error('Payment method unavailable');
@@ -3802,7 +3804,7 @@ export async function prepareEmploymentPaymentMethodTx(tx:Tx,ctx:SessionContext,
  */
 export async function setEmploymentPaymentMethod(
   ctx: SessionContext,
-  p: { employmentId: string; paymentMethod: PaymentMethod | null },
+  p: { employmentId: string; paymentMethod: PaymentMethod | null; effectiveDate?:string; movement?:MovementTag; reason?:string|null },
   outerTx?:Tx,
 ) {
   const roles = ctx.roles ?? [];
@@ -3814,14 +3816,21 @@ export async function setEmploymentPaymentMethod(
     throw new Error('Payment method is invalid.');
   }
   const run=async(tx:Tx)=>{
+    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    await lockPayrollInputsTx(tx,{employmentIds:[p.employmentId]});
     const [before] = await tx
-      .select({ paymentMethod: employment.paymentMethod, personId: employment.personId })
+      .select({ paymentMethod: employment.paymentMethod, personId: employment.personId, hiredOn:employment.hiredOn })
       .from(employment)
       .where(eq(employment.id, p.employmentId))
-      .limit(1);
+      .limit(1).for('update');
     if (!before) throw new Error('Employment not found');
-    // Idempotent — no write, no event, when nothing moved.
-    if ((before.paymentMethod ?? null) === (next ?? null)) {
+    const today=todayInKualaLumpur();
+    const effectiveDate=p.effectiveDate??(before.hiredOn>today?before.hiredOn:today);
+    if(!isCalendarDate(effectiveDate)||effectiveDate<before.hiredOn)throw new Error('Payment method effective date must be on or after Group Join Date.');
+    const previous=await employmentPaymentMethodOnTx(tx,p.employmentId,effectiveDate);
+    // A dated no-op emits no revision or ledger event.
+    if (previous === (next ?? null)) {
       return { id: p.employmentId, paymentMethod: next, changed: false as const };
     }
 
@@ -3829,7 +3838,10 @@ export async function setEmploymentPaymentMethod(
       throw new MissingBankForTransferError();
     }
 
-    await tx.update(employment).set({ paymentMethod: next }).where(eq(employment.id, p.employmentId));
+    await tx.execute(sql`update employment_payment_method_history set superseded_at=now() where tenant_id=${ctx.tenantId}::uuid and employment_id=${p.employmentId}::uuid and effective_on=${effectiveDate}::date and superseded_at is null`);
+    const [revision]=await tx.execute<{id:string}>(sql`insert into employment_payment_method_history(tenant_id,employment_id,effective_on,payment_method,recorded_by,source) values(${ctx.tenantId}::uuid,${p.employmentId}::uuid,${effectiveDate}::date,${next},${ctx.userId??null}::uuid,${p.movement?'movement':'maintenance'}) returning id`);
+    const projected=await employmentPaymentMethodOnTx(tx,p.employmentId,today);
+    await tx.update(employment).set({ paymentMethod: projected }).where(eq(employment.id,p.employmentId));
     const eventId=await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employment',
@@ -3839,7 +3851,7 @@ export async function setEmploymentPaymentMethod(
       subjectEmploymentId: p.employmentId,
       // How someone is paid is a disbursement-routing decision an auditor must be able to reconstruct —
       // same rationale as the bank/custom-holder before/after on employee.bank.updated.
-      payload: { before: before.paymentMethod ?? null, after: next },
+      payload: { before:previous, after:next, effectiveDate, revisionId:revision.id, reason:p.reason?.trim()||null, ...(p.movement?{movement:p.movement}:{}) },
     },{returnId:true});
     return { id: p.employmentId, paymentMethod: next, changed: true as const, eventId };
   };

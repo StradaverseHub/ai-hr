@@ -280,6 +280,7 @@ async function inputTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,empl
   }else if(field in fieldKinds){
    const options=catalog.fields[field]??[];input[field as keyof typeof fieldKinds]=options.length?lookup(raw,options,field):raw;
   }else if((MOVEMENT_EMPLOYMENT_PERIOD_FIELDS as readonly string[]).includes(field))input[field as MovementEmploymentPeriodField]=raw;
+  else if(field==='paymentMethod')input.paymentMethod=raw||null;
   else if(field==='remarks'||field==='currency'||field==='payMode'||field==='paymentTerm'||field==='terminationReasonCode')input[field]=raw;
  }
  if(managed||tags.status!=='legacy'){const state=known?{businessUnitId:known.businessUnitId??null}:await movementCurrentStateTx(tx,employmentId);input.businessUnitId=organisationBusinessUnit(tags,managed,input.businessUnitId,resolved.behaviourKind==='entityTransfer'&&targetCompanyId!==currentCompanyId?null:state.businessUnitId);}

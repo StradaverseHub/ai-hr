@@ -1,3 +1,4 @@
+import {employmentPaymentMethodOnSql} from './employment-payment-method';
 /**
  * ADR-0083 §3 item 2 — RECORD READINESS: the loop that feeds every other loop.
  *
@@ -193,7 +194,7 @@ const READINESS_ROW_FIELDS = {
         name: schema.person.fullName,
         employeeCode: schema.employment.employeeCode,
         company: schema.company.legalName,
-        paymentMethod: schema.employment.paymentMethod,
+        paymentMethod: employmentPaymentMethodOnSql(sql`${schema.employment.id}`),
         ic: schema.employeeStatutoryMy.icNumber,
         passport: schema.employeeStatutoryMy.passportNumber,
         taxNumber: schema.employeeStatutoryMy.taxNumber,

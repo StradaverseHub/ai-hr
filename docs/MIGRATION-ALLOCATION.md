@@ -1,3 +1,17 @@
+# Movement payment method field — 17 November 2026 MYT (unapplied candidate)
+
+Integrated candidate uses reserved 5775, idx 5175, when 1793330005475, SHA256 `3841610ec8f01675b16ad51b9c9523d77146f8c048790565d9862510909d3155`.
+Widens the existing comparison-field and attachment vocabularies and applies existing salary-document
+RLS to payment-method documents. No data rows or grants change. Recheck admission watermarks; no installation authority.
+
+# Dated payment method — 17 November 2026 MYT (unapplied candidate)
+
+`codex/personnel-movement-comprehensive-20261117` uses reserved 5774, idx 5174, when 1793330005474,
+SHA256 `500485fddda4cfb8a17c221873796c56a07eba386a05240a32296ec77ed0bcf9`. Adds one effective-dated employment payment-method owner with RLS,
+app SELECT/INSERT/UPDATE grants, tenant-linked employment FK, and an invoker dated reader.
+Existing undated non-null methods are recorded as known on installation day, without inventing prior dates.
+No payroll rows change. Recheck peer claims and installed ledgers before admission; no installation authority.
+
 # Comprehensive movement workflow — 17 November 2026 MYT (unapplied candidate)
 
 Branch `codex/personnel-movement-comprehensive-20261117` claims 5773–5782 for the integrated candidate.

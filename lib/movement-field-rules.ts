@@ -41,13 +41,14 @@ export const MOVEMENT_RULE_FIELDS = [
   'currency',
   'payMode',
   'paymentTerm',
+  'paymentMethod',
 ] as const;
 export type MovementRuleField = (typeof MOVEMENT_RULE_FIELDS)[number];
 export const isMovementRuleField = (v: string): v is MovementRuleField =>
   (MOVEMENT_RULE_FIELDS as readonly string[]).includes(v);
 
 /** The pay fields. Their documents follow the same access rule as the salary itself (migration 0722). */
-export const MOVEMENT_PAY_FIELDS: readonly MovementRuleField[] = ['basicSalary', 'currency', 'payMode', 'paymentTerm'];
+export const MOVEMENT_PAY_FIELDS: readonly MovementRuleField[] = ['basicSalary', 'currency', 'payMode', 'paymentTerm', 'paymentMethod'];
 
 export const MOVEMENT_DOCUMENT_MODES = ['none', 'optional', 'required'] as const;
 export type MovementDocumentMode = (typeof MOVEMENT_DOCUMENT_MODES)[number];
@@ -69,7 +70,7 @@ export const MOVEMENT_RULE_GROUPS: readonly { id: 'organisation' | 'labels' | 's
     fields: ['companyId', 'businessUnitId', 'departmentId', 'positionId', 'gradeId', 'employmentType', 'contractEndDate', 'internshipEndDate', 'confirmationDate', ...MOVEMENT_EMPLOYMENT_PERIOD_FIELDS, 'locationId', 'managerEmploymentId'],
   },
   { id: 'labels', fields: [...MOVEMENT_FLAT_FIELDS] },
-  { id: 'salary', fields: ['basicSalary', 'currency', 'payMode', 'paymentTerm'] },
+  { id: 'salary', fields: ['basicSalary', 'currency', 'payMode', 'paymentTerm', 'paymentMethod'] },
 ];
 
 /** The fields a behaviour's grid offers. Company is part of Entity Transfer only; every other comparison

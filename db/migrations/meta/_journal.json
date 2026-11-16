@@ -6182,6 +6182,20 @@
       "when": 1793330005473,
       "tag": "5773_movement_payroll_protection_and_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 5174,
+      "version": "7",
+      "when": 1793330005474,
+      "tag": "5774_employment_payment_method_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 5175,
+      "version": "7",
+      "when": 1793330005475,
+      "tag": "5775_movement_payment_method_field",
+      "breakpoints": true
     }
   ]
 }

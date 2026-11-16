@@ -14,7 +14,7 @@
  */
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { entitySegmentRow, mergeCompanySegments } from './employment-company';
+import { entitySegmentRow, mergeCompanySegments, dayAfter, segmentForCompany, type CompanySegment } from './employment-company';
 import {
   assignment,
   company,
@@ -158,6 +158,8 @@ type ImportedStat = {
   /** CP38 — the LHDN/court instalment, DISTINCT from MTD. Stamped only when > 0 (mirrors the kernel), so
    *  cp39FileForBatch sums the instalment into the e-Data file's CP38 column. */
   cp38?: number;
+  /** Dated employer coverage, never a recalculation of the imported figures. */
+  segment?: {companyId:string;from:string;to:string};
   /** b240c0ff — the file's own pay item lines, in the kernel's `componentLines` shape, under their own key so
    *  no EA / statutory evidence reader sees them. See `importedComponentLines`. Absent when the month carried
    *  no allowance / overtime / bonus / deduction line. */
@@ -453,19 +455,20 @@ async function analyze(
   // makes a code unique tenant-wide, so a within-company collision is impossible today — the guard stays
   // because the code is now load-bearing for money and a future relaxation of that index must not turn
   // into a silent mis-posting.
-  // Board 4604dccc — each employment's legal entities over a month, from its dated history (gaps take today's company).
+  // Resolve the whole recorded timeline. A recorded-history gap is an error, never today's-company fallback.
   const companyNameOf = new Map(companies.map((c) => [c.id, c.legalName]));
   const currentOf = new Map(currentCompany.map((r) => [r.employmentId, r.companyId]));
   const rowsOf = new Map<string, { companyId: string; validFrom: string; validTo: string | null }[]>();
   for (const p of placements) if (p.companyId) rowsOf.set(p.employmentId, [...(rowsOf.get(p.employmentId) ?? []), { companyId: p.companyId, validFrom: p.validFrom, validTo: p.validTo }]);
-  const companiesDuring = (emp: (typeof employees)[number], from: string, to: string): string[] => {
+  const segmentsDuring = (emp: (typeof employees)[number], from: string, to: string): CompanySegment[] => {
     const current = currentOf.get(emp.employmentId);
     if (!current) return [];
     const winFrom = emp.hiredOn > from ? emp.hiredOn : from, winTo = emp.terminatedOn && emp.terminatedOn < to ? emp.terminatedOn : to;
     if (winFrom > winTo) return [];
     const entity = (rowsOf.get(emp.employmentId) ?? []).map(entitySegmentRow);
-    return [...new Set(mergeCompanySegments(entity, current, winFrom, winTo).map((s) => s.companyId))];
+    return mergeCompanySegments(entity, current, winFrom, winTo, {requireRecordedHistory:true});
   };
+  const coverageOf = new Map<string,{companyId:string;from:string;to:string}>();
   const employeesByCode = new Map<string, typeof employees>();
   for (const e of employees) {
     const key = up(e.code ?? '');
@@ -575,15 +578,22 @@ async function analyze(
             issue(ref, 'Invalid Employee No', `Employee was not employed during ${period} (joined ${emp.hiredOn}${emp.terminatedOn ? `, left ${emp.terminatedOn}` : ''})`),
           );
         } else {
-          // Board 4604dccc — the month belongs to the company the employment's dated history places it in.
-          const segments = companiesDuring(emp, first, last);
-          if (segments.length && !segments.includes(companyId)) {
-            const names = segments.map((id) => companyNameOf.get(id) ?? 'another company').join(', ');
-            issues.push(
-              issue(ref, 'Invalid Employee No', `Employee ${employeeNo} belonged to ${names} during ${period}, not ${targetCompany?.legalName ?? 'this company'}. Import this month under ${names}.`),
-            );
+          const segments = segmentsDuring(emp, first, last);
+          const winFrom = emp.hiredOn > first ? emp.hiredOn : first;
+          const winTo = emp.terminatedOn && emp.terminatedOn < last ? emp.terminatedOn : last;
+          const complete = segments.length > 0 && segments[0].from === winFrom && segments.at(-1)!.to === winTo
+            && segments.every((segment,index)=>index === 0 || dayAfter(segments[index-1].to) === segment.from);
+          const mine = segmentForCompany(segments,companyId);
+          if (!complete) {
+            issues.push(issue(ref,'Invalid Employee No',`Dated company history does not fully cover ${period}. Correct Employment History before importing this month; the current company is not used to fill missing dates.`));
+          } else if (!mine) {
+            const names = [...new Set(segments.map(segment=>companyNameOf.get(segment.companyId) ?? 'another company'))].join(', ');
+            issues.push(issue(ref,'Invalid Employee No',`Employee ${employeeNo} belonged to ${names} during ${period}, not ${targetCompany?.legalName ?? 'this company'}. Import this month under ${names}.`));
+          } else if (mine.split) {
+            issues.push(issue(ref,'Invalid Employee No',`This employee has separate non-adjacent periods with this company in ${period}. Reconcile those periods before importing a single company-month.`));
           } else {
             employmentId = emp.employmentId;
+            coverageOf.set(emp.employmentId+':'+period,{companyId,from:mine.from,to:mine.to});
           }
         }
       } else {
@@ -910,6 +920,7 @@ async function analyze(
       netPay: net,
       employerCost,
       statutory: {
+        segment: coverageOf.get(employmentByCode.get(up(b.employeeNo))!+':'+b.period),
         epfEmployee: t.epf_employee,
         epfEmployer: t.epf_employer,
         socsoEmployee: t.socso_employee,

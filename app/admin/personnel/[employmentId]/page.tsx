@@ -1,3 +1,4 @@
+import {employmentPaymentMethodHistory} from '@/core/employment-payment-method';
 import {movementDeleteAccess} from '@/core/movement-delete-access';
 import { MOVEMENT_EMPLOYMENT_PERIOD_FIELDS } from '@/lib/movement-employment-periods';
 import { MOVEMENT_FORM_IDS } from '@/lib/movement-form-contract';
@@ -202,7 +203,7 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
 const MOVEMENT_DOCUMENT_FIELD_KEYS: Record<string, string> = {
   companyId: 'company', businessUnitId: 'businessUnit', departmentId: 'department', positionId: 'position',
   gradeId: 'grade', employmentType: 'employmentType', locationId: 'location', managerEmploymentId: 'manager',
-  basicSalary: 'basicSalary', currency: 'currency', payMode: 'payMode', paymentTerm: 'paymentTerm',
+  basicSalary: 'basicSalary', currency: 'currency', payMode: 'payMode', paymentTerm: 'paymentTerm', paymentMethod:'paymentMethod',
   orgDivision: 'orgDivision', employmentCategory: 'employmentCategory', orgRegion: 'orgRegion', orgBranch: 'orgBranch',
   orgTeam: 'orgTeam', orgSection: 'orgSection', orgLine: 'orgLine', orgBase: 'orgBase',
 };
@@ -405,6 +406,7 @@ export default async function EmployeePage({
   // Pay + statutory (salary, IC, bank, tax) are HR-admin-only on this directory page — never load or
   // render them for a manager viewing a direct report (consultant feedback #5). Compensation reads are
   // also tightened to admin-or-self at the RLS layer (migration 0060); this avoids fetching them at all.
+  const paymentMethodHistory = readProfileCards ? await employmentPaymentMethodHistory(s,employmentId) : [];
   const salaryHistory = readProfileCards ? await compensationHistoryDetailed(s, employmentId) : [];
   // 7c7c2f80 — periods of CLOSED payroll runs that paid this employee: drives the per-row "deletable"
   // flag on the salary history (records a closed run relied on are payroll evidence and cannot go).
@@ -2698,9 +2700,11 @@ export default async function EmployeePage({
             {/* r393 (685d2380 step 2) — the SHARED field group the draft's Payroll tab renders too, in
                 form mode (markup unchanged — pinned by test/r393-draft-payroll-tab.dom.test.tsx). */}
             <PaymentMethodField mode="form" defaultValue={emp.paymentMethod} disabled={!!emp.terminatedOn} />
+            <label className="text-xs text-muted-foreground">{t('paymentMethodEffectiveDate')}<DateField name="paymentMethodEffectiveDate" defaultValue={today} className={inputCls} required disabled={!!emp.terminatedOn}/></label>
           </form>
         </div>
         <p className="text-xs text-muted-foreground">{t('paymentMethodBankHint')}</p>
+        {paymentMethodHistory.length>0&&<div className="overflow-x-auto"><table className="w-full text-left text-sm"><caption className="pb-2 text-left font-medium">{t('paymentMethodHistoryTitle')}</caption><thead><tr><th className="p-2">{t('paymentMethodEffectiveDate')}</th><th className="p-2">{t('paymentMethod')}</th><th className="p-2">{t('paymentMethodRecordedAt')}</th><th className="p-2">{t('paymentMethodRevision')}</th></tr></thead><tbody>{paymentMethodHistory.map(row=><tr key={row.id} className="border-t border-border"><td className="p-2">{formatDmy(row.effectiveOn)}</td><td className="p-2">{row.paymentMethod?t(`paymentMethod_${row.paymentMethod}` as 'paymentMethod_cash'):t('movement.form.none')}</td><td className="p-2">{row.recordedAt}</td><td className="p-2">{row.source==='legacy_snapshot'?t('paymentMethodLegacySnapshot'):row.supersededAt?t('movement.status.superseded'):t('movement.status.applied')}</td></tr>)}</tbody></table></div>}
       </div>
     </Card>
   ) : null;
@@ -3390,6 +3394,7 @@ export default async function EmployeePage({
         { key: 'grade', label: t('movement.field.grade'), before: movementDetailData.before?.grade, after: movementDetailData.after.grade },
         { key: 'employmentType', label: t('movement.field.employmentType'), before: movementEmpTypeLabel(movementDetailData.before?.employmentType ?? null), after: movementEmpTypeLabel(movementDetailData.after.employmentType) },
         { key: 'manager', label: t('movement.field.manager'), before: movementDetailData.before?.manager, after: movementDetailData.after.manager },
+        {key:'paymentMethod',label:t('paymentMethod'),before:movementDetailData.before?.paymentMethod?t(`paymentMethod_${movementDetailData.before.paymentMethod}` as 'paymentMethod_cash'):null,after:movementDetailData.after.paymentMethod?t(`paymentMethod_${movementDetailData.after.paymentMethod}` as 'paymentMethod_cash'):null},
         { key: 'salary', label: t('movement.field.salary'), before: movementDetailData.before?.salary, after: movementDetailData.after.salary },
         // 08913328 — the flat, non-dated columns THIS movement moved (Division … Category). They cannot be
         // reconstructed as-of, so they appear only when the movement's own event recorded a before/after —

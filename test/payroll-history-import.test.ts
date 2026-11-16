@@ -660,16 +660,16 @@ async function empPersonId(employmentId: string): Promise<string> {
  * month in the other company's period is refused, naming the right company. Fictional companies and people.
  */
 describe('import payroll history — the company of the period (board 4604dccc)', () => {
-  async function transferred() {
+  async function transferred(effectiveDate='2024-07-01') {
     const a = adminCtx(b);
     const [beta] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Beta Fictional Sdn Bhd', companyLabel: 'BETA', country: 'MY' }).returning({ id: schema.company.id });
     await owner.db.insert(schema.labelCompanyAssignment).values({ tenantId: b.tenantId, labelKind: 'department', labelId: b.deptA, companyId: beta.id });
     await seedPayrollCycleCatalog(a, beta.id);
     const { employmentId } = await hire(a, 'X4604');
-    await createMovementEvent(a, { employmentId, kind: 'entityTransfer', effectiveDate: '2024-07-01', companyId: beta.id, remarks: 'Fictional transfer' });
+    await createMovementEvent(a, { employmentId, kind: 'entityTransfer', effectiveDate, companyId: beta.id, remarks: 'Fictional transfer' });
     const [emp] = await owner.db.select({ companyId: schema.employment.companyId }).from(schema.employment).where(eq(schema.employment.id, employmentId));
     expect(emp.companyId).toBe(beta.id);
-    return { a, beta: beta.id };
+    return { a, beta: beta.id, employmentId };
   }
   it('finds the employee under the earlier company for its months, and under the current company after the transfer', async () => {
     const { a, beta } = await transferred();
@@ -679,6 +679,24 @@ describe('import payroll history — the company of the period (board 4604dccc)'
     expect(betaMonth.months.map((m) => [m.period, m.ok])).toEqual([['2024-08', true]]);
     const committed = await commitPayrollHistoryImport(a, { companyId: b.companyId, records: file(...completeMonth('X4604', '202403')) });
     expect(committed.importedMonths).toBe(1);
+  });
+  it.each(['ACME-first','BETA-first'])('imports a split month in either company order: %s',async order=>{
+    const {a,beta,employmentId}=await transferred('2024-07-16');
+    const uploads=[{companyId:b.companyId,records:file(...completeMonth('X4604','202407'))},{companyId:beta,records:file(...completeMonth('X4604','202407',{company:'BETA'}))}];
+    if(order==='BETA-first')uploads.reverse();
+    for(const upload of uploads){const result=await commitPayrollHistoryImport(a,upload);expect(result.importedMonths).toBe(1);expect(result.failed).toBe(0);}
+    const rows=await owner.db.select({companyId:schema.payrollBatch.companyId,basic:schema.payslip.basicSalary,net:schema.payslip.netPay,statutory:schema.payslip.statutory}).from(schema.payslip).innerJoin(schema.payrollBatch,eq(schema.payrollBatch.id,schema.payslip.batchId)).where(eq(schema.payslip.employmentId,employmentId));
+    expect(rows).toHaveLength(2);
+    expect(rows.find(row=>row.companyId===b.companyId)).toMatchObject({basic:'5000.00',net:'4532.35',statutory:{segment:{companyId:b.companyId,from:'2024-07-01',to:'2024-07-15'}}});
+    expect(rows.find(row=>row.companyId===beta)).toMatchObject({basic:'5000.00',net:'4532.35',statutory:{segment:{companyId:beta,from:'2024-07-16',to:'2024-07-31'}}});
+  });
+  it('reports missing dated evidence at row level instead of assigning a gap to the current company',async()=>{
+    const {a,beta,employmentId}=await transferred();
+    const [first]=await owner.db.select().from(schema.assignment).where(and(eq(schema.assignment.employmentId,employmentId),eq(schema.assignment.validFrom,'2024-01-01')));
+    await owner.db.update(schema.assignment).set({validTo:'2024-06-01'}).where(eq(schema.assignment.id,first.id));
+    const result=await validatePayrollHistoryImport(a,{companyId:beta,records:file(...completeMonth('X4604','202406',{company:'BETA'}))});
+    expect(result.valid).toBe(0);expect(result.issues.filter(issue=>issue.type==='Invalid Employee No').every(issue=>issue.description.includes('Dated company history does not fully cover'))).toBe(true);
+    expect(result.issues.filter(issue=>issue.type==='Invalid Employee No')).toHaveLength(completeMonth('X4604','202406').length);
   });
   it('refuses a month of the other company\'s period, naming that company', async () => {
     const { a, beta } = await transferred();

@@ -1307,6 +1307,19 @@ export const employment = pgTable(
 );
 
 // assignment = effective-dated version of an Employment (CLOSE + INSERT on change).
+/** Dated disbursement method. Null is an explicit clear; prior revisions remain as audit evidence. */
+export const employmentPaymentMethodHistory = pgTable('employment_payment_method_history', {
+ id:id(),tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),
+ effectiveOn:date('effective_on').notNull(),paymentMethod:text('payment_method'),
+ recordedAt:timestamp('recorded_at',{withTimezone:true}).notNull().defaultNow(),
+ recordedBy:uuid('recorded_by').references(()=>appUser.id),supersededAt:timestamp('superseded_at',{withTimezone:true}),
+ source:text('source').notNull(),
+},t=>[
+ foreignKey({name:'employment_payment_method_history_employment_tenant_fk',columns:[t.employmentId,t.tenantId],foreignColumns:[employment.id,employment.tenantId]}),
+ uniqueIndex('employment_payment_method_history_effective_uq').on(t.employmentId,t.effectiveOn).where(sql`${t.supersededAt} IS NULL`),
+ index('employment_payment_method_history_date_idx').on(t.tenantId,t.employmentId,t.effectiveOn.desc()).where(sql`${t.supersededAt} IS NULL`),
+]);
+
 export const assignment = pgTable(
   'assignment',
   {

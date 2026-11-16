@@ -449,6 +449,7 @@ function parseMovementForm(formData: FormData, mode: 'create' | 'edit' = 'create
     currency: optional('currency') ?? undefined,
     payMode: optional('payMode') ?? undefined,
     paymentTerm: optional('paymentTerm') ?? undefined,
+    paymentMethod: optional('paymentMethod'),
     // The flat, non-dated org columns the comparison screen now carries (Division … Category).
     ...Object.fromEntries(MOVEMENT_FLAT_FIELDS.map((f) => [f, optional(f)])),
     ...Object.fromEntries(MOVEMENT_EMPLOYMENT_PERIOD_FIELDS.map(field => [field, optional(field)])),
@@ -1447,6 +1448,7 @@ async function applyPaymentMethodSection(
   }
   await setEmploymentPaymentMethod(s, {
     employmentId: String(formData.get('employmentId')),
+    effectiveDate:String(formData.get('paymentMethodEffectiveDate')??'').trim()||undefined,
     paymentMethod: raw === '' ? null : (raw as PaymentMethod),
   });
 }

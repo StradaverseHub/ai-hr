@@ -64,6 +64,7 @@ export type MovementCurrentValues = MovementEmploymentPeriods & {
   currency: string | null;
   payMode: string | null;
   paymentTerm: string | null;
+  paymentMethod?:string|null;
   orgDivision: string | null;
   employmentCategory: string | null;
   orgRegion: string | null;
@@ -610,6 +611,11 @@ export function MovementNewEvent({
         defaultValue={after.basicSalary ?? ''}
         className={inputCls}
       />),
+    row('paymentMethod','paymentMethod',label(movementField('paymentMethod')),current.paymentMethod?tRoot(`people.detail.paymentMethod_${current.paymentMethod}`):null,
+      <select {...personnelWorkflowControl(movementField('paymentMethod'),'movement','edit')} defaultValue={after.paymentMethod??''} className={inputCls}>
+        <option value="">{t('form.none')}</option>
+        {personnelFormChoices(movementField('paymentMethod')).map(choice=><option key={choice.value} value={choice.value}>{tRoot(choice.labelKey)}</option>)}
+      </select>),
     row('currency', 'currency', label(movementField('currency')), current.currency,
       <CurrencySelect name={personnelWorkflowControl(movementField('currency'), 'movement', 'edit').name} value={after.currency} />),
     // Labels via the KNOWN option lists only — a stored value outside them falls back to itself rather

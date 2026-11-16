@@ -25,6 +25,7 @@ export const MOVEMENT_FORM_IDS = {
   "basicSalary": "payroll.basic_salary_and_salary_history.basicsalary",
   "currency": "payroll.basic_salary_and_salary_history.currency",
   "payMode": "payroll.basic_salary_and_salary_history.paymode",
+  "paymentMethod": "payroll.payment_method_and_payroll_policy.paymentmethod",
   "paymentTerm": "payroll.basic_salary_and_salary_history.paymentterm",
   "orgDivision": "employment.additional_organisation_labels.orgdivision",
   "employmentCategory": "employment.additional_organisation_labels.employmentcategory",
@@ -52,7 +53,7 @@ export type MovementFormField=Exclude<keyof typeof MOVEMENT_FORM_IDS,'reason'>;
 export function movementFormFields(behaviour:string,reason?:string):MovementFormField[]{
  const fields:MovementFormField[]=['kind','remarks'];
  if(behaviour!=='blacklist')fields.push('effectiveDate');
- if(isComparisonKind(behaviour))fields.push(...(['businessUnitId','departmentId','positionId','gradeId','employmentType','contractEndDate','internshipEndDate','locationId','managerEmploymentId','basicSalary','currency','payMode','paymentTerm','orgDivision','employmentCategory','orgRegion','orgBranch','orgTeam','orgSection','orgLine','orgBase','confirmationDate','probationValue','probationUnit','extendedProbationValue','extendedProbationUnit','noticeBeforeConfirmationValue','noticeBeforeConfirmationUnit','noticeAfterConfirmationValue','noticeAfterConfirmationUnit'] as const));
+ if(isComparisonKind(behaviour))fields.push(...(['businessUnitId','departmentId','positionId','gradeId','employmentType','contractEndDate','internshipEndDate','locationId','managerEmploymentId','basicSalary','currency','payMode','paymentTerm','paymentMethod','orgDivision','employmentCategory','orgRegion','orgBranch','orgTeam','orgSection','orgLine','orgBase','confirmationDate','probationValue','probationUnit','extendedProbationValue','extendedProbationUnit','noticeBeforeConfirmationValue','noticeBeforeConfirmationUnit','noticeAfterConfirmationValue','noticeAfterConfirmationUnit'] as const));
  if(behaviour==='entityTransfer')fields.push('companyId');
  if(['probationExtension','secondment','actingPosition','resignation','termination'].includes(behaviour))fields.push('endDate');
  if(behaviour==='resignation')fields.push('tenderResignationDate','resignationEffectiveDate');

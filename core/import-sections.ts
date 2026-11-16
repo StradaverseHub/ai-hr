@@ -1,3 +1,4 @@
+import {employmentPaymentMethodOnSql} from './employment-payment-method';
 import {createHash} from 'node:crypto';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import { getPeopleGeneral, readPeopleGeneralTx, occupiedNricsTx } from './people-general';
@@ -442,7 +443,7 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
         companyId: employment.companyId,
         employeeCode: employment.employeeCode,
         hiredOn: employment.hiredOn,
-        cardId:employment.cardId,attendancePhotoSetting:employment.attendancePhotoSetting,paymentMethod:employment.paymentMethod,
+        cardId:employment.cardId,attendancePhotoSetting:employment.attendancePhotoSetting,paymentMethod:employmentPaymentMethodOnSql(sql`${employment.id}`),
         fullName: person.fullName,
         primaryEmail: person.primaryEmail,
         phone: person.phone,
