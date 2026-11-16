@@ -36,7 +36,7 @@ describe('Probation attachment runtime custody',()=>{
  it('refuses cold case readers, unverifiable proof and recipient/body/template/revision/transaction tampering',async()=>{
   const [rights]=await withTenant(f.manager.ctx,tx=>tx.execute<{run:boolean;templates:boolean}>(sql`select app.automation_can_run('probation',${f.ids.caseId}::uuid) as run,app.automation_can_manage('probation','templates') as templates`));expect(rights).toEqual({run:true,templates:false});
   await expect(withTenant(f.manager.ctx,tx=>tx.execute(sql`select secret from app.automation_email_asset_verifier`))).rejects.toThrow();
-  await expect(withTenant(f.manager.ctx,async tx=>{const id=await start(tx);await queue(tx,words(id));})).rejects.toThrow(/exact admitted workflow intent/);
+  await expect(withTenant(f.manager.ctx,async tx=>{const id=await start(tx);await queue(tx,words(id));})).rejects.toMatchObject({cause:{code:'42501',message:'Shared email attachments require the configured runtime verifier and an exact admitted workflow intent'}});
   for(const mutate of[
    (input:ReturnType<typeof words>)=>({...input,to:[f.manager.userId]}),
    (input:ReturnType<typeof words>)=>({...input,body:'Changed message'}),
@@ -49,7 +49,7 @@ describe('Probation attachment runtime custody',()=>{
   })).rejects.toThrow();
   let replay:ReturnType<typeof words>|null=null;
   await withTenant(f.manager.ctx,async tx=>{const input=words(await start(tx)),richBody=await prepareProbationEmailAssetSource(tx,f.manager.ctx,input);replay={...input,richBody:richBody!};});
-  await expect(withTenant(f.manager.ctx,tx=>queue(tx,replay!))).rejects.toThrow(/exact admitted workflow intent/);
+  await expect(withTenant(f.manager.ctx,tx=>queue(tx,replay!))).rejects.toMatchObject({cause:{code:'42501',message:'Shared email attachments require the configured runtime verifier and an exact admitted workflow intent'}});
   expect(await owner.db.execute(sql`select id from automation_email_delivery where tenant_id=${tenantId}::uuid`)).toHaveLength(0);
  });
  it('freezes native bytes only for the admitted run and stops materialization after recipient person binding changes',async()=>{
