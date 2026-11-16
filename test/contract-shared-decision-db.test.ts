@@ -43,10 +43,15 @@ async function fixture(){
  return {b,admin,proposer,employee,caseId,groupId,workflow};
 }
 async function finishPreview(id:string,as:SessionContext){
+ let failure:unknown;
+ const diagnostic={...contractPreviewJobHandler,describeFailure:async(...args:Parameters<NonNullable<typeof contractPreviewJobHandler.describeFailure>>)=>{
+  failure=args[1];return contractPreviewJobHandler.describeFailure!(...args);
+ }};
  for(let count=0;count<30;count++){
   const job=await readBulkJob(as,id,'contract_preview');
+  if(job.state==='failed')throw failure??new Error(job.error??'Protected Contract preview failed.');
   if(['completed','failed','cancelled'].includes(job.state))return job;
-  await runBulkJobTick(owner.client,{handlers:[contractPreviewJobHandler]});
+  await runBulkJobTick(owner.client,{handlers:[diagnostic]});
  }
  throw new Error('Protected Contract preview did not finish.');
 }

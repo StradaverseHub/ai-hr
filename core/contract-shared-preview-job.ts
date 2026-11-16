@@ -1,9 +1,9 @@
 /** Protected decision preflight on the existing bulk-job kernel. Private routing inputs never become an app read API. */
-import {drizzle} from 'drizzle-orm/postgres-js';
-import {sql} from 'drizzle-orm';
+import {sql,type SQL} from 'drizzle-orm';
+import {PgDialect} from 'drizzle-orm/pg-core';
 import {z} from 'zod';
 import type postgres from 'postgres';
-import type {SessionContext,Tx} from '../db/client';
+import type {SessionContext} from '../db/client';
 import {withScopedLifecycleTenant} from './module-gate';
 import type {BulkJobHandler} from './bulk-job-worker';
 import type {ContractSharedContext} from './contract-shared-read';
@@ -19,13 +19,18 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 
 const inputSchema=z.object({previewId:z.uuid()}).strict();
 const MAX_PREVIEW_PEOPLE=5000;
-type ReadDb=Pick<Tx,'execute'>;
+const dialect=new PgDialect();
 const emptyPlan=(reason:string):ContractDecisionPlan=>({blockers:[reason],warnings:[],workflowVersions:[],workflows:[],approvalAssignments:{},letterAssignments:{}});
 
 /** The case reader and participant owner run as the actual proposer; private reference reads run only as the worker. */
 async function readPreviewInputs(owner:postgres.ReservedSql,ctx:SessionContext,caseId:string){
  await owner`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id',${ctx.userId??''},true),set_config('jit','off',true)`;
- const db:ReadDb=drizzle(owner);
+ // A kernel-reserved handle has no pool options and cannot be passed to drizzle().
+ // Compile the same parameterised statements on the already fenced connection.
+ const db={async execute<Row extends Record<string,unknown>=Record<string,unknown>>(statement:SQL){
+  const query=dialect.sqlToQuery(statement);
+  return owner.unsafe<Row[]>(query.sql,query.params);
+ }};
  const [caseRow]=await db.execute<{view:ContractSharedContext;participants:ContractContextReferences['participants']}>(sql`select app.contract_shared_context(${caseId}::uuid) as view,app.contract_shared_participants(${caseId}::uuid) as participants`);
  await owner`select set_config('app.user_id','',true)`;
  if(!caseRow?.view?.flow)throw new Error('Contract preview source is unavailable.');
