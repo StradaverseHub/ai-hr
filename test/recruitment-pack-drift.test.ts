@@ -47,7 +47,10 @@ describe('ADR-0080 D9: recruitment pack import ratchet', () => {
     expect([...importers].filter((f) => f.startsWith('app/recruitment/'))).toEqual([]);
   });
 
-  it('the pack imports no other pack (kernel contracts only)', () => {
+  // The one reviewed exception: slice 23's referral rewards write a one-off earning into payroll's Individual Transactions, and
+  // test/payroll-pack-drift.test.ts requires that through the payroll pack facade (as packs/rewards does), never its implementation.
+  const REVIEWED_FACADE_IMPORTS = ['rewards.ts → ../payroll/service'];
+  it('the pack imports no other pack except the reviewed payroll facade use (kernel contracts only)', () => {
     const offenders: string[] = [];
     for (const file of FILES) {
       const source = readFileSync(join(PACK, file), 'utf8');
@@ -57,7 +60,7 @@ describe('ADR-0080 D9: recruitment pack import ratchet', () => {
         if (/^packs\/[^/]+\//.test(target) && !target.startsWith('packs/recruitment/')) offenders.push(`${file} → ${spec}`);
       }
     }
-    expect(offenders).toEqual([]);
+    expect(offenders).toEqual(REVIEWED_FACADE_IMPORTS);
   });
 
   it('registers as a module pack whose service facade is the file guarded here', async () => {
