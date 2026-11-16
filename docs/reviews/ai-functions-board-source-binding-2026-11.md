@@ -839,3 +839,10 @@ workflow controls while controlled draft inputs stay unnamed. Under the same own
 28 active source digests carry forward to `fefbfc37e8bb11ba89f8bdff321d9793864cb618569aafd8199bebd4a6ed917a` (1635 files), with
 agent digest `87d6c5b769b9a1b70aac583fdefc0af6a2db912aad06fdaa97688defa3f90c2c` (494 files). Reverse digest substitution remains
 byte-identical. This changes presentation typing, not provider behavior, approved fields or permission.
+
+
+### Movement import guidance and visibility inventory binding (17 November 2026)
+
+Completed full gate43959096902 on `35086d6c5f19e290968449fb043dc534eed9d347` retains its failed identity: two no-database checks found missing new-field inventory rows and localized import guidance; build, whole compiler, migrations, all database chunks and all three browser engines passed. The repair supplies the written ESS disposition and six-language guidance for the existing audited Hired-information and dated payment-method owners. It changes no provider purposes, outbound fields, serializers, transport, permissions or migration SQL.
+
+Under the same explicit owner approval for coordinated AI binding above, only the 28 active matching source digests carry forward to `19e53ef85cfd48ce9812d47aa98173e6085760b949373faadc6ca343b34bf7c6` (1635 files). Reversing those substitutions reproduces the previous approval registry byte-for-byte; pending, retired and historical metadata are unchanged. The regenerated agent digest is `2aedf5532dae0f0dacd640da518a10263aa91d43b7221f901336bd483daaff22` (494 files). This binding grants no gate result or staging acceptance.
