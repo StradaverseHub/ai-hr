@@ -7,14 +7,16 @@ import {withScopedLifecycleTenant} from './module-gate';
 import {reservedSqlExecutor} from '../db/sql-executor';
 import {readContractSharedExecutionInputs} from './contract-shared-preview-job';
 import {contractSharedAutomationContext} from './contract-shared-context';
-import {contractAutomationRead} from '../lib/contract-automation-context';
+import {contractAutomationRead,contractAutomationPending} from '../lib/contract-automation-context';
+import {queueAutomationEmailTx} from './automation-email-delivery';
 import {activateContractSharedApproval,activateContractSharedLetter} from './contract-shared-signing';
+import {contractSharedEmailExecutors} from './contract-shared-email';
 import {CONTRACT_AUTOMATION_CATALOGUE} from '../lib/automation/catalogues/contracts';
 import {runAutomationEvent,resumeAutomationRun,sqlAutomationRunStore,type AutomationExecutors,type AutomationRuntimeGuards,type AutomationRun} from '../packs/automation/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
 
 const inputSchema=z.object({eventId:z.uuid()}).strict();
-const progressSchema=z.object({activeEventId:z.uuid().nullable(),workflowCursor:z.number().int().min(0).max(200)}).strict();
+const progressSchema=z.object({activeEventId:z.uuid().nullable(),workflowCursor:z.number().int().min(0).max(200),mailAfter:z.uuid().nullable().optional()}).strict();
 type Event={id:string;case_id:string;trigger_event:string;occurrence:string;decision_revision:number;workflow_versions:{workflowId:string;revision:number}[];data:Record<string,unknown>};
 export const contractAutomationJobHandler:BulkJobHandler<never>={
  kind:'contract_automation',mode:'per-step',finalizeOwner:true,
@@ -37,10 +39,28 @@ export const contractAutomationJobHandler:BulkJobHandler<never>={
     order by case when id=${rootId}::uuid then 0 else 1 end,created_at,id limit 1 for update`);
    if(!event)return true;
    await owner`select set_config('app.contract_event',${event.id},true)`;
+   if(event.trigger_event==='approvalActionNeeded'){
+    const after=progress.activeEventId===event.id?progress.mailAfter??null:null;
+    const [row]=await db.execute<{page:{approvalId:string;revision:number;recipients:string[]}|null}>(sql`select app.contract_shared_approval_mail_page(${event.case_id}::uuid,${after}::uuid) as page`);
+    if(row?.page?.recipients.length){
+     await queueAutomationEmailTx(db,{module:'contract_staff',subjectId:event.case_id,key:`approval:${row.page.approvalId}:${row.page.revision}:${after??'start'}`,to:row.page.recipients,cc:[],subject:'Contract decision approval is waiting',body:'A Contract decision is waiting for your approval. Open your assigned approval to review the agreed terms.\n\n{{case.link}}'});
+     await unit.set(owner,{planMerge:{activeEventId:event.id,workflowCursor:0,mailAfter:row.page.recipients.at(-1)!}});
+    }else{
+     await db.execute(sql`select app.contract_shared_event_finish(${event.id}::uuid,${job.id}::uuid)`);
+     await unit.set(owner,{planMerge:{activeEventId:null,workflowCursor:0,mailAfter:null}});
+    }
+    return false;
+   }
    const inputs=await readContractSharedExecutionInputs(owner,ctx,event.case_id),today=todayInKualaLumpur();
    const context=contractSharedAutomationContext(inputs.view,inputs.refs),workerCtx={...ctx,userId:undefined};
-   const read=contractAutomationRead(context,event.trigger_event,today),store=sqlAutomationRunStore(db);
+   const facts=event.data.conditionFacts;
+   const read=contractAutomationRead(context,event.trigger_event,today,facts&&typeof facts==='object'&&!Array.isArray(facts)?facts as Record<string,unknown>:undefined),store=sqlAutomationRunStore(db);
+   const letterId=typeof event.data.letterId==='string'&&z.uuid().safeParse(event.data.letterId).success?event.data.letterId:null;
+   if(letterId)context.pending=contractAutomationPending(inputs.refs.documents.filter(document=>document.subjectType==='contract'&&document.subjectId===letterId));
+   const [letter]=letterId?await db.execute<{name:string}>(sql`select data->'definition'->>'name' as name from contract_shared_letter where tenant_id=${ctx.tenantId}::uuid and case_id=${event.case_id}::uuid and id=${letterId}::uuid`):[];
+   const letterValues=letter?{'letter.documentName':letter.name,'letter.signingStep':context.pending?.label??'','letter.sentBackBy':typeof event.data.sentBackBy==='string'?event.data.sentBackBy:'','letter.sentBackReason':typeof event.data.sentBackReason==='string'?event.data.sentBackReason:''}:undefined;
    const executors:AutomationExecutors={
+    ...contractSharedEmailExecutors(db,{context,today,templates:inputs.runtimeEmails,letterValues}),
     requestApproval:step=>activateContractSharedApproval(db,workerCtx,{view:inputs.view,context,step,lastAssigned:inputs.definitions.lastAssigned,today}),
     generateDocument:step=>activateContractSharedLetter(db,workerCtx,{view:inputs.view,context,step,templates:inputs.definitions.documents,lastAssigned:inputs.definitions.lastAssigned,today}),
     notifyFailure:async(_run,reason)=>{
@@ -57,7 +77,13 @@ export const contractAutomationJobHandler:BulkJobHandler<never>={
     if(waiting){
      let next:AutomationRun;
      if(event.trigger_event==='approvalRejected')next={...waiting,status:'failed',waitingFor:null,remaining:[],failure:'A decision approval was rejected. Remaining steps stopped.',log:[...waiting.log,{at:new Date().toISOString(),kind:'failed' as const,step:null,stepId:null,type:null,message:'A decision approval was rejected. Remaining steps stopped.'}].slice(-200)};
-     else next=await resumeAutomationRun(waiting,waitingId,{executors,guards,read,now:()=>new Date().toISOString()});
+     else {
+      // Step conditions belong to the event that started the pinned run, rather
+      // than the later signing/approval event which happened to resume it.
+      const [original]=await db.execute<{facts:Record<string,unknown>}>(sql`select data->'conditionFacts' as facts from contract_shared_event where tenant_id=${ctx.tenantId}::uuid and case_id=${event.case_id}::uuid and trigger_event=${waiting.trigger} and (${waiting.eventKey}=trigger_event||'|'||occurrence or starts_with(${waiting.eventKey},trigger_event||'|'||occurrence||'|')) order by length(occurrence) desc,created_at,id limit 1`);
+      const resumedRead=contractAutomationRead(context,waiting.trigger,today,original?.facts);
+      next=await resumeAutomationRun(waiting,waitingId,{executors,guards,read:resumedRead,now:()=>new Date().toISOString()});
+     }
      await store.save(next,'waiting');
      return false;
     }

@@ -8,8 +8,8 @@ import type {AutomationRichEmailBody} from './automation-email-content';
 export type AutomationDeliveryRequest = LifecycleV9DeliveryRequest;
 export type AutomationDeliveryResult = LifecycleV9DeliveryResult;
 export type AutomationMailTarget = {
-  id: string; tenantId: string; module: 'probation'; subjectId: string;
-  payload: { version: 1; module: 'probation'; subjectId: string; linkPath: string; mail: { id: string; to: string[]; cc: string[]; subject: string; body: string;richBody?:AutomationRichEmailBody|null; delivery: { version: 1; sender: string } } };
+  id: string; tenantId: string; module: 'probation'|'contract_staff'; subjectId: string;
+  payload: { version: 1; module: 'probation'|'contract_staff'; subjectId: string; linkPath: string; mail: { id: string; to: string[]; cc: string[]; subject: string; body: string;richBody?:AutomationRichEmailBody|null; delivery: { version: 1; sender: string } } };
   bindings: { userId: string; subject: string; issuer: string }[];
 };
 /** Compatibility adapters do not claim support for a private capability they cannot verify. */
