@@ -29,7 +29,12 @@ export type AutomationMergeFieldSpec = { key: string; label: string; group: stri
 /** A recipient a step can name. `routing`, `group` and `person` take an id chosen in the builder. */
 export type AutomationRecipientSpec = { id: string; label: string; kind: 'role' | 'routing' | 'group' | 'person' | 'pending' };
 /** How an event from the module's engine before the shared builder maps onto this catalogue. */
-export type AutomationLegacyEvent = { event: string; trigger: string; preset?: { field: string; op: AutomationConditionOp; values: string[] }[]; exact: boolean; note?: string };
+/**
+ * How an event of a module's earlier engine maps onto the shared catalogue. `exact` is true only when tests prove that the
+ * converted workflow reaches the same people with the same words; `days` is the dated trigger's offset; `roles`, when
+ * set, are the only earlier-engine recipient roles that event ever reached (others were silently dropped).
+ */
+export type AutomationLegacyEvent = { event: string; trigger: string; preset?: { field: string; op: AutomationConditionOp; values: string[] }[]; exact: boolean; note?: string; days?: number; pending?: boolean; roles?: readonly string[] };
 
 export type AutomationModuleCatalogue = {
   module: AutomationModule; label: string;

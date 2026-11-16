@@ -7,7 +7,8 @@ import {automationWorkflowProblems,type AutomationWorkflow} from '@/lib/automati
 import {probationStepParamProblems} from '@/lib/automation/email';
 import {FilterChips,LegacyBuilderCard} from '../filter-chips';
 import {workflowSummary} from '../recipients';
-import {installProbationDefaultsAction} from '../actions';
+import {installProbationDefaultsAction,moveProbationWorkflowsAction} from '../actions';
+import type {ProbationWorkflowMoveResult} from '@/packs/probation/service';
 import {LEGACY_BUILDERS,type AutomationFilter,type AutomationPageAccess} from '../types';
 import {WorkflowEditor,type WorkflowEditorReferences} from './workflow-editor';
 
@@ -19,6 +20,10 @@ const blank = (): AutomationWorkflow => ({ id: crypto.randomUUID(), module: 'pro
 export function WorkflowsWorkspace({filter,access,workflows,refs,defaultsMissing}:{filter:AutomationFilter;access:AutomationPageAccess;workflows:ListedWorkflow[];refs:WorkflowEditorReferences;defaultsMissing:number}){
  const t=useTranslations('automation'),router=useRouter(),[busy,start]=useTransition();
  const [editing,setEditing]=useState<ListedWorkflow|null>(null),[notice,setNotice]=useState<{kind:'error'|'status';text:string}|null>(null);
+ const [moveReason,setMoveReason]=useState(''),[moveResult,setMoveResult]=useState<ProbationWorkflowMoveResult|null>(null);
+ // G2: move the notify-only Probation workflows whose conversion is proven exact; the rest stay, with the reason.
+ const move=()=>{if(!window.confirm(t('move.confirm')))return;setNotice(null);start(async()=>{const result=await moveProbationWorkflowsAction({reason:moveReason});if(!result.ok){setNotice({kind:'error',text:result.detail??t('errors.unavailable')});return;}
+  setMoveResult(result.result);setMoveReason('');setNotice({kind:'status',text:t('move.done',{moved:result.result.moved.length,kept:result.result.kept.length,already:result.result.alreadyMoved})});router.refresh();});};
  const people=refs.people,references={routingExists:(id:string)=>refs.routings.some(r=>r.id===id&&!r.retired),groupExists:(id:string)=>refs.groups.some(g=>g.id===id),personExists:(id:string)=>people.some(p=>p.id===id)};
  const needsAttention=(w:AutomationWorkflow)=>w.status!=='retired'&&(automationWorkflowProblems(w,catalogue,references).length>0||probationStepParamProblems(w,{emailTemplates:refs.emailTemplates,letterTemplateIds:refs.letterTemplates?.map(l=>l.id)??null}).length>0);
  const showProbation=filter==='all'||filter==='probation',legacy=(['onb','off','contract_staff'] as const).filter(m=>filter==='all'||filter===m);
@@ -40,6 +45,16 @@ export function WorkflowsWorkspace({filter,access,workflows,refs,defaultsMissing
      <button type="button" className="v9-button v9-button-primary" disabled={busy} onClick={()=>setEditing({workflow:{...blank(),name:t('workflows.newName')},revision:0})}>{t('workflows.new')}</button>
     </span></div>
    <p className="v9-muted">{t('workflows.probationIntro')}</p>
+   <details className="v9-stack" data-legacy-move><summary>{t('move.title')}</summary>
+    <p className="v9-muted">{t('move.help')}</p>
+    <label className="v9-field"><span>{t('move.reason')}</span><textarea value={moveReason} maxLength={500} disabled={busy} onChange={e=>setMoveReason(e.target.value)}/></label>
+    <div><button type="button" className="v9-button" disabled={busy||moveReason.trim().length<3} onClick={move}>{t('move.button')}</button></div>
+    {moveResult&&<div className="v9-stack" role="region" aria-label={t('move.result')}>
+     {moveResult.moved.length>0&&<><h3>{t('move.moved')}</h3><ul className="v9-list">{moveResult.moved.map(m=><li key={m.definitionId}>{m.name} · {m.companyName}</li>)}</ul></>}
+     {moveResult.kept.length>0&&<><h3>{t('move.kept')}</h3><ul className="v9-list">{moveResult.kept.map(k=><li key={k.definitionId}><strong>{k.name} · {k.companyName}</strong><p className="v9-muted">{k.reason}</p></li>)}</ul></>}
+     {!moveResult.moved.length&&!moveResult.kept.length&&<p className="v9-muted">{t('move.none')}</p>}
+    </div>}
+   </details>
    {requiredNotLive.length>0&&<p className="v9-notice" role="note">{t('workflows.requiredBanner',{names:requiredNotLive.map(w=>w.workflow.name).join(', '),count:requiredNotLive.length})}</p>}
    {active.length===0&&<p className="v9-muted">{t('workflows.empty')}</p>}
    <ul className="automation-list">{[...active,...retired].map(item=>{const w=item.workflow;return <li key={w.id} className="automation-item">

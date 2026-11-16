@@ -39926,6 +39926,18 @@
       "reasonCreate": "Created in the routing rules",
       "reasonSave": "Edited in the routing rules",
       "reasonRetire": "Retired in the routing rules"
+    },
+    "move": {
+      "title": "Move Probation workflows to shared workflows",
+      "help": "Moves each workflow of the Probation workflow builder whose shared form reaches the same people with the same words. A moved workflow goes Live here and stops sending from the Probation builder, so nobody is notified twice. The rest stay where they are and are listed with the reason. Running it again moves nothing twice.",
+      "reason": "Reason (kept in the audit history)",
+      "button": "Move to shared workflows",
+      "confirm": "Move the Probation workflows that convert exactly? Each moved workflow goes Live here and stops sending from the Probation builder.",
+      "done": "Moved {moved}; {kept} stay on the Probation builder; {already} were moved before.",
+      "result": "Move result",
+      "moved": "Moved",
+      "kept": "Staying on the Probation builder",
+      "none": "There was nothing left to move."
     }
   },
   "personnelPostings": {

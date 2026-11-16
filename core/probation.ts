@@ -459,6 +459,14 @@ export async function sweepProbation(ctx:SessionContext,connection:import('./not
    }
    if(datedEvents.length&&liveDated.size){const{emitProbationEventsSafelyTx}=await import('./probation-automation');await emitProbationEventsSafelyTx(tx,ctx,c.id,datedEvents,liveDated);}
   });processed++;}catch{failed++;}
+ // G2: the daily overdue summary of shared workflows, once per company and day: one set-based read finds one context
+ // case per PBP with an overdue review part (bounded); each PBP's summary runs once a day (the occurrence is the day).
+ if(cases.length)try{await connection.withTenant(ctx,async tx=>{
+  const{liveProbationTriggersTx,emitProbationEventsSafelyTx}=await import('./probation-automation');
+  const live=await liveProbationTriggersTx(tx,cases[0].id,['overdueSummary']);if(!live.size)return;
+  const rows=await tx.execute<{case_id:string;pbp:string;overdue:number}>(sql`select case_id,pbp,overdue from app.probation_overdue_summary_cases(${company.companyId}::uuid,${today}::date)`);
+  for(const row of rows)await emitProbationEventsSafelyTx(tx,ctx,row.case_id,[{trigger:'overdueSummary',occurrence:`${today}:${row.pbp}`,facts:{overdueCount:Number(row.overdue)},today}],live);
+ });}catch{failed++;}
  }
  const released=await connection.withTenant(ctx,tx=>tx.execute<{id:string;companyId:string}>(sql`
   select outcome.id,c.company_id as "companyId" from probation_outcome outcome
@@ -501,6 +509,9 @@ async function emitPartEventsTx(tx:Tx,ctx:SessionContext,view:ProbationCaseView,
  const{probationPendingStep,emitProbationEventsSafelyTx}=await import('./probation-automation');
  const pending=doc?probationPendingStep(pendingSigningSteps(doc.data)):null;
  if(command==='approve')triggers.push(pending?.users.length?'approvalPending':'approvalsComplete');
+ // G2: like the notify-only engine's approval_pending (app.probation_review_transition), a part is also "waiting" after the
+ // Line Manager signs, the employee acknowledges or a decline is recorded, whenever someone's step is then pending.
+ if(['submit_manager','acknowledge','request_refusal','confirm_refusal'].includes(command)&&pending?.users.length)triggers.push('approvalPending');
  if(!triggers.length)return;
  await emitProbationEventsSafelyTx(tx,ctx,view.record.id,triggers.map(trigger=>({trigger,occurrence:`${part.id}:${doc?.revision??part.revision}:${trigger}`,pending:pending?.users??null,
   facts:{partId:part.id,partType:part.type,dueOn:part.dueOn??null,resultBand:score?.band??null,overridden,pendingStep:pending?.label??null}})));

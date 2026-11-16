@@ -266,6 +266,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5754_automation_email_delivery',
    '5755_probation_routed_assignment',
    '5756_probation_form_approver_choices',
+   '5757_probation_legacy_workflow_move',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -365,6 +366,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    // 5754: shared workflow email (queue, the private sender's target, start and finish, and the owner-only immutability trigger).
    // 5755: routed Probation steps (assignment facts for the V9 assignment owner).
    // 5756: approver choices on form approval rows (approver role helper, form route validator, group membership and label helpers, routing context and approver freeze).
+   // 5757: legacy Probation workflows move to the shared engine (legacy audience, move and its list, daily overdue summary cases).
    'app._access_bootstrap_eligible(uuid,uuid)','app._access_workforce_list_rows(uuid[])','app._ai_control_context_for_purpose(text,boolean,boolean)',
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()','app._assert_assistant_rewards_presentation_v1(text)',
    'app._assistant_assigned_index_login(uuid,boolean)','app._assistant_presentation_feature_unpaused_v1()','app._assistant_rewards_calendar_choice_payload_v1()',
@@ -425,14 +427,14 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.personnel_posting_visible(text,uuid,text)','app.personnel_private_search_entries(text,uuid[])','app.personnel_search_candidates(uuid[],boolean,boolean,text,text,text,text,text[])',
    'app.probation_assignment_facts(uuid,text[],uuid[])','app.probation_automation_context(uuid)','app.probation_automation_notify(uuid,uuid,text,text,uuid[])','app.probation_company_ancestors(uuid[])',
    'app.probation_config_write_company(uuid,text,jsonb,boolean,integer)','app.probation_did_not_join(uuid)','app.probation_form_approver_label(text)','app.probation_form_approver_role(text)','app.probation_form_freeze_approvers(uuid,jsonb)','app.probation_form_routing_context(uuid)','app.probation_general_delegate(uuid,uuid,text)',
-   'app.probation_holders_set(uuid[])','app.probation_letter_freeze_route(uuid,jsonb,jsonb)','app.probation_letter_routed(jsonb)',
+   'app.probation_holders_set(uuid[])','app.probation_legacy_audience(uuid,uuid)','app.probation_letter_freeze_route(uuid,jsonb,jsonb)','app.probation_letter_routed(jsonb)',
    'app.probation_letter_routing_context(uuid)','app.probation_letter_routing_signatures_ok(jsonb)','app.probation_letter_routing_valid(jsonb)',
-   'app.probation_max_extensions(jsonb)','app.probation_outcome_automation(uuid)','app.probation_posting_approved()',
+   'app.probation_max_extensions(jsonb)','app.probation_outcome_automation(uuid)','app.probation_overdue_summary_cases(uuid,date)','app.probation_posting_approved()',
    'app.probation_record_override(uuid)','app.probation_record_posting_effect(uuid,uuid,uuid,jsonb,jsonb)','app.probation_settings_materialize(uuid[])',
    'app.probation_settings_scope_admin()','app.probation_settings_scope_check(text,jsonb)','app.probation_settings_scope_refresh(uuid)',
    'app.probation_settings_scope_retire(uuid,integer,text)','app.probation_settings_scope_save(uuid,text,text,uuid[],jsonb,boolean,integer,text)','app.probation_source_from_start(jsonb,uuid)',
    'app.probation_task_list(text,integer)','app.probation_tracker_cases()','app.probation_tracker_page(uuid[])',
-   'app.probation_v9_group_member(text,uuid)','app.probation_validate_form_route(jsonb,integer)','app.probation_visible_among(uuid[])','app.probation_visible_case_ids()','app.register_import_release(uuid,boolean)',
+   'app.probation_v9_group_member(text,uuid)','app.probation_validate_form_route(jsonb,integer)','app.probation_visible_among(uuid[])','app.probation_visible_case_ids()','app.probation_workflow_move(jsonb,text)','app.probation_workflow_moves()','app.register_import_release(uuid,boolean)',
    'app.reward_access_observation_due(uuid)','app.reward_access_self_change_guard()','app.reward_actor_holds_role(text)',
    'app.reward_actor_page_level(text)','app.reward_config_apply_confirmed_pat(uuid,uuid)','app.reward_config_architecture_for_source(uuid,uuid,uuid,date)',
    'app.reward_config_change_recipients(uuid)','app.reward_config_change_record(text,text,uuid,text,uuid[],text,text,boolean,integer,jsonb,uuid,uuid[],text)','app.reward_config_change_visible(text,uuid[])',
@@ -726,6 +728,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'automation_email_template_version':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
    // 5754: queued workflow email, owner only (the application writes through app.automation_email_queue).
    'automation_email_delivery':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
+   // 5757: moved notify-only Probation workflow definitions, owner only (written through app.probation_workflow_move).
+   'probation_workflow_move':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
    'automation_routing_version':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
    'automation_workflow_version':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
    'personnel_posting':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
@@ -764,6 +768,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {schemaname:'public',tablename:'probation_settings_scope_member',policyname:'probation_settings_scope_member_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'782ac6da7f7880201b39db019eaaac01',with_check:null},
    {schemaname:'public',tablename:'probation_settings_scope_version',policyname:'probation_settings_scope_version_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
    {schemaname:'public',tablename:'probation_settings_scope_version',policyname:'probation_settings_scope_version_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'782ac6da7f7880201b39db019eaaac01',with_check:null},
+   {schemaname:'public',tablename:'probation_workflow_move',policyname:'probation_workflow_move_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
    {schemaname:'public',tablename:'reward_config_change',policyname:'reward_config_change_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'59492f3697ba1af7263dfebcdb7c1b78',with_check:'59492f3697ba1af7263dfebcdb7c1b78'},
    {schemaname:'public',tablename:'reward_config_change',policyname:'reward_config_change_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'b0652841b761793f00814566b72e654b',with_check:null},
    {schemaname:'public',tablename:'reward_governance',policyname:'reward_pat_draft_governance_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'042db60115c525438a1583b0609fcebb',with_check:'042db60115c525438a1583b0609fcebb'},

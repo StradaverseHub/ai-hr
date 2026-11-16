@@ -7,7 +7,7 @@ import {
   saveAutomationEmailTemplate,saveAutomationRouting,saveAutomationWorkflow,searchAutomationPeople,
   type AutomationDryRun,type AutomationEmailTemplate,type AutomationRecipient,type AutomationWorkflow,type Routing,
 } from '@/packs/automation/service';
-import {probationCase,probationSummaryRows} from '@/packs/probation/service';
+import {probationCase,probationSummaryRows,moveProbationWorkflowsToShared} from '@/packs/probation/service';
 import {PROBATION_AUTOMATION_CATALOGUE} from '@/lib/automation/catalogues/probation';
 import {PROBATION_DEFAULTS} from './probation-defaults';
 import type {ActionResult,DryRunEventFacts} from './types';
@@ -46,6 +46,14 @@ export async function searchPeopleAction(query: string) {
 /** Installs the 16 Probation workflows, 4 email templates and 2 empty routings the prototype ships, Paused. Never run automatically. */
 export async function installProbationDefaultsAction() {
   return execute(async () => installAutomationDefaults(await probationConfigurer(), PROBATION_DEFAULTS));
+}
+
+/**
+ * "Move to shared workflows" (G2): moves every notify-only Probation workflow whose conversion is proven exact onto the
+ * shared engine, stops the old definitions firing and lists the rest with the reason. The service authorizes again.
+ */
+export async function moveProbationWorkflowsAction(input: { reason: string }) {
+  return execute(async () => moveProbationWorkflowsToShared(await probationConfigurer(), { reason: String(input?.reason ?? '') }));
 }
 
 /** Probation cases the viewer may open, for the dry run's test case. At most 20. */

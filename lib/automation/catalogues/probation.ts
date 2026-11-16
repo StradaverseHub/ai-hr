@@ -75,6 +75,16 @@ export const PROBATION_AUTOMATION_CATALOGUE: AutomationModuleCatalogue = {
     { id: 'group', label: 'An assignment group', kind: 'group' },
     { id: 'person', label: 'Named people', kind: 'person' },
     { id: 'pendingStep', label: 'Whoever’s step is pending', kind: 'pending' },
+    // G2: the case's own holders and "whoever's step is pending" narrowed to one role, resolved from the case exactly as
+    // the notify-only engine does (core/probation-automation.ts, app.probation_legacy_audience).
+    { id: 'caseHod', label: 'The case’s Head of Department', kind: 'role' },
+    { id: 'casePbp', label: 'The case’s People Business Partner', kind: 'role' },
+    { id: 'caseGbs', label: 'GBS People Ops (case coverage)', kind: 'role' },
+    { id: 'pendingEmployee', label: 'The employee, while their step is pending', kind: 'role' },
+    { id: 'pendingLm', label: 'The Line Manager, while their step is pending', kind: 'role' },
+    { id: 'pendingHod', label: 'The Head of Department, while their step is pending', kind: 'role' },
+    { id: 'pendingPbp', label: 'The People Business Partner, while their step is pending', kind: 'role' },
+    { id: 'pendingGbs', label: 'GBS People Ops, while their step is pending', kind: 'role' },
   ],
   mergeFields: [
     { key: 'employee.name', label: 'Full name', group: 'Employee' },
@@ -94,6 +104,10 @@ export const PROBATION_AUTOMATION_CATALOGUE: AutomationModuleCatalogue = {
     { key: 'probation.reviewPlan', label: 'Review plan', group: 'Probation' },
     { key: 'probation.part', label: 'Part', group: 'Probation', triggers: PART_TRIGGERS },
     { key: 'probation.dueDate', label: 'Review due date', group: 'Probation', triggers: ['formIssued', 'dueBeforeReview', 'dueAfterStart', 'kpiOverdue', 'approvalPending'] },
+    // G2: the notify-only engine's {{part}} (the part's number) and {{dueOn}} (the part's stored due date) as it sent them.
+    { key: 'probation.partNumber', label: 'Part number', group: 'Probation', triggers: [...PART_TRIGGERS, ...LETTER_TRIGGERS] },
+    { key: 'probation.partDueOn', label: 'Part due date (as stored)', group: 'Probation', triggers: [...PART_TRIGGERS, ...LETTER_TRIGGERS] },
+    { key: 'probation.overdueCount', label: 'Cases with an overdue review', group: 'Probation', triggers: ['overdueSummary'] },
     { key: 'probation.outcome', label: 'Outcome', group: 'Probation', triggers: OUTCOME_TRIGGERS },
     { key: 'probation.confirmationDate', label: 'Confirmation effective date', group: 'Probation', triggers: OUTCOME_TRIGGERS },
     { key: 'probation.extensionLength', label: 'Extension length', group: 'Probation', triggers: OUTCOME_TRIGGERS },
@@ -108,24 +122,27 @@ export const PROBATION_AUTOMATION_CATALOGUE: AutomationModuleCatalogue = {
     { key: 'today', label: 'Today', group: 'General' },
   ],
   legacyEvents: [
-    { event: 'kpi_assigned', trigger: 'formIssued', preset: [{ field: 'part', op: 'is', values: [PARTS[0]] }], exact: false, note: 'Issued on the Part 1 issue date.' },
-    { event: 'kpi_reminder', trigger: 'dueAfterStart', preset: [{ field: 'part', op: 'is', values: [PARTS[0]] }], exact: false, note: 'Days come from the settings KPI reminder milestone.' },
-    { event: 'kpi_overdue', trigger: 'kpiOverdue', exact: true },
-    { event: 'review_issued', trigger: 'formIssued', preset: [{ field: 'part', op: 'isNot', values: [PARTS[0]] }], exact: false },
-    { event: 'review_reminder', trigger: 'dueBeforeReview', exact: false, note: 'Old engine suppresses it per role once that role has submitted.' },
-    { event: 'review_due', trigger: 'dueBeforeReview', exact: false, note: 'Zero days before the due date.' },
-    { event: 'approval_pending', trigger: 'approvalPending', exact: true },
-    { event: 'letter_released', trigger: 'letterReleased', exact: true },
-    { event: 'letter_signing_pending', trigger: 'letterActionNeeded', exact: false, note: 'New trigger also covers Review and Approve steps.' },
-    { event: 'letter_release_pending', trigger: 'letterReleasePending', exact: true },
-    { event: 'letter_returned', trigger: 'letterSentBack', exact: true },
-    { event: 'overdue_summary', trigger: 'overdueSummary', exact: true },
+    // `exact` only where test/probation-legacy-conversion-db.test.ts proves the converted workflow reaches the same people
+    // with the same subject and body as the notify-only engine. `pending`: that engine sent only to the listed roles whose
+    // step was pending; `roles`: the only roles that event ever reached.
+    { event: 'kpi_assigned', trigger: 'formIssued', preset: [{ field: 'part', op: 'is', values: [PARTS[0]] }], exact: true, pending: true, note: 'Issued on the Part 1 issue date.' },
+    { event: 'kpi_reminder', trigger: 'dueAfterStart', preset: [{ field: 'part', op: 'is', values: [PARTS[0]] }], exact: false, pending: true, note: 'Days come from each case’s settings KPI reminder milestone, not one number.' },
+    { event: 'kpi_overdue', trigger: 'kpiOverdue', exact: true, pending: true, days: 0 },
+    { event: 'review_issued', trigger: 'formIssued', preset: [{ field: 'part', op: 'isNot', values: [PARTS[0]] }], exact: true, pending: true },
+    { event: 'review_reminder', trigger: 'dueBeforeReview', exact: false, pending: true, note: 'A first reminder, then daily reminders up to the due date: two schedules a single trigger cannot express.' },
+    { event: 'review_due', trigger: 'dueBeforeReview', exact: true, pending: true, days: 0, note: 'Zero days before the due date.' },
+    { event: 'approval_pending', trigger: 'approvalPending', exact: true, pending: true },
+    { event: 'letter_released', trigger: 'letterReleased', exact: true, roles: ['employee', 'lm', 'pbp'] },
+    { event: 'letter_signing_pending', trigger: 'letterActionNeeded', exact: false, pending: true, note: 'Not yet proven against a letter: the old engine reads the letter’s own signing steps.' },
+    { event: 'letter_release_pending', trigger: 'letterReleasePending', exact: true, roles: ['pbp'], note: 'GBS People Ops received it only for a Confirm outcome; a workflow sending to GBS stays on the old engine.' },
+    { event: 'letter_returned', trigger: 'letterSentBack', exact: true, roles: ['pbp', 'gbs'] },
+    { event: 'overdue_summary', trigger: 'overdueSummary', exact: false, note: 'Sent once per PBP when a company goes live (cut-over), not daily.' },
   ],
 };
 
-/** Recipients of the notify-only engine and how they are named in the shared builder. `hod` and `pbp` resolve
- * through the routings "HOD by business group and department" and "BP by business group"; `gbs` through the
- * GBS People Ops assignment group (handoff B5). */
-export const PROBATION_LEGACY_RECIPIENTS = { employee: 'employee', lm: 'directSuperior', hod: 'routing', pbp: 'routing', gbs: 'group' } as const;
+/** Recipients of the notify-only engine and the shared recipient that reaches the same people (G2). */
+export const PROBATION_LEGACY_RECIPIENTS = { employee: 'employee', lm: 'directSuperior', hod: 'caseHod', pbp: 'casePbp', gbs: 'caseGbs' } as const;
+/** The same roles while their step is pending (events the old engine sent only to pending parties). */
+export const PROBATION_LEGACY_PENDING_RECIPIENTS = { employee: 'pendingEmployee', lm: 'pendingLm', hod: 'pendingHod', pbp: 'pendingPbp', gbs: 'pendingGbs' } as const;
 /** Merge tokens of the notify-only engine (`{{token}}`) and their shared merge field. */
-export const PROBATION_LEGACY_MERGE_FIELDS = { employeeName: 'employee.name', employeeCode: 'employee.id', part: 'probation.part', dueOn: 'probation.dueDate', endOn: 'probation.endDate', companyName: 'org.company' } as const;
+export const PROBATION_LEGACY_MERGE_FIELDS = { employeeName: 'employee.name', employeeCode: 'employee.id', part: 'probation.partNumber', dueOn: 'probation.partDueOn', endOn: 'probation.endDate', companyName: 'org.company' } as const;

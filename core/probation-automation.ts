@@ -34,6 +34,16 @@ import type {Routing} from '../lib/automation/routing';
 import {todayInKualaLumpur,addCalendarMonths} from '../lib/hr-date';
 import {addDaysIso} from '../lib/roster-month';
 
+/** The notify-only engine's fill: a known merge field always replaces its token, an empty value with nothing. */
+function fillLegacyMergeFields(value: string, values: Readonly<Record<string, string>>): string {
+  return value.replace(/\{\{\s*([^{}\s]+)\s*\}\}/g, (token, key: string) => key in values ? values[key] ?? '' : token);
+}
+/** For a step moved from the notify-only engine, its six words come from where that engine's notices took them. */
+function legacyMergeValues(merge: Record<string, string>, audience: {words: Record<string, string | null>}): Record<string, string> {
+  const w = audience.words;
+  return {...merge, 'employee.name': w.employeeName ?? '', 'employee.id': w.employeeCode ?? '', 'org.company': w.companyName ?? '', 'probation.endDate': w.endOn ?? '', 'probation.partNumber': w.part ?? '', 'probation.partDueOn': w.dueOn ?? ''};
+}
+
 type Holders = {employee?: string | null; lm?: string | null; hod?: string | null; pbp?: string | null};
 export type ProbationAutomationContext = {
   holders: Holders;
@@ -54,9 +64,26 @@ export type ProbationEventFacts = {
   partId?: string | null; partType?: 1 | 2 | 3 | null; dueOn?: string | null;
   outcome?: {id: string; revision: number; outcome: string; extensionMonths?: number | null} | null;
   resultBand?: number | null; overridden?: boolean | null; pendingStep?: string | null;
+  /** Overdue summary: how many cases of this PBP have an overdue review part. */
+  overdueCount?: number | null;
   letter?: {name?: string | null; signingStep?: string | null; sentBackBy?: string | null; sentBackReason?: string | null} | null;
 };
 type Effects = {postingId: string | null; handoffId: string | null; documentId: string | null};
+/**
+ * G2 (migration 5757): who the notify-only engine would reach on this case and part, and the words its notices carry
+ * (app.probation_legacy_audience): the case's holders by role, the pending parties by role and the notice words.
+ */
+export type ProbationLegacyAudience = {holders: Record<string, string[]>; pending: Record<string, string[]>; words: Record<string, string | null>};
+const NO_AUDIENCE: ProbationLegacyAudience = {holders: {}, pending: {}, words: {}};
+/** The catalogue's legacy-exact roles: the case's holders and "whoever's step is pending" narrowed to one role. */
+const LEGACY_ROLES: Record<string, ['holders' | 'pending', string]> = {
+  caseHod: ['holders', 'hod'], casePbp: ['holders', 'pbp'], caseGbs: ['holders', 'gbs'],
+  pendingEmployee: ['pending', 'employee'], pendingLm: ['pending', 'lm'], pendingHod: ['pending', 'hod'], pendingPbp: ['pending', 'pbp'], pendingGbs: ['pending', 'gbs'],
+};
+export async function probationLegacyAudienceTx(tx: Tx, caseId: string, partId: string | null): Promise<ProbationLegacyAudience> {
+  const [row] = await tx.execute<{data: ProbationLegacyAudience}>(sql`select app.probation_legacy_audience(${caseId}::uuid, ${partId}::uuid) as data`);
+  return row?.data ?? NO_AUDIENCE;
+}
 
 const OUTCOME_LABEL: Record<string, string> = {confirm: 'Confirm', extend: 'Extend', not_confirm: 'Non-confirmation', other: 'Other'};
 const text = (value: unknown) => typeof value === 'string' ? value : '';
@@ -97,7 +124,7 @@ export function probationFactReader(trigger: string, record: ProbationAutomation
 }
 
 /** Merge values for Send email (catalogue merge fields). */
-export function probationMergeValues(record: ProbationAutomationCase, context: ProbationAutomationContext, facts: ProbationEventFacts): Record<string, string> {
+export function probationMergeValues(record: ProbationAutomationCase, context: ProbationAutomationContext, facts: ProbationEventFacts, audience: ProbationLegacyAudience = NO_AUDIENCE): Record<string, string> {
   const name = context.people.employee ?? record.facts?.employeeName ?? '';
   const extension = extensionFacts(record, facts.outcome);
   return {
@@ -113,33 +140,40 @@ export function probationMergeValues(record: ProbationAutomationCase, context: P
     'probation.extensionLength': extension ? `${extension.months} months` : '', 'probation.newEndDate': extension?.endOn ?? '',
     'probation.extensionNumber': extension ? String(extension.number) : '',
     'probation.resultBand': facts.resultBand ? String(facts.resultBand) : '',
+    // G2: the notify-only engine's {{part}} and {{dueOn}} exactly as its notices carried them.
+    'probation.partNumber': audience.words.part ?? '', 'probation.partDueOn': audience.words.dueOn ?? '',
+    'probation.overdueCount': facts.overdueCount === undefined || facts.overdueCount === null ? '' : String(facts.overdueCount),
     'letter.documentName': facts.letter?.name ?? '', 'letter.signingStep': facts.letter?.signingStep ?? '',
     'letter.sentBackBy': facts.letter?.sentBackBy ?? '', 'letter.sentBackReason': facts.letter?.sentBackReason ?? '',
     'case.link': `/lifecycle/probation/${record.id}`, today: todayInKualaLumpur(),
   };
 }
 
-function recipientsFor(list: readonly AutomationRecipient[], context: ProbationAutomationContext, facts: ProbationEventFacts, pending: string[] | null, withFallback = true) {
+function recipientsFor(list: readonly AutomationRecipient[], context: ProbationAutomationContext, facts: ProbationEventFacts, pending: string[] | null, withFallback = true, audience: ProbationLegacyAudience = NO_AUDIENCE) {
   const groups = new Map(context.groups.map(g => [g.id, g.members])), routings = new Map(context.routings.map(r => [r.id, r]));
   const fallback = withFallback && context.fallbackGroupId ? {groupId: context.fallbackGroupId, members: groups.get(context.fallbackGroupId) ?? []} : null;
   return resolveAutomationRecipients(list, {
-    role: role => role === 'employee' ? (context.holders.employee ? [context.holders.employee] : []) : role === 'directSuperior' ? (context.holders.lm ? [context.holders.lm] : []) : null,
+    role: role => role === 'employee' ? (context.holders.employee ? [context.holders.employee] : []) : role === 'directSuperior' ? (context.holders.lm ? [context.holders.lm] : [])
+      : LEGACY_ROLES[role] ? [...(audience[LEGACY_ROLES[role][0]][LEGACY_ROLES[role][1]] ?? [])] : null,
     // W5: a business group is the business unit (Personnel v2 mapping, the PBP rule) or its group company (builder options).
     facts: {businessGroup: [context.org.businessGroupId, context.org.businessGroupCompanyId].filter((v): v is string => !!v), company: context.org.companyId, department: context.org.departmentId, jobTitle: context.org.jobTitle},
     routing: id => routings.get(id) ?? null, groupMembers: id => groups.get(id) ?? null,
     person: userId => /^[0-9a-f-]{36}$/i.test(userId),
     pending: () => pending?.length ? {userIds: pending, label: facts.pendingStep ?? 'Pending step'} : null,
     fallback,
-    describe: r => r.kind === 'role' ? (r.role === 'employee' ? 'The employee' : 'Their Direct Superior') : r.kind === 'routing' ? `The routing “${routings.get(r.routingId)?.name ?? 'removed routing'}”` : r.kind === 'group' ? `The assignment group ${r.groupId}` : r.kind === 'person' ? 'A named person' : 'Whoever’s step is pending',
+    describe: r => r.kind === 'role' ? (r.role === 'employee' ? 'The employee' : r.role === 'directSuperior' ? 'Their Direct Superior' : PROBATION_AUTOMATION_CATALOGUE.recipients.find(x => x.id === r.role)?.label ?? r.role) : r.kind === 'routing' ? `The routing “${routings.get(r.routingId)?.name ?? 'removed routing'}”` : r.kind === 'group' ? `The assignment group ${r.groupId}` : r.kind === 'person' ? 'A named person' : 'Whoever’s step is pending',
   });
 }
 /**
  * The email's own To and CC (F1): To = the To recipients plus, when any recipient resolved to nobody, the fallback group;
  * CC = the CC recipients who are not already in To.
  */
-export function probationEmailAddressees(to: readonly AutomationRecipient[], cc: readonly AutomationRecipient[], context: ProbationAutomationContext, facts: ProbationEventFacts, pending: string[] | null) {
-  const all = recipientsFor([...to, ...cc], context, facts, pending);
-  const toIds = recipientsFor(to, context, facts, pending, false).userIds, ccIds = recipientsFor(cc, context, facts, pending, false).userIds;
+export function probationEmailAddressees(to: readonly AutomationRecipient[], cc: readonly AutomationRecipient[], context: ProbationAutomationContext, facts: ProbationEventFacts, pending: string[] | null, audience: ProbationLegacyAudience = NO_AUDIENCE, fallback = true) {
+  // A step moved from the notify-only engine (`legacy: true`, G2) drops a recipient nobody resolves for, exactly as that
+  // engine did: no fallback group, nothing recorded as unresolved.
+  const resolved = recipientsFor([...to, ...cc], context, facts, pending, fallback, audience);
+  const all = fallback ? resolved : {...resolved, unresolved: []};
+  const toIds = recipientsFor(to, context, facts, pending, false, audience).userIds, ccIds = recipientsFor(cc, context, facts, pending, false, audience).userIds;
   const fallbackMembers = all.fallbackUsed && context.fallbackGroupId ? context.groups.find(g => g.id === context.fallbackGroupId)?.members ?? [] : [];
   const toAll = [...new Set([...toIds, ...fallbackMembers])];
   return {all, to: toAll, cc: ccIds.filter(id => !toAll.includes(id))};
@@ -156,17 +190,17 @@ async function letterVersionsTx(tx: Tx, companyId: string): Promise<Map<string, 
 
 type ExecutorInput = {
   ctx: SessionContext; trigger: string; record: ProbationAutomationCase; context: ProbationAutomationContext; facts: ProbationEventFacts;
-  letters: Map<string, {id: string; state: string}>; pending: string[] | null; effects: Effects;
+  letters: Map<string, {id: string; state: string}>; pending: string[] | null; effects: Effects; audience: ProbationLegacyAudience;
 };
 function probationRuntime(tx: Tx, input: ExecutorInput): {executors: AutomationExecutors; guards: AutomationRuntimeGuards} {
   const {ctx, record, context, facts, effects} = input;
   const templates = new Map(context.emailTemplates.map(t => [t.id, t]));
-  const merge = probationMergeValues(record, context, facts);
+  const merge = probationMergeValues(record, context, facts, input.audience);
   // The email keeps {{case.link}} as a token: the private sender makes it an absolute link for its installation.
   const emailMerge = {...merge, 'case.link': ''};
   /** In-app notice (5753) and the durable email intent (5754), in this transaction. */
   const deliver = async (run: AutomationRun, step: AutomationStep, to: readonly AutomationRecipient[], cc: readonly AutomationRecipient[], subject: string, body: string) => {
-    const addressees = probationEmailAddressees(to, cc, context, facts, input.pending), resolved = addressees.all;
+    const addressees = probationEmailAddressees(to, cc, context, facts, input.pending, input.audience, step.params.legacy !== true), resolved = addressees.all;
     if (!resolved.userIds.length) return {resolved, email: null};
     const key = run.id + ':' + step.id;
     await tx.execute(sql`select app.probation_automation_notify(${record.id}::uuid, ${facts.partId ?? null}::uuid, ${key}, ${input.trigger}, ${`{${resolved.userIds.join(',')}}`}::uuid[])`);
@@ -182,8 +216,13 @@ function probationRuntime(tx: Tx, input: ExecutorInput): {executors: AutomationE
   const sent = (email: {queued: number; to: string[]; cc: string[]} | null) => email?.queued ? ` Email queued for ${email.to.length + email.cc.length} ${email.to.length + email.cc.length === 1 ? 'person' : 'people'}.` : email ? ' No email was queued: nobody has a sign-in email, or it was queued before.' : '';
   const executors: AutomationExecutors = {
     notify: async ({run, step}: AutomationStepContext): Promise<AutomationStepOutcome> => {
-      const subject = text(step.params.subject);
-      const {resolved, email} = await deliver(run, step, step.to, step.cc, subject, text(step.params.body));
+      // G2: a step moved from the notify-only engine fills empty merge values with nothing, as that engine did.
+      const legacy = step.params.legacy === true;
+      const words = legacy ? legacyMergeValues(merge, input.audience) : merge;
+      const subject = legacy ? fillLegacyMergeFields(text(step.params.subject), words) : text(step.params.subject);
+      const {resolved, email} = await deliver(run, step, step.to, step.cc, subject, legacy ? fillLegacyMergeFields(text(step.params.body), words) : text(step.params.body));
+      // G2: a step moved from the notify-only engine sends nothing when nobody it names is involved, as before.
+      if (!resolved.userIds.length && step.params.legacy === true) return {status: 'skipped', reason: 'nobody this step names is involved at this point.'};
       if (!resolved.userIds.length) return {status: 'failed', reason: 'Nobody could be notified, and the fallback group has no members.'};
       return {status: 'done', message: `Notified: ${fillAutomationMergeFields(subject, merge)}.${sent(email)}`, recipients: resolved.userIds, unresolved: unresolvedOf(resolved, email)};
     },
@@ -257,7 +296,8 @@ export async function emitProbationEventTx(tx: Tx, ctx: SessionContext, input: {
   const letters = input.trigger === 'outcomeDecided' ? await letterVersionsTx(tx, input.record.companyId) : new Map<string, {id: string; state: string}>();
   const effects: Effects = {postingId: null, handoffId: null, documentId: null};
   const {read, aliases} = probationFactReader(input.trigger, input.record, context, input.facts);
-  const {executors, guards} = probationRuntime(tx, {ctx, trigger: input.trigger, record: input.record, context, facts: input.facts, letters, pending: input.pending ?? null, effects});
+  const audience = await probationLegacyAudienceTx(tx, input.record.id, input.facts.partId ?? null);
+  const {executors, guards} = probationRuntime(tx, {ctx, trigger: input.trigger, record: input.record, context, facts: input.facts, letters, pending: input.pending ?? null, effects, audience});
   const result = await runAutomationEventTx(tx, {module: 'probation', executors, guards, event: {
     trigger: input.trigger, subjectId: input.record.id, occurrence: input.occurrence ?? '', today: input.today ?? todayInKualaLumpur(), read, aliases,
     anchor: anchor => input.anchors?.[anchor] ?? null,
@@ -284,7 +324,8 @@ export async function resumeProbationOutcomeTx(tx: Tx, ctx: SessionContext, inpu
   const effects: Effects = {postingId: null, handoffId: null, documentId: input.documentId};
   const facts: ProbationEventFacts = {partId: input.partId, partType: 3, outcome: input.outcome};
   const {read, aliases} = probationFactReader('outcomeDecided', input.record, context, facts);
-  const {executors, guards} = probationRuntime(tx, {ctx, trigger: 'outcomeDecided', record: input.record, context, facts, letters: new Map(), pending: null, effects});
+  const audience = await probationLegacyAudienceTx(tx, input.record.id, input.partId);
+  const {executors, guards} = probationRuntime(tx, {ctx, trigger: 'outcomeDecided', record: input.record, context, facts, letters: new Map(), pending: null, effects, audience});
   const runs = await resumeAutomationRunsTx(tx, {module: 'probation', subjectId: input.record.id, documentId: input.documentId, executors, guards, read, aliases});
   return {runs, effects};
 }
@@ -330,4 +371,18 @@ const PENDING_LABEL: Record<string, string> = {lm: 'Line Manager', employee: 'Em
 export function probationPendingStep(steps: readonly {role: string; holderId: string | null}[]): {label: string; users: string[]} {
   if (!steps.length) return {label: 'Nobody (all steps done)', users: []};
   return {label: PENDING_LABEL[steps[0].role] ?? steps[0].role, users: [...new Set(steps.flatMap(s => s.holderId ? [s.holderId] : []))]};
+}
+/**
+ * What a Notify step would send on this case for this event, without sending it (G2): the people, subject and body,
+ * through the same recipients and merge values as the runner. Used to prove a moved workflow reaches the same people
+ * with the same words as the notify-only engine (test/probation-legacy-conversion-db.test.ts).
+ */
+export async function probationNotifyPreviewTx(tx: Tx, input: {record: ProbationAutomationCase; step: AutomationStep; facts: ProbationEventFacts; pending?: string[] | null}) {
+  const context = await probationAutomationContextTx(tx, input.record.id);
+  const audience = await probationLegacyAudienceTx(tx, input.record.id, input.facts.partId ?? null);
+  const merge = probationMergeValues(input.record, context, input.facts, audience);
+  const legacy = input.step.params.legacy === true, words = legacy ? legacyMergeValues(merge, audience) : merge;
+  const fill = (value: string) => legacy ? fillLegacyMergeFields(value, words) : fillAutomationMergeFields(value, words);
+  const addressees = probationEmailAddressees(input.step.to, input.step.cc, context, input.facts, input.pending ?? null, audience, !legacy);
+  return {userIds: [...addressees.all.userIds].sort(), subject: fill(text(input.step.params.subject)), body: fill(text(input.step.params.body))};
 }

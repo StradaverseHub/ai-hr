@@ -1,3 +1,19 @@
+# Legacy Probation workflows move to the shared engine — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-last-20261116` (lane G2 of the Probation Confirmation build) appends
+`5757_probation_legacy_workflow_move` at idx 5157 / when 1793330005457 (assigned by the build coordinator). SHA256
+`16519f586b1f89c69f3758ac41cf5456cf4ae91bdd768bfe973e638982e86d21`. It adds the owner-only table
+`probation_workflow_move` (forced row security, owner policy, no application grant, no company column; written only
+through the move function) and four functions granted to `ai_hr_app`: `app.probation_workflow_move(jsonb,text)` and
+`app.probation_workflow_moves()` (authorized by `app.automation_can_configure('probation')`; the move runs under the
+shared workforce barrier and a per-tenant lock, saves the converted shared workflows, marks every version of each moved
+definition and audits both, set-based and idempotent), `app.probation_legacy_audience(uuid,uuid)` (authorized by
+`app.automation_can_run('probation', case)`) and `app.probation_overdue_summary_cases(uuid,date)` (storage runner only).
+It re-creates in place, with the same signatures and grants, `app.probation_workflow_run` (2111),
+`app.probation_review_transition` (0949) and `app.probation_letter_transition` (5752) so a moved definition no longer
+sends (and still counts as configured). No existing table, row, grant or purpose-owned object changes. The installed
+ledgers were not read; recheck watermarks and peer claims at admission. This allocation grants no installation authority.
+
 # Approver choices on Probation form approval rows — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/probation-lane-last-20261116` (lane G1 of the Probation Confirmation build) appends
