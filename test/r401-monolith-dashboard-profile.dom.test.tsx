@@ -68,7 +68,7 @@ vi.mock('@/core/profile', async () => {
 });
 vi.mock('@/core/offboarding', () => ({ myResignation: vi.fn(async () => null) }));
 // Managed resignation is a separately authorized read; this profile layout fixture has no cases.
-vi.mock('@/packs/lifecycle/resignation/service',()=>({resignationEmployeeView:vi.fn(async()=>({today:'2026-11-16',earliestLastDay:'2026-12-16',noticeLabel:'1 month',unavailableReason:null,canSubmit:true,cases:[]}))}));
+vi.mock('@/packs/lifecycle/service',()=>({resignationEmployeeView:vi.fn(async()=>({today:'2026-11-16',earliestLastDay:'2026-12-16',noticeLabel:'1 month',unavailableReason:null,canSubmit:true,cases:[]}))}));
 vi.mock('@/app/resignation/actions',()=>({submitOwnResignation:vi.fn(),runResignationCommand:vi.fn(),reloadResignationCase:vi.fn(),uploadOwnResignationFile:vi.fn()}));
 // core/profile-options reads the dependents vocabulary at module load, so the mock carries the real
 // client-safe vocabulary and the category key (core/dependents re-exports both) beside its two stubs.

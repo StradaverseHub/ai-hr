@@ -267,7 +267,7 @@ export async function approvePersonnelPostingTx(tx: Tx, ctx: SessionContext, inp
   if (!movement) throw new PersonnelPostingError('invalid', 'The event could not be recorded, so the posting was not approved.');
   await guarded(() => tx.execute(sql`select app.personnel_posting_record_movement(${input.id}::uuid, ${movement.id})`));
   if(posting.source==='offboarding'){
-    const {resumeResignationPostingTx}=await import('./resignation-journey');
+    const {resumeResignationPostingTx}=await import('../packs/lifecycle/service');
     await resumeResignationPostingTx(tx,ctx,posting.sourceRef,posting.id,'approved');
   }
   return { id: input.id, movementId: movement.id, employmentId, eventType, values: applied, behaviourKind: result.behaviourKind,

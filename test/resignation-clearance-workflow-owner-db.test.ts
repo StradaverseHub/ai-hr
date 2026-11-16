@@ -3,7 +3,7 @@ import {sql} from 'drizzle-orm';
 import {beforeAll,beforeEach,afterAll,afterEach,vi,describe,it,expect} from 'vitest';
 import {owner,migrateTestDb,resetDb,closeAll} from './harness';
 import {resignationJourneyFixture} from './helpers/resignation-journey-fixture';
-import {commandResignationJourney} from '../packs/lifecycle/resignation/service';
+import {commandResignationJourney} from '../packs/lifecycle/service';
 import {v9CaseDetail,v9Command,v9CreateOffboarding,v9Sweep} from '../packs/lifecycle/v9/service';
 import {hireEmployee} from '../core/org';
 import type {Template} from '../lib/lifecycle-v9-model';

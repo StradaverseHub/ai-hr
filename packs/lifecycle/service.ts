@@ -26,3 +26,16 @@ export async function createProbationOffboardingTx(tx:import('../../db/client').
 }
 export {v9WorkflowNavigationAllowed} from './v9/navigation';
 export {v9Configuration} from './v9/configuration';
+export * from './resignation/service';
+
+/** Managed resignations hand off only native source facts within the caller's admitted transaction. */
+export async function createResignationOffboardingTx(tx:import('../../db/client').Tx,ctx:import('../../db/client').SessionContext,caseId:string):Promise<string>{
+ const {sql}=await import('drizzle-orm');
+ await tx.execute(sql`select app.resignation_offboarding_admit(${caseId}::uuid)`);
+ try{
+  const [row]=await tx.execute<{intent:{employmentId:string;type:'Resignation';noticeDate:string;lastDay:string;offboardingCaseId:string|null}}>(sql`select app.resignation_offboarding_intent(${caseId}::uuid) as intent`);
+  if(row.intent.offboardingCaseId)return row.intent.offboardingCaseId;
+  const {v9CreateOffboardingTx}=await import('./v9/service');
+  return await v9CreateOffboardingTx(tx,ctx,{employmentId:row.intent.employmentId,type:row.intent.type,noticeDate:row.intent.noticeDate,lastDay:row.intent.lastDay},{kind:'resignation',caseId});
+ }finally{await tx.execute(sql`select set_config('app.resignation_handoff','',true)`);}
+}

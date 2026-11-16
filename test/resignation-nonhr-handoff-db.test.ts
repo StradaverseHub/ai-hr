@@ -4,7 +4,7 @@ import {beforeAll,beforeEach,afterAll,afterEach,vi,describe,it,expect} from 'vit
 import {withTenant} from '../db/client';
 import {owner,migrateTestDb,resetDb,closeAll} from './harness';
 import {resignationJourneyFixture} from './helpers/resignation-journey-fixture';
-import {commandResignationJourney,resignationCase} from '../packs/lifecycle/resignation/service';
+import {commandResignationJourney,resignationCase} from '../packs/lifecycle/service';
 import {v9CreateOffboarding} from '../packs/lifecycle/v9/service';
 beforeAll(migrateTestDb);beforeEach(resetDb);afterEach(()=>vi.unstubAllEnvs());afterAll(closeAll);
 async function awaitingNonHrRelease(){

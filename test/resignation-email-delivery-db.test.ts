@@ -5,7 +5,7 @@ import {sql} from 'drizzle-orm';
 import {closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb} from './harness';
 import {resignationJourneyFixture} from './helpers/resignation-journey-fixture';
 import {hireEmployee} from '../core/org';
-import {commandResignationJourney,submitResignationJourney} from '../packs/lifecycle/resignation/service';
+import {commandResignationJourney,submitResignationJourney} from '../packs/lifecycle/service';
 import {deliverAutomationEmails,queueAutomationEmailTx} from '../core/automation-email-delivery';
 import {prepareResignationProofTx,resignationRuntimeKey} from '../core/resignation-proof';
 import {client,type SessionContext,type Tx} from '../db/client';

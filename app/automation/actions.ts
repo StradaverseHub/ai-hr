@@ -9,7 +9,7 @@ import {
 } from '@/packs/automation/service';
 import {contractConfigurationDirectory} from '@/packs/contracts/service';
 import {probationCase,probationSummaryRows,moveProbationWorkflowsToShared} from '@/packs/probation/service';
-import {resignationConfigurationCases,resignationWorkflowDryRun,installResignationDefaults} from '@/packs/lifecycle/resignation/service';
+import {resignationConfigurationCases,resignationWorkflowDryRun,installResignationDefaults} from '@/packs/lifecycle/service';
 import {PROBATION_AUTOMATION_CATALOGUE} from '@/lib/automation/catalogues/probation';
 import {PROBATION_DEFAULTS} from './probation-defaults';
 import type {ActionResult,DryRunEventFacts} from './types';

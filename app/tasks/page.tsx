@@ -1,11 +1,10 @@
 import {Pager} from '@/components/pager';
 import {parsePageQuery,pageState} from '@/lib/pagination';
-import {resignationInbox} from '@/packs/lifecycle/resignation/service';
 import {todayInKualaLumpur} from '@/lib/hr-date';
 import { scopedSession } from '@/lib/scope';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { pendingTaskSummary } from '@/core/approvals-inbox';
-import { onboardingTasks } from '@/packs/lifecycle/service';
+import { onboardingTasks,resignationInbox } from '@/packs/lifecycle/service';
 import {lifecycleModuleNavigation} from '../lifecycle/workflow-availability';
 import {lifecycleModuleInbox} from '../lifecycle/module-inbox';
 import { TasksView } from './tasks-view';

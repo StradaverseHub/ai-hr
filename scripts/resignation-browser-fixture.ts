@@ -13,9 +13,8 @@ async function main(){
  const {randomUUID}=await import('node:crypto'),{and,eq,isNull,sql}=await import('drizzle-orm');
  const {createDb,client}=await import('../db/client'),s=await import('../db/schema');
  const {resolveEntitlementsTx}=await import('../core/entitlements'),{assignRole,createDepartment,createPosition,createJobGrade}=await import('../core/admin'),{hireEmployee,setEmploymentGrade}=await import('../core/org'),{setCompensation}=await import('../core/comp');
- const {v9Setup,v9SaveConfig,v9Configuration,v9CaseDetail,v9Command}=await import('../packs/lifecycle/service');
+ const {v9Setup,v9SaveConfig,v9Configuration,v9CaseDetail,v9Command,resignationEmployeeView,installResignationDefaults}=await import('../packs/lifecycle/service');
  const {saveAutomationWorkflow}=await import('../packs/automation/service');
- const {resignationEmployeeView,installResignationDefaults}=await import('../packs/lifecycle/resignation/service');
  const {resignationRuntimeKey}=await import('../lib/resignation-runtime-proof');
  const owner=createDb(process.env.MIGRATION_DATABASE_URL!),tenantId=DEMO_TENANT_ID,event='dev.resignation-browser.fixture-prepared',reserved=await owner.client.reserve();
  try{

@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {owner,migrateTestDb,resetDb,closeAll} from './harness';
 import {resignationJourneyFixture} from './helpers/resignation-journey-fixture';
-import {commandResignationJourney,resignationCase,resignationInbox,submitResignationJourney} from '../packs/lifecycle/resignation/service';
+import {commandResignationJourney,resignationCase,resignationInbox,submitResignationJourney} from '../packs/lifecycle/service';
 import {myResignation,listResignationRequests,decideResignation,submitResignation} from '../core/offboarding';
 
 beforeAll(migrateTestDb);beforeEach(resetDb);afterEach(()=>vi.unstubAllEnvs());afterAll(closeAll);

@@ -2,7 +2,7 @@
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 const fx=vi.hoisted(()=>({session:{tenantId:'tenant-a',userId:'operator-a'},direct:vi.fn(),linked:vi.fn()}));
 vi.mock('@/lib/session',()=>({getSession:async()=>fx.session}));
-vi.mock('@/packs/lifecycle/resignation/service',()=>({downloadResignationLetter:fx.direct,downloadResignationOffboardingLetter:fx.linked}));
+vi.mock('@/packs/lifecycle/service',()=>({downloadResignationLetter:fx.direct,downloadResignationOffboardingLetter:fx.linked}));
 import {GET} from '../app/resignation/[caseId]/documents/[documentId]/route';
 const params=()=>({params:Promise.resolve({caseId:'journey-a',documentId:'document-a'})});
 beforeEach(()=>{vi.clearAllMocks();fx.direct.mockResolvedValue({name:'Own letter.pdf',content:new Uint8Array([37,80,68,70])});fx.linked.mockResolvedValue({name:'Linked acceptance.pdf',content:new Uint8Array([37,80,68,70])});});

@@ -5,8 +5,7 @@ const state=vi.hoisted(()=>({session:{tenantId:'fictional-tenant',userId:'fictio
 vi.mock('@/lib/scope',()=>({scopedSession:async()=>({s:state.session,scopeIds:['selected-company']})}));
 vi.mock('@/core/entitlements',()=>({isModuleEnabledOrFalse:(_ctx:unknown,module:string)=>module==='claims'||module==='lifecycle'}));
 vi.mock('@/core/approvals-inbox',()=>({pendingTaskSummary:state.preview,listPendingTasks:state.full}));
-vi.mock('@/packs/lifecycle/service',()=>({onboardingTasks:state.onboarding}));
-vi.mock('@/packs/lifecycle/resignation/service',()=>({resignationInbox:state.resignations}));
+vi.mock('@/packs/lifecycle/service',()=>({onboardingTasks:state.onboarding,resignationInbox:state.resignations}));
 vi.mock('../app/lifecycle/workflow-availability',()=>({lifecycleModuleNavigation:async()=>({})}));
 vi.mock('../app/lifecycle/module-inbox',()=>({lifecycleModuleInbox:async()=>({items:[],count:0})}));
 vi.mock('../app/tasks/tasks-view',()=>({TasksView:(props:{existing:unknown[];existingTotal:number;claimTotal:number})=>{

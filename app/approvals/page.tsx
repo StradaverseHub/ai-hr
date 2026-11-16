@@ -1,5 +1,5 @@
 import {todayInKualaLumpur} from '@/lib/hr-date';
-import {resignationInbox} from '@/packs/lifecycle/resignation/service';
+import {resignationInbox} from '@/packs/lifecycle/service';
 import {ResignationCaseCard} from '@/components/resignation/case-card';
 import { Pager } from '@/components/pager';
 import { parsePageQuery, pageState } from '@/lib/pagination';

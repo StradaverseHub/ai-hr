@@ -1,4 +1,4 @@
-import {resignationEmployeeView} from '@/packs/lifecycle/resignation/service';
+import {resignationEmployeeView} from '@/packs/lifecycle/service';
 import {EmployeeResignation} from '@/components/resignation/employee';
 import {profileVisibilityFingerprint} from '@/lib/profile-policy-fingerprint';
 import {profileHiddenTabs,isProfileVisibilityPolicyValue,profileSectionPolicyKey} from '@/lib/profile-edit-policy-value';

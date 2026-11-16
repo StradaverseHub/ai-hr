@@ -2,7 +2,7 @@
 import {revalidatePath} from 'next/cache';
 import {getSession} from '@/lib/session';
 import {getTranslations} from 'next-intl/server';
-import {resignationForOffboardingCase,resignationCase,commandResignationJourney,submitResignationJourney,uploadResignationFile} from '@/packs/lifecycle/resignation/service';
+import {resignationForOffboardingCase,resignationCase,commandResignationJourney,submitResignationJourney,uploadResignationFile} from '@/packs/lifecycle/service';
 import type {ResignationCommandInput,ResignationCaseView,ResignationOffboardingDocuments} from '@/lib/resignation-journey';
 import {validateLeaveDocument} from '@/packs/leave/service';
 export type ResignationActionResult={ok:true;value:ResignationCaseView}|{ok:false;error:string;conflict?:boolean};

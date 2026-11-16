@@ -4,7 +4,7 @@ import {redirect,unstable_rethrow} from 'next/navigation';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
 import {publicErrorMessage} from '@/lib/public-error';
 import {approvePersonnelPosting,editPersonnelPosting,personnelPosting,rejectOffboardingPosting,offboardingPostingChoices,isPersonnelPostingEvent} from '@/packs/personnel-postings/service';
-import {commandResignationJourney} from '@/packs/lifecycle/resignation/service';
+import {commandResignationJourney} from '@/packs/lifecycle/service';
 const QUEUE='/lifecycle/offboarding/postings';
 const text=(data:FormData,name:string)=>String(data.get(name)??'').trim();
 export async function approveOffboardingPostingAction(data:FormData){
@@ -23,7 +23,7 @@ export async function retryOffboardingPostingAction(data:FormData){
  const ctx=await requireScopedLifecycleModule();
  try{
   const posting=await personnelPosting(ctx,text(data,'postingId'));if(!posting||posting.source!=='offboarding'||!posting.canRetry)throw new Error('Posting not found.');
-  const {resignationCase}=await import('@/packs/lifecycle/resignation/service');const c=await resignationCase(ctx,posting.sourceRef);
+  const {resignationCase}=await import('@/packs/lifecycle/service');const c=await resignationCase(ctx,posting.sourceRef);
   await commandResignationJourney(ctx,{caseId:c.id,revision:c.revision,command:{type:'retry'}});
  }catch(error){unstable_rethrow(error);redirect(QUEUE+'?error='+encodeURIComponent(publicErrorMessage(error)));}
  revalidatePath(QUEUE);redirect(QUEUE);

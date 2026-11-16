@@ -6,7 +6,7 @@ import {adminCtx,createAppUser,owner,seedBase,harnessSnapshot,setModule} from '.
 import {setCompensation} from '../../core/comp';
 import {hireEmployee} from '../../core/org';
 import {v9Defaults} from '../../lib/lifecycle-v9-defaults';
-import {submitResignationJourney} from '../../packs/lifecycle/resignation/service';
+import {submitResignationJourney} from '../../packs/lifecycle/service';
 import {todayInKualaLumpur,addCalendarMonths} from '../../lib/hr-date';
 import type {SessionContext} from '../../db/client';
 import type {AutomationStep,AutomationWorkflow} from '../../lib/automation/workflow';
