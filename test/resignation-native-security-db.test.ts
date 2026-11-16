@@ -44,9 +44,9 @@ it('refuses naked employee/FYI writes, forged signature state, arbitrary recipie
  const original=await persisted();
  for(const ctx of[employee,fyi]){
   expect(await withTenant(ctx,tx=>tx.execute(sql`select data from resignation_journey where id=${id}::uuid`))).toHaveLength(0);
-  await expect(withTenant(ctx,tx=>tx.execute(sql`select app.resignation_journey_context(${employmentId}::uuid,${id}::uuid)`))).rejects.toThrow();
-  await expect(withTenant(ctx,tx=>tx.execute(sql`select app.resignation_journey_save(${id}::uuid,1,'runner','retained',${JSON.stringify({...data,offer:{basicSalary:'99999'},letters:[{document:{actions:[{actorId:manager.userId,action:'signed'}]}}]})}::jsonb,${'{'+ctx.userId+'}'}::uuid[],null)`))).rejects.toThrow();
-  await expect(withTenant(ctx,tx=>begin(tx,ctx,{type:'accept',lastWorkingDay:day,replacementNeeded:false}))).rejects.toThrow();
+  await nativeRefusal(withTenant(ctx,tx=>tx.execute(sql`select app.resignation_journey_context(${employmentId}::uuid,${id}::uuid)`)),'42501');
+  await nativeRefusal(withTenant(ctx,tx=>tx.execute(sql`select app.resignation_journey_save(${id}::uuid,1,'runner','retained',${JSON.stringify({...data,offer:{basicSalary:'99999'},letters:[{document:{actions:[{actorId:manager.userId,action:'signed'}]}}]})}::jsonb,${'{'+ctx.userId+'}'}::uuid[],null)`)),'42501');
+  await nativeRefusal(withTenant(ctx,tx=>begin(tx,ctx,{type:'accept',lastWorkingDay:day,replacementNeeded:false})),'42501');
  }
  await nativeRefusal(withTenant(employee,tx=>tx.execute(sql`select * from app.resignation_runtime_verifier`)),'42501',/permission denied/);
  await nativeRefusal(withTenant(employee,tx=>tx.execute(sql`delete from app.resignation_runtime_state`)),'42501',/permission denied/);expect(await persisted()).toEqual(original);
@@ -61,9 +61,9 @@ it('binds exact payload, actor, transaction, tenant and revision; missing verifi
  await nativeRefusal(withTenant(manager,tx=>begin(tx,manager,{type:'accept',lastWorkingDay:day,replacementNeeded:false},2)),'40001');
  let replay:{payload:string;signature:string}|undefined;
  await withTenant(manager,async tx=>{const[row]=await tx.execute<{id:string}>(sql`select txid_current()::text id`);replay=signResignationRuntime({operation:'read',caseId:id,args:{mode:'case',caseId:id}},{tenantId:b.tenantId,userId:manager.userId!,personId:manager.personId!,transactionId:row.id},master);});
- await expect(withTenant(manager,tx=>tx.execute(sql`select app.resignation_journey_admit(${replay!.payload},${replay!.signature})`))).rejects.toThrow();
- await expect(withTenant(fyi,tx=>tx.execute(sql`select app.resignation_journey_admit(${replay!.payload},${replay!.signature})`))).rejects.toThrow();
- await expect(withTenant(manager,async tx=>{await begin(tx,manager,{type:'accept',lastWorkingDay:day,replacementNeeded:false});const next={...data,lastWorkingDay:day,replacementNeeded:false};await prepareResignationProofTx(tx,manager,{operation:'save',caseId:id,args:{id,revision:1,action:'runner',stage:'accepted',data:next,participants,offboarding:null}});await tx.execute(sql`select app.resignation_journey_save(${id}::uuid,1,'runner','retained',${JSON.stringify(next)}::jsonb,${'{'+participants.join(',')+'}'}::uuid[],null)`);})).rejects.toThrow();
+ await nativeRefusal(withTenant(manager,tx=>tx.execute(sql`select app.resignation_journey_admit(${replay!.payload},${replay!.signature})`)),'42501');
+ await nativeRefusal(withTenant(fyi,tx=>tx.execute(sql`select app.resignation_journey_admit(${replay!.payload},${replay!.signature})`)),'42501');
+ await nativeRefusal(withTenant(manager,async tx=>{await begin(tx,manager,{type:'accept',lastWorkingDay:day,replacementNeeded:false});const next={...data,lastWorkingDay:day,replacementNeeded:false};await prepareResignationProofTx(tx,manager,{operation:'save',caseId:id,args:{id,revision:1,action:'runner',stage:'accepted',data:next,participants,offboarding:null}});await tx.execute(sql`select app.resignation_journey_save(${id}::uuid,1,'runner','retained',${JSON.stringify(next)}::jsonb,${'{'+participants.join(',')+'}'}::uuid[],null)`);}),'42501');
  await owner.db.execute(sql`delete from app.resignation_runtime_verifier`);
  await nativeRefusal(withTenant(manager,tx=>begin(tx,manager,{type:'accept',lastWorkingDay:day,replacementNeeded:false})),'42501',/not provisioned/);expect(await persisted()).toEqual(original);
 });
@@ -119,18 +119,18 @@ it('regenerates only an unsigned waiting owner letter from its current published
  await owner.db.execute(sql`insert into automation_workflow_version(tenant_id,workflow_id,revision,module,status,required,definition,reason,saved_by) values(${b.tenantId}::uuid,${workflowId}::uuid,1,'off','live',true,'{"trigger":{"event":"retention"},"steps":[{"id":"generate","type":"generateDocument"}]}'::jsonb,'Fictional generating workflow',${b.adminUserId}::uuid)`);
  await owner.db.execute(sql`insert into automation_run(tenant_id,id,module,workflow_id,workflow_revision,subject_id,event_key,trigger_event,status,step_cursor,waiting_for) values(${b.tenantId}::uuid,${runId}::uuid,'off',${workflowId}::uuid,1,${id}::uuid,'retention:fixture','retention','waiting',1,${l.id}::uuid)`);
  data={...data,decision:null,letters:[l],waits:[{id:randomUUID(),kind:'letter',runId,documentId:l.id}]};await seedJourney('offer');
- await expect(withTenant(employee,tx=>begin(tx,employee,{type:'regenerateLetter',documentId:l.id,documentRevision:l.revision}))).rejects.toThrow();
+ await nativeRefusal(withTenant(employee,tx=>begin(tx,employee,{type:'regenerateLetter',documentId:l.id,documentRevision:l.revision})),'42501');
  await withTenant(manager,async tx=>{await begin(tx,manager,{type:'regenerateLetter',documentId:l.id,documentRevision:l.revision});l=regenerateResignationLetter(l,{documentRevision:l.revision,actor:{userId:manager.userId!,personId:manager.personId!,name:'Fictional assigned manager',at:new Date().toISOString(),today:'2026-11-16'},generation:input}).letter;data={...data,letters:[l]};await save(tx,manager,data,'retention');await save(tx,manager,data,'retention',2);});
  expect(l.templateVersion).toBe(2);expect(l.generatedOn).toBe('2026-11-16');expect(l.document.actions).toEqual([]);
  const[targetProof]=await owner.db.execute<{count:number;keys:string[]}>(sql`select jsonb_array_length(payload->'initialData'->'letters') as count,array(select jsonb_object_keys(payload->'initialData')) as keys from app.resignation_runtime_state where tenant_id=${b.tenantId}::uuid and actor=${manager.userId} and kind=${'intent:'+id}`);expect(targetProof).toEqual({count:1,keys:['letters']});
  l=act(l,manager,{type:'complete',stepId:'owner-review'});l=act(l,employee,{type:'open'});l=act(l,employee,{type:'complete',stepId:'employee-sign',signature:'Fictional employee',consent:true});data={...data,letters:[l]};await seedJourney('retained');
- await expect(withTenant(manager,tx=>begin(tx,manager,{type:'regenerateLetter',documentId:l.id,documentRevision:l.revision},3))).rejects.toThrow();
+ await nativeRefusal(withTenant(manager,tx=>begin(tx,manager,{type:'regenerateLetter',documentId:l.id,documentRevision:l.revision},3)),'42501');
 });
 it('enforces request/employment/company and clearance reference invariants',async()=>{
  const original=await persisted();const other=randomUUID();await owner.db.execute(sql`insert into company(id,tenant_id,legal_name) values(${other}::uuid,${b.tenantId}::uuid,'Fictional other company')`);
  await nativeRefusal(owner.db.execute(sql`update resignation_journey set company_id=${other}::uuid where id=${id}::uuid`),'23503');
- await expect(owner.db.execute(sql`update resignation_journey set offboarding_case_id=${randomUUID()}::uuid where id=${id}::uuid`)).rejects.toThrow();
- await expect(withTenant(employee,async tx=>{const[row]=await tx.execute<{id:string}>(sql`select txid_current()::text id`);const p=signResignationRuntime({operation:'read',caseId:id,args:{mode:'case',caseId:id}},{tenantId:randomUUID(),userId:employee.userId!,personId:employee.personId!,transactionId:row.id},master);await tx.execute(sql`select app.resignation_journey_admit(${p.payload},${p.signature})`);})).rejects.toThrow();expect(await persisted()).toEqual(original);
+ await nativeRefusal(owner.db.execute(sql`update resignation_journey set offboarding_case_id=${randomUUID()}::uuid where id=${id}::uuid`),'23503');
+ await nativeRefusal(withTenant(employee,async tx=>{const[row]=await tx.execute<{id:string}>(sql`select txid_current()::text id`);const p=signResignationRuntime({operation:'read',caseId:id,args:{mode:'case',caseId:id}},{tenantId:randomUUID(),userId:employee.userId!,personId:employee.personId!,transactionId:row.id},master);await tx.execute(sql`select app.resignation_journey_admit(${p.payload},${p.signature})`);}),'42501');expect(await persisted()).toEqual(original);
 });
 
 it('classifies only reverse-linked managed clearance for native operators and real owner workers',async()=>{
