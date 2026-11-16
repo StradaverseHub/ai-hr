@@ -10,7 +10,7 @@ async function perform<T>(work:(session:NonNullable<Awaited<ReturnType<typeof re
  const session=await requireScopedLifecycleModule();
  if(!session)return {ok:false as const,error:'Your session ended. Sign in again.'};
  try{const value=await work(session);if(invalidate)revalidatePath('/lifecycle/contracts','layout');return {ok:true as const,value};}
- catch(error){return {ok:false as const,error:error instanceof ContractManagementError?error.message:error instanceof ZodError?'Check the entered values and try again.':'The request could not be completed. Your entries are still here. Reload and try again.'};}
+ catch(error){return {ok:false as const,error:error instanceof ContractManagementError?error.message:error instanceof ZodError?'Check the entered values and try again.':'The request could not be completed. Your entries are still here. Try again.'};}
 }
 export async function actSharedApproval(input:Parameters<typeof owner.actContractSharedApproval>[1]){return perform(s=>owner.actContractSharedApproval(s,input));}
 export async function actSharedLetter(input:Parameters<typeof owner.actContractSharedLetter>[1]){return perform(async s=>{const letter=await owner.actContractSharedLetter(s,input);return {letter,document:owner.renderContractSharedLetter(letter),capabilities:await owner.contractSharedLetterActions(s,letter.id)};});}

@@ -41398,7 +41398,16 @@
     "ced1efbd9d248": "Legacy period",
     "ca6f5b0e592fa": "Contract",
     "cfbf62f364d37": "Original workflow retained",
-    "c3fe0d142d983": "This case"
+    "c3fe0d142d983": "This case",
+    "cc5e56f3847c2": "Workflow continuing",
+    "ca0ab8776a341": "Decision approval",
+    "c1c736ed5f00e": "Renewed",
+    "c570d766e18a9": "Converted to permanent",
+    "c5f32e793c0f4": "Handed to Offboarding",
+    "ce5830d265452": "Superseded",
+    "ce016867c8f6f": "The preview could not be requested. Your entries are still here. Try again.",
+    "c8511af76a0a1": "The decision could not be submitted. Your preview is still here. Try again.",
+    "c20a655bc39aa": "Content fingerprint"
   },
   "resignationJourney": {
     "title": "辞职",

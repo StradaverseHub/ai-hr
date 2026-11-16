@@ -218,10 +218,12 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5296,when:1794841005896,tag:'5896_contract_shared_directory_and_signer_caption'},
  {idx:5297,when:1794841005897,tag:'5897_contract_shared_period_history'},
  {idx:5298,when:1794841005898,tag:'5898_contract_shared_work_page'},
+ {idx:5299,when:1794841005899,tag:'5899_contract_shared_legacy_inbox_cutover'},
  {idx:5304,when:1794841005904,tag:'5904_contract_shared_native_intake_guard'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5899_contract_shared_legacy_inbox_cutover':'7e03b54bd2375278e32aef835d2e88bf6fb017145bb3bf488ebffdd0a6dcc32e',
  '5849_contract_shared_case_references':'420746f8e5fc37017e9a87c125cbd457b67e4f99e35bad4ab058c5f66b450319',
  '5904_contract_shared_native_intake_guard':'2e3725db72f7f2a080a2a6d0db9fcd748e800ab2700e65616681c951732419c8',
  '5898_contract_shared_work_page':'f18a09d0a09539f502171b5d8e201298c75e627869c613f5cc90c9c0b71c0dca',

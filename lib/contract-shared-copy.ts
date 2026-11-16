@@ -355,6 +355,15 @@ const keys:Record<string,string>={
   "Legacy period": "ced1efbd9d248",
   "Contract": "ca6f5b0e592fa",
   "Original workflow retained": "cfbf62f364d37",
-  "This case": "c3fe0d142d983"
+  "This case": "c3fe0d142d983",
+  "Workflow continuing": "cc5e56f3847c2",
+  "Decision approval": "ca0ab8776a341",
+  "Renewed": "c1c736ed5f00e",
+  "Converted to permanent": "c570d766e18a9",
+  "Handed to Offboarding": "c5f32e793c0f4",
+  "Superseded": "ce5830d265452",
+  "The preview could not be requested. Your entries are still here. Try again.": "ce016867c8f6f",
+  "The decision could not be submitted. Your preview is still here. Try again.": "c8511af76a0a1",
+  "Content fingerprint": "c20a655bc39aa"
 };
 export function useContractSharedCopy(){const t=useTranslations('contractShared');return (text:string)=>{const caption=text.trim(),key=keys[caption];return key?text.slice(0,text.indexOf(caption))+t(key)+text.slice(text.indexOf(caption)+caption.length):text;};}

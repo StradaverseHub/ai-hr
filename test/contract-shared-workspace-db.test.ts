@@ -7,7 +7,7 @@ import {hireEmployee,setEmploymentInfo} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {v9Setup,v9Workspace,v9SaveConfig} from '../packs/lifecycle/service';
 import {saveAutomationDocumentTemplate,saveAutomationWorkflow} from '../packs/automation/service';
-import {contractSharedTracker,openContractSharedPeriod,contractSharedWorkspace,contractSharedPeriods,contractSharedConfigurationChoices,contractSharedAccessPeople,contractSharedWaiting,contractSharedLetterActions,contractSharedWorkPage,previewContractSharedDecision,submitContractSharedDecision,readContractSharedApproval,actContractSharedApproval,readContractSharedLetter,actContractSharedLetter,saveContractSharedRole,saveContractSharedMember} from '../packs/contracts/service';
+import {contractInbox,contractSharedTracker,openContractSharedPeriod,contractSharedWorkspace,contractSharedPeriods,contractSharedConfigurationChoices,contractSharedAccessPeople,contractSharedWaiting,contractSharedLetterActions,contractSharedWorkPage,previewContractSharedDecision,submitContractSharedDecision,readContractSharedApproval,actContractSharedApproval,readContractSharedLetter,actContractSharedLetter,saveContractSharedRole,saveContractSharedMember} from '../packs/contracts/service';
 import {contractPreviewJobHandler} from '../core/contract-shared-preview-job';
 import {contractAutomationJobHandler} from '../core/contract-shared-automation-job';
 import {readBulkJob} from '../core/bulk-job';
@@ -54,7 +54,7 @@ async function routedCase(){
 }
 it('projects the actual approval group and current letter step without granting the employee Case View',async()=>{
  const f=await routedCase(),outsider=await ordinary('Fictional additional CEO member');
- expect((await contractSharedWorkPage(f.proposer)).total).toBe(0); // Deciding is case-only, not an inferred assigned task.
+ expect((await contractInbox(f.proposer)).items.some(item=>item.caseId===f.caseId)).toBe(false);expect((await contractSharedWorkPage(f.proposer)).total).toBe(0); // Deciding is case-only, not an inferred assigned task.
  const requested=await previewContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,draft:{kind:'renew',months:12,payChanges:false,reason:'Continue specialist work'}});
  await tickToDone(requested.jobId,f.proposer,'contract_preview');const submitted=await submitContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,previewId:requested.previewId});await tickToDone(submitted.jobId,f.proposer,'contract_automation');
  const workspace=await contractSharedWorkspace(admin,f.caseId),approvalId=workspace.approvals[0].id;

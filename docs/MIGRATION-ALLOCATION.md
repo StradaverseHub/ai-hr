@@ -4056,3 +4056,5 @@ Contract screens forward block5896–5899 (idx5296–5299, when1794841005896–5
 5897 uses the reserved Contract screens forward block for bounded, same-employment/same-company period history and its read index. One native Case View proof gates metadata only; historical ordinals remain unknown instead of being inferred from a legacy version.
 
 5898 uses the allocated Contract screens forward slot for exact native assigned-work counts and SQL pagination. Only actual current approval/Review/Approve/resend or Sign assignments produce work. Decision submission stays on the case page. Current source and immutable account bindings remain native predicates; tracker waiting queries restrict candidates to the requested case page before projection.
+
+5899 completes the allocated Contract screen forward block by excluding native shared-owned cases from the original Contract inbox. Legacy cases retain their original count and bounded preview; shared carrier cases use only the current-assignment SQL page. This prevents an inferred legacy decision task beside the approved case-only decision entry.

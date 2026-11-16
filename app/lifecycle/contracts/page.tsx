@@ -2,7 +2,6 @@ import {redirect} from 'next/navigation';
 import {z} from 'zod';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
 import {contractSharedTracker,contractSharedWaiting,type ContractTrackerQuery} from '@/packs/contracts/service';
-import {todayInKualaLumpur} from '@/lib/hr-date';
 import {SharedContractTracker} from './shared-tracker';
 import '../v9/workspace.css';
 import './shared-contract.css';
@@ -12,5 +11,5 @@ export default async function Page({searchParams}:{searchParams:Promise<Record<s
  const status=z.enum(['all','attention','upcoming','decision','progress','closed']).catch('all').parse(read('status'));
  const query:ContractTrackerQuery={search:(read('search')??'').slice(0,100),status,companyId:z.uuid().safeParse(read('companyId')).success?read('companyId'):null,offset:Math.min(100000,Math.max(0,Number.parseInt(read('offset')??'0',10)||0)),limit:50};
  const page=await contractSharedTracker(session,query),waiting=await contractSharedWaiting(session,page.rows.flatMap(row=>row.caseId?[row.caseId]:[]));
- return <main className="v9-workspace"><SharedContractTracker page={page} waiting={waiting} query={query} today={todayInKualaLumpur()}/></main>;
+ return <main className="v9-workspace"><SharedContractTracker page={page} waiting={waiting} query={query}/></main>;
 }

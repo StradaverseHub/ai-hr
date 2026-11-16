@@ -142,12 +142,12 @@ export async function tasksPageV2(ctx: SessionContext, q: { limit: number; curso
   const summaries = await summariesFor(ctx, rows, locale);
   return {
     // Probation kinds are not in the published mobile vocabulary (modulesOf reads probation: false; this keeps the type).
-    items: rows.filter((t: Pending): t is Pending & { kind: Exclude<Pending['kind'], 'probationApproval' | 'probationTask' | 'contractApproval' | 'contractLetter' | 'contractDecision' | 'contractPosting' | 'contractPay'> } => t.kind !== 'probationApproval' && t.kind !== 'probationTask' && t.kind !== 'contractApproval' && t.kind !== 'contractLetter' && t.kind !== 'contractDecision' && t.kind !== 'contractPosting' && t.kind !== 'contractPay').map((t) => {
+    items: rows.filter((t: Pending): t is Pending & { kind: Exclude<Pending['kind'], 'probationApproval' | 'probationTask' | 'contractApproval' | 'contractLetter' | 'contractPosting' | 'contractPay'> } => t.kind !== 'probationApproval' && t.kind !== 'probationTask' && t.kind !== 'contractApproval' && t.kind !== 'contractLetter' && t.kind !== 'contractPosting' && t.kind !== 'contractPay').map((t) => {
       const native = q.expandedNative === true ? isNativeTaskKind(t.kind) || isReviewWorkspaceKind(t.kind) || isRequestWorkspaceKind(t.kind) || isPackWorkspaceKind(t.kind) : isNativeTaskKind(t.kind) && t.kind !== 'replacementLeave';
       return { id: t.id, kind: t.kind, subject: { name: t.subjectName, code: null }, createdAt: t.createdAt, nativeDecision: native, webPath: native ? null : t.linkPath,
         summary: native ? summaries.get(`${t.kind}:${t.id}`) ?? null : null };
     }),
-    nextCursor: after.length > q.limit && last && last.kind !== 'probationApproval' && last.kind !== 'probationTask' && last.kind !== 'contractApproval' && last.kind !== 'contractLetter' && last.kind !== 'contractDecision' && last.kind !== 'contractPosting' && last.kind !== 'contractPay' ? encodeCursor(TASKS_CURSOR, [last.createdAt, last.kind, last.id]) : null,
+    nextCursor: after.length > q.limit && last && last.kind !== 'probationApproval' && last.kind !== 'probationTask' && last.kind !== 'contractApproval' && last.kind !== 'contractLetter' && last.kind !== 'contractPosting' && last.kind !== 'contractPay' ? encodeCursor(TASKS_CURSOR, [last.createdAt, last.kind, last.id]) : null,
   };
 }
 
