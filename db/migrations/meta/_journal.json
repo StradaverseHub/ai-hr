@@ -6301,6 +6301,13 @@
       "when": 1794841005836,
       "tag": "5836_contract_shared_ending_actions",
       "breakpoints": true
+    },
+    {
+      "idx": 5237,
+      "version": "7",
+      "when": 1794841005837,
+      "tag": "5837_contract_shared_email_self_binding",
+      "breakpoints": true
     }
   ]
 }
