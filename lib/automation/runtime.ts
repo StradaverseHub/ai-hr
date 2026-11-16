@@ -88,8 +88,6 @@ export type AutomationExecutors = {
   generateDocument?: AutomationStepExecutor;
   createPosting?: AutomationStepExecutor;
   startOffboarding?: AutomationStepExecutor;
-  /** Contract decision approvals pause on the approval request identity, just as documents pause on theirs. */
-  requestApproval?: AutomationStepExecutor;
   /** Called once when a run fails (for Probation: ask the PBP to check and release by hand). */
   notifyFailure: (run: AutomationRun, reason: string) => Promise<void>;
 };
@@ -172,7 +170,6 @@ function stepExecutor(executors: AutomationExecutors, type: string): AutomationS
     case 'generateDocument': return executors.generateDocument;
     case 'createPosting': return executors.createPosting;
     case 'startOffboarding': return executors.startOffboarding;
-    case 'requestApproval': return executors.requestApproval;
     default: return undefined;
   }
 }
