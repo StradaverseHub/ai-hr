@@ -552,3 +552,15 @@ employee search to a run's View page (owner approved the plan on the board, 16 N
 No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried forward to
 `c1baf4ee…` and the agent manifest regenerated (`bf8328ea…`), under the owner's standing pre-approval for staging
 re-binds (12 November 2026). Staging only.
+
+### Re-binding for board 4604dccc revision 4, the latest saved correction controls (16 November 2026)
+
+`claude/fb-4604dccc-r4-latest-correction`, merged with `ee02bba4d` (board fd8156d4 on main 22ba7e3a5, binding
+`c1baf4ee…`), makes the latest saved Information-Only Correction control each field from its Effective Date, in the
+TypeScript readers and, through migration 5696, the SQL company and report readers (owner approved the plan on the board,
+16 November 2026). Changed covered files include `core/information-correction-history.ts`,
+`core/information-correction.ts`, `core/movement-history.ts`, `core/movement.ts`, `core/hire-correction.ts`,
+`lib/information-correction.ts` and the six `messages/*.json` catalogues, in the provider-data scope only through the
+import graph. No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried forward
+to `d18c9c64…` and the agent manifest regenerated, under the owner's standing pre-approval for staging re-binds
+(12 November 2026). Staging only.
