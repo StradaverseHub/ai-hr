@@ -714,17 +714,19 @@ no production authority. The owner separately requires approval before this cand
 
 ## Resignation shared Configuration source binding — 17 November 2026
 
-The resignation coordinator reviewed the deterministic implementation against upstream
-`f0443eaf27d3584f55b6a2e7d48558bd553d4149`; the reviewed source checkpoint before this binding
-is `570c92601` (including the scoped handoff adapter repair). An independent engineering review confirmed that the added transitive closure
-comes from the canonical Lifecycle facade, resignation state/letter/posting services and private
-SMTP delivery composition. No AI/provider policy, prompt, tool registration, provider payload
-schema or transport changed. The SMTP document payload is not a model-provider disclosure.
+The resignation coordinator reviewed the deterministic implementation against current upstream
+`bcba1f3e8faaf75c760599750ec9b4dc1d5a0f73`, including the reviewed scoped handoff repair
+`570c92601` and the post-gate convention corrections. Independent reviews confirmed the added
+closure is Lifecycle state/letter/posting composition and private SMTP delivery, not a new model
+payload. The capability inventory leaves resignation decisions, signatures, uploads that resume
+the journey, and mixed employment postings on the human handoff surface. The native posting
+destination is excluded from coarse Assistant navigation. No executable AI tool, provider
+contract, prompt, disclosure schema or transport was added or broadened.
 
 Under the owner's recorded standing authority for same-purpose technical staging rebindings
-(above), the coordinator carried the 28 already-approved records from `800269d5…` to
-`4c4586ddd74e9fc4843cdb082333bb13aca96b2bbffd93236c3c236429677a06` (1640 source files).
+(above), the coordinator carried the 29 already-approved upstream records from `f4b83a1fa86cf3a53f111b8be69e10f29e0e629f9fa4f50c8ea0209987034494` to
+`a1b28522e0cbeefd9b953b6d3e387f906d20962cf03fbb17dd17f03b8cbf3b65` (1640 source files).
 Original human reviewers, evidence references, approval timestamps and statuses are preserved;
 pending contracts remain pending. The agent manifest is regenerated after this binding.
-This source preparation does not grant new data disclosure authority or release authority.
-The owner's explicit release hold still applies: no main/alpha integration or installation.
+This preparation grants no new data disclosure or release authority. The owner's explicit
+release hold still applies: no main/alpha integration or installation.
