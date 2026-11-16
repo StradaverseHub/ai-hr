@@ -120,7 +120,7 @@ describe('protected Contract decision preview and submission',()=>{
   await setCompensation(f.admin,{employmentId:f.employee.employmentId,basicSalary:5200.12,effectiveFrom:start});
   expect((await readContractSharedLetter(employee,letter.id)).body?.values['contract.salary']).toBe('5100.11');
   const current=await contractSharedContext(f.proposer,f.caseId);expect(current.flow?.stage).toBe('workflow');expect(current.flow?.flags).not.toContain('employee_cannot_sign');expect(current.source.contractNumber).toBe(4);
-  const [native]=await owner.db.execute<{count:number;salary:string}>(sql`select (select count(*)::int from personnel_posting where tenant_id=${f.b.tenantId}::uuid) as count,c.basic_salary::text as salary from compensation c where c.tenant_id=${f.b.tenantId}::uuid and c.employment_id=${f.employee.employmentId}::uuid and c.superseded_at is null`);
+  const [native]=await owner.db.execute<{count:number;salary:string}>(sql`select (select count(*)::int from personnel_posting where tenant_id=${f.b.tenantId}::uuid) as count,c.basic_salary::text as salary from compensation c where c.tenant_id=${f.b.tenantId}::uuid and c.employment_id=${f.employee.employmentId}::uuid and c.superseded_at is null and c.valid_from<=${todayInKualaLumpur()}::date and (c.valid_to is null or c.valid_to>${todayInKualaLumpur()}::date) order by c.valid_from desc,c.id limit 1`);
   expect(native.count).toBe(0);expect(Number(native.salary)).toBe(5200.12);
  });
  it('lets a real manager without builder/pay access review the chain without reading private routing inputs or applying effects',async()=>{
