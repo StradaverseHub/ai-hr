@@ -232,9 +232,9 @@ export const APPROVED_UPGRADE_TAIL=[
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
- '9991_resignation_journey':'753e2bc0afe61bbe81a3b23fb77486e88808aed33c99d5781330b7a103555811',
+ '9991_resignation_journey':'81b0079814150c1b2a35e12d5555a78e3f576bf8ca124fe992d7157f5cfd73d8',
  '9992_resignation_configuration':'6e064c336c441fbbf01017debe9e1a748957976d3d6b2b96470747d07d7dacb5',
- '9993_resignation_postings':'df59608a643535e98fb17cf15648bd0aa23c12bc63726dab5c62801931b0c124',
+ '9993_resignation_postings':'316f2ea0875203a4ee8ff3dd8f2b0aea14bbc332bcc50e7362b7d812e9a22622',
  '9995_resignation_email_delivery':'ab1b8f55cf60b6ebdc1e02b18a8a44cdb0787c593f2d6bc3977ffee8b77fa8dc',
  '5761_probation_automation_recipients_and_tracker_steps':'c39e471adb80e51b56466c264bc6546dc6ce48a354e30d8e9ef3629a82b2184b',
  '5760_probation_queue_kinds_and_pbp_tasks':'c3ab5ddf4c702dd1ca947b3a350c7e852ab8699524c9da7fcad11f19887cdb59',

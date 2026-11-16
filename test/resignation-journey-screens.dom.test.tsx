@@ -53,7 +53,7 @@ describe('manager decision and BP information',()=>{
   fireEvent.click(screen.getByRole('radio',{name:'Accept resignation'}));
   fireEvent.change(screen.getByLabelText('Agreed last working day'),{target:{value:'2026-12-20'}});
   fireEvent.change(screen.getByLabelText('Replacement needed?'),{target:{value:'no'}});
-  fireEvent.submit(screen.getByRole('button',{name:'Accept resignation',exact:true}).closest('form')!);
+  fireEvent.submit(screen.getByRole('button',{name:'Accept resignation'}).closest('form')!);
   await waitFor(()=>expect(actions.runResignationCommand).toHaveBeenCalledWith({caseId:'case-a',revision:7,command:{type:'accept',lastWorkingDay:'2026-12-20',replacementNeeded:false}}));
  });
  it('shows exact monthly difference, the percentage and no allowance field',()=>{
