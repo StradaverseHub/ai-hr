@@ -7,7 +7,7 @@ import {renderEmailBody,resolveDocumentLinks,sanitiseEmailHtml} from './email-bo
 import {notificationEmailLink} from './notification-email-model';
 import {v9ImageCid} from './lifecycle-v9-email-content';
 import type {AutomationEmailAsset} from './automation-email-assets';
-export type AutomationRichEmailBody={doc:EmailBodyDoc;values:Record<string,string>;sourceTemplate?:{id:string;revision:number}};
+export type AutomationRichEmailBody={doc:EmailBodyDoc;values:Record<string,string>;sourceTemplate?:{id:string;revision:number};sourceProof?:{payload:string;signature:string}};
 export type AutomationEmailLinkedDocument={id:string;templateId:string;name:string};
 export function automationEmailContent(input:{module:AutomationModule;origin:string;linkPath:string;body:string;richBody?:AutomationRichEmailBody|null;assets?:readonly AutomationEmailAsset[];documents?:readonly AutomationEmailLinkedDocument[];test?:boolean}):{text:string;html?:string}{
  const link=notificationEmailLink(input.origin,input.linkPath);
@@ -22,7 +22,9 @@ export function automationEmailContent(input:{module:AutomationModule;origin:str
  documentLink:id=>documents.find(document=>document.templateId===id)??(input.test&&testIds.includes(id)?{name:'Document preview'}:null)});
  const links=new Map(documents.map(document=>[document.templateId,notificationEmailLink(input.origin,`/lifecycle/contracts/letters/${document.id}`)]));
  for(const id of testIds)links.set(id,notificationEmailLink(input.origin,'/automation/templates'));
- const html=sanitiseEmailHtml(resolveDocumentLinks(rendered.html,rendered.text,links).html);
+ const resolved=resolveDocumentLinks(rendered.html,rendered.text,links).html;
+ const footer=documents.length?renderEmailBody({type:'doc',content:documents.map(document=>({type:'paragraph',content:[{type:'text',text:document.name,marks:[{type:'link',attrs:{kind:'web',href:links.get(document.templateId)!}}]}]}))},{values:{}}).html:'';
+ const html=sanitiseEmailHtml(resolved+footer);
  const lines=documents.map(document=>`${document.name}: ${links.get(document.templateId)}`);
  return {text:rendered.text+(lines.length?'\n\n'+lines.join('\n'):'')+(input.test?'\n\nTemplate test only. Per-person documents and files are not generated or sent.':''),html};
 }

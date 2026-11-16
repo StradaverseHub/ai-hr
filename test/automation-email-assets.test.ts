@@ -26,5 +26,7 @@ describe('Shared email attachment settings',()=>{
   const content=automationEmailContent({module:'contract_staff',origin:'https://mail.example.test',linkPath:'/lifecycle/contracts/example',body:'',richBody,assets:[{id:imageId,kind:'image',name:'logo.png',alt:'Company logo',mimeType:'image/png',size:24,contentHash:'a'.repeat(64),at:'2026-11-17T00:00:00.000Z',by:'Author'}],documents:[{id:documentId,templateId,name:'Fictional document'}]});
   expect(content.html).toContain('cid:v9-image.'+imageId+'@aihr');expect(content.html).toContain('https://mail.example.test/lifecycle/contracts/letters/'+documentId);
   expect(content.text).toContain('Fictional document: https://mail.example.test/lifecycle/contracts/letters/'+documentId);expect(content.html).not.toContain('{{document-link:');
+  const withoutInline=automationEmailContent({module:'contract_staff',origin:'https://mail.example.test',linkPath:'/lifecycle/contracts/example',body:'Please complete your document.',richBody:{doc:automationEmailBodyDoc({body:'Please complete your document.'}),values:{}},documents:[{id:documentId,templateId,name:'Fictional document'}]});
+  expect(withoutInline.html).toContain('href="https://mail.example.test/lifecycle/contracts/letters/'+documentId+'"');expect(withoutInline.html).toContain('Fictional document</a>');
  });
 });
