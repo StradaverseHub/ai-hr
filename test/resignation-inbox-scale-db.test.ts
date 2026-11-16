@@ -9,7 +9,7 @@ import {withTenant} from '../db/client';
 import {prepareResignationProofTx} from '../core/resignation-proof';
 import {beforeAll,beforeEach,afterAll,afterEach,vi,it,expect} from 'vitest';
 import type {SessionContext} from '../db/client';
-import {owner,migrateTestDb,resetDb,closeAll,createAppUser} from './harness';
+import {owner,migrateTestDb,resetDb,closeAll,createAppUser,setModule} from './harness';
 import {resignationJourneyFixture} from './helpers/resignation-journey-fixture';
 import {observeNativeRead,type NativeReadQuery} from './helpers/native-read-observer';
 import {commandResignationJourney,resignationInbox,resignationCase} from '../packs/lifecycle/resignation/service';
@@ -48,6 +48,8 @@ it('keeps all-company and single-company resignation inboxes bounded and equival
  const flat=people.map(p=>({...p,tenantId:f.base.tenantId}));
  await owner.db.execute(sql`insert into person(id,tenant_id,full_name,primary_email) select x."personId",${f.base.tenantId}::uuid,x.name,x."personId"::text||'@resignation-scale.example.test' from jsonb_to_recordset(${JSON.stringify(flat)}::jsonb) as x("personId" uuid,name text)`);
  await owner.db.execute(sql`insert into employment(id,tenant_id,person_id,company_id,hired_on,employee_code) select x."employmentId",${f.base.tenantId}::uuid,x."personId",x."companyId",'2024-01-01',x.code from jsonb_to_recordset(${JSON.stringify(flat)}::jsonb) as x("employmentId" uuid,"personId" uuid,"companyId" uuid,code text)`);
+ // Historical legacy requests and managed snapshots predate reactivation; unsigned active-company inserts are forbidden.
+ await setModule(f.base.tenantId,'lifecycle','disabled');
  await owner.db.execute(sql`insert into resignation_request(id,tenant_id,employment_id,person_id,last_working_day,reason,status,created_at) select x."requestId",${f.base.tenantId}::uuid,x."employmentId",x."personId",'2027-03-01','Fictional scale resignation','pending',x."createdAt" from jsonb_to_recordset(${JSON.stringify(flat.filter(p=>p.managed||p.legacy))}::jsonb) as x("requestId" uuid,"employmentId" uuid,"personId" uuid,"createdAt" timestamptz)`);
  await owner.db.execute(sql`insert into compensation(tenant_id,employment_id,basic_salary,currency,valid_from) select ${f.base.tenantId}::uuid,x."employmentId",24680.12,'SGD','2024-01-01' from jsonb_to_recordset(${JSON.stringify(managed)}::jsonb) as x("employmentId" uuid)`);
  const legacyFiles=[legacy[0],legacy.find(p=>p.companyId===companies[0].id)!].map(p=>({id:randomUUID(),requestId:p.requestId,employmentId:p.employmentId,fileName:`legacy-${p.code}.pdf`,mimeType:'application/pdf'}));
@@ -60,6 +62,7 @@ it('keeps all-company and single-company resignation inboxes bounded and equival
  });
  // Four chunks keep fixture transport bounded while avoiding 1,120 service-hire loops.
  for(let offset=0;offset<rows.length;offset+=140)await owner.db.execute(sql`insert into resignation_journey(tenant_id,id,employment_id,company_id,person_id,number,stage,data,participant_ids,submitted_on) overriding system value select ${f.base.tenantId}::uuid,x."requestId",x."employmentId",x."companyId",x."personId",x.number,'decision',x.data,x.participants,'2026-11-01' from jsonb_to_recordset(${JSON.stringify(rows.slice(offset,offset+140))}::jsonb) as x("requestId" uuid,"employmentId" uuid,"companyId" uuid,"personId" uuid,number bigint,data jsonb,participants uuid[])`);
+ await setModule(f.base.tenantId,'lifecycle','active');
  const evidence:{role:string;scope:string;offset:number;statements:number;rows:number;ms:number}[]=[];
  const planSources=new Map<string,NativeReadQuery[]>();
  const actors=[{name:'group HR',ctx:f.admin,kind:'approvals' as const,id:f.managerUserId},{name:'non-HR manager',ctx:manager,kind:'tasks' as const,id:managerId},{name:'FYI employee',ctx:f.watcher,kind:'approvals' as const,id:f.fyiUserId},{name:'company HR',ctx:scopedHr,kind:'approvals' as const,id:scopedHrId},{name:'own employee',ctx:f.staff,kind:'tasks' as const,id:f.employeeUserId},{name:'unassigned HR',ctx:stranger,kind:'approvals' as const,id:strangerId}];

@@ -19,11 +19,14 @@ beforeEach(async()=>{
 async function retained(currency?:string|null){
  const hire=await hireEmployee(admin,{person:{fullName:'Fictional Retained Employee',primaryEmail:randomUUID()+'@postings.example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01'});
  const journey=randomUUID(),workflow=randomUUID(),run=randomUUID(),step='pay',offer={position:'Fictional Analyst',jobGrade:'G4',basicSalary:'12345.67',effectiveDate:'2026-11-16'};
+ // Seed historical source records during a genuinely disabled Lifecycle interval, then restore the real gate.
+ await setModule(b.tenantId,'lifecycle','disabled');
  await owner.db.execute(sql`insert into resignation_request(id,tenant_id,employment_id,person_id,last_working_day) values(${journey}::uuid,${b.tenantId}::uuid,${hire.employmentId}::uuid,${hire.personId}::uuid,'2026-12-16')`);
  await owner.db.execute(sql`insert into resignation_journey(tenant_id,id,employment_id,company_id,person_id,stage,data,participant_ids,submitted_on) values(${b.tenantId}::uuid,${journey}::uuid,${hire.employmentId}::uuid,${b.companyId}::uuid,${hire.personId}::uuid,'retained',${JSON.stringify({offer,facts:{currency:currency??null}})}::jsonb,${`{${admin.userId}}`}::uuid[],'2026-11-16')`);
  await owner.db.execute(sql`insert into automation_workflow_version(tenant_id,workflow_id,revision,module,status,required,definition,reason,saved_by) values(${b.tenantId}::uuid,${workflow}::uuid,1,'off','live',false,${JSON.stringify({name:'Fixture retention posting',steps:[{id:step,type:'createPosting',params:{eventType:'Promotion',fields:['salary']}}]})}::jsonb,'Fictional fixture',${admin.userId}::uuid)`);
  await owner.db.execute(sql`insert into automation_run(tenant_id,id,module,workflow_id,workflow_revision,subject_id,event_key,trigger_event,status) values(${b.tenantId}::uuid,${run}::uuid,'off',${workflow}::uuid,1,${journey}::uuid,'accepted','accepted','running')`);
  const input={source:'offboarding' as const,sourceRef:journey,employmentId:hire.employmentId,eventType:'promotion' as const,proposed:{effectiveDate:offer.effectiveDate,basicSalary:offer.basicSalary},approverGroupId:'ops',idempotencyKey:`${run}:${step}:1`};
+ await setModule(b.tenantId,'lifecycle','active');
  return {hire,journey,input};
 }
 describe('Native Offboarding posting isolation',()=>{
