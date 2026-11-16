@@ -232,11 +232,22 @@ export function generateResignationLetter(input: GenerateResignationLetterInput,
   return result(input.previous ?? null, letter, pendingEvents(null, letter));
 }
 
+/** The subject additionally verifies that the generating workflow is still waiting for this exact letter. */
+export function regenerateResignationLetter(letter: ResignationLetter, input: {
+  documentRevision: number; actor: ResignationLetterActor; generation: Omit<GenerateResignationLetterInput, 'previous'>;
+}, deps: ResignationLetterDependencies): ResignationLetterResult {
+  if (!actorValid(input.actor)) forbidden('A verified owner is required to regenerate this letter.');
+  if (input.documentRevision !== letter.revision) conflict('The letter changed. Open its current version before regenerating.');
+  if (!resignationLetterCapabilities(letter, input.actor.userId).canRegenerate) forbidden('Only the owner can regenerate an active letter before its first signature.');
+  if (input.generation.template.id !== letter.templateId) invalid('Regeneration must use the original document template.');
+  return generateResignationLetter({...input.generation, previous: letter}, deps);
+}
+
 export type ResignationLetterCapabilities = {
   contentVisible: boolean; ownerUserId: string | null; pendingSteps: SigningStep[];
   canOpen: boolean; canSign: boolean; canReview: boolean; canApprove: boolean; canSendBack: boolean;
   canRecall: boolean; canEditContent: boolean; canCorrectDetails: boolean; canResend: boolean;
-  canWithdrawOffer: boolean; canDecline: boolean; requiresOpen: boolean;
+  canWithdrawOffer: boolean; canDecline: boolean; canRegenerate: boolean; requiresOpen: boolean;
 };
 export function resignationLetterCapabilities(letter: ResignationLetter, userId: string | null): ResignationLetterCapabilities {
   const pending = resignationLetterPendingSteps(letter), mine = pending.filter(step => step.holderId === userId);
@@ -252,6 +263,7 @@ export function resignationLetterCapabilities(letter: ResignationLetter, userId:
     canReview: mine.some(step => step.kind === 'review'), canApprove: mine.some(step => step.kind === 'approve'),
     canSendBack: active(letter) && mine.length > 0 && !isOwner && !needsOpen,
     canRecall: active(letter) && isOwner && !holding && pending.length > 0,
+    canRegenerate: active(letter) && isOwner && !signingContentLocked(letter.document),
     canEditContent: active(letter) && !signingContentLocked(letter.document)
       && (letter.state === 'owner' && isOwner || mine.some(step => step.kind === 'review')),
     canCorrectDetails: active(letter) && holding,

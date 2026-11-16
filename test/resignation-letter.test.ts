@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {describe, expect, it} from 'vitest';
 import {
-  actResignationLetter, generateResignationLetter, lapseResignationLetter, reconcileResignationLetter,
+  actResignationLetter, generateResignationLetter, regenerateResignationLetter, lapseResignationLetter, reconcileResignationLetter,
   resignationLetterCapabilities, resignationLetterCorrection, resignationLetterEmployeePending,
   resignationLetterPendingSteps, resignationLetterPreview,
   type ResignationLetter, type ResignationLetterAction, type ResignationLetterActor,
@@ -50,6 +50,14 @@ function generate(overrides: Partial<Parameters<typeof generateResignationLetter
     generatedOn: '2026-11-16', generatedAt: '2026-11-16T04:00:00Z', values: values(), facts: {caseType: 'Resignation'},
     context: context(), ...overrides}, deps);
 }
+function regenerate(letter: ResignationLetter, who: keyof typeof people, t = template(), revision = letter.revision) {
+ return regenerateResignationLetter(letter, {documentRevision: revision, actor: actor(who), generation: {
+  id: letter.id, kind: letter.kind, template: t, tenantId: letter.document.tenantId, companyId: letter.document.companyId,
+  subjectId: letter.document.subjectId, employeeUserId: letter.employeeUserId, caseOwnerId: people.owner,
+  generatedOn: '2026-11-20', generatedAt: '2026-11-20T04:00:00Z', values: {...values(),today:'2026-11-20'}, facts: {caseType:'Resignation'}, context: context(),
+ }}, deps);
+}
+
 function act(letter: ResignationLetter, who: keyof typeof people, action: ResignationLetterAction, id = `request-${++sequence}`) {
   return actResignationLetter(letter, {id, actor: actor(who), documentRevision: letter.revision, action}, deps);
 }
@@ -117,6 +125,28 @@ describe('Offboarding letter generation reuses shared template routing', () => {
     expect(t.versions[0].blocks[4].role).toBe('hr');
   });
 
+  it('lets only the owner regenerate the active unsigned letter from the latest template', () => {
+    let old = generate().letter; old = complete(old, 'owner').letter;
+    const edited = {...old, blocks: old.blocks.map(block=>block.id==='body'?{...block,text:'Case-only draft'}:block), edited:true};
+    const latest = template(); latest.currentVersion=2; latest.versions.push({...structuredClone(latest.versions[0]),version:2,blocks:blocks().map(block=>block.id==='body'?{...block,text:'Current template wording'}:block)});
+    expect(resignationLetterCapabilities(old,people.owner).canRegenerate).toBe(true);
+    expect(()=>regenerate(old,'employee',latest)).toThrow(/owner/);
+    expect(()=>regenerate(old,'owner',latest,99)).toThrow(/changed/);
+    const next=regenerate(edited,'owner',latest).letter;
+    expect(next.templateVersion).toBe(2);expect(next.revision).toBe(old.revision+1);expect(next.generatedOn).toBe(old.generatedOn);
+    expect(next.blocks.find(block=>block.id==='body')?.text).toBe('Current template wording');expect(next.edited).toBe(false);
+    expect(next.history).toEqual(old.history);expect(next.document.actions).toEqual([]);expect(next.receipts).toEqual([]);
+    expect(resignationLetterPendingSteps(next).map(step=>step.id)).toEqual(['owner-review']);
+  });
+  it('refuses regeneration with an effective signature or released letter but permits returned owner custody', () => {
+    let signed=complete(complete(generate().letter,'owner').letter,'ceo').letter;
+    expect(resignationLetterCapabilities(signed,people.owner).canRegenerate).toBe(false);
+    expect(()=>regenerate(signed,'owner')).toThrow(/first signature/);
+    const returned=act(signed,'owner',{type:'recall'}).letter;
+    expect(regenerate(returned,'owner').letter.history).toEqual(returned.history);
+    signed=act(signed,'employee',{type:'open'}).letter;signed=complete(signed,'employee').letter;
+    expect(()=>regenerate(signed,'owner')).toThrow(/active letter/);
+  });
   it('regeneration retains the original letter date and original signature receipts', () => {
     let old = generate().letter; old = complete(old, 'owner').letter; old = complete(old, 'ceo').letter;
     const regenerated = generate({previous: old, generatedOn: '2026-11-20', generatedAt: '2026-11-20T04:00:00Z', values: {...values(), today: '2026-11-20'}}).letter;
