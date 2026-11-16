@@ -1153,7 +1153,7 @@
       "declaredHref": "/lifecycle/v9?view=templates",
       "status": "uncovered",
       "owner": "lib/lifecycle-v9-navigation.ts",
-      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+      "reason": "Retained compatibility address and durable identity; its duplicate sidebar alias is no longer mounted. No executed usable-content evidence is recorded in this ledger."
     },
     {
       "id": "shell.v9V9Workflows",
@@ -1162,7 +1162,7 @@
       "declaredHref": "/lifecycle/v9?view=workflows",
       "status": "uncovered",
       "owner": "lib/lifecycle-v9-navigation.ts",
-      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+      "reason": "Retained compatibility address and durable identity; its duplicate sidebar alias is no longer mounted. No executed usable-content evidence is recorded in this ledger."
     },
     {
       "id": "shell.v9V9Settings",
@@ -1180,7 +1180,7 @@
       "declaredHref": "/lifecycle/v9?view=groups",
       "status": "uncovered",
       "owner": "lib/lifecycle-v9-navigation.ts",
-      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+      "reason": "Retained compatibility address and durable identity; its duplicate sidebar alias is no longer mounted. No executed usable-content evidence is recorded in this ledger."
     },
     {
       "id": "shell.v9V9ModuleAccess",
@@ -1459,7 +1459,7 @@
       "declaredHref": "/lifecycle/contracts/workflows",
       "status": "uncovered",
       "owner": "lib/navigation/shell-inventory.ts",
-      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+      "reason": "Retained compatibility address and durable identity; its duplicate sidebar alias is no longer mounted. No executed usable-content evidence is recorded in this ledger."
     },
     {
       "id": "shell.contractTemplates",
@@ -1468,7 +1468,7 @@
       "declaredHref": "/lifecycle/contracts/templates",
       "status": "uncovered",
       "owner": "lib/navigation/shell-inventory.ts",
-      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+      "reason": "Retained compatibility address and durable identity; its duplicate sidebar alias is no longer mounted. No executed usable-content evidence is recorded in this ledger."
     },
     {
       "id": "submenu.systemLabels.organisation",

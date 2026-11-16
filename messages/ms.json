@@ -593,7 +593,7 @@
     "rewardsLimitControls": "Kawalan Had",
     "attendanceRequestOnBehalf": "Mohon Bagi Pihak",
     "attendanceApproveOnBehalf": "Lulus Bagi Pihak",
-    "moduleHrAutomation": "HR Automation · Shared",
+    "moduleHrAutomation": "Konfigurasi",
     "automationWorkflows": "Workflows",
     "automationTemplates": "Templates",
     "automationGroups": "Assignment groups",
@@ -40421,7 +40421,7 @@
     }
   },
   "automation": {
-    "crumb": "HR Automation",
+    "crumb": "Konfigurasi",
     "filterLabel": "Module",
     "done": "Done",
     "none": "None",

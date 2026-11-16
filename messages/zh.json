@@ -593,7 +593,7 @@
     "rewardsLimitControls": "限额控制",
     "attendanceRequestOnBehalf": "代为申请",
     "attendanceApproveOnBehalf": "代为审批",
-    "moduleHrAutomation": "HR Automation · Shared",
+    "moduleHrAutomation": "配置",
     "automationWorkflows": "Workflows",
     "automationTemplates": "Templates",
     "automationGroups": "Assignment groups",
@@ -40421,7 +40421,7 @@
     }
   },
   "automation": {
-    "crumb": "HR Automation",
+    "crumb": "配置",
     "filterLabel": "Module",
     "done": "Done",
     "none": "None",

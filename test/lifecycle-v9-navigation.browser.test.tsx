@@ -9,7 +9,7 @@ import '../app/globals.css';
 import '../app/atelier.css';
 import '../app/onboarding-workspace.css';
 import '../app/lifecycle/v9/workspace.css';
-vi.mock('next/navigation',()=>({usePathname:()=>'/lifecycle/v9',useSearchParams:()=>new URLSearchParams('view=templates'),useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
+vi.mock('next/navigation',()=>({usePathname:()=>'/automation/templates',useSearchParams:()=>new URLSearchParams('module=off'),useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
 vi.mock('../components/intent-link',async()=>{
  const React=await import('react');
  function BrowserLink({prefetch,...props}:any){return React.createElement('a',{...props,onClick:(event:any)=>{event.preventDefault();props.onClick?.(event);}},props.children);}
@@ -40,11 +40,11 @@ it.each(['classic','monolith','atelier'] as const)('keeps AIHR %s chrome and the
  </NextIntlClientProvider></UiThemeProvider>);
  const trigger=screen.getByRole('button',{name:'On/Off Boarding'});if(trigger.getAttribute('aria-expanded')!=='true')fireEvent.click(trigger);
  const nav=within(screen.getByRole('navigation',{name:'On/Off Boarding'}));
- expect(nav.getAllByRole('button').map(button=>button.textContent?.trim())).toEqual(['Onboarding','Offboarding','Configuration']);
- // ADR 2026-11-15-probation-shared-automation, decision 1: the V9 Templates row now sits in HR Automation.
- expect(nav.getAllByRole('link')).toHaveLength(6);
+ expect(nav.getAllByRole('button').map(button=>button.textContent?.trim())).toEqual(['Onboarding','Offboarding']);
+ // Shared Templates is the one visible builder destination; legacy V9 builder URLs remain compatible.
+ expect(nav.getAllByRole('link')).toHaveLength(5);
  const automationTrigger=screen.getByRole('button',{name:messages.nav.moduleHrAutomation});if(automationTrigger.getAttribute('aria-expanded')!=='true')fireEvent.click(automationTrigger);
- expect(within(screen.getByRole('navigation',{name:messages.nav.moduleHrAutomation})).getByRole('link',{name:messages.nav.automationOnOffTemplates}).getAttribute('aria-current')).toBe('page');
+ expect(within(screen.getByRole('navigation',{name:messages.nav.moduleHrAutomation})).getByRole('link',{name:messages.nav.automationTemplates}).getAttribute('aria-current')).toBe('page');
  expect(screen.queryByRole('navigation',{name:'Onboarding and offboarding'})).toBeNull();
  const workspace=document.querySelector('.v9-workspace-global') as HTMLElement;
  expect(workspace.hasAttribute('data-area-theme')).toBe(false);

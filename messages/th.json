@@ -593,7 +593,7 @@
     "rewardsLimitControls": "การควบคุมขีดจำกัด",
     "attendanceRequestOnBehalf": "ยื่นคำขอแทน",
     "attendanceApproveOnBehalf": "อนุมัติแทน",
-    "moduleHrAutomation": "HR Automation · Shared",
+    "moduleHrAutomation": "การกำหนดค่า",
     "automationWorkflows": "Workflows",
     "automationTemplates": "Templates",
     "automationGroups": "Assignment groups",
@@ -40421,7 +40421,7 @@
     }
   },
   "automation": {
-    "crumb": "HR Automation",
+    "crumb": "การกำหนดค่า",
     "filterLabel": "Module",
     "done": "Done",
     "none": "None",

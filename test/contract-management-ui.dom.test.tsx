@@ -13,6 +13,7 @@ import {newContractCase,DEFAULT_CONTRACT_SETTINGS} from '../lib/contract-managem
 import type {ContractCaseView,ContractSource} from '../packs/contracts/service';
 import {ContractIntake} from '../app/lifecycle/contracts/intake/intake';
 import {ContractSignature} from '../app/lifecycle/contracts/signature';
+import {ContractNavigation} from '../app/lifecycle/contracts/shared';
 import {ContractCases} from '../app/lifecycle/contracts/cases';
 import {ContractCaseDetail} from '../app/lifecycle/contracts/[caseId]/detail';
 import {ContractSettingsEditor} from '../app/lifecycle/contracts/settings/settings';
@@ -31,6 +32,10 @@ const companies=[{id:companyId,name:source.company,configure:false,gbs:false,pbp
 const wrap=(node:ReactNode)=>render(<NextIntlClientProvider locale="en" messages={messages}>{node}</NextIntlClientProvider>);
 beforeEach(()=>{mocks.command.mockReset();mocks.retirement.mockReset();mocks.refresh.mockReset();mocks.command.mockResolvedValue({ok:true,result:{}});});
 describe('Contract Management scoped interactions',()=>{
+ it('opens the shared Contract staff templates for configurers while retaining the native approver route',()=>{
+  const rendered=wrap(<ContractNavigation configure templates/>);expect(screen.getByRole('link',{name:'Templates'})).toHaveAttribute('href','/automation/templates?module=contract_staff');
+  rendered.rerender(<NextIntlClientProvider locale="en" messages={messages}><ContractNavigation templates/></NextIntlClientProvider>);expect(screen.getByRole('link',{name:'Templates'})).toHaveAttribute('href','/lifecycle/contracts/templates');
+ });
  it('filters the real assigned list and keeps expiry unsigned distinct from an end decision',async()=>{
   const r=record();r.term.endOn='2026-10-31';wrap(<ContractCases today="2026-11-03" companies={companies} rows={[{record:r,source,sourceConflict:null,lastSyncedAt:'2026-11-03 06:00:00.123456+08'}]}/>);
   expect(screen.getByText(/Latest source sync/)).toHaveTextContent('03/11/2026');expect(screen.getByRole('link',{name:source.name})).toBeInTheDocument();expect(screen.getByRole('cell',{name:'Expired – unsigned'})).toBeInTheDocument();expect(screen.queryByRole('link',{name:'Settings'})).not.toBeInTheDocument();

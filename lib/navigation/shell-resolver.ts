@@ -155,8 +155,8 @@ export function resolveShellNavigation({
   // The old lifecycle addresses remain valid for existing records and links, but their old
   // hub/self-service/requisition presentation is replaced by the owner's explicit V9 hierarchy.
   const lifecycleNavigation: ChildItem[] = [...(offboardingPostingsAccess?[OFFBOARDING_POSTINGS_NAVIGATION]:[]),...V9_NAVIGATION.filter(item => onboardingV9Access &&
-    !!onboardingV9Navigation?.[item.permission] && !('automationLabelKey' in item)).map(item => ({
-      href: item.href, labelKey: item.labelKey, submenuKey: item.submenuKey, icon: ONBOARDING_NODE.icon,
+    !!onboardingV9Navigation?.[item.permission] && !('automationLabelKey' in item) && item.view!=='settings').map(item => ({
+      href: item.href, labelKey: item.labelKey, submenuKey: 'submenuKey' in item ? item.submenuKey : undefined, icon: ONBOARDING_NODE.icon,
       exactHref: true, ...('ownedSubpaths' in item ? { ownedSubpaths: [...item.ownedSubpaths] } : {}),
     } satisfies ChildItem))].filter(canSeeChild);
   const lifecycleShared: ChildItem[] = V9_SHARED_NAVIGATION.filter(item => onboardingV9Access &&
@@ -164,6 +164,8 @@ export function resolveShellNavigation({
   // New module owners resolve both the actual purchased company and business-role visibility.
   // These additive People destinations do not inherit the legacy global-only Lifecycle nav gate.
   const scopedLifecycleRows = SCOPED_LIFECYCLE_NAVIGATION.filter(item => {
+    // Their existing native editors are hosted by shared Configuration; keep old addresses compatible.
+    if(item.labelKey==='contractWorkflows'||item.labelKey==='contractTemplates')return false;
     const access = item.module === 'probation' ? probationAccess : contractStaffAccess;
     switch (item.access) {
       case 'page': return access.page;
@@ -177,19 +179,19 @@ export function resolveShellNavigation({
     }
   });
   // ADR 2026-11-15-probation-shared-automation, decision 1: the shared builders, for anyone who configures at least one
-  // module (existing facts: Probation and Contract staff configure, On/Off Boarding V9 administration). The On/Off
-  // Boarding builder rows sit in the same section and keep their V9 gate and screens.
+  // module (existing facts: Probation and Contract staff configure, On/Off Boarding V9 administration).
+  // Settings keep their V9 gate; obsolete builder aliases are not mounted.
   const v9Administration = onboardingV9Access && !!onboardingV9Navigation?.administration;
   const automationRows: ChildItem[] = [
     ...(probationAccess.configure || contractStaffAccess.configure || v9Administration ? AUTOMATION_NAVIGATION : []),
-    ...V9_AUTOMATION_NAVIGATION.filter(() => v9Administration).map(item => ({
-      href: item.href, labelKey: item.automationLabelKey, icon: ONBOARDING_NODE.icon, exactHref: true,
+    ...V9_NAVIGATION.filter(item => item.view==='settings'&&v9Administration).map(item => ({
+      href:item.href,labelKey:item.labelKey,icon:ONBOARDING_NODE.icon,exactHref:true,
     } satisfies ChildItem)).filter(canSeeChild),
   ];
   const rewardRows = modulePackById('rewards')!.navLinks!
     .filter(row => rewardDestinations.includes(row.href) && moduleAllows(row.href));
   // The lifecycle pack's own builder rows are replaced by the V9 presentation above, including the builder views
-  // placed in the shared HR Automation section (automationRows), so they are dropped here like every onboarding row.
+  // placed in the shared Configuration section (automationRows), so they are dropped here like every onboarding row.
   const v9AutomationHrefs = new Set<string>(V9_AUTOMATION_NAVIGATION.map(item => item.href));
   const destinations: ChildItem[] = [...authorizedRows.filter(row => {
     const placement = navigationPlacement(row.href);
