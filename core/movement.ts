@@ -2606,10 +2606,11 @@ async function applyComparisonMovementTx(
 
 /**
  * The placement legs record the employee's organisation tags as at the movement date, and the tag owner refuses a
- * company that app.company_org_employment_company does not give for that date. That SQL owner still answers from the
- * "before" company of the earliest information correction dated after the day (ADR-0163's rule, which predates dated
- * corrections). Where the two disagree the movement is refused here with a named row code instead of a database
- * error; the SQL owner's rule is a recorded follow-up (ADR 2026-11-15 dated information corrections, Consequences).
+ * company that app.company_org_employment_company does not give for that date. That SQL owner answers from the
+ * "before" company of the earliest information correction dated after the day and saved after the correction in
+ * force on it (ADR-0163's before-image rule, bounded by migration 5696: the latest saved correction controls). Where
+ * the two disagree the movement is refused here with a named row code instead of a database error (ADR 2026-11-15
+ * dated information corrections, Consequences).
  */
 async function assertCompanyRecordAgreesTx(tx: Tx, ctx: SessionContext, p: CreateMovementInput) {
   if (!isCalendarDate(p.effectiveDate)) return;

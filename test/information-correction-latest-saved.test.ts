@@ -202,6 +202,100 @@ describe('Organisation Hire Correction',()=>{
  });
 });
 
+/** Migration 5696 — the SQL readers that answer a day from a correction's before-image. */
+const allCompanies=()=>sql`array[${b.companyId}::uuid,${beta}::uuid,${gamma}::uuid]`;
+const wideCtx=()=>({...adminCtx(b),grants:[{role:'hr_admin' as const,companyId:null}]});
+/** app.company_org_employment_company as installed, beside its pre-5696 rule (2126, verbatim), in the tenant. */
+async function sqlCompanyOn(id:string,day:string){
+ return owner.client.begin(async tx=>{
+  await tx.unsafe(`select set_config('app.tenant_id','${b.tenantId}',true)`);
+  const [row]=await tx<{current:string;legacy:string}[]>`select app.company_org_employment_company(e.id,${day}::date)::text as current,
+   coalesce((select nullif(ev.payload->'before'->>'companyId','')::uuid from domain_event ev where ev.tenant_id=e.tenant_id and ev.subject_employment_id=e.id and ev.event_type='employment.information.corrected' and ev.payload->>'effectiveOn'>${day}::date::text order by ev.sequence limit 1),
+    (select a.company_id from assignment a where a.employment_id=e.id and a.tenant_id=e.tenant_id and a.superseded_at is null and a.valid_from<=${day}::date and (a.valid_to is null or a.valid_to>${day}::date) order by a.valid_from desc,a.id limit 1),e.company_id)::text as legacy
+   from employment e where e.id=${id}::uuid`;
+  return row;
+ });
+}
+/** The company each Personnel reader shows for the employment on `day`. Their "companyId" is the dated company's
+ * organisation tag company, else today's company, so a reader agrees with the dated company or shows today's. */
+async function personnelCompanyOn(id:string,day:string){
+ return withTenant(wideCtx(),async tx=>{
+  const one=async(q:SQL)=>((await tx.execute<{company:string|null}>(q))[0]?.company)??null;
+  return {
+   facts:await one(sql`select "companyId"::text as company from app.personnel_overview_facts(${day}::date,${allCompanies()}) where "employmentId"=${id}::uuid`),
+   filterFields:await one(sql`select "companyId"::text as company from app.personnel_overview_filter_fields(${day}::date,${allCompanies()}) where "employmentId"=${id}::uuid`),
+   narrowRows:await one(sql`select n.value->>'companyId' as company from app.personnel_overview_narrow_rows(${day}::date,${allCompanies()}) n(value) where n.value->>'employmentId'=${id}::text`),
+  };
+ });
+}
+const datedCompanyOn=async(id:string,day:string)=>(await versions(id)).find(v=>v.validFrom<=day&&(v.validTo===null||v.validTo>day))?.companyId??null;
+async function closedSlip(employmentId:string,period:string){
+ const [pp]=await owner.db.insert(schema.payPeriod).values({tenantId:b.tenantId,companyId:b.companyId,period,status:'closed'}).returning({id:schema.payPeriod.id});
+ const [batch]=await owner.db.insert(schema.payrollBatch).values({tenantId:b.tenantId,companyId:b.companyId,payPeriodId:pp.id,payPeriod:period,batchDate:`${period}-25`,status:'closed',releasedAt:new Date(`${period}-25T00:00:00Z`)}).returning({id:schema.payrollBatch.id});
+ await owner.db.insert(schema.payslip).values({tenantId:b.tenantId,batchId:batch.id,employmentId,basicSalary:'3000.00',grossPay:'3000.00',statutory:{epfEmployee:330,epfEmployer:390,pcb:10},totalDeductions:'340.00',netPay:'2660.00',employerCost:'3390.00'});
+}
+const reportRecord=async(period:string)=>(await withTenant(adminCtx(b),tx=>tx.execute<{data:Record<string,string|null>}>(sql`select data from app.information_report_records('employment',${b.companyId}::uuid,${period}) data`))).map(r=>r.data);
+
+describe('the SQL readers (migration 5696) agree with employmentInformationAt and the dated record',()=>{
+ it('company: correction B saved after A answers from 1 Mar onward in the organisation owner and the Personnel readers',async()=>{
+  const id=await hire('LS-SQL-CO',gamma);
+  await correct(id,{companyId:beta},SAVED_FIRST);
+  await correct(id,{companyId:b.companyId},SAVED_LATER);
+  for(const [day,expected] of [['2025-02-01',gamma],['2025-06-01',b.companyId],['2025-10-31',b.companyId],['2025-12-01',b.companyId]] as const){
+   const owned=await sqlCompanyOn(id,day);
+   expect(owned.current,day).toBe(expected);
+   expect(await datedCompanyOn(id,day),day).toBe(expected);
+   expect((await readAt(id,day)).companyId,day).toBe(expected);
+   const shown=await personnelCompanyOn(id,day);
+   expect(shown,day).toEqual({facts:shown.facts,filterFields:shown.facts,narrowRows:shown.facts});
+   expect([expected,b.companyId,null],day).toContain(shown.facts);
+  }
+  // Before 5696 the organisation owner answered with the older correction for June.
+  expect((await sqlCompanyOn(id,'2025-06-01')).legacy).toBe(gamma);
+ });
+ it('report records: Group Join Date and Join Date follow correction B, as employmentInformationAt does',async()=>{
+  const id=await hire('LS-SQL-RR');
+  await closedSlip(id,'2025-06');
+  await correct(id,{hiredOn:'2025-01-05',joinDate:'2025-02-01'},SAVED_FIRST);
+  await correct(id,{hiredOn:'2025-01-03',joinDate:'2025-01-15'},SAVED_LATER);
+  for(const period of ['2025-06','2025']){
+   const records=await reportRecord(period);
+   expect(records,period).toHaveLength(1);
+   expect(records[0],period).toMatchObject({id,company_id:b.companyId,hired_on:'2025-01-03',join_date:'2025-01-15'});
+  }
+  expect(await readAt(id,'2025-06-01')).toMatchObject({hiredOn:'2025-01-03',joinDate:'2025-01-15',legacyHiredOn:HIRED,legacyJoinDate:HIRED});
+ });
+ it('equivalence: corrections saved in Effective Date order give the pre-5696 answers in the SQL readers',async()=>{
+  const co=await hire('LS-SQL-EQ-CO',gamma);
+  await correct(co,{companyId:b.companyId},'2025-03-01');
+  await correct(co,{employmentType:'part_time'},'2025-08-01');
+  await correct(co,{companyId:beta},'2025-11-01');
+  const days=new Set<string>();
+  for(let y=2025;y<=2026;y++)for(let m=1;m<=12;m++)days.add(`${y}-${String(m).padStart(2,'0')}-01`);
+  for(const day of ['2025-03-01','2025-08-01','2025-11-01'])for(const n of [-1,0,1])days.add(addDays(day,n));
+  for(const day of [...days].sort()){
+   const owned=await sqlCompanyOn(co,day);
+   expect(owned.current,day).toBe(owned.legacy);
+   const shown=await personnelCompanyOn(co,day);
+   expect(shown,day).toEqual({facts:shown.facts,filterFields:shown.facts,narrowRows:shown.facts});
+   expect([owned.legacy,beta,null],day).toContain(shown.facts);
+  }
+  expect((await sqlCompanyOn(co,'2025-06-01')).current).toBe(b.companyId);expect((await sqlCompanyOn(co,'2025-12-01')).current).toBe(beta);
+  // Report records: Group Join Date and Join Date corrected in date order, read in four closed months.
+  const rr=await hire('LS-SQL-EQ-RR');
+  for(const period of ['2025-02','2025-06','2025-09','2025-12'])await closedSlip(rr,period);
+  await correct(rr,{joinDate:'2025-01-20'},'2025-03-01');
+  await correct(rr,{employmentType:'part_time'},'2025-08-01',{acknowledgeClosedPayroll:true});
+  await correct(rr,{hiredOn:'2025-01-03',joinDate:'2025-02-01'},'2025-11-01');
+  for(const period of ['2025-02','2025-06','2025-09','2025-12']){
+   const [record]=await reportRecord(period),at=await readAt(rr,period+'-01');
+   expect({hiredOn:record.hired_on,joinDate:record.join_date},period).toEqual({hiredOn:at.legacyHiredOn,joinDate:at.legacyJoinDate});
+   expect({hiredOn:at.hiredOn,joinDate:at.joinDate},period).toEqual({hiredOn:at.legacyHiredOn,joinDate:at.legacyJoinDate});
+  }
+  expect((await reportRecord('2025-06'))[0]).toMatchObject({hired_on:HIRED,join_date:'2025-01-20'});
+ });
+});
+
 describe('the dated planner (pure)',()=>{
  const v=(id:string,validFrom:string,validTo:string|null,companyId:string,departmentId='d1'):DatedVersion=>({id,validFrom,validTo,companyId,departmentId,employmentType:'full_time',businessUnitId:null,positionId:null});
  const rows=[v('v1',HIRED,SAVED_LATER,'G'),v('v2',SAVED_LATER,SAVED_FIRST,'A'),v('v3',SAVED_FIRST,TRANSFER,'B'),v('v4',TRANSFER,null,'B','d2')];

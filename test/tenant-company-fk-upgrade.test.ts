@@ -250,6 +250,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5690_information_payslip_snapshot_from_history',
    // Board 511aa74a (15 November 2026): the employment period link of a Rehired event.
    '5695_employment_rehire_link',
+   // Board 4604dccc r4 (16 November 2026): the latest saved information correction controls the SQL readers.
+   '5696_information_correction_latest_saved',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);

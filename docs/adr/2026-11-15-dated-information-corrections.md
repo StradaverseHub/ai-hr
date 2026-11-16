@@ -146,9 +146,14 @@ Consequences:
   nothing changes. Saved out of date order: `employmentInformationAt` answers by the new rule at once; the dated
   assignment records, labels and lines written by the earlier save stay as written until the next correction or
   movement rewrites them (no data repair runs).
-- No migration. The SQL readers that copy ADR-0163's before-image rule (`app.company_org_employment_company` and its
-  set-based copies in Personnel overview/search, `app.information_report_records`) still answer "earliest later
-  correction wins". For out-of-order corrections they can disagree with the dated record for the replaced period; the
-  existing named refusal (`movement_correction_company_record`) and the tag-only-where-they-agree rule apply. Moving
-  them to this rule is the follow-up migration already recorded above.
+- Migration `5696_information_correction_latest_saved` moves the SQL readers to the same rule:
+  `app.company_org_employment_company` (2126) and its set-based copies `app._personnel_employment_tags`,
+  `app.personnel_overview_facts`, `app.personnel_overview_filter_fields` (5121) and `app.personnel_overview_narrow_rows`
+  (5010/5012) bound the company before-image read by the company correction in force on the day;
+  `app.information_report_records` (0698) reads one before-image per field (company, Group Join Date, Join Date), each
+  bounded the same way. Each is re-created from its installed definition after an owner and read-count check; no table,
+  grant, policy or row changes. `companyRecordOnTx` mirrors the new organisation owner. Corrections saved in Effective
+  Date order give the same answers as before (equivalence tests). The "earliest correction dated after the day" rule
+  that the Consequences above record for these readers is superseded for the before-image choice; they still prefer
+  the before-image over the dated record, as before.
 - New and changed translations need translation review.

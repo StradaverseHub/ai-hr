@@ -557,8 +557,8 @@ async function applyTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stat
   ...(p.replacedCorrections?.length?{replacedCorrectionSequences:p.replacedCorrections.map(c=>c.sequence)}:{}),
   method:input.method,batchId:input.batchId??null,filename:input.filename??null,snapshotCount:preserved.count,assignmentVersionId,previousAssignmentId:s.current.id}});
  const [at]=await tx.select({companyId:assignment.companyId}).from(assignment).where(and(eq(assignment.employmentId,s.emp.id),isNull(assignment.supersededAt),sql`${assignment.validFrom}<=${effectiveOn}::date`,sql`(${assignment.validTo} is null or ${assignment.validTo}>${effectiveOn}::date)`)).orderBy(desc(assignment.validFrom)).limit(1);
- // The organisation tag owner checks the company against app.company_org_employment_company, whose correction
- // before-image rule predates dated corrections (ADR 2026-11-15, Consequences): record only where they agree.
+ // The organisation tag owner checks the company against app.company_org_employment_company, which prefers a
+ // correction's before-image to the dated record (ADR 2026-11-15, Consequences; bounded by 5696): record only where they agree.
  const tagCompany=at?.companyId??currentCompany;
  if(await companyRecordOnTx(tx,ctx.tenantId,s.emp.id,effectiveOn)===tagCompany)await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:s.emp.id,companyId:tagCompany,asOf:effectiveOn,trigger:'correction'});
 }

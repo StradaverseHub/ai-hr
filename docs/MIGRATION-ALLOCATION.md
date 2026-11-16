@@ -1,3 +1,20 @@
+# Board 4604dccc revision 4: the latest saved correction controls the SQL readers — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/fb-4604dccc-r4-latest-correction` (from `origin/main` = `origin/alpha` at `9d32dfab1`) appends
+`5696_information_correction_latest_saved` at idx 5096 / when 1793330005396, the board block's offset (tag T, idx
+T − 600, when 1793330004800 + (T − 5100)) directly after `5695` (when 1793330005395). The coordinator read the installed
+ledgers on staging and production on 16 November 2026 (853 rows each, maximum when 1793330005395) and found no origin
+claim on tags 5696–5699; the recruitment lane holds 5700 and above at when 1793330005400 and above. SHA256
+`235b556dd8c67cdecc2b5bda3859a627ef9a6f719766e36ca97b041fe1258f3e`. It re-creates, from each installed definition (owner, signature, SECURITY DEFINER, SET options, grants
+and earlier rewrites kept), the owner-owned readers `app.company_org_employment_company(uuid,date)` (2126),
+`app._personnel_employment_tags(uuid[],date)`, `app.personnel_overview_facts(date,uuid[])`,
+`app.personnel_overview_filter_fields(date,uuid[])` (5121), `app.personnel_overview_narrow_rows(date,uuid[])` (5010,
+rewritten by 5012) and `app.information_report_records(text,uuid,text)` (0698): a correction's before-image is read
+only from a correction saved after the one in force on the day. Each is checked for the migration owner and the exact
+reviewed before-image read first; no table, grant, policy, purpose-owned object or row changes. The approved upgrade tail
+pin and hash (`test/helpers/approved-upgrade.ts`, `test/tenant-company-fk-upgrade.test.ts`) carry the tag. Recheck the
+installed watermarks and peer claims at admission; this allocation grants no installation authority.
+
 # Board 4604dccc revision 3: payslip snapshots from recorded history — 15 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/fb-4604dccc-r3` (from `origin/main` = `origin/alpha` at `94d2f5bbe`) appends
