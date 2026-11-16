@@ -146,3 +146,9 @@ it('pages 1,000 actual pending approvals across 70 companies with exact native e
  const waiting=await contractSharedWaiting(admin,expected.slice(0,100).map(r=>r.caseId));expect(waiting).toHaveLength(100);expect(waiting.every(r=>r.waitingOn==='CEO')).toBe(true);
  expect(JSON.stringify(first)).not.toMatch(/salary|candidatePerson|contentHash|sourceRevision|reason|holderPersonId/);
 },180000);
+
+it('rejects explicit native NULL paging arguments before an unbounded read can occur',async()=>{
+ for(const statement of [sql`select app.contract_shared_work_page(null::text,null::uuid[],20,0)`,sql`select app.contract_shared_work_page('all',null::uuid[],null::integer,0)`,sql`select app.contract_shared_work_page('all',null::uuid[],20,null::integer)`]){
+  await expect(owner.withTenant(admin,tx=>tx.execute(statement))).rejects.toMatchObject({code:'22023'});
+ }
+});

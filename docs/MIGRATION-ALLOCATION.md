@@ -1,3 +1,8 @@
+<!-- 5910_contract_shared_work_page_null_guards -->
+# Contract native bounded-work guard — 17 November 2026 MYT
+
+A fresh read-only survey of all 268 registered worktrees found no SQL5910–5919 files or explicit allocation mentions. Reserve **5910** only, idx **5310**, when **1794841005910**, for the Contract screen owner's explicit SQL NULL guards in the existing native WorkPage. The root owner's5900–5909 allocation remains untouched. The completed parent was notified for release-coordinator union; this is source preparation only and grants no installation authority. Existing SQL5898 bytes and pinned hash are unchanged.
+
 <!-- 5848_contract_virtual_period -->
 # Contract read-only virtual periods — 17 November 2026 MYT
 

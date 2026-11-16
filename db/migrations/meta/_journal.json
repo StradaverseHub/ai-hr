@@ -6420,6 +6420,13 @@
       "when": 1794841005904,
       "tag": "5904_contract_shared_native_intake_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 5310,
+      "version": "7",
+      "when": 1794841005910,
+      "tag": "5910_contract_shared_work_page_null_guards",
+      "breakpoints": true
     }
   ]
 }
