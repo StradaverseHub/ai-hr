@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useState} from 'react';
 import {useTranslations} from 'next-intl';
-import {Button,inputCls} from '@/components/ui';
+import {Badge,Button,inputCls} from '@/components/ui';
 import type {ResignationCaseView,ResignationJourneyCommand,ResignationLetterView} from '@/lib/resignation-journey';
 import {LetterPreview,LetterRouting,day} from './common';
 import {ResignationBlockEditor} from './block-editor';
@@ -11,12 +11,13 @@ export function ResignationLetterCard({value,letter,busy,command}:{value:Resigna
  const caps=letter.capabilities,doc={documentId:letter.id,documentRevision:letter.revision};
  const retention=letter.kind==='retention'&&value.stage==='offer',opened=letter.opened;
  const sendBack=()=>{if(!reason.trim()){setLocalError(t('sendBackRequired'));return;}setLocalError('');return command({type:'sendBack',...doc,reason:reason.trim()}).then(saved=>{if(saved)setReason('');});};
- return <section className="space-y-4" aria-label={letter.name}><header className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold">{letter.name}</h3><p className="mt-1 text-xs text-muted-foreground">{t('version',{revision:letter.revision,templateVersion:letter.templateVersion})}</p></div>{letter.downloadUrl&&<a className="text-sm font-medium text-primary underline" href={letter.downloadUrl}>{t('download')}</a>}</header>
+ return <section className="space-y-4" aria-label={letter.name}><header className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold">{letter.name}</h3><p className="mt-1 text-xs text-muted-foreground">{t('version',{revision:letter.revision,templateVersion:letter.templateVersion})} · {t('generatedOn',{date:day(letter.generatedOn)})}</p>{t.has('letterState.'+letter.state)&&<Badge variant={letter.state==='released'?'success':letter.state==='owner'?'warning':'default'}>{t('letterState.'+letter.state)}</Badge>}</div>{letter.downloadUrl&&<a className="text-sm font-medium text-primary underline" href={letter.downloadUrl}>{t('download')}</a>}</header>
  {letter.sentBack&&<p className="rounded-lg border bg-muted/30 p-3 text-sm">{letter.sentBack.recall?t('recalled'):t('returned',{by:letter.sentBack.by,reason:letter.sentBack.reason})}</p>}
  {letter.changes.length>0&&<div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-950 dark:text-amber-100"><strong>{t('signAgain')}</strong><ul className="mt-1 space-y-1">{letter.changes.map((change,i)=><li key={i}>{t('change',change)}</li>)}</ul></div>}
  <LetterRouting letter={letter}/>
  {caps.open?<Button variant="outline" disabled={busy} onClick={async()=>{if(opened||await command({type:'openLetter',...doc}))setShown(v=>!v);}}>{t('openLetter')}</Button>:<p className="text-sm text-muted-foreground">{t('privateLetter')}</p>}
  {shown&&<LetterPreview letter={letter}/>}
+ {caps.regenerate&&<div className="space-y-2 rounded-lg border border-dashed p-3"><p className="text-sm text-muted-foreground">{t('regenerateHint')}</p><Button variant="outline" disabled={busy} onClick={()=>command({type:'regenerateLetter',...doc})}>{t('regenerate')}</Button></div>}
  {caps.recall&&<Button variant="outline" disabled={busy} onClick={()=>command({type:'recall',...doc})}>{t('recall')}</Button>}
  {caps.edit&&letter.editableBlocks&&<><Button variant="outline" disabled={busy} onClick={()=>setEditing(v=>!v)}>{t('updateLetter')}</Button>{editing&&<div className="grid gap-4 xl:grid-cols-2"><ResignationBlockEditor blocks={blocks} busy={busy} onChange={setBlocks}/><LetterPreview letter={letter} blocks={blocks}/></div>}</>}
  {caps.correct&&<><Button variant="outline" disabled={busy} onClick={()=>setCorrecting(v=>!v)}>{t('correct')}</Button>{correcting&&<div className="grid gap-3 sm:grid-cols-2"><label className="space-y-1 text-sm"><span>{t('lastWorkingDay')}</span><input className={inputCls} type="date" value={lastDay} disabled={busy} onChange={e=>setLastDay(e.target.value)}/></label><label className="space-y-1 text-sm"><span>{t('reason')}</span><textarea className={inputCls} value={caseReason} rows={3} disabled={busy} onChange={e=>setCaseReason(e.target.value)}/></label></div>}</>}

@@ -41072,7 +41072,20 @@
     "replacementCompleted": "Replacement recruitment recorded on {date}.",
     "replacementReference": "Recruitment reference URL",
     "replacementComplete": "Record recruitment handoff",
-    "replacementHint": "Arrange the replacement in your recruitment system, then add its reference URL to complete this handoff."
+    "replacementHint": "Arrange the replacement in your recruitment system, then add its reference URL to complete this handoff.",
+    "regenerate": "Regenerate from current template",
+    "regenerateHint": "Use the current published template and restart routing. This replaces case edits and keeps the original generated date.",
+    "generatedOn": "Generated {date}",
+    "linkedJourney": "Resignation journey {number}",
+    "linkedLetters": "Letters from the resignation journey",
+    "letterState": {
+      "review": "Routing in progress",
+      "owner": "With the owner",
+      "released": "Signed and released",
+      "declined": "Offer declined",
+      "lapsed": "Offer lapsed",
+      "withdrawn": "Withdrawn"
+    }
   },
   "offboardingPostings": {
     "breadcrumb": "Onboarding & offboarding / Personnel postings",

@@ -11,16 +11,23 @@ import {defaultV9CaseFields} from '../lib/lifecycle-v9-case-form';
 import {fictionalV9Case,fictionalV9Task} from './fixtures/lifecycle-v9/case';
 import {v9Defaults} from '../lib/lifecycle-v9-defaults';
 import {OffboardingCaseView,caseTasksByDue} from '../app/lifecycle/v9/offboarding-case-view';
+vi.mock('../components/resignation/offboarding-documents',()=>({ResignationOffboardingDocuments:({offboardingCaseId}:{offboardingCaseId:string})=><div role="region" aria-label="Linked resignation acceptance letters" data-offboarding-id={offboardingCaseId}/> }));
 vi.mock('../app/lifecycle/onboarding/v31-actions',()=>({changeOnboarding:vi.fn(),writeOnboardingNote:vi.fn(),markOnboardingSeen:vi.fn().mockResolvedValue(undefined)}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
 vi.mock('../app/lifecycle/v9/actions',()=>({readV9PersonnelPreview:vi.fn().mockResolvedValue({ok:true,values:{}}),commandV9:vi.fn(),readV9Case:vi.fn().mockResolvedValue({ok:false,error:'Salary source unavailable'}),readV9Email:vi.fn(),readV9UpdatedEmail:vi.fn(),readV9Workflow:vi.fn()}));
 beforeAll(()=>{HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};});
-function fixture(state:'submitted'|'cleared'|'cancelled'|'pending'='submitted',locale='en'){
+function fixture(state:'submitted'|'cleared'|'cancelled'|'pending'='submitted',locale='en',managed=false){
  const c=fictionalV9Case({state,tasks:[{...fictionalV9Task('Later task'),assignee:'recorded-owner',dueOn:'2026-12-02'},{...fictionalV9Task('Document task'),documentTemplate:'document',dueOn:'2026-11-28'},fictionalV9Task('Earlier task')],items:[{id:'item',name:'Fictional laptop',kind:'device',sourceId:null,group:null,assignee:null,dueOn:'2026-11-30',status:'todo',reason:'',returnReported:{at:'2026-11-01T00:00:00Z',by:'employee',note:'Reception receipt'},nativeSource:{caseId:'native-case',requestId:'request',itemId:'native-item',requestNumber:'IT-FICTIONAL'}}]});
+ if(managed)Object.assign(c,{resignationSourceCaseId:'managed-resignation'});
  const command=vi.fn().mockResolvedValue({ok:false,error:'Refresh your case.'}),onReason=vi.fn();
  const view=render(<NextIntlClientProvider locale={locale} messages={locale==='en'?messages:JSON.parse(readFileSync(`messages/${locale}.json`,'utf8'))}><div className="v9-workspace v9-workspace-global"><OffboardingCaseView c={c} config={v9Defaults()} users={[{id:'recorded-owner',name:'Recorded owner'}]} actor={{id:'hr',name:'Fictional HR'}} personnelWritableKeys={[]} busy={false} command={command} onDocument={vi.fn()} onReason={onReason} onOpenWorkflow={vi.fn()} onBack={vi.fn()} today="2026-11-02"/></div></NextIntlClientProvider>);
  return {c,command,onReason,...view};
 }
+it('links managed acceptance letters inside the existing Documents section without copying them into the V9 case',async()=>{
+ const {c}=fixture('submitted','en',true),documents=screen.getByRole('heading',{name:'Documents'}).closest('section')!;
+ expect(await within(documents).findByRole('region',{name:'Linked resignation acceptance letters'})).toHaveAttribute('data-offboarding-id',c.id);expect(c.documents).toEqual([]);expect(within(documents).queryByText('Documents appear when their workflow runs.')).not.toBeInTheDocument();
+ cleanup();fixture();expect(screen.queryByRole('region',{name:'Linked resignation acceptance letters'})).not.toBeInTheDocument();
+});
 it('sorts only the visible tasks and preserves document completion, return provenance and rejected actions',async()=>{
  const {c,command,onReason,container}=fixture();
  const source=JSON.stringify(c);

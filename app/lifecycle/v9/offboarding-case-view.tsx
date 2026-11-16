@@ -1,7 +1,8 @@
 'use client';
 import {useLocale} from 'next-intl';
 import {useOnboardingCopy} from '@/lib/onboarding-copy';
-import {useEffect,useState} from 'react';
+import {lazy,Suspense,useEffect,useState} from 'react';
+const ResignationOffboardingDocuments=lazy(()=>import('@/components/resignation/offboarding-documents').then(module=>({default:module.ResignationOffboardingDocuments})));
 import Link from 'next/link';
 import {Button, Field} from '@/components/ui';
 import {OnboardingBreadcrumb, OnboardingBadge} from '@/components/onboarding-workspace';
@@ -34,6 +35,7 @@ export function OffboardingCaseView({c, config, users, actor, personnelWritableK
  const copy=useOnboardingCopy(),locale=useLocale();
  const [editing,setEditing]=useState(c.state==='pending'),[error,setError]=useState('');
  useEffect(()=>{setEditing(c.state==='pending');},[c.id,c.state]);
+ const managedResignation='resignationSourceCaseId' in c&&typeof c.resignationSourceCaseId==='string'&&!!c.resignationSourceCaseId;
  const state=M.work(c),tasks=caseTasksByDue(c.tasks),next=tasks.find(task=>!M.isResolved(task.status)),first=c.log[0];
  const userName=(id:string|null)=>users.find(user=>user.id===id)?.name??'Unassigned';
  const groupName=(id:string|null)=>config.groups.find(group=>group.id===id)?.name??'Unassigned team';
@@ -80,7 +82,7 @@ export function OffboardingCaseView({c, config, users, actor, personnelWritableK
    <CaseSection title={copy('From Personnel Management')}>{c.pmChanges.length?<PersonnelReview key={c.id} c={c} busy={busy} writableKeys={personnelWritableKeys} command={command}/>:<p className="onb-muted">{copy('No changes awaiting Personnel Management review.')}</p>}</CaseSection>
   </CaseAside></CaseColumns>
   <OffboardingReturns c={c} config={config} users={users} busy={busy} command={command} note={note}/>
-  <CaseSection title={copy('Documents')}><CaseDocumentsList empty={copy("Documents appear when their workflow runs.")}>{c.documents.length?c.documents.map(document=><CaseDocumentRow key={document.id} name={document.name} detail={`Version ${document.version}`} status={<OnboardingBadge>{copy(document.status)}</OnboardingBadge>} actions={<><Button variant="outline" onClick={()=>onDocument(document)}>{copy("Open")} {document.name}</Button>{M.canRegenerate(c,document)&&<Button variant="outline" disabled={busy} onClick={()=>void command({type:'documentRegenerate',id:document.id})}>{copy("Regenerate")} {document.name}</Button>}</>}/>):null}</CaseDocumentsList></CaseSection>
+  <CaseSection title={copy('Documents')}>{(c.documents.length>0||!managedResignation)&&<CaseDocumentsList empty={copy("Documents appear when their workflow runs.")}>{c.documents.length?c.documents.map(document=><CaseDocumentRow key={document.id} name={document.name} detail={`Version ${document.version}`} status={<OnboardingBadge>{copy(document.status)}</OnboardingBadge>} actions={<><Button variant="outline" onClick={()=>onDocument(document)}>{copy("Open")} {document.name}</Button>{M.canRegenerate(c,document)&&<Button variant="outline" disabled={busy} onClick={()=>void command({type:'documentRegenerate',id:document.id})}>{copy("Regenerate")} {document.name}</Button>}</>}/>):null}</CaseDocumentsList>}{managedResignation&&<Suspense fallback={null}><ResignationOffboardingDocuments key={c.id} offboardingCaseId={c.id}/></Suspense>}</CaseSection>
   <CaseFiles key={c.id} c={c} config={config} readOnly/>
   <CaseWorkflows c={c} config={config} busy={busy} command={command} onOpenWorkflow={onOpenWorkflow} users={users}/>
   <CaseEmails c={c} config={config} busy={busy} command={command}/>

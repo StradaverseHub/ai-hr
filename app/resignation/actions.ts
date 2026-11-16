@@ -2,12 +2,14 @@
 import {revalidatePath} from 'next/cache';
 import {getSession} from '@/lib/session';
 import {getTranslations} from 'next-intl/server';
-import {resignationCase,commandResignationJourney,submitResignationJourney,uploadResignationFile} from '@/packs/lifecycle/resignation/service';
-import type {ResignationCommandInput,ResignationCaseView} from '@/lib/resignation-journey';
+import {resignationForOffboardingCase,resignationCase,commandResignationJourney,submitResignationJourney,uploadResignationFile} from '@/packs/lifecycle/resignation/service';
+import type {ResignationCommandInput,ResignationCaseView,ResignationOffboardingDocuments} from '@/lib/resignation-journey';
 import {validateLeaveDocument} from '@/packs/leave/service';
 export type ResignationActionResult={ok:true;value:ResignationCaseView}|{ok:false;error:string;conflict?:boolean};
-function refresh(){for(const path of ['/me','/approvals','/tasks','/lifecycle/offboarding'])revalidatePath(path);revalidatePath('/','layout');}
-async function refusal(error:unknown):Promise<ResignationActionResult>{const t=await getTranslations('resignationJourney');const code=error&&typeof error==='object'&&'code' in error?error.code:null;return {ok:false,error:code==='conflict'?t('changed'):error instanceof Error&&['LeaveDocumentTypeError','LeaveDocumentSizeError'].includes(error.name)?t('fileHint'):error instanceof Error&&error.name==='ResignationJourneyError'?error.message:t('failed'),conflict:code==='conflict'};}
+export type ResignationOffboardingResult={ok:true;value:ResignationOffboardingDocuments|null}|{ok:false;error:string;conflict?:boolean};
+export async function loadResignationOffboarding(offboardingCaseId:string):Promise<ResignationOffboardingResult>{try{return {ok:true,value:await resignationForOffboardingCase(await getSession(),offboardingCaseId)};}catch(error){return refusal(error);}}
+function refresh(){for(const path of ['/me','/approvals','/tasks','/lifecycle/offboarding','/lifecycle/v9'])revalidatePath(path);revalidatePath('/','layout');}
+async function refusal(error:unknown):Promise<Extract<ResignationActionResult,{ok:false}>>{const t=await getTranslations('resignationJourney');const code=error&&typeof error==='object'&&'code' in error?error.code:null;return {ok:false,error:code==='conflict'?t('changed'):error instanceof Error&&['LeaveDocumentTypeError','LeaveDocumentSizeError'].includes(error.name)?t('fileHint'):error instanceof Error&&error.name==='ResignationJourneyError'?error.message:t('failed'),conflict:code==='conflict'};}
 export async function runResignationCommand(input:ResignationCommandInput):Promise<ResignationActionResult>{try{const value=await commandResignationJourney(await getSession(),input);refresh();return {ok:true,value};}catch(error){return refusal(error);}}
 export async function reloadResignationCase(caseId:string):Promise<ResignationActionResult>{try{return {ok:true,value:await resignationCase(await getSession(),caseId)};}catch(error){return refusal(error);}}
 export async function submitOwnResignation(form:FormData):Promise<ResignationActionResult>{

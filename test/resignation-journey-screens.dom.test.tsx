@@ -7,17 +7,18 @@ import type {ResignationCaseView,ResignationLetterView,ResignationTaskView} from
 import {EmployeeResignation} from '../components/resignation/employee';
 import {ResignationCaseCard} from '../components/resignation/case-card';
 import {ResignationLetterCard} from '../components/resignation/letter-card';
+import {ResignationOffboardingDocuments} from '../components/resignation/offboarding-documents';
 import {ResignationBlockEditor} from '../components/resignation/block-editor';
 import {offerDifference} from '../components/resignation/common';
 import {resignationTaskInFilter} from '../components/resignation/task-rows';
 import {ResignationTaskPanel} from '../components/resignation/task-panel';
 import {parseApprovalCategory} from '../lib/approvals-categories';
-const actions=vi.hoisted(()=>({runResignationCommand:vi.fn(),reloadResignationCase:vi.fn(),submitOwnResignation:vi.fn(),uploadOwnResignationFile:vi.fn(),refresh:vi.fn()}));
+const actions=vi.hoisted(()=>({runResignationCommand:vi.fn(),reloadResignationCase:vi.fn(),submitOwnResignation:vi.fn(),uploadOwnResignationFile:vi.fn(),loadResignationOffboarding:vi.fn(),refresh:vi.fn()}));
 vi.mock('../app/resignation/actions',()=>actions);
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:actions.refresh})}));
 const wrap=(node:ReactNode)=>render(<NextIntlClientProvider locale="en" messages={messages} onError={error=>{throw error;}}>{node}</NextIntlClientProvider>);
 const c=(patch:Partial<ResignationCaseView>={}):ResignationCaseView=>({id:'case-a',number:'RSN-42',revision:7,employmentId:'employment-a',employeeName:'Fictional Employee',employeeCode:'F42',companyId:'company-a',companyName:'Fictional Company',businessGroup:'Fictional Group',department:'Finance',position:'Analyst',jobGrade:'G3',currentBasicSalary:'6800.00',stage:'decision',submittedOn:'2026-11-16',lastWorkingDay:'2026-12-16',reason:'Closer to home',noticeLabel:'1 month',earliestLastDay:'2026-12-16',offer:null,offerReplyBy:null,offerRemindOn:null,offerBlock:null,offboardingCaseId:null,replacementNeeded:null,replacementRequest:null,deciders:[{id:'manager',name:'Fictional Manager'}],keptInLoop:[{id:'bp',name:'Fictional BP'}],decisionDueOn:'2026-11-19',comments:[],priorCases:[],attachments:[],letters:[],emails:[],tasks:[],blocked:[],capabilities:{withdraw:false,accept:true,offer:true,comment:false,retry:false},...patch});
-const l=(patch:Partial<ResignationLetterView>={}):ResignationLetterView=>({id:'letter-a',kind:'retention',name:'Fictional retention letter',revision:2,templateVersion:1,generatedOn:'2026-11-16',state:'review',private:false,blocks:[],editableBlocks:null,mergeValues:{},routing:[],sentBack:null,changes:[],downloadUrl:null,opened:false,document:null,capabilities:{open:true,review:false,approve:false,sign:true,sendBack:true,recall:false,edit:false,correct:false,resend:false,withdrawOffer:false},...patch});
+const l=(patch:Partial<ResignationLetterView>={}):ResignationLetterView=>({id:'letter-a',kind:'retention',name:'Fictional retention letter',revision:2,templateVersion:1,generatedOn:'2026-11-16',state:'review',private:false,blocks:[],editableBlocks:null,mergeValues:{},routing:[],sentBack:null,changes:[],downloadUrl:null,opened:false,document:null,capabilities:{open:true,review:false,approve:false,sign:true,sendBack:true,recall:false,edit:false,correct:false,resend:false,withdrawOffer:false,regenerate:false},...patch});
 const task=(patch:Partial<ResignationTaskView>={}):ResignationTaskView=>({id:'task-a',caseId:'case-a',caseNumber:'RSN-42',revision:7,employeeName:'Fictional Employee',employeeCode:'F42',title:'Sign fictional retention letter',kind:'sign',documentId:'letter-a',dueOn:null,overdue:false,team:false,tagged:false,status:'todo',onIt:null,canComment:false,actionable:true,uploadLabel:null,...patch});
 afterEach(()=>{cleanup();vi.clearAllMocks();});
 beforeAll(()=>{HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};});
@@ -107,6 +108,12 @@ describe('letter privacy and consent',()=>{
   fireEvent.change(screen.getByLabelText('Why does the letter need changes?'),{target:{value:'Change the latest effective date'}});fireEvent.click(screen.getByRole('button',{name:'Send back for changes'}));expect(command).toHaveBeenCalledWith({type:'sendBack',documentId:'letter-a',documentRevision:2,reason:'Change the latest effective date'});
   cleanup();wrap(<ResignationLetterCard value={view} letter={l({capabilities:{...l().capabilities,sendBack:false,sign:false,edit:true}})} busy={false} command={command}/>);expect(screen.queryByRole('button',{name:'Send back for changes'})).not.toBeInTheDocument();
  });
+ it('offers regeneration only through the current backend capability and preserves the original date when refused',()=>{
+  const command=vi.fn(async()=>false),letter=l({capabilities:{...l().capabilities,sign:false,sendBack:false,regenerate:true}});
+  wrap(<ResignationLetterCard value={c()} letter={letter} busy={false} command={command}/>);
+  expect(screen.getByText(/Generated 16-Nov-2026/)).toBeInTheDocument();expect(screen.getByText('Use the current published template and restart routing. This replaces case edits and keeps the original generated date.')).toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'Regenerate from current template'}));expect(command).toHaveBeenCalledWith({type:'regenerateLetter',documentId:'letter-a',documentRevision:2});expect(screen.getByText(/Generated 16-Nov-2026/)).toBeInTheDocument();
+  cleanup();wrap(<ResignationLetterCard value={c()} letter={l({routing:[{id:'owner',order:1,action:'Review',people:[{id:'me',name:'Me'}],owner:true,status:'pending',signedBy:null,signedAt:null}],capabilities:{...l().capabilities,regenerate:false}})} busy={false} command={command}/>);expect(screen.queryByRole('button',{name:'Regenerate from current template'})).not.toBeInTheDocument();
+ });
  it('edits raw case blocks without replacing live merge tokens with displayed facts',()=>{
   const command=vi.fn(async()=>true),source=[{id:'text-a',type:'text' as const,text:'Dear {employee.name}',section:''}];
   wrap(<ResignationLetterCard value={c()} letter={l({blocks:[{...source[0],text:'Dear sampled name'}],editableBlocks:source,capabilities:{...l().capabilities,edit:true,sign:false,sendBack:false}})} busy={false} command={command}/>);
@@ -136,5 +143,22 @@ describe('task rows and block editing',()=>{
  it('edits table cells and rows while leaving letterhead and signatures protected',()=>{
   const change=vi.fn();wrap(<ResignationBlockEditor busy={false} onChange={change} blocks={[{id:'head',type:'letterhead',text:'',section:''},{id:'table',type:'table',text:'',section:'',columns:'Term | Offered',rows:'Grade | G4'},{id:'sig',type:'signature',text:'',section:''}]}/>);
   expect(screen.getAllByText(/This block is supplied/)).toHaveLength(2);fireEvent.change(screen.getByLabelText('Offered, Row 1'),{target:{value:'G5'}});expect(change.mock.calls[0][0][1].rows).toBe('Grade | G5');fireEvent.click(screen.getByRole('button',{name:'Add row'}));expect(change.mock.calls[1][0][1].rows).toBe('Grade | G4\n | ');
+ });
+});
+
+describe('shared acceptance letters in existing Offboarding Documents',()=>{
+ const projection=(letter:ResignationLetterView)=>({caseId:'case-a',revision:7,caseNumber:'RSN-42',employeeName:'Fictional Employee',offboardingCaseId:'offboarding-a',letters:[letter]});
+ it('loads one authorized projection, opens the shared signed acceptance document and keeps journey facts out of the case panel',async()=>{
+  const letter=l({kind:'acceptance',name:'Shared acceptance letter',state:'released',downloadUrl:'/resignation/case-a/documents/letter-a?offboardingCaseId=offboarding-a',capabilities:{...l().capabilities,sign:false,sendBack:false,regenerate:false},document:{id:'letter-a',templateId:'template-a',version:1,name:'Shared acceptance letter',status:'signed',blocks:[{id:'text-a',type:'text',text:'Frozen acceptance document text',section:''}],fields:[],values:{},edits:{},hrSignature:null,employeeSignature:null,createdAt:'2026-11-16T00:00:00Z',sentAt:null}});
+  actions.loadResignationOffboarding.mockResolvedValue({ok:true,value:projection(letter)});wrap(<ResignationOffboardingDocuments offboardingCaseId="offboarding-a"/>);
+  expect(screen.getByRole('status')).toHaveTextContent('Loading resignation');await screen.findByRole('heading',{name:'Shared acceptance letter'});expect(actions.loadResignationOffboarding).toHaveBeenCalledWith('offboarding-a');expect(screen.getByText('Signed and released')).toBeInTheDocument();expect(screen.getByRole('link',{name:'Download signed PDF'})).toHaveAttribute('href','/resignation/case-a/documents/letter-a?offboardingCaseId=offboarding-a');
+  expect(screen.queryByText('Fictional Employee')).not.toBeInTheDocument();expect(screen.queryByText('Closer to home')).not.toBeInTheDocument();expect(screen.queryByRole('radio')).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Regenerate from current template'})).not.toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'Open letter'}));expect(screen.getByText('Frozen acceptance document text')).toBeInTheDocument();expect(actions.runResignationCommand).not.toHaveBeenCalled();
+ });
+ it('sends the actual journey and document revisions for permitted regeneration, keeps errors visible, and reloads through the narrow adapter',async()=>{
+  const letter=l({kind:'acceptance',name:'Waiting acceptance letter',capabilities:{...l().capabilities,sign:false,sendBack:false,regenerate:true}});actions.loadResignationOffboarding.mockResolvedValue({ok:true,value:projection(letter)});actions.runResignationCommand.mockResolvedValue({ok:false,error:'This shared letter changed.',conflict:true});wrap(<ResignationOffboardingDocuments offboardingCaseId="offboarding-a"/>);
+  fireEvent.click(await screen.findByRole('button',{name:'Regenerate from current template'}));await waitFor(()=>expect(actions.runResignationCommand).toHaveBeenCalledWith({caseId:'case-a',revision:7,command:{type:'regenerateLetter',documentId:'letter-a',documentRevision:2}}));expect(await screen.findByRole('alert')).toHaveTextContent('This shared letter changed.');fireEvent.click(screen.getByRole('button',{name:'Reload case'}));await waitFor(()=>expect(actions.loadResignationOffboarding).toHaveBeenCalledTimes(2));await screen.findByRole('heading',{name:'Waiting acceptance letter'});
+ });
+ it('renders no linked section for a legacy case with no managed source',async()=>{
+  actions.loadResignationOffboarding.mockResolvedValue({ok:true,value:null});const view=wrap(<ResignationOffboardingDocuments offboardingCaseId="legacy-offboarding"/>);await waitFor(()=>expect(view.container).toBeEmptyDOMElement());
  });
 });
