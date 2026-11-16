@@ -19,7 +19,7 @@ import {allocationCompanyCode} from './cost-allocation-import';
 import {labelCompanyIdsSql,labelUsableByCompany,visibleLabelIdsCondition} from './system-labels';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {payrollPreservationRefusal} from './closed-payroll-correction-authority';
-import {alignHistoryStartTx,MovementHistoryError,DATED_ASSIGNMENT_FIELDS,planDatedCorrection,writeDatedCorrectionTx,closedPayrollInSpanTx,companyRecordOnTx,type DatedAssignmentField,type DatedCorrectionPlan} from './movement-history';
+import {alignHistoryStartTx,salaryStartKeptTx,MovementHistoryError,DATED_ASSIGNMENT_FIELDS,planDatedCorrection,writeDatedCorrectionTx,closedPayrollInSpanTx,companyRecordOnTx,type DatedAssignmentField,type DatedCorrectionPlan} from './movement-history';
 import {recordedMovementChangesTx,type RecordedMovementChange} from './movement';
 import {closedPeriodsTx,overlapsClosedPeriod} from './comp';
 import {contractPeriodIssues} from '../lib/contract-period';
@@ -375,6 +375,9 @@ async function previewTx(tx:Tx,ctx:SessionContext,input:PreviewInput,extended=fa
  }
  if(changed.includes('companyId'))warnings.push({code:'companyFrom',date:effectiveOn,...(plan.ranges.companyId?.to?{to:plan.ranges.companyId.to}:{})});
  if(alignStart)warnings.push({code:'historyStartAligned',date:alignStart.to,from:alignStart.from});
+ // Board 2026-11-16 — a salary record a closed payroll was paid under keeps its own start; nothing recalculates.
+ const salaryKept=alignStart?await salaryStartKeptTx(tx,state.emp.id,alignStart.to):null;
+ if(salaryKept)warnings.push({code:'salaryStartKept',date:salaryKept.validFrom});
  // The review's records, in Effective Date order, flagged by what this correction does to each.
  const timeline:InformationTimelineRecord[]=[];
  if(backdated){
@@ -489,7 +492,7 @@ async function applyTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stat
   ...(p.fromJoinDate&&p.changed.includes('companyId')?{fromJoinDate:true,spanFrom:effectiveOn}:{}),
   ...(effectiveOn<todayInKualaLumpur()?{dated:true}:{}),
   ...(replaced.length?{assignment:replaced}:{}),...(datedWrite?.inserted.length?{inserted:datedWrite.inserted}:{}),
-  ...(aligned?{alignedStart:p.alignStart,aligned:aligned.aligned}:{}),...(superiorLine?{reportingLine:superiorLine}:{}),
+  ...(aligned?{alignedStart:p.alignStart,aligned:aligned.aligned,...(aligned.salaryKept?{salaryKept:aligned.salaryKept}:{})}:{}),...(superiorLine?{reportingLine:superiorLine}:{}),
   employeeCode:p.employeeCode,employeeName:p.name,before:p.before,after:p.after,beforeLabels:p.beforeLabels,afterLabels:p.afterLabels,fields:p.changed,reason:p.reason,effectiveOn,nextBoundary,...(p.until?{until:p.until}:{}),
   ...(dated.labelsNotCurrent.length?{labelsNotCurrent:dated.labelsNotCurrent}:{}),...(p.closedPayrollPeriods?.length?{closedPayrollPeriods:p.closedPayrollPeriods,closedPayrollAcknowledged:true}:{}),
   method:input.method,batchId:input.batchId??null,filename:input.filename??null,snapshotCount:preserved.count,assignmentVersionId,previousAssignmentId:s.current.id}});

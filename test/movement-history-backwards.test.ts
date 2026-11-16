@@ -191,6 +191,39 @@ describe('the dated records start on the Group Join Date',()=>{
   const later=await previewInformationCorrection(ctx,{employmentId:id,changes:{hiredOn:'2025-04-01',joinDate:'2025-04-01'},reason:'Fictional later join'});
   await expect(correctInformation(ctx,{employmentId:id,changes:{hiredOn:'2025-04-01',joinDate:'2025-04-01'},reason:'Fictional later join',fingerprint:later.fingerprint,method:'manual'})).rejects.toThrow(/Payroll for 2025-02 was closed/);
  });
+ // Board 2026-11-16 (staging DB-V-06E997): an earlier Group Join Date over a salary record a closed payroll was paid
+ // under failed in the closed-period guard. Completed payroll stays unchanged: the salary record keeps its start.
+ const salaryRows=(employmentId:string)=>owner.db.select({id:schema.compensation.id,validFrom:schema.compensation.validFrom,validTo:schema.compensation.validTo,supersededAt:schema.compensation.supersededAt}).from(schema.compensation).where(eq(schema.compensation.employmentId,employmentId)).orderBy(asc(schema.compensation.validFrom));
+ it('an earlier Group Join Date keeps a salary record a closed payroll was paid under (Information-Only Correction)',async()=>{
+  const id=await hire('HB-KS');const ctx=adminCtx(b);
+  await owner.db.insert(schema.compensation).values({tenantId:b.tenantId,employmentId:id,basicSalary:'4000.00',validFrom:HIRED});
+  await closedPayroll(id,b.companyId,'2025-06');
+  const before=await salaryRows(id);expect(before).toHaveLength(1);
+  const preview=await previewInformationCorrection(ctx,{employmentId:id,changes:{hiredOn:'2025-06-01'},reason:'Fictional earlier group join'});
+  expect(preview.warnings).toContainEqual({code:'salaryStartKept',date:HIRED});
+  await correctInformation(ctx,{employmentId:id,changes:{hiredOn:'2025-06-01'},reason:'Fictional earlier group join',fingerprint:preview.fingerprint,method:'manual'});
+  expect((await versions(id)).map(v=>v.validFrom)).toEqual(['2025-06-01']);
+  expect(await salaryRows(id)).toEqual(before);
+  const [event]=await owner.db.select({payload:schema.domainEvent.payload}).from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,id),eq(schema.domainEvent.eventType,'employment.information.corrected')));
+  expect(event.payload).toMatchObject({salaryKept:{compensationId:before[0].id,validFrom:HIRED,closedPayrollPeriods:['2025-06']}});
+ });
+ it('an earlier Group Join Date keeps a salary record a closed payroll was paid under (Group Join Date Correction)',async()=>{
+  const id=await hire('HB-KM');const ctx=adminCtx(b);
+  await owner.db.insert(schema.compensation).values({tenantId:b.tenantId,employmentId:id,basicSalary:'4000.00',validFrom:HIRED});
+  await closedPayroll(id,b.companyId,'2025-06');
+  const before=await salaryRows(id);
+  await createMovementEvent(ctx,{employmentId:id,kind:'groupJoinDateCorrection',effectiveDate:'2025-06-01',acknowledgeClosedPayroll:true});
+  expect((await versions(id)).map(v=>v.validFrom)).toEqual(['2025-06-01']);
+  expect(await salaryRows(id)).toEqual(before);
+ });
+ it('without closed payroll the salary record still moves to the earlier Group Join Date',async()=>{
+  const id=await hire('HB-KO');const ctx=adminCtx(b);
+  await owner.db.insert(schema.compensation).values({tenantId:b.tenantId,employmentId:id,basicSalary:'4000.00',validFrom:HIRED});
+  const preview=await previewInformationCorrection(ctx,{employmentId:id,changes:{hiredOn:'2025-06-01'},reason:'Fictional earlier group join'});
+  expect(preview.warnings?.some(w=>w.code==='salaryStartKept')).toBe(false);
+  await correctInformation(ctx,{employmentId:id,changes:{hiredOn:'2025-06-01'},reason:'Fictional earlier group join',fingerprint:preview.fingerprint,method:'manual'});
+  expect((await pay(id)).map(v=>v.validFrom)).toEqual(['2025-06-01']);
+ });
 });
 
 describe('New Event: Record history',()=>{

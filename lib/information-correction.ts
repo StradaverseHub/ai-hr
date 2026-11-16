@@ -28,7 +28,7 @@ export type InformationValues=Record<InformationField,string|null>;
 export type InformationChanges=Partial<Record<InformationField,string>>;
 /** Board 154511c4 — what the review warns about: from which date (and, board 4604dccc, until which recorded change)
  * the company changes, and a dated history that starts before the (new) Group Join Date. */
-export type InformationWarning={code:'companyFrom'|'historyStartAligned';date:string;from?:string;to?:string};
+export type InformationWarning={code:'companyFrom'|'historyStartAligned'|'salaryStartKept';date:string;from?:string;to?:string};
 /** Board 4604dccc — one dated record in the review, in Effective Date order: what this correction does to it. */
 export type InformationTimelineRecord={date:string;kind:string;label:string|null;company:string|null;status:'corrected'|'unchanged'|'conflict'};
 /** Board 4604dccc — a later movement whose recorded "from" value the correction would contradict. */

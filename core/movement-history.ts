@@ -268,9 +268,9 @@ export async function alignHistoryToGroupJoinDateTx(tx:Tx,ctx:SessionContext,emp
  let result:Awaited<ReturnType<typeof alignHistoryStartTx>>;
  try{result=await alignHistoryStartTx(tx,employmentId,emp.hiredOn);}
  catch(error){if(error instanceof MovementHistoryError)throw refuse(alignmentRefusal(error.message));throw error;}
- if(!result.replaced.length&&!result.aligned.length)return null;
+ if(!result.replaced.length&&!result.aligned.length&&!result.salaryKept)return null;
  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:employmentId,eventType:HISTORY_START_ALIGNED_EVENT,actor:actorOf(ctx),subjectEmploymentId:employmentId,
-  payload:{employmentId,trigger,alignedStart:{from,to:emp.hiredOn},assignment:result.replaced,aligned:result.aligned}});
+  payload:{employmentId,trigger,alignedStart:{from,to:emp.hiredOn},assignment:result.replaced,aligned:result.aligned,...(result.salaryKept?{salaryKept:result.salaryKept}:{})}});
  return {from,to:emp.hiredOn};
 }
 export async function historyStartTx(tx:Tx,employmentId:string){
@@ -302,7 +302,8 @@ export async function alignHistoryStartTx(tx:Tx,employmentId:string,start:string
   replaced.push({supersededId:id,replacementId:row.id});
  }
  const pay=firstOf(await tx.select().from(compensation).where(and(eq(compensation.employmentId,employmentId),isNull(compensation.supersededAt))));
- if(await check(pay)){
+ let salaryKept:SalaryStartKept|null=null;
+ if(await check(pay)&&(salaryKept=await salaryStartKeptOf(tx,employmentId,pay))===null){
   const {id,createdAt:_c,recordedAt:_r,supersededAt:_s,updatedAt:_u,...copy}=pay;
   await tx.update(compensation).set({supersededAt:now}).where(eq(compensation.id,id));
   const [row]=await tx.insert(compensation).values({...copy,validFrom:start}).returning({id:compensation.id});
@@ -317,7 +318,27 @@ export async function alignHistoryStartTx(tx:Tx,employmentId:string,start:string
   const [row]=await tx.insert(reportingLine).values({...copy,validFrom:start}).returning({id:reportingLine.id});
   aligned.push({supersededId:id,replacementId:row.id});
  }
- return{replaced,aligned};
+ return{replaced,aligned,...(salaryKept?{salaryKept}:{})};
+}
+
+/**
+ * Board 2026-11-16 (staging DB-V-06E997; owner: "Completed payroll stays unchanged and no historical recalculation
+ * will run") — moving the history start supersedes the first salary record and re-inserts it from the new date. When
+ * a CLOSED payroll was paid under that record, the closed-period guard (migration 0277) forbids superseding it, and
+ * the record must not change anyway: the salary record is then left as it is, starting on its own date, and the
+ * other dated records still align. Nothing recalculates the closed months.
+ */
+export type SalaryStartKept={compensationId:string;validFrom:string;closedPayrollPeriods:string[]};
+async function salaryStartKeptOf(tx:Tx,employmentId:string,pay:{id:string;validFrom:string;validTo:string|null}):Promise<SalaryStartKept|null>{
+ const closed=await closedPayrollInSpanTx(tx,employmentId,pay.validFrom,pay.validTo??'9999-12-31');
+ return closed.length?{compensationId:pay.id,validFrom:pay.validFrom,closedPayrollPeriods:[...new Set(closed.map(r=>r.period))]}:null;
+}
+/** What alignHistoryStartTx would do to the salary record for a new history start: kept (closed payroll) or not. */
+export async function salaryStartKeptTx(tx:Tx,employmentId:string,start:string):Promise<SalaryStartKept|null>{
+ const [pay]=await tx.select({id:compensation.id,validFrom:compensation.validFrom,validTo:compensation.validTo}).from(compensation)
+  .where(and(eq(compensation.employmentId,employmentId),isNull(compensation.supersededAt))).orderBy(asc(compensation.validFrom),asc(compensation.id)).limit(1);
+ if(!pay||pay.validFrom===start)return null;
+ return salaryStartKeptOf(tx,employmentId,pay);
 }
 
 /*

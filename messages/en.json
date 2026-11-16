@@ -3610,6 +3610,7 @@
       "ownersNote": "Basic Salary and resignation dates are corrected on the event that recorded them: use the Movement import with Action \"Update\". Payment Method is in the Bank and Statutory import.",
       "warnings": {
         "historyStartAligned": "The employee’s dated records (company and position, salary, reporting line) start on {from}. Saving moves their start to the Group Join Date, {date}.",
+        "salaryStartKept": "The salary record keeps its start date, {date}, because a closed payroll was paid under it. Completed payroll stays unchanged and no historical recalculation will run.",
         "companyFrom": "The company changes from {date}.",
         "companyFromUntil": "The company changes from {date} until {to}, when a later record changes it."
       },

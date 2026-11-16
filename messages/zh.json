@@ -3610,6 +3610,7 @@
       "ownersNote": "基本工资和辞职日期须在记录它们的事件上更正：请使用变动导入，操作选择“Update”。付款方式在银行与法定导入中。",
       "warnings": {
         "historyStartAligned": "员工的日期记录（公司和职位、薪资、汇报关系）始于 {from}。保存后，其起始日期将移至集团入职日期 {date}。",
+        "salaryStartKept": "该薪资记录保留其起始日期 {date}，因为已关闭的薪资是按此记录发放的。已完成的薪资保持不变，不会进行任何历史重新计算。",
         "companyFrom": "公司自 {date} 起更改。",
         "companyFromUntil": "公司自 {date} 起更改，直至 {to}，届时较晚的记录会再次更改。"
       },
