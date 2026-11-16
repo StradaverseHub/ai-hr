@@ -532,3 +532,13 @@ payroll stays unchanged and no historical recalculation will run"). Changed cove
 provider-data scope only through the import graph. No provider transform, outbound field, purpose or transport changed.
 The 28 approvals were carried forward to `1aad1797…` and the agent manifest regenerated (`306e3222…`), under the owner's
 standing pre-approval for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding for the Transaction View retained-document cap (16 November 2026)
+
+`claude/txn-view-retained-cap-20261116`, cut from main/alpha `9d32dfab1` (binding `1aad1797…`), caps the retained
+information-correction documents that Transaction View's History landing read loads, at the same row limit as its
+live payslips, instead of refusing above 5,000 (production 15–16 November 2026: "This page could not be displayed").
+Changed covered files: `core/information-correction-history.ts` and `core/payroll-view.ts`, in the provider-data scope
+only through the import graph. No provider transform, outbound field, purpose or transport changed. The 28 approvals
+were carried forward to `ad0ee451…` and the agent manifest regenerated (`644d2c37…`), under the owner's standing
+pre-approval for staging re-binds (12 November 2026). Staging only.
