@@ -408,7 +408,10 @@ describe('fd8156d4 — dashboard reads at group shape (71 companies, 1,000 emplo
     expect(await payrollDashboardCycleNames(fx.root, fx.allCompanyIds)).toEqual(['Monthly', 'Mid-Month Advance']);
     expect(await payrollDashboardCycleNames(fx.root, [fx.groupCompanyIds[0]])).toEqual(['Monthly']);
     expect(await payrollDashboardCycleNames(fx.root, [fx.emptyCompanyId])).toEqual([]);
-    expect(await payrollDashboardCycleNames(fx.scoped, fx.allCompanyIds)).toEqual(['Monthly']);
+    // payroll_cycle is a tenant-wide catalogue under RLS (as listPayrollCycles reads it), so a scoped
+    // administrator is narrowed by the company ids the page passes: the session's own company scope.
+    expect(await payrollDashboardCycleNames(fx.scoped, [fx.scopedCompanyId])).toEqual(['Monthly']);
+    expect(await payrollDashboardCycleNames(fx.scoped, [fx.groupCompanyIds[6]])).toEqual(['Monthly', 'Mid-Month Advance']);
   });
 
   it('cycle filter: every run is reachable, names match configured runs, and an old ?cycle=regular keeps its meaning', async () => {
