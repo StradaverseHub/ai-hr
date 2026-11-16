@@ -768,3 +768,18 @@ standing staging re-bind pre-approval of 12 November 2026, the same 29 already-a
 remain unchanged. The agent manifest is `1da03e300d47181a3a1a803e3f35d4b2159be8989b56f77fa01ed8ce81b68e52` over 493 files.
 No provider transform, outbound field, purpose or transport was added by the breadcrumb repair. This binding grants
 no production authority. The owner separately requires approval before this candidate is released.
+
+
+### Current staging baseline integration approved (17 November 2026)
+
+After Claude's Irwin release and the breadcrumb release both completed, staging and aligned main/alpha
+identified `bcba1f3e8faaf75c760599750ec9b4dc1d5a0f73`, build `Ch5zYMucPS30OBYzbIX5L`.
+The coordinator preserved that accepted baseline through normal merge `e141d379e`. This changes the
+covered-source identity beyond the prior exact `893daeda6` approval. The owner explicitly answered
+"Approve current-baseline staging rebinding" for the new provider fingerprint
+`0b60766ac33a0418d98b24ff7da5aaab08d17c927ced7d9c7853b929bc35930b` (1,624 files).
+The same 28 active approvals carry forward; original review metadata, historical and pending records
+and evaluated/promoted agent identities are unchanged. Provider payloads, purposes and transports do
+not change. The derived agent manifest is regenerated after the literal update. The existing direction
+to run the full gate and deploy only to staging after all checks pass remains in effect. No production
+installation or package publication is authorized.
