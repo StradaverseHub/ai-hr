@@ -105,9 +105,15 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
   if(width===390&&scrollRegions.some(region=>!region.scrollable||region.width>=region.content))throw Error('The wide function guide must remain horizontally scrollable on a phone.');
   const clippedCalendarCells=section==='chat-card-rewards-calendar'?await page.evaluate(()=>Array.from(document.querySelectorAll('table td')).some(cell=>{const box=cell.getBoundingClientRect();return box.left<0||box.right>window.innerWidth+1||cell.scrollWidth>cell.clientWidth+1;})):false;
   if(section==='people-configuration-navigation')await page.locator('a[href="/admin/settings/system-labels"]').scrollIntoViewIfNeeded();
+  // Contract-only native layout diagnostics. Capture both viewports before refusing material clipping.
+  const contractGeometry=section.startsWith('contract-')?await page.evaluate(()=>{
+   const heading=document.querySelector('h1');if(!heading)throw Error('Actual Contract page heading is missing');
+   const style=getComputedStyle(heading);
+   return {heading:{text:heading.textContent,fontSize:Number.parseFloat(style.fontSize),fontFamily:style.fontFamily},bodyFontFamily:getComputedStyle(document.body).fontFamily,fontsReady:document.fonts.status==='loaded',decisionButtons:Array.from(document.querySelectorAll<HTMLButtonElement>('.contract-decision-choice>button')).map(button=>({label:button.textContent,width:button.clientWidth,height:button.getBoundingClientRect().height,scrollWidth:button.scrollWidth,clipped:button.scrollWidth>button.clientWidth+1}))};
+  }):null;
   const file=`${locale}-${section}-${device}.png`;await page.screenshot({path:join(out,file),fullPage:true});
   if(section==='security-functions')await page.screenshot({path:join(out,`${locale}-${section}-${device}-viewport.png`),fullPage:false});
-  rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme,scrollRegions,fixture,scriptFontProof,chartGeometry,trackerGeometry,...(section==='chat-card-rewards-calendar'?{cellsVisible:!clippedCalendarCells}:{})});
+  rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme,scrollRegions,fixture,scriptFontProof,chartGeometry,trackerGeometry,contractGeometry,...(section==='chat-card-rewards-calendar'?{cellsVisible:!clippedCalendarCells}:{})});
   if(clippedCalendarCells)throw Error('Calendar before/after value is clipped; inspect the captured evidence.');
   // This existing table intentionally scrolls horizontally on small screens. Capture its action
   // column too, so the mobile evidence shows the real controls rather than only the left-hand labels.
@@ -119,6 +125,7 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
   await page.close();
  }}finally{await browser.close();}
  writeFileSync(join(out,`${locale}-${section}.json`),JSON.stringify(rows,null,2)+'\n');
+ if(rows.some(row=>row.contractGeometry&&(row.contractGeometry.heading.fontSize<22||!row.contractGeometry.fontsReady||row.contractGeometry.decisionButtons.some(button=>button.clipped))))throw Error('Rendered Contract heading, fonts or decision labels need review; inspect captured PNG and geometry.');
  if(rows.some(row=>row.overflow))throw Error('Rendered fixture overflows its viewport; inspect the captured evidence.');
 }
 
