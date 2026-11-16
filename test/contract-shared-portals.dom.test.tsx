@@ -59,3 +59,34 @@ it('does not expose wording or actions while the body is held for a later routin
  expect(screen.queryByRole('button',{name:'Edit wording for this case'})).not.toBeInTheDocument();
  expect(screen.queryByRole('link',{name:'Download PDF'})).not.toBeInTheDocument();
 });
+it('reuses the same approval command after a transport failure while keeping the reason',async()=>{
+ actions.approval.mockRejectedValueOnce(new Error('Connection lost')).mockResolvedValueOnce({ok:false,error:'Already received; refresh the current decision.'});
+ mount(<SharedApprovalPage approval={approval()}/>);
+ fireEvent.change(screen.getByLabelText('Comment / reason for rejection'),{target:{value:'Please confirm these dates.'}});
+ fireEvent.click(screen.getByRole('button',{name:'Reject and return decision'}));
+ expect(await screen.findByRole('alert')).toHaveTextContent('Your entries are still here.');
+ fireEvent.click(screen.getByRole('button',{name:'Reject and return decision'}));
+ await waitFor(()=>expect(actions.approval).toHaveBeenCalledTimes(2));
+ expect(actions.approval.mock.calls[1][0]).toEqual(actions.approval.mock.calls[0][0]);
+ expect(screen.getByLabelText('Comment / reason for rejection')).toHaveValue('Please confirm these dates.');
+});
+it('submits wording and completing review as one command and retains both after a transport failure',async()=>{
+ const value:ContractSharedLetter={...letter(),canEdit:true,pendingAction:{stepId:'reviewer',kind:'review'},body:{definition:{name:'Fictional renewal letter',blocks:[{id:'intro',type:'text',text:'Original wording',section:''}],fields:[]},blocks:{intro:'Original wording'},values:{},receipts:[],fingerprintSource:'native'}};
+ actions.letter.mockRejectedValueOnce(new Error('Connection lost')).mockResolvedValueOnce({ok:true,value:{letter:{...value,canEdit:false,pendingAction:null},document}});
+ mount(<SharedLetterPage letter={value} document={document}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Edit wording for this case'}));
+ fireEvent.change(screen.getByLabelText('Letter text'),{target:{value:'Reviewed wording'}});
+ expect(screen.queryByRole('button',{name:'Save wording'})).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'Complete review and save wording'}));
+ expect(await screen.findByRole('alert')).toHaveTextContent('Your entries are still here.');
+ expect(screen.getByLabelText('Letter text')).toHaveValue('Reviewed wording');
+ fireEvent.click(screen.getByRole('button',{name:'Complete review and save wording'}));
+ await waitFor(()=>expect(actions.letter).toHaveBeenCalledTimes(2));
+ expect(actions.letter.mock.calls[0][0]).toMatchObject({action:'reviewed',blocks:{intro:'Reviewed wording'},revision:1,hash});
+ expect(actions.letter.mock.calls[1][0]).toEqual(actions.letter.mock.calls[0][0]);expect(actions.edit).not.toHaveBeenCalled();
+});
+it('uses company signature consent only for the current native company step',()=>{
+ mount(<SharedLetterPage letter={{...letter(),pendingAction:{stepId:'bp',kind:'sign'},layers:[{id:'bp',label:'People BP',stage:1,kind:'sign',owner:true,assigneeName:'Fictional BP',fulfilled:false,unavailable:false}]}} document={document} capabilities={{canBindEmployee:false,pendingRole:'company'}}/>);
+ expect(screen.getByRole('checkbox',{name:'I confirm this is my signature and approve this letter on behalf of the company.'})).not.toBeChecked();
+ expect(screen.getByRole('button',{name:'Sign letter'})).toBeDisabled();expect(screen.getByText('Fictional BP',{selector:'strong'})).toBeInTheDocument();
+});

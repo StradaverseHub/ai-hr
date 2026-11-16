@@ -38,8 +38,8 @@ async function tickToDone(id:string,actor:SessionContext,kind:'contract_preview'
  throw new Error('Contract job did not complete');
 }
 async function routedCase(){
- const config=(await v9Workspace(admin)).config!,ops=randomUUID(),ceo=randomUUID();
- await v9SaveConfig(admin,config.revision,{...config,groups:[...config.groups,{id:ops,name:'Contract People Ops',members:[admin.userId!],limit:0},{id:ceo,name:'Contract CEO group',members:[admin.userId!],limit:0}],peopleOpsGroup:ops});
+ const config=(await v9Workspace(admin)).config!,ops=config.peopleOpsGroup,ceo=randomUUID();
+ await v9SaveConfig(admin,config.revision,{...config,groups:[...config.groups.map(g=>g.id===ops?{...g,members:[...new Set([...g.members,admin.userId!])]}:g),{id:ceo,name:'Contract CEO group',members:[admin.userId!],limit:0}]});
  const manager=await hireEmployee(admin,{person:{fullName:'Fictional direct superior',primaryEmail:randomUUID()+'@workspace.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:start});
  const proposer={...admin,userId:await createAppUser(b.tenantId,manager.personId,'employee'),personId:manager.personId,roles:['employee'],grants:undefined} as SessionContext;
  const employee=await hireEmployee(admin,{person:{fullName:'Fictional Contract employee',primaryEmail:randomUUID()+'@workspace.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'contract',hiredOn:start,provisionalEndOn:end,reportingManagerEmploymentId:manager.employmentId});

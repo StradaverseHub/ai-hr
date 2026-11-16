@@ -11,6 +11,15 @@
         ],
         "createdAt": "2026-11-16T19:50:52.649Z",
         "reason": "Existing V9 handwritten signature mark is a domain-specific signature presentation, preserved by the Contract HTML and existing signature component; it is not interface typography."
+      },
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "*",
+        "files": [
+          "app/lifecycle/v9/workspace.css"
+        ],
+        "createdAt": "2026-11-16T20:49:56.824Z",
+        "reason": "Agent verified L46: the top border belongs to the unrounded .v9-letterhead; border-radius belongs to the separate .v9-letterhead-mark logo selector on the same minified line. Regex combines distinct elements."
       }
     ]
   }
