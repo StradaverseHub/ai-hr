@@ -41072,7 +41072,20 @@
     "replacementCompleted": "已于{date}记录补员招聘。",
     "replacementReference": "招聘参考链接",
     "replacementComplete": "记录招聘交接",
-    "replacementHint": "请在您的招聘系统中安排补员，然后添加其参考链接以完成此交接。"
+    "replacementHint": "请在您的招聘系统中安排补员，然后添加其参考链接以完成此交接。",
+    "regenerate": "从当前模板重新生成",
+    "regenerateHint": "使用当前已发布的模板并重新启动流转。这将替换个案中的编辑内容，并保留原始生成日期。",
+    "generatedOn": "生成日期：{date}",
+    "linkedJourney": "辞职流程{number}",
+    "linkedLetters": "辞职流程中的函件",
+    "letterState": {
+      "review": "流转中",
+      "owner": "由负责人处理",
+      "released": "已签署并发布",
+      "declined": "方案已拒绝",
+      "lapsed": "方案已失效",
+      "withdrawn": "已撤回"
+    }
   },
   "offboardingPostings": {
     "breadcrumb": "入职与离职 / 人事变动入账",

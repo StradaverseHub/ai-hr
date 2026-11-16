@@ -41072,7 +41072,20 @@
     "replacementCompleted": "Đã ghi nhận việc tuyển nhân sự thay thế vào {date}.",
     "replacementReference": "URL tham chiếu tuyển dụng",
     "replacementComplete": "Ghi nhận bàn giao tuyển dụng",
-    "replacementHint": "Sắp xếp nhân sự thay thế trong hệ thống tuyển dụng của bạn, rồi thêm URL tham chiếu để hoàn tất việc bàn giao này."
+    "replacementHint": "Sắp xếp nhân sự thay thế trong hệ thống tuyển dụng của bạn, rồi thêm URL tham chiếu để hoàn tất việc bàn giao này.",
+    "regenerate": "Tạo lại từ mẫu hiện tại",
+    "regenerateHint": "Dùng mẫu đã phát hành hiện tại và bắt đầu lại luồng xử lý. Thao tác này thay thế các chỉnh sửa trong hồ sơ và giữ nguyên ngày tạo ban đầu.",
+    "generatedOn": "Được tạo ngày {date}",
+    "linkedJourney": "Hành trình nghỉ việc {number}",
+    "linkedLetters": "Thư từ hành trình nghỉ việc",
+    "letterState": {
+      "review": "Đang trong luồng xử lý",
+      "owner": "Đang ở người phụ trách",
+      "released": "Đã ký và phát hành",
+      "declined": "Đã từ chối đề nghị",
+      "lapsed": "Đề nghị hết hạn",
+      "withdrawn": "Đã rút"
+    }
   },
   "offboardingPostings": {
     "breadcrumb": "Tiếp nhận và nghỉ việc / Ghi nhận biến động nhân sự",

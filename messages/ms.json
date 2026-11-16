@@ -41072,7 +41072,20 @@
     "replacementCompleted": "Pengambilan pekerja pengganti direkodkan pada {date}.",
     "replacementReference": "URL rujukan pengambilan pekerja",
     "replacementComplete": "Rekod serahan pengambilan pekerja",
-    "replacementHint": "Uruskan pengganti dalam sistem pengambilan pekerja anda, kemudian tambah URL rujukannya untuk melengkapkan serahan ini."
+    "replacementHint": "Uruskan pengganti dalam sistem pengambilan pekerja anda, kemudian tambah URL rujukannya untuk melengkapkan serahan ini.",
+    "regenerate": "Jana semula daripada templat semasa",
+    "regenerateHint": "Gunakan templat terbitan semasa dan mulakan semula penghalaan. Ini menggantikan suntingan kes dan mengekalkan tarikh penjanaan asal.",
+    "generatedOn": "Dijana pada {date}",
+    "linkedJourney": "Perjalanan peletakan jawatan {number}",
+    "linkedLetters": "Surat daripada perjalanan peletakan jawatan",
+    "letterState": {
+      "review": "Penghalaan sedang berlangsung",
+      "owner": "Dengan pemilik",
+      "released": "Ditandatangani dan dikeluarkan",
+      "declined": "Tawaran ditolak",
+      "lapsed": "Tawaran luput",
+      "withdrawn": "Ditarik balik"
+    }
   },
   "offboardingPostings": {
     "breadcrumb": "Pengurusan masuk & keluar pekerja / Catatan perjawatan",
