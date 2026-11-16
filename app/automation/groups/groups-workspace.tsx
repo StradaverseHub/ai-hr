@@ -35,6 +35,7 @@ export function GroupsWorkspace({access,groups,routings,options,people:initialPe
   <section className="pcg-card" aria-label={t('groups.routings')}>
    <div className="pcg-row pcg-between" style={{alignItems:'flex-start'}}><div style={{flex:'1 1 480px'}}><h2>{t('groups.routings')}</h2><p className="pcg-sub">{t('groups.routingIntro')} {t('groups.approvalNote')}</p></div>
     <button type="button" className="v9-button v9-button-primary" disabled={!!creating} onClick={()=>setCreating({routing:{id:crypto.randomUUID(),name:'',rows:[{match:{},assignTo:{kind:'group',groupId:groups[0]?.id??''}}]},revision:0,retired:false,usedBy:[]})}>{t('groups.newRouting')}</button></div>
+   <p className="v9-muted">A row with no conditions is the explicit default. Offboarding uses it when the selected row has no available recipients. Without an eligible default, the assignment stops for attention.</p>
    <details className="automation-details"><summary>{t('people.title')}</summary><PeopleSearch known={people} onAdd={person=>setPeople(list=>list.some(p=>p.id===person.id)?list:[...list,person])}/></details>
    {creating&&<RoutingEditor key={creating.routing.id} item={creating} groups={groups} options={options} people={people} takenNames={names} onDone={()=>setCreating(null)}/>}
    {live.length===0&&!creating&&<p className="v9-muted">{t('groups.noRoutings')}</p>}

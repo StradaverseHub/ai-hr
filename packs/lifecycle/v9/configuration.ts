@@ -6,9 +6,9 @@ import {v9EmploymentLabels} from '../../../lib/lifecycle-v9-employment';
 import type {TemplateUsage,DefinitionUsage,RuleField,Actor,Config,Group} from '../../../lib/lifecycle-v9-model';
 
 /** Configuration-only builder projection. Never materialises employee cases or salary data. */
-export async function v9Configuration(ctx:SessionContext):Promise<{config:Config|null;actor:Actor;editable:boolean;users:{id:string;name:string}[];labels:Partial<Record<RuleField,Record<string,string>>>;previewCases:{id:string;module:'onb';label:string}[];usage:TemplateUsage[];references:DefinitionUsage[]} >{
+export async function v9Configuration(ctx:SessionContext):Promise<{config:Config|null;actor:Actor;editable:boolean;offboardingEditable:boolean;users:{id:string;name:string}[];labels:Partial<Record<RuleField,Record<string,string>>>;previewCases:{id:string;module:'onb';label:string}[];usage:TemplateUsage[];references:DefinitionUsage[]} >{
  return withLifecycleTenant(ctx,async tx=>{
-  const[access]=await tx.execute<{allowed:boolean;editable:boolean}>(sql`select app.is_group_admin() or app.is_admin() and (app.onboarding_page_access() or app.lc_v9_off_access()) as allowed,app.is_group_admin() as editable`);
+  const[access]=await tx.execute<{allowed:boolean;editable:boolean;offboardingEditable:boolean}>(sql`select app.is_group_admin() or app.is_admin() and (app.onboarding_page_access() or app.lc_v9_off_access()) as allowed,app.is_group_admin() as editable,app.automation_can_configure('off') as "offboardingEditable"`);
   if(!access?.allowed)throw new Error('You cannot open lifecycle configuration.');
   const[row]=await tx.execute<{data:Config}>(sql`select data from lc_v9_config where tenant_id=app.current_tenant_id()`);
   const[shared]=await tx.execute<{revision:number;groups:Group[]}>(sql`select revision,data->'groups' as groups from lc_onboarding_config where tenant_id=app.current_tenant_id()`);
@@ -39,6 +39,6 @@ export async function v9Configuration(ctx:SessionContext):Promise<{config:Config
    for(const item of managed){if(item.kind==='document'&&item.version!==null){const prior=usage.find(u=>u.templateId===item.definitionId&&u.version===item.version);if(prior)prior.documents+=item.documents;else usage.push({templateId:item.definitionId,version:item.version,documents:item.documents});}const prior=references.find(r=>r.kind===item.kind&&r.definitionId===item.definitionId);if(prior)prior.messages+=item.messages+item.documents;else references.push({kind:item.kind,definitionId:item.definitionId,messages:item.messages+item.documents,runs:0});}
   }
   const actor=users.find(u=>u.id===ctx.userId)??{id:ctx.userId??'',name:'User'};
-  return{config:row?{...row.data,groups:shared?.groups??[],groupsRevision:shared?.revision??0}:null,actor,editable:!!access.editable,users:[...users],labels,previewCases:[...previewCases],usage,references};
+  return{config:row?{...row.data,groups:shared?.groups??[],groupsRevision:shared?.revision??0}:null,actor,editable:!!access.editable,offboardingEditable:!!access.offboardingEditable,users:[...users],labels,previewCases:[...previewCases],usage,references};
  });
 }
