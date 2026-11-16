@@ -51,9 +51,11 @@ export async function approveContractSharedPostingTx(tx:Tx,ctx:SessionContext,in
  const[row]=await tx.execute<{result:{duplicate:boolean;id:string;number:number;employmentId:string;eventType:'contractRenewal'|'contractConversion';values:PersonnelPostingValues;movementId?:string}}>(sql`select app.contract_shared_posting_approve(${input.id}::uuid,${input.revision},${input.values?JSON.stringify(input.values):null}::jsonb) as result`);
  if(row.result.duplicate){if(!row.result.movementId)throw new ContractManagementError('conflict','The approved posting has no recorded Personnel movement.');return {...row.result,movementId:row.result.movementId,alreadyApproved:true as const};}
  const movement=await applyApprovedContractPostingMovementTx(tx,ctx,input.id);
- const[event]=await tx.execute<{id:string}>(sql`select id from domain_event where tenant_id=${ctx.tenantId}::uuid and subject_employment_id=${row.result.employmentId}::uuid and payload->'movement'->>'groupId'=${movement.groupId} order by sequence limit 1`);
- if(!event)throw new ContractManagementError('conflict','The approved posting has no recorded Personnel movement.');
- return {...row.result,movementId:event.id,alreadyApproved:false as const,movement};
+ // The native idempotent receipt is purpose-bound. Group-only approvers do not acquire general
+ // Employment History visibility merely to read the ID the same native owner just recorded.
+ const[receipt]=await tx.execute<{result:{duplicate:boolean;movementId?:string}}>(sql`select app.contract_shared_posting_approve(${input.id}::uuid,${input.revision},null::jsonb) as result`);
+ if(!receipt?.result.duplicate||!receipt.result.movementId)throw new ContractManagementError('conflict','The approved posting has no recorded Personnel movement.');
+ return {...row.result,movementId:receipt.result.movementId,alreadyApproved:false as const,movement};
 }
 export function approveContractSharedPosting(ctx:SessionContext,raw:{id:string;revision:number;values?:Record<string,unknown>}){
  const input=z.object({id:z.uuid(),revision:z.number().int().positive(),values:z.record(z.string(),z.unknown()).optional()}).strict().parse(raw);

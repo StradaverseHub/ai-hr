@@ -19,7 +19,7 @@ import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {pgSqlState} from '../lib/db-error';
 import {withScopedLifecycleTenant} from './module-gate';
-import {createMovementEventTx,movementLedgerMarkerTx,movementRowsAfterSequenceTx,applyApprovedContractPostingMovementTx} from './movement';
+import {createMovementEventTx,movementLedgerMarkerTx,movementRowsAfterSequenceTx} from './movement';
 import {decideResignation} from './offboarding';
 import {readContractSharedPostingTx,approveContractSharedPostingTx} from './contract-shared-postings';
 import {movementNeedsEntitlementReprojection} from './movement-kinds';
@@ -253,12 +253,7 @@ export async function approvePersonnelPostingTx(tx: Tx, ctx: SessionContext, inp
     sql`select app.personnel_posting_approve(${input.id}::uuid, ${input.revision}, ${corrected ? JSON.stringify(corrected) : null}::jsonb) as data`));
   const {employmentId, eventType, values: applied, number} = approved.data;
   if(approved.data.alreadyApplied&&approved.data.movementId)return {id:input.id,movementId:approved.data.movementId,employmentId,eventType,values:applied,behaviourKind:eventType==='contractConversion'?'employmentTypeChange':eventType};
-  if(eventType==='contractRenewal'||eventType==='contractConversion'){
-    const result=await applyApprovedContractPostingMovementTx(tx,ctx,input.id);
-    const [event]=await tx.execute<{id:string}>(sql`select id from domain_event where tenant_id=${ctx.tenantId}::uuid and subject_employment_id=${employmentId}::uuid and payload->'movement'->>'groupId'=${result.groupId} order by sequence limit 1`);
-    if(!event)throw new PersonnelPostingError('invalid','The Contract movement receipt is unavailable.');
-    return {id:input.id,movementId:event.id,employmentId,eventType,values:applied,behaviourKind:eventType==='contractConversion'?'employmentTypeChange':eventType};
-  }
+  if(eventType==='contractRenewal'||eventType==='contractConversion')throw new PersonnelPostingError('invalid','The source-bound Contract posting is unavailable.');
   const posting=await personnelPostingTx(tx,input.id);
   if(!posting)throw new PersonnelPostingError('not_found','Posting not found.');
   const marker = await movementLedgerMarkerTx(tx, ctx, employmentId);
