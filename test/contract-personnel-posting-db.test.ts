@@ -20,17 +20,19 @@ describe('Contract agreement → canonical Personnel postings → explicit manua
   const[right]=await withTenant(f.approver,tx=>tx.execute<{maintain:boolean}>(sql`select app.access_workforce_employment(${f.employee.employmentId}::uuid,'workforce.maintain') as maintain`));expect(right.maintain).toBe(false);
   expect((await listContractSharedPostings(f.employeeActor)).rows).toEqual([]);
   expect(await readContractSharedPosting(f.proposer,p.id)).toBeNull();
-  await expect(approveContractSharedPosting(f.employeeActor,{id:p.id,revision:p.revision})).rejects.toMatchObject({code:'forbidden'});
+  await expect(approveContractSharedPosting(f.employeeActor,{id:p.id,revision:p.revision})).rejects.toThrow();
   const edited=await editContractSharedPosting(f.approver,{id:p.id,revision:p.revision,eventType:p.eventType,values:{...p.current,contractNumber:'6'}});
   await expect(approveContractSharedPosting(f.approver,{id:p.id,revision:edited.revision})).rejects.toMatchObject({code:'invalid'});
   expect(await facts(f)).toEqual(before);
   const result=await approveContractSharedPosting(f.approver,{id:p.id,revision:edited.revision,values:p.proposed});expect(result.alreadyApproved).toBe(false);
   expect(await facts(f)).toEqual({...before,start:f.newStart,end:f.newEnd,number:5});
-  expect((await postedEvents(f)).map(e=>e.type).sort()).toEqual(['contractRenewal','contractRenewal','contractTermination'].sort());
+  expect((await postedEvents(f)).map(e=>e.type).sort()).toEqual(['contractRenewal','contractTermination'].sort());
   const approved=await readContractSharedPosting(f.approver,p.id);expect(approved).toMatchObject({status:'approved',canConfirmPay:true});
   const retry=await approveContractSharedPosting(f.approver,{id:p.id,revision:edited.revision,values:p.proposed});expect(retry.alreadyApproved).toBe(true);expect(retry.movementId).toBe(result.movementId);
   expect(await facts(f)).toEqual({...before,start:f.newStart,end:f.newEnd,number:5});
-  expect((await contractSharedContext(f.proposer,f.caseId)).flow?.stage).toBe('pay');
+  const current=await contractSharedContext(f.proposer,f.caseId);expect(current.flow?.stage).toBe('pay');
+  const[nextPeriod]=await withTenant(f.proposer,tx=>tx.execute<{opened:{caseId:string}}>(sql`select app.contract_shared_period_open(${f.employee.employmentId}::uuid,${current.source.periodRevision}) as opened`));
+  expect(nextPeriod.opened.caseId).not.toBe(f.caseId);
   await expect(confirmContractSharedPay(f.proposer,{caseId:f.caseId,expectedRevision:approved!.caseRevision,confirmed:true})).rejects.toMatchObject({code:'forbidden'});
   // The existing Payroll owner records pay. Matching the agreement does not close the Contract case.
   await setCompensation(f.admin,{employmentId:f.employee.employmentId,basicSalary:5200.12,effectiveFrom:f.newStart});

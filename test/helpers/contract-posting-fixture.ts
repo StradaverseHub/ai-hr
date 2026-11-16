@@ -35,8 +35,10 @@ export async function contractPostingFixture(options:{kind?:'renew'|'convert';pa
   return {employment,ctx:{...admin,userId,personId:employment.personId,roles:['employee'],grants:undefined} as SessionContext};
  };
  const proposer=await actor('Fictional Contract proposer'),approver=await actor('Fictional Contract posting approver');
- await v9Setup(admin);const config=(await v9Workspace(admin)).config!,groupId=randomUUID();
- await v9SaveConfig(admin,config.revision,{...config,groups:[...config.groups,{id:groupId,name:'Fictional Contract People Ops',members:[approver.ctx.userId!],limit:0}],peopleOpsGroup:groupId});
+ await v9Setup(admin);const config=(await v9Workspace(admin)).config!,groupId=config.peopleOpsGroup;
+ // Keep the existing shared group identity. Changing the default would exercise the separately reviewed
+ // Offboarding reassignment owner; this fixture only changes the current Contract posting membership.
+ await v9SaveConfig(admin,config.revision,{...config,groups:config.groups.map(g=>g.id===groupId?{...g,name:'Fictional Contract People Ops',members:[approver.ctx.userId!]}:g)});
  const employee=await hireEmployee(admin,{person:{fullName:'Fictional Contract employee',primaryEmail:randomUUID()+'@posting.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'contract',hiredOn:start,provisionalEndOn:end,reportingManagerEmploymentId:proposer.employment.employmentId});
  await setEmploymentInfo(admin,{employmentId:employee.employmentId,contractStartDate:start,contractEndDate:end,contractNumber:4});
  await setCompensation(admin,{employmentId:employee.employmentId,basicSalary:4976.21,effectiveFrom:start});

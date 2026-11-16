@@ -2935,7 +2935,9 @@ async function scheduleMovementTx(
       input: scheduledInputOf(p),
       // The tag is what makes this event the OWNER of the history row: the sweep's legs share this
       // groupId and are all `secondary`, so the movement keeps exactly one line in the history.
-      movement: { type: p.typeCode ?? kind, groupId, remarks, endDate } satisfies MovementTag,
+      movement: { type: p.typeCode ?? kind, groupId, remarks, endDate,
+        ...(contractPostingMovementAuthorityTx(tx,p as unknown as Record<string,unknown>)?{contractPostingId:p.contractPostingId}:{}),
+      } satisfies MovementTag,
     },
   });
   return { employmentId: p.employmentId, scheduled: true as const, effectiveDate: p.effectiveDate, groupId };

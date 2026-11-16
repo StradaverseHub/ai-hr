@@ -216,7 +216,7 @@ export function editPersonnelPosting(ctx: SessionContext, input: { id: string; r
   }));
 }
 
-export type ApprovedPersonnelPosting = { id: string; movementId: string; employmentId: string; eventType: PersonnelPostingEvent; values: PersonnelPostingValues; behaviourKind: string; gradeBefore?: { gradeId: string | null } };
+export type ApprovedPersonnelPosting = { id: string; movementId: string; employmentId: string; eventType: PersonnelPostingEvent; values: PersonnelPostingValues; behaviourKind: string; alreadyApproved?:boolean; gradeBefore?: { gradeId: string | null } };
 
 /**
  * Approve in the caller's transaction: authorise and mark approved (database), apply the change through the movement
@@ -230,7 +230,7 @@ export async function approvePersonnelPostingTx(tx: Tx, ctx: SessionContext, inp
   if(contract){
     if(input.eventType&&input.eventType!==contract.eventType)throw new PersonnelPostingError('invalid','The Contract posting event type is fixed.');
     const approved=await approveContractSharedPostingTx(tx,ctx,input);
-    return {id:input.id,movementId:approved.movementId,employmentId:approved.employmentId,eventType:approved.eventType,values:approved.values,behaviourKind:approved.eventType==='contractConversion'?'employmentTypeChange':'contractRenewal'};
+    return {id:input.id,movementId:approved.movementId,employmentId:approved.employmentId,eventType:approved.eventType,values:approved.values,alreadyApproved:approved.alreadyApproved,behaviourKind:approved.eventType==='contractConversion'?'employmentTypeChange':'contractRenewal'};
   }
   input={...input};
   if(input.eventType){
