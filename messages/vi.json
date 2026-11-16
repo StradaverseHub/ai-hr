@@ -3608,6 +3608,7 @@
       "ownersNote": "Lương cơ bản và các ngày nghỉ việc được sửa trên sự kiện đã ghi nhận chúng: dùng nhập Biến động với Action \"Update\". Phương thức thanh toán nằm trong nhập Ngân hàng và Pháp định.",
       "warnings": {
         "historyStartAligned": "Các hồ sơ theo ngày của nhân viên (công ty và vị trí, lương, tuyến báo cáo) bắt đầu từ {from}. Lưu sẽ dời ngày bắt đầu về Ngày gia nhập tập đoàn, {date}.",
+        "salaryStartKept": "Hồ sơ lương giữ nguyên ngày bắt đầu {date} vì một kỳ lương đã đóng đã được trả theo hồ sơ này. Bảng lương đã hoàn tất không thay đổi và sẽ không có tính toán lại lịch sử nào.",
         "companyFrom": "Công ty thay đổi từ {date}.",
         "companyFromUntil": "Công ty thay đổi từ {date} đến {to}, khi một bản ghi sau đó thay đổi nó."
       },

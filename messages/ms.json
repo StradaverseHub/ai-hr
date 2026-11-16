@@ -3608,6 +3608,7 @@
       "ownersNote": "Gaji Pokok dan tarikh peletakan jawatan dibetulkan pada peristiwa yang merekodkannya: gunakan import Pergerakan dengan Tindakan \"Update\". Kaedah Pembayaran terdapat dalam import Bank dan Berkanun.",
       "warnings": {
         "historyStartAligned": "Rekod bertarikh pekerja (syarikat dan jawatan, gaji, garis pelaporan) bermula pada {from}. Menyimpan akan mengalihkan permulaannya ke Tarikh Sertai Kumpulan, {date}.",
+        "salaryStartKept": "Rekod gaji mengekalkan tarikh mulanya, {date}, kerana gaji yang telah ditutup dibayar mengikutnya. Gaji yang telah selesai kekal tidak berubah dan tiada pengiraan semula sejarah akan dijalankan.",
         "companyFrom": "Syarikat berubah mulai {date}.",
         "companyFromUntil": "Syarikat berubah mulai {date} hingga {to}, apabila rekod kemudian mengubahnya."
       },

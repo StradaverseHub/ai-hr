@@ -85,6 +85,11 @@ The reporter contested that the saved Group Join Date and Join Date blocked corr
 2. **Group Join Date Correction aligns the dated records.** After the movement (and after its Roll Back) moves
    `employment.hired_on`, `alignHistoryToGroupJoinDateTx` (core/movement-history.ts) starts the first assignment
    version, salary revision and reporting lines on it, as Information-Only Correction already did (board 154511c4).
+   Exception (owner, 16 November 2026: "Completed payroll stays unchanged and no historical recalculation will
+   run"): a salary record that a closed payroll was paid under is never superseded to move its start. It keeps its
+   own start date, the other dated records still align, the review says so (`salaryStartKept`) and the event
+   records it under `salaryKept`. Before this, such a save failed in the closed-period guard (migration 0277) with a
+   generic database message (staging DB-V-06E997).
    It records `employment.history.start.aligned` with `assignment` and `aligned` replacements, which
    `isAssignmentReplacementEvent` and the hire-correction ledger follow. Moving it later (including a Roll Back) is
    refused when a recorded change or closed payroll lies in the dropped period.
