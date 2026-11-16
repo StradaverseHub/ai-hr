@@ -60,7 +60,7 @@ export async function contractPostingFixture(options:{kind?:'renew'|'convert';pa
  return {b,admin,proposer:proposer.ctx,approver:approver.ctx,employeeActor,employee,caseId,groupId,workflow,draft,today,start,end,newStart,newEnd,kind};
 }
 export type ContractPostingFixture=Awaited<ReturnType<typeof contractPostingFixture>>;
-export async function releaseContractPosting(f:ContractPostingFixture){
+export async function releaseContractPosting(f:ContractPostingFixture,options:{returnAtPosting?:boolean}={}){
  const preview=await previewContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,draft:f.draft});
  await finishContractPostingJob(preview.jobId,f.proposer,'contract_preview');
  const accepted=await submitContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,previewId:preview.previewId});
@@ -76,8 +76,13 @@ export async function releaseContractPosting(f:ContractPostingFixture){
  const sign=await readContractSharedLetter(f.employeeActor,letterId.id);
  await actContractSharedLetter(f.employeeActor,{id:sign.id,actionId:randomUUID(),stepId:sign.pendingAction!.stepId,revision:sign.contentRevision,hash:sign.contentHash!,action:'signed',method:'typed',value:'Fictional Contract employee',consent:true});
  const[letterEvent]=await owner.db.execute<{job:string}>(sql`select job_id as job from contract_shared_event where tenant_id=${f.b.tenantId}::uuid and case_id=${f.caseId}::uuid and trigger_event='letterReleased' order by created_at desc,id desc limit 1`);
- await finishContractPostingJob(letterEvent.job,f.employeeActor,'contract_automation');
+ if(options.returnAtPosting){
+  for(let attempt=0;attempt<100;attempt++){
+   if((await listContractSharedPostings(f.approver,{status:'pending'})).rows.length)break;
+   await runBulkJobTick(owner.client,{handlers:[contractAutomationJobHandler]});
+  }
+ }else await finishContractPostingJob(letterEvent.job,f.employeeActor,'contract_automation');
  const page=await listContractSharedPostings(f.approver,{status:'pending'});
  if(page.rows.length!==1)throw new Error('The released Contract workflow did not create exactly one Personnel posting.');
- return page.rows[0];
+ return {...page.rows[0],continuationJobId:letterEvent.job};
 }

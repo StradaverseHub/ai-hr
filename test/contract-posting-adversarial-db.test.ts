@@ -3,7 +3,7 @@ import {afterAll,beforeAll,it,expect} from 'vitest';
 import {sql} from 'drizzle-orm';
 import {withTenant} from '../db/client';
 import {migrateTestDb,closeAll,owner} from './harness';
-import {contractPostingFixture,releaseContractPosting} from './helpers/contract-posting-fixture';
+import {contractPostingFixture,releaseContractPosting,finishContractPostingJob} from './helpers/contract-posting-fixture';
 import {approveContractSharedPosting,editContractSharedPosting,readContractSharedPosting,listContractSharedPostings,confirmContractSharedPay} from '../packs/contracts/service';
 
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -57,3 +57,9 @@ it('prelocks the real Employment write before the case flow when a second databa
  }finally{await blocker`rollback`.catch(()=>undefined);await approving?.catch(()=>undefined);blocker.release();}
  expect((await readContractSharedPosting(f.approver,p.id))?.status).toBe('pending');
 },120_000);
+it('finishes the causative protected job when the posting is approved immediately after its creation',async()=>{
+ const f=await contractPostingFixture(),p=await releaseContractPosting(f,{returnAtPosting:true});
+ await approveContractSharedPosting(f.approver,{id:p.id,revision:p.revision});
+ expect((await finishContractPostingJob(p.continuationJobId,f.employeeActor,'contract_automation')).state).toBe('completed');
+ expect((await readContractSharedPosting(f.approver,p.id))?.status).toBe('approved');
+});
