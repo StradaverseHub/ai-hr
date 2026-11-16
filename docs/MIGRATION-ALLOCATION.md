@@ -1,3 +1,17 @@
+<!-- 5761_probation_automation_recipients_and_tracker_steps -->
+# Probation workflow recipients, readiness and routed tracker steps — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-gaps-20261116` (lane I of the Probation Confirmation build) appends
+`5761_probation_automation_recipients_and_tracker_steps` at idx 5161 / when 1793330005461 (assigned by the build
+coordinator). SHA256 `c39e471adb80e51b56466c264bc6546dc6ce48a354e30d8e9ef3629a82b2184b`. It adds two owner-owned functions
+granted to `ai_hr_app`: `app.probation_automation_active_users(uuid,uuid[])` (the case's workflow runner only; which
+named people are active users, bounded to 500) and `app.probation_shared_workflow_triggers()` (an active Probation
+user; the triggers of Live or moved shared Probation workflows, bounded). It re-creates in place, with the same
+signature, owner and grants, `app.probation_tracker_page` (5746) so a part waiting on a routed approver step also
+returns the step's label and the person holding it. No table, column, row, grant, policy or purpose-owned object
+changes. The installed ledgers were not read; recheck watermarks and peer claims at admission. This allocation grants
+no installation authority.
+
 <!-- 5760_probation_queue_kinds_and_pbp_tasks -->
 # Probation queues by step kind and the PBP's low-result and Other tasks — 16 November 2026 MYT (unapplied, allocated)
 

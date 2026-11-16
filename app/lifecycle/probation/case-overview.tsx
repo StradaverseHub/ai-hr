@@ -12,7 +12,9 @@ import {LegacyReconciliationControls} from './legacy-reconciliation-controls';
 import {ProbationFacts} from './facts';
 import {addFollowup} from './actions';
 import {LowResultActions} from './pbp-decisions';
-export function CaseOverview({view}:{view:ProbationCaseView}){
+import {AutomationHistory} from './automation-history';
+import type {ProbationAutomationHistoryRun} from '@/packs/probation/service';
+export function CaseOverview({view,history}:{view:ProbationCaseView;history?:ProbationAutomationHistoryRun[]}){
  const t=useTranslations('probation'),router=useRouter(),[busy,start]=useTransition(),[kind,setKind]=useState<'followup'|'development'|'extension_recommendation'|'nonconfirmation_recommendation'>('followup'),[note,setNote]=useState(''),[error,setError]=useState('');
  const operations=view.roles.includes('pbp')||view.roles.includes('gbs'),development=view.runtimeEnabled&&(operations||view.roles.includes('lm'));
  const save=()=>{setError('');start(async()=>{const result=await addFollowup({caseId:view.record.id,kind,note});if(!result.ok){setError(result.detail??t('errors.unavailable'));return;}setNote('');router.refresh();});};
@@ -32,6 +34,7 @@ export function CaseOverview({view}:{view:ProbationCaseView}){
   {operations&&<CaseDateControls view={view}/>}
   <LegacyReconciliationControls view={view}/>
   <section className="v9-panel v9-stack"><h2>{t('files.title')}</h2>{!view.files.length?<p className="v9-muted">{t('files.empty')}</p>:<ul className="v9-list">{view.files.map(file=><li key={file.id}><FileText size={16} aria-hidden="true"/> <a href={'/lifecycle/probation/'+view.record.id+'/files/'+file.id} data-unsaved-guard="ignore" target="_blank" rel="noreferrer">{file.name}</a> · {t('version',{version:file.revision})}{file.filingState==='pending'&&<span className="v9-badge">{t('files.filingPending')}</span>}</li>)}</ul>}</section>
+  {history&&<AutomationHistory runs={history}/>}
   <section className="v9-panel v9-stack"><h2>{t('followup.title')}</h2>{development&&<><label className="v9-field"><span>{t('followup.kind')}</span><select value={kind} disabled={busy} onChange={e=>setKind(e.target.value as typeof kind)}>{(['followup','development','extension_recommendation','nonconfirmation_recommendation'] as const).map(value=><option key={value} value={value}>{t('followup.'+value)}</option>)}</select></label><label className="v9-field"><span>{t('followup.note')}</span><textarea value={note} maxLength={10000} disabled={busy} onChange={e=>setNote(e.target.value)}/></label><div><ActionButton guardNavigation aria-busy={busy} type="button" className="v9-button" disabled={busy||!note.trim()} onClick={save}>{t('followup.save')}</ActionButton></div></>}{!view.followups.length?<p className="v9-muted">{t('followup.empty')}</p>:<ol className="v9-list">{view.followups.map(followup=><li key={followup.id}><strong>{t.has('followup.'+followup.kind)?t('followup.'+followup.kind):followup.kind}</strong> · {onboardingTimestamp(followup.at)}<p className="probation-note">{followup.note}</p></li>)}</ol>}</section>
  </main>;
 }

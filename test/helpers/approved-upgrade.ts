@@ -217,9 +217,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5158,when:1793330005458,tag:'5758_probation_routed_overrides'},
  {idx:5159,when:1793330005459,tag:'5759_probation_employee_own_steps_only'},
  {idx:5160,when:1793330005460,tag:'5760_probation_queue_kinds_and_pbp_tasks'},
+ {idx:5161,when:1793330005461,tag:'5761_probation_automation_recipients_and_tracker_steps'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5761_probation_automation_recipients_and_tracker_steps':'c39e471adb80e51b56466c264bc6546dc6ce48a354e30d8e9ef3629a82b2184b',
  '5760_probation_queue_kinds_and_pbp_tasks':'c3ab5ddf4c702dd1ca947b3a350c7e852ab8699524c9da7fcad11f19887cdb59',
  '5150_attendance_policy_dated_rounding':'f1549fefc467398d9701ba5428e238134a8ca248fb645046b4b23877280e3408',
  '5145_ai_attendance_on_behalf_reads':'45f46d793d836371aebc7d7e20bcea000edef1a6e517367f8deffd59dd2ec9ff',

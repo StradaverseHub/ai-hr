@@ -13,7 +13,7 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {addDaysIso} from '../lib/roster-month';
 import {withTenant,type SessionContext} from '../db/client';
 import type {ProbationApprovalRow} from '../lib/probation-form';
-import {probationCase,saveProbationDraft,actOnProbation,probationTaskList,DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,defaultProbationRoutes} from '../packs/probation/service';
+import {probationCase,saveProbationDraft,actOnProbation,probationTaskList,probationSummaryRows,DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,defaultProbationRoutes} from '../packs/probation/service';
 
 let b:Base,admin:SessionContext;
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -70,6 +70,22 @@ async function caseWithRows(rows:ProbationApprovalRow[],groups:(people:{admin:st
 const onCase=(caseId:string,list:{items:{caseId:string;partId:string;kind:string;category:string}[]})=>list.items.filter(item=>item.caseId===caseId);
 
 describe('routed form approvers (5756)',()=>{
+ it('assigns the person a routing\'s matching row names (I8), never the fallback group',async()=>{
+  const named=await person('Fictional Routed Head');
+  const routingId=randomUUID();
+  const rows:ProbationApprovalRow[]=[{id:'routed_head',order:1,action:'approve',who:'routing:'+routingId,pick:'any'}];
+  const c=await caseWithRows(rows);
+  await owner.db.execute(sql`insert into automation_routing_version(tenant_id,routing_id,revision,name,routing_rows,reason,saved_by) values(${b.tenantId}::uuid,${routingId}::uuid,1,'Fictional HOD by department',${JSON.stringify([{match:{department:[b.deptA]},assignTo:{kind:'people',userIds:[named.userId]}}])}::jsonb,'Fictional routing',${admin.userId}::uuid)`);
+  await c.prepare();await c.submit();
+  expect([...await c.holders()]).toEqual([{step_id:'routed_head',holder_id:named.userId,kind:'missing_holder',represented_id:null}]);
+  expect((await c.frozen()).unresolved??[]).toEqual([]);
+  await c.acknowledge();
+  expect(onCase(c.ids.caseId,await probationTaskList(named.ctx,{category:'approval'}))).toEqual([expect.objectContaining({partId:c.ids.part,kind:'approve'})]);
+  // I9: the tracker names the routing and the person holding the step, never the raw role id.
+  const row=(await probationSummaryRows(admin,{})).rows.find(r=>r.id===c.ids.caseId)!;
+  expect(row.parts.find(p=>p.id===c.ids.part)).toMatchObject({waitingRole:'routing:'+routingId,waitingLabel:'Fictional HOD by department',waitingName:'Fictional Routed Head'});
+ });
+
  it('gives each routed step one person when the Line Manager submits, records Review and Approve without a signature, and completes the part',async()=>{
   const reviewer=await person('Fictional Named Reviewer'),away=await person('Fictional Away Approver'),approver=await person('Fictional Group Approver');
   const rows:ProbationApprovalRow[]=[

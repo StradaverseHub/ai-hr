@@ -35780,7 +35780,8 @@
       "admin": "ผู้จัดเตรียมที่ระบุชื่อ",
       "system": "การประมวลผลเบื้องหลัง",
       "superior": "Direct Superior",
-      "people": "Named people"
+      "people": "Named people",
+      "approver": "Approver"
     },
     "columns": {
       "employee": "พนักงาน",
@@ -36575,6 +36576,19 @@
       "reason": "Reason",
       "save": "Apply this outcome",
       "waiting": "Waiting for the People Business Partner to choose the outcome."
+    },
+    "automationHistory": {
+      "title": "Workflow history",
+      "empty": "No shared workflow has run for this case yet.",
+      "recipients": "{count, plural, one {# person} other {# people}} reached",
+      "unresolved": "Not reached: {who}. {reason}",
+      "status": {
+        "running": "Running",
+        "waiting": "Waiting for the letter",
+        "done": "Done",
+        "skipped": "Skipped",
+        "failed": "Failed"
+      }
     }
   },
   "templateEditor": {
