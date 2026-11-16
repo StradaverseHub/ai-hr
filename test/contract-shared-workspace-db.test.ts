@@ -141,9 +141,22 @@ it('pages 1,000 actual pending approvals across 70 companies with exact native e
  // Actual requests below retain the standard JIT-on profile and all production predicates.
  const native=readFileSync(new URL('../db/migrations/5917_contract_work_exact_document_join.sql',import.meta.url),'utf8'),begin=native.indexOf(' WITH clock'),finish=native.indexOf('\n$$;',begin);
  const statement=native.slice(begin,finish).replaceAll('p_cases','($1::uuid[])').replaceAll('p_assigned_only','($2::boolean)');
- const explain=await owner.withTenant(admin,tx=>tx.execute(sql.raw('EXPLAIN (GENERIC_PLAN TRUE,FORMAT JSON) '+statement)));
- const diagnostic=(explain[0] as Record<string,unknown>)['QUERY PLAN'] as {Plan:Record<string,unknown>;JIT?:unknown}[];
- console.info('Contract work generic planner estimate',JSON.stringify({cost:diagnostic[0].Plan['Total Cost'],rows:diagnostic[0].Plan['Plan Rows'],jit:diagnostic[0].JIT??null}));
+ const outer=readFileSync(new URL('../db/migrations/5898_contract_shared_work_page.sql',import.meta.url),'utf8'),outerBegin=outer.indexOf(' WITH assigned AS'),outerEnd=outer.indexOf(' INTO result;',outerBegin);
+ const outerStatement=outer.slice(outerBegin,outerEnd).replaceAll('p_category','($1::text)').replaceAll('p_companies','($2::uuid[])').replaceAll('p_limit','($3::integer)').replaceAll('p_offset','($4::integer)');
+ const [functionOwner]=await owner.db.execute<{name:string}>(sql`select pg_get_userbyid(proowner) as name from pg_proc where oid='app.contract_shared_work_page(text,uuid[],integer,integer)'::regprocedure`);
+ const diagnostics=await owner.withTenant(admin,async tx=>{
+  // The fixture superuser would omit FORCE RLS. Explain as the actual restricted function owner.
+  // This only reduces diagnostic authority; it changes no native owner, grant, policy or request setting.
+  await tx.execute(sql`set local role ${sql.identifier(functionOwner.name)}`);
+  const result=[];
+  for(const [name,query] of [['source',statement],['page',outerStatement]]){
+   const explain=await tx.execute(sql.raw('EXPLAIN (GENERIC_PLAN TRUE,FORMAT JSON) '+query));
+   const diagnostic=(explain[0] as Record<string,unknown>)['QUERY PLAN'] as {Plan:Record<string,unknown>;JIT?:unknown}[];
+   result.push({name,cost:diagnostic[0].Plan['Total Cost'],rows:diagnostic[0].Plan['Plan Rows'],jit:diagnostic[0].JIT??null});
+  }
+  return result;
+ });
+ console.info('Contract work restricted-owner planner estimates',JSON.stringify(diagnostics));
  const first=await contractSharedWorkPage(admin,{category:'approvals',companyIds:companies,limit:100});checkpoint('first-native-page');const second=await contractSharedWorkPage(admin,{category:'approvals',companyIds:companies,limit:100,offset:100});checkpoint('second-native-page');const last=await contractSharedWorkPage(admin,{category:'approvals',companyIds:companies,limit:100,offset:900});
  checkpoint('three-native-pages');
  expect(first.total).toBe(1000);expect(first.approvalTotal).toBe(1000);expect(first.taskTotal).toBe(0);expect(first.countsByKind).toEqual({contractApproval:1000});expect(first.hasMore).toBe(true);expect(last.hasMore).toBe(false);expect(first.items).toHaveLength(100);expect(second.items).toHaveLength(100);expect(new Set([...first.items,...second.items].map(r=>r.id)).size).toBe(200);expect(last.items).toHaveLength(100);
