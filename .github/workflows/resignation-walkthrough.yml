@@ -1,6 +1,10 @@
 name: resignation-walkthrough
-run-name: Resignation production renderer · ${{ inputs.candidate_ref }}
+run-name: Resignation production renderer · ${{ inputs.candidate_ref || github.ref_name }}
 on:
+  # Temporary, development-only bootstrap. It has no release or installation credentials.
+  push:
+    branches: ['codex/resignation-journey-20261116']
+    paths: ['.github/workflows/resignation-walkthrough.yml']
   workflow_dispatch:
     inputs:
       candidate_ref:
@@ -15,7 +19,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: resignation-renderer-${{ inputs.candidate_ref }}
+  group: resignation-renderer-${{ inputs.candidate_ref || github.ref_name }}
   cancel-in-progress: false
 env:
   TZ: Asia/Kuala_Lumpur
@@ -27,7 +31,7 @@ env:
   AIHR_CI_PG_JIT: 'on'
 jobs:
   resolve:
-    if: ${{ github.repository == 'StradaverseHub/ai-hr' }}
+    if: ${{ github.repository == 'StradaverseHub/ai-hr' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/codex/resignation-journey-20261116')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -37,11 +41,19 @@ jobs:
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
-      - run: node --test .github/ci/resignation-browser.test.mjs .github/ci/build-heap.test.mjs
-      - name: Resolve frozen candidate
+      - run: node --test .github/ci/resignation-browser.test.mjs .github/ci/resignation-browser-push.test.mjs .github/ci/build-heap.test.mjs
+      - name: Bind this exact development push or resolve the dispatched candidate
         id: candidate
-        run: node .github/ci/resolve.mjs
+        shell: bash
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            node .github/ci/resignation-browser-push.mjs
+          else
+            node .github/ci/resolve.mjs
+          fi
         env:
+          AIHR_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          AIHR_WORKFLOW_REF: ${{ github.workflow_ref }}
           GH_TOKEN: ${{ github.token }}
           STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
   production-renderer:
