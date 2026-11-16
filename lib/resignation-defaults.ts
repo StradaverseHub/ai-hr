@@ -18,7 +18,7 @@ export function resignationDefaults(config:Config,actorName:string,at:string){
  const workflows=[
  workflow('Employee resignation submitted','submitted',[decision()]),
  workflow('Prepare retention offer','retention',[step('generateDocument',{letterTemplateId:id(3),replyDays:5,remindDays:2})]),
- workflow('Accept resignation and start clearance','accepted',[step('generateDocument',{letterTemplateId:id(2)}),step('startOffboarding')]),
+ workflow('Accept resignation and start clearance','accepted',[step('generateDocument',{letterTemplateId:id(2)}),step('sendEmail',{emailTemplateId:id(4)},[employee]),step('startOffboarding')]),
  workflow('Retention offer withdrawn: return to decision','rejected',[decision()]),
  workflow('Retention offer reminder','offerDue',[notify([employee],'Your retention offer needs your reply','Please review your retention offer and reply before {{retention.replyBy}}.')]),
  workflow('Record accepted retention offer','offerAccepted',[step('createPosting',{eventType:'Promotion',dateFrom:'offerEff',fields:['title','grade','salary'],dueDays:3}),step('sendEmail',{emailTemplateId:id(5)},[employee])]),
@@ -26,6 +26,6 @@ export function resignationDefaults(config:Config,actorName:string,at:string){
  workflow('Resignation withdrawn','withdrawn',[notify([superior,bp],'Resignation withdrawn: {{employee.name}}','The employee withdrew their resignation.')]),
  workflow('Letter action needed','signRequest',[notify([pending],'Action needed: {{letter.name}}','Please {{letter.action}} {{letter.name}} in {{letter.where}}.')]),
  workflow('Letter sent back','sentBack',[notify([pending],'Update needed: {{letter.name}}','{{letter.by}} sent this letter back: {{letter.why}}')]),
- workflow('Released resignation acceptance','released',[{...step('sendEmail',{emailTemplateId:id(4)},[employee]),conditions:[{field:'document',op:'is',values:[id(2)]}]}]),
+ workflow('Released resignation acceptance','released',[notify([employee],'Letter released: {{letter.name}}','Your signed letter is available in your resignation case.')]),
  ];return{templates,emails,workflows,routings:RESIGNATION_DEFAULT_ROUTINGS};
 }
