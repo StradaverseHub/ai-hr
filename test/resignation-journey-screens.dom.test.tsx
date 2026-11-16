@@ -25,18 +25,22 @@ beforeAll(()=>{HTMLDialogElement.prototype.showModal=function(){this.setAttribut
 describe('employee resignation journey',()=>{
  it('uses the policy date, preserves input on refusal, and does not expose another submission while active',async()=>{
   actions.submitOwnResignation.mockResolvedValue({ok:false,error:'Try again later'});
-  wrap(<EmployeeResignation employmentId="employment-a" initial={{today:'2026-11-16',earliestLastDay:'2026-12-16',noticeLabel:'1 month',canSubmit:true,cases:[]}}/>);
+  wrap(<EmployeeResignation employmentId="employment-a" initial={{today:'2026-11-16',earliestLastDay:'2026-12-16',noticeLabel:'1 month',unavailableReason:null,canSubmit:true,cases:[]}}/>);
   const date=screen.getByLabelText('Last working day');expect(date).toHaveAttribute('min','2026-12-16');
   fireEvent.change(screen.getByLabelText('Reason (optional)'),{target:{value:'Keep this draft'}});
   fireEvent.submit(screen.getByRole('button',{name:'Submit resignation'}).closest('form')!);
   await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent('Try again later'));
   expect(screen.getByLabelText('Reason (optional)')).toHaveValue('Keep this draft');
   const form=actions.submitOwnResignation.mock.calls[0][0] as FormData;expect(form.get('employmentId')).toBe('employment-a');expect(form.get('lastWorkingDay')).toBe('2026-12-16');
-  cleanup();wrap(<EmployeeResignation employmentId="employment-a" initial={{today:'2026-11-16',earliestLastDay:'2026-12-16',noticeLabel:'1 month',canSubmit:false,cases:[c({capabilities:{withdraw:true,accept:false,offer:false,comment:false,retry:false}})]}}/>);
+  cleanup();wrap(<EmployeeResignation employmentId="employment-a" initial={{today:'2026-11-16',earliestLastDay:'2026-12-16',noticeLabel:'1 month',unavailableReason:null,canSubmit:false,cases:[c({capabilities:{withdraw:true,accept:false,offer:false,comment:false,retry:false}})]}}/>);
   expect(screen.queryByRole('button',{name:'Submit resignation'})).not.toBeInTheDocument();expect(screen.getByRole('button',{name:'Withdraw resignation'})).toBeInTheDocument();expect(screen.getByText('RSN-42')).toBeInTheDocument();
  });
+ it('explains why submission is unavailable when no decision workflow is configured',()=>{
+  wrap(<EmployeeResignation employmentId="employment-a" initial={{today:'2026-11-16',earliestLastDay:'2026-12-16',noticeLabel:'1 month',unavailableReason:'Ask HR to configure the resignation decision workflow.',canSubmit:false,cases:[]}}/>);
+  expect(screen.getByText('Ask HR to configure the resignation decision workflow.')).toBeInTheDocument();expect(screen.queryByRole('button',{name:'Submit resignation'})).not.toBeInTheDocument();
+ });
  it('allows a new case after retention without deleting earlier history',()=>{
-  wrap(<EmployeeResignation employmentId="employment-a" initial={{today:'2026-11-16',earliestLastDay:'2026-12-16',noticeLabel:'1 month',canSubmit:true,cases:[c({stage:'retained',capabilities:{withdraw:false,accept:false,offer:false,comment:false,retry:false}})]}}/>);
+  wrap(<EmployeeResignation employmentId="employment-a" initial={{today:'2026-11-16',earliestLastDay:'2026-12-16',noticeLabel:'1 month',unavailableReason:null,canSubmit:true,cases:[c({stage:'retained',capabilities:{withdraw:false,accept:false,offer:false,comment:false,retry:false}})]}}/>);
   fireEvent.click(screen.getByRole('button',{name:'Submit a new resignation'}));expect(screen.getByRole('button',{name:'Submit resignation'})).toBeInTheDocument();
  });
 });
