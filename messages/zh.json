@@ -36429,7 +36429,8 @@
       "decision": {
         "reviewed": "Mark as reviewed",
         "approved": "Approve"
-      }
+      },
+      "holderOnBehalf": "{name} on behalf of {represented}"
     },
     "dates": {
       "title": "试用期日期审核",

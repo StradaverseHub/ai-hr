@@ -277,6 +277,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5761_probation_automation_recipients_and_tracker_steps',
    // Lane J (16 November 2026): imported saved offline evaluation forms.
    '5762_probation_form_import',
+   // Lane L (16 November 2026): letter signers for unsigned signature blocks and Required signers.
+   '5765_probation_letter_signers',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -449,7 +451,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.probation_form_import_read(uuid)','app.probation_form_imports(uuid)','app.probation_form_routing_context(uuid)',
    'app.probation_general_delegate(uuid,uuid,text)','app.probation_holders_set(uuid[])','app.probation_legacy_audience(uuid,uuid)',
    'app.probation_letter_freeze_route(uuid,jsonb,jsonb)','app.probation_letter_routed(jsonb)','app.probation_letter_routing_context(uuid)',
-   'app.probation_letter_routing_signatures_ok(jsonb)','app.probation_letter_routing_valid(jsonb)','app.probation_max_extensions(jsonb)',
+   'app.probation_letter_routing_signatures_ok(jsonb)','app.probation_letter_routing_valid(jsonb)','app.probation_letter_signers(uuid)','app.probation_max_extensions(jsonb)',
    'app.probation_outcome_automation(uuid)','app.probation_overdue_summary_cases(uuid,date)','app.probation_pending_signer_kinds(uuid)',
    'app.probation_posting_approved()','app.probation_record_low_result_action(uuid,text)','app.probation_record_override(uuid)',
    'app.probation_record_posting_effect(uuid,uuid,uuid,jsonb,jsonb)','app.probation_settings_materialize(uuid[])','app.probation_settings_scope_admin()',

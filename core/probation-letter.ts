@@ -22,7 +22,9 @@ const letterRules=base.shape.rules.pick({businessGroup:true,company:true,departm
 const templateSchema=base.omit({module:true}).extend({organisationMapping:z.enum(['legacy-v1','personnel-v2']).optional(),rules:letterRules,module:z.literal('probation'),outcome:z.enum(['confirm','extend','not_confirm']),unfinished:z.boolean(),blocks:base.shape.versions.element.shape.blocks,fields:base.shape.versions.element.shape.fields,route,routing:documentRoutingSchema.optional()}).strict();
 export type ProbationLetterDefinition={id:string;companyId:string;key:string;version:number;state:'draft'|'published'|'retired';retirementReason?:string|null;data:ProbationTemplate};
 export type ProbationLetterPreview={merge:Record<string,string>;blocks:Block[];fields:Field[];route:SigningRoute;guardrails:SigningGuardrails;companyId:string;employmentId:string;templateId:string;templateVersion:number;templateName?:string;outcomeRevision:number;sourceDigest:string};
-export type ProbationLetterView={routed:boolean;contentVisible:boolean;owner:{stepId:string|null;userId:string|null}|null;canEditContent:boolean;unresolved:{stepId:string;meantFor:string;reason:string}[];id:string;caseId:string;outcomeId:string;outcomeRevision:number|null;storageRevision:number;state:string;createdAt:string;name:string;templateId:string;templateVersion:number;blocks:Block[];fields:Field[];merge:Record<string,string>;signing:{id:string;document:SigningDocument}|null;route:SigningRoute|null;runtimeEnabled:boolean;sourceMoved:boolean;canPrepare:boolean;canRelease:boolean;document:Document};
+/** Who holds each step of a letter's route (5765, L3/L4): name and job title of the holder, the routing or group it was routed to. */
+export type ProbationLetterSigner={holderId:string|null;name:string|null;title:string|null;label:string|null;role:string;representedName:string|null};
+export type ProbationLetterView={signers?:Record<string,ProbationLetterSigner>;routed:boolean;contentVisible:boolean;owner:{stepId:string|null;userId:string|null}|null;canEditContent:boolean;unresolved:{stepId:string;meantFor:string;reason:string}[];id:string;caseId:string;outcomeId:string;outcomeRevision:number|null;storageRevision:number;state:string;createdAt:string;name:string;templateId:string;templateVersion:number;blocks:Block[];fields:Field[];merge:Record<string,string>;signing:{id:string;document:SigningDocument}|null;route:SigningRoute|null;runtimeEnabled:boolean;sourceMoved:boolean;canPrepare:boolean;canRelease:boolean;document:Document};
 function companyGate(ctx:SessionContext,companyId:string){if(ctx.entitlementsExempt===undefined)assertModuleEnabled(ctx,'lifecycle',companyId);}
 function validateTemplate(raw:unknown,publish:boolean):ProbationTemplate{
  const value=templateSchema.parse(raw) as ProbationTemplate;
@@ -154,8 +156,21 @@ async function readLetterTx(tx:Tx,ctx:SessionContext,caseId:string,partId:string
  const hidden={letterBlocks:[] as Block[],letterFields:[] as Field[],letterMerge:{} as Record<string,string>};
  const shown=contentVisible?row.data:{...row.data,...hidden};
  const routing={routed,contentVisible,owner:routed&&signing?signingDocumentOwner(signing.document):null,canEditContent:routed&&!!signing&&canEditSigningContent(signing.document,ctx.userId??null),unresolved:row.data.letterRoutingUnresolved??[]};
- const value={...routing,id:row.id,caseId:row.case_id,outcomeId:row.data.letterOutcomeId,outcomeRevision:row.outcome_revision,storageRevision:row.revision,state:row.data.state,createdAt:row.created_at,name:row.data.letterTemplateName??'Probation outcome letter',templateId:row.data.letterTemplateId,templateVersion:row.data.letterTemplateVersion,blocks:shown.letterBlocks,fields:shown.letterFields,merge:shown.letterMerge,signing,route:currentRoute,runtimeEnabled:row.runtime_enabled&&!row.source_moved,sourceMoved:row.source_moved,canPrepare:row.runtime_enabled&&!row.source_moved&&row.can_prepare,canRelease:row.runtime_enabled&&!row.source_moved&&row.can_release};
+ // L3/L4 (5765): the person holding each step of the shown route, so unsigned signature blocks and "Required signers"
+ // name them; a step nobody holds yet keeps its routing or role label. Bounded by the route (at most 50 rows).
+ const signers=currentRoute?await letterSignersTx(tx,row.id,currentRoute):undefined;
+ const value={...routing,...(signers?{signers}:{}),id:row.id,caseId:row.case_id,outcomeId:row.data.letterOutcomeId,outcomeRevision:row.outcome_revision,storageRevision:row.revision,state:row.data.state,createdAt:row.created_at,name:row.data.letterTemplateName??'Probation outcome letter',templateId:row.data.letterTemplateId,templateVersion:row.data.letterTemplateVersion,blocks:shown.letterBlocks,fields:shown.letterFields,merge:shown.letterMerge,signing,route:currentRoute,runtimeEnabled:row.runtime_enabled&&!row.source_moved,sourceMoved:row.source_moved,canPrepare:row.runtime_enabled&&!row.source_moved&&row.can_prepare,canRelease:row.runtime_enabled&&!row.source_moved&&row.can_release};
  return{...value,document:probationLetterDocument({...value,signing:signing?.document})};
+}
+async function letterSignersTx(tx:Tx,partId:string,route:SigningRoute):Promise<Record<string,ProbationLetterSigner>>{
+ const rows=await tx.execute<{step_id:string;holder_id:string|null;name:string|null;title:string|null;label:string|null}>(sql`select step_id,holder_id,name,title,label from app.probation_letter_signers(${partId}::uuid)`);
+ const byHolder=new Map(rows.filter(r=>r.holder_id).map(r=>[r.holder_id!,r]));
+ return Object.fromEntries(route.steps.map(step=>{
+  const own=rows.find(r=>r.step_id===step.id&&r.holder_id===step.holderId),any=rows.find(r=>r.step_id===step.id&&r.label);
+  const holder=step.holderId?own??byHolder.get(step.holderId)??null:null;
+  return[step.id,{holderId:step.holderId,name:holder?.name??null,title:holder?.title??null,label:step.label??own?.label??any?.label??null,role:step.role,
+   representedName:step.representedId&&step.representedId!==step.holderId?byHolder.get(step.representedId)?.name??null:null}];
+ }));
 }
 export function readProbationLetter(ctx:SessionContext,caseId:string,partId:string){return withScopedLifecycleTenant(ctx,tx=>readLetterTx(tx,ctx,caseId,partId));}
 export function actOnProbationLetter(ctx:SessionContext,input:{caseId:string;partId:string;revision:number;stepId:string;action:'signed'|'returned'|'reviewed'|'approved';comment?:string;method?:'typed'|'drawn';value?:string;consent?:boolean;actionId?:string}){return withScopedLifecycleTenant(ctx,async tx=>{

@@ -6,7 +6,10 @@ export function v9SignaturePresentation(document:Document,role:'hr'|'employee'|`
   if(role.startsWith('step:')){
     const signature=document.stepSignatures?.[role.slice(5)]??null,values=document.mergeValues??{};
     const signedAt=signature&&Number.isFinite(Date.parse(signature.at))?new Intl.DateTimeFormat('en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'}).format(new Date(signature.at)):'';
-    return {signature,name:signature?.by.name??'[Signatory]',detail:[signature?.printedTitle??'',values['company.name']].filter(Boolean).join(', '),status:signature?`Signed electronically${signedAt?' on '+signedAt:''}`:'Not signed yet'};
+    // An unsigned step block names who holds the step, else what it was routed to (Probation letters, 5765); a document
+    // without those values keeps the placeholder.
+    const step=role.slice(5),pending=(field:string)=>signature?'':values[`signingStep.${step}.${field}`]??'';
+    return {signature,name:signature?.by.name??(pending('name')||pending('label')||'[Signatory]'),detail:[signature?.printedTitle??pending('title'),values['company.name']].filter(Boolean).join(', '),status:signature?`Signed electronically${signedAt?' on '+signedAt:''}`:'Not signed yet'};
   }
   const signature=role==='hr'?document.hrSignature:document.employeeSignature,values=document.mergeValues??{};
   const name=signature?.by.name??values[role==='hr'?'signatory.name':'employee.name']??'';
