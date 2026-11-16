@@ -786,7 +786,7 @@ describe('Probation work in My Action Centre (migration 5751)',()=>{
   // The employee's acknowledgement is a task, never an approval, and reaches the shared task list as probationTask.
   expect(onCase(await probationTaskList(staff.ctx))).toEqual([expect.objectContaining({partId:ids.part,kind:'acknowledge',category:'task',href})]);
   expect(onCase(await probationTaskList(staff.ctx,{category:'approval'}))).toEqual([]);
-  expect((await listPendingTasks(staff.ctx,undefined,modules)).filter(task=>task.kind.startsWith('probation'))).toEqual([expect.objectContaining({id:ids.part,kind:'probationTask',linkPath:href})]);
+  expect((await listPendingTasks(staff.ctx,undefined,modules)).filter(task=>task.kind.startsWith('probation'))).toEqual([expect.objectContaining({id:ids.part+':acknowledge',kind:'probationTask',linkPath:href})]);
   expect(onCase(await probationTaskList(peer.ctx))).toEqual([]);
   let part=await current(staff.ctx);
   await saveProbationDraft(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'employee',patch:{employeeComments:'I acknowledge the review discussion.'}});
