@@ -1,5 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {resignationDefaults,RESIGNATION_DEFAULT_IDS as I,RESIGNATION_DEFAULT_ROUTINGS} from '../lib/resignation-defaults';
+import {parseV9Config} from '../lib/lifecycle-v9-validation';
 import {v9Defaults} from '../lib/lifecycle-v9-defaults';
 import {OFFBOARDING_AUTOMATION_CATALOGUE} from '../lib/automation/catalogues/offboarding';
 import {automationWorkflowProblems} from '../lib/automation/workflow';
@@ -85,3 +86,5 @@ describe('explicit resignation defaults match handoff §14',()=>{
   expect(defaults.workflows.find(w=>w.trigger.event==='rejected')!.steps[0].cc).toEqual([bp,ops]);expect(defaults.workflows.find(w=>w.trigger.event==='offerDeclined')!.steps[0].cc).toEqual([bp]);expect(defaults.workflows.find(w=>w.trigger.event==='offerDue')!.steps[0].cc).toEqual([superior]);
  });
 });
+
+it('passes the actual V9 configuration parser before sender normalization or persistence',()=>{const previous=v9Defaults(),defaults=resignationDefaults(previous,'Configuration owner',at);expect(defaults.emails.map(email=>email.sender)).toEqual(['noreply','noreply','noreply']);const merged={...previous,groups:[...previous.groups,...defaults.groups],peopleOpsGroup:defaults.peopleOpsGroupId,templates:[...previous.templates,...defaults.templates],emails:[...previous.emails,...defaults.emails]};expect(()=>parseV9Config(merged,previous)).not.toThrow();expect(parseV9Config(merged,previous).emails.filter(email=>defaults.emails.some(expected=>expected.id===email.id)).map(email=>email.sender)).toEqual(['noreply','noreply','noreply']);});
