@@ -6273,6 +6273,13 @@
       "when": 1794841005819,
       "tag": "5819_contract_shared_period_open",
       "breakpoints": true
+    },
+    {
+      "idx": 5230,
+      "version": "7",
+      "when": 1794841005830,
+      "tag": "5830_contract_shared_tracker_choices",
+      "breakpoints": true
     }
   ]
 }
