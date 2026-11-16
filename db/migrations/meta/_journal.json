@@ -6170,7 +6170,20 @@
       "breakpoints": true
     },
     {
-<<<<<<< HEAD
+      "idx": 5170,
+      "version": "7",
+      "when": 1793330005470,
+      "tag": "5770_attendance_workflow_approver_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 5171,
+      "version": "7",
+      "when": 1793330005471,
+      "tag": "5771_assistant_legacy_index_shared_access",
+      "breakpoints": true
+    },
+    {
       "idx": 5172,
       "version": "7",
       "when": 1793330005472,
@@ -6217,19 +6230,6 @@
       "version": "7",
       "when": 1793330005478,
       "tag": "5778_movement_payroll_windows",
-=======
-      "idx": 5170,
-      "version": "7",
-      "when": 1793330005470,
-      "tag": "5770_attendance_workflow_approver_codes",
-      "breakpoints": true
-    },
-    {
-      "idx": 5171,
-      "version": "7",
-      "when": 1793330005471,
-      "tag": "5771_assistant_legacy_index_shared_access",
->>>>>>> origin/main
       "breakpoints": true
     }
   ]
