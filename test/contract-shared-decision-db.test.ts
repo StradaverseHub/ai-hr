@@ -72,6 +72,13 @@ const draft={kind:'renew' as const,months:6,payChanges:false,reason:'Continue th
 let f:Awaited<ReturnType<typeof fixture>>;
 beforeEach(async()=>{f=await fixture();});
 describe('protected Contract decision preview and submission',()=>{
+ it('does not hydrate unrelated tenant groups into a case-specific decision preview',async()=>{
+  await owner.db.execute(sql`with unrelated as(insert into app_user(tenant_id,workos_user_id) select ${f.b.tenantId}::uuid,'unrelated-contract-fixture-'||gen_random_uuid()::text from generate_series(1,5001) returning id)
+   update lc_v9_config set data=jsonb_set(data,'{groups}',(data->'groups')||jsonb_build_array(jsonb_build_object('id','unrelated-large-group','name','Unrelated configuration','limit',0,'members',(select jsonb_agg(id) from unrelated)))),revision=revision+1 where tenant_id=${f.b.tenantId}::uuid`);
+  const requested=await previewContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,draft});
+  expect((await finishPreview(requested.jobId,f.proposer)).state).toBe('completed');
+  expect((await readContractSharedDecisionPreview(f.proposer,requested.previewId)).plan?.blockers).toEqual([]);
+ });
  it('queues shared email with frozen rich wording, default CC and a source-bound individual approval link',async()=>{
   const origin='https://contract-mail-fixture.invalid',templateId=randomUUID();
   for(const userId of [f.admin.userId!,f.proposer.userId!])await owner.db.execute(sql`insert into app_external_identity(issuer,subject,app_user_id) values(${origin+'/auth/'+f.b.tenantId},${randomUUID()},${userId}::uuid)`);
