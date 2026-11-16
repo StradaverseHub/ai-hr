@@ -1,6 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {AUTOMATION_FLOOR} from '../lib/automation/floor';
 import {v9ConfigSchema,v9RoleSchema} from '../lib/lifecycle-v9-validation';
+import {personnelMergeLabels} from '../lib/lifecycle-v9-personnel-merge-fields';
 import {contractWorkflowSchema,contractApproverSchema} from '../lib/contract-management-workflow';
 import {PROBATION_WORKFLOW_EVENTS,probationWorkflowIssues,type ProbationWorkflow} from '../lib/probation-workflow';
 
@@ -52,6 +53,13 @@ describe('Automation floor · On/Off Boarding V9',()=>{
   same(enumValues(path(template,'versions','[]','blocks','[]','type')),f.blockTypes);
   same(enumValues(path(template,'versions','[]','fields','[]','type')),f.fieldTypes);
   same(enumValues(path(template,'versions','[]','fields','[]','owner')),f.fieldOwners);
+ });
+ it('pins the email template options: sender, files, images, links, attachments, per-person slots, active and the rest',()=>{
+  same(keys(path(v9ConfigSchema,'emails','[]')).filter(k=>!['id','name','module','subject','body'].includes(k)),f.emailOptions);
+ });
+ it('pins the email merge fields: every Personnel field plus the run\'s own words',()=>{
+  same(f.mergeFields.filter(key=>!['owner.name','pending.tasks','pending.count'].includes(key)),[...personnelMergeLabels.keys()]);
+  expect(f.mergeFields).toEqual(expect.arrayContaining(['owner.name','pending.tasks','pending.count']));
  });
  it('pins checklist task assignment and the PBP rule dimensions',()=>{
   same(enumValues(path(v9ConfigSchema,'checklists','[]','tasks','[]','by')),f.taskAssignees);

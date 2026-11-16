@@ -18,7 +18,7 @@ async function person(name:string){
  return{...e,userId,ctx:{...admin,userId,personId:e.personId,roles:['employee'],grants:undefined} as SessionContext};
 }
 /** A native Part 3 with a recorded Confirm outcome; the admin is the case's PBP and GBS. */
-async function recordedConfirm(extraGroups:{id:string;name:string;members:string[];limit:number}[]=[],options:{outcome?:'confirm'|'extend'|'not_confirm'|'other';rating?:1|2|3|4|5;beforeRecord?:(admin:SessionContext)=>Promise<void>}={}){
+async function recordedConfirm(extraGroups:{id:string;name:string;members:string[];limit:number}[]=[],options:{outcome?:'confirm'|'extend'|'not_confirm'|'other';rating?:1|2|3|4|5;until?:'acknowledged';beforeRecord?:(admin:SessionContext)=>Promise<void>}={}){
  const chosen=options.outcome??'confirm';
  const[hrPerson]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional HR Partner',${randomUUID()+'@probation.example.test'}) returning id`);
  await owner.db.execute(sql`update app_user set person_id=${hrPerson.id}::uuid where id=${admin.userId}::uuid`);admin={...admin,personId:hrPerson.id};
@@ -51,12 +51,13 @@ async function recordedConfirm(extraGroups:{id:string;name:string;members:string
  p=await current(manager.ctx);await actOnProbation(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:p.revision,command:'submit_manager',method:'typed',value:'Fictional Manager',consent:true});
  p=await current(staff.ctx);await saveProbationDraft(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:p.revision,rater:'employee',patch:{employeeComments:'I acknowledge the submitted review.'}});
  p=await current(staff.ctx);await actOnProbation(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:p.revision,command:'acknowledge',method:'typed',value:'Fictional Staff',consent:true});
+ if(options.until==='acknowledged')return{ids,staff,manager,peer,decision:null as unknown as {id:string;revision:number},endOn,admin,current};
  for(const actor of[peer.ctx,admin]){p=await current(actor);await actOnProbation(actor,{caseId:ids.caseId,partId:ids.part,revision:p.revision,command:'approve',method:'typed',value:actor.userId===admin.userId?'Fictional PBP':'Fictional Reviewer',consent:true});}
  if(chosen==='extend'){p=await current(admin);await actOnProbation(admin,{caseId:ids.caseId,partId:ids.part,revision:p.revision,command:'confirm_extension',months:3,reason:'PBP confirms the recorded three-month extension'});}
  await options.beforeRecord?.(admin);
  p=await current(admin);await actOnProbation(admin,{caseId:ids.caseId,partId:ids.part,revision:p.revision,command:'record'});
  const[decision]=await owner.db.execute<{id:string;revision:number}>(sql`select id,revision from probation_outcome where part_id=${ids.part}::uuid`);
- return{ids,staff,manager,peer,decision,endOn,admin};
+ return{ids,staff,manager,peer,decision,endOn,admin,current};
 }
  return{person,recordedConfirm,admin:()=>admin};
 }
