@@ -1,0 +1,5 @@
+import {getSession} from '@/lib/session';
+import {readResignationJourneyAttachment} from '@/packs/lifecycle/resignation/service';
+export async function GET(request:Request,{params}:{params:Promise<{caseId:string;attachmentId:string}>}){
+ try{const input=await params;const result=await readResignationJourneyAttachment(await getSession(),input);const name=result.fileName.replace(/[\r\n"\\/]/g,'_'),fallback=name.replace(/[^\x20-\x7e]/g,'_');const inline=new URL(request.url).searchParams.get('inline')==='1'&&['application/pdf','image/jpeg','image/png'].includes(result.mimeType);return new Response(Buffer.from(result.content),{headers:{'Content-Type':result.mimeType,'Content-Disposition':`${inline?'inline':'attachment'}; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(name)}`,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});}catch(error){if(error&&typeof error==='object'&&'code'in error&&(error.code==='forbidden'||error.code==='not_found'))return new Response(null,{status:404});throw error;}
+}
