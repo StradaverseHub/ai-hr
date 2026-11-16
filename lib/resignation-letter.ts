@@ -478,6 +478,12 @@ export function resignationLetterPreview(letter: ResignationLetter, userId: stri
     merge, createdAt: letter.generatedAt, signing: shownSigning,
     signers: letter.signers ?? Object.fromEntries(letter.document.route.steps.map(step => [step.id,
       {name: null, title: null, label: step.label ?? step.role, role: step.role}]))}) : null;
+  if (document) {
+    // Typed form controls keep their source value (an absent optional date/table is empty, not a literal dash).
+    // Inline text merges still use the human-readable dash supplied above.
+    const source = letter.frozenValues ?? letter.mergeValues;
+    document.values = Object.fromEntries(visibleFields(letter).map(field => [field.id, source[field.pmKey ?? field.id] ?? '']));
+  }
   return {id: letter.id, name: letter.name, state: letter.state, revision: letter.revision, templateVersion: letter.templateVersion,
     contentVisible: capabilities.contentVisible, document, capabilities,
     editableBlocks: capabilities.canEditContent ? structuredClone(letter.blocks) : null,

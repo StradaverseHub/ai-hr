@@ -167,6 +167,15 @@ describe('Offboarding letter privacy, completion and offer acceptance', () => {
     expect(preview.document?.blocks.find(block => block.id === 'table')?.columns).toBe('Example employee|Current|Proposed');
   });
 
+  it('preserves empty optional typed field values instead of inserting a non-JSON dash into a table', () => {
+    const t = template();
+    t.versions[0].fields.push({id: 'optional-table', label: 'Optional rows', type: 'table', owner: 'hr', pmKey: null,
+      required: false, sensitive: false, options: [], columns: ['Name'], section: 'supplement', when: null});
+    t.versions[0].blocks.push({id: 'optional-field', type: 'field', fieldId: 'optional-table', section: 'supplement', text: ''});
+    const preview = resignationLetterPreview(generate({template: t}).letter, people.owner);
+    expect(preview.document?.values['optional-table']).toBe('');
+  });
+
   it('starts the reply clock on reaching the employee, requires opening/consent, and signing is acceptance', () => {
     let letter = generate().letter;
     letter = complete(letter, 'owner').letter;
