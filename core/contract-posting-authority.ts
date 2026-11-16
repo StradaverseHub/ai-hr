@@ -1,7 +1,7 @@
 /** Exact, transaction-local authority minted by the Contract posting owner, never by roles or a form. */
 import {sql} from 'drizzle-orm';
 import type {Tx} from '../db/client';
-export type ContractPostingIntent={postingId:string;employmentId:string;kind:'contractRenewal'|'contractConversion';effectiveDate:string;endDate:string|null;contractNumber:string|null;completed:boolean;groupId:string|null};
+export type ContractPostingIntent={postingId:string;employmentId:string;kind:'contractRenewal'|'contractConversion';effectiveDate:string;endDate:string|null;contractNumber:string|null;remarks:string;completed:boolean;groupId:string|null};
 const active=new WeakMap<object,Readonly<ContractPostingIntent>>();
 export async function withContractPostingIntentTx<T>(tx:Tx,postingId:string,run:(intent:Readonly<ContractPostingIntent>)=>Promise<T>):Promise<T>{
  const[row]=await tx.execute<{intent:ContractPostingIntent}>(sql`select app.contract_shared_posting_intent(${postingId}::uuid) as intent`);
@@ -11,7 +11,7 @@ export async function withContractPostingIntentTx<T>(tx:Tx,postingId:string,run:
 }
 export function contractPostingMovementAuthorityTx(tx:Tx|undefined,input:Record<string,unknown>):boolean{
  const i=tx&&active.get(tx);if(!i||i.completed||input.employmentId!==i.employmentId||input.kind!==i.kind||input.effectiveDate!==i.effectiveDate||input.contractPostingId!==i.postingId)return false;
- return Object.keys(input).every(k=>input[k]===undefined||['employmentId','kind','effectiveDate','endDate','contractPostingId','contractStartDate','contractNumber','remarks','typeCode'].includes(k))&&(input.endDate??null)===i.endDate&&input.contractStartDate===(i.kind==='contractRenewal'?i.effectiveDate:null)&&(input.contractNumber??null)===i.contractNumber;
+ return Object.keys(input).every(k=>input[k]===undefined||['employmentId','kind','effectiveDate','endDate','contractPostingId','contractStartDate','contractNumber','remarks','typeCode'].includes(k))&&(input.endDate??null)===i.endDate&&input.contractStartDate===(i.kind==='contractRenewal'?i.effectiveDate:null)&&(input.contractNumber??null)===i.contractNumber&&input.remarks===i.remarks&&(input.typeCode===undefined||input.typeCode===i.kind);
 }
 export function contractPostingInfoAuthorityTx(tx:Tx|undefined,input:Record<string,unknown>):boolean{
  const i=tx&&active.get(tx);if(!i||i.completed||input.employmentId!==i.employmentId)return false;

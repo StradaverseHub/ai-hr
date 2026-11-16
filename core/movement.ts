@@ -5132,7 +5132,7 @@ export function applyApprovedProbationDateShiftTx(tx:Tx,ctx:SessionContext,reque
 export function applyApprovedContractPostingMovementTx(tx:Tx,ctx:SessionContext,postingId:string){return withContractPostingIntentTx(tx,postingId,async intent=>{
  if(intent.completed)return {alreadyApplied:true as const,groupId:intent.groupId};
  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
- const input:CreateMovementInput={employmentId:intent.employmentId,kind:intent.kind,effectiveDate:intent.effectiveDate,endDate:intent.endDate,contractPostingId:intent.postingId,contractStartDate:intent.kind==='contractRenewal'?intent.effectiveDate:null,contractNumber:intent.contractNumber,remarks:`Personnel posting ${postingId}`};
+ const input:CreateMovementInput={employmentId:intent.employmentId,kind:intent.kind,effectiveDate:intent.effectiveDate,endDate:intent.endDate,contractPostingId:intent.postingId,contractStartDate:intent.kind==='contractRenewal'?intent.effectiveDate:null,contractNumber:intent.contractNumber,remarks:intent.remarks};
  const result=await dispatchMovementEventTx(tx,ctx,input);
  if(!('groupId' in result)||typeof result.groupId!=='string')throw new Error('The Contract movement did not record a canonical group.');
  const scheduled='scheduled' in result&&result.scheduled===true;

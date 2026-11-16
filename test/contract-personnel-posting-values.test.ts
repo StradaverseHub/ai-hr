@@ -1,9 +1,12 @@
 import {describe,it,expect} from 'vitest';
-import {normalisePostingValues,postingValueChanges} from '../lib/personnel-posting';
+import {normalisePostingValues as nativeValues,postingValueChanges,type PersonnelPostingEvent} from '../lib/personnel-posting';
+const normalisePostingValues=(event:PersonnelPostingEvent,raw:Record<string,unknown>)=>nativeValues(event,raw,event==='contractRenewal'||event==='contractConversion'?'contract_staff':'probation');
 describe('Contract Personnel posting values',()=>{
  const renew={effectiveDate:'2027-01-01',previousEndDate:'2026-12-31',endDate:'2027-06-30',contractNumber:'5'};
  it('keeps a renewal period and native counter together, without monetary fields',()=>{
   expect(normalisePostingValues('contractRenewal',renew)).toEqual({ok:true,values:renew});
+  expect(nativeValues('contractRenewal',renew,'probation').ok).toBe(false);
+  expect(nativeValues('contractRenewal',renew,'offboarding').ok).toBe(false);
   expect(normalisePostingValues('contractRenewal',{...renew,basicSalary:9000})).toEqual({ok:false,problem:'fields'});
   expect(normalisePostingValues('contractRenewal',{...renew,employmentType:'full_time'})).toEqual({ok:false,problem:'fields'});
  });
