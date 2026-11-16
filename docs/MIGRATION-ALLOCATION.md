@@ -1,19 +1,399 @@
-# Board 237c31e6: approver Employee ID readers for Attendance approval progress — 16 November 2026 MYT (unapplied, allocated)
+<!-- 5770_attendance_workflow_approver_codes -->
+# Board 237c31e6: approver Employee ID readers for Attendance approval progress — 16 November 2026 MYT (unapplied, re-allocated as 5770)
 
-Branch `claude/fb-237c31e6-approval-progress-20261116` (from `origin/main` = `origin/alpha` at `03b06f0de`) appends
-`5697_attendance_workflow_approver_codes` at idx 5097 / when 1793330005397, the board block's offset (tag T, idx
-T − 600, when 1793330004800 + (T − 5100)) directly after `5696` (when 1793330005396), the journal's maximum on main.
-SHA256 `f71cf33a9ced5f4e1007de02388a858bd31c64006a422352193bd7c14e367ec0`. It adds two SECURITY DEFINER readers with
-EXECUTE for `ai_hr_app` only: `app.attendance_workflow_approver_codes(uuid[])` (codes of the identities frozen on the
-requests the caller can already read, the attendance_workflow_request SELECT predicates) and
-`app.attendance_workflow_route_approver_codes(uuid,uuid)` (codes of the route the existing resolver produces for a
-subject and a current template, for the subject, the company's HR or a reporting-line superior). No table, policy,
-existing function or row changes. The approved upgrade tail pin and hash (`test/helpers/approved-upgrade.ts`,
-`test/tenant-company-fk-upgrade.test.ts`) carry the tag. A scan on 16 November 2026 of the 600 most recently active
-origin heads, every local branch and every registered worktree found no claim on tags 5697–5699 or when
-1793330005397–1793330005399; the recruitment lane holds 5700 and above at when 1793330005400 and above. The installed
-ledgers were not read by this session. Recheck the installed watermarks and peer claims at admission; this
+Branch `claude/fb-237c31e6-approval-progress-20261116` first drafted `5697_attendance_workflow_approver_codes` at idx 5097 /
+when 1793330005397. Before it was applied anywhere, the Probation Confirmation release installed 5740–5766 on staging
+(installed watermark when 1793330005466, ledger 881 rows), so a 5697 at when …5397 would sit below the watermark and
+could be silently skipped. It is therefore re-allocated, on the combined release branch
+`claude/release-combined-irwin-20261116-r2`, as **`5770_attendance_workflow_approver_codes`, idx 5170 / when 1793330005470**
+(the shared offset tag T, idx T − 600, when 1793330004800 + (T − 5100)), after `5766` and leaving 5767–5769 for Probation
+repairs. A scan of the 400 most recently active origin heads on 16 November 2026 found no claim above 5766 other than the
+Probation release's own. The SQL bytes are unchanged; the file's header comment still records its draft number:
+SHA256 `f71cf33a9ced5f4e1007de02388a858bd31c64006a422352193bd7c14e367ec0`.
+
+It adds two SECURITY DEFINER readers with EXECUTE for `ai_hr_app` only: `app.attendance_workflow_approver_codes(uuid[])`
+(codes of the identities frozen on the requests the caller can already read, the attendance_workflow_request SELECT
+predicates) and `app.attendance_workflow_route_approver_codes(uuid,uuid)` (codes of the route the existing resolver
+produces for a subject and a current template, for the subject, the company's HR or a reporting-line superior). No table,
+policy, existing function or row changes. The approved upgrade tail pin and hash (`test/helpers/approved-upgrade.ts`,
+`test/tenant-company-fk-upgrade.test.ts`) carry the tag. Recheck the installed watermark and peer claims at admission;
+this allocation grants no installation authority.
+
+
+<!-- 5766_probation_reshape_company_in_use -->
+# Company deletion sees the Probation reshape's owner-only referrers — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-confirmation-aihr-b81c70` (the Probation Confirmation integration branch; found by the release
+gate's company-referrer inventory) appends `5766_probation_reshape_company_in_use` at idx 5166 / when 1793330005466.
+SHA256 `5f47f0f77e115d29927b9c227b03ec79c5b726c051e31303f14cdb1ab70751dd`. It adds one read-only owner function granted
+to `ai_hr_app`, `app.probation_reshape_company_in_use(uuid)`, built like `app.replan_retained_company_in_use` (0953): a
+current administrator of the company learns only whether `probation_access_member` (company or business group),
+`probation_form_import` or `probation_settings_scope_member` still names it, so `core/company-refs.ts` can refuse a
+company delete before the foreign key does. No table, row, policy or existing grant changes. The installed ledgers
+were not read; recheck watermarks and peer claims at admission. This allocation grants no installation authority.
+
+<!-- 5765_probation_letter_signers -->
+# Probation letter signers — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-ui-20261116` (lane L of the Probation Confirmation build) appends
+`5765_probation_letter_signers` at idx 5165 / when 1793330005465 (assigned by the build coordinator; 5763/5764 belong to
+lane K, 5766 is reserved for lane L and unused). SHA256 `989f12a1f048f924609e6c881c476bb272f256695e8595f7436f1c3f65adfcd5`. It adds one owner-owned
+function granted to `ai_hr_app`, `app.probation_letter_signers(uuid)`: for a generated Probation letter the caller may
+open (`app.probation_part_access`), each step of the letter's frozen, stored and currently resolved route with the
+holder's name and current job title and the routing or group the step was routed to, bounded to 50 rows, so unsigned
+signature blocks and "Required signers" name the signer instead of "[Signatory]". No table, column, row, grant, policy
+or purpose-owned object changes. The installed ledgers were not read; recheck watermarks and peer claims at admission.
+This allocation grants no installation authority.
+
+<!-- 5764_probation_routed_holders -->
+# One owner for a Probation case's PBP and Head of Department — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-access-20261116` (lane K of the Probation Confirmation build) appends
+`5764_probation_routed_holders` at idx 5164 / when 1793330005464 (assigned by the build coordinator). SHA256 `30f0d7b6c019127bbce33b44061a88c092ba12c803d307cd19d828bdcba9826a`.
+It adds three owner-only functions: `app.probation_routed_holders` (the single resolver of a case's holders: PBP and
+Head of Department from the shared routings "BP by business group" and "HOD by business group and department" with
+the shared routing rule and fallback group; while a routing has no rows its adapter answers as today, the V9 bpRules
+list with the PBP opt-in and the department head) and the two routing-rule helpers `app.probation_routing_dimension`
+and `app.probation_routing_weight`. It replaces, with unchanged signatures and grants, `app.probation_holders_set`
+(now answering from the resolver), `app.probation_role` and `app.probation_visible_among`. No table, row, grant,
+policy or purpose-owned object changes. The installed ledgers were not read; recheck watermarks and peer claims at
+admission. This allocation grants no installation authority.
+
+<!-- 5763_probation_access_roles -->
+# Probation access roles and the Direct Superiors rule — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-access-20261116` (lane K of the Probation Confirmation build) appends
+`5763_probation_access_roles` at idx 5163 / when 1793330005463 (assigned by the build coordinator; 5765/5766 belong to
+lane L). SHA256 `3a0bae544f30907238605bbf59f79816a130b08b886a2c9904d9ae137d8f9e40`. It adds three owner-only tables (forced row security, owner policy, no application grant):
+`probation_access_role` (named role, permissions from the Cases and Settings families), `probation_access_member`
+(person, optional business group and company, valid from/to, revocation recorded; the ADR-0174
+`probation_access_member_company_tenant_fk` key and a `(business_group_id, tenant_id)` company key) and
+`probation_access_rule` (the Direct Superiors rule; no row keeps today's behaviour). Writes go only through the
+`app.probation_access_*` commands (write lock, System Administrator or `access.configure`, one `domain_event` each).
+It replaces, with unchanged signatures and grants, the existing Probation authority owners so the new permissions are
+enforced additively: `app.probation_visible_among`, `app.probation_role`, `app.probation_signing_access`,
+`app.probation_config_admin`, `app.probation_settings_scope_admin`, `app.automation_can_configure`,
+`app.probation_settings_scope_save`, `app.probation_config_write`, `app.probation_navigation_access`, the intake and
+activation owners (`probation_intake_companies`, `_intake_workspace`, `_personnel_source`, `_cutover_snapshot`,
+`_reactivation_cases`, `_prepare_cutover_plan`, `_approve_cutover`, `_request_activation`, `_activate_cutover`), the
+letter owners (`probation_letter_template_choices`, `_letter_preview`, `_prepare_letter`, `_letter_freeze_route`,
+`_letter_routing_context`, `_letter_release`, `_release_signed_letter`, `_letter_transition`, `_part_access`),
+`app.probation_record_low_result_action`, `app.probation_route_override` and `app.probation_delegate_add`. No existing
+table, row, policy or purpose-owned object changes. The installed ledgers were not read; recheck watermarks and peer
+claims at admission. This allocation grants no installation authority.
+
+# Imported saved Probation evaluation forms — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-import-20261116` (lane J of the Probation Confirmation build) appends
+`5762_probation_form_import` at idx 5162 / when 1793330005462 (assigned by the build coordinator; 5760/5761 belong to
+lane I). SHA256 `7accc885810776b61d2b4b5c292798f62aad1f2434280d80cc787d2946e8215d`. It adds one owner-only table,
+`probation_form_import` (forced row security, owner policy, no application grant, the ADR-0174
+`probation_form_import_company_tenant_fk` key), holding the original saved v22.9.26 form bytes with their SHA-256, the
+validated values and what the import did; and three functions granted to `ai_hr_app`: `app.probation_form_import`
+(one file per transaction under `app.probation_write_lock`, authorised by the employment's actual PBP/GBS reviewer;
+merges blank drafts into a matching open case with a `probation.html_form_imported` history event, stages an eligible
+employee without a case for the reviewed cut-over, or refuses with a code and writes nothing),
+`app.probation_form_imports` (bounded reviewer list) and `app.probation_form_import_read` (original bytes for download).
+No existing table, row, function, grant or purpose-owned object changes. The installed ledgers were not read; recheck
+watermarks and peer claims at admission. This allocation grants no installation authority.
+
+<!-- 5761_probation_automation_recipients_and_tracker_steps -->
+# Probation workflow recipients, readiness and routed tracker steps — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-gaps-20261116` (lane I of the Probation Confirmation build) appends
+`5761_probation_automation_recipients_and_tracker_steps` at idx 5161 / when 1793330005461 (assigned by the build
+coordinator). SHA256 `c39e471adb80e51b56466c264bc6546dc6ce48a354e30d8e9ef3629a82b2184b`. It adds two owner-owned functions
+granted to `ai_hr_app`: `app.probation_automation_active_users(uuid,uuid[])` (the case's workflow runner only; which
+named people are active users, bounded to 500) and `app.probation_shared_workflow_triggers()` (an active Probation
+user; the triggers of Live or moved shared Probation workflows, bounded). It re-creates in place, with the same
+signature, owner and grants, `app.probation_tracker_page` (5746) so a part waiting on a routed approver step also
+returns the step's label and the person holding it. No table, column, row, grant, policy or purpose-owned object
+changes. The installed ledgers were not read; recheck watermarks and peer claims at admission. This allocation grants
+no installation authority.
+
+<!-- 5760_probation_queue_kinds_and_pbp_tasks -->
+# Probation queues by step kind and the PBP's low-result and Other tasks — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-gaps-20261116` (lane I of the Probation Confirmation build) appends
+`5760_probation_queue_kinds_and_pbp_tasks` at idx 5160 / when 1793330005460 (assigned by the build coordinator). SHA256
+`c3ab5ddf4c702dd1ca947b3a350c7e852ab8699524c9da7fcad11f19887cdb59`. It adds the nullable column `probation_outcome.extension_months` (3 or 6; null on
+every existing row), widens the `probation_followup.kind` check with `low_result_action` and `other_decided` (every
+existing row passes; added NOT VALID, then validated), and adds three owner-owned functions:
+`app.probation_record_low_result_action(uuid,text)` and `app.probation_decide_other(uuid,integer,text,integer,text)`
+(granted to `ai_hr_app`; the case's PBP or GBS, under the probation write lock, audited) and
+`app.probation_pending_signer_kinds(uuid)` (owner only). It re-creates in place, with the same signatures, owners and
+grants, `app.probation_task_list` (5756: letter Review/Approve steps reach Approval Items, Sign steps the tasks; the PBP's
+low-result and Other-outcome tasks; the KPI-gate exception only once the gate holds a review back),
+`app.probation_evaluation_decision` (0949) and `app.probation_letter_values` (2111) so a PBP-decided Other outcome answers
+with its choice and length. No table, grant, policy or purpose-owned object changes otherwise. The installed ledgers
+were not read; recheck watermarks and peer claims at admission. This allocation grants no installation authority.
+
+# The Probation employee holds only their own steps — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-overrides-20261116` (lane H2 of the Probation Confirmation build) appends
+`5759_probation_employee_own_steps_only` at idx 5159 / when 1793330005459 (assigned by the build coordinator). SHA256
+`df0d15c2435048949c6436329d19db429696906dc2a8760086d9e8688af440f2`. It adds no table, column, function or grant. It re-creates in place, with
+the same signatures, owners and grants, `app.probation_signer_candidate` (0949), `app.probation_general_delegate`
+(5749), `app.probation_assignment_facts` (5755), `app.probation_letter_freeze_route` (5752),
+`app.probation_form_freeze_approvers` and `app.probation_resolve_route_unchecked` (5756), and
+`app.probation_delegate_add` and `app.probation_route_override` (5758), so that the case's own employee is never the
+holder, replacement, delegate or chosen member of a Review, Approve, Approve-and-sign or another person's Sign step on
+their own case (routed choices skip them and fall back to the next member, then the fallback group with "meant for"
+recorded). No existing table, row, grant or purpose-owned object changes. The installed ledgers were not read; recheck
+watermarks and peer claims at admission. This allocation grants no installation authority.
+
+# PBP route overrides and delegation for routed Probation approver steps — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-overrides-20261116` (lane H of the Probation Confirmation build) appends
+`5758_probation_routed_overrides` at idx 5158 / when 1793330005458 (assigned by the build coordinator). SHA256
+`824f6d210d6d9361bf4132246ea40b4662c7e48cee8a67a4af269cca6740ec35`. It adds no table, column, function or grant. It re-creates in place, with
+the same signatures, owners and grants, `app.probation_route_override` (0949) so the case's PBP may override an
+unsubmitted Part route that contains routed form approver steps (Direct Superior, routing, group, named people; 5756),
+checked by `app.probation_validate_form_route` and kept to the routings of the case's pinned form version, and
+`app.probation_delegate_add` (0949) so a PBP/GBS may record a dated, reasoned delegation for such a step (the represented
+holder is the step's current person on the Part; the case's employee is refused for a routed step). Routes and steps
+without routed approvers take the 0949 bodies unchanged. No existing table, row, grant or purpose-owned object changes.
+The installed ledgers were not read; recheck watermarks and peer claims at admission. This allocation grants no
+installation authority.
+
+# Legacy Probation workflows move to the shared engine — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-last-20261116` (lane G2 of the Probation Confirmation build) appends
+`5757_probation_legacy_workflow_move` at idx 5157 / when 1793330005457 (assigned by the build coordinator). SHA256
+`16519f586b1f89c69f3758ac41cf5456cf4ae91bdd768bfe973e638982e86d21`. It adds the owner-only table
+`probation_workflow_move` (forced row security, owner policy, no application grant, no company column; written only
+through the move function) and four functions granted to `ai_hr_app`: `app.probation_workflow_move(jsonb,text)` and
+`app.probation_workflow_moves()` (authorized by `app.automation_can_configure('probation')`; the move runs under the
+shared workforce barrier and a per-tenant lock, saves the converted shared workflows, marks every version of each moved
+definition and audits both, set-based and idempotent), `app.probation_legacy_audience(uuid,uuid)` (authorized by
+`app.automation_can_run('probation', case)`) and `app.probation_overdue_summary_cases(uuid,date)` (storage runner only).
+It re-creates in place, with the same signatures and grants, `app.probation_workflow_run` (2111),
+`app.probation_review_transition` (0949) and `app.probation_letter_transition` (5752) so a moved definition no longer
+sends (and still counts as configured). No existing table, row, grant or purpose-owned object changes. The installed
+ledgers were not read; recheck watermarks and peer claims at admission. This allocation grants no installation authority.
+
+# Approver choices on Probation form approval rows — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-last-20261116` (lane G1 of the Probation Confirmation build) appends
+`5756_probation_form_approver_choices` at idx 5156 / when 1793330005456 (assigned by the build coordinator). SHA256
+`58c393bf5583abeb5a46bc6078ad756aee0691f24b3d68f80fec169218fe996e`. It adds two functions granted to `ai_hr_app`, both
+authorized for the submitting Line Manager of the Part (`app.probation_form_routing_context(uuid)`,
+`app.probation_form_freeze_approvers(uuid,jsonb)`, the latter under the Probation write lock and audited), and four
+owner-only helpers (`app.probation_form_approver_role(text)`, `app.probation_v9_group_member(text,uuid)`,
+`app.probation_form_approver_label(text)`, `app.probation_validate_form_route(jsonb,integer)`). It re-creates in place,
+with the same signatures, owners and grants, `app.probation_prepare_signing` and `app.probation_task_list` (5751 bodies),
+`app.probation_resolve_route_unchecked` (5755), `app.probation_commands` and `app.probation_part_command` (5746),
+`app.probation_signing_access` and `app.probation_signatures_complete` (5752), `app.probation_actor_just_signed` (0949)
+and `app.document_signing_act` (5747), each keeping its previous behaviour for Head of Department / PBP rows, default
+rows and existing parts. Inserts `probation_delegate` rows (kind `missing_holder`) at run time only; no table, row,
+grant or purpose-owned object changes. The installed ledgers were not read; recheck watermarks and peer claims at
+admission. This allocation grants no installation authority.
+
+# Routed Probation steps: assignment, delegation, form approval choices — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-finish-20261116` (lane F) appends `5755_probation_routed_assignment` at idx 5155 / when
+1793330005455 (assigned by the build coordinator). SHA256 `f1c0d942e5649071ff20eafab362dbaf363f2c1dc461684444d00480a3a81ac4`. It adds `app.probation_assignment_facts(uuid,text[],uuid[])`, granted to `ai_hr_app` and authorized by
+`app.automation_can_run('probation', case)`: group limits and active members, open load, last routed assignment and
+leave today for the V9 assignment owner's choice of one person per routed step. It re-creates in place, with the same
+signatures and grants, the owner-owned `app.probation_resolve_route_unchecked` (5752 body; a routed letter's Head of
+Department, PBP or GBS Review, Approve or Sign step moves to the holder's general Probation delegate, per-part
+replacements first), `app.probation_visible_among` (5751 body; that delegate sees the case while the letter is open) and
+`app.probation_part_access` (5752 body; a routed letter is readable by whoever's turn it is on the current resolution).
+No table, row, grant or purpose-owned object changes. The installed ledgers were not read; recheck watermarks and peer claims at admission. This allocation
+grants no installation authority.
+
+# Real email for shared workflow steps — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-finish-20261116` (lane F of the Probation Confirmation build) appends
+`5754_automation_email_delivery` at idx 5154 / when 1793330005454 (assigned by the build coordinator). SHA256
+`bd1dc53c5461299006b240e7fb3fd25801a5aaaa3b6807be8995f858ffe57c05`. It adds the owner-only table
+`automation_email_delivery` (forced row security, no application grant, no company column), the owner-only trigger
+function `app.automation_email_immutable()` and four functions granted to `ai_hr_app`: `app.automation_email_queue`
+(authorized by `app.automation_can_run(module, subject)`, under the shared workforce barrier) and the private sender's
+`app.automation_email_target`, `app.automation_email_start` and `app.automation_email_finish` (the 0714 lease, start and
+receipt contract). No existing table, row, grant or purpose-owned object changes. The installed ledgers were not read;
+recheck watermarks and peer claims at admission. This allocation grants no installation authority.
+
+# Probation outcomes on the shared workflow runner — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-runtime-wiring-20261116` (lane D2) appends `5753_probation_outcome_automation` at idx 5153 / when
+1793330005453 (assigned by the build coordinator). SHA256 `764d407852799a3f0722417f062a602e996ba7907fd2e88d1005c563d748df93`. It adds four functions granted to
+`ai_hr_app`, each authorized by `app.automation_can_run('probation', case)` or the Probation owner path
+(`app.probation_automation_context`, `app.probation_automation_notify`, `app.probation_outcome_automation`,
+`app.probation_record_posting_effect`), re-creates `app.probation_notification_recipients` (5752 body plus the
+`automation` occurrence kind) and adds the owner-only trigger function `app.probation_posting_approved()` with the trigger
+`probation_posting_approved` on `personnel_posting` (clears a Probation case's pending posting when its posting is
+approved). No table, row or grant changes. The installed ledgers were not read; recheck watermarks and peer claims at
+admission. This allocation grants no installation authority.
+
+# Probation letters with signing and review routing — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-runtime-wiring-20261116` (lane D2 of the Probation Confirmation build, from the integration
+branch at `79d307613`) appends `5752_probation_letter_routing` at idx 5152 / when 1793330005452 (assigned by the build
+coordinator). SHA256 `c8fa1384eb8fc2eb4111a00ae1210fff9f01ac5cc1687ae22ba635b0f86bb819`. It adds two functions granted to `ai_hr_app`
+(`app.probation_letter_routing_context(uuid)`, `app.probation_letter_freeze_route(uuid,jsonb,jsonb)`) and three owner-only
+template checks (`app.probation_letter_routed`, `_routing_valid`, `_routing_signatures_ok`), and re-creates in place, with
+the same signatures and grants, the owner-owned `app.probation_definition_save_legacy_organisation`,
+`app.probation_prepare_letter`, `app.probation_resolve_route_unchecked`, `app.probation_signing_action_allowed`,
+`app.probation_signing_access`, `app.probation_letter_transition`, `app.probation_signatures_complete`,
+`app.probation_pending_signers`, `app.probation_letter_tasks`, `app.probation_notification_recipients` and
+`app.probation_part_access`, each keeping
+its previous body for letters and templates without routing. No table, row, grant or purpose-owned object changes. The
+installed ledgers were not read; recheck watermarks and peer claims at admission. This allocation grants no installation
+authority.
+
+# Document signing review routing and shared workflow runs — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-signing-runtime-20261116` (lane D1 of the Probation Confirmation build, from
+`claude/probation-confirmation-aihr-b81c70` at `bf4b9c315`) appends `5747_document_signing_review_routing` at idx 5147 /
+when 1793330005447 and `5748_automation_runs` at idx 5148 / when 1793330005448 on the board block's offset (tag T, idx
+T − 600, when 1793330004800 + (T − 5100)), above `5743_automation_email_templates` (when 1793330005443). SHA256
+`7fef112b3edec88c5ac54c7a17d8fa8354a96d618e353fa7b24894c925fc20dd` (5747) and
+`06de500ccad8a64f68b37b7bd211404f2f717837b511949cc75aa16c8d733065` (5748). 5747 replaces four ai_hr_owner functions of 0948
+(`app.document_signing_step_fulfilled`, `_validate`, `_store`, `_act`) in place with the same signatures and grants and
+adds eight read-only `app.document_signing_*` helpers; no table, row or grant changes and existing documents keep their
+behaviour. 5748 creates one new, empty table (`automation_run`) with forced row security, a SELECT-only grant to
+`ai_hr_app`, an owner policy, and seven `app.automation_run*` / `app.automation_can_run` / `app.automation_runner_*`
+functions; no existing object, row, grant or purpose-owned object changes (ADR
+`docs/adr/2026-11-15-probation-shared-automation.md`). The tags, idx and when were assigned by the Probation build
+coordinator. The installed ledgers were not read by this session; recheck
+installed watermarks and peer claims at admission. This allocation grants no installation authority.
+
+# Probation work queues and form approval routing — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-queues-routing-20261116` (lane E) appends `5751_probation_queues_and_form_routing` at idx
+5151 / when 1793330005451 (assigned by the build coordinator). SHA256 `378318141f25744883a7be53c5435f12acec38c60558bf24eff550d234809134`.
+It adds `app.probation_task_list(category, limit)` (granted to `ai_hr_app`): the caller's current Probation work,
+bounded (at most 200 candidates confirmed per read) and set-based, each candidate confirmed by the case view's own
+`app.probation_commands`; re-creates `app.probation_inbox()` (same shape) to answer from it; and re-creates the
+owner-owned `app.probation_prepare_signing` (2111 body) and `app.probation_resolve_route_unchecked` (5749 body) so a
+Part's route is frozen from its pinned form version's approval rows when the version has them (older versions keep
+the route configuration), and so a GBS step held by the group, once assigned to a person on a Part, follows that
+person's general Probation delegation (with `app.probation_visible_among` from 5749 and `app.probation_signing_access`
+from 5746 re-created with the matching additions). No table, row, grant or purpose-owned object changes. The file is extended within lane E (form approval routing) before integration; this
+paragraph carries the current bytes' hash. The installed ledgers were not read; recheck watermarks and peer claims at
+admission. No installation authority.
+
+# Probation tracker plan robustness — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-queues-routing-20261116` (lane E) appends `5750_probation_tracker_plan_robustness` at idx
+5150 / when 1793330005450 (assigned by the build coordinator). SHA256 `5acc2142a000baade0f4e01c5345fbc1114e9cc980f3a62689004cdfc9851123`.
+It re-creates the owner-owned internal `app.probation_holders_set(uuid[])` (5746) with the same rule and output and an
+evaluation shape that needs no table statistics (jsonb maps instead of joins between materialised sets). No table, row,
+grant or purpose-owned object changes. The installed ledgers were not read; recheck watermarks and peer claims at
+admission. No installation authority.
+
+# Probation delegation (decision 7) — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-probation-core-20261116` (lane C, round E) appends `5749_probation_delegation` at idx 5149 /
+when 1793330005449 (assigned by the build coordinator; 5747/5748 belong to the signing-runtime lane). SHA256 `a57888eba4421d3ca4b2a3fdbe55065196005cfdffa7ed011615c6cef93e9dfd`.
+It adds the internal `app.probation_general_delegate(holder, subject employment, task)` and re-creates the owner-owned
+`app.probation_resolve_route_unchecked` (0949 body plus one branch) and `app.probation_visible_among` (5746 body plus the
+delegate branch): a general delegation with Probation explicitly ticked moves a Head of Department, PBP or GBS Review,
+Approve or letter Sign step to the delegate on behalf of the holder; whole-scope delegations do not include Probation;
+Line Manager and employee steps never move. No table, row, grant or purpose-owned object changes. The installed
+ledgers were not read; recheck watermarks and peer claims at admission. No installation authority.
+
+# Shared HR automation email templates — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-screens-20261116` (lane A of the Probation Confirmation build, from
+`claude/probation-confirmation-aihr-b81c70` at `faf21b686`) appends `5743_automation_email_templates` at idx 5143 /
+when 1793330005443 on the board block's offset (tag T, idx T − 600, when 1793330004800 + (T − 5100)), directly above
+`5740_automation_shared_definitions` (when 1793330005440). SHA256
+`5b82f328178b8bc5357acb830eceffd89337e13dd563eaec8f931f1f29bce3cd`. It creates one new, empty, append-only table
+(`automation_email_template_version`) with forced row security, a SELECT-only grant to `ai_hr_app` read under
+`app.automation_can_configure(module)`, an owner policy, and one SECURITY DEFINER writer
+`app.automation_email_template_save`; no existing object, row, grant or purpose-owned object changes (ADR
+`docs/adr/2026-11-15-probation-shared-automation.md`). The tag, idx and when were assigned by the Probation build
+coordinator; the installed ledgers were not read by this session. Recheck installed watermarks and peer
+claims at admission; this allocation grants no installation authority.
+
+# Personnel postings — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-postings-20261116` (from `faf21b686` on `claude/probation-confirmation-aihr-b81c70`) appends
+`5741_personnel_postings` at idx 5141 / when 1793330005441, the next slot of the board block's offset (tag T, idx T − 600,
+when 1793330004800 + (T − 5100)) directly after `5740` (when 1793330005440). SHA256
+`bac24f1f803408ee29db5915e69d47a72f981c45b5b6c5fee469831dcb800cb5`. It creates one new, empty table (`personnel_posting`) with the ADR-0174 company/tenant key, forced
+row security, a SELECT-only grant to `ai_hr_app`, an owner policy, a deferred constraint trigger, and eleven
+`app.personnel_posting_*` functions (create, edit, approve, record_movement and their authority, value and label helpers);
+no existing object, row, grant or purpose-owned object changes (ADR `docs/adr/2026-11-15-probation-shared-automation.md`,
+decision 4). Allocated by the Probation Confirmation build lead for lane B; peer lanes of the same build hold no claim on
+5741. The installed ledgers were not read by this session; recheck installed watermarks and peer claims at admission. This
 allocation grants no installation authority.
+
+# Probation tracker at group scale, configurable maximum extensions, declined signature order — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-probation-core-20261116` appends `5746_probation_tracker_scale_and_extensions` at idx
+5146 / when 1793330005446 (assigned by the build coordinator, directly above `5745`). SHA256 `6de6b3a28d10dd05bbb6dd37a84d6a30e42e67748636514ff94c4d04330b6432`.
+It gives the probation case access rule one set-based owner, `app.probation_visible_among(cases)` over
+`app.probation_holders_set(employments)` and `app.probation_company_ancestors(companies)`, and re-creates the
+owner-owned `app.probation_case_access` (membership of that set) and `app.probation_holders` (answered from the holder
+set); it adds `app.probation_visible_case_ids()`, the tracker readers `app.probation_tracker_cases()` /
+`app.probation_tracker_page(cases)`, and `app.probation_max_extensions`.
+It re-creates, as `CREATE OR REPLACE` of their 0949 bodies with one comparison each changed, the owner-owned
+`probation_submission_ready`, `probation_part_command`, `probation_record_effect`, `probation_commands`,
+`probation_personnel_intent`, `probation_adjudicate_offline_final` and `probation_config_write_legacy_organisation` so the
+maximum number of extensions is the case's pinned setting (0-2, default 2), and `probation_signing_access`,
+`probation_part_command` and `probation_commands` for the owner's declined-signature order (the Line Manager's recorded
+decline moves the part on; the PBP confirmation no longer gates it). Row security, grants, tables and purpose-owned
+objects are unchanged. 5742 (unapplied) was edited in place to allow the maximum-extensions field; its SHA above is
+updated. The installed ledgers were not read; recheck watermarks and peer claims at admission. No installation authority.
+
+# Probation suggestion-overridden event — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-probation-core-20261116` appends `5745_probation_outcome_override_event` at idx 5145 /
+when 1793330005445 (lane C's reserved slot, directly above `5744`). SHA256 `450ad5d958411186348239940f3f16302bc17f7642a6e2e6bb3a63212a41a3ed`. It adds
+`app.probation_record_override(uuid)` (SECURITY DEFINER, EXECUTE to `ai_hr_app`): in the Line Manager's submitting
+transaction it records one `probation.outcome_overridden` domain_event per submission when the existing
+`data.override` flag is set, with no rater text, for the shared engine's outcomeOverridden trigger. No table, row,
+existing function, grant or purpose-owned object changes. The installed ledgers were not read; recheck watermarks and
+peer claims at admission. No installation authority.
+
+# Probation case at activation and Did not join — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-probation-core-20261116` appends `5744_probation_case_at_activation` at idx 5144 / when
+1793330005444 (lane C's reserved slot, directly above `5742` at when 1793330005442). SHA256 `bade792a24fe3f31bc5c8afc1a40404d8919313711a2a050b1c6083b2095494a`.
+It adds the internal `app.probation_source_from_start` (a future starter's Personnel source reads the assignment that
+takes effect on the start date when none is in effect today; started employments read exactly as before) and
+`app.probation_did_not_join`, and replaces the owner-owned `app.probation_personnel_source_unchecked` (2111),
+`app.probation_issue` and `app.probation_withdraw` (0949): nothing is issued before the start date, and a hire voided,
+ended on or before its start date, or exited before it started closes as withdrawn with `closure` 'did_not_join'
+(ADR `docs/adr/2026-11-15-probation-shared-automation.md`, decision 6). No table, row, grant or purpose-owned object
+changes. The installed ledgers were not read; recheck watermarks and peer claims at admission. No installation authority.
+
+# Probation settings scope: group standard and company overrides — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-probation-core-20261116` (lane C of the Probation Confirmation build, from
+`claude/probation-confirmation-aihr-b81c70` at `faf21b686`) appends `5742_probation_settings_scope` at idx 5142 / when
+1793330005442 on the board block's offset (tag T, idx T − 600, when 1793330004800 + (T − 5100)), directly above
+`5740` (when 1793330005440), the journal's maximum. SHA256 `5b21bd348acedd68cd3267a973a8a62ec9c4f953ff7230e078db6ce50037655c`.
+It creates two new, empty tables (`probation_settings_scope_version`, append-only; `probation_settings_scope_member`,
+whose (tenant_id, company_id) key keeps a company in at most one company setting) with forced row security, owner
+policies, SELECT-only grants to `ai_hr_app` and the ADR-0174 composite company key; adds `app.probation_settings_*`
+SECURITY DEFINER functions (authority, save, retire, refresh, internal resolution); and renames the owner-owned
+`app.probation_config_write` (2111) to `app.probation_config_write_company` behind a new wrapper that refuses a direct
+company settings version once a group standard is published. No existing row is rewritten: the group standard starts
+absent and every company keeps its published version until an administrator publishes one (ADR
+`docs/adr/2026-11-15-probation-shared-automation.md`, decision 3). No purpose-owned object changes. Lane C also holds
+5744/5745 (idx 5144/5145, when 1793330005444/…445) if needed. The installed ledgers were not read by this session;
+recheck installed watermarks and peer claims at admission. This allocation grants no installation authority.
+
+# Shared HR automation definitions — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-confirmation-aihr-b81c70` (from local main, merged with `origin/main` at `94d2f5bbe`) appends
+`5740_automation_shared_definitions` at idx 5140 / when 1793330005440 on the board block's offset (tag T, idx T − 600,
+when 1793330004800 + (T − 5100)), above the journal's maximum `5680` (when 1793330005380). SHA256
+`72baaa106846be4ede55607235a4555a0a0f38f6f0958183077c9e9f6dca0569`. It creates two new, empty, append-only tables
+(`automation_workflow_version`, `automation_routing_version`) with forced row security, SELECT-only grants to `ai_hr_app`,
+owner policies, and six `app.automation_*` SECURITY DEFINER functions (authority, two saves, two reference reads); no
+existing object, row, grant or purpose-owned object changes (ADR `docs/adr/2026-11-15-probation-shared-automation.md`).
+A scan of the 600 most recently committed origin heads on 16 November 2026 found claims on tags 5690
+(`claude/fb-4604dccc-r3`), 5695 (`claude/fb-511aa74a-rehired`) and 5700–5724 (`claude/rea-web-app-reconstruction-2c12ee`,
+when up to 1793330005424), none on 5725–5799 or when 1793330005425–1793330005499; older 9xxx draft numbers on stale
+`claude/bulkjob-*` heads are already integrated under 50xx/51xx tags. If the recruitment lane is installed first this
+entry still sorts above it. The installed ledgers were not read by this session; recheck installed watermarks and peer
+claims at admission. This allocation grants no installation authority.
+
 
 # Board 4604dccc revision 4: the latest saved correction controls the SQL readers — 16 November 2026 MYT (unapplied, allocated)
 

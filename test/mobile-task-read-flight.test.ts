@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createMobileTaskReadFlights } from '../core/mobile-task-read-flight';
 import type { SessionContext } from '../db/client';
-const modules = { attendance:true, claims:true, performance:false, rewards:false };
+const modules = { attendance:true, claims:true, performance:false, rewards:false, probation: false };
 const ctx:SessionContext = {tenantId:'tenant-a',userId:'user-a',personId:'person-a',roles:['manager'],grants:[{role:'manager',companyId:'company-a'}]};
 const deferred = <T,>() => { let resolve!:(value:T)=>void;let reject!:(error:Error)=>void;const promise=new Promise<T>((yes,no)=>{resolve=yes;reject=no;});return{promise,resolve,reject}; };
 

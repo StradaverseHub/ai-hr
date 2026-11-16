@@ -12,6 +12,7 @@ import {
   ScrollText,
   ShieldCheck,
   Timer,
+  UserCheck,
   type LucideIcon,
 } from 'lucide-react';
 import { Card } from '@/components/ui';
@@ -46,6 +47,7 @@ const ICONS: Record<PanelCategory, LucideIcon> = {
   managerReviews: MessageSquareText,
   hrReviews: ShieldCheck,
   rewards: ShieldCheck,
+  probation: UserCheck,
 };
 
 /** Short panel labels — existing section-title keys where they read well; overtime gets its own key. */
@@ -60,6 +62,7 @@ const LABEL_KEY: Record<PanelCategory, string> = {
   managerReviews: 'managerReviews',
   hrReviews: 'hrReviews',
   rewards: 'rewards',
+  probation: 'probation',
 };
 
 const GROUP_LABEL_KEY: Record<ApprovalCategoryGroup, string> = {

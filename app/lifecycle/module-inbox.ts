@@ -2,16 +2,20 @@ import 'server-only';
 import {getTranslations} from 'next-intl/server';
 import type {SessionContext} from '@/db/client';
 import type {LifecycleTaskItem} from '@/lib/lifecycle-task-item';
-import {probationInbox} from '@/packs/probation/service';
 import {contractInbox} from '@/packs/contracts/service';
 import {lifecycleModuleNavigation} from './workflow-availability';
 import {v9EmailHoldInbox} from '@/packs/lifecycle/service';
+/**
+ * Lifecycle module work beside the shared task list. Probation work is not listed here: it is a shared task source
+ * (core/approvals-inbox.ts PACK_TASK_SOURCES, kinds probationApproval and probationTask), so the bell, Home, Today and
+ * My Tasks read it once, without the former 20-item cut.
+ */
 export async function lifecycleModuleInbox(ctx:SessionContext,navigation:Awaited<ReturnType<typeof lifecycleModuleNavigation>>){
  // Held On/Off Boarding emails: rechecked against Full case view and company access on every read.
- const [probation,contracts,holds]=await Promise.all([navigation.probation.page?probationInbox(ctx):Promise.resolve({count:0,items:[]}),navigation.contractStaff.page?contractInbox(ctx):Promise.resolve({count:0,items:[]}),v9EmailHoldInbox(ctx).catch(()=>({count:0,items:[]}))]);
+ const [contracts,holds]=await Promise.all([navigation.contractStaff.page?contractInbox(ctx):Promise.resolve({count:0,items:[]}),v9EmailHoldInbox(ctx).catch(()=>({count:0,items:[]}))]);
  const holdCopy=holds.items.length?await getTranslations('lifecycleEmailHold'):null;
  const contractCopy=contracts.items.some(item=>['reconciliation','date_amendment'].includes(item.kind))?await getTranslations():null;
- const items:LifecycleTaskItem[]=[...probation.items.slice(0,20).map(item=>({id:'probation:'+item.caseId+':'+item.partId,kind:'probation' as const,ownerKind:item.kind,subjectName:item.employeeName,linkPath:item.href})),...contracts.items.slice(0,20).map(item=>({id:'contract_staff:'+item.caseId+':'+item.kind,kind:'contract_staff' as const,ownerKind:item.kind,subjectName:item.name+' · '+item.number,actionLabel:contractCopy&&['reconciliation','date_amendment'].includes(item.kind)?contractCopy(item.kind==='reconciliation'?'contractManagement.reconcile':'notifications.task.contractDateCorrection'):undefined,linkPath:item.href}))];
+ const items:LifecycleTaskItem[]=[...contracts.items.slice(0,20).map(item=>({id:'contract_staff:'+item.caseId+':'+item.kind,kind:'contract_staff' as const,ownerKind:item.kind,subjectName:item.name+' · '+item.number,actionLabel:contractCopy&&['reconciliation','date_amendment'].includes(item.kind)?contractCopy(item.kind==='reconciliation'?'contractManagement.reconcile':'notifications.task.contractDateCorrection'):undefined,linkPath:item.href}))];
  items.push(...holds.items.map(item=>({id:'lifecycle_email:'+item.caseId+':'+item.heldAt,kind:'lifecycle_email' as const,subjectName:item.name+' · '+item.number,actionLabel:holdCopy!('inboxAction',{email:item.email}),linkPath:item.module==='onb'?'/lifecycle/onboarding/cases/'+encodeURIComponent(item.caseId):'/lifecycle/v9?view=leavers&case='+encodeURIComponent(item.caseId)})));
- return{count:probation.count+contracts.count+holds.count,items};
+ return{count:contracts.count+holds.count,items};
 }

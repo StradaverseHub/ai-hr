@@ -12,10 +12,11 @@ vi.mock('../components/intent-link',async()=>{
 });
 const {Sidebar}=await import('../components/sidebar');
 afterEach(async()=>{cleanup();document.documentElement.removeAttribute('data-ui-theme');document.documentElement.classList.remove('dark');document.body.style.margin='';await page.viewport(1280,720);});
+// ADR 2026-11-15-probation-shared-automation, decision 1: Templates, Workflows and Assignment Groups moved into the
+// shared HR Automation section (test/lifecycle-v9-navigation.dom.test.tsx).
 const expectedDestinations=[
  '/lifecycle/v9','/lifecycle/v9?view=onbChecklists','/lifecycle/v9?view=leavers',
- '/lifecycle/v9?view=offChecklists','/lifecycle/v9?view=templates','/lifecycle/v9?view=workflows',
- '/lifecycle/v9?view=settings','/lifecycle/v9?view=groups','/lifecycle/v9?view=access',
+ '/lifecycle/v9?view=offChecklists','/lifecycle/v9?view=settings','/lifecycle/v9?view=access',
 ];
 function mount(){
  document.documentElement.setAttribute('data-ui-theme','classic');document.body.style.margin='0';

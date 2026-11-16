@@ -5,13 +5,20 @@ export const V9_NAVIGATION = [
   { view: 'onbChecklists', labelKey: 'onboardingChecklists', submenuKey: 'onboardingV31', permission: 'onboarding', href: '/lifecycle/v9?view=onbChecklists' },
   { view: 'leavers', labelKey: 'v9Leavers', submenuKey: 'v9Offboarding', permission: 'offboarding', href: '/lifecycle/v9?view=leavers' },
   { view: 'offChecklists', labelKey: 'v9OffboardingChecklists', submenuKey: 'v9Offboarding', permission: 'offboarding', href: '/lifecycle/v9?view=offChecklists' },
-  { view: 'templates', labelKey: 'v9Templates', submenuKey: 'sectionConfiguration', permission: 'administration', href: '/lifecycle/v9?view=templates' },
-  { view: 'workflows', labelKey: 'v9Workflows', submenuKey: 'sectionConfiguration', permission: 'administration', href: '/lifecycle/v9?view=workflows' },
+  { view: 'templates', labelKey: 'v9Templates', submenuKey: 'sectionConfiguration', permission: 'administration', href: '/lifecycle/v9?view=templates', automationLabelKey: 'automationOnOffTemplates' },
+  { view: 'workflows', labelKey: 'v9Workflows', submenuKey: 'sectionConfiguration', permission: 'administration', href: '/lifecycle/v9?view=workflows', automationLabelKey: 'automationOnOffWorkflows' },
   { view: 'settings', labelKey: 'v9Settings', submenuKey: 'sectionConfiguration', permission: 'administration', href: '/lifecycle/v9?view=settings' },
-  { view: 'groups', labelKey: 'v9AssignmentGroups', submenuKey: 'sectionConfiguration', permission: 'administration', href: '/lifecycle/v9?view=groups' },
+  { view: 'groups', labelKey: 'v9AssignmentGroups', submenuKey: 'sectionConfiguration', permission: 'administration', href: '/lifecycle/v9?view=groups', automationLabelKey: 'automationOnOffGroups' },
   { view: 'access', labelKey: 'v9ModuleAccess', submenuKey: 'sectionConfiguration', permission: 'administration', href: '/lifecycle/v9?view=access' },
 ] as const;
 export type V9NavigationView = typeof V9_NAVIGATION[number]['view'];
+/**
+ * ADR 2026-11-15-probation-shared-automation, decision 1: the On/Off Boarding Templates, Workflows and Assignment Groups
+ * rows moved into the shared "HR Automation" section, still opening the existing V9 screens under these labels.
+ * The views themselves, their permission and their addresses are unchanged.
+ */
+export type V9AutomationNavigationItem = Extract<typeof V9_NAVIGATION[number], { automationLabelKey: string }>;
+export const V9_AUTOMATION_NAVIGATION: readonly V9AutomationNavigationItem[] = V9_NAVIGATION.filter((item): item is V9AutomationNavigationItem => 'automationLabelKey' in item);
 /** Shared work queues stay outside the nine-leaf On/Off Boarding module hierarchy. */
 export const V9_SHARED_NAVIGATION = [
   { view: 'tasks', labelKey: 'v9Tasks', href: '/lifecycle/v9?view=tasks' },

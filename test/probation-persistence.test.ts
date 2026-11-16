@@ -4,9 +4,11 @@ import {PgDialect} from 'drizzle-orm/pg-core';
 import {randomUUID} from 'node:crypto';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {saveMovementEventType} from '../core/movement-type';
+import {approvePersonnelPosting} from '../core/personnel-posting';
+import {movementHistory} from '../core/movement';
 import {createAppUser} from './harness';
 import {newProbationPart} from '../lib/probation-model';
-import {addCalendarMonths,todayInKualaLumpur} from '../lib/hr-date';
+import {todayInKualaLumpur} from '../lib/hr-date';
 import {addDaysIso} from '../lib/roster-month';
 import {startReview,pendingManagerReviewsFor} from '../core/employment-review';
 import {recordDocumentSigningActionTx,refreshCanonicalProbationSigningRouteTx} from '../packs/document-signing/service';
@@ -14,8 +16,9 @@ import {dispatchNotifications,notificationStillTargets} from '../core/notificati
 import {createNoticeSweepAccess} from '../core/notice-projection';
 import {PROBATION_WORKFLOW_EVENTS} from '../lib/probation-workflow';
 import {newProbationLetterTemplate} from '../lib/probation-letter-template';
-import {probationCase,saveProbationDraft,applyProbationOutcome,requestProbationDateShift,applyProbationDateShift,previewProbationWorkflow,uploadProbationEvidence,actOnProbation,saveProbationLetterTemplate,probationLetterTemplateChoices,prepareProbationLetter,readProbationLetter,actOnProbationLetter,releaseProbationLetter,probationIntakeWorkspace,saveProbationIntakeDisposition,uploadProbationCutoverEvidence,readProbationCutoverEvidence,prepareProbationCutover,approveProbationCutover,activatePreparedProbationCutover,saveProbationWorkflow,probationRequiredWorkflowStatus,requestProbationLegacyReconciliation,approveProbationLegacyReconciliation,applyProbationLegacyReconciliation,probationIntakeCompanies,probationNavigationAccess,probationInbox,supersedeProbationDateShift,pauseProbationCompany,reconcileProbationDates,probationPublicationRetirement,retireProbationPublication,proposeProbationOfflineFinalDecision,adjudicateProbationOfflineFinalDecision} from '../packs/probation/service';
+import {probationTaskList,probationCase,saveProbationDraft,applyProbationOutcome,requestProbationDateShift,applyProbationDateShift,previewProbationWorkflow,uploadProbationEvidence,actOnProbation,saveProbationLetterTemplate,probationLetterTemplateChoices,prepareProbationLetter,readProbationLetter,actOnProbationLetter,releaseProbationLetter,probationIntakeWorkspace,saveProbationIntakeDisposition,uploadProbationCutoverEvidence,readProbationCutoverEvidence,prepareProbationCutover,approveProbationCutover,activatePreparedProbationCutover,saveProbationWorkflow,probationRequiredWorkflowStatus,requestProbationLegacyReconciliation,approveProbationLegacyReconciliation,applyProbationLegacyReconciliation,probationIntakeCompanies,probationNavigationAccess,probationInbox,supersedeProbationDateShift,pauseProbationCompany,reconcileProbationDates,probationPublicationRetirement,retireProbationPublication,proposeProbationOfflineFinalDecision,adjudicateProbationOfflineFinalDecision} from '../packs/probation/service';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
+import {listPendingTasks} from '../core/approvals-inbox';
 import {adminCtx,entitledCtx,closeAll,setModule,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {bootstrapProbationPreparer,installProbationDrafts,probationSetup,saveProbationConfiguration,DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,defaultProbationRoutes,canConfigureProbationWorkflows,probationEmployeeNameSuggestions,probationSummaryRows,sweepProbation} from '../packs/probation/service';
 let b:Base,admin:SessionContext;
@@ -190,6 +193,10 @@ describe('real evaluation to signed letter custody',()=>{
   let part=await current(staff.ctx);await saveProbationDraft(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'employee',patch:{employee:assessment}});part=await current(staff.ctx);await actOnProbation(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'submit_employee'});
   part=await current(manager.ctx);await saveProbationDraft(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'lm',patch:{manager:assessment,reviewOn:today,conductedBy:manager.userId,outcome,justification:'Observed evidence supports the actual outcome',...(outcome==='extend'?{extensionMonths:3 as const}:{})}});part=await current(manager.ctx);
   await actOnProbation(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'submit_manager',method:'typed',value:'Fictional Manager',consent:true});
+  // Band 3 suggests Confirm, so Extend and Not confirm are overrides: one audited event each, no rater text (migration 5745).
+  const overrideEvents=await owner.db.execute<{payload:Record<string,unknown>}>(sql`select payload from domain_event where aggregate_id=${ids.caseId}::uuid and event_type='probation.outcome_overridden'`);
+  expect(overrideEvents.map(e=>e.payload)).toEqual(outcome==='confirm'?[]:[expect.objectContaining({partId:ids.part,chosen:outcome,scoreBand:3,justified:true})]);
+  expect(JSON.stringify(overrideEvents)).not.toContain('Observed evidence supports');
   part=await current(staff.ctx);expect(part.canEditEmployeeComments).toBe(true);expect(part.canEditSelfAssessment).toBe(false);await expect(actOnProbation(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'acknowledge',method:'typed',value:'Fictional Staff',consent:true})).rejects.toThrow();await saveProbationDraft(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'employee',patch:{employeeComments:'I acknowledge the submitted review.'}});part=await current(staff.ctx);const evaluation=part.signing!,evaluationAck=evaluation.document.route.steps.find(step=>step.role==='employee')!;await expect(withTenant(staff.ctx,tx=>recordDocumentSigningActionTx(tx,staff.ctx,{id:evaluation.id,stepId:evaluationAck.id,revision:evaluation.document.contentRevision,hash:evaluation.document.contentHash,action:'signed',comment:'A different unsaved acknowledgement',method:'typed',value:'Fictional Staff',consent:true}))).rejects.toThrow();await actOnProbation(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'acknowledge',method:'typed',value:'Fictional Staff',consent:true});
   const workflowId=await saveProbationWorkflow(admin,{companyId:b.companyId,publish:true,expectedVersion:0,workflow:{
    id:randomUUID(),module:'probation',name:'Review a pending signing route',status:'published',description:'Scoped People Partner route notice',
@@ -263,6 +270,8 @@ describe('real evaluation to signed letter custody',()=>{
   const[pending]=await owner.db.execute<{released:string|null;state:string}>(sql`select released_at::text as released,state from probation_outcome where id=${decision.id}::uuid`);expect(pending).toEqual({released:null,state:'release_requested'});expect((await readProbationLetter(admin,ids.caseId,prepared.partId)).canRelease).toBe(false);
   await expect(withTenant(admin,tx=>tx.execute(sql`select app.probation_file_save(${ids.caseId}::uuid,${ids.part}::uuid,'completed_part','forged.pdf',${Buffer.from('%PDF-forged')},1,'Forged completed source')`))).rejects.toThrow();
   if(outcome==='confirm')await saveMovementEventType(admin,{code:'confirmation',label:'Confirmation',fieldRules:[{field:'businessUnitId',included:true,editable:true,mustChange:false,document:'none'}]});
+  // I1: the outcome's Personnel posting is approved by the People Ops assignment group (an existing V9 group).
+  await owner.db.execute(sql`update lc_v9_config set data=data||jsonb_build_object('groups',jsonb_build_array(jsonb_build_object('id','probation-people','name','Canonical People Ops','members',jsonb_build_array(${admin.userId}::text),'limit',10))) where tenant_id=${b.tenantId}::uuid`);
   const assignmentBefore=await owner.db.execute(sql`select * from assignment where employment_id=${staff.employmentId}::uuid order by id`);
   const portQueries:string[]=[],dialect=new PgDialect();
   const fixedPortOwner={withTenant:async<T>(context:SessionContext,run:(tx:Tx)=>Promise<T>)=>owner.withTenant(context,tx=>run(new Proxy(tx,{get(target,key){
@@ -327,26 +336,43 @@ describe('real evaluation to signed letter custody',()=>{
    from probation_outcome outcome join probation_case c on c.id=outcome.case_id and c.tenant_id=outcome.tenant_id
    join employment e on e.id=c.employment_id and e.tenant_id=c.tenant_id where outcome.id=${decision.id}::uuid`);
   expect(effect.outcomeState).toBe('completed');
+  // I1 (decision 4): with no shared workflow the outcome still never writes the movement itself. It creates the
+  // Personnel posting and records the posting effect; only the posting's approval writes the movement, once.
+  const postings=await owner.db.execute<{id:string;status:string;event:string;group:string;revision:number}>(sql`select id,status,event_type as event,approver_group_id as group,revision from personnel_posting where source_ref=${ids.caseId}::uuid`);
   if(outcome==='confirm'){
-   expect(portQueries.some(query=>query.includes('app.probation_personnel_intent('))).toBe(true);
+   expect(portQueries.some(query=>query.includes('app.probation_personnel_intent('))).toBe(false);
+   expect(portQueries.some(query=>query.includes('app.personnel_posting_create('))).toBe(true);
    expect(portQueries.filter(query=>/app\.(?:company_organisation_tags|employment_organisation_tags|record_employment_organisation_tags)\(/.test(query))).toEqual([]);
    expect(await owner.db.execute(sql`select * from assignment where employment_id=${staff.employmentId}::uuid order by id`)).toEqual(assignmentBefore);
-   const written=await owner.db.execute<{fields:string[]}>(sql`select payload->'fields' as fields from domain_event where id=${effect.movement}::uuid`);
-   expect(written).toHaveLength(1);expect(written[0].fields).not.toContain('businessUnitId');
   }
-  if(outcome==='confirm')expect(effect).toMatchObject({caseState:'confirmed',movement:expect.any(String),handoff:null,confirmed:endOn,extended:null});
+  if(outcome==='confirm')expect(effect).toMatchObject({caseState:'confirmed',movement:'posting:'+postings[0]?.id,handoff:null,confirmed:null,extended:null});
   if(outcome==='extend'){
-   expect(effect).toMatchObject({caseState:'extended',movement:expect.any(String),handoff:null,confirmed:null,extended:addDaysIso(addCalendarMonths(addDaysIso(endOn,1),3),-1)});
+   expect(effect).toMatchObject({caseState:'extended',movement:'posting:'+postings[0]?.id,handoff:null,confirmed:null,extended:null});
    const later=await owner.db.execute<{cycle:number}>(sql`select (data->>'cycle')::integer as cycle from probation_part where case_id=${ids.caseId}::uuid and data->>'type'='3' and data->>'documentKind' is distinct from 'letter' order by cycle`);
    expect(later).toEqual([{cycle:0},{cycle:1}]);
+  }
+  if(outcome!=='not_confirm'){
+   expect(postings).toEqual([expect.objectContaining({status:'pending',event:outcome==='confirm'?'confirmation':'probationExtension',group:'probation-people'})]);
+   const[pending]=await owner.db.execute<{pending:{id:string}|null}>(sql`select data->'pendingPosting' as pending from probation_case where id=${ids.caseId}::uuid`);
+   expect(pending.pending).toMatchObject({id:postings[0].id});
+   expect(await owner.db.execute(sql`select 1 from domain_event where tenant_id=${b.tenantId}::uuid and aggregate_id=${staff.employmentId}::uuid and event_type='employment.info.updated'`)).toHaveLength(0);
+   // The group's member approves: the movement is written exactly once and the case's pending posting clears.
+   const approved=await approvePersonnelPosting(admin,{id:postings[0].id,revision:postings[0].revision});
+   await expect(approvePersonnelPosting(admin,{id:postings[0].id,revision:postings[0].revision})).rejects.toThrow();
+   const[dates]=await owner.db.execute<{confirmed:string|null;extended:string|null;pending:unknown}>(sql`select e.confirmation_date::text as confirmed,e.extended_confirmation_date::text as extended,c.data->'pendingPosting' as pending from employment e join probation_case c on c.employment_id=e.id where c.id=${ids.caseId}::uuid`);
+   const recorded=(await movementHistory(admin,staff.employmentId)).filter(row=>row.kind===(outcome==='confirm'?'confirmation':'probationExtension'));
+   expect(recorded.map(row=>row.id)).toEqual([approved.movementId]);
+   expect(dates.pending).toBeNull();
+   if(outcome==='confirm'){
+    expect(dates).toMatchObject({confirmed:endOn,extended:null});
+    const written=await owner.db.execute<{fields:string[]}>(sql`select payload->'fields' as fields from domain_event where tenant_id=${b.tenantId}::uuid and aggregate_id=${staff.employmentId}::uuid and event_type='employment.info.updated'`);
+    expect(written).toHaveLength(1);expect(written[0].fields).not.toContain('businessUnitId');
+   }
   }
   if(outcome==='not_confirm'){
    expect(effect).toMatchObject({caseState:'not_confirmed',movement:null,handoff:expect.any(String),confirmed:null});
    const handoffs=await owner.db.execute<{id:string;kind:string}>(sql`select id,data->'facts'->>'caseType' as kind from lc_v9_case where tenant_id=${b.tenantId}::uuid and data->>'probationSourceCaseId'=${ids.caseId}`);
    expect(handoffs).toEqual([{id:effect.handoff,kind:'Non-confirmation'}]);
-  }else{
-   const movement=await owner.db.execute<{id:string;actor:string|null}>(sql`select id,actor_id as actor from domain_event where tenant_id=${b.tenantId}::uuid and aggregate_id=${staff.employmentId}::uuid and event_type='employment.info.updated' and payload->'movement'->>'remarks'=${'probation:'+ids.caseId+':'+ids.part}`);
-   expect(movement).toEqual([{id:effect.movement,actor:null}]);
   }
   const[review]=await owner.db.execute<{count:number}>(sql`select count(*)::integer as count from probation_file where part_id=${ids.part}::uuid and kind='completed_part' and employee_document_id is not null`);expect(review.count).toBe(1);
  });
@@ -675,5 +701,176 @@ describe('scoped Probation employee-name filtering',()=>{
   expect((await probationSummaryRows(staff.ctx,{search:'Alice'})).rows).toEqual([]);
   await owner.db.execute(sql`update employment set grade_id=null where id=${second.employmentId}::uuid`);
   expect((await probationSummaryRows(admin,{businessGroupId:bg,grade:'15'})).rows[0].grade).toBe('15');
+  // Lane M1 "Show closed cases": closed cases stay listed by default and leave the list (and its counts) when unticked.
+  await owner.db.execute(sql`update probation_case set data=jsonb_set(data,'{state}','"confirmed"'::jsonb) where id=${id}::uuid`);
+  expect((await probationSummaryRows(admin)).rows.map(row=>row.id)).toContain(id);
+  const openOnly=await probationSummaryRows(admin,{hideClosed:true});
+  expect(openOnly.rows.map(row=>row.id)).not.toContain(id);expect(openOnly.rows.length).toBeGreaterThan(0);
+ });
+});
+
+async function submittedForAcknowledgement(){
+  const{ids,staff,manager,peer}=await privateCase();
+  await setReportingLine(admin,{subordinateEmploymentId:staff.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:'2026-01-01'});
+  await owner.db.execute(sql`update department set head_employment_id=${peer.employmentId}::uuid where id=${b.deptA}::uuid`);
+  await owner.db.execute(sql`insert into probation_access(tenant_id,user_id,company_id,role,valid_from,reason) values(${b.tenantId}::uuid,${admin.userId}::uuid,${b.companyId}::uuid,'pbp','2026-01-01','Actual canonical PBP opt-in'),(${b.tenantId}::uuid,${admin.userId}::uuid,${b.companyId}::uuid,'gbs','2026-01-01','Actual canonical GBS opt-in')`);
+  const current=async(ctx:SessionContext)=>(await probationCase(ctx,ids.caseId)).parts[0];
+  const assessment=Object.fromEntries(DEFAULT_PROBATION_FORM.criteria.map(c=>[c.id,{rating:4,evidence:'Observed fictional evidence for this criterion'}]));
+  let part=await current(staff.ctx);await saveProbationDraft(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'employee',patch:{employee:assessment}});
+  part=await current(staff.ctx);await actOnProbation(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'submit_employee'});
+  part=await current(manager.ctx);await saveProbationDraft(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'lm',patch:{manager:assessment,reviewOn:todayInKualaLumpur(),conductedBy:manager.userId,outcome:'confirm',justification:'Observed evidence supports confirmation'}});
+  part=await current(manager.ctx);await actOnProbation(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'submit_manager',method:'typed',value:'Fictional Manager',consent:true});
+  return{ids,staff,manager,peer,current};
+}
+describe('declined signature',()=>{
+ it('lets the Line Manager record that the employee declined, which moves the part on at once, never the employee, and the PBP confirm it without gating',async()=>{
+  const{ids,staff,manager,current}=await submittedForAcknowledgement();let part=await current(staff.ctx);
+  expect(part.allowedCommands).not.toContain('request_refusal');
+  await expect(actOnProbation(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'request_refusal',reason:'Employee cannot record this'})).rejects.toThrow();
+  part=await current(manager.ctx);expect(part.allowedCommands).toContain('request_refusal');
+  await actOnProbation(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'request_refusal',reason:'The employee declined to sign after the review meeting'});
+  // Owner decision 16 Nov 2026: the recorded decline fulfils the acknowledgement and moves the part on at once.
+  part=await current(admin);
+  expect(part.acknowledgedAt).not.toBeNull();expect(part.state).toBe('pending_approval');
+  expect(part.signing!.document.actions).toContainEqual(expect.objectContaining({role:'employee',action:'declined',actorId:manager.userId}));
+  expect(part.allowedCommands).toContain('confirm_refusal');
+  await expect(actOnProbation(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'confirm_refusal',reason:'Manager cannot confirm'})).rejects.toThrow();
+  part=await current(admin);
+  await actOnProbation(admin,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'confirm_refusal',reason:'PBP confirms the declined signature'});
+  part=await current(admin);
+  expect(part.state).toBe('pending_approval');expect(part.allowedCommands).not.toContain('confirm_refusal');
+  const[confirmed]=await owner.db.execute<{n:number}>(sql`select count(*)::int n from probation_followup where part_id=${ids.part}::uuid and kind='refusal_confirmed'`);expect(confirmed.n).toBe(1);
+  const[audit]=await owner.db.execute<{n:number}>(sql`select count(*)::int n from domain_event where aggregate_id=${ids.caseId}::uuid and event_type='probation.confirm_refusal'`);expect(audit.n).toBe(1);
+ });
+ it('still moves on a part that was already waiting for PBP confirmation under the previous order',async()=>{
+  const{ids,manager,current}=await submittedForAcknowledgement();
+  let part=await current(manager.ctx);
+  await owner.db.execute(sql`insert into probation_followup(tenant_id,case_id,part_id,actor_user_id,kind,note,content_revision) values(${b.tenantId}::uuid,${ids.caseId}::uuid,${ids.part}::uuid,${manager.userId}::uuid,'refusal_request','Recorded before the change',${part.contentRevision})`);
+  part=await current(admin);expect(part.acknowledgedAt).toBeNull();expect(part.allowedCommands).toContain('confirm_refusal');
+  await actOnProbation(admin,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'confirm_refusal',reason:'PBP confirms the earlier recorded refusal'});
+  part=await current(admin);
+  expect(part.acknowledgedAt).not.toBeNull();expect(part.state).toBe('pending_approval');
+  expect(part.signing!.document.actions).toContainEqual(expect.objectContaining({role:'employee',action:'declined',actorId:admin.userId}));
+ });
+});
+
+describe('general delegation of Probation approvals (decision 7)',()=>{
+ it('moves a Head of Department approval to a delegate only when Probation is ticked, on behalf of the holder',async()=>{
+  const{ids,staff,peer,current}=await submittedForAcknowledgement();
+  let part=await current(staff.ctx);
+  await saveProbationDraft(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'employee',patch:{employeeComments:'I acknowledge the review discussion.'}});
+  part=await current(staff.ctx);await actOnProbation(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'acknowledge',method:'typed',value:'Fictional Staff',consent:true});
+  const delegate=await person('Fictional Delegate Approver');
+  const yesterday=addDaysIso(todayInKualaLumpur(),-1);
+  const[line]=await owner.db.execute<{id:string}>(sql`insert into reporting_line(tenant_id,subordinate_employment_id,manager_employment_id,line_type,valid_from) values(${b.tenantId}::uuid,${peer.employmentId}::uuid,${delegate.employmentId}::uuid,'delegate',${yesterday}::date) returning id`);
+  // A whole-scope delegation (no scope rows) never includes Probation.
+  part=await current(admin);let hod=part.route.steps.find(step=>step.role==='hod')!;
+  expect(hod).toMatchObject({holderId:peer.userId});expect(hod.representedId).toBeUndefined();
+  await expect(probationCase(delegate.ctx,ids.caseId)).rejects.toThrow();
+  // A delegation with another module ticked does not either.
+  await owner.db.execute(sql`insert into reporting_line_scope(tenant_id,reporting_line_id,module,task_type) values(${b.tenantId}::uuid,${line.id}::uuid,'leave',null)`);
+  expect((await current(admin)).route.steps.find(step=>step.role==='hod')).toMatchObject({holderId:peer.userId});
+  await owner.db.execute(sql`insert into reporting_line_scope(tenant_id,reporting_line_id,module,task_type) values(${b.tenantId}::uuid,${line.id}::uuid,'probation','probation.approve')`);
+  part=await current(delegate.ctx);hod=part.route.steps.find(step=>step.role==='hod')!;
+  expect(hod).toMatchObject({holderId:delegate.userId,representedId:peer.userId});
+  expect(part.route.steps.find(step=>step.role==='lm')!.holderId).not.toBe(delegate.userId);
+  expect(part.allowedCommands).toContain('approve');
+  await actOnProbation(delegate.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,stepId:hod.id,command:'approve',method:'typed',value:'Fictional Delegate Approver',consent:true,coveredStepIds:hod.coveredStepIds??[]});
+  part=await current(admin);
+  expect(part.signing!.document.actions).toContainEqual(expect.objectContaining({role:'hod',action:'signed',actorId:delegate.userId,representedId:peer.userId}));
+  // The original holder no longer holds the step while the delegation covers it.
+  await expect(actOnProbation(peer.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,stepId:hod.id,command:'approve',method:'typed',value:'Fictional Peer',consent:true})).rejects.toThrow();
+ });
+});
+describe('Probation work in My Action Centre (migration 5751)',()=>{
+ it('lists each current step once as an Approval Item or a task, from the same commands the case view offers, and moves an Approve step to a Probation delegate',async()=>{
+  const{ids,staff,peer,current}=await submittedForAcknowledgement();
+  const modules={attendance:false,claims:false,performance:false,rewards:false,probation:true};
+  const href=`/lifecycle/probation/${ids.caseId}/${ids.part}`;
+  const onCase=(list:{items:{caseId:string}[]})=>list.items.filter(item=>item.caseId===ids.caseId);
+  // The employee's acknowledgement is a task, never an approval, and reaches the shared task list as probationTask.
+  expect(onCase(await probationTaskList(staff.ctx))).toEqual([expect.objectContaining({partId:ids.part,kind:'acknowledge',category:'task',href})]);
+  expect(onCase(await probationTaskList(staff.ctx,{category:'approval'}))).toEqual([]);
+  expect((await listPendingTasks(staff.ctx,undefined,modules)).filter(task=>task.kind.startsWith('probation'))).toEqual([expect.objectContaining({id:`${ids.part}:acknowledge`,kind:'probationTask',linkPath:href})]);
+  expect(onCase(await probationTaskList(peer.ctx))).toEqual([]);
+  let part=await current(staff.ctx);
+  await saveProbationDraft(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'employee',patch:{employeeComments:'I acknowledge the review discussion.'}});
+  part=await current(staff.ctx);await actOnProbation(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'acknowledge',method:'typed',value:'Fictional Staff',consent:true});
+  expect(onCase(await probationTaskList(staff.ctx))).toEqual([]);
+  // The Head of Department's Approve step is an Approval Item (probationApproval), exactly what the case view offers.
+  expect((await current(peer.ctx)).allowedCommands).toContain('approve');
+  expect(onCase(await probationTaskList(peer.ctx,{category:'approval'}))).toEqual([expect.objectContaining({partId:ids.part,kind:'approve',category:'approval',href,companyId:b.companyId})]);
+  expect(onCase(await probationTaskList(peer.ctx,{category:'task'}))).toEqual([]);
+  expect((await listPendingTasks(peer.ctx,undefined,modules)).filter(task=>task.kind==='probationApproval').map(task=>task.id)).toEqual([`${ids.part}:approve`]);
+  expect((await listPendingTasks(peer.ctx,undefined,{...modules,probation:false})).filter(task=>task.kind.startsWith('probation'))).toEqual([]);
+  expect((await probationTaskList(peer.ctx,{category:'approval',companyIds:[randomUUID()]})).items).toEqual([]);
+  // The tracker filtered to the caller's work shows the same case.
+  expect((await probationSummaryRows(peer.ctx,{mine:true,limit:100})).rows.map(row=>row.id)).toEqual([ids.caseId]);
+  // A general delegation with Probation ticked moves the Approve step (and the Approval Item) to the delegate.
+  const delegate=await person('Fictional Queue Delegate'),outsider=await person('Fictional Queue Outsider');
+  const[line]=await owner.db.execute<{id:string}>(sql`insert into reporting_line(tenant_id,subordinate_employment_id,manager_employment_id,line_type,valid_from) values(${b.tenantId}::uuid,${peer.employmentId}::uuid,${delegate.employmentId}::uuid,'delegate',${addDaysIso(todayInKualaLumpur(),-1)}::date) returning id`);
+  expect(onCase(await probationTaskList(delegate.ctx))).toEqual([]);
+  await owner.db.execute(sql`insert into reporting_line_scope(tenant_id,reporting_line_id,module,task_type) values(${b.tenantId}::uuid,${line.id}::uuid,'probation','probation.approve')`);
+  expect(onCase(await probationTaskList(delegate.ctx,{category:'approval'}))).toEqual([expect.objectContaining({partId:ids.part,kind:'approve'})]);
+  expect(onCase(await probationTaskList(peer.ctx))).toEqual([]);
+  expect(onCase(await probationTaskList(outsider.ctx))).toEqual([]);
+  // The former inbox keeps its shape and answers from the same owner.
+  expect(await probationInbox(delegate.ctx)).toMatchObject({items:[expect.objectContaining({caseId:ids.caseId,partId:ids.part,kind:'approve',href})]});
+ });
+});
+describe('form approval routing (migration 5751)',()=>{
+ const submitWith=async(form:((data:Record<string,unknown>)=>Record<string,unknown>)|null)=>{
+  const{ids,staff,manager,peer}=await privateCase();
+  if(form){const[row]=await owner.db.execute<{data:Record<string,unknown>}>(sql`select data from probation_configuration where id=(select form_id from probation_case where id=${ids.caseId}::uuid)`);
+   await owner.db.execute(sql`update probation_configuration set data=${JSON.stringify(form(row.data))}::jsonb where id=(select form_id from probation_case where id=${ids.caseId}::uuid)`);}
+  await setReportingLine(admin,{subordinateEmploymentId:staff.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:'2026-01-01'});
+  await owner.db.execute(sql`update department set head_employment_id=${peer.employmentId}::uuid where id=${b.deptA}::uuid`);
+  await owner.db.execute(sql`insert into probation_access(tenant_id,user_id,company_id,role,valid_from,reason) values(${b.tenantId}::uuid,${admin.userId}::uuid,${b.companyId}::uuid,'pbp','2026-01-01','Actual canonical PBP opt-in'),(${b.tenantId}::uuid,${admin.userId}::uuid,${b.companyId}::uuid,'gbs','2026-01-01','Actual canonical GBS opt-in')`);
+  const current=async(ctx:SessionContext)=>(await probationCase(ctx,ids.caseId)).parts[0];
+  const assessment=Object.fromEntries(DEFAULT_PROBATION_FORM.criteria.map(c=>[c.id,{rating:4,evidence:'Observed fictional evidence for this criterion'}]));
+  let part=await current(staff.ctx);await saveProbationDraft(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'employee',patch:{employee:assessment}});
+  part=await current(staff.ctx);await actOnProbation(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'submit_employee'});
+  part=await current(manager.ctx);await saveProbationDraft(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'lm',patch:{manager:assessment,reviewOn:todayInKualaLumpur(),conductedBy:manager.userId,outcome:'confirm',justification:'Observed evidence supports confirmation'}});
+  part=await current(manager.ctx);await actOnProbation(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'submit_manager',method:'typed',value:'Fictional Manager',consent:true});
+  const[frozen]=await owner.db.execute<{route:{steps:{id:string;role:string;kind:string;stage:number}[]};policy:{mode:string}|null}>(sql`select data->'route' as route,data->'routePolicy' as policy from probation_part where id=${ids.part}::uuid`);
+  return frozen;
+ };
+ it('freezes the default rows as exactly the configured default route, without a policy of its own',async()=>{
+  const frozen=await submitWith(null);
+  expect(frozen.route.steps.map(step=>[step.id,step.role,step.kind,step.stage])).toEqual([['lm','lm','sign',0],['employee','employee','acknowledge',1],['hod','hod','approve',2],['pbp','pbp','approve',3]]);
+  expect(frozen.policy).toBeNull();
+ });
+ it('follows the version\'s rows (same order: listed order) and freezes the version\'s duplicate-role policy',async()=>{
+  const rows={'1':[],'2':[],'3':[{id:'pbp',order:1,action:'approve_sign',who:'pbp'},{id:'hod',order:1,action:'approve_sign',who:'hod'}]};
+  const frozen=await submitWith(data=>({...data,approvals:rows,duplicateRolePolicy:{mode:'sign_once'}}));
+  expect(frozen.route.steps.map(step=>[step.role,step.stage])).toEqual([['lm',0],['employee',1],['pbp',2],['hod',3]]);
+  expect(frozen.policy).toEqual({mode:'sign_once'});
+ });
+ it('keeps a version saved before form routing on the published route configuration',async()=>{
+  const frozen=await submitWith(data=>{const{approvals,duplicateRolePolicy,...rest}=data;void approvals;void duplicateRolePolicy;return rest;});
+  expect(frozen.route.steps.map(step=>step.role)).toEqual(['lm','employee','hod','pbp']);expect(frozen.policy).toBeNull();
+ });
+});
+describe('a GBS step held by the group (migration 5751, E4)',()=>{
+ it('resolves to the person assigned on the Part, then to that person\'s Probation delegate, who sees the case',async()=>{
+  const{ids,current}=await submittedForAcknowledgement();
+  const assigned=await person('Fictional Assigned GBS Signer'),delegate=await person('Fictional GBS Delegate');
+  const yesterday=addDaysIso(todayInKualaLumpur(),-1);
+  // A GBS approval step after the PBP: nobody holds it until someone is assigned on this Part.
+  await owner.db.execute(sql`update probation_part set data=jsonb_set(data,'{route,steps}',(data->'route'->'steps')||jsonb_build_array(jsonb_build_object('id','gbs','role','gbs','kind','approve','stage',4,'required',true))) where id=${ids.part}::uuid`);
+  let gbs=(await current(admin)).route.steps.find(step=>step.id==='gbs')!;expect(gbs.holderId??null).toBeNull();
+  await owner.db.execute(sql`insert into probation_delegate(tenant_id,part_id,step_id,holder_id,kind,reason,created_by,valid_from) values(${b.tenantId}::uuid,${ids.part}::uuid,'gbs',${assigned.userId}::uuid,'missing_holder','Fictional GBS assignment',${admin.userId}::uuid,${yesterday}::date)`);
+  gbs=(await current(admin)).route.steps.find(step=>step.id==='gbs')!;expect(gbs).toMatchObject({holderId:assigned.userId});
+  // A delegation line without Probation ticked moves nothing and shows nothing.
+  const[line]=await owner.db.execute<{id:string}>(sql`insert into reporting_line(tenant_id,subordinate_employment_id,manager_employment_id,line_type,valid_from) values(${b.tenantId}::uuid,${assigned.employmentId}::uuid,${delegate.employmentId}::uuid,'delegate',${yesterday}::date) returning id`);
+  await expect(probationCase(delegate.ctx,ids.caseId)).rejects.toThrow();
+  expect((await current(admin)).route.steps.find(step=>step.id==='gbs')).toMatchObject({holderId:assigned.userId});
+  await owner.db.execute(sql`insert into reporting_line_scope(tenant_id,reporting_line_id,module,task_type) values(${b.tenantId}::uuid,${line.id}::uuid,'probation','probation.approve')`);
+  gbs=(await current(delegate.ctx)).route.steps.find(step=>step.id==='gbs')!;
+  expect(gbs).toMatchObject({holderId:delegate.userId,representedId:assigned.userId});
+  // An explicit per-part delegation never chains into a general one.
+  await owner.db.execute(sql`update probation_delegate set kind='delegation' where part_id=${ids.part}::uuid and step_id='gbs'`);
+  expect((await current(admin)).route.steps.find(step=>step.id==='gbs')).toMatchObject({holderId:assigned.userId});
+  await expect(probationCase(delegate.ctx,ids.caseId)).rejects.toThrow();
  });
 });

@@ -2,9 +2,9 @@
 import { modulePackById } from '@/packs/registry';
 import { navigationPlacement } from '@/lib/navigation-workspaces';
 import { isSecurityDestination, securityDestinationAllowed } from '@/lib/security-center-navigation';
-import { V9_NAVIGATION, V9_SHARED_NAVIGATION, type V9NavigationPermissions } from '@/lib/lifecycle-v9-navigation';
+import { V9_AUTOMATION_NAVIGATION, V9_NAVIGATION, V9_SHARED_NAVIGATION, type V9NavigationPermissions } from '@/lib/lifecycle-v9-navigation';
 import {
-  ADDITIONAL_ROWS, AI_PROVIDER_HREF, GROUPS, MODULE_OF_HREF, MY_TEAM_ROW, ONBOARDING_NODE,
+  ADDITIONAL_ROWS, AI_PROVIDER_HREF, AUTOMATION_NAVIGATION, GROUPS, MODULE_OF_HREF, MY_TEAM_ROW, ONBOARDING_NODE,
   PERFORMANCE_ADMIN_ROW, SCOPED_LIFECYCLE_NAVIGATION, isAiAdministrationHref, isCollapsible, type ChildItem,
 } from './shell-inventory';
 
@@ -63,7 +63,7 @@ export type ShellNavigationFacts = {
   /** AI v2 W11 — the login handles private cases (a current handler grant, or a case it may handle). Only then is the
    * "Private cases" queue row offered; /cases still shows each login only what row security returns. */
   privateCaseHandler?: boolean;
-  probationAccess?: {page:boolean;configure:boolean;intake?:boolean};
+  probationAccess?: {page:boolean;configure:boolean;intake?:boolean;access?:boolean};
   contractStaffAccess?: {page:boolean;configure:boolean;intake?:boolean};
   onboardingAccess?: boolean;
   onboardingV9Access?: boolean;
@@ -153,7 +153,7 @@ export function resolveShellNavigation({
   // The old lifecycle addresses remain valid for existing records and links, but their old
   // hub/self-service/requisition presentation is replaced by the owner's explicit V9 hierarchy.
   const lifecycleNavigation: ChildItem[] = V9_NAVIGATION.filter(item => onboardingV9Access &&
-    !!onboardingV9Navigation?.[item.permission]).map(item => ({
+    !!onboardingV9Navigation?.[item.permission] && !('automationLabelKey' in item)).map(item => ({
       href: item.href, labelKey: item.labelKey, submenuKey: item.submenuKey, icon: ONBOARDING_NODE.icon,
       exactHref: true, ...('ownedSubpaths' in item ? { ownedSubpaths: [...item.ownedSubpaths] } : {}),
     } satisfies ChildItem)).filter(canSeeChild);
@@ -168,13 +168,30 @@ export function resolveShellNavigation({
       case 'configure': return access.configure;
       case 'configureOrIntake': return access.configure || access.intake === true;
       case 'intake': return access.intake === true;
+      // Probation Access (/lifecycle/probation/access): app.probation_access_admin through probationNavigationAccess().access.
+      // A viewer who configures Probation finds Access inside Probation settings (prototype; lane M3), so the row is only
+      // for access administrators without the settings row. The page and the settings section check again.
+      case 'admin': return item.module === 'probation' && probationAccess.access === true && !access.configure;
     }
   });
+  // ADR 2026-11-15-probation-shared-automation, decision 1: the shared builders, for anyone who configures at least one
+  // module (existing facts: Probation and Contract staff configure, On/Off Boarding V9 administration). The On/Off
+  // Boarding builder rows sit in the same section and keep their V9 gate and screens.
+  const v9Administration = onboardingV9Access && !!onboardingV9Navigation?.administration;
+  const automationRows: ChildItem[] = [
+    ...(probationAccess.configure || contractStaffAccess.configure || v9Administration ? AUTOMATION_NAVIGATION : []),
+    ...V9_AUTOMATION_NAVIGATION.filter(() => v9Administration).map(item => ({
+      href: item.href, labelKey: item.automationLabelKey, icon: ONBOARDING_NODE.icon, exactHref: true,
+    } satisfies ChildItem)).filter(canSeeChild),
+  ];
   const rewardRows = modulePackById('rewards')!.navLinks!
     .filter(row => rewardDestinations.includes(row.href) && moduleAllows(row.href));
+  // The lifecycle pack's own builder rows are replaced by the V9 presentation above, including the builder views
+  // placed in the shared HR Automation section (automationRows), so they are dropped here like every onboarding row.
+  const v9AutomationHrefs = new Set<string>(V9_AUTOMATION_NAVIGATION.map(item => item.href));
   const destinations: ChildItem[] = [...authorizedRows.filter(row => {
     const placement = navigationPlacement(row.href);
-    return !placement || !('module' in placement) || placement.module !== 'onboarding';
-  }), ...ADDITIONAL_ROWS.filter(canSeeChild), ...lifecycleNavigation, ...lifecycleShared, ...scopedLifecycleRows, ...rewardRows];
+    return !v9AutomationHrefs.has(row.href) && (!placement || !('module' in placement) || placement.module !== 'onboarding');
+  }), ...ADDITIONAL_ROWS.filter(canSeeChild), ...lifecycleNavigation, ...lifecycleShared, ...scopedLifecycleRows, ...automationRows, ...rewardRows];
   return { destinations, lifecycleNavigation, canSeeChild };
 }

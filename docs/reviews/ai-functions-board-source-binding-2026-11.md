@@ -621,3 +621,69 @@ provider-data scope only through the import graph. No provider transform, outbou
 The per-branch bindings above were superseded: the 28 approvals were carried forward from `b9a6f0af…` to `f446073c…`
 (1,595 files) and the agent manifest regenerated (`02c0c88c…`), under the owner's standing pre-approval for staging
 re-binds (12 November 2026). Staging only.
+
+### Re-binding for the Probation Confirmation reshape onto shared HR automation (16 November 2026)
+
+`claude/probation-confirmation-aihr-b81c70`, merged with main/alpha `9d32dfab1` (binding `1aad1797…`), at its final merge, adds
+the shared HR Automation builders and runner, Personnel postings, document signing review routing and the Probation
+settings, queue, routing and outcome changes (ADR `docs/adr/2026-11-15-probation-shared-automation.md`, migrations
+5740–5759). The changed files reach the provider-data scope only through the import graph (message catalogues,
+company referrers, the approvals and Today task sources); no file under lib/ai, core/ai*, core/assistant*,
+core/teras* or core/loops changed. No provider transform, outbound field, purpose or transport changed. The 28 approvals
+were carried forward to `2811064b…` and the agent manifest regenerated (`e11a6cf7…`), under the owner's standing
+pre-approval for staging re-binds (12 November 2026). This binding grants no production authority.
+
+### Re-binding for the Probation handoff gaps and saved-form import (16 November 2026)
+
+`claude/probation-confirmation-aihr-b81c70` at binding `2811064b…` merges lane J (`claude/probation-lane-import-20261116`,
+importing saved v22.9.26 HTML evaluation forms in Probation intake; migration 5762) and lane I
+(`claude/probation-lane-gaps-20261116`, the default outcome path creating a Personnel posting, letter queues by step
+kind, PBP low-result and Other tasks, workflow history, routed recipients and tracker steps; migrations 5760–5761).
+Changed covered files are `core/probation*.ts`, `lib/probation-intake-html.ts` and the six `messages/*.json` catalogues,
+in the provider-data scope only through the import graph; no file under lib/ai, core/ai*, core/assistant*, core/teras*
+or core/loops changed. No provider transform, outbound field, purpose or transport changed. The 28 approvals were
+carried forward to `a6ebe974…` and the agent manifest regenerated (`db714b6f…`), under the owner's standing
+pre-approval for staging re-binds (12 November 2026). This binding grants no production authority.
+
+### Re-binding for the Probation access model, routed holders and prototype UI, merged with main (16 November 2026)
+
+`claude/probation-confirmation-aihr-b81c70` merges lane K (`claude/probation-lane-access-20261116`: Probation access
+roles, scoped dated members and the Direct Superiors rule, migration 5763; the case's PBP and Head of Department from the
+shared routings, migration 5764), lane L (`claude/probation-lane-ui-20261116`: the case view, Configuration sub-menu,
+readable times, task labels and letter signers, migration 5765) and main/alpha `5160eb4e4` (binding `3656aa94…`).
+Changed covered files are Probation core, navigation and the six `messages/*.json` catalogues, in the provider-data scope
+only through the import graph; no file under lib/ai, core/ai*, core/assistant*, core/teras* or core/loops changed apart
+from these manifests. No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried
+forward to `235863e0…` and the agent manifest regenerated (`0c3dfb15…`), under the owner's standing pre-approval for
+staging re-binds (12 November 2026). This binding grants no production authority.
+
+### Re-binding for the Probation screens matched to the prototype, merged with main (16 November 2026)
+
+`claude/probation-confirmation-aihr-b81c70` merges lanes M1–M3 (`claude/probation-lane-m1-tracker-20261116`,
+`claude/probation-lane-m2-case-20261116`, `claude/probation-lane-m3-config-20261116`: the tracker, Personnel postings,
+case page and part forms, Probation configuration and HR Automation screens restyled to the approved prototype; one
+optional "show closed cases" filter on the tracker read; no migration) and main/alpha `03b06f0de` (binding `c88b5a04…`).
+Changed covered files are Probation core, pages and the six `messages/*.json` catalogues, in the provider-data scope only
+through the import graph; no file under lib/ai, core/ai*, core/assistant*, core/teras* or core/loops changed apart from
+these manifests. No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried
+forward to `06b5c60f…` and the agent manifest regenerated (`21404a12…`), under the owner's standing pre-approval for
+staging re-binds (12 November 2026). This binding grants no production authority.
+
+### Re-binding for the Probation release-gate inventory repairs (16 November 2026)
+
+`claude/probation-confirmation-aihr-b81c70` at binding `06b5c60f…` repairs what release gate 43850661612 (attempt 1,
+failed) found: `lib/ai/agent-capability-inventory.ts` classifies the 25 new Probation and HR Automation server actions and
+routes (backlog or handoff only; no action is registered for the agent and no tier is raised), `core/personnel-posting.ts`
+reaches leave through `packs/leave/service`, `core/company-refs.ts` declares four new company referrers, and migration
+5766 adds their read-only in-use check. No provider transform, outbound field, purpose or transport changed. The 28
+approvals were carried forward to `e4fcddfb…` and the agent manifest regenerated (`943a1bee…`), under the owner's
+standing pre-approval for staging re-binds (12 November 2026). This binding grants no production authority.
+
+### Re-binding the combined Irwin release onto the Probation Confirmation staging release (16 November 2026)
+
+The combined Irwin release (237c31e6, aac17dd0, 87bd9656, 7f5cc653) was rebuilt as
+`claude/release-combined-irwin-20261116-r2` on top of the Probation Confirmation release `267574da5` (installed on
+staging, binding `e4fcddfb…`), because staging moved past the original base `03b06f0de`. Merging changed no covered
+source beyond both sides' own reviewed changes. No provider transform, outbound field, purpose or transport changed. The
+28 approvals were carried forward from `e4fcddfb…` to `800269d5…` (1,624 files) and the agent manifest regenerated
+(`97bd0705…`, 493 files), under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.

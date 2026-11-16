@@ -1,0 +1,121 @@
+/* Lane M1: Probation tracker and Personnel postings in the prototype's look (scratchpad proto Tracker, PostingsPage).
+   Imported only by app/lifecycle/probation/page.tsx and postings/page.tsx. Class prefix pct-. The prototype's colours map
+   to the app theme: accent = --primary, bad = --destructive, surfaces = --card/--muted/--border; amber, green, blue and
+   violet have no app token, so they are set here for light and .dark (the prototype's own light/dark values). */
+.pct{
+ --pct-acc:var(--primary);--pct-acc-soft:color-mix(in oklab,var(--primary) 12%,var(--card));
+ --pct-bad:var(--destructive);--pct-bad-soft:color-mix(in oklab,var(--destructive) 10%,var(--card));
+ --pct-warn:#9a5b00;--pct-warn-soft:#fff4d6;--pct-warn-line:#f0d48a;
+ --pct-ok:#157a3b;--pct-ok-soft:#e6f4ea;
+ --pct-info:#1d4ed8;--pct-info-soft:#e8eefc;
+ --pct-vio:#6d4aa8;--pct-vio-soft:#f0ebf8;
+ --pct-line:var(--border);--pct-line-strong:var(--input);--pct-subtle:var(--muted);--pct-muted:var(--muted-foreground);
+}
+.dark .pct{
+ --pct-bad:#ff8a80;--pct-bad-soft:#3d1d1b;
+ --pct-warn:#f2c35b;--pct-warn-soft:#3a2f14;--pct-warn-line:#6b5520;
+ --pct-ok:#5fd08a;--pct-ok-soft:#173826;
+ --pct-info:#8fb0ff;--pct-info-soft:#1c2742;
+ --pct-vio:#c3a8f0;--pct-vio-soft:#2b2340;
+}
+.probation main.pct{display:grid;gap:20px;align-content:start;min-width:0;max-width:1480px}
+.pct p{margin:0}
+.pct-crumb{color:var(--pct-muted);font-size:14px}
+.pct-ph{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:flex-end;justify-content:space-between}
+.pct-ph h1{font-size:30px;font-weight:600;letter-spacing:-.01em;line-height:1.2;margin:0}
+.pct-ph p{color:var(--pct-muted);margin-top:6px;max-width:80ch}
+.pct-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.pct-muted{color:var(--pct-muted)}
+.pct-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* Buttons and links */
+.probation .pct-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;padding:9px 16px;border-radius:10px;border:1px solid var(--pct-line-strong);background:var(--card);color:var(--foreground);font-weight:600;font-size:14px;text-decoration:none;cursor:pointer}
+.probation .pct-btn:hover{border-color:var(--pct-acc)}
+.probation .pct-btn-pri{background:var(--pct-acc);border-color:var(--pct-acc);color:var(--primary-foreground)}
+.probation .pct-btn-pri:hover{filter:brightness(1.08)}
+.probation .pct-btn-ghost{border-color:transparent;background:transparent;color:var(--pct-acc)}
+.probation .pct-btn-sm{min-height:34px;padding:5px 12px;font-size:13.5px;border-radius:8px}
+.probation .pct-link,.probation .pct-nm{display:inline-flex;align-items:center;gap:2px;font-weight:600;text-decoration:none;white-space:nowrap}
+.probation .pct-link{color:var(--pct-acc)}
+.probation .pct-nm{color:var(--foreground);white-space:normal}
+.probation .pct-link:hover,.probation .pct-nm:hover{text-decoration:underline}
+
+/* Banners */
+.pct-banner{display:flex;gap:12px;align-items:flex-start;background:var(--pct-acc-soft);border-radius:14px;padding:16px 20px;color:var(--foreground)}
+.pct-banner>svg{flex:none;width:18px;height:18px;margin-top:2px}
+.pct-banner[data-tone=info]{background:var(--pct-info-soft)}
+.pct-banner small{display:block;color:var(--pct-muted);margin-top:4px;font-size:12.5px}
+/* The required-workflow warning (shared WorkflowReadiness) reads as the prototype's amber banner. */
+.pct-warn:empty{display:none}
+.probation .pct-warn>section{background:var(--pct-warn-soft);border:1px solid var(--pct-warn-line);border-radius:14px;padding:16px 20px;gap:6px}
+.pct-warn h2{font-size:15px;font-weight:600;margin:0}
+
+/* Tiles */
+.pct-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:10px}
+.probation .pct-tile{display:grid;gap:2px;align-content:start;min-height:88px;padding:12px 14px;border:1px solid var(--pct-line);border-radius:14px;background:var(--card);color:var(--foreground);text-decoration:none;text-align:start}
+.probation .pct-tile:hover{border-color:var(--pct-line-strong)}
+.pct-tile span{font-size:12.5px;color:var(--pct-muted);font-weight:600;letter-spacing:.02em;overflow-wrap:anywhere}
+.pct-tile b{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.3}
+.probation .pct-tile[data-tone=bad]{background:var(--pct-bad-soft);border-color:transparent}.pct-tile[data-tone=bad] b{color:var(--pct-bad)}
+.probation .pct-tile[data-tone=warn]{background:var(--pct-warn-soft);border-color:transparent}.pct-tile[data-tone=warn] b{color:var(--pct-warn)}
+.probation .pct-tile[aria-current=page]{outline:2px solid var(--pct-acc);outline-offset:-2px}
+
+/* Cards and the filter form */
+.pct-card{background:var(--card);border:1px solid var(--pct-line);border-radius:16px;padding:20px 22px;min-width:0}
+.pct-filters{display:grid;gap:14px}
+.pct-filter-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px 18px}
+.pct-f{display:grid;gap:6px;align-content:start;min-width:0;font-size:14px}
+.pct-f>label{font-weight:500}
+.probation .pct-f input,.probation .pct-f select{width:100%;min-height:44px;padding:10px 12px;border:1px solid var(--pct-line-strong);border-radius:10px;background:var(--card);color:var(--foreground)}
+.pct-h{color:var(--pct-muted);font-weight:400;font-size:12.5px}
+.probation .pct-chk{display:inline-flex;gap:8px;align-items:center;margin-inline-start:auto;font-size:13px;font-weight:500;min-height:44px;cursor:pointer}
+.pct-chk input{width:16px;height:16px;accent-color:var(--pct-acc)}
+.pct-count{font-size:13px;color:var(--pct-muted)}
+
+/* Pills */
+.pct-pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 10px;font-size:12.5px;font-weight:600;white-space:nowrap;background:var(--pct-subtle);color:var(--pct-muted)}
+.pct-pill[data-tone=ok]{background:var(--pct-ok-soft);color:var(--pct-ok)}
+.pct-pill[data-tone=warn]{background:var(--pct-warn-soft);color:var(--pct-warn)}
+.pct-pill[data-tone=bad]{background:var(--pct-bad-soft);color:var(--pct-bad)}
+.pct-pill[data-tone=info]{background:var(--pct-info-soft);color:var(--pct-info)}
+.pct-pill[data-tone=vio]{background:var(--pct-vio-soft);color:var(--pct-vio)}
+.pct-pill[data-tone=acc]{background:var(--pct-acc-soft);color:var(--pct-acc)}
+.pct-flags{display:flex;flex-wrap:wrap;gap:6px}
+
+/* Tables: a bordered, rounded container that scrolls on its own; rows tinted when a step is overdue or the end passed. */
+.probation .pct-tw{overflow-x:auto;border:1px solid var(--pct-line);border-radius:16px;background:var(--card)}
+.probation .pct-table{border-collapse:collapse;width:100%;min-width:1180px;background:transparent}
+.probation .pct-table th{text-align:start;font-weight:600;font-size:13.5px;color:var(--foreground);background:transparent;padding:14px 16px;border-bottom:1px solid var(--pct-line);white-space:nowrap}
+.probation .pct-table td{padding:14px 16px;border-bottom:1px solid var(--pct-line);vertical-align:top}
+.probation .pct-table td:first-child{min-width:190px}
+.probation .pct-table tbody tr:last-child td{border-bottom:0}
+.probation .pct-table tr.pct-hl td{background:var(--pct-bad-soft)}
+.pct-table td small{display:block;color:var(--pct-muted);font-size:12.5px;margin-top:2px}
+.pct-table abbr{text-decoration:none}
+.pct-num{font-variant-numeric:tabular-nums}
+.pct-late{font-weight:700}
+.pct-empty{text-align:center;padding:40px 16px;color:var(--pct-muted)}
+.probation .pct-table.pct-compact{min-width:640px}
+.probation .pct-compact td,.probation .pct-compact th{padding:10px 12px}
+.probation .pct-compact td:first-child{min-width:0}
+
+/* Personnel postings: status chooser as pills */
+.pct-seg{display:flex;flex-wrap:wrap;gap:8px}
+.probation .pct-seg a{display:inline-flex;align-items:center;min-height:38px;padding:0 14px;border:1px solid var(--pct-line);border-radius:999px;background:var(--card);color:var(--foreground);font-size:13.5px;font-weight:500;text-decoration:none}
+.probation .pct-seg a[aria-current=page]{background:var(--pct-acc-soft);border-color:var(--pct-acc);color:var(--pct-acc);font-weight:600}
+.pct-note{font-size:13px;color:var(--pct-muted);max-width:110ch}
+.pct-small{font-size:13px}
+.pct-actions{gap:6px}.pct-actions form{margin:0}
+
+/* Phone: the shared probation.css stacks table rows as cards with their column label; keep that, without min widths. */
+@media(max-width:640px){
+ .pct-ph h1{font-size:24px}
+ .probation .pct-table,.probation .pct-table.pct-compact{min-width:0}
+ .probation .pct-tw{overflow-x:visible}
+ .probation .pct-table td,.probation .pct-table td:first-child,.probation .pct-compact td{min-width:0;padding:6px 14px;border-bottom:0}
+ .probation .pct-table tr{border-bottom:1px solid var(--pct-line);padding-block:10px}
+ .probation .pct-table td:not([data-label]):empty{display:none}
+ .pct-pill{white-space:normal}
+ .probation .pct-chk{margin-inline-start:0}
+ .pct-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+}

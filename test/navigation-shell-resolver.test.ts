@@ -90,30 +90,58 @@ describe('shared shell policy preserves the pre-extraction visibility contract',
 
   it('uses scoped lifecycle facts independently for page, configure, and intake', () => {
     const facts = {enabledModules:[],probationAccess:{page:true,configure:false},contractStaffAccess:{page:false,configure:false,intake:true}};
-    expect(inFamily(facts,'/lifecycle/')).toEqual(['/lifecycle/probation','/lifecycle/contracts/intake']);
+    expect(inFamily(facts,'/lifecycle/')).toEqual(['/lifecycle/probation','/lifecycle/probation/postings','/lifecycle/contracts/intake']);
     expect(inFamily({probationAccess:{page:false,configure:true}},'/lifecycle/probation')).toEqual([
-      '/lifecycle/probation/settings','/lifecycle/probation/forms','/lifecycle/probation/routes','/lifecycle/probation/workflows','/lifecycle/probation/templates','/lifecycle/probation/intake',
+      '/lifecycle/probation/settings','/lifecycle/probation/forms','/lifecycle/probation/intake',
     ]);
+    expect(inFamily({probationAccess:{page:true,configure:false}},'/lifecycle/probation')).toEqual(['/lifecycle/probation','/lifecycle/probation/postings']);
+    // Probation Access: whoever app.probation_access_admin allows (System Administrator or manage access), not every
+    // configurer. A configurer who may manage access finds it inside Probation settings (prototype; lane M3), so the
+    // row is only for an access administrator without the settings row.
+    expect(inFamily({enabledModules:[],probationAccess:{page:false,configure:true,access:true}},'/lifecycle/probation')).toEqual([
+      '/lifecycle/probation/settings','/lifecycle/probation/forms','/lifecycle/probation/intake',
+    ]);
+    expect(inFamily({enabledModules:[],probationAccess:{page:false,configure:false,access:true}},'/lifecycle/probation')).toEqual(['/lifecycle/probation/access']);
+    expect(inFamily({isAdmin:true,enabledModules:[],probationAccess:{page:true,configure:true,access:false}},'/lifecycle/probation')).not.toContain('/lifecycle/probation/access');
     expect(inFamily({contractStaffAccess:{page:false,configure:true}},'/lifecycle/contracts')).toEqual([
       '/lifecycle/contracts/settings','/lifecycle/contracts/workflows','/lifecycle/contracts/templates',
     ]);
   });
 
-  it('resolves the canonical twelve scoped descriptors in their original interleaved order', () => {
-    const rows = resolve({enabledModules:[],probationAccess:{page:true,configure:true,intake:true},
+  it('resolves the canonical eleven scoped descriptors in their declared interleaved order', () => {
+    const rows = resolve({isAdmin:true,enabledModules:[],probationAccess:{page:true,configure:true,intake:true,access:true},
       contractStaffAccess:{page:true,configure:true,intake:true}}).destinations.filter(row=>
         row.href.startsWith('/lifecycle/probation') || row.href.startsWith('/lifecycle/contracts'));
+    // The Access row is the eleventh descriptor; a configurer reaches Access inside Probation settings instead (lane M3).
     expect(rows.map(row=>row.href)).toEqual([
-      '/lifecycle/probation','/lifecycle/contracts','/lifecycle/probation/settings','/lifecycle/probation/forms',
-      '/lifecycle/probation/routes','/lifecycle/probation/workflows','/lifecycle/probation/templates',
+      '/lifecycle/probation','/lifecycle/probation/postings','/lifecycle/contracts','/lifecycle/probation/settings','/lifecycle/probation/forms',
       '/lifecycle/probation/intake','/lifecycle/contracts/intake','/lifecycle/contracts/settings',
       '/lifecycle/contracts/workflows','/lifecycle/contracts/templates',
     ]);
-    expect(SCOPED_LIFECYCLE_NAVIGATION).toHaveLength(12);
-    rows.forEach((row,index)=>expect(row).toBe(SCOPED_LIFECYCLE_NAVIGATION[index]));
+    expect(SCOPED_LIFECYCLE_NAVIGATION).toHaveLength(11);
+    const declared=SCOPED_LIFECYCLE_NAVIGATION.filter(row=>row.href!=='/lifecycle/probation/access');
+    rows.forEach((row,index)=>expect(row).toBe(declared[index]));
     expect(SCOPED_LIFECYCLE_NAVIGATION.filter(row=>row.access==='configureOrIntake').map(row=>row.href)).toEqual(['/lifecycle/probation/intake']);
     expect(inFamily({probationAccess:{page:false,configure:false,intake:true}},'/lifecycle/probation')).toEqual(['/lifecycle/probation/intake']);
     expect(inFamily({contractStaffAccess:{page:false,configure:false,intake:true}},'/lifecycle/contracts')).toEqual(['/lifecycle/contracts/intake']);
+  });
+
+  it('shows the shared HR Automation builders to anyone who configures a module, from existing configure facts only', () => {
+    const shared = ['/automation/workflows','/automation/templates','/automation/groups'];
+    expect(inFamily({},'/automation')).toEqual([]);
+    expect(inFamily({isAdmin:true,enabledModules:['lifecycle']},'/automation')).toEqual([]);
+    expect(inFamily({probationAccess:{page:true,configure:false,intake:true}},'/automation')).toEqual([]);
+    expect(inFamily({probationAccess:{page:false,configure:true}},'/automation')).toEqual(shared);
+    expect(inFamily({contractStaffAccess:{page:false,configure:true}},'/automation')).toEqual(shared);
+    const v9 = {onboardingV9Access:true,onboardingV9Navigation:{onboarding:false,offboarding:false,administration:true}};
+    expect(hrefs(v9).filter(href=>href.startsWith('/automation')||href.startsWith('/lifecycle/v9'))).toEqual([
+      '/lifecycle/v9?view=settings','/lifecycle/v9?view=access','/lifecycle/v9?view=tasks',...shared,
+      '/lifecycle/v9?view=templates','/lifecycle/v9?view=workflows','/lifecycle/v9?view=groups',
+    ]);
+    // The moved V9 rows keep their own gate: without V9 administration they are not offered anywhere.
+    expect(hrefs({probationAccess:{page:false,configure:true},onboardingV9Access:true,onboardingV9Navigation:{onboarding:true,offboarding:false,administration:false}})).not.toContain('/lifecycle/v9?view=workflows');
+    expect(resolve(v9).destinations.filter(row=>row.href.startsWith('/lifecycle/v9?view=')&&['templates','workflows','groups'].some(view=>row.href.endsWith(view))).map(row=>row.labelKey))
+      .toEqual(['automationOnOffTemplates','automationOnOffWorkflows','automationOnOffGroups']);
   });
 
   it('checks Performance entitlement at the declared address before substituting the cycle destination', () => {

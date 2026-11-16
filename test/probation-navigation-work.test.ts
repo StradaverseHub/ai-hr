@@ -32,6 +32,11 @@ it('compares a necessary tenant-capability probe against the installed navigatio
   await owner.client.unsafe(original);const before=await read(ctx);
   await owner.client.unsafe(candidate);expect(await read(ctx)).toEqual(before);expect(await catalog()).toEqual(metadata);return before;
  };
+ // 2252 was measured against the 2107 Probation capability owner and its precheck requires that exact body. 5763 widens
+ // app.probation_config_admin (Probation access roles), so the comparison runs on the 2107 body and restores 5763's after.
+ const [capability]=await owner.db.execute<{ddl:string}>(sql`select pg_get_functiondef('app.probation_config_admin(uuid)'::regprocedure) as ddl`);
+ const capabilityPredecessor='CREATE OR REPLACE FUNCTION app.probation_config_admin(p_company uuid)'+predecessorSql.split('CREATE OR REPLACE FUNCTION app.probation_config_admin(p_company uuid)')[1].split('$$;')[0]+'$$;';
+ await owner.client.unsafe(capabilityPredecessor);
  const measurements:{phase:string;reads:number;elapsedMs:number}[]=[];
  const controls:Record<string,unknown>={};
  try{
@@ -77,7 +82,7 @@ it('compares a necessary tenant-capability probe against the installed navigatio
   }
   controls.predecessorDriftsRefused=drifts.map(([kind])=>kind);
  }finally{
-  await owner.client.unsafe(definition.ddl);expect(await catalog()).toEqual(metadata);
+  await owner.client.unsafe(definition.ddl);await owner.client.unsafe(capability.ddl);expect(await catalog()).toEqual(metadata);
   const [restored]=await owner.db.execute<{ddl:string}>(sql`select pg_get_functiondef('app.probation_navigation_access()'::regprocedure) as ddl`);expect(restored.ddl).toBe(definition.ddl);
  }
  const control=Math.min(measurements[0].elapsedMs,measurements[3].elapsedMs),fast=Math.max(measurements[1].elapsedMs,measurements[2].elapsedMs);

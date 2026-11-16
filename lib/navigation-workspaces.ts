@@ -2,7 +2,7 @@
 export type NavigationWorkspace = 'ops' | 'strata';
 export type NavigationSection = 'mine' | 'team' | 'hr' | 'ai' | 'config';
 export type NavigationModule = 'people' | 'eLetter' | 'onboarding' | 'leave' | 'attendance' | 'claims' | 'payroll' | 'probation' | 'contracts'
-  | 'performance' | 'performanceAdmin' | 'rewards' | 'workforceInsights';
+  | 'automation' | 'performance' | 'performanceAdmin' | 'rewards' | 'workforceInsights';
 export type NavigationPlacement = {area:'shared' | 'system'} | {area:NavigationWorkspace;module:NavigationModule;section:NavigationSection};
 export const NAVIGATION_MODULES: readonly {id:NavigationModule;workspace:NavigationWorkspace;labelKey:string}[] = [
   // Issue 17 (owner: "Merge both entirely", 3 November 2026): the Control Tower module left Ops. Its pages are
@@ -17,6 +17,9 @@ export const NAVIGATION_MODULES: readonly {id:NavigationModule;workspace:Navigat
   {id:'payroll',workspace:'ops',labelKey:'payroll'},
   {id:'probation',workspace:'ops',labelKey:'probationConfirmation'},
   {id:'contracts',workspace:'ops',labelKey:'contractManagement'},
+  // ADR 2026-11-15-probation-shared-automation, decision 1: the shared builders (Workflows, Templates, Assignment groups)
+  // have their own section. The On/Off Boarding builder views are placed here too; their screens are unchanged.
+  {id:'automation',workspace:'ops',labelKey:'moduleHrAutomation'},
   // D-P1-32 PT-X5 (APR-025 D4): Performance & Talent and Performance admin, one entry each. The former Talent and
   // Development modules held the journey's ?module= entry points, which retired into the area's tabs.
   {id:'performance',workspace:'strata',labelKey:'performanceTalent'},
@@ -48,12 +51,14 @@ const attendanceMine = new Set(['/attendance/clock','/attendance/my-records','/a
 export function navigationPlacement(href:string):NavigationPlacement | undefined {
   const [path,query]=href.split('?'),params=new URLSearchParams(query);
   if(path==='/lifecycle/v9'&&['tasks','records'].includes(params.get('view')??''))return {area:'shared'};
+  if(path==='/lifecycle/v9'&&['templates','workflows','groups'].includes(params.get('view')??''))return modulePlacement('automation','config');
+  if(path==='/automation'||path.startsWith('/automation/'))return modulePlacement('automation','config');
   if(path==='/me'&&params.get('tab')==='payroll'||path==='/me/tax-relief'||path.startsWith('/me/payslip')||path==='/me/ea'||path==='/me/tp3')return modulePlacement('payroll','mine');
   if(shared.has(path)||path==='/reports'&&!params.has('cat'))return {area:'shared'};
   if(system.has(path))return {area:'system'};
   if(peopleConfig.has(path)||path.startsWith('/admin/settings/system-labels/'))return modulePlacement('people','config');
   if(path==='/personnel')return modulePlacement('people','mine');
-  if(path.startsWith('/lifecycle/probation'))return modulePlacement('probation',/^\/lifecycle\/probation\/(settings|forms|routes|workflows|templates|intake)(\/|$)/.test(path)?'config':'hr');
+  if(path.startsWith('/lifecycle/probation'))return modulePlacement('probation',/^\/lifecycle\/probation\/(settings|forms|routes|workflows|templates|intake|access)(\/|$)/.test(path)?'config':'hr');
   if(path.startsWith('/lifecycle/contracts'))return modulePlacement('contracts',/^\/lifecycle\/contracts\/(settings|workflows|templates|intake)(\/|$)/.test(path)?'config':'hr');
   if(path.startsWith('/me/letters'))return modulePlacement('eLetter','mine');
   if(path.startsWith('/letters/settings'))return modulePlacement('eLetter','config');

@@ -24,6 +24,7 @@ import {isAdmin} from '../../lib/authz-model';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {listPendingTasks} from '../approvals-inbox';
 import {isModuleEnabled} from '../entitlements';
+import {probationModuleOn} from '../../packs/probation/service';
 import type {MandateScope} from '../mandates/job-types';
 import type {WorkJobResult} from '../mandates/team-absence-summary';
 import type {OutcomeRead} from '../outcome-record/types';
@@ -66,7 +67,7 @@ async function inBatches<T,R>(items:readonly T[],size:number,run:(item:T)=>Promi
  return out;
 }
 async function prepare(ctx:SessionContext,today:string,view:DigestViewInput={},setupFrom:'compute'|'prepared'='compute'):Promise<Prepared>{
- const modules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')};
+ const modules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards'),probation:probationModuleOn(ctx)};
  const tasks=view.approvals??await listPendingTasks(ctx,undefined,modules,{noticeAcknowledgements:false});
  const counts=new Map<string,number>();for(const task of tasks)counts.set(task.kind,(counts.get(task.kind)??0)+1);
  const byKind=[...counts].map(([kind,count])=>Object.freeze({kind,count})).sort((a,b)=>b.count-a.count||a.kind.localeCompare(b.kind));
