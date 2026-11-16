@@ -791,7 +791,7 @@ describe('Probation work in My Action Centre (migration 5751)',()=>{
   // The employee's acknowledgement is a task, never an approval, and reaches the shared task list as probationTask.
   expect(onCase(await probationTaskList(staff.ctx))).toEqual([expect.objectContaining({partId:ids.part,kind:'acknowledge',category:'task',href})]);
   expect(onCase(await probationTaskList(staff.ctx,{category:'approval'}))).toEqual([]);
-  expect((await listPendingTasks(staff.ctx,undefined,modules)).filter(task=>task.kind.startsWith('probation'))).toEqual([expect.objectContaining({id:ids.part,kind:'probationTask',linkPath:href})]);
+  expect((await listPendingTasks(staff.ctx,undefined,modules)).filter(task=>task.kind.startsWith('probation'))).toEqual([expect.objectContaining({id:ids.part+':acknowledge',kind:'probationTask',linkPath:href})]); // 3ce8d0501: one id per part and task kind
   expect(onCase(await probationTaskList(peer.ctx))).toEqual([]);
   let part=await current(staff.ctx);
   await saveProbationDraft(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'employee',patch:{employeeComments:'I acknowledge the review discussion.'}});
@@ -801,7 +801,7 @@ describe('Probation work in My Action Centre (migration 5751)',()=>{
   expect((await current(peer.ctx)).allowedCommands).toContain('approve');
   expect(onCase(await probationTaskList(peer.ctx,{category:'approval'}))).toEqual([expect.objectContaining({partId:ids.part,kind:'approve',category:'approval',href,companyId:b.companyId})]);
   expect(onCase(await probationTaskList(peer.ctx,{category:'task'}))).toEqual([]);
-  expect((await listPendingTasks(peer.ctx,undefined,modules)).filter(task=>task.kind==='probationApproval').map(task=>task.id)).toEqual([ids.part]);
+  expect((await listPendingTasks(peer.ctx,undefined,modules)).filter(task=>task.kind==='probationApproval').map(task=>task.id.split(':')[0])).toEqual([ids.part]);
   expect((await listPendingTasks(peer.ctx,undefined,{...modules,probation:false})).filter(task=>task.kind.startsWith('probation'))).toEqual([]);
   expect((await probationTaskList(peer.ctx,{category:'approval',companyIds:[randomUUID()]})).items).toEqual([]);
   // The tracker filtered to the caller's work shows the same case.
