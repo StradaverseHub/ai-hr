@@ -32,6 +32,7 @@ describe('original hire salary corrections preserve paid evidence',()=>{
   expect((await hireCorrectionView(adminCtx(b),id)).salaryAtHire).toMatchObject({amount:'3450.00'});
   const hired=(await movementHistory(adminCtx(b),id)).find(row=>row.kind==='hired')!;expect(hired.basic).toBe('MYR 3450.00');
   expect((await movementDetail(adminCtx(b),id,hired.id))?.after).toMatchObject({salaryAmount:'3450.00',salaryPayrollFrom:'2026-02-01'});
+  expect((await movementDetail(adminCtx(b),id,hired.id))?.payrollAdjustmentReview).toEqual({periods:['2026-01']});
  });
  it('snapshots closed documents only, leaving processed open documents available for normal recalculation',async()=>{
   await closed('2026-01');
@@ -52,5 +53,7 @@ describe('original hire salary corrections preserve paid evidence',()=>{
   const [event]=await owner.db.select({id:s.domainEvent.aggregateId,payload:s.domainEvent.payload}).from(s.domainEvent).where(eq(s.domainEvent.eventType,'compensation.hire-corrected'));
   expect(event.payload).toMatchObject({informationOnly:true,paidSourcePreserved:true,payrollEffectiveFrom:null,until:'2026-03-01'});
   const [reference]=await owner.db.select().from(s.compensation).where(eq(s.compensation.id,event.id));expect(reference.supersededAt).not.toBeNull();expect(reference.basicSalary).toBe('3500.00');
+  const hired=(await movementHistory(adminCtx(b),id)).find(row=>row.kind==='hired')!;
+  expect((await movementDetail(adminCtx(b),id,hired.id))?.payrollAdjustmentReview).toEqual({periods:['2026-01','2026-02']});
  });
 });

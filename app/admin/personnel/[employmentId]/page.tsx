@@ -3475,6 +3475,10 @@ export default async function EmployeePage({
           <dd className="font-medium text-foreground">{movementDetailData.row.remarks ?? '—'}</dd>
         </div>
       </dl>
+      {!!movementDetailData.payrollAdjustmentReview?.periods.length&&<div role="status" className="border-t border-border bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:bg-amber-950/20 dark:text-amber-100">
+        <p>{t('movement.payrollAdjustmentReview')}</p>
+        <p className="mt-1">{movementDetailData.payrollAdjustmentReview.periods.join(', ')}</p>
+      </div>}
       {!!movementDetailData.informationCorrections?.length&&<div className="border-t border-border px-4 py-3 text-sm"><Link href={'#information-correction-history'} className="text-primary underline underline-offset-2">{movementDetailData.informationCorrections.some(c=>c.needsReview)?t('movement.informationNeedsReview'):t('movement.informationCorrected')}</Link></div>}
       {movementDetailData.recordedResignation && <dl className="grid gap-4 border-t border-border p-4 text-sm sm:grid-cols-3">
         {(['tenderResignationDate','resignationDate','lastWorkingDate'] as const).map(field=>{const recorded=movementDetailData.recordedResignation![field];return <div key={field}><dt className="text-xs text-muted-foreground">{t(`employmentInfo.${field}`)}</dt><dd className="mt-1 font-medium">{recorded.known ? recorded.value ? formatDmy(recorded.value) : t('optionNotSet') : t('resignationInformation.unknownSource')}</dd></div>;})}
@@ -3840,7 +3844,7 @@ export default async function EmployeePage({
               <SectionHeader title={t('movement.hireCorrection.title')} />
               {!!hireCorrection.companyReviewFields?.length&&<div role="status" className="mx-4 my-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
                 <p>{t('movement.detail.companyReviewNeeded')}</p>
-                <ul className="mt-2 list-disc space-y-1 pl-5">{hireCorrection.companyReviewFields.map(field=><li key={field}><Link className="underline" href={`/admin/personnel/${employmentId}?tab=${field==='payrollPolicyId'?'payroll':'job'}${field==='costAllocation'?'#section-cost-center-allocations':''}`}>{field==='gradeId'?t('movement.field.grade'):field==='costAllocation'?tPersonnel('costAllocations.title'):tp('title')}</Link></li>)}</ul>
+                <ul className="mt-2 list-disc space-y-1 pl-5">{hireCorrection.companyReviewFields.map(field=><li key={field}><Link className="underline" href={`/admin/personnel/${employmentId}?tab=${field==='payrollPolicyId'?'payroll':'job'}${field==='costAllocation'?'#section-cost-center-allocations':''}`}>{field==='gradeId'?t('movement.field.grade'):field==='costAllocation'?tPersonnel('costAllocations.title'):field==='payrollPolicyId'?tp('title'):movementInformationLabel(field as MovementInformationField)}</Link></li>)}</ul>
               </div>}
               <HireCorrectionModes employmentId={employmentId} returnHref={movementPage?historyHref:undefined}><HireCorrectionForm
                 employmentId={employmentId}

@@ -16,14 +16,15 @@ export async function markWorkforcePayrollInputsChangedTx(tx:Tx,ctx:SessionConte
 // writer cannot widen the final window and a failed savepoint cannot leak a deferral into its parent.
 const deferred=new WeakMap<object,Set<string>>();
 export function movementPayrollInvalidationDeferredTx(tx:Tx,employmentId:string){return deferred.get(tx)?.has(employmentId)??false;}
-export async function withMovementPayrollWindowsTx<T>(tx:Tx,ctx:SessionContext,employmentId:string,windows:readonly MovementPayrollWindow[],work:()=>Promise<T>):Promise<T>{
+export async function withMovementPayrollWindowsTx<T>(tx:Tx,ctx:SessionContext,employmentId:string,windows:readonly MovementPayrollWindow[]|(()=>readonly MovementPayrollWindow[]),work:()=>Promise<T>):Promise<T>{
  if(movementPayrollInvalidationDeferredTx(tx,employmentId))return work();
  const subjects=deferred.get(tx)??new Set<string>();deferred.set(tx,subjects);subjects.add(employmentId);
  let result:T;
  try{result=await work();}finally{subjects.delete(employmentId);if(!subjects.size)deferred.delete(tx);}
- if(windows.length){
+ const finalWindows=typeof windows==='function'?windows():windows;
+ if(finalWindows.length){
   await assertWorkforceEmploymentTx(tx,ctx,employmentId,'maintain');
-  await tx.execute(sql`select app.workforce_payroll_inputs_changed_windows(${employmentId}::uuid,${JSON.stringify(windows)}::jsonb,'employment_information')`);
+  await tx.execute(sql`select app.workforce_payroll_inputs_changed_windows(${employmentId}::uuid,${JSON.stringify(finalWindows)}::jsonb,'employment_information')`);
  }
  return result;
 }

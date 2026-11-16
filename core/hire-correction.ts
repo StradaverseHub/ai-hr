@@ -5,7 +5,7 @@ import {correctHireEmploymentInformationTx,HIRE_EMPLOYMENT_INFORMATION_FIELDS,hi
 import {withProtectedMovementHistoryTx} from './movement-payroll-protection';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {lockPayrollInputsTx} from './payroll-inputs-lock';
-import { correctHireBasicSalaryTx } from './comp';
+import { correctHireBasicSalaryTx,closedPeriodsTx,overlapsClosedPeriod } from './comp';
 import { compensation } from '../db/schema';
 import {organisationManagedTx} from './organisation-write-policy';
 import {deriveCompanyOrganisationTx,recordEmploymentOrganisationTagsTx} from './company-organisation';
@@ -1083,6 +1083,10 @@ export async function correctHireDetails(
     // reporting manager is the one just corrected — including a correction to "none".
     if (rlRecord && rlRecord.validTo === null) currentRecordChanged.push('managerEmploymentId');
 
+    const payrollReviewFields=[...(salaryCorrection?['basicSalary']:[]),...(informationChange?.fields.includes('companyId')?['companyId']:[])];
+    const payrollReviewPeriods=payrollReviewFields.length?(await closedPeriodsTx(tx,input.employmentId)).filter(period=>
+      salaryCorrection&&overlapsClosedPeriod([period],plan.anchor,salaryCorrection.until)
+      ||informationChange?.fields.includes('companyId')&&overlapsClosedPeriod([period],plan.anchor,informationChange.until.companyId??null)):[];
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employment',
@@ -1100,6 +1104,7 @@ export async function correctHireDetails(
         changes,
         ...(informationChange?{employmentInformation:informationChange}:{}),
         ...(salaryCorrection ? { salaryCorrection } : {}),
+        ...(payrollReviewPeriods.length?{payrollAdjustmentReview:{periods:payrollReviewPeriods.sort(),fields:payrollReviewFields,closedPayrollUnchanged:true}}:{}),
         ...(methodCorrection?.changed?{paymentMethodCorrection:{eventId:methodCorrection.eventId,effectiveOn:plan.anchor}}:{}),
         ...(endDateChange ? { endDateChange } : {}),
         assignment: replaced,

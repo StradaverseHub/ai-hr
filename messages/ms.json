@@ -1943,6 +1943,7 @@
         "informationCorrected": "Maklumat dibetulkan",
       "orderConflict": "Selesaikan turutan peristiwa",
       "orderConflictHint": "Peristiwa pada tarikh ini mengubah butiran yang sama. Edit Tarikh Berkuat Kuasa atau batalkan peristiwa tertunda yang bercanggah sebelum ia digunakan.",
+        "payrollAdjustmentReview": "Semak sebarang pelarasan gaji yang diperlukan untuk syarikat atau gaji yang dibetulkan. Penggajian yang ditutup dan dokumen yang dikeluarkan kekal tidak berubah.",
         "informationNeedsReview": "Pembetulan perlu disemak",
         "historyBadge": "Sejarah",
         "rehire": {

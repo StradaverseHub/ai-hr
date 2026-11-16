@@ -1943,6 +1943,7 @@
         "informationCorrected": "Information corrected",
       "orderConflict": "Resolve event order",
       "orderConflictHint": "Events on this date change the same details. Edit their Effective Dates or cancel a conflicting pending event before they apply.",
+        "payrollAdjustmentReview": "Review any payroll adjustment needed for the corrected company or salary. Closed payroll and issued documents are unchanged.",
         "informationNeedsReview": "Correction needs review",
         "historyBadge": "History",
         "rehire": {

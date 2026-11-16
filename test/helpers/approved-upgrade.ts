@@ -537,6 +537,7 @@ export async function migrateApprovedUpgrade(db:Database, migrationsFolder = 'db
    expect(after).toEqual({...before,generation:Number(before.generation)+(configs.some(row=>row.tenant_id===before.tenant_id)?1:0)});return {before,after};
   });
   expect(await table(db,'public.access_group')).toEqual(groups);expect(await table(db,'public.app_user')).toEqual(users);
+  const [movementClock]=await db.client`select clock_timestamp()::text at`;
   await migrate(db.db,{migrationsFolder});
   expect(await db.client`select id from public.company where display_group_field is not null or display_group_option_id is not null`).toEqual([]);
   expect(await db.client`select user_id from public.reward_group_role_grant`).toEqual([]);
@@ -544,9 +545,15 @@ export async function migrateApprovedUpgrade(db:Database, migrationsFolder = 'db
   // present and null on every upgraded row, and only then is a retained event compared without it.
   await assertCombinedReleaseNulls(db,migrationsFolder);
   expect((await table(db,'public.domain_event')).map(row=>withoutCombinedReleaseNulls('domain_event',row))).toEqual(eventsAfter);
-  expect(await table(db,'public.access_group_grant')).toEqual(groupAfter);expect(await table(db,'public.access_user_override')).toEqual(overrideAfter);
+  const finalGroups=await table(db,'public.access_group_grant'),movementGrants=newRows(groupAfter,finalGroups);
+  expect(ordered(finalGroups.filter(row=>groupAfter.some(prior=>prior.id===row.id)))).toEqual(ordered(groupAfter));
+  const movementHolders=groups.filter(row=>row.legacy_key==='system_administrator'&&row.retired_at===null);
+  expect(ordered(movementGrants.map(({tenant_id,group_id,capability_id,company_id,retired_at})=>({tenant_id,group_id,capability_id,company_id,retired_at})))).toEqual(ordered(movementHolders.map(group=>({tenant_id:group.tenant_id,group_id:group.id,capability_id:'workforce.movement.delete',company_id:null,retired_at:null}))));
+  for(const grant of movementGrants){expect(String(grant.id)).toMatch(/^[0-9a-f-]{36}$/);expect(Date.parse(String(grant.created_at))).toBeGreaterThanOrEqual(Date.parse(String(movementClock.at)));}
+  expect((await table(db,'public.access_capability')).filter(row=>row.id==='workforce.movement.delete')).toEqual([{id:'workforce.movement.delete',scope:'company',supported:true,bindings:[{owner:'core/movement.ts:reverseMovementEvent',operation:'delete'},{owner:'core/movement.ts:reverseMovementForImportTx',operation:'import-delete-revert'},{owner:'app/admin/personnel/[employmentId]/movement-history-actions.tsx',operation:'delete-affordance'}]}]);
+  expect(await table(db,'public.access_user_override')).toEqual(overrideAfter);
   expect(await table(db,'public.access_configuration')).toEqual(configsAfter);expect(await table(db,'app.access_profile_write_generation')).toEqual(generationsAfter);
-  return {events,eventsRaw:eventsRaw.filter(row=>events.some(event=>event.id===row.id)),grants,overrides,configurations,generations:generationPairs};
+  return {events,eventsRaw:eventsRaw.filter(row=>events.some(event=>event.id===row.id)),grants:[...grants,...movementGrants],overrides,configurations,generations:generationPairs};
  }finally{rmSync(folder,{recursive:true,force:true});}
 }
 /** Remove ONLY exact independently validated new rows, or restore ONLY exact independently

@@ -1943,6 +1943,7 @@
         "informationCorrected": "Thông tin đã được sửa",
       "orderConflict": "Giải quyết thứ tự sự kiện",
       "orderConflictHint": "Các sự kiện trong ngày này thay đổi cùng thông tin. Hãy sửa ngày hiệu lực hoặc hủy sự kiện đang chờ bị xung đột trước khi áp dụng.",
+        "payrollAdjustmentReview": "Kiểm tra việc điều chỉnh lương cần thiết sau khi sửa công ty hoặc mức lương. Kỳ lương đã khóa và chứng từ đã phát hành không thay đổi.",
         "informationNeedsReview": "Cần xem xét bản sửa đổi",
         "historyBadge": "Lịch sử",
         "rehire": {

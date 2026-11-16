@@ -136,6 +136,18 @@ inherited spans, while later deliberate grade/join/type/company changes remain b
 salary correction and dated salary amendments retain compensation references for fully closed intervals
 and write only the remaining open interval. No salary amount is copied to their audit payloads.
 
+A company correction must also satisfy the native company-scoped catalogues. Required placement
+values must be corrected in the same form when they do not apply to the corrected employer. Incompatible
+inherited current grades and company-scoped labels are cleared from the live projection and explicitly
+flagged for review; their recorded assertions and issued payroll evidence remain recorded. Explicitly selected
+replacement grades must pass the corrected company's native validation. Corrected company or salary
+periods that overlap finalized payroll show an adjustment-review notice with the affected months.
+
+A compensating method deletion removes the selected active dated revision and restores a prior
+same-day revision only when one actually existed. It does not insert a copied predecessor as a new
+dated decision. This lets a subsequent correction to the original hire method continue to inherit
+through the removed event. The immutable source events and explicit inverse remain in audit.
+
 A later decision that becomes redundant after an older edit/delete remains recorded as a retained
 intent. Its nonfinancial targets and original compensation reference allow a subsequent replay to
 restore that decision if it becomes relevant again. Entry timestamps do not choose business order.

@@ -19,6 +19,12 @@ import {isCalendarDate} from '../lib/calendar-date';
 
 export const HIRE_SCALAR_INFORMATION_FIELDS=[...MOVEMENT_FLAT_FIELDS,...MOVEMENT_EMPLOYMENT_PERIOD_FIELDS,'confirmationDate','extendedConfirmationDate','contractStartDate','tenderResignationDate','resignationDate','lastWorkingDate'] as const;
 export const HIRE_EMPLOYMENT_INFORMATION_FIELDS=['companyId','hiredOn','joinDate','gradeId','employmentType',...HIRE_SCALAR_INFORMATION_FIELDS] as const;
+const COMPANY_LABELS=[
+ {field:'orgDivision',column:'org_division',category:'division'}, {field:'orgRegion',column:'org_region',category:'region'},
+ {field:'orgBranch',column:'org_branch',category:'branch'}, {field:'orgTeam',column:'org_team',category:'team'},
+ {field:'orgSection',column:'org_section',category:'section'}, {field:'orgLine',column:'org_line',category:'line'},
+ {field:'orgBase',column:'org_base',category:'base'}, {field:'employmentCategory',column:'employment_category',category:'category'},
+] as const;
 export type HireEmploymentInformationField=typeof HIRE_EMPLOYMENT_INFORMATION_FIELDS[number];
 export type HireEmploymentInformation=Partial<Record<HireEmploymentInformationField,string|null>>;
 type Event={id:string;eventType:string;payload:unknown;occurredAt:Date;sequence:number};
@@ -161,9 +167,20 @@ export async function correctHireEmploymentInformationTx(tx:Tx,ctx:SessionContex
  const currentCompanyChanges=replacements.some(row=>row.version.row.validTo===null&&row.fields.includes('companyId'));
  const gradeDates=gradeEvents.map(effectiveDay).filter(date=>date>=plan.anchor).sort();
  if(fields.includes('gradeId'))until.gradeId=gradeDates[0]??null;
+ const gradeToProject=fields.includes('gradeId')&&!gradeDates.length?after.gradeId:master.gradeId;
+ let clearedGradeId:string|null=null;
+ if(currentCompanyChanges&&gradeToProject){
+  const [available]=await tx.select({valid:sql<boolean>`app.system_label_scope_applies(${jobGrade.scopeCompanyIds},${after.companyId}::uuid)`}).from(jobGrade).where(and(eq(jobGrade.id,gradeToProject),eq(jobGrade.tenantId,ctx.tenantId)));
+  if(!available?.valid)clearedGradeId=gradeToProject;
+ }
+ const invalidCurrentLabels=currentCompanyChanges?await tx.execute<{field:typeof MOVEMENT_FLAT_FIELDS[number]}>(sql`
+  select field from jsonb_to_recordset(${JSON.stringify(COMPANY_LABELS.map(label=>({...label,value:master[label.field]})))}::jsonb) as picked(field text,category text,value text)
+  where value is not null and not app.system_label_value_scope_allowed(category,value,${after.companyId}::uuid)`):[];
+ const clearedCompanyValues=Object.fromEntries(invalidCurrentLabels.map(label=>[label.field,master[label.field]]));
  if(currentCompanyChanges||fields.includes('gradeId')&&!gradeDates.length)await tx.update(employment).set({
   ...(currentCompanyChanges?{companyId:after.companyId!,payrollPolicyId:null,costAllocation:null}:{}),
-  ...(fields.includes('gradeId')&&!gradeDates.length?{gradeId:after.gradeId}:{})}).where(eq(employment.id,input.employmentId));
+  ...(fields.includes('gradeId')&&!gradeDates.length?{gradeId:after.gradeId}:{}),
+  ...(clearedGradeId?{gradeId:null}:{}),...Object.fromEntries(invalidCurrentLabels.map(label=>[label.field,null]))}).where(eq(employment.id,input.employmentId));
  const scalarPatch:Record<string,string|number|null>={};
  for(const field of HIRE_SCALAR_INFORMATION_FIELDS){
   if(!fields.includes(field))continue;
@@ -202,11 +219,13 @@ export async function correctHireEmploymentInformationTx(tx:Tx,ctx:SessionContex
   const [allocation]=await tx.execute<{mismatch:boolean}>(sql`select exists(select 1 from employment_cost_allocation_set s where s.tenant_id=${ctx.tenantId}::uuid and s.employment_id=${input.employmentId}::uuid and s.superseded_at is null
    and s.company_id<>${after.companyId}::uuid and (s.valid_to is null or s.valid_to>${plan.anchor}::date) and (${until.companyId??null}::date is null or s.valid_from<${until.companyId??null}::date)) as mismatch`);
   if(allocation?.mismatch)reviewFields.push('costAllocation');
+  reviewFields.push(...invalidCurrentLabels.map(label=>label.field));
+  if(clearedGradeId&&!reviewFields.includes('gradeId'))reviewFields.push('gradeId');
  }
  const eventId=await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:input.employmentId,eventType:'employment.information.corrected',actor:actorOf(ctx),subjectEmploymentId:input.employmentId,
   payload:{source:'original-hire',method:'manual',hiredEventId:hired?.id??null,fromJoinDate:true,dated:true,effectiveOn:plan.anchor,before:{...before,...(endDate?{[endDate.field]:endDate.before}:{})},after:{...after,...(endDate?{[endDate.field]:endDate.after}:{})},fields:[...fields,...(endDate?[endDate.field]:[])],reason:input.reason,until:{...until,...(endDate?{[endDate.field]:endDate.until}:{})},endDate,assignment:assignmentProof,inserted:assignmentProof.map(row=>row.replacementId),boundaries,
    labelsNotCurrent:fields.includes('gradeId')&&gradeDates.length?['gradeId']:[],
-   ...(currentCompanyChanges?{clearedPayrollPolicyId:master.payrollPolicyId,clearedLegacyCostAllocation:master.costAllocation}:{}),
+   ...(currentCompanyChanges?{clearedPayrollPolicyId:master.payrollPolicyId,clearedLegacyCostAllocation:master.costAllocation,clearedGradeId,clearedCompanyValues}:{}),
    reviewFields,companyAssignmentReviewRequired:reviewFields.length>0}},{returnId:true});
  const ends=[...fields.map(field=>until[field]??null),...(endDate?[endDate.until]:[])],end=ends.some(value=>value===null)?null:ends.filter((value):value is string=>!!value).sort().at(-1)??null;
  const from=[before.hiredOn!,after.hiredOn!,plan.anchor].sort()[0];
@@ -217,17 +236,24 @@ export async function correctHireEmploymentInformationTx(tx:Tx,ctx:SessionContex
 /** Follow-up is derived from the existing assignment, grade, policy and allocation owners. Correcting
  * a later field clears its finding naturally; no independent permanent "reviewed" flag owns a fact. */
 export async function hireCompanyCorrectionReviewTx(tx:Tx,ctx:SessionContext,input:{employmentId:string;companyId:string;gradeId:string|null;anchor:string}){
- const [row]=await tx.execute<{grade:boolean;policy:boolean;allocation:boolean}>(sql`
+ const [row]=await tx.execute<{grade:boolean;policy:boolean;allocation:boolean;labels:string[]}>(sql`
   with correction as (
-   select payload from domain_event where tenant_id=${ctx.tenantId}::uuid and subject_employment_id=${input.employmentId}::uuid
+   select payload,sequence from domain_event where tenant_id=${ctx.tenantId}::uuid and subject_employment_id=${input.employmentId}::uuid
     and event_type='employment.information.corrected' and payload->>'source'='original-hire' and payload->'fields' ? 'companyId'
    order by sequence desc limit 1
   ) select
-   exists(select 1 from correction where ${input.gradeId}::uuid is not null and not exists(select 1 from job_grade g where g.id=${input.gradeId}::uuid and g.tenant_id=${ctx.tenantId}::uuid and g.archived_at is null and app.system_label_scope_applies(g.scope_company_ids,${input.companyId}::uuid))) as grade,
+   (exists(select 1 from correction where ${input.gradeId}::uuid is not null and not exists(select 1 from job_grade g where g.id=${input.gradeId}::uuid and g.tenant_id=${ctx.tenantId}::uuid and g.archived_at is null and app.system_label_scope_applies(g.scope_company_ids,${input.companyId}::uuid)))
+    or exists(select 1 from correction c join employment e on e.id=${input.employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid where c.payload->>'clearedGradeId' is not null and e.company_id=${input.companyId}::uuid and e.grade_id is null
+     and not exists(select 1 from domain_event decided where decided.tenant_id=e.tenant_id and decided.subject_employment_id=e.id and decided.sequence>c.sequence
+      and (decided.event_type='employment.grade.changed' or decided.event_type='employment.information.corrected' and decided.payload->'fields' ? 'gradeId'
+       and coalesce(decided.payload->>'effectiveOn','9999-12-31')<=${todayInKualaLumpur()} and (decided.payload->'until'->>'gradeId' is null or decided.payload->'until'->>'gradeId'>${todayInKualaLumpur()}))))) as grade,
+   array(select picked.field from correction c join employment e on e.id=${input.employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid
+    cross join jsonb_to_recordset(${JSON.stringify(COMPANY_LABELS)}::jsonb) as picked(field text,"column" text)
+    where e.company_id=${input.companyId}::uuid and c.payload->'clearedCompanyValues' ? picked.field and to_jsonb(e)->>picked."column" is null) as labels,
    exists(select 1 from correction c join employment e on e.id=${input.employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid where c.payload->>'clearedPayrollPolicyId' is not null and e.company_id=${input.companyId}::uuid and e.payroll_policy_id is null) as policy,
    exists(select 1 from correction c join employment_cost_allocation_set s on s.employment_id=${input.employmentId}::uuid and s.tenant_id=${ctx.tenantId}::uuid
     where s.superseded_at is null and s.company_id<>${input.companyId}::uuid and (s.valid_to is null or s.valid_to>${input.anchor}::date)
      and ((c.payload->'until'->>'companyId') is null or s.valid_from<(c.payload->'until'->>'companyId')::date)) as allocation
  `);
- return [row?.grade?'gradeId':null,row?.policy?'payrollPolicyId':null,row?.allocation?'costAllocation':null].filter((field):field is string=>field!==null);
+ return [row?.grade?'gradeId':null,row?.policy?'payrollPolicyId':null,row?.allocation?'costAllocation':null,...(row?.labels??[])].filter((field):field is string=>field!==null);
 }

@@ -381,6 +381,7 @@ export type MovementIntentField = 'tenderResignationDate' | 'resignationEffectiv
 export type MovementPendingIntent = { values: { field: MovementIntentField; value: string | null }[] };
 
 export type MovementDetail = {
+  payrollAdjustmentReview?:{periods:string[]};
   informationCorrections?: InformationHistoryCorrection[];
   row: MovementRowSummary;
   recordedResignation?:MovementRecordedResignation|null;
@@ -2134,6 +2135,10 @@ async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:str
         reversed: row.reversed,
       },
       informationCorrections:correctionView.corrections.get(row.id)??[],
+      ...(row.kind==='hired'?{payrollAdjustmentReview:{periods:[...new Set(events.filter(event=>event.eventType===HIRE_CORRECTED_EVENT).flatMap(event=>{
+        const review=(event.payload as {payrollAdjustmentReview?:{periods?:unknown[]}})?.payrollAdjustmentReview;
+        return (review?.periods??[]).filter((period):period is string=>typeof period==='string'&&/^\d{4}-\d{2}$/.test(period));
+      }))].sort()}}:{}),
       actorName,
       recordedResignation:ev?movementRecordedResignationOf(ev):null,
       occurredAt: row.occurredAt,
@@ -4142,6 +4147,10 @@ async function laterReplayPlanTx(
     const end = Math.max(...g.map((e) => e.sequence));
     if (end <= targetSpanEnd) continue;
     const behaviour = resolvedTypes.get(recordedMovementKind(r, g))?.behaviourKind ?? null;
+    // Blacklist is an independent present-day access override, not a dated placement/pay predecessor.
+    // Preserve it in place while rebuilding employment fields; reversing/replaying it would needlessly
+    // change login access and make unrelated earlier corrections depend on that override.
+    if(behaviour==='blacklist')continue;
     const label = resolvedTypes.get(r.kind)?.label || r.kind;
     const when = r.effectiveDate;
     const replayable =
@@ -4191,7 +4200,20 @@ async function withMovementRecalcPlanTx<T>(tx:Tx,ctx:SessionContext,employmentId
  // Lifecycle dates can change employment coverage even when their comparison field list is empty.
  if(input&&['resignation','termination','groupJoinDateCorrection','joinDateChange'].includes(input.kind))changes.push({date:input.effectiveDate,fields:['employmentCoverage']});
  const windows=movementPayrollWindows(decisions,changes,movementId??undefined);
- return withMovementPayrollWindowsTx(tx,ctx,employmentId,windows,work);
+ // A backdated insertion runs after later decisions are unwound. Its actual changed fields are
+ // authoritative: today's flat grade/labels can equal the proposed value while the earlier period
+ // still changes. Resolve final windows after the native write, before deferred invalidation commits.
+ let insertedFields:string[]|null=null;
+ return withMovementPayrollWindowsTx(tx,ctx,employmentId,()=>insertedFields&&input
+  ?movementPayrollWindows(decisions,[{date:input.effectiveDate!,fields:insertedFields}])
+  :windows,async()=>{
+   const result=await work();
+   if(!original&&input&&isComparisonKind(input.kind)&&input.effectiveDate<=todayInKualaLumpur()&&result&&typeof result==='object'){
+    const actual=(result as {changes?:MovementChange[]}).changes;
+    if(Array.isArray(actual))insertedFields=actual.map(change=>change.field);
+   }
+   return result;
+  });
 }
 
 async function recordComparisonInEffectiveOrderTx(tx:Tx,ctx:SessionContext,input:CreateMovementInput,behaviour:string,captureGradeBefore?:boolean){

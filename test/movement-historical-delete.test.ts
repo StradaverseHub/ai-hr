@@ -15,6 +15,23 @@ beforeEach(async()=>{
 afterAll(closeAll);
 async function live(kind:string){return (await movementHistory(adminCtx(b),id)).find(row=>row.kind===kind&&!row.reversed)!;}
 describe('historical event deletion and effective-order replay',()=>{
+ it('corrects and deletes earlier placement without reversing an independent blacklist override',async()=>{
+  const ctx=adminCtx(b);
+  const [correctedDepartment]=await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:b.companyId,name:'Fictional Corrected Earlier Department'}).returning();
+  await createMovementEvent(ctx,{employmentId:id,kind:'transfer',effectiveDate:'2026-02-01',departmentId:b.deptB});
+  const original=await live('transfer');
+  await createMovementEvent(ctx,{employmentId:id,kind:'blacklist',blacklisted:true,remarks:'Fictional independent access restriction'});
+  const restriction=await live('blacklist');
+  const [before]=await owner.db.select({blacklistedAt:s.employment.blacklistedAt}).from(s.employment).where(eq(s.employment.id,id));
+  expect(before.blacklistedAt).not.toBeNull();
+  await editMovementEvent(ctx,{employmentId:id,movementId:original.id,kind:'transfer',effectiveDate:'2026-02-01',departmentId:correctedDepartment.id,remarks:'Fictional corrected earlier placement',reason:'Fictional earlier correction'});
+  const corrected=await live('transfer');
+  expect((await movementCurrentState(ctx,id)).departmentId).toBe(correctedDepartment.id);
+  await reverseMovementEvent(ctx,{employmentId:id,movementId:corrected.id,reason:'Fictional earlier placement removed'});
+  expect((await movementHistory(ctx,id)).find(row=>row.id===restriction.id)?.reversed).toBeNull();
+  expect((await owner.db.select({blacklistedAt:s.employment.blacklistedAt}).from(s.employment).where(eq(s.employment.id,id)))[0]).toEqual(before);
+ });
+
  it('deletes an earlier placement decision while retaining the later explicit salary decision',async()=>{
   const ctx=adminCtx(b);
   await createMovementEvent(ctx,{employmentId:id,kind:'transfer',effectiveDate:'2026-02-01',departmentId:b.deptB});

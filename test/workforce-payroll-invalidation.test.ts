@@ -5,7 +5,7 @@ import {eq,sql} from 'drizzle-orm';
 import * as s from '../db/schema';
 import {withTenant} from '../db/client';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
-import {hireEmployee} from '../core/org';
+import {hireEmployee,setEmploymentGrade} from '../core/org';
 import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
 import {lockPayrollInputsTx} from '../core/payroll-inputs-lock';
 import {markWorkforcePayrollInputsChangedTx} from '../core/workforce-payroll-invalidation';
@@ -24,6 +24,20 @@ async function batch(period:string,status:'processed'|'closed'='processed'){
  return run;
 }
 describe('Workforce invalidates only affected open payroll inputs',()=>{
+ it('marks the earlier grade interval even when its target equals today’s later deliberate grade',async()=>{
+  const ctx=adminCtx(b);
+  const [first,later]=await owner.db.insert(s.jobGrade).values([{tenantId:b.tenantId,code:'BOUND-FIRST',name:'Fictional Initial Grade'},{tenantId:b.tenantId,code:'BOUND-LATER',name:'Fictional Later Grade'}]).returning();
+  await setEmploymentGrade(ctx,{employmentId:subject,gradeId:first.id});
+  await createMovementEvent(ctx,{employmentId:subject,kind:'promotion',effectiveDate:'2026-03-01',gradeId:later.id});
+  const january=await batch('2026-01'),february=await batch('2026-02'),march=await batch('2026-03'),april=await batch('2026-04');
+  const slips=await owner.db.select().from(s.payslip).orderBy(s.payslip.id);
+  await createMovementEvent(ctx,{employmentId:subject,kind:'promotion',effectiveDate:'2026-02-01',gradeId:later.id,remarks:'Fictional earlier grade start'});
+  const runs=await owner.db.select().from(s.payrollBatch);
+  expect(runs.find(run=>run.id===february.id)).toMatchObject({recalcEmploymentIds:[subject],needsRecalcAt:expect.any(Date)});
+  for(const before of [january,march,april])expect(runs.find(run=>run.id===before.id)).toEqual(before);
+  expect(await owner.db.select().from(s.payslip).orderBy(s.payslip.id)).toEqual(slips);
+ });
+
  it('marks only the selected employee and date window, with closed payroll byte-identical',async()=>{
   const january=await batch('2026-01'),february=await batch('2026-02'),march=await batch('2026-03'),closed=await batch('2026-04','closed');
   const beforeSlips=await owner.db.select().from(s.payslip).orderBy(s.payslip.id);

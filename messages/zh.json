@@ -1943,6 +1943,7 @@
         "informationCorrected": "资料已更正",
       "orderConflict": "解决事件顺序冲突",
       "orderConflictHint": "此日期的事件更改了相同信息。请修改生效日期或取消冲突的待生效事件，再使其生效。",
+        "payrollAdjustmentReview": "请核对更正公司或薪资后是否需要工资调整。已结算工资及已发出的文件保持不变。",
         "informationNeedsReview": "更正需要审核",
         "historyBadge": "历史",
         "rehire": {
