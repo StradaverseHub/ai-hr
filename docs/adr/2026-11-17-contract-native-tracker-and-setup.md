@@ -41,3 +41,5 @@ and human starting setup checks passed at `3b185122e6c1538afe6d485c5b1bae35d9af0
 virtual-period/source-pay checks passed at `95b6c65513609679ce290aea4179d18e1a182109` in `43945981765`; its whole typecheck
 was still running when this record was written. Subsequent scheduling/reference changes require their own exact
 candidate evidence. No migration installation, merge or release is asserted by this decision record.
+
+Native retirement compatibility: root delegated migration 5904 (idx 5304, timestamp 1794841005904) from its 5900–5909 allocation. The shared tracker projects the native custody hold in one scoped set-based read, while commands recheck the canonical native source. Public views reveal only a general native intake instruction. Pending or independently verified first-term evidence must complete the existing native intake path; no generic fixed-term carrier is manufactured. Historical pay confirmation remains independent of the current-period guard.
