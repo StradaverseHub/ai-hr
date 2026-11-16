@@ -40982,7 +40982,7 @@
     "notice": "Notice period",
     "attachment": "Supporting document",
     "openAttachment": "Open {name}",
-    "retry": "Run workflows again",
+    "retry": "Retry failed workflows",
     "blocked": "This journey needs configuration attention",
     "letter": "Letter",
     "openLetter": "Open letter",
@@ -41095,7 +41095,15 @@
     "sharedCommunications": "Shared journey communications",
     "sharedCommunicationsHint": "The resignation journey handles this case’s letters, emails and communication workflows. Clearance tasks and return items continue here.",
     "openSharedConfiguration": "Open shared Configuration",
-    "salaryMonthly": "Basic salary (per month)"
+    "salaryMonthly": "Basic salary (per month)",
+    "configurationSoftHint": "You can still submit. Your resignation will be recorded and tracked while the workflow setup is resolved.",
+    "recordedPendingDecision": "Your resignation is recorded. A decision maker has not been assigned yet.",
+    "decisionSetupDetail": "A decision maker has not been assigned. The workflow setup needs attention.",
+    "runAgain": "Run workflows again",
+    "runAgainHint": "After the setup is corrected, this runs the current live workflows to assign the missing decision maker.",
+    "taskRepair": "Open workflow repair",
+    "repairTaskHint": "This case needs a decision maker. Review the recorded setup issue below; run the workflows again when the configuration is ready.",
+    "awaitDecisionNextSteps": "Next steps will appear after a decision is recorded."
   },
   "offboardingPostings": {
     "breadcrumb": "Onboarding & offboarding / Personnel postings",

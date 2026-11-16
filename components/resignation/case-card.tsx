@@ -30,6 +30,6 @@ export function ResignationCaseCard({initial,today,fyi=false,onChanged,documentI
  {value.emails.filter(email=>email.editable).map(email=><ResignationEmailEditor key={email.id} email={email} busy={busy} command={command}/>)}
  {value.letters.map(letter=><div key={letter.id+':'+letter.revision} id={'letter-'+letter.id} className="scroll-mt-6 border-t pt-4" data-selected-letter={letter.id===documentId||undefined}><ResignationLetterCard value={value} letter={letter} busy={busy} command={command}/></div>)}
  {value.capabilities.withdraw&&<Button variant="outline" disabled={busy} onClick={()=>command({type:'withdraw'})}>{t('withdraw')}</Button>}
- <BlockedRuns value={value} busy={busy} onRetry={()=>void command({type:'retry'})}/>{error&&<p role="alert" className="text-sm text-destructive">{error}</p>}{conflict&&<Button variant="outline" disabled={busy} onClick={reload}>{t('reload')}</Button>}
+ <BlockedRuns value={value} busy={busy} onRetry={()=>void command({type:'retry'})} onRunAgain={()=>void command({type:'runWorkflowsAgain'})}/>{error&&<p role="alert" className="text-sm text-destructive">{error}</p>}{conflict&&<Button variant="outline" disabled={busy} onClick={reload}>{t('reload')}</Button>}
  </Card>;
 }
