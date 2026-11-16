@@ -222,3 +222,16 @@ State at the head of `claude/rea-web-app-reconstruction-2c12ee` (pushed):
 - CI run 43786213332: 16 files, type check and build PASS. Not rendered; nothing on staging.
 
 Next: slice 25 (agency portal, reusing slice 21a's verification). Owner: D-065 to D-069; the slice 24 provider-data approval.
+
+## Checkpoint — slice 25 built and verified (2026-11-16)
+
+State at the head of `claude/rea-web-app-reconstruction-2c12ee` (pushed):
+- `origin/main` (`9d32dfab1`) merged; the recruitment block ends at `5727` (still capped at 5739 by the probation claims).
+- Slice 25 (`5727`): the agency portal at `/careers/<address>/agency` — consultants sign in with an e-mailed code, see the positions
+  released to their contracts, submit candidates and follow a coarse status; submissions wait in Recruitment › Agency inbox, where the
+  job's operators record each through slice 10 or decline it. Settings › Agency portal (default off; needs the careers page and
+  candidate e-mail). D-070.
+- CI: run 43794596585 (18 files, type check, build) found 3 test-file faults, fixed; run 43797489510 passes the affected files.
+- Not rendered; nothing on staging.
+
+All group 2 slices (19–25) are built. Owner: D-065 to D-070; the slice 24 provider-data approval; rendered checks on an installation.

@@ -780,3 +780,18 @@ every send. Decisions D-069; spec cases 156–161; migration 5726.
 
 Not proven: a real provider reply (none is configured in tests, and the contract is unapproved), and the rendered settings section and
 panel (case 161; this machine has no installed dependencies). Nothing is on staging.
+
+## Slice 25 — Agency portal (2026-11-16)
+
+Decisions D-070; spec cases 162–169; migration 5727. `origin/main` (`9d32dfab1`) merged first at `75288c7f8` (manifest conflicts
+regenerated).
+
+| Check | Result |
+| --- | --- |
+| Run 43794596585 on `7f20dc013` (18 files: the two new portal files, careers rules, careers, verified applicants, middleware, response links, agencies, agency rules, referral rewards, recruitment service, slices service, candidate privacy, pack drift, match summary, provider review gate, i18n catalogs and coverage; type check; build) | Type check and build PASS; 16 files PASS; 3 tests in 2 files FAIL |
+| Cause 1 (2 portal tests): the fixture disabled a contract and a consultant by a plain owner update, which their audit guards refuse | Fixed in `f3e32cad3`: the fixture updates past the guards, as slice 23's fixtures do |
+| Cause 2 (careers residual-risk pin): the seven new portal definers read careers sites and job openings | Reviewed (each reads only the company behind the address it was given, inside that company's portal context) and added to the pin |
+| Run 43797489510 on `f3e32cad3` (the 2 affected files; type check) | PASS: 2 files, 36 tests; type check |
+
+The other 16 files passed on `7f20dc013` and were not rerun; the fix changed only those two test files. Not rendered (case 169); nothing
+on staging.
