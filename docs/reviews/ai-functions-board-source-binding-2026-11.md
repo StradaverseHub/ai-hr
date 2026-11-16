@@ -542,3 +542,13 @@ Changed covered files: `core/information-correction-history.ts` and `core/payrol
 only through the import graph. No provider transform, outbound field, purpose or transport changed. The 28 approvals
 were carried forward to `ad0ee451…` and the agent manifest regenerated (`644d2c37…`), under the owner's standing
 pre-approval for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding for board fd8156d4, Payroll Process listing, cycle names and run search (16 November 2026)
+
+`claude/fb-fd8156d4-payroll-process`, merged with main/alpha `22ba7e3a5` (binding `ad0ee451…`), opens Payroll Process
+on the latest created period, sorts runs by period then company, shows configured Payroll Cycle names and adds an
+employee search to a run's View page (owner approved the plan on the board, 16 November 2026). Changed covered files:
+`core/payroll.ts` and the six `messages/*.json` catalogues, in the provider-data scope only through the import graph.
+No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried forward to
+`c1baf4ee…` and the agent manifest regenerated (`bf8328ea…`), under the owner's standing pre-approval for staging
+re-binds (12 November 2026). Staging only.
