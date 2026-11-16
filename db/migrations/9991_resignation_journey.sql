@@ -398,10 +398,10 @@ BEGIN
  EXECUTE definition;
 END $migration$;
 --> statement-breakpoint
--- Once a managed submitted-decision workflow exists, old entry points cannot create a bypass request.
+-- Once a managed submitted-decision workflow has been live, old entry points cannot create a bypass request.
 -- Readiness and matching remain the shared runner's authority; a nonmatching employee cannot fall back to legacy.
 CREATE FUNCTION app.resignation_managed_submission_enabled(p_employment uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT EXISTS(SELECT 1 FROM employment e WHERE e.tenant_id=app.current_tenant_id() AND e.id=p_employment) AND EXISTS(SELECT 1 FROM (SELECT DISTINCT ON(workflow_id) status,definition FROM automation_workflow_version WHERE tenant_id=app.current_tenant_id() AND module='off' ORDER BY workflow_id,revision DESC) w WHERE w.status='live' AND w.definition->'trigger'->>'event'='submitted' AND EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(w.definition->'steps','[]')) s WHERE s->>'type'='requestDecision'));
+ SELECT EXISTS(SELECT 1 FROM employment e WHERE e.tenant_id=app.current_tenant_id() AND e.id=p_employment) AND EXISTS(SELECT 1 FROM automation_workflow_version w WHERE w.tenant_id=app.current_tenant_id() AND w.module='off' AND w.status='live' AND w.definition->'trigger'->>'event'='submitted' AND EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(w.definition->'steps','[]')) s WHERE s->>'type'='requestDecision'));
 $$;
 CREATE FUNCTION app.resignation_submission_guard() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE proof jsonb;
