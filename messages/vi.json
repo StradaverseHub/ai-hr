@@ -41085,7 +41085,16 @@
       "declined": "Đã từ chối đề nghị",
       "lapsed": "Đề nghị hết hạn",
       "withdrawn": "Đã rút"
-    }
+    },
+    "journeyOwnedDocument": "Mở thư này trong hành trình nghỉ việc được liên kết.",
+    "checklistReviewRequired": "Xem lại danh sách kiểm tra trước khi tiếp tục",
+    "ownedChecklistWarning": "Tài liệu cho “{task}” thuộc hành trình nghỉ việc. HR phải cập nhật yêu cầu này trong danh sách kiểm tra trước khi hoàn tất thủ tục bàn giao.",
+    "manualClearanceForm": "Biểu mẫu bàn giao bổ sung",
+    "chooseClearanceForm": "Chọn biểu mẫu…",
+    "generateClearanceForm": "Tạo biểu mẫu bàn giao",
+    "sharedCommunications": "Thông tin liên lạc chung của hành trình",
+    "sharedCommunicationsHint": "Hành trình nghỉ việc xử lý thư, email và các quy trình liên lạc của hồ sơ này. Nhiệm vụ bàn giao và các mục cần hoàn trả tiếp tục được xử lý tại đây.",
+    "openSharedConfiguration": "Mở Cấu hình dùng chung"
   },
   "offboardingPostings": {
     "breadcrumb": "Tiếp nhận và nghỉ việc / Ghi nhận biến động nhân sự",

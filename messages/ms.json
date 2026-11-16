@@ -41085,7 +41085,16 @@
       "declined": "Tawaran ditolak",
       "lapsed": "Tawaran luput",
       "withdrawn": "Ditarik balik"
-    }
+    },
+    "journeyOwnedDocument": "Buka surat ini dalam perjalanan peletakan jawatan yang dipautkan.",
+    "checklistReviewRequired": "Semak senarai semak sebelum meneruskan",
+    "ownedChecklistWarning": "Dokumen untuk “{task}” diuruskan oleh perjalanan peletakan jawatan. HR mesti mengemas kini keperluan senarai semak ini sebelum pelepasan.",
+    "manualClearanceForm": "Borang pelepasan tambahan",
+    "chooseClearanceForm": "Pilih borang…",
+    "generateClearanceForm": "Jana borang pelepasan",
+    "sharedCommunications": "Komunikasi perjalanan bersama",
+    "sharedCommunicationsHint": "Perjalanan peletakan jawatan mengendalikan surat, e-mel dan aliran kerja komunikasi kes ini. Tugas pelepasan dan item pemulangan diteruskan di sini.",
+    "openSharedConfiguration": "Buka Konfigurasi bersama"
   },
   "offboardingPostings": {
     "breadcrumb": "Pengurusan masuk & keluar pekerja / Catatan perjawatan",

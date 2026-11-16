@@ -41085,7 +41085,16 @@
       "declined": "方案已拒绝",
       "lapsed": "方案已失效",
       "withdrawn": "已撤回"
-    }
+    },
+    "journeyOwnedDocument": "请在关联的辞职流程中打开此函件。",
+    "checklistReviewRequired": "继续前请审核清单",
+    "ownedChecklistWarning": "“{task}”的文档属于辞职流程。HR必须在离职交接完成前更新此清单要求。",
+    "manualClearanceForm": "其他离职交接表单",
+    "chooseClearanceForm": "选择表单…",
+    "generateClearanceForm": "生成离职交接表单",
+    "sharedCommunications": "共享流程通信",
+    "sharedCommunicationsHint": "辞职流程负责本个案的函件、邮件和通信工作流。离职交接任务和归还事项仍在此处继续处理。",
+    "openSharedConfiguration": "打开共享配置"
   },
   "offboardingPostings": {
     "breadcrumb": "入职与离职 / 人事变动入账",
