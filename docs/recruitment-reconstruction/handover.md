@@ -209,3 +209,16 @@ State at the head of `claude/rea-web-app-reconstruction-2c12ee` (pushed):
 Next, in order: slice 24 (AI match summary suggestions; needs the owner's provider-data approval), slice 25 (agency portal).
 Owner review: D-065, D-066, D-067, D-068.
 
+
+## Checkpoint — slice 24 built locked and verified (2026-11-16)
+
+State at the head of `claude/rea-web-app-reconstruction-2c12ee` (pushed):
+- Slice 24 (`5726`): AI match summary suggestions for the job's reviewers on active applications — three short lists (appears to meet,
+  not shown, questions to ask), never a rank, score or decision, never stored. Settings › AI match summaries (company switch, default
+  off). LOCKED: no approval record for `recruitment_match_summary_v1`, so nothing is sent until the owner records one (after legal
+  review of candidate data and the provider agreement). D-069.
+- The provider-data source digest changed again; every existing approval was already stale on this branch and needs the owner's
+  re-bind before a staging release.
+- CI run 43786213332: 16 files, type check and build PASS. Not rendered; nothing on staging.
+
+Next: slice 25 (agency portal, reusing slice 21a's verification). Owner: D-065 to D-069; the slice 24 provider-data approval.

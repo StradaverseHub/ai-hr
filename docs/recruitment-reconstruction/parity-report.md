@@ -768,3 +768,15 @@ re-created there after the fix below. Decisions D-068; spec cases 149–155.
 The other 58 files passed on `64e6eb70f` and were not rerun after the fixes; the fixes changed only the facts function body, the
 reward model's arithmetic and the four test files. Not rendered (case 155): this machine has no installed dependencies. Nothing is on
 staging.
+
+## Slice 24 — AI match summary suggestions, locked (2026-11-16)
+
+Built locked at the owner's request: provider contract `recruitment_match_summary_v1` has no approval record, so the gateway refuses
+every send. Decisions D-069; spec cases 156–161; migration 5726.
+
+| Check | Result |
+| --- | --- |
+| Run 43786213332 on `e805c49e2` (16 files: the two new slice 24 files, AI management contract, AI Centre function inventory, controls and operation boundaries, AI inventory, provider review gate, egress caller drift, AI feature switch guard, recruitment pack drift, agency rules (error messages), position templates, recruitment service, i18n catalogs and coverage; type check; build) | PASS: 8 no-DB files (76 tests) and 8 DB files (130 tests), type check, build |
+
+Not proven: a real provider reply (none is configured in tests, and the contract is unapproved), and the rendered settings section and
+panel (case 161; this machine has no installed dependencies). Nothing is on staging.
