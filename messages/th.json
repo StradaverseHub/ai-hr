@@ -41883,6 +41883,8 @@
     "saveChanges": "Save changes for approval",
     "saveApprove": "Save event and approve",
     "approvedOn": "Approved {date}. This posting is fixed.",
-    "readOnly": "You can view this posting. Its current approver group owns changes and approval."
+    "readOnly": "You can view this posting. Its current approver group owns changes and approval.",
+    "refresh": "Refresh status",
+    "awaitingWorkflow": "Posting approval is waiting for the workflow to finish."
   }
 }

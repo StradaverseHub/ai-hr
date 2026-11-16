@@ -3,7 +3,7 @@ import {sql} from 'drizzle-orm';
 import {withTenant} from '../db/client';
 import {migrateTestDb,closeAll,owner} from './harness';
 import {contractPostingFixture,releaseContractPosting} from './helpers/contract-posting-fixture';
-import {listContractSharedPostings,pendingContractPostingTasks} from '../packs/contracts/service';
+import {listContractSharedPostings,contractSharedPostingWorkPage} from '../packs/contracts/service';
 
 beforeAll(migrateTestDb);afterAll(closeAll);
 it('pages 1,000 source-bound postings across 70 companies with the same current group scope and no salary projection',async()=>{
@@ -41,9 +41,14 @@ it('pages 1,000 source-bound postings across 70 companies with the same current 
  const first=await listContractSharedPostings(f.approver,{limit:50}),next=await listContractSharedPostings(f.approver,{limit:50,offset:50}),last=await listContractSharedPostings(f.approver,{limit:50,offset:1000});
  expect(first.total).toBe(1001);expect(first.rows.map(r=>r.id)).toEqual(expected.ids.slice(0,50));expect(next.rows.map(r=>r.id)).toEqual(expected.ids.slice(50,100));expect(last.rows.map(r=>r.id)).toEqual(expected.ids.slice(1000));
  const scoped=await listContractSharedPostings(f.approver,{companyId:first.rows[0].companyId,limit:100});expect(scoped.rows.length).toBeGreaterThan(0);expect(scoped.rows.every(r=>r.companyId===first.rows[0].companyId)).toBe(true);
- const tasks=await pendingContractPostingTasks(f.approver,[first.rows[0].companyId]);expect(tasks.length).toBe(scoped.total);expect(tasks.every(t=>t.kind==='contractPosting'&&t.linkPath.startsWith('/lifecycle/contracts/postings'))).toBe(true);
+ const tasks=await contractSharedPostingWorkPage(f.approver,{companyIds:[first.rows[0].companyId],limit:20});expect(tasks.total).toBe(scoped.total);expect(tasks.items.length).toBe(Math.min(20,scoped.total));expect(tasks.items.every(t=>t.kind==='contractPosting'&&t.linkPath.startsWith('/lifecycle/contracts/postings'))).toBe(true);
+ const work=await contractSharedPostingWorkPage(f.approver,{limit:20}),nextWork=await contractSharedPostingWorkPage(f.approver,{offset:20,limit:20});
+ expect(work.total).toBe(1001);expect(work.items).toHaveLength(20);expect(nextWork.items).toHaveLength(20);expect(new Set([...work.items,...nextWork.items].map(item=>item.id)).size).toBe(40);
+ const linked=new URL(work.items[0].linkPath,'https://fixture.test');
+ expect(linked.searchParams.get('postingId')).toBe(original.id);
+ const exact=await listContractSharedPostings(f.approver,{postingId:original.id});expect(exact.rows.map(row=>row.id)).toEqual([original.id]);expect(exact.total).toBe(1);
  expect((await listContractSharedPostings(f.employeeActor,{limit:100})).rows).toEqual([]);
  const shape=JSON.stringify(first);expect(shape).not.toMatch(/salaryCents|basicSalary|signingPolicy|5200\.12|4976\.21/);
  await owner.db.execute(sql`update lc_v9_config set data=jsonb_set(data,'{groups}',(select jsonb_agg(case when g->>'id'=${f.groupId} then jsonb_set(g,'{members}','[]'::jsonb) else g end) from jsonb_array_elements(data->'groups') g)) where tenant_id=${f.b.tenantId}::uuid`);
- expect((await listContractSharedPostings(f.approver)).rows).toEqual([]);expect(await pendingContractPostingTasks(f.approver,undefined)).toEqual([]);
+ expect((await listContractSharedPostings(f.approver)).rows).toEqual([]);expect(await contractSharedPostingWorkPage(f.approver)).toEqual({items:[],total:0});
 });

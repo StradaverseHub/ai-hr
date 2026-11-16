@@ -5,9 +5,9 @@ import en from '../messages/en.json';
 import {ContractPostingsWorkspace} from '../app/lifecycle/contracts/postings/postings-workspace';
 import {ContractPostingEditor} from '../app/lifecycle/contracts/postings/posting-editor';
 import type {ContractSharedPosting} from '../packs/contracts/service';
-const actions=vi.hoisted(()=>({approve:vi.fn(),pay:vi.fn(),save:vi.fn()}));
+const actions=vi.hoisted(()=>({approve:vi.fn(),pay:vi.fn(),save:vi.fn(),refresh:vi.fn()}));
 vi.mock('../app/lifecycle/contracts/postings/actions',()=>({approveContractPostingAction:actions.approve,confirmContractPayrollAction:actions.pay,saveContractPostingAction:actions.save}));
-vi.mock('next/navigation',()=>({usePathname:()=>'/lifecycle/contracts/postings'}));
+vi.mock('next/navigation',()=>({usePathname:()=>'/lifecycle/contracts/postings',useRouter:()=>({refresh:actions.refresh})}));
 function posting():ContractSharedPosting{return {id:'c3349db4-823d-4eb5-874c-4b7f58ff56fd',number:1001,label:'PP-1001',companyId:'887fb29d-4236-42f7-8f75-f560261a0475',companyName:'Fictional Contract Company',employmentId:'2a8e9db2-9404-4777-b34a-1f5e4ba9c001',employeeName:'Fictional Contract Employee',employeeCode:'CON-4',caseId:'f1210152-ab03-4b02-996d-84dd90849ab0',caseNumber:'CT-19',eventType:'contractRenewal',proposed:{effectiveDate:'2027-01-01',previousEndDate:'2026-12-31',endDate:'2027-06-30',contractNumber:'5'},edited:null,current:{effectiveDate:'2027-01-01',previousEndDate:'2026-12-31',endDate:'2027-06-30',contractNumber:'5'},status:'pending',revision:1,approverGroupName:'Fictional People Ops',createdAt:'2026-11-17T00:00:00Z',editedAt:null,approvedAt:null,movementAppliedAt:null,canApprove:true,canEdit:true,caseRevision:8,canConfirmPay:false,payChanges:true};}
 function mount(ui:React.ReactNode){return render(<NextIntlClientProvider locale="en" messages={en}>{ui}</NextIntlClientProvider>);}
 function queue(row:ContractSharedPosting){return <ContractPostingsWorkspace page={{rows:[row],total:1,offset:0,limit:50}} status={row.status} today="2026-11-17"/>;}

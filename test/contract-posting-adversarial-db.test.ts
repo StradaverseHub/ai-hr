@@ -59,9 +59,12 @@ it('prelocks the real Employment write before the case flow when a second databa
  }finally{await blocker`rollback`.catch(()=>undefined);await approving?.catch(()=>undefined);blocker.release();}
  expect((await readContractSharedPosting(f.approver,p.id))?.status).toBe('pending');
 },120_000);
-it('finishes the causative protected job when the posting is approved immediately after its creation',async()=>{
+it('keeps approval pending until its causative job has finished, without widening the protected worker authority',async()=>{
  const f=await contractPostingFixture(),p=await releaseContractPosting(f,{returnAtPosting:true});
- await approveContractSharedPosting(f.approver,{id:p.id,revision:p.revision});
+ expect(await readContractSharedPosting(f.approver,p.id)).toMatchObject({workflowReady:false,canApprove:false});
+ await expect(approveContractSharedPosting(f.approver,{id:p.id,revision:p.revision})).rejects.toMatchObject({code:'conflict'});
  expect((await finishContractPostingJob(p.continuationJobId,f.employeeActor,'contract_automation')).state).toBe('completed');
+ expect(await readContractSharedPosting(f.approver,p.id)).toMatchObject({workflowReady:true,canApprove:true});
+ await approveContractSharedPosting(f.approver,{id:p.id,revision:p.revision});
  expect((await readContractSharedPosting(f.approver,p.id))?.status).toBe('approved');
 });
