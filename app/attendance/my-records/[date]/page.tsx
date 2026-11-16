@@ -1,3 +1,4 @@
+import { AttendanceSubmissionRouteProgress } from '@/components/attendance-route-progress';
 import { parseAttendanceLevelProblemToken, attendanceLevelProblemMessageKey } from '@/lib/attendance-workflow-v3';
 import { ATTENDANCE_SUBMISSION_REASONS } from '@/lib/attendance-workflow-submission';
 import {FormulaOvertimeDuration} from '@/components/formula-overtime-record';
@@ -79,9 +80,9 @@ export default async function MyAttendanceDayPage({
   const { row, punches, pending } = await readAttendanceRecordDay(s, selected.employmentId, date);
   const future = date > todayInKualaLumpur();
   const route = row && !pending && !future ? await ownAttendanceSubmissionRoute(s, selected.employmentId, 'irregularity') : null;
-  const approver = route?.available
-    ? route.firstApprovers.map(actor => actor.kind === 'hr_admin' ? workflowText('hr') : actor.name).join(', ')
-    : route ? workflowText(`submissionRefusals.${route.reason}`) : null;
+  // 237c31e6 — the approval progress panel (every level, approver name · Employee ID) or the native submission refusal
+  // with the unresolved level's warning; resolved once, read-free, so the page renders the same in static markup.
+  const approver = route ? await AttendanceSubmissionRouteProgress({ route }) : null;
 
   const backHref = sp.home==='1'&&typeof sp.employmentId==='string'
     ?'/?'+new URLSearchParams({employmentId:sp.employmentId})
@@ -275,7 +276,7 @@ export default async function MyAttendanceDayPage({
             </label>
             <Button type="submit" variant="outline" size="sm" disabled={route?.available===false}>{t('myDaySubmit')}</Button>
           </fieldset>
-          {approver&&<div className="mt-3"><Field label={meText('otGoesToLabel')} value={approver} /></div>}
+          {approver&&<div className="mt-3" data-approval-progress><div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{meText('otGoesToLabel')}</div><div className="mt-1">{approver}</div></div>}
           <p className="mt-3 text-[11px] text-muted-foreground">{t('myDayApprovalNote')}</p>
         </form>
       </Card>

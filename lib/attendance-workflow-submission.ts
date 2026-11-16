@@ -12,7 +12,8 @@ export const attendanceSubmissionCopy = {
 
 /** Setup previews keep detailed administrator errors. Employees see only these finite refusal reasons. */
 export class AttendanceWorkflowSubmissionError extends AttendanceWorkflowError {
-  constructor(public readonly reason: AttendanceSubmissionReason, public readonly problem?: AttendanceLevelProblem) {
+  /** levelCount (237c31e6): the selected template's configured level count, for the unresolved-level warning. */
+  constructor(public readonly reason: AttendanceSubmissionReason, public readonly problem?: AttendanceLevelProblem, public readonly levelCount?: number) {
     super(reason === 'routeChanged' ? 'stale' : reason, attendanceSubmissionCopy[reason]);
     this.name = 'AttendanceWorkflowSubmissionError';
   }

@@ -117,11 +117,15 @@ describe('69d6ed3c — the multi-run defect, in the arithmetic the kernel perfor
     expect([now.epfEmployee - before.epfEmployee, now.epfEmployer - before.epfEmployer]).toEqual([88, 104]);
   });
 
-  it('the old reading (earlier gross counted as EPF wages) gave 88 / 48: 5,600 at 616 / 672 minus 4,800 at 528 / 624', () => {
+  it('the old reading (earlier gross counted as EPF wages): 5,600 at 616 / 728 minus 4,800 at 528 / 624 = 88 / 104', () => {
+    // RESTATED 2026-11-16 FOR ITEM 7f5cc653 (ADR-0024 addendum 2026-11-16): this pinned 5,600 at 616 / 672 and
+    // a run-2 charge of 88 / 48. Under this reading the month is normal 3,800 (at or below RM5,000) + 1,800
+    // bonus-stream money = 5,600, above RM5,000, so KWSP's Part A bonus note sets the employer at
+    // 5,600 × 13% = 728 (was 672, the 12% row); 4,800 stays on its 13% row, 624. 728 − 624 = 104 (was 48).
     const now = month(1800, 0);
     const before = month(1000, 0);
-    expect([now.epfEmployee, now.epfEmployer, before.epfEmployee, before.epfEmployer]).toEqual([616, 672, 528, 624]);
-    expect([now.epfEmployee - before.epfEmployee, now.epfEmployer - before.epfEmployer]).toEqual([88, 48]);
+    expect([now.epfEmployee, now.epfEmployer, before.epfEmployee, before.epfEmployer]).toEqual([616, 728, 528, 624]);
+    expect([now.epfEmployee - before.epfEmployee, now.epfEmployer - before.epfEmployer]).toEqual([88, 104]);
   });
 
   it('readRunStatutoryStamp reads an earlier run’s own stamp, and refuses one that cannot be true', () => {

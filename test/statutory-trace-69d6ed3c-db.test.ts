@@ -254,7 +254,11 @@ describe('69d6ed3c — the multi-run defect: an earlier run counts only its EPF-
     const { e, run2 } = await threeRuns('trace_and_lines');
     const s2 = statOf(await slipOf(run2.batchId, e.employmentId));
     // Old behaviour exactly — no recomputation of a payslip processed before the trace.
-    expect([s2.epfEmployee, s2.epfEmployer]).toEqual([88, 48]);
+    // RESTATED 2026-11-16 FOR ITEM 7f5cc653 (ADR-0024 addendum 2026-11-16): the employer half was 48. Under the
+    // old reading the unstamped earlier 1,000 is EPF bonus-stream money: month = normal 4,600 (3,800 + B2's
+    // 800, at or below RM5,000) + 1,000 = 5,600, so KWSP's Part A bonus note gives employer 5,600 × 13% =
+    // 728 against the month-before 4,800 row's 624: 728 − 624 = 104 (was 48). Employee 616 − 528 = 88.
+    expect([s2.epfEmployee, s2.epfEmployer]).toEqual([88, 104]);
     expect(s2.statutoryTrace!.run.earlier).toMatchObject({ unstamped: 1, epfAdditional: 1000 });
     expect(explainStatutory(s2, 'bonus').traceStatus).toBe('recorded');
   });

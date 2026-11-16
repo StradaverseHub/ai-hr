@@ -111,3 +111,21 @@ This is a new source-confirmed gap, not a measured latency regression. AP-033 qu
 seven module-list owners under a competing shared holder, not just direct SQL calls.
 
 The combined repaired native qualification passed on 78180ca71 in Actions 43882431102. Both original whole-repository compiler jobs passed; their failed test results remain failures. The final caller-qualified source adds the seven explicit READ ONLY module-store carriers and was explicitly approved for staging-only rebinding at ecd371dec4b42af57c5d415fafe480d5b2b681a02320b49523edcadf4ed92c58. Actual caller proof and the full final release gate remain required.
+
+## Irwin integration and owner release hold
+
+Owner instructed merging Irwin f0443eaf27d3584f55b6a2e7d48558bd553d4149 and moving the unapplied assistant
+metadata migration from5767 to5771, idx5171 / when1793330005471, after Irwin's5770. The SQL bytes remain
+SHA256433dfd7549b496b034bdeaa2c06484b700b5dd5647213106d68487f0b485c7c0. Both upgrade inventories retain
+5770 and5771 in that order. Historical source references and failed receipts above keep their actual identities.
+
+The original full run43885045178 completed with one stale no-DB Close-screen assertion and the consequent verifier
+failure; build, whole compiler, migrations and all three browser engines passed. The assertion now checks the same
+visible confirmation count through slipCount. No assertion or test case was removed.
+
+Release is explicitly stopped pending owner approval, with Claude's release first. No staging lease was claimed,
+no remediation was installed, and main/alpha were not advanced. The prior ticket remains blocked. The merged provider
+fingerprint is a39b180ee690c1f05e3a1ebe0c7236d616347baf80fd83f7e7d8d46e394d3cbc across1624 files; it is
+not rebound or approved. Irwin's existing literal approvals remain unchanged and cannot authorize this merged
+fingerprint. Generated manifests are source descriptions, not release or provider authority. Functional native
+qualification and whole type checking of the merged candidate remain pending.

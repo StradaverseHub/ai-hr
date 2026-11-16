@@ -15,8 +15,14 @@ export type AttendanceGroupPolicy={
    * consumed: exception display arrives with the ADR-0134 execution release. */
   showLatenessExceptionAfterOffset?:boolean;
   approval:'manual'|'auto';autoMethod:'actual'|'preApproved'|'intersect';rounding:{mode:'none'|'down'|'up'|'nearest';step:typeof ATTENDANCE_POLICY_ROUNDING_STEPS[number]|null};
-  days:Record<AttendancePolicyDayClass,{minimumMinutes:number;maximumMinutes:number|null;patternVersionId:string|null}>};
+  days:Record<AttendancePolicyDayClass,{minimumMinutes:number;maximumMinutes:number|null;patternVersionId:string|null}>;
+  /** 87bd9656 — Overtime Backdate Control: how many days before the submission date an overtime application
+   * may be dated. Optional so every policy stored before it keeps validating byte-identically: absent means
+   * off. Never stored as null or 0. Enforced at submission (core/attendance.ts), read from the revision in
+   * force on the submission date. */
+  backdateLimitDays?:number};
 };
+export const ATTENDANCE_POLICY_BACKDATE_LIMIT_MAX_DAYS=365;
 function flag(value:unknown,path:string):boolean{
  if(typeof value!=='boolean')overtimeRefuse('invalid',path,'Choose an explicit on or off value.');return value;
 }
@@ -32,7 +38,7 @@ export function validateAttendanceGroupPolicy(raw:unknown,maxPeriodMinutes:numbe
  const clock=overtimeObject(root.clock,'policy.clock');
  overtimeKeys(clock,['pairing','minimumIntervalMinutes','lateGraceMinutes','earlyGraceMinutes','skipLatenessIfIncomplete'],'policy.clock');
  const ot=overtimeObject(root.overtime,'policy.overtime');
- overtimeKeys(ot,['enabled','beforeShift','afterShift','allowBackdatedWithoutClock','splitAtMidnight','offsetLateness','showLatenessExceptionAfterOffset','approval','autoMethod','rounding','days'],'policy.overtime');
+ overtimeKeys(ot,['enabled','beforeShift','afterShift','allowBackdatedWithoutClock','splitAtMidnight','offsetLateness','showLatenessExceptionAfterOffset','approval','autoMethod','rounding','days','backdateLimitDays'],'policy.overtime');
  const enabled=flag(ot.enabled,'policy.overtime.enabled'),rounding=overtimeObject(ot.rounding,'policy.overtime.rounding');
  overtimeKeys(rounding,['mode','step'],'policy.overtime.rounding');
  const mode=choice(rounding.mode,['none','down','up','nearest'] as const,'policy.overtime.rounding.mode');
@@ -51,6 +57,8 @@ export function validateAttendanceGroupPolicy(raw:unknown,maxPeriodMinutes:numbe
   if(enabled&&!patternVersionId)overtimeRefuse('invalid',path+'.patternVersionId','An enabled overtime policy needs a central pattern for each day classification.');
   days[key]={minimumMinutes:minimum,maximumMinutes:maximum,patternVersionId};
  }
+ const backdateLimitDays=Object.hasOwn(ot,'backdateLimitDays')
+  ?overtimeInteger(ot.backdateLimitDays,1,ATTENDANCE_POLICY_BACKDATE_LIMIT_MAX_DAYS,'policy.overtime.backdateLimitDays'):undefined;
  return {version:1,clock:{pairing:choice(clock.pairing,['auto','firstInLastOut'] as const,'policy.clock.pairing'),
   minimumIntervalMinutes:overtimeInteger(clock.minimumIntervalMinutes,0,max,'policy.clock.minimumIntervalMinutes'),
   lateGraceMinutes:overtimeInteger(clock.lateGraceMinutes,0,max,'policy.clock.lateGraceMinutes'),earlyGraceMinutes:overtimeInteger(clock.earlyGraceMinutes,0,max,'policy.clock.earlyGraceMinutes'),
@@ -59,7 +67,8 @@ export function validateAttendanceGroupPolicy(raw:unknown,maxPeriodMinutes:numbe
    allowBackdatedWithoutClock:flag(ot.allowBackdatedWithoutClock,'policy.overtime.allowBackdatedWithoutClock'),splitAtMidnight:flag(ot.splitAtMidnight,'policy.overtime.splitAtMidnight'),offsetLateness,
    ...(showException===undefined?{}:{showLatenessExceptionAfterOffset:showException}),
    approval:choice(ot.approval,['manual','auto'] as const,'policy.overtime.approval'),autoMethod:choice(ot.autoMethod,['actual','preApproved','intersect'] as const,'policy.overtime.autoMethod'),
-   rounding:{mode,step:rounding.step as AttendanceGroupPolicy['overtime']['rounding']['step']},days}};
+   rounding:{mode,step:rounding.step as AttendanceGroupPolicy['overtime']['rounding']['step']},days,
+   ...(backdateLimitDays===undefined?{}:{backdateLimitDays})}};
 }
 /** Activation is explicit and future-dated. Caller resolves today using the canonical HR timezone. */
 export function attendanceGroupPolicyActivationDate(value:unknown,today:string){

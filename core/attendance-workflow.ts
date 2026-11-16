@@ -367,7 +367,7 @@ async function resolveAttendanceWorkflowSnapshotTx(tx:Tx,ctx:SessionContext,subj
     return {subject,selected,validated,stages,cc,skipped,fingerprint};
     } catch (error) {
       if (error instanceof AttendanceLevelError || error instanceof AttendanceWorkflowError || error instanceof AttendanceCcError)
-        throw new AttendanceWorkflowSubmissionError('unresolved', error instanceof AttendanceLevelError ? error.problem : undefined);
+        throw new AttendanceWorkflowSubmissionError('unresolved', error instanceof AttendanceLevelError ? error.problem : undefined, Array.isArray(selected.stages) ? selected.stages.length : undefined);
       throw error;
     }
 }
@@ -391,9 +391,17 @@ export async function submissionRouteForSubjectTx(tx:Tx,ctx:SessionContext,subje
       const first=route.stages[0];
       const firstApprovers=(first.mode==='sequential'?first.approvers.slice(0,1):first.approvers).map(({kind,name})=>({kind,name}));
       if(first.hrAlternative&&!firstApprovers.some(actor=>actor.kind==='hr_admin'))firstApprovers.push({kind:'hr_admin',name:'HR administrators'});
-      return {available:true as const,name:route.selected.name,stages:route.stages,skippedLevels:route.skipped,firstApprovers,fingerprint:route.fingerprint};
+      // 237c31e6: the approvers' Employee IDs for the panel before Submit, one statement (5697). The function re-resolves
+      // the same template for the same subject and answers only the subject or the database half of Request On Behalf.
+      const codeRows=await tx.execute(sql`select employment_id,employee_code from app.attendance_workflow_route_approver_codes(${employmentId}::uuid,${route.selected.id}::uuid)`) as unknown as {employment_id:string;employee_code:string|null}[];
+      const approverCodes=Object.fromEntries(codeRows.map(row=>[row.employment_id,row.employee_code])) as Record<string,string|null>;
+      return {available:true as const,name:route.selected.name,stages:route.stages,skippedLevels:route.skipped,firstApprovers,fingerprint:route.fingerprint,approverCodes};
     } catch(error) {
-      if(error instanceof AttendanceWorkflowSubmissionError) return {available:false as const,reason:error.reason};
+      // 237c31e6: an unresolved route names the failing configured level (zero-based) and the configured level count,
+      // so the panel can put its warning on that level. Finite codes only; no names or resolver text.
+      // Only when the failing level is known; every other refusal keeps exactly {available,reason}.
+      if(error instanceof AttendanceWorkflowSubmissionError) return {available:false as const,reason:error.reason,
+        ...(error.reason==='unresolved'&&error.problem?.levelIndex!=null&&error.levelCount?{problem:{code:error.problem.code,levelIndex:error.problem.levelIndex},levelCount:error.levelCount}:{})};
       throw error;
     }
 }
@@ -745,9 +753,22 @@ export async function previewAttendanceWorkflow(ctx:SessionContext,raw:unknown,l
  for(const companyId of companies)results.push(await previewAttendanceWorkflowCompany(ctx,{...input,companyId},lineageId));
  return {total:results.reduce((n,r)=>n+r.total,0),rows:results.flatMap(r=>r.rows),truncated:results.some(r=>r.truncated)};
 }
+/**
+ * Board 237c31e6: Employee IDs of the identities frozen on these requests, ONE statement for the page's ids (5697
+ * app.attendance_workflow_approver_codes). It answers only for requests the caller can already read, including
+ * approvers in other companies the caller's row security would not show. Codes only; it decides nothing.
+ */
+export async function attendanceApproverCodesForRequestsTx(tx: Tx, correctionIds: readonly string[]) {
+    const out = new Map<string, Record<string, string | null>>();
+    const ids = [...new Set(correctionIds)];
+    if (!ids.length) return out;
+    const rows = await tx.execute(sql`select correction_id,employment_id,employee_code from app.attendance_workflow_approver_codes(ARRAY[${sql.join(ids.map(id => sql`${id}::uuid`), sql`,`)}]::uuid[])`) as unknown as { correction_id: string; employment_id: string; employee_code: string | null }[];
+    for (const row of rows) { const codes = out.get(row.correction_id) ?? {}; codes[row.employment_id] = row.employee_code; out.set(row.correction_id, codes); }
+    return out;
+}
 export async function attendanceWorkflowsForTx(tx: Tx, ids: string[]) {
     if (!ids.length)
-        return new Map<string, Awaited<ReturnType<typeof attendanceWorkflowForTx>>>();
+        return new Map<string, NonNullable<Awaited<ReturnType<typeof attendanceWorkflowForTx>>> & { approverCodes: Record<string, string | null> }>();
     const flows = await tx.select().from(request).where(inArray(request.correctionId, ids));
     const decisions = flows.length ? await tx.select().from(decision).where(inArray(decision.requestId, flows.map(f => f.id))).orderBy(asc(decision.stageIndex), asc(decision.id)) : [];
     const reassignments = flows.length ? await tx.select().from(reassignment).where(inArray(reassignment.requestId, flows.map(f => f.id))).orderBy(asc(reassignment.occurredAt), asc(reassignment.id)) : [];
@@ -758,6 +779,7 @@ export async function attendanceWorkflowsForTx(tx: Tx, ids: string[]) {
     const escalations = v4.length ? await tx.select().from(escalation).where(inArray(escalation.requestId, v4.map(flow => flow.id))).orderBy(asc(escalation.stageIndex)) : [];
     const filedBy = new Map((await tx.select({ id: attendanceCorrection.id, submittedByName: attendanceCorrection.submittedByName }).from(attendanceCorrection).where(inArray(attendanceCorrection.id, flows.map(f => f.correctionId)))).map(row => [row.id, row.submittedByName]));
     const actorSlots = v3.length ? await tx.execute(sql`select w.id,app.attendance_workflow_v3_decision_slot(w.correction_id)->>'slot' as slot from public.attendance_workflow_request w where w.id in (${sql.join(v3.map(flow => sql`${flow.id}::uuid`), sql`,`)})`) as unknown as { id: string; slot: string | null }[] : [];
+    const approverCodes = flows.length ? await attendanceApproverCodesForRequestsTx(tx, flows.map(f => f.correctionId)) : new Map<string, Record<string, string | null>>();
     return new Map(flows.map(f => {
         const overrides = reassignments.filter(r => r.requestId === f.id);
         const effectiveStages = f.stages.map((stage, index) => { const latest = overrides.filter(r => r.stageIndex === index).at(-1); return latest ? { ...stage, approvers: latest.approvers } : stage; });
@@ -765,7 +787,8 @@ export async function attendanceWorkflowsForTx(tx: Tx, ids: string[]) {
         const projected = (f.routingVersion === 3 || f.routingVersion === 4) ? f.stages.map((stage, index) => ({ ...stage, approvers: stage.approvers.map(actor => participantChanges.filter(change => change.stageIndex === index && change.participantSlot === actor.slot).at(-1)?.assigned ?? actor) })) : effectiveStages;
         return [f.correctionId, { ...f, decisions: decisions.filter(d => d.requestId === f.id), effectiveStages: projected, reassignments: overrides,
             participantDecisions: participantDecisions.filter(d => d.requestId === f.id), participantReassignments: participantChanges, currentParticipantSlot: actorSlots.find(actor => actor.id === f.id)?.slot ?? null,
-            escalations: escalations.filter(e => e.requestId === f.id), submittedByName: filedBy.get(f.correctionId) ?? null }];
+            escalations: escalations.filter(e => e.requestId === f.id), submittedByName: filedBy.get(f.correctionId) ?? null,
+            approverCodes: approverCodes.get(f.correctionId) ?? {} }];
     }));
 }
 

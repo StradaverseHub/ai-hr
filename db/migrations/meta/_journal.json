@@ -6170,6 +6170,13 @@
       "breakpoints": true
     },
     {
+      "idx": 5170,
+      "version": "7",
+      "when": 1793330005470,
+      "tag": "5770_attendance_workflow_approver_codes",
+      "breakpoints": true
+    },
+    {
       "idx": 5171,
       "version": "7",
       "when": 1793330005471,

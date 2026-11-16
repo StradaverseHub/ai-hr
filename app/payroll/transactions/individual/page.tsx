@@ -66,6 +66,9 @@ export default async function IndividualTransactionPage({
     name: c.name,
     kind: c.kind,
     formulaBuilder: c.rule?.kind === 'formula_builder',
+    // aac17dd0 — whether this item's single Add/Edit form may offer a typed Amount: both formula kinds do
+    // ("Calculated by Formula" and a Pay Formula Builder Formula ID). The rule itself never crosses.
+    amountEntryAllowed: c.rule?.kind === 'formula' || c.rule?.kind === 'formula_builder',
     derives: payRuleDerivesAmount(c.rule as PayRule | null),
     inputUnit: payRuleInputUnit(c.rule as PayRule | null),
     // c11e81aa — the THIRD question, and the same discipline: whether a day can be worth something
