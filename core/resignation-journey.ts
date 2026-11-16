@@ -24,7 +24,7 @@ import {offboardingSettings} from '../lib/automation/offboarding';
 import {queueAutomationEmailTx} from './automation-email-delivery';
 import {generateResignationLetter,regenerateResignationLetter,actResignationLetter,reconcileResignationLetter,lapseResignationLetter,resignationLetterCapabilities,resignationLetterPreview,resignationLetterPendingSteps,resignationLetterEmployeePending,type ResignationLetter,type ResignationLetterResult,type ResignationLetterAction,type ResignationLetterActor,type GenerateResignationLetterInput} from './resignation-letter';
 import {createResignationRetentionPostingTx} from './resignation-clearance';
-import {validateLeaveDocument} from './leave';
+import {validateLeaveDocument} from '../packs/leave/service';
 import type {ResignationOffer,ResignationStage,ResignationCaseView,ResignationLetterView,ResignationTaskView,ResignationPerson,ResignationInbox,ResignationEmployeeView,ResignationCommandInput,ResignationSubmitInput,ResignationUploadInput} from '../lib/resignation-journey';
 import {ResignationJourneyError} from '../lib/resignation-journey';
 import {prepareResignationProofTx} from './resignation-proof';
