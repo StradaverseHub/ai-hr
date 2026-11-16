@@ -24,3 +24,4 @@ async function loadConfiguration(): Promise<ConfigurationService> {
 export const contractConfigurationWorkflows: ConfigurationService['contractConfigurationWorkflows'] = async (...args) => (await loadConfiguration()).contractConfigurationWorkflows(...args);
 export const contractConfigurationDirectory: ConfigurationService['contractConfigurationDirectory'] = async (...args) => (await loadConfiguration()).contractConfigurationDirectory(...args);
 export const contractConfigurationTemplates: ConfigurationService['contractConfigurationTemplates'] = async (...args) => (await loadConfiguration()).contractConfigurationTemplates(...args);
+export {listContractSharedPostings,readContractSharedPosting,readContractSharedPostingSummary,approveContractSharedPosting,editContractSharedPosting,confirmContractSharedPay,pendingContractPostingTasks,type ContractSharedPosting,type ContractSharedPostingPage,type ContractSharedPostingSummary} from '../../core/contract-shared-postings';

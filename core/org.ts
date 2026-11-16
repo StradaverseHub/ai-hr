@@ -2,6 +2,7 @@ import {withSystemLabelCompanyTx} from './system-label-selection';
 import {organisationManagedTx,organisationBusinessUnit} from './organisation-write-policy';
 import {deriveCompanyOrganisationTx,recordEmploymentOrganisationTagsTx,type OrganisationTagTrigger} from './company-organisation';
 import {probationDateAuthorityTx} from './probation-effect-authority';
+import {contractPostingInfoAuthorityTx,contractPostingAssignmentAuthorityTx} from './contract-posting-authority';
 import {contractDateAuthorityTx,withAcceptedContractRecordIntentTx,withContractMaternityRecordIntentTx} from './contract-record-authority';
 import {setCompensation} from './comp';
 import {setEmploymentPayComponent,endEmploymentPayComponent,tryLockPayrollHistoryReadTx} from '../packs/payroll/service';
@@ -2228,7 +2229,7 @@ export async function setEmploymentAssignment(
       await lockAccessConfigurationTx(tx, ctx.tenantId);
       await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId], { configuration: true });
     }
-    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+    if(!contractPostingAssignmentAuthorityTx(tx,p as unknown as Record<string,unknown>))await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     if(p.companyId)await assertWorkforceCompanyTx(tx,ctx,p.companyId,'maintain');
     const [cur] = await tx
       .select()
@@ -2272,8 +2273,13 @@ export async function setEmploymentAssignment(
       null;
 
     if(!nextCompanyId)throw new Error('The dated assignment company is unavailable.');
-    const organisation=await deriveCompanyOrganisationTx(tx,ctx,{companyId:nextCompanyId,asOf:p.effectiveDate});
-    nextBusinessUnitId=organisationBusinessUnit(organisation,await organisationManagedTx(tx),nextBusinessUnitId,p.companyId!==undefined&&p.companyId!==cur.companyId?null:cur.businessUnitId);
+    // A Contract conversion carries every existing assignment dimension unchanged; its exact native
+    // posting witness permits only the Full-time type. Organisation changes keep their own movement.
+    const contractPostingAssignment=contractPostingAssignmentAuthorityTx(tx,p as unknown as Record<string,unknown>);
+    if(!contractPostingAssignment){
+      const organisation=await deriveCompanyOrganisationTx(tx,ctx,{companyId:nextCompanyId,asOf:p.effectiveDate});
+      nextBusinessUnitId=organisationBusinessUnit(organisation,await organisationManagedTx(tx),nextBusinessUnitId,p.companyId!==undefined&&p.companyId!==cur.companyId?null:cur.businessUnitId);
+    }
     // 1001ff61 / 570e3311 — referential integrity + company scope for a newly-selected BU / Department /
     // Position: it must exist, be un-archived, and be a label this employment's company MAY use under the
     // Shared System Labels resolver (origin ∪ shared-in ∪ global, flag-gated — labelUsableByCompany; with
@@ -2434,7 +2440,7 @@ export async function setEmploymentAssignment(
         ...(p.movement ? { movement: p.movement } : {}),
       },
     });
-    await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId:nextCompanyId,asOf:p.effectiveDate,trigger:p.movement?'movement':'assignment'});
+    if(!contractPostingAssignment)await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId:nextCompanyId,asOf:p.effectiveDate,trigger:p.movement?'movement':'assignment'});
     return { assignmentId: next.id, changed: true as const };
   };
   return outerTx ? run(outerTx) : withTenant(ctx, run);
@@ -3216,7 +3222,7 @@ export async function setEmploymentInfo(
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const roles = ctx.roles ?? [];
-  if (!(roles.includes('super_admin') || roles.includes('hr_admin'))&&!probationDateAuthorityTx(outerTx,p as unknown as Record<string,unknown>)&&!contractDateAuthorityTx(outerTx,p)) {
+  if (!(roles.includes('super_admin') || roles.includes('hr_admin'))&&!probationDateAuthorityTx(outerTx,p as unknown as Record<string,unknown>)&&!contractDateAuthorityTx(outerTx,p)&&!contractPostingInfoAuthorityTx(outerTx,p as unknown as Record<string,unknown>)) {
     throw new Error('Only an admin can edit employment information.');
   }
 
@@ -3332,7 +3338,7 @@ export async function setEmploymentInfo(
     await lockAccessConfigurationTx(tx, ctx.tenantId);
     if ('resignationDate' in set || 'lastWorkingDate' in set) await lockAccessAdministratorSetTx(tx, ctx.tenantId);
     await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId], { configuration: true });
-    if(!probationDateAuthorityTx(tx,p as unknown as Record<string,unknown>)&&!contractDateAuthorityTx(tx,p))await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+    if(!probationDateAuthorityTx(tx,p as unknown as Record<string,unknown>)&&!contractDateAuthorityTx(tx,p)&&!contractPostingInfoAuthorityTx(tx,p as unknown as Record<string,unknown>))await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     // 1d58019a Step 2 — the exit-tag rule above, for one of the organisation's OWN Termination types. Its
     // code is not the string 'termination', so ask the catalogue (the custom row's behaviour). Only the
     // Movement writer's exit legs, which hold the exit-date authority, may carry an exit type's tag.
@@ -3390,7 +3396,7 @@ export async function setEmploymentInfo(
       .where(eq(employment.id, p.employmentId))
       .limit(1);
     if (!before) throw new Error('Employment not found');
-    if('contractNumber' in set&&set.contractNumber!==before.contractNumber){
+    if('contractNumber' in set&&set.contractNumber!==before.contractNumber&&!contractPostingInfoAuthorityTx(tx,p as unknown as Record<string,unknown>)){
       const [lock]=await tx.execute<{locked:boolean}>(sql`select app.contract_shared_number_locked(${p.employmentId}::uuid) as locked`);
       if(lock?.locked)throw new Error('A contract decision is in progress. Update the contract number through its approved Personnel posting.');
     }
@@ -3549,7 +3555,7 @@ export async function setEmploymentInfo(
       const contractDatesMove =
         ('contractStartDate' in set && (set.contractStartDate ?? null) !== (before.contractStartDate ?? null)) ||
         ('contractEndDate' in set && (set.contractEndDate ?? null) !== (before.contractEndDate ?? null));
-      if (contractDatesMove && !contractDateAuthorityTx(tx, p)) {
+      if (contractDatesMove && !contractDateAuthorityTx(tx, p) && !contractPostingInfoAuthorityTx(tx,p as unknown as Record<string,unknown>)) {
         const [open] = await tx.execute<{ open: boolean }>(
           sql`select app.contract_renewal_open(${p.employmentId}::uuid) as open`,
         );

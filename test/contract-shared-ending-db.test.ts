@@ -8,11 +8,12 @@ import {v9Setup,v9Workspace,v9SaveConfig} from '../packs/lifecycle/service';
 import {adoptContractSharedCase,previewContractSharedDecision,submitContractSharedDecision,contractSharedContext,contractPreviewJobHandler,contractAutomationJobHandler,readContractSharedLetter,actContractSharedLetter} from '../packs/contracts/service';
 import {recordContractSharedDecline,readContractSharedEndingActions} from '../core/contract-shared-ending';
 import {reservedSqlExecutor} from '../db/sql-executor';
-import {recordDocumentSigningActionTx} from '../packs/document-signing/service';
+import {recordDocumentSigningActionTx,replaceDocumentSignerTx} from '../packs/document-signing/service';
 import {saveAutomationDocumentTemplate,saveAutomationWorkflow,type AutomationWorkflow} from '../packs/automation/service';
 import {runBulkJobTick} from '../core/bulk-job-worker';
 import {readBulkJob} from '../core/bulk-job';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {pgSqlState} from '../lib/db-error';
 
 beforeAll(migrateTestDb);afterAll(closeAll);
 async function fixture(kind:'renew'|'end',twoDocuments=false){
@@ -61,6 +62,66 @@ async function review(f:Awaited<ReturnType<typeof fixture>>,id:string){
  for(const event of events)await finish(event.job,f.admin,'contract_automation');return after;
 }
 describe('shared Contract endings use native Offboarding without automatic Personnel termination',()=>{
+ it('accepts exactly one of an employee signature and simultaneous HR decline without a deadlock',async()=>{
+  const f=await fixture('renew');const userId=await createAppUser(f.b.tenantId,f.employee.personId,'employee');
+  const employee={...f.admin,userId,personId:f.employee.personId,roles:['employee'] as SessionContext['roles'],grants:undefined};
+  await submit(f,'renew');const [letter]=await letters(f);await review(f,letter.id);
+  const view=await readContractSharedLetter(employee,letter.id),flow=(await contractSharedContext(f.admin,f.caseId)).flow!;
+  const results=await Promise.allSettled([
+   actContractSharedLetter(employee,{id:letter.id,actionId:randomUUID(),stepId:view.pendingAction!.stepId,revision:view.contentRevision,hash:view.contentHash!,action:'signed',method:'typed',value:'Fictional ending subject',consent:true}),
+   recordContractSharedDecline(f.admin,{caseId:f.caseId,revision:flow.revision,reason:'career_opportunity',notes:'The employee told People BP.'}),
+  ]);
+  expect(results.filter(result=>result.status==='fulfilled')).toHaveLength(1);
+  const refused=results.find(result=>result.status==='rejected') as PromiseRejectedResult;expect(pgSqlState(refused.reason)).not.toBe('40P01');
+  const final=await readContractSharedLetter(f.admin,letter.id);expect(['released','declined']).toContain(final.state);
+  expect(final.history.filter(action=>action.action==='signed').length+(final.state==='declined'?1:0)).toBe(1);
+ },120_000);
+ it('requires the exact private native self-binding route, unchanged subject and one real employee account',async()=>{
+  const f=await fixture('renew');await submit(f,'renew');const [letter]=await letters(f);
+  await owner.db.execute(sql`update contract_shared_letter set purpose='email' where tenant_id=${f.b.tenantId}::uuid and id=${letter.id}::uuid`);await review(f,letter.id);
+  const userId=await createAppUser(f.b.tenantId,f.employee.personId,'employee');
+  const employee={...f.admin,userId,personId:f.employee.personId,roles:['employee'] as SessionContext['roles'],grants:undefined};
+  await owner.db.execute(sql`update employment set contract_number=4 where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`);
+  async function held(actorId:string){return owner.client.begin(async tx=>{await tx`select set_config('app.tenant_id',${f.b.tenantId},true),set_config('app.user_id',${actorId},true)`;const [row]=await tx<{held:boolean}[]>`select app.contract_shared_email_self_binding_held(${letter.id}::uuid) as held`;return row.held;});}
+  const [native]=await owner.db.execute<{id:string;route:{version:number;steps:Record<string,unknown>[]}}>(sql`select d.id,d.data->'route' as route from contract_shared_letter l join document_signing_document d on d.tenant_id=l.tenant_id and d.id=l.signing_document_id where l.tenant_id=${f.b.tenantId}::uuid and l.id=${letter.id}::uuid`);
+  const employeeStep=native.route.steps.find(step=>step.role==='employee')!;expect(employeeStep.holderId).toBeNull();
+  expect(await held(userId)).toBe(false);
+  await expect(withTenant(employee,tx=>replaceDocumentSignerTx(tx,employee,{id:native.id,stepId:String(employeeStep.id),holderId:userId,kind:'missing_holder',reason:'Attempt through generic replacement, without the private native policy'}))).rejects.toThrow();
+  const exact={...native.route,steps:native.route.steps.map(step=>step.role==='employee'&&step.holderId===null?{...step,holderId:userId,holderPersonId:f.employee.personId}:step)};
+  await owner.db.execute(sql`update contract_shared_letter set data=jsonb_set(data,'{signingPolicy,route}',${JSON.stringify(exact)}::jsonb) where tenant_id=${f.b.tenantId}::uuid and id=${letter.id}::uuid`);
+  expect(await held(userId)).toBe(true);expect(await held(f.admin.userId!)).toBe(false);
+  const changed={...exact,steps:exact.steps.map((step,n)=>n===0?{...step,label:'Changed another step'}:step)};
+  await owner.db.execute(sql`update contract_shared_letter set data=jsonb_set(data,'{signingPolicy,route}',${JSON.stringify(changed)}::jsonb) where tenant_id=${f.b.tenantId}::uuid and id=${letter.id}::uuid`);expect(await held(userId)).toBe(false);
+  await owner.db.execute(sql`update contract_shared_letter set data=jsonb_set(data,'{signingPolicy,route}',${JSON.stringify(exact)}::jsonb) where tenant_id=${f.b.tenantId}::uuid and id=${letter.id}::uuid`);
+  await createAppUser(f.b.tenantId,f.employee.personId,'employee');expect(await held(userId)).toBe(false);
+ },120_000);
+ it('keeps an email signing task independent after period posting and refuses a changed subject person',async()=>{
+  const f=await fixture('renew');
+  const userId=await createAppUser(f.b.tenantId,f.employee.personId,'employee');
+  const employee={...f.admin,userId,personId:f.employee.personId,roles:['employee'] as SessionContext['roles'],grants:undefined};
+  await submit(f,'renew');const [letter]=await letters(f);
+  // Owner fixture placement isolates signing eligibility from posting/asset creation. The actual commands below
+  // use verified actors and native signing checks; the asset owner's tests cover sendEmail activation itself.
+  await owner.db.execute(sql`update contract_shared_letter set purpose='email' where tenant_id=${f.b.tenantId}::uuid and id=${letter.id}::uuid`);
+  const before=await readContractSharedLetter(f.admin,letter.id);const oldName=before.body!.values['employee.name'],reviewStepId=before.pendingAction!.stepId,employeeStepId=before.layers.find(layer=>layer.kind==='sign')!.id;
+  await owner.db.execute(sql`update contract_shared_case set revision=revision+1,data=data||jsonb_build_object('revision',revision+1,'stage','renewed') where tenant_id=${f.b.tenantId}::uuid and case_id=${f.caseId}::uuid`);
+  await owner.db.execute(sql`update employment set contract_number=4,contract_start_date=(contract_end_date+1),contract_end_date=(contract_end_date+interval '6 months')::date where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`);
+  const [closed]=await owner.db.execute<{data:unknown;revision:number}>(sql`select data,revision from contract_shared_case where tenant_id=${f.b.tenantId}::uuid and case_id=${f.caseId}::uuid`);
+  const reviewView=await readContractSharedLetter(f.admin,letter.id);expect(reviewView.body!.values['employee.name']).toBe(oldName);
+  expect(reviewView.pendingAction).toMatchObject({stepId:reviewStepId,kind:'review'});
+  await actContractSharedLetter(f.admin,{id:letter.id,actionId:randomUUID(),stepId:reviewStepId,revision:reviewView.contentRevision,hash:reviewView.contentHash!,action:'reviewed'});
+  const signView=await readContractSharedLetter(employee,letter.id);expect(signView.pendingAction).toMatchObject({stepId:employeeStepId,kind:'sign'});expect(signView.layers.find(layer=>layer.id===employeeStepId)?.fulfilled).toBe(false);
+  const [replacement]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${f.b.tenantId}::uuid,'Different Personnel person, never merged into the old email task',${randomUUID()+'@ending.test'}) returning id`);
+  await owner.db.execute(sql`update employment set person_id=${replacement.id}::uuid where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`);
+  await expect(actContractSharedLetter(employee,{id:letter.id,actionId:randomUUID(),stepId:employeeStepId,revision:signView.contentRevision,hash:signView.contentHash!,action:'signed',method:'typed',value:'Fictional ending subject',consent:true})).rejects.toThrow();
+  const retained=await readContractSharedLetter(employee,letter.id);expect(retained.body!.values['employee.name']).toBe(oldName);expect(JSON.stringify(retained.body)).not.toContain('Different Personnel person');
+  await owner.db.execute(sql`update employment set person_id=${f.employee.personId}::uuid where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`);
+  const refreshed=await readContractSharedLetter(employee,letter.id);
+  await actContractSharedLetter(employee,{id:letter.id,actionId:randomUUID(),stepId:employeeStepId,revision:refreshed.contentRevision,hash:refreshed.contentHash!,action:'signed',method:'typed',value:'Fictional ending subject',consent:true});
+  const [after]=await owner.db.execute<{data:unknown;revision:number}>(sql`select data,revision from contract_shared_case where tenant_id=${f.b.tenantId}::uuid and case_id=${f.caseId}::uuid`);expect(after).toEqual(closed);
+  expect((await readContractSharedLetter(employee,letter.id)).state).toBe('released');
+  const outcomeEvents=await owner.db.execute(sql`select id from contract_shared_event where tenant_id=${f.b.tenantId}::uuid and case_id=${f.caseId}::uuid and data->>'letterId'=${letter.id} and trigger_event in('letterReleased','letterSentBack')`);expect(outcomeEvents).toHaveLength(0);
+ },120_000);
  it('locks the letter before its signing document for a direct canonical signer, without deadlocking a concurrent prepared writer',async()=>{
   const f=await fixture('renew');
   const userId=await createAppUser(f.b.tenantId,f.employee.personId,'employee');
@@ -76,6 +137,7 @@ describe('shared Contract endings use native Offboarding without automatic Perso
    const [pid]=await signer<{pid:number}[]>`select pg_backend_pid() as pid`;
    await blocker`select id from contract_shared_letter where tenant_id=${f.b.tenantId}::uuid and id=${letter.id}::uuid for update`;
    signing=recordDocumentSigningActionTx(reservedSqlExecutor(signer),employee,{id:native.id,actionId:randomUUID(),stepId:view.pendingAction!.stepId,revision:view.contentRevision,hash:view.contentHash!,action:'signed',comment:'Accepted exact reviewed terms',method:'typed',value:'Fictional ending subject',consent:true});
+   void signing.catch(()=>undefined); // Keep its original rejection for the awaited assertion below.
    // Observe the actual second backend waiting for the held letter, rather than guessing by elapsed time.
    let waiting=false;
    for(let attempt=0;attempt<200;attempt++){

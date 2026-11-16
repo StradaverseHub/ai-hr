@@ -6310,6 +6310,34 @@
       "breakpoints": true
     },
     {
+      "idx": 5214,
+      "version": "7",
+      "when": 1794841005814,
+      "tag": "5814_contract_shared_personnel_postings",
+      "breakpoints": true
+    },
+    {
+      "idx": 5215,
+      "version": "7",
+      "when": 1794841005815,
+      "tag": "5815_contract_posting_movement_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 5216,
+      "version": "7",
+      "when": 1794841005816,
+      "tag": "5816_contract_posting_projections",
+      "breakpoints": true
+    },
+    {
+      "idx": 5217,
+      "version": "7",
+      "when": 1794841005817,
+      "tag": "5817_contract_posting_receipts_and_tasks",
+      "breakpoints": true
+    },
+    {
       "idx": 5218,
       "version": "7",
       "when": 1794841005818,
@@ -6335,6 +6363,34 @@
       "version": "7",
       "when": 1794841005821,
       "tag": "5821_contract_shared_assigned_work",
+      "breakpoints": true
+    },
+    {
+      "idx": 5222,
+      "version": "7",
+      "when": 1794841005822,
+      "tag": "5822_contract_shared_ending_handoff",
+      "breakpoints": true
+    },
+    {
+      "idx": 5223,
+      "version": "7",
+      "when": 1794841005823,
+      "tag": "5823_contract_shared_decline",
+      "breakpoints": true
+    },
+    {
+      "idx": 5224,
+      "version": "7",
+      "when": 1794841005824,
+      "tag": "5824_contract_shared_offboarding",
+      "breakpoints": true
+    },
+    {
+      "idx": 5225,
+      "version": "7",
+      "when": 1794841005825,
+      "tag": "5825_contract_shared_email_document_lifecycle",
       "breakpoints": true
     },
     {
@@ -6398,6 +6454,27 @@
       "version": "7",
       "when": 1794841005835,
       "tag": "5835_contract_shared_review_wording",
+      "breakpoints": true
+    },
+    {
+      "idx": 5236,
+      "version": "7",
+      "when": 1794841005836,
+      "tag": "5836_contract_shared_ending_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 5237,
+      "version": "7",
+      "when": 1794841005837,
+      "tag": "5837_contract_shared_email_self_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 5238,
+      "version": "7",
+      "when": 1794841005838,
+      "tag": "5838_contract_shared_email_task_projection",
       "breakpoints": true
     },
     {
@@ -6503,6 +6580,20 @@
       "version": "7",
       "when": 1794841005910,
       "tag": "5910_contract_shared_work_page_null_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 5311,
+      "version": "7",
+      "when": 1794841005911,
+      "tag": "5911_contract_posting_canonical_assignment_receipt",
+      "breakpoints": true
+    },
+    {
+      "idx": 5312,
+      "version": "7",
+      "when": 1794841005912,
+      "tag": "5912_contract_posting_source_projection",
       "breakpoints": true
     }
   ]
