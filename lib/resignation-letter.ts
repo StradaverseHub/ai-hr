@@ -118,9 +118,7 @@ export function resignationLetterMergeWarnings(letter: Pick<ResignationLetter, '
   return [...unknown, ...(doubled ? ['Document merge fields use single braces. Use the document field picker to correct double-brace tokens.'] : [])];
 }
 function usedValues(letter: Pick<ResignationLetter, 'blocks' | 'mergeValues'> & {fields?: Field[]}): Record<string, string> {
-  const fieldIds = new Set(letter.blocks.filter(block => block.type === 'field').map(block => block.fieldId));
-  const sections = new Set(letter.blocks.filter(block => block.type === 'fields').map(block => block.section));
-  const fieldKeys = (letter.fields ?? []).filter(field => fieldIds.has(field.id) || sections.has(field.section)).map(field => field.pmKey ?? field.id);
+  const fieldKeys = visibleFields({...letter, fields: letter.fields ?? []}).map(field => field.pmKey ?? field.id);
   return Object.fromEntries(unique([...resignationLetterMergeKeys(letter.blocks), ...fieldKeys]).sort().map(key => [key, letter.mergeValues[key] || '—']));
 }
 function visibleFields(letter: Pick<ResignationLetter, 'blocks' | 'fields'>): Field[] {

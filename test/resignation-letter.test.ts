@@ -365,6 +365,26 @@ describe('Offboarding owner, send-back, recall and case editing rules', () => {
 });
 
 describe('Offboarding signing-value reconciliation', () => {
+  it('uses the same directly rendered and section-rendered fields for preview and signed-value coverage', () => {
+    const t=template(), field=(id:string,section:string,pmKey:string|null)=>({id,label:id,type:'text' as const,owner:'hr' as const,pmKey,section,required:false,sensitive:false,options:[],when:null});
+    t.versions[0].fields.push(field('direct','direct-section','employee.workPhone'),field('section-note','visible-section',null),field('hidden','hidden-section','employee.privateMemo'),field('unused-form-value','hidden-section',null));
+    t.versions[0].blocks.push({id:'direct-field',type:'field',fieldId:'direct',section:'direct-section',text:''},{id:'field-section',type:'fields',section:'visible-section',text:''});
+    const merge={...values(),'employee.workPhone':'111','section-note':'Alpha','employee.privateMemo':'Private amount','unused-form-value':'Unused secret'};
+    let letter=generate({template:t,values:merge}).letter;
+    const preview=resignationLetterPreview(letter,people.owner).document!;
+    expect(preview.fields.map(f=>f.id)).toEqual(['direct','section-note']);
+    expect(preview.values).toEqual({direct:'111','section-note':'Alpha'});
+    expect(preview.mergeValues).toMatchObject({'employee.workPhone':'111','section-note':'Alpha'});
+    expect(preview.mergeValues).not.toHaveProperty('employee.privateMemo');expect(preview.mergeValues).not.toHaveProperty('unused-form-value');
+    letter=complete(complete(letter,'owner').letter,'ceo').letter;
+    expect(letter.signedValues['ceo-sign']).toMatchObject({'employee.workPhone':'111','section-note':'Alpha'});
+    expect(letter.signedValues['ceo-sign']).not.toHaveProperty('employee.privateMemo');expect(letter.signedValues['ceo-sign']).not.toHaveProperty('unused-form-value');
+    const hidden=reconcileResignationLetter(letter,{...merge,'employee.privateMemo':'Changed hidden fact','unused-form-value':'Changed unused input'},deps);
+    expect(hidden.letter.revision).toBe(letter.revision);expect(hidden.letter.signedValues['ceo-sign']).toEqual(letter.signedValues['ceo-sign']);
+    const visible=reconcileResignationLetter(hidden.letter,{...hidden.letter.mergeValues,'section-note':'Beta'},deps);
+    expect(visible.letter.revision).toBe(letter.revision+1);expect(visible.letter.signedValues).not.toHaveProperty('ceo-sign');
+    expect(visible.events.find(event=>event.type==='signAgain')?.changes).toContainEqual(expect.objectContaining({field:'section-note',before:'Alpha',after:'Beta'}));
+  });
   it('invalidates a signature only for a changed value the letter actually uses and preserves original evidence', () => {
     const letter = withEmployeeOffer(), signature = letter.history.find(action => action.action === 'signed')!;
     const changed = reconcileResignationLetter(letter, {...values(), 'resignation.lastDay': '2027-01-08'}, deps);
