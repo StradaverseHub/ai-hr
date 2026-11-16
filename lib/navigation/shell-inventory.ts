@@ -64,6 +64,8 @@ export type CollapsibleGroupItem = {
   tour?: string;
   activeMatch?: 'children';
   defaultHref?: string;
+  /** Breadcrumb-only landing; must be one of the visible children. Does not change the menu trigger. */
+  breadcrumbHref?: string;
   collapsible: true;
   labelKey: string;
   icon: LucideIcon;
@@ -494,7 +496,7 @@ export const ADDITIONAL_ROWS: ChildItem[] = [
     {href:'/me/tp3',labelKey:'myTp3',icon:Receipt},
     {href:'/me/ea',labelKey:'myEa',icon:Receipt,ownedSubpaths:['/me/ea']},
     {href:'/admin/claims/reimbursements',labelKey:'reimbursementsDue',icon:Receipt,adminOnly:true},
-    {href:'/reports',labelKey:'reports',icon:FileBarChart,adminOnly:true,exactHref:true},
+    {href:'/reports',labelKey:'reports',icon:FileBarChart,adminOnly:true,exactHref:true,ownedSubpaths:['/reports/employee-master','/reports/builder']},
   ];
 
 /** Shared scoped lifecycle declaration owner. Metadata names existing fact gates, never new grants. */

@@ -106,7 +106,8 @@ describe('cross-company approvers within the Organization Code',()=>{
   const one=await actor('Fictional archived-line applicant'),two=await actor('Fictional double-line applicant');
   await reports(one,archivedBoss);await reports(two,doubleBoss);
   const saved=await saveAttendanceWorkflow(adminCtx(base),workflow([one,two],[level([superior(1)])]));
-  for(const applicant of [one,two])expect(await ownAttendanceSubmissionRoute(applicant.ctx,applicant.employmentId,'irregularity')).toEqual({available:false,reason:'unresolved'});
+  // 237c31e6: the refusal names the configured level that cannot be resolved, for the warning on that level.
+  for(const applicant of [one,two])expect(await ownAttendanceSubmissionRoute(applicant.ctx,applicant.employmentId,'irregularity')).toEqual({available:false,reason:'unresolved',problem:{code:expect.any(String),levelIndex:0},levelCount:1});
   expect(await generateAttendanceWorkflowPreview(adminCtx(base),saved.lineageId,1,[base.companyId])).toMatchObject({warningCount:2});
   const stored=(await getAttendanceWorkflowPreview(adminCtx(base),saved.lineageId,[base.companyId]))!;
   expect(Object.fromEntries(stored.warnings.map(w=>[w.employmentId,w.superiorProblem]))).toEqual({[one.employmentId]:'no_login',[two.employmentId]:'multiple_logins'});

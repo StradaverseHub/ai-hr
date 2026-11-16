@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { resolveBreadcrumbTrail } from '@/lib/navigation/breadcrumbs';
 import { useLocale, useTranslations } from 'next-intl';
 import { useIsMonolith, useUiTheme } from '@/components/ui-theme-context';
 import { useNavIndex } from '@/components/nav-index-context';
@@ -19,40 +20,25 @@ export function ShellRoutePath() {
   const monolith = useIsMonolith();
   const atelier = useUiTheme() === 'atelier';
   const pathname = usePathname();
-  const { active } = useNavIndex();
+  const search = useSearchParams().toString();
+  const { active, entries } = useNavIndex();
   const tTop = useTranslations('topbar');
-  // Atelier round 1 — a breadcrumb from the rail's own current row (components/nav-index-context.tsx):
-  // section, then module, then page. Nothing when the page is not a rail destination (a record detail
-  // reached from a list keeps the list's row lit, so this still names where you are).
-  // The module and, on a record below a list, the list itself are links back up the trail; the section is
-  // a rail heading with no page of its own, so it stays text. Every link is a rail destination this viewer
-  // already sees, and each still enforces its own route guard.
-  const activePath = active?.href.split('?')[0] ?? null;
+  const t = useTranslations();
   const rewards = pathname === '/rewards' || pathname?.startsWith('/rewards/') || pathname?.startsWith('/admin/rewards/');
   const showBreadcrumb = atelier || rewards;
-  const onSharedPlans = activePath === '/admin/rewards/shared' && pathname === '/admin/rewards/plans';
-  const below = showBreadcrumb && !!activePath && pathname !== activePath && !onSharedPlans;
-  const pageTitle = usePageTitle(below ? pathname : null);
-  if (showBreadcrumb && active) {
-    const parentLink = active.parentHref && active.parentHref.split('?')[0] !== pathname ? active.parentHref : null;
+  const trail = resolveBreadcrumbTrail(pathname, search, entries, active, key => t(key));
+  const pageTitle = usePageTitle(showBreadcrumb && trail?.detail ? pathname + '?' + search : null);
+  if (showBreadcrumb && trail) {
+    const parts = trail.detail ? [...trail.parts, {label:pageTitle ?? tTop('details')}] : trail.parts;
     return (
       <nav aria-label={tTop('breadcrumb')} className={atelier ? "atelier-crumb" : "flex min-w-0 shrink items-center gap-1 overflow-hidden whitespace-nowrap"} data-shell-path>
-        {active.section && <span className="contents">{active.section}<i aria-hidden className="not-italic">/</i></span>}
-        {active.parent && (
-          <span className="contents">
-            {parentLink ? <Link href={parentLink}>{active.parent}</Link> : active.parent}
-            <i aria-hidden>/</i>
-          </span>
-        )}
-        {below ? (
-          <>
-            <Link href={active.href}>{active.label}</Link>
-            <i aria-hidden>/</i>
-            <b className="min-w-0 truncate" aria-current="page">{pageTitle ?? tTop('details')}</b>
-          </>
-        ) : (
-          <b className="min-w-0 truncate" aria-current="page">{active.label}</b>
-        )}
+        {parts.map((part,index) => <Fragment key={index}>
+          {index === parts.length - 1
+            ? <b className="min-w-0 truncate" aria-current="page">{part.label}</b>
+            : part.href
+              ? <><Link href={part.href}>{part.label}</Link><i aria-hidden>/</i></>
+              : <span className="contents">{part.label}<i aria-hidden>/</i></span>}
+        </Fragment>)}
       </nav>
     );
   }

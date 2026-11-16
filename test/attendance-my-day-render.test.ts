@@ -32,8 +32,12 @@ beforeEach(() => {
   state.selected.mockResolvedValue([{employmentId:'8cfa58c2-dd92-4eb6-8f8c-ab19406115fd',personName:'Own second',company:'Fictional second employer',employeeCode:'SECOND'}]);
   state.own.mockResolvedValue({ employmentId: 'manager-own', name: 'Own day' });
   state.day.mockResolvedValue(dayRecord);
+  // 237c31e6: the route carries every frozen level and the approvers' Employee IDs for the progress panel.
   state.route.mockReset().mockResolvedValue({ available: true, fingerprint: 'a'.repeat(64),
-    firstApprovers: [{ kind: 'direct_manager', name: 'Fictional manager' }] });
+    firstApprovers: [{ kind: 'direct_manager', name: 'Fictional manager' }],
+    stages: [{ name: 'Level 1', approvers: [{ kind: 'direct_manager', employmentId: 'f0000000-0000-4000-8000-000000000001', name: 'Fictional manager' }] },
+      { name: 'Level 2', approvers: [{ kind: 'hr_admin', employmentId: null, name: 'HR administrators' }] }],
+    skippedLevels: [], approverCodes: { 'f0000000-0000-4000-8000-000000000001': 'FX-MGR-01' } });
 });
 const render = async (extra = {}) => {
   const page = await Page({ params: Promise.resolve({ date: '2025-06-04' }), searchParams: Promise.resolve({ from: '2025-06-01', to: '2025-06-30', ...extra }) });
@@ -74,7 +78,9 @@ describe('employee day render', () => {
     expect(state.day).toHaveBeenCalledExactlyOnceWith(expect.anything(), '8cfa58c2-dd92-4eb6-8f8c-ab19406115fd', '2025-06-04');
     expect(state.own).not.toHaveBeenCalled();
     expect(state.route).toHaveBeenCalledExactlyOnceWith(expect.anything(), '8cfa58c2-dd92-4eb6-8f8c-ab19406115fd', 'irregularity');
-    expect(html).toContain('Fictional manager');
+    expect(html).toContain('Fictional manager · FX-MGR-01');
+    expect(html).toContain('Level 1 · Pending Approval');
+    expect(html).toContain('Level 2 · Waiting for Previous Level Approval');
     expect(html).toContain('name="workflowFingerprint" value="' + 'a'.repeat(64) + '"');
     expect(html).toContain('Fictional second employer');expect(html).toContain('SECOND');
     expect(html).toContain('/?employmentId=8cfa58c2-dd92-4eb6-8f8c-ab19406115fd');expect(html).toContain('name="employmentId" value="8cfa58c2-dd92-4eb6-8f8c-ab19406115fd"');

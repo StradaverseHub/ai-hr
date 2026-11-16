@@ -55,6 +55,36 @@ to these tables is traceable to the exact runs it affects.
     against the old 1,007/1,099, and the bonus run contributes 176/192. **This line has not been
     re-verified against an LHDN/KWSP source document since the change — it records the customer's
     approved reading, and the ✅ below refers to the MTD exhibits, not to this bullet.**
+  - **EPF — Part A bonus note (item 7f5cc653, 2026-11-16). ⚠️ PRIMARY WORDING PENDING HUMAN CONFIRMATION.**
+    The combined reading above is now limited by KWSP's Third Schedule Part A bonus note: *"Where the
+    employer pays bonus to an employee who receives monthly wages of RM5,000.00 and below, and upon
+    receiving the said bonus renders the wages received for that month to exceed RM5,000.00, the
+    employer's contribution shall be calculated at the rate of 13% of the amount of wages for the month."*
+    Rounding: *"The total contribution which includes cents shall be rounded to the next ringgit."*
+    Encoded in `partABonusRetainedEmployer` (`localization/my/payroll.ts`): employer = 13% of the month's
+    actual EPF wages (normal + EPF Bonus 2012) in integer cents, rounded UP to RM1 — e.g. RM4,700 +
+    RM1,786.83 = RM6,486.83 → RM844, not the RM780 12% row. The employee share stays on the Part A row for
+    the month's total (RM715), because the note names only the employer (an inference; medium-high
+    confidence). Restated figures: ADR-0024 addendum 2026-11-16 (§7 row 2: RM1,950).
+    - **Status: secondary sources only.** The note text above is as reproduced verbatim by independent
+      payroll publishers, retrieved 2026-11-16:
+      Talenox, "EPF contribution rate" <https://help.talenox.com/en/articles/2488717-epf-contribution-rate>;
+      payroll.my, footnote 6 <https://payroll.my/>.
+      Worked example (13% of total earnings, "not based on Jadual 3"): Worksy
+      <https://worksy.freshdesk.com/support/solutions/articles/63000277127>; see also
+      <https://worksy.freshdesk.com/support/solutions/articles/63000277020-epf-contribution-calculation->,
+      HReasily <https://support.hreasilygroup.com/en/support/solutions/articles/72000647322> and SQL Payroll
+      <https://docs.sql.com.my/sqlpay/miscellaneous/epf/overview>.
+    - **PENDING HUMAN CONFIRMATION (release gate).** kwsp.gov.my returned HTTP 403 to every automated
+      fetch (including `https://www.kwsp.gov.my/documents/d/guest/jadual-ketiga-bi-pdf-1`), so the primary
+      Jadual Ketiga text was NOT read. A person must open the current Jadual Ketiga (Worksy cites
+      "jadual-ketiga-bi-1-oct-2025", p.12) and record here the exact note wording, the page and the date
+      checked. Until then this bullet is NOT verified.
+    - **Unknowns (readings, not verified text):** (1) a month above RM20,000 with normal wages at or below
+      RM5,000 — the note sets no upper limit, so 13% of the total is applied (previously 12%); (2) Part C
+      (PR 60+ elected) — a parallel 6.5% note is reported only in a search snippet; the elected path keeps
+      its existing handling and Auto is unchanged; (3) "monthly wages" is taken as the month's EPF normal
+      wage stream (after EPF ticks and unpaid-leave deductions), excluding EPF Bonus 2012.
   - **SOCSO + EIS:** annual bonus is **excluded** (not "wages" for PERKESO).
 - **✅ Verified against the spec's own Exhibit 5 worked example** (golden tests): Jan RM110.00 →
   Feb RM110.00 (accumulated) → Mar RM108.20 (TP1 RM300) → Apr bonus RM8,250: normal 106.20 +

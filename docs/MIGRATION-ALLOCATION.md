@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Bounded Movement payroll windows — 17 November 2026 MYT (unapplied candidate)
 
 Reserved 5778, idx 5178, when 1793330005478. SHA256 `789c93999e156c08f6cfac5a79f5f58071cd1f834778454238146809e1b55106`.
@@ -55,6 +56,47 @@ Fresh main/alpha and staging's migration ledger were checked on 16 November; the
 1793330005466. Git-discovered peer worktrees already claimed 5767, 5770 and 5771, so this candidate
 uses 5772. Production's watermark was not queried. Recheck both installed ledgers and peer claims
 before integration/admission; this claim grants no installation authority.
+=======
+<!-- 5771_assistant_legacy_index_shared_access -->
+# Assistant metadata discovery shares Access — 16 November 2026 MYT (source allocation; installation held)
+
+Branch `codex/architecture-performance-review-index-20261116` allocates `5771_assistant_legacy_index_shared_access` at idx 5171 /
+when 1793330005471, above main/alpha's 5766 and the freshly read staging watermark (881 entries,
+1793330005466). SHA256 `433dfd7549b496b034bdeaa2c06484b700b5dd5647213106d68487f0b485c7c0`. The installed function is owned by ai_hr_owner.
+Only `app.assistant_legacy_reviews_index(text)` changes: its advisory Access acquisition becomes shared.
+Principal freshness, current-person binding, allowed kinds, history windows, deterministic ordering, 25-row cap,
+owner, grants and every command owner remain unchanged. Applied SQL is untouched.
+
+This allocation is not installation authority. After the owner connected the production VPN on 16 November,
+a restricted-owner READ ONLY aggregate verified production at 853 entries / maximum 1793330005395.
+The new when is above both fresh installation maxima. Recheck peer source allocations and both installed ledgers
+at release admission; renumber this unapplied source if a higher watermark or conflicting claim appears.
+Restricted-owner and native concurrency/equivalence checks are required before release.
+
+Owner direction: merge Irwin f0443eaf27d3584f55b6a2e7d48558bd553d4149 and allocate after its 5770 (idx 5170 / when 1793330005470). Stop before release and wait for owner approval; Claude releases first. SQL bytes are unchanged by this source-only renumbering.
+
+<!-- 5770_attendance_workflow_approver_codes -->
+# Board 237c31e6: approver Employee ID readers for Attendance approval progress — 16 November 2026 MYT (unapplied, re-allocated as 5770)
+
+Branch `claude/fb-237c31e6-approval-progress-20261116` first drafted `5697_attendance_workflow_approver_codes` at idx 5097 /
+when 1793330005397. Before it was applied anywhere, the Probation Confirmation release installed 5740–5766 on staging
+(installed watermark when 1793330005466, ledger 881 rows), so a 5697 at when …5397 would sit below the watermark and
+could be silently skipped. It is therefore re-allocated, on the combined release branch
+`claude/release-combined-irwin-20261116-r2`, as **`5770_attendance_workflow_approver_codes`, idx 5170 / when 1793330005470**
+(the shared offset tag T, idx T − 600, when 1793330004800 + (T − 5100)), after `5766` and leaving 5767–5769 for Probation
+repairs. A scan of the 400 most recently active origin heads on 16 November 2026 found no claim above 5766 other than the
+Probation release's own. The SQL bytes are unchanged; the file's header comment still records its draft number:
+SHA256 `f71cf33a9ced5f4e1007de02388a858bd31c64006a422352193bd7c14e367ec0`.
+
+It adds two SECURITY DEFINER readers with EXECUTE for `ai_hr_app` only: `app.attendance_workflow_approver_codes(uuid[])`
+(codes of the identities frozen on the requests the caller can already read, the attendance_workflow_request SELECT
+predicates) and `app.attendance_workflow_route_approver_codes(uuid,uuid)` (codes of the route the existing resolver
+produces for a subject and a current template, for the subject, the company's HR or a reporting-line superior). No table,
+policy, existing function or row changes. The approved upgrade tail pin and hash (`test/helpers/approved-upgrade.ts`,
+`test/tenant-company-fk-upgrade.test.ts`) carry the tag. Recheck the installed watermark and peer claims at admission;
+this allocation grants no installation authority.
+
+>>>>>>> origin/main
 
 <!-- 5766_probation_reshape_company_in_use -->
 # Company deletion sees the Probation reshape's owner-only referrers — 16 November 2026 MYT (unapplied, allocated)

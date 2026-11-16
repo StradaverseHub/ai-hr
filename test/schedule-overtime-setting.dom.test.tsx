@@ -3,7 +3,7 @@
  * all six locales rendering without a missing or failing message. */
 import React from 'react';
 import {afterEach,describe,expect,it} from 'vitest';
-import {cleanup,fireEvent,render,screen} from '@testing-library/react';
+import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
@@ -42,7 +42,8 @@ describe('Overtime Setting section',()=>{
   expect(names.some(name=>/^createDayKind_|^otRows$/.test(name))).toBe(false);
   const steps=[...form.querySelectorAll<HTMLOptionElement>('select[name="otRoundingStep"] option')].map(o=>o.value);
   expect(steps).toEqual(['15','30','45']);
-  expect([...form.querySelectorAll<HTMLOptionElement>('select[name="otRoundingMode"] option')].map(o=>o.value)).toEqual(['up','down']);
+  // 87bd9656 — None is offered first, then Round Up and Round Down.
+  expect([...form.querySelectorAll<HTMLOptionElement>('select[name="otRoundingMode"] option')].map(o=>o.value)).toEqual(['none','up','down']);
   expect([...form.querySelectorAll<HTMLOptionElement>('select[name="otApproval"] option')].map(o=>o.value)).toEqual(['manual','auto']);
   expect((form.querySelector('input[name="otEffectiveFrom"]') as HTMLInputElement).min).toBe('2030-01-02');
  });
@@ -107,5 +108,76 @@ describe('Overtime Setting section',()=>{
   expect(screen.getAllByText(local.showLatenessException).length).toBeGreaterThan(0);
   expect(screen.getAllByText(local.autoMethod).length).toBeGreaterThan(0);
   if(locale!=='en')expect(local.title).not.toBe(en.scheduleOvertimeSetting.title);
+  // 87bd9656 — the three boxed sections, None and the backdate day count render in every locale.
+  fireEvent.change(form.querySelector('select[name="otRoundingMode"]')!,{target:{value:'none'}});
+  fireEvent.click(form.querySelector('input[name="otBackdateControl"]')!);
+  expect(errors).toEqual([]);
+  for(const label of [local.approvalTitle,local.roundingTitle,local.backdateTitle,local.backdateControl,local.backdateDays,local.roundingExampleTitle,local.roundNone])
+   expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+  if(locale!=='en')for(const key of ['backdateTitle','roundNone','backdateRefused','roundingExampleFinal'] as const)expect(local[key]).not.toBe(en.scheduleOvertimeSetting[key]);
+ });
+});
+
+describe('87bd9656 · Overtime Rounding and Overtime Backdate Control',()=>{
+ const sections=(form:HTMLFormElement)=>[...form.querySelectorAll<HTMLElement>('section[data-ot-section]')].map(row=>row.dataset.otSection);
+ it('groups Approval Method, Rounding and Backdate Control into their own labelled sections',()=>{
+  const {form}=show();
+  expect(sections(form)).toEqual(['approval','rounding','backdate']);
+  expect(screen.getByRole('region',{name:words.approvalTitle})).toContainElement(form.querySelector<HTMLElement>('select[name="otApproval"]'));
+  expect(screen.getByRole('region',{name:words.roundingTitle})).toContainElement(form.querySelector<HTMLElement>('select[name="otRoundingStep"]'));
+  expect(screen.getByRole('region',{name:words.backdateTitle})).toContainElement(form.querySelector<HTMLElement>('input[name="otBackdateControl"]'));
+ });
+ it('greys out Overtime Rounding to Minute for None and does not post it; choosing Round Up restores the interval',()=>{
+  const {form}=show();
+  const step=()=>form.querySelector('select[name="otRoundingStep"]') as HTMLSelectElement;
+  fireEvent.change(step(),{target:{value:'30'}});
+  fireEvent.change(form.querySelector('select[name="otRoundingMode"]')!,{target:{value:'none'}});
+  expect(step().disabled).toBe(true);
+  expect(new FormData(form).get('otRoundingMode')).toBe('none');
+  expect(new FormData(form).get('otRoundingStep'),'a disabled interval is not posted').toBeNull();
+  expect(screen.getByText(words.roundingNoneHint)).toBeVisible();
+  fireEvent.change(form.querySelector('select[name="otRoundingMode"]')!,{target:{value:'up'}});
+  expect(step().disabled).toBe(false);
+  expect(new FormData(form).get('otRoundingStep')).toBe('30');
+ });
+ it('shows the worked example: 31 and 46 minutes under None, Round Up 15 and Round Down 15',()=>{
+  const {form}=show();
+  const rows=[...form.querySelectorAll('[data-ot-rounding-example] tbody tr')].map(row=>[...row.querySelectorAll('td')].map(cell=>cell.textContent));
+  const m=(n:number)=>words.minutesValue.replace('{n}',String(n));
+  expect(rows).toEqual([
+   [m(31),words.roundNone,words.notApplicable,m(31)],[m(31),words.roundUp,m(15),m(45)],[m(31),words.roundDown,m(15),m(30)],
+   [m(46),words.roundNone,words.notApplicable,m(46)],[m(46),words.roundUp,m(15),m(60)],[m(46),words.roundDown,m(15),m(45)],
+  ]);
+ });
+ it('shows Allow Backdate Application Within (Days) only when the control is ticked, as a required whole-number field',()=>{
+  const {form}=show();
+  expect(form.querySelector('input[name="otBackdateDays"]')).toBeNull();
+  fireEvent.click(form.querySelector('input[name="otBackdateControl"]')!);
+  const days=form.querySelector('input[name="otBackdateDays"]') as HTMLInputElement;
+  expect(days).not.toBeNull();
+  expect({type:days.type,required:days.required,min:days.min,max:days.max,step:days.step}).toEqual({type:'number',required:true,min:'1',max:'365',step:'1'});
+  fireEvent.change(days,{target:{value:'3'}});
+  expect(new FormData(form).get('otBackdateControl')).toBe('on');
+  expect(new FormData(form).get('otBackdateDays')).toBe('3');
+  fireEvent.click(form.querySelector('input[name="otBackdateControl"]')!);
+  expect(form.querySelector('input[name="otBackdateDays"]'),'hidden again, and not posted').toBeNull();
+  expect(new FormData(form).get('otBackdateDays')).toBeNull();
+ });
+ it('reopens None and the saved backdate days exactly, and shows them read-only on View',()=>{
+  const initial={...defaultScheduleOvertimeSetting(null),roundingMode:'none' as const,roundingStep:null,backdateControl:true,backdateDays:3};
+  const {form}=show(props({initial,saved:{effectiveFrom:'2030-01-01',differingCount:0,unsupportedRounding:false}}));
+  expect((form.querySelector('select[name="otRoundingMode"]') as HTMLSelectElement).value).toBe('none');
+  expect((form.querySelector('select[name="otRoundingStep"]') as HTMLSelectElement).disabled).toBe(true);
+  expect((form.querySelector('input[name="otBackdateControl"]') as HTMLInputElement).checked).toBe(true);
+  expect((form.querySelector('input[name="otBackdateDays"]') as HTMLInputElement).value).toBe('3');
+  cleanup();
+  const view=show(props({initial,editing:false}));
+  expect(view.form.querySelectorAll('input,select')).toHaveLength(0);
+  const rounding=screen.getByRole('region',{name:words.roundingTitle});
+  expect(within(rounding).getAllByText(words.roundNone).length).toBeGreaterThan(1);
+  expect(within(rounding).getAllByText(words.notApplicable).length).toBeGreaterThan(0);
+  const backdate=screen.getByRole('region',{name:words.backdateTitle});
+  expect(within(backdate).getByText(words.on)).toBeVisible();
+  expect(within(backdate).getByText('3 days')).toBeVisible();
  });
 });

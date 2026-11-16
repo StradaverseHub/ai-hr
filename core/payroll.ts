@@ -12474,6 +12474,20 @@ export function batchHeader(ctx: SessionContext, batchId: string) {
   });
 }
 
+/** Confirmation screens need the exact visible joined count, without hydrating individual money rows.
+ * Keep the effective-history owner, module gate and joins identical to batchDetail. */
+export function batchSummary(ctx: SessionContext, batchId: string) {
+  return withTenant(ctx, async tx => {
+    const batch = await readBatchHeaderTx(tx, batchId);
+    if (!batch) return null;
+    const [row] = await tx.select({slipCount: sql<number>`count(*)::int`}).from(payslip)
+      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(eq(payslip.batchId, batchId));
+    return {batch, slipCount: row.slipCount};
+  });
+}
+
 export function batchDetail(ctx: SessionContext, batchId: string) {
   return withTenant(ctx, async (tx) => {
     const batch = await readBatchHeaderTx(tx, batchId);
