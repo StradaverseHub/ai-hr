@@ -15,7 +15,7 @@ import {ContractManagementError} from '../lib/contract-management-model';
 import {pgSqlState} from '../lib/db-error';
 const mappingSchema=z.object({companyId:z.uuid(),fallbackGroupId:z.string().min(1).max(200),postingApproverGroupId:z.string().min(1).max(200),bpRoutingId:z.uuid(),ceoRoutingId:z.uuid()}).strict();
 const jobInput=z.object({companyId:z.uuid(),mapping:mappingSchema}).strict().refine(input=>input.companyId===input.mapping.companyId);
-export type ContractSharedSetup={installed:boolean;jobId:string|null;canInstall:boolean;missing:string[];groups:{id:string;name:string}[];routings:{id:string;name:string}[]};
+export type ContractSharedSetup={installed:boolean;v9Ready:boolean;jobId:string|null;canInstall:boolean;missing:string[];groups:{id:string;name:string}[];routings:{id:string;name:string}[]};
 export function contractSharedSetup(ctx:SessionContext,companyId:string):Promise<ContractSharedSetup>{
  z.uuid().parse(companyId);
  return withScopedLifecycleTenant(ctx,async tx=>{

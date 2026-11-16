@@ -4,8 +4,9 @@ import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {closeAll,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppUser,owner,type Base} from './harness';
 import {hireEmployee,setEmploymentInfo} from '../core/org';
+import {setCompensation} from '../core/comp';
 import {v9Setup,v9Workspace,v9SaveConfig} from '../packs/lifecycle/service';
-import {contractSharedTracker,openContractSharedPeriod,contractSharedContext,saveContractSharedRole,saveContractSharedMember} from '../packs/contracts/service';
+import {contractSharedTracker,contractSharedPeriodContext,openContractSharedPeriod,contractSharedContext,saveContractSharedRole,saveContractSharedMember} from '../packs/contracts/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
 
 let b:Base,admin:SessionContext;
@@ -31,6 +32,20 @@ async function fixedTerm(name='Fictional current fixed term',manager?:string){
  return employee;
 }
 describe('Personnel-based Contract tracker and native case opening',()=>{
+ it('lets a View-only reader inspect a virtual period without creating records or exposing current Payroll amounts',async()=>{
+  const employee=await fixedTerm(),viewer=await ordinary(),outsider=await ordinary('Fictional unassigned Contract user');await grant(viewer,['view']);
+  await setCompensation(admin,{employmentId:employee.employmentId,basicSalary:4976.21,effectiveFrom:start});
+  const snapshot=async()=>[...await owner.db.execute<{counts:number[]}>(sql`select array[(select count(*)::int from contract_case where tenant_id=${b.tenantId}::uuid),(select count(*)::int from contract_shared_event where tenant_id=${b.tenantId}::uuid),(select count(*)::int from bulk_job where tenant_id=${b.tenantId}::uuid),(select count(*)::int from automation_email_delivery where tenant_id=${b.tenantId}::uuid)] as counts`)][0].counts;
+  const before=await snapshot(),period=await contractSharedPeriodContext(viewer,employee.employmentId);
+  expect(period).toMatchObject({employmentId:employee.employmentId,companyId:b.companyId,canOpen:false,existingCaseId:null,sourceIssue:null});expect(period.permissions).toEqual(['view']);
+  expect(period.source.contractNumber).toBe(4);expect(period.source).not.toHaveProperty('salaryCents');expect(period.source).not.toHaveProperty('allowanceCents');expect(period.source).not.toHaveProperty('compensationId');
+  expect(JSON.stringify(period)).not.toMatch(/497621|4976\.21/);expect(await snapshot()).toEqual(before);
+  await expect(contractSharedPeriodContext(outsider,employee.employmentId)).rejects.toMatchObject({code:'forbidden'});
+  const payRole=randomUUID();await saveContractSharedRole(admin,{id:payRole,name:'Current-pay fixture',permissions:['seePay'],expectedRevision:0});
+  await saveContractSharedMember(admin,{id:randomUUID(),roleId:payRole,userId:viewer.userId!,companyId:b.companyId,businessGroupId:null,validFrom:start,validTo:null,revoked:false});
+  expect((await contractSharedPeriodContext(viewer,employee.employmentId)).source.salaryCents).toBe('497621');
+  expect(await snapshot()).toEqual(before);
+ });
  it('shows an eligible Personnel period before any case exists, preserves unknown numbers, and opens one real fixed-term case idempotently',async()=>{
   const employee=await fixedTerm(),unknown=await fixedTerm('Fictional unverified historical ordinal');
   await owner.db.execute(sql`update employment set contract_number=null where tenant_id=${b.tenantId}::uuid and id=${unknown.employmentId}::uuid`);

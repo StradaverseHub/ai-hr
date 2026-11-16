@@ -31,6 +31,11 @@ async function finish(id:string){
  throw new Error('Setup did not finish');
 }
 describe('Mapped Contract starting setup on the existing human kernel',()=>{
+ it('does not treat canonical shared groups alone as an initialized Contract projection',async()=>{
+  await owner.db.execute(sql`delete from lc_v9_config where tenant_id=${b.tenantId}::uuid`);
+  const state=await contractSharedSetup(admin,b.companyId);expect(state.v9Ready).toBe(false);expect(state.installed).toBe(false);expect(state.missing.join(' ')).toMatch(/authorized On\/Off Boarding administrator/);
+  await expect(startContractSharedSetup(admin,mapping)).rejects.toMatchObject({code:'forbidden'});
+ });
  it('requires real populated groups and real published routings, and preserves ordinary-user denial',async()=>{
   expect((await contractSharedSetup(admin,b.companyId)).installed).toBe(false);
   await expect(startContractSharedSetup(admin,{...mapping,fallbackGroupId:'invented-group'})).rejects.toMatchObject({code:'forbidden'});
