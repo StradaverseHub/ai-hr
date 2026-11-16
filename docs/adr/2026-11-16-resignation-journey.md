@@ -1,0 +1,44 @@
+# Resignation journey on shared Configuration
+
+Status: accepted direction, 16 November 2026. Implementation and staging acceptance require their own evidence.
+
+## Decisions
+
+The owner reviewed the supplied resignation HTML and AIHR merge mockups and authorized implementation and staging. Configuration is shared: reuse Workflows, Templates (documents and emails), Assignment groups and named routing rules. Keep operational Leavers, checklists and source-filtered Personnel postings in Offboarding. Existing module and company permissions remain authoritative.
+
+The owner explicitly chose **termination at completed clearance**, following the handoff. For new managed resignation journeys, accepting a resignation starts the configured acceptance-letter and Offboarding workflow; it does not call the old acceptance/termination command or freeze leave. Completed clearance raises one Termination posting. Authorized approval applies the existing employment movement and required leave/final-pay consequences atomically. There is one writer of employment truth, and a repeated clearance or posting approval cannot repeat it.
+
+Previously accepted requests and pre-cutover in-flight requests keep their recorded outcome and owner. Do not replay acceptance, synthesize signed letters or move historical termination dates. Managed and legacy paths must be explicit and must not both present an actionable decision for the same request.
+
+The handoff wins where its text and HTML differ: the decision form includes an editable agreed last working day and displays monthly salary cost change as well as the percentage. Replacement recruitment integration must use the existing authorized requisition service rather than a fabricated successful action.
+
+## Owners and contracts
+
+- Personnel owns approved employment, position, grade and basic salary through its current effective-dated movement writer. A retention offer contains proposed values only.
+- Lifecycle owns the resignation journey, keyed by the existing resignation request UUID, with a new readable case number, history, optimistic revision and linked Offboarding case.
+- The shared automation runner owns workflow selection, conditions, immutable started definitions and waiting runs. Offboarding registers its catalogue and injects authorized step executors; it does not fork the runner.
+- Existing shared signing/routing and document blocks own letter structure and signing primitives. Optional Offboarding capabilities provide recall, correction while held and invalidation of signatures after used merge values change. They must not alter other modules' behavior.
+- Assignment groups and routing remain the current shared records. A role label or an FYI assignment is not a decision or salary-disclosure grant.
+- Authentication owns email identity resolution and the applied relay. A business transaction queues immutable delivery intent; the private sender receives only a durable delivery ID and a single-attempt capability. SMTP never runs under a business lock. A started delivery with a lost receipt is uncertain and is not automatically replayed.
+
+The public journey interface is `packs/lifecycle/resignation/service`; web and worker consumers use that boundary. Reads authorize and narrow the native set before detail projection, page/count in SQL, and preserve tenant/company isolation. Inboxes hydrate their case set in bounded set-based queries rather than one query per item. Mutation authorization, state changes, audit and delivery intent share a transaction.
+
+## Journey rules
+
+A submission opens Decision. The configured decider accepts or proposes retention; configured FYI people may comment without acquiring decision rights. The acceptance path creates one linked Offboarding case. The retention path reviews and signs an e-letter, whose sole final employee Sign step is acceptance. Acceptance closes the resignation as Retained and creates the configured pending Personnel posting.
+
+A decline or lapse returns the same case for an accept-only decision. Owner withdrawal/rejection is a distinct path that can reopen an offer. Send back and recall clear signatures and return the document to its owner; sending round again restarts at the first step. A future signer cannot read a private letter before their turn. Released values and the generated letter date remain frozen.
+
+The reply clock starts when the offer reaches the employee. Use the repository HR date owner and applicable working-day calendar; a date-only field is never converted through the host timezone. The offer is open on its reply-by date, with lapse after that date. Reminder and lapse processing is durable and idempotent. Blank reply window disables the date, reminder and lapse. Return/recall stops the clock, and a new employee round starts a fresh window.
+
+An employee may submit a new resignation after Retained or Withdrawn. Each case and its pending posting retain their own snapshots. The Offboarding setting defaults to no second retention offer within 12 months of earlier acceptance (blank means no limit; explicit values are integers 1–60). This restricts offers, never the ability to resign again.
+
+The Offboarding posting approver is a separate setting from Probation's. A change to a populated group moves pending Offboarding postings to that group. An empty group retains existing assignments with a warning and blocks new postings. Visibility is restricted to authorized, company-scoped People Ops and the posting approver group; only authorized People Ops can retry blocked runs. Group membership never bypasses the Personnel movement writer's permission.
+
+## Compatibility and release
+
+New stored fields are optional with backward-compatible defaults. Existing workflows, template versions, rich email content/assets, signatures, task types and source IDs must survive unchanged. Explicit default routing behavior for Offboarding must not silently change other modules' missing-recipient rules. Deleted or empty targets that cannot resolve an eligible person block with a specific repair action.
+
+Offboarding-only triggers, decision/posting options and resignation/retention merge fields are scoped to their catalogue. A shared navigation destination does not rewrite other modules' engines or infer new authority. Keep Probation's mandatory-signature validation scoped to Probation.
+
+Before staging, retain affected-module baseline evidence, execute new journey/permission/concurrency tests and existing cross-module regressions on the required standard GitHub-hosted runners, rehearse the additive migrations as the restricted owner on a populated baseline, verify the final frozen candidate through the current release gate, and follow the shared staging queue/lease. Source merge, installed build, rendered journey verification and human staging acceptance are separate states. Production is outside this authorization.

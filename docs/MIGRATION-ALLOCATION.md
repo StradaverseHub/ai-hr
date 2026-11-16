@@ -1,3 +1,17 @@
+# Resignation journey — 16 November 2026 (allocated, unapplied)
+
+Owned build branch `codex/resignation-journey-20261116` reserves `9991_resignation_journey`
+(idx5167 / when1793330100101), `9992_resignation_configuration` (idx5168 / when1793330100102),
+`9993_resignation_postings` (idx5169 / when1793330100103), optional `9994_resignation_letters`
+(idx5170 / when1793330100104), and `9995_resignation_email_delivery` (idx5171 / when1793330100105).
+A read-only survey of4,290 distinct local ref heads read4,289 journals, with maximum
+when1793330099990 (`9990_access_administrator_coalesced_assert`); readable worktree journals
+were also surveyed. Fresh main/alpha and the observed staging source/build match
+`59f06b08db014e01cd553a827c62ccf864d33f78`. The canonical read-only verifier matched the full
+881-entry staging ledger to that source. The pre-existing journal prefix and SQL bytes stay
+unchanged. Recheck peer reservations, release predecessors and installed watermarks at
+admission. These reservations do not apply migrations or claim release priority.
+
 <!-- 5766_probation_reshape_company_in_use -->
 # Company deletion sees the Probation reshape's owner-only referrers — 16 November 2026 MYT (unapplied, allocated)
 
