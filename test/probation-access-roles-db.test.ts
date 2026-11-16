@@ -12,7 +12,7 @@ import {probationFormCaseFixture} from './helpers/probation-form-case-fixture';
 import {probationOutcomeFixture} from './helpers/probation-outcome-fixture';
 import {addProbationAccessMember,changeProbationAccessMember,probationAccessView,probationNavigationAccess,probationIntakeCompanies,recordProbationLowResultAction,
  overrideProbationRoute,probationLetterTemplateChoices,retireProbationAccessRole,revokeProbationAccessMember,saveProbationAccessRole,saveProbationSettingsScope,
- saveProbationSuperiorRule,DEFAULT_PROBATION_CONFIG,type ProbationAccessPermission} from '../packs/probation/service';
+ saveProbationSuperiorRule,probationCase,actOnProbation,DEFAULT_PROBATION_CONFIG,type ProbationAccessPermission} from '../packs/probation/service';
 
 let b:Base,admin:SessionContext;
 const today=todayInKualaLumpur();
@@ -186,10 +186,14 @@ describe('Direct Superiors rule',()=>{
  it('records a declined signature only while the rule allows it',async()=>{
   const fixture=probationFormCaseFixture(b,admin),{ids,manager,prepare,submit}=await fixture.caseWithRows([{id:'hod',order:1,action:'review',who:'hod'},{id:'pbp',order:2,action:'approve_sign',who:'pbp'}]);admin=fixture.admin();
   await prepare();await submit();
-  const decline=(ctx:SessionContext)=>withTenant(ctx,async tx=>(await tx.execute<{ok:boolean}>(sql`select app.probation_signing_access(${ids.part}::uuid,'decline') as ok`))[0].ok);
-  expect(await decline(manager.ctx)).toBe(true);
+  // Through the real command (app.probation_signing_access is owner-only): refused while the rule withholds it, then
+  // recorded once the rule allows it again.
+  const part=async()=>(await probationCase(manager.ctx,ids.caseId)).parts.find(p=>p.id===ids.part)!;
+  const decline=async()=>actOnProbation(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:(await part()).revision,command:'request_refusal',reason:'Fictional employee declined to sign'});
   await saveProbationSuperiorRule(admin,{enabled:true,view:true,recordDeclined:false,expectedRevision:0});
-  expect(await decline(manager.ctx)).toBe(false);
+  await expect(decline()).rejects.toThrow();
+  await saveProbationSuperiorRule(admin,{enabled:true,view:true,recordDeclined:true,expectedRevision:1});
+  await expect(decline()).resolves.toBeDefined();
  });
 });
 
