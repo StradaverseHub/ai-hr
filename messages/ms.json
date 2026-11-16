@@ -41407,7 +41407,9 @@
     "ce5830d265452": "Superseded",
     "ce016867c8f6f": "The preview could not be requested. Your entries are still here. Try again.",
     "c8511af76a0a1": "The decision could not be submitted. Your preview is still here. Try again.",
-    "c20a655bc39aa": "Content fingerprint"
+    "c20a655bc39aa": "Content fingerprint",
+    "c6be4da29b88d": "The settings could not be saved. Your entries are still here. Try again.",
+    "c0785f1cffebf": "The starting configuration stopped before completion. Review the mapped groups, routings and permissions, then install again. Existing definitions are preserved."
   },
   "resignationJourney": {
     "title": "Peletakan jawatan",

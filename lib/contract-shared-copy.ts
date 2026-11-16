@@ -364,6 +364,8 @@ const keys:Record<string,string>={
   "Superseded": "ce5830d265452",
   "The preview could not be requested. Your entries are still here. Try again.": "ce016867c8f6f",
   "The decision could not be submitted. Your preview is still here. Try again.": "c8511af76a0a1",
-  "Content fingerprint": "c20a655bc39aa"
+  "Content fingerprint": "c20a655bc39aa",
+  "The settings could not be saved. Your entries are still here. Try again.": "c6be4da29b88d",
+  "The starting configuration stopped before completion. Review the mapped groups, routings and permissions, then install again. Existing definitions are preserved.": "c0785f1cffebf"
 };
 export function useContractSharedCopy(){const t=useTranslations('contractShared');return (text:string)=>{const caption=text.trim(),key=keys[caption];return key?text.slice(0,text.indexOf(caption))+t(key)+text.slice(text.indexOf(caption)+caption.length):text;};}

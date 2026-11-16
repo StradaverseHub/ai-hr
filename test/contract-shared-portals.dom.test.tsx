@@ -1,14 +1,15 @@
 import {beforeEach,expect,it,vi} from 'vitest';
-import {fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {act,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import {SharedApprovalPage} from '../app/lifecycle/contracts/approvals/[approvalId]/review';
+import {ContractStartingSetup} from '../app/lifecycle/contracts/settings/starting-setup';
 import {SharedLetterPage} from '../app/lifecycle/contracts/letters/[letterId]/review';
 import type {ContractSharedApproval,ContractSharedLetter} from '../packs/contracts/service';
 import {automationDocument} from '../lib/automation-document';
-const actions=vi.hoisted(()=>({approval:vi.fn(),letter:vi.fn(),edit:vi.fn(),bind:vi.fn()}));
-vi.mock('../app/lifecycle/contracts/shared-actions',()=>({actSharedApproval:actions.approval,actSharedLetter:actions.letter,editSharedLetter:actions.edit,bindSharedEmployee:actions.bind}));
-vi.mock('next/navigation',()=>({usePathname:()=>'/tasks'}));
+const actions=vi.hoisted(()=>({approval:vi.fn(),letter:vi.fn(),edit:vi.fn(),bind:vi.fn(),setup:vi.fn(),startSetup:vi.fn()}));
+vi.mock('../app/lifecycle/contracts/shared-actions',()=>({actSharedApproval:actions.approval,actSharedLetter:actions.letter,editSharedLetter:actions.edit,bindSharedEmployee:actions.bind,readSharedSetup:actions.setup,startSharedSetup:actions.startSetup}));
+vi.mock('next/navigation',()=>({usePathname:()=>'/tasks',useRouter:()=>({refresh:vi.fn()})}));
 const caseId='b1fa7485-70d8-4403-9dab-815da20b2e01',id='aab5d59c-c75f-4dc2-9d4a-45865ea8ff81',hash='a'.repeat(64);
 function approval():ContractSharedApproval{return {id,caseId,decisionRevision:3,employeeName:'Fictional Contract Employee',employeeCode:'FC-7',company:'Fictional Company',decision:{kind:'renew',startOn:'2027-01-01',endOn:'2027-12-31',months:12,payChanges:true,salaryCents:'521012',reason:'Retain specialist work',endReason:null,submittedBy:'proposer',submittedAt:'2026-11-16T00:00:00Z',revision:3},period:{id:'period',startOn:'2026-01-01',endOn:'2026-12-31',number:'4',sourceRevision:hash},contentRevision:1,contentHash:hash,pendingLayerId:'ceo',canAct:true,status:'pending',layers:[{id:'ceo',label:'CEO',stage:1,assigneeName:'Fictional CEO',fulfilled:false}],history:[]};}
 function letter():ContractSharedLetter{return {id,caseId,decisionRevision:3,templateId:'template',templateVersion:2,name:'Fictional renewal letter',generatedOn:'2026-11-16T00:00:00Z',state:'routing',valuesFixed:false,releasedAt:null,contentRevision:1,contentHash:hash,returned:false,canEdit:false,canResend:false,pendingAction:{stepId:'employee',kind:'sign'},layers:[{id:'employee',label:'Employee',stage:2,kind:'sign',owner:false,assigneeName:'Fictional Employee',unavailable:false,fulfilled:false}],history:[],body:null};}
@@ -89,4 +90,18 @@ it('uses company signature consent only for the current native company step',()=
  mount(<SharedLetterPage letter={{...letter(),pendingAction:{stepId:'bp',kind:'sign'},layers:[{id:'bp',label:'People BP',stage:1,kind:'sign',owner:true,assigneeName:'Fictional BP',fulfilled:false,unavailable:false}]}} document={document} capabilities={{canBindEmployee:false,pendingRole:'company'}}/>);
  expect(screen.getByRole('checkbox',{name:'I confirm this is my signature and approve this letter on behalf of the company.'})).not.toBeChecked();
  expect(screen.getByRole('button',{name:'Sign letter'})).toBeDisabled();expect(screen.getByText('Fictional BP',{selector:'strong'})).toBeInTheDocument();
+});
+
+it('releases setup controls after a failed native job instead of showing installation forever',async()=>{
+ vi.useFakeTimers();
+ const setup={installed:false,v9Ready:true,jobId:id,canInstall:true,missing:[],groups:[{id:'ops',name:'Actual People Ops'}],routings:[]};
+ actions.setup.mockResolvedValue({ok:true,value:{...setup,jobState:'failed'}});
+ try{
+  mount(<ContractStartingSetup initial={setup} companyId={caseId} fallbackGroupId="ops" postingApproverGroupId="ops"/>);
+  expect(screen.getByLabelText('Fallback / People Ops group')).toBeDisabled();
+  await act(async()=>{await vi.advanceTimersByTimeAsync(1500);});
+  expect(screen.getByRole('alert')).toHaveTextContent('stopped before completion');
+  expect(screen.getByLabelText('Fallback / People Ops group')).toBeEnabled();
+  expect(screen.queryByRole('button',{name:'Installing starting configuration…'})).not.toBeInTheDocument();
+ }finally{vi.useRealTimers();}
 });
