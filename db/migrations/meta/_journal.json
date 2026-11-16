@@ -6406,6 +6406,13 @@
       "when": 1794841005896,
       "tag": "5896_contract_shared_directory_and_signer_caption",
       "breakpoints": true
+    },
+    {
+      "idx": 5304,
+      "version": "7",
+      "when": 1794841005904,
+      "tag": "5904_contract_shared_native_intake_guard",
+      "breakpoints": true
     }
   ]
 }
