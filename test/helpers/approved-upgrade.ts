@@ -193,6 +193,8 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5090,when:1793330005390,tag:'5690_information_payslip_snapshot_from_history'},
  // Board 511aa74a Rehired: the employment period link, its guard and the rehire Roll Back void (15 Nov 2026).
  {idx:5095,when:1793330005395,tag:'5695_employment_rehire_link'},
+ // Board 4604dccc r4: the latest saved information correction controls the SQL before-image readers (16 Nov 2026).
+ {idx:5096,when:1793330005396,tag:'5696_information_correction_latest_saved'},
  // Probation reshape onto shared HR automation (ADR 2026-11-15-probation-shared-automation), 16 Nov 2026: shared
  // workflow/routing definitions, Personnel postings and shared email templates (new empty tables and functions), and
  // the Probation settings scope, case at activation, override event and tracker-at-scale changes (5742, 5744-5746).
@@ -258,6 +260,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5680_payroll_history_dated_company':'664b422a2a2128357932b0e0b036fa69ad731eb6c31aa6c4a8ce2a5b6e080faf',
  '5690_information_payslip_snapshot_from_history':'c0ea9c5f84f2dca7466aabdffb2d47d8af6ebd671add371ee49f00d93aedb892',
  '5695_employment_rehire_link':'58e9b0b1f01d0f03e2815ee43152e0bd0137114f7cdf1d79ace22ccb899407d6',
+ '5696_information_correction_latest_saved':'235b556dd8c67cdecc2b5bda3859a627ef9a6f719766e36ca97b041fe1258f3e',
  '5740_automation_shared_definitions':'72baaa106846be4ede55607235a4555a0a0f38f6f0958183077c9e9f6dca0569',
  '5741_personnel_postings':'bac24f1f803408ee29db5915e69d47a72f981c45b5b6c5fee469831dcb800cb5',
  '5742_probation_settings_scope':'5b21bd348acedd68cd3267a973a8a62ec9c4f953ff7230e078db6ce50037655c',

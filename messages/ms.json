@@ -3612,7 +3612,6 @@
         "failed": "Gagal",
         "unchanged": "Tiada perubahan"
       },
-      "effective": "Proses akan datang menggunakan maklumat dibetulkan mulai {date}.",
       "templateFields": "Medan yang dibetulkan oleh templat ini (medan baharu diserlahkan). Sel kosong mengekalkan nilai sedia ada.",
       "templateFieldsLabel": "Medan yang dibetulkan oleh templat ini",
       "ownersNote": "Gaji Pokok dan tarikh peletakan jawatan dibetulkan pada peristiwa yang merekodkannya: gunakan import Pergerakan dengan Tindakan \"Update\". Kaedah Pembayaran terdapat dalam import Bank dan Berkanun.",
@@ -3627,10 +3626,10 @@
       "effectiveDateHint": "Sebarang tarikh dari {start} hingga hari ini ({today}). Lalai ialah hari ini.",
       "effectiveDateFollowsJoin": "Tarikh terawal: {start}, Tarikh Sertai Kumpulan yang dimasukkan di bawah.",
       "historyClosedPayroll": "Gaji yang ditutup kekal tidak berubah: {periods}.",
-      "effectiveDateJoin": "Memilih {start}, Tarikh Sertai Kumpulan, membetulkan butiran pengambilan asal pekerja. Syarikat, Jenis Pekerjaan, Unit Perniagaan, Jabatan, Jawatan, label organisasi dan Penyelia Langsung terpakai dari Tarikh Berkuat Kuasa hingga perubahan tercatat seterusnya.",
+      "effectiveDateJoin": "Memilih {start}, Tarikh Sertai Kumpulan, membetulkan butiran pengambilan asal pekerja. Syarikat, Jenis Pekerjaan, Unit Perniagaan, Jabatan, Jawatan, label organisasi dan Penyelia Langsung terpakai dari Tarikh Berkuat Kuasa hingga pergerakan tercatat seterusnya yang mengubahnya. Pembetulan ini menggantikan pembetulan terdahulu mulai tarikh itu.",
       "timeline": {
         "title": "Rekod mengikut susunan Tarikh Berkuat Kuasa",
-        "intro": "Butiran yang dibetulkan ini terpakai mulai {date} hingga perubahan tercatat seterusnya. Rekod kemudian mengekalkan tarikh dan nilainya sendiri. Tiada apa-apa ditimpa atau dipadam.",
+        "intro": "Butiran yang dibetulkan ini terpakai mulai {date} hingga pergerakan tercatat seterusnya yang mengubahnya. Pembetulan terdahulu mulai tarikh ini digantikan dan kekal dalam sejarah pembetulan. Pergerakan mengekalkan tarikh dan nilainya sendiri. Tiada apa-apa dipadam.",
         "date": "Tarikh Berkuat Kuasa",
         "record": "Rekod",
         "company": "Syarikat",
@@ -3646,6 +3645,11 @@
           "unchanged": "Tidak berubah",
           "conflict": "Bercanggah dengan perubahan ini"
         }
+      },
+      "replaced": {
+        "title": "Pembetulan terdahulu yang digantikan oleh pembetulan ini",
+        "intro": "Pembetulan terbaharu mengawal butiran ini mulai {date}. Pembetulan terdahulu di bawah kekal dalam sejarah pembetulan.",
+        "item": "Pembetulan berkuat kuasa {date} ({fields}), disimpan {saved} oleh {actor}"
       },
       "conflictTitle": "Pembetulan ini tidak boleh disimpan",
       "conflict": "{record} pada {date} merekodkan {field} berubah daripada nilai yang berbeza. Betulkan pergerakan itu dahulu (ID Peristiwa Pergerakan {id}), atau pilih Tarikh Berkuat Kuasa selepas {date}.",

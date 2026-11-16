@@ -316,5 +316,8 @@ export async function installPreSearchMappingOwners(): Promise<() => Promise<voi
     [...SEARCH_MAPPING_PREDECESSORS.map(([signature, , , digest]) => [signature, digest]), ['app.company_org_mapping_at(date)', MAPPING_AT_DIGEST]]));
   return async () => {
     await owner.client.unsafe(migration('5121_personnel_search_set_mapping')).simple();
+    // Board 4604dccc r4: 5696 rewrote three of those owners in place (the latest saved correction controls); it leaves
+    // readers that already carry its bound unchanged, so replaying it restores exactly the installed definitions.
+    await owner.client.unsafe(migration('5696_information_correction_latest_saved')).simple();
   };
 }

@@ -553,6 +553,27 @@ No provider transform, outbound field, purpose or transport changed. The 28 appr
 `c1baf4ee…` and the agent manifest regenerated (`bf8328ea…`), under the owner's standing pre-approval for staging
 re-binds (12 November 2026). Staging only.
 
+### Re-binding for board 4604dccc revision 4, the latest saved correction controls (16 November 2026)
+
+`claude/fb-4604dccc-r4-latest-correction`, merged with `ee02bba4d` (board fd8156d4 on main 22ba7e3a5, binding
+`c1baf4ee…`), makes the latest saved Information-Only Correction control each field from its Effective Date, in the
+TypeScript readers and, through migration 5696, the SQL company and report readers (owner approved the plan on the board,
+16 November 2026). Changed covered files include `core/information-correction-history.ts`,
+`core/information-correction.ts`, `core/movement-history.ts`, `core/movement.ts`, `core/hire-correction.ts`,
+`lib/information-correction.ts` and the six `messages/*.json` catalogues, in the provider-data scope only through the
+import graph. No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried forward
+to `d18c9c64…` and the agent manifest regenerated, under the owner's standing pre-approval for staging re-binds
+(12 November 2026). Staging only.
+
+### Re-binding for the combined batch: 4604dccc revision 4 plus the Payroll Reconciliation fixes (16 November 2026)
+
+The owner approved combining board 4604dccc revision 4 and the Payroll Reconciliation fixes
+(`claude/payroll-comparison-employee-scope-20261116`: one employee's comparison reads only that employee; the refused
+page links back to Reconciliation) into one gate and one staging install (16 November 2026). Added covered files:
+`core/payroll-view.ts` and `core/report-payroll-comparison.ts`, in the provider-data scope only through the import graph.
+No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried forward from
+`d18c9c64…` to `da60fba1…` and the agent manifest regenerated, under the owner's standing pre-approval for staging
+re-binds (12 November 2026). Staging only.
 ### Re-binding for the Information-Only Correction Effective-Date-only message (16 November 2026)
 
 `claude/info-correction-review-messages`, cut from main/alpha `ee02bba4d` (binding `c1baf4ee…`), adds a screen message
@@ -560,6 +581,13 @@ when only the Effective Date differs (staging feedback, EMP-0004). Changed cover
 catalogues, in the provider-data scope only through the import graph. No provider transform, outbound field, purpose or
 transport changed. The 28 approvals were carried forward to `3656aa94…` and the agent manifest regenerated (`90c997db…`),
 under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding after merging main 5160eb4e4 into the combined 4604dccc revision 4 + Reconciliation batch (16 November 2026)
+
+Main advanced to `5160eb4e4` (the Effective-Date-only message, on staging). Merging it into the owner-approved combined
+batch changed no covered source beyond both sides' own reviewed changes. No provider transform, outbound field, purpose
+or transport changed. The 28 approvals were carried forward from `da60fba1…` to `c88b5a04…` and the agent manifest
+regenerated, under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.
 
 ### Re-binding for the Probation Confirmation reshape onto shared HR automation (16 November 2026)
 
@@ -594,4 +622,16 @@ Changed covered files are Probation core, navigation and the six `messages/*.jso
 only through the import graph; no file under lib/ai, core/ai*, core/assistant*, core/teras* or core/loops changed apart
 from these manifests. No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried
 forward to `235863e0…` and the agent manifest regenerated (`0c3dfb15…`), under the owner's standing pre-approval for
+staging re-binds (12 November 2026). This binding grants no production authority.
+
+### Re-binding for the Probation screens matched to the prototype, merged with main (16 November 2026)
+
+`claude/probation-confirmation-aihr-b81c70` merges lanes M1–M3 (`claude/probation-lane-m1-tracker-20261116`,
+`claude/probation-lane-m2-case-20261116`, `claude/probation-lane-m3-config-20261116`: the tracker, Personnel postings,
+case page and part forms, Probation configuration and HR Automation screens restyled to the approved prototype; one
+optional "show closed cases" filter on the tracker read; no migration) and main/alpha `03b06f0de` (binding `c88b5a04…`).
+Changed covered files are Probation core, pages and the six `messages/*.json` catalogues, in the provider-data scope only
+through the import graph; no file under lib/ai, core/ai*, core/assistant*, core/teras* or core/loops changed apart from
+these manifests. No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried
+forward to `06b5c60f…` and the agent manifest regenerated (`21404a12…`), under the owner's standing pre-approval for
 staging re-binds (12 November 2026). This binding grants no production authority.

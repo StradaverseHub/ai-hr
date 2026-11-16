@@ -35,7 +35,7 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
   const raw=Object.fromEntries(Object.entries(sp).filter(([key,value])=>key!=='error'&&key!=='edit'&&key!=='noteError'&&key!=='templateError'&&key!=='returnQuery'&&value!==undefined));
   let run:Awaited<ReturnType<typeof runPayrollComparisonReport>>;
   try{run=await runPayrollComparisonReport(s,comparisonScope,{id,filters:raw});await recordPayrollComparisonRun(s,run,builtIn?'preview':'run');}
-  catch(error){if(error instanceof MasterReportAccessError)notFound();return <div className="space-y-4"><PageHeader title={t('title')} back={{href:'/reports?cat=payroll',label:t('back')}}/><ErrorBanner message={publicErrorMessage(error)}/><Link href={'/reports/payroll-comparison/'+id}>{t('reset')}</Link></div>;}
+  catch(error){if(error instanceof MasterReportAccessError)notFound();return <div className="space-y-4"><PageHeader title={t('title')} back={builtIn?{href:'/payroll/reconciliation'+(returnQuery?'?'+returnQuery:''),label:t('backToReconciliation')}:{href:'/reports?cat=payroll',label:t('back')}}/><ErrorBanner message={publicErrorMessage(error)}/><Link href={'/reports/payroll-comparison/'+id+(builtIn&&returnQuery?'?'+new URLSearchParams({returnQuery}).toString():'')}>{t('reset')}</Link></div>;}
   const [people,status]=await Promise.all([getTranslations('people.detail.employmentInfo'),getTranslations('people.employeeStatus')]);
   const empty=payrollComparisonEmptyMessage(run.inclusion,t);
   const {result,filters}=run,columns=payrollComparisonColumns(run.definition);

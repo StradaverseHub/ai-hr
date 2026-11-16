@@ -13,9 +13,10 @@ const migration=readFileSync(new URL('../db/migrations/2701_personnel_typed_over
 const typed='app.personnel_overview_filter_fields(date,uuid[])';
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(resetDb);
 // Migrations 5010/5012 later add the release-aware staged-import filter to this body; 2701 pins its exact predecessor, so replay from that shape.
+// Migration 5696 (board 4604dccc r4) also bounds its company before-image read by the correction in force; strip that too.
 const restoreNarrowPredecessor=async(tx:{unsafe:(q:string)=>Promise<unknown>})=>{
  const rows=await tx.unsafe("select pg_get_functiondef('app.personnel_overview_narrow_rows(date,uuid[])'::regprocedure) as ddl") as {ddl:string}[];
- await tx.unsafe(rows[0].ddl.replace(/ AND app\.import_marker_visible\(e\.import_pending_attempt_id\)/g,''));
+ await tx.unsafe(rows[0].ddl.replace(/ AND app\.import_marker_visible\(e\.import_pending_attempt_id\)/g,'').replace(/ AND ev\.sequence>coalesce\(\(SELECT max\(in_force\.sequence\)[\s\S]*?END\),0\)/g,''));
 };
 const normalize=(value:Awaited<ReturnType<typeof readPersonnelOverview>>)=>({...value,organisationChoices:{...value.organisationChoices,rows:value.organisationChoices.rows.map(row=>JSON.stringify(row)).sort()}});
 

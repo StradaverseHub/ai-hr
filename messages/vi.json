@@ -3612,7 +3612,6 @@
         "failed": "Thất bại",
         "unchanged": "Không đổi"
       },
-      "effective": "Xử lý trong tương lai sử dụng thông tin đã sửa từ {date}.",
       "templateFields": "Các trường mẫu này sửa được (trường mới được làm nổi bật). Ô trống giữ nguyên giá trị hiện có.",
       "templateFieldsLabel": "Các trường mẫu này sửa được",
       "ownersNote": "Lương cơ bản và các ngày nghỉ việc được sửa trên sự kiện đã ghi nhận chúng: dùng nhập Biến động với Action \"Update\". Phương thức thanh toán nằm trong nhập Ngân hàng và Pháp định.",
@@ -3627,10 +3626,10 @@
       "effectiveDateHint": "Bất kỳ ngày nào từ {start} đến hôm nay ({today}). Mặc định là hôm nay.",
       "effectiveDateFollowsJoin": "Ngày sớm nhất: {start}, Ngày gia nhập tập đoàn đã nhập bên dưới.",
       "historyClosedPayroll": "Bảng lương đã chốt giữ nguyên: {periods}.",
-      "effectiveDateJoin": "Chọn {start}, Ngày gia nhập tập đoàn, sẽ sửa thông tin tuyển dụng ban đầu của nhân viên. Công ty, Loại hình lao động, Đơn vị kinh doanh, Phòng ban, Chức vụ, nhãn tổ chức và Cấp trên trực tiếp áp dụng từ Ngày hiệu lực đến thay đổi được ghi nhận tiếp theo.",
+      "effectiveDateJoin": "Chọn {start}, Ngày gia nhập tập đoàn, sẽ sửa thông tin tuyển dụng ban đầu của nhân viên. Công ty, Loại hình lao động, Đơn vị kinh doanh, Phòng ban, Chức vụ, nhãn tổ chức và Cấp trên trực tiếp áp dụng từ Ngày hiệu lực đến biến động được ghi nhận tiếp theo làm thay đổi chúng. Lần sửa này thay thế các lần sửa trước đó kể từ ngày đó.",
       "timeline": {
         "title": "Các bản ghi theo thứ tự Ngày hiệu lực",
-        "intro": "Các thông tin đã sửa áp dụng từ {date} đến thay đổi được ghi nhận tiếp theo. Các bản ghi sau giữ nguyên ngày và giá trị của chúng. Không có gì bị ghi đè hoặc xóa.",
+        "intro": "Các thông tin đã sửa áp dụng từ {date} đến biến động được ghi nhận tiếp theo làm thay đổi chúng. Các lần sửa trước đó kể từ ngày này được thay thế và vẫn nằm trong lịch sử sửa. Các biến động giữ nguyên ngày và giá trị của chúng. Không có gì bị xóa.",
         "date": "Ngày hiệu lực",
         "record": "Bản ghi",
         "company": "Công ty",
@@ -3646,6 +3645,11 @@
           "unchanged": "Không thay đổi",
           "conflict": "Mâu thuẫn với thay đổi này"
         }
+      },
+      "replaced": {
+        "title": "Các lần sửa trước đó được lần sửa này thay thế",
+        "intro": "Lần sửa mới nhất quyết định các thông tin này từ {date}. Các lần sửa trước đó dưới đây vẫn nằm trong lịch sử sửa.",
+        "item": "Lần sửa hiệu lực {date} ({fields}), lưu lúc {saved} bởi {actor}"
       },
       "conflictTitle": "Không thể lưu lần sửa này",
       "conflict": "{record} ngày {date} ghi nhận {field} thay đổi từ một giá trị khác. Hãy sửa biến động đó trước (ID sự kiện biến động {id}), hoặc chọn Ngày hiệu lực sau {date}.",

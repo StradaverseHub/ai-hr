@@ -4,9 +4,20 @@ import {informationPayslipSnapshot,payslip,payrollBatch,employment,domainEvent} 
 export function frozenPayslipInformation(field:'grade'|'employmentType',fallback:SQL){
  return sql<string|null>`case when exists(select 1 from ${informationPayslipSnapshot} f where f.payslip_id=${payslip.id}) then (select ${field==='grade'?sql`f.grade`:sql`f.employment_type`} from ${informationPayslipSnapshot} f where f.payslip_id=${payslip.id}) else ${fallback}::text end`;
 }
-/** Before-images are used only before the correction's business day. Earliest later correction wins. */
+/** Board 4604dccc r4 (ADR 2026-11-15 dated information corrections, revision 4) — the LATEST SAVED correction of a
+ * field controls it from its Effective Date onward. The correction in force on `asOf` is the latest saved one (by
+ * domain_event.sequence) that changed `field` and is dated on or before `asOf`; nothing saved before it can override
+ * it. A before-image is used only before a correction's business day, and only from a correction saved after the one
+ * in force (the earliest such one wins); otherwise the fallback (current master data) answers. Corrections saved in
+ * Effective Date order give exactly the earlier rule ("earliest later correction wins"): every correction dated after
+ * `asOf` was then saved after the one in force. One correlated subquery per field (SCALE rule 2). */
 export function employmentInformationAt<F extends 'hiredOn'|'joinDate'|'companyId'>(field:F,asOf:SQL,fallback:SQL):SQL<F extends 'joinDate'?string|null:string>{
- return sql<F extends 'joinDate'?string|null:string>`case when exists(select 1 from ${domainEvent} ev where ev.tenant_id=app.current_tenant_id() and ev.subject_employment_id=${employment.id} and ev.event_type='employment.information.corrected' and ev.payload->>'effectiveOn'>${asOf}::text) then (select ev.payload->'before'->>${field} from ${domainEvent} ev where ev.tenant_id=app.current_tenant_id() and ev.subject_employment_id=${employment.id} and ev.event_type='employment.information.corrected' and ev.payload->>'effectiveOn'>${asOf}::text order by ev.sequence limit 1) else ${fallback}::text end`;
+ // A correction changed the field when its `fields` list names it; an older payload without the list, when its before
+ // and after values differ.
+ const changed=sql`(case when jsonb_typeof(l.payload->'fields')='array' then l.payload->'fields' @> jsonb_build_array(${field}::text) else (l.payload->'before'->>${field}) is distinct from (l.payload->'after'->>${field}) end)`;
+ const inForce=sql`coalesce((select max(l.sequence) from ${domainEvent} l where l.tenant_id=app.current_tenant_id() and l.subject_employment_id=${employment.id} and l.event_type='employment.information.corrected' and l.payload->>'effectiveOn'<=${asOf}::text and ${changed}),0)`;
+ const later=sql`ev.tenant_id=app.current_tenant_id() and ev.subject_employment_id=${employment.id} and ev.event_type='employment.information.corrected' and ev.payload->>'effectiveOn'>${asOf}::text and ev.sequence>${inForce}`;
+ return sql<F extends 'joinDate'?string|null:string>`case when exists(select 1 from ${domainEvent} ev where ${later}) then (select ev.payload->'before'->>${field} from ${domainEvent} ev where ${later} order by ev.sequence limit 1) else ${fallback}::text end`;
 }
 
 import {QueryBuilder} from 'drizzle-orm/pg-core';
