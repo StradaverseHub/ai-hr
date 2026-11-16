@@ -8,7 +8,7 @@ import {hireEmployee} from '../core/org';
 import {pgErrorChain,pgSqlState} from '../lib/db-error';
 import {prepareResignationProofTx} from '../core/resignation-proof';
 import {resignationRuntimeKey,signResignationRuntime} from '../lib/resignation-runtime-proof';
-import {actResignationLetter,generateResignationLetter,regenerateResignationLetter,reconcileResignationLetter,type ResignationLetter,type ResignationLetterAction,type GenerateResignationLetterInput} from '../core/resignation-letter';
+import {actResignationLetter,generateResignationLetter,regenerateResignationLetter,reconcileResignationLetter,resignationLetterCapabilities,type ResignationLetter,type ResignationLetterAction,type GenerateResignationLetterInput} from '../core/resignation-letter';
 let b:Base,employee:SessionContext,manager:SessionContext,fyi:SessionContext,id:string,employmentId:string,data:Record<string,unknown>,participants:string[];
 const master='6'.repeat(64),day='2027-06-30';
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>vi.unstubAllEnvs());
@@ -157,4 +157,25 @@ it('allows a configured account-only HR decider while rejecting employee self-de
  await nativeRefusal(withTenant(employee,tx=>begin(tx,employee,{type:'accept',lastWorkingDay:day,replacementNeeded:false})),'42501',/not currently assigned/);
  await withTenant(account,async tx=>{await begin(tx,account,{type:'accept',lastWorkingDay:day,replacementNeeded:false});await prepareResignationProofTx(tx,account,{operation:'context',caseId:id,args:{employmentId,caseId:id}});const[context]=await tx.execute<{data:{users:{id:string;personId:string|null;name:string}[]}}>(sql`select app.resignation_journey_context(${employmentId}::uuid,${id}::uuid) data`);expect(context.data.users.find(u=>u.id===userId)).toEqual({id:userId,personId:null,name:'Assigned account'});await save(tx,account,{...data,decision:null,replacementNeeded:false,decidedBy:{id:userId,name:'Assigned account'}},'accepted');});
  expect(await persisted()).toMatchObject({stage:'accepted',revision:2,data:{decidedBy:{id:userId}}});
+});
+
+it('uses the shared first-Review owner when no routing step is explicitly flagged',async()=>{
+ const input=letterInput();for(const step of input.template.versions[0].routing!)step.owner=false;
+ let l=generateResignationLetter(input).letter;expect(resignationLetterCapabilities(l,manager.userId!).ownerUserId).toBe(manager.userId);
+ data={...data,decision:null,letters:[l]};await seedJourney('retention');
+ await nativeRefusal(withTenant(fyi,tx=>begin(tx,fyi,{type:'updateEmail',emailTemplateId:'off-email',subject:'Fictional subject',body:'Fictional body'})),'42501');
+ await withTenant(manager,tx=>begin(tx,manager,{type:'updateEmail',emailTemplateId:'off-email',subject:'Fictional subject',body:'Fictional body'}));
+ l=act(l,manager,{type:'complete',stepId:'owner-review'});data={...data,letters:[l]};await seedJourney('offer');
+ const original=await persisted();await nativeRefusal(withTenant(fyi,tx=>begin(tx,fyi,{type:'recall',documentId:l.id,documentRevision:l.revision})),'42501');expect(await persisted()).toEqual(original);
+ await withTenant(manager,async tx=>{await begin(tx,manager,{type:'recall',documentId:l.id,documentRevision:l.revision});l=act(l,manager,{type:'recall'});data={...data,letters:[l]};await save(tx,manager,data,'retention');});
+ const corrected='2027-07-01';await withTenant(manager,async tx=>{await begin(tx,manager,{type:'updateLetter',documentId:l.id,documentRevision:l.revision,lastWorkingDay:corrected},2);l=reconcileResignationLetter(l,{'employee.name':'Fictional employee','resignation.lastDay':corrected}).letter;data={...data,lastWorkingDay:corrected,letters:[l]};await save(tx,manager,data,'retention',2);});
+ expect(await persisted()).toMatchObject({revision:3,stage:'retention',data:{lastWorkingDay:corrected}});
+});
+it('uses the configured case owner for a sign-only route without an explicit owner',async()=>{
+ const input=letterInput();input.template.versions[0].routing=input.template.versions[0].routing!.filter(step=>step.action==='sign').map(step=>({...step,owner:false}));
+ let l=generateResignationLetter(input).letter;expect(resignationLetterCapabilities(l,manager.userId!).ownerUserId).toBe(manager.userId);
+ data={...data,decision:null,letters:[l]};await seedJourney('offer');
+ await nativeRefusal(withTenant(fyi,tx=>begin(tx,fyi,{type:'recall',documentId:l.id,documentRevision:l.revision})),'42501');
+ await withTenant(manager,async tx=>{await begin(tx,manager,{type:'recall',documentId:l.id,documentRevision:l.revision});l=act(l,manager,{type:'recall'});data={...data,letters:[l]};await save(tx,manager,data,'retention');});
+ expect(await persisted()).toMatchObject({stage:'retention',revision:2});
 });

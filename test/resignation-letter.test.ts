@@ -125,6 +125,15 @@ describe('Offboarding letter generation reuses shared template routing', () => {
     expect(t.versions[0].blocks[4].role).toBe('hr');
   });
 
+  it('uses shared owner precedence: explicit step, first Review, then case owner', () => {
+    const unflagged=route().map(step=>({...step,owner:false}));
+    const reviewed=generate({template:template(unflagged)}).letter;
+    expect(resignationLetterCapabilities(reviewed,people.owner).ownerUserId).toBe(people.owner);
+    const signedOnly=generate({template:template(unflagged.filter(step=>step.action==='sign'))}).letter;
+    expect(resignationLetterCapabilities(signedOnly,people.owner).ownerUserId).toBe(people.owner);
+    const explicit=generate({template:template(unflagged.map(step=>({...step,owner:step.id==='ceo-sign'})))}).letter;
+    expect(resignationLetterCapabilities(explicit,people.ceo).ownerUserId).toBe(people.ceo);
+  });
   it('lets only the owner regenerate the active unsigned letter from the latest template', () => {
     const draft = generate().letter;
     const edited = act(draft,'owner',{type:'edit',blocks:draft.blocks.map(block=>block.id==='body'?{...block,text:'Case-only draft'}:block)}).letter;
