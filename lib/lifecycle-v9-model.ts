@@ -1,4 +1,5 @@
 import type {DocumentRouting} from './document-signing-routing';
+import type {AutomationRecipient} from './automation/workflow';
 import { bulkAssignmentProblem, RETURN_BULK_LABELS } from './lifecycle-bulk-assignment';
 import { personnelMergeLabels } from '@/lib/lifecycle-v9-personnel-merge-fields';
 import type { Note as LifecycleNote } from './onboarding-model';
@@ -102,7 +103,9 @@ export type EmailTemplate = {
   recipientReview?: true;
   /** Board 6bdda222: the structured rich body. Without it the legacy text body sends exactly as before. */
   bodyDoc?: EmailBodyDoc;
-  slots: { id: string; label: string; required: boolean }[]; files?: EmailAsset[]; images?: EmailAsset[];
+  /** Offboarding-only named routing CC; existing Role CC is preserved. */
+  routingCc?: AutomationRecipient[];
+  slots: { id: string; label: string; required: boolean; by?: AutomationRecipient }[]; files?: EmailAsset[]; images?: EmailAsset[];
 };
 export type Trigger = {
   event: 'submitted' | 'hrSigned' | 'docSigned' | 'taskDone' | 'fileUploaded' | 'manual' | 'beforeJoin' | 'afterJoin' | 'beforeLWD' | 'afterLWD'; days: number;

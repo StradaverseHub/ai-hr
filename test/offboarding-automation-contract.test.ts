@@ -94,4 +94,11 @@ describe('Additive V9 settings and routing storage',()=>{
   expect(parseV9Config(config).templates[0].versions[0].routing).toHaveLength(1);
   expect(documentRoutingProblems(config.templates[0].versions[0].routing!,{groupExists:()=>true,routingExists:()=>true,personExists:()=>true})).toContain('At least one step must be a Sign step, or nobody signs the document.');
  });
+ it('preserves legacy email CC and retains only scoped Offboarding metadata',()=>{
+  const config=base();config.emails=[{id:'email',name:'Email',module:'off',active:true,sender:'noreply',subject:'Subject',body:'Body',cc:['supervisor'],links:[],attachments:[],routingCc:[{kind:'routing',routingId:'00000000-0000-4000-8000-000000000002'}],slots:[{id:'schedule',label:'Schedule',required:true,by:{kind:'group',groupId:'ops'}}]}];
+  const parsed=parseV9Config(config);expect(parsed.emails[0]).toEqual(config.emails[0]);expect(parsed.emails[0].cc).toEqual(['supervisor']);
+  expect(()=>parseV9Config({...config,emails:[{...config.emails[0],module:'onb'}]})).toThrow('only for Offboarding');
+  expect(()=>parseV9Config({...config,emails:[{...config.emails[0],routingCc:[{kind:'pending'}]}]})).toThrow();
+ });
+
 });
