@@ -6294,6 +6294,13 @@
       "when": 1794841005825,
       "tag": "5825_contract_shared_email_document_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 5236,
+      "version": "7",
+      "when": 1794841005836,
+      "tag": "5836_contract_shared_ending_actions",
+      "breakpoints": true
     }
   ]
 }

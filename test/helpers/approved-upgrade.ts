@@ -243,9 +243,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5223,when:1794841005823,tag:'5823_contract_shared_decline'},
  {idx:5224,when:1794841005824,tag:'5824_contract_shared_offboarding'},
  {idx:5225,when:1794841005825,tag:'5825_contract_shared_email_document_lifecycle'},
+ {idx:5236,when:1794841005836,tag:'5836_contract_shared_ending_actions'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5836_contract_shared_ending_actions':'26b4dd8d55fda25ea1f97f8e950243834555a4bc87a0110361a30d4d97c9cad9',
  '5822_contract_shared_ending_handoff':'93453d2576f82d89f1007e0d558d55ca4cd4c8de7175059ccb8faca66390d6dc',
  '5823_contract_shared_decline':'f8c314de620cdc82f282d35908b70677fabcd2c9ad81cd2753d5a27aa80adaef',
  '5824_contract_shared_offboarding':'cbd497768b3ea5731c999dda3cf9ac3389fefd8612352186e4eb3620ca69617f',
