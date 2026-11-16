@@ -70,6 +70,9 @@ import {
   OvertimePlanAlreadyApprovedError,
   OvertimeAlreadyCountedError,
 } from '@/packs/attendance/service';
+// 87bd9656 — the Overtime Backdate Control refusal (thrown by the submission owner), printed in the employee's
+// (or, on behalf, HR's) own language.
+import { OvertimeBackdateNotAllowedError } from '@/lib/overtime-backdate';
 import {
   ATTENDANCE_REQUEST_KINDS,
   OT_REASON_CATEGORIES,
@@ -689,6 +692,8 @@ async function localizeOvertimeRequestError(e: unknown): Promise<string> {
       ? t('otAlreadyCountedForDate', { date: e.date })
       : t('otPlanApprovedNotCounted', { date: e.date });
   }
+  if (e instanceof OvertimeBackdateNotAllowedError)
+    return (await getTranslations('scheduleOvertimeSetting'))('backdateRefused', { days: e.limitDays, date: e.earliestDate });
   return publicErrorMessage(e);
 }
 

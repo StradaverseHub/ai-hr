@@ -197,6 +197,37 @@ describe('Overtime Setting → Payroll and TOIL (fictional fixtures, 71 companie
     expect(punches).toHaveLength(2);
   }, 180_000);
 
+  it('87bd9656 · Overtime Rounding Method None: 31 eligible minutes reach Payroll as exactly 31 minutes, not rounded', async () => {
+    await financialModules();
+    const ruleId = (await ensureStandardRule(ctx)).id;
+    const versionId = await formula([b.companyId]);
+    const view = await scheduleGroupOvertimeSetting(ctx, { ruleId });
+    const setting: ScheduleOvertimeSetting = { ...defaultScheduleOvertimeSetting(versionId), approval: 'auto', autoMethod: 'actual', afterShift: true,
+      roundingMode: 'none', roundingStep: null, patternVersionIds: everyDay(versionId) };
+    await saveScheduleGroupOvertimeSetting(ctx, { ruleId, scope: { kind: 'companies', companyIds: [b.companyId] }, effectiveFrom: day(1), setting, expectedToken: view.token, reason: REASON });
+    const [stored] = await owner.db.select().from(s.attendanceGroupPolicyRevision).where(and(eq(s.attendanceGroupPolicyRevision.ruleId, ruleId), eq(s.attendanceGroupPolicyRevision.companyId, b.companyId)));
+    expect(stored.policy.overtime.rounding).toEqual({ mode: 'none', step: null });
+    expect((await scheduleGroupOvertimeSetting(ctx, { ruleId })).saved).toMatchObject({ setting, unsupportedRounding: false });
+    const w = await worker(ruleId), date = sourceDate(), p = { employmentId: w.employmentId, date };
+    // 09:00–18:31 on a 09:00–18:00 shift: 31 eligible after-shift minutes.
+    await clock(w.employmentId, date, 'in', '09:00:00');
+    await clock(w.employmentId, date, 'out', '18:31:00');
+    const read = await withTenant(ctx, tx => readOvertimeCalculationTx(tx, ctx, p));
+    if (!read?.calculation) throw Error('Expected the policy calculation');
+    expect(read.calculation).toMatchObject({ bindingKind: 'attendanceGroupPolicy', outcome: 'ready', payableNumerator: '31', transferable: true });
+    const parts = await owner.db.select().from(s.attendanceOvertimePolicyPart).where(eq(s.attendanceOvertimePolicyPart.calculationId, read.calculation.id));
+    expect(parts.map(part => ({ date: part.calendarDate, raw: part.rawMinutes, minutes: part.allocatedPayableMinutes }))).toEqual([{ date, raw: 31, minutes: 31 }]);
+    const batch = await createBatch(ctx, { companyId: b.companyId, payPeriod: date.slice(0, 7) });
+    expect((await transferOvertimePatternToPayroll(ctx, { ...p, expectedCalculationId: read.calculation.id, expectedSourceRevision: read.source.revision,
+      batchId: batch.batchId, reason: REASON })).status).toBe('transferred');
+    const cash = await withTenant(ctx, tx => readPayrollOvertimePatternCashTx(tx, ctx, { batchId: batch.batchId }));
+    // RM 12 × 1.5 = RM 18 an hour for 31 minutes = RM 9.30 (Round Down 15 would have paid RM 9.00 for 30).
+    expect(cash.lines.map(row => ({ date: row.date, amount: row.amountMinorUnits }))).toEqual([{ date, amount: '930' }]);
+    await generatePayslips(ctx, { batchId: batch.batchId });
+    const [slip] = await owner.db.select().from(s.payslip).where(and(eq(s.payslip.batchId, batch.batchId), eq(s.payslip.employmentId, w.employmentId)));
+    expect(slip.overtimePay).toBe('9.30');
+  }, 180_000);
+
   it('banks the same setting\'s 4 hours as TOIL under the existing credit owner instead of cash', async () => {
     const { ruleId } = await autoSplitSetting();
     await setToilPolicy(ctx, { companyId: b.companyId, enabled: true, accrualBasis: 'hours_worked', expiryDays: 90, onExpiry: 'convert_to_pay',

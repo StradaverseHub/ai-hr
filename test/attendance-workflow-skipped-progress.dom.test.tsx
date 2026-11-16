@@ -1,5 +1,6 @@
 // Board 4452ba3c: the approval history shows levels decided "Not required" at submission, with the
-// configured level numbers, and the final outcome after the last real approver.
+// configured level numbers, and the final outcome after the last real approver. Board 237c31e6 words them
+// "Skipped / Not Required" and adds the one-line progress message.
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, within } from '@testing-library/react';
@@ -17,17 +18,17 @@ describe('approval history with skipped Direct Superior levels', () => {
     render(await AttendanceWorkflowProgress({ status: 'approved', workflow: { ...base, currentStage: 1, stages: [{ name: 'Level 1', mode: 'any_one', approvers: [approver] }], decisions: [decision(0)],
       skippedLevels: [{ configuredLevel: 2, sources: [{ kind: 'direct_manager', depth: 2 }], reason: 'no_further_superior', levelSkipped: true }, { configuredLevel: 3, sources: [{ kind: 'direct_manager', depth: 3 }], reason: 'no_further_superior', levelSkipped: true }] } }));
     const items = screen.getAllByRole('listitem').filter(item => /^Level \d/.test(item.querySelector('h3')?.textContent ?? ''));
-    expect(items.map(item => item.querySelector('h3')!.textContent)).toEqual(['Level 1 · Approved', 'Level 2 · Not required', 'Level 3 · Not required']);
+    expect(items.map(item => item.querySelector('h3')!.textContent)).toEqual(['Level 1 · Approved', 'Level 2 · Skipped / Not Required', 'Level 3 · Skipped / Not Required']);
     expect(within(items[1]).getByText('Skipped automatically - No further Direct Superior available (Second-Level Direct Superior)')).toBeVisible();
     expect(within(items[2]).getByText(/Third-Level Direct Superior/)).toBeVisible();
     expect(within(items[2]).getByText(/^Decided when the application was submitted, /)).toBeVisible();
-    expect(screen.getByText('Final outcome: Approved')).toBeVisible();
+    expect(screen.getByText('Overall request status: Approved.')).toBeVisible();
   });
   it('keeps the configured level name when a middle level was skipped and the request is pending', async () => {
     render(await AttendanceWorkflowProgress({ status: 'pending', workflow: { ...base, currentStage: 1, stages: [{ name: 'Level 1', mode: 'any_one', approvers: [approver] }, { name: 'Level 3', mode: 'any_one', approvers: [named] }], decisions: [decision(0)],
       skippedLevels: [{ configuredLevel: 2, sources: [{ kind: 'direct_manager', depth: 2 }], reason: 'no_further_superior', levelSkipped: true }] } }));
     const headings = screen.getAllByRole('heading', { level: 3 }).map(heading => heading.textContent);
-    expect(headings).toEqual(['Level 1 · Approved', 'Level 2 · Not required', 'Level 3 · Waiting for decision']);
-    expect(screen.getByText('Current level: 3')).toBeVisible();
+    expect(headings).toEqual(['Level 1 · Approved', 'Level 2 · Skipped / Not Required', 'Level 3 · Pending Approval']);
+    expect(screen.getByText('First-level approval completed. Waiting for third-level approval.')).toBeVisible();
   });
 });

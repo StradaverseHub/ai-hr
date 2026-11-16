@@ -6168,6 +6168,13 @@
       "when": 1793330005466,
       "tag": "5766_probation_reshape_company_in_use",
       "breakpoints": true
+    },
+    {
+      "idx": 5170,
+      "version": "7",
+      "when": 1793330005470,
+      "tag": "5770_attendance_workflow_approver_codes",
+      "breakpoints": true
     }
   ]
 }

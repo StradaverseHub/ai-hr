@@ -368,10 +368,14 @@ describe('09b554e9 — engine: declared classification drives the PCB/EPF stream
     // employer rate for the month is 12%: 770 and 840. The employee figure is unchanged at 770 by
     // coincidence, not by rule — 11% of 7,000 and 440 + 11% of 3,000 are the same number.
     expect(st.epfEmployee).toBe(770); // 11% × 7,000, the combined month
-    expect(st.epfEmployer).toBe(840); // 12% × 7,000 — was 910 under the pre-r210 additional-wage rule
-    // ⚠️ WHAT THIS CASE STILL TESTS. The EPF Bonus 2012 flag no longer changes the EPF AMOUNT at all —
-    // epf(4000, 3000) and epf(7000, 0) are now the same figures — so this is no longer an EPF assertion
-    // in disguise. It remains the acceptance test for the classification because the flag still decides
+    // RESTATED 2026-11-16 FOR ITEM 7f5cc653 (ADR-0024 addendum 2026-11-16): this read 840 (12% × 7,000)
+    // under the r210 combined reading. KWSP's Part A bonus note keeps a ≤RM5,000 normal wage whose EPF
+    // Bonus 2012 bonus takes the month above RM5,000 at 13% of the month's wages: normal 4,000, bonus
+    // 3,000 → 7,000 × 13% = 910.00 → 910 (was 840). The employee share keeps the combined row (770).
+    expect(st.epfEmployer).toBe(910);
+    // ⚠️ WHAT THIS CASE STILL TESTS. Since 7f5cc653 the EPF Bonus 2012 flag changes the EPF EMPLOYER amount
+    // again for this shape — epf(4000, 3000) is 770 / 910 while epf(7000, 0) is 770 / 840 — so the 910 above
+    // is the flag at work. It remains the acceptance test for the classification because the flag still decides
     // the PCB stream (Yt, the difference method) and still keeps the bonus out of the SOCSO/EIS base,
     // which is what the two assertions below pin. Do not delete it as redundant.
     // SOCSO excludes the bonus (Act 4 wages): the RM4,000 band employee share.

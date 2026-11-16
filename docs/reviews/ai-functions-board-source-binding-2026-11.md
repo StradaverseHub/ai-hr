@@ -589,6 +589,39 @@ batch changed no covered source beyond both sides' own reviewed changes. No prov
 or transport changed. The 28 approvals were carried forward from `da60fba1…` to `c88b5a04…` and the agent manifest
 regenerated, under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.
 
+### Re-binding for board 237c31e6, Attendance approval progress (16 November 2026)
+
+`claude/fb-237c31e6-approval-progress-20261116`, cut from main/alpha `03b06f0de` (binding `c88b5a04…`), shows every
+approval level with its status and approver Employee ID on the Attendance request screens. Changed covered files
+include `core/attendance-workflow.ts`, `core/attendance.ts`, `core/attendance-application-history.ts`,
+`core/attendance-application-review.ts`, `core/mobile-attendance.ts`, `lib/attendance-progress.ts` and the six
+`messages/*.json` catalogues, in the provider-data scope only through the import graph. No provider transform, outbound
+field, purpose or transport changed. The 28 approvals were carried forward to `b9a6f0af…` and the agent manifest
+regenerated (`61d2d520…`), under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding for board 87bd9656: Schedule Group Overtime Setting None rounding and Overtime Backdate Control (16 November 2026)
+
+`claude/fb-87bd9656-ot-backdate-20261116`, cut from main/alpha `03b06f0de` (binding `c88b5a04…`), adds None to Overtime
+Rounding Method and the optional `overtime.backdateLimitDays` policy key, enforced in the one attendance submission
+owner. Changed covered files: `core/attendance.ts`, `core/attendance-group-policy.ts`, `lib/attendance-group-policy.ts`,
+`lib/schedule-overtime-setting.ts` and the six `messages/*.json` catalogues; added covered file:
+`lib/overtime-backdate.ts` (a pure date rule and refusal type). All are in the provider-data scope only through the
+import graph. No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried forward
+from `c88b5a04…` to `1b3f89b3…` and the agent manifest regenerated (`0efc1d52…`), under the owner's standing pre-approval
+for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding for the combined Irwin release: 237c31e6, aac17dd0, 87bd9656 and 7f5cc653 (16 November 2026)
+
+The owner approved releasing boards 237c31e6 (Attendance approval progress), aac17dd0 (typed Amount on Calculated by
+Formula Pay Items), 87bd9656 (Overtime Setting None rounding and Backdate Control) and 7f5cc653 (EPF Part A bonus
+note) as one gate and one staging install (16 November 2026), on `claude/release-combined-irwin-20261116` from
+main/alpha `03b06f0de`. Added covered files beyond the notes above: `core/payroll-individual-txn.ts`,
+`packs/payroll/individual-calculation.ts`, `localization/my/payroll.ts` and `core/statutory-trace-explain.ts`, in the
+provider-data scope only through the import graph. No provider transform, outbound field, purpose or transport changed.
+The per-branch bindings above were superseded: the 28 approvals were carried forward from `b9a6f0af…` to `f446073c…`
+(1,595 files) and the agent manifest regenerated (`02c0c88c…`), under the owner's standing pre-approval for staging
+re-binds (12 November 2026). Staging only.
+
 ### Re-binding for the Probation Confirmation reshape onto shared HR automation (16 November 2026)
 
 `claude/probation-confirmation-aihr-b81c70`, merged with main/alpha `9d32dfab1` (binding `1aad1797…`), at its final merge, adds
@@ -646,6 +679,15 @@ reaches leave through `packs/leave/service`, `core/company-refs.ts` declares fou
 approvals were carried forward to `e4fcddfb…` and the agent manifest regenerated (`943a1bee…`), under the owner's
 standing pre-approval for staging re-binds (12 November 2026). This binding grants no production authority.
 
+### Re-binding the combined Irwin release onto the Probation Confirmation staging release (16 November 2026)
+
+The combined Irwin release (237c31e6, aac17dd0, 87bd9656, 7f5cc653) was rebuilt as
+`claude/release-combined-irwin-20261116-r2` on top of the Probation Confirmation release `267574da5` (installed on
+staging, binding `e4fcddfb…`), because staging moved past the original base `03b06f0de`. Merging changed no covered
+source beyond both sides' own reviewed changes. No provider transform, outbound field, purpose or transport changed. The
+28 approvals were carried forward from `e4fcddfb…` to `800269d5…` (1,624 files) and the agent manifest regenerated
+(`97bd0705…`, 493 files), under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.
+
 ### Re-binding for breadcrumb task ancestry (16 November 2026)
 
 The breadcrumb repair branch is based on main/alpha `59f06b08d`. The only changed covered source is
@@ -656,3 +698,15 @@ records carry forward to `3ac2fd19076f1bd8c7bc3565fb1cc2a583d2f3fc0b42d4c216f9a2
 Their statuses, reviewers, purposes and original approval evidence remain unchanged. The provider manifest and
 agent manifest were regenerated; the agent fingerprint is `4d753fc768766c58d9dbd245b7dd332023c79cbc8b23bb73853c73e1991ec084`
 over 493 files. This binding grants no production authority.
+
+### Re-binding Irwin f0443eaf2 with breadcrumb task ancestry (16 November 2026)
+
+The owner explicitly requested exact Irwin commit `f0443eaf27d3584f55b6a2e7d48558bd553d4149` be merged before
+the breadcrumb gate. Its reviewed payroll/attendance changes and migration 5770 are preserved unchanged. The breadcrumb
+side changes covered source only in `packs/payroll/index.ts` (navigation ownership metadata). Generated conflicts were
+resolved from Irwin's approval records and both histories, then regenerated over the actual combined source. Under the
+standing staging re-bind pre-approval of 12 November 2026, the same 29 already-approved records carry forward to
+`f4b83a1fa86cf3a53f111b8be69e10f29e0e629f9fa4f50c8ea0209987034494` over 1,624 files. Statuses, purposes, reviewers and original approval evidence
+remain unchanged. The agent manifest is `1da03e300d47181a3a1a803e3f35d4b2159be8989b56f77fa01ed8ce81b68e52` over 493 files.
+No provider transform, outbound field, purpose or transport was added by the breadcrumb repair. This binding grants
+no production authority. The owner separately requires approval before this candidate is released.

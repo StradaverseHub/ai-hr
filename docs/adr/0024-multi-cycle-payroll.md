@@ -173,7 +173,7 @@ System figures below are produced by `test/multicycle-compute.test.ts` (2026.1 r
 | # | Statutory assertion | Authority | Manual figure | System figure | ✓ |
 |---|---------------------|-----------|---------------|---------------|---|
 | 1 | EPF employee for the month = the Part A row for RM15,000 = **RM1,650** | EPF Act, Third Schedule | | **RM1,650.00** (run1 550.00 + run2 1,100.00) | ☐ |
-| 2 | EPF employer for the month = the same RM15,000 row, a 12% row → **RM1,800** (restated 2026-08-20; see below) | EPF Act, Third Schedule | | **RM1,800.00** (run1 650.00 + run2 1,150.00) | ☐ |
+| 2 | EPF employer for the month = the same RM15,000 row, a 12% row → **RM1,800** (restated 2026-08-20; **restated again 2026-11-16 to RM1,950 — see the 7f5cc653 addendum below**) | EPF Act, Third Schedule | | **RM1,800.00** (run1 650.00 + run2 1,150.00) | ☐ |
 | 3 | **One** SOCSO contribution for May, on RM5,000 (bonus excluded); run 2 adds **RM0** | Act 4 s.6(7)/6(9), s.2(24) | | run1 **RM24.75**, run2 **RM0.00** (employee) | ☐ |
 | 4 | **One** EIS contribution for May, on RM5,000; run 2 adds **RM0** | Act 800, Second Schedule | | run1 **RM9.90**, run2 **RM0.00** (employee) | ☐ |
 | 5 | Run 1 MTD = normal-remuneration MTD on `Y1 = 5,000` with the Jan–Apr accumulators | LHDN spec §D.1 | | **RM110.00** | ☐ |
@@ -242,6 +242,69 @@ is an open question, not a settled decision.
 
 **Re-signature.** The 2026-06-20 authorisation covered rows 1 and 2 as they were written. Rows 1 and 2
 above need a counter-signature against the restated figures before the next real bonus run.
+
+### Addendum 2026-11-16 — the KWSP Part A bonus note restores RM1,950 for row 2 (item 7f5cc653)
+
+**Supersedes the employer half of the 2026-08-20 note above for one shape only.** Irwin Law reported
+(item 7f5cc653, plan approved at revision 1) that an Auto (statutory) employee with normal EPF wages of
+RM4,700 and an EPF Bonus 2012 commission of RM1,786.83 was charged RM780 employer EPF (the 12% row for
+RM6,486.83) where KWSP requires RM844.
+
+**The rule.** The KWSP Third Schedule, Part A, carries a bonus note: *"Where the employer pays bonus to an
+employee who receives monthly wages of RM5,000.00 and below, and upon receiving the said bonus renders the
+wages received for that month to exceed RM5,000.00, the employer's contribution shall be calculated at the
+rate of 13% of the amount of wages for the month."* With the schedule's rounding rule (*"total contribution
+which includes cents shall be rounded to the next ringgit"*), RM6,486.83 × 13% = RM843.2879 → **RM844**. The
+note names only the employer, so the employee share stays on the row for the month's total (RM715). Source
+status: the wording is taken from secondary publishers that reproduce it verbatim; the primary KWSP
+document could not be fetched by tooling and is **PENDING HUMAN CONFIRMATION** — see
+[STATUTORY-SOURCES.md](../architecture/STATUTORY-SOURCES.md) §1 (EPF bullet). That confirmation is a
+release gate.
+
+**What changes in code.** One helper, `partABonusRetainedEmployer` in `localization/my/payroll.ts`, applies
+the note for Part A when the EPF bonus stream (EPF Bonus 2012 only, since 2026-11-13) is above zero, normal
+EPF wages are at or below `cfg.employerThreshold` and normal + bonus is above it. It is shared by `epf()`
+(Auto and voluntary excess), the statutory side of i-Topup and the Part A branch of the elected
+(semi-auto) employer, which already applied the same rule. Under i-Topup the configured employer increment is added to
+the corrected 13% (RM6,486.83 at +1% → 14% → RM909); voluntary excess keeps its max() over the corrected
+floor. Part C, Part E, the non-citizen flat rate,
+age 75+, manual amount and manual percentage are unchanged. No ruleset field, table or
+`MY_STATUTORY_VERSION` change. Closed payslips are not recomputed.
+
+**What does NOT change.** bdf7d248's own case (normal RM7,413 + bonus RM1,650.71) has normal wages above
+RM5,000, so it still reads the combined row: 1,001 / 1,092, and its bonus run still contributes 176 / 192.
+The employee side of every month is unchanged. A month whose normal wages alone cross RM5,000 is unchanged.
+
+**§7 rows 1–2 restated (the scenario: normal RM5,000, bonus RM10,000).**
+
+| # | Statutory assertion | Authority | System figure (7f5cc653) | Was (2026-08-20) |
+|---|---------------------|-----------|--------------------------|------------------|
+| 1 | EPF employee for the month = the Part A row for RM15,000 | EPF Act, Third Schedule | **RM1,650.00** (run1 550.00 + run2 1,100.00) — unchanged | RM1,650.00 |
+| 2 | EPF employer for the month = 13% × RM15,000 under the Part A bonus note (normal RM5,000 ≤ RM5,000, month above RM5,000) | EPF Act, Third Schedule, Part A bonus note | **RM1,950.00** (run1 650.00 + run2 1,300.00) | RM1,800.00 |
+
+Row 2 returns to the figure signed off on 2026-06-20, now on a cited basis rather than as the
+"rate anchored to the normal wage" reading bdf7d248 reversed.
+
+**Other consequences.** The RM5,000 + RM50 step-down case pinned in
+`test/epf-combined-month-bdf7d248.test.ts` no longer occurs for a bonus-stream bonus: the month is
+5,050 × 13% = 656.50 → RM657, the bonus run adds RM7 and nothing is clamped. The same applies to the
+23e7dac3 order case (RM4,990 + RM70 bonus money → RM658 in either order). Where normal wages are at or
+below RM5,000 and a very large bonus takes the month above RM20,000, the note sets no upper limit, so 13%
+of the total applies (previously 12%); this is a plain-text reading, not verified text. Part C's parallel
+6.5% note remains unverified and out of scope.
+
+**Counter-signature.** Rows 1 and 2 as restated here require the counter-signature this ADR already
+requires before the next real bonus run.
+
+```
+Status:         OWNER-APPROVED FOR STAGING ONLY
+Reviewer name:  zenlam                         Role/qualification:  repository owner
+Date:  2026-11-16   Result:  ☑ Approved (staging)    ☐ Changes required (notes below)
+Notes:          Given in the operator session that built board 7f5cc653, answering "Yes, sign off for
+                staging". It does not cover production: before any production package, a human must
+                confirm the note's wording in the current KWSP Third Schedule and record it in
+                docs/architecture/STATUTORY-SOURCES.md (still PENDING HUMAN CONFIRMATION).
+```
 
 **Sign-off**
 
