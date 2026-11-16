@@ -44,18 +44,15 @@ describe('EPF Third Schedule Part A (#95)', () => {
     expect(epf(33333)).toEqual({ employee: Math.ceil(33333 * 0.11), employer: Math.ceil(33333 * 0.12) });
   });
 
-  it('reads the schedule ONCE for wage + bonus together (bdf7d248, r210)', () => {
-    // MOVED, NOT BROKEN — this case used to assert { 1650, 1950 } and the reasoning it carried was
-    // "the employer rate stays 13% because the NORMAL wage is ≤ RM5,000, even when the bonus pushes the
-    // month over". Item bdf7d248 reversed exactly that: the Third Schedule describes a MONTH, so the
-    // month's normal wage and its additional remuneration are added first and the combined base is what
-    // the row is read for. RM5,000 + RM10,000 is a RM15,000 month, which is a 12% row: employee
-    // ceil(11% × 15,000) = 1,650 (unchanged — this pair cannot tell the two readings apart on the
-    // employee side) and employer ceil(12% × 15,000) = 1,800, where the old reading charged 1,950.
-    // The reporter's own month is the case that shows the employee side moving too; it lives in
-    // test/epf-combined-month-bdf7d248.test.ts.
-    expect(epf(5000, 10000)).toEqual({ employee: 1650, employer: 1800 });
-    // The same month paid on ONE payslip gives the same answer — the property the reporter asked for.
+  it('reads the schedule ONCE for wage + bonus together (bdf7d248), except the Part A bonus note (7f5cc653)', () => {
+    // RESTATED 2026-11-16 FOR ITEM 7f5cc653 (ADR-0024 addendum 2026-11-16). This case asserted
+    // { 1650, 1800 } after bdf7d248 (r210) read the 13%/12% employer step on the combined month. KWSP's
+    // Third Schedule Part A bonus note says the opposite for exactly this shape: normal monthly wages of
+    // RM5,000 and below, and a bonus that takes the month above RM5,000, keep the employer at 13% of the
+    // month's wages. RM5,000 + RM10,000: employee is still the RM15,000 row, ceil(11% × 15,000) = 1,650
+    // (the note names only the employer); employer is 13% × 15,000 = 1,950.00 → 1,950 (was 1,800).
+    expect(epf(5000, 10000)).toEqual({ employee: 1650, employer: 1950 });
+    // The same RM15,000 paid as NORMAL wages on one payslip is not a bonus month: the 12% row, unchanged.
     expect(epf(15000, 0)).toEqual({ employee: 1650, employer: 1800 });
   });
 

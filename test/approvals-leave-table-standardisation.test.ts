@@ -20,8 +20,9 @@
  *
  * The behavioural half is guarded too: this round was presentation only, so the decide path (which action,
  * which decision values, the required reject reason, the per-date modal for multi-date requests) must be
- * exactly what it was, and /approvals must stay unpaginated (r75 — paging a bulk-decision surface makes
- * "approve all" mean "approve all on this page").
+ * exactly what it was, and Leave must stay unpaginated (r75 — paging that bulk-decision surface makes
+ * "approve all" mean "approve all on this page"). Claims detail and managed resignation cards have independent
+ * pagers; neither may narrow the queue-wide Leave or Claims bulk selection.
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -367,8 +368,26 @@ describe('33bf1a2d — approval behaviour is unchanged (presentation only)', () 
 
   it('pages Claims detail separately from queue-wide bulk selection and keeps Leave unpaged', () => {
     expect(approvalsLeaveSection()).not.toContain('<Pager');
-    expect(approvals.match(/<Pager\b/g)).toHaveLength(1);
-    expect(approvals).toContain('state={claimResult.page}');
+    expect(approvalsCancellationSection()).not.toContain('<Pager');
+    const claimsFrom=approvals.indexOf("{visible('claims')"),claimsTo=approvals.indexOf("{visible('corrections')",claimsFrom);
+    expect(claimsFrom,'Claims detail has its own render boundary').toBeGreaterThan(-1);
+    expect(claimsTo,'Attendance follows the bounded Claims detail section').toBeGreaterThan(claimsFrom);
+    const claims=approvals.slice(claimsFrom,claimsTo);
+    expect(claims.length).toBeGreaterThan(100);
+    expect(claims.match(/<Pager\b/g)).toHaveLength(1);
+    expect(claims).toContain("paramNames={{page:'claimsPage',size:'claimsSize'}}");
+    expect(claims).toContain('state={claimResult.page}');
+    expect(claims).not.toContain('resignationPage');
+    // A separate bounded card source must not break this Leave/Claims contract or borrow the Claims pager.
+    const managedFrom=approvals.indexOf("{visible('resignations')&&resignationWork.total>0"),managedTo=approvals.indexOf("{admin && visible('resignations')",managedFrom);
+    expect(managedFrom,'managed resignation cards have their own render boundary').toBeGreaterThan(-1);
+    expect(managedTo,'the legacy resignation table follows the managed cards').toBeGreaterThan(managedFrom);
+    const managed=approvals.slice(managedFrom,managedTo);
+    expect(managed.length).toBeGreaterThan(100);
+    expect(managed.match(/<Pager\b/g)).toHaveLength(1);
+    expect(managed).toContain('paramNames={{page:"resignationPage",size:"resignationSize"}}');
+    expect(managed).toContain('state={pageState(resignationQuery,resignationWork.total,resignationWork.items.length)}');
+    expect(managed).not.toContain('claimResult.page');
     expect(approvals).toContain('claimSelectionScope={claimSelectionScope}');
     const selection = read('app/approvals/bulk-selection.tsx');
     expect(selection).toContain('await selectPendingClaimsAction(claimSelectionScope)');

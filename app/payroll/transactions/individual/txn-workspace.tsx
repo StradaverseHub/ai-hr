@@ -102,6 +102,8 @@ type ItemOption = {
   fromMaster: boolean;
   derives: boolean;
   formulaBuilder?: boolean;
+  /** aac17dd0 — see TxnPayItem.amountEntryAllowed. */
+  amountEntryAllowed?: boolean;
   inputUnit: ItemInputUnit;
   /** c11e81aa — may this item be keyed DAY BY DAY? False for a fixed-amount item, whose figure is one
    *  figure for the month. See core/pay-rule.ts payRuleAllowsDayByDay for the rule and its reasoning. */
@@ -110,6 +112,9 @@ type ItemOption = {
   readsCalendarDays: boolean;
 };
 const componentIdOf = (value: string): string | null => (value.startsWith('c:') ? value.slice(2) : null);
+/** aac17dd0 — may the single form take a typed Amount on this item? A Formula Builder item always could. */
+const allowsAmountEntry = (o: Pick<ItemOption, 'formulaBuilder' | 'amountEntryAllowed'> | null | undefined): boolean =>
+  o?.formulaBuilder === true || o?.amountEntryAllowed === true;
 
 export type TxnEmployee = {
   employmentId: string;
@@ -172,6 +177,9 @@ export type TxnPayItem = {
    *  operator's to fill. Resolved on the server (payRuleDerivesAmount) from the stored rule. */
   derives: boolean;
   formulaBuilder?: boolean;
+  /** aac17dd0 — the single Add/Edit form may offer a typed Amount on this item: its rule is a formula
+   *  ("Calculated by Formula" or a Pay Formula Builder Formula ID). Resolved on the server. */
+  amountEntryAllowed?: boolean;
   /** Which quantity that rule needs keyed (payRuleInputUnit). null ⇒ none. */
   inputUnit: ItemInputUnit;
   /** c11e81aa — may a one-off on this item be recorded day by day, or is its figure one figure for the
@@ -361,6 +369,7 @@ export function TxnWorkspace({
         fromMaster: true,
         derives: c.derives,
         formulaBuilder: c.formulaBuilder===true,
+        amountEntryAllowed: c.amountEntryAllowed===true,
         inputUnit: c.inputUnit,
         variesByDay: c.variesByDay,
         readsCalendarDays: c.readsCalendarDays === true,
@@ -883,7 +892,11 @@ export function TxnWorkspace({
   // ── 2da9937a — the amount the PAY ITEM works out, when it is not the operator's to type ──
   const pickedItem = form ? (itemByValue.get(form.item) ?? null) : daily ? (itemByValue.get(daily.item) ?? null) : null;
   const formulaBuilder = pickedItem?.formulaBuilder===true;
-  const derives = pickedItem?.derives === true || (formulaBuilder && form?.unit!=='amount');
+  // aac17dd0 — an inline "Calculated by Formula" item also offers Amount on the single form (never Day by Day).
+  const inlineFormula = pickedItem?.amountEntryAllowed===true && !formulaBuilder;
+  /** The operator chose Amount on a formula item: the typed figure is paid and the formula is not used. */
+  const amountMode = form != null && allowsAmountEntry(pickedItem) && form.unit==='amount';
+  const derives = !amountMode && (pickedItem?.derives === true || formulaBuilder);
   /** The quantity this item's rule needs keyed, or null when it needs none (qty_rate carries its own). */
   const requiredUnit: ItemInputUnit = derives ? pickedItem!.inputUnit : null;
   /** True once the operator has supplied that quantity — the point at which a figure can be asked for. */
@@ -1114,7 +1127,13 @@ export function TxnWorkspace({
   /** 2da9937a — an item that calculates from hours (or days) OWNS the Input Type: the quantity has to land
    *  in the input its rule reads or the figure is meaningless, so it is set rather than offered. Items that
    *  do not calculate keep the operator's own choice (or none), exactly as before. */
-  const unitFor = (itemValue: string, current: string): string => itemByValue.get(itemValue)?.formulaBuilder ? 'qty' : itemByValue.get(itemValue)?.inputUnit ?? current;
+  const unitFor = (itemValue: string, current: string): string => {
+    const o = itemByValue.get(itemValue);
+    if (o?.formulaBuilder) return 'qty';
+    // aac17dd0 — an inline formula item opens on its own quantity (or None); Amount is the operator's explicit choice.
+    if (o?.amountEntryAllowed) return o.inputUnit ?? '';
+    return o?.inputUnit ?? current;
+  };
 
   const blankForm = (period: string): FormState => ({
     mode: 'create',
@@ -1259,7 +1278,9 @@ export function TxnWorkspace({
         // 2da9937a — a row keyed BEFORE its pay item started calculating carries no unit (or the wrong
         // one). The Input Type select is disabled on a calculating item, so leaving the stored value would
         // strand the operator on a form they cannot make valid: the item's required input wins.
-        unit: itemByValue.get(resolvedItem)?.formulaBuilder?(detail.calculationMethod==='amount'?'amount':detail.unit&&detail.unit!=='amount'?detail.unit:'qty'):unitFor(resolvedItem, detail.unit ?? ''),
+        unit: itemByValue.get(resolvedItem)?.formulaBuilder?(detail.calculationMethod==='amount'?'amount':detail.unit&&detail.unit!=='amount'?detail.unit:'qty')
+          // aac17dd0 — a typed Amount saved on an inline formula item reopens as Amount, not the formula's quantity.
+          :itemByValue.get(resolvedItem)?.amountEntryAllowed&&detail.calculationMethod==='amount'?'amount':unitFor(resolvedItem, detail.unit ?? ''),
         notes: detail.notes ?? '',
       });
     });
@@ -1294,7 +1315,8 @@ export function TxnWorkspace({
     // refusal about a field they cannot reach; what they can be missing is the QUANTITY the rule reads.
     // The check itself survives — it just moves onto the derived figure, which is what actually gets
     // stored, and which the service asserts again authoritatively.
-    if (opt.derives || (opt.formulaBuilder && f.unit!=='amount')) {
+    // aac17dd0 — Amount chosen on a formula item: the typed amount is the figure, checked below like any other.
+    if (!(allowsAmountEntry(opt) && f.unit==='amount') && (opt.derives || opt.formulaBuilder)) {
       if(opt.formulaBuilder && !(Number(f.quantity)>0))return 'rowIncomplete';
       if (opt.inputUnit && (f.unit !== opt.inputUnit || !(Number(f.quantity) > 0))) {
         return opt.inputUnit === 'hours' ? 'quantityRequiredHours' : 'quantityRequiredDays';
@@ -1380,7 +1402,11 @@ export function TxnWorkspace({
       amount: effectiveAmount,
       quantity,
       unit,
-      ...(pickedItem?.formulaBuilder?{calculationMethod:f.unit==='amount'?'amount' as const:'formula' as const}:{}),
+      ...(pickedItem?.formulaBuilder?{calculationMethod:f.unit==='amount'?'amount' as const:'formula' as const}
+        // aac17dd0 — an inline formula item: Amount is stamped 'amount' (never re-run by a formula); Hours or Days
+        // keeps the legacy derived path, and an edit sends null so a row saved as Amount returns to it.
+        :pickedItem?.amountEntryAllowed?(f.unit==='amount'?{calculationMethod:'amount' as const}:f.mode==='edit'?{calculationMethod:null}:{})
+        :{}),
       notes: r.notes || null,
     };
     return f.mode === 'edit' && f.id
@@ -2123,20 +2149,34 @@ export function TxnWorkspace({
                     </p>
                   </div>
                   {/* 2da9937a — a calculating item OWNS the Input Type: the quantity has to land in the
-                      input its rule reads, so the select is fixed to it rather than left to be got wrong. */}
+                      input its rule reads, so the select is fixed to it rather than left to be got wrong.
+                      aac17dd0 — except a formula item, which offers its own quantity (or None) and Amount. */}
                   <Field label={t('inputType')}>
                     <select
                       value={form.unit}
-                      disabled={!formulaBuilder && requiredUnit != null}
+                      disabled={!formulaBuilder && !inlineFormula && requiredUnit != null}
                       onChange={(e) => patchForm({ unit: e.target.value, amount: '', quantity: '' })}
                       className={inputCls}
                     >
-                      {!formulaBuilder&&<option value="">{t('inputTypeNone')}</option>}
-                      {UNITS.map((u) => (
-                        <option key={u} value={u}>
-                          {t(`unitLabel.${u}`)}
-                        </option>
-                      ))}
+                      {inlineFormula ? (
+                        <>
+                          {pickedItem!.inputUnit ? (
+                            <option value={pickedItem!.inputUnit}>{t(`unitLabel.${pickedItem!.inputUnit}`)}</option>
+                          ) : (
+                            <option value="">{t('inputTypeNone')}</option>
+                          )}
+                          <option value="amount">{t('unitLabel.amount')}</option>
+                        </>
+                      ) : (
+                        <>
+                          {!formulaBuilder&&<option value="">{t('inputTypeNone')}</option>}
+                          {UNITS.map((u) => (
+                            <option key={u} value={u}>
+                              {t(`unitLabel.${u}`)}
+                            </option>
+                          ))}
+                        </>
+                      )}
                     </select>
                   </Field>
                   {form.unit!=='amount'&&<Field label={requiredUnit ? t(`quantityLabel.${requiredUnit}` as never) : t('quantity')}>
@@ -2179,7 +2219,7 @@ export function TxnWorkspace({
                 {/* Two different statements, and which one is true depends on the item picked: a plain
                     amount item is paid as typed; a calculating item is paid what its own rule produces. */}
                 <p className="text-xs text-muted-foreground">
-                  {derives ? t(requiredUnit ? `derivedAmountHint.${requiredUnit}` : 'derivedAmountHint.none') : t('amountIsFinalHint')}
+                  {derives ? t(requiredUnit ? `derivedAmountHint.${requiredUnit}` : 'derivedAmountHint.none') : amountMode ? t('amountManualFormulaHint') : t('amountIsFinalHint')}
                 </p>
                 {/* The figure is a real 0 because a live divisor was zero for this employee this month —
                     the explanation, in the same words the pay-item screen uses, rather than an unexplained

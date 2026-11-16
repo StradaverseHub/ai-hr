@@ -1,4 +1,5 @@
 'use client';
+import type {ReactNode} from 'react';
 import Link from 'next/link';
 import {useState} from 'react';
 import {useTranslations} from 'next-intl';
@@ -16,9 +17,9 @@ export type LetterSection = { companies: NamedOption[]; company: NamedOption; te
 export type Refs = { routings: (NamedOption & { retired?: boolean })[]; groups: NamedOption[]; people: NamedOption[] };
 
 /** HR Automation › Templates (prototype TemplatesPage and EmailDrawer; mockup 14). Document signing routing stays in the letter editor. */
-export function TemplatesWorkspace({filter,access,emails,letters,refs,contract}:{filter:AutomationFilter;access:AutomationPageAccess;emails:ListedEmailTemplate[];letters:LetterSection;refs:Refs;contract?:ContractTemplatesData}){
+export function TemplatesWorkspace({filter,access,emails,letters,refs,contract,lifecycleSection,contractSection}:{filter:AutomationFilter;access:AutomationPageAccess;emails:ListedEmailTemplate[];letters:LetterSection;refs:Refs;contract?:ContractTemplatesData;lifecycleSection?:ReactNode;contractSection?:ReactNode}){
  const t=useTranslations('automation'),[editing,setEditing]=useState<ListedEmailTemplate|null>(null);
- const showProbation=filter==='all'||filter==='probation',legacy=(['onb','off','contract_staff'] as const).filter(m=>(filter==='all'||filter===m)&&!(m==='contract_staff'&&contract));
+ const showProbation=filter==='all'||filter==='probation',legacy=(['onb','off','contract_staff'] as const).filter(m=>(filter==='all'||filter===m)&&(!lifecycleSection||m==='contract_staff')&&(!(contract||contractSection)||m!=='contract_staff'));
  const published=new Set(letters?.templates.filter(l=>l.state==='published').map(l=>l.outcome)??[]);
  // Prototype TemplatesPage (lane M3): head, module chips, the go-live check banner, Document templates rows (name,
  // module · signing summary, Probation / Letter / version pills, Edit), then Email templates rows.
@@ -61,6 +62,8 @@ export function TemplatesWorkspace({filter,access,emails,letters,refs,contract}:
    {editing&&<EmailEditor key={editing.template.id} initial={editing} refs={refs} onClose={()=>setEditing(null)}/>}
   </>}
   {contract&&(filter==='all'||filter==='contract_staff')&&<ContractTemplates data={contract}/>}
+  {lifecycleSection}
+  {!contract&&contractSection}
   {legacy.map(module=><LegacyBuilderCard key={module} module={module} kind="templates" href={LEGACY_BUILDERS.templates[module]} allowed={module==='contract_staff'?access.contractStaff:access.legacy}/>)}
  </main>;
 }

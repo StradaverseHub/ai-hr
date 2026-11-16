@@ -78,3 +78,23 @@ module in `docs/architecture/module-contracts.json`, and allocates migrations th
 Four handoff rules are overridden (decisions 1, 3, 4 and 7's restriction of delegable steps); the handoff owner must
 be told before a build agent follows the handoff as written. A shared engine means one regression can stop
 onboarding emails, so every shared change runs the regression suites of all modules that use it.
+
+## Resignation merge navigation clarification (17 November 2026)
+
+The approved merge uses one shared configuration area, named **HR Automation**: Workflows, Templates, Assignment groups
+(including Routing rules on that page), and Onboarding & offboarding settings. Shared module selectors host the
+existing Onboarding, Offboarding, Probation and Contract staff editors. Their schema, save authority and execution
+engines remain with their native owners. Onboarding & offboarding settings retain their V9 administration gate;
+a Probation or Contract configurer does not acquire that permission through this move.
+
+Duplicate V9 builder and Contract builder sidebar aliases are no longer mounted. Existing URLs and durable
+navigation catalogue identities remain for compatibility and history; V9 builder URLs redirect to their shared
+Configuration destination. Contract configurer content links to Templates select the Contract staff module in Configuration. Native
+template approvers without configuration authority keep their compatible template review route; moving the
+configurer menu does not remove their existing access.
+Module Access remains with On/Off Boarding. Existing coverage ledger entries remain unverified; this navigation
+correction does not establish rendered or installed acceptance.
+
+The coordinator verified both direct owner decisions on 17 November: Contract explicitly names the area
+HR Automation; Resignation approves one shared configuration area. The exact top-level label is
+HR Automation (without the old “· Shared” suffix). Configuration remains the page purpose.

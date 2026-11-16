@@ -32,8 +32,9 @@ export const AUTOMATION_FLOOR = {
     taskAssignees: ['group', 'manager', 'employee'],
     taskModes: ['rr', 'manual'],
     bpRuleFields: ['businessGroup', 'company', 'department'],
-    /** Email template options beside id, name, module, subject and body (v9ConfigSchema `emails`). */
-    emailOptions: ['active', 'sender', 'cc', 'files', 'images', 'links', 'attachments', 'slots', 'recipientReview', 'bodyDoc'],
+    /** Email template options beside id, name, module, subject and body (v9ConfigSchema `emails`).
+     * Named routing CC is optional and validated only for Offboarding; existing role CC is preserved. */
+    emailOptions: ['active', 'sender', 'cc', 'routingCc', 'files', 'images', 'links', 'attachments', 'slots', 'recipientReview', 'bodyDoc'],
     /** Email merge fields: the Personnel fields (`lib/lifecycle-v9-personnel-merge-fields.ts`) and the run's own words. */
     mergeFields: ['employee.empNo', 'employee.name', 'employee.icNo', 'race', 'religion', 'nationality', 'gender', 'marital', 'employee.passportNo',
       'email', 'mobile', 'homePhone', 'personalEmail', 'address', 'company.name', 'employee.department', 'employee.position', 'employee.supervisor',

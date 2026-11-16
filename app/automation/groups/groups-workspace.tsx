@@ -1,4 +1,5 @@
 'use client';
+import type {ReactNode} from 'react';
 import Link from 'next/link';
 import {useState,useTransition} from 'react';
 import {useRouter} from 'next/navigation';
@@ -15,7 +16,7 @@ export type ListedRouting = { routing: Routing; revision: number; retired: boole
 export type RoutingOptions = { businessGroups: NamedOption[]; companies: (NamedOption & { businessGroupId: string })[]; departments: (NamedOption & { companyId: string })[]; jobTitles: string[] };
 
 /** HR Automation › Assignment groups (prototype GroupsPage; mockup 16): groups stay in On/Off Boarding; routing rules are edited here. */
-export function GroupsWorkspace({access,groups,routings,options,people:initialPeople}:{access:AutomationPageAccess;groups:NamedOption[];routings:ListedRouting[];options:RoutingOptions;people:NamedOption[]}){
+export function GroupsWorkspace({access,groups,routings,options,people:initialPeople,groupSection}:{groupSection?:ReactNode;access:AutomationPageAccess;groups:NamedOption[];routings:ListedRouting[];options:RoutingOptions;people:NamedOption[]}){
  const t=useTranslations('automation'),[people,setPeople]=useState(initialPeople),[creating,setCreating]=useState<ListedRouting|null>(null);
  const live=routings.filter(r=>!r.retired),retired=routings.filter(r=>r.retired);
  const names=routings.map(r=>r.routing.name.trim().toLowerCase());
@@ -23,17 +24,18 @@ export function GroupsWorkspace({access,groups,routings,options,people:initialPe
  // Groups, their members and open task limits stay in the On/Off Boarding configuration (ADR decision 2).
  const usedBy=(groupId:string)=>live.filter(r=>r.routing.rows.some(row=>row.assignTo.kind==='group'&&row.assignTo.groupId===groupId)).map(r=>t('groups.routingNamed',{name:r.routing.name}));
  return <main className="v9-stack pcg">
-  <ConfigHead crumb={t('crumb')+' / '+t('groups.title')} title={t('groups.title')} sub={t('groups.intro')} actions={access.legacy?<Link className="v9-button" href={LEGACY_BUILDERS.groups}>{t('groups.editGroups')}</Link>:undefined}/>
-  <section className="v9-stack" aria-labelledby="automation-groups-title">
+  <ConfigHead crumb={t('crumb')+' / '+t('groups.title')} title={t('groups.title')} sub={t('groups.intro')} actions={!groupSection&&access.legacy?<Link className="v9-button" href={LEGACY_BUILDERS.groups}>{t('groups.editGroups')}</Link>:undefined}/>
+  {groupSection??<section className="v9-stack" aria-labelledby="automation-groups-title">
    <div><h2 id="automation-groups-title" className="sr-only">{t('groups.groups')}</h2><p className="pcg-hint">{t('groups.groupsIntro')}</p>{!access.legacy&&<p className="pcg-hint">{t('groups.groupsReadOnly')}</p>}</div>
    {groups.length===0?<p className="v9-muted">{t('groups.noGroups')}</p>:<ul className="pcg-grid2" style={{listStyle:'none',margin:0,padding:0}}>{groups.map(g=>{const used=usedBy(g.id);return <li key={g.id} className="pcg-card" aria-label={g.name}>
     <div><span className="pcg-hint">{t('groups.groupName')}</span><h3 className="pcg-group-name">{g.name}</h3></div>
     <p className="pcg-hint">{used.length?t('groups.usedByList',{list:used.join('; ')}):t('groups.usedBy',{count:0})}</p>
    </li>;})}</ul>}
-  </section>
+  </section>}
   <section className="pcg-card" aria-label={t('groups.routings')}>
    <div className="pcg-row pcg-between" style={{alignItems:'flex-start'}}><div style={{flex:'1 1 480px'}}><h2>{t('groups.routings')}</h2><p className="pcg-sub">{t('groups.routingIntro')} {t('groups.approvalNote')}</p></div>
     <button type="button" className="v9-button v9-button-primary" disabled={!!creating} onClick={()=>setCreating({routing:{id:crypto.randomUUID(),name:'',rows:[{match:{},assignTo:{kind:'group',groupId:groups[0]?.id??''}}]},revision:0,retired:false,usedBy:[]})}>{t('groups.newRouting')}</button></div>
+   <p className="v9-muted">A row with no conditions is the explicit default. Offboarding uses it when the selected row has no available recipients. Without an eligible default, the assignment stops for attention.</p>
    <details className="automation-details"><summary>{t('people.title')}</summary><PeopleSearch known={people} onAdd={person=>setPeople(list=>list.some(p=>p.id===person.id)?list:[...list,person])}/></details>
    {creating&&<RoutingEditor key={creating.routing.id} item={creating} groups={groups} options={options} people={people} takenNames={names} onDone={()=>setCreating(null)}/>}
    {live.length===0&&!creating&&<p className="v9-muted">{t('groups.noRoutings')}</p>}

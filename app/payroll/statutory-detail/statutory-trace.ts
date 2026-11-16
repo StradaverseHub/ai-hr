@@ -179,12 +179,37 @@ export function epfTraceRows(trace: StatutoryTraceRecord, t: T, money: Money, lo
     rows.push({ label: t('traceNotApplicable'), value: t(EPF_NOT_APPLICABLE[e.notApplicable]) });
     return rows;
   }
-  rows.push(
-    { label: t('traceEpfNormalWages'), value: money(e.normalWage) },
-    { label: t('traceEpfBonusWages'), value: money(e.bonusWage) },
-    { label: e.part === 'E' ? t('traceEpfLookupWageNormal') : t('traceEpfLookupWage'), value: money(e.base) },
-    ...epfLookupRows(e, t, money, percent, ''),
-  );
+  const rule = e.employerBonusRule;
+  if (rule && (e.method === 'schedule_row' || e.method === 'schedule_formula')) {
+    // Item 7f5cc653 — the Part A bonus note decided the employer figure. "Employer contribution for this
+    // range" is deliberately NOT shown: the row's 12% figure never applied, and showing it beside the
+    // charged amount would read as if it had. Every figure is the run's own, recorded by `epf()`.
+    rows.push(
+      { label: t('traceEpfBonusRuleNormal'), value: money(e.normalWage) },
+      { label: t('traceEpfBonusRuleBonus'), value: money(e.bonusWage) },
+      { label: t('traceEpfBonusRuleTotal'), value: money(rule.base) },
+      { label: t('traceEpfBonusRuleRate'), value: t('traceEpfBonusRuleRateValue', {
+        normal: money(rule.normalWage), threshold: money(rule.threshold), rate: percent.format(rule.rate),
+      }) },
+      { label: t('traceEpfBonusRuleEmployer'), value: t('traceEpfBonusRuleEmployerValue', {
+        base: money(rule.base), rate: percent.format(rule.rate), exact: money(rule.exact), amount: money(rule.amount),
+      }) },
+      e.method === 'schedule_row' && e.band
+        ? { label: t('traceEpfBonusRuleEmployee'), value: t('traceEpfBonusRuleEmployeeValue', {
+          range: traceRange(e.band, t, money), amount: money(e.scheduleEmployee),
+        }) }
+        : { label: t('traceEpfBonusRuleEmployeeAbove'), value: t('traceEpfBonusRuleEmployeeAboveValue', {
+          base: money(e.base), rate: percent.format(e.employeeRate ?? 0), amount: money(e.scheduleEmployee),
+        }) },
+    );
+  } else {
+    rows.push(
+      { label: t('traceEpfNormalWages'), value: money(e.normalWage) },
+      { label: t('traceEpfBonusWages'), value: money(e.bonusWage) },
+      { label: e.part === 'E' ? t('traceEpfLookupWageNormal') : t('traceEpfLookupWage'), value: money(e.base) },
+      ...epfLookupRows(e, t, money, percent, ''),
+    );
+  }
   if (e.bonusEmployer) {
     rows.push({ label: t('traceEpfBonusEmployerPartE'), value: `${percent.format(e.bonusEmployer.rate)} → ${money(e.bonusEmployer.amount)}` });
   }

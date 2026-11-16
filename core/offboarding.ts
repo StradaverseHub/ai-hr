@@ -47,6 +47,8 @@ export async function submitResignation(
   const personId = ctx.personId;
   return withTenant(ctx, async (tx) => {
     if(!await isOwnPersonTx(tx,ctx))throw new ResignationError('This account is not linked to an employee profile.');
+    const [cutover]=await tx.execute<{enabled:boolean}>(sql`select app.resignation_managed_submission_enabled(${p.employmentId}::uuid) as enabled`);
+    if(cutover?.enabled)throw new ResignationError('Use the current resignation form in My Profile to submit this request.');
     const [subject]=await tx.select({id:employment.id}).from(employment).where(and(ownPersonPredicate(ctx),eq(employment.id,p.employmentId),eq(employment.personId,personId))).limit(1).for('update');
     if(!subject)throw new ResignationError('This account is not linked to the selected employee profile.');
     const [open] = await tx
@@ -146,6 +148,8 @@ export async function decideResignation(
     if (!req) throw new ResignationError('Resignation not found (or not visible).');
     if (req.status !== 'pending') throw new ResignationError(`This resignation is already ${req.status}.`);
     if(p.expectedLastWorkingDay!==undefined&&p.expectedLastWorkingDay!==req.lastWorkingDay)throw new ResignationError('That resignation changed; review it again.');
+    const [managed]=await tx.execute<{managed:boolean;allowed:boolean}>(sql`select app.resignation_request_is_managed(${req.id}::uuid) as managed,app.resignation_managed_clearance_ready(${req.id}::uuid) as allowed`);
+    if(managed.managed&&(!managed.allowed||p.decision!=='accepted'))throw new ResignationError('Managed resignations record termination only after completed clearance and posting approval.');
     await assertResignationDecisionAuthorityTx(tx,ctx,req.employmentId);
 
     if (p.decision === 'accepted') {
@@ -214,7 +218,7 @@ export function listResignationRequests(
       .from(resignationRequest)
       .innerJoin(employment, eq(employment.id, resignationRequest.employmentId))
       .innerJoin(person, eq(person.id, resignationRequest.personId))
-      .where(and(opts.status ? eq(resignationRequest.status, opts.status) : undefined,opts.requestId?eq(resignationRequest.id,opts.requestId):undefined))
+      .where(and(sql`not app.resignation_request_is_managed(${resignationRequest.id})`,opts.status ? eq(resignationRequest.status, opts.status) : undefined,opts.requestId?eq(resignationRequest.id,opts.requestId):undefined))
       .orderBy(desc(resignationRequest.createdAt))
       .limit(100);
     // #42cff598: batch-fetch each request's attachments (metadata only) in one query so the inbox can
@@ -256,7 +260,7 @@ export function myResignation(ctx: SessionContext, employmentId: string) {
         createdAt: resignationRequest.createdAt,
       })
       .from(resignationRequest)
-      .where(and(ownPersonPredicate(ctx),eq(resignationRequest.personId,ctx.personId),eq(resignationRequest.employmentId, employmentId)))
+      .where(and(sql`not app.resignation_request_is_managed(${resignationRequest.id})`,ownPersonPredicate(ctx),eq(resignationRequest.personId,ctx.personId),eq(resignationRequest.employmentId, employmentId)))
       .orderBy(desc(resignationRequest.createdAt))
       .limit(1);
     return row ?? null;
@@ -364,7 +368,7 @@ function pendingResignationHeadersQuery(tx:Tx,ctx:SessionContext,companyIds?:str
       .from(resignationRequest)
       .innerJoin(employment,and(eq(employment.id,resignationRequest.employmentId),eq(employment.tenantId,resignationRequest.tenantId)))
       .leftJoin(person,and(eq(person.id,resignationRequest.personId),eq(person.tenantId,resignationRequest.tenantId)))
-      .where(and(eq(resignationRequest.tenantId,ctx.tenantId),eq(resignationRequest.status,'pending'),
+      .where(and(sql`not app.resignation_request_is_managed(${resignationRequest.id})`,eq(resignationRequest.tenantId,ctx.tenantId),eq(resignationRequest.status,'pending'),
         sql`NOT app.is_self_person(${resignationRequest.personId})`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
       .orderBy(desc(resignationRequest.createdAt),resignationRequest.id);
 }

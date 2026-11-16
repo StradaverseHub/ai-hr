@@ -9,7 +9,7 @@ import '../app/globals.css';
 import '../app/atelier.css';
 import '../app/onboarding-workspace.css';
 import '../app/lifecycle/v9/workspace.css';
-vi.mock('next/navigation',()=>({usePathname:()=>'/lifecycle/v9',useSearchParams:()=>new URLSearchParams('view=templates'),useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
+vi.mock('next/navigation',()=>({usePathname:()=>'/automation/templates',useSearchParams:()=>new URLSearchParams('module=off'),useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
 vi.mock('../components/intent-link',async()=>{
  const React=await import('react');
  function BrowserLink({prefetch,...props}:any){return React.createElement('a',{...props,onClick:(event:any)=>{event.preventDefault();props.onClick?.(event);}},props.children);}
@@ -17,6 +17,10 @@ vi.mock('../components/intent-link',async()=>{
 });
 vi.mock('next/link',async()=>{const React=await import('react');return {default:({prefetch,...props}:any)=>React.createElement('a',props,props.children)};});
 vi.mock('../components/user-menu',()=>({UserMenu:()=>null}));
+// The linked acceptance documents use a server action boundary, just like the native V9 reads below.
+// Keep the real document routing and people search UI; isolate its server search boundary.
+vi.mock('../app/automation/actions',()=>({searchPeopleAction:vi.fn().mockResolvedValue({ok:true,result:[]})}));
+vi.mock('../app/resignation/actions',()=>({loadResignationOffboarding:vi.fn().mockResolvedValue({ok:true,value:null}),runResignationCommand:vi.fn().mockResolvedValue({ok:false,error:'No linked resignation in this fixture.'})}));
 vi.mock('../app/lifecycle/v9/actions',()=>({readV9PersonnelPreview:vi.fn().mockResolvedValue({ok:true,values:{}}),readV9Email:vi.fn(),readV9UpdatedEmail:vi.fn(),readV9Workflow:vi.fn(),previewV9WorkflowPlan:vi.fn(),readV9WorkflowRemoval:vi.fn(),removeV9Workflow:vi.fn(),restoreV9Workflow:vi.fn(),readV9Case:vi.fn(),commandV9:vi.fn(),createV9Offboarding:vi.fn(),saveV9Config:vi.fn(),setupV9:vi.fn()}));
 vi.mock('../app/lifecycle/onboarding/v31-actions',()=>({changeOnboarding:vi.fn(),saveOnboardingConfig:vi.fn(),saveOnboardingChecklistTasks:vi.fn(),writeOnboardingNote:vi.fn(),setupOnboarding:vi.fn(),loadOnboardingTask:vi.fn(),markOnboardingSeen:vi.fn()}));
 const {RequestRecords}=await import('../app/lifecycle/v9/request-records');
@@ -36,11 +40,11 @@ it.each(['classic','monolith','atelier'] as const)('keeps AIHR %s chrome and the
  </NextIntlClientProvider></UiThemeProvider>);
  const trigger=screen.getByRole('button',{name:'On/Off Boarding'});if(trigger.getAttribute('aria-expanded')!=='true')fireEvent.click(trigger);
  const nav=within(screen.getByRole('navigation',{name:'On/Off Boarding'}));
- expect(nav.getAllByRole('button').map(button=>button.textContent?.trim())).toEqual(['Onboarding','Offboarding','Configuration']);
- // ADR 2026-11-15-probation-shared-automation, decision 1: the V9 Templates row now sits in HR Automation.
- expect(nav.getAllByRole('link')).toHaveLength(6);
+ expect(nav.getAllByRole('button').map(button=>button.textContent?.trim())).toEqual(['Onboarding','Offboarding']);
+ // Shared Templates is the one visible builder destination; legacy V9 builder URLs remain compatible.
+ expect(nav.getAllByRole('link')).toHaveLength(5);
  const automationTrigger=screen.getByRole('button',{name:messages.nav.moduleHrAutomation});if(automationTrigger.getAttribute('aria-expanded')!=='true')fireEvent.click(automationTrigger);
- expect(within(screen.getByRole('navigation',{name:messages.nav.moduleHrAutomation})).getByRole('link',{name:messages.nav.automationOnOffTemplates}).getAttribute('aria-current')).toBe('page');
+ expect(within(screen.getByRole('navigation',{name:messages.nav.moduleHrAutomation})).getByRole('link',{name:messages.nav.automationTemplates}).getAttribute('aria-current')).toBe('page');
  expect(screen.queryByRole('navigation',{name:'Onboarding and offboarding'})).toBeNull();
  const workspace=document.querySelector('.v9-workspace-global') as HTMLElement;
  expect(workspace.hasAttribute('data-area-theme')).toBe(false);

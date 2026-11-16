@@ -6170,6 +6170,48 @@
       "breakpoints": true
     },
     {
+      "idx": 5170,
+      "version": "7",
+      "when": 1793330005470,
+      "tag": "5770_attendance_workflow_approver_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 5171,
+      "version": "7",
+      "when": 1793330005471,
+      "tag": "5771_assistant_legacy_index_shared_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 5183,
+      "version": "7",
+      "when": 1793330005483,
+      "tag": "5783_resignation_journey",
+      "breakpoints": true
+    },
+    {
+      "idx": 5184,
+      "version": "7",
+      "when": 1793330005484,
+      "tag": "5784_resignation_configuration",
+      "breakpoints": true
+    },
+    {
+      "idx": 5185,
+      "version": "7",
+      "when": 1793330005485,
+      "tag": "5785_resignation_postings",
+      "breakpoints": true
+    },
+    {
+      "idx": 5186,
+      "version": "7",
+      "when": 1793330005486,
+      "tag": "5786_resignation_email_delivery",
+      "breakpoints": true
+    },
+    {
       "idx": 5200,
       "version": "7",
       "when": 1794841005800,
@@ -6265,6 +6307,13 @@
       "version": "7",
       "when": 1794841005813,
       "tag": "5813_contract_shared_email_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 5235,
+      "version": "7",
+      "when": 1794841005835,
+      "tag": "5835_contract_shared_review_wording",
       "breakpoints": true
     }
   ]

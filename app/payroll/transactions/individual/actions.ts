@@ -304,7 +304,8 @@ export type TxnFormInput = {
   amount: number;
   quantity: number | null;
   unit: string | null;
-  calculationMethod?: 'amount' | 'formula';
+  /** aac17dd0 — null (edit only) clears a stored method: an inline formula row moved from Amount back to Hours/Days. */
+  calculationMethod?: 'amount' | 'formula' | null;
   notes: string | null;
 };
 
@@ -402,9 +403,12 @@ async function amountForWrite(
     typed: number;
     /** 34062f81 — the row's Effective Date: `calendar_days` follows THIS date's month, not the pay month. */
     txnDate: string;
+    /** aac17dd0 — the operator chose Amount: the typed figure is the amount and no Pay Item formula runs. The
+     *  service re-validates it (formula kinds only, no quantity, positive) in priceIndividualTxnInputTx. */
+    calculationMethod?: 'amount' | 'formula' | null;
   },
 ): Promise<number> {
-  if (!p.componentId) return p.typed;
+  if (!p.componentId || p.calculationMethod === 'amount') return p.typed;
   // The month bounds the attendance and recurring-item reads the rule resolves against, so it has to be a
   // real month. It always is by the time we get here (a batch supplies its own; a period-keyed write is
   // rejected above without one) — this refuses rather than quietly falling back to the typed amount, which
@@ -675,6 +679,8 @@ export async function createIndividualTxnDayGridAction(input: {
   if (!input.employmentId) return { ok: false, error: 'noEmployeesSelected' };
   if (!input.batchId && !isPayPeriod(input.payPeriod)) return { ok: false, error: 'periodInvalid' };
   if (input.lines.length === 0) return { ok: false, error: 'dayGridEmpty' };
+  // aac17dd0 — Day by Day stays quantity-only: a typed Amount is offered on the single Add/Edit form only.
+  if (input.calculationMethod === 'amount') return { ok: false, error: 'rowIncomplete' };
   const targetImpact = input.batchId ? await batchEditImpact(s, { batchId: input.batchId }) : null;
   // The month the rules resolve against: the RUN's when there is one (the service does the same), so the
   // form field and the run can never price against different months.
@@ -782,6 +788,7 @@ export async function createIndividualTxnAction(
       unit: input.unit,
       typed: input.amount,
       txnDate: input.txnDate,
+      calculationMethod: input.calculationMethod,
     });
     const { ids, widenedEmploymentIds } = await createIndividualTxnsBulk(s, {
       ...(input.batchId ? { batchId: input.batchId } : { companyId: input.companyId, payPeriod: input.payPeriod }),
@@ -793,7 +800,7 @@ export async function createIndividualTxnAction(
           amount,
           quantity: input.quantity,
           unit: input.unit,
-          calculationMethod: input.calculationMethod,
+          calculationMethod: input.calculationMethod ?? undefined,
           notes: input.notes,
           componentId: input.componentId,
         },
@@ -851,6 +858,7 @@ export async function updateIndividualTxnAction(
       // 34062f81 — the date the row WILL carry after this edit (the service keeps the stored one when the
       // form sends none), so moving a line to another month re-prices its calendar days.
       txnDate: input.txnDate ?? existing.txnDate,
+      calculationMethod: input.calculationMethod,
     });
     await updateIndividualTxn(s, {
       id: input.id,

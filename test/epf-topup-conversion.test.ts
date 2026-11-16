@@ -62,7 +62,11 @@ describe('b6dbadc5 legacy Top-up conversion — the next payroll equals the prev
  it('rounds an exact combined-month contribution without adding a ringgit for floating-point drift',()=>{
   const plan=planLegacyTopupConversion({employeeRate:.12,employerRate:.14},basis(5300,30,'citizen'));
   expect(plan).toMatchObject({employeeTopup:.01,employerTopup:.02});
-  expect(epfContribution(4500,800,undefined,{mode:'topup_percentage',employeeRate:plan.employeeTopup,employerRate:plan.employerTopup},{age:30,citizenship:'citizen'})).toEqual({employee:636,employer:742,employeeOnBonus:96});
+  // RESTATED 2026-11-16 FOR ITEM 7f5cc653 (ADR-0024 addendum 2026-11-16): employer was 742 = (12% + 2%) × 5,300.
+  // Normal 4,500 is at or below RM5,000 and the 800 bonus takes the month above it, so the corrected statutory
+  // rate is 13% (Part A bonus note) and the approved plan builds the top-up on that corrected base:
+  // (13% + 2%) × 5,300 = 795.00 → 795. Employee unchanged: (11% + 1%) × 5,300 = 636.
+  expect(epfContribution(4500,800,undefined,{mode:'topup_percentage',employeeRate:plan.employeeTopup,employerRate:plan.employerTopup},{age:30,citizenship:'citizen'})).toEqual({employee:636,employer:795,employeeOnBonus:96});
  });
  it('derives new Part C increments against the current statutory rates',()=>{
   expect(planLegacyTopupConversion({employeeRate:.13,employerRate:.13},basis(3000,65,'pr'))).toMatchObject({rule:'part_c',employeeTopup:.075,employerTopup:.065});

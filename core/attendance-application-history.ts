@@ -1,5 +1,5 @@
 import type { AttendanceResolvedStage } from '../lib/attendance-workflow';
-import { attendanceApplicationReviewTx, attendanceProgressTx, attendanceApproverCodesTx } from './attendance-application-review';
+import { attendanceApplicationReviewTx, attendanceProgressTx } from './attendance-application-review';
 import type { AttendanceProgress } from '../lib/attendance-progress';
 /** One scoped read model over attendance_correction; no copied application records. */
 import { and, asc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
@@ -8,7 +8,7 @@ import { withAttendanceTenant as withTenant } from './module-gate';
 import { attendanceCorrection as correction, employment, person, company, department, businessUnit, jobGrade, profileOption, domainEvent, appUser, position } from '../db/schema';
 import { CATEGORY_EMPLOYMENT_COLUMN, EMPLOYMENT_PROFILE_CATEGORIES } from './profile-options';
 import type { AttendanceCriteriaGroup } from '../lib/attendance-workflow';
-import { attendanceWorkflowsForTx, attendanceWorkflowForTx } from './attendance-workflow';
+import { attendanceWorkflowsForTx, attendanceWorkflowForTx, attendanceApproverCodesForRequestsTx } from './attendance-workflow';
 
 import { attendanceApplicationType, type AttendanceApplicationType } from '../lib/attendance-workflow';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -163,7 +163,8 @@ export async function attendanceApplicationDetail(ctx: SessionContext, companyId
         const canDecide = await attendanceApplicationCanDecideTx(tx, id, row.application.status, self, workflow);
         const review=await attendanceApplicationReviewTx(tx,{employmentId:row.application.employmentId,date:row.application.attendanceDate});
         const progress=await attendanceProgressTx(tx,workflow,row.application.status);
-        const approverCodes=await attendanceApproverCodesTx(tx,[...([...(workflow?.stages??[]),...(workflow?.effectiveStages??[])].flatMap(stage=>stage.approvers.flatMap(actor=>actor.employmentId?[actor.employmentId]:[]))),...([...(workflow?.decisions??[]),...(workflow?.participantDecisions??[])].flatMap(record=>record.actualEmploymentId?[record.actualEmploymentId]:[]))]);
+        // 237c31e6: the same request-bound code reader as every employee surface (one code path, 5697).
+        const approverCodes=workflow?(await attendanceApproverCodesForRequestsTx(tx,[id])).get(id)??{}:{};
         return { ...row, applicationType: attendanceApplicationType(row.application), workflow, events, review, progress, approverCodes, canReassign: !self && row.application.status === 'pending' && (workflow?.routingVersion === 2 || (workflow?.routingVersion === 3 || workflow?.routingVersion === 4)) && workflow.currentStage < workflow.stages.length, canDecide, canCancel: !self && (row.application.status === 'pending' || row.application.status === 'approved') };
     });
 }
