@@ -5,9 +5,10 @@ const state=vi.hoisted(()=>({session:{tenantId:'fictional-tenant',userId:'fictio
 vi.mock('@/lib/scope',()=>({scopedSession:async()=>({s:state.session,scopeIds:['selected-company']})}));
 vi.mock('@/core/entitlements',()=>({isModuleEnabledOrFalse:(_ctx:unknown,module:string)=>module==='claims'||module==='lifecycle'}));
 vi.mock('@/core/approvals-inbox',()=>({pendingTaskSummary:state.preview,listPendingTasks:state.full}));
+vi.mock('@/packs/contracts/service',()=>({contractSharedWorkPage:async()=>({items:[],total:0,countsByKind:{},approvalTotal:0,taskTotal:0,limit:25,offset:0,hasMore:false})}));
 vi.mock('@/packs/lifecycle/service',()=>({onboardingTasks:state.onboarding,resignationInbox:state.resignations}));
 vi.mock('../app/lifecycle/workflow-availability',()=>({lifecycleModuleNavigation:async()=>({})}));
-vi.mock('../app/lifecycle/module-inbox',()=>({lifecycleModuleInbox:async()=>({items:[],count:0})}));
+vi.mock('../app/lifecycle/module-inbox',()=>({lifecycleModuleInbox:async()=>({items:[],count:0,myTasksCount:0,queueLinks:[],approvalCount:0})}));
 vi.mock('../app/tasks/tasks-view',()=>({TasksView:(props:{existing:unknown[];existingTotal:number;claimTotal:number})=>{
  state.view(props);return React.createElement('div',{'data-preview-rows':props.existing.length,'data-task-total':props.existingTotal,'data-claim-total':props.claimTotal});
 }}));

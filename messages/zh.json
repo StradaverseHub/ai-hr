@@ -15373,7 +15373,8 @@
     "tasksEmpty": "没有需要您处理的事项",
     "title": "通知",
     "lifecycleOpen": "打开任务",
-    "lifecycleMore": "还有 {count} 项当前任务。请打开相应模块查看。"
+    "lifecycleMore": "还有 {count} 项当前任务。请打开相应模块查看。",
+    "ownerQueues": "Open full task queues"
   },
   "approvalHistory": {
     "title": "审批历史",
@@ -41813,7 +41814,12 @@
     "sign": "Sign contract document",
     "resend": "Update and resend contract letter",
     "open": "Open assigned step",
-    "viewAll": "View all contract tasks"
+    "viewAll": "View all contract tasks",
+    "approvals": "Contract approval items",
+    "signatures": "Contract signatures",
+    "postingWork": "Contract posting work",
+    "postingWorkHint": "Pending Personnel posting approvals and manual Payroll confirmations assigned to you.",
+    "nonePostingWork": "No Contract posting work is currently assigned to you."
   },
   "contractHome": {
     "title": "Contract signatures",

@@ -15373,7 +15373,8 @@
     "tasksEmpty": "ไม่มีรายการที่ต้องดำเนินการ",
     "title": "การแจ้งเตือน",
     "lifecycleOpen": "เปิดงาน",
-    "lifecycleMore": "ยังมีงานปัจจุบันอีก {count} รายการ เปิดโมดูลเพื่อตรวจสอบ"
+    "lifecycleMore": "ยังมีงานปัจจุบันอีก {count} รายการ เปิดโมดูลเพื่อตรวจสอบ",
+    "ownerQueues": "Open full task queues"
   },
   "approvalHistory": {
     "title": "ประวัติการอนุมัติ",
@@ -41813,7 +41814,12 @@
     "sign": "Sign contract document",
     "resend": "Update and resend contract letter",
     "open": "Open assigned step",
-    "viewAll": "View all contract tasks"
+    "viewAll": "View all contract tasks",
+    "approvals": "Contract approval items",
+    "signatures": "Contract signatures",
+    "postingWork": "Contract posting work",
+    "postingWorkHint": "Pending Personnel posting approvals and manual Payroll confirmations assigned to you.",
+    "nonePostingWork": "No Contract posting work is currently assigned to you."
   },
   "contractHome": {
     "title": "Contract signatures",

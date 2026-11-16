@@ -15373,7 +15373,8 @@
     "tasksEmpty": "Nothing needs your action",
     "title": "Notifications",
     "lifecycleOpen": "Open task",
-    "lifecycleMore": "There are {count} more current tasks. Open a module to review them."
+    "lifecycleMore": "There are {count} more current tasks. Open a module to review them.",
+    "ownerQueues": "Open full task queues"
   },
   "approvalHistory": {
     "title": "Approval History",
@@ -41813,7 +41814,12 @@
     "sign": "Sign contract document",
     "resend": "Update and resend contract letter",
     "open": "Open assigned step",
-    "viewAll": "View all contract tasks"
+    "viewAll": "View all contract tasks",
+    "approvals": "Contract approval items",
+    "signatures": "Contract signatures",
+    "postingWork": "Contract posting work",
+    "postingWorkHint": "Pending Personnel posting approvals and manual Payroll confirmations assigned to you.",
+    "nonePostingWork": "No Contract posting work is currently assigned to you."
   },
   "contractHome": {
     "title": "Contract signatures",

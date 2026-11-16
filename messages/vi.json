@@ -15373,7 +15373,8 @@
     "tasksEmpty": "Không có mục nào cần bạn xử lý",
     "title": "Thông báo",
     "lifecycleOpen": "Mở công việc",
-    "lifecycleMore": "Còn {count} công việc hiện tại. Mở mô-đun để xem."
+    "lifecycleMore": "Còn {count} công việc hiện tại. Mở mô-đun để xem.",
+    "ownerQueues": "Open full task queues"
   },
   "approvalHistory": {
     "title": "Lịch sử phê duyệt",
@@ -41813,7 +41814,12 @@
     "sign": "Sign contract document",
     "resend": "Update and resend contract letter",
     "open": "Open assigned step",
-    "viewAll": "View all contract tasks"
+    "viewAll": "View all contract tasks",
+    "approvals": "Contract approval items",
+    "signatures": "Contract signatures",
+    "postingWork": "Contract posting work",
+    "postingWorkHint": "Pending Personnel posting approvals and manual Payroll confirmations assigned to you.",
+    "nonePostingWork": "No Contract posting work is currently assigned to you."
   },
   "contractHome": {
     "title": "Contract signatures",
