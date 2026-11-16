@@ -588,3 +588,13 @@ Main advanced to `5160eb4e4` (the Effective-Date-only message, on staging). Merg
 batch changed no covered source beyond both sides' own reviewed changes. No provider transform, outbound field, purpose
 or transport changed. The 28 approvals were carried forward from `da60fba1…` to `c88b5a04…` and the agent manifest
 regenerated, under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding for board 237c31e6, Attendance approval progress (16 November 2026)
+
+`claude/fb-237c31e6-approval-progress-20261116`, cut from main/alpha `03b06f0de` (binding `c88b5a04…`), shows every
+approval level with its status and approver Employee ID on the Attendance request screens. Changed covered files
+include `core/attendance-workflow.ts`, `core/attendance.ts`, `core/attendance-application-history.ts`,
+`core/attendance-application-review.ts`, `core/mobile-attendance.ts`, `lib/attendance-progress.ts` and the six
+`messages/*.json` catalogues, in the provider-data scope only through the import graph. No provider transform, outbound
+field, purpose or transport changed. The 28 approvals were carried forward to `b9a6f0af…` and the agent manifest
+regenerated (`61d2d520…`), under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.
