@@ -15,7 +15,7 @@ THESIS: Keep configuration shared and the resignation understandable as one case
 
 OWN-WORLD: Extend the current AIHR Atelier operational shell and shared components. Use the incumbent sans typography, white surfaces, quiet neutral boundaries and orange primary actions recorded in DESIGN.md. Preserve visible status labels and distinguish action authority from FYI participation. The earlier lifecycle-v9 brief's indigo world is historical context, not this approved merge mockup's palette.
 
-STORY: Administrators configure Workflows, Templates (documents and emails), Assignment groups and Routing rules in one Configuration area with a module selector. Employees submit and track their case. Managers accept or propose retention; BP sees the assigned FYI view. GBS reviews letters, CEO signs retention and BP signs acceptance; the employee's final retention signature accepts the offer. Offboarding clearance proposes a Personnel posting for human approval before the canonical termination writer acts.
+STORY: Administrators configure Workflows, Templates (documents and emails), Assignment groups and Routing rules in one HR Automation configuration area with a module selector. Employees submit and track their case. Managers accept or propose retention; BP sees the assigned FYI view. GBS reviews letters, CEO signs retention and BP signs acceptance; the employee's final retention signature accepts the offer. Offboarding clearance proposes a Personnel posting for human approval before the canonical termination writer acts.
 
 FIRST VIEWPORT: Preserve the app shell, breadcrumbs and contextual company scope. Make the page title, relevant filters and pending responsibility legible before detailed content. Manager decisions show submitted facts and supporting letter, followed by accept/retention choices and current versus proposed terms. Employee tracking explains the current stage and the actual next action. Missing workflow setup records the resignation and exposes a specific HR repair action.
 
@@ -30,3 +30,7 @@ RESPONSIVE: At desktop size preserve compact tables and the app navigation. At p
 The approved artifact is the page-by-page `resignation-review/product-mockup.html` with its walkthrough screenshots, reviewed before implementation. Those screenshots are mockups, not built-app evidence. Hosted production-renderer captures of the real employee, manager, BP/CEO/GBS, Configuration and posting pages establish the implemented view. Desktop and mobile are reviewed together. Behavioral, security and scale evidence is separate from the visual verdict.
 
 Finish requires a fresh independent finish review and the ordinary-extension documentation comparison. Preserve DESIGN.md and its sidecar; report pre-existing drift without repairing it. No new raster asset is required. Release is held pending the owner's explicit approval.
+
+Naming clarification: the cross-session coordinator verified the owner’s explicit “Use HR Automation”
+name and Resignation’s one-shared-configuration approval. The top-level label is HR Automation;
+the approved mockup’s Configuration label describes the same area. No second configuration area is added.

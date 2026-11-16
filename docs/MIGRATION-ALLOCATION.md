@@ -1,3 +1,36 @@
+# Resignation final source allocation — 17 November 2026 (unapplied)
+
+The cross-session release coordinator reserves `5783_resignation_journey` (idx 5183 / when 1793330005483),
+`5784_resignation_configuration` (idx 5184 / when 1793330005484), `5785_resignation_postings` (idx 5185 / when 1793330005485),
+and `5786_resignation_email_delivery` (idx 5186 / when 1793330005486) for `codex/resignation-journey-20261116`.
+These replace the unapplied draft tags 9991, 9992, 9993 and 9995 respectively. All four SQL byte hashes are unchanged;
+draft identifiers in SQL header comments remain historical. Journal, upgrade pins and source references use the final tags.
+
+Applied `5771_assistant_legacy_index_shared_access` is preserved verbatim. Movement owns 5772–5782; none is taken
+or silently considered applied here. If Resignation is released first, the coordinator requires Movement to reallocate
+its still-unapplied block above the actual installed watermark before its later release. Both installed ordered ledgers,
+remote refs and peer claims must be checked again at admission. This allocation grants no deployment or production authority.
+The owner's newer COORDINATOR instruction authorizes staging only after complete verification and guarded queue admission.
+
+Earlier draft reservations below are superseded by this final source allocation.
+
+<!-- 5771_assistant_legacy_index_shared_access -->
+# Assistant metadata discovery shares Access — 16 November 2026 MYT (source allocation; installation held)
+
+Branch `codex/architecture-performance-review-index-20261116` allocates `5771_assistant_legacy_index_shared_access` at idx 5171 /
+when 1793330005471, above main/alpha's 5766 and the freshly read staging watermark (881 entries,
+1793330005466). SHA256 `433dfd7549b496b034bdeaa2c06484b700b5dd5647213106d68487f0b485c7c0`. The installed function is owned by ai_hr_owner.
+Only `app.assistant_legacy_reviews_index(text)` changes: its advisory Access acquisition becomes shared.
+Principal freshness, current-person binding, allowed kinds, history windows, deterministic ordering, 25-row cap,
+owner, grants and every command owner remain unchanged. Applied SQL is untouched.
+
+This allocation is not installation authority. After the owner connected the production VPN on 16 November,
+a restricted-owner READ ONLY aggregate verified production at 853 entries / maximum 1793330005395.
+The new when is above both fresh installation maxima. Recheck peer source allocations and both installed ledgers
+at release admission; renumber this unapplied source if a higher watermark or conflicting claim appears.
+Restricted-owner and native concurrency/equivalence checks are required before release.
+
+Owner direction: merge Irwin f0443eaf27d3584f55b6a2e7d48558bd553d4149 and allocate after its 5770 (idx 5170 / when 1793330005470). Stop before release and wait for owner approval; Claude releases first. SQL bytes are unchanged by this source-only renumbering.
 # Resignation journey — 16 November 2026 (allocated, unapplied)
 
 Owned build branch `codex/resignation-journey-20261116` reserves `9991_resignation_journey`

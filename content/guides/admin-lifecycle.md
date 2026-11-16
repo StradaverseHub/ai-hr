@@ -8,7 +8,7 @@ Open [Lifecycle configuration](/admin/lifecycle). Review company staff assignmen
 
 New managed resignations require Lifecycle to be enabled for the employee's company. Configuration access, case decisions and Personnel posting approval are separate permissions.
 
-Use the shared Configuration area:
+Use the shared HR Automation configuration area:
 
 - [Workflows](/automation/workflows?module=off): select Offboarding and review its decision, letter and notification workflows. Installed starter workflows are Paused; configure real recipients and explicitly make the relevant workflows Live after review.
 - [Templates](/automation/templates?module=off): maintain document and email templates. Publish the document version to use and check its routing. A retention letter must end with the employee's Sign step alone.

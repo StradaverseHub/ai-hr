@@ -593,7 +593,7 @@
     "rewardsLimitControls": "வரம்புக் கட்டுப்பாடுகள்",
     "attendanceRequestOnBehalf": "சார்பாக கோரிக்கை",
     "attendanceApproveOnBehalf": "சார்பாக ஒப்புதல்",
-    "moduleHrAutomation": "உள்ளமைவு",
+    "moduleHrAutomation": "HR Automation",
     "automationWorkflows": "Workflows",
     "automationTemplates": "Templates",
     "automationGroups": "Assignment groups",
@@ -40421,7 +40421,7 @@
     }
   },
   "automation": {
-    "crumb": "உள்ளமைவு",
+    "crumb": "HR Automation",
     "filterLabel": "Module",
     "done": "Done",
     "none": "None",

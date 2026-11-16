@@ -227,18 +227,20 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5166,when:1793330005466,tag:'5766_probation_reshape_company_in_use'},
  // Board 237c31e6: request-bound Attendance approval progress readers.
  {idx:5170,when:1793330005470,tag:'5770_attendance_workflow_approver_codes'},
- {idx:5171,when:1793330100101,tag:'9991_resignation_journey'},
- {idx:5172,when:1793330100102,tag:'9992_resignation_configuration'},
- {idx:5173,when:1793330100103,tag:'9993_resignation_postings'},
- {idx:5174,when:1793330100105,tag:'9995_resignation_email_delivery'},
+ {idx:5171,when:1793330005471,tag:'5771_assistant_legacy_index_shared_access'},
+ {idx:5183,when:1793330005483,tag:'5783_resignation_journey'},
+ {idx:5184,when:1793330005484,tag:'5784_resignation_configuration'},
+ {idx:5185,when:1793330005485,tag:'5785_resignation_postings'},
+ {idx:5186,when:1793330005486,tag:'5786_resignation_email_delivery'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5770_attendance_workflow_approver_codes':'f71cf33a9ced5f4e1007de02388a858bd31c64006a422352193bd7c14e367ec0',
- '9991_resignation_journey':'130c0b99586bc316ac5203d27a65bfc0a565c4f608b8ab1ac336a8e8d41d1216',
- '9992_resignation_configuration':'6e064c336c441fbbf01017debe9e1a748957976d3d6b2b96470747d07d7dacb5',
- '9993_resignation_postings':'5d26a0f446c3e72ed01861544af395690b08cdce47b9fc739f0b0d7d1b22a4f5',
- '9995_resignation_email_delivery':'52bf3fa8f4430d37fd4dabd2164f00764e73245b38ee6520d2816dca7e03459b',
+ '5771_assistant_legacy_index_shared_access':'433dfd7549b496b034bdeaa2c06484b700b5dd5647213106d68487f0b485c7c0',
+ '5783_resignation_journey':'130c0b99586bc316ac5203d27a65bfc0a565c4f608b8ab1ac336a8e8d41d1216',
+ '5784_resignation_configuration':'6e064c336c441fbbf01017debe9e1a748957976d3d6b2b96470747d07d7dacb5',
+ '5785_resignation_postings':'5d26a0f446c3e72ed01861544af395690b08cdce47b9fc739f0b0d7d1b22a4f5',
+ '5786_resignation_email_delivery':'52bf3fa8f4430d37fd4dabd2164f00764e73245b38ee6520d2816dca7e03459b',
  '5761_probation_automation_recipients_and_tracker_steps':'c39e471adb80e51b56466c264bc6546dc6ce48a354e30d8e9ef3629a82b2184b',
  '5760_probation_queue_kinds_and_pbp_tasks':'c3ab5ddf4c702dd1ca947b3a350c7e852ab8699524c9da7fcad11f19887cdb59',
  '5150_attendance_policy_dated_rounding':'f1549fefc467398d9701ba5428e238134a8ca248fb645046b4b23877280e3408',
@@ -447,7 +449,7 @@ export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;col
  // Board 511aa74a (5695): no employment that predates it was rehired from another period.
  {tag:'5695_employment_rehire_link',table:'employment',columns:['rehired_from_employment_id']},
  {tag:'5760_probation_queue_kinds_and_pbp_tasks',table:'probation_outcome',columns:['extension_months']},
- {tag:'9993_resignation_postings',table:'personnel_posting',columns:['rejected_by','rejected_at','rejection_reason','due_on','baseline_values']},
+ {tag:'5785_resignation_postings',table:'personnel_posting',columns:['rejected_by','rejected_at','rejection_reason','due_on','baseline_values']},
  ...['department','position','cost_center','business_unit','label_company_assignment','profile_option','job_grade','grade_group','grade_group_member']
   .map(table=>({tag:'5070_system_label_import_staged_job',table,columns:['import_pending_attempt_id']})),
 ]);

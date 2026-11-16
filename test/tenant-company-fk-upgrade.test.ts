@@ -289,10 +289,12 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5766_probation_reshape_company_in_use',
    // Board 237c31e6 (16 November 2026): the request-bound approver Employee ID readers.
    '5770_attendance_workflow_approver_codes',
-   '9991_resignation_journey',
-   '9992_resignation_configuration',
-   '9993_resignation_postings',
-   '9995_resignation_email_delivery',
+   // Architecture/performance: shared Access for the existing assistant metadata index.
+   '5771_assistant_legacy_index_shared_access',
+   '5783_resignation_journey',
+   '5784_resignation_configuration',
+   '5785_resignation_postings',
+   '5786_resignation_email_delivery',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);

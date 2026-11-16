@@ -81,7 +81,7 @@ onboarding emails, so every shared change runs the regression suites of all modu
 
 ## Resignation merge navigation clarification (17 November 2026)
 
-The approved resignation merge uses one **Configuration** area: Workflows, Templates, Assignment groups
+The approved merge uses one shared configuration area, named **HR Automation**: Workflows, Templates, Assignment groups
 (including Routing rules on that page), and Onboarding & offboarding settings. Shared module selectors host the
 existing Onboarding, Offboarding, Probation and Contract staff editors. Their schema, save authority and execution
 engines remain with their native owners. Onboarding & offboarding settings retain their V9 administration gate;
@@ -94,3 +94,7 @@ template approvers without configuration authority keep their compatible templat
 configurer menu does not remove their existing access.
 Module Access remains with On/Off Boarding. Existing coverage ledger entries remain unverified; this navigation
 correction does not establish rendered or installed acceptance.
+
+The coordinator verified both direct owner decisions on 17 November: Contract explicitly names the area
+HR Automation; Resignation approves one shared configuration area. The exact top-level label is
+HR Automation (without the old “· Shared” suffix). Configuration remains the page purpose.
