@@ -136,7 +136,7 @@ export async function correctHireEmploymentInformationTx(tx:Tx,ctx:SessionContex
  const hireEnd=hireEndField?(input.endDates?.[hireEndField]!==undefined?input.endDates[hireEndField]:previousEnd?.after??master[hireEndField]):null;
  if((fields.includes('employmentType')||historicalEndPosted)&&hireEndField&&(!hireEnd||typeof hireEnd!=='string'||!isCalendarDate(hireEnd)||hireEnd<plan.anchor))throw new Error('The corrected original Employment Type requires a valid end date on or after the original joining date.');
  if(fields.includes('contractStartDate')||fields.includes('employmentType')&&after.employmentType==='contract'){
-  const issues=contractPeriodIssues({contract:after.employmentType==='contract',requireBoth:false,hiredOn:after.hiredOn,start:after.contractStartDate,end:hireEndField==='contract'&&typeof hireEnd==='string'?hireEnd:null});
+  const issues=contractPeriodIssues({contract:after.employmentType==='contract',requireBoth:false,hiredOn:after.hiredOn,start:after.contractStartDate,end:hireEndField==='contractEndDate'&&typeof hireEnd==='string'?hireEnd:null});
   if(issues.length)throw new Error(issues[0].message);
  }
  const until:Partial<Record<HireEmploymentInformationField,string|null>>={...(fields.includes('joinDate')?{joinDate:joinDates[0]??null}:{})};

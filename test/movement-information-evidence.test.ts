@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {movementInformationEvidence} from '../lib/movement-information-evidence';
+import {originalHireDecisionPreimage,movementInformationEvidence} from '../lib/movement-information-evidence';
 const hire={id:'hired',eventType:'employment.hired',sequence:1,occurredAt:new Date('2026-01-02T01:00:00Z'),payload:{hiredOn:'2026-01-01',employmentInformation:{joinDate:'2026-01-01',orgDivision:'Original',confirmationDate:null,probationValue:3,probationUnit:'month'}}};
 const change={id:'later',eventType:'employment.info.updated',sequence:2,occurredAt:new Date('2026-03-02T01:00:00Z'),payload:{before:{orgDivision:'Original'},after:{orgDivision:'Later'},movement:{effectiveDate:'2026-03-01'}}};
 describe('recorded full employment information',()=>{
@@ -28,5 +28,20 @@ describe('recorded full employment information',()=>{
  it('never treats pending targets as applied employment facts',()=>{
   const pending={...change,eventType:'employment.movement.scheduled'};
   expect(movementInformationEvidence([hire,pending],'2026-04-01',2).orgDivision.value).toBe('Original');
+ });
+});
+
+describe('corrected original facts before a later decision',()=>{
+ it('uses the corrected predecessor at the boundary and preserves later deliberate predecessors',()=>{
+  const correction={id:'correction',eventType:'employment.information.corrected',sequence:3,occurredAt:new Date(),payload:{source:'original-hire',effectiveOn:'2026-01-01',fields:['gradeId','probationValue','probationUnit'],after:{gradeId:'corrected',probationValue:4,probationUnit:'week'},until:{gradeId:'2026-03-01',probationValue:'2026-03-01',probationUnit:'2026-03-01'}}};
+  expect(originalHireDecisionPreimage([correction],'2026-03-01')).toEqual({gradeId:'corrected',probationValue:'4',probationUnit:'week'});
+  expect(originalHireDecisionPreimage([correction],'2026-04-01')).toEqual({});
+  expect(originalHireDecisionPreimage([correction],'2025-12-01')).toEqual({});
+ });
+ it('uses the latest correction per field without absorbing unrelated information decisions',()=>{
+  const first={id:'first',eventType:'employment.information.corrected',sequence:3,occurredAt:new Date(),payload:{source:'original-hire',effectiveOn:'2026-01-01',fields:['gradeId','joinDate'],after:{gradeId:'first',joinDate:null}}};
+  const latest={...first,id:'latest',sequence:4,payload:{...first.payload,fields:['gradeId'],after:{gradeId:'latest',joinDate:'forged omitted field'}}};
+  const independent={...latest,id:'independent',sequence:5,payload:{...latest.payload,source:'information',after:{gradeId:'independent'}}};
+  expect(originalHireDecisionPreimage([latest,independent,first],'2026-03-01')).toEqual({gradeId:'latest',joinDate:null});
  });
 });

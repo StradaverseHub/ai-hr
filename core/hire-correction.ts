@@ -717,7 +717,7 @@ export async function hireCorrectionViewTx(tx: Tx, ctx: SessionContext, employme
     const originalEndField=v1.row.employmentType==='contract'?'contractEndDate':v1.row.employmentType==='intern'?'internshipEndDate':null;
     const originalEnd=[...plan.events].reverse().map(event=>event.eventType===INFORMATION_CORRECTED&&event.payload?.source==='original-hire'?event.payload?.endDate:null).find(end=>end?.field===originalEndField);
     const hireFacts=movementInformationEvidence(plan.events,plan.anchor,Number.MAX_SAFE_INTEGER);
-    const endDate=originalEnd&&originalEndField?{field:originalEndField,value:typeof originalEnd.after==='string'?originalEnd.after:null}:originalEndField&&hireFacts[originalEndField]?.known?{field:originalEndField,value:hireFacts[originalEndField].value}:currentEnd?.field===originalEndField?currentEnd:originalEndField?{field:originalEndField,value:null}:null;
+    const endDate:HireCorrectionView['endDate']|null=originalEnd&&originalEndField?{field:originalEndField,value:typeof originalEnd.after==='string'?originalEnd.after:null}:originalEndField&&hireFacts[originalEndField]?.known?{field:originalEndField,value:hireFacts[originalEndField].value}:currentEnd?.field===originalEndField?currentEnd:originalEndField?{field:originalEndField,value:null}:null;
     return {
       hiredOn: plan.anchor,
       companyId: v1.companyId,

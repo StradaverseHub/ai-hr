@@ -722,8 +722,8 @@ describe('SOURCE GUARDS — the New Event form', () => {
     expect(end).toBeGreaterThan(from);
     const grid = NEW_EVENT.slice(from, end);
     expect(grid.length).toBeGreaterThan(100);
-    expect(grid).toContain("t('form.currentInformation')");
-    expect(grid).toContain("t('form.afterInformation')");
+    expect(grid).toContain("t('detail.beforeChanges')");
+    expect(grid).toContain("t('detail.afterChanges')");
     expect(grid).toContain('{comparisonRows}');
     expect(grid).toContain("isEntityTransfer ? t('form.entityTransferHint') : t('form.comparisonHint')");
   });

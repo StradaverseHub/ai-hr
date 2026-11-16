@@ -3805,6 +3805,7 @@ export async function setEmploymentPaymentMethod(
     const effectiveDate=p.effectiveDate??(before.hiredOn>today?before.hiredOn:today);
     if(!isCalendarDate(effectiveDate)||effectiveDate<before.hiredOn)throw new Error('Payment method effective date must be on or after Group Join Date.');
     const previous=await employmentPaymentMethodOnTx(tx,p.employmentId,effectiveDate);
+    const [previousRevision]=await tx.execute<{id:string;effective_on:string}>(sql`select id,effective_on::text from employment_payment_method_history where tenant_id=${ctx.tenantId}::uuid and employment_id=${p.employmentId}::uuid and superseded_at is null and effective_on<=${effectiveDate}::date order by effective_on desc limit 1`);
     // A dated no-op emits no revision or ledger event.
     if (previous === (next ?? null)) {
       return { id: p.employmentId, paymentMethod: next, changed: false as const };
@@ -3828,11 +3829,36 @@ export async function setEmploymentPaymentMethod(
       subjectEmploymentId: p.employmentId,
       // How someone is paid is a disbursement-routing decision an auditor must be able to reconstruct —
       // same rationale as the bank/custom-holder before/after on employee.bank.updated.
-      payload: { before:previous, after:next, effectiveDate, revisionId:revision.id, reason:p.reason?.trim()||null, ...(p.movement?{movement:p.movement}:{}) },
+      payload: { before:previous, after:next, effectiveDate, revisionId:revision.id, previousRevisionId:previousRevision?.id??null, reason:p.reason?.trim()||null, ...(p.movement?{movement:p.movement}:{}) },
     },{returnId:true});
     return { id: p.employmentId, paymentMethod: next, changed: true as const, eventId };
   };
   return outerTx?run(outerTx):withTenant(ctx,run);
+}
+
+/** Canonical compensating deletion of a Movement method decision. Removing its live revision allows
+ * the actual dated predecessor (including a corrected hire method) to govern again. Writing a new
+ * same-date copy of the old value would invent a boundary and block subsequent inherited corrections. */
+export async function reverseEmploymentPaymentMethodTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;revisionId:string;previousRevisionId:string|null;eventId:string;reason:string|null}){
+ if(!hasClosedPayrollCorrectionAuthorityTx(tx,p.employmentId))throw new Error('Payment-method reversal requires the Movement correction owner.');
+ await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+ await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+ await lockPayrollInputsTx(tx,{employmentIds:[p.employmentId]});
+ await lockEmploymentStatutoryOwnerTx(tx,p.employmentId);
+ const [subject]=await tx.select({personId:employment.personId}).from(employment).where(eq(employment.id,p.employmentId)).for('update');
+ if(!subject)throw new Error('Employment not found');
+ const [source]=await tx.execute<{id:string;effective_on:string;payment_method:PaymentMethod|null;superseded_at:Date|null}>(sql`select id,effective_on::text,payment_method,superseded_at from employment_payment_method_history where id=${p.revisionId}::uuid and tenant_id=${ctx.tenantId}::uuid and employment_id=${p.employmentId}::uuid for update`);
+ if(!source||source.superseded_at)throw new Error('A later payment-method decision must be reviewed before this event can be changed.');
+ const [prior]=p.previousRevisionId?await tx.execute<{id:string;effective_on:string;payment_method:PaymentMethod|null}>(sql`select id,effective_on::text,payment_method from employment_payment_method_history where id=${p.previousRevisionId}::uuid and tenant_id=${ctx.tenantId}::uuid and employment_id=${p.employmentId}::uuid for update`):[];
+ if(p.previousRevisionId&&!prior)throw new Error('The previous payment-method decision cannot be verified.');
+ await preserveMovementPayrollTx(tx,p.employmentId,message=>new Error(message));
+ await tx.execute(sql`update employment_payment_method_history set superseded_at=now() where id=${source.id}::uuid`);
+ if(prior?.effective_on===source.effective_on)await tx.execute(sql`update employment_payment_method_history set superseded_at=null where id=${prior.id}::uuid`);
+ const restored=await employmentPaymentMethodOnTx(tx,p.employmentId,source.effective_on);
+ if(restored==='bank_transfer'&&!(await paymentMethodBankReadinessTx(tx,ctx,subject.personId)).ready)throw new MissingBankForTransferError();
+ const projected=await employmentPaymentMethodOnTx(tx,p.employmentId,todayInKualaLumpur());
+ await tx.update(employment).set({paymentMethod:projected}).where(eq(employment.id,p.employmentId));
+ await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:p.employmentId,eventType:'employment.payment-method.reverted',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,payload:{before:source.payment_method,after:restored,effectiveDate:source.effective_on,revisionId:source.id,restoredRevisionId:prior?.effective_on===source.effective_on?prior.id:null,reversalOf:p.eventId,reason:p.reason}});
 }
 
 /**
@@ -3840,6 +3866,7 @@ export async function setEmploymentPaymentMethod(
  * remuneration runs for PCB when they hold concurrent employments across the group. The paymaster must be
  * one of the person's own ACTIVE employments. Pass `null` to clear. App-validated soft reference (no DB FK).
  */
+
 export async function setDesignatedPaymaster(
   ctx: SessionContext,
   p: { personId: string; designatedPaymasterEmploymentId: string | null },

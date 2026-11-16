@@ -228,9 +228,24 @@ export const APPROVED_UPGRADE_TAIL=[
  // Board 237c31e6: request-bound approver Employee ID readers for the Attendance approval progress panel (16 Nov 2026).
  {idx:5170,when:1793330005470,tag:'5770_attendance_workflow_approver_codes'},
  {idx:5171,when:1793330005471,tag:'5771_assistant_legacy_index_shared_access'},
+ // Comprehensive Movement workflow: exact appended, unapplied forward SQL.
+ {idx:5172,when:1793330005472,tag:'5772_movement_employment_periods'},
+ {idx:5173,when:1793330005473,tag:'5773_movement_payroll_protection_and_delete'},
+ {idx:5174,when:1793330005474,tag:'5774_employment_payment_method_history'},
+ {idx:5175,when:1793330005475,tag:'5775_movement_payment_method_field'},
+ {idx:5176,when:1793330005476,tag:'5776_workforce_payroll_input_invalidation'},
+ {idx:5177,when:1793330005477,tag:'5777_movement_closed_payroll_metadata'},
+ {idx:5178,when:1793330005478,tag:'5778_movement_payroll_windows'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5772_movement_employment_periods':'9a66595ca046bdf0bdaaf0b51e1b87cfd8811156093d37464ef854d36b7d4ef3',
+ '5773_movement_payroll_protection_and_delete':'3f54dd21490e301f4c52131d449d32c883f482d67025df610fe5b84c83be1897',
+ '5774_employment_payment_method_history':'4e68e7aa1c2e66f605938fef0e59ce86a137ecdbd061c0f3e5a3e5a48ff6c5d8',
+ '5775_movement_payment_method_field':'3841610ec8f01675b16ad51b9c9523d77146f8c048790565d9862510909d3155',
+ '5776_workforce_payroll_input_invalidation':'28624ba957c14e02dfb7305c5d94b5627be11d4cc66f65e8903e5a921436589f',
+ '5777_movement_closed_payroll_metadata':'bb1ed221d194021c059392f21ad7c01c99cf9c0b05f6698b4ffff6579c2707f4',
+ '5778_movement_payroll_windows':'789c93999e156c08f6cfac5a79f5f58071cd1f834778454238146809e1b55106',
  '5770_attendance_workflow_approver_codes':'f71cf33a9ced5f4e1007de02388a858bd31c64006a422352193bd7c14e367ec0',
  '5771_assistant_legacy_index_shared_access':'433dfd7549b496b034bdeaa2c06484b700b5dd5647213106d68487f0b485c7c0',
  '5761_probation_automation_recipients_and_tracker_steps':'c39e471adb80e51b56466c264bc6546dc6ce48a354e30d8e9ef3629a82b2184b',

@@ -44,3 +44,20 @@ export function movementInformationEvidence(events:readonly Event[],asOf:string,
  }
  return out;
 }
+
+/** Corrected original facts immediately BEFORE a later deliberate decision. The upper bound is
+ * inclusive here: a decision beginning at the correction's boundary must undo to the corrected hire
+ * value. Decisions after that boundary retain their own recorded predecessor. */
+export function originalHireDecisionPreimage(events:readonly Event[],decisionDate:string):Record<string,string|null>{
+ const out:Record<string,string|null>={};
+ for(const event of [...events].sort((a,b)=>a.sequence-b.sequence)){
+  const payload=obj(event.payload);
+  if(event.eventType!=='employment.information.corrected'||payload.source!=='original-hire'||typeof payload.effectiveOn!=='string'||payload.effectiveOn>decisionDate)continue;
+  const after=obj(payload.after),until=obj(payload.until);
+  for(const field of Array.isArray(payload.fields)?payload.fields:[]){
+   if(typeof field!=='string'||(typeof until[field]==='string'&&until[field]<decisionDate))continue;
+   const recorded=value(after[field]);if(recorded!==undefined)out[field]=recorded;
+  }
+ }
+ return out;
+}

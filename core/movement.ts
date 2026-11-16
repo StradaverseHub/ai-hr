@@ -1,6 +1,6 @@
 import {movementPayrollWindows} from '../lib/movement-payroll-windows';
 import {withMovementPayrollWindowsTx} from './workforce-payroll-invalidation';
-import {movementInformationEvidence,type MovementInformationField,type MovementInformationFact} from '../lib/movement-information-evidence';
+import {originalHireDecisionPreimage,movementInformationEvidence,type MovementInformationField,type MovementInformationFact} from '../lib/movement-information-evidence';
 import {conflictingMovementFields} from '../lib/movement-sequence-conflict';
 import {employmentPaymentMethodOnTx} from './employment-payment-method';
 import {PAYMENT_METHODS,type PaymentMethod} from '../lib/payment-methods';
@@ -63,6 +63,7 @@ import {
 } from '../db/schema';
 import {
   setEmploymentPaymentMethod,
+  reverseEmploymentPaymentMethodTx,
   setEmploymentAssignment,
   setEmploymentBlacklist,
   reverseEmploymentBlacklistTx,
@@ -4353,11 +4354,33 @@ async function reverseLegTx(
    */
   hireCorrections: unknown[],
   correctionReason: string | null,
+  correctedHireBefore: Record<string,string|null>,
 ): Promise<void> {
+  // Restore corrected original facts rather than an obsolete immutable preimage. The original event
+  // remains untouched; each inverse still goes through its native owner and appends new evidence.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const p = (e.payload ?? {}) as Record<string, any>;
+  const p = {...(e.payload ?? {}) as Record<string, any>};
+  if(e.eventType==='employment.grade.changed'&&Object.hasOwn(correctedHireBefore,'gradeId'))p.before=correctedHireBefore.gradeId;
+  if(e.eventType==='employment.info.updated'||e.eventType==='employment.company.transferred'){
+    const recordedBefore=p.before??{};
+    p.before={...recordedBefore,...correctedHireBefore};
+    if(e.eventType==='employment.info.updated'){
+      const fields=new Set<string>(Array.isArray(p.fields)?p.fields:[]);
+      for(const period of MOVEMENT_EMPLOYMENT_PERIODS){
+        if(!fields.has(period.value)&&!fields.has(period.unit))continue;
+        for(const field of [period.value,period.unit]){
+          if(Object.hasOwn(correctedHireBefore,field)){fields.add(field);p.after={...p.after,[field]:Object.hasOwn(p.after??{},field)?p.after[field]:recordedBefore[field]};}
+        }
+      }
+      p.fields=[...fields];
+    }
+  }
   switch (e.eventType) {
     case 'employment.payment-method.changed': {
+      if(typeof p.revisionId==='string'&&Object.hasOwn(p,'previousRevisionId')){
+        await reverseEmploymentPaymentMethodTx(tx,ctx,{employmentId,revisionId:p.revisionId,previousRevisionId:p.previousRevisionId??null,eventId:e.id,reason:correctionReason});
+        return;
+      }
       if(await employmentPaymentMethodOnTx(tx,employmentId,p.effectiveDate)!==(p.after??null))throw new MovementNotCorrectableError('A later payment-method decision must be reviewed before this event can be changed.');
       await setEmploymentPaymentMethod(ctx,{employmentId,paymentMethod:p.before??null,effectiveDate:p.effectiveDate,movement:tag,reason:correctionReason},tx);
       return;
@@ -4812,8 +4835,16 @@ async function reversalGuardTx(tx: Tx, ctx: SessionContext, employmentId: string
     if(event.eventType==='employment.assignment.changed'){const p=(event.payload??{}) as {before?:Record<string,unknown>;after?:Record<string,unknown>};for(const field of ['departmentId','positionId','businessUnitId'])if(p.before?.[field]!==p.after?.[field])protectedFields.add(field);}
     if(event.eventType==='reporting-line.set')protectedFields.add('managerEmploymentId');
   }
-  if(events.some(event=>event.eventType==='employment.information.corrected'&&event.sequence>row.sequence&&(((event.payload??{}) as {fields?:string[]}).fields??[]).some(field=>protectedFields.has(field)))){
-    throw new MovementNotCorrectableError('A later information-only correction protects these details. Review the correction history before changing this movement.');
+  const conflictingCorrection=events.find(event=>{
+    if(event.eventType!=='employment.information.corrected'||event.sequence<=row.sequence)return false;
+    const payload=(event.payload??{}) as {fields?:string[];source?:string;effectiveOn?:string};
+    if(payload.source==='original-hire'&&payload.effectiveOn&&payload.effectiveOn<=row.effectiveDate)return false;
+    return (payload.fields??[]).some(field=>protectedFields.has(field));
+  });
+  if(conflictingCorrection){
+    const payload=(conflictingCorrection.payload??{}) as {fields?:string[];effectiveOn?:string};
+    const fields=(payload.fields??[]).filter(field=>protectedFields.has(field));
+    throw new MovementNotCorrectableError(`A later information-only correction ${conflictingCorrection.id} (${payload.effectiveOn??todayInKualaLumpur(conflictingCorrection.occurredAt)}) protects ${fields.join(', ')}. Review that correction before changing this movement.`);
   }
   const exitDates=row.kind==='resignation'?resignationFinancialDates(group):[];
   let closedPayrollPeriods: string[] = [];
@@ -4859,8 +4890,9 @@ async function reverseMovementTx(
   // Undo the newest leg first: within one movement a later leg can sit on top of an earlier one.
   const tag: MovementTag = { type: row.kind, groupId: randomUUID(), secondary: true };
   const hireCorrections = events.filter((x) => isAssignmentReplacementEvent(x.eventType, HIRE_CORRECTED_EVENT)).map((x) => x.payload);
+  const correctedHireBefore=originalHireDecisionPreimage(events,row.effectiveDate);
   for (const e of [...group].sort((a, b) => b.sequence - a.sequence)) {
-    await reverseLegTx(tx, ctx, employmentId, e, tag, hireCorrections, reason);
+    await reverseLegTx(tx, ctx, employmentId, e, tag, hireCorrections, reason, correctedHireBefore);
   }
   if (row.kind !== 'historicalHire') {
     const organisation=await employmentOrganisationTagsTx(tx,ctx,{employmentId,asOf:row.effectiveDate});

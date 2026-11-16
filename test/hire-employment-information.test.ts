@@ -6,7 +6,7 @@ import * as s from '../db/schema';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {hireEmployee,setEmploymentGrade} from '../core/org';
 import {setCompensation} from '../core/comp';
-import {createMovementEvent,movementHistory} from '../core/movement';
+import {createMovementEvent,movementHistory,reverseMovementEvent} from '../core/movement';
 import {correctHireDetails,hireCorrectionView,parseHireInformationForm} from '../core/hire-correction';
 let b:Base,id:string;
 beforeAll(migrateTestDb);beforeEach(async()=>{
@@ -24,6 +24,23 @@ describe('original-hire employment information',()=>{
   expect((await hireCorrectionView(adminCtx(b),id)).gradeId).toBe(corrected);
   expect((await owner.db.select().from(s.employment).where(eq(s.employment.id,id)))[0].gradeId).toBe(later);
   expect((await movementHistory(adminCtx(b),id)).filter(row=>row.kind==='promotion').map(row=>row.id)).toEqual(before);
+ });
+ it('restores the corrected hire grade when the first later grade decision is deleted',async()=>{
+  const first=await grade('PREIMAGE-FIRST'),later=await grade('PREIMAGE-LATER'),corrected=await grade('PREIMAGE-CORRECTED');
+  await setEmploymentGrade(adminCtx(b),{employmentId:id,gradeId:first});
+  await createMovementEvent(adminCtx(b),{employmentId:id,kind:'promotion',effectiveDate:'2026-03-01',gradeId:later});
+  const movement=(await movementHistory(adminCtx(b),id)).find(row=>row.kind==='promotion')!;
+  await correct({gradeId:corrected});
+  await reverseMovementEvent(adminCtx(b),{employmentId:id,movementId:movement.id,reason:'Fictional removal of incorrect later decision'});
+  expect((await owner.db.select().from(s.employment).where(eq(s.employment.id,id)))[0].gradeId).toBe(corrected);
+ });
+ it('restores both corrected original period components when a later value-only decision is deleted',async()=>{
+  const ctx=adminCtx(b);await correct({probationValue:'3',probationUnit:'month'});
+  await createMovementEvent(ctx,{employmentId:id,kind:'promotion',effectiveDate:'2026-03-01',probationValue:'6'});
+  const movement=(await movementHistory(ctx,id)).find(row=>row.kind==='promotion')!;
+  await correct({probationValue:'4',probationUnit:'week'});
+  await reverseMovementEvent(ctx,{employmentId:id,movementId:movement.id,reason:'Fictional removal of incorrect period decision'});
+  expect((await owner.db.select().from(s.employment).where(eq(s.employment.id,id)))[0]).toMatchObject({probationValue:4,probationUnit:'week'});
  });
  it('carries original employment type through inherited placement versions and stops at a later type decision',async()=>{
   await createMovementEvent(adminCtx(b),{employmentId:id,kind:'transfer',effectiveDate:'2026-02-01',departmentId:b.deptB});
@@ -47,8 +64,8 @@ describe('original-hire employment information',()=>{
   const [oldGrade]=await owner.db.insert(s.jobGrade).values({tenantId:b.tenantId,code:'OLD-SCOPE',name:'Fictional Original Grade',scopeCompanyIds:[b.companyId]}).returning();
   id=(await hireEmployee(ctx,{person:{fullName:'Fictional Mis-keyed Hire Company',primaryEmail:'hire-company@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01',gradeId:oldGrade.id})).employmentId;
   const [target]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional Corrected Employer',country:'MY'}).returning();
-  await owner.db.update(s.department).set({isGlobal:true}).where(eq(s.department.id,b.deptA));
-  await owner.db.update(s.costCenter).set({isGlobal:true}).where(eq(s.costCenter.id,b.costCenterId));
+  await owner.withTenant(ctx,tx=>tx.update(s.department).set({isGlobal:true}).where(eq(s.department.id,b.deptA)));
+  await owner.withTenant(ctx,tx=>tx.update(s.costCenter).set({isGlobal:true}).where(eq(s.costCenter.id,b.costCenterId)));
   const [oldPolicy]=await owner.db.insert(s.payrollPolicy).values({tenantId:b.tenantId,companyId:b.companyId,name:'Fictional Original Policy',policyType:'monthly'}).returning();
   await assignPolicy(ctx,{employmentId:id,policyId:oldPolicy.id});
   await saveEmploymentCostAllocations(ctx,{employmentId:id,effectiveDate:'2026-01-01',expectedRevision:0,operation:'replace',rows:[{costCenterId:b.costCenterId,percentage:'100.00'}]});

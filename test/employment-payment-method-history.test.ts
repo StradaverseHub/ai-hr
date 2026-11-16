@@ -50,6 +50,19 @@ describe('employment-effective payment method owner',()=>{
   await reverseMovementEvent(ctx,{employmentId:id,movementId:replacement.id,reason:'Fictional paired removal'});
   expect(await on('2026-02-01')).toBeNull();
  });
+ it('deleting a later method restores the corrected hire owner without inventing a new boundary',async()=>{
+  const ctx=adminCtx(b);
+  await setEmploymentPaymentMethod(ctx,{employmentId:id,effectiveDate:'2026-01-01',paymentMethod:'cash'});
+  await createMovementEvent(ctx,{employmentId:id,kind:'increment',effectiveDate:'2026-03-01',paymentMethod:'cheque'});
+  const movement=(await movementHistory(ctx,id)).find(row=>row.kind==='increment')!;
+  await setEmploymentPaymentMethod(ctx,{employmentId:id,effectiveDate:'2026-01-01',paymentMethod:null,reason:'Fictional corrected original routing'});
+  await reverseMovementEvent(ctx,{employmentId:id,movementId:movement.id,reason:'Fictional removal of later routing decision'});
+  expect(await on('2026-03-01')).toBeNull();
+  await setEmploymentPaymentMethod(ctx,{employmentId:id,effectiveDate:'2026-01-01',paymentMethod:'cash',reason:'Fictional second original correction'});
+  expect(await on('2026-03-01')).toBe('cash');
+  expect((await employmentPaymentMethodHistory(ctx,id)).filter(row=>row.effectiveOn==='2026-03-01'&&!row.supersededAt)).toEqual([]);
+  expect(await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.eventType,'employment.payment-method.reverted'))).toHaveLength(1);
+ });
  it('enforces date, bank readiness, tenant isolation and table grants',async()=>{
   const ctx=adminCtx(b);
   await expect(setEmploymentPaymentMethod(ctx,{employmentId:id,paymentMethod:'cash',effectiveDate:'2025-12-31'})).rejects.toThrow(/Group Join Date/);
