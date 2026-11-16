@@ -1,4 +1,17 @@
 -- Bounded set-based Contract tracker. Source pay is absent from list rows and is separately authorized on detail.
+-- Keep the original function identity: existing RLS policies reference its OID. Replacing its body also fences
+-- legacy projections and raw case/history tables after adoption; renaming it would leave those policies unfenced.
+CREATE OR REPLACE FUNCTION app.contract_case_access(wanted_case uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT NOT EXISTS(SELECT 1 FROM public.contract_shared_case s WHERE s.tenant_id=app.current_tenant_id() AND s.case_id=wanted_case)
+ AND EXISTS(SELECT 1 FROM public.contract_case c WHERE c.id=wanted_case AND c.tenant_id=app.current_tenant_id()
+ AND app.contract_company_entitled(c.company_id) AND app.contract_verified_human(app.current_user_id())
+ AND (app.contract_has_role(c.company_id,app.contract_case_role_unit(c.id),'gbs')
+ OR app.current_user_id() IN(SELECT app.contract_users_for_employment(c.employment_id))
+ OR app.contract_case_company_current(c.id) AND (app.contract_pbp_for_employment(c.employment_id)
+ OR app.current_user_id() IN(SELECT app.contract_manager_users(c.employment_id)) OR app.contract_case_approval_actor(c.id))))
+$$;
+--> statement-breakpoint
 CREATE FUNCTION app.contract_shared_page(p_search text DEFAULT '',p_limit integer DEFAULT 50,p_offset integer DEFAULT 0) RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  WITH latest AS MATERIALIZED (

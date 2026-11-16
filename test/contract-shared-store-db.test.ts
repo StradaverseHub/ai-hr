@@ -121,7 +121,7 @@ describe('native Personnel contract numbering',()=>{
   const read=async()=>[...await owner.db.execute<{number:number|null}>(sql`select contract_number as number from employment where id=${employee.employmentId}::uuid`)][0].number;
   expect(await read()).toBeNull();
   await expect(setEmploymentInfo(admin,{employmentId:employee.employmentId,contractNumber:1.5})).rejects.toThrow('Contract number');
-  await setEmploymentInfo(admin,{employmentId:employee.employmentId,contractNumber:4});
+  await setEmploymentInfo(admin,{employmentId:employee.employmentId,contractNumber:4,contractStartDate:'2026-01-01',contractEndDate:'2027-12-31'});
   expect(await read()).toBe(4);
   const [event]=await owner.db.execute<{payload:{after:{contractNumber:number}}}>(sql`select payload from domain_event where tenant_id=${b.tenantId}::uuid and aggregate_id=${employee.employmentId}::uuid and event_type='employment.info.updated' order by sequence desc limit 1`);
   expect(event.payload.after.contractNumber).toBe(4);
@@ -130,6 +130,27 @@ describe('native Personnel contract numbering',()=>{
  });
 });
 describe('bounded Contract projections',()=>{
+ it('fences legacy raw and unredacted readers after adoption while retaining the authorized shared projection',async()=>{
+  const employee=await hireEmployee(admin,{person:{fullName:'Fictional cutover contractor',primaryEmail:randomUUID()+'@contracts.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'contract',hiredOn:'2026-01-01',provisionalEndOn:'2027-12-31'});
+  await setEmploymentInfo(admin,{employmentId:employee.employmentId,contractNumber:4});
+  const userId=await createAppUser(b.tenantId,employee.personId,'employee'),subject={...admin,userId,personId:employee.personId,roles:['employee'],grants:undefined};
+  const termId=randomUUID(),caseId=randomUUID();
+  await setEmploymentInfo(admin,{employmentId:employee.employmentId,contractStartDate:'2026-01-01',contractEndDate:'2027-12-31'});
+  await owner.db.execute(sql`insert into contract_term(id,tenant_id,company_id,employment_id,version,kind,start_on,end_on,source_revision) values(${termId}::uuid,${b.tenantId}::uuid,${b.companyId}::uuid,${employee.employmentId}::uuid,1,'project','2026-01-01','2027-12-31','fixture')`);
+  await owner.db.execute(sql`insert into contract_case(id,tenant_id,company_id,employment_id,term_id,number,revision,data) values(${caseId}::uuid,${b.tenantId}::uuid,${b.companyId}::uuid,${employee.employmentId}::uuid,${termId}::uuid,'CT-CUTOVER-1',1,jsonb_build_object('revision',1,'state','upcoming','term',jsonb_build_object('startOn','2026-01-01','endOn','2027-12-31'),'decision',NULL,'decisionDraft',NULL))`);
+  const legacy=()=>withTenant(subject,tx=>tx.execute<{id:string}>(sql`select id from contract_case where id=${caseId}::uuid`));
+  expect(await legacy()).toHaveLength(1);
+  await withTenant(admin,tx=>tx.execute(sql`select app.contract_shared_adopt(${caseId}::uuid)`));
+  expect(await legacy()).toEqual([]);
+  const [old]=await withTenant(subject,tx=>tx.execute<{source:unknown;projection:unknown}>(sql`select app.contract_case_source(${caseId}::uuid) as source,app.contract_case_projection(${caseId}::uuid) as projection`));
+  expect(old).toEqual({source:null,projection:null});
+  const viewer=await ordinary(),roleId=randomUUID();
+  await saveContractSharedRole(admin,{id:roleId,name:'Cutover view without pay',permissions:['view'],expectedRevision:0});
+  await saveContractSharedMember(admin,{id:randomUUID(),roleId,userId:viewer.userId,companyId:b.companyId,businessGroupId:null,validFrom:'2020-01-01',validTo:null,revoked:false});
+  const detail=await contractSharedContext(viewer,caseId);
+  expect(detail.flow?.period.number).toBe('4');expect(detail.source).not.toHaveProperty('salaryCents');
+  expect(await withTenant(viewer,tx=>tx.execute(sql`select id from contract_case where id=${caseId}::uuid`))).toEqual([]);
+ });
  it('pages 1,000 employments across 70 companies with native numbers and isolates a scoped viewer',async()=>{
   await owner.db.execute(sql`
    with companies as (
