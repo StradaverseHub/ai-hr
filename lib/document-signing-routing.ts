@@ -53,7 +53,7 @@ export function signatureBlockStepId(block: DocumentRoutingBlock): string | null
 const position = (routing: DocumentRouting, step: DocumentRoutingStep) => sortedDocumentRouting(routing).indexOf(step) + 1;
 
 /** Blocking problems for saving or publishing a routing. Empty means valid. An empty routing is valid (today's behaviour). */
-export function documentRoutingProblems(routing: DocumentRouting, refs: DocumentRoutingReferences): string[] {
+export function documentRoutingProblems(routing: DocumentRouting, refs: DocumentRoutingReferences, options: {requireSign?: boolean} = {}): string[] {
   const problems: string[] = [];
   if (!routing.length) return problems;
   if (routing.length > MAX_DOCUMENT_ROUTING_STEPS) problems.push(`Use at most ${MAX_DOCUMENT_ROUTING_STEPS} steps.`);
@@ -74,7 +74,7 @@ export function documentRoutingProblems(routing: DocumentRouting, refs: Document
       else if (who.userIds.some(id => !refs.personExists(id))) problems.push(at + 'a chosen person can no longer be found.');
     }
   });
-  if (!routing.some(step => step.action === 'sign')) problems.push('At least one step must be a Sign step, or nobody signs the document.');
+  if (options.requireSign !== false && !routing.some(step => step.action === 'sign')) problems.push('At least one step must be a Sign step, or nobody signs the document.');
   if (routing.filter(step => step.owner).length > 1) problems.push('Only one step can own the document. Untick the others.');
   return problems;
 }
