@@ -6310,6 +6310,13 @@
       "breakpoints": true
     },
     {
+      "idx": 5234,
+      "version": "7",
+      "when": 1794841005834,
+      "tag": "5834_contract_shared_email_compatibility",
+      "breakpoints": true
+    },
+    {
       "idx": 5235,
       "version": "7",
       "when": 1794841005835,
