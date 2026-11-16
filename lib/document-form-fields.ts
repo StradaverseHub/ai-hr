@@ -40,8 +40,8 @@ export function documentResponsePatch(fields:readonly Field[],before:Readonly<Re
 }
 export type DerivedDocumentKind='Form'|'Acknowledgement'|'Letter';
 /** Mirrors the approved HTML's tplKindOf; kind follows actual blocks/routing, never a user selector. */
-export function derivedDocumentKind(blocks:readonly Block[],employeeStepIds:readonly string[]=[]):DerivedDocumentKind{
+export function derivedDocumentKind(blocks:readonly Block[]):DerivedDocumentKind{
  if(blocks.some(block=>block.type==='field'||block.type==='fields'))return 'Form';
- const signatures=blocks.filter(block=>block.type==='signature'),employees=new Set(employeeStepIds);
- return signatures.length&&signatures.every(block=>block.role==='employee'||block.role?.startsWith('step:')&&employees.has(block.role.slice(5)))?'Acknowledgement':'Letter';
+ const signatures=blocks.filter(block=>block.type==='signature');
+ return signatures.length&&signatures.every(block=>block.role==='employee')?'Acknowledgement':'Letter';
 }

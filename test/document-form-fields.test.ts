@@ -27,10 +27,10 @@ describe('shared document field rules extracted from the V9 owner',()=>{
   const special=field({id:'constructor'});const patched=documentResponsePatch([special],{},JSON.parse('{"constructor":"An actual answer"}'),['constructor']);
   expect(Object.hasOwn(patched.values,'constructor')).toBe(true);expect(patched.values.constructor).toBe('An actual answer');
  });
- it('derives kind from actual field and signature blocks and Employee routing steps',()=>{
+ it('derives kind from actual field and literal Employee signature blocks, as the HTML does',()=>{
   expect(derivedDocumentKind([block({type:'field',fieldId:'answer'})])).toBe('Form');
   expect(derivedDocumentKind([block({type:'signature',role:'employee'})])).toBe('Acknowledgement');
-  expect(derivedDocumentKind([block({type:'signature',role:'step:employee-step'})],['employee-step'])).toBe('Acknowledgement');
-  expect(derivedDocumentKind([block({type:'signature',role:'step:bp-step'})],['employee-step'])).toBe('Letter');
+  expect(derivedDocumentKind([block({type:'signature',role:'step:employee-step'})])).toBe('Letter');
+  expect(derivedDocumentKind([block({type:'signature'})])).toBe('Letter');
  });
 });
