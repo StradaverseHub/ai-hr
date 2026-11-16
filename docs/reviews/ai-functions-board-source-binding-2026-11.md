@@ -542,3 +542,15 @@ company referrers, the approvals and Today task sources); no file under lib/ai, 
 core/teras* or core/loops changed. No provider transform, outbound field, purpose or transport changed. The 28 approvals
 were carried forward to `2811064b…` and the agent manifest regenerated (`e11a6cf7…`), under the owner's standing
 pre-approval for staging re-binds (12 November 2026). This binding grants no production authority.
+
+### Re-binding for the Probation handoff gaps and saved-form import (16 November 2026)
+
+`claude/probation-confirmation-aihr-b81c70` at binding `2811064b…` merges lane J (`claude/probation-lane-import-20261116`,
+importing saved v22.9.26 HTML evaluation forms in Probation intake; migration 5762) and lane I
+(`claude/probation-lane-gaps-20261116`, the default outcome path creating a Personnel posting, letter queues by step
+kind, PBP low-result and Other tasks, workflow history, routed recipients and tracker steps; migrations 5760–5761).
+Changed covered files are `core/probation*.ts`, `lib/probation-intake-html.ts` and the six `messages/*.json` catalogues,
+in the provider-data scope only through the import graph; no file under lib/ai, core/ai*, core/assistant*, core/teras*
+or core/loops changed. No provider transform, outbound field, purpose or transport changed. The 28 approvals were
+carried forward to `a6ebe974…` and the agent manifest regenerated (`db714b6f…`), under the owner's standing
+pre-approval for staging re-binds (12 November 2026). This binding grants no production authority.
