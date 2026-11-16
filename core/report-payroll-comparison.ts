@@ -77,7 +77,7 @@ export async function executePayrollComparisonTx(tx:Tx,ctx:SessionContext,spec:C
   }
   const previous=payPeriodBounds(filters.previousPeriod!),current=payPeriodBounds(filters.currentPeriod!);
   if(!previous||!current)throw new Error('Choose valid payroll periods.');
-  const sourcesFor=(companyIds:readonly string[])=>payrollComparisonSourcesTx(tx,ctx,{companyIds,previousPeriod:filters.previousPeriod!,currentPeriod:filters.currentPeriod!,runType:filters.runType,cycleIds:filters.cycleIds,previousCycleIds:filters.previousCycleIds,payItemCode:definition.payItemCode});
+  const sourcesFor=(companyIds:readonly string[])=>payrollComparisonSourcesTx(tx,ctx,{companyIds,previousPeriod:filters.previousPeriod!,currentPeriod:filters.currentPeriod!,runType:filters.runType,cycleIds:filters.cycleIds,previousCycleIds:filters.previousCycleIds,payItemCode:definition.payItemCode,...(filters.employmentId?{employmentId:filters.employmentId}:{})});
   let inclusion:PayrollComparisonInclusion|null=null,compared=ids;
   let runs:Awaited<ReturnType<typeof sourcesFor>>['runs'],sources:Awaited<ReturnType<typeof sourcesFor>>['sources'];
   if(options.readyCompanies){
