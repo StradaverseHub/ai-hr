@@ -1,9 +1,10 @@
 import {beforeAll,beforeEach,afterAll,afterEach,vi,describe,it,expect} from 'vitest';
+import {setCompensation} from '../core/comp';
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {owner,migrateTestDb,resetDb,closeAll} from './harness';
 import {resignationJourneyFixture} from './helpers/resignation-journey-fixture';
-import {commandResignationJourney,resignationCase,resignationInbox} from '../packs/lifecycle/resignation/service';
+import {commandResignationJourney,resignationCase,resignationInbox,submitResignationJourney} from '../packs/lifecycle/resignation/service';
 import {myResignation,listResignationRequests,decideResignation,submitResignation} from '../core/offboarding';
 
 beforeAll(migrateTestDb);beforeEach(resetDb);afterEach(()=>vi.unstubAllEnvs());afterAll(closeAll);
@@ -31,6 +32,12 @@ describe('managed resignation service composes one workflow authority',()=>{
  it('blocks a letter route assigned only to an account without a Person instead of creating a dead signing task',async()=>{
   const f=await resignationJourneyFixture({accountOnlyDecisionMaker:true}),templateId=randomUUID();f.config.templates.push({id:templateId,name:'Requires a linked signing identity',module:'off',type:'Letter',rules:{},hrStep:'before',employeeAck:false,retired:false,currentVersion:1,versions:[{version:1,state:'published',at:new Date().toISOString(),by:'Fixture owner',blocks:[{id:'body',type:'text',text:'Resignation accepted.',section:''},{id:'sign',type:'signature',role:'step:hr',text:'',section:''}],fields:[],routing:[{id:'hr',order:1,action:'sign',who:{kind:'people',userIds:[f.managerUserId]},owner:true}]}]});await owner.db.execute(sql`update lc_v9_config set data=${JSON.stringify(f.config)}::jsonb where tenant_id=${f.base.tenantId}::uuid`);await f.workflow('accepted',[{id:'letter',type:'generateDocument',conditions:[],to:[],cc:[],params:{letterTemplateId:templateId}}]);
   const accepted=await commandResignationJourney(f.admin,{caseId:f.journey.id,revision:f.journey.revision,command:{type:'accept',lastWorkingDay:f.lastWorkingDay,replacementNeeded:false}});expect(accepted.stage).toBe('accepted');expect(accepted.letters).toEqual([]);expect(accepted.tasks.filter(task=>['sign','review','approve','update'].includes(task.kind))).toEqual([]);expect(accepted.blocked.join(' ')).toMatch(/linked Person/);expect(accepted.offboardingCaseId).toBeNull();
+ },90000);
+ it('freezes the canonical compensation currency and preserves it on prior-case offers without guessing a currency',async()=>{
+  const f=await resignationJourneyFixture({compensation:{basicSalary:5000,currency:'USD'}});expect(f.journey.currency).toBe('USD');const withdrawn=await commandResignationJourney(f.staff,{caseId:f.journey.id,revision:f.journey.revision,command:{type:'withdraw'}});
+  await setCompensation(f.admin,{employmentId:f.employee.employmentId,basicSalary:5000,currency:'SGD',effectiveFrom:withdrawn.submittedOn});expect((await resignationCase(f.staff,withdrawn.id)).currency).toBe('USD');
+  const next=await submitResignationJourney(f.staff,{employmentId:f.employee.employmentId,lastWorkingDay:f.lastWorkingDay});expect(next.currency).toBe('SGD');expect(next.priorCases[0].currency).toBe('USD');
+  const unknown=await resignationJourneyFixture();expect(unknown.journey.currency).toBeNull();
  },90000);
  it('acceptance keeps employment active and leave unfrozen until clearance; replacement creates one actionable HR request',async()=>{
   const f=await resignationJourneyFixture();const accepted=await commandResignationJourney(f.admin,{caseId:f.journey.id,revision:f.journey.revision,command:{type:'accept',lastWorkingDay:f.lastWorkingDay,replacementNeeded:true}});
