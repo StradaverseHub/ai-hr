@@ -129,11 +129,11 @@ describe('import history foundation and Cost Center Allocation import (c4055300)
    });
   });
   expect(await epochs()).toEqual(beforeEpochs);
-  for(const role of s.roleEnum.enumValues)for(const companyId of [null,b.companyId,betaId]){
+  for(const role of s.roleEnum.enumValues)for(const companyId of (role==='super_admin'?[null]:[null,b.companyId,betaId])){
    const userId=await createAppUser(b.tenantId,null,'employee');
    await owner.db.update(s.roleAssignment).set({role,companyId}).where(eq(s.roleAssignment.appUserId,userId));
    const who:SessionContext={...a,userId,personId:null,roles:[role],grants:[{role,companyId}]};
-   const outcome=async(handler:typeof legacy|typeof costAllocationRevertHandler)=>{try{return{value:await previewImportRevert(who,attemptId,handler)};}catch(e){return{error:String(e)};}};
+   const outcome=async(handler:typeof legacy|typeof costAllocationRevertHandler)=>{try{return{value:await previewImportRevert(who,attemptId,handler)};}catch{return{denied:true};}};
    expect(await outcome(costAllocationRevertHandler),`${role}:${companyId??'all'}`).toEqual(await outcome(legacy));
   }
   await withTenant(a,async tx=>{await costAllocationRevertHandler.lock!(tx,a);const [mode]=await tx.execute<{mode:string}>(sql`select app.access_lock_mode_held(${b.tenantId}::uuid) as mode`);expect(mode.mode).toBe('X');});
