@@ -783,3 +783,32 @@ and evaluated/promoted agent identities are unchanged. Provider payloads, purpos
 not change. The derived agent manifest is regenerated after the literal update. The existing direction
 to run the full gate and deploy only to staging after all checks pass remains in effect. No production
 installation or package publication is authorized.
+
+### Comprehensive Movement staging source binding (17 November 2026)
+
+The repository owner explicitly approved **“I approve all the AI binding and migration ordering”**
+in the four-session release coordination chat on 17 November 2026 MYT, then directed
+**“Movement should be the first one to release.”** This authorizes the scoped source-binding
+carry-forward and safe migration ordering for these coordinated staging releases. It does not waive
+verification, authorize new outbound behavior, publish packages or install production.
+
+Reviewed pre-binding Movement source `eb841ac8f8da0e988e984e10046380d8cb5962cb` integrates the
+current main/alpha baseline `9bdfb45969c4bff81a9b9830b52403a95e82bdc6`. Its native changes cover
+complete Movement information, dated payment routing, original-hire correction and compensating
+replay, salary recording choices, bounded open-payroll invalidation and company-period history import.
+Migration 5779 reconciles incompatible allocations through their existing owner without weakening
+the allocation/company constraint or changing issued payroll figures. The existing Agent action DTO
+continues to expose the same payment-method field through the dated native reader. Provider policies,
+serializers, approved outbound fields, purposes and transports are unchanged.
+
+The same 28 active approvals carry forward from
+`0b60766ac33a0418d98b24ff7da5aaab08d17c927ced7d9c7853b929bc35930b` to the exact provider
+fingerprint `5f0f352a8020b336f5d7a7eb02e9a211c732fc0568cc4d6bcc3a8d08c222d83b` over 1635 files.
+Reversing only those 28 digest substitutions reproduces the previous approval registry byte-for-byte.
+Both pending records, the retired Attendance Formula binding, historical reviewer/evidence metadata,
+and existing evaluation/promotion identities are retained. The derived agent manifest is regenerated
+after those substitutions: `2dde4317cde38383935b881c16479f7224edcbd588c09a5d444325b801e44883` over 494 files.
+
+This is source-binding evidence only. Original failed gate 43938744762 remains failed; its missing
+unit/browser coverage, the allocation-owner repair, whole types, canonical build, migration rehearsal,
+rendered acceptance and authenticated staging admission still require their actual verification.
