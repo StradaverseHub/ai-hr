@@ -1,3 +1,20 @@
+# Board 237c31e6: approver Employee ID readers for Attendance approval progress — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/fb-237c31e6-approval-progress-20261116` (from `origin/main` = `origin/alpha` at `03b06f0de`) appends
+`5697_attendance_workflow_approver_codes` at idx 5097 / when 1793330005397, the board block's offset (tag T, idx
+T − 600, when 1793330004800 + (T − 5100)) directly after `5696` (when 1793330005396), the journal's maximum on main.
+SHA256 `f71cf33a9ced5f4e1007de02388a858bd31c64006a422352193bd7c14e367ec0`. It adds two SECURITY DEFINER readers with
+EXECUTE for `ai_hr_app` only: `app.attendance_workflow_approver_codes(uuid[])` (codes of the identities frozen on the
+requests the caller can already read, the attendance_workflow_request SELECT predicates) and
+`app.attendance_workflow_route_approver_codes(uuid,uuid)` (codes of the route the existing resolver produces for a
+subject and a current template, for the subject, the company's HR or a reporting-line superior). No table, policy,
+existing function or row changes. The approved upgrade tail pin and hash (`test/helpers/approved-upgrade.ts`,
+`test/tenant-company-fk-upgrade.test.ts`) carry the tag. A scan on 16 November 2026 of the 600 most recently active
+origin heads, every local branch and every registered worktree found no claim on tags 5697–5699 or when
+1793330005397–1793330005399; the recruitment lane holds 5700 and above at when 1793330005400 and above. The installed
+ledgers were not read by this session. Recheck the installed watermarks and peer claims at admission; this
+allocation grants no installation authority.
+
 # Board 4604dccc revision 4: the latest saved correction controls the SQL readers — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/fb-4604dccc-r4-latest-correction` (from `origin/main` = `origin/alpha` at `9d32dfab1`) appends
