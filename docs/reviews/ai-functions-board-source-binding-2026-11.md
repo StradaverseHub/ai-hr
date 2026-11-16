@@ -718,14 +718,14 @@ The resignation coordinator reviewed the deterministic implementation against cu
 `bcba1f3e8faaf75c760599750ec9b4dc1d5a0f73`, including the reviewed scoped handoff repair
 `570c92601` and the post-gate convention corrections. Independent reviews confirmed the added
 closure is Lifecycle state/letter/posting composition and private SMTP delivery, not a new model
-payload. The capability inventory leaves resignation decisions, signatures, uploads that resume
+payload. Framework-only configuration imports in the Lifecycle and Contracts facades are deferred until called; their original guards and authorization remain unchanged. The capability inventory leaves resignation decisions, signatures, uploads that resume
 the journey, and mixed employment postings on the human handoff surface. The native posting
 destination is excluded from coarse Assistant navigation. No executable AI tool, provider
 contract, prompt, disclosure schema or transport was added or broadened.
 
 Under the owner's recorded standing authority for same-purpose technical staging rebindings
 (above), the coordinator carried the 29 already-approved upstream records from `f4b83a1fa86cf3a53f111b8be69e10f29e0e629f9fa4f50c8ea0209987034494` to
-`a1b28522e0cbeefd9b953b6d3e387f906d20962cf03fbb17dd17f03b8cbf3b65` (1640 source files).
+`20ae90946fae14a242be006f6396bfac4a92017562c8c3412191c57110a89eb1` (1640 source files).
 Original human reviewers, evidence references, approval timestamps and statuses are preserved;
 pending contracts remain pending. The agent manifest is regenerated after this binding.
 This preparation grants no new data disclosure or release authority. The owner's explicit
