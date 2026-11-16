@@ -8,7 +8,7 @@ CREATE FUNCTION app.resignation_email_queue(p_subject uuid,p_key text,p_to uuid[
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE t uuid:=app.current_tenant_id(); j public.resignation_journey%ROWTYPE;
   to_ids uuid[]; cc_ids uuid[]; unreachable uuid[]; queued integer:=0;
-  content jsonb:=nullif(p_content,'null'::jsonb); doc jsonb; asset jsonb; file_ref jsonb;
+  content jsonb:=nullif(p_content,'null'::jsonb); doc jsonb; asset jsonb; file_ref jsonb; total_bytes bigint:=0;
 BEGIN
   IF app.automation_can_run('off',p_subject) IS NOT TRUE THEN RAISE EXCEPTION 'This workflow runner is not permitted here' USING ERRCODE='42501'; END IF;
   PERFORM app.access_workforce_write_lock();
@@ -43,11 +43,15 @@ BEGIN
         AND a.mime_type=asset->>'mimeType' AND a.content_hash=asset->>'contentHash' AND octet_length(a.content)=(asset->>'size')::integer)
         OR asset->>'kind'='image' AND length(trim(coalesce(asset->>'alt','')))=0
       THEN RAISE EXCEPTION 'An email asset changed or belongs to another template' USING ERRCODE='22023'; END IF;
+      total_bytes:=total_bytes+(asset->>'size')::bigint;
+      IF total_bytes>20000000 THEN RAISE EXCEPTION 'Workflow email attachments exceed the total limit' USING ERRCODE='22023'; END IF;
     END LOOP;
     FOR file_ref IN SELECT value FROM jsonb_array_elements(coalesce(content->'files','[]'::jsonb)) LOOP
       IF NOT EXISTS(SELECT 1 FROM public.resignation_journey_file f WHERE f.tenant_id=t AND f.case_id=p_subject
         AND f.id::text=file_ref->>'storageId' AND f.id::text=file_ref->>'id' AND f.name=file_ref->>'name' AND f.content_hash=file_ref->>'contentHash')
       THEN RAISE EXCEPTION 'A required case file is unavailable' USING ERRCODE='22023'; END IF;
+      total_bytes:=total_bytes+(SELECT octet_length(f.content) FROM public.resignation_journey_file f WHERE f.tenant_id=t AND f.case_id=p_subject AND f.id::text=file_ref->>'id');
+      IF total_bytes>20000000 THEN RAISE EXCEPTION 'Workflow email attachments exceed the total limit' USING ERRCODE='22023'; END IF;
     END LOOP;
   END IF;
   WITH input AS (

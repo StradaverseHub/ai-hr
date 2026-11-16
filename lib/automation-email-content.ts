@@ -16,17 +16,21 @@ export async function automationEmailContent(target:AutomationMailTarget,origin:
   if(target.module!=='off')throw new Error('This module does not support rich workflow email.');
   validateAutomationEmailContent(content);
   const attachments:ManagedEmailAttachment[]=[];
+  const append=(attachment:ManagedEmailAttachment)=>{
+    if(attachments.length+1>MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT||attachments.reduce((total,file)=>total+file.bytes.byteLength,attachment.bytes.byteLength)>MANAGED_EMAIL_ATTACHMENT_MAX_BYTES)throw new Error('The workflow email exceeds the attachment limit.');
+    attachments.push(attachment);
+  };
   for(const documentId of content.pdfDocumentIds){
     const document=content.documents.find(document=>document.id===documentId)!;
     const {bytes}=await renderV9DocumentPdf(document,content.number,document.templateType==='Attachment');
-    attachments.push(managedEmailAttachment.parse({filename:document.name.replace(/[^\p{L}\p{N} ._()-]/gu,'_').slice(0,180)+'.pdf',contentType:'application/pdf',bytes}));
+    append(managedEmailAttachment.parse({filename:document.name.replace(/[^\p{L}\p{N} ._()-]/gu,'_').slice(0,180)+'.pdf',contentType:'application/pdf',bytes}));
   }
   const files=content.files??[],storedFiles=files.length?await load.files():[];
   if(files.length!==storedFiles.length)throw new Error('A workflow email case file is unavailable.');
   for(const reference of files){
     const file=storedFiles.find(file=>file.id===reference.id&&file.filename===reference.name&&file.content_hash===reference.contentHash);
     if(!file)throw new Error('A workflow email case file changed.');
-    attachments.push(managedEmailAttachment.parse({filename:file.filename,contentType:file.mime_type,bytes:Buffer.from(file.bytes,'base64')}));
+    append(managedEmailAttachment.parse({filename:file.filename,contentType:file.mime_type,bytes:Buffer.from(file.bytes,'base64')}));
   }
   const assets=content.assets??[],storedAssets=assets.length?await load.assets():[];
   if(assets.length!==storedAssets.length)throw new Error('A workflow email asset is unavailable.');
@@ -35,7 +39,7 @@ export async function automationEmailContent(target:AutomationMailTarget,origin:
     if(!asset)throw new Error('A workflow email asset changed.');
     const bytes=Buffer.from(asset.bytes,'base64');
     if(bytes.byteLength!==reference.size)throw new Error('A workflow email asset changed.');
-    attachments.push(managedEmailAttachment.parse({filename:asset.filename,contentType:asset.mime_type,bytes,...(reference.kind==='image'?{cid:v9ImageCid(reference.id)}:{})}));
+    append(managedEmailAttachment.parse({filename:asset.filename,contentType:asset.mime_type,bytes,...(reference.kind==='image'?{cid:v9ImageCid(reference.id)}:{})}));
   }
   if(attachments.length>MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT||attachments.reduce((total,file)=>total+file.bytes.byteLength,0)>MANAGED_EMAIL_ATTACHMENT_MAX_BYTES)throw new Error('The workflow email exceeds the attachment limit.');
   const links=new Map<string,string>(),lines:string[]=[];
