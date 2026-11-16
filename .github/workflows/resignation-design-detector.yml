@@ -1,0 +1,71 @@
+name: resignation-design-detector
+run-name: One static design scan of frozen resignation candidate
+on:
+  push:
+    branches: ['codex/resignation-design-detector-20261117']
+    paths: ['.github/workflows/resignation-design-detector.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  detector:
+    if: github.repository == 'StradaverseHub/ai-hr' && github.ref == 'refs/heads/codex/resignation-design-detector-20261117'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: 1f535174f9c38a540706f8ae334329e3694cc6b3
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify source and public pinned engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 1f535174f9c38a540706f8ae334329e3694cc6b3
+          test -z "$(git status --porcelain)"
+          mkdir -p "$RUNNER_TEMP/design-detector"
+          cd "$RUNNER_TEMP/design-detector"
+          base=https://github.com/pbakaus/impeccable/releases/download/engine-v0.1.15
+          curl --fail --location --retry 2 "$base/impeccable-linux-x64" -o impeccable-linux-x64
+          curl --fail --location --retry 2 "$base/impeccable-linux-x64.sha256" -o impeccable-linux-x64.sha256
+          expected=$(awk '{print $1}' impeccable-linux-x64.sha256)
+          [[ "$expected" =~ ^[a-fA-F0-9]{64}$ ]]
+          printf '%s  impeccable-linux-x64\n' "$expected" | sha256sum --check
+          chmod +x impeccable-linux-x64
+          ./impeccable-linux-x64 engine-probe > engine-probe.txt
+          grep -Fx 'impeccable-engine 0.1.15' engine-probe.txt
+      - name: Scan changed web sources once
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DETECTOR_OUT="$RUNNER_TEMP/design-detector"
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib,subprocess
+          source='1f535174f9c38a540706f8ae334329e3694cc6b3'
+          baseline='bcba1f3e8faaf75c760599750ec9b4dc1d5a0f73'
+          out=pathlib.Path(os.environ['DETECTOR_OUT'])
+          paths=subprocess.check_output(['git','diff','--name-only','--diff-filter=ACMRT','-z',baseline,source,'--','app','components']).decode().split('\0')
+          targets=[p for p in paths if pathlib.Path(p).suffix in {'.tsx','.jsx','.html','.css','.scss','.sass','.less'} and pathlib.Path(p).is_file()]
+          if not targets: raise RuntimeError('No changed web targets; refuse empty scan')
+          (out/'targets.json').write_text(json.dumps(targets,indent=2)+'\n')
+          receipt={'candidate':source,'baseline':baseline,'controller':os.environ['GITHUB_SHA'],'runId':os.environ['GITHUB_RUN_ID'],'runAttempt':os.environ['GITHUB_RUN_ATTEMPT'],'engine':'engine-v0.1.15','engineSha256':hashlib.sha256((out/'impeccable-linux-x64').read_bytes()).hexdigest(),'scope':'changed app/components markup and stylesheet files; static findings only, no release authority','targets':{p:hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest() for p in targets},'invocations':1}
+          with (out/'findings.json').open('w') as stdout,(out/'detector.stderr').open('w') as stderr:
+            result=subprocess.run([str(out/'impeccable-linux-x64'),'detect','--json',*targets],stdout=stdout,stderr=stderr,timeout=240)
+          receipt['detectorExitCode']=result.returncode
+          (out/'receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
+          if result.returncode not in (0,2): raise RuntimeError('Detector unavailable/error: '+str(result.returncode))
+          json.loads((out/'findings.json').read_text())
+          PY
+      - name: Upload source-bound raw findings
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: resignation-static-design-detector
+          path: |
+            ${{ runner.temp }}/design-detector/*.json
+            ${{ runner.temp }}/design-detector/*.txt
+            ${{ runner.temp }}/design-detector/*.stderr
+            ${{ runner.temp }}/design-detector/*.sha256
+          if-no-files-found: error
+          retention-days: 7
