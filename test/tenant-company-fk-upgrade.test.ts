@@ -935,6 +935,31 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   expect(beforePerformancePrivileges.policies.filter(isBoardPolicy)).toEqual([]);
   expect(beforePerformancePrivileges.policies.filter(isBoardRetiredPolicy).map(boardPolicyRow)).toEqual(boardRetiredPolicies);
   expect(afterPerformancePrivileges.policies.filter(isBoardRetiredPolicy)).toEqual([]);
+  // Movement5775 adds only Payment Method to the existing protected-document field set.
+  // Independently parse both exact predicates; every role, command and other field stays pinned.
+  const expectedAttachment=await storage.client.begin(async tx=>{
+   const read:{qual:string|null;with_check:string|null}[]=[],insert:{qual:string|null;with_check:string|null}[]=[];
+   for(const method of [false,true]){
+    const fields="'basicSalary','currency','payMode','paymentTerm'"+(method?",'paymentMethod'":"");
+    const scope="tenant_id=app.current_tenant_id()";
+    const protectedRead=`(field not in (${fields}) or app.can_admin_employment(employment_id) or app.can_admin_perfcomp_employment(employment_id) or app.can_admin_payroll_employment(employment_id))`;
+    const protectedWrite=`(field not in (${fields}) or app.can_admin_employment(employment_id) or app.can_admin_perfcomp_employment(employment_id))`;
+    for(const [kind,clause] of [['select',`using (${scope} and app.access_workforce_employment(employment_id,'workforce.view') and ${protectedRead})`],['insert',`with check (${scope} and app.is_admin() and app.access_workforce_employment(employment_id,'workforce.maintain') and ${protectedWrite})`]]){
+     await tx.unsafe('create policy movement_expected_attachment on public.movement_attachment for '+kind+' '+clause);
+     const [row]=await tx<{qual:string|null;with_check:string|null}[]>`select qual,with_check from pg_policies where schemaname='public' and tablename='movement_attachment' and policyname='movement_expected_attachment'`;
+     (kind==='select'?read:insert).push(row);
+     await tx.unsafe('drop policy movement_expected_attachment on public.movement_attachment');
+    }
+   }
+   return {read,insert};
+  });
+  const isAttachmentRead=(row:(typeof afterPerformancePrivileges.policies)[number])=>row.schemaname==='public'&&row.tablename==='movement_attachment'&&row.policyname==='movement_attachment_read';
+  const isAttachmentInsert=(row:(typeof afterPerformancePrivileges.policies)[number])=>row.schemaname==='public'&&row.tablename==='movement_attachment'&&row.policyname==='movement_attachment_insert';
+  for(const [predicate,expected] of [[isAttachmentRead,expectedAttachment.read],[isAttachmentInsert,expectedAttachment.insert]] as const){
+   const before=beforePerformancePrivileges.policies.find(predicate),after=afterPerformancePrivileges.policies.find(predicate);
+   expect(before).toBeDefined();expect(before).toMatchObject(expected[0]);
+   expect(after).toEqual({...before,...expected[1]});
+  }
   const terminalComparable={
    relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==receiptTable&&!sealTables.includes(row.rel)&&!isCombinedRelation(row.rel)&&!Object.hasOwn(boardRelations,row.rel)).map(row=>
     row.rel===clockTable?{...row,acl:beforeClockTable?.acl}:row),
@@ -942,7 +967,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    functions:afterPerformancePrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
    policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isBoardPolicy(row)&&!isLanePolicy(row)).map(row=>
     isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:
-     isAssignmentPolicy(row)?{...row,qual:expectedAssignmentQuals[0]}:row),
+     isAssignmentPolicy(row)?{...row,qual:expectedAssignmentQuals[0]}:
+      isAttachmentRead(row)?{...row,...expectedAttachment.read[0]}:isAttachmentInsert(row)?{...row,...expectedAttachment.insert[0]}:row),
   };
   expect(terminalComparable).toEqual({...beforePerformancePrivileges,policies:beforePerformancePrivileges.policies.filter(row=>!isBoardRetiredPolicy(row)&&!isLanePolicy(row))});
   const complete=await ledger();expect(complete).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);expect(complete.slice(0,671)).toEqual(afterLedger);
