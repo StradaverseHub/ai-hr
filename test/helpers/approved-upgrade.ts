@@ -549,10 +549,12 @@ export async function migrateApprovedUpgrade(db:Database, migrationsFolder = 'db
   expect((await table(db,'public.domain_event')).map(row=>withoutCombinedReleaseNulls('domain_event',row))).toEqual(eventsAfter);
   const finalGroups=await table(db,'public.access_group_grant'),movementGrants=newRows(groupAfter,finalGroups);
   expect(ordered(finalGroups.filter(row=>groupAfter.some(prior=>prior.id===row.id)))).toEqual(ordered(groupAfter));
-  const movementHolders=groups.filter(row=>row.legacy_key==='system_administrator'&&row.retired_at===null);
+  const requestedJournal=JSON.parse(readFileSync(join(migrationsFolder,'meta/_journal.json'),'utf8')) as {entries:{tag:string}[]};
+  const includesMovement=requestedJournal.entries.some(row=>row.tag==='5773_movement_payroll_protection_and_delete');
+  const movementHolders=includesMovement?groups.filter(row=>row.legacy_key==='system_administrator'&&row.retired_at===null):[];
   expect(ordered(movementGrants.map(({tenant_id,group_id,capability_id,company_id,retired_at})=>({tenant_id,group_id,capability_id,company_id,retired_at})))).toEqual(ordered(movementHolders.map(group=>({tenant_id:group.tenant_id,group_id:group.id,capability_id:'workforce.movement.delete',company_id:null,retired_at:null}))));
   for(const grant of movementGrants){expect(String(grant.id)).toMatch(/^[0-9a-f-]{36}$/);expect(Date.parse(String(grant.created_at))).toBeGreaterThanOrEqual(Date.parse(String(movementClock.at)));}
-  expect((await table(db,'public.access_capability')).filter(row=>row.id==='workforce.movement.delete')).toEqual([{id:'workforce.movement.delete',scope:'company',supported:true,bindings:[{owner:'core/movement.ts:reverseMovementEvent',operation:'delete'},{owner:'core/movement.ts:reverseMovementForImportTx',operation:'import-delete-revert'},{owner:'app/admin/personnel/[employmentId]/movement-history-actions.tsx',operation:'delete-affordance'}]}]);
+  expect((await table(db,'public.access_capability')).filter(row=>row.id==='workforce.movement.delete')).toEqual(includesMovement?[{id:'workforce.movement.delete',scope:'company',supported:true,bindings:[{owner:'core/movement.ts:reverseMovementEvent',operation:'delete'},{owner:'core/movement.ts:reverseMovementForImportTx',operation:'import-delete-revert'},{owner:'app/admin/personnel/[employmentId]/movement-history-actions.tsx',operation:'delete-affordance'}]}]:[]);
   expect(await table(db,'public.access_user_override')).toEqual(overrideAfter);
   expect(await table(db,'public.access_configuration')).toEqual(configsAfter);expect(await table(db,'app.access_profile_write_generation')).toEqual(generationsAfter);
   return {events,eventsRaw:eventsRaw.filter(row=>events.some(event=>event.id===row.id)),grants:[...grants,...movementGrants],overrides,configurations,generations:generationPairs};

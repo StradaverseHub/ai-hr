@@ -598,20 +598,20 @@ export function MovementNewEvent({
       </select>),
     afterType === 'contract' ? row('contractEndDate', 'contractEndDate', label(movementField('contractEndDate')), current.contractEndDate ? formatDmy(current.contractEndDate) : null,
       <>
-        <input key={`contractEndDate-${typeChanges}`} {...personnelWorkflowInput(movementField('contractEndDate'), 'movement', 'edit')}
+        <DateField key={`contractEndDate-${typeChanges}`} {...personnelWorkflowControl(movementField('contractEndDate'), 'movement', 'edit')} label={label(movementField('contractEndDate'))}
           defaultValue={typeChanges ? (saved?.contractEndDate ?? '') : (after.contractEndDate ?? '')} className={inputCls} />
         {typeChanges && <p className="text-xs text-muted-foreground">{t('form.endDateRequiredContract')}</p>}
       </>) : null,
     afterType === 'intern' ? row('internshipEndDate', 'internshipEndDate', label(movementField('internshipEndDate')), current.internshipEndDate ? formatDmy(current.internshipEndDate) : null,
       <>
-        <input key={`internshipEndDate-${typeChanges}`} {...personnelWorkflowInput(movementField('internshipEndDate'), 'movement', 'edit')}
+        <DateField key={`internshipEndDate-${typeChanges}`} {...personnelWorkflowControl(movementField('internshipEndDate'), 'movement', 'edit')} label={label(movementField('internshipEndDate'))}
           defaultValue={typeChanges ? (saved?.internshipEndDate ?? '') : (after.internshipEndDate ?? '')} className={inputCls} />
         {typeChanges && <p className="text-xs text-muted-foreground">{t('form.endDateRequiredIntern')}</p>}
       </>) : null,
     row('confirmationDate', 'confirmationDate', label(movementField('confirmationDate')), current.confirmationDate ? formatDmy(current.confirmationDate) : null,
       behaviour === 'confirmation'
         ? <span className="text-sm text-muted-foreground">{formatDmy(correctionDate)}</span>
-        : <input {...personnelWorkflowInput(movementField('confirmationDate'), 'movement')}
+        : <DateField {...personnelWorkflowControl(movementField('confirmationDate'), 'movement')}
             aria-label={label(movementField('confirmationDate'))} defaultValue={after.confirmationDate ?? ''} className={inputCls} />),
     ...MOVEMENT_EMPLOYMENT_PERIODS.flatMap(period => [
       row(period.value, period.value, label(movementField(period.value)), current[period.value] ?? null,

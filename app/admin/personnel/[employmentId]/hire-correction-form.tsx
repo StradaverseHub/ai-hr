@@ -1,5 +1,6 @@
 'use client';
 import {HIRE_INFORMATION_FORM_IDS,HIRE_INFORMATION_FORM_FIELDS} from '@/lib/hire-information-form-contract';
+import {DateField} from '@/components/ui/date-field';
 import {EMPLOYMENT_INFORMATION_ROW,EMPLOYMENT_INFORMATION_HEADER} from '@/lib/employment-information-layout';
 import {PaymentMethodField} from '@/components/payment-method-field';
 import type {HireEmploymentInformationField} from '@/core/hire-employment-information';
@@ -15,7 +16,7 @@ import {DerivedOrganisationFields,useDerivedOrganisation} from '@/components/der
 // six allow-listed field names in any case.
 import { useMemo, useRef, useActionState, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { personnelControl, personnelCarry, personnelWorkflowCarry, personnelWorkflowInput, personnelWorkflowControl, personnelFormWidget, personnelFormLabel, personnelFormRequired } from '@/lib/personnel-form-contract';
+import { personnelControl, personnelCarry, personnelWorkflowCarry, personnelWorkflowInput, personnelWorkflowControl, personnelFormWidget, personnelFormField, personnelFormLabel, personnelFormRequired } from '@/lib/personnel-form-contract';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { correctHireDetailsAction,saveMovementPageAction } from './actions';
 
@@ -170,12 +171,12 @@ export function HireCorrectionForm({
         {HIRE_INFORMATION_FORM_FIELDS.map(key=>{
           const field=information.find(item=>item.field===key);if(!field)return null;
           const fieldId=HIRE_INFORMATION_FORM_IDS[key];
-          const choice=personnelFormWidget(fieldId)==='choice';
+          const choice=personnelFormWidget(fieldId)==='choice',date=personnelFormField(fieldId).type==='date';
           // Controlled values carry no form name. Only the changed hidden facts above are submitted.
           return <div key={key} className={EMPLOYMENT_INFORMATION_ROW}>
             <label htmlFor={'hire-information-'+key} className="text-sm text-muted-foreground">{personnelFormLabel(fieldId,(label,fallback)=>tRoot.has(label)?tRoot(label):fallback)}</label>
             <div className="text-sm">{field.display}</div>
-            {!choice?<input {...personnelWorkflowInput(fieldId,'hireInformation','draft')} id={'hire-information-'+key} value={informationValues[key]??''} onChange={event=>setInformationValues(previous=>({...previous,[key]:event.target.value}))} className={selectCls}/>:
+            {date?<DateField {...personnelWorkflowControl(fieldId,'hireInformation','draft')} id={'hire-information-'+key} value={informationValues[key]??''} label={field.label} onChange={event=>setInformationValues(previous=>({...previous,[key]:event.target.value}))} className={selectCls}/>:!choice?<input {...personnelWorkflowInput(fieldId,'hireInformation','draft')} id={'hire-information-'+key} value={informationValues[key]??''} onChange={event=>setInformationValues(previous=>({...previous,[key]:event.target.value}))} className={selectCls}/>:
             <select {...personnelWorkflowControl(fieldId,'hireInformation','draft')} id={'hire-information-'+key} value={informationValues[key]??''} onChange={event=>setInformationValues(previous=>({...previous,[key]:event.target.value}))} className={selectCls}>
               {!field.required&&<option value="">{t('none')}</option>}
               {field.value&&!field.options?.some(option=>option.id===field.value)&&<option value={field.value}>{field.display}</option>}
