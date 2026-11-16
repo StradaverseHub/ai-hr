@@ -8,6 +8,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { SessionContext, Tx } from '../../../db/client';
+import type {SqlExecutor} from '../../../db/sql-executor';
 import { actorOf, appendEvent } from '../../../db/events';
 import { withLifecycleTenant } from '../../../core/module-gate';
 import { todayInKualaLumpur, timeInKualaLumpur } from '../../../lib/hr-date';
@@ -42,7 +43,7 @@ export type PendingReturns = { held:{id:string;name:string;kind:'system'|'device
 export type CaseDetail = { returns?:PendingReturns; case: M.Case; calculation: SettlementView | null; personnelWritableKeys: string[]; native?: { config: M.Config; actor: M.Actor } };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function identifier(value: string): string { if (!uuid.test(value)) throw new M.V9Error('A valid record identifier is required.'); return value; }
-async function admin(tx: Tx, companyId?: string): Promise<void> {
+async function admin(tx: SqlExecutor, companyId?: string): Promise<void> {
   const [result] = await tx.execute<{ ok: boolean }>(companyId ? sql`select app.is_admin_for(${companyId}::uuid) as ok` : sql`select app.is_group_admin() as ok`);
   if (!result?.ok) throw new M.V9Error('You do not have permission to change this lifecycle record.', 'forbidden');
 }
@@ -105,18 +106,18 @@ function maskCasePersonalEmail(c: M.Case): M.Case {
   return next;
 }
 
-async function actor(tx: Tx, ctx: SessionContext): Promise<M.Actor> {
+async function actor(tx: SqlExecutor, ctx: SessionContext): Promise<M.Actor> {
   if (!ctx.userId) { const [owner] = await tx.execute<{ ok: boolean }>(sql`select current_user='ai_hr_owner' OR EXISTS(select 1 from pg_roles where rolname=current_user and rolsuper) as ok`); if (owner?.ok) return { id: 'system', name: 'System' }; throw new M.V9Error('Sign in to continue.', 'forbidden'); }
   const [user] = await tx.execute<{ id: string; name: string }>(sql`select u.id,coalesce(p.full_name,'User') as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.id=${ctx.userId}::uuid and u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id)`);
   if (!user) throw new M.V9Error('Your account is not available.', 'forbidden'); return user;
 }
-async function configTx(tx: Tx, ctx: SessionContext, lock = false): Promise<M.Config | null> {
+async function configTx(tx: SqlExecutor, ctx: SessionContext, lock = false): Promise<M.Config | null> {
   const [row] = await tx.execute<{ data: M.Config }>(sql`select data from lc_v9_config where tenant_id=${ctx.tenantId}::uuid ${lock ? sql`for update` : sql``}`);
   if (!row) return null;
   const [shared] = await tx.execute<{ revision: number; data: { groups: M.Group[] } }>(sql`select revision,data from lc_onboarding_config where tenant_id=${ctx.tenantId}::uuid`);
   return { ...row.data, groups: shared?.data.groups ?? [], groupsRevision: shared?.revision ?? 0 };
 }
-async function lockTx(tx: Tx, ctx: SessionContext): Promise<void> {
+async function lockTx(tx: SqlExecutor, ctx: SessionContext): Promise<void> {
   // The onboarding key first, as lockOnboardingTx. The audit chain is sealed at commit.
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':onboarding'},0))`);
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'lifecycle-v9:' + ctx.tenantId},0))`);
@@ -535,7 +536,7 @@ export async function v9CreateOffboarding(ctx: SessionContext, input: { employme
 }
 /** Canonical case construction for purpose-bound callers already holding an authorised tenant transaction.
  * Existing date, administrator, duplicate-exit and identity rules remain authoritative. */
-export async function v9CreateOffboardingTx(tx:Tx,ctx:SessionContext,input:{ employmentId: string; type: M.ExitType; noticeDate: string; lastDay: string },contractSource?:{kind:'contract'|'probation';caseId:string}):Promise<string>{
+export async function v9CreateOffboardingTx(tx:Tx|SqlExecutor,ctx:SessionContext,input:{ employmentId: string; type: M.ExitType; noticeDate: string; lastDay: string },contractSource?:{kind:'contract'|'probation';caseId:string}|{kind:'shared-contract';caseId:string;runId:string;stepId:string}):Promise<string>{
   input = z.object({ employmentId: z.string().uuid(), type: z.enum(['Resignation', 'Termination', 'Contract end', 'Retirement', 'Non-confirmation']), noticeDate: z.string(), lastDay: z.string() }).strict().parse(input);
   identifier(input.employmentId);
   if (!M.validDate(input.lastDay) || !M.validDate(input.noticeDate)) throw new M.V9Error('Enter valid notice and last working dates.');
@@ -546,7 +547,12 @@ export async function v9CreateOffboardingTx(tx:Tx,ctx:SessionContext,input:{ emp
     const [employee] = await tx.execute<{ id: string; company_id: string; person_id: string; name: string; employee_no: string; hired_on: string; grade_id: string | null; confirmation_date: string | null; final_confirmation_date: string | null; probation_end_date: string | null; provisional_end_on: string | null }>(sql`select e.id,e.company_id,e.person_id,p.full_name as name,e.employee_code as employee_no,coalesce(e.join_date,e.hired_on)::text as hired_on,e.grade_id,e.confirmation_date::text,e.final_confirmation_date::text,e.probation_end_date::text,e.provisional_end_on::text from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id where e.id=${input.employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid for update of e`);
     if (!employee) throw new M.V9Error('Employee not found or unavailable.', 'not_found');
     let contractLetter: {documentId:string;employeeDocumentId:string;hash:string}|undefined;
-    if(contractSource){
+    let sharedContractIntent:{reason:string;letterId:string;signingDocumentId:string;letterHash:string}|undefined;
+    if(contractSource?.kind==='shared-contract'){
+      const [proof]=await tx.execute<{intent:{employmentId:string;type:string;noticeDate:string;lastDay:string;offboardingCaseId:string|null;reason:string;letterId:string;signingDocumentId:string;letterHash:string}}>(sql`select app.contract_shared_offboarding_intent(${contractSource.caseId}::uuid,${contractSource.runId}::uuid,${contractSource.stepId}) as intent`);
+      if(!proof?.intent||proof.intent.offboardingCaseId||proof.intent.employmentId!==input.employmentId||proof.intent.type!==input.type||proof.intent.noticeDate!==input.noticeDate||proof.intent.lastDay!==input.lastDay)throw new M.V9Error('Frozen shared Contract handoff intent does not match.','forbidden');
+      sharedContractIntent=proof.intent;
+    }else if(contractSource){
       identifier(contractSource.caseId);
       const [proof]=await tx.execute<{intent:{employmentId:string;type:string;noticeDate:string;lastDay:string;manualHandoff:boolean;offboardingCaseId?:string;letterDocumentId?:string;employeeDocumentId?:string;letterHash?:string}}>(contractSource.kind==='contract'?sql`select app.contract_offboarding_intent(${contractSource.caseId}::uuid) as intent`:sql`select app.probation_offboarding_intent(${contractSource.caseId}::uuid) as intent`);
       if(!proof?.intent||proof.intent.offboardingCaseId||proof.intent.manualHandoff||proof.intent.employmentId!==input.employmentId||proof.intent.type!==input.type||proof.intent.noticeDate!==input.noticeDate||proof.intent.lastDay!==input.lastDay)throw new M.V9Error('Frozen contract handoff intent does not match.','forbidden');
@@ -562,13 +568,21 @@ export async function v9CreateOffboardingTx(tx:Tx,ctx:SessionContext,input:{ emp
     const logins = await tx.execute<{ id: string }>(sql`select id from app_user where tenant_id=${ctx.tenantId}::uuid and person_id=${employee.person_id}::uuid and archived_at is null order by id`);
     const managers = await tx.execute<{ id: string }>(sql`select u.id from reporting_line r join employment e on e.id=r.manager_employment_id and e.tenant_id=r.tenant_id join app_user u on u.person_id=e.person_id and u.tenant_id=e.tenant_id and u.archived_at is null where r.tenant_id=${ctx.tenantId}::uuid and r.subordinate_employment_id=${employee.id}::uuid and r.line_type='administrative' and r.superseded_at is null and r.valid_from<=${todayInKualaLumpur()}::date and (r.valid_to is null or r.valid_to>${todayInKualaLumpur()}::date) order by r.valid_from desc,r.id,u.id`);
     const { nextNumber } = await import('../../../core/lifecycle-base');
-    const id = randomUUID(), number = contractSource ? `OFB9-${String((await tx.execute<{n:number}>(contractSource.kind==='contract'?sql`select app.contract_offboarding_sequence(${contractSource.caseId}::uuid) as n`:sql`select app.probation_offboarding_sequence(${contractSource.caseId}::uuid) as n`))[0].n).padStart(4,'0')}` : await nextNumber(tx, 'OFB9');
+    const id = randomUUID(); let number:string;
+    if(contractSource){
+      const query=contractSource.kind==='shared-contract'?sql`select app.contract_shared_offboarding_sequence(${contractSource.caseId}::uuid,${contractSource.runId}::uuid,${contractSource.stepId}) as n`:contractSource.kind==='contract'?sql`select app.contract_offboarding_sequence(${contractSource.caseId}::uuid) as n`:sql`select app.probation_offboarding_sequence(${contractSource.caseId}::uuid) as n`;
+      number=`OFB9-${String((await tx.execute<{n:number}>(query))[0].n).padStart(4,'0')}`;
+    }else{
+      if(!('insert' in tx))throw new M.V9Error('An authorised application transaction is required.','forbidden');
+      number=await nextNumber(tx,'OFB9');
+    }
     const c: M.Case = { version: 9, id, number, module: 'off', revision: 1, state: 'pending', facts: { confirmationDate: employee.confirmation_date, finalConfirmationDate: employee.final_confirmation_date, probationEndDate: employee.probation_end_date, provisionalEndOn: employee.provisional_end_on, name: employee.name, employeeNo: employee.employee_no, employmentId: employee.id, personId: employee.person_id, joinDate: employee.hired_on, lastDay: input.lastDay, noticeDate: input.noticeDate, employeeUserId: logins.length === 1 ? logins[0].id : null, supervisorUserId: managers.length === 1 ? managers[0].id : null, pbpUserId: null, taUserId: null, company: employee.company_id, businessGroup: assignment?.business_unit_id ?? '', department: assignment?.department_id ?? '', grade: employee.grade_id ?? '', title: assignment?.position_id ?? '', employmentType: assignment?.employment_type ?? '', caseType: input.type }, checklistId: null, checklistName: '', override: 'automatic', tasks: [], items: [], documents: [], runs: [], mails: [], files: [], pmChanges: [], log: [], sourceRevision: '', submittedAt: null, closedAt: null, closedBy: null, closeReason: '', cancelReason: '', revokeDate: input.lastDay, finalFigures: null, review: null };
     const who = await actor(tx, ctx); c.log.push({ id: randomUUID(), at: new Date().toISOString(), actor: who, action: 'case.created', detail: 'Created from Personnel Management.' });
-    if(contractSource)Object.assign(c,contractSource.kind==='contract'?{contractSourceCaseId:contractSource.caseId,contractSourceLetter:contractLetter}:{probationSourceCaseId:contractSource.caseId});
+    if(contractSource)Object.assign(c,contractSource.kind==='shared-contract'?{contractSharedSourceCaseId:contractSource.caseId,contractSharedSourceLetter:{letterId:sharedContractIntent!.letterId,signingDocumentId:sharedContractIntent!.signingDocumentId,hash:sharedContractIntent!.letterHash},contractSharedTerminationReason:sharedContractIntent!.reason,contractSharedClearance:'pending-manual-personnel'}:contractSource.kind==='contract'?{contractSourceCaseId:contractSource.caseId,contractSourceLetter:contractLetter}:{probationSourceCaseId:contractSource.caseId});
     c.sourceRevision = createHash('sha256').update(JSON.stringify({ employee, assignment })).digest('hex');
     await tx.execute(sql`insert into lc_v9_case(id,tenant_id,company_id,employment_id,module,number,data) values(${id}::uuid,${ctx.tenantId}::uuid,${employee.company_id}::uuid,${employee.id}::uuid,'off',${number},${JSON.stringify(c)}::jsonb)`);
-    await record(tx, ctx, id, employee.id, 'created'); return id;
+    if(contractSource?.kind==='shared-contract')await tx.execute(sql`select app.contract_shared_offboarding_record(${contractSource.caseId}::uuid,${contractSource.runId}::uuid,${contractSource.stepId},${id}::uuid)`);
+    else{if(!('insert' in tx))throw new M.V9Error('An authorised application transaction is required.','forbidden');await record(tx,ctx,id,employee.id,'created');} return id;
 }
 export type Command = CaseNoteCommand
   | { type: 'recipientsOverride'; workflowId: string; stepId: string; to?: M.Role[]; cc?: M.Role[]; clear?: true }
