@@ -1,4 +1,5 @@
 import {beforeAll,beforeEach,afterAll,afterEach,vi,describe,it,expect} from 'vitest';
+import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {owner,migrateTestDb,resetDb,closeAll} from './harness';
 import {resignationJourneyFixture} from './helpers/resignation-journey-fixture';
@@ -26,6 +27,19 @@ describe('managed resignation service composes one workflow authority',()=>{
   const tasks=await resignationInbox(f.admin,{kind:'tasks'});expect(tasks.items.filter(t=>t.kind==='recruitment')).toHaveLength(1);
   const complete=await commandResignationJourney(f.admin,{caseId:f.journey.id,revision:accepted.revision,command:{type:'completeReplacement',taskId:accepted.replacementRequest!.id,reference:'https://recruitment.example.test/requests/approved'}});expect(complete.replacementRequest?.status).toBe('completed');
   await expect(commandResignationJourney(f.admin,{caseId:f.journey.id,revision:complete.revision,command:{type:'completeReplacement',taskId:accepted.replacementRequest!.id,reference:'https://recruitment.example.test/requests/duplicate'}})).rejects.toMatchObject({code:'forbidden'});
+ },90000);
+ it('keeps a retention offer private until it reaches the employee and never reveals it to an unrelated FYI reader',async()=>{
+  const f=await resignationJourneyFixture(),templateId=randomUUID();
+  f.config.templates.push({id:templateId,name:'Private retention offer',module:'off',type:'Letter',rules:{caseType:['Resignation']},hrStep:'before',employeeAck:true,retired:false,currentVersion:1,versions:[{version:1,state:'published',at:new Date().toISOString(),by:'Fixture owner',blocks:[{id:'offer',type:'text',text:'Salary {{retention.salary}}; {{retention.title}}',section:''},{id:'hr',type:'signature',role:'step:hr-sign',text:'',section:''},{id:'employee',type:'signature',role:'step:employee',text:'',section:''}],fields:[],routing:[{id:'review',order:1,action:'review',who:{kind:'people',userIds:[f.managerUserId]},owner:true},{id:'hr-sign',order:2,action:'sign',who:{kind:'people',userIds:[f.managerUserId]},owner:false},{id:'employee',order:3,action:'sign',who:{kind:'employee'},owner:false}]}]});
+  await owner.db.execute(sql`update lc_v9_config set data=${JSON.stringify(f.config)}::jsonb where tenant_id=${f.base.tenantId}::uuid`);
+  await f.workflow('retention',[{id:'offer-letter',type:'generateDocument',conditions:[],to:[],cc:[],params:{letterTemplateId:templateId,replyDays:5,remindDays:2}}]);
+  let current=await commandResignationJourney(f.admin,{caseId:f.journey.id,revision:f.journey.revision,command:{type:'offer',offer:{position:'New position',jobGrade:'M1',basicSalary:'12345.67',effectiveDate:f.lastWorkingDay,justification:'Private salary proposal'}}});
+  const privateEmployee=await resignationCase(f.staff,current.id),privateFyi=await resignationCase(f.watcher,current.id);
+  for(const projected of [privateEmployee,privateFyi]){expect(projected.offer).toBeNull();expect(projected.emails).toEqual([]);expect(projected.letters[0]).toMatchObject({private:true,document:null,blocks:[],routing:[],changes:[],sentBack:null});expect(JSON.stringify(projected)).not.toContain('12345.67');expect(JSON.stringify(projected)).not.toContain('Private salary proposal');}
+  expect(current.offer?.basicSalary).toBe('12345.67');
+  let letter=current.letters[0];current=await commandResignationJourney(f.admin,{caseId:current.id,revision:current.revision,command:{type:'letterAction',documentId:letter.id,documentRevision:letter.revision,action:'review'}});
+  letter=current.letters[0];current=await commandResignationJourney(f.admin,{caseId:current.id,revision:current.revision,command:{type:'letterAction',documentId:letter.id,documentRevision:letter.revision,action:'sign',signature:'Journey manager',consent:true}});
+  const visible=await resignationCase(f.staff,current.id);expect(visible.offer?.basicSalary).toBe('12345.67');expect(visible.letters[0].private).toBe(false);expect((await resignationCase(f.watcher,current.id)).offer).toBeNull();
  },90000);
  it('an own withdrawal closes only this managed case and preserves history; cross-case readers remain denied',async()=>{
   const f=await resignationJourneyFixture(),other=await resignationJourneyFixture();await expect(resignationCase(other.staff,f.journey.id)).rejects.toMatchObject({code:'forbidden'});
