@@ -1804,3 +1804,53 @@ person decides:
      administrator other than the last editor; nothing reaches payroll.
 155. Rendered: the job's reward field, the portal reward line, the Rewards and fees page for an administrator and for a payroll
      administrator, and My referrals.
+
+## Slice 24 — AI match summary suggestions (owner: group 2, 2026-11-14; D-063, D-069)
+
+The owner decided (D-063) that AI may only suggest a match summary that people see; it never ranks, scores the list or rejects,
+there are no AI interviews, and the provider-data approval must be re-recorded first. On 2026-11-16 the owner asked for the slice to
+be built **locked**: everything ships, but nothing reaches the AI provider until the owner records the approval for the provider
+contract `recruitment_match_summary_v1`. The details below that the owner did not state are this reconstruction's (D-069).
+
+### Who and when
+
+- **Settings › AI match summaries** (recruitment administrators): a company switch, off by default, with what is and is never sent.
+  While no approval is recorded the section says so and nobody is offered the button, whatever the switch says.
+- **Application › Candidate tab** (the job's reviewers: administrators, recruiter, assistants and hiring managers; never
+  interviewers): "Suggest a match summary" on an **active** application, while the switch is on and the approval is recorded.
+- The AI Centre's operation control `read:operation_recruitment_match_summary` and its global stop also stop it.
+
+### What is sent, and what never is
+
+- Sent: the job's title and description (first 4,000 characters), the newest linked requisition's years of experience, education
+  and mandatory and preferred skills (first 2,000 characters each), and the candidate's current title, highest education level and
+  up to 30 work and education history entries as kind, title and number of months.
+- Never sent: the candidate's name, e-mail, phone, location, current employer, school and employer names, notice period, source,
+  ID, salary, consent, tags, files (including the CV), custom fields, and any person, company, job or application identifier.
+- Text that holds an e-mail address, a link, an NRIC-like number or a run of nine or more digits is **refused, not masked**; the
+  person is told which field to fix.
+
+### The reply
+
+- Exactly `{"matches":[…],"gaps":[…],"questions":[…]}`: up to four points each, at most 300 characters. Anything else — prose, a
+  score or percentage, a rank, a recommendation to hire, shortlist or reject, a link or an identifier — is discarded whole.
+- Shown once to the person who asked, labelled as an AI suggestion that may be wrong and is not a decision. **Never stored.**
+  Nothing on the application, candidate or job changes.
+- Each request is recorded as a domain event with the company, the outcome (shown, invalid reply, provider unavailable, refused,
+  not approved), the provider and model when used, and the provider request digest — never the content.
+
+### Data (5726)
+
+- `recruitment_company_setting.ai_match_summary_enabled` (default false; the table's administrator-only policies apply).
+- The AI Centre function key `read:operation_recruitment_match_summary`.
+- No table: the reply is never kept, so candidate removal (slice 5) has nothing new to remove.
+
+### Slice 24 acceptance cases
+
+156. With no owner approval recorded, a request is refused before anything is read, the button is not offered (even with the
+     switch on), nothing is recorded and no model run is made.
+157. The switch is off by default; only the company's administrators read or change it; each change is audited.
+158. Interviewers and people outside the job are answered "not found"; a closed application and a switched-off company are refused.
+159. Text holding an e-mail address or a phone number is refused, naming the field; nothing is recorded or sent.
+160. With no provider configured the request is refused and recorded without content; the AI Centre operation switch stops it.
+161. Rendered (after approval, on an installation with a provider): the settings section, the button, a reply and each refusal.

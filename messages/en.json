@@ -28790,7 +28790,8 @@
           "pseudonymous_person_bands": "Per-person bands with random aliases (not anonymous)",
           "authored_formula_request": "User-authored formula requirement",
           "authored_policy_text": "Policy text written by HR administrators (refused if it holds a personal identifier)",
-          "authored_job_architecture": "Job architecture details provided by authorized staff"
+          "authored_job_architecture": "Job architecture details provided by authorized staff",
+          "authored_candidate_profile": "Job requirements and candidate titles and history written by HR (refused if it holds an identifier)"
         },
         "redaction": {
           "pii_masked": "Masked",
@@ -38839,7 +38840,13 @@
       "fee_not_eligible": "An agency fee can be recorded only for a hired candidate who came from an accepted agency submission.",
       "fee_decided": "This agency fee was already decided and cannot change.",
       "reward_self": "Another person must do this: you are the referrer, the hire or the receiver, or you recorded this fee last.",
-      "decline_reason": "Give a reason for declining."
+      "decline_reason": "Give a reason for declining.",
+      "ai_not_approved": "AI match summaries are not available yet: the owner has not approved sending this data to the AI provider.",
+      "ai_off": "AI match summaries are switched off for this company.",
+      "ai_not_active": "AI match summaries are only for active applications.",
+      "ai_identifier": "Some text that would be sent holds an e-mail address, a link or an ID or phone number. Remove it and try again.",
+      "ai_unavailable": "The AI provider is unavailable or refused the request. Nothing on the application changed.",
+      "ai_invalid": "The AI reply could not be used, so it was discarded. You can try again."
     },
     "overview": {
       "purpose": "Today's hiring work across the companies whose recruitment you manage.",
@@ -39128,7 +39135,8 @@
         "groups": "Interviewer groups",
         "questions": "Question bank",
         "places": "Addresses and rooms",
-        "email": "Candidate e-mail"
+        "email": "Candidate e-mail",
+        "ai": "AI match summaries"
       },
       "iv": {
         "rulesTitle": "Feedback rules",
@@ -41299,6 +41307,39 @@
       "component": "Earning component",
       "chooseComponent": "Choose a component",
       "send": "Send to payroll"
+    },
+    "matchSummary": {
+      "title": "AI match summary",
+      "note": "A suggestion to help you read this application against the job. It uses the job’s requirements and the candidate’s titles, education level and history only, never their name or contact details. It does not rank, score or decide.",
+      "ask": "Suggest a match summary",
+      "asking": "Asking…",
+      "again": "Ask again",
+      "matches": "Appears to meet",
+      "gaps": "Not shown in the record",
+      "questions": "Questions to ask",
+      "none": "Nothing suggested.",
+      "disclaimer": "AI suggestion, not saved. Check it against the CV and the candidate’s answers; it may be wrong and it is not a decision.",
+      "fields": "Check:",
+      "field": {
+        "job_title": "Job title",
+        "job_description": "Job description",
+        "job_education": "Requisition education",
+        "job_mandatorySkills": "Mandatory skills",
+        "job_preferredSkills": "Preferred skills",
+        "candidate_currentTitle": "Candidate’s current title",
+        "candidate_history_title": "A title in the candidate’s history"
+      },
+      "settingsNote": "Lets the job’s reviewers ask the AI provider for a short summary of how an active application’s recorded history meets the job’s written requirements. The summary is shown only to the person who asked and is never saved. It never ranks, scores, shortlists or rejects anyone.",
+      "notApproved": "Not available yet: the owner has not approved sending this data to the AI provider. Nobody sees the button until that approval is recorded, whatever this switch says.",
+      "settingLabel": "Offer AI match summaries in this company",
+      "settingHelp": "Off by default. Each request is recorded with who asked and when, without its content.",
+      "on": "On",
+      "off": "Off",
+      "save": "Save",
+      "sentTitle": "What is sent",
+      "sent": "The job title and description, the requisition’s experience, education and skills, and the candidate’s current title, highest education level, and the titles and month counts of their work and education history. Long text is cut short.",
+      "neverSentTitle": "What is never sent",
+      "neverSent": "The candidate’s name, e-mail, phone, location, current employer, school and employer names, notice period, source, ID, salary, consent, tags, files and custom fields. Text holding an e-mail address, a link or an ID or phone number is refused."
     }
   },
   "careersPublic": {

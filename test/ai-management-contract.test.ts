@@ -33,6 +33,12 @@ const governedCallers:Record<string,{features:readonly string[];seams:readonly R
   /return\{sourceFingerprint:before\.sourceDigest,reasonRefs:before\.candidate\.reasons\}/,
   /task\.operation!=='draft'/,/generateDraft\(task\.configuration,task\.args\)/,/task\?\.dispose\(\)/,
  ]},
+ // Recruitment slice 24: locked until the owner records the recruitment_match_summary_v1 provider-data approval.
+ 'packs/recruitment/match-summary.ts':{features:['report_insight'],seams:[
+  /resolveActiveAiConfig\(tx, s, 'report_insight'\)/,
+  /preparePrivateAiTask\(configuration, RECRUITMENT_MATCH_CONTRACT, async \(tx\) => \(await matchSourceTx\(tx, s, applicationId\)\)\.source\)/,
+  /task\.operation !== 'draft'/,/generateDraft\(task\.configuration, task\.args\)/,/task\?\.dispose\(\)/,
+ ]},
  'core/assistant-import.ts':{features:['hr_assistant'],seams:[/const FEATURE\s*=\s*'hr_assistant'/,/resolveActiveAiConfig\(tx,\s*ctx,\s*FEATURE\)/,/withAiAdmissionCheck\(cfg,FEATURE/]},
  'lib/ai/provider-protocol.ts':{features:['provider_evaluation'],seams:[/if \(configuration\.provider !== 'openrouter' \|\| !configuration\.governance\) return unavailable\(\);/,/import \{preparePrivateAiTask,withAiRunObserver\} from '\.\.\/\.\.\/core\/ai-governance';/,/const cfg=withAiRunObserver\(configuration,\{/,/return preparePrivateAiTask\(cfg,id,async\(\)=>source\)/,/preparedCall\('synthetic_protocol_echo_v1',\{marker\}\)/,/preparedCall\('synthetic_protocol_tools_v1',\{marker,stage:'first',callId:null\}\)/,/preparedCall\('synthetic_protocol_tools_v1',\{marker,stage:'final',callId:call.id\}\)/],issuedBy:'core/ai-provider-readiness.ts',issuerImport:"from '../lib/ai/provider-protocol'"},
  'core/assistant-conversation-harness.ts':{features:['module_agent_evaluation'],seams:[/withAiAdmissionLifecycle\(cfg,\s*'module_agent_evaluation'/],issuedBy:'core/module-agent-releases.ts'},
@@ -153,6 +159,7 @@ const controlledPerformanceOwners:Record<string,{implementation:string;keys:read
  getAssessmentTalentInsight:{implementation:'getAssessmentTalentInsightActivity',keys:['read:operation_talent_insight']},
  proposeSettingSuggestion:{implementation:'proposeSettingSuggestionActivity',keys:['read:operation_performance_setting_suggestion']},
  generateRewardAdvisor:{implementation:'generateRewardAdvisorActivity',keys:['read:operation_rewards_advice']},
+ suggestMatchSummary:{implementation:'suggestMatchSummaryActivity',keys:['read:operation_recruitment_match_summary']},
  getAssessmentRecordInsight:{implementation:'getAssessmentRecordInsightActivity',keys:['read:operation_record_present','read:operation_record_cycle','read:operation_record_trend']},
  getAssessmentWrittenRemarks:{implementation:'getAssessmentWrittenRemarksActivity',keys:['read:operation_written_performance','read:operation_written_potential']},
  generateArchitectureAdvice:{implementation:'generateArchitectureAdviceActivity',keys:['read:operation_architecture_advice','read:operation_architecture_position','read:operation_architecture_description','read:operation_architecture_outlier']},
@@ -160,6 +167,7 @@ const controlledPerformanceOwners:Record<string,{implementation:string;keys:read
 const protectedOwners:Record<string,Record<string,string>>={
  'packs/job-architecture/owner.ts':{generateArchitectureAdvice:'generateDraft'},
  'packs/rewards/advisor.ts':{generateRewardAdvisor:'generateDraft'},
+ 'packs/recruitment/match-summary.ts':{suggestMatchSummary:'generateDraft'},
 };
 const analysisCalls=['generatePrivateAiAnalysis','generatePrivateAiTaskAnalysis'];
 const workloadCalls=['generateDraft','readImage','converse',...analysisCalls,...performanceSeam.calls];

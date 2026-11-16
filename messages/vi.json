@@ -28790,7 +28790,8 @@
           "pseudonymous_person_bands": "Khoảng theo người với bí danh ngẫu nhiên (không ẩn danh)",
           "authored_formula_request": "Yêu cầu công thức do người dùng viết",
           "authored_policy_text": "Văn bản chính sách do quản trị viên nhân sự viết (bị từ chối nếu chứa thông tin định danh cá nhân)",
-          "authored_job_architecture": "Thông tin về kiến trúc công việc do nhân viên được ủy quyền cung cấp"
+          "authored_job_architecture": "Thông tin về kiến trúc công việc do nhân viên được ủy quyền cung cấp",
+          "authored_candidate_profile": "Yêu cầu công việc cùng chức danh và quá trình của ứng viên do HR nhập (bị từ chối nếu chứa thông tin định danh)"
         },
         "redaction": {
           "pii_masked": "Đã che",
@@ -38839,7 +38840,13 @@
       "fee_not_eligible": "Chỉ có thể ghi phí đại lý cho ứng viên đã được tuyển từ một hồ sơ đại lý đã được chấp nhận.",
       "fee_decided": "Phí đại lý này đã được quyết định và không thể thay đổi.",
       "reward_self": "Người khác phải thực hiện việc này: bạn là người giới thiệu, người được tuyển hoặc người nhận, hoặc bạn là người ghi phí này gần nhất.",
-      "decline_reason": "Hãy nêu lý do từ chối."
+      "decline_reason": "Hãy nêu lý do từ chối.",
+      "ai_not_approved": "Tóm tắt mức phù hợp bằng AI chưa khả dụng: chủ sở hữu chưa phê duyệt việc gửi dữ liệu này đến nhà cung cấp AI.",
+      "ai_off": "Tóm tắt mức phù hợp bằng AI đã tắt cho công ty này.",
+      "ai_not_active": "Tóm tắt mức phù hợp bằng AI chỉ dành cho hồ sơ ứng tuyển đang hoạt động.",
+      "ai_identifier": "Một số văn bản sẽ được gửi có chứa địa chỉ e-mail, liên kết hoặc số giấy tờ hay số điện thoại. Hãy xóa và thử lại.",
+      "ai_unavailable": "Nhà cung cấp AI không khả dụng hoặc đã từ chối yêu cầu. Hồ sơ ứng tuyển không thay đổi.",
+      "ai_invalid": "Không thể dùng câu trả lời của AI nên đã bỏ qua. Bạn có thể thử lại."
     },
     "overview": {
       "purpose": "Công việc tuyển dụng hôm nay tại các công ty mà bạn quản lý tuyển dụng.",
@@ -39128,7 +39135,8 @@
         "groups": "Nhóm người phỏng vấn",
         "questions": "Ngân hàng câu hỏi",
         "places": "Địa chỉ và phòng",
-        "email": "E-mail ứng viên"
+        "email": "E-mail ứng viên",
+        "ai": "Tóm tắt mức phù hợp bằng AI"
       },
       "iv": {
         "rulesTitle": "Quy tắc đánh giá",
@@ -41299,6 +41307,39 @@
       "component": "Khoản thu nhập",
       "chooseComponent": "Chọn khoản",
       "send": "Gửi vào lương"
+    },
+    "matchSummary": {
+      "title": "Tóm tắt mức phù hợp bằng AI",
+      "note": "Gợi ý giúp bạn đọc hồ sơ này so với công việc. Chỉ dùng yêu cầu công việc và chức danh, trình độ học vấn, quá trình của ứng viên, không bao giờ dùng tên hay thông tin liên hệ. Không xếp hạng, chấm điểm hay quyết định.",
+      "ask": "Gợi ý tóm tắt mức phù hợp",
+      "asking": "Đang yêu cầu…",
+      "again": "Yêu cầu lại",
+      "matches": "Có vẻ đáp ứng",
+      "gaps": "Không thể hiện trong hồ sơ",
+      "questions": "Câu hỏi nên đặt",
+      "none": "Không có gợi ý.",
+      "disclaimer": "Gợi ý của AI, không được lưu. Hãy đối chiếu với CV và câu trả lời của ứng viên; gợi ý có thể sai và không phải là quyết định.",
+      "fields": "Kiểm tra:",
+      "field": {
+        "job_title": "Chức danh công việc",
+        "job_description": "Mô tả công việc",
+        "job_education": "Học vấn trong yêu cầu tuyển dụng",
+        "job_mandatorySkills": "Kỹ năng bắt buộc",
+        "job_preferredSkills": "Kỹ năng ưu tiên",
+        "candidate_currentTitle": "Chức danh hiện tại của ứng viên",
+        "candidate_history_title": "Một chức danh trong quá trình của ứng viên"
+      },
+      "settingsNote": "Cho phép người xét duyệt của công việc yêu cầu nhà cung cấp AI tóm tắt ngắn mức độ quá trình đã ghi nhận của một hồ sơ đang hoạt động đáp ứng yêu cầu bằng văn bản của công việc. Bản tóm tắt chỉ hiển thị cho người yêu cầu và không bao giờ được lưu. Không bao giờ xếp hạng, chấm điểm, chọn vào danh sách ngắn hay từ chối bất kỳ ai.",
+      "notApproved": "Chưa khả dụng: chủ sở hữu chưa phê duyệt việc gửi dữ liệu này đến nhà cung cấp AI. Không ai thấy nút này cho đến khi phê duyệt được ghi nhận, bất kể công tắc này.",
+      "settingLabel": "Cung cấp tóm tắt mức phù hợp bằng AI trong công ty này",
+      "settingHelp": "Mặc định tắt. Mỗi yêu cầu được ghi lại người yêu cầu và thời điểm, không kèm nội dung.",
+      "on": "Bật",
+      "off": "Tắt",
+      "save": "Lưu",
+      "sentTitle": "Nội dung được gửi",
+      "sent": "Chức danh và mô tả công việc; kinh nghiệm, học vấn và kỹ năng trong yêu cầu tuyển dụng; chức danh hiện tại, trình độ học vấn cao nhất của ứng viên, cùng chức danh và số tháng trong quá trình làm việc và học tập. Văn bản dài sẽ bị rút ngắn.",
+      "neverSentTitle": "Nội dung không bao giờ được gửi",
+      "neverSent": "Tên, e-mail, điện thoại, địa điểm, nơi làm việc hiện tại, tên trường và nơi làm việc, thời gian báo trước, nguồn, giấy tờ, lương, sự đồng ý, thẻ, tệp và trường tùy chỉnh của ứng viên. Văn bản chứa địa chỉ e-mail, liên kết hoặc số giấy tờ hay số điện thoại sẽ bị từ chối."
     }
   },
   "careersPublic": {

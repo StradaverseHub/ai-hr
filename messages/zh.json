@@ -28790,7 +28790,8 @@
           "pseudonymous_person_bands": "带随机别名的个人区间（并非匿名）",
           "authored_formula_request": "用户编写的公式要求",
           "authored_policy_text": "由人力资源管理员撰写的政策文本（含个人身份信息时拒绝发送）",
-          "authored_job_architecture": "由获授权人员提供的岗位架构详情"
+          "authored_job_architecture": "由获授权人员提供的岗位架构详情",
+          "authored_candidate_profile": "由 HR 填写的职位要求及候选人的职称和经历（含识别信息则拒绝）"
         },
         "redaction": {
           "pii_masked": "已遮盖",
@@ -38839,7 +38840,13 @@
       "fee_not_eligible": "只有来自已接受的中介提交且已被录用的候选人才能记录中介费。",
       "fee_decided": "此中介费已被决定，无法更改。",
       "reward_self": "必须由其他人执行：您是推荐人、受聘者或收款人，或者您是最后记录此费用的人。",
-      "decline_reason": "请填写拒绝原因。"
+      "decline_reason": "请填写拒绝原因。",
+      "ai_not_approved": "AI 匹配摘要尚不可用：所有者尚未批准将这些数据发送给 AI 提供商。",
+      "ai_off": "该公司已关闭 AI 匹配摘要。",
+      "ai_not_active": "AI 匹配摘要仅适用于进行中的申请。",
+      "ai_identifier": "将要发送的部分文本包含电子邮件地址、链接或证件号码或电话号码。请删除后重试。",
+      "ai_unavailable": "AI 提供商不可用或拒绝了请求。申请没有任何更改。",
+      "ai_invalid": "AI 回复无法使用，已被丢弃。您可以重试。"
     },
     "overview": {
       "purpose": "您所管理招聘的各公司今天的招聘工作。",
@@ -39128,7 +39135,8 @@
         "groups": "面试官小组",
         "questions": "题库",
         "places": "地址和会议室",
-        "email": "候选人邮件"
+        "email": "候选人邮件",
+        "ai": "AI 匹配摘要"
       },
       "iv": {
         "rulesTitle": "反馈规则",
@@ -41299,6 +41307,39 @@
       "component": "收入项目",
       "chooseComponent": "选择项目",
       "send": "发送至工资"
+    },
+    "matchSummary": {
+      "title": "AI 匹配摘要",
+      "note": "帮助您对照职位阅读此申请的建议。它只使用职位要求以及候选人的职称、教育程度和经历，绝不使用其姓名或联系方式。它不排名、不评分、不做决定。",
+      "ask": "建议匹配摘要",
+      "asking": "请求中…",
+      "again": "再次请求",
+      "matches": "看似符合",
+      "gaps": "记录中未显示",
+      "questions": "可提出的问题",
+      "none": "没有建议。",
+      "disclaimer": "AI 建议，未保存。请对照简历和候选人的回答核实；它可能有误，也不是决定。",
+      "fields": "请检查：",
+      "field": {
+        "job_title": "职位名称",
+        "job_description": "职位描述",
+        "job_education": "招聘需求中的学历",
+        "job_mandatorySkills": "必备技能",
+        "job_preferredSkills": "优先技能",
+        "candidate_currentTitle": "候选人当前职称",
+        "candidate_history_title": "候选人经历中的某个职称"
+      },
+      "settingsNote": "允许职位的审阅人请求 AI 提供商简要总结进行中申请的已记录经历在多大程度上符合职位的书面要求。摘要仅显示给提出请求的人，且从不保存。它绝不对任何人排名、评分、筛选或拒绝。",
+      "notApproved": "尚不可用：所有者尚未批准将这些数据发送给 AI 提供商。在记录该批准之前，无论此开关如何，任何人都看不到该按钮。",
+      "settingLabel": "在本公司提供 AI 匹配摘要",
+      "settingHelp": "默认关闭。每次请求都会记录请求人和时间，但不记录内容。",
+      "on": "开",
+      "off": "关",
+      "save": "保存",
+      "sentTitle": "发送的内容",
+      "sent": "职位名称和描述，招聘需求中的经验、学历和技能，以及候选人的当前职称、最高学历，以及其工作和教育经历中的职称和月数。较长文本会被截短。",
+      "neverSentTitle": "绝不发送的内容",
+      "neverSent": "候选人的姓名、电子邮件、电话、所在地、当前雇主、学校和雇主名称、通知期、来源、证件、薪资、同意记录、标签、文件和自定义字段。包含电子邮件地址、链接或证件号码或电话号码的文本会被拒绝。"
     }
   },
   "careersPublic": {

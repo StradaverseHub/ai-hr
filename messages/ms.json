@@ -28790,7 +28790,8 @@
           "pseudonymous_person_bands": "Julat setiap orang dengan alias rawak (bukan tanpa nama)",
           "authored_formula_request": "Keperluan formula yang ditulis pengguna",
           "authored_policy_text": "Teks polisi yang ditulis oleh pentadbir HR (ditolak jika ada pengecam peribadi)",
-          "authored_job_architecture": "Butiran seni bina jawatan yang diberikan oleh kakitangan yang diberi kuasa"
+          "authored_job_architecture": "Butiran seni bina jawatan yang diberikan oleh kakitangan yang diberi kuasa",
+          "authored_candidate_profile": "Keperluan jawatan serta jawatan dan sejarah calon yang ditulis oleh HR (ditolak jika mengandungi pengecam)"
         },
         "redaction": {
           "pii_masked": "Disembunyikan",
@@ -38839,7 +38840,13 @@
       "fee_not_eligible": "Yuran agensi hanya boleh direkodkan untuk calon yang diambil daripada penyerahan agensi yang diterima.",
       "fee_decided": "Yuran agensi ini sudah diputuskan dan tidak boleh diubah.",
       "reward_self": "Orang lain mesti melakukannya: anda ialah perujuk, pekerja yang diambil atau penerima, atau anda yang terakhir merekodkan yuran ini.",
-      "decline_reason": "Berikan sebab penolakan."
+      "decline_reason": "Berikan sebab penolakan.",
+      "ai_not_approved": "Ringkasan padanan AI belum tersedia: pemilik belum meluluskan penghantaran data ini kepada penyedia AI.",
+      "ai_off": "Ringkasan padanan AI dimatikan untuk syarikat ini.",
+      "ai_not_active": "Ringkasan padanan AI hanya untuk permohonan aktif.",
+      "ai_identifier": "Sesetengah teks yang akan dihantar mengandungi alamat e-mel, pautan atau nombor ID atau telefon. Buang dan cuba lagi.",
+      "ai_unavailable": "Penyedia AI tidak tersedia atau menolak permintaan. Tiada apa-apa pada permohonan berubah.",
+      "ai_invalid": "Jawapan AI tidak dapat digunakan, jadi ia dibuang. Anda boleh cuba lagi."
     },
     "overview": {
       "purpose": "Kerja pengambilan hari ini merentas syarikat yang pengambilannya anda uruskan.",
@@ -39128,7 +39135,8 @@
         "groups": "Kumpulan penemu duga",
         "questions": "Bank soalan",
         "places": "Alamat dan bilik",
-        "email": "E-mel calon"
+        "email": "E-mel calon",
+        "ai": "Ringkasan padanan AI"
       },
       "iv": {
         "rulesTitle": "Peraturan maklum balas",
@@ -41299,6 +41307,39 @@
       "component": "Komponen pendapatan",
       "chooseComponent": "Pilih komponen",
       "send": "Hantar ke gaji"
+    },
+    "matchSummary": {
+      "title": "Ringkasan padanan AI",
+      "note": "Cadangan untuk membantu anda membaca permohonan ini berbanding jawatan. Ia hanya menggunakan keperluan jawatan dan jawatan, tahap pendidikan serta sejarah calon, bukan nama atau butiran hubungan mereka. Ia tidak menyusun kedudukan, memberi skor atau membuat keputusan.",
+      "ask": "Cadangkan ringkasan padanan",
+      "asking": "Sedang meminta…",
+      "again": "Minta semula",
+      "matches": "Nampaknya memenuhi",
+      "gaps": "Tidak ditunjukkan dalam rekod",
+      "questions": "Soalan untuk ditanya",
+      "none": "Tiada cadangan.",
+      "disclaimer": "Cadangan AI, tidak disimpan. Semak dengan CV dan jawapan calon; ia mungkin salah dan bukan keputusan.",
+      "fields": "Semak:",
+      "field": {
+        "job_title": "Jawatan",
+        "job_description": "Huraian jawatan",
+        "job_education": "Pendidikan dalam permintaan",
+        "job_mandatorySkills": "Kemahiran wajib",
+        "job_preferredSkills": "Kemahiran pilihan",
+        "candidate_currentTitle": "Jawatan semasa calon",
+        "candidate_history_title": "Satu jawatan dalam sejarah calon"
+      },
+      "settingsNote": "Membolehkan penyemak jawatan meminta penyedia AI untuk ringkasan pendek tentang sejauh mana sejarah yang direkodkan bagi permohonan aktif memenuhi keperluan bertulis jawatan. Ringkasan hanya ditunjukkan kepada orang yang meminta dan tidak pernah disimpan. Ia tidak sesekali menyusun kedudukan, memberi skor, menyenarai pendek atau menolak sesiapa.",
+      "notApproved": "Belum tersedia: pemilik belum meluluskan penghantaran data ini kepada penyedia AI. Tiada sesiapa melihat butang sehingga kelulusan itu direkodkan, walau apa pun suis ini.",
+      "settingLabel": "Tawarkan ringkasan padanan AI dalam syarikat ini",
+      "settingHelp": "Dimatikan secara lalai. Setiap permintaan direkodkan dengan siapa yang meminta dan bila, tanpa kandungannya.",
+      "on": "Hidup",
+      "off": "Mati",
+      "save": "Simpan",
+      "sentTitle": "Apa yang dihantar",
+      "sent": "Jawatan dan huraian jawatan, pengalaman, pendidikan dan kemahiran dalam permintaan, serta jawatan semasa calon, tahap pendidikan tertinggi, dan jawatan serta bilangan bulan dalam sejarah kerja dan pendidikan mereka. Teks panjang dipendekkan.",
+      "neverSentTitle": "Apa yang tidak pernah dihantar",
+      "neverSent": "Nama, e-mel, telefon, lokasi, majikan semasa, nama sekolah dan majikan, tempoh notis, sumber, ID, gaji, persetujuan, tag, fail dan medan tersuai calon. Teks yang mengandungi alamat e-mel, pautan atau nombor ID atau telefon ditolak."
     }
   },
   "careersPublic": {

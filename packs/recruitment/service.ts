@@ -339,3 +339,7 @@ export {
   MY_REWARD_STATES, rewardSourceRef, parseAmount, parseJobReward, rewardPayMonths, rewardState, myRewardState, validateAgencyFee,
 } from './reward-model';
 export type { RewardState, MyRewardState, RewardFacts, RewardHireFacts, RewardPayee, AgencyFeeInput, ValidAgencyFee } from './reward-model';
+// Slice 24 — AI match summary suggestions for the job's reviewers: never a rank, score or decision, never stored, and locked until
+// the owner records the provider-data approval for recruitment_match_summary_v1; a company switch, default off (5726; D-063, D-069).
+export { suggestMatchSummary, matchSummarySetting, matchSummaryOffered, updateMatchSummarySetting, matchSummaryApproved } from './match-summary';
+export type { MatchSummarySetting, RecruitmentMatchSummary } from './match-summary';

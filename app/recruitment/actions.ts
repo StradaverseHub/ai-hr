@@ -40,6 +40,7 @@ import {
   saveInterviewRoom, saveInterviewerGroup, setInterviewQuestionRetired,
   saveCandidateEmailSettings, saveCandidateEmailTemplate, resetCandidateEmailTemplate, retryCandidateEmail,
   previewInterviewInvitation, sendOfferByEmail, type InvitationPreview, type InterviewEmailOutcome,
+  suggestMatchSummary, updateMatchSummarySetting, type RecruitmentMatchSummary,
 } from '@/packs/recruitment/service';
 import { getLocale } from 'next-intl/server';
 
@@ -1057,4 +1058,26 @@ export async function resetCandidateEmailTemplateAction(f: FormData) {
 export async function retryCandidateEmailAction(f: FormData) {
   const url = back(f, `/recruitment/applications/${encodeURIComponent(str(f, 'applicationId'))}?tab=emails`);
   return run(url, (s) => retryCandidateEmail(s, { emailId: str(f, 'emailId'), acknowledged: f.get('acknowledged') === 'on' }), withParam(url, 'notice', 'email-retried'));
+}
+
+// ── Slice 24: AI match summary suggestions ───────────────────────────────────────────────────────────────────
+
+/** Settings › AI match summaries: an administrator turns the company's switch on or off. */
+export async function updateMatchSummarySettingAction(f: FormData) {
+  return run(back(f, '/recruitment/settings?section=ai'), (s) => updateMatchSummarySetting(s, str(f, 'companyId'), f.get('enabled') === 'on'));
+}
+
+/** A refusal for the suggestion panel (a client component): the code and, for text that holds an identifier, the field paths. */
+export type MatchSummaryResult = { summary: RecruitmentMatchSummary } | { problem: string; fields?: string[] };
+
+/** Ask for a match summary suggestion. The reply goes to this viewer only and is never stored; nothing on the application changes. */
+export async function suggestMatchSummaryAction(applicationId: string): Promise<MatchSummaryResult> {
+  const s = await getSession();
+  try {
+    return { summary: await suggestMatchSummary(s, applicationId) };
+  } catch (e) {
+    if (!(e instanceof RecruitmentError)) console.error('recruitment match summary failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+    const fields = e instanceof RecruitmentError && e.code === 'ai_identifier' ? [...(e.detail ?? [])] : undefined;
+    return fields ? { problem: errorCode(e), fields } : { problem: errorCode(e) };
+  }
 }

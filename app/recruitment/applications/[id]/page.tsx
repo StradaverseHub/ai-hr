@@ -9,13 +9,14 @@ import {
   applicationAgency, applicationBackgroundChecks, applicationCandidateEmails, applicationCareers, applicationWaiting, applicationPools, applicationReview, applicationHire, applicationHistory, applicationInterviews, applicationOffer, applicationReferral, applicationScreening, candidateProfile, interviewFormOptions, CANDIDATE_RESPONSES, INTERVIEW_TYPES,
   OFFER_SEND_CHANNELS, RecruitmentError, type ApplicationCandidateEmails, type ApplicationHire, type InterviewFormOptions, type InterviewStatus, type OfferView,
   invitationOffer, interviewCancellationPreviews, offerEmailPreview, type CancellationEmailPreview, type InvitationOffer, type OfferEmailPreview,
-  SURVEY_LINK_PLACEHOLDER,
+  SURVEY_LINK_PLACEHOLDER, matchSummaryOffered,
 } from '@/packs/recruitment/service';
 import {
   addInterviewersAction, cancelInterviewAction, markOfferSentAction, recordOfferDecisionAction, saveOfferAction, scheduleInterviewFormAction, setCandidateResponseAction,
   submitOfferAction, withdrawOfferAction, retryCandidateEmailAction, sendOfferByEmailAction,
 } from '../../actions';
 import { InvitationPanel, type InvitationLabels } from './invitation-panel';
+import { MatchSummaryPanel, type MatchSummaryLabels } from './match-summary-panel';
 import { ActionForm, FieldProblem } from '../../action-form';
 import { Notice, Pill, SubTabs, klDate, klDateTime, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../../shared';
 import { pgSqlState } from '@/lib/db-error';
@@ -85,10 +86,12 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
     if (!(e instanceof RecruitmentError)) console.error(`recruitment ${what} failed`, e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
     return fallback;
   });
-  const [invitation, cancellations, offerEmail] = await Promise.all([
+  const [invitation, cancellations, offerEmail, matchOffered] = await Promise.all([
     options ? quiet('invitation offer', invitationOffer(s, id), null) : Promise.resolve(null),
     interviews.canSchedule ? quiet('cancellation previews', interviewCancellationPreviews(s, id), {} as Record<string, CancellationEmailPreview>) : Promise.resolve({} as Record<string, CancellationEmailPreview>),
     offer?.can.markSent ? quiet('offer e-mail preview', offerEmailPreview(s, id), null) : Promise.resolve(null),
+    // Slice 24: the AI match summary button (the job's reviewers, the company's switch on and the owner's provider approval recorded).
+    profile ? quiet('match summary offer', matchSummaryOffered(s, id), false) : Promise.resolve(false),
   ]);
   const reviewer = !!offer;
   const tab: Tab = sp.tab === 'offer' && reviewer ? 'offer' : sp.tab === 'history' && history ? 'history' : sp.tab === 'screening' && screening ? 'screening'
@@ -161,6 +164,8 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
       ]} />
 
       {tab === 'candidate' && profile && <CandidateSection profile={profile} applicationId={id} here={here} locale={locale} />}
+
+      {tab === 'candidate' && profile && matchOffered && <MatchSummaryPanel applicationId={id} labels={await matchSummaryLabels()} />}
 
       {tab === 'candidate' && profile && <PoolsAndBlockSection pools={pools} review={review} here={here} />}
 
@@ -603,4 +608,18 @@ function CandidateEmailsSection({ emails, applicationId, here, t, locale }: { em
       )}
     </section>
   );
+}
+
+/** Slice 24: the panel's words, including the refusals it can show (no other code reaches it). */
+async function matchSummaryLabels(): Promise<MatchSummaryLabels> {
+  const [t, te] = await Promise.all([getTranslations('recruitment.matchSummary'), getTranslations('recruitment.errors')]);
+  const codes = ['ai_not_approved', 'ai_off', 'ai_not_active', 'ai_identifier', 'ai_unavailable', 'ai_invalid', 'not_found', 'unexpected'] as const;
+  const fieldKeys = ['job.title', 'job.description', 'job.education', 'job.mandatorySkills', 'job.preferredSkills', 'candidate.currentTitle', 'candidate.history.title'] as const;
+  const fieldNames: Record<string, string> = {};
+  for (const key of fieldKeys) fieldNames[key] = t(`field.${key.replace(/\./g, '_')}` as Parameters<typeof t>[0]);
+  return {
+    title: t('title'), note: t('note'), ask: t('ask'), asking: t('asking'), again: t('again'), matches: t('matches'), gaps: t('gaps'),
+    questions: t('questions'), none: t('none'), disclaimer: t('disclaimer'), fields: t('fields'), fieldNames,
+    problems: Object.fromEntries(codes.map((c) => [c, te(c)])),
+  };
 }

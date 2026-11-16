@@ -132,6 +132,8 @@ export const RECRUITMENT_ERROR_CODES = [
   'fee_decided',
   // …the caller is the referrer, the hire or the receiver, or recorded the fee last (another person decides); a decline needs a reason.
   'reward_self', 'decline_reason',
+  // Slice 24 (AI match summary suggestions).
+  'ai_not_approved', 'ai_off', 'ai_not_active', 'ai_identifier', 'ai_unavailable', 'ai_invalid',
 ] as const;
 export type RecruitmentErrorCode = (typeof RECRUITMENT_ERROR_CODES)[number];
 

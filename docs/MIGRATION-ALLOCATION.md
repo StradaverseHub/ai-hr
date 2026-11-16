@@ -1,3 +1,12 @@
+# Recruitment slice 24: AI match summary suggestions — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` appends `5726_recruitment_ai_match_summary` at idx 5126 / when 1793330005426, the next
+slot of the recruitment block directly after `5725`; `origin/main` had no new entries since the slice 23 merge (`8244cfa81`). SHA256
+`d23289bec17b303e15f1ea36c2e4f0b72b14fd3d6580885485b167ba00dd8c47` at allocation (the file may still change before it is applied anywhere). A scan of the committed journals on the 3,000
+distinct origin head commits on 16 November 2026 found no claim on 5726 or when 1793330005426. The block still stops at 5739 because
+`claude/probation-*` heads claim 5740–5750; the renumbering note under slice 23 applies to 5720–5726 alike. The installed ledgers were
+not read. This allocation grants no installation authority.
+
 # Recruitment slice 23: referral rewards and agency fees — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/rea-web-app-reconstruction-2c12ee` appends `5725_recruitment_referral_rewards_agency_fees` at idx 5125 / when 1793330005425,

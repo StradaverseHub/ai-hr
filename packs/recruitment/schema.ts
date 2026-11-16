@@ -197,6 +197,8 @@ export const recruitmentCompanySetting = pgTable('recruitment_company_setting', 
   referralProtectionDays: integer('referral_protection_days').notNull().default(180),
   // Slice 15 (5716): "New position from template" is offered in the company.
   positionTemplatesEnabled: boolean('position_templates_enabled').notNull().default(false),
+  // Slice 24 (5726): AI match summary suggestions are offered in the company (default off; administrators only).
+  aiMatchSummaryEnabled: boolean('ai_match_summary_enabled').notNull().default(false),
   ...audit,
 });
 
