@@ -226,9 +226,12 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5304,when:1794841005904,tag:'5904_contract_shared_native_intake_guard'},
  {idx:5311,when:1794841005911,tag:'5911_contract_posting_canonical_assignment_receipt'},
  {idx:5312,when:1794841005912,tag:'5912_contract_posting_source_projection'},
+ {idx:5313,when:1794841005913,tag:'5913_contract_posting_native_completion'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5913_contract_posting_native_completion':'b267d52c086b6dabda037ada30eb5902144a236f873916cd82829dc9e7036e26',
+
  '5911_contract_posting_canonical_assignment_receipt':'86d530dec94eb6cce45039e05adfba1a3b671764e5b8e687f1e5a64747f0b977',
  '5912_contract_posting_source_projection':'c4b3003dfd78efecdf4e1f9674769dcb8aee9701593bc327cdba24cdb28e746e',
 
