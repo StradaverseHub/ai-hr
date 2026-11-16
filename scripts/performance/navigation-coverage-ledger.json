@@ -1372,6 +1372,15 @@
       "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
     },
     {
+      "id": "shell.offboardingPostings",
+      "sourceOwner": "lib/navigation/shell-inventory.ts",
+      "sourceKey": "shell-slot:offboardingPostings",
+      "declaredHref": "/lifecycle/offboarding/postings",
+      "status": "uncovered",
+      "owner": "lib/navigation/shell-inventory.ts",
+      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+    },
+    {
       "id": "shell.probationPostings",
       "sourceOwner": "lib/navigation/shell-inventory.ts",
       "sourceKey": "shell-slot:probationPostings",
