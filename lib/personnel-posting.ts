@@ -82,7 +82,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function postingSalary(value: unknown): string | null {
   if (typeof value !== 'string' || !/^(?:0|[1-9]\d{0,9})(?:\.\d{1,2})?$/.test(value)) return null;
   const [whole, fraction=''] = value.split('.');
-  if (BigInt(whole)*100n + BigInt(fraction.padEnd(2,'0')) <= 0n) return null;
+  if (BigInt(whole)*BigInt(100) + BigInt(fraction.padEnd(2,'0')) <= BigInt(0)) return null;
   return whole+'.'+fraction.padEnd(2,'0');
 }
 /** Offboarding has its own allowlist; Probation's three-field schema remains unchanged. */

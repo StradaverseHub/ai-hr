@@ -468,7 +468,7 @@ export async function v9SaveConfig(ctx: SessionContext, revision: number, input:
       }
     }
     await tx.execute(sql`update lc_v9_config set data=${JSON.stringify(config)}::jsonb,revision=${config.revision},updated_at=now() where tenant_id=${ctx.tenantId}::uuid`);
-    await reassignOffboardingPostingsTx(tx,ctx,previous.offboarding&&Object.hasOwn(previous.offboarding,'postingApproverGroupId')?previous.offboarding.postingApproverGroupId:previous.peopleOpsGroup??null,config.offboarding&&Object.hasOwn(config.offboarding,'postingApproverGroupId')?config.offboarding.postingApproverGroupId:config.peopleOpsGroup??null);
+    await reassignOffboardingPostingsTx(tx,ctx,previous.offboarding&&Object.hasOwn(previous.offboarding,'postingApproverGroupId')?(previous.offboarding.postingApproverGroupId??null):previous.peopleOpsGroup??null,config.offboarding&&Object.hasOwn(config.offboarding,'postingApproverGroupId')?(config.offboarding.postingApproverGroupId??null):config.peopleOpsGroup??null);
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'lifecycle-v9-config', aggregateId: ctx.tenantId, eventType: 'lifecycle-v9.configurationChanged', actor: actorOf(ctx), payload: { revision: config.revision } });
     return { revision: config.revision, groupsRevision: config.groupsRevision ?? 0, versionStamps: config.templates.flatMap(template => template.versions.map(version => ({ templateId: template.id, version: version.version, state: version.state, at: version.at, by: version.by }))) };
   });
