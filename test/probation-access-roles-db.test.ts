@@ -59,7 +59,7 @@ describe('who may change Probation access',()=>{
   await saveProbationSuperiorRule(admin,{enabled:true,view:true,recordDeclined:false,expectedRevision:0});
   await expect(saveProbationSuperiorRule(admin,{enabled:true,view:true,recordDeclined:true,expectedRevision:0})).rejects.toMatchObject({code:'conflict'});
   await retireProbationAccessRole(admin,{roleId:made.id,expectedRevision:2,reason:'Replaced'});
-  const events=await owner.db.execute<{type:string;actor:string}>(sql`select event_type as type,actor_id::text as actor from domain_event where tenant_id=${b.tenantId}::uuid and aggregate_type='probation_access' order by created_at,id`);
+  const events=await owner.db.execute<{type:string;actor:string}>(sql`select event_type as type,actor_id::text as actor from domain_event where tenant_id=${b.tenantId}::uuid and aggregate_type='probation_access' order by sequence,id`);
   expect(events.map(e=>e.type)).toEqual(['probation.access.role_created','probation.access.role_changed','probation.access.member_added','probation.access.member_changed','probation.access.member_revoked','probation.access.direct_superiors_saved','probation.access.role_retired']);
   expect(events[0].actor).toBe(manager.userId);
   // History is kept: revoked memberships stay, with who and why.
@@ -74,7 +74,8 @@ describe('who may change Probation access',()=>{
 
 describe('Cases: View cases',()=>{
  it('shows the cases in the member\'s company or business group while the membership is current, and nothing else',async()=>{
-  const fixture=probationFormCaseFixture(b,admin),{ids,staff,peer}=await fixture.caseWithRows([]);admin=fixture.admin();
+  const fixture=probationFormCaseFixture(b,admin),{ids,staff}=await fixture.caseWithRows([]);admin=fixture.admin();
+  const peer=await fixture.person('Fictional Viewer'); // the fixture's own peer heads the department
   const other=await createCompany(admin,{legalName:'Fictional Other Group Sdn Bhd',country:'MY',currency:'MYR'});
   const child=await createCompany(admin,{legalName:'Fictional Child Sdn Bhd',country:'MY',currency:'MYR',parentCompanyId:b.companyId});
   expect(await caseAccess(peer.ctx,ids.caseId)).toBe(false);
@@ -109,14 +110,17 @@ describe('Cases: View cases',()=>{
   expect(await caseAccess(peer.ctx,ids.caseId)).toBe(true);
  });
 
- it('gives System Administrators every case without making them a case actor',async()=>{
+ it('keeps today\'s rule for System Administrators: no case without a role, which they can give themselves (audited)',async()=>{
   const fixture=probationOutcomeFixture(b,admin),{ids,staff}=await fixture.recordedConfirm([],{rating:1});admin=fixture.admin();
   const[p]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional System Administrator',${randomUUID()+'@access.example.test'}) returning id`);
   const sysadmin={...admin,userId:await createAppUser(b.tenantId,p.id,'super_admin'),personId:p.id,roles:['super_admin'],grants:undefined} as SessionContext;
-  expect(await caseAccess(sysadmin,ids.caseId)).toBe(true);
+  // "Setup permission is not participant authority" (test/probation-persistence.test.ts) stays true.
+  expect(await caseAccess(sysadmin,ids.caseId)).toBe(false);
   await expect(recordProbationLowResultAction(sysadmin,{partId:ids.part,note:'Not the PBP'})).rejects.toThrow();
-  // Adding themselves to a role is the audited way to act.
+  expect((await probationNavigationAccess(sysadmin)).access).toBe(true);
+  // Adding themselves to a role is the audited way to see and act.
   await grantRole(sysadmin,['cases.low_result'],sysadmin.userId!);
+  expect(await caseAccess(sysadmin,ids.caseId)).toBe(true);
   await recordProbationLowResultAction(sysadmin,{partId:ids.part,note:'Agreed a coaching plan with the Line Manager'});
   void staff;
  });
@@ -149,7 +153,8 @@ describe('Cases: actions',()=>{
  });
 
  it('Change a case\'s route: a member may change an unsubmitted route; a viewer may not',async()=>{
-  const fixture=probationFormCaseFixture(b,admin),{ids,peer,stored}=await fixture.caseWithRows([]);admin=fixture.admin();
+  const fixture=probationFormCaseFixture(b,admin),{ids,stored}=await fixture.caseWithRows([]);admin=fixture.admin();
+  const peer=await fixture.person('Fictional Route Keeper');
   const before=await stored();
   await grantRole(admin,['cases.view'],peer.userId,{companyId:b.companyId});
   await expect(overrideProbationRoute(peer.ctx,{partId:ids.part,revision:before.revision,route:before.route,reason:'Fictional route change'})).rejects.toThrow();
@@ -161,7 +166,8 @@ describe('Cases: actions',()=>{
 
 describe('Direct Superiors rule',()=>{
  it('gives the Direct Superior their own team\'s cases only, and follows the rule when it is changed',async()=>{
-  const fixture=probationFormCaseFixture(b,admin),{ids,staff,manager,peer}=await fixture.caseWithRows([]);admin=fixture.admin();
+  const fixture=probationFormCaseFixture(b,admin),{ids,staff,manager}=await fixture.caseWithRows([]);admin=fixture.admin();
+  const peer=await fixture.person('Fictional Other Manager'); // the fixture's own peer heads the department
   expect(await caseAccess(manager.ctx,ids.caseId)).toBe(true);expect(await role(manager.ctx,staff.employmentId,'lm')).toBe(true);
   // Another person's Direct Superior (here nobody's) sees nothing.
   expect(await caseAccess(peer.ctx,ids.caseId)).toBe(false);expect(await role(peer.ctx,staff.employmentId,'lm')).toBe(false);
@@ -178,7 +184,7 @@ describe('Direct Superiors rule',()=>{
  });
 
  it('records a declined signature only while the rule allows it',async()=>{
-  const fixture=probationFormCaseFixture(b,admin),{ids,manager,prepare,submit}=await fixture.caseWithRows([]);admin=fixture.admin();
+  const fixture=probationFormCaseFixture(b,admin),{ids,manager,prepare,submit}=await fixture.caseWithRows([{id:'hod',order:1,action:'review',who:'hod'},{id:'pbp',order:2,action:'approve_sign',who:'pbp'}]);admin=fixture.admin();
   await prepare();await submit();
   const decline=(ctx:SessionContext)=>withTenant(ctx,async tx=>(await tx.execute<{ok:boolean}>(sql`select app.probation_signing_access(${ids.part}::uuid,'decline') as ok`))[0].ok);
   expect(await decline(manager.ctx)).toBe(true);
@@ -228,7 +234,8 @@ describe('Settings permissions',()=>{
 
 describe('leakage',()=>{
  it('never reaches another tenant: no case, permission, view or scope across tenants',async()=>{
-  const fixture=probationFormCaseFixture(b,admin),{ids,peer}=await fixture.caseWithRows([]);admin=fixture.admin();
+  const fixture=probationFormCaseFixture(b,admin),{ids}=await fixture.caseWithRows([]);admin=fixture.admin();
+  const peer=await fixture.person('Fictional Member');
   const foreign=await seedBase();await setModule(foreign.tenantId,'lifecycle','active');const foreignAdmin=adminCtx(foreign);
   await grantRole(admin,['cases.view','cases.letters','cases.low_result','cases.route','settings.configure','settings.intake','settings.postings'],peer.userId);
   // The same login presented under the other tenant holds nothing there, and the foreign administrator sees nothing here.

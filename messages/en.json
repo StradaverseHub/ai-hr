@@ -40283,7 +40283,7 @@
   "probationAccess": {
     "breadcrumb": "Probation Confirmation / Configuration / Access",
     "title": "Access",
-    "intro": "Same access model as Contract Management. Line Managers get access automatically through the Direct Superiors rule. Business Partners and everyone else aren’t given access automatically: create a role below and add them as members with the right scope. System Administrators see every case and manage this page.",
+    "intro": "Same access model as Contract Management. Line Managers get access automatically through the Direct Superiors rule. Business Partners and everyone else aren’t given access automatically: create a role below and add them as members with the right scope. System Administrators manage this page and every Probation setting; to see or act on cases they add themselves to a role like anyone else.",
     "forbidden": "Only a System Administrator or someone who manages access can open Probation access.",
     "on": "On",
     "off": "Off",

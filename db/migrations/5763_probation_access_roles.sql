@@ -19,7 +19,7 @@
 --     domain_event each). Only a System Administrator (access.system_admin) or a holder of the existing ADR-0135
 --     "manage access" capability (access.configure) may change roles, members or the rule (app.probation_access_admin).
 --  3. Enforcement in the existing owners, by replacing them with the same signature and grants:
---       app.probation_visible_among (set-based: one company list per viewer; System Administrators see every case),
+--       app.probation_visible_among (set-based: one company list per viewer),
 --       app.probation_role (the Direct Superiors rule for 'lm'), app.probation_signing_access (declined signature),
 --       app.probation_config_admin / _settings_scope_admin / automation_can_configure (settings.configure),
 --       app.probation_settings_scope_save / probation_config_write (settings.postings guards the posting-approver group),
@@ -28,6 +28,10 @@
 --       app.probation_delegate_add (cases.route). app.probation_navigation_access is unchanged (its installed body is
 --       pinned); app.probation_access_navigation answers what roles add to navigation, including the Access page.
 --     A role permission never acts on the member's own case (app.probation_case_permitted excludes the employee).
+--     System Administrators keep exactly today's Probation authority (the Probation module permission they hold by default,
+--     so every Settings permission) plus this access page; seeing or acting on cases still needs a holder role or a role
+--     membership, which they can give themselves (audited). "Setup permission is not participant authority" (existing
+--     rule, test/probation-persistence.test.ts) is kept.
 -- Three new empty tables (no backfill); no existing table, row, policy or purpose-owned object changes.
 CREATE TABLE public.probation_access_role (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -102,11 +106,6 @@ CREATE POLICY probation_access_rule_owner ON public.probation_access_rule FOR AL
 --> statement-breakpoint
 REVOKE ALL ON public.probation_access_role, public.probation_access_member, public.probation_access_rule FROM PUBLIC, ai_hr_app;
 --> statement-breakpoint
--- A System Administrator: the protected ADR-0135 marker (never manufactured by a custom grant).
-CREATE FUNCTION app.probation_system_admin() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT coalesce(app.probation_active_user() AND app.access_capability_allowed('access.system_admin',NULL),false);
-$$;
---> statement-breakpoint
 -- Who may change Probation roles, members and the Direct Superiors rule: a System Administrator or a holder of the
 -- existing "manage access" capability (access.configure). Also the page permission of /lifecycle/probation/access.
 CREATE FUNCTION app.probation_access_admin() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -177,7 +176,7 @@ CREATE FUNCTION app.probation_postings_admin(p_companies uuid[]) RETURNS boolean
  SELECT coalesce(app.probation_active_user() AND (app.access_capability_allowed('probation.module',NULL) OR app.probation_permitted_scope('settings.postings',p_companies)),false);
 $$;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION app.probation_system_admin(),app.probation_access_admin(),app.probation_superior_rule(),app.probation_permitted_companies(uuid,text[]),
+REVOKE ALL ON FUNCTION app.probation_access_admin(),app.probation_superior_rule(),app.probation_permitted_companies(uuid,text[]),
  app.probation_permitted(text,uuid),app.probation_permitted_scope(text,uuid[]),app.probation_case_permitted(uuid,text),app.probation_intake_admin(uuid),
  app.probation_intake_admin_for(uuid,uuid,uuid),app.probation_postings_admin(uuid[]) FROM PUBLIC;
 --> statement-breakpoint
@@ -431,16 +430,16 @@ REVOKE ALL ON FUNCTION app.probation_access_navigation() FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.probation_access_navigation() TO ai_hr_app;
 --> statement-breakpoint
--- Cases: view. Role members see their scope; System Administrators see every case; the Direct Superiors rule decides the Line Manager (body from 5755_probation_routed_assignment; only the marked authority changes).
+-- Cases: view. Role members see their scope; the Direct Superiors rule decides the Line Manager (body from 5755_probation_routed_assignment; only the marked authority changes).
 CREATE OR REPLACE FUNCTION app.probation_visible_among(p_cases uuid[]) RETURNS SETOF uuid LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE t uuid:=app.current_tenant_id();me uuid:=app.current_user_id();day date:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date;
- my_person uuid;usable boolean:=false;ops boolean:=false;visible uuid[];superior_view boolean:=true;sysadmin boolean:=false;view_companies uuid[]:='{}'::uuid[];
+ my_person uuid;usable boolean:=false;ops boolean:=false;visible uuid[];superior_view boolean:=true;view_companies uuid[]:='{}'::uuid[];
 BEGIN
  IF t IS NULL THEN RETURN;END IF;
  IF app.probation_storage_runner() THEN RETURN QUERY SELECT c.id FROM public.probation_case c WHERE c.tenant_id=t AND (p_cases IS NULL OR c.id=ANY(p_cases));RETURN;END IF;
  IF coalesce(app.probation_active_user(),false) IS NOT TRUE THEN RETURN;END IF;
- -- 5763: the Direct Superiors rule, System Administrators, and the companies this viewer's roles cover (one read each).
- SELECT r.can_view INTO superior_view FROM app.probation_superior_rule() r;sysadmin:=coalesce(app.probation_system_admin(),false);
+ -- 5763: the Direct Superiors rule and the companies this viewer's roles cover (one read each).
+ SELECT r.can_view INTO superior_view FROM app.probation_superior_rule() r;
  SELECT coalesce(array_agg(x.company_id),'{}'::uuid[]) INTO view_companies FROM app.probation_permitted_companies(me,ARRAY['cases.view','cases.letters','cases.low_result','cases.route']) x;
  SELECT u.person_id,(u.archived_at IS NULL AND NOT app.login_blocked(u.id)) INTO my_person,usable FROM public.app_user u WHERE u.id=me AND u.tenant_id=t;
  IF EXISTS(SELECT 1 FROM public.probation_access m WHERE m.tenant_id=t AND m.user_id=me AND m.role='gbs') THEN
@@ -486,7 +485,7 @@ BEGIN
    JOIN public.document_signing_document doc ON doc.tenant_id=t AND doc.subject_type='probation' AND jsonb_typeof(doc.data->'routing')='object'
     AND EXISTS(SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(doc.data->'route'->'steps')='array' THEN doc.data->'route'->'steps' ELSE '[]'::jsonb END) st WHERE st->>'holderId'=g.holder_id::text)
    JOIN public.probation_part p ON p.id=doc.subject_id AND p.tenant_id=doc.tenant_id AND p.data->>'state' IN('pending_approval','returned'))
-  SELECT live.id FROM live WHERE sysadmin OR live.current_company AND live.company_id=ANY(view_companies)
+  SELECT live.id FROM live WHERE live.current_company AND live.company_id=ANY(view_companies)
   UNION
   SELECT live.id FROM live WHERE NOT live.current_company AND live.person_id=my_person
   UNION

@@ -3,7 +3,7 @@
 
 Branch `claude/probation-lane-access-20261116` (lane K of the Probation Confirmation build) appends
 `5763_probation_access_roles` at idx 5163 / when 1793330005463 (assigned by the build coordinator; 5765/5766 belong to
-lane L). SHA256 `d9a8f718e1c622e8faba51d843c69b404b23b1f31327ebb75c48760b1a02afde`. It adds three owner-only tables (forced row security, owner policy, no application grant):
+lane L). SHA256 `3a0bae544f30907238605bbf59f79816a130b08b886a2c9904d9ae137d8f9e40`. It adds three owner-only tables (forced row security, owner policy, no application grant):
 `probation_access_role` (named role, permissions from the Cases and Settings families), `probation_access_member`
 (person, optional business group and company, valid from/to, revocation recorded; the ADR-0174
 `probation_access_member_company_tenant_fk` key and a `(business_group_id, tenant_id)` company key) and
