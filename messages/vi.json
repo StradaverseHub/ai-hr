@@ -1800,7 +1800,7 @@
           "pendingTargetUnavailable": "Giá trị đích đã lưu không còn nằm trong các lựa chọn hoặc phạm vi truy cập hiện tại của bạn. Không thể lưu bản chỉnh sửa này. Hãy kiểm tra thay đổi chưa có hiệu lực trước khi tiếp tục.",
           "resignationLifecycleHint": "Thông tin nghỉ việc có hiệu lực vào Ngày hiệu lực. Ghi riêng ngày nộp đơn, ngày nghỉ việc và ngày làm việc cuối cùng.",
           "closedPayrollTitle": "Bảng lương {periods} đã được khóa sổ.",
-          "closedPayrollBody": "Việc điều chỉnh này cập nhật hồ sơ nhân viên và các lần xử lý sau. Bảng lương đã khóa, phiếu lương đã phát hành và các hồ sơ nộp theo luật định giữ nguyên số liệu cuối cùng và sẽ không được tính lại. Nếu cần điều chỉnh số tiền, hãy dùng quy trình điều chỉnh lương. Mức lương đã điều chỉnh có hiệu lực từ tháng đầu tiên sau kỳ lương đã khóa.",
+          "closedPayrollBody": "Các thay đổi này cập nhật hồ sơ nhân viên và việc xử lý trong tương lai. Bảng lương đã khóa, phiếu lương đã phát hành và hồ sơ kê khai theo luật giữ nguyên như khi hoàn tất. Hãy dùng quy trình điều chỉnh lương nếu cần điều chỉnh số tiền đã trả.",
           "closedPayrollAcknowledge": "Tôi hiểu rằng bảng lương đã khóa sẽ không thay đổi.",
           "dateClosedPayrollOptional": "Nếu ngày này vượt qua tháng lương đã chốt, hãy đánh dấu bên dưới. Bảng lương đã chốt, phiếu lương và hồ sơ nộp theo luật định giữ nguyên như khi đã trả.",
           "mustChange": "Bắt buộc thay đổi",
@@ -2663,7 +2663,7 @@
           "guideReason": "Lý do: vì sao biến động được sửa hoặc hoàn tác. Bắt buộc với Cập nhật và Xóa và được lưu trong lịch sử kiểm tra. Nếu bảng lương của kỳ đó đã đóng, bạn xác nhận điều đó trên màn hình trước khi lưu.",
           "closedPayrollRow": "Bảng lương kỳ {periods} đã đóng.",
           "closedPayrollTitle": "Một số chỉnh sửa thay đổi biến động thuộc kỳ lương đã đóng ({periods}).",
-          "closedPayrollBody": "Các chỉnh sửa này cập nhật hồ sơ nhân viên và việc xử lý về sau. Bảng lương đã đóng, phiếu lương đã phát hành và các tờ khai theo luật định giữ nguyên số liệu đã chốt và sẽ không được tính lại. Nếu không xác nhận, các nhân viên liên quan sẽ không được lưu.",
+          "closedPayrollBody": "Các thay đổi này cập nhật hồ sơ nhân viên và việc xử lý trong tương lai. Bảng lương đã khóa, phiếu lương đã phát hành và hồ sơ kê khai theo luật giữ nguyên như khi hoàn tất.",
           "closedPayrollAcknowledge": "Tôi hiểu rằng bảng lương đã đóng sẽ không thay đổi."
         },
         "historyRow": "Ghi nhận là lịch sử: {from} đến {to} nhận các giá trị Trước. Hồ sơ từ {date} không thay đổi."
@@ -31426,6 +31426,7 @@
       "configure": "Quản lý bảo mật và quyền",
       "workforceView": "Xem hồ sơ nhân viên",
       "workforceMaintain": "Duy trì hồ sơ nhân viên",
+      "movementDelete": "Xóa sự kiện thay đổi việc làm",
       "probationModule": "Quản lý Thử việc cho mọi công ty",
       "profileReview": "Xét duyệt thay đổi hồ sơ đủ điều kiện"
     },

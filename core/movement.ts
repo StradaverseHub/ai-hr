@@ -1,3 +1,6 @@
+import {assertMovementDeleteTx} from './movement-delete-access';
+import { lockPayrollInputsTx } from './payroll-inputs-lock';
+import { preserveMovementPayrollTx, withProtectedMovementHistoryTx } from './movement-payroll-protection';
 import { normalizedMovementEmploymentPeriods, MOVEMENT_EMPLOYMENT_PERIODS, MOVEMENT_EMPLOYMENT_PERIOD_FIELDS, movementPeriodValue, type MovementEmploymentPeriodField } from '../lib/movement-employment-periods';
 import {organisationManagedTx,organisationBusinessUnit} from './organisation-write-policy';
 import {deriveCompanyOrganisationTx,recordEmploymentOrganisationTagsTx,employmentOrganisationTagsTx} from './company-organisation';
@@ -5,7 +8,7 @@ import {personnelInformationCorrections,type InformationHistoryCorrection} from 
 import {withProbationPersonnelIntentTx,withProbationDateShiftIntentTx,probationMovementAuthorityTx} from './probation-effect-authority';
 import { withExitDateAuthorityTx } from './exit-date-authority';
 import { isDatabaseError } from '../lib/db-error';
-import { hasClosedPayrollCorrectionAuthorityTx, withClosedPayrollCorrectionAuthorityTx, MovementClosedPayrollAcknowledgementError, payrollPreservationRefusal } from './closed-payroll-correction-authority';
+import { hasClosedPayrollCorrectionAuthorityTx, withClosedPayrollCorrectionAuthorityTx, MovementClosedPayrollAcknowledgementError } from './closed-payroll-correction-authority';
 export { MovementClosedPayrollAcknowledgementError };
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,workforceEmploymentPredicate,WorkforceAccessError} from './workforce-access';
 import {withAccessDisplayRead} from './access-configuration-lock';
@@ -2620,6 +2623,7 @@ async function applyComparisonMovementTx(
   kind: ComparisonKind,
   opts?: { groupId?: string; allSecondary?: boolean },
 ) {
+  const write = async () => {
   // Acquire the person owner before any info/assignment leg can lock employment.
   await lockEmploymentStatutoryOwnerTx(tx,p.employmentId);
   const placement = movementHasOrganisationInput(p) || (p.companyId !== undefined && p.companyId !== null);
@@ -2630,6 +2634,9 @@ async function applyComparisonMovementTx(
   const written = await applyComparisonLegsTx(tx, ctx, p, kind, opts);
   if (lifted) await reapplyCorrectionBoundariesTx(tx, ctx, p.employmentId, lifted);
   return written;
+  };
+  if (probationMovementAuthorityTx(tx, p)) return write();
+  return withProtectedMovementHistoryTx(tx, ctx, p.employmentId, write, message => new MovementNotCorrectableError(message));
 }
 
 /**
@@ -3348,10 +3355,14 @@ export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:Cr
   // The tenant catalogue resolves custom codes to their actual effect. Own configuration before
   // that resolution and before current-state planning, not merely when the termination leg writes.
   await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+  if (!probationMovementAuthorityTx(tx, rawInput)) assertMovementAdmin(ctx, 'record a movement');
+  await lockPayrollInputsTx(tx, { employmentIds: [rawInput.employmentId], companyIds: rawInput.companyId ? [rawInput.companyId] : [] });
   if (!probationMovementAuthorityTx(tx, rawInput) && isCalendarDate(rawInput.effectiveDate) && rawInput.effectiveDate < todayInKualaLumpur()) {
     const input = await resolveInputTypeTx(tx, ctx, rawInput, 'record');
     if (isComparisonKind(input.kind)) {
-      return recordComparisonInEffectiveOrderTx(tx, ctx, rawInput, input.kind, options?.captureGradeBefore);
+      return withProtectedMovementHistoryTx(tx, ctx, rawInput.employmentId,
+        () => recordComparisonInEffectiveOrderTx(tx, ctx, rawInput, input.kind, options?.captureGradeBefore),
+        message => new MovementNotCorrectableError(message));
     }
   }
   return dispatchMovementEventTx(tx,ctx,rawInput,undefined,undefined,options?.captureGradeBefore);
@@ -3450,7 +3461,7 @@ async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateM
         joinDate: p.effectiveDate,
         movement: { type: 'joinDateChange', remarks, groupId: randomUUID() },
       },tx);
-      return p.acknowledgeClosedPayroll === true ? withClosedPayrollCorrectionAuthorityTx(tx, p.employmentId, write) : write();
+      return write();
     }
 
     // 89ea527b — Group Join Date Correction: the authorized historical-data correction of the master service
@@ -3465,7 +3476,7 @@ async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateM
         hiredOn: p.effectiveDate,
         movement: { type: 'groupJoinDateCorrection', remarks, groupId: randomUUID() },
       },tx);
-      const saved = p.acknowledgeClosedPayroll === true ? await withClosedPayrollCorrectionAuthorityTx(tx, p.employmentId, write) : await write();
+      const saved = await write();
       await alignHistoryToGroupJoinDateTx(tx, ctx, p.employmentId, 'groupJoinDateCorrection', (message) => new Error(message));
       return saved;
     }
@@ -3546,7 +3557,11 @@ async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateM
       }
   }
   };
-  const result=await execute();
+  const changesMaster = !['secondment','actingPosition','historicalHire','rehire'].includes(p.kind) &&
+    (p.effectiveDate <= today || ['joinDateChange','groupJoinDateCorrection','probationExtension','blacklist'].includes(p.kind));
+  const result = changesMaster && !probationMovementAuthorityTx(tx, p)
+    ? await withProtectedMovementHistoryTx(tx, ctx, p.employmentId, execute, message => new MovementNotCorrectableError(message))
+    : await execute();
   if(!result)throw new Error('Unsupported movement event type.');
   const gradeBefore = needsGradeBefore
     ? {gradeId:previousGrade?.gradeId??null}
@@ -3705,6 +3720,7 @@ export async function applyDueMovementsTx(
 ): Promise<ApplyDueResult> {
   await assertWorkforceEmploymentTx(tx,ctx,employmentId,'maintain');
   await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+  await lockPayrollInputsTx(tx, { employmentIds: [employmentId] });
   const { events, rows, statusOf } = await projectRows(tx, ctx.tenantId, employmentId, today);
   const due = rows
     .filter((r) => r.scheduled && r.effectiveDate <= today && statusOf(r) === 'pending')
@@ -3748,6 +3764,7 @@ export async function applyDueMovementsTx(
 
     let changes: MovementChange[] = [];
     try {
+      await withProtectedMovementHistoryTx(tx, ctx, employmentId, async () => {
       const res = isResignation
         ? await applyResignationMovementTx(tx,ctx,input,{groupId:r.groupId,allSecondary:true})
         : isTermination
@@ -3768,6 +3785,7 @@ export async function applyDueMovementsTx(
       if (appliedEffectiveDate == null || r.effectiveDate > appliedEffectiveDate) {
         appliedEffectiveDate = r.effectiveDate;
       }
+      }, message => new MovementNotCorrectableError(message));
     } catch (e) {
       // The movement arrived to find its values already in place (someone made the same change by hand in
       // the meantime). That is a legitimate outcome, not a failure: record it as applied-with-no-changes
@@ -4035,7 +4053,7 @@ async function recordComparisonInEffectiveOrderTx(tx: Tx, ctx: SessionContext, i
   if (!reason) throw new MovementReasonRequiredError('Record a reason for inserting this earlier movement.');
   const closed = (await closedPeriodsTx(tx, input.employmentId))
     .filter(period => overlapsClosedPeriod([period], input.effectiveDate, null));
-  if (closed.length) throw new MovementClosedPayrollAcknowledgementError(closed);
+  if (closed.length && !hasClosedPayrollCorrectionAuthorityTx(tx, input.employmentId)) throw new MovementClosedPayrollAcknowledgementError(closed);
   for (const step of [...later].sort((a, b) => b.sequence - a.sequence)) {
     await reverseMovementTx(tx, ctx, input.employmentId, step.movementId, reason, true);
   }
@@ -4492,13 +4510,12 @@ export async function movementRowsAfterSequenceTx(tx: Tx, ctx: SessionContext, e
 export async function reverseMovementForImportTx(tx: Tx, ctx: SessionContext, employmentId: string, movementId: string, reason: string, opts?: { acknowledgeClosedPayroll?: boolean }) {
   assertMovementAdmin(ctx, 'roll back a movement');
   if (!reason.trim()) throw new MovementReasonRequiredError('A reason is required. Record why this movement event is being rolled back.');
-  await assertWorkforceEmploymentTx(tx, ctx, employmentId, 'maintain');
+  await assertMovementDeleteTx(tx,ctx,employmentId);
   await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
-  // 646355e5 slice C — an import Delete row behind closed payroll enters the same authority as the Roll Back
-  // dialog, and only when the import's confirmation box was ticked. A whole-import revert never passes it.
+  // Manual Delete and whole-import reverts share the same fresh Delete permission and preservation owner.
   const run = () => reverseMovementTx(tx, ctx, employmentId, movementId, reason.trim(), false);
-  if (opts?.acknowledgeClosedPayroll === true) await withClosedPayrollCorrectionAuthorityTx(tx, employmentId, run);
-  else await run();
+  await lockPayrollInputsTx(tx, { employmentIds: [employmentId] });
+  await withClosedPayrollCorrectionAuthorityTx(tx, employmentId, run);
 }
 
 /**
@@ -4598,9 +4615,7 @@ async function reversalGuardTx(tx: Tx, ctx: SessionContext, employmentId: string
     // 646355e5 — a closed run no longer blocks the correction; it requires the caller's explicit
     // acknowledgement, which only the service entry points grant (closed-payroll-correction-authority).
     closedPayrollPeriods = closed.filter((period) => overlapsClosedPeriod([period], from, null)).sort();
-    if (closedPayrollPeriods.length && !hasClosedPayrollCorrectionAuthorityTx(tx, employmentId)) {
-      throw new MovementClosedPayrollAcknowledgementError(closedPayrollPeriods);
-    }
+
   }
   return { events, row, group, closedPayrollPeriods };
 }
@@ -4612,10 +4627,7 @@ async function reversalGuardTx(tx: Tx, ctx: SessionContext, employmentId: string
  * Payroll transactions and canonical payslip amounts are never touched here.
  */
 async function preserveClosedPayrollDocumentsTx(tx: Tx, employmentId: string): Promise<number> {
-  let preserved: { count: number } | undefined;
-  try { [preserved] = await tx.execute<{ count: number }>(sql`select app.preserve_information_payroll(${employmentId}::uuid) as count`); }
-  catch (error) { const refusal = payrollPreservationRefusal(error); if (refusal) throw new MovementNotCorrectableError(refusal); throw error; }
-  return Number(preserved?.count ?? 0);
+  return preserveMovementPayrollTx(tx, employmentId, message => new MovementNotCorrectableError(message));
 }
 
 /** The shared rollback body. `corrected` distinguishes the first half of an Edit from a plain Rollback —
@@ -4634,7 +4646,8 @@ async function reverseMovementTx(
   const { events, row, group, closedPayrollPeriods:sourceClosedPeriods } = await reversalGuardTx(tx, ctx, employmentId, movementId);
   const closedPayrollPeriods = [...new Set([...sourceClosedPeriods,...(opts?.additionalClosedPayrollPeriods ?? [])])].sort();
   if(closedPayrollPeriods.length && !hasClosedPayrollCorrectionAuthorityTx(tx,employmentId)) throw new MovementClosedPayrollAcknowledgementError(closedPayrollPeriods);
-  const snapshotCount = closedPayrollPeriods.length ? await preserveClosedPayrollDocumentsTx(tx, employmentId) : null;
+  const snapshotCount = group.some(event => STATE_CHANGING_EVENT_TYPES.has(event.eventType))
+    ? await preserveClosedPayrollDocumentsTx(tx, employmentId) : null;
   // Undo the newest leg first: within one movement a later leg can sit on top of an earlier one.
   const tag: MovementTag = { type: row.kind, groupId: randomUUID(), secondary: true };
   const hireCorrections = events.filter((x) => isAssignmentReplacementEvent(x.eventType, HIRE_CORRECTED_EVENT)).map((x) => x.payload);
@@ -4658,7 +4671,7 @@ async function reverseMovementTx(
       // 646355e5 — the audit trail of an acknowledged correction behind closed payroll, and the business
       // day the leave owner treats as the correction boundary (assertInformationLeavePeriodTx).
       ...(closedPayrollPeriods.length
-        ? { closedPayrollPeriods, closedPayrollAcknowledged: true, closedPayrollCorrectedOn: todayInKualaLumpur(), snapshotCount }
+        ? { closedPayrollPeriods, closedPayrollProtected: true, closedPayrollCorrectedOn: todayInKualaLumpur(), snapshotCount }
         : {}),
     },
   });
@@ -4690,11 +4703,11 @@ export async function reverseMovementEvent(
     throw new MovementReasonRequiredError('A reason is required. Record why this movement event is being rolled back.');
   }
   return withTenant(ctx, async (tx) => {
-    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+    await assertMovementDeleteTx(tx,ctx,p.employmentId);
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     const run = () => reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, false);
-    if (p.acknowledgeClosedPayroll === true) await withClosedPayrollCorrectionAuthorityTx(tx, p.employmentId, run);
-    else await run();
+    await lockPayrollInputsTx(tx, { employmentIds: [p.employmentId] });
+    await withClosedPayrollCorrectionAuthorityTx(tx, p.employmentId, run);
     return { employmentId: p.employmentId };
   });
 }
@@ -4705,8 +4718,7 @@ export type EditMovementInput = CreateMovementInput & {
    *  correction is a rollback wearing another name; still typed optional so the field can be absent from
    *  the call and refused by the service rather than by the type. */
   reason?: string | null;
-  /** 646355e5 — HR confirmed that closed payroll stays as issued. Required only when a closed run relied on
-   *  the movement; refused with MovementClosedPayrollAcknowledgementError otherwise. */
+  /** Legacy transport compatibility. Closed payroll is protected by the service independently of this flag. */
   acknowledgeClosedPayroll?: boolean;
 };
 
@@ -4739,6 +4751,7 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
   return (async (tx: Tx) => {
     await assertWorkforceEmploymentTx(tx,ctx,rawEdit.employmentId,'maintain');
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+    await lockPayrollInputsTx(tx, { employmentIds: [rawEdit.employmentId], companyIds: rawEdit.companyId ? [rawEdit.companyId] : [] });
     await lockEmploymentStatutoryOwnerTx(tx, rawEdit.employmentId);
     const resolved = await resolveInputTypeTx(tx, ctx, rawEdit, 'correct', { allowInactive: true });
     const p = resolved.kind === 'blacklist' ? {...resolved,effectiveDate:todayInKualaLumpur()} : resolved;
@@ -5086,9 +5099,7 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
       await replayLaterMovementsTx(tx, ctx, p.employmentId, replay);
       return corrected;
     };
-    const result = rawEdit.acknowledgeClosedPayroll === true
-      ? await withClosedPayrollCorrectionAuthorityTx(tx, p.employmentId, correctAndReplay)
-      : await correctAndReplay();
+    const result = await withClosedPayrollCorrectionAuthorityTx(tx, p.employmentId, correctAndReplay);
     return {...result,behaviourKind:p.kind,previousBehaviourKind,effectiveDate:p.effectiveDate,replayed:replay.length};
   })(outerTx);
 }

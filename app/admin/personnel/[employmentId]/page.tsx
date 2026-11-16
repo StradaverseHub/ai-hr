@@ -1,3 +1,4 @@
+import {movementDeleteAccess} from '@/core/movement-delete-access';
 import { MOVEMENT_EMPLOYMENT_PERIOD_FIELDS } from '@/lib/movement-employment-periods';
 import { MOVEMENT_FORM_IDS } from '@/lib/movement-form-contract';
 import {DerivedOrganisationControl} from '@/components/derived-organisation-fields';
@@ -353,7 +354,7 @@ export default async function EmployeePage({
   // fixing here because this item puts a control on the page whose whole job is to hand this route ids.
   const emp = await employeeDetail(s,employmentId,'workforce');
   if(!emp)return <WorkforceScopedRecord session={s} employmentId={employmentId} feedback={rawSearchParams.workforceCode} editFeedback={rawSearchParams.workforceEdit}/>;
-  const canMaintainWorkforce=await workforceEmploymentAccess(s,employmentId,'maintain');
+  const [canMaintainWorkforce,canDeleteMovement]=await Promise.all([workforceEmploymentAccess(s,employmentId,'maintain'),movementDeleteAccess(s,employmentId)]);
   const tAccess=await getTranslations('accessConfiguration');
   const today = todayInKualaLumpur();
   // Employee Status redesign (R43 c26c3ce5): Employee Status is SYSTEM-DERIVED read-time from the employment
@@ -407,7 +408,7 @@ export default async function EmployeePage({
   const salaryHistory = readProfileCards ? await compensationHistoryDetailed(s, employmentId) : [];
   // 7c7c2f80 — periods of CLOSED payroll runs that paid this employee: drives the per-row "deletable"
   // flag on the salary history (records a closed run relied on are payroll evidence and cannot go).
-  const closedPayrollPeriods = readProfileCards || movementPage === 'edit' ? await closedPayrollPeriodsFor(s, employmentId) : [];
+  const closedPayrollPeriods = readProfileCards || movementPage === 'edit' || spNewEvent ? await closedPayrollPeriodsFor(s, employmentId) : [];
   // Rung 5c — the acting company's country pack; statutory reads + the SOCSO/EIS default resolve through it.
   const countryPack = packFor('MY');
   // This scoped service verifies the owning company is MY; a person-level tax flag is not approval.
@@ -3329,7 +3330,7 @@ export default async function EmployeePage({
               <td className="px-4 py-2.5">
                 <MovementHistoryActions context={movementContext} employmentId={employmentId} row={m} standalone={movementPage==='history'}
                   eventLabel={`${movementKindLabel(m.kind)} · ${formatDmy(m.effectiveDate)}`}
-                  canCorrect={canCorrectMovement} reverseAction={reverseMovementEventAction}
+                  canCorrect={canCorrectMovement} canDelete={canDeleteMovement} reverseAction={reverseMovementEventAction}
                   rehireRollBack={m.kind === 'rehire' ? {action: rollBackRehireAction, labels: {
                     button: t('movement.rehire.rollBack'), title: t('movement.rehire.rollBackTitle'),
                     description: t('movement.rehire.rollBackDescription'), reason: t('movement.correctionReasonLabel'), keep: t('movement.keepEvent'),
@@ -3591,6 +3592,7 @@ export default async function EmployeePage({
     ? {
         employmentId: emp.employmentId,
         today,
+        closedPayrollPeriods,
         isBlacklisted: !!emp.blacklistedAt,
         // 08913328 — the read-only left column AND the pre-fill of the editable right column. One read,
         // so the two sides cannot disagree about what "current" means.

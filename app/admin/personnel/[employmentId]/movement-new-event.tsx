@@ -178,6 +178,7 @@ export function MovementNewEvent({
   today,
   isBlacklisted,
   current,
+  closedPayrollPeriods = [],
   departments,
   positions,
   businessUnits,
@@ -201,6 +202,7 @@ export function MovementNewEvent({
   today: string;
   isBlacklisted: boolean;
   current: MovementCurrentValues;
+  closedPayrollPeriods?: string[];
   departments: MovementOption[];
   positions: MovementOption[];
   businessUnits: MovementOption[];
@@ -268,10 +270,10 @@ export function MovementNewEvent({
   const behaviour = behaviourOf(kind);
   const [correctionDate, setCorrectionDate] = useState(posting?.effectiveDate ?? edit?.effectiveDate ?? today);
   const proposedMonth = (/^\d{4}-\d{2}-\d{2}$/.test(correctionDate) ? correctionDate : edit?.effectiveDate ?? today).slice(0,7);
-  const correctionClosedPeriods = edit ? [...new Set([
-    ...(edit.payrollClosedPeriods ?? []),
-    ...(edit.availableClosedPayrollPeriods ?? []).filter(period => period >= proposedMonth),
-  ])].sort() : [];
+  const correctionClosedPeriods = [...new Set([
+    ...(edit?.payrollClosedPeriods ?? []),
+    ...(edit?.availableClosedPayrollPeriods ?? closedPayrollPeriods).filter(period => period >= proposedMonth),
+  ])].sort();
   const saved = edit?.pendingInput;
   const after = {...current,...saved};
   // 2260a06b — the end-date row follows the Employee Type picked in this form (Contract → Contract End Date,
@@ -741,28 +743,10 @@ export function MovementNewEvent({
           {t('form.payrollWarning')}
         </p>
       )}
-      {/* 646355e5 — a closed run no longer blocks the correction. HR confirms that closed payroll stays as
-          issued; the service refuses without this box (MovementClosedPayrollAcknowledgementError). */}
       {!!correctionClosedPeriods.length && (
         <div className="border-b border-border bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
           <p className="font-medium">{t('form.closedPayrollTitle', { periods: correctionClosedPeriods.join(', ') })}</p>
           <p className="mt-1">{t('form.closedPayrollBody')}</p>
-          <label className="mt-2 flex items-start gap-2">
-            <input type="checkbox" name="acknowledgeClosedPayroll" value="1" required className="mt-1" />
-            <span>{t('form.closedPayrollAcknowledge')}</span>
-          </label>
-        </div>
-      )}
-
-      {/* Board 4604dccc r3 — a Group Join Date Correction or Join Date Change no longer stops at closed payroll: HR
-          confirms it stays as paid. The service asks for this box only when a closed month lies in between. */}
-      {!edit && (behaviour === 'groupJoinDateCorrection' || behaviour === 'joinDateChange') && (
-        <div className="border-b border-border bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
-          <p>{t('form.dateClosedPayrollOptional')}</p>
-          <label className="mt-2 flex items-start gap-2">
-            <input type="checkbox" name="acknowledgeClosedPayroll" value="1" className="mt-1" />
-            <span>{t('form.closedPayrollAcknowledge')}</span>
-          </label>
         </div>
       )}
 

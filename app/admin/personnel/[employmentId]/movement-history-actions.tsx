@@ -19,13 +19,14 @@ export type RehireRollBack = {
 };
 
 /** Used by the actual history table. Every write remains a server action and the service repeats scope checks. */
-export function MovementHistoryActions({employmentId, row, eventLabel, canCorrect, labels, reverseAction, context, standalone = false, rehireRollBack}: {
+export function MovementHistoryActions({employmentId, row, eventLabel, canCorrect, canDelete = false, labels, reverseAction, context, standalone = false, rehireRollBack}: {
   employmentId: string;
   context?: MovementPageContext;
   standalone?: boolean;
   row: Pick<MovementHistoryRow,'id'|'kind'|'status'|'canEdit'|'canReverse'|'payrollLocked'|'payrollWarning'>;
   eventLabel: string;
   canCorrect: boolean;
+  canDelete?: boolean;
   labels: MovementActionLabels;
   reverseAction: (data: FormData) => Promise<void>;
   rehireRollBack?: RehireRollBack;
@@ -39,7 +40,7 @@ export function MovementHistoryActions({employmentId, row, eventLabel, canCorrec
       <Link href={movementPageHref(employmentId,'correct-hire',undefined,context)} className={linkClass}>{labels.hireEdit}</Link>
       <details className="max-w-sm text-sm"><summary className="cursor-pointer text-primary">{labels.hireDelete}</summary><p className="mt-2 text-muted-foreground">{labels.hireRequirements}</p></details>
     </>}
-    {canCorrect && !terminal && row.canReverse && <form action={reverseAction} className="inline-flex">
+    {canCorrect && canDelete && !terminal && row.canReverse && <form action={reverseAction} className="inline-flex">
       <input type="hidden" name="employmentId" value={employmentId}/>
       <input type="hidden" name="movementId" value={row.id}/>
       {standalone && <>
@@ -48,10 +49,9 @@ export function MovementHistoryActions({employmentId, row, eventLabel, canCorrec
         <input type="hidden" name="from" value={context?.from??''}/>
       </>}
       <ConfirmSubmit title={labels.deleteTitle} subtitle={eventLabel}
-        description={row.status === 'pending' ? labels.deletePendingDescription : `${labels.deleteDescription}${row.payrollWarning ? ` ${labels.processedWarning}` : ''}`}
+        description={row.status === 'pending' ? labels.deletePendingDescription : `${labels.deleteDescription}${row.payrollLocked ? ` ${labels.closedWarning}` : ''}${row.payrollWarning ? ` ${labels.processedWarning}` : ''}`}
         confirmLabel={labels.delete} cancelLabel={labels.keepEvent}
         reasonField={{name:'reason',label:labels.reason,required:true}}
-        acknowledgement={row.payrollLocked ? {name:'acknowledgeClosedPayroll',warning:labels.closedWarning,label:labels.closedAcknowledge} : undefined}
         variant="ghost" confirmVariant="destructive" size="sm" className="h-auto p-0 text-sm font-normal text-destructive hover:bg-transparent hover:underline">
         {labels.delete}
       </ConfirmSubmit>

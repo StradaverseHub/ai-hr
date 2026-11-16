@@ -29,7 +29,6 @@ import {
   editMovementEvent,
   movementHistory,
   MovementNoChangeError,
-  MovementClosedPayrollAcknowledgementError,
   MovementNotCorrectableError,
   reverseMovementEvent,
 } from '../core/movement';
@@ -529,8 +528,8 @@ describe('editMovementEvent — a correction is a replay through the same writer
   });
 });
 
-describe('payroll interaction — acknowledge on closed, warn on processed, never reprocess', () => {
-  it('646355e5 — a CLOSED run requires an explicit acknowledgement, then corrects without touching the payslip', async () => {
+describe('payroll interaction — preserve closed, warn on processed, never reprocess', () => {
+  it('protects a CLOSED run automatically and corrects without touching the payslip', async () => {
     const hire = await hireOne();
     await setCompensation(adminCtx(b), {
       employmentId: hire.employmentId,
@@ -553,25 +552,7 @@ describe('payroll interaction — acknowledge on closed, warn on processed, neve
     expect(move.canEdit).toBe(true);
     const slipsBefore = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId, hire.employmentId));
 
-    // Without the acknowledgement: refused, and nothing moved.
-    await expect(
-      reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: move.id, reason: 'Keyed in error' }),
-    ).rejects.toBeInstanceOf(MovementClosedPayrollAcknowledgementError);
-    expect((await openCompensation(hire.employmentId)).basicSalary).toBe('5000.00');
-    // A posted flag on another call does not leak into this one: the edit path refuses the same way.
-    await expect(
-      editMovementEvent(adminCtx(b), {
-        employmentId: hire.employmentId,
-        movementId: move.id,
-        kind: 'increment',
-        effectiveDate: '2026-06-01',
-        basicSalary: 4500,
-        reason: 'Wrong amount keyed',
-      }),
-    ).rejects.toBeInstanceOf(MovementClosedPayrollAcknowledgementError);
-    expect((await openCompensation(hire.employmentId)).basicSalary).toBe('5000.00');
-
-    // With it: the correction applies to the record…
+    // No acknowledgement flag is required; the service protects issued payroll before the inverse.
     await editMovementEvent(adminCtx(b), {
       employmentId: hire.employmentId,
       movementId: move.id,
@@ -579,7 +560,6 @@ describe('payroll interaction — acknowledge on closed, warn on processed, neve
       effectiveDate: '2026-06-01',
       basicSalary: 4500,
       reason: 'Wrong amount keyed',
-      acknowledgeClosedPayroll: true,
     });
     expect((await openCompensation(hire.employmentId)).basicSalary).toBe('4500.00');
     // …the corrected salary starts after the closed month, which keeps the record it was paid on…
@@ -605,12 +585,12 @@ describe('payroll interaction — acknowledge on closed, warn on processed, neve
       corrected: true,
       reason: 'Wrong amount keyed',
       closedPayrollPeriods: ['2026-06'],
-      closedPayrollAcknowledged: true,
+      closedPayrollProtected: true,
       snapshotCount: 1,
     });
   });
 
-  it('requires acknowledgement and retains issued payroll when a record-only event becomes a salary change in a closed month',async()=>{
+  it('retains issued payroll automatically when a record-only event becomes a salary change in a closed month',async()=>{
     const hire=await hireOne(),ctx=adminCtx(b);
     await setCompensation(ctx,{employmentId:hire.employmentId,basicSalary:4000,effectiveFrom:'2026-01-01'});
     await createMovementEvent(ctx,{employmentId:hire.employmentId,kind:'secondment',effectiveDate:'2026-08-01',remarks:'Fictional wrongly classified event'});
@@ -619,16 +599,14 @@ describe('payroll interaction — acknowledge on closed, warn on processed, neve
     expect(original.payrollLocked).toBe(false);
     const slips=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId,hire.employmentId));
     const input={employmentId:hire.employmentId,movementId:original.id,kind:'salaryAdjustment',effectiveDate:'2026-07-01',basicSalary:4500,reason:'Fictional wrong event type and date'};
-    await expect(editMovementEvent(ctx,input)).rejects.toBeInstanceOf(MovementClosedPayrollAcknowledgementError);
-    expect((await movementHistory(ctx,hire.employmentId)).find(row=>row.id===original.id)?.status).toBe('applied');
-    await editMovementEvent(ctx,{...input,acknowledgeClosedPayroll:true});
+    await editMovementEvent(ctx,input);
     expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId,hire.employmentId))).toEqual(slips);
     expect((await openCompensation(hire.employmentId)).validFrom).toBe('2026-08-01');
     expect((await openCompensation(hire.employmentId)).basicSalary).toBe('4500.00');
     const snapshots=await owner.db.select().from(schema.informationPayslipSnapshot).where(eq(schema.informationPayslipSnapshot.employmentId,hire.employmentId));
     expect(snapshots).toHaveLength(1);
     const reversals=await owner.db.select({payload:schema.domainEvent.payload}).from(schema.domainEvent).where(and(eq(schema.domainEvent.subjectEmploymentId,hire.employmentId),eq(schema.domainEvent.eventType,'employment.movement.reversed')));
-    expect(reversals.map(row=>row.payload)).toContainEqual(expect.objectContaining({movementId:original.id,closedPayrollPeriods:['2026-07'],closedPayrollAcknowledged:true,closedPayrollCorrectedOn:expect.any(String)}));
+    expect(reversals.map(row=>row.payload)).toContainEqual(expect.objectContaining({movementId:original.id,closedPayrollPeriods:['2026-07'],closedPayrollProtected:true,closedPayrollCorrectedOn:expect.any(String)}));
   });
 
   it('only WARNS when a processed (not yet closed) run covered the period — the correction still applies', async () => {

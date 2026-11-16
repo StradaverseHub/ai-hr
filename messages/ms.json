@@ -1800,7 +1800,7 @@
           "pendingTargetUnavailable": "Sasaran yang disimpan tidak lagi tersedia dalam pilihan atau skop akses semasa anda. Pembetulan ini tidak boleh disimpan. Semak peristiwa yang belum berkuat kuasa sebelum meneruskan.",
           "resignationLifecycleHint": "Maklumat peletakan jawatan berkuat kuasa pada Tarikh Kuat Kuasa. Rekodkan tarikh penyerahan, tarikh peletakan jawatan dan tarikh terakhir bekerja secara berasingan.",
           "closedPayrollTitle": "Gaji bagi {periods} telah ditutup.",
-          "closedPayrollBody": "Pembetulan ini mengemas kini rekod pekerja dan pemprosesan akan datang. Gaji yang telah ditutup, slip gaji yang telah dikeluarkan dan penyerahan berkanun mengekalkan angka muktamad dan tidak akan dikira semula. Jika sesuatu amaun perlu diselaraskan, gunakan proses pembetulan gaji. Gaji yang dibetulkan berkuat kuasa mulai bulan pertama selepas gaji yang telah ditutup.",
+          "closedPayrollBody": "Perubahan ini mengemas kini rekod pekerja dan pemprosesan akan datang. Gaji yang ditutup, slip gaji yang dikeluarkan dan penyerahan berkanun kekal seperti dimuktamadkan. Gunakan proses pembetulan gaji jika amaun yang dibayar perlu dilaraskan.",
           "closedPayrollAcknowledge": "Saya faham bahawa gaji yang telah ditutup tidak akan berubah.",
           "dateClosedPayrollOptional": "Jika tarikh ini merentasi bulan gaji yang telah ditutup, tandakan di bawah. Gaji yang ditutup, slip gaji dan penyerahan berkanun kekal tepat seperti yang dibayar.",
           "mustChange": "Wajib diubah",
@@ -2663,7 +2663,7 @@
           "guideReason": "Sebab: mengapa pergerakan dibetulkan atau dibatalkan. Ia wajib untuk Kemas kini dan Padam dan disimpan dalam sejarah audit. Jika gaji bagi tempoh itu sudah ditutup, anda mengesahkannya pada skrin sebelum menyimpan.",
           "closedPayrollRow": "Gaji bagi {periods} sudah ditutup.",
           "closedPayrollTitle": "Sesetengah pembetulan mengubah pergerakan di sebalik gaji yang telah ditutup ({periods}).",
-          "closedPayrollBody": "Pembetulan ini mengemas kini rekod pekerja dan pemprosesan akan datang. Gaji yang ditutup, slip gaji yang telah dikeluarkan dan penyerahan berkanun mengekalkan angka muktamad dan tidak akan dikira semula. Tanpa pengesahan ini, pekerja berkenaan tidak disimpan.",
+          "closedPayrollBody": "Perubahan ini mengemas kini rekod pekerja dan pemprosesan akan datang. Gaji yang ditutup, slip gaji yang dikeluarkan dan penyerahan berkanun kekal seperti dimuktamadkan.",
           "closedPayrollAcknowledge": "Saya faham bahawa gaji yang telah ditutup tidak akan berubah."
         },
         "historyRow": "Direkodkan sebagai sejarah: {from} hingga {to} mengambil nilai Sebelum. Rekod dari {date} tidak berubah."
@@ -31426,6 +31426,7 @@
       "configure": "Urus keselamatan dan kebenaran",
       "workforceView": "Lihat rekod pekerja",
       "workforceMaintain": "Selenggara rekod pekerja",
+      "movementDelete": "Padam peristiwa pergerakan pekerjaan",
       "probationModule": "Urus Percubaan untuk semua syarikat",
       "profileReview": "Semak perubahan profil yang layak"
     },

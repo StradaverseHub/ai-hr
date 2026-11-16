@@ -23,14 +23,14 @@ export function MovementImport({onCommitPendingChange}:{onCommitPendingChange?:(
  const word=(key:string,fallback:string)=>t.has(`sheet.${key}`)?t(`sheet.${key}`):fallback;
  const [file,setFile]=useState<File|null>(null),[preview,setPreview]=useState<MovementImportPreview|null>(null),[result,setResult]=useState<MovementImportResult|null>(null);
  const [attempt,setAttempt]=useState<{attemptId:string;previewHash:string}|null>(null);
- const [selected,setSelected]=useState<string[]>([]),[acknowledge,setAcknowledge]=useState(false),[closedPayroll,setClosedPayroll]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null);
+ const [selected,setSelected]=useState<string[]>([]),[acknowledge,setAcknowledge]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null);
  const [job,setJob]=useState<MovementImportJobProgress|null>(null),[check,setCheck]=useState<MovementCheckJobProgress|null>(null);
  const revision=useRef(0),pending=useRef(false),input=useRef<HTMLInputElement>(null),summary=useRef<HTMLDivElement>(null);
  const resolver=(key:string,fallback:string)=>labels.has(key)?labels(key):fallback;
  const fieldLabel=(key:string)=>movementImportFieldLabel(key,resolver);
  const eventLabel=(code:string)=>resolver('people.detail.movement.eventType.'+code,code);
  const issueText=(issue:string|readonly string[])=>movementImportIssueText(issue,resolver);
- const reset=()=>{revision.current++;setPreview(null);setResult(null);setAttempt(null);setSelected([]);setAcknowledge(false);setClosedPayroll(false);setError(null);};
+ const reset=()=>{revision.current++;setPreview(null);setResult(null);setAttempt(null);setSelected([]);setAcknowledge(false);setError(null);};
  useEffect(()=>()=>{revision.current++;},[]);
  // A check or a confirmation running in the background keeps running after navigation: rejoin the newest active one.
  // A check that finished while its creator was away is shown again, from its own recorded result, while its attempt is
@@ -68,11 +68,11 @@ export function MovementImport({onCommitPendingChange}:{onCommitPendingChange?:(
  const run=async(operation:'preview'|'apply'|'download')=>{
   if(pending.current)return;pending.current=true;setBusy(true);setError(null);const current=revision.current;
   if(operation==='apply')onCommitPendingChange?.(true);
-  if(operation==='preview'){setPreview(null);setResult(null);setAttempt(null);setSelected([]);setAcknowledge(false);setClosedPayroll(false);}
+  if(operation==='preview'){setPreview(null);setResult(null);setAttempt(null);setSelected([]);setAcknowledge(false);}
   try{
    const body=new FormData();body.set('operation',operation);
    if(operation==='preview'){if(!file)return;body.set('file',file);body.set('operationKey',crypto.randomUUID());}
-   if(operation==='apply'&&attempt){body.set('attemptId',attempt.attemptId);body.set('previewHash',attempt.previewHash);body.set('employees',JSON.stringify(selected));body.set('acknowledgeExcluded',String(acknowledge));body.set('acknowledgeClosedPayroll',String(closedPayroll));body.set('operationKey',crypto.randomUUID());}
+   if(operation==='apply'&&attempt){body.set('attemptId',attempt.attemptId);body.set('previewHash',attempt.previewHash);body.set('employees',JSON.stringify(selected));body.set('acknowledgeExcluded',String(acknowledge));body.set('operationKey',crypto.randomUUID());}
    const response=await fetch('/admin/personnel/import/movement',{method:'POST',body});
    if(current!==revision.current)return;
    if(response.ok&&response.headers.get('content-type')?.includes('spreadsheetml')){download(await response.arrayBuffer(),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','movement-import.xlsx');return;}
@@ -125,7 +125,7 @@ export function MovementImport({onCommitPendingChange}:{onCommitPendingChange?:(
    {result?<>{result.attemptId&&<Link className="block text-sm text-primary underline" href={`${HISTORY}/${result.attemptId}`}>{word('viewImport','View this import in Import History')}</Link>}<Button type="button" variant="secondary" onClick={()=>{reset();setFile(null);if(input.current)input.current.value='';}}>{t('startAgain')}</Button></>:<>
     {excludedEmployees>0&&<label className="flex items-start gap-2 text-sm"><input className="mt-1" type="checkbox" disabled={busy} checked={acknowledge} onChange={e=>setAcknowledge(e.target.checked)}/>{t('excludeConfirmation',{count:preview!.employees.filter(e=>!selected.includes(movementEmployeeKey(e))).reduce((n,e)=>n+e.rows.length,0)})}</label>}
     {closedPeriods.length>0&&<div className="space-y-1 rounded-lg border border-amber-500/60 p-3 text-sm"><p className="font-medium">{t('sheet.closedPayrollTitle',{periods:closedPeriods.join(', ')})}</p><p className="text-muted-foreground">{t('sheet.closedPayrollBody')}</p>
-     <label className="flex items-start gap-2"><input className="mt-1" type="checkbox" name="acknowledgeClosedPayroll" disabled={busy} checked={closedPayroll} onChange={e=>setClosedPayroll(e.target.checked)}/>{t('sheet.closedPayrollAcknowledge')}</label></div>}
+    </div>}
     <Button aria-busy={busy} type="button" disabled={busy||!canCommit} onClick={()=>void run('apply')}>{busy?t('working'):t('confirm')}</Button>
    </>}
   </Card>}

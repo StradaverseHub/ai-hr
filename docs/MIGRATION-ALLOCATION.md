@@ -1,3 +1,14 @@
+# Comprehensive movement workflow — 17 November 2026 MYT (unapplied candidate)
+
+Branch `codex/personnel-movement-comprehensive-20261117` claims 5773–5782 for the integrated candidate.
+`5773_movement_payroll_protection_and_delete`, idx 5173, when 1793330005473, SHA256 `3f54dd21490e301f4c52131d449d32c883f482d67025df610fe5b84c83be1897`,
+extends the existing payroll-input lock-key resolver to former dated employers and issued-payroll owners,
+and introduces the separate company-scoped Movement Delete capability with an actual-principal predicate.
+Only existing System Administrator groups receive its default grant. No payroll money or employment rows change.
+Git-discovered peer worktrees had no 5773–5779 files at allocation; staging watermark was rechecked at
+1793330005470 on 16 November. Recheck peer claims and installation watermarks before admission.
+This claim grants no installation authority.
+
 # Movement employment-period fields — 16 November 2026 MYT (unapplied candidate)
 
 Branch `codex/personnel-movement-stage1-20261116` claims `5772_movement_employment_periods`, idx 5172,
