@@ -89,3 +89,12 @@ it('preserves a saved final Amount when company applicability changes before pay
  const [slip]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));expect(Number(slip.allowance)).toBe(125.25);
  expect(await owner.db.select().from(schema.payFormulaEvaluation).where(eq(schema.payFormulaEvaluation.batchId,batchId))).toHaveLength(0);
 });
+it('aac17dd0 builder regression: Formula ID items keep Amount and formula entry; method formula stays Formula Builder only',async()=>{
+ const manual=await create('amount',88.5,null,'amount'),calculated=await create('formula',999,3,'qty');
+ expect(await getIndividualTxn(ctx,{id:manual.ids[0]})).toMatchObject({amount:'88.50',quantity:null,unit:'amount',calculationMethod:'amount',pricingSource:null});
+ expect(await getIndividualTxn(ctx,{id:calculated.ids[0]})).toMatchObject({amount:'75.00',calculationMethod:'formula',pricingSource:'saved_formula'});
+ // An inline "Calculated by Formula" item now takes a typed Amount, but never the Formula Builder method.
+ const inline=await upsertPayComponent(ctx,{...componentInput(),code:'ENTRY_INLINE',name:'Inline formula allowance',label:'Inline formula allowance',rule:{kind:'formula',start:{ref:'basic'},terms:[{op:'/',operand:{ref:'number',value:1000}},{op:'*',operand:{ref:'hours'}}]}});
+ await expect(createIndividualTxnsBulk(ctx,{companyId:base.companyId,payPeriod:period,employmentIds:[employee],intendedCycleId:cycleId,rows:[{kind:'earning',componentId:inline.id,txnDate:date,amount:999,quantity:2,unit:'hours',calculationMethod:'formula'}]})).rejects.toThrow(/no longer has an assigned Formula ID/);
+ expect(await owner.db.select().from(schema.payrollIndividualTxn)).toHaveLength(2);
+});

@@ -7729,6 +7729,7 @@
         "inputType": "Loại nhập liệu",
         "inputTypeNone": "Không có",
         "amountIsFinalHint": "Số tiền nhập ở đây chính là số tiền được trả. Công thức của khoản lương không áp dụng cho giao dịch một lần.",
+        "amountManualFormulaHint": "Số tiền được nhập thủ công. Công thức của Khoản lương này không được dùng cho giao dịch này.",
         "identicalWarning": "Đã tồn tại một mục giống hệt cho nhân viên này (cùng khoản mục, ngày, số tiền và ghi chú). Chỉ lưu nếu đây thực sự là mục thứ hai.",
         "saveAndAnother": "Lưu & thêm mục khác",
         "cancel": "Hủy",

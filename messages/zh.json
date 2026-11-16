@@ -7729,6 +7729,7 @@
         "inputType": "输入类型",
         "inputTypeNone": "无",
         "amountIsFinalHint": "此处输入的金额即为支付的金额。薪资项目的公式不会应用于一次性交易。",
+        "amountManualFormulaHint": "金额为手动输入。此交易不使用该薪资项目的公式。",
         "identicalWarning": "该员工已存在完全相同的条目（相同项目、日期、金额和备注）。请仅在确实是第二笔时才保存。",
         "saveAndAnother": "保存并继续新增",
         "cancel": "取消",

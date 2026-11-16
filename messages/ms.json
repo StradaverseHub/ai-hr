@@ -7729,6 +7729,7 @@
         "inputType": "Jenis input",
         "inputTypeNone": "Tiada",
         "amountIsFinalHint": "Jumlah yang dimasukkan di sini ialah jumlah yang dibayar. Formula item gaji tidak digunakan pada transaksi sekali sahaja.",
+        "amountManualFormulaHint": "Jumlah dimasukkan secara manual. Formula Item Gaji ini tidak digunakan untuk transaksi ini.",
         "identicalWarning": "Entri yang serupa sudah wujud untuk pekerja ini (item, tarikh, jumlah dan catatan yang sama). Simpan hanya jika ia benar-benar entri kedua.",
         "saveAndAnother": "Simpan & tambah lagi",
         "cancel": "Batal",
