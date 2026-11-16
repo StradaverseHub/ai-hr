@@ -733,16 +733,20 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {rel:'payroll_run_group',col:'result',acl:'{ai_hr_app=w/OWNER}'},
    {rel:'payroll_run_group',col:'sealed_at',acl:'{ai_hr_app=w/OWNER}'},
   ];
-  // Parse the independently reviewed policy expressions, rather than copying observed hashes.
-  // The temporary table has the same relation name so pg_get_expr uses the same outer-column qualifiers.
+  type PolicyWitness={schemaname:string;tablename:string;policyname:string;permissive:string;roles:string;cmd:string;qual:string|null;with_check:string|null};
+  // Parse independently reviewed expressions on the real table, exactly as the Claim control above.
+  // These temporary comparison policies are removed in this owned disposable database transaction.
   const methodPolicies=await storage.client.begin(async tx=>{
-   await tx`create temporary table employment_payment_method_history(tenant_id uuid,employment_id uuid) on commit drop`;
-   await tx.unsafe("create policy employment_payment_method_history_owner on pg_temp.employment_payment_method_history for all using(current_user<>'ai_hr_app') with check(current_user<>'ai_hr_app')");
-   await tx.unsafe("create policy employment_payment_method_history_read on pg_temp.employment_payment_method_history for select using(tenant_id=app.current_tenant_id() and (app.can_admin_employment(employment_id) or exists(select 1 from public.employment e where e.id=employment_id and app.is_self_person(e.person_id))))");
-   await tx.unsafe("create policy employment_payment_method_history_write on pg_temp.employment_payment_method_history for all using(tenant_id=app.current_tenant_id() and app.can_admin_employment(employment_id) and app.access_workforce_employment(employment_id,'workforce.maintain')) with check(tenant_id=app.current_tenant_id() and app.can_admin_employment(employment_id) and app.access_workforce_employment(employment_id,'workforce.maintain'))");
-   return tx`select 'public'::text as schemaname,tablename,policyname,permissive,roles::text,cmd,md5(qual) as qual,md5(with_check) as with_check from pg_policies where schemaname like 'pg_temp_%' and tablename='employment_payment_method_history' order by policyname`;
+   const names=['movement_expected_method_owner','movement_expected_method_read','movement_expected_method_write'];
+   await tx.unsafe("create policy movement_expected_method_owner on public.employment_payment_method_history for all using(current_user<>'ai_hr_app') with check(current_user<>'ai_hr_app')");
+   await tx.unsafe("create policy movement_expected_method_read on public.employment_payment_method_history for select using(tenant_id=app.current_tenant_id() and (app.can_admin_employment(employment_id) or exists(select 1 from public.employment e where e.id=employment_id and app.is_self_person(e.person_id))))");
+   await tx.unsafe("create policy movement_expected_method_write on public.employment_payment_method_history for all using(tenant_id=app.current_tenant_id() and app.can_admin_employment(employment_id) and app.access_workforce_employment(employment_id,'workforce.maintain')) with check(tenant_id=app.current_tenant_id() and app.can_admin_employment(employment_id) and app.access_workforce_employment(employment_id,'workforce.maintain'))");
+   const rows=await tx<PolicyWitness[]>`select schemaname,tablename,replace(policyname,'movement_expected_method_','employment_payment_method_history_') as policyname,permissive,roles::text,cmd,md5(qual) as qual,md5(with_check) as with_check from pg_policies where schemaname='public' and tablename='employment_payment_method_history' and policyname=any(${names}::text[]) order by policyname`;
+   expect(rows).toHaveLength(3);
+   for(const name of names)await tx.unsafe('drop policy '+name+' on public.employment_payment_method_history');
+   return rows;
   });
-  const combinedPolicies=[
+  const combinedPolicies:PolicyWitness[]=[
    {schemaname:'app',tablename:'movement_revert_capture',policyname:'movement_revert_capture_own_transaction',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'896d23c477ff98ba03c5f769806872cb',with_check:null},
    {schemaname:'app',tablename:'movement_revert_job_outcome',policyname:'movement_revert_job_outcome_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'dd91406dbf38ec27c75ca3c02598b2ad',with_check:null},
    {schemaname:'app',tablename:'movement_revert_job_outcome',policyname:'movement_revert_job_outcome_record',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'96504ac7df85a38ba60b8d60fb88d6e4'},
