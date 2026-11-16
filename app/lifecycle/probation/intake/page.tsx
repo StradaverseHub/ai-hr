@@ -3,6 +3,7 @@ import {notFound} from 'next/navigation';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
 import {probationActivationCounts,probationFormImports,probationIntakeCompanies,probationIntakeWorkspace} from '@/packs/probation/service';
 import {Intake} from './intake';
+import '../../../automation/pcg.css';
 export default async function Page({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){
  const ctx=await requireScopedLifecycleModule(),query=await searchParams,companies=await probationIntakeCompanies(ctx),company=typeof query.company==='string'?companies.find(c=>c.id===query.company):companies[0];if(!company)notFound();
  const[workspace,activation,imports]=await Promise.all([probationIntakeWorkspace(ctx,company.id),probationActivationCounts(ctx,companies.map(c=>c.id)),probationFormImports(ctx,company.id)]);
