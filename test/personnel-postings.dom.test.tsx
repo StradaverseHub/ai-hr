@@ -19,7 +19,7 @@ vi.mock('next/link',()=>({__esModule:true,
 afterEach(()=>{cleanup();vi.clearAllMocks();});
 const wrap=(node:ReactNode)=>render(<NextIntlClientProvider locale="en" messages={messages} onError={e=>{throw e;}}>{node}</NextIntlClientProvider>);
 
-const row=(over:Partial<PostingTableRow>):PostingTableRow=>({id:'00000000-0000-4000-8000-000000001043',label:'PP-1043',employmentId:'emp-aina',employeeName:'Fictional Aina',employeeCode:'F001',
+const row=(over:Partial<PostingTableRow>):PostingTableRow=>({id:'00000000-0000-4000-8000-000000001043',label:'PP-1043',employmentId:'emp-aina',employeeName:'Fictional Aina',employeeCode:'F001',source:'probation',
  eventType:'confirmation',proposed:{effectiveDate:'2026-11-24'},edited:null,current:{effectiveDate:'2026-11-24'},displayStatus:'pending',editedBy:null,editedAt:null,
  approvedBy:null,approvedAt:null,approverGroupName:'Fictional People Ops',createdAt:'2026-11-24T08:00:00Z',revision:1,canApprove:true,canEdit:true,...over});
 

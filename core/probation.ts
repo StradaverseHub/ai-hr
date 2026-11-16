@@ -272,7 +272,9 @@ const trackerFacetColumns=sql`c.data->'facts'->>'businessGroupId' as bg,c.data->
  */
 export function probationSummaryRows(ctx:SessionContext,filters:{companyId?:string;businessGroupId?:string;businessUnitId?:string;departmentId?:string;grade?:string;pbpUserId?:string;state?:string;search?:string;flag?:ProbationTrackerFlag;
  /** Only cases with work waiting on the caller (app.probation_task_list, the same owner as My Action Centre). */
- mine?:boolean;offset?:number;limit?:number}={}){return withProbationTenant(ctx,async tx=>{
+ mine?:boolean;
+ /** Tracker "Show closed cases" unticked: leave out Confirmed, Not confirmed and Withdrawn (incl. Did not join) cases. */
+ hideClosed?:boolean;offset?:number;limit?:number}={}){return withProbationTenant(ctx,async tx=>{
  const limit=Math.max(1,Math.min(100,Math.floor(filters.limit??50))),offset=Math.max(0,Math.min(100000,Math.floor(filters.offset??0)));
  const scope=trackerScope(ctx);
  const today=todayInKualaLumpur();
@@ -287,7 +289,7 @@ export function probationSummaryRows(ctx:SessionContext,filters:{companyId?:stri
  kpi_ack:anyPart(sql`p.data->>'type'='1' and p.data->>'managerSubmittedAt' is not null and p.data->>'acknowledgedAt' is null and p.data->>'state' not in('completed_offline','cancelled')`),
  overridden:anyPart(sql`p.data->>'override'='true' and p.data->>'state'<>'cancelled'`)};
  const scoped=sql`where c.tenant_id=${ctx.tenantId}::uuid ${scope?sql`and c.company_id=any(array[${sql.join(scope.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`:sql``}`;
- const conditions=sql`${scoped} ${filters.companyId?sql`and c.company_id=${uuid(filters.companyId)}::uuid`:sql``} ${filters.businessGroupId?sql`and c.data->'facts'->>'businessGroupId'=${uuid(filters.businessGroupId)}`:sql``} ${filters.businessUnitId?sql`and c.data->'facts'->>'businessUnitId'=${uuid(filters.businessUnitId)}`:sql``} ${filters.departmentId?sql`and c.data->'facts'->>'departmentId'=${uuid(filters.departmentId)}`:sql``} ${filters.grade?sql`and c.data->>'gradeAtStart'=${filters.grade}`:sql``} ${filters.pbpUserId?sql`and c.data->'facts'->'holders'->>'pbp'=${uuid(filters.pbpUserId)}`:sql``} ${filters.state?sql`and c.data->>'state'=${filters.state}`:sql``} ${filters.search?sql`and position(lower(${filters.search.trim().slice(0,100)}) in lower(c.data->'facts'->>'employeeName'))>0`:sql``} ${filters.mine?sql`and c.id in(select (task->>'caseId')::uuid from jsonb_array_elements(app.probation_task_list(null,200)->'items') task)`:sql``}`;
+ const conditions=sql`${scoped} ${filters.companyId?sql`and c.company_id=${uuid(filters.companyId)}::uuid`:sql``} ${filters.businessGroupId?sql`and c.data->'facts'->>'businessGroupId'=${uuid(filters.businessGroupId)}`:sql``} ${filters.businessUnitId?sql`and c.data->'facts'->>'businessUnitId'=${uuid(filters.businessUnitId)}`:sql``} ${filters.departmentId?sql`and c.data->'facts'->>'departmentId'=${uuid(filters.departmentId)}`:sql``} ${filters.grade?sql`and c.data->>'gradeAtStart'=${filters.grade}`:sql``} ${filters.pbpUserId?sql`and c.data->'facts'->'holders'->>'pbp'=${uuid(filters.pbpUserId)}`:sql``} ${filters.state?sql`and c.data->>'state'=${filters.state}`:sql``} ${filters.search?sql`and position(lower(${filters.search.trim().slice(0,100)}) in lower(c.data->'facts'->>'employeeName'))>0`:sql``} ${filters.mine?sql`and c.id in(select (task->>'caseId')::uuid from jsonb_array_elements(app.probation_task_list(null,200)->'items') task)`:sql``} ${filters.hideClosed?sql`and c.data->>'state' not in('confirmed','not_confirmed','withdrawn')`:sql``}`;
  type Counts={total:number;overdue:number;end_passed:number;ending14:number;low_result:number;kpi_submit:number;kpi_ack:number;overridden:number};
  const[result]=await tx.execute<{counts:Counts;rows:ProbationSummaryRow[];facets:ProbationTrackerFacet[]}>(sql`with vc as materialized (select * from app.probation_tracker_cases()),
   base as materialized (select c.* from vc c ${conditions}),

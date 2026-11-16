@@ -701,6 +701,11 @@ describe('scoped Probation employee-name filtering',()=>{
   expect((await probationSummaryRows(staff.ctx,{search:'Alice'})).rows).toEqual([]);
   await owner.db.execute(sql`update employment set grade_id=null where id=${second.employmentId}::uuid`);
   expect((await probationSummaryRows(admin,{businessGroupId:bg,grade:'15'})).rows[0].grade).toBe('15');
+  // Lane M1 "Show closed cases": closed cases stay listed by default and leave the list (and its counts) when unticked.
+  await owner.db.execute(sql`update probation_case set data=jsonb_set(data,'{state}','"confirmed"'::jsonb) where id=${id}::uuid`);
+  expect((await probationSummaryRows(admin)).rows.map(row=>row.id)).toContain(id);
+  const openOnly=await probationSummaryRows(admin,{hideClosed:true});
+  expect(openOnly.rows.map(row=>row.id)).not.toContain(id);expect(openOnly.rows.length).toBeGreaterThan(0);
  });
 });
 
