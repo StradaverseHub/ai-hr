@@ -552,3 +552,11 @@ employee search to a run's View page (owner approved the plan on the board, 16 N
 No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried forward to
 `c1baf4ee…` and the agent manifest regenerated (`bf8328ea…`), under the owner's standing pre-approval for staging
 re-binds (12 November 2026). Staging only.
+
+### Re-binding for the Information-Only Correction Effective-Date-only message (16 November 2026)
+
+`claude/info-correction-review-messages`, cut from main/alpha `ee02bba4d` (binding `c1baf4ee…`), adds a screen message
+when only the Effective Date differs (staging feedback, EMP-0004). Changed covered files: the six `messages/*.json`
+catalogues, in the provider-data scope only through the import graph. No provider transform, outbound field, purpose or
+transport changed. The 28 approvals were carried forward to `3656aa94…` and the agent manifest regenerated (`90c997db…`),
+under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.
