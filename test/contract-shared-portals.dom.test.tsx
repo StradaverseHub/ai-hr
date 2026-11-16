@@ -82,6 +82,7 @@ it('submits wording and completing review as one command and retains both after 
  fireEvent.click(screen.getByRole('button',{name:'Complete review and save wording'}));
  expect(await screen.findByRole('alert')).toHaveTextContent('Your entries are still here.');
  expect(screen.getByLabelText('Letter text')).toHaveValue('Reviewed wording');
+ await waitFor(()=>expect(screen.getByRole('button',{name:'Complete review and save wording'})).toBeEnabled());
  fireEvent.click(screen.getByRole('button',{name:'Complete review and save wording'}));
  await waitFor(()=>expect(actions.letter).toHaveBeenCalledTimes(2));
  expect(actions.letter.mock.calls[0][0]).toMatchObject({action:'reviewed',blocks:{intro:'Reviewed wording'},revision:1,hash});
