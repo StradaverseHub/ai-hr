@@ -36,6 +36,7 @@ import {pendingReviewCandidatesExistSql,pendingReviewTaskMetadata} from './emplo
 import {pendingPerformanceTasks} from '../packs/performance/service';
 import {pendingRewardTasks} from '../packs/rewards/service';
 import {pendingProbationTasks} from '../packs/probation/service';
+import {pendingContractSharedTasks} from '../packs/contracts/service';
 import type {PackTaskAction,PackTaskItem,PackTaskKind,PackTaskProvider} from '../lib/assigned-work';
 import type {AccountTaskBundle,AccountTaskModules,AccountTaskRead} from './account-task-bundle';
 
@@ -98,7 +99,8 @@ export type PendingTaskItem = {
  * next caller would inherit whichever was guessed. Making it a parameter puts the compiler on the hook.
  */
 export type InboxModules = { attendance: boolean; claims: boolean; performance: boolean; rewards: boolean;
-  /** Probation (Lifecycle): on for the tenant or for any scoped company. Mobile callers pass false (published kinds). */
+  /** Lifecycle work: compatibility name retained for existing callers. On for tenant or any scoped company.
+   * Includes shared Contract work. Mobile callers pass false because these kinds are web-owned. */
   probation: boolean };
 
 /**
@@ -119,6 +121,8 @@ const PACK_TASK_SOURCES:readonly {module:'performance'|'rewards'|'probation';loa
   {module:'rewards',load:pendingRewardTasks},
   // Probation: one bounded, set-based read of the caller's Approve steps and tasks (migration 5751).
   {module:'probation',load:pendingProbationTasks},
+  // The existing Lifecycle flag also gates Contract; each owner independently checks the actual company scope.
+  {module:'probation',load:pendingContractSharedTasks},
 ];
 
 type ApprovalOnlyTaskItem=Omit<PendingTaskItem,'kind'>&{kind:Exclude<PendingTaskKind,'noticeAcknowledgement'>};

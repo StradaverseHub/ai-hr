@@ -1,3 +1,8 @@
+<!-- 5830_contract_tracker_system_defaults -->
+# Contract tracker, system morning jobs and setup — 17 November 2026 MYT
+
+Owner `codex/contract-tracker-owner-20261117`, delegated by the Contract integration owner. Reserve **5830–5833**, idx **5230–5233**, when **1794841005830–1794841005833**. Parent refreshed a read-only survey of all263registered worktrees and found no competing5830–5849SQL claims. These are source allocations only, not installation authority; refresh installation watermarks and preserve ordered migration bytes at release. 5830 extends the set-based tracker; later entries carry fixed Contract system-job admission and mapped setup defaults.
+
 <!-- 5800_contract_shared_automation -->
 <!-- 5848_contract_shared_virtual_period -->
 <!-- 5890_contract_shared_forms -->
@@ -4038,3 +4043,7 @@ grant, function, column or row changes; existing rows already satisfy the wider 
 `1b92edf3fe85d66954e50f5677bc1cf5122f8fe92faf22db636181c5ed8503f8`. The approved upgrade tail pin
 (`test/helpers/approved-upgrade.ts`) and `test/tenant-company-fk-upgrade.test.ts` carry `5162`. Recheck peer claims and
 the installed ledger at admission. This entry carries no deployment authority.
+
+Contract screens owner: 5820–5821 (idx5220–5221, when1794841005820–5821), within the Contract5810–5829 block reserved by the parent. Shaped workspace/configuration/recovery reads and canonical assigned-work projections; normal hosted migration verification. Tracker5818–5819 are prerequisites, and sibling5830 remains ordered afterward.
+
+Contract screens forward block5896–5899 (idx5296–5299, when1794841005896–5899) reserved by the parent after its fresh267-worktree survey found no claims. 5896 repairs5820's runtime FOUND alias collision and exposes the current canonical signer caption; 5820/5821SQL and pinned hashes remain unchanged. Failed focusedrun43944670408 is retained.

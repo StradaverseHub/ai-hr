@@ -1,6 +1,7 @@
 'use client';
 import {useLocale,useTranslations} from 'next-intl';
 import {useOnboardingCopy} from '@/lib/onboarding-copy';
+import {useContractSharedCopy} from '@/lib/contract-shared-copy';
 import {lazy,Suspense,useEffect,useState} from 'react';
 const ResignationOffboardingDocuments=lazy(()=>import('@/components/resignation/offboarding-documents').then(module=>({default:module.ResignationOffboardingDocuments})));
 import Link from 'next/link';
@@ -33,7 +34,7 @@ export function OffboardingCaseView({c, config, users, actor, personnelWritableK
  c:M.Case;config:M.Config;users:Workspace['options']['users'];actor:M.Actor;personnelWritableKeys:string[];busy:boolean;
  command:(value:Command)=>Promise<{ok:boolean;error?:string}>;onDocument:(document:M.Document)=>void;onReason:(type:'cancel'|'reopen')=>void;onOpenWorkflow:(id:string)=>void;onBack:()=>void;canOpenTasks?:boolean;canConfigure?:boolean;today?:string;
 }){
- const copy=useOnboardingCopy(),locale=useLocale(),t=useTranslations('resignationJourney');
+ const copy=useOnboardingCopy(),contractCopy=useContractSharedCopy(),locale=useLocale(),t=useTranslations('resignationJourney');
  const [detail,setDetail]=useState<LifecycleV9CaseDetail|null>(null),[detailError,setDetailError]=useState(''),[detailLoaded,setDetailLoaded]=useState(false),[detailAttempt,setDetailAttempt]=useState(0),[manualTemplate,setManualTemplate]=useState('');
  useEffect(()=>{let active=true;setDetail(null);setDetailError('');setDetailLoaded(false);void readV9Case(c.id).then(result=>{if(!active)return;if(result?.ok)setDetail(result.detail);else setDetailError(result?.error??t('failed'));}).catch(()=>{if(active)setDetailError(t('failed'));}).finally(()=>{if(active)setDetailLoaded(true);});return()=>{active=false;};},[c.id,c.revision,detailAttempt,t]);
  const [editing,setEditing]=useState(c.state==='pending'),[error,setError]=useState('');
@@ -59,6 +60,7 @@ export function OffboardingCaseView({c, config, users, actor, personnelWritableK
    {c.state==='cleared'&&<Button variant="outline" onClick={()=>onReason('reopen')}>{copy('Reopen case')}</Button>}
    {['pending','submitted'].includes(c.state)&&!editing&&<Button variant="outline" onClick={()=>setEditing(true)}>{copy('Edit details')}</Button>}
   </>}/>
+  {c.contractSharedSourceCaseId&&<div className="v9-notice" role="status"><strong>{contractCopy('Contract Management handoff')}</strong><p>{contractCopy(c.state==='cleared'?'Offboarding clearance completed.':'Offboarding clearance pending.')} {contractCopy('People Ops records termination manually in Personnel Management. Contract Management does not end employment automatically.')}</p><Link href={`/lifecycle/contracts/${encodeURIComponent(c.contractSharedSourceCaseId)}`}>{contractCopy('Open source Contract case')}</Link></div>}
   <CaseSummaryCards>
    <CaseSummaryCard label={copy('Last working day')} value={date(c.facts.lastDay)} detail={<>{onboardingRelative(c.facts.lastDay,today,locale)} · Access revoked {date(c.revokeDate)}</>}/>
    <CaseSummaryCard label={copy('Case status')} value={<OnboardingBadge tone={tone}>{copy(status)}</OnboardingBadge>} detail={first?<>{first.detail} · {onboardingTimestamp(first.at)}</>:'Source not recorded'}/>

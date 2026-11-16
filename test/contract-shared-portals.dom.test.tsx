@@ -1,0 +1,61 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+import {fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {NextIntlClientProvider} from 'next-intl';
+import en from '../messages/en.json';
+import {SharedApprovalPage} from '../app/lifecycle/contracts/approvals/[approvalId]/review';
+import {SharedLetterPage} from '../app/lifecycle/contracts/letters/[letterId]/review';
+import type {ContractSharedApproval,ContractSharedLetter} from '../packs/contracts/service';
+import {automationDocument} from '../lib/automation-document';
+const actions=vi.hoisted(()=>({approval:vi.fn(),letter:vi.fn(),edit:vi.fn(),bind:vi.fn()}));
+vi.mock('../app/lifecycle/contracts/shared-actions',()=>({actSharedApproval:actions.approval,actSharedLetter:actions.letter,editSharedLetter:actions.edit,bindSharedEmployee:actions.bind}));
+vi.mock('next/navigation',()=>({usePathname:()=>'/tasks'}));
+const caseId='b1fa7485-70d8-4403-9dab-815da20b2e01',id='aab5d59c-c75f-4dc2-9d4a-45865ea8ff81',hash='a'.repeat(64);
+function approval():ContractSharedApproval{return {id,caseId,decisionRevision:3,employeeName:'Fictional Contract Employee',employeeCode:'FC-7',company:'Fictional Company',decision:{kind:'renew',startOn:'2027-01-01',endOn:'2027-12-31',months:12,payChanges:true,salaryCents:'521012',reason:'Retain specialist work',endReason:null,submittedBy:'proposer',submittedAt:'2026-11-16T00:00:00Z',revision:3},period:{id:'period',startOn:'2026-01-01',endOn:'2026-12-31',number:'4',sourceRevision:hash},contentRevision:1,contentHash:hash,pendingLayerId:'ceo',canAct:true,status:'pending',layers:[{id:'ceo',label:'CEO',stage:1,assigneeName:'Fictional CEO',fulfilled:false}],history:[]};}
+function letter():ContractSharedLetter{return {id,caseId,decisionRevision:3,templateId:'template',templateVersion:2,name:'Fictional renewal letter',generatedOn:'2026-11-16T00:00:00Z',state:'routing',valuesFixed:false,releasedAt:null,contentRevision:1,contentHash:hash,returned:false,canEdit:false,canResend:false,pendingAction:{stepId:'employee',kind:'sign'},layers:[{id:'employee',label:'Employee',stage:2,kind:'sign',owner:false,assigneeName:'Fictional Employee',unavailable:false,fulfilled:false}],history:[],body:null};}
+const document=automationDocument({id,name:'Fictional renewal letter',templateId:'template',templateVersion:2,blocks:[{id:'intro',type:'text',text:'Dear Fictional Employee',section:''}],fields:[],merge:{},createdAt:'2026-11-16T00:00:00Z'});
+function mount(ui:React.ReactNode){return render(<NextIntlClientProvider locale="en" messages={en}>{ui}</NextIntlClientProvider>);}
+beforeEach(()=>{vi.clearAllMocks();});
+it('requires a rejection reason, posts the exact displayed revision and retains a failed reason',async()=>{
+ actions.approval.mockResolvedValue({ok:false,error:'The decision changed. Reload before acting.'});
+ mount(<SharedApprovalPage approval={approval()}/>);
+ expect(screen.getByRole('button',{name:'Reject and return decision'})).toBeDisabled();
+ fireEvent.change(screen.getByLabelText('Comment / reason for rejection'),{target:{value:'Please explain the new term.'}});
+ fireEvent.click(screen.getByRole('button',{name:'Reject and return decision'}));
+ expect(await screen.findByRole('alert')).toHaveTextContent('The decision changed.');
+ expect(screen.getByLabelText('Comment / reason for rejection')).toHaveValue('Please explain the new term.');
+ expect(actions.approval).toHaveBeenCalledWith(expect.objectContaining({id,layerId:'ceo',revision:1,hash,action:'reject',reason:'Please explain the new term.'}));
+ expect(Object.keys(actions.approval.mock.calls[0][0]).sort()).toEqual(['action','actionId','hash','id','layerId','reason','revision']);
+});
+it('keeps the employee portal focused on the assigned letter and requires signature consent',async()=>{
+ const value=letter();actions.letter.mockResolvedValue({ok:true,value:{letter:{...value,state:'released',valuesFixed:true,pendingAction:null,releasedAt:'2026-11-17T00:00:00Z'},document}});
+ mount(<SharedLetterPage letter={value} document={document}/>);
+ expect(screen.queryByRole('link',{name:'Open Personnel record'})).not.toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'Accept and sign contract'})).toBeDisabled();
+ fireEvent.change(screen.getByLabelText('Type your full name'),{target:{value:'Fictional Employee'}});
+ expect(screen.getByRole('button',{name:'Accept and sign contract'})).toBeDisabled();
+ fireEvent.click(screen.getByRole('checkbox',{name:'I confirm this is my signature and agree to sign this contract.'}));
+ fireEvent.click(screen.getByRole('button',{name:'Accept and sign contract'}));
+ await waitFor(()=>expect(actions.letter).toHaveBeenCalledOnce());
+ expect(actions.letter).toHaveBeenCalledWith(expect.objectContaining({id,stepId:'employee',revision:1,hash,action:'signed',method:'typed',value:'Fictional Employee',consent:true}));
+ expect(await screen.findByText(/Released 17\/11\/2026/)).toBeInTheDocument();
+});
+it('requires a send-back reason and offers owner resend only after the native owner grants it',async()=>{
+ const value={...letter(),pendingAction:{stepId:'reviewer',kind:'review' as const}};
+ actions.letter.mockResolvedValue({ok:true,value:{letter:{...value,returned:true,pendingAction:null},document}});
+ const mounted=mount(<SharedLetterPage letter={value} document={document}/>);
+ expect(screen.getByRole('button',{name:'Send back to owner'})).toBeDisabled();
+ fireEvent.change(screen.getByLabelText('Comment / reason for sending back'),{target:{value:'Please correct the wording.'}});
+ fireEvent.click(screen.getByRole('button',{name:'Send back to owner'}));
+ await waitFor(()=>expect(actions.letter).toHaveBeenCalledWith(expect.objectContaining({action:'returned',comment:'Please correct the wording.'})));
+ expect(screen.queryByRole('button',{name:'Resend letter'})).not.toBeInTheDocument();
+ mounted.unmount();
+ mount(<SharedLetterPage letter={{...value,returned:true,canResend:true,pendingAction:null,layers:[{id:'owner',label:'People BP',stage:1,kind:'review',owner:true,assigneeName:'Fictional BP',fulfilled:false,unavailable:false}]}} document={document}/>);
+ expect(screen.getByRole('button',{name:'Resend letter'})).toBeEnabled();
+});
+it('does not expose wording or actions while the body is held for a later routing step',()=>{
+ mount(<SharedLetterPage letter={{...letter(),pendingAction:null,contentHash:null}} document={null}/>);
+ expect(screen.getByText(/body becomes available when your routing step is active/)).toBeInTheDocument();
+ expect(screen.queryByRole('button',{name:'Accept and sign contract'})).not.toBeInTheDocument();
+ expect(screen.queryByRole('button',{name:'Edit wording for this case'})).not.toBeInTheDocument();
+ expect(screen.queryByRole('link',{name:'Download PDF'})).not.toBeInTheDocument();
+});

@@ -6310,10 +6310,52 @@
       "breakpoints": true
     },
     {
+      "idx": 5218,
+      "version": "7",
+      "when": 1794841005818,
+      "tag": "5818_contract_shared_tracker",
+      "breakpoints": true
+    },
+    {
+      "idx": 5219,
+      "version": "7",
+      "when": 1794841005819,
+      "tag": "5819_contract_shared_period_open",
+      "breakpoints": true
+    },
+    {
+      "idx": 5220,
+      "version": "7",
+      "when": 1794841005820,
+      "tag": "5820_contract_shared_case_workspace",
+      "breakpoints": true
+    },
+    {
+      "idx": 5221,
+      "version": "7",
+      "when": 1794841005821,
+      "tag": "5821_contract_shared_assigned_work",
+      "breakpoints": true
+    },
+    {
+      "idx": 5230,
+      "version": "7",
+      "when": 1794841005830,
+      "tag": "5830_contract_shared_tracker_choices",
+      "breakpoints": true
+    },
+    {
       "idx": 5235,
       "version": "7",
       "when": 1794841005835,
       "tag": "5835_contract_shared_review_wording",
+      "breakpoints": true
+    },
+    {
+      "idx": 5296,
+      "version": "7",
+      "when": 1794841005896,
+      "tag": "5896_contract_shared_directory_and_signer_caption",
       "breakpoints": true
     }
   ]

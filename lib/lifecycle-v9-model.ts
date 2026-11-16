@@ -179,6 +179,11 @@ export type Mail = {
 export type PMChange = { id: string; documentId: string; field: string; before: string; after: string; status: 'proposed' | 'pushed' | 'conflict' | 'rejected'; sourceRevision: string };
 export type FinalFigures = { sourceRevision: string; lastDay: string; leaveDays: string; amount: string; currency: string; payDate: string; lockedAt: string; payrollReference: string };
 export type Case = {
+  /** Native Contract handoff receipt. Absence preserves earlier On/Off Boarding case behaviour. */
+  contractSharedSourceCaseId?:string;
+  contractSharedSourceLetter?:{letterId:string;signingDocumentId:string;hash:string};
+  contractSharedTerminationReason?:string;
+  contractSharedClearance?:'pending-manual-personnel';
   version: 9; id: string; number: string; module: Module; revision: number; state: CaseState;
   facts: Facts; checklistId: string | null; checklistName: string; override: 'automatic' | 'none' | string;
   tasks: Task[]; items: Item[]; documents: Document[]; runs: Run[]; mails: Mail[];
