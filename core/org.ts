@@ -1,3 +1,4 @@
+import {assertEmploymentInformationDateOrder} from '../lib/employment-information-date-order';
 import {MOVEMENT_INFORMATION_FIELDS} from '../lib/movement-information-evidence';
 import {markWorkforcePayrollInputsChangedTx} from './workforce-payroll-invalidation';
 import {lockEmploymentStatutoryOwnerTx} from './employment-statutory-owner-lock';
@@ -3087,6 +3088,17 @@ const EMPLOYMENT_INFO_UNIT_FIELDS = [
   'noticeAfterConfirmationUnit',
 ] as const;
 
+/** Shared catalog adjudication for current information and original-hire assertions. */
+export async function assertEmploymentInformationLabelsTx(tx:Tx,changes:Record<string,unknown>,before:Record<string,unknown>,companyId:string|null){
+ for(const field of EMPLOYMENT_INFO_TEXT_FIELDS){
+  if(!(field in changes))continue;
+  const category=EMPLOYMENT_INFO_FIELD_CATEGORY[field];if(!category)continue;
+  const next=changes[field],prior=before[field];
+  if(next!==null&&typeof next!=='string')throw new Error('An invalid employment information label was supplied.');
+  await assertProfileValueAllowed(tx,category,next as string|null,typeof prior==='string'?prior:null,companyId);
+ }
+}
+
 export { EMPLOYMENT_PERIOD_UNITS } from '../lib/employment-period';
 
 const EMPLOYMENT_INFO_DATE_FIELDS = [
@@ -3402,18 +3414,7 @@ export async function setEmploymentInfo(
     // 1001ff61 — the org/job fields are now catalog-backed dropdowns. Reject a value that is not an ACTIVE
     // profile_option for its category (empty-catalog tenants keep free-text; the unchanged legacy value is
     // always tolerated). Runs in this tx so it shares the RLS session; a violation aborts before the write.
-    for (const f of EMPLOYMENT_INFO_TEXT_FIELDS) {
-      if (!(f in set)) continue;
-      const category = EMPLOYMENT_INFO_FIELD_CATEGORY[f];
-      if (!category) continue;
-      await assertProfileValueAllowed(
-        tx,
-        category,
-        set[f] as string | null,
-        (before as Record<string, string | null>)[f],
-        labelEmployment?.companyId??null,
-      );
-    }
+    await assertEmploymentInformationLabelsTx(tx,set,before as unknown as Record<string,unknown>,labelEmployment?.companyId??null);
 
     // 89ea527b — a Group Join Date Correction on an employment whose two dates are still SYNCHRONISED carries
     // the Join Date with it. The dates start identical (hireEmployee seeds joinDate = hiredOn) and only
@@ -3437,49 +3438,10 @@ export async function setEmploymentInfo(
     const join = 'joinDate' in set ? (set.joinDate as string | null) : before.joinDate;
     const confirmation = 'confirmationDate' in set ? (set.confirmationDate as string | null) : before.confirmationDate;
     const resignation = 'resignationDate' in set ? (set.resignationDate as string | null) : before.resignationDate;
-    // The current-company Join Date can never precede the Group Join Date (you cannot join a company inside the
-    // group before joining the group). Resolves against the RESULTING values so a save of either date is checked.
-    if (join && hire && join < hire) {
-      throw new Error('Join date cannot be earlier than the group join date.');
-    }
-    if (confirmation && hire && confirmation < hire) {
-      throw new Error('Confirmation date cannot be earlier than the hire date.');
-    }
-    if (resignation && hire && resignation < hire) {
-      throw new Error('Resignation date cannot be earlier than the hire date.');
-    }
-
-    // 955c7de4 — lifecycle date-ordering, all resolved against the RESULTING values (incoming override →
-    // existing), so a save of any single date is still validated against the stored siblings.
-    const extendedConfirmation =
-      'extendedConfirmationDate' in set
-        ? (set.extendedConfirmationDate as string | null)
-        : before.extendedConfirmationDate;
-    const tender =
-      'tenderResignationDate' in set ? (set.tenderResignationDate as string | null) : before.tenderResignationDate;
-    const lastWorking = 'lastWorkingDate' in set ? (set.lastWorkingDate as string | null) : before.lastWorkingDate;
-
-    // An extended confirmation (after a probation extension) can never precede the normal confirmation date.
-    if (extendedConfirmation && confirmation && extendedConfirmation < confirmation) {
-      throw new Error('Extended confirmation date cannot be earlier than the confirmation date.');
-    }
-    // Resignation lifecycle ordering: tender ≤ resignation ≤ last working (only pairs that are both present).
-    if (tender && resignation && tender > resignation) {
-      throw new Error('Tender resignation date cannot be later than the resignation date.');
-    }
-    if (resignation && lastWorking && resignation > lastWorking) {
-      throw new Error('Resignation date cannot be later than the last working date.');
-    }
-    if (tender && lastWorking && tender > lastWorking) {
-      throw new Error('Tender resignation date cannot be later than the last working date.');
-    }
-    // Tender/last-working, like the other lifecycle dates, cannot precede the group join date.
-    if (tender && hire && tender < hire) {
-      throw new Error('Tender resignation date cannot be earlier than the hire date.');
-    }
-    if (lastWorking && hire && lastWorking < hire) {
-      throw new Error('Last working date cannot be earlier than the hire date.');
-    }
+    const extendedConfirmation='extendedConfirmationDate' in set?(set.extendedConfirmationDate as string|null):before.extendedConfirmationDate;
+    const tender='tenderResignationDate' in set?(set.tenderResignationDate as string|null):before.tenderResignationDate;
+    const lastWorking='lastWorkingDate' in set?(set.lastWorkingDate as string|null):before.lastWorkingDate;
+    assertEmploymentInformationDateOrder({hire,join,confirmation,extendedConfirmation,tender,resignation,lastWorking});
 
     // 8590615a — the contract period, resolved against the RESULTING values like every check above.
     const contractStart =

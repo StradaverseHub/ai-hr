@@ -1,4 +1,8 @@
 'use client';
+import {EMPLOYMENT_INFORMATION_ROW,EMPLOYMENT_INFORMATION_HEADER} from '@/lib/employment-information-layout';
+import {PaymentMethodField} from '@/components/payment-method-field';
+import type {HireEmploymentInformationField} from '@/core/hire-employment-information';
+import type {PaymentMethod} from '@/lib/payment-methods';
 import {DerivedOrganisationFields,useDerivedOrganisation} from '@/components/derived-organisation-fields';
 
 // c063eea9 — client half of "Correct hire details" on the Hired row.
@@ -43,7 +47,7 @@ export type HireCorrectionFormField = {
   reachesCurrent: boolean;
 };
 
-export type HireInformationControl={field:'companyId'|'hiredOn'|'joinDate'|'gradeId'|'employmentType';label:string;value:string|null;display:string;type:'date'|'select';required?:boolean;options?:HireCorrectionOption[]};
+export type HireInformationControl={field:HireEmploymentInformationField;label:string;value:string|null;display:string;type:'date'|'select'|'number'|'text';required?:boolean;fieldId?:string;options?:HireCorrectionOption[]};
 
 export type HireCorrectionReadOnlyRow = {
   key: string;
@@ -66,6 +70,8 @@ export function HireCorrectionForm({
   fields,
   salaryAtHire,
   information=[],
+  contextFields=[],
+  paymentMethodAtHire,
   endDate:savedEndDate,
   readOnly,
   cancelHref,
@@ -77,6 +83,8 @@ export function HireCorrectionForm({
   fields: HireCorrectionFormField[];
   salaryAtHire?: { amount: string; currency: string };
   information?:HireInformationControl[];
+  contextFields?:{field:string;label:string;value:string|null}[];
+  paymentMethodAtHire?:PaymentMethod|null;
   /** 2260a06b — the current Employee Type's end date (Contract End Date / Internship End Date). */
   endDate?: { field: 'contractEndDate' | 'internshipEndDate'; value: string | null };
   readOnly: HireCorrectionReadOnlyRow[];
@@ -98,6 +106,8 @@ export function HireCorrectionForm({
     Object.fromEntries(fields.map((f) => [f.field, f.currentId ?? ''])),
   );
   const [reason, setReason] = useState('');
+  const [paymentMethod,setPaymentMethod]=useState<string>(paymentMethodAtHire??'');
+  const methodChanged=paymentMethod!==(paymentMethodAtHire??'');
   const [salary, setSalary] = useState(salaryAtHire?.amount ?? '');
   const salaryChanged = !!salaryAtHire && salary !== '' && Number(salary) !== Number(salaryAtHire.amount);
   const salaryLabel = tRoot('people.detail.movement.field.basicSalary');
@@ -131,7 +141,7 @@ export function HireCorrectionForm({
     return [...byRecord.entries()].map(([record, labels]) => t('recordFields', { record, fields: labels.join(', ') }));
   }, [changed, t]);
 
-  const canReview = (changed.length > 0 || informationChanged.length>0 || salaryChanged || endChanged) && reason.trim().length > 0;
+  const canReview = (changed.length > 0 || informationChanged.length>0 || salaryChanged || endChanged || methodChanged) && reason.trim().length > 0;
 
   return (
     <form ref={formRef} aria-busy={pagePending} action={pageContext?pageAction:correctHireDetailsAction}>
@@ -149,18 +159,18 @@ export function HireCorrectionForm({
         <span className="text-sm text-muted-foreground">{heading}</span>
       </div>
 
-      <div className="hidden bg-muted/50 px-4 py-2 text-xs uppercase tracking-wide text-muted-foreground sm:grid sm:grid-cols-[13rem_minmax(0,1fr)_minmax(0,1fr)] sm:gap-4">
+      <div className={EMPLOYMENT_INFORMATION_HEADER}>
         <div className="font-medium">{t('colField')}</div>
         <div className="font-medium">{tRoot('people.detail.movement.detail.beforeChanges')}</div>
         <div className="font-medium">{tRoot('people.detail.movement.detail.afterChanges')}</div>
       </div>
 
       <div className="divide-y divide-border">
-        {information.map(field=><div key={field.field} className="grid gap-2 px-4 py-3 sm:grid-cols-[13rem_minmax(0,1fr)_minmax(0,1fr)] sm:items-center sm:gap-4">
+        {information.map(field=><div key={field.field} className={EMPLOYMENT_INFORMATION_ROW}>
           <label htmlFor={'hire-information-'+field.field} className="text-sm text-muted-foreground">{field.label}</label>
           <div className="text-sm">{field.display}</div>
-          {field.type==='date'?<input id={'hire-information-'+field.field} type="date" value={informationValues[field.field]??''} required={field.required} onChange={event=>setInformationValues(previous=>({...previous,[field.field]:event.target.value}))} className={selectCls}/>:
-          <select id={'hire-information-'+field.field} value={informationValues[field.field]??''} required={field.required} onChange={event=>setInformationValues(previous=>({...previous,[field.field]:event.target.value}))} className={selectCls}>
+          {field.type!=='select'?<input data-personnel-field={field.fieldId} id={'hire-information-'+field.field} type={field.type} min={field.type==='number'?0:undefined} step={field.type==='number'?1:undefined} value={informationValues[field.field]??''} required={field.required} onChange={event=>setInformationValues(previous=>({...previous,[field.field]:event.target.value}))} className={selectCls}/>:
+          <select data-personnel-field={field.fieldId} id={'hire-information-'+field.field} value={informationValues[field.field]??''} required={field.required} onChange={event=>setInformationValues(previous=>({...previous,[field.field]:event.target.value}))} className={selectCls}>
             {!field.required&&<option value="">{t('none')}</option>}
             {field.value&&!field.options?.some(option=>option.id===field.value)&&<option value={field.value}>{field.display}</option>}
             {field.options?.map(option=><option key={option.id} value={option.id}>{option.name}</option>)}
@@ -176,7 +186,7 @@ export function HireCorrectionForm({
           return (
             <div
               key={f.field}
-              className={`grid gap-2 px-4 py-3 sm:grid-cols-[13rem_minmax(0,1fr)_minmax(0,1fr)] sm:items-center sm:gap-4 ${isChanged ? 'bg-primary/5' : ''}`}
+              className={`${EMPLOYMENT_INFORMATION_ROW} ${isChanged ? 'bg-primary/5' : ''}`}
             >
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <span>{fieldLabel(f.field)}</span>
@@ -256,6 +266,15 @@ export function HireCorrectionForm({
         </div>
       )}
 
+      {!!contextFields.length&&<div className="divide-y divide-border border-t border-border">{contextFields.filter(field=>field.field!==endField).map(field=><div key={field.field} className={EMPLOYMENT_INFORMATION_ROW}>
+        <div className="text-sm text-muted-foreground">{field.label}</div><div className="text-sm">{field.value??'—'}</div><div className="text-sm text-muted-foreground">{field.value??'—'}</div>
+      </div>)}</div>}
+      {paymentMethodAtHire!==undefined&&<div className={EMPLOYMENT_INFORMATION_ROW}>
+        <div className="text-sm text-muted-foreground">{tRoot('people.detail.paymentMethod')}</div>
+        <div className="text-sm">{paymentMethodAtHire?tRoot('people.detail.paymentMethod_'+paymentMethodAtHire):'—'}</div>
+        <div><PaymentMethodField mode="controlled" value={paymentMethod} onChange={setPaymentMethod}/>{methodChanged&&<input type="hidden" name="hirePaymentMethod" value={paymentMethod}/>}</div>
+      </div>}
+
       <label className="block px-4 pt-4">
         <span className="mb-1 block text-sm font-medium text-foreground">
           {reasonLabel} <span className="text-destructive">{t('required')}</span>
@@ -302,6 +321,7 @@ export function HireCorrectionForm({
               <AlertDialog.Description asChild>
                 <div className="mt-4 divide-y divide-border rounded-md border border-border text-sm">
                   {informationChanged.map(field=><div key={field.field} className="px-3 py-2">{field.label} · {field.display} → {informationLabel(field,informationValues[field.field]||null)}</div>)}
+                  {methodChanged&&<div className="px-3 py-2">{tRoot('people.detail.paymentMethod')} · {paymentMethodAtHire?tRoot('people.detail.paymentMethod_'+paymentMethodAtHire):'—'} → {paymentMethod?tRoot('people.detail.paymentMethod_'+paymentMethod):'—'}</div>}
                   {salaryChanged && salaryAtHire && <div className="px-3 py-2">
                     {salaryLabel} ({salaryAtHire.currency}) · {salaryAtHire.amount} → {salary}
                   </div>}

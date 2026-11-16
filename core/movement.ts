@@ -2156,6 +2156,11 @@ async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:str
  * dispatcher must compare like for like.
  */
 export type MovementCurrentState = {
+  groupJoinDate?:string|null;
+  tenderResignationDate?:string|null;
+  resignationDate?:string|null;
+  lastWorkingDate?:string|null;
+  extendedConfirmationDate?:string|null;
   companyName: string | null;
   /** b7b22514 — the raw id, because Entity Transfer is the one kind that DIFFS this field. `companyName`
    *  stays for the read-only left column every other kind renders; the dispatcher compares ids. */
@@ -2193,6 +2198,11 @@ async function currentStateTx(tx: Tx, employmentId: string,asOf=todayInKualaLump
       noticeBeforeConfirmationUnit: sql<string | null>`case when coalesce(${employment.noticeBeforeConfirmationValue}, ${employment.resignationNoticeMonths}) is not null then coalesce(${employment.noticeBeforeConfirmationUnit}, 'month') else ${employment.noticeBeforeConfirmationUnit} end`,
       noticeAfterConfirmationValue: employment.noticeAfterConfirmationValue,
       noticeAfterConfirmationUnit: employment.noticeAfterConfirmationUnit,
+      groupJoinDate:employment.hiredOn,
+      tenderResignationDate:employment.tenderResignationDate,
+      resignationDate:employment.resignationDate,
+      lastWorkingDate:employment.lastWorkingDate,
+      extendedConfirmationDate:employment.extendedConfirmationDate,
       gradeId: employment.gradeId,
       companyName: company.legalName,
       companyId: employment.companyId,
@@ -2268,6 +2278,11 @@ async function currentStateTx(tx: Tx, employmentId: string,asOf=todayInKualaLump
 
   return {
     ...Object.fromEntries(MOVEMENT_EMPLOYMENT_PERIOD_FIELDS.map(field => [field, movementPeriodValue(emp[field])])) as Record<MovementEmploymentPeriodField, string | null>,
+    groupJoinDate:emp.groupJoinDate,
+    tenderResignationDate:emp.tenderResignationDate,
+    resignationDate:emp.resignationDate,
+    lastWorkingDate:emp.lastWorkingDate,
+    extendedConfirmationDate:emp.extendedConfirmationDate,
     companyName: emp.companyName,
     companyId: emp.companyId,
     joinDate: emp.joinDate,

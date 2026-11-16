@@ -1708,6 +1708,7 @@
         },
         "detail": {
           "eventInformation": "事件信息",
+          "companyReviewNeeded": "更正原入职公司后，请检查以下设置：",
           "notRecorded": "此事件历史中未记录",
           "scheduledValues": "计划／拟议值",
           "scheduledValuesNote": "以下是为此计划事件保存的目标值，尚未生效。仅显示明确提交的字段。",

@@ -1,4 +1,6 @@
 'use client';
+import {EMPLOYMENT_INFORMATION_ROW,EMPLOYMENT_INFORMATION_HEADER} from '@/lib/employment-information-layout';
+import {formatDmy} from '@/lib/date-display';
 import { EmploymentPeriodValueControl, EmploymentPeriodUnitControl } from '@/components/employment-period-fields';
 import { MOVEMENT_EMPLOYMENT_PERIODS, type MovementEmploymentPeriods, type MovementEmploymentPeriodField } from '@/lib/movement-employment-periods';
 import { ActionButton } from '@/components/ui/action-button';
@@ -49,6 +51,13 @@ export type MovementOrgScope = {
 
 /** The employee's current record, as the server read it — ids for pickers, text for the flat columns. */
 export type MovementCurrentValues = MovementEmploymentPeriods & {
+  groupJoinDate?:string|null;
+  joinDate?:string|null;
+  contractStartDate?:string|null;
+  extendedConfirmationDate?:string|null;
+  tenderResignationDate?:string|null;
+  resignationDate?:string|null;
+  lastWorkingDate?:string|null;
   companyName: string | null;
   /** b7b22514 — the raw id, because Entity Transfer makes Company an editable field and a select needs a
    *  value, not a label. Every other kind still renders `companyName` read-only. */
@@ -276,6 +285,7 @@ export function MovementNewEvent({
     ...(edit?.availableClosedPayrollPeriods ?? closedPayrollPeriods).filter(period => period >= proposedMonth),
   ])].sort();
   const saved = edit?.pendingInput;
+  const [lifecycleTargets,setLifecycleTargets]=useState<Record<string,string>>({});
   const after = {...current,...saved};
   // 2260a06b — the end-date row follows the Employee Type picked in this form (Contract → Contract End Date,
   // Intern → Internship End Date, Full-Time / Part-Time → neither), so the select is tracked here.
@@ -419,13 +429,13 @@ export function MovementNewEvent({
   const row = (field: MovementRuleField, key: string, label: string, currentDisplay: string | null, control: React.ReactNode) => {
     const rule = ruleFor(field);
     if (!rule.included) return null;
-    const readOnly = !rule.editable;
+    const readOnly = !rule.editable||!isComparison;
     return (
       <div
         key={key}
         data-field={field}
         data-must-change={rule.mustChange ? 'true' : undefined}
-        className="grid grid-cols-1 gap-1 border-b border-border px-4 py-2.5 last:border-b-0 sm:grid-cols-[11rem_minmax(0,1fr)_minmax(0,1fr)] sm:items-center sm:gap-4"
+        className={EMPLOYMENT_INFORMATION_ROW}
       >
         <div className="text-xs font-medium text-muted-foreground">
           {label}
@@ -515,7 +525,20 @@ export function MovementNewEvent({
       </select>
     </label>
   );
+  const dateContext=(field:string,title:string,before:string|null|undefined,afterValue=before)=>
+    <div key={field} data-employment-information={field} className={EMPLOYMENT_INFORMATION_ROW}>
+      <div className="text-xs font-medium text-muted-foreground">{title}</div>
+      <div className="text-sm">{before===undefined?t('detail.notRecorded'):before?formatDmy(before):'—'}</div>
+      <div className="text-sm">{afterValue===undefined?t('detail.notRecorded'):afterValue?formatDmy(afterValue):'—'}</div>
+    </div>;
   const comparisonRows: React.ReactNode[] = [
+    dateContext('groupJoinDate',tRoot('people.detail.employmentInfo.groupJoinDate'),current.groupJoinDate,behaviour==='groupJoinDateCorrection'?correctionDate:current.groupJoinDate),
+    dateContext('joinDate',tRoot('people.detail.employmentInfo.joinDate'),current.joinDate,['joinDateChange','entityTransfer'].includes(behaviour)?correctionDate:current.joinDate),
+    dateContext('contractStartDate',label('employment.employment_dates_and_service.contractstartdate'),current.contractStartDate,afterType==='contract'&&current.employmentType!=='contract'?correctionDate:current.contractStartDate),
+    dateContext('extendedConfirmationDate',tRoot('people.import.movement.currentFields.extendedConfirmationDate'),current.extendedConfirmationDate,behaviour==='probationExtension'?lifecycleTargets.endDate??edit?.endDate??null:current.extendedConfirmationDate),
+    dateContext('tenderResignationDate',label('employment.employment_dates_and_service.tenderresignationdate'),current.tenderResignationDate,behaviour==='resignation'?lifecycleTargets.tenderResignationDate??saved?.tenderResignationDate??edit?.effectiveDate??null:current.tenderResignationDate),
+    dateContext('resignationDate',label('employment.employment_dates_and_service.resignationdate'),current.resignationDate,behaviour==='resignation'?lifecycleTargets.resignationEffectiveDate??saved?.resignationEffectiveDate??null:current.resignationDate),
+    dateContext('lastWorkingDate',label('employment.employment_dates_and_service.lastworkingdate'),current.lastWorkingDate,['resignation','termination'].includes(behaviour)?lifecycleTargets.endDate??lifecycleTargets.lastWorkingDate??edit?.endDate??correctionDate:current.lastWorkingDate),
     /**
      * b7b22514 — THE ONE PLACE COMPANY IS EDITABLE, and only on this one event type. Everywhere else it
      * stays the read-only note it has always been: moving an employee between legal entities re-homes
@@ -710,8 +733,9 @@ export function MovementNewEvent({
         } else setRuleError(null);
       }}
       onChangeCapture={event=>{
-        if (!saved) return;
         const target: EventTarget = event.target;
+        if(target instanceof HTMLInputElement&&['tenderResignationDate','resignationEffectiveDate','resignationDate','endDate','lastWorkingDate'].includes(target.name))setLifecycleTargets(previous=>({...previous,[target.name]:target.value}));
+        if (!saved) return;
         if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) {
           if (target.name) touched.current.add(target.name);
         }
@@ -926,14 +950,19 @@ export function MovementNewEvent({
         </div>
       )}
 
+      {!isComparison&&!posting&&<section className="border-t border-border" aria-label={t('detail.eventInformation')}>
+        <div className={EMPLOYMENT_INFORMATION_HEADER}><div>{t('detail.field')}</div><div>{t('detail.beforeChanges')}</div><div>{t('detail.afterChanges')}</div></div>
+        {comparisonRows}
+      </section>}
+
       {isComparison && (posting ? null : (
         // Personnel postings carry only dates and remarks, so a posting offers no comparison grid.
         // Board 154511c4 — hidden (not unmounted) while recording history: the server ignores these After values then.
         <div className="border-t border-border" hidden={historyMode}>
-          <div className="hidden bg-muted/50 px-4 py-2 text-xs uppercase tracking-wide text-muted-foreground sm:grid sm:grid-cols-[11rem_minmax(0,1fr)_minmax(0,1fr)] sm:gap-4">
+          <div className={EMPLOYMENT_INFORMATION_HEADER}>
             <div className="font-medium">{t('detail.field')}</div>
-            <div className="font-medium">{t('form.currentInformation')}</div>
-            <div className="font-medium">{t('form.afterInformation')}</div>
+            <div className="font-medium">{t('detail.beforeChanges')}</div>
+            <div className="font-medium">{t('detail.afterChanges')}</div>
           </div>
           {comparisonRows}
           <p className="px-4 py-3 text-xs text-muted-foreground">

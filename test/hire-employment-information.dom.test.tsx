@@ -23,6 +23,14 @@ describe('Correct Hire employment information controls',()=>{
   expect(screen.getByRole('button',{name:messages.people.detail.movement.hireCorrection.review})).toBeEnabled();
   expect(screen.queryByRole('checkbox')).toBeNull();
  });
+ it('keeps value/unit changes together under explicit original-hire field names',()=>{
+  const {container}=render(<NextIntlClientProvider locale="en" messages={messages}><HireCorrectionForm employmentId="fictional" heading="Hired" fields={[]} readOnly={[]} cancelHref="/history" information={[
+   {field:'probationValue',label:'Probation value',value:'3',display:'3',type:'number'},
+   {field:'probationUnit',label:'Probation unit',value:'month',display:'Month',type:'select',options:[{id:'month',name:'Month'},{id:'week',name:'Week'}]},
+  ]}/></NextIntlClientProvider>);
+  fireEvent.change(screen.getByLabelText('Probation value'),{target:{value:'4'}});fireEvent.change(screen.getByLabelText('Probation unit'),{target:{value:'week'}});
+  const data=new FormData(container.querySelector('form')!);expect(data.get('hireInformation_probationValue')).toBe('4');expect(data.get('hireInformation_probationUnit')).toBe('week');
+ });
  it('offers the contract end date when the corrected original type changes to Contract',()=>{
   const {container}=mount();fireEvent.change(screen.getByLabelText('Employment Type'),{target:{value:'contract'}});
   const date=container.querySelector('input[data-personnel-field="employment.employment_dates_and_service.contractenddate"]');

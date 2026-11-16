@@ -1,3 +1,4 @@
+import {isCalendarDate} from '../lib/calendar-date';
 import { MOVEMENT_EMPLOYMENT_PERIOD_FIELDS, type MovementEmploymentPeriodField } from '../lib/movement-employment-periods';
 import {organisationManagedTx,organisationBusinessUnit} from './organisation-write-policy';
 import {deriveCompanyOrganisationTx} from './company-organisation';
@@ -472,7 +473,8 @@ function assertSequence(previous:RehearsedRow[],next:RehearsedRow){
 async function applyRowTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,id:string,rehearsal:boolean,resolvedInput?:CreateMovementInput,create?:MovementSequenceCreate,policy?:RehearsedRow,reads?:MovementChunkReads):Promise<RehearsedRow>{
  if(record.history)return applyHistoryRowTx(tx,ctx,record,id,reads);
  const cached=reads?.state?.employmentId===id?reads.state.value as SubjectState:null;
- const before:SubjectState=cached?{...cached}:await subjectStateTx(tx,id);
+ const proposedDay=movementImportDate(record.cells.effectiveDate??'');
+ const before:SubjectState=cached?{...cached}:await subjectStateTx(tx,id,rehearsal&&typeof proposedDay==='string'&&isCalendarDate(proposedDay)&&proposedDay>todayInKualaLumpur()?proposedDay:undefined);
  const prepared=resolvedInput?null:await inputTx(tx,ctx,record,id,before.companyId,false,reads,reads?before:undefined);
  const resolved=resolvedInput??prepared!.input;
  const behaviour=prepared?.behaviour??(await resolveMovementEventTypeTx(tx,ctx.tenantId,resolved.typeCode??resolved.kind))?.behaviourKind;
@@ -700,6 +702,7 @@ async function checkEmployeeTx(tx:Tx,ctx:SessionContext,c:MovementCheckEmployee,
  const baseFingerprint=employee.fingerprint;const rows:MovementImportRow[]=[];const previous:RehearsedRow[]=[];const corrected:CorrectedRow[]=[];
  // Board 154511c4 — the new rows are classified once the corrections have acted (history newest first).
  let ordered=employeeOrder(records),classified=false;
+ const checkRows=async(tx:Tx,create?:MovementSequenceCreate)=>{
  for(let index=0;index<ordered.length;index++){
   const record=ordered[index];
   budget(employeeDeadline);
@@ -718,10 +721,16 @@ async function checkEmployeeTx(tx:Tx,ctx:SessionContext,c:MovementCheckEmployee,
   }
   // A row's reads change with its writes; they are kept only when its savepoint commits.
   const own=reads?forkReads(reads):undefined;
-  try{const next=await tx.transaction(async rowTx=>{const value=await applyRowTx(rowTx,ctx,{...record,acknowledgeClosedPayroll:true},subject.id,true,undefined,undefined,undefined,own);assertSequence(previous,value);return value;});previous.push(next);rows.push(next.view);if(reads&&own)adoptReads(reads,own);}
+  try{const next=await tx.transaction(async rowTx=>{const value=await applyRowTx(rowTx,ctx,{...record,acknowledgeClosedPayroll:true},subject.id,true,undefined,create,undefined,own);assertSequence(previous,value);return value;});previous.push(next);rows.push(next.view);if(reads&&own)adoptReads(reads,own);}
   catch(error){rows.push({...rowView(record),status:'invalid',errors:[message(error)]});}
   budget(employeeDeadline);
  }
+ };
+ const hasFuture=records.some(record=>selection.includes(record.row)&&!isCorrection(record)&&recordDay(record)>todayInKualaLumpur());
+ if(hasFuture){
+  try{await rehearseMovementSequenceTx(tx,ctx,(shadow,create)=>checkRows(shadow,create));}
+  catch(error){if(!rows.some(row=>row.status==='invalid'))throw error;}
+ }else await checkRows(tx);
  const invalid=rows.some(row=>row.status==='invalid');
  if(invalid)for(const row of rows)if(row.status==='valid'){row.status='invalid';row.errors.push('employee_sequence_invalid');}
  const references=[...corrected.flatMap(row=>row.references),...previous.flatMap(row=>row.references)];

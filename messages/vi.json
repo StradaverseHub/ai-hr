@@ -1707,6 +1707,7 @@
         },
         "detail": {
           "eventInformation": "Thông tin sự kiện",
+          "companyReviewNeeded": "Kiểm tra các thiết lập này sau khi sửa công ty ban đầu:",
           "notRecorded": "Không được ghi lại trong lịch sử sự kiện này",
           "scheduledValues": "Giá trị đã lên lịch / đề xuất",
           "scheduledValuesNote": "Đây là các giá trị mục tiêu đã lưu cho sự kiện được lên lịch này và chưa được áp dụng. Chỉ hiển thị các trường đã được gửi rõ ràng.",

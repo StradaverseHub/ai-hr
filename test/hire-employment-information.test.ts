@@ -1,3 +1,5 @@
+import {saveEmploymentCostAllocations} from '../core/employment-cost-allocations';
+import {assignPolicy} from '../core/payroll-policy';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {and,eq,isNull} from 'drizzle-orm';
 import * as s from '../db/schema';
@@ -34,11 +36,58 @@ describe('original-hire employment information',()=>{
   await setCompensation(adminCtx(b),{employmentId:id,effectiveFrom:'2026-01-01',basicSalary:3000});
   const [period]=await owner.db.insert(s.payPeriod).values({tenantId:b.tenantId,companyId:b.companyId,period:'2026-01',status:'closed'}).returning();
   const [batch]=await owner.db.insert(s.payrollBatch).values({tenantId:b.tenantId,companyId:b.companyId,payPeriodId:period.id,payPeriod:'2026-01',batchDate:'2026-01-25',status:'closed'}).returning();
-  const [slip]=await owner.db.insert(s.payslip).values({tenantId:b.tenantId,batchId:batch.id,employmentId:id,basicSalary:'3000.00',grossPay:'3000.00',netPay:'3000.00',totalDeductions:'0.00',employerCost:'3000.00'}).returning();
+  const [slip]=await owner.db.insert(s.payslip).values({tenantId:b.tenantId,batchId:batch.id,employmentId:id,basicSalary:'3000.00',grossPay:'3000.00',netPay:'3000.00',totalDeductions:'0.00',employerCost:'3000.00',statutory:{fixture:'retained original'}}).returning();
   await correctHireDetails(adminCtx(b),{employmentId:id,changes:{},hireInformation:{hiredOn:'2025-12-15'},basicSalary:3400,reason:'Fictional corrected date and amount'});
   expect((await hireCorrectionView(adminCtx(b),id)).groupJoinDate).toBe('2025-12-15');
   expect((await hireCorrectionView(adminCtx(b),id)).salaryAtHire?.amount).toBe('3400.00');
   expect((await owner.db.select().from(s.payslip).where(eq(s.payslip.id,slip.id)))[0]).toEqual(slip);
+ });
+ it('flags company-specific grade, policy and allocation follow-up and clears findings through their native owners',async()=>{
+  const ctx=adminCtx(b);
+  const [oldGrade]=await owner.db.insert(s.jobGrade).values({tenantId:b.tenantId,code:'OLD-SCOPE',name:'Fictional Original Grade',scopeCompanyIds:[b.companyId]}).returning();
+  id=(await hireEmployee(ctx,{person:{fullName:'Fictional Mis-keyed Hire Company',primaryEmail:'hire-company@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01',gradeId:oldGrade.id})).employmentId;
+  const [target]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional Corrected Employer',country:'MY'}).returning();
+  await owner.db.update(s.department).set({isGlobal:true}).where(eq(s.department.id,b.deptA));
+  await owner.db.update(s.costCenter).set({isGlobal:true}).where(eq(s.costCenter.id,b.costCenterId));
+  const [oldPolicy]=await owner.db.insert(s.payrollPolicy).values({tenantId:b.tenantId,companyId:b.companyId,name:'Fictional Original Policy',policyType:'monthly'}).returning();
+  await assignPolicy(ctx,{employmentId:id,policyId:oldPolicy.id});
+  await saveEmploymentCostAllocations(ctx,{employmentId:id,effectiveDate:'2026-01-01',expectedRevision:0,operation:'replace',rows:[{costCenterId:b.costCenterId,percentage:'100.00'}]});
+  await correct({companyId:target.id});
+  expect((await hireCorrectionView(ctx,id)).companyReviewFields?.sort()).toEqual(['costAllocation','gradeId','payrollPolicyId']);
+  const [targetGrade]=await owner.db.insert(s.jobGrade).values({tenantId:b.tenantId,code:'CORRECTED-SCOPE',name:'Fictional Corrected Grade',scopeCompanyIds:[target.id]}).returning();
+  await correct({gradeId:targetGrade.id});
+  const [targetPolicy]=await owner.db.insert(s.payrollPolicy).values({tenantId:b.tenantId,companyId:target.id,name:'Fictional Corrected Policy',policyType:'monthly'}).returning();
+  await assignPolicy(ctx,{employmentId:id,policyId:targetPolicy.id});
+  await saveEmploymentCostAllocations(ctx,{employmentId:id,effectiveDate:'2026-01-01',expectedRevision:1,operation:'replace',rows:[{costCenterId:b.costCenterId,percentage:'100.00'}]});
+  expect((await hireCorrectionView(ctx,id)).companyReviewFields).toEqual([]);
+ });
+ it('corrects an original period pair without changing a later deliberate value in its original unit',async()=>{
+  const ctx=adminCtx(b);
+  await correct({probationValue:'3',probationUnit:'month'});
+  await createMovementEvent(ctx,{employmentId:id,kind:'promotion',effectiveDate:'2026-03-01',probationValue:'6'});
+  await correct({probationValue:'4',probationUnit:'week'});
+  const [current]=await owner.db.select().from(s.employment).where(eq(s.employment.id,id));
+  expect(current).toMatchObject({probationValue:6,probationUnit:'month'});
+  expect((await hireCorrectionView(ctx,id)).information?.probationValue.value).toBe('4');
+  expect((await hireCorrectionView(ctx,id)).information?.probationUnit.value).toBe('week');
+ });
+ it('validates historical scalar facts even when later decisions protect the current value',async()=>{
+  const ctx=adminCtx(b);await createMovementEvent(ctx,{employmentId:id,kind:'promotion',effectiveDate:'2026-03-01',probationValue:'6',probationUnit:'month'});
+  const before=await owner.db.select().from(s.domainEvent).orderBy(s.domainEvent.id);
+  await expect(correct({probationValue:'-1',probationUnit:'month'})).rejects.toThrow(/whole numbers/);
+  await expect(correct({confirmationDate:'2025-12-01'})).rejects.toThrow(/earlier than the hire date/);
+  expect(await owner.db.select().from(s.domainEvent).orderBy(s.domainEvent.id)).toEqual(before);
+ });
+ it('corrects the original salary and method atomically through their owners and retains a later method',async()=>{
+  const ctx=adminCtx(b);await setCompensation(ctx,{employmentId:id,effectiveFrom:'2026-01-01',basicSalary:3000});
+  const {setEmploymentPaymentMethod}=await import('../core/org');
+  await setEmploymentPaymentMethod(ctx,{employmentId:id,effectiveDate:'2026-03-01',paymentMethod:'cheque'});
+  await correctHireDetails(ctx,{employmentId:id,changes:{},basicSalary:3250,paymentMethod:'cash',reason:'Fictional original salary and payment method'});
+  expect((await hireCorrectionView(ctx,id)).paymentMethodAtHire).toBe('cash');
+  expect((await owner.db.select().from(s.employment).where(eq(s.employment.id,id)))[0].paymentMethod).toBe('cheque');
+  const before=await owner.db.select().from(s.compensation).orderBy(s.compensation.id);
+  await expect(correctHireDetails(ctx,{employmentId:id,changes:{},basicSalary:3400,paymentMethod:'bank_transfer',reason:'Fictional unpayable correction'})).rejects.toThrow(/bank/i);
+  expect(await owner.db.select().from(s.compensation).orderBy(s.compensation.id)).toEqual(before);
  });
  it('accepts only namespaced changed controls and refuses unsupported information fields atomically',async()=>{
   const data=new FormData();data.set('companyId','forged legacy name');data.set('hireInformation_gradeId','');

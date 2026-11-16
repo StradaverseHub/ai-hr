@@ -19,6 +19,12 @@ describe('recorded full employment information',()=>{
   expect(movementInformationEvidence([hire,change,correction],'2026-02-01',3).orgDivision.value).toBe('Corrected');
   expect(movementInformationEvidence([hire,change,correction],'2026-04-01',3).orgDivision.value).toBe('Later');
  });
+ it('retains initialization in the hire transaction and carries its facts across a corrected earlier start',()=>{
+  const initialization={...change,id:'initial',occurredAt:hire.occurredAt,payload:{after:{noticeAfterConfirmationValue:2,noticeAfterConfirmationUnit:'month'}}};
+  const correction={id:'corrected-start',eventType:'employment.information.corrected',sequence:3,occurredAt:new Date('2026-05-01T00:00:00Z'),payload:{source:'original-hire',effectiveOn:'2025-12-15',fields:['hiredOn'],after:{hiredOn:'2025-12-15'}}};
+  const facts=movementInformationEvidence([hire,initialization,correction],'2025-12-15',3);
+  expect(facts.orgDivision.value).toBe('Original');expect(facts.hiredOn.value).toBe('2025-12-15');expect(facts.noticeAfterConfirmationValue.value).toBe('2');expect(facts.noticeAfterConfirmationUnit.value).toBe('month');
+ });
  it('never treats pending targets as applied employment facts',()=>{
   const pending={...change,eventType:'employment.movement.scheduled'};
   expect(movementInformationEvidence([hire,pending],'2026-04-01',2).orgDivision.value).toBe('Original');

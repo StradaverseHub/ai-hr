@@ -689,6 +689,7 @@ export async function correctHireDetailsAction(formData: FormData) {
   const employmentId = String(formData.get('employmentId'));
   try {
     const salary = formData.get('hireBasicSalary');
+    const hireMethod=formData.get('hirePaymentMethod');
     if (salary !== null && (typeof salary !== 'string' || !/^\d{1,10}(?:\.\d{1,2})?$/.test(salary.trim()))) {
       throw Error('Enter a valid Basic Salary amount.');
     }
@@ -698,6 +699,7 @@ export async function correctHireDetailsAction(formData: FormData) {
       hireInformation:parseHireInformationForm(formData),
       endDates: parseHireCorrectionEndDate(formData),
       basicSalary: salary === null ? undefined : Number(salary),
+      paymentMethod:hireMethod===null?undefined:orNull(hireMethod) as import('@/lib/payment-methods').PaymentMethod|null,
       reason: orNull(formData.get('reason')),
     });
     await recomputeEntitlement(s, employmentId, 'hire_corrected', { changeEffectiveOn: res.hiredOn });

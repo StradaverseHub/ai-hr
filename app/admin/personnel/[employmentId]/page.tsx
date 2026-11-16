@@ -1,4 +1,5 @@
-import {MOVEMENT_INFORMATION_FIELDS} from '@/lib/movement-information-evidence';
+import {HIRE_SCALAR_INFORMATION_FIELDS} from '@/core/hire-employment-information';
+import {MOVEMENT_INFORMATION_FIELDS,type MovementInformationField} from '@/lib/movement-information-evidence';
 import {personnelMaintenanceCompanyIds} from '@/core/workforce-access';
 import {movementTypeControls} from '@/core/movement-type-controls';
 import {SalaryRecordingChoices,type SalaryRecordingOptions} from '@/components/salary-recording-choices';
@@ -18,7 +19,7 @@ import {MovementHistoryActions} from './movement-history-actions';
 import {movementScreenAccess} from '../../../../lib/movement-screen-access';
 import {informationCorrectionHistory} from '@/core/information-correction';
 import {HireCorrectionModes,InformationCorrectionAudit} from '../information-correction-form';
-import { getEmploymentCostAllocations } from '@/core/employment-cost-allocations';
+import { getEmploymentCostAllocations,CostAllocationError } from '@/core/employment-cost-allocations';
 import { CostCenterAllocations } from '@/components/personnel/cost-center-allocations';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import {workforceEmploymentAccess} from '@/core/workforce-access';
@@ -47,7 +48,7 @@ import {
   reportingLinesFor,
 } from '@/core/read';
 import { PersonnelField } from '@/components/personnel-field';
-import { personnelControl, personnelInput, personnelFormName, personnelFormLabel, personnelFormChoices, personnelDisplay, personnelCarry, personnelPresence, personnelRadio, personnelWorkflowCarry } from '@/lib/personnel-form-contract';
+import { personnelControl, personnelInput, personnelFormName, personnelFormLabel, personnelFormChoices,personnelFormCatalog, personnelDisplay, personnelCarry, personnelPresence, personnelRadio, personnelWorkflowCarry } from '@/lib/personnel-form-contract';
 import { Avatar, Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { LocationAssignment } from '@/components/attendance/location-assignment';
 import { hasPersonPhoto } from '@/core/person-photo';
@@ -138,7 +139,7 @@ import { rollBackRehireAction } from './rehire-actions';
 import { EmploymentPeriodsCard } from './employment-periods-card';
 // c063eea9 — "Correct hire details" on the Hired row: the read behind the form, and its client island.
 import { HireCorrectionError, hireCorrectionView, type HireCorrectionField } from '@/core/hire-correction';
-import { HireCorrectionForm, type HireCorrectionFormField } from './hire-correction-form';
+import { HireCorrectionForm, type HireCorrectionFormField,type HireInformationControl } from './hire-correction-form';
 import { serviceYearsMonthsDaysAt } from '@/core/leave';
 // 9d13221c — the Age figure beside Date of Birth no longer needs an import here at all: 35b7af0a group 3
 // moved both the derivation and the two Fields into components/birth-date-fields.tsx, which reads the same
@@ -620,7 +621,8 @@ export default async function EmployeePage({
   // table's pay rule, so a document this admin may not see is simply not listed.
   const movementDocuments = movementDetailData && spMovement ? await movementAttachments(s, employmentId, spMovement) : [];
   const resignationInfo = movementProjection?.resignation ?? null;
-  const costAllocationView = readProfileCards && emp.companyId ? await getEmploymentCostAllocations(s, employmentId) : null;
+  const allocationDate=movementPage==='view'?movementDetailData?.row.effectiveDate:movementPage==='edit'?movements.find(row=>row.id===spEditMovement)?.effectiveDate:movementPage==='correct-hire'?emp.hiredOn:undefined;
+  const costAllocationView = (readProfileCards||!!movementPage&&movementPage!=='history') && emp.companyId ? await getEmploymentCostAllocations(s, employmentId,allocationDate).catch(error=>{if(error instanceof CostAllocationError&&error.code==='date')return null;throw error;}) : null;
   /**
    * c063eea9 — the Correct hire details form (?correctHire=1). Read ONLY while it is open, and only where
    * the caller may correct the employment, including after an exit.
@@ -640,8 +642,8 @@ export default async function EmployeePage({
         })
       : null;
   const hireHeaderOptions=hireCorrection?await (async()=>{
-    const [managed,permitted,grades]=await Promise.all([adminCompanies(s),personnelMaintenanceCompanyIds(s),listJobGrades(s)]);
-    const allowed=new Set(permitted);return {companies:managed.filter(company=>allowed.has(company.id)),grades};
+    const [managed,permitted,grades,labels]=await Promise.all([adminCompanies(s),personnelMaintenanceCompanyIds(s),listJobGrades(s),listAllProfileOptions(s,{activeOnly:true,companyId:hireCorrection.companyId})]);
+    const allowed=new Set(permitted);return {companies:managed.filter(company=>allowed.has(company.id)),grades,labels};
   })():null;
   const hireCorrectionOptions = hireCorrection
     ? await (async () => {
@@ -3394,6 +3396,17 @@ export default async function EmployeePage({
   // Detail view (?movement=<id>): event information + a side-by-side Before/After comparison built by
   // as-of reconstruction at the effective date (ids resolved to labels at read time). Salary is shown —
   // this page is admin-only (scopedAdmin, which calls requireAdmin), so no widening of pay visibility.
+  const movementInformationLabel=(field:MovementInformationField)=>{
+    const ids:Partial<Record<MovementInformationField,string>>={contractStartDate:'employment.employment_dates_and_service.contractstartdate',contractEndDate:'employment.employment_dates_and_service.contractenddate',internshipEndDate:'employment.draft_only_employment_fields.internshipenddate',tenderResignationDate:'employment.employment_dates_and_service.tenderresignationdate',resignationDate:'employment.employment_dates_and_service.resignationdate',lastWorkingDate:'employment.employment_dates_and_service.lastworkingdate'};
+    return field==='extendedConfirmationDate'?tPersonnel('people.import.movement.currentFields.extendedConfirmationDate'):field==='hiredOn'?t('employmentInfo.groupJoinDate'):field==='joinDate'?t('employmentInfo.joinDate'):ids[field]?personnelLabel(ids[field]!):field in MOVEMENT_FORM_IDS?personnelLabel(MOVEMENT_FORM_IDS[field as keyof typeof MOVEMENT_FORM_IDS]):t(`movement.field.${field}` as 'movement.field.orgDivision');
+  };
+  const recordedInformationDisplay=(field:MovementInformationField,known:boolean,value:string|null|undefined)=>{
+    if(!known)return t('movement.detail.notRecorded');
+    if(value==null)return null;
+    if(field.endsWith('Date')||field==='hiredOn')return formatDmy(value);
+    if(field.endsWith('Unit')&&['month','week','day'].includes(value))return t(`employmentInfo.unit_${value}` as 'employmentInfo.unit_month');
+    return value;
+  };
   const movementComparisonRows = movementDetailData
     ? [
         { key: 'company', label: t('movement.field.company'), before: movementDetailData.before?.company, after: movementDetailData.after.company },
@@ -3407,8 +3420,7 @@ export default async function EmployeePage({
         { key: 'salary', label: t('movement.field.salary'), before: movementDetailData.before?.salary, after: movementDetailData.after.salary },
         ...(movementDetailData.after.salaryPayrollFrom?[{key:'salaryPayrollFrom',label:t('salaryPayrollFrom'),before:null,after:formatDmy(movementDetailData.after.salaryPayrollFrom)}]:[]),
         ...MOVEMENT_INFORMATION_FIELDS.map(field=>{
-          const ids:Partial<Record<typeof field,string>>={hiredOn:'employment.employment_dates_and_service.groupjoindate',joinDate:'employment.employment_dates_and_service.joindate',extendedConfirmationDate:'employment.employment_dates_and_service.extendedconfirmationdate',contractStartDate:'employment.employment_dates_and_service.contractstartdate',contractEndDate:'employment.employment_dates_and_service.contractenddate',internshipEndDate:'employment.draft_only_employment_fields.internshipenddate',tenderResignationDate:'employment.employment_dates_and_service.tenderresignationdate',resignationDate:'employment.employment_dates_and_service.resignationdate',lastWorkingDate:'employment.employment_dates_and_service.lastworkingdate'};
-          const label=field==='extendedConfirmationDate'?tPersonnel('people.import.movement.currentFields.extendedConfirmationDate'):field==='hiredOn'?t('employmentInfo.groupJoinDate'):field==='joinDate'?t('employmentInfo.joinDate'):ids[field]?personnelLabel(ids[field]!):field in MOVEMENT_FORM_IDS?personnelLabel(MOVEMENT_FORM_IDS[field as keyof typeof MOVEMENT_FORM_IDS]):t(`movement.field.${field}` as 'movement.field.orgDivision');
+          const label=movementInformationLabel(field);
           const diff=movementDetailData.flatChanges.find(change=>change.field===field);
           const display=(side:'before'|'after')=>{
             const snapshot=side==='before'?movementDetailData.before:movementDetailData.after;
@@ -3826,6 +3838,10 @@ export default async function EmployeePage({
           return (
             <Card id="section-hire-correction" className="overflow-hidden">
               <SectionHeader title={t('movement.hireCorrection.title')} />
+              {!!hireCorrection.companyReviewFields?.length&&<div role="status" className="mx-4 my-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                <p>{t('movement.detail.companyReviewNeeded')}</p>
+                <ul className="mt-2 list-disc space-y-1 pl-5">{hireCorrection.companyReviewFields.map(field=><li key={field}><Link className="underline" href={`/admin/personnel/${employmentId}?tab=${field==='payrollPolicyId'?'payroll':'job'}${field==='costAllocation'?'#section-cost-center-allocations':''}`}>{field==='gradeId'?t('movement.field.grade'):field==='costAllocation'?tPersonnel('costAllocations.title'):tp('title')}</Link></li>)}</ul>
+              </div>}
               <HireCorrectionModes employmentId={employmentId} returnHref={movementPage?historyHref:undefined}><HireCorrectionForm
                 employmentId={employmentId}
                 heading={`${movementKindLabel('hired')} · ${formatDmy(hireCorrection.hiredOn)}`}
@@ -3836,8 +3852,16 @@ export default async function EmployeePage({
                   {field:'joinDate',label:t('employmentInfo.joinDate'),value:hireCorrection.joinDate,display:formatDmy(hireCorrection.joinDate),type:'date'},
                   {field:'gradeId',label:t('movement.field.grade'),value:hireCorrection.gradeId??null,display:hireCorrection.gradeName??'—',type:'select',options:hireHeaderOptions?.grades.map(grade=>({id:grade.id,name:grade.name}))},
                   {field:'employmentType',label:t('movement.field.employmentType'),value:hireCorrection.employmentType,display:movementEmpTypeLabel(hireCorrection.employmentType)??'—',type:'select',required:true,options:['full_time','part_time','contract','intern'].map(value=>({id:value,name:movementEmpTypeLabel(value)??value}))},
+                  ...HIRE_SCALAR_INFORMATION_FIELDS.map((field):HireInformationControl=>{
+                    const value=hireCorrection.information?.[field]?.value??null;
+                    const options=field.endsWith('Unit')?['day','week','month'].map(unit=>({id:unit,name:t(`employmentInfo.unit_${unit}` as 'employmentInfo.unit_month')})):
+                      MOVEMENT_FLAT_FIELDS.includes(field as typeof MOVEMENT_FLAT_FIELDS[number])&&hireHeaderOptions?personnelFormCatalog(MOVEMENT_FORM_IDS[field as keyof typeof MOVEMENT_FORM_IDS],hireHeaderOptions.labels).map(option=>({id:option.value,name:option.label})):undefined;
+                    return {field,fieldId:field in MOVEMENT_FORM_IDS?MOVEMENT_FORM_IDS[field as keyof typeof MOVEMENT_FORM_IDS]:undefined,label:movementInformationLabel(field),value,display:recordedInformationDisplay(field,hireCorrection.information?.[field]?.known===true,value)??'—',type:options?.length?'select':field.endsWith('Date')?'date':field.endsWith('Value')?'number':'text',options};
+                  }),
                 ]}
                 salaryAtHire={hireCorrection.salaryAtHire}
+                paymentMethodAtHire={hireCorrection.paymentMethodAtHire}
+                contextFields={MOVEMENT_INFORMATION_FIELDS.filter(field=>!['hiredOn','joinDate',...HIRE_SCALAR_INFORMATION_FIELDS].includes(field)).map(field=>({field,label:movementInformationLabel(field),value:recordedInformationDisplay(field,hireCorrection.information?.[field]?.known===true,hireCorrection.information?.[field]?.value)}))}
                 endDate={hireCorrection.endDate ? { field: hireCorrection.endDate.field, value: hireCorrection.endDate.value } : undefined}
                 readOnly={readOnly.filter(row=>row.key==='effectiveFrom')}
                 cancelHref={historyHref}
@@ -3867,7 +3891,7 @@ export default async function EmployeePage({
     const actionCard=movementPage==='new'?newEventCard:movementPage==='edit'?editEventCard:movementPage==='correct-hire'?hireCorrectionCard:movementPage==='view'?movementDetailCard:null;
     if(!actionCard)notFound();
     const title=movementPage==='new'?t('movement.newEvent'):movementPage==='edit'?t('movement.editTitle'):movementPage==='correct-hire'?t('movement.hireCorrection.title'):t('movement.detail.eventInformation');
-    return <div className="mx-auto max-w-[100rem] space-y-6"><PageHeader back={{href:historyHref,label:t('movement.detail.backToHistory')}} title={title} description={`${emp.name} · ${emp.employeeCode??'—'} · ${emp.company}`}/><ErrorBanner message={error}/><MovementActionShell readOnly={movementPage==='view'}>{actionCard}</MovementActionShell></div>;
+    return <div className="mx-auto max-w-[100rem] space-y-6"><PageHeader back={{href:historyHref,label:t('movement.detail.backToHistory')}} title={title} description={`${emp.name} · ${emp.employeeCode??'—'} · ${emp.company}`}/><ErrorBanner message={error}/><MovementActionShell readOnly={movementPage==='view'}>{actionCard}{costAllocationView&&<CostCenterAllocations key={employmentId+':'+costAllocationView.effectiveDate} value={{...costAllocationView,canEdit:movementPage==='view'?false:costAllocationView.canEdit}}/>}</MovementActionShell></div>;
   }
 
   const dataPrivacyCard = admin ? (

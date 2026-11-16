@@ -1,4 +1,7 @@
-import {correctHireEmploymentInformationTx,hireEmploymentInformationBaseline,type HireEmploymentInformation} from './hire-employment-information';
+import {movementInformationEvidence,type MovementInformationField,type MovementInformationFact} from '../lib/movement-information-evidence';
+import {employmentPaymentMethodOnTx} from './employment-payment-method';
+import type {PaymentMethod} from '../lib/payment-methods';
+import {correctHireEmploymentInformationTx,HIRE_EMPLOYMENT_INFORMATION_FIELDS,hireCompanyCorrectionReviewTx,hireEmploymentInformationBaseline,type HireEmploymentInformation} from './hire-employment-information';
 import {withProtectedMovementHistoryTx} from './movement-payroll-protection';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {lockPayrollInputsTx} from './payroll-inputs-lock';
@@ -74,7 +77,7 @@ import {
   reportingLine,
 } from '../db/schema';
 import { labelUsableByCompany } from './system-labels';
-import { lockEmploymentStatutoryOwnerTx, wouldCreateAdminCycle, setEmploymentInfo } from './org';
+import { lockEmploymentStatutoryOwnerTx, wouldCreateAdminCycle, setEmploymentInfo,setEmploymentPaymentMethod } from './org';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
 /** The event this module appends. Loaded by core/movement.ts's projection (it projects no row of its own). */
@@ -149,7 +152,7 @@ export class HireCorrectionReasonRequiredError extends Error {
 /** Only explicitly changed original-hire header controls enter the private correction owner. */
 export function parseHireInformationForm(formData:FormData):HireEmploymentInformation{
  const out:HireEmploymentInformation={};
- for(const field of ['companyId','hiredOn','joinDate','gradeId','employmentType'] as const){
+ for(const field of HIRE_EMPLOYMENT_INFORMATION_FIELDS){
   const value=formData.get('hireInformation_'+field);
   if(value!==null){if(typeof value!=='string')throw new HireCorrectionError('An invalid hire information value was supplied.');out[field]=value.trim()||null;}
  }
@@ -636,6 +639,9 @@ export type HireCorrectionView = {
   /** Read-only context the form points elsewhere for. */
   groupJoinDate: string;
   gradeId?:string|null;
+  companyReviewFields?:string[];
+  information?:Record<MovementInformationField,MovementInformationFact>;
+  paymentMethodAtHire?:PaymentMethod|null;
   joinDate: string | null;
   gradeName: string | null;
   employmentType: string | null;
@@ -707,7 +713,11 @@ export async function hireCorrectionViewTx(tx: Tx, ctx: SessionContext, employme
     const [correctedSalary]=await tx.select({amount:compensation.basicSalary,currency:compensation.currency}).from(domainEvent).innerJoin(compensation,eq(compensation.id,domainEvent.aggregateId))
       .where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.subjectEmploymentId,employmentId),eq(domainEvent.eventType,'compensation.hire-corrected'))).orderBy(sql`${domainEvent.sequence} desc`).limit(1);
     if(correctedSalary)salaryAtHire=correctedSalary;
-    const endDate = await currentEndDateTx(tx, employmentId);
+    const currentEnd=await currentEndDateTx(tx,employmentId);
+    const originalEndField=v1.row.employmentType==='contract'?'contractEndDate':v1.row.employmentType==='intern'?'internshipEndDate':null;
+    const originalEnd=[...plan.events].reverse().map(event=>event.eventType===INFORMATION_CORRECTED&&event.payload?.source==='original-hire'?event.payload?.endDate:null).find(end=>end?.field===originalEndField);
+    const hireFacts=movementInformationEvidence(plan.events,plan.anchor,Number.MAX_SAFE_INTEGER);
+    const endDate=originalEnd&&originalEndField?{field:originalEndField,value:typeof originalEnd.after==='string'?originalEnd.after:null}:originalEndField&&hireFacts[originalEndField]?.known?{field:originalEndField,value:hireFacts[originalEndField].value}:currentEnd?.field===originalEndField?currentEnd:originalEndField?{field:originalEndField,value:null}:null;
     return {
       hiredOn: plan.anchor,
       companyId: v1.companyId,
@@ -715,6 +725,9 @@ export async function hireCorrectionViewTx(tx: Tx, ctx: SessionContext, employme
       groupJoinDate: plan.emp.hiredOn,
       joinDate: hireInformation.before.joinDate,
       gradeId:hireGradeId,
+      information:hireFacts,
+      paymentMethodAtHire:await employmentPaymentMethodOnTx(tx,employmentId,plan.anchor),
+      companyReviewFields:await hireCompanyCorrectionReviewTx(tx,ctx,{employmentId,companyId:v1.companyId,gradeId:hireGradeId,anchor:plan.anchor}),
       gradeName,
       employmentType: v1.row.employmentType,
       salaryAtHire,
@@ -799,6 +812,7 @@ export type CorrectHireDetailsInput = {
   employmentId: string;
   basicSalary?: number;
   hireInformation?:HireEmploymentInformation;
+  paymentMethod?:PaymentMethod|null;
   /** Loosely typed ON PURPOSE: only the allow-listed fields are ever read from it (see the module header). */
   changes: HireCorrectionChanges & Record<string, unknown>;
   /** 2260a06b — the current type's end date. A date for the other type is refused. */
@@ -845,7 +859,7 @@ export async function correctHireDetails(
   if (requested.departmentId === null) throw new HireCorrectionError('Department is required.');
 
   const run=async(tx:Tx)=>{
-    if (input.basicSalary !== undefined || Object.keys(input.hireInformation??{}).length) await tx.execute(sql`select app.access_configuration_write_lock()`);
+    if (input.basicSalary !== undefined || input.paymentMethod!==undefined || Object.keys(input.hireInformation??{}).length) await tx.execute(sql`select app.access_configuration_write_lock()`);
     else {
       // Reader/writer lock. Correcting one hire's organisation fields: shared Access, and the Workforce check joins
       // it. Department and position at hire select leave cohorts, so it takes the leave configuration lock
@@ -877,8 +891,8 @@ export async function correctHireDetails(
       .for('no key update');
     if (!locked) throw new Error('Employment not found');
 
-    const informationChange=input.hireInformation&&Object.keys(input.hireInformation).length
-      ? await correctHireEmploymentInformationTx(tx,ctx,{employmentId:input.employmentId,changes:input.hireInformation,reason,endDates:input.endDates},()=>loadPlanTx(tx,ctx.tenantId,input.employmentId)) : null;
+    const informationChange=Object.keys(input.hireInformation??{}).length||Object.keys(input.endDates??{}).length
+      ? await correctHireEmploymentInformationTx(tx,ctx,{employmentId:input.employmentId,changes:input.hireInformation??{},reason,endDates:input.endDates},()=>loadPlanTx(tx,ctx.tenantId,input.employmentId)) : null;
     const plan = await loadPlanTx(tx, ctx.tenantId, input.employmentId);
 
     if(await organisationManagedTx(tx))delete requested.businessUnitId;
@@ -895,6 +909,7 @@ export async function correctHireDetails(
       await correctHireBasicSalaryTx(tx, ctx, {
         employmentId: input.employmentId, hireDate: plan.anchor, basicSalary: input.basicSalary, reason,
       });
+    const methodCorrection=input.paymentMethod===undefined?null:await setEmploymentPaymentMethod(ctx,{employmentId:input.employmentId,paymentMethod:input.paymentMethod,effectiveDate:plan.anchor,reason},tx);
     // 2260a06b — the current type's end date. Compared with what the Employment tab shows (the internship falls
     // back to the Draft's provisional date), so re-posting the shown value is not a change.
     let endDateChange: CorrectHireDetailsResult['endDateChange'] = null;
@@ -910,7 +925,7 @@ export async function correctHireDetails(
         if (after !== current.value) endDateChange = { field: current.field, before: current.stored, after };
       }
     }
-    if (!changes.length && !salaryCorrection && !endDateChange && !informationChange) throw new HireCorrectionNoChangeError();
+    if (!changes.length && !salaryCorrection && !endDateChange && !informationChange && !methodCorrection?.changed) throw new HireCorrectionNoChangeError();
     if (endDateChange) {
       // The profile's own writer: required for the type, later than the start/join date, refused while a
       // contract renewal is open, provisional date kept aligned, and an employment.info.updated audit row.
@@ -1085,6 +1100,7 @@ export async function correctHireDetails(
         changes,
         ...(informationChange?{employmentInformation:informationChange}:{}),
         ...(salaryCorrection ? { salaryCorrection } : {}),
+        ...(methodCorrection?.changed?{paymentMethodCorrection:{eventId:methodCorrection.eventId,effectiveOn:plan.anchor}}:{}),
         ...(endDateChange ? { endDateChange } : {}),
         assignment: replaced,
         reportingLine: rlRecord,

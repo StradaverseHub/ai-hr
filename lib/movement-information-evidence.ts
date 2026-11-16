@@ -8,15 +8,20 @@ const obj=(value:unknown):Record<string,unknown>=>value&&typeof value==='object'
 const value=(raw:unknown):string|null|undefined=>raw===null?null:typeof raw==='string'||typeof raw==='number'?String(raw):undefined;
 export function movementInformationEvidence(events:readonly Event[],asOf:string,sequence:number,inclusive=true):Record<MovementInformationField,MovementInformationFact>{
  const out=Object.fromEntries(MOVEMENT_INFORMATION_FIELDS.map(field=>[field,{known:false,value:null,eventId:null}])) as Record<MovementInformationField,MovementInformationFact>;
+ const correctedStarts=events.filter(event=>(inclusive?event.sequence<=sequence:event.sequence<sequence)&&event.eventType==='employment.information.corrected'&&obj(event.payload).source==='original-hire'&&Array.isArray(obj(event.payload).fields)&&(obj(event.payload).fields as unknown[]).includes('hiredOn')).map(event=>value(obj(obj(event.payload).after).hiredOn)).filter((date):date is string=>typeof date==='string');
+ const earliestCorrectedStart=correctedStarts.sort()[0];
  const candidates:{date:string;sequence:number;id:string;values:Record<string,unknown>}[]=[];
  for(const event of events){
   if(inclusive?event.sequence>sequence:event.sequence>=sequence)continue;
   const payload=obj(event.payload),movement=obj(payload.movement);
   if(event.eventType==='employment.hired'){
    const date=typeof payload.hiredOn==='string'?payload.hiredOn:todayInKualaLumpur(event.occurredAt);
-   candidates.push({date,sequence:event.sequence,id:event.id,values:{...obj(payload.employmentInformation),hiredOn:payload.hiredOn}});
+   candidates.push({date:earliestCorrectedStart&&earliestCorrectedStart<date?earliestCorrectedStart:date,sequence:event.sequence,id:event.id,values:{...obj(payload.employmentInformation),hiredOn:payload.hiredOn}});
   }else if(event.eventType==='employment.info.updated'){
-   const date=typeof movement.effectiveDate==='string'?movement.effectiveDate:
+   const hired=events.find(candidate=>candidate.eventType==='employment.hired');
+   const initial=hired&&!movement.groupId&&event.occurredAt.getTime()===hired.occurredAt.getTime();
+   const initialDay=initial?String(obj(hired.payload).hiredOn):null;
+   const date=initialDay?(earliestCorrectedStart&&earliestCorrectedStart<initialDay?earliestCorrectedStart:initialDay):typeof movement.effectiveDate==='string'?movement.effectiveDate:
     movement.type==='groupJoinDateCorrection'?String(obj(payload.after).hiredOn??todayInKualaLumpur(event.occurredAt)):
     movement.type==='joinDateChange'?String(obj(payload.after).joinDate??todayInKualaLumpur(event.occurredAt)):todayInKualaLumpur(event.occurredAt);
    candidates.push({date,sequence:event.sequence,id:event.id,values:obj(payload.after)});
