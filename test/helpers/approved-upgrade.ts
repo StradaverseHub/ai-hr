@@ -232,7 +232,7 @@ export const APPROVED_UPGRADE_TAIL=[
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
- '9991_resignation_journey':'4a7b0982d7ba5d2ae04cded6b0a2991aff20fc6f5f7f316fa71b5d789f13e8ce',
+ '9991_resignation_journey':'bc00eb68a99a41b33708ab752044eae3acbb0d5f3ee47f02597e39daad4d49b7',
  '9992_resignation_configuration':'6e064c336c441fbbf01017debe9e1a748957976d3d6b2b96470747d07d7dacb5',
  '9993_resignation_postings':'c6045c53dc2fae7dabbcdaae123e772570cbbd186b429a8426f0b9dbe1d3015d',
  '9995_resignation_email_delivery':'2a0e7edff34afd7c6fb5c7fdccc9ba33af456882de7a70d5855db87a99c7f570',
