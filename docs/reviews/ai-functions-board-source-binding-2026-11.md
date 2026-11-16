@@ -687,3 +687,21 @@ staging, binding `e4fcddfb…`), because staging moved past the original base `0
 source beyond both sides' own reviewed changes. No provider transform, outbound field, purpose or transport changed. The
 28 approvals were carried forward from `e4fcddfb…` to `800269d5…` (1,624 files) and the agent manifest regenerated
 (`97bd0705…`, 493 files), under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.
+
+
+## Resignation shared Configuration source binding — 17 November 2026
+
+The resignation coordinator reviewed the deterministic implementation against upstream
+`f0443eaf27d3584f55b6a2e7d48558bd553d4149`; the reviewed source checkpoint before this binding
+is `0809718b8`. An independent engineering review confirmed that the added transitive closure
+comes from the canonical Lifecycle facade, resignation state/letter/posting services and private
+SMTP delivery composition. No AI/provider policy, prompt, tool registration, provider payload
+schema or transport changed. The SMTP document payload is not a model-provider disclosure.
+
+Under the owner's recorded standing authority for same-purpose technical staging rebindings
+(above), the coordinator carried the 28 already-approved records from `800269d5…` to
+`8d7e5c6a9d314c197741ea6f0047ffd7f17293373b902a4271f155558461c97a` (1640 source files).
+Original human reviewers, evidence references, approval timestamps and statuses are preserved;
+pending contracts remain pending. The agent manifest is regenerated after this binding.
+This source preparation does not grant new data disclosure authority or release authority.
+The owner's explicit release hold still applies: no main/alpha integration or installation.

@@ -1,16 +1,16 @@
 # Resignation journey on shared Configuration
 
-Status: accepted direction, 16 November 2026. Implementation and staging acceptance require their own evidence.
+Status: accepted direction, 16 November 2026. Release held by the owner pending explicit approval; implementation verification may continue.
 
 ## Decisions
 
-The owner reviewed the supplied resignation HTML and AIHR merge mockups and authorized implementation and staging. Configuration is shared: reuse Workflows, Templates (documents and emails), Assignment groups and named routing rules. Keep operational Leavers, checklists and source-filtered Personnel postings in Offboarding. Existing module and company permissions remain authoritative.
+The owner reviewed the supplied resignation HTML and AIHR merge mockups and authorized implementation. The subsequent instruction to stop before release supersedes the earlier staging request; no branch integration into main/alpha or installation is authorized until renewed approval. Configuration is shared: reuse Workflows, Templates (documents and emails), Assignment groups and named routing rules. Keep operational Leavers, checklists and source-filtered Personnel postings in Offboarding. Existing module and company permissions remain authoritative.
 
 The owner explicitly chose **termination at completed clearance**, following the handoff. For new managed resignation journeys, accepting a resignation starts the configured acceptance-letter and Offboarding workflow; it does not call the old acceptance/termination command or freeze leave. Completed clearance raises one Termination posting. Authorized approval applies the existing employment movement and required leave/final-pay consequences atomically. There is one writer of employment truth, and a repeated clearance or posting approval cannot repeat it.
 
 Previously accepted requests and pre-cutover in-flight requests keep their recorded outcome and owner. Do not replay acceptance, synthesize signed letters or move historical termination dates. Managed and legacy paths must be explicit and must not both present an actionable decision for the same request.
 
-The handoff wins where its text and HTML differ: the decision form includes an editable agreed last working day and displays monthly salary cost change as well as the percentage. Replacement recruitment integration must use the existing authorized requisition service rather than a fabricated successful action.
+The handoff wins where its text and HTML differ: the decision form includes an editable agreed last working day and displays monthly salary cost change as well as the percentage. Replacement recruitment follows the durable HR follow-up described below because AIHR has no recruitment vacancy service.
 
 ## Owners and contracts
 
@@ -21,7 +21,7 @@ The handoff wins where its text and HTML differ: the decision form includes an e
 - Assignment groups and routing remain the current shared records. A role label or an FYI assignment is not a decision or salary-disclosure grant.
 - Authentication owns email identity resolution and the applied relay. A business transaction queues immutable delivery intent; the private sender receives only a durable delivery ID and a single-attempt capability. SMTP never runs under a business lock. A started delivery with a lost receipt is uncertain and is not automatically replayed.
 
-The public journey interface is `packs/lifecycle/service`; its resignation subdomain implementation remains internal to that facade. Web and worker consumers use the declared pack boundary. Reads authorize and narrow the native set before detail projection, page/count in SQL, and preserve tenant/company isolation. Inboxes project their bounded stored case set without one context query per item. Mutation authorization, state changes, audit and delivery intent share a transaction.
+The public journey interface is `packs/lifecycle/service`; its resignation subdomain implementation remains internal to that facade. Web and worker consumers use the declared pack boundary. Reads authorize and narrow the native set before detail projection, page/count in SQL, and preserve tenant/company isolation. Inboxes project their bounded stored case set without one context query per item. Mutation authorization, state changes, audit and delivery intent share a transaction. The Lifecycle import guard covers the resignation aggregate, letter, clearance and proof implementations, with no outside-import allowlist debt. Cross-pack composition uses named operations through the facade; email admission fixes its operation and payload shape rather than exposing generic proof minting.
 
 Private aggregate reads and derived state writes require short-lived, transaction-bound service proofs, following the organisation admission precedent. A domain-separated derived verifier is provisioned through the restricted owner; runtime SQL cannot read its key or mint proofs. Claims bind tenant, actor, operation, case and exact arguments. Native permission and transition checks still apply. Missing verifier material fails closed; provisioning and populated-upgrade checks are explicit release steps. Signed email intent binds exact recipients, content and released document snapshots, rather than trusting a reader's arbitrary JSON.
 
