@@ -31,7 +31,7 @@ export function contractStartingConfiguration(mapping:ContractStartingMappings){
  const step=(id:string,type:string,params:Record<string,unknown>={},to:AutomationRecipient[]=[],cc:AutomationRecipient[]=[],conditions:AutomationCondition[]=[]):AutomationStep=>({id,type,params,to,cc,conditions});
  let next=200;
  const workflow=(name:string,event:string,steps:AutomationStep[],conditions:AutomationCondition[]=[],dated:{days:number;repeat?:boolean;skip?:AutomationWorkflow['skipWhen']}|null=null):AutomationWorkflow=>({id:contractDefaultId(++next),module:'contract_staff',name,description:'Starting configuration from the reviewed Contract handoff.',status:'live',required:false,trigger:{event,days:dated?.days??0,workdays:false,repeat:dated?.repeat??false},skipWhen:dated?.skip??'never',conditions,steps});
- const approval=()=>step('ceo-approval','requestApproval',{layers:[{id:'ceo',name:'Business Group CEO',pick:'any',approver:{kind:'routing',routingId:mapping.ceoRoutingId}}]});
+ const approval=()=>step('ceo-approval','requestApproval',{layers:[{id:contractDefaultId(301),name:'Business Group CEO',pick:'any',approver:{kind:'routing',routingId:mapping.ceoRoutingId}}]});
  const document=(id:number)=>step('generate-letter','generateDocument',{letterTemplateId:contractDefaultId(id)});
  const payNotice=()=>step('pay-notice','notify',{subject:'Payroll update required for {{employee.name}}',body:'The agreed pay change needs a manual update in Personnel Management › Payroll. Confirm completion on the Contract case after the approved posting.\n\n{{case.link}}'},[ops],[],[condition('payChanges','Yes')]);
  const workflows:AutomationWorkflow[]=[

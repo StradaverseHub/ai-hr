@@ -51,7 +51,7 @@ export const BULK_JOB_NOTICES:Record<string,{messages:string;linkPath:string}>={
  movement_import_revert:{messages:'movementImportRevert',linkPath:'/admin/personnel/import/history?kind=movement'},
  contract_preview:{messages:'contractPreview',linkPath:'/lifecycle/contracts'},
  contract_automation:{messages:'contractAutomation',linkPath:'/lifecycle/contracts'},
- contract_setup:{messages:'contractSetup',linkPath:'/lifecycle/contracts/config'},
+ contract_setup:{messages:'contractSetup',linkPath:'/lifecycle/contracts/settings'},
 };
 export function bulkJobNoticeKeys(kind:string,outcome:string){
  const notice=BULK_JOB_NOTICES[kind];

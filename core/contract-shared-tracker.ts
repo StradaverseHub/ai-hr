@@ -13,7 +13,7 @@ export type ContractTrackerRow={
  employeeName:string;employeeCode:string|null;company:string;businessGroup:string;department:string;position:string;manager:string;
  startOn:string|null;endOn:string|null;contractNumber:number|null;sourceRevision:string|null;
  stage:ContractFlowStage|null;legacyState:string|null;sharedRevision:number|null;flags:ContractFlowFlag[];lastActivityAt:string|null;
- payChanges:boolean;payConfirmed:boolean;previousPayPending:boolean;canOpen:boolean;sourceIssue:'verify_period'|'legacy_in_progress'|'period_changed'|null;
+ payChanges:boolean;payConfirmed:boolean;previousPayPending:boolean;payPendingCaseId:string|null;canOpen:boolean;sourceIssue:'verify_period'|'legacy_in_progress'|'period_changed'|null;
 };
 export type ContractTrackerQuery={search?:string;companyId?:string|null;status?:'all'|'attention'|'decision'|'progress'|'closed';limit?:number;offset?:number};
 export async function contractSharedTracker(ctx:SessionContext,raw:ContractTrackerQuery={}){
