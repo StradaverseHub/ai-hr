@@ -6168,6 +6168,13 @@
       "when": 1793330005466,
       "tag": "5766_probation_reshape_company_in_use",
       "breakpoints": true
+    },
+    {
+      "idx": 5167,
+      "version": "7",
+      "when": 1793330005467,
+      "tag": "5767_assistant_legacy_index_shared_access",
+      "breakpoints": true
     }
   ]
 }

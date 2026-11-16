@@ -77,6 +77,55 @@ describe('actual app-role same-login privacy recovery',()=>{
  it('is transaction-atomic and enforces read-committed write mode without body projection or native-row changes',async()=>{const id=await rawFixture('leave.apply'),before=await custody(id),native=await effects(),failure=Error('Fictional retirement transaction failure');await expect(withTenant(ctx,async tx=>{await tx.execute(sql`select app.assistant_legacy_review_retire(${id}::uuid,'leave.apply')`);throw failure;})).rejects.toBe(failure);expect(await custody(id)).toEqual(before);for(const mode of ['read only','isolation level repeatable read'] as const)await expect(owner.db.transaction(async tx=>{await tx.execute(mode==='read only'?sql`set transaction read only`:sql`set transaction isolation level repeatable read`);await tx.execute(sql`set local role ai_hr_app`);await tx.execute(sql`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id',${ctx.userId},true),set_config('app.roles','employee',true),set_config('app.grants',${JSON.stringify(ctx.grants)},true)`);await tx.execute(sql`select app.assistant_legacy_review_retire(${id}::uuid,'leave.apply')`);})).rejects.toThrow();expect(await custody(id)).toEqual(before);expect(await effects()).toEqual(native);const [receipt]=await retire(id,'leave.apply');expect(JSON.stringify(receipt)).not.toMatch(/person|employment|company|digest|ciphertext|native|PRIVATE|binding/);});
  it('does not grant direct private table reads and captures retirement input/context before admission',async()=>{const first=await rawFixture('notifications.email_preferences.save'),second=await rawFixture('notifications.email_preferences.save');await expect(withTenant(ctx,tx=>tx.execute(sql`select ciphertext from app.assistant_own_leave_review_content`))).rejects.toThrow();const input={action:'notifications.email_preferences.save',contractVersion:1,actionId:first},who={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))},pending=discardModuleActionReview(who,input);input.actionId=second;who.userId=randomUUID();who.personId=randomUUID();await pending;expect(await custody(first)).toMatchObject({metadata:{state:'discarded'},bodies:0});expect(await custody(second)).toMatchObject({metadata:{state:'awaiting_confirmation'},bodies:1});});
  it('keeps discovery bounded and deterministic without decrypting, returning native refs or crossing actual user/tenant/kind',async()=>{const ids=[];for(let n=0;n<26;n++)ids.push(await rawFixture('leave.apply','refused'));await owner.db.execute(sql`update app.assistant_own_leave_review set created_at=now()-interval '1 minute' where user_id=${ctx.userId}::uuid`);const otherId=await createAppUser(b.tenantId,subject.personId,'employee'),foreign=await seedBase();const before=await effects(),unwrap=vi.spyOn(vault,'unwrapDek');unwrap.mockClear();const index=await withTenant(ctx,tx=>listOwnLeaveReviewsTx(tx,ctx));expect(index.reviews.map(row=>row.actionId)).toEqual(ids.sort().reverse().slice(0,25));expect(Object.keys(index.reviews[0]).sort()).toEqual(['actionId','createdAt','expiresAt','state']);for(const who of [{...ctx,userId:otherId},adminCtx(foreign)])expect(await withTenant(who,tx=>tx.execute(sql`select * from app.assistant_legacy_reviews_index('leave.apply')`))).toEqual([]);for(const kind of ['arbitrary.execute','toil.replacement.request','approvals.leave.decide'])await expect(withTenant(ctx,tx=>tx.execute(sql`select * from app.assistant_legacy_reviews_index(${kind})`))).rejects.toThrow();await expect(withTenant(ctx,tx=>listOwnLeaveReviewsTx(tx,{...ctx,userId:otherId}))).rejects.toThrow();expect(unwrap).not.toHaveBeenCalled();expect(await effects()).toEqual(before);});
+ it('shares the native metadata index with another Access reader, in READ ONLY, for every legacy kind',async()=>{
+  const ids=new Map<string,string>();for(const c of cases)ids.set(c.action,await rawFixture(c.action,'refused'));
+  const companies=await owner.db.insert(s.company).values(Array.from({length:69},(_,i)=>({tenantId:b.tenantId,legalName:'Fictional metadata group '+i}))).returning({id:s.company.id});
+  for(let start=0;start<1000;start+=100){
+   const people=await owner.db.insert(s.person).values(Array.from({length:100},(_,i)=>({tenantId:b.tenantId,fullName:'Fictional metadata background '+(start+i),primaryEmail:`metadata-${start+i}@example.invalid`}))).returning({id:s.person.id});
+   await owner.db.insert(s.employment).values(people.map((p,i)=>({tenantId:b.tenantId,personId:p.id,companyId:companies[(start+i)%companies.length].id,hiredOn:'2020-01-01'})));
+  }
+  const before=await effects();
+  await owner.db.transaction(async holder=>{
+   await holder.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+b.tenantId},0))`);
+   for(const c of cases)await withTenant(ctx,async tx=>{
+    await tx.execute(sql`set transaction read only`);await tx.execute(sql`set local lock_timeout='2s'`);
+    const rows=await tx.execute<{action:string;action_id:string}>(sql`select * from app.assistant_legacy_reviews_index(${c.action})`);
+    expect(rows.map(r=>r.action_id)).toEqual([ids.get(c.action)]);expect(rows[0].action).toBe(c.action);
+    const [held]=await tx.execute<{mode:string}>(sql`select app.access_lock_mode_held(${b.tenantId}::uuid) as mode`);expect(held.mode).toBe('S');
+   });
+  });
+  for(const role of s.roleEnum.enumValues)for(const companyId of [null,b.companyId,companies[0].id]){
+   await owner.db.update(s.roleAssignment).set({role,companyId}).where(eq(s.roleAssignment.appUserId,ctx.userId!));
+   const who:SessionContext={...ctx,roles:[role],grants:[{role,companyId}]};
+   for(const c of cases){
+    const rows=await withTenant(who,tx=>tx.execute<{action_id:string}>(sql`select * from app.assistant_legacy_reviews_index(${c.action})`));
+    expect(rows.map(r=>r.action_id),`${role}:${companyId??'all'}:${c.action}`).toEqual([ids.get(c.action)]);
+   }
+  }
+  expect(await effects()).toEqual(before);
+ },180000);
+ it('keeps configuration revocation outside the index interval and refuses the archived login afterward',async()=>{
+  const id=await rawFixture('leave.apply','refused'),before=await custody(id);let writer:Promise<unknown>|undefined;
+  try{
+   await withTenant(ctx,async tx=>{
+    expect((await tx.execute(sql`select * from app.assistant_legacy_reviews_index('leave.apply')`))).toHaveLength(1);
+    const [reader]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);
+    writer=owner.db.transaction(async editor=>{
+     await editor.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))`);
+     await editor.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,ctx.userId!));
+    });void writer.catch(()=>undefined);
+    const deadline=performance.now()+7000;let waiting=false;
+    while(!waiting&&performance.now()<deadline){
+     const [row]=await owner.db.execute<{waiting:boolean}>(sql`select exists(select 1 from pg_locks l where l.locktype='advisory' and not l.granted and ${reader.pid}::int=any(pg_blocking_pids(l.pid))) as waiting`);
+     waiting=row.waiting;if(!waiting)await new Promise(resolve=>setTimeout(resolve,15));
+    }
+    expect(waiting,'the Access editor must wait for the metadata reader').toBe(true);
+   });
+   await writer;
+   await expect(withTenant(ctx,tx=>tx.execute(sql`select * from app.assistant_legacy_reviews_index('leave.apply')`))).rejects.toThrow();
+   expect(await custody(id)).toEqual(before);
+  }finally{await writer?.catch(()=>undefined);}
+ },30000);
  it('permits only minimal SELECT discovery in actual READ COMMITTED READ ONLY while retirement still refuses',async()=>{const id=await rawFixture('leave.apply'),before=await custody(id);const rows=await owner.db.transaction(async tx=>{await tx.execute(sql`set transaction read only`);await tx.execute(sql`set local role ai_hr_app`);await tx.execute(sql`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id',${ctx.userId},true),set_config('app.roles','employee',true),set_config('app.grants',${JSON.stringify(ctx.grants)},true)`);const [mode]=await tx.execute<{isolation:string;readonly:string}>(sql`select current_setting('transaction_isolation') as isolation,current_setting('transaction_read_only') as readonly`);expect(mode).toEqual({isolation:'read committed',readonly:'on'});return tx.execute<{action:string;action_id:string;state:string}>(sql`select * from app.assistant_legacy_reviews_index('leave.apply')`);});expect(rows.map(row=>row.action_id)).toEqual([id]);expect(Object.keys(rows[0]).sort()).toEqual(['action','action_id','created_at','expires_at','state']);expect(await custody(id)).toEqual(before);});
 
 });

@@ -1,3 +1,18 @@
+<!-- 5767_assistant_legacy_index_shared_access -->
+# Assistant metadata discovery shares Access — 16 November 2026 MYT (source allocation; installation held)
+
+Branch `codex/architecture-performance-review-index-20261116` allocates `5767_assistant_legacy_index_shared_access` at idx 5167 /
+when 1793330005467, above main/alpha's 5766 and the freshly read staging watermark (881 entries,
+1793330005466). SHA256 `433dfd7549b496b034bdeaa2c06484b700b5dd5647213106d68487f0b485c7c0`. The installed function is owned by ai_hr_owner.
+Only `app.assistant_legacy_reviews_index(text)` changes: its advisory Access acquisition becomes shared.
+Principal freshness, current-person binding, allowed kinds, history windows, deterministic ordering, 25-row cap,
+owner, grants and every command owner remain unchanged. Applied SQL is untouched.
+
+This allocation is not admission or installation authority. Fresh production ledger reads timed out both directly
+and through staging on 16 November. Recheck production's maximum, peer source allocations and both installed ledgers
+before admission; renumber this unapplied source if a higher watermark or conflicting claim appears.
+Restricted-owner and native concurrency/equivalence checks are required before release.
+
 <!-- 5766_probation_reshape_company_in_use -->
 # Company deletion sees the Probation reshape's owner-only referrers — 16 November 2026 MYT (unapplied, allocated)
 

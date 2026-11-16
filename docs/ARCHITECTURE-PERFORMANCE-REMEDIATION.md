@@ -54,7 +54,7 @@ Initial integration base: `59f06b08db014e01cd553a827c62ccf864d33f78`. Preserve t
 | AP-030 | P1 | Security Center Users directory | Open; implementation pending |
 | AP-031 | P2 | Probation Tracker CSV export | Open; implementation pending |
 | AP-032 | P2 | Attendance Overtime Pattern detail and version history | Open; implementation pending |
-| AP-033 | P1 | AI Centre Find Reviews metadata lists | Installed exclusive read lock confirmed; migration admission pending fresh production watermark |
+| AP-033 | P1 | AI Centre Find Reviews metadata lists | Batch 2 SQL and native proof authored; migration admission pending fresh production watermark |
 | AP-034 | P1 | System Labels Grades and Profile Options grid saves | Open; implementation pending |
 | AP-035 | P2 | Grades and Profile Options partial grid saves | Open; implementation pending |
 | AP-036 | P2 | Attendance Individual Day historical formula results | Open; implementation pending |
@@ -87,3 +87,7 @@ Initial integration base: `59f06b08db014e01cd553a827c62ccf864d33f78`. Preserve t
 ## Completion evidence required
 
 For each batch retain exact source/controller/base identities, hosted test and compiler results, migration ownership/watermarks where applicable, and staging source/build/worker arrival. Compare authorization, ordered rows and counts before measuring query work, transferred data and latency under mixed load. Render the affected controls and verify failure, revocation and stale-review paths with authorized fixtures. Keep failed results and partial coverage visible; 60 open assessment findings are not 60 measured latency regressions.
+
+## Batch 2: assistant legacy metadata index (prepared separately)
+
+Migration 5767 changes only the index's advisory Access lock to shared. The installed ai_hr_owner ownership, own-login/current-person filters, allowed kinds, exact history windows, ordered 25-row packet and command locks are preserved. Native overlap, READ ONLY and revocation-order tests are authored; existing privacy, history, relink, isolation and retirement cases remain required. Source allocation is provisional until both installation watermarks and peer claims are rechecked. No staging installation or improvement is claimed.
