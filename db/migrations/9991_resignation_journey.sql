@@ -390,3 +390,20 @@ BEGIN
  definition:=replace(definition,needle,needle||E'\n IF NEW.kind=''resignation_journey'' AND NEW.letter_job_id IS NULL THEN\n  IF NOT app.resignation_notification_valid(NEW) THEN RAISE EXCEPTION ''Native resignation notification identity is invalid'' USING ERRCODE=''42501'';END IF;RETURN NEW;\n END IF;');
  EXECUTE definition;
 END $migration$;
+--> statement-breakpoint
+-- Once a managed submitted-decision workflow exists, old entry points cannot create a bypass request.
+-- Readiness and matching remain the shared runner's authority; a nonmatching employee cannot fall back to legacy.
+CREATE FUNCTION app.resignation_managed_submission_enabled(p_employment uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM employment e WHERE e.tenant_id=app.current_tenant_id() AND e.id=p_employment) AND EXISTS(SELECT 1 FROM (SELECT DISTINCT ON(workflow_id) status,definition FROM automation_workflow_version WHERE tenant_id=app.current_tenant_id() AND module='off' ORDER BY workflow_id,revision DESC) w WHERE w.status='live' AND w.definition->'trigger'->>'event'='submitted' AND EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(w.definition->'steps','[]')) s WHERE s->>'type'='requestDecision'));
+$$;
+CREATE FUNCTION app.resignation_submission_guard() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE proof jsonb;
+BEGIN
+ IF NOT app.resignation_managed_submission_enabled(NEW.employment_id) THEN RETURN NEW;END IF;
+ SELECT payload INTO proof FROM app.resignation_runtime_state WHERE tenant_id=NEW.tenant_id AND actor=coalesce(app.current_user_id()::text,'worker') AND kind='proof:create' AND transaction_id=txid_current();
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.status<>'pending' OR proof IS NULL OR proof->'args'->>'id' IS DISTINCT FROM NEW.id::text OR proof->'args'->'data'->'facts'->>'employmentId' IS DISTINCT FROM NEW.employment_id::text OR proof->'args'->'data'->'facts'->>'personId' IS DISTINCT FROM NEW.person_id::text OR proof->'args'->'data'->>'lastWorkingDay' IS DISTINCT FROM NEW.last_working_day::text OR coalesce(proof->'args'->'data'->>'reason','') IS DISTINCT FROM coalesce(NEW.reason,'') OR NOT EXISTS(SELECT 1 FROM employment e JOIN app_user u ON u.tenant_id=e.tenant_id AND u.person_id=e.person_id WHERE e.tenant_id=NEW.tenant_id AND e.id=NEW.employment_id AND e.person_id=NEW.person_id AND e.company_id::text=proof->'args'->'data'->'facts'->>'companyId' AND u.id=app.current_user_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) THEN RAISE EXCEPTION 'Submit through the managed resignation journey' USING ERRCODE='42501';END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.resignation_managed_submission_enabled(uuid),app.resignation_submission_guard() FROM PUBLIC,ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.resignation_managed_submission_enabled(uuid) TO ai_hr_app;
+CREATE TRIGGER resignation_submission_guard BEFORE INSERT ON public.resignation_request FOR EACH ROW EXECUTE FUNCTION app.resignation_submission_guard();
