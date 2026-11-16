@@ -1,3 +1,14 @@
+# Movement employment-period fields — 16 November 2026 MYT (unapplied candidate)
+
+Branch `codex/personnel-movement-stage1-20261116` claims `5772_movement_employment_periods`, idx 5172,
+when 1793330005472. SHA256 `0dac500bf906ee0a29451e76a1408257d86808f60df522eacbe28384145a2cf0`. It widens the existing field-name checks on
+`movement_type_field_rule` and `movement_attachment` to retain all existing names and admit the four
+probation/notice value-unit pairs. No table, column, data, grant, policy or purpose-owned object changes.
+Fresh main/alpha and staging's migration ledger were checked on 16 November; their watermark was
+1793330005466. Git-discovered peer worktrees already claimed 5767, 5770 and 5771, so this candidate
+uses 5772. Production's watermark was not queried. Recheck both installed ledgers and peer claims
+before integration/admission; this claim grants no installation authority.
+
 <!-- 5766_probation_reshape_company_in_use -->
 # Company deletion sees the Probation reshape's owner-only referrers — 16 November 2026 MYT (unapplied, allocated)
 

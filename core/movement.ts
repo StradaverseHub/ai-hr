@@ -1,3 +1,4 @@
+import { normalizedMovementEmploymentPeriods, MOVEMENT_EMPLOYMENT_PERIODS, MOVEMENT_EMPLOYMENT_PERIOD_FIELDS, movementPeriodValue, type MovementEmploymentPeriodField } from '../lib/movement-employment-periods';
 import {organisationManagedTx,organisationBusinessUnit} from './organisation-write-policy';
 import {deriveCompanyOrganisationTx,recordEmploymentOrganisationTagsTx,employmentOrganisationTagsTx} from './company-organisation';
 import {personnelInformationCorrections,type InformationHistoryCorrection} from '../lib/personnel-history';
@@ -350,7 +351,7 @@ export type {MovementFlatField};
 
 /** 2260a06b — the Employee Type end dates join the flat changes: they are flat employment columns too, recorded
  *  on the same info leg. contractStartDate rides along when a change to Contract starts a new contract. */
-export type MovementFlatChange = { field: MovementFlatField | MovementEndDateField | 'contractStartDate'; before: string | null; after: string | null };
+export type MovementFlatChange = { field: MovementFlatField | MovementEndDateField | MovementEmploymentPeriodField | 'contractStartDate'; before: string | null; after: string | null };
 
 /** The identity half of a history row (no correction affordances — the detail view never offers them). */
 export type MovementRowSummary = Pick<
@@ -359,7 +360,7 @@ export type MovementRowSummary = Pick<
 >;
 
 export type MovementIntentField = 'tenderResignationDate' | 'resignationEffectiveDate' | 'company' | 'businessUnit' | 'department' | 'position' | 'location' |
-  'grade' | 'employmentType' | 'manager' | 'basicSalary' | 'currency' | 'payMode' | 'paymentTerm' | MovementFlatField | MovementEndDateField;
+  'grade' | 'employmentType' | 'manager' | 'basicSalary' | 'currency' | 'payMode' | 'paymentTerm' | MovementFlatField | MovementEndDateField | MovementEmploymentPeriodField;
 
 /** Saved targets only: not an applied snapshot or an invented historical before-state. */
 export type MovementPendingIntent = { values: { field: MovementIntentField; value: string | null }[] };
@@ -532,12 +533,12 @@ function flatChangesOf(groupEvents: RawEvent[]): MovementFlatChange[] {
     const fields: string[] = Array.isArray(p.fields) ? p.fields : [];
     const before = (p.before ?? {}) as Record<string, unknown>;
     const after = (p.after ?? {}) as Record<string, unknown>;
-    for (const f of [...MOVEMENT_FLAT_FIELDS, ...MOVEMENT_END_DATE_FIELDS, 'contractStartDate'] as const) {
+    for (const f of [...MOVEMENT_FLAT_FIELDS, ...MOVEMENT_END_DATE_FIELDS, ...MOVEMENT_EMPLOYMENT_PERIOD_FIELDS, 'contractStartDate'] as const) {
       if (!fields.includes(f)) continue;
       out.push({
         field: f,
-        before: (before[f] as string | null) ?? null,
-        after: (after[f] as string | null) ?? null,
+        before: movementPeriodValue(before[f] as string | number | null),
+        after: movementPeriodValue(after[f] as string | number | null),
       });
     }
   }
@@ -1274,6 +1275,7 @@ function infoLegIsFlatOnly(e: RawEvent, kind: string): boolean {
   return fields.every(
     (f) =>
       (MOVEMENT_FLAT_FIELDS as readonly string[]).includes(f) ||
+      (MOVEMENT_EMPLOYMENT_PERIOD_FIELDS as readonly string[]).includes(f) ||
       REVERSIBLE_INFO_DATE_FIELDS.includes(f) ||
       // 2260a06b — the Employee Type end dates only the comparison info leg writes under a movement tag (custom
       // type codes included), restored field by field in reverseLegTx.
@@ -1913,7 +1915,7 @@ async function pendingIntentTx(tx: Tx, tenantId: string, event: RawEvent): Promi
       .where(and(eq(employment.tenantId, tenantId), eq(person.tenantId, tenantId), eq(employment.id, id))).limit(1);
     return row?.name ?? null;
   });
-  for (const field of ['tenderResignationDate','resignationEffectiveDate','employmentType', 'basicSalary', 'currency', 'payMode', 'paymentTerm', ...MOVEMENT_FLAT_FIELDS, ...MOVEMENT_END_DATE_FIELDS] as const) {
+  for (const field of ['tenderResignationDate','resignationEffectiveDate','employmentType', 'basicSalary', 'currency', 'payMode', 'paymentTerm', ...MOVEMENT_FLAT_FIELDS, ...MOVEMENT_END_DATE_FIELDS, ...MOVEMENT_EMPLOYMENT_PERIOD_FIELDS] as const) {
     if (!(field in input)) continue; // Omitted is not a clear and not today's value.
     const value: unknown = Reflect.get(input, field);
     if (value === null || typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value))) {
@@ -2121,11 +2123,19 @@ export type MovementCurrentState = {
   confirmationDate: string | null;
   /** 2260a06b — the contract period and internship end (flat employment columns) a movement may maintain. */
   contractStartDate: string | null;
-} & Record<MovementFlatField | MovementEndDateField, string | null>;
+} & Record<MovementFlatField | MovementEndDateField, string | null> & Partial<Record<MovementEmploymentPeriodField, string | null>>;
 
 async function currentStateTx(tx: Tx, employmentId: string): Promise<MovementCurrentState> {
   const [emp] = await tx
     .select({
+      probationValue: sql<string | null>`coalesce(${employment.probationValue}, ${employment.probationMonths})::text`,
+      probationUnit: sql<string | null>`case when coalesce(${employment.probationValue}, ${employment.probationMonths}) is not null then coalesce(${employment.probationUnit}, 'month') else ${employment.probationUnit} end`,
+      extendedProbationValue: employment.extendedProbationValue,
+      extendedProbationUnit: employment.extendedProbationUnit,
+      noticeBeforeConfirmationValue: sql<string | null>`coalesce(${employment.noticeBeforeConfirmationValue}, ${employment.resignationNoticeMonths})::text`,
+      noticeBeforeConfirmationUnit: sql<string | null>`case when coalesce(${employment.noticeBeforeConfirmationValue}, ${employment.resignationNoticeMonths}) is not null then coalesce(${employment.noticeBeforeConfirmationUnit}, 'month') else ${employment.noticeBeforeConfirmationUnit} end`,
+      noticeAfterConfirmationValue: employment.noticeAfterConfirmationValue,
+      noticeAfterConfirmationUnit: employment.noticeAfterConfirmationUnit,
       gradeId: employment.gradeId,
       companyName: company.legalName,
       companyId: employment.companyId,
@@ -2200,6 +2210,7 @@ async function currentStateTx(tx: Tx, employmentId: string): Promise<MovementCur
     .limit(1);
 
   return {
+    ...Object.fromEntries(MOVEMENT_EMPLOYMENT_PERIOD_FIELDS.map(field => [field, movementPeriodValue(emp[field])])) as Record<MovementEmploymentPeriodField, string | null>,
     companyName: emp.companyName,
     companyId: emp.companyId,
     joinDate: emp.joinDate,
@@ -2325,7 +2336,7 @@ export type CreateMovementInput = {
    * scheduled intent (scheduledInputOf ignores it). The movement import never supplies any.
    */
   documents?: MovementDocumentUpload[];
-} & Partial<Record<MovementFlatField | MovementEndDateField, string | null>>;
+} & Partial<Record<MovementFlatField | MovementEndDateField | MovementEmploymentPeriodField, string | null>>;
 
 /** 941c9dac — one field a movement moved, resolved to raw values. The audit record the reporter asked
  *  for ("what changed, from what to what") is a list of these, stored on the applied event. */
@@ -2408,6 +2419,18 @@ function movementDeltas(p: CreateMovementInput, cur: MovementCurrentState) {
       if (dType === 'contract' && p.effectiveDate !== cur.contractStartDate) endDates.contractStartDate = p.effectiveDate;
     }
   }
+  const periods: Partial<Record<MovementEmploymentPeriodField, string | null>> = {};
+  for (const field of MOVEMENT_EMPLOYMENT_PERIOD_FIELDS) {
+    const value = delta(p[field], cur[field] ?? null);
+    if (value !== undefined) periods[field] = value;
+  }
+  for (const period of MOVEMENT_EMPLOYMENT_PERIODS) {
+    if (!(period.value in periods) && !(period.unit in periods)) continue;
+    const value = p[period.value] === undefined ? cur[period.value] : p[period.value];
+    const unit = p[period.unit] === undefined ? cur[period.unit] : p[period.unit];
+    if (value != null && value !== '' && !unit) throw new Error('Choose Month, Week or Day for the employment period.');
+  }
+  const periodsChanged = Object.keys(periods).length > 0;
   const endDatesChanged = Object.keys(endDates).length > 0;
 
   const dSalary =
@@ -2453,7 +2476,7 @@ function movementDeltas(p: CreateMovementInput, cur: MovementCurrentState) {
 
   const nothingChanged =
     !assignmentChanged && !gradeChanged && !flatChanged && !managerChanged && !compChanged &&
-    !confirmationChanged && !companyChanged && !endDatesChanged;
+    !confirmationChanged && !companyChanged && !endDatesChanged && !periodsChanged;
   if (dSalary !== undefined && (!Number.isFinite(dSalary) || dSalary < 0)) {
     throw new Error('A valid basic salary amount is required.');
   }
@@ -2479,6 +2502,7 @@ function movementDeltas(p: CreateMovementInput, cur: MovementCurrentState) {
   for (const f of MOVEMENT_FLAT_FIELDS) add(f, cur[f], flat[f]);
   add('contractStartDate', cur.contractStartDate, endDates.contractStartDate);
   for (const f of MOVEMENT_END_DATE_FIELDS) add(f, cur[f], endDates[f]);
+  for (const field of MOVEMENT_EMPLOYMENT_PERIOD_FIELDS) add(field, cur[field] ?? null, periods[field]);
   if (dSalary !== undefined) add('basicSalary', cur.basicSalary, String(dSalary));
   if (hasComp) {
     add('currency', cur.currency, dCurrency);
@@ -2490,7 +2514,7 @@ function movementDeltas(p: CreateMovementInput, cur: MovementCurrentState) {
   add('confirmationDate', cur.confirmationDate, dConfirmation);
 
   return {
-    cur,
+    cur, periods, periodsChanged,
     dCompany, dJoinDate,
     dDept, dPos, dBu, dLoc, dType, dGrade, dManager, flat, endDates,
     dSalary, dCurrency, dPayMode, dPaymentTerm, dConfirmation,
@@ -2641,6 +2665,7 @@ async function applyComparisonLegsTx(
     const cur = await currentStateTx(tx, p.employmentId);
     const d = movementDeltas(p, cur);
     const {
+      periods, periodsChanged,
       dCompany, dJoinDate,
       dDept, dPos, dBu, dLoc, dType, dGrade, dManager, flat, endDates,
       dSalary, dCurrency, dPayMode, dPaymentTerm, dConfirmation,
@@ -2677,12 +2702,13 @@ async function applyComparisonLegsTx(
     // setEmploymentInfo re-derives finalConfirmationDate from it, which is what flips the derived
     // Employee Status from Probation to Confirmed — there is no status column to write.
     const infoLeg = async () => {
-      if (!flatChanged && !confirmationChanged && !joinDateChanged && !endDatesChanged) return;
+      if (!flatChanged && !confirmationChanged && !joinDateChanged && !endDatesChanged && !periodsChanged) return;
       await setEmploymentInfo(
         ctx,
         {
           employmentId: p.employmentId,
           ...flat,
+          ...periods,
           // 2260a06b — the type end dates (and a new contract's start) ride on the same info leg, after the
           // assignment leg has written the new type, so the owner validates them for the type they belong to.
           ...endDates,
@@ -3288,7 +3314,7 @@ async function resolveInputTypeTx<T extends CreateMovementInput>(
       `That movement event type has been switched off in Movement Settings, so it cannot be used to ${verb} a movement.`,
     );
   }
-  return { ...p, kind: resolved.behaviourKind, typeCode: resolved.code };
+  return { ...p, ...normalizedMovementEmploymentPeriods(p), kind: resolved.behaviourKind, typeCode: resolved.code };
 }
 
 /**
@@ -4065,6 +4091,7 @@ async function replayInputOfTx(tx: Tx, r: ProjectedRow, g: RawEvent[], behaviour
         for (const f of fields) {
           if ((MOVEMENT_FLAT_FIELDS as readonly string[]).includes(f)) input[f] = p.after?.[f] ?? null;
           if ((MOVEMENT_END_DATE_FIELDS as readonly string[]).includes(f)) input[f] = p.after?.[f] ?? null;
+          if ((MOVEMENT_EMPLOYMENT_PERIOD_FIELDS as readonly string[]).includes(f)) input[f] = movementPeriodValue(p.after?.[f]);
           if (f === 'tenderResignationDate') {
             if(behaviour==='termination') input.resignationDate=p.after?.[f] ?? null;
             else input.tenderResignationDate=p.after?.[f] ?? null;
@@ -4293,6 +4320,14 @@ async function reverseLegTx(
           contractEndDate: employment.contractEndDate,
           internshipEndDate: employment.internshipEndDate,
           provisionalEndOn: employment.provisionalEndOn,
+          probationValue: employment.probationValue,
+          probationUnit: employment.probationUnit,
+          extendedProbationValue: employment.extendedProbationValue,
+          extendedProbationUnit: employment.extendedProbationUnit,
+          noticeBeforeConfirmationValue: employment.noticeBeforeConfirmationValue,
+          noticeBeforeConfirmationUnit: employment.noticeBeforeConfirmationUnit,
+          noticeAfterConfirmationValue: employment.noticeAfterConfirmationValue,
+          noticeAfterConfirmationUnit: employment.noticeAfterConfirmationUnit,
         })
         .from(employment)
         .where(eq(employment.id, employmentId))
@@ -4305,10 +4340,10 @@ async function reverseLegTx(
       for (const f of ['contractStartDate', 'contractEndDate', 'internshipEndDate', 'provisionalEndOn'] as const) {
         if (fields.includes(f) && (cur[f] ?? null) === (after[f] ?? null)) endRestore[f] = before[f] ?? null;
       }
-      const restore: Partial<Record<MovementFlatField | 'confirmationDate' | 'joinDate' | 'tenderResignationDate' | 'resignationDate' | 'lastWorkingDate', string | null>> = {};
-      for (const f of MOVEMENT_FLAT_FIELDS) {
+      const restore: Partial<Record<MovementFlatField | MovementEmploymentPeriodField | 'confirmationDate' | 'joinDate' | 'tenderResignationDate' | 'resignationDate' | 'lastWorkingDate', string | null>> = {};
+      for (const f of [...MOVEMENT_FLAT_FIELDS, ...MOVEMENT_EMPLOYMENT_PERIOD_FIELDS]) {
         if (!fields.includes(f)) continue;
-        if ((cur[f] ?? null) !== (after[f] ?? null)) continue; // a later movement owns this column now
+        if (movementPeriodValue(cur[f]) !== movementPeriodValue(after[f])) continue; // a later movement owns this column now
         restore[f] = before[f] ?? null;
       }
       // 3ced1040 — the confirmation date a Confirmation movement wrote, undone on exactly the same
@@ -5011,7 +5046,8 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
         (!p.employmentType || p.employmentType === cur.employmentType) &&
         (p.basicSalary === undefined || Number(p.basicSalary) === Number(cur.basicSalary ?? NaN)) &&
         MOVEMENT_FLAT_FIELDS.every((f) => same(p[f], cur[f])) &&
-        MOVEMENT_END_DATE_FIELDS.every((f) => same(p[f], cur[f]));
+        MOVEMENT_END_DATE_FIELDS.every((f) => same(p[f], cur[f])) &&
+        MOVEMENT_EMPLOYMENT_PERIOD_FIELDS.every(field => same(p[field], cur[field] ?? null));
       // 3ced1040 — a Confirmation's own field, the confirmation date, needs no line here: it IS the
       // effective date, so `datesUnchanged` already covers every way it can move.
       if (datesUnchanged && valuesUnchanged) throw new MovementNoChangeError();

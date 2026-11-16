@@ -1,4 +1,6 @@
 'use client';
+import { EmploymentPeriodValueControl, EmploymentPeriodUnitControl } from '@/components/employment-period-fields';
+import { MOVEMENT_EMPLOYMENT_PERIODS, type MovementEmploymentPeriods } from '@/lib/movement-employment-periods';
 import { ActionButton } from '@/components/ui/action-button';
 import {DerivedOrganisationFields,useDerivedOrganisation} from '@/components/derived-organisation-fields';
 
@@ -46,7 +48,7 @@ export type MovementOrgScope = {
 };
 
 /** The employee's current record, as the server read it — ids for pickers, text for the flat columns. */
-export type MovementCurrentValues = {
+export type MovementCurrentValues = MovementEmploymentPeriods & {
   companyName: string | null;
   /** b7b22514 — the raw id, because Entity Transfer makes Company an editable field and a select needs a
    *  value, not a label. Every other kind still renders `companyName` read-only. */
@@ -573,6 +575,19 @@ export function MovementNewEvent({
           defaultValue={typeChanges ? (saved?.internshipEndDate ?? '') : (after.internshipEndDate ?? '')} className={inputCls} />
         {typeChanges && <p className="text-xs text-muted-foreground">{t('form.endDateRequiredIntern')}</p>}
       </>) : null,
+    ...MOVEMENT_EMPLOYMENT_PERIODS.flatMap(period => [
+      row(period.value, period.value, label(movementField(period.value)), current[period.value] ?? null,
+        <EmploymentPeriodValueControl fieldId={movementField(period.value)}
+          {...personnelWorkflowControl(movementField(period.value), 'movement')}
+          aria-label={label(movementField(period.value))} defaultValue={after[period.value] ?? ''} />),
+      row(period.unit, period.unit, `${label(movementField(period.unit))} · ${tPay('employmentInfo.unit')}`,
+        current[period.unit] ? personnelFormChoices(movementField(period.unit)).find(option => option.value === current[period.unit])?.labelKey
+          ? tPay(personnelFormChoices(movementField(period.unit)).find(option => option.value === current[period.unit])!.labelKey.slice(14)) : current[period.unit] : null,
+        <EmploymentPeriodUnitControl fieldId={movementField(period.unit)} allowEmpty
+          {...personnelWorkflowControl(movementField(period.unit), 'movement')}
+          aria-label={`${label(movementField(period.unit))} · ${tPay('employmentInfo.unit')}`}
+          defaultValue={after[period.unit] ?? ''} />),
+    ]),
     row('managerEmploymentId', 'manager', label(movementField('managerEmploymentId')), nameOf(managers, current.managerEmploymentId),
       select('managerEmploymentId', after.managerEmploymentId, scopedManagers, t('form.none'))),
     row('basicSalary', 'basicSalary', label(movementField('basicSalary')), current.basicSalary,

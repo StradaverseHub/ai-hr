@@ -22,6 +22,7 @@
  * number of zero or more; `missingByTab` restates that rule for the draft so the refusal lands on the tab
  * instead of after `hireEmployee` has committed. This component only renders.
  */
+import type { InputHTMLAttributes, SelectHTMLAttributes } from 'react';
 import { useTranslations } from 'next-intl';
 import { inputCls } from '@/components/ui';
 import { PersonnelField } from '@/components/personnel-field';
@@ -47,7 +48,6 @@ export function EmploymentPeriodField(
     | (Common & { mode: 'form'; valueName: string; unitName: string })
     | (Common & { mode: 'controlled'; onChange: (patch: { value?: string; unit?: string }) => void }),
 ) {
-  const t = useTranslations('people.detail');
   const fields = {
     probationPeriod: ['employment.employment_dates_and_service.probationvalue','employment.employment_dates_and_service.probationunit'],
     extendedProbationPeriod: ['employment.employment_dates_and_service.extendedprobationvalue','employment.employment_dates_and_service.extendedprobationunit'],
@@ -56,44 +56,49 @@ export function EmploymentPeriodField(
   } as const;
   const [valueId,unitId]=fields[props.labelKey];
   const mode=props.mode==='controlled' ? 'draft' : 'edit';
-  const options=personnelFormChoices(unitId);
   if(props.mode==='form'){personnelFormName(valueId,props.valueName);personnelFormName(unitId,props.unitName);}
 
   return (
     <PersonnelField fieldId={valueId} mode={mode}>
       <div className="flex gap-2">
-        <input
-          {...personnelInput(valueId,mode)}
-          placeholder={t('employmentInfo.value')}
-          aria-label={t('employmentInfo.value')}
-          className={inputCls}
+        <EmploymentPeriodValueControl
+          fieldId={valueId}
+          mode={mode}
           {...(props.mode === 'form'
             ? { defaultValue: props.value ?? '' }
-            : {
-                value: props.value ?? '',
-                onChange: (e) => props.onChange({ value: e.target.value }),
-              })}
+            : { value: props.value ?? '', onChange: (e) => props.onChange({ value: e.target.value }) })}
         />
-        <select
-          {...personnelControl(unitId,mode)}
-          aria-label={t('employmentInfo.unit')}
-          className={inputCls}
+        <EmploymentPeriodUnitControl
+          fieldId={unitId}
+          mode={mode}
           {...(props.mode === 'form'
             ? { defaultValue: props.unit ?? 'month' }
-            : {
-                value: props.unit ?? 'month',
-                onChange: (e) => props.onChange({ unit: e.target.value }),
-              })}
-        >
-          {options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {t(option.labelKey.slice(14))}
-            </option>
-          ))}
-        </select>
+            : { value: props.unit ?? 'month', onChange: (e) => props.onChange({ unit: e.target.value }) })}
+        />
       </div>
     </PersonnelField>
   );
+}
+
+/** Shared scalar controls: Employment, draft and Movement keep identical units and constraints. */
+export function EmploymentPeriodValueControl({fieldId, mode = 'edit', ...props}: {
+  fieldId: string; mode?: 'edit' | 'draft';
+} & InputHTMLAttributes<HTMLInputElement>) {
+  const t = useTranslations('people.detail');
+  return <input {...personnelInput(fieldId, mode)} placeholder={t('employmentInfo.value')}
+    aria-label={t('employmentInfo.value')} className={inputCls} {...props} />;
+}
+
+export function EmploymentPeriodUnitControl({fieldId, mode = 'edit', allowEmpty = false, ...props}: {
+  fieldId: string; mode?: 'edit' | 'draft'; allowEmpty?: boolean;
+} & SelectHTMLAttributes<HTMLSelectElement>) {
+  const t = useTranslations('people.detail');
+  return <select {...personnelControl(fieldId, mode)} aria-label={t('employmentInfo.unit')} className={inputCls} {...props}>
+    {allowEmpty && <option value="">{t('employmentInfo.unit')}</option>}
+    {personnelFormChoices(fieldId).map(option => <option key={option.value} value={option.value}>
+      {t(option.labelKey.slice(14))}
+    </option>)}
+  </select>;
 }
 
 /**

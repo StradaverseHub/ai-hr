@@ -35,6 +35,7 @@ import {
 import { reprojectEntitlementForEmployment } from '@/core/leave';
 // c063eea9 — the hire-details correction. Its form parser lives in core/ (a 'use server' module may only
 // export async functions) and reads ONLY the six allow-listed fields.
+import { MOVEMENT_EMPLOYMENT_PERIOD_FIELDS } from '@/lib/movement-employment-periods';
 import { correctHireDetails, parseHireCorrectionEndDate, parseHireCorrectionForm } from '@/core/hire-correction';
 // r256 420ebab5 — the SERVICE behind the Payroll tab's policy card. The per-card door is
 // assignPolicyAction (app/admin/payroll-policy/actions.ts, resolved through getSession); the consolidated
@@ -450,6 +451,7 @@ function parseMovementForm(formData: FormData, mode: 'create' | 'edit' = 'create
     paymentTerm: optional('paymentTerm') ?? undefined,
     // The flat, non-dated org columns the comparison screen now carries (Division … Category).
     ...Object.fromEntries(MOVEMENT_FLAT_FIELDS.map((f) => [f, optional(f)])),
+    ...Object.fromEntries(MOVEMENT_EMPLOYMENT_PERIOD_FIELDS.map(field => [field, optional(field)])),
     // 2260a06b — the end date of the Employee Type the movement leaves the employee with (only that row renders).
     contractEndDate: optional('contractEndDate'),
     internshipEndDate: optional('internshipEndDate'),

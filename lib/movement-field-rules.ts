@@ -19,6 +19,7 @@
  * ENTITY TRANSFER'S COMPANY IS LOCKED included, editable and required to change: moving the legal entity is
  * what that event type IS. The grid shows it fixed and the normaliser below overrides any stored value.
  */
+import { MOVEMENT_EMPLOYMENT_PERIOD_FIELDS } from './movement-employment-periods';
 import { MOVEMENT_FLAT_FIELDS } from './movement-pending-input';
 
 export const MOVEMENT_RULE_FIELDS = [
@@ -31,6 +32,7 @@ export const MOVEMENT_RULE_FIELDS = [
   // 2260a06b — the end date of the (resulting) Employee Type. Migration 9750 widens the stored vocabulary.
   'contractEndDate',
   'internshipEndDate',
+  ...MOVEMENT_EMPLOYMENT_PERIOD_FIELDS,
   'locationId',
   'managerEmploymentId',
   ...MOVEMENT_FLAT_FIELDS,
@@ -63,7 +65,7 @@ export type MovementFieldRule = {
 export const MOVEMENT_RULE_GROUPS: readonly { id: 'organisation' | 'labels' | 'salary'; fields: readonly MovementRuleField[] }[] = [
   {
     id: 'organisation',
-    fields: ['companyId', 'businessUnitId', 'departmentId', 'positionId', 'gradeId', 'employmentType', 'contractEndDate', 'internshipEndDate', 'locationId', 'managerEmploymentId'],
+    fields: ['companyId', 'businessUnitId', 'departmentId', 'positionId', 'gradeId', 'employmentType', 'contractEndDate', 'internshipEndDate', ...MOVEMENT_EMPLOYMENT_PERIOD_FIELDS, 'locationId', 'managerEmploymentId'],
   },
   { id: 'labels', fields: [...MOVEMENT_FLAT_FIELDS] },
   { id: 'salary', fields: ['basicSalary', 'currency', 'payMode', 'paymentTerm'] },

@@ -1,3 +1,4 @@
+import { MOVEMENT_EMPLOYMENT_PERIOD_FIELDS, type MovementEmploymentPeriodField } from '../lib/movement-employment-periods';
 import {organisationManagedTx,organisationBusinessUnit} from './organisation-write-policy';
 import {deriveCompanyOrganisationTx} from './company-organisation';
 import {organisationImportWarningsTx} from './derived-organisation-display';
@@ -278,7 +279,8 @@ async function inputTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,empl
    if(!allowed.includes(raw))throw new Error('invalid_choice:employmentType');input.employmentType=raw as NonNullable<CreateMovementInput['employmentType']>;
   }else if(field in fieldKinds){
    const options=catalog.fields[field]??[];input[field as keyof typeof fieldKinds]=options.length?lookup(raw,options,field):raw;
-  }else if(field==='remarks'||field==='currency'||field==='payMode'||field==='paymentTerm'||field==='terminationReasonCode')input[field]=raw;
+  }else if((MOVEMENT_EMPLOYMENT_PERIOD_FIELDS as readonly string[]).includes(field))input[field as MovementEmploymentPeriodField]=raw;
+  else if(field==='remarks'||field==='currency'||field==='payMode'||field==='paymentTerm'||field==='terminationReasonCode')input[field]=raw;
  }
  if(managed||tags.status!=='legacy'){const state=known?{businessUnitId:known.businessUnitId??null}:await movementCurrentStateTx(tx,employmentId);input.businessUnitId=organisationBusinessUnit(tags,managed,input.businessUnitId,resolved.behaviourKind==='entityTransfer'&&targetCompanyId!==currentCompanyId?null:state.businessUnitId);}
  return {input,source,catalog,behaviour:resolved.behaviourKind};

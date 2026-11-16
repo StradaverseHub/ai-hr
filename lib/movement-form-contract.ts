@@ -2,6 +2,15 @@
 import {isComparisonKind} from '../core/movement-kinds';
 import {personnelFormRequired} from './personnel-form-contract';
 export const MOVEMENT_FORM_IDS = {
+  "probationValue": "employment.employment_dates_and_service.probationvalue",
+  "probationUnit": "employment.employment_dates_and_service.probationunit",
+  "extendedProbationValue": "employment.employment_dates_and_service.extendedprobationvalue",
+  "extendedProbationUnit": "employment.employment_dates_and_service.extendedprobationunit",
+  "noticeBeforeConfirmationValue": "employment.employment_dates_and_service.noticebeforeconfirmationvalue",
+  "noticeBeforeConfirmationUnit": "employment.employment_dates_and_service.noticebeforeconfirmationunit",
+  "noticeAfterConfirmationValue": "employment.employment_dates_and_service.noticeafterconfirmationvalue",
+  "noticeAfterConfirmationUnit": "employment.employment_dates_and_service.noticeafterconfirmationunit",
+
   "companyId": "employment.organisation_assignment.companyname",
   "businessUnitId": "employment.organisation_assignment.businessunitname",
   "departmentId": "employment.organisation_assignment.departmentname",
@@ -42,7 +51,7 @@ export type MovementFormField=Exclude<keyof typeof MOVEMENT_FORM_IDS,'reason'>;
 export function movementFormFields(behaviour:string,reason?:string):MovementFormField[]{
  const fields:MovementFormField[]=['kind','remarks'];
  if(behaviour!=='blacklist')fields.push('effectiveDate');
- if(isComparisonKind(behaviour))fields.push(...(['businessUnitId','departmentId','positionId','gradeId','employmentType','contractEndDate','internshipEndDate','locationId','managerEmploymentId','basicSalary','currency','payMode','paymentTerm','orgDivision','employmentCategory','orgRegion','orgBranch','orgTeam','orgSection','orgLine','orgBase'] as const));
+ if(isComparisonKind(behaviour))fields.push(...(['businessUnitId','departmentId','positionId','gradeId','employmentType','contractEndDate','internshipEndDate','locationId','managerEmploymentId','basicSalary','currency','payMode','paymentTerm','orgDivision','employmentCategory','orgRegion','orgBranch','orgTeam','orgSection','orgLine','orgBase','probationValue','probationUnit','extendedProbationValue','extendedProbationUnit','noticeBeforeConfirmationValue','noticeBeforeConfirmationUnit','noticeAfterConfirmationValue','noticeAfterConfirmationUnit'] as const));
  if(behaviour==='entityTransfer')fields.push('companyId');
  if(['probationExtension','secondment','actingPosition','resignation','termination'].includes(behaviour))fields.push('endDate');
  if(behaviour==='resignation')fields.push('tenderResignationDate','resignationEffectiveDate');
