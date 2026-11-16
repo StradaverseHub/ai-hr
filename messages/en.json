@@ -41085,7 +41085,16 @@
       "declined": "Offer declined",
       "lapsed": "Offer lapsed",
       "withdrawn": "Withdrawn"
-    }
+    },
+    "journeyOwnedDocument": "Open this letter in the linked resignation journey.",
+    "checklistReviewRequired": "Review the checklist before continuing",
+    "ownedChecklistWarning": "The document for “{task}” belongs to the resignation journey. HR must update this checklist requirement before clearance.",
+    "manualClearanceForm": "Additional clearance form",
+    "chooseClearanceForm": "Choose a form…",
+    "generateClearanceForm": "Generate clearance form",
+    "sharedCommunications": "Shared journey communications",
+    "sharedCommunicationsHint": "The resignation journey handles this case’s letters, emails and communication workflows. Clearance tasks and return items continue here.",
+    "openSharedConfiguration": "Open shared Configuration"
   },
   "offboardingPostings": {
     "breadcrumb": "Onboarding & offboarding / Personnel postings",
