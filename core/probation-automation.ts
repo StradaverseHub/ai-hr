@@ -30,7 +30,8 @@ import {pgSqlState} from '../lib/db-error';
 import {newAutomationRun,resolveAutomationRecipients,type AutomationExecutors,type AutomationRun,type AutomationRuntimeGuards,type AutomationStepContext,type AutomationStepOutcome} from '../lib/automation/runtime';
 import {conditionFieldsForTrigger} from '../lib/automation/catalogue';
 import {PROBATION_AUTOMATION_CATALOGUE,PROBATION_PART_LABELS} from '../lib/automation/catalogues/probation';
-import {fillAutomationMergeFields} from '../lib/automation/email';
+import {fillAutomationMergeFields,automationEmailBodyDoc} from '../lib/automation/email';
+import {prepareProbationEmailAssetSource} from './automation-email-asset-proof';
 import type {AutomationFactValue} from '../lib/automation/conditions';
 import type {AutomationRecipient,AutomationStep} from '../lib/automation/workflow';
 import type {Routing} from '../lib/automation/routing';
@@ -55,7 +56,7 @@ export type ProbationAutomationContext = {
   employeeCode: string | null;
   fallbackGroupId: string | null; postingApproverGroupId: string | null;
   routings: Routing[]; groups: {id: string; members: string[]}[];
-  emailTemplates: {id: string; name: string; active: boolean; retired: boolean; subject: string; body: string;bodyDoc?:EmailBodyDoc|null; cc: AutomationRecipient[]}[];
+  emailTemplates: {id: string; name: string; active: boolean; retired: boolean; subject: string; body: string;bodyDoc?:EmailBodyDoc|null; cc: AutomationRecipient[];revision?:number;assetCount?:number}[];
 };
 /** The case as the adapter needs it (a subset of ProbationCaseView.record). */
 export type ProbationAutomationCase = {
@@ -213,15 +214,25 @@ function probationRuntime(tx: Tx, input: ExecutorInput): {executors: AutomationE
   // The email keeps {{case.link}} as a token: the private sender makes it an absolute link for its installation.
   const emailMerge = {...merge, 'case.link': ''};
   /** In-app notice (5753) and the durable email intent (5754), in this transaction. */
-  const deliver = async (run: AutomationRun, step: AutomationStep, to: readonly AutomationRecipient[], cc: readonly AutomationRecipient[], subject: string, body: string,bodyDoc?:EmailBodyDoc|null) => {
+  const deliver = async (run: AutomationRun, step: AutomationStep, to: readonly AutomationRecipient[], cc: readonly AutomationRecipient[], subject: string, body: string,bodyDoc?:EmailBodyDoc|null,template?:ProbationAutomationContext['emailTemplates'][number]) => {
     const active = await probationActivePeopleTx(tx, record.id, [to, cc]);
     const addressees = probationEmailAddressees(to, cc, context, facts, input.pending, input.audience, step.params.legacy !== true, active), resolved = addressees.all;
     if (!resolved.userIds.length) return {resolved, email: null};
     const key = run.id + ':' + step.id;
     await tx.execute(sql`select app.probation_automation_notify(${record.id}::uuid, ${facts.partId ?? null}::uuid, ${key}, ${input.trigger}, ${`{${resolved.userIds.join(',')}}`}::uuid[])`);
     const {queueAutomationEmailTx} = await import('./automation-email-delivery');
+    const subjectLine=fillAutomationMergeFields(subject, merge).replace(/\s+/g, ' ').trim() || 'Probation update',message=fillAutomationMergeFields(body, emailMerge).replace(/\{\{\s*case\.link\s*\}\}/g, '{{case.link}}');
+    let richBody:import('../lib/automation-email-content').AutomationRichEmailBody|undefined=bodyDoc?{doc:bodyDoc,values:emailMerge}:undefined;
+    if(template?.assetCount){
+      const hold='Set up shared email attachment verification before continuing this template. No email was sent without its files.';
+      if(!template.revision)return {resolved,email:null,assetHold:hold};
+      const source={...(richBody??{doc:automationEmailBodyDoc({body,module:'probation'}),values:emailMerge}),sourceTemplate:{id:template.id,revision:template.revision}};
+      const admitted=await prepareProbationEmailAssetSource(tx,ctx,{subjectId:record.id,key,to:addressees.to,cc:addressees.cc,subject:subjectLine,body:message,richBody:source});
+      if(!admitted)return {resolved,email:null,assetHold:hold};
+      richBody=admitted;
+    }
     const email = await queueAutomationEmailTx(tx, {module: 'probation', subjectId: record.id, key, to: addressees.to, cc: addressees.cc,
-      subject: fillAutomationMergeFields(subject, merge).replace(/\s+/g, ' ').trim() || 'Probation update', body: fillAutomationMergeFields(body, emailMerge).replace(/\{\{\s*case\.link\s*\}\}/g, '{{case.link}}'),...(bodyDoc?{richBody:{doc:bodyDoc,values:emailMerge}}:{})});
+      subject:subjectLine,body:message,...(richBody?{richBody}:{})});
     return {resolved, email};
   };
   const unresolvedOf = (resolved: ReturnType<typeof recipientsFor>, email: {unreachable: string[]} | null) => [
@@ -244,7 +255,8 @@ function probationRuntime(tx: Tx, input: ExecutorInput): {executors: AutomationE
     sendEmail: async ({run, step}) => {
       const template = templates.get(text(step.params.emailTemplateId));
       if (!template) return {status: 'skipped', reason: 'the email template no longer exists.'};
-      const {resolved, email} = await deliver(run, step, step.to, [...step.cc, ...template.cc], template.subject, template.body,template.bodyDoc);
+      const {resolved, email,assetHold} = await deliver(run, step, step.to, [...step.cc, ...template.cc], template.subject, template.body,template.bodyDoc,template);
+      if(assetHold)return {status:'failed',reason:assetHold};
       if (!resolved.userIds.length) return {status: 'failed', reason: 'Nobody could receive the email, and the fallback group has no members.'};
       return {status: 'done', message: `Sent “${fillAutomationMergeFields(template.subject, merge)}” in AI-HR.${sent(email)}`, recipients: resolved.userIds, unresolved: unresolvedOf(resolved, email)};
     },

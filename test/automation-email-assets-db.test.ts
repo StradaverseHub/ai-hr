@@ -4,6 +4,7 @@ import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {adminCtx,createAppUser,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {saveAutomationEmailTemplate,listAutomationEmailTemplates,uploadAutomationEmailAsset,downloadAutomationEmailAsset,type AutomationEmailTemplate} from '../packs/automation/service';
+import {pgSqlState} from '../lib/db-error';
 let base:Base,admin:SessionContext;
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{
@@ -19,6 +20,12 @@ describe('Native shared email asset receipts',()=>{
   const asset=await uploadAutomationEmailAsset(admin,{templateId:template.id,module:'probation',revision:1,kind:'file',name:'information.txt',content:Buffer.from('Fictional information only.\n')});
   expect(asset).toMatchObject({kind:'file',name:'information.txt',mimeType:'text/plain',size:28,by:'Fictional email author'});
   const bytes=await downloadAutomationEmailAsset(admin,asset.id);expect(bytes.content.toString()).toBe('Fictional information only.\n');
+  expect(await withTenant(admin,tx=>tx.execute(sql`select content from lc_v9_email_asset where id=${asset.id}::uuid`))).toHaveLength(0);
+  await owner.db.execute(sql`insert into lc_v9_config(tenant_id,data) values(${base.tenantId}::uuid,'{"version":9,"emails":[{"id":"legacy-mail"}]}'::jsonb) on conflict(tenant_id) do update set data=jsonb_set(lc_v9_config.data,'{emails}','[{"id":"legacy-mail"}]'::jsonb)`);
+  const [legacy]=await owner.db.execute<{id:string}>(sql`insert into lc_v9_email_asset(tenant_id,email_template_id,kind,filename,mime_type,content,uploaded_by,uploaded_by_name) values(${base.tenantId}::uuid,'legacy-mail','file','legacy.txt','text/plain',decode('SGk=','base64'),${admin.userId}::uuid,'Fictional email author') returning id`);
+  expect(await withTenant(admin,tx=>tx.execute(sql`select content from lc_v9_email_asset where id=${legacy.id}::uuid`))).toHaveLength(1);
+  let invalid:unknown;try{await owner.db.execute(sql`insert into lc_v9_email_asset(tenant_id,email_template_id,kind,filename,mime_type,content,uploaded_by,uploaded_by_name,shared_subject_id,shared_slot_id,shared_source_revision) values(${base.tenantId}::uuid,'legacy-mail','file','wrong-purpose.txt','text/plain',decode('SGk=','base64'),${admin.userId}::uuid,'Fictional email author',${randomUUID()}::uuid,'slot','period')`);}catch(error){invalid=error;}
+  expect(pgSqlState(invalid)).toBe('23514');
   expect(await uploadAutomationEmailAsset(admin,{templateId:template.id,module:'probation',revision:1,kind:'file',name:'information.txt',content:Buffer.from('Fictional information only.\n')})).toEqual(asset);
   await saveAutomationEmailTemplate(admin,{template:{...template,assets:[asset]},retired:false,expectedRevision:1,reason:'Include actual file'});
   expect((await listAutomationEmailTemplates(admin))[0].template.assets).toEqual([asset]);

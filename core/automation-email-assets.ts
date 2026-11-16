@@ -13,10 +13,12 @@ export async function uploadAutomationEmailAsset(ctx:SessionContext,input:z.infe
  const {content,...raw}=input,parsed=uploadSchema.parse(raw);
  if(!Buffer.isBuffer(content)||!content.length||content.length>(parsed.kind==='image'?1048576:10485760)||!/\.(pdf|png|jpe?g|gif|webp|docx?|xlsx?|txt|csv)$/i.test(parsed.name))throw new AutomationError('invalid','Choose a supported file of at most 10 MB, or an email image of at most 1 MB.');
  let mimeType:string;
- if(/\.csv$/i.test(parsed.name)){resolveDocumentUpload('upload.txt',content);mimeType='text/csv';}
- else if(/\.(gif|webp)$/i.test(parsed.name)){mimeType=/\.gif$/i.test(parsed.name)?'image/gif':'image/webp';await (await import('../lib/email-design/assets')).validateEmailRaster(content,mimeType);}
- else mimeType=resolveDocumentUpload(parsed.name,content).mimeType;
- if(parsed.kind==='image')await (await import('../lib/email-design/assets')).validateEmailRaster(content,mimeType);
+ try{
+  if(/\.csv$/i.test(parsed.name)){resolveDocumentUpload('upload.txt',content);mimeType='text/csv';}
+  else if(/\.(gif|webp)$/i.test(parsed.name)){mimeType=/\.gif$/i.test(parsed.name)?'image/gif':'image/webp';await (await import('../lib/email-design/assets')).validateEmailRaster(content,mimeType);}
+  else mimeType=resolveDocumentUpload(parsed.name,content).mimeType;
+  if(parsed.kind==='image')await (await import('../lib/email-design/assets')).validateEmailRaster(content,mimeType);
+ }catch{throw new AutomationError('invalid','The file contents do not match a supported type. Choose a readable file or image and try again.');}
  return withScopedLifecycleTenant(ctx,async tx=>{
   try{
    const [row]=await tx.execute<{asset:unknown}>(sql`select app.automation_email_asset_upload(${parsed.templateId}::uuid,${parsed.module},${parsed.revision},${parsed.kind},${parsed.name},${mimeType},decode(${content.toString('base64')},'base64'),${parsed.caseId??null}::uuid,${parsed.slotId??null}) as asset`);
