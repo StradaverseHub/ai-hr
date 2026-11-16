@@ -109,7 +109,8 @@ CREATE INDEX recruitment_screening_answer_answered_by_idx ON public.recruitment_
 -- ── 2. The job's hiring managers ──────────────────────────────────────────────────────────────────────────
 -- Owner-only: the hiring-manager rows of the ONE job named in the transaction-local setting app.recruitment_screening_job.
 -- Only app.recruitment_job_hiring_managers sets it, after checking that the session user operates or administers that job,
--- and its SET clause restores the previous value when it returns. A setting is not a write, so the read works in a read-only
+-- and it restores the previous value before it returns (explicitly: a function SET clause for this custom setting is refused to
+-- the restricted migration owner; an error rolls the transaction-local value back with its transaction or savepoint). A setting is not a write, so the read works in a read-only
 -- transaction. The policy calls no function that reads recruitment_job_member, so it cannot recurse. A value the app role sets
 -- itself opens nothing to it (current_user is never the owner), and no other owner-run code reads recruitment_job_member
 -- (pinned by test/recruitment-screening.test.ts): the invoker predicates (app.recruitment_has_job_role and friends) read only
@@ -124,16 +125,18 @@ CREATE POLICY recruitment_job_member_screening_read ON public.recruitment_job_me
 -- STABLE and write-free (no transaction id, works in read-only transactions and on replicas).
 CREATE FUNCTION app.recruitment_job_hiring_managers(p_job uuid) RETURNS TABLE(app_user_id uuid)
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, app, pg_temp SET row_security = on
- SET app.recruitment_screening_job = '' AS $$
-DECLARE v_company uuid; v_tenant uuid;
+ AS $$
+DECLARE v_company uuid; v_tenant uuid; v_prev text;
 BEGIN
  IF p_job IS NULL OR app.current_tenant_id() IS NULL OR app.current_user_id() IS NULL THEN RETURN; END IF;
  SELECT j.company_id, j.tenant_id INTO v_company, v_tenant FROM public.recruitment_job_opening j
   WHERE j.id = p_job AND j.tenant_id = app.current_tenant_id();
  IF NOT FOUND OR NOT app.can_operate_recruitment_job(v_company, p_job) THEN RETURN; END IF;
+ v_prev := current_setting('app.recruitment_screening_job', true);
  PERFORM set_config('app.recruitment_screening_job', p_job::text, true);
  RETURN QUERY SELECT m.app_user_id FROM public.recruitment_job_member m
   WHERE m.job_id = p_job AND m.tenant_id = v_tenant AND m.member_role = 'hiring_manager' ORDER BY m.created_at, m.app_user_id;
+ PERFORM set_config('app.recruitment_screening_job', coalesce(v_prev, ''), true);
 END $$;
 REVOKE ALL ON FUNCTION app.recruitment_job_hiring_managers(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.recruitment_job_hiring_managers(uuid) TO ai_hr_app;
@@ -372,11 +375,13 @@ CREATE POLICY recruitment_screening_request_auto_close ON public.recruitment_scr
 -- The application left Active (archived or hired): its open requests close, whoever did it (a hiring manager may archive).
 CREATE FUNCTION app.recruitment_screening_close_for_application() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, app, pg_temp SET row_security = on
- SET app.recruitment_screening_closing = '' AS $$
+ AS $$
+DECLARE v_prev text := current_setting('app.recruitment_screening_closing', true);
 BEGIN
  PERFORM set_config('app.recruitment_screening_closing', 'application:' || NEW.id::text, true);
  UPDATE public.recruitment_screening_request SET closed_at = now(), closed_reason = 'application_closed', closed_by_user_id = app.current_user_id()
   WHERE application_id = NEW.id AND tenant_id = NEW.tenant_id AND closed_at IS NULL;
+ PERFORM set_config('app.recruitment_screening_closing', coalesce(v_prev, ''), true);
  RETURN NULL;
 END $$;
 REVOKE ALL ON FUNCTION app.recruitment_screening_close_for_application() FROM PUBLIC, ai_hr_app;
@@ -387,7 +392,8 @@ CREATE TRIGGER recruitment_application_screening_close AFTER UPDATE OF state ON 
 -- their open requests on the job close.
 CREATE FUNCTION app.recruitment_screening_close_for_reviewer() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, app, pg_temp SET row_security = on
- SET app.recruitment_screening_closing = '' AS $$
+ AS $$
+DECLARE v_prev text := current_setting('app.recruitment_screening_closing', true);
 BEGIN
  IF TG_OP = 'UPDATE' AND NEW.member_role = 'hiring_manager' AND NEW.job_id = OLD.job_id AND NEW.app_user_id = OLD.app_user_id THEN
   RETURN NULL;
@@ -395,6 +401,7 @@ BEGIN
  PERFORM set_config('app.recruitment_screening_closing', 'reviewer:' || OLD.job_id::text || ':' || OLD.app_user_id::text, true);
  UPDATE public.recruitment_screening_request SET closed_at = now(), closed_reason = 'reviewer_removed', closed_by_user_id = app.current_user_id()
   WHERE job_id = OLD.job_id AND reviewer_user_id = OLD.app_user_id AND tenant_id = OLD.tenant_id AND closed_at IS NULL;
+ PERFORM set_config('app.recruitment_screening_closing', coalesce(v_prev, ''), true);
  RETURN NULL;
 END $$;
 REVOKE ALL ON FUNCTION app.recruitment_screening_close_for_reviewer() FROM PUBLIC, ai_hr_app;

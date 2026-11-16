@@ -28,7 +28,7 @@ describe('human evaluation scope, consent and authenticated progress',()=>{
   result.container.querySelector('details')!.open=true;
   const trial=result.container.querySelector<HTMLSelectElement>('select[name="fixtureId"]')!;
   expect([...trial.options].map(option=>option.value)).toEqual(PROMPT_HOLDOUTS.filter(row=>row.locale===locale).map(row=>row.id));
-  expect(trial.options).toHaveLength(24);
+  expect(trial.options).toHaveLength(25);
   const scope=copies[locale].assistant.workspace.agentReview;
   expect(result.container.textContent).toContain(scope.consent.replace('{requests}',String(PROMPT_HOLDOUT_REQUEST_LIMIT)));
   expect(result.container.textContent).toContain(scope.progress.replace('{completed}','6').replace('{total}','144').replace('{failures}','1').replace('{state}',scope.state_incomplete));

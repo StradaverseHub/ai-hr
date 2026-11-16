@@ -409,6 +409,15 @@
       "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
     },
     {
+      "id": "shell.recruitment",
+      "sourceOwner": "packs/recruitment/index.ts",
+      "sourceKey": "shell-slot:recruitment",
+      "declaredHref": "/recruitment",
+      "status": "uncovered",
+      "owner": "packs/recruitment/index.ts",
+      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+    },
+    {
       "id": "shell.rosterManager",
       "sourceOwner": "packs/attendance/index.ts",
       "sourceKey": "shell-slot:rosterManager",
@@ -1000,6 +1009,15 @@
       "declaredHref": "/letters/generate",
       "status": "uncovered",
       "owner": "lib/letter-navigation.ts",
+      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+    },
+    {
+      "id": "shell.myReferrals",
+      "sourceOwner": "lib/navigation/shell-inventory.ts",
+      "sourceKey": "shell-slot:myReferrals",
+      "declaredHref": "/me/referrals",
+      "status": "uncovered",
+      "owner": "lib/navigation/shell-inventory.ts",
       "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
     },
     {

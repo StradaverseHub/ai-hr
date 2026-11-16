@@ -19,7 +19,7 @@ import { withRecruitmentTenant } from '../../core/module-gate';
 import {
   AmountNotPositiveError, ComponentRequiredError, CompanyMismatchError, InvalidTxnComponentError, TxnAfterLeavingDateError,
   createIndividualTxnsBulkTx, individualTxnPayEnabled,
-} from '../../core/payroll-individual-txn';
+} from '../payroll/service';
 import { pgSqlState } from '../../lib/db-error';
 import { todayInKualaLumpur } from '../../lib/hr-date';
 import { RecruitmentError, isUuid } from './model';

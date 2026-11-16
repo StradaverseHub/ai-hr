@@ -271,7 +271,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5858_recruitment_careers_page':'98c5e6ebdce10aa7d6876e95649cb97a823e53393a5961b0e1dfeb6954ad3501',
  '5859_recruitment_tasks':'83d93ff216193d0c366e40d7f8f2766502da896691cf47acf2606a808bcf054d',
  '5860_recruitment_agencies':'0cbd79be27f4d9237b76fcf7371ed4b576056d0320899a98d3afc32e40fde681',
- '5861_recruitment_screening':'5d0dace4f60a8e2eb296a77b218e1c60d8e1ddfc725c8ece3b41bea67afef265',
+ '5861_recruitment_screening':'4634b96c652e9af3c93c2d851df15167224f002bc077619c15b34f74fc717f27',
  '5862_recruitment_background_checks':'0d0f78f4b2772fd2a56b800994c12a8564685e54de308619cdfdfb05b823df21',
  '5863_recruitment_talent_pools_blocked_list':'35ac5bc84226ce430b6eb0fda5292dbede0b80bf0b44dd36ff45f678365223ab',
  '5864_recruitment_consume_invitation_access_lock':'63bffaa21c801d211f8fc08e8b4a2e58b9e98c621398cced8e0acf49a5163180',

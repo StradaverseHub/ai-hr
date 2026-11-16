@@ -4,7 +4,9 @@ import {beforeEach,expect,it,vi} from 'vitest';
 const state=vi.hoisted(()=>({session:{tenantId:'fictional-tenant',userId:'fictional-viewer'},preview:vi.fn(),full:vi.fn(),onboarding:vi.fn(),view:vi.fn()}));
 vi.mock('@/lib/scope',()=>({scopedSession:async()=>({s:state.session,scopeIds:['selected-company']})}));
 vi.mock('@/core/entitlements',()=>({isModuleEnabledOrFalse:(_ctx:unknown,module:string)=>module==='claims'||module==='lifecycle'}));
-vi.mock('@/core/approvals-inbox',()=>({pendingTaskSummary:state.preview,listPendingTasks:state.full}));
+// Recruitment slice 9: the page reads myTaskSummary, which is pendingTaskSummary for every company (undefined scope) plus the
+// recruitment to-dos for the switcher's selection; its own scope behaviour is proved in test/recruitment-tasks.test.ts.
+vi.mock('@/core/approvals-inbox',()=>({myTaskSummary:state.preview,pendingTaskSummary:state.full,listPendingTasks:state.full}));
 vi.mock('@/packs/lifecycle/service',()=>({onboardingTasks:state.onboarding}));
 vi.mock('../app/lifecycle/workflow-availability',()=>({lifecycleModuleNavigation:async()=>({})}));
 vi.mock('../app/lifecycle/module-inbox',()=>({lifecycleModuleInbox:async()=>({items:[],count:0})}));
@@ -17,7 +19,7 @@ it('keeps the global assigned-work scope and transports a counted Claims preview
  const items=Array.from({length:25},(_,i)=>({id:'claim-'+i,kind:'claim'}));
  state.preview.mockResolvedValue({items,total:500000,claimTotal:500000});
  const html=renderToStaticMarkup(await Page());
- expect(state.preview).toHaveBeenCalledWith(state.session,undefined,{attendance:false,claims:true,performance:false,rewards:false,probation:true});
+ expect(state.preview).toHaveBeenCalledWith(state.session,['selected-company'],{attendance:false,claims:true,performance:false,rewards:false,recruitment:false,probation:true});
  expect(state.full).not.toHaveBeenCalled();expect(state.view).toHaveBeenCalledWith(expect.objectContaining({existing:items,existingTotal:500000,claimTotal:500000}));
  expect(html).toContain('data-preview-rows="25"');expect(html).toContain('data-task-total="500000"');
 });

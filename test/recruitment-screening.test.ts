@@ -411,6 +411,14 @@ describe('the read paths write nothing', () => {
       return tx.execute<{ app_user_id: string }>(sql`select app_user_id from recruitment_job_member where job_id = ${t.jobId}::uuid`);
     });
     expect(seen.map((r) => r.app_user_id)).toEqual([t.recruiter.userId]);
+    // The lookup restores the setting it used (no SET clause: the restricted migration owner may not declare one).
+    const after = await withTenant(t.recruiter, async (tx) => {
+      await tx.execute(sql`select set_config('app.recruitment_screening_job', 'before', true)`);
+      const ids = await tx.execute<{ app_user_id: string }>(sql`select app_user_id from app.recruitment_job_hiring_managers(${t.jobId}::uuid)`);
+      const [s] = await tx.execute<{ v: string }>(sql`select current_setting('app.recruitment_screening_job', true) as v`);
+      return { n: ids.length, v: s.v };
+    });
+    expect(after).toEqual({ n: 2, v: 'before' });
   });
 });
 
@@ -809,8 +817,9 @@ describe('case 80 — removal, company deletion, row security and grants, the AI
       expect(f.secdef, f.proname).toBe(true);
       expect(f.public_exec, f.proname).toBe(false);
       expect((f.config ?? []).some((c) => c.startsWith('search_path=pg_catalog')), f.proname).toBe(true);
-      // Each restores its transaction-local setting on return (its SET clause).
-      expect((f.config ?? []).some((c) => /^app\.recruitment_screening_(job|closing)=$/.test(c)), f.proname).toBe(true);
+      // No SET clause for the custom setting (the restricted migration owner may not declare one); each restores the previous
+      // value itself before it returns.
+      expect((f.config ?? []).some((c) => /^app\./.test(c)), f.proname).toBe(false);
     }
     // Only the app role may call the lookup; the closing triggers are nobody's to call.
     const exec = await owner.db.execute<{ proname: string; app_exec: boolean }>(sql`select p.proname, has_function_privilege('ai_hr_app', p.oid, 'execute') as app_exec
