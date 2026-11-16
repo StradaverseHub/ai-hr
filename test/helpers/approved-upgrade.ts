@@ -248,9 +248,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5312,when:1794841005912,tag:'5912_contract_posting_source_projection'},
  {idx:5313,when:1794841005913,tag:'5913_contract_posting_native_completion'},
  {idx:5315,when:1794841005915,tag:'5915_contract_posting_durable_job_readiness'},
+ {idx:5316,when:1794841005916,tag:'5916_contract_ordinary_signing_company_gate'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5916_contract_ordinary_signing_company_gate':'cd7f5ad4d52dede9a0210796a92c10ed9721fa8ba7fcd37e68e8ea1519db13f0',
  '5915_contract_posting_durable_job_readiness':'d6d2471e14534c8b8e68aa0fba0d0d4e3a2341db2f027cd88320884787359171',
 
  '5913_contract_posting_native_completion':'b267d52c086b6dabda037ada30eb5902144a236f873916cd82829dc9e7036e26',

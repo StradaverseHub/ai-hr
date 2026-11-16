@@ -6609,6 +6609,13 @@
       "when": 1794841005915,
       "tag": "5915_contract_posting_durable_job_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 5316,
+      "version": "7",
+      "when": 1794841005916,
+      "tag": "5916_contract_ordinary_signing_company_gate",
+      "breakpoints": true
     }
   ]
 }

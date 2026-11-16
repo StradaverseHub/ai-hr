@@ -1,3 +1,8 @@
+<!-- 5916_contract_ordinary_signing_company_gate -->
+# Ordinary Contract company-entitlement denial — 17 November 2026 MYT
+
+An immediate268-worktree survey found no SQL5916 or explicit allocation claims. Reserve **5916**, idx **5316**, when **1794841005916**, for the confirmed ordinary-only entitlement denial proved by source-only testef1bcc4a7 / hosted43963344028. This touches existing decision-approval and non-Form, non-email outcome/decline Letter write admission/action flags only. Existing read visibility, held email/Form delegation and grants remain unchanged. Postings owns5911–13/5915; root5900–09; screens5910;5914 remains an unused, rejected proposal. Parent notified; source-only, no installation/release authority.
+
 <!-- 5910_contract_shared_work_page_null_guards -->
 # Contract native bounded-work guard — 17 November 2026 MYT
 
