@@ -6308,6 +6308,13 @@
       "when": 1794841005844,
       "tag": "5844_shared_groups_preserve_members",
       "breakpoints": true
+    },
+    {
+      "idx": 5245,
+      "version": "7",
+      "when": 1794841005845,
+      "tag": "5845_shared_groups_member_identity",
+      "breakpoints": true
     }
   ]
 }

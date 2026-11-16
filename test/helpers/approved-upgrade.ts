@@ -245,9 +245,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5229,when:1794841005829,tag:'5829_shared_automation_email_asset_delivery'},
  {idx:5240,when:1794841005840,tag:'5840_shared_email_test_asset_source'},
  {idx:5244,when:1794841005844,tag:'5844_shared_groups_preserve_members'},
+ {idx:5245,when:1794841005845,tag:'5845_shared_groups_member_identity'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5845_shared_groups_member_identity':'970591319022c650ce991c1ff6be1ad6ed7718fd8e7679f0dd88b7cb92fc4873',
  '5844_shared_groups_preserve_members':'3d5b0933efdee689848653da194bda914e93e7a94246c3b1345ad684e9e7ad9a',
  '5826_automation_shared_assignment_groups':'4b112e626b80a509c6687fbfd3153bd56bd4ddfdda5cf1fb5c236f8bb9ff86f8',
  '5828_automation_email_test_self':'2f14899f4fffb1c84cf20d6ba60b282b8f443a53471342611648583663a8afcc',
