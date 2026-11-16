@@ -1,3 +1,6 @@
+import {raiseResignationClearancePostingTx,reassignOffboardingPostingsTx} from '../../../core/resignation-clearance';
+import {automationReferencesTx} from '../../../core/automation-builder';
+import {documentRoutingProblems} from '../../../lib/document-signing-routing';
 import { personnelMergeLabels } from '@/lib/lifecycle-v9-personnel-merge-fields';
 import {joinerPageSections} from '../../../lib/onboarding-page-access';
 import type {Config as NativeConfig} from '../../../lib/onboarding-model';
@@ -144,6 +147,7 @@ async function store(tx: Tx, ctx: SessionContext, row: Row, next: M.Case, action
   if (!updated.length) throw new M.V9Error('This case changed. Refresh it before trying again.', 'conflict');
   if (row.data.state !== 'cleared' && next.state === 'cleared' && next.finalFigures) await tx.execute(sql`insert into lc_v9_payroll_handover(id,tenant_id,company_id,case_id,employment_id,data) values(${next.finalFigures.payrollReference}::uuid,${ctx.tenantId}::uuid,${row.company_id}::uuid,${row.id}::uuid,${next.facts.employmentId}::uuid,${JSON.stringify(next.finalFigures)}::jsonb)`);
   if (row.data.state === 'cleared' && next.state !== 'cleared') await tx.execute(sql`update lc_v9_payroll_handover set status='withdrawn',updated_at=now() where case_id=${row.id}::uuid and tenant_id=${ctx.tenantId}::uuid and status in ('pending','reviewed')`);
+  if(row.data.state!=='cleared'&&next.state==='cleared')await raiseResignationClearancePostingTx(tx,ctx,{caseId:row.id,employmentId:next.facts.employmentId,lastWorkingDay:next.facts.lastDay,exitReason:next.facts.caseType});
   await syncEmailHoldsTx(tx, ctx, { caseId: row.id, companyId: row.company_id, before: row.data, after: next, config });
   await record(tx, ctx, row.id, next.facts.employmentId, action);
 }
@@ -366,11 +370,27 @@ export async function v9SaveConfig(ctx: SessionContext, revision: number, input:
     await lockTx(tx, ctx); await admin(tx); const previous = await configTx(tx, ctx, true);
     if (!previous || previous.revision !== revision) throw new M.V9Error('Settings changed. Refresh before saving.', 'conflict');
     const config = parseV9Config(input, previous) as M.Config;
+    const publishedRoutes=config.templates.filter(t=>t.module==='off').flatMap(t=>t.versions.filter(v=>v.state==='published'&&v.routing?.length&&!v9Equal(previous.templates.find(p=>p.id===t.id)?.versions.find(p=>p.version===v.version),v)).map(v=>v.routing!));
+    const emailRecipients=config.emails.filter(e=>e.module==='off').flatMap(e=>[...(e.routingCc??[]),...(e.slots??[]).flatMap(s=>s.by?[s.by]:[])]);
+    if(publishedRoutes.length||emailRecipients.length){
+      const people=[...new Set([...publishedRoutes.flatMap(route=>route.flatMap(step=>step.who.kind==='people'?step.who.userIds:[])),...emailRecipients.flatMap(r=>r.kind==='person'?[r.userId]:[])])];
+      const refs=await automationReferencesTx(tx,people);
+      const problems=publishedRoutes.flatMap(route=>documentRoutingProblems(route,refs)).filter(p=>p!=='At least one step must be a Sign step, or nobody signs the document.');
+      for(const r of emailRecipients){if(r.kind==='routing'&&!refs.routingExists(r.routingId))problems.push('The email routing no longer exists.');if(r.kind==='group'&&!refs.groupExists(r.groupId))problems.push('The email assignment group no longer exists.');if(r.kind==='person'&&!refs.personExists(r.userId))problems.push('The email recipient is no longer active.');}
+      if(problems.length)throw new M.V9Error(problems[0]);
+    }
     const references = config.emails.flatMap(email => [...(email.files ?? []), ...(email.images ?? [])].map(asset => ({ emailId: email.id, asset })));
     if (references.length) {
       const ids = [...new Set(references.map(reference => reference.asset.id))];
       const assets = await tx.execute<EmailAssetRow>(sql`select *,octet_length(content) as size from lc_v9_email_asset where tenant_id=${ctx.tenantId}::uuid and id in (${sql.join(ids.map(id => sql`${id}::uuid`),sql`,`)})`);
       for (const reference of references) { const actual = assets.find(asset => asset.id === reference.asset.id && asset.email_template_id === reference.emailId); if (!actual || !v9Equal(emailAssetMetadata(actual), reference.asset)) throw new M.V9Error('An email file no longer matches its uploaded receipt. Upload or select the actual file again.', 'conflict'); }
+    }
+    const removedVersions=previous.templates.flatMap(t=>t.versions.filter(v=>!config.templates.find(n=>n.id===t.id)?.versions.some(n=>n.version===v.version)).map(v=>({id:t.id,version:v.version})));
+    const removedEmails=previous.emails.filter(e=>!config.emails.some(n=>n.id===e.id)).map(e=>e.id);
+    if(removedVersions.length||removedEmails.length){
+      const docs=[...new Set(removedVersions.map(v=>v.id))];
+      const usage=await tx.execute<{kind:string;definition_id:string;version:number|null;documents:string|number;messages:string|number}>(sql`select * from app.resignation_configuration_usage(${`{${docs.join(',')}}`}::text[],${`{${removedEmails.join(',')}}`}::text[])`);
+      if(usage.some(u=>u.kind==='email'?removedEmails.includes(u.definition_id)&&Number(u.messages)>0:removedVersions.some(v=>v.id===u.definition_id&&v.version===u.version)&&Number(u.documents)>0))throw new M.V9Error('A template used by a resignation journey cannot be deleted. Retire it instead.');
     }
     const deletesVersion = previous.templates.some(template => { const retained = config.templates.find(next => next.id === template.id); return !retained || template.versions.some(version => !retained.versions.some(next => next.version === version.version)); });
     const usage = deletesVersion ? await tx.execute<M.TemplateUsage>(sql`select template_id as "templateId",version,documents from app.lc_v9_document_usage()`) : [];
@@ -448,6 +468,7 @@ export async function v9SaveConfig(ctx: SessionContext, revision: number, input:
       }
     }
     await tx.execute(sql`update lc_v9_config set data=${JSON.stringify(config)}::jsonb,revision=${config.revision},updated_at=now() where tenant_id=${ctx.tenantId}::uuid`);
+    await reassignOffboardingPostingsTx(tx,ctx,previous.offboarding&&Object.hasOwn(previous.offboarding,'postingApproverGroupId')?previous.offboarding.postingApproverGroupId:previous.peopleOpsGroup??null,config.offboarding&&Object.hasOwn(config.offboarding,'postingApproverGroupId')?config.offboarding.postingApproverGroupId:config.peopleOpsGroup??null);
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'lifecycle-v9-config', aggregateId: ctx.tenantId, eventType: 'lifecycle-v9.configurationChanged', actor: actorOf(ctx), payload: { revision: config.revision } });
     return { revision: config.revision, groupsRevision: config.groupsRevision ?? 0, versionStamps: config.templates.flatMap(template => template.versions.map(version => ({ templateId: template.id, version: version.version, state: version.state, at: version.at, by: version.by }))) };
   });
@@ -535,7 +556,7 @@ export async function v9CreateOffboarding(ctx: SessionContext, input: { employme
 }
 /** Canonical case construction for purpose-bound callers already holding an authorised tenant transaction.
  * Existing date, administrator, duplicate-exit and identity rules remain authoritative. */
-export async function v9CreateOffboardingTx(tx:Tx,ctx:SessionContext,input:{ employmentId: string; type: M.ExitType; noticeDate: string; lastDay: string },contractSource?:{kind:'contract'|'probation';caseId:string}):Promise<string>{
+export async function v9CreateOffboardingTx(tx:Tx,ctx:SessionContext,input:{ employmentId: string; type: M.ExitType; noticeDate: string; lastDay: string },contractSource?:{kind:'contract'|'probation'|'resignation';caseId:string}):Promise<string>{
   input = z.object({ employmentId: z.string().uuid(), type: z.enum(['Resignation', 'Termination', 'Contract end', 'Retirement', 'Non-confirmation']), noticeDate: z.string(), lastDay: z.string() }).strict().parse(input);
   identifier(input.employmentId);
   if (!M.validDate(input.lastDay) || !M.validDate(input.noticeDate)) throw new M.V9Error('Enter valid notice and last working dates.');
@@ -548,7 +569,7 @@ export async function v9CreateOffboardingTx(tx:Tx,ctx:SessionContext,input:{ emp
     let contractLetter: {documentId:string;employeeDocumentId:string;hash:string}|undefined;
     if(contractSource){
       identifier(contractSource.caseId);
-      const [proof]=await tx.execute<{intent:{employmentId:string;type:string;noticeDate:string;lastDay:string;manualHandoff:boolean;offboardingCaseId?:string;letterDocumentId?:string;employeeDocumentId?:string;letterHash?:string}}>(contractSource.kind==='contract'?sql`select app.contract_offboarding_intent(${contractSource.caseId}::uuid) as intent`:sql`select app.probation_offboarding_intent(${contractSource.caseId}::uuid) as intent`);
+      const [proof]=await tx.execute<{intent:{employmentId:string;type:string;noticeDate:string;lastDay:string;manualHandoff:boolean;offboardingCaseId?:string;letterDocumentId?:string;employeeDocumentId?:string;letterHash?:string}}>(contractSource.kind==='contract'?sql`select app.contract_offboarding_intent(${contractSource.caseId}::uuid) as intent`:contractSource.kind==='resignation'?sql`select app.resignation_offboarding_intent(${contractSource.caseId}::uuid) as intent`:sql`select app.probation_offboarding_intent(${contractSource.caseId}::uuid) as intent`);
       if(!proof?.intent||proof.intent.offboardingCaseId||proof.intent.manualHandoff||proof.intent.employmentId!==input.employmentId||proof.intent.type!==input.type||proof.intent.noticeDate!==input.noticeDate||proof.intent.lastDay!==input.lastDay)throw new M.V9Error('Frozen contract handoff intent does not match.','forbidden');
       if(contractSource.kind==='contract'){
         const {letterDocumentId,employeeDocumentId,letterHash}=proof.intent;
@@ -562,10 +583,10 @@ export async function v9CreateOffboardingTx(tx:Tx,ctx:SessionContext,input:{ emp
     const logins = await tx.execute<{ id: string }>(sql`select id from app_user where tenant_id=${ctx.tenantId}::uuid and person_id=${employee.person_id}::uuid and archived_at is null order by id`);
     const managers = await tx.execute<{ id: string }>(sql`select u.id from reporting_line r join employment e on e.id=r.manager_employment_id and e.tenant_id=r.tenant_id join app_user u on u.person_id=e.person_id and u.tenant_id=e.tenant_id and u.archived_at is null where r.tenant_id=${ctx.tenantId}::uuid and r.subordinate_employment_id=${employee.id}::uuid and r.line_type='administrative' and r.superseded_at is null and r.valid_from<=${todayInKualaLumpur()}::date and (r.valid_to is null or r.valid_to>${todayInKualaLumpur()}::date) order by r.valid_from desc,r.id,u.id`);
     const { nextNumber } = await import('../../../core/lifecycle-base');
-    const id = randomUUID(), number = contractSource ? `OFB9-${String((await tx.execute<{n:number}>(contractSource.kind==='contract'?sql`select app.contract_offboarding_sequence(${contractSource.caseId}::uuid) as n`:sql`select app.probation_offboarding_sequence(${contractSource.caseId}::uuid) as n`))[0].n).padStart(4,'0')}` : await nextNumber(tx, 'OFB9');
+    const id = randomUUID(), number = contractSource ? `OFB9-${String((await tx.execute<{n:number}>(contractSource.kind==='contract'?sql`select app.contract_offboarding_sequence(${contractSource.caseId}::uuid) as n`:contractSource.kind==='resignation'?sql`select app.resignation_offboarding_sequence(${contractSource.caseId}::uuid) as n`:sql`select app.probation_offboarding_sequence(${contractSource.caseId}::uuid) as n`))[0].n).padStart(4,'0')}` : await nextNumber(tx, 'OFB9');
     const c: M.Case = { version: 9, id, number, module: 'off', revision: 1, state: 'pending', facts: { confirmationDate: employee.confirmation_date, finalConfirmationDate: employee.final_confirmation_date, probationEndDate: employee.probation_end_date, provisionalEndOn: employee.provisional_end_on, name: employee.name, employeeNo: employee.employee_no, employmentId: employee.id, personId: employee.person_id, joinDate: employee.hired_on, lastDay: input.lastDay, noticeDate: input.noticeDate, employeeUserId: logins.length === 1 ? logins[0].id : null, supervisorUserId: managers.length === 1 ? managers[0].id : null, pbpUserId: null, taUserId: null, company: employee.company_id, businessGroup: assignment?.business_unit_id ?? '', department: assignment?.department_id ?? '', grade: employee.grade_id ?? '', title: assignment?.position_id ?? '', employmentType: assignment?.employment_type ?? '', caseType: input.type }, checklistId: null, checklistName: '', override: 'automatic', tasks: [], items: [], documents: [], runs: [], mails: [], files: [], pmChanges: [], log: [], sourceRevision: '', submittedAt: null, closedAt: null, closedBy: null, closeReason: '', cancelReason: '', revokeDate: input.lastDay, finalFigures: null, review: null };
     const who = await actor(tx, ctx); c.log.push({ id: randomUUID(), at: new Date().toISOString(), actor: who, action: 'case.created', detail: 'Created from Personnel Management.' });
-    if(contractSource)Object.assign(c,contractSource.kind==='contract'?{contractSourceCaseId:contractSource.caseId,contractSourceLetter:contractLetter}:{probationSourceCaseId:contractSource.caseId});
+    if(contractSource)Object.assign(c,contractSource.kind==='contract'?{contractSourceCaseId:contractSource.caseId,contractSourceLetter:contractLetter}:contractSource.kind==='resignation'?{resignationSourceCaseId:contractSource.caseId}:{probationSourceCaseId:contractSource.caseId});
     c.sourceRevision = createHash('sha256').update(JSON.stringify({ employee, assignment })).digest('hex');
     await tx.execute(sql`insert into lc_v9_case(id,tenant_id,company_id,employment_id,module,number,data) values(${id}::uuid,${ctx.tenantId}::uuid,${employee.company_id}::uuid,${employee.id}::uuid,'off',${number},${JSON.stringify(c)}::jsonb)`);
     await record(tx, ctx, id, employee.id, 'created'); return id;

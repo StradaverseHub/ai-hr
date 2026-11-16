@@ -41068,5 +41068,68 @@
     "preview": "Preview",
     "missingFields": "These fields have no value: {fields}. They will appear as — in the letter.",
     "loading": "Loading resignation…"
+  },
+  "offboardingPostings": {
+    "breadcrumb": "Onboarding & offboarding / Personnel postings",
+    "title": "Personnel postings",
+    "intro": "Review proposed Personnel changes from resignation journeys. Approval records the event in Personnel Management.",
+    "approver": "Approved by {group}",
+    "approverPerPosting": "Each posting shows its assigned approver group.",
+    "filters": "Posting status",
+    "empty": "No postings here.",
+    "resignation": "Resignation",
+    "exitReason": "Exit reason",
+    "editedBy": "Edited by {name}",
+    "overdue": "Overdue",
+    "noDueDate": "No due date",
+    "waitingFor": "Waiting for {group}",
+    "reject": "Reject",
+    "rejectionReason": "Reason for rejection (required)",
+    "retry": "Retry workflow",
+    "rule": "Proposals do not change employment or pay until approved. Termination is proposed after completed clearance.",
+    "eventType": "Event type",
+    "effectiveDate": "Effective date",
+    "choose": "Choose a value",
+    "fieldRule": "Include only Position, Job Grade and Basic salary. Fixed allowances stay unchanged.",
+    "remarks": "Remarks",
+    "saveApprove": "Save event and approve",
+    "savePending": "Save as pending",
+    "cancel": "Cancel",
+    "editing": "Edit {posting}",
+    "editRule": "Changes remain pending until the assigned group approves. The accepted offer remains in the case history.",
+    "fields": {
+      "position": "Position",
+      "jobGrade": "Job Grade",
+      "basicSalary": "Basic salary"
+    },
+    "status": {
+      "pending": "Pending",
+      "edited": "Edited · waiting for approval",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "all": "All"
+    },
+    "columns": {
+      "posting": "Posting",
+      "employee": "Employee",
+      "source": "Source",
+      "change": "Proposed change",
+      "created": "Created",
+      "status": "Status",
+      "due": "Due date",
+      "actions": "Actions"
+    },
+    "event": {
+      "transfer": "Transfer",
+      "promotion": "Promotion",
+      "increment": "Increment",
+      "confirmation": "Confirmation",
+      "salaryAdjustment": "Salary adjustment",
+      "employmentTypeChange": "Employment type change",
+      "termination": "Termination"
+    },
+    "searchLabels": "Search Position or Job Grade",
+    "search": "Search",
+    "narrowSearch": "Showing the first 501 matching values. Search to narrow the choices."
   }
 }
