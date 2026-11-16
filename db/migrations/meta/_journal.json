@@ -6245,6 +6245,13 @@
       "when": 1794841005810,
       "tag": "5810_contract_shared_execution_adapters",
       "breakpoints": true
+    },
+    {
+      "idx": 5211,
+      "version": "7",
+      "when": 1794841005811,
+      "tag": "5811_contract_shared_worker_binding",
+      "breakpoints": true
     }
   ]
 }
