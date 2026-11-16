@@ -6266,6 +6266,13 @@
       "when": 1794841005813,
       "tag": "5813_contract_shared_email_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 5235,
+      "version": "7",
+      "when": 1794841005835,
+      "tag": "5835_contract_shared_review_wording",
+      "breakpoints": true
     }
   ]
 }

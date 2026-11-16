@@ -73,15 +73,17 @@ export function renderContractSharedLetter(letter:ContractSharedLetter):Document
  const document=automationDocument({id:letter.id,name:letter.name,templateId:letter.templateId,templateVersion:letter.templateVersion,blocks,fields:snapshot.definition.fields,merge:{...snapshot.values,'company.name':snapshot.values['org.company']??''},createdAt:letter.generatedOn,receipts:body.receipts});
  return {...document,status:letter.state==='withdrawn'?'withdrawn':letter.state==='released'?(body.receipts.length?'signed':'completed'):'draft'};
 }
-const letterAction=z.object({id:z.uuid(),actionId:z.uuid(),stepId:z.string().min(1).max(200),revision:z.number().int().positive(),hash:z.string().regex(/^[a-f0-9]{64}$/),action:z.enum(['signed','reviewed','approved','returned','resent']),comment:z.string().trim().max(5000).default(''),method:z.enum(['typed','drawn']).optional(),value:z.string().max(1048576).optional(),consent:z.boolean().optional()}).strict();
+const letterAction=z.object({id:z.uuid(),actionId:z.uuid(),stepId:z.string().min(1).max(200),revision:z.number().int().positive(),hash:z.string().regex(/^[a-f0-9]{64}$/),action:z.enum(['signed','reviewed','approved','returned','resent']),comment:z.string().trim().max(5000).default(''),method:z.enum(['typed','drawn']).optional(),value:z.string().max(1048576).optional(),consent:z.boolean().optional(),blocks:z.record(z.string().min(1).max(200),z.string().max(1048576)).optional()}).strict().refine(input=>input.blocks===undefined||['reviewed','approved'].includes(input.action),'Save wording while completing a review or approval.');
 export async function actContractSharedLetter(ctx:SessionContext,raw:z.input<typeof letterAction>):Promise<ContractSharedLetter>{
  const input=letterAction.parse(raw);
  try{return await withScopedLifecycleTenant(ctx,async tx=>{
   const signature=input.action==='signed'?{method:input.method,value:input.value,consent:input.consent}:null;
-  const [prepared]=await tx.execute<{result:{duplicate:boolean;signingDocumentId:string}}>(sql`select app.contract_shared_letter_action_prepare(${input.id}::uuid,${input.stepId},${input.actionId},${input.action},${input.comment},${input.hash},${input.revision},${JSON.stringify(signature)}::jsonb) as result`);
+  const [prepared]=input.blocks!==undefined
+   ?await tx.execute<{result:{duplicate:boolean;signingDocumentId:string;revision:number;hash:string}}>(sql`select app.contract_shared_review_prepare(${input.id}::uuid,${input.stepId},${input.actionId}::uuid,${input.action},${input.comment},${input.hash},${input.revision},${JSON.stringify(input.blocks)}::jsonb) as result`)
+   :await tx.execute<{result:{duplicate:boolean;signingDocumentId:string;revision?:number;hash?:string}}>(sql`select app.contract_shared_letter_action_prepare(${input.id}::uuid,${input.stepId},${input.actionId},${input.action},${input.comment},${input.hash},${input.revision},${JSON.stringify(signature)}::jsonb) as result`);
   if(!prepared.result.duplicate){
    if(input.action==='resent')await resendSigningDocumentTx(tx,ctx,{id:prepared.result.signingDocumentId,actionId:input.actionId,comment:input.comment});
-   else await recordDocumentSigningActionTx(tx,ctx,{id:prepared.result.signingDocumentId,actionId:input.actionId,stepId:input.stepId,revision:input.revision,hash:input.hash,action:input.action,comment:input.comment,method:input.method,value:input.value,consent:input.consent});
+   else await recordDocumentSigningActionTx(tx,ctx,{id:prepared.result.signingDocumentId,actionId:input.actionId,stepId:input.stepId,revision:prepared.result.revision??input.revision,hash:prepared.result.hash??input.hash,action:input.action,comment:input.comment,method:input.method,value:input.value,consent:input.consent});
   }
   return readLetterTx(tx,input.id);
  });}catch(error){return signingFailure(error);}
