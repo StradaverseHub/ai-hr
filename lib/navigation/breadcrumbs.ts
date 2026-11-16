@@ -12,7 +12,7 @@ const peopleList=(path:string,labelKey:string):Family=>({path,owner:people.href,
 // Explicit task parents: URL prefix alone cannot relate /admin/payroll-config to /payroll/setup,
 // nor distinguish the Shift list /admin/attendance from its sibling Schedule and Mapping lists.
 export const BREADCRUMB_FAMILIES:readonly Family[]=[
- setup('/admin/payroll-config','payroll.setup.schedule.title'),
+ {...setup('/admin/payroll-config','payroll.setup.schedule.title'),preserve:['q']},
  setup('/admin/payroll-cycle','payroll.setup.cycles.title'),
  setup('/admin/pay-components','payroll.setup.items.title'),
  setup('/admin/payroll-policy','payroll.setup.payrollPolicies.title'),
@@ -39,6 +39,11 @@ export const BREADCRUMB_FAMILIES:readonly Family[]=[
  {path:'/reports/employee-master',owner:'/reports',steps:[{href:'/reports',labelKey:'nav.reports'},{href:'/reports/employee-master',labelKey:'employeeMasterReports.title'}]},
  {path:'/reports/builder',owner:'/reports',steps:[{href:'/reports',labelKey:'nav.reports'}]},
 ];
+export const BREADCRUMB_VIEWS:Readonly<Record<string,{param:string;labels:Readonly<Record<string,string>>}>>={
+ '/payroll/transaction-view':{param:'tab',labels:Object.fromEntries(['fixed','individual','history','statutory','grid','outstanding'].map(tab=>[tab,'payroll.transactions.view.tabs.'+tab]))},
+ '/admin/settings/dashboard':{param:'section',labels:{library:'dashboardCardConfig.manage.navLibrary',content:'dashboardCardConfig.manage.navContent'}},
+ '/admin/system-testing':{param:'tab',labels:{library:'systemTestingWorkspace.library',team:'systemTestingWorkspace.team',updates:'systemTestingWorkspace.updates'}},
+};
 export type BreadcrumbPart={label:string;href?:string};
 export type BreadcrumbTrail={parts:BreadcrumbPart[];detail:boolean};
 const beneath=(path:string,parent:string)=>path===parent||path.startsWith(parent+'/');
@@ -58,12 +63,19 @@ export function resolveBreadcrumbTrail(pathname:string,search:string,entries:rea
    if(step.href!==family.owner)for(const key of family.preserve??[]){const value=params.get(key);if(value)query.set(key,value);}
    parts.push({label:translate(step.labelKey),...(step.href!==pathname?{href:step.href+(query.size?'?'+query.toString():'')}:{})});
   }
+  if(/^\/admin\/payroll-config\/[^/]+\/edit$/.test(pathname)){
+   const query=new URLSearchParams();const q=params.get('q');if(q)query.set('q',q);
+   parts.push({label:translate('payrollConfig.colCompany'),href:pathname.slice(0,-5)+(query.size?'?'+query.toString():'')});
+  }
   return {parts,detail:currentIndex<0};
  }
  if(family||!active)return null;
  const parts:BreadcrumbPart[]=[];
  if(active.section)parts.push({label:active.section});
  if(active.parent&&active.parent!==active.section)parts.push({label:active.parent,...(active.parentHref&&active.parentHref.split('?')[0]!==pathname?{href:active.parentHref}:{})});
+ const view=BREADCRUMB_VIEWS[pathname];
+ const selected=view&&view.labels[new URLSearchParams(search).get(view.param)??''];
+ if(selected){parts.push({label:active.label,href:active.href.split('?')[0]},{label:translate(selected)});return {parts,detail:false};}
  const activePath=active.href.split('?')[0];
  const detail=pathname!==activePath&&!(activePath==='/admin/rewards/shared'&&pathname==='/admin/rewards/plans');
  parts.push({label:active.label,...(detail?{href:active.href}:{})});

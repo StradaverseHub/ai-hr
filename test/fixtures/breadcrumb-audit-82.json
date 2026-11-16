@@ -3,7 +3,9 @@
     "auditEntry": "/admin/settings/dashboard?section=library",
     "pathname": "/admin/settings/dashboard",
     "search": "section=library",
-    "expectedLinks": [],
+    "expectedLinks": [
+      "/admin/settings/dashboard"
+    ],
     "active": {
       "href": "/admin/settings/dashboard",
       "label": "My Home settings",
@@ -16,7 +18,9 @@
     "auditEntry": "/admin/settings/dashboard?section=content",
     "pathname": "/admin/settings/dashboard",
     "search": "section=content",
-    "expectedLinks": [],
+    "expectedLinks": [
+      "/admin/settings/dashboard"
+    ],
     "active": {
       "href": "/admin/settings/dashboard",
       "label": "My Home settings",
@@ -89,7 +93,9 @@
     "auditEntry": "/admin/system-testing?tab=updates",
     "pathname": "/admin/system-testing",
     "search": "tab=updates",
-    "expectedLinks": [],
+    "expectedLinks": [
+      "/admin/system-testing"
+    ],
     "active": {
       "href": "/admin/system-testing",
       "label": "System Testing",
@@ -117,7 +123,9 @@
     "auditEntry": "/admin/system-testing?tab=library",
     "pathname": "/admin/system-testing",
     "search": "tab=library",
-    "expectedLinks": [],
+    "expectedLinks": [
+      "/admin/system-testing"
+    ],
     "active": {
       "href": "/admin/system-testing",
       "label": "System Testing",
@@ -130,7 +138,9 @@
     "auditEntry": "/admin/system-testing?tab=team",
     "pathname": "/admin/system-testing",
     "search": "tab=team",
-    "expectedLinks": [],
+    "expectedLinks": [
+      "/admin/system-testing"
+    ],
     "active": {
       "href": "/admin/system-testing",
       "label": "System Testing",
@@ -219,7 +229,9 @@
     "auditEntry": "/payroll/transaction-view?tab=fixed",
     "pathname": "/payroll/transaction-view",
     "search": "tab=fixed",
-    "expectedLinks": [],
+    "expectedLinks": [
+      "/payroll/transaction-view"
+    ],
     "active": {
       "href": "/payroll/transaction-view",
       "label": "Transaction View",
@@ -232,7 +244,9 @@
     "auditEntry": "/payroll/transaction-view?tab=individual",
     "pathname": "/payroll/transaction-view",
     "search": "tab=individual",
-    "expectedLinks": [],
+    "expectedLinks": [
+      "/payroll/transaction-view"
+    ],
     "active": {
       "href": "/payroll/transaction-view",
       "label": "Transaction View",
@@ -245,7 +259,9 @@
     "auditEntry": "/payroll/transaction-view?tab=history",
     "pathname": "/payroll/transaction-view",
     "search": "tab=history",
-    "expectedLinks": [],
+    "expectedLinks": [
+      "/payroll/transaction-view"
+    ],
     "active": {
       "href": "/payroll/transaction-view",
       "label": "Transaction View",
@@ -258,7 +274,9 @@
     "auditEntry": "/payroll/transaction-view?tab=statutory",
     "pathname": "/payroll/transaction-view",
     "search": "tab=statutory",
-    "expectedLinks": [],
+    "expectedLinks": [
+      "/payroll/transaction-view"
+    ],
     "active": {
       "href": "/payroll/transaction-view",
       "label": "Transaction View",
@@ -271,7 +289,9 @@
     "auditEntry": "/payroll/transaction-view?tab=grid",
     "pathname": "/payroll/transaction-view",
     "search": "tab=grid",
-    "expectedLinks": [],
+    "expectedLinks": [
+      "/payroll/transaction-view"
+    ],
     "active": {
       "href": "/payroll/transaction-view",
       "label": "Transaction View",
@@ -284,7 +304,9 @@
     "auditEntry": "/payroll/transaction-view?tab=outstanding",
     "pathname": "/payroll/transaction-view",
     "search": "tab=outstanding",
-    "expectedLinks": [],
+    "expectedLinks": [
+      "/payroll/transaction-view"
+    ],
     "active": {
       "href": "/payroll/transaction-view",
       "label": "Transaction View",
@@ -299,7 +321,8 @@
     "search": "",
     "expectedLinks": [
       "/payroll/setup",
-      "/admin/payroll-config"
+      "/admin/payroll-config",
+      "/admin/payroll-config/:id"
     ],
     "active": {
       "href": "/admin/payroll-config/:id/edit",

@@ -645,3 +645,14 @@ reaches leave through `packs/leave/service`, `core/company-refs.ts` declares fou
 5766 adds their read-only in-use check. No provider transform, outbound field, purpose or transport changed. The 28
 approvals were carried forward to `e4fcddfb…` and the agent manifest regenerated (`943a1bee…`), under the owner's
 standing pre-approval for staging re-binds (12 November 2026). This binding grants no production authority.
+
+### Re-binding for breadcrumb task ancestry (16 November 2026)
+
+The breadcrumb repair branch is based on main/alpha `59f06b08d`. The only changed covered source is
+`packs/payroll/index.ts`: navigation ownership metadata now associates payroll settings, loans and history imports
+with their existing task rows. No service, provider transform, outbound field, purpose, transport or permission
+changes. Under the owner's standing staging re-bind pre-approval of 12 November 2026, the existing approved
+records carry forward to `3ac2fd19076f1bd8c7bc3565fb1cc2a583d2f3fc0b42d4c216f9a258a47cfe3c` over 1,623 files.
+Their statuses, reviewers, purposes and original approval evidence remain unchanged. The provider manifest and
+agent manifest were regenerated; the agent fingerprint is `4d753fc768766c58d9dbd245b7dd332023c79cbc8b23bb73853c73e1991ec084`
+over 493 files. This binding grants no production authority.
