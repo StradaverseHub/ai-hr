@@ -5,6 +5,7 @@ import {withTenant} from '../db/client';
 import {migrateTestDb,closeAll,owner} from './harness';
 import {contractPostingFixture,releaseContractPosting} from './helpers/contract-posting-fixture';
 import {applyDueMovementsTx} from '../core/movement';
+import {contractSharedTracker} from '../packs/contracts/service';
 
 beforeAll(migrateTestDb);afterAll(closeAll);
 it('applies a previously admitted due Contract schedule once through the canonical native owner',async()=>{
@@ -19,9 +20,14 @@ it('applies a previously admitted due Contract schedule once through the canonic
   await tx.execute(sql`update personnel_posting set status='approved',revision=revision+1,approved_by=${f.approver.userId}::uuid,approved_at=now()-interval '1 day',applied=proposed,movement_id=${eventId} where tenant_id=${f.b.tenantId}::uuid and id=${p.id}::uuid`);
   await tx.execute(sql`update contract_shared_posting set movement_group_id=${groupId}::uuid where tenant_id=${f.b.tenantId}::uuid and posting_id=${p.id}::uuid`);
  });
+ const before=(await contractSharedTracker(f.proposer)).rows.find(row=>row.employmentId===f.employee.employmentId);
+ expect(before).toMatchObject({startOn:f.start,endOn:f.end,contractNumber:4});
+ expect(before?.scheduledPeriod).toEqual({postingId:p.id,label:p.label,eventType:'contractRenewal',startOn:f.newStart,endOn:f.newEnd,contractNumber:5,status:'awaiting_application'});
  const result=await withTenant(f.admin,tx=>applyDueMovementsTx(tx,f.admin,f.employee.employmentId,f.today));expect(result.applied).toBe(1);
  const[actual]=await owner.db.execute<{start:string;end:string;number:number;salary:string;group:string;applied:Date|null}>(sql`select e.contract_start_date::text start,e.contract_end_date::text "end",e.contract_number number,c.basic_salary::text salary,r.movement_group_id::text "group",r.applied_at applied from employment e join compensation c on c.tenant_id=e.tenant_id and c.employment_id=e.id and c.valid_to is null and c.superseded_at is null join contract_shared_posting r on r.tenant_id=e.tenant_id and r.posting_id=${p.id}::uuid where e.tenant_id=${f.b.tenantId}::uuid and e.id=${f.employee.employmentId}::uuid`);
  expect(actual).toMatchObject({start:f.newStart,end:f.newEnd,number:5,salary:'4976.21',group:groupId});expect(actual.applied).not.toBeNull();
+ const after=(await contractSharedTracker(f.proposer)).rows.find(row=>row.employmentId===f.employee.employmentId);
+ expect(after).toMatchObject({startOn:f.newStart,endOn:f.newEnd,contractNumber:5,scheduledPeriod:null});
  expect(await withTenant(f.admin,tx=>applyDueMovementsTx(tx,f.admin,f.employee.employmentId,f.today))).toMatchObject({applied:0,noop:0});
  const[count]=await owner.db.execute<{n:number}>(sql`select count(*)::int n from domain_event where tenant_id=${f.b.tenantId}::uuid and subject_employment_id=${f.employee.employmentId}::uuid and payload->'movement'->>'type'='contractTermination'`);expect(count.n).toBe(1);
 });

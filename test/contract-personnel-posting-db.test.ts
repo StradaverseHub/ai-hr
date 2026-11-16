@@ -3,7 +3,7 @@ import {sql} from 'drizzle-orm';
 import {withTenant} from '../db/client';
 import {migrateTestDb,closeAll,owner} from './harness';
 import {contractPostingFixture,releaseContractPosting,type ContractPostingFixture} from './helpers/contract-posting-fixture';
-import {approveContractSharedPosting,editContractSharedPosting,listContractSharedPostings,readContractSharedPosting,readContractSharedPostingSummary,confirmContractSharedPay,contractSharedContext} from '../packs/contracts/service';
+import {approveContractSharedPosting,editContractSharedPosting,listContractSharedPostings,readContractSharedPosting,readContractSharedPostingSummary,confirmContractSharedPay,contractSharedContext,contractSharedTracker} from '../packs/contracts/service';
 import {setCompensation} from '../core/comp';
 import {createMovementEvent,movementHistory} from '../core/movement';
 import {approvePersonnelPosting} from '../core/personnel-posting';
@@ -61,6 +61,10 @@ describe('Contract agreement → canonical Personnel postings → explicit manua
   const f=await contractPostingFixture({future:true,payChanges:true}),before=await facts(f),p=await releaseContractPosting(f);
   await approveContractSharedPosting(f.approver,{id:p.id,revision:p.revision});
   expect(await facts(f)).toEqual(before);
+  const tracker=(await contractSharedTracker(f.proposer)).rows.find(row=>row.employmentId===f.employee.employmentId);
+  expect(tracker).toMatchObject({startOn:f.start,endOn:f.end,contractNumber:4});
+  // Exact shape also rules out salary, remarks, source-person IDs and private routing in the preview.
+  expect(tracker?.scheduledPeriod).toEqual({postingId:p.id,label:p.label,eventType:'contractRenewal',startOn:f.newStart,endOn:f.newEnd,contractNumber:5,status:'scheduled'});
   const row=await readContractSharedPosting(f.approver,p.id);expect(row).toMatchObject({status:'approved',movementAppliedAt:null,canConfirmPay:true});
   const[scheduled]=await owner.db.execute<{input:Record<string,unknown>;date:string}>(sql`select payload->'input' as input,payload->>'effectiveDate' as date from domain_event where tenant_id=${f.b.tenantId}::uuid and subject_employment_id=${f.employee.employmentId}::uuid and event_type='employment.movement.scheduled' and payload->'input'->>'contractPostingId'=${p.id}`);
   expect(scheduled.date).toBe(f.newStart);expect(scheduled.input).toMatchObject({contractNumber:'5',contractStartDate:f.newStart,contractPostingId:p.id});expect(scheduled.input).not.toHaveProperty('basicSalary');
