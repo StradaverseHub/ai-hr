@@ -6266,6 +6266,34 @@
       "when": 1794841005813,
       "tag": "5813_contract_shared_email_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 5222,
+      "version": "7",
+      "when": 1794841005822,
+      "tag": "5822_contract_shared_ending_handoff",
+      "breakpoints": true
+    },
+    {
+      "idx": 5223,
+      "version": "7",
+      "when": 1794841005823,
+      "tag": "5823_contract_shared_decline",
+      "breakpoints": true
+    },
+    {
+      "idx": 5224,
+      "version": "7",
+      "when": 1794841005824,
+      "tag": "5824_contract_shared_offboarding",
+      "breakpoints": true
+    },
+    {
+      "idx": 5225,
+      "version": "7",
+      "when": 1794841005825,
+      "tag": "5825_contract_shared_email_document_lifecycle",
+      "breakpoints": true
     }
   ]
 }

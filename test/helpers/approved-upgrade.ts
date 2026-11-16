@@ -239,9 +239,18 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5211,when:1794841005811,tag:'5811_contract_shared_worker_binding'},
  {idx:5212,when:1794841005812,tag:'5812_contract_shared_identity_context'},
  {idx:5213,when:1794841005813,tag:'5813_contract_shared_email_notifications'},
+ {idx:5222,when:1794841005822,tag:'5822_contract_shared_ending_handoff'},
+ {idx:5223,when:1794841005823,tag:'5823_contract_shared_decline'},
+ {idx:5224,when:1794841005824,tag:'5824_contract_shared_offboarding'},
+ {idx:5225,when:1794841005825,tag:'5825_contract_shared_email_document_lifecycle'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5822_contract_shared_ending_handoff':'93453d2576f82d89f1007e0d558d55ca4cd4c8de7175059ccb8faca66390d6dc',
+ '5823_contract_shared_decline':'f8c314de620cdc82f282d35908b70677fabcd2c9ad81cd2753d5a27aa80adaef',
+ '5824_contract_shared_offboarding':'cbd497768b3ea5731c999dda3cf9ac3389fefd8612352186e4eb3620ca69617f',
+ '5825_contract_shared_email_document_lifecycle':'0e53c15e1a2f4d8be4095f1fa4e3baebbde9007bb5b9ccc63f41b8b2baa78cc7',
+
  '5813_contract_shared_email_notifications':'dffc41e7da79471a45e00cf2fc8914107ac94978e856d40b863eef510f0a58eb',
  '5812_contract_shared_identity_context':'52297a99fc31f991954be72225bd15b1929de02fe0c798558498fb873f511345',
  '5811_contract_shared_worker_binding':'06f410b065580e27f79add6d988e0b3aaacb81ef786416ed395417860885d1e4',
