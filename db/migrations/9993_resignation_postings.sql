@@ -199,6 +199,7 @@ BEGIN
  RETURN n;
 END $$;
 --> statement-breakpoint
+REVOKE ALL ON FUNCTION app.personnel_posting_visible(text,uuid,text),app.personnel_posting_create(text,uuid,uuid,text,jsonb,text,text),app.personnel_posting_edit(uuid,integer,jsonb),app.personnel_posting_approve(uuid,integer,jsonb) FROM PUBLIC;
 REVOKE ALL ON FUNCTION app.personnel_posting_visible_probation_v1(text,uuid,text),app.personnel_posting_create_probation_v1(text,uuid,uuid,text,jsonb,text,text),app.personnel_posting_edit_probation_v1(uuid,integer,jsonb),app.personnel_posting_approve_probation_v1(uuid,integer,jsonb) FROM PUBLIC,ai_hr_app;
 REVOKE ALL ON FUNCTION app.offboarding_posting_references_ok(uuid,jsonb),app.offboarding_posting_terms(uuid),app.offboarding_posting_group_members(text),app.offboarding_posting_ops(uuid),app.offboarding_posting_group(uuid,text),app.offboarding_posting_values_ok(text,jsonb),app.offboarding_posting_reject(uuid,integer,text),app.offboarding_posting_reassign(text,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.offboarding_posting_terms(uuid),app.personnel_posting_visible(text,uuid,text),app.personnel_posting_create(text,uuid,uuid,text,jsonb,text,text),app.personnel_posting_edit(uuid,integer,jsonb),app.personnel_posting_approve(uuid,integer,jsonb),app.offboarding_posting_ops(uuid),app.offboarding_posting_group(uuid,text),app.offboarding_posting_reject(uuid,integer,text),app.offboarding_posting_reassign(text,text) TO ai_hr_app;
