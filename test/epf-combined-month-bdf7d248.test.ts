@@ -127,13 +127,18 @@ describe('bdf7d248 — the carve-outs are applied BEFORE the base is combined', 
   // exclusion would leak straight back in through the addition. Each case is asserted against a literal
   // AND against the equivalent uncarved call, so it states both the figure and the equivalence.
   it('epfWageExcluded / epfAdditionalExcluded leave the base at (wage − x) + (additional − y)', () => {
+    // RESTATED 2026-11-16 FOR ITEM 7f5cc653 (ADR-0024 addendum 2026-11-16): the carved normal wage is
+    // RM5,000 (at or below RM5,000) and the carved bonus takes the month above it, so KWSP's Part A bonus
+    // note sets the employer at 13% of the month. Employee rows unchanged.
+    //   normal 5,000 + bonus 1,500 = 6,500 → employer 6,500 × 13% = 845 (was 780, the 12% row); employee 715
+    //   normal 5,000 + bonus 2,000 = 7,000 → employer 7,000 × 13% = 910 (was 840, the 12% row); employee 770
     const both = statutory(6000, profile, 2000, 0, { month: 3 }, { epfWageExcluded: 1000, epfAdditionalExcluded: 500 });
-    expect({ ee: both.epfEmployee, er: both.epfEmployer }).toEqual({ ee: 715, er: 780 });
-    expect(epf(5000, 1500, CFG.epf)).toEqual({ employee: 715, employer: 780 });
+    expect({ ee: both.epfEmployee, er: both.epfEmployer }).toEqual({ ee: 715, er: 845 });
+    expect(epf(5000, 1500, CFG.epf)).toEqual({ employee: 715, employer: 845 });
 
     const wageOnly = statutory(6000, profile, 2000, 0, { month: 3 }, { epfWageExcluded: 1000 });
-    expect({ ee: wageOnly.epfEmployee, er: wageOnly.epfEmployer }).toEqual({ ee: 770, er: 840 });
-    expect(epf(5000, 2000, CFG.epf)).toEqual({ employee: 770, employer: 840 });
+    expect({ ee: wageOnly.epfEmployee, er: wageOnly.epfEmployer }).toEqual({ ee: 770, er: 910 });
+    expect(epf(5000, 2000, CFG.epf)).toEqual({ employee: 770, employer: 910 });
   });
 
   it('an additional item excluded in full leaves exactly the normal-wage month', () => {
@@ -145,8 +150,10 @@ describe('bdf7d248 — the carve-outs are applied BEFORE the base is combined', 
   });
 
   it('the deduction-side reduction (epfWageDeduction) also lands before the addition', () => {
+    // RESTATED 2026-11-16 FOR ITEM 7f5cc653 (ADR-0024 addendum 2026-11-16): normal 6,000 − 1,000 = 5,000
+    // (at or below RM5,000) + bonus 2,000 = 7,000 → Part A bonus note: employer 7,000 × 13% = 910 (was 840).
     const s = statutory(6000, profile, 2000, 0, { month: 3 }, { epfWageDeduction: 1000 });
-    expect({ ee: s.epfEmployee, er: s.epfEmployer }).toEqual({ ee: 770, er: 840 });
+    expect({ ee: s.epfEmployee, er: s.epfEmployer }).toEqual({ ee: 770, er: 910 });
   });
 });
 

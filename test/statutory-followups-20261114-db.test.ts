@@ -330,12 +330,13 @@ describe('owner decision (14 Nov 2026) — the default BONUS pay item carries EP
     expect(B.bases).toMatchObject({ epf: 4800, epfAdditional: 400, socsoEis: 4800 });
     expect(B.statutoryTrace!.epf).toMatchObject({ normalWage: 4800, bonusWage: 400 });
     expect(itemLine(B, 'BONUS')).toMatchObject({ epfNormal: 0, epfBonus: 400, socsoEis: 0 });
-    // NOTE (14 Nov 2026, for the owner): the owner's example expected employer 676 (13%, rate read on the
-    // pre-bonus wage). The pack (localization/my/payroll.ts `epf`, bdf7d248 / r210) reads Part A ONCE on the
-    // month's COMBINED base, normal + bonus, on either stream, so 4,800 + 400 reads the 5,200 row here too.
-    // Which reading the EPF Bonus 2012 rule requires is a statutory decision outside this change; this case
-    // pins the stream only, not that amount.
-    expect(B.epfEmployer).toBe(L.epfEmployer);
+    // RESTATED 2026-11-16 FOR ITEM 7f5cc653 (ADR-0024 addendum 2026-11-16): this asserted B.epfEmployer ===
+    // L.epfEmployer (both 624, the 12% row for RM5,200). The EPF Bonus 2012 tick now decides the employer
+    // amount for this shape, as the owner's 14 Nov example expected: normal 4,800 (at or below RM5,000) +
+    // 400 EPF Bonus 2012 = 5,200, so KWSP's Part A bonus note gives 5,200 × 13% = 676. The same 400 with no
+    // tick is normal wages: 5,200 reads the 5,100.01–5,200 row, 12% × 5,200 = 624.
+    expect(B.epfEmployer).toBe(676);
+    expect(L.epfEmployer).toBe(624);
     // Not SOCSO/EIS/SKBBK wages: identical to the employee without it on those agencies.
     expect([B.socsoEmployee, B.socsoEmployer, B.socsoSkbbk, B.eisEmployee]).toEqual([L.socsoEmployee, L.socsoEmployer, L.socsoSkbbk, L.eisEmployee]);
     // The same 400 without the tick is normal EPF wages.

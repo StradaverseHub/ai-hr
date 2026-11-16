@@ -265,7 +265,9 @@ release gate.
 the note for Part A when the EPF bonus stream (EPF Bonus 2012 only, since 2026-11-13) is above zero, normal
 EPF wages are at or below `cfg.employerThreshold` and normal + bonus is above it. It is shared by `epf()`
 (Auto and voluntary excess), the statutory side of i-Topup and the Part A branch of the elected
-(semi-auto) employer, which already applied the same rule. Part C, Part E, the non-citizen flat rate,
+(semi-auto) employer, which already applied the same rule. Under i-Topup the configured employer increment is added to
+the corrected 13% (RM6,486.83 at +1% → 14% → RM909); voluntary excess keeps its max() over the corrected
+floor. Part C, Part E, the non-citizen flat rate,
 age 75+, manual amount and manual percentage are unchanged. No ruleset field, table or
 `MY_STATUTORY_VERSION` change. Closed payslips are not recomputed.
 

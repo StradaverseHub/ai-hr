@@ -132,9 +132,12 @@ describe('23e7dac3 · a month with NOTHING filed accepts the bonus first, and th
     // green if BOTH orders became wrong together. These are the RM5,000 + RM3,000 + RM500 May month:
     // one EPF Third Schedule lookup on RM8,000 (11% / 12%), ONE SOCSO/EIS charge on RM5,500 (the bonus
     // is outside the s.2(24) wage), and the month's MTD as a single computation.
+    // RESTATED 2026-11-16 FOR ITEM 7f5cc653 (ADR-0024 addendum 2026-11-16): employer was 960 (the 12% row for
+    // RM8,000). Normal EPF wages RM5,000 are at or below RM5,000 and the RM3,000 bonus takes the month
+    // above it, so KWSP's Part A bonus note sets the employer at 8,000 × 13% = 1,040. Employee row unchanged.
     expect(conventional).toEqual({
       epfEmployee: 880,
-      epfEmployer: 960,
+      epfEmployer: 1040,
       socsoEmployee: 27.25,
       socsoEmployer: 95.35,
       // SKBBK (Lindung 24 Jam) is an OPTIONAL per-employee election and this employee does not have it,
@@ -181,8 +184,10 @@ describe('23e7dac3 · a month with NOTHING filed accepts the bonus first, and th
     // ── THE WORKSHEET'S OWN TRACE (ADR-0085 §7). Every per-run figure in the worked example an
     // accountant is asked to read is pinned here as a literal, so the document and the kernel cannot
     // drift apart without this failing. RM5,000 basic + RM500 overtime + a RM3,000 bonus, May, no priors.
-    expect(bonusLast).toEqual({ epfEmployee: 330, epfEmployer: 310, socsoEmployee: 0, socsoEmployer: 0, socsoSkbbk: 0, eisEmployee: 0, eisEmployer: 0, pcb: 90 });
-    expect(bonusFirst).toEqual({ epfEmployee: 330, epfEmployer: 310, socsoEmployee: 0, socsoEmployer: 0, socsoSkbbk: 0, eisEmployee: 0, eisEmployer: 0, pcb: 50 });
+    // RESTATED 2026-11-16 FOR ITEM 7f5cc653 (ADR-0024 addendum 2026-11-16): the bonus run's employer increment
+    // was 960 − 650 = 310; the month is now 1,040 (13% × 8,000, Part A bonus note), so 1,040 − 650 = 390.
+    expect(bonusLast).toEqual({ epfEmployee: 330, epfEmployer: 390, socsoEmployee: 0, socsoEmployer: 0, socsoSkbbk: 0, eisEmployee: 0, eisEmployer: 0, pcb: 90 });
+    expect(bonusFirst).toEqual({ epfEmployee: 330, epfEmployer: 390, socsoEmployee: 0, socsoEmployer: 0, socsoSkbbk: 0, eisEmployee: 0, eisEmployer: 0, pcb: 50 });
     expect(monthlyLast).toEqual({ epfEmployee: 550, epfEmployer: 650, socsoEmployee: 27.25, socsoEmployer: 95.35, socsoSkbbk: 0, eisEmployee: 10.9, eisEmployer: 10.9, pcb: 50 });
   });
 

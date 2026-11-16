@@ -125,13 +125,13 @@ describe('7f5cc653 — elected categories stand on the corrected statutory floor
     expect(epfContribution(4700, 1786.83, CFG, topup, CITIZEN_35)).toMatchObject({ employee: 779, employer: 844 });
   });
 
-  it('i-Topup with an employer increment: the note raises the floor only; the top-up formula is unchanged', () => {
-    // Top-up formula (unchanged): (12% step on 6,486.83 + 2%) = 14% → 6,486.83 × 0.14 = 908.1562 → 909,
-    // above the 844 floor → 909. With +0.5%: 12.5% → 810.85375 → 811, BELOW the floor 844 → 844.
+  it('i-Topup with an employer increment: the increment is added to the corrected statutory 13%', () => {
+    // Statutory employer rate under the note is 13%; + 1% = 14%. 6,486.83 × 0.14 = 908.1562 → 909 (> 844).
+    const plus1 = { mode: 'topup_percentage' as const, employeeRate: null, employerRate: 0.01 };
+    expect(epfContribution(4700, 1786.83, CFG, plus1, CITIZEN_35)).toMatchObject({ employee: 715, employer: 909 });
+    // + 2% = 15%: 6,486.83 × 0.15 = 973.0245 → 974.
     const plus2 = { mode: 'topup_percentage' as const, employeeRate: null, employerRate: 0.02 };
-    expect(epfContribution(4700, 1786.83, CFG, plus2, CITIZEN_35)).toMatchObject({ employee: 715, employer: 909 });
-    const plusHalf = { mode: 'topup_percentage' as const, employeeRate: null, employerRate: 0.005 };
-    expect(epfContribution(4700, 1786.83, CFG, plusHalf, CITIZEN_35)).toMatchObject({ employee: 715, employer: 844 });
+    expect(epfContribution(4700, 1786.83, CFG, plus2, CITIZEN_35)).toMatchObject({ employee: 715, employer: 974 });
   });
 
   it('voluntary excess below the floor cannot lower it: employer stays 844', () => {
