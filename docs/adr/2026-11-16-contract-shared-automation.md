@@ -3,10 +3,13 @@
 Status: owner-approved direction, 16 November 2026; implementation and verification in progress.
 Extends `2026-11-15-probation-shared-automation.md`. Installation is a separate verified release.
 
-Release hold: the owner subsequently instructed “Stop before release, wait for my approval.” Continue implementation
-and hosted verification on the owned branch. Present the finished candidate and evidence, then wait for explicit
-approval before any merge, main/alpha integration, staging installation or any other release action. Earlier staging
-authorization is superseded by this hold; production remains separately unauthorized.
+Delivery authority: the owner's newer instruction in the COORDINATOR chat (`01a1e5a6-7516-7c81-a826-33cd8ca1c496`,
+17 November 2026 MYT) asks to coordinate Movement, Resignation, Contract Management and the audit work, “Release the
+ones that are done, release the staging lease and continue the next one.” The actual human message was read and
+verified. This supersedes the earlier stop-for-approval hold for completed, verified staging candidates. Prepare and
+verify outside the shared staging lease, coordinate integration with the release coordinator, and retain the lease
+through exact arrival, rendered acceptance and required capture before releasing it. Incomplete work is not ready
+for integration or installation. Production remains separately unauthorized.
 
 ## Decision
 

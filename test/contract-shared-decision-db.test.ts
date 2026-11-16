@@ -72,20 +72,27 @@ const draft={kind:'renew' as const,months:6,payChanges:false,reason:'Continue th
 let f:Awaited<ReturnType<typeof fixture>>;
 beforeEach(async()=>{f=await fixture();});
 describe('protected Contract decision preview and submission',()=>{
+ it('does not hydrate unrelated tenant groups into a case-specific decision preview',async()=>{
+  await owner.db.execute(sql`with unrelated as(insert into app_user(tenant_id,workos_user_id) select ${f.b.tenantId}::uuid,'unrelated-contract-fixture-'||gen_random_uuid()::text from generate_series(1,5001) returning id)
+   update lc_v9_config set data=jsonb_set(data,'{groups}',(data->'groups')||jsonb_build_array(jsonb_build_object('id','unrelated-large-group','name','Unrelated configuration','limit',0,'members',(select jsonb_agg(id) from unrelated)))),revision=revision+1 where tenant_id=${f.b.tenantId}::uuid`);
+  const requested=await previewContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,draft});
+  expect((await finishPreview(requested.jobId,f.proposer)).state).toBe('completed');
+  expect((await readContractSharedDecisionPreview(f.proposer,requested.previewId)).plan?.blockers).toEqual([]);
+ });
  it('queues shared email with frozen rich wording, default CC and a source-bound individual approval link',async()=>{
   const origin='https://contract-mail-fixture.invalid',templateId=randomUUID();
   for(const userId of [f.admin.userId!,f.proposer.userId!])await owner.db.execute(sql`insert into app_external_identity(issuer,subject,app_user_id) values(${origin+'/auth/'+f.b.tenantId},${randomUUID()},${userId}::uuid)`);
   await saveAutomationEmailTemplate(f.admin,{template:{id:templateId,module:'contract_staff',name:'Contract decision receipt',active:true,subject:'Review {{employee.name}}',body:'The agreed salary is {{contract.salary}}. Open {{case.link}}',bodyDoc:automationEmailBodyDoc({body:'The agreed salary is {{contract.salary}}. Open {{case.link}}'}),cc:[{kind:'person',userId:f.proposer.userId!}]},expectedRevision:0,retired:false,reason:'Fictional reviewed email'});
   const workflow={...f.workflow,steps:[{id:randomUUID(),type:'sendEmail',conditions:[],to:[{kind:'person' as const,userId:f.admin.userId!}],cc:[],params:{emailTemplateId:templateId}},...f.workflow.steps]};
   await saveAutomationWorkflow(f.admin,{workflow,expectedRevision:1,reason:'Include the shared decision receipt'});
-  const requested=await previewContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,draft});await finishPreview(requested.jobId,f.proposer);
+  const requested=await previewContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,draft:{...draft,payChanges:true,basicSalary:'5200.12'}});await finishPreview(requested.jobId,f.proposer);
   const preview=await readContractSharedDecisionPreview(f.proposer,requested.previewId);expect(preview.plan?.blockers).toEqual([]);
   const accepted=await submitContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,previewId:requested.previewId});await finishAutomation(accepted.jobId,f.proposer);
   const deliveries=await owner.db.execute<{id:string;key:string;payload:{linkPath:string;mail:{subject:string;body:string;to:string[];cc:string[];richBody:{values:Record<string,string>}}}}>(sql`select id,mail_key as key,payload from automation_email_delivery where tenant_id=${f.b.tenantId}::uuid order by mail_key`);
   expect(deliveries).toHaveLength(2);
   const workflowMail=deliveries.find(item=>!item.key.startsWith('approval:'))!,assignment=deliveries.find(item=>item.key.startsWith('approval:'))!;
   expect(workflowMail.payload.mail).toMatchObject({subject:'Review Fictional Contract subject',to:[f.admin.userId],cc:[f.proposer.userId]});
-  expect(workflowMail.payload.mail.body).toContain('{{case.link}}');expect(workflowMail.payload.mail.richBody.values['contract.salary']).toBe('4976.21');
+  expect(workflowMail.payload.mail.body).toContain('{{case.link}}');expect(workflowMail.payload.mail.richBody.values['contract.salary']).toBe('5200.12');expect(JSON.stringify(workflowMail.payload)).not.toContain('4976.21');
   await saveAutomationEmailTemplate(f.admin,{template:{id:templateId,module:'contract_staff',name:'Contract decision receipt',active:true,subject:'Later wording',body:'Later body',cc:[]},expectedRevision:1,retired:false,reason:'Later edits do not rewrite queued mail'});
   const [approval]=await owner.db.execute<{id:string}>(sql`select id from contract_shared_approval where tenant_id=${f.b.tenantId}::uuid and case_id=${f.caseId}::uuid`);
   const token=randomUUID();await owner.db.execute(sql`update automation_email_delivery set status='leased',lease_token=${token}::uuid,lease_until=now()+interval '3 minutes' where id=${assignment.id}::uuid`);
@@ -122,7 +129,14 @@ describe('protected Contract decision preview and submission',()=>{
   expect(changedSource.canEdit).toBe(false);expect(changedSource.pendingAction).toBeNull();expect(changedSource.body?.values['employee.name']).toBe('Fictional Contract subject');
   await owner.db.execute(sql`update employment set person_id=${f.employee.personId}::uuid where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`);
   const hidden=await readContractSharedLetter(f.proposer,generated.id);expect(hidden.body).toBeNull();expect(hidden.contentHash).toBeNull();
-  const reviewed=await actContractSharedLetter(f.admin,{id:letter.id,actionId:randomUUID(),stepId:letter.pendingAction!.stepId,revision:letter.contentRevision,hash:letter.contentHash!,action:'reviewed'});
+  const review={id:letter.id,actionId:randomUUID(),stepId:letter.pendingAction!.stepId,revision:letter.contentRevision,hash:letter.contentHash!,action:'reviewed' as const,blocks:{intro:'Reviewed wording for {employee.name}'}};
+  await expect(actContractSharedLetter(f.proposer,review)).rejects.toMatchObject({code:'forbidden'});
+  await expect(actContractSharedLetter(f.admin,{...review,action:'approved'})).rejects.toMatchObject({code:'invalid'});
+  expect((await readContractSharedLetter(f.admin,letter.id)).contentRevision).toBe(letter.contentRevision);
+  const reviewed=await actContractSharedLetter(f.admin,review);
+  expect(reviewed.body?.blocks.intro).toBe('Reviewed wording for {employee.name}');expect(reviewed.contentRevision).toBe(letter.contentRevision+1);
+  const replay=await actContractSharedLetter(f.admin,review);expect(replay.contentRevision).toBe(reviewed.contentRevision);expect(replay.history).toHaveLength(1);
+  await expect(actContractSharedLetter(f.admin,{...review,blocks:{intro:'A different retry'}})).rejects.toMatchObject({code:'conflict'});
   expect(reviewed.state).toBe('routing');expect(reviewed.pendingAction).toBeNull();expect(reviewed.valuesFixed).toBe(false);
   const held=await contractSharedContext(f.proposer,f.caseId);expect(held.flow?.stage).toBe('document');expect(held.flow?.flags).toContain('employee_cannot_sign');expect(held.source.contractNumber).toBe(4);
   const userId=await createAppUser(f.b.tenantId,f.employee.personId,'employee');
