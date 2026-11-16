@@ -9,10 +9,13 @@
  *    outcomeOverridden and declinedToSign. "Part 1 · Week 1 KPIs" is the catalogue's "Part 1 · Week 1 Success Plan".
  *  - Recipients: supervisor is the Direct Superior; routing r-bp / r-hod are the two routings below (installed with no
  *    rows, so they reach nobody until rows are added and the workflows show that problem until then).
- *  - Prototype merge fields {x} become {{key}}. The prototype's first name, result band and letter fields (document
- *    name, signing step, sent back by/reason) are not in the catalogue yet: they are kept as typed and the editor warns.
+ *  - Prototype merge fields {x} become {{key}}. First name, result band and the letter fields (document name, signing
+ *    step, sent back by and reason) are catalogue merge fields (lib/automation/catalogues/probation.ts).
  *  - Generate a document steps need a letter template chosen per tenant (letter templates are kept per company), so
  *    they are installed without one and the workflow shows "choose a letter template" until it is chosen.
+ *  - "Your probation letter" links to the case instead of attaching the PDF (lane I, I4): shared workflow email is plain
+ *    text without attachments (lib/internal-auth/automation-mail.ts), and a link re-checks access when it is opened
+ *    rather than mailing an employment letter to every addressee. Installed copies keep the wording they were saved with.
  */
 import type {AutomationCondition} from '@/lib/automation/conditions';
 import type {AutomationRecipient,AutomationStep,AutomationWorkflow} from '@/lib/automation/workflow';
@@ -67,7 +70,7 @@ export const PROBATION_DEFAULT_EMAILS: readonly AutomationEmailTemplate[] = [
   { id: DEFAULT_EMAIL_IDS.signingRequest, module: 'probation', name: 'Signing request', active: true, cc: [], subject: '{{probation.part}} for {{employee.name}} needs your signature',
     body: 'Hello,\n\n{{probation.part}} for {{employee.name}} is ready for your signature.\n\nReview and sign: {{case.link}}' + SIGN_OFF },
   { id: DEFAULT_EMAIL_IDS.letter, module: 'probation', name: 'Your probation letter', active: true, cc: [], subject: 'Your probation letter: {{probation.outcome}}',
-    body: 'Dear {{employee.name}},\n\nYour probation outcome is {{probation.outcome}}. Your letter is attached to this email as a PDF, and a copy is saved on your employee file.\n\nIf anything in the letter looks wrong, reply to this email.' + SIGN_OFF },
+    body: 'Dear {{employee.name}},\n\nYour probation outcome is {{probation.outcome}}. Your signed letter is ready in AI-HR, and a copy is saved on your employee file.\n\nOpen your letter: {{case.link}}\n\nIf anything in the letter looks wrong, reply to this email.' + SIGN_OFF },
 ];
 
 export const PROBATION_DEFAULT_WORKFLOWS: readonly AutomationWorkflow[] = [
