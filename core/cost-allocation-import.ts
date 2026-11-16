@@ -238,7 +238,13 @@ export const costAllocationRevertHandler:ImportRevertHandler={
  lock:(tx,ctx)=>lockAllocationWritersTx(tx,ctx),
  // Inspection writes nothing. Shared Access pins authority without serialising other readers.
  // Confirm retains its exclusive lock and rechecks every revision and the complete preview hash.
- async previewLock(tx,ctx){await lockAccessConfigurationTx(tx,ctx.tenantId);await joinWorkforceBarrierTx(tx,ctx.tenantId);},
+ async previewLock(tx,ctx){
+  await lockAccessConfigurationTx(tx,ctx.tenantId);await joinWorkforceBarrierTx(tx,ctx.tenantId);
+  // The old label-epoch write was also protected by label_criteria_epoch_admin RLS. Keep that
+  // native admission predicate explicitly; removing the epoch mutation must not widen readers.
+  const [actor]=await tx.execute<{allowed:boolean}>(sql`select app.is_admin() as allowed`);
+  if(actor?.allowed!==true)throw new ImportHistoryError('Import attempt unavailable.');
+ },
  async inspect(tx,_ctx,items){
   const byEmployment=new Map<string,ImportAttemptItemRow[]>();
   for(const i of items){const list=byEmployment.get(i.employmentId!)??[];list.push(i);byEmployment.set(i.employmentId!,list);}

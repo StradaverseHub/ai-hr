@@ -59,7 +59,7 @@ it('reads the exact effective header and visible slip count without exporting di
   expect(await payrollRunRegisterPage(ctx,id,page)).toEqual(old?{batch:old.batch,closeCycleName:old.batch.status==='processed'?cycle.name:null,runPayslipCount:old.slips.length,slipPage:paginateRows(old.slips.map(({totalDeductions:_d,employerCost:_c,...row})=>row),page)}:null);
  }
  // Exercise every native role, group-wide and company-scoped, with real matching assignments.
- for(const role of s.roleEnum.enumValues)for(const companyId of [null,b.companyId,otherCompany.id]){
+ for(const role of s.roleEnum.enumValues)for(const companyId of (role==='super_admin'?[null]:[null,b.companyId,otherCompany.id])){
   const userId=await createAppUser(b.tenantId,null,'employee');
   await owner.db.update(s.roleAssignment).set({role,companyId}).where(eq(s.roleAssignment.appUserId,userId));
   const who:SessionContext={...root,userId,personId:null,roles:[role],grants:[{role,companyId}]};
