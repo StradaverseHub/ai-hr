@@ -22,6 +22,10 @@ export async function internalAutomationMail(input: AutomationDeliveryRequest, t
   if (!target) return { outcome: 'skipped', error: 'notEligible' };
   const { mail } = target.payload;
   if (!normaliseManagedEmailSender(mail.delivery?.sender) || mail.delivery?.version !== 1 || mail.to.length < 1 || mail.to.length > 8) return { outcome: 'skipped', error: 'notEligible' };
+  // Until the separately reviewed shared attachment adapter is authorized, fail closed rather than
+  // silently sending a message whose promised files or document links were omitted. Offboarding keeps its owner.
+  const heldDelivery=mail.delivery as {assets?:unknown;documents?:unknown};
+  if(target.module!=='off'&&[heldDelivery.assets,heldDelivery.documents].some(value=>value!=null&&(!Array.isArray(value)||value.length>0)))return {outcome:'skipped',error:'notEligible'};
   const active = await readLifecycleRelayTx(admittedAuthSql, target.tenantId);
   if (!active) return { outcome: 'skipped', error: 'relayUnavailable' };
   const byRecipient = new Map<string, string>();
