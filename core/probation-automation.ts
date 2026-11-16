@@ -256,12 +256,8 @@ function probationRuntime(tx: Tx, input: ExecutorInput): {executors: AutomationE
       if (!outcome || !eventType || (eventType === 'confirmation') !== (outcome.outcome === 'confirm') || eventType === 'probationExtension' && outcome.outcome !== 'extend')
         return {status: 'failed', reason: 'The posting does not match the decided outcome.'};
       if (!context.postingApproverGroupId) return {status: 'failed', reason: 'No group is set to approve Personnel postings.'};
-      const extension = extensionFacts(record, outcome);
-      if (eventType === 'probationExtension' && !extension) return {status: 'failed', reason: 'The approved extension length is missing.'};
-      const {createPersonnelPostingTx} = await import('./personnel-posting');
-      const posting = await createPersonnelPostingTx(tx, {source: 'probation', sourceRef: record.id, employmentId: await employmentOf(tx, record.id), eventType,
-        proposed: eventType === 'confirmation' ? {effectiveDate: record.endOn, remarks: 'Probation outcome: Confirm'} : {effectiveDate: extension!.start, endDate: extension!.endOn, remarks: 'Probation outcome: Extend'},
-        approverGroupId: context.postingApproverGroupId, idempotencyKey: outcome.id});
+      if (eventType === 'probationExtension' && !extensionFacts(record, outcome)) return {status: 'failed', reason: 'The approved extension length is missing.'};
+      const posting = await createProbationOutcomePostingTx(tx, record, outcome, context.postingApproverGroupId);
       effects.postingId = posting.id;
       return {status: 'done', message: `Personnel posting PP-${posting.number} created; it waits for approval.`};
     },
@@ -281,6 +277,20 @@ function probationRuntime(tx: Tx, input: ExecutorInput): {executors: AutomationE
     documentTemplate: step => { const v = input.letters.get(text(step.params.letterTemplateId)); return !v ? 'missing' : v.state === 'retired' ? 'retired' : 'available'; },
   };
   return {executors, guards};
+}
+/**
+ * The Personnel posting of a released Confirm or Extend outcome (decision 4), for the shared workflow's Create posting
+ * step and for the default path when no workflow matched (I1) alike: the same proposed values, approver group and
+ * idempotency key (the outcome id), so the outcome never writes the movement itself; only the posting's approval does.
+ */
+export async function createProbationOutcomePostingTx(tx: Tx, record: ProbationAutomationCase, outcome: {id: string; outcome: string; extensionMonths?: number | null}, approverGroupId: string): Promise<{id: string; number: number}> {
+  const eventType = outcome.outcome === 'confirm' ? 'confirmation' as const : outcome.outcome === 'extend' ? 'probationExtension' as const : null;
+  const extension = extensionFacts(record, {revision: 0, ...outcome});
+  if (!eventType || eventType === 'probationExtension' && !extension) throw new Error('A Personnel posting needs a Confirm outcome or an approved extension length.');
+  const {createPersonnelPostingTx} = await import('./personnel-posting');
+  return createPersonnelPostingTx(tx, {source: 'probation', sourceRef: record.id, employmentId: await employmentOf(tx, record.id), eventType,
+    proposed: eventType === 'confirmation' ? {effectiveDate: record.endOn, remarks: 'Probation outcome: Confirm'} : {effectiveDate: extension!.start, endDate: extension!.endOn, remarks: 'Probation outcome: Extend'},
+    approverGroupId, idempotencyKey: outcome.id});
 }
 async function employmentOf(tx: Tx, caseId: string): Promise<string> {
   const [row] = await tx.execute<{id: string}>(sql`select employment_id as id from probation_case where id = ${caseId}::uuid and tenant_id = app.current_tenant_id()`);

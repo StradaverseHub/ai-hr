@@ -10,6 +10,8 @@ import {probationOutcomeFixture} from './helpers/probation-outcome-fixture';
 import {newProbationLetterTemplate} from '../lib/probation-letter-template';
 import type {SessionContext,Tx} from '../db/client';
 import {saveProbationLetterTemplate,readProbationLetter,actOnProbationLetter,releaseProbationLetter,sweepProbation,applyProbationOutcome} from '../packs/probation/service';
+import {approvePersonnelPosting} from '../core/personnel-posting';
+import {movementHistory} from '../core/movement';
 
 let b:Base,admin:SessionContext,fixture:ReturnType<typeof probationOutcomeFixture>;
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -92,6 +94,60 @@ describe('Probation outcome on the shared workflow runner (W2)',()=>{
   // No published template: today's auto-draft routes the outcome to the PBP with the existing message.
   const [outcome]=await owner.db.execute<{failure:string|null}>(sql`select failure from probation_outcome where id=${decision.id}::uuid`);
   expect(outcome.failure).toBe('The review is recorded. Select and complete the approved outcome letter before signing and release.');
+ });
+});
+
+/** Signs (PBP, then the employee) and releases the outcome's prepared letter, then runs the owner sweep twice. */
+async function signReleaseAndSweep(pbp:SessionContext,staff:{ctx:SessionContext},caseId:string,letterPartId:string){
+ let letter=await readProbationLetter(pbp,caseId,letterPartId);const hr=letter.signing!.document.route.steps.find(s=>s.role==='pbp')!;
+ await actOnProbationLetter(pbp,{caseId,partId:letter.id,revision:letter.storageRevision,stepId:hr.id,action:'signed',method:'typed',value:'Fictional PBP',consent:true});
+ letter=await readProbationLetter(staff.ctx,caseId,letterPartId);const ack=letter.signing!.document.route.steps.find(s=>s.role==='employee')!;
+ await actOnProbationLetter(staff.ctx,{caseId,partId:letter.id,revision:letter.storageRevision,stepId:ack.id,action:'signed',method:'typed',value:'Fictional Staff',consent:true});
+ letter=await readProbationLetter(pbp,caseId,letterPartId);
+ await releaseProbationLetter(pbp,{caseId,partId:letter.id,outcomeRevision:letter.outcomeRevision!,reason:'Release the signed letter'});
+ const runner={...pbp,userId:undefined,roles:[],grants:undefined} as SessionContext;
+ const port={withTenant:async<T>(context:SessionContext,run:(tx:Tx)=>Promise<T>)=>owner.withTenant(context,run)};
+ await sweepProbation(runner,port);await sweepProbation(runner,port);
+ return {runner,port};
+}
+
+describe('the default path when no workflow matches (I1, decision 4)',()=>{
+ it('creates the Personnel posting and never writes the movement; approving the posting writes it once',async()=>{
+  const {ids,staff,decision,endOn,admin:pbp}=await fixture.recordedConfirm([],{beforeRecord:async ctx=>{await letterTemplate(ctx,'confirm-'+randomUUID().slice(0,8));}});
+  admin=pbp;
+  expect(await runsOf(ids.caseId)).toEqual([]);
+  // Today's path: the single published template is drafted automatically.
+  const [outcome]=await owner.db.execute<{letter:string|null;failure:string|null}>(sql`select letter_part_id::text as letter,failure from probation_outcome where id=${decision.id}::uuid`);
+  expect(outcome).toMatchObject({failure:null});expect(outcome.letter).toBeTruthy();
+  const {runner,port}=await signReleaseAndSweep(admin,staff,ids.caseId,outcome.letter!);
+  const state=()=>owner.db.execute<{outcomeState:string;movement:string|null;caseState:string;pending:{id:string;eventType:string}|null;confirmed:string|null}>(sql`
+   select o.state as "outcomeState",o.movement_ref as movement,c.data->>'state' as "caseState",c.data->'pendingPosting' as pending,e.confirmation_date::text as confirmed
+   from probation_outcome o join probation_case c on c.id=o.case_id join employment e on e.id=c.employment_id where o.id=${decision.id}::uuid`);
+  const postings=await owner.db.execute<{id:string;status:string;event:string;group:string;revision:number;proposed:{effectiveDate:string}}>(sql`select id,status,event_type as event,approver_group_id as group,revision,proposed from personnel_posting where source_ref=${ids.caseId}::uuid`);
+  expect(postings).toEqual([expect.objectContaining({status:'pending',event:'confirmation',group:'probation-people',proposed:expect.objectContaining({effectiveDate:endOn})})]);
+  expect((await state())[0]).toEqual({outcomeState:'completed',movement:'posting:'+postings[0].id,caseState:'confirmed',pending:{id:postings[0].id,eventType:'confirmation'},confirmed:null});
+  expect((await movementHistory(admin,staff.employmentId)).filter(row=>row.kind==='confirmation')).toEqual([]);
+  // Another sweep changes nothing: the completed outcome is not applied again and no second posting appears.
+  await sweepProbation(runner,port);
+  expect(await owner.db.execute(sql`select 1 from personnel_posting where source_ref=${ids.caseId}::uuid`)).toHaveLength(1);
+  // Only the posting-approver group's approval writes the movement, once.
+  const approved=await approvePersonnelPosting(admin,{id:postings[0].id,revision:postings[0].revision});
+  await expect(approvePersonnelPosting(admin,{id:postings[0].id,revision:postings[0].revision})).rejects.toThrow();
+  expect((await movementHistory(admin,staff.employmentId)).filter(row=>row.kind==='confirmation').map(row=>row.id)).toEqual([approved.movementId]);
+  expect((await state())[0]).toMatchObject({confirmed:endOn,pending:null,caseState:'confirmed'});
+ });
+
+ it('asks for a GBS retry instead of writing the movement when no group approves Personnel postings',async()=>{
+  const {ids,staff,decision,admin:pbp}=await fixture.recordedConfirm([],{beforeRecord:async ctx=>{await letterTemplate(ctx,'confirm-'+randomUUID().slice(0,8));}});
+  admin=pbp;
+  await owner.db.execute(sql`update lc_v9_config set data=data-'peopleOpsGroup' where tenant_id=${b.tenantId}::uuid`);
+  await owner.db.execute(sql`update probation_case set data=data#-'{config,postingApproverGroupId}' where id=${ids.caseId}::uuid`);
+  const [outcome]=await owner.db.execute<{letter:string|null}>(sql`select letter_part_id::text as letter from probation_outcome where id=${decision.id}::uuid`);
+  await signReleaseAndSweep(admin,staff,ids.caseId,outcome.letter!);
+  const [after]=await owner.db.execute<{state:string;failure:string|null;movement:string|null}>(sql`select state,failure,movement_ref as movement from probation_outcome where id=${decision.id}::uuid`);
+  expect(after.state).not.toBe('completed');expect(after.movement).toBeNull();expect(after.failure).toContain('approve Personnel postings');
+  expect(await owner.db.execute(sql`select 1 from personnel_posting where source_ref=${ids.caseId}::uuid`)).toHaveLength(0);
+  expect((await movementHistory(admin,staff.employmentId)).filter(row=>row.kind==='confirmation')).toEqual([]);
  });
 });
 

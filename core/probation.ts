@@ -530,7 +530,8 @@ async function decideOutcomeAutomationTx(tx:Tx,ctx:SessionContext,view:Probation
  * New path (W2): an outcome decided with shared workflows resumes their frozen remaining steps once its letter is
  * released and filed, then records the effect without writing the movement (a Personnel posting waits for approval).
  * Outcomes without a run (decided before this shipped, or no workflow matched) and outcomes whose run failed before it
- * created anything (handled by hand) keep the path below unchanged.
+ * created anything (handled by hand) take the default path in applyProbationOutcomeTx, which since I1 also creates the
+ * same Personnel posting (same values, group and idempotency key) instead of writing the movement.
  * F7: once a run has created a Personnel posting (or the offboarding hand-off), the outcome never falls back to writing
  * the movement directly. If a later step failed, the GBS retry records the effect with that posting (still pending
  * approval) instead, so the movement cannot be written twice; the failed step itself was asked to be checked by hand.
@@ -552,20 +553,30 @@ async function applyAutomatedOutcomeTx(tx:Tx,ctx:SessionContext,view:ProbationCa
  await tx.execute(sql`select app.probation_record_posting_effect(${outcome.id}::uuid,${after.postingId}::uuid,${outcome.outcome==='not_confirm'?after.handoffId:null}::uuid,${json(next)}::jsonb,${json(newPart)}::jsonb)`);
  return{completed:true};
 }
+/** The extension length an Extend outcome applies: the PBP's choice for an Other outcome, else the accepted offline decision, else the review's. */
+const outcomeExtensionMonths=(part:ProbationPartView,outcome:{extensionMonths?:number|null})=>outcome.extensionMonths??(part.offlineDecision?.acceptedAt?part.offlineDecision.extensionMonths:part.extensionMonths);
 async function applyProbationOutcomeTx(tx:Tx,ctx:SessionContext,outcomeId:string){
  const[outcome]=await tx.execute<{id:string;caseId:string;partId:string;outcome:string;state:string;releasedAt:string|null}>(sql`select id,case_id as "caseId",part_id as "partId",outcome,state,released_at::text as "releasedAt" from probation_outcome where tenant_id=${ctx.tenantId}::uuid and id=${uuid(outcomeId)}::uuid`);
  if(!outcome||!outcome.releasedAt)throw new ProbationError('invalid','Release the authorised signed letter before applying the outcome.');
  if(outcome.state==='completed')return{completed:true};const view=await caseTx(tx,ctx,outcome.caseId),part=view.parts.find(p=>p.id===outcome.partId);if(!part)throw new ProbationError('invalid','Outcome source review unavailable.');
  if(!view.runtimeEnabled||view.sourceMoved||view.sourceChanged||view.record.facts.resignationOn||view.record.facts.terminatedOn)throw new ProbationError('conflict','The current Personnel source requires outcome reconciliation.');
  const automated=await applyAutomatedOutcomeTx(tx,ctx,view,part,outcome);if(automated)return automated;
- let movement:string|null=null,handoff:string|null=null,next:{endOn:string}|null=null,newPart:ProbationPart|null=null;
+ let handoff:string|null=null,next:{endOn:string}|null=null,newPart:ProbationPart|null=null;
  if(outcome.outcome==='not_confirm'){const{createProbationOffboardingTx}=await import('../packs/lifecycle/service');handoff=await createProbationOffboardingTx(tx,ctx,view.record.id);}
  else if(outcome.outcome==='confirm'||outcome.outcome==='extend'){
   if(outcome.outcome==='confirm'&&view.record.endOn>todayInKualaLumpur())return{completed:false,waitingOn:view.record.endOn};
-  const{applyReleasedProbationMovementTx}=await import('./movement');await applyReleasedProbationMovementTx(tx,ctx,outcome.id);movement='probation:'+outcome.id;
-  if(outcome.outcome==='extend'){const extension=part.offlineDecision?.acceptedAt?part.offlineDecision.extensionMonths:part.extensionMonths;if(extension!==3&&extension!==6)throw new ProbationError('invalid','The actual PBP-approved extension length is required.');const start=addDaysIso(view.record.endOn,1),end=addDaysIso(addCalendarMonths(start,extension),-1);next={endOn:end};const working=new Set(await workingDatesForSpan(tx,view.record.employmentId,addDaysIso(end,-366),addDaysIso(end,366)));const{newProbationPart,probationDueDay}=await import('../lib/probation-model');newPart=newProbationPart(randomUUID(),3,view.record.extensionCount+1,probationDueDay(end,day=>working.has(day),view.record.config.nonWorkingDayRule),view.record.config.issueLeadDays);}
+  const extension=outcomeExtensionMonths(part,outcome);
+  if(outcome.outcome==='extend'){if(extension!==3&&extension!==6)throw new ProbationError('invalid','The actual PBP-approved extension length is required.');const start=addDaysIso(view.record.endOn,1),end=addDaysIso(addCalendarMonths(start,extension),-1);next={endOn:end};const working=new Set(await workingDatesForSpan(tx,view.record.employmentId,addDaysIso(end,-366),addDaysIso(end,366)));const{newProbationPart,probationDueDay}=await import('../lib/probation-model');newPart=newProbationPart(randomUUID(),3,view.record.extensionCount+1,probationDueDay(end,day=>working.has(day),view.record.config.nonWorkingDayRule),view.record.config.issueLeadDays);}
+  // I1 (decision 4): with no shared workflow either, Confirm and Extend still create the Personnel posting for the
+  // pinned "who approves Personnel postings" group (People Ops when unset) and record the posting effect: the case
+  // closes or extends with the posting pending. Only the posting's approval writes the movement, never this path.
+  const{probationAutomationContextTx,createProbationOutcomePostingTx}=await import('./probation-automation');
+  const context=await probationAutomationContextTx(tx,view.record.id);
+  if(!context.postingApproverGroupId){await tx.execute(sql`select app.probation_outcome_failure(${outcome.id}::uuid,'No group is set to approve Personnel postings. Choose one in Probation settings, then record a GBS retry.')`);return{completed:false};}
+  const posting=await createProbationOutcomePostingTx(tx,view.record,{id:outcome.id,outcome:outcome.outcome,extensionMonths:extension},context.postingApproverGroupId);
+  await tx.execute(sql`select app.probation_record_posting_effect(${outcome.id}::uuid,${posting.id}::uuid,${null}::uuid,${json(next)}::jsonb,${json(newPart)}::jsonb)`);return{completed:true};
  }else throw new ProbationError('invalid','PBP must adjudicate Other before an employment outcome can be applied.');
- await tx.execute(sql`select app.probation_record_effect(${outcome.id}::uuid,${movement},${handoff}::uuid,${json(next)}::jsonb,${json(newPart)}::jsonb)`);return{completed:true};
+ await tx.execute(sql`select app.probation_record_effect(${outcome.id}::uuid,${null},${handoff}::uuid,${json(next)}::jsonb,${json(newPart)}::jsonb)`);return{completed:true};
 }
 export function applyProbationOutcome(ctx:SessionContext,outcomeId:string){return withProbationTenant(ctx,async tx=>{const[row]=await tx.execute<{data:{completed:boolean;queued:boolean}}>(sql`select app.probation_request_outcome_retry(${uuid(outcomeId)}::uuid) as data`);return row.data;});}
 
