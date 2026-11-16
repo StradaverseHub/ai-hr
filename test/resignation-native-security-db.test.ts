@@ -13,7 +13,7 @@ let b:Base,employee:SessionContext,manager:SessionContext,fyi:SessionContext,id:
 const master='6'.repeat(64),day='2027-06-30';
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>vi.unstubAllEnvs());
 beforeEach(async()=>{
- await resetDb();b=await seedBase();await setModule(b.tenantId,'lifecycle','active');
+ await resetDb();b=await seedBase();await setModule(b.tenantId,'lifecycle','disabled');
  vi.stubEnv('AUTH_PUBLIC_ORIGIN','https://resignation.example.test');vi.stubEnv('AUTH_SESSION_KEY',master);
  await owner.db.execute(sql`delete from app.resignation_runtime_state`);await owner.db.execute(sql`delete from app.resignation_runtime_verifier`);
  await owner.db.execute(sql`insert into app.resignation_runtime_verifier(singleton,secret) values(true,${resignationRuntimeKey(master)})`);
@@ -22,6 +22,7 @@ beforeEach(async()=>{
  const person=async(name:string)=>{const[p]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,${name},${randomUUID()+'@resignation.test'}) returning id`);return{tenantId:b.tenantId,userId:await createAppUser(b.tenantId,p.id,'employee'),personId:p.id,roles:['employee']} as SessionContext;};
  manager=await person('Fictional assigned manager');fyi=await person('Fictional FYI partner');participants=[employee.userId!,manager.userId!,fyi.userId!];id=randomUUID();
  await owner.db.execute(sql`insert into resignation_request(id,tenant_id,employment_id,person_id,last_working_day,reason) values(${id}::uuid,${b.tenantId}::uuid,${employmentId}::uuid,${employee.personId}::uuid,${day},'Moving home')`);
+ await setModule(b.tenantId,'lifecycle','active');
  data={facts:{employmentId,personId:employee.personId,companyId:b.companyId,basicSalary:'6400'},lastWorkingDay:day,reason:'Moving home',decision:{id:randomUUID(),to:[manager.userId],watch:[fyi.userId],choices:'both',canComment:true},offer:null,decidedBy:null,letters:[],releasedDocuments:[],waits:[],tasks:[],comments:[],progress:{}};
  await seedJourney();
 });
@@ -214,4 +215,45 @@ it('denies removed or reassigned repair actors and disabled-company repair, whil
  await setModule(b.tenantId,'lifecycle','active');const other=await createAppUser(b.tenantId,null,'hr_admin'),otherCompany=randomUUID();await owner.db.execute(sql`insert into company(id,tenant_id,legal_name) values(${otherCompany}::uuid,${b.tenantId}::uuid,'Fictional outside repair company')`);await owner.db.execute(sql`update role_assignment set company_id=${otherCompany}::uuid where tenant_id=${b.tenantId}::uuid and app_user_id=${other}::uuid`);
  await repairConfiguration([],[b.adminUserId,other]);await seedRepair([b.adminUserId]);
  await withTenant(adminCtx(b),async tx=>{await begin(tx,adminCtx(b),{type:'runWorkflowsAgain'});const[audience]=await tx.execute<{people:{id:string;personId:string|null;name:string}[]}>(sql`select app.resignation_decision_repair_audience(${id}::uuid) people`);expect(audience.people).toEqual([{id:b.adminUserId,personId:null,name:'Assigned account'}]);});
+});
+it('rejects new legacy insertion for Lifecycle-enabled companies with no workflow and accepts an admitted managed record',async()=>{
+ await owner.db.execute(sql`delete from resignation_journey where id=${id}::uuid`);await owner.db.execute(sql`update resignation_request set status='withdrawn' where id=${id}::uuid`);id=randomUUID();data={...data,decision:null};
+ const[before]=await owner.db.execute<{count:number}>(sql`select count(*)::integer count from automation_workflow_version where tenant_id=${b.tenantId}::uuid and module='off'`);expect(before.count).toBe(0);
+ await nativeRefusal(withTenant(employee,tx=>tx.execute(sql`insert into resignation_request(id,tenant_id,employment_id,person_id,last_working_day,reason) values(${id}::uuid,${b.tenantId}::uuid,${employmentId}::uuid,${employee.personId}::uuid,${day},'Moving home')`)),'42501',/managed resignation journey/);expect(await persisted()).toBeUndefined();
+ await withTenant(employee,async tx=>{await prepareResignationProofTx(tx,employee,{operation:'create',caseId:id,args:{id,data,participants}});await tx.execute(sql`insert into resignation_request(id,tenant_id,employment_id,person_id,last_working_day,reason) values(${id}::uuid,${b.tenantId}::uuid,${employmentId}::uuid,${employee.personId}::uuid,${day},'Moving home')`);await tx.execute(sql`select app.resignation_journey_create(${id}::uuid,${JSON.stringify(data)}::jsonb,${'{'+participants.join(',')+'}'}::uuid[])`);});
+ expect(await persisted()).toMatchObject({stage:'decision',revision:1,data:{decision:null}});
+ await setModule(b.tenantId,'lifecycle','disabled');const[history]=await withTenant(employee,tx=>tx.execute<{managed:boolean}>(sql`select app.resignation_managed_submission_enabled(${employmentId}::uuid) managed`));expect(history.managed).toBe(true);
+});
+it('preserves inactive-company legacy insertion and its existing request decision after Lifecycle activates',async()=>{
+ await owner.db.execute(sql`delete from resignation_journey where id=${id}::uuid`);await owner.db.execute(sql`update resignation_request set status='withdrawn' where id=${id}::uuid`);id=randomUUID();await setModule(b.tenantId,'lifecycle','disabled');
+ await withTenant(employee,tx=>tx.execute(sql`insert into resignation_request(id,tenant_id,employment_id,person_id,last_working_day,reason) values(${id}::uuid,${b.tenantId}::uuid,${employmentId}::uuid,${employee.personId}::uuid,${day},'Historical request')`));
+ await setModule(b.tenantId,'lifecycle','active');await withTenant(adminCtx(b),tx=>tx.execute(sql`update resignation_request set status='accepted' where id=${id}::uuid`));
+ const[request]=await owner.db.execute<{status:string}>(sql`select status from resignation_request where id=${id}::uuid`);expect(request.status).toBe('accepted');expect(await persisted()).toBeUndefined();
+});
+it('uses canonical shared groups and their revision for fresh runtime candidates, retaining V9 definitions',async()=>{
+ const fresh=await createAppUser(b.tenantId,null,'employee'),legacyGroup={id:'canonical-ops',name:'Stale copy',members:[manager.userId!],limit:8},canonicalGroup={...legacyGroup,name:'Current central group',members:[fresh]};
+ await owner.db.execute(sql`insert into lc_v9_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({version:9,groups:[legacyGroup],groupsRevision:99,peopleOpsGroup:legacyGroup.id,templates:[{id:'keep-template'}],emails:[{id:'keep-email'}],offboarding:{reofferMonths:6}})}::jsonb)`);
+ await owner.db.execute(sql`insert into lc_onboarding_config(tenant_id,revision,data) values(${b.tenantId}::uuid,7,${JSON.stringify({version:1,groups:[canonicalGroup],access:{onboarding:[],offboarding:[]}})}::jsonb)`);
+ const read=()=>withTenant(employee,async tx=>{await prepareResignationProofTx(tx,employee,{operation:'context',caseId:id,args:{employmentId,caseId:id}});const[row]=await tx.execute<{data:{config:{groups:unknown[];groupsRevision:number;peopleOpsGroup:string;templates:{id:string}[];emails:{id:string}[];offboarding:{reofferMonths:number}};users:{id:string}[];assignmentLoads:{userId:string}[]}}>(sql`select app.resignation_journey_context(${employmentId}::uuid,${id}::uuid) data`);return row.data;});
+ const current=await read();expect(current.config).toMatchObject({groups:[canonicalGroup],groupsRevision:7,peopleOpsGroup:legacyGroup.id,templates:[{id:'keep-template'}],emails:[{id:'keep-email'}],offboarding:{reofferMonths:6}});expect(current.users.map(user=>user.id)).toContain(fresh);expect(current.assignmentLoads.map(load=>load.userId)).toContain(fresh);
+ await owner.db.execute(sql`delete from lc_onboarding_config where tenant_id=${b.tenantId}::uuid`);const legacy=await read();expect(legacy.config.groups).toEqual([legacyGroup]);expect(legacy.config.groupsRevision).toBe(99);expect(legacy.users.map(user=>user.id)).not.toContain(fresh);
+});
+it('projects a notification link to the actual authorized resignation case route',async()=>{
+ await withTenant(manager,async tx=>{await begin(tx,manager,{type:'accept',lastWorkingDay:day,replacementNeeded:false});await prepareResignationProofTx(tx,manager,{operation:'notify',caseId:id,args:{id,key:'native-case-link',to:[fyi.userId],subject:'Fictional case update',body:'Open the case.'}});await tx.execute(sql`select app.resignation_journey_notify(${id}::uuid,'native-case-link',${'{'+fyi.userId+'}'}::uuid[],'Fictional case update','Open the case.')`);});
+ const[notice]=await withTenant(fyi,tx=>tx.execute<{link:string}>(sql`select link_path link from notification where tenant_id=${b.tenantId}::uuid and recipient_user_id=${fyi.userId}::uuid and kind='resignation_journey'`));expect(notice.link).toBe('/lifecycle/resignations/'+id);
+});
+it('owns only actual letter IDs and exact document steps pinned to this managed journey, including unreached generation',async()=>{
+ const clearance=randomUUID(),foreignJourney=randomUUID(),workflow=randomUUID(),foreignWorkflow=randomUUID();
+ const caseData={version:9,id:clearance,module:'off',revision:1,state:'pending',facts:{company:b.companyId,employmentId,personId:employee.personId},resignationSourceCaseId:id};
+ await owner.db.execute(sql`insert into lc_v9_case(id,tenant_id,company_id,employment_id,module,number,data) values(${clearance}::uuid,${b.tenantId}::uuid,${b.companyId}::uuid,${employmentId}::uuid,'off','OFB9-OWNED',${JSON.stringify(caseData)}::jsonb)`);
+ let actual=act(realLetter(),manager,{type:'complete',stepId:'owner-review'});actual=act(actual,employee,{type:'open'});actual=act(actual,employee,{type:'sendBack',stepId:'employee-sign',reason:'Please revise this offer'});actual=act(actual,manager,{type:'withdrawOffer',reason:'Terms need revision'});
+ data={...data,decision:null,letters:[actual]};await seedJourney('accepted');await owner.db.execute(sql`update resignation_journey set offboarding_case_id=${clearance}::uuid where id=${id}::uuid`);
+ await owner.db.execute(sql`insert into lc_onboarding_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({version:1,groups:[],access:{onboarding:[],offboarding:[b.adminUserId]}})}::jsonb)`);
+ const pinned={steps:[{id:'blocked-generation',type:'generateDocument',params:{letterTemplateId:'not-yet-generated'}},{id:'repeat',type:'generateDocument',params:{letterTemplateId:'tpl-off'}},{id:'unrelated',type:'sendEmail',params:{letterTemplateId:'not-a-generation-step'}}]},edited={steps:[{id:'different',type:'generateDocument',params:{letterTemplateId:'unrelated-latest-edit'}}]};
+ await owner.db.execute(sql`insert into automation_workflow_version(tenant_id,workflow_id,revision,module,status,required,definition,reason,saved_by) values(${b.tenantId}::uuid,${workflow}::uuid,1,'off','live',true,${JSON.stringify(pinned)}::jsonb,'Pinned fixture',${b.adminUserId}::uuid),(${b.tenantId}::uuid,${workflow}::uuid,2,'off','live',true,${JSON.stringify(edited)}::jsonb,'Later unrelated fixture',${b.adminUserId}::uuid),(${b.tenantId}::uuid,${foreignWorkflow}::uuid,1,'off','live',true,${JSON.stringify(edited)}::jsonb,'Different journey fixture',${b.adminUserId}::uuid)`);
+ await owner.db.execute(sql`insert into automation_run(tenant_id,id,module,workflow_id,workflow_revision,subject_id,event_key,trigger_event,status,failure) values(${b.tenantId}::uuid,${randomUUID()}::uuid,'off',${workflow}::uuid,1,${id}::uuid,'blocked-fixture','accepted','failed','Template not ready'),(${b.tenantId}::uuid,${randomUUID()}::uuid,'off',${foreignWorkflow}::uuid,1,${foreignJourney}::uuid,'foreign-fixture','accepted','done',null)`);
+ const owned=(tx:Tx,caseId=clearance)=>tx.execute<{ids:string[]}>(sql`select app.resignation_offboarding_template_ids(${caseId}::uuid) ids`);
+ expect((await withTenant(adminCtx(b),tx=>owned(tx)))[0].ids).toEqual(['not-yet-generated','tpl-off']);expect((await withTenant(employee,tx=>owned(tx)))[0].ids).toEqual([]);expect((await withTenant(adminCtx(b),tx=>owned(tx,randomUUID())))[0].ids).toEqual([]);
+ expect((await owner.withTenant({tenantId:b.tenantId,roles:[]},tx=>owned(tx)))[0].ids).toEqual(['not-yet-generated','tpl-off']);
+ await owner.db.execute(sql`update lc_v9_case set data=jsonb_set(data,'{resignationSourceCaseId}','"not-a-uuid"'::jsonb) where id=${clearance}::uuid`);expect((await withTenant(adminCtx(b),tx=>owned(tx)))[0].ids).toEqual([]);
 });
