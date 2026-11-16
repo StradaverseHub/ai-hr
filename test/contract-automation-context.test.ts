@@ -21,6 +21,13 @@ describe('Contract shared resolution',()=>{
   const read=contractAutomationRead(context,'beforeContractEnd','2026-12-01');
   expect(read('daysToEnd')).toBe('30');expect(read('businessGroup')).toBe('bg');expect(read('decision')).toBeUndefined();
  });
+ it('keeps admitted event conditions stable across delayed execution and approval resumption',()=>{
+  const admitted={businessGroup:'original-group',daysToEnd:'14',decision:null};
+  const read=contractAutomationRead({...context,businessGroupId:'later-group'},'beforeContractEnd','2027-01-01',admitted);
+  expect(read('businessGroup')).toBe('original-group');expect(read('daysToEnd')).toBe('14');expect(read('decision')).toBeUndefined();
+  const decision=contractAutomationRead(context,'decisionSubmitted','2027-01-01',{decision:'Renew',endReason:null,payChanges:'No',daysToEnd:'30'});
+  expect(decision('decision')).toBe('Renew');expect(decision('endReason')).toBeNull();expect(decision('termMonths')).toBeNull();
+ });
  it('tries the explicit default after an empty matching target, then uses module fallback if the default is empty',()=>{
   const routed={...context,routings:[{id:'ceo',name:'CEO',rows:[
    {match:{businessGroup:['bg']},assignTo:{kind:'people' as const,userIds:['blocked']}},

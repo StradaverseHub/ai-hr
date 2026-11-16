@@ -138,6 +138,9 @@ export async function activateContractSharedApproval(tx:SqlExecutor,ctx:SessionC
  const route=newContractApprovalRequest({id:randomUUID(),caseId:input.view.id,tenantId:ctx.tenantId,companyId:input.view.companyId,decisionRevision:flow.decision.revision,subjectPersonId:input.context.subjectPersonId,fingerprint:'0'.repeat(64),assignments}).document.route;
  const [prepared]=await tx.execute<{approval:{id:string;signingDocumentId:string;contentHash:string;existing:boolean}}>(sql`select app.contract_shared_prepare_approval(${input.view.id}::uuid,${input.step.run.id}::uuid,${input.step.step.id},${JSON.stringify(assignments)}::jsonb,${JSON.stringify(route)}::jsonb) as approval`);
  const approval=prepared.approval;
- if(!approval.existing)await createSigningDocumentTx(tx,ctx,{id:approval.signingDocumentId,companyId:input.view.companyId,employmentId:input.view.employmentId,subjectId:approval.id,subjectType:'contract-approval',contentHash:approval.contentHash,route,guardrails:{requiredRoles:[]}});
+ if(!approval.existing){
+  await createSigningDocumentTx(tx,ctx,{id:approval.signingDocumentId,companyId:input.view.companyId,employmentId:input.view.employmentId,subjectId:approval.id,subjectType:'contract-approval',contentHash:approval.contentHash,route,guardrails:{requiredRoles:[]}});
+  await tx.execute(sql`select app.contract_shared_enqueue_child_event(nullif(current_setting('app.contract_event',true),'')::uuid,'approvalActionNeeded',${'approval:'+approval.id+':created'},jsonb_build_object('approvalId',${approval.id}::text))`);
+ }
  return {status:'wait' as const,documentId:approval.id,message:'Waiting for the configured decision approval layers.'};
 }
