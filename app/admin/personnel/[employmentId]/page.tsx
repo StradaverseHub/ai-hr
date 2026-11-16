@@ -224,6 +224,7 @@ export default async function EmployeePage({
   params: Promise<{ employmentId: string }>;
   searchParams: Promise<{
     movementPage?: string;
+    salaryAmendmentPage?: string;
     error?: string;
     from?: string;
     cp38Error?: string;
