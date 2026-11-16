@@ -9,6 +9,7 @@ import {readContractSharedExecutionInputs} from './contract-shared-preview-job';
 import {contractSharedAutomationContext} from './contract-shared-context';
 import {contractAutomationRead} from '../lib/contract-automation-context';
 import {activateContractSharedApproval,activateContractSharedLetter} from './contract-shared-signing';
+import {activateContractSharedOffboarding} from './contract-shared-ending';
 import {CONTRACT_AUTOMATION_CATALOGUE} from '../lib/automation/catalogues/contracts';
 import {runAutomationEvent,resumeAutomationRun,sqlAutomationRunStore,type AutomationExecutors,type AutomationRuntimeGuards,type AutomationRun} from '../packs/automation/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -43,6 +44,7 @@ export const contractAutomationJobHandler:BulkJobHandler<never>={
    const executors:AutomationExecutors={
     requestApproval:step=>activateContractSharedApproval(db,workerCtx,{view:inputs.view,context,step,lastAssigned:inputs.definitions.lastAssigned,today}),
     generateDocument:step=>activateContractSharedLetter(db,workerCtx,{view:inputs.view,context,step,templates:inputs.definitions.documents,lastAssigned:inputs.definitions.lastAssigned,today}),
+    startOffboarding:step=>activateContractSharedOffboarding(db,workerCtx,step),
     notifyFailure:async(_run,reason)=>{
      await db.execute(sql`select app.contract_shared_execution_attention(${event.id}::uuid,${reason.slice(0,1000)})`);
     },
