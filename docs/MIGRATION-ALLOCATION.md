@@ -1,3 +1,8 @@
+<!-- 5919_contract_work_case_source_anchor -->
+# Contract native assigned-work case anchor — 17 November 2026 MYT
+
+The immediate 270-worktree survey found no SQL or allocation claim for **5919** (historical SHA substrings and the earlier survey range are not reservations). Reserve idx **5319**, when **1794841005919**, for the screen owner's second mechanical assigned-work read repair. Materialize indexed candidate case/flow/employment facts before existing company, period and submitter-event validation. Preserve every current authorization and pending-action predicate. No helper semantics, grants, writes, email/Form behavior, statistics, JIT or CI settings change. Parent and peer reviewer notified. Source-only; no installation or release.
+
 <!-- 5918_contract_tracker_scheduled_period -->
 # Contract tracker approved scheduled-period preview — 17 November 2026 MYT
 
