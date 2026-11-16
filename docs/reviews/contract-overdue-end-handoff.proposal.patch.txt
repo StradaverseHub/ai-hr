@@ -1,0 +1,35 @@
+UNAPPLIED REVIEW PATCH. Do not apply without the owner reviewing the retrospective date behavior.
+The SQL expression change belongs in a NEW forward function replacement, not in migration5824.
+
+--- packs/lifecycle/v9/service.ts
++++ packs/lifecycle/v9/service.ts
+@@
+-  if (input.lastDay < input.noticeDate) throw new M.V9Error('Last working day cannot be before notice date.');
++  if (input.lastDay < input.noticeDate && contractSource?.kind !== 'shared-contract') throw new M.V9Error('Last working day cannot be before notice date.');
+@@
+     if(contractSource?.kind==='shared-contract'){
+       const [proof]=await tx.execute(/* existing exact private held Contract intent */);
+       if(/* existing input/source equality checks */)throw new M.V9Error('Frozen shared Contract handoff intent does not match.','forbidden');
+       sharedContractIntent=proof.intent;
++      // Only the actual private held source can reach this point; ordinary callers gain no bypass.
++      // Keep both real dates. The pending case requires People Ops to review the recorded notice.
+     }
+@@
+     if(contractSource)Object.assign(c,/* existing exact canonical source receipt */);
++    if(contractSource?.kind==='shared-contract' && input.lastDay<input.noticeDate)Object.assign(c,{
++      contractSharedDateReview:{
++        required:true,recordedNoticeDate:input.noticeDate,lastWorkingDay:input.lastDay,
++        reason:'The ending letter was released after the contract period ended. Review the actual notice and dates before continuing.'
++      }
++    });
+
+--- NEW forward replacement of app.contract_shared_offboarding_intent(uuid,uuid,text)
++++ NEW forward replacement of app.contract_shared_offboarding_intent(uuid,uuid,text)
+@@
+- 'noticeDate',((f.data->'decision'->>'submittedAt')::timestamptz AT TIME ZONE 'Asia/Kuala_Lumpur')::date,
++ 'noticeDate',((l.data->>'releasedAt')::timestamptz AT TIME ZONE 'Asia/Kuala_Lumpur')::date,
+  'lastDay',f.data->'period'->>'endOn',
+
+Required integration: display contractSharedDateReview in the native Offboarding case. The native case
+continues to contain the exact source letter ID/signing document ID/hash and real reason. No date is
+fabricated, no employment termination is applied, and no clearance/Payroll result is claimed.

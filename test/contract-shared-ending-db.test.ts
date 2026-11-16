@@ -13,16 +13,17 @@ import {saveAutomationDocumentTemplate,saveAutomationWorkflow,type AutomationWor
 import {runBulkJobTick} from '../core/bulk-job-worker';
 import {readBulkJob} from '../core/bulk-job';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {addDaysIso} from '../lib/roster-month';
 import {pgSqlState} from '../lib/db-error';
 
 beforeAll(migrateTestDb);afterAll(closeAll);
-async function fixture(kind:'renew'|'end',twoDocuments=false){
+async function fixture(kind:'renew'|'end',twoDocuments=false,period?:{start:string;end:string}){
  await resetDb();const b=await seedBase();await setModule(b.tenantId,'lifecycle','active');let admin=await entitledCtx(b);
  const [person]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional ending administrator',${randomUUID()+'@ending.test'}) returning id`);
  await owner.db.execute(sql`update app_user set person_id=${person.id}::uuid where tenant_id=${b.tenantId}::uuid and id=${admin.userId}::uuid`);admin={...admin,personId:person.id};
  await v9Setup(admin);const config=(await v9Workspace(admin)).config!,groupId=randomUUID();
  await v9SaveConfig(admin,config.revision,{...config,groups:[...config.groups,{id:groupId,name:'Contract ending People Ops',members:[admin.userId!],limit:0}],peopleOpsGroup:groupId});
- const year=Number(todayInKualaLumpur().slice(0,4)),start=`${year}-01-01`,end=`${year}-12-31`;
+ const year=Number(todayInKualaLumpur().slice(0,4)),start=period?.start??`${year}-01-01`,end=period?.end??`${year}-12-31`;
  const employee=await hireEmployee(admin,{person:{fullName:'Fictional ending subject',primaryEmail:randomUUID()+'@ending.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'contract',hiredOn:start,provisionalEndOn:end});
  await setEmploymentInfo(admin,{employmentId:employee.employmentId,contractStartDate:start,contractEndDate:end,contractNumber:3});
  const termId=randomUUID(),caseId=randomUUID();
@@ -62,6 +63,20 @@ async function review(f:Awaited<ReturnType<typeof fixture>>,id:string){
  for(const event of events)await finish(event.job,f.admin,'contract_automation');return after;
 }
 describe('shared Contract endings use native Offboarding without automatic Personnel termination',()=>{
+ it('reproduces the overdue End handoff hold without inventing an earlier notice date or changing Personnel',async()=>{
+  // Known gap: the existing canonical constructor refuses a notice recorded after the real last day.
+  // This reproduces that refusal; it is not evidence that the retrospective handoff feature is complete.
+  const today=todayInKualaLumpur(),pastEnd=addDaysIso(today,-30),f=await fixture('end',false,{start:addDaysIso(pastEnd,-365),end:pastEnd});
+  await submit(f,'end');const [letter]=await letters(f);const view=await readContractSharedLetter(f.admin,letter.id);
+  const released=await actContractSharedLetter(f.admin,{id:letter.id,actionId:randomUUID(),stepId:view.pendingAction!.stepId,revision:view.contentRevision,hash:view.contentHash!,action:'reviewed'});expect(released.state).toBe('released');
+  const [event]=await owner.db.execute<{job:string}>(sql`select job_id as job from contract_shared_event where tenant_id=${f.b.tenantId}::uuid and case_id=${f.caseId}::uuid and trigger_event='letterReleased' and data->>'letterId'=${letter.id}`);
+  await expect(finish(event.job,f.admin,'contract_automation')).rejects.toThrow('Last working day cannot be before notice date.');
+  const current=await contractSharedContext(f.admin,f.caseId);expect(current.flow?.period.endOn).toBe(pastEnd);expect(current.flow?.offboardingId).toBeNull();
+  expect(Date.parse(released.releasedAt!)).toBeGreaterThan(Date.parse(pastEnd+'T23:59:59+08:00'));
+  expect(await owner.db.execute(sql`select id from lc_v9_case where tenant_id=${f.b.tenantId}::uuid and employment_id=${f.employee.employmentId}::uuid and module='off'`)).toHaveLength(0);
+  const [personnel]=await owner.db.execute<{terminated:string|null;lastDay:string|null;end:string;counter:number}>(sql`select terminated_on::text as terminated,last_working_date::text as "lastDay",contract_end_date::text as "end",contract_number as counter from employment where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`);
+  expect(personnel).toEqual({terminated:null,lastDay:null,end:pastEnd,counter:3});
+ },120_000);
  it('accepts exactly one of an employee signature and simultaneous HR decline without a deadlock',async()=>{
   const f=await fixture('renew');const userId=await createAppUser(f.b.tenantId,f.employee.personId,'employee');
   const employee={...f.admin,userId,personId:f.employee.personId,roles:['employee'] as SessionContext['roles'],grants:undefined};
