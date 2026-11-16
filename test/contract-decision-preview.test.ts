@@ -37,3 +37,9 @@ describe('Contract consequence preflight',()=>{
   expect(plan.blockers.join(' ')).toContain('does not match this decision and organisation');
  });
 });
+
+it('blocks an unsupported Form in preflight before accepting the decision',()=>{
+ const defs=definitions();defs.documents[0].template.blocks.push({id:'answers',type:'fields',text:'',section:'answers'});
+ const plan=buildContractDecisionPlan({context,decision,definitions:defs,today:'2026-11-17'});
+ expect(plan.blockers.join(' ')).toContain('Form response capture and signing are on hold');expect(plan.letterAssignments).toEqual({});
+});
