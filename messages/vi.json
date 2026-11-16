@@ -40905,7 +40905,7 @@
     "reason": "Lý do",
     "reasonOptional": "Lý do (không bắt buộc)",
     "supporting": "Tài liệu hỗ trợ (không bắt buộc)",
-    "fileHint": "PDF, JPG or PNG, up to 10 MB in total.",
+    "fileHint": "PDF, JPG hoặc PNG, tổng dung lượng tối đa 10 MB.",
     "submit": "Gửi đơn nghỉ việc",
     "submitting": "Đang gửi…",
     "newCase": "Gửi đơn nghỉ việc mới",
@@ -41068,11 +41068,11 @@
     "preview": "Xem trước",
     "missingFields": "Các trường này không có giá trị: {fields}. Chúng sẽ hiển thị là — trong thư.",
     "loading": "Đang tải đơn nghỉ việc…",
-    "replacementRequested": "Replacement recruitment requested on {date}.",
-    "replacementCompleted": "Replacement recruitment recorded on {date}.",
-    "replacementReference": "Recruitment reference URL",
-    "replacementComplete": "Record recruitment handoff",
-    "replacementHint": "Arrange the replacement in your recruitment system, then add its reference URL to complete this handoff."
+    "replacementRequested": "Đã yêu cầu tuyển nhân sự thay thế vào {date}.",
+    "replacementCompleted": "Đã ghi nhận việc tuyển nhân sự thay thế vào {date}.",
+    "replacementReference": "URL tham chiếu tuyển dụng",
+    "replacementComplete": "Ghi nhận bàn giao tuyển dụng",
+    "replacementHint": "Sắp xếp nhân sự thay thế trong hệ thống tuyển dụng của bạn, rồi thêm URL tham chiếu để hoàn tất việc bàn giao này."
   },
   "offboardingPostings": {
     "breadcrumb": "Tiếp nhận và nghỉ việc / Ghi nhận biến động nhân sự",

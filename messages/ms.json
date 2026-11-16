@@ -40905,7 +40905,7 @@
     "reason": "Sebab",
     "reasonOptional": "Sebab (pilihan)",
     "supporting": "Dokumen sokongan (pilihan)",
-    "fileHint": "PDF, JPG or PNG, up to 10 MB in total.",
+    "fileHint": "PDF, JPG atau PNG, sehingga 10 MB secara keseluruhan.",
     "submit": "Hantar peletakan jawatan",
     "submitting": "Sedang menghantar…",
     "newCase": "Hantar peletakan jawatan baharu",
@@ -41068,11 +41068,11 @@
     "preview": "Pratonton",
     "missingFields": "Medan ini tiada nilai: {fields}. Medan ini akan dipaparkan sebagai — dalam surat.",
     "loading": "Sedang memuatkan peletakan jawatan…",
-    "replacementRequested": "Replacement recruitment requested on {date}.",
-    "replacementCompleted": "Replacement recruitment recorded on {date}.",
-    "replacementReference": "Recruitment reference URL",
-    "replacementComplete": "Record recruitment handoff",
-    "replacementHint": "Arrange the replacement in your recruitment system, then add its reference URL to complete this handoff."
+    "replacementRequested": "Pengambilan pekerja pengganti diminta pada {date}.",
+    "replacementCompleted": "Pengambilan pekerja pengganti direkodkan pada {date}.",
+    "replacementReference": "URL rujukan pengambilan pekerja",
+    "replacementComplete": "Rekod serahan pengambilan pekerja",
+    "replacementHint": "Uruskan pengganti dalam sistem pengambilan pekerja anda, kemudian tambah URL rujukannya untuk melengkapkan serahan ini."
   },
   "offboardingPostings": {
     "breadcrumb": "Pengurusan masuk & keluar pekerja / Catatan perjawatan",

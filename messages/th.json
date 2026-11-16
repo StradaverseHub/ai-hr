@@ -40905,7 +40905,7 @@
     "reason": "เหตุผล",
     "reasonOptional": "เหตุผล (ไม่บังคับ)",
     "supporting": "เอกสารประกอบ (ไม่บังคับ)",
-    "fileHint": "PDF, JPG or PNG, up to 10 MB in total.",
+    "fileHint": "PDF, JPG หรือ PNG ขนาดรวมไม่เกิน 10 MB",
     "submit": "ส่งคำขอลาออก",
     "submitting": "กำลังส่ง…",
     "newCase": "ส่งคำขอลาออกใหม่",
@@ -41068,11 +41068,11 @@
     "preview": "ดูตัวอย่าง",
     "missingFields": "ฟิลด์เหล่านี้ไม่มีค่า: {fields} โดยจะแสดงเป็น — ในจดหมาย",
     "loading": "กำลังโหลดการลาออก…",
-    "replacementRequested": "Replacement recruitment requested on {date}.",
-    "replacementCompleted": "Replacement recruitment recorded on {date}.",
-    "replacementReference": "Recruitment reference URL",
-    "replacementComplete": "Record recruitment handoff",
-    "replacementHint": "Arrange the replacement in your recruitment system, then add its reference URL to complete this handoff."
+    "replacementRequested": "ร้องขอการสรรหาพนักงานทดแทนเมื่อ {date}",
+    "replacementCompleted": "บันทึกการสรรหาพนักงานทดแทนเมื่อ {date}",
+    "replacementReference": "URL อ้างอิงการสรรหา",
+    "replacementComplete": "บันทึกการส่งต่องานสรรหา",
+    "replacementHint": "จัดหาพนักงานทดแทนในระบบสรรหาของคุณ แล้วเพิ่ม URL อ้างอิงเพื่อดำเนินการส่งต่องานนี้ให้เสร็จ"
   },
   "offboardingPostings": {
     "breadcrumb": "การรับเข้าและออกจากงาน / รายการเปลี่ยนแปลงบุคลากร",

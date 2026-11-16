@@ -40905,7 +40905,7 @@
     "reason": "原因",
     "reasonOptional": "原因（选填）",
     "supporting": "证明文件（选填）",
-    "fileHint": "PDF, JPG or PNG, up to 10 MB in total.",
+    "fileHint": "PDF、JPG或PNG，总大小不超过10 MB。",
     "submit": "提交辞职申请",
     "submitting": "正在提交…",
     "newCase": "提交新的辞职申请",
@@ -41068,11 +41068,11 @@
     "preview": "预览",
     "missingFields": "以下字段没有值：{fields}。它们将在函件中显示为 —。",
     "loading": "正在加载辞职申请…",
-    "replacementRequested": "Replacement recruitment requested on {date}.",
-    "replacementCompleted": "Replacement recruitment recorded on {date}.",
-    "replacementReference": "Recruitment reference URL",
-    "replacementComplete": "Record recruitment handoff",
-    "replacementHint": "Arrange the replacement in your recruitment system, then add its reference URL to complete this handoff."
+    "replacementRequested": "已于{date}提出补员招聘请求。",
+    "replacementCompleted": "已于{date}记录补员招聘。",
+    "replacementReference": "招聘参考链接",
+    "replacementComplete": "记录招聘交接",
+    "replacementHint": "请在您的招聘系统中安排补员，然后添加其参考链接以完成此交接。"
   },
   "offboardingPostings": {
     "breadcrumb": "入职与离职 / 人事变动入账",
