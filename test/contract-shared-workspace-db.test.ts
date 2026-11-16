@@ -13,6 +13,7 @@ import {contractAutomationJobHandler} from '../core/contract-shared-automation-j
 import {readBulkJob} from '../core/bulk-job';
 import {runBulkJobTick} from '../core/bulk-job-worker';
 import type {AutomationWorkflow} from '../lib/automation/workflow';
+import {pgSqlState} from '../lib/db-error';
 import {todayInKualaLumpur} from '../lib/hr-date';
 async function pendingContractSharedTasks(ctx:SessionContext,companyIds:string[]|undefined){return (await contractSharedWorkPage(ctx,{companyIds,limit:100})).items;}
 let b:Base,admin:SessionContext;
@@ -123,7 +124,7 @@ it('pages 1,000 actual pending approvals across 70 companies with exact native e
    f.data->'period' as period,t.* from contract_shared_case f join contract_case c on c.tenant_id=f.tenant_id and c.id=f.case_id join employment e on e.tenant_id=c.tenant_id and e.id=c.employment_id cross join template t
    where f.tenant_id=${b.tenantId}::uuid and e.employee_code like 'WORKSPACE-SCALE-%'),
   shaped as materialized(select fixture.*,encode(sha256(convert_to(jsonb_build_object('approvalId',approval_id,'caseId',case_id,'decision',flow->'decision','period',period)::text,'UTF8')),'hex') as fingerprint from fixture),
-  flows as(update contract_shared_case f set data=s.flow||jsonb_build_object('period',s.period,'stage','approval'),revision=(s.flow->>'revision')::integer from shaped s where f.tenant_id=${b.tenantId}::uuid and f.case_id=s.case_id),
+  flows as(update contract_shared_case f set data=s.flow||jsonb_build_object('period',s.period,'stage','approval','revision',f.revision+1),revision=f.revision+1 from shaped s where f.tenant_id=${b.tenantId}::uuid and f.case_id=s.case_id),
   events as(insert into contract_shared_event(tenant_id,case_id,trigger_event,occurrence,decision_revision,actor_user_id,actor_person_id,workflow_versions,processed_at) select ${b.tenantId}::uuid,case_id,'decisionSubmitted','scale',1,actor_user_id,actor_person_id,workflow_versions,now() from shaped),
   runs as(insert into automation_run(tenant_id,id,module,workflow_id,workflow_revision,subject_id,event_key,trigger_event,status,step_cursor,waiting_for,remaining_steps,started_by) select ${b.tenantId}::uuid,run_id,'contract_staff',workflow_id,workflow_revision,case_id,'scale:'||case_id::text,'decisionSubmitted','waiting',0,approval_id,remaining_steps,actor_user_id from shaped),
   approvals as(insert into contract_shared_approval(tenant_id,id,case_id,decision_revision,workflow_run_id,workflow_step_id,signing_document_id,data) select ${b.tenantId}::uuid,approval_id,case_id,1,run_id,workflow_step_id,document_id,data||jsonb_build_object('decision',flow->'decision','period',period,'contentHash',fingerprint) from shaped)
@@ -149,6 +150,6 @@ it('pages 1,000 actual pending approvals across 70 companies with exact native e
 
 it('rejects explicit native NULL paging arguments before an unbounded read can occur',async()=>{
  for(const statement of [sql`select app.contract_shared_work_page(null::text,null::uuid[],20,0)`,sql`select app.contract_shared_work_page('all',null::uuid[],null::integer,0)`,sql`select app.contract_shared_work_page('all',null::uuid[],20,null::integer)`]){
-  await expect(owner.withTenant(admin,tx=>tx.execute(statement))).rejects.toMatchObject({code:'22023'});
+  await expect(owner.withTenant(admin,tx=>tx.execute(statement)).catch(pgSqlState)).resolves.toBe('22023');
  }
 });

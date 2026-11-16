@@ -68,6 +68,7 @@ it('reuses the same approval command after a transport failure while keeping the
  fireEvent.change(screen.getByLabelText('Comment / reason for rejection'),{target:{value:'Please confirm these dates.'}});
  fireEvent.click(screen.getByRole('button',{name:'Reject and return decision'}));
  expect(await screen.findByRole('alert')).toHaveTextContent('Your entries are still here.');
+ await waitFor(()=>expect(screen.getByRole('button',{name:'Reject and return decision'})).toBeEnabled());
  fireEvent.click(screen.getByRole('button',{name:'Reject and return decision'}));
  await waitFor(()=>expect(actions.approval).toHaveBeenCalledTimes(2));
  expect(actions.approval.mock.calls[1][0]).toEqual(actions.approval.mock.calls[0][0]);

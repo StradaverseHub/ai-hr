@@ -20,8 +20,8 @@ async function fixture(){
  await resetDb();const b=await seedBase();await setModule(b.tenantId,'lifecycle','active');let admin=await entitledCtx(b);
  const [person]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional Contract preview administrator',${randomUUID()+'@preview.test'}) returning id`);
  await owner.db.execute(sql`update app_user set person_id=${person.id}::uuid where tenant_id=${b.tenantId}::uuid and id=${admin.userId}::uuid`);admin={...admin,personId:person.id};
- await v9Setup(admin);const config=(await v9Workspace(admin)).config!,groupId=randomUUID();
- await v9SaveConfig(admin,config.revision,{...config,groups:[...config.groups,{id:groupId,name:'Contract People Ops',members:[admin.userId!],limit:0}],peopleOpsGroup:groupId});
+ await v9Setup(admin);const config=(await v9Workspace(admin)).config!,groupId=config.peopleOpsGroup;
+ await v9SaveConfig(admin,config.revision,{...config,groups:config.groups.map(g=>g.id===groupId?{...g,members:[...new Set([...g.members,admin.userId!])]}:g)});
  const manager=await hireEmployee(admin,{person:{fullName:'Fictional Contract proposer',primaryEmail:randomUUID()+'@preview.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:start});
  const managerId=await createAppUser(b.tenantId,manager.personId,'employee');
  const proposer:SessionContext={...admin,userId:managerId,personId:manager.personId,roles:['employee'],grants:undefined};
