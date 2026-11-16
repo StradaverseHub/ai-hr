@@ -49,6 +49,12 @@ CREATE FUNCTION app.resignation_journey_can_act(p_id uuid,p_action text) RETURNS
  WHEN 'comment' THEN j.stage='decision' AND coalesce((j.data->'decision'->>'canComment')::boolean,false) AND j.data->'decision'->'watch' ? u.id::text
  WHEN 'runner' THEN false
  WHEN 'retry' THEN app.automation_can_configure('off') AND app.is_admin_for(j.company_id)
+ WHEN 'runAgain' THEN j.stage='decision' AND coalesce(j.data->'decision','null'::jsonb)='null'::jsonb AND jsonb_typeof(j.data->'decisionRepair')='object'
+ AND EXISTS(SELECT 1 FROM employment subject JOIN company co ON co.tenant_id=subject.tenant_id AND co.id=subject.company_id JOIN tenant t ON t.id=subject.tenant_id WHERE subject.tenant_id=j.tenant_id AND subject.id=j.employment_id AND subject.person_id=j.person_id AND subject.company_id=j.company_id AND co.archived_at IS NULL AND t.status IN('active','trial') AND EXISTS(SELECT 1 FROM tenant_module tm WHERE tm.tenant_id=j.tenant_id AND tm.module_code='lifecycle' AND (tm.company_id IS NULL OR tm.company_id=j.company_id) AND tm.status IN('active','trial') AND tm.activated_at<=now() AND (tm.expires_at IS NULL OR tm.expires_at>now())))
+ AND ((app.automation_can_configure('off') AND app.is_admin_for(j.company_id)) OR j.data->'decisionRepair'->'to' ? u.id::text AND (
+ app.lifecycle_canonical_people_ops_member(j.company_id,u.id) OR (
+ NOT EXISTS(SELECT 1 FROM lc_v9_config cfg JOIN lc_onboarding_config shared ON shared.tenant_id=cfg.tenant_id CROSS JOIN LATERAL jsonb_array_elements(coalesce(shared.data->'groups','[]')) repair_group CROSS JOIN LATERAL jsonb_array_elements_text(coalesce(repair_group->'members','[]')) candidate(user_id) JOIN app_user member ON member.tenant_id=cfg.tenant_id AND member.id=candidate.user_id::uuid AND member.archived_at IS NULL AND NOT app.login_blocked(member.id) WHERE cfg.tenant_id=j.tenant_id AND repair_group->>'id'=cfg.data->>'peopleOpsGroup')
+ AND app.lc_v9_off_access(j.company_id) AND EXISTS(SELECT 1 FROM role_assignment role_scope WHERE role_scope.tenant_id=j.tenant_id AND role_scope.app_user_id=u.id AND role_scope.role IN('hr_admin','super_admin') AND (role_scope.company_id IS NULL OR role_scope.company_id=j.company_id)))))
  WHEN 'letter' THEN EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(j.data->'letters','[]')) l CROSS JOIN LATERAL jsonb_array_elements(coalesce(l->'document'->'route'->'steps','[]')) s WHERE s->>'holderId'=u.id::text)
  ELSE false END),false)
 $$;
@@ -90,6 +96,7 @@ BEGIN
  ELSIF k IN('accept','offer') THEN RETURN j.stage='decision' AND u.person_id IS DISTINCT FROM j.person_id AND j.data->'decision'->'to' ? u.id::text AND (k='accept' OR j.data->'decision'->>'choices'='both' AND NOT coalesce((j.data->>'offerLocked')::boolean,false));
  ELSIF k='comment' THEN RETURN app.resignation_journey_can_act(p_id,'comment');
  ELSIF k='retry' THEN RETURN app.resignation_journey_can_act(p_id,'retry');
+ ELSIF k='runWorkflowsAgain' THEN RETURN app.resignation_journey_can_act(p_id,'runAgain');
  ELSIF k='completeReplacement' THEN RETURN j.data->'replacementRequest'->>'status'='requested' AND j.data->'replacementRequest'->>'id'=p_command->>'taskId' AND j.data->'replacementRequest'->'to' ? u.id::text;
  ELSIF k='taskProgress' THEN RETURN EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(j.data->'tasks','[]')) t WHERE t->>'id'=p_command->>'taskId' AND t->'userIds' ? u.id::text);
  ELSIF k='uploadFile' THEN RETURN EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(j.data->'waits','[]')) upload_wait WHERE upload_wait->>'id'=p_command->>'taskId' AND upload_wait->>'kind'='file' AND upload_wait->'to' ? u.id::text);
@@ -204,7 +211,7 @@ BEGIN
  IF EXISTS(SELECT 1 FROM unnest(p_participants) uid WHERE NOT(uid=ANY(j.participant_ids)) AND NOT EXISTS(SELECT 1 FROM app_user u WHERE u.tenant_id=j.tenant_id AND u.id=uid AND u.archived_at IS NULL)) THEN RAISE EXCEPTION 'Invalid case participant' USING ERRCODE='42501';END IF;
  IF p_offboarding IS NOT NULL AND NOT EXISTS(SELECT 1 FROM lc_v9_case c WHERE c.tenant_id=j.tenant_id AND c.id=p_offboarding AND c.company_id=j.company_id AND c.employment_id=j.employment_id AND c.module='off' AND c.data->>'resignationSourceCaseId'=j.id::text) THEN RAISE EXCEPTION 'Invalid clearance case' USING ERRCODE='42501';END IF;
  IF j.offboarding_case_id IS NOT NULL AND p_offboarding IS DISTINCT FROM j.offboarding_case_id THEN RAISE EXCEPTION 'Clearance link cannot be replaced' USING ERRCODE='42501';END IF;
- IF k='withdraw' AND p_stage<>'withdrawn' OR k='accept' AND p_stage NOT IN('accepted','leaving') OR k='offer' AND p_stage NOT IN('retention','offer') OR k IN('comment','taskProgress','updateEmail','openLetter','completeReplacement') AND p_stage<>j.stage THEN RAISE EXCEPTION 'Command cannot make this transition' USING ERRCODE='42501';END IF;
+ IF k='withdraw' AND p_stage<>'withdrawn' OR k='accept' AND p_stage NOT IN('accepted','leaving') OR k='offer' AND p_stage NOT IN('retention','offer') OR k IN('comment','taskProgress','updateEmail','openLetter','completeReplacement','runWorkflowsAgain') AND p_stage<>j.stage THEN RAISE EXCEPTION 'Command cannot make this transition' USING ERRCODE='42501';END IF;
  IF k='accept' AND (p_data->>'lastWorkingDay' IS DISTINCT FROM intent->'command'->>'lastWorkingDay' OR p_data->'replacementNeeded' IS DISTINCT FROM intent->'command'->'replacementNeeded') THEN RAISE EXCEPTION 'Decision values differ from the admitted command' USING ERRCODE='42501';END IF;
  IF k='offer' AND p_data->'offer' IS DISTINCT FROM (intent->'command'->'offer'||jsonb_build_object('position',btrim(intent->'command'->'offer'->>'position'))) THEN RAISE EXCEPTION 'Offer differs from the admitted command' USING ERRCODE='42501';END IF;
  IF k NOT IN('accept','updateLetter') AND (p_data->>'lastWorkingDay' IS DISTINCT FROM j.data->>'lastWorkingDay' OR p_data->>'reason' IS DISTINCT FROM j.data->>'reason') THEN RAISE EXCEPTION 'Only the holding owner can correct case details' USING ERRCODE='42501';END IF;
@@ -430,3 +437,23 @@ CREATE FUNCTION app.resignation_offboarding_case_managed(p_case uuid) RETURNS bo
 $$;
 REVOKE ALL ON FUNCTION app.resignation_offboarding_case_managed(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.resignation_offboarding_case_managed(uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- The current command owner resolves a missing-decision repair audience from canonical configuration.
+-- This grants no configuration editing or generic failed-run/pay authority.
+CREATE FUNCTION app.resignation_decision_repair_audience(p_id uuid) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE j resignation_journey;recipients uuid[];
+BEGIN
+ SELECT * INTO j FROM resignation_journey WHERE tenant_id=app.current_tenant_id() AND id=p_id;
+ IF NOT FOUND OR NOT app.resignation_runtime_intent(p_id) OR NOT EXISTS(SELECT 1 FROM employment subject JOIN company co ON co.tenant_id=subject.tenant_id AND co.id=subject.company_id JOIN tenant t ON t.id=subject.tenant_id WHERE subject.tenant_id=j.tenant_id AND subject.id=j.employment_id AND subject.person_id=j.person_id AND subject.company_id=j.company_id AND co.archived_at IS NULL AND t.status IN('active','trial') AND EXISTS(SELECT 1 FROM tenant_module tm WHERE tm.tenant_id=j.tenant_id AND tm.module_code='lifecycle' AND (tm.company_id IS NULL OR tm.company_id=j.company_id) AND tm.status IN('active','trial') AND tm.activated_at<=now() AND (tm.expires_at IS NULL OR tm.expires_at>now()))) THEN RAISE EXCEPTION 'A current authorized Lifecycle command is required to resolve decision repair' USING ERRCODE='42501';END IF;
+ SELECT coalesce(array_agg(member.id ORDER BY member.id),'{}'::uuid[]) INTO recipients FROM (
+ SELECT DISTINCT u.id FROM lc_v9_config cfg JOIN lc_onboarding_config shared ON shared.tenant_id=cfg.tenant_id CROSS JOIN LATERAL jsonb_array_elements(coalesce(shared.data->'groups','[]')) repair_group CROSS JOIN LATERAL jsonb_array_elements_text(coalesce(repair_group->'members','[]')) candidate(user_id) JOIN app_user u ON u.tenant_id=cfg.tenant_id AND u.id=candidate.user_id::uuid AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) WHERE cfg.tenant_id=j.tenant_id AND repair_group->>'id'=cfg.data->>'peopleOpsGroup' ORDER BY u.id LIMIT 1000
+ ) member;
+ IF cardinality(recipients)=0 THEN
+ SELECT coalesce(array_agg(fallback_user.id ORDER BY fallback_user.id),'{}'::uuid[]) INTO recipients FROM (
+ SELECT DISTINCT u.id FROM lc_onboarding_config shared CROSS JOIN LATERAL jsonb_array_elements_text(coalesce(shared.data->'access'->'offboarding','[]')) candidate(user_id) JOIN app_user u ON u.tenant_id=shared.tenant_id AND u.id=candidate.user_id::uuid AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) WHERE shared.tenant_id=j.tenant_id AND EXISTS(SELECT 1 FROM role_assignment role_scope WHERE role_scope.tenant_id=j.tenant_id AND role_scope.app_user_id=u.id AND role_scope.role IN('hr_admin','super_admin') AND (role_scope.company_id IS NULL OR role_scope.company_id=j.company_id)) ORDER BY u.id LIMIT 1000
+ ) fallback_user;
+ END IF;
+ RETURN coalesce((SELECT jsonb_agg(jsonb_build_object('id',u.id,'personId',u.person_id,'name',coalesce(person_name.full_name,'Assigned account')) ORDER BY u.id) FROM app_user u LEFT JOIN person person_name ON person_name.tenant_id=u.tenant_id AND person_name.id=u.person_id WHERE u.tenant_id=j.tenant_id AND u.id=ANY(recipients) AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)),'[]'::jsonb);
+END $$;
+REVOKE ALL ON FUNCTION app.resignation_decision_repair_audience(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.resignation_decision_repair_audience(uuid) TO ai_hr_app;

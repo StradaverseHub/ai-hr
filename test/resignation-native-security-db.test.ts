@@ -188,3 +188,30 @@ it('projects salary currency from the same current canonical compensation row wi
  await owner.db.execute(sql`insert into compensation(tenant_id,employment_id,basic_salary,currency,valid_from,valid_to,superseded_at) values(${b.tenantId}::uuid,${employmentId}::uuid,8800,'USD','2000-01-01','9999-01-01',null),(${b.tenantId}::uuid,${employmentId}::uuid,999999,'EUR','2001-01-01',null,now()),(${b.tenantId}::uuid,${employmentId}::uuid,9900,'GBP','9999-01-01',null,null)`);
  expect(await current()).toEqual({basicSalary:'8800.00',currency:'USD'});
 });
+async function repairConfiguration(members:string[],fallback:string[]=[]){
+ const group={id:'repair-ops',name:'Fictional repair People Ops',members,limit:10};
+ await owner.db.execute(sql`insert into lc_v9_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({version:9,groups:[group],peopleOpsGroup:group.id})}::jsonb) on conflict(tenant_id) do update set data=excluded.data`);
+ await owner.db.execute(sql`insert into lc_onboarding_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({version:1,groups:[group],access:{onboarding:[],offboarding:fallback}})}::jsonb) on conflict(tenant_id) do update set data=excluded.data`);
+}
+async function seedRepair(to:string[]){data={...data,decision:null,decisionRepair:{id:randomUUID(),to,createdOn:'2026-11-17'}};await seedJourney();participants=[...new Set([...participants,...to])];await owner.db.execute(sql`update resignation_journey set participant_ids=${'{'+participants.join(',')+'}'}::uuid[] where id=${id}::uuid`);}
+it('limits missing-decision repair to the assigned current People Ops actor without granting configure or generic retry',async()=>{
+ await repairConfiguration([manager.userId!]);await seedRepair([manager.userId!]);const original=await persisted();
+ for(const ctx of[employee,fyi])await nativeRefusal(withTenant(ctx,tx=>begin(tx,ctx,{type:'runWorkflowsAgain'})),'42501');
+ await nativeRefusal(withTenant(manager,tx=>tx.execute(sql`select app.resignation_decision_repair_audience(${id}::uuid)`)),'42501',/authorized Lifecycle command/);expect(await persisted()).toEqual(original);
+ await withTenant(manager,async tx=>{
+  const[authority]=await tx.execute<{configure:boolean;retry:boolean;repair:boolean}>(sql`select app.automation_can_configure('off') configure,app.resignation_journey_can_act(${id}::uuid,'retry') retry,app.resignation_journey_can_act(${id}::uuid,'runAgain') repair`);expect(authority).toEqual({configure:false,retry:false,repair:true});
+  await begin(tx,manager,{type:'runWorkflowsAgain'});const[audience]=await tx.execute<{people:{id:string;personId:string|null;name:string}[]}>(sql`select app.resignation_decision_repair_audience(${id}::uuid) people`);expect(audience.people).toEqual([{id:manager.userId,personId:manager.personId,name:'Fictional assigned manager'}]);
+  data={...data,decision:{id:randomUUID(),to:[fyi.userId],watch:[],choices:'both',canComment:false},decisionRepair:null};await save(tx,manager,data);
+ });
+ expect(await persisted()).toMatchObject({stage:'decision',revision:2,data:{decisionRepair:null}});
+ await nativeRefusal(withTenant(manager,tx=>begin(tx,manager,{type:'runWorkflowsAgain'},2)),'42501');
+});
+it('denies removed or reassigned repair actors and disabled-company repair, while resolving the exact native HR fallback',async()=>{
+ await repairConfiguration([manager.userId!]);await seedRepair([manager.userId!]);
+ await repairConfiguration([]);let unchanged=await persisted();await nativeRefusal(withTenant(manager,tx=>begin(tx,manager,{type:'runWorkflowsAgain'})),'42501');expect(await persisted()).toEqual(unchanged);
+ await repairConfiguration([manager.userId!]);await seedRepair([fyi.userId!]);unchanged=await persisted();await nativeRefusal(withTenant(manager,tx=>begin(tx,manager,{type:'runWorkflowsAgain'})),'42501');expect(await persisted()).toEqual(unchanged);
+ await seedRepair([manager.userId!]);await setModule(b.tenantId,'lifecycle','disabled');unchanged=await persisted();await nativeRefusal(withTenant(manager,tx=>begin(tx,manager,{type:'runWorkflowsAgain'})),'42501');expect(await persisted()).toEqual(unchanged);
+ await setModule(b.tenantId,'lifecycle','active');const other=await createAppUser(b.tenantId,null,'hr_admin'),otherCompany=randomUUID();await owner.db.execute(sql`insert into company(id,tenant_id,legal_name) values(${otherCompany}::uuid,${b.tenantId}::uuid,'Fictional outside repair company')`);await owner.db.execute(sql`update role_assignment set company_id=${otherCompany}::uuid where tenant_id=${b.tenantId}::uuid and app_user_id=${other}::uuid`);
+ await repairConfiguration([],[b.adminUserId,other]);await seedRepair([b.adminUserId]);
+ await withTenant(adminCtx(b),async tx=>{await begin(tx,adminCtx(b),{type:'runWorkflowsAgain'});const[audience]=await tx.execute<{people:{id:string;personId:string|null;name:string}[]}>(sql`select app.resignation_decision_repair_audience(${id}::uuid) people`);expect(audience.people).toEqual([{id:b.adminUserId,personId:null,name:'Assigned account'}]);});
+});
