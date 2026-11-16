@@ -147,8 +147,12 @@ describe('shared workflow list',()=>{
   const confirm=workflow({status:'live',steps:[{id:'s1',type:'generateDocument',conditions:[],to:[],cc:[],params:{letterTemplateId:'confirm-letter'}},{id:'s2',type:'sendEmail',conditions:[],to:[{kind:'role',role:'employee'}],cc:[],params:{emailTemplateId:'00000000-0000-4000-8000-0000000000e1'}},{id:'s3',type:'createPosting',conditions:[],to:[],cc:[],params:{eventType:'Confirmation'}}]});
   const reminder=workflow({id:'00000000-0000-4000-8000-0000000000a2',name:'Review reminder',required:true,trigger:{event:'dueBeforeReview',days:7,workdays:false,repeat:true},conditions:[{field:'part',op:'isNot',values:['Part 1 · Week 1 Success Plan']}]});
   render(<NextIntlClientProvider locale="en" messages={messages}><WorkflowsWorkspace filter="all" access={{legacy:true,probation:true,contractStaff:false,any:true}} workflows={[{workflow:confirm,revision:3},{workflow:reminder,revision:1}]} refs={refs} defaultsMissing={0}/></NextIntlClientProvider>);
-  expect(screen.getByText('When the probation outcome is decided · if Outcome is Confirm · Generate a document → Send an email → Create Personnel Management posting')).toBeInTheDocument();
-  expect(screen.getByText('7 days before a review due date, then every morning · if Part is not Part 1 · Week 1 Success Plan · Notify someone')).toBeInTheDocument();
+  // Prototype rows (lane M3): the trigger line with the step count, then the step chain.
+  expect(screen.getByText('When the probation outcome is decided · if Outcome is Confirm · 3 steps')).toBeInTheDocument();
+  expect(screen.getByText('Generate a document → Send an email → Create Personnel Management posting')).toBeInTheDocument();
+  expect(screen.getByText('7 days before a review due date, then every morning · if Part is not Part 1 · Week 1 Success Plan · 1 step')).toBeInTheDocument();
+  expect(screen.getByText('Notify someone')).toBeInTheDocument();
+  expect(screen.getByRole('heading',{level:3,name:'Probation · Review reminder'})).toBeInTheDocument();
   const items=screen.getAllByRole('listitem');
   expect(within(items[0]).getByText('Live')).toBeInTheDocument();expect(within(items[0]).getByText('Required')).toBeInTheDocument();
   expect(within(items[1]).getByText('Paused')).toBeInTheDocument();expect(within(items[1]).getByText('Required')).toBeInTheDocument();

@@ -95,10 +95,13 @@ describe('shared shell policy preserves the pre-extraction visibility contract',
       '/lifecycle/probation/settings','/lifecycle/probation/forms','/lifecycle/probation/intake',
     ]);
     expect(inFamily({probationAccess:{page:true,configure:false}},'/lifecycle/probation')).toEqual(['/lifecycle/probation','/lifecycle/probation/postings']);
-    // Probation Access: whoever app.probation_access_admin allows (System Administrator or manage access), not every configurer.
+    // Probation Access: whoever app.probation_access_admin allows (System Administrator or manage access), not every
+    // configurer. A configurer who may manage access finds it inside Probation settings (prototype; lane M3), so the
+    // row is only for an access administrator without the settings row.
     expect(inFamily({enabledModules:[],probationAccess:{page:false,configure:true,access:true}},'/lifecycle/probation')).toEqual([
-      '/lifecycle/probation/settings','/lifecycle/probation/forms','/lifecycle/probation/intake','/lifecycle/probation/access',
+      '/lifecycle/probation/settings','/lifecycle/probation/forms','/lifecycle/probation/intake',
     ]);
+    expect(inFamily({enabledModules:[],probationAccess:{page:false,configure:false,access:true}},'/lifecycle/probation')).toEqual(['/lifecycle/probation/access']);
     expect(inFamily({isAdmin:true,enabledModules:[],probationAccess:{page:true,configure:true,access:false}},'/lifecycle/probation')).not.toContain('/lifecycle/probation/access');
     expect(inFamily({contractStaffAccess:{page:false,configure:true}},'/lifecycle/contracts')).toEqual([
       '/lifecycle/contracts/settings','/lifecycle/contracts/workflows','/lifecycle/contracts/templates',
@@ -109,13 +112,15 @@ describe('shared shell policy preserves the pre-extraction visibility contract',
     const rows = resolve({isAdmin:true,enabledModules:[],probationAccess:{page:true,configure:true,intake:true,access:true},
       contractStaffAccess:{page:true,configure:true,intake:true}}).destinations.filter(row=>
         row.href.startsWith('/lifecycle/probation') || row.href.startsWith('/lifecycle/contracts'));
+    // The Access row is the eleventh descriptor; a configurer reaches Access inside Probation settings instead (lane M3).
     expect(rows.map(row=>row.href)).toEqual([
       '/lifecycle/probation','/lifecycle/probation/postings','/lifecycle/contracts','/lifecycle/probation/settings','/lifecycle/probation/forms',
-      '/lifecycle/probation/intake','/lifecycle/probation/access','/lifecycle/contracts/intake','/lifecycle/contracts/settings',
+      '/lifecycle/probation/intake','/lifecycle/contracts/intake','/lifecycle/contracts/settings',
       '/lifecycle/contracts/workflows','/lifecycle/contracts/templates',
     ]);
     expect(SCOPED_LIFECYCLE_NAVIGATION).toHaveLength(11);
-    rows.forEach((row,index)=>expect(row).toBe(SCOPED_LIFECYCLE_NAVIGATION[index]));
+    const declared=SCOPED_LIFECYCLE_NAVIGATION.filter(row=>row.href!=='/lifecycle/probation/access');
+    rows.forEach((row,index)=>expect(row).toBe(declared[index]));
     expect(SCOPED_LIFECYCLE_NAVIGATION.filter(row=>row.access==='configureOrIntake').map(row=>row.href)).toEqual(['/lifecycle/probation/intake']);
     expect(inFamily({probationAccess:{page:false,configure:false,intake:true}},'/lifecycle/probation')).toEqual(['/lifecycle/probation/intake']);
     expect(inFamily({contractStaffAccess:{page:false,configure:false,intake:true}},'/lifecycle/contracts')).toEqual(['/lifecycle/contracts/intake']);

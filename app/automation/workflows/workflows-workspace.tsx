@@ -6,7 +6,8 @@ import {PROBATION_AUTOMATION_CATALOGUE} from '@/lib/automation/catalogues/probat
 import {automationWorkflowProblems,type AutomationWorkflow} from '@/lib/automation/workflow';
 import {probationStepParamProblems} from '@/lib/automation/email';
 import {FilterChips,LegacyBuilderCard} from '../filter-chips';
-import {workflowSummary} from '../recipients';
+import {workflowListLines} from '../recipients';
+import {ConfigBanner,ConfigHead} from '@/app/lifecycle/probation/settings/config-head';
 import {installProbationDefaultsAction,moveProbationWorkflowsAction} from '../actions';
 import type {ProbationWorkflowMoveResult} from '@/packs/probation/service';
 import {LEGACY_BUILDERS,type AutomationFilter,type AutomationPageAccess} from '../types';
@@ -29,22 +30,25 @@ export function WorkflowsWorkspace({filter,access,workflows,refs,defaultsMissing
  const showProbation=filter==='all'||filter==='probation',legacy=(['onb','off','contract_staff'] as const).filter(m=>filter==='all'||filter===m);
  const install=()=>{if(!window.confirm(t('defaults.confirm')))return;setNotice(null);start(async()=>{const result=await installProbationDefaultsAction();if(!result.ok){setNotice({kind:'error',text:result.detail??t('errors.unavailable')});return;}
   setNotice({kind:'status',text:t('defaults.done',{workflows:result.result.installed.workflows,emails:result.result.installed.emailTemplates,routings:result.result.installed.routings})});router.refresh();});};
- if(editing)return <main className="v9-stack"><p className="automation-crumb">{t('crumb')} / {t('workflows.title')}</p>
+ if(editing)return <main className="v9-stack pcg"><p className="pcg-crumb">{t('crumb')} / {t('workflows.title')}</p>
   <WorkflowEditor key={editing.workflow.id} catalogue={catalogue} initial={editing.workflow} revision={editing.revision} refs={refs} onClose={()=>setEditing(null)}/></main>;
  const active=workflows.filter(w=>w.workflow.status!=='retired'),retired=workflows.filter(w=>w.workflow.status==='retired');
  const requiredNotLive=active.filter(w=>w.workflow.required&&w.workflow.status!=='live');
- return <main className="v9-stack">
-  <p className="automation-crumb">{t('crumb')} / {t('workflows.title')}</p>
-  <header className="v9-heading"><div><h1>{t('workflows.title')}</h1><p className="v9-muted">{t('workflows.intro')}</p></div></header>
+ // Prototype WorkflowsPage (lane M3): head, module chips, the required-not-live banner, then one card with the intro row
+ // and one row per workflow (trigger line, step chain, module/status/Required pills, Edit).
+ return <main className="v9-stack pcg">
+  <ConfigHead crumb={t('crumb')+' / '+t('workflows.title')} title={t('workflows.title')} sub={t('workflows.intro')}/>
   <FilterChips path="/automation/workflows" current={filter}/>
   {notice&&<p className={notice.kind==='error'?'v9-notice v9-error':'v9-notice'} role={notice.kind==='error'?'alert':'status'}>{notice.text}</p>}
-  {showProbation&&(access.probation?<section className="v9-panel v9-stack" aria-label={t('modules.probation')}>
-   <div className="automation-row automation-between"><h2>{t('modules.probation')}</h2>
-    <span className="automation-row">
+  {showProbation&&access.probation&&requiredNotLive.length>0&&<ConfigBanner tone="warn" role="note" lead={t('workflows.requiredBanner',{names:requiredNotLive.map(w=>w.workflow.name).join(', '),count:requiredNotLive.length})}/>}
+  {showProbation&&(access.probation?<section className="pcg-card pcg-card-flush" aria-label={t('modules.probation')}>
+   <div className="pcg-wi"><span className="pcg-hint">{t('workflows.cardIntro')}</span>
+    <span className="pcg-row">
      {defaultsMissing>0&&<button type="button" className="v9-button" disabled={busy} onClick={install}>{t('defaults.install')}</button>}
      <button type="button" className="v9-button v9-button-primary" disabled={busy} onClick={()=>setEditing({workflow:{...blank(),name:t('workflows.newName')},revision:0})}>{t('workflows.new')}</button>
     </span></div>
-   <p className="v9-muted">{t('workflows.probationIntro')}</p>
+   <div className="pcg-card-extra">
+   <p className="pcg-hint">{t('workflows.probationIntro')}</p>
    <details className="v9-stack" data-legacy-move><summary>{t('move.title')}</summary>
     <p className="v9-muted">{t('move.help')}</p>
     <label className="v9-field"><span>{t('move.reason')}</span><textarea value={moveReason} maxLength={500} disabled={busy} onChange={e=>setMoveReason(e.target.value)}/></label>
@@ -55,14 +59,15 @@ export function WorkflowsWorkspace({filter,access,workflows,refs,defaultsMissing
      {!moveResult.moved.length&&!moveResult.kept.length&&<p className="v9-muted">{t('move.none')}</p>}
     </div>}
    </details>
-   {requiredNotLive.length>0&&<p className="v9-notice" role="note">{t('workflows.requiredBanner',{names:requiredNotLive.map(w=>w.workflow.name).join(', '),count:requiredNotLive.length})}</p>}
    {active.length===0&&<p className="v9-muted">{t('workflows.empty')}</p>}
-   <ul className="automation-list">{[...active,...retired].map(item=>{const w=item.workflow;return <li key={w.id} className="automation-item">
-    <div className="automation-item-text"><h3>{t('modules.probation')} · {w.name}</h3><p>{workflowSummary(w,catalogue)}</p></div>
-    <div className="automation-row">
-     <span className={'automation-pill '+(w.status==='live'?'automation-pill-ok':w.status==='paused'?'automation-pill-warn':'')}>{t('status.'+w.status)}</span>
-     {w.required&&<span className="automation-pill automation-pill-info">{t('status.required')}</span>}
-     {needsAttention(w)&&<span className="automation-pill automation-pill-warn">{t('status.attention')}</span>}
+   </div>
+   <ul className="pcg-wl">{[...active,...retired].map(item=>{const w=item.workflow,lines=workflowListLines(w,catalogue);return <li key={w.id} className="pcg-wi">
+    <div className="pcg-wi-text"><h3>{t('modules.probation')} · {w.name}</h3><p>{lines.trigger}</p><p className="pcg-wi-steps">{lines.steps}</p></div>
+    <div className="pcg-row">
+     <span className="pcg-pill">{t('modules.probation')}</span>
+     <span className={'pcg-pill '+(w.status==='live'?'pcg-pill-ok':w.status==='paused'?'pcg-pill-warn':'')}>{t('status.'+w.status)}</span>
+     {w.required&&<span className="pcg-pill pcg-pill-info">{t('status.required')}</span>}
+     {needsAttention(w)&&<span className="pcg-pill pcg-pill-warn">{t('status.attention')}</span>}
      <button type="button" className="v9-button" aria-label={t('workflows.editNamed',{name:w.name})} onClick={()=>setEditing(item)}>{w.status==='retired'?t('workflows.view'):t('workflows.edit')}</button>
     </div>
    </li>;})}</ul>

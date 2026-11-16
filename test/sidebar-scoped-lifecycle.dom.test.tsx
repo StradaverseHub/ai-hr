@@ -57,14 +57,19 @@ it('groups Probation settings, Form editor and Intake under a Configuration sub-
  expect(screen.getByRole('link',{name:messages.nav.probationPostings})).toHaveAttribute('href','/lifecycle/probation/postings');
  fireEvent.click(configuration[0]);expect(configuration[0]).toHaveAttribute('aria-expanded','false');expect(submenu).not.toBeVisible();
 });
-it('offers Access in the Configuration sub-menu only to whoever may manage Probation access',()=>{
+it('offers Access in the Configuration sub-menu only to an access manager who does not configure Probation (configurers find it in Probation settings)',()=>{
  const view=render(<NextIntlClientProvider locale="en" messages={messages}><Sidebar isAdmin={true} probationAccess={{page:true,configure:true,intake:true,access:false}} enabledModules={[]} defaultCollapsed={false}/></NextIntlClientProvider>);
  fireEvent.click(screen.getByRole('button',{name:messages.nav.probationConfirmation}));
  expect(screen.queryByRole('link',{name:messages.nav.probationAccess})).not.toBeInTheDocument();
  view.unmount();
- render(<NextIntlClientProvider locale="en" messages={messages}><Sidebar isAdmin={false} probationAccess={{page:true,configure:true,intake:true,access:true}} enabledModules={[]} defaultCollapsed={false}/></NextIntlClientProvider>);
+ const configurer=render(<NextIntlClientProvider locale="en" messages={messages}><Sidebar isAdmin={false} probationAccess={{page:true,configure:true,intake:true,access:true}} enabledModules={[]} defaultCollapsed={false}/></NextIntlClientProvider>);
  fireEvent.click(screen.getByRole('button',{name:messages.nav.probationConfirmation}));
- const configuration=screen.getAllByRole('button',{name:messages.nav.sectionConfiguration}).find(button=>document.getElementById(button.getAttribute('aria-controls')!)?.querySelector('a[href="/lifecycle/probation/settings"]'))!;
+ expect(document.querySelector('a[href="/lifecycle/probation/settings"]')).not.toBeNull();
+ expect(document.querySelector('a[href="/lifecycle/probation/access"]')).toBeNull();
+ configurer.unmount();
+ render(<NextIntlClientProvider locale="en" messages={messages}><Sidebar isAdmin={false} probationAccess={{page:true,configure:false,intake:false,access:true}} enabledModules={[]} defaultCollapsed={false}/></NextIntlClientProvider>);
+ fireEvent.click(screen.getByRole('button',{name:messages.nav.probationConfirmation}));
+ const configuration=screen.getAllByRole('button',{name:messages.nav.sectionConfiguration}).find(button=>document.getElementById(button.getAttribute('aria-controls')!)?.querySelector('a[href="/lifecycle/probation/access"]'))!;
  const submenu=document.getElementById(configuration.getAttribute('aria-controls')!)!;
  expect(within(submenu).getByRole('link',{name:messages.nav.probationAccess})).toHaveAttribute('href','/lifecycle/probation/access');
 });

@@ -6,19 +6,20 @@ import {useTranslations} from 'next-intl';
 import {ActionButton} from '@/components/ui/action-button';
 import type {ProbationAdministrationOptions,ProbationSettings,ProbationSettingsScopeView} from '@/packs/probation/service';
 import {DEFAULT_PROBATION_CONFIG,PROBATION_SETTINGS_FIELD_DEFAULTS} from '@/lib/probation-model';
-import {PROBATION_SCOPED_FIELDS,sameProbationValue,probationFieldValue,probationOverrideFields,probationSettingsDifferences,probationStandardPreview,redundantProbationOverrides,resolveProbationSettings,type ProbationScopedField,type ProbationSettingsOverride} from '@/lib/probation-settings-scope';
+import {sameProbationValue,probationFieldValue,probationOverrideFields,probationSettingsDifferences,probationStandardPreview,redundantProbationOverrides,resolveProbationSettings,type ProbationScopedField,type ProbationSettingsOverride} from '@/lib/probation-settings-scope';
 import {ScopeFields} from './scope-fields';
 import {DraftGuard} from './draft-guard';
 import {saveSettingsScope,retireCompanySetting,refreshCompanySettings} from './actions';
+import {ConfigBanner} from './settings/config-head';
+import {SETTINGS_CARDS,type SettingsCardId} from './settings/field-groups';
 
 /** Fields the editor offers; narrow KPI gate rules need one company's organisation choices. */
-const EDITABLE=PROBATION_SCOPED_FIELDS;
 const NUMBERS=new Set<ProbationScopedField>(['defaultMonths','issueLeadDays','kpiDueWorkingDays','kpiReminderWorkingDay','firstReminderDays','dailyReminderDays','lowBand']);
 export type ScopeSelection={kind:'standard'|'company';settingKey:string|null;fromCompanyId?:string|null};
 const blankStandard=():ProbationSettings=>({...structuredClone(DEFAULT_PROBATION_CONFIG),...PROBATION_SETTINGS_FIELD_DEFAULTS,overrides:[]});
 
-export function SettingsScopeEditor({view,options,selection}:{view:ProbationSettingsScopeView;options:ProbationAdministrationOptions;selection:ScopeSelection|null}){
- const t=useTranslations('probation'),router=useRouter(),[busy,start]=useTransition(),[error,setError]=useState(''),[notice,setNotice]=useState('');
+export function SettingsScopeEditor({view,options,selection,live}:{view:ProbationSettingsScopeView;options:ProbationAdministrationOptions;selection:ScopeSelection|null;live?:{live:number;total:number}}){
+ const t=useTranslations('probation'),pc=useTranslations('probationConfig'),router=useRouter(),[busy,start]=useTransition(),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const standard=view.standard,standardData=(standard?.published?.data??null) as ProbationSettings|null;
  const companyName=(id:string)=>view.companies.find(c=>c.id===id)?.name??t('settingsScope.unknownCompany');
  const run=(work:()=>Promise<{ok:boolean;detail?:string;result?:unknown}>,done?:string)=>{setError('');setNotice('');start(async()=>{const result=await work();if(!result.ok){setError(result.detail??t('errors.unavailable'));return;}if(done)setNotice(done);router.refresh();});};
@@ -39,20 +40,20 @@ export function SettingsScopeEditor({view,options,selection}:{view:ProbationSett
  const notCurrent=view.companies.filter(c=>!c.current);
  const legacyCompanies=view.companies.filter(c=>c.data&&!c.provenance);
  return <>
-  <header className="v9-heading"><div><h1>{t('settings.title')}</h1><p>{t('settingsScope.subtitle')}</p></div><div className="probation-actions"><Link className="v9-button" href="/lifecycle/probation/settings?setting=new">{t('settingsScope.newSetting')}</Link></div></header>
+  <ConfigBanner tone="plain" lead={pc('settings.bannerLead')} small={live?pc('settings.live',live):pc('settings.running')} role="note">{pc('settings.banner')}</ConfigBanner>
   {error&&<p className="v9-notice v9-error" role="alert">{error}</p>}{notice&&<p className="v9-notice" role="status">{notice}</p>}
   {view.truncated&&<p className="v9-notice">{t('settingsScope.truncated')}</p>}
-  <section className="v9-panel v9-stack" aria-labelledby="probation-settings-in-use"><h2 id="probation-settings-in-use">{t('settingsScope.inUse')}</h2>
+  {standardData&&!selection&&<StandardCards data={standardData} show={show} label={label}/>}
+  <section className="pcg-card" aria-labelledby="probation-settings-in-use"><div><h2 id="probation-settings-in-use">{t('settingsScope.inUse')}</h2><p className="pcg-sub">{t('settingsScope.rule')}</p></div>
    <div className="probation-list-table"><table><thead><tr>{['setting','appliesTo','version','overrides','action'].map(key=><th key={key}>{t('settingsScope.columns.'+key)}</th>)}</tr></thead><tbody>
     <tr><td data-label={t('settingsScope.columns.setting')}><strong>{t('settingsScope.groupStandard')}</strong></td><td data-label={t('settingsScope.columns.appliesTo')}>{standard?.published?t('settingsScope.allCompanies',{count:view.companies.length}):t('settingsScope.notPublished')}</td><td data-label={t('settingsScope.columns.version')}>{standard?<VersionBadge version={standard.latestVersion} state={standard.latestState}/>:'—'}</td><td data-label={t('settingsScope.columns.overrides')}>{t('settingsScope.setsEveryField')}</td><td>{standard?<Link className="v9-button" href={'/lifecycle/probation/settings?setting=standard'}>{t('settingsScope.edit')}</Link>:'—'}</td></tr>
     {view.companySettings.filter(s=>s.latestState!=='retired').map(setting=>{const current=(setting.draft??setting.published)!,redundant=standardData?redundantProbationOverrides(standardData,current.data as ProbationSettingsOverride):[];return <tr key={setting.settingKey}><td data-label={t('settingsScope.columns.setting')}><strong>{setting.name}</strong></td><td data-label={t('settingsScope.columns.appliesTo')}>{current.companyIds.map(companyName).join(', ')}</td><td data-label={t('settingsScope.columns.version')}><VersionBadge version={setting.latestVersion} state={setting.latestState}/>{setting.draft&&setting.published&&<p className="v9-muted">{t('settingsScope.publishedAlso',{version:setting.published.version})}</p>}</td><td data-label={t('settingsScope.columns.overrides')}>{summary(current.data as ProbationSettingsOverride)}{redundant.length>0&&<p className="v9-notice">{t('settingsScope.redundant',{fields:redundant.map(label).join(', ')})}</p>}</td><td><Link className="v9-button" href={'/lifecycle/probation/settings?setting='+setting.settingKey}>{t('settingsScope.edit')}</Link></td></tr>;})}
    </tbody></table></div>
-   <p className="v9-muted">{t('settingsScope.rule')}</p>
   </section>
-  {!standard?.published&&<section className="v9-panel v9-stack" aria-labelledby="probation-standard-start"><h2 id="probation-standard-start">{t('settingsScope.noStandardTitle')}</h2><p>{t('settingsScope.noStandardHelp')}</p>
+  {!standard?.published&&<section className="pcg-card" aria-labelledby="probation-standard-start"><h2 id="probation-standard-start">{t('settingsScope.noStandardTitle')}</h2><p>{t('settingsScope.noStandardHelp')}</p>
    {standard?.draft?<p><Link className="v9-button" href="/lifecycle/probation/settings?setting=standard">{t('settingsScope.continueDraft')}</Link></p>:<form method="get" className="probation-actions"><input type="hidden" name="setting" value="standard"/><label className="v9-field"><span>{t('settingsScope.createFrom')}</span><select name="from" defaultValue={legacyCompanies[0]?.id??''}><option value="">{t('settingsScope.startFromDefaults')}</option>{legacyCompanies.map(c=><option key={c.id} value={c.id}>{c.name} · {t('version',{version:c.settingsVersion??0})}</option>)}</select></label><button type="submit" className="v9-button">{t('settingsScope.createStandard')}</button></form>}
   </section>}
-  {standard?.published&&notCurrent.length>0&&<section className="v9-panel v9-stack" aria-labelledby="probation-not-current"><h2 id="probation-not-current">{t('settingsScope.notCurrentTitle')}</h2><p className="v9-muted">{t('settingsScope.notCurrentHelp')}</p><ul className="v9-list">{notCurrent.map(c=><li key={c.id} className="probation-actions"><span>{c.name}</span><ActionButton guardNavigation aria-busy={busy} type="button" className="v9-button" disabled={busy} onClick={()=>run(()=>refreshCompanySettings(c.id),t('settingsScope.refreshed',{company:c.name}))}>{t('settingsScope.applyNow')}</ActionButton></li>)}</ul></section>}
+  {standard?.published&&notCurrent.length>0&&<section className="pcg-card" aria-labelledby="probation-not-current"><h2 id="probation-not-current">{t('settingsScope.notCurrentTitle')}</h2><p className="v9-muted">{t('settingsScope.notCurrentHelp')}</p><ul className="v9-list">{notCurrent.map(c=><li key={c.id} className="probation-actions"><span>{c.name}</span><ActionButton guardNavigation aria-busy={busy} type="button" className="v9-button" disabled={busy} onClick={()=>run(()=>refreshCompanySettings(c.id),t('settingsScope.refreshed',{company:c.name}))}>{t('settingsScope.applyNow')}</ActionButton></li>)}</ul></section>}
   {selection&&<ScopeEditor key={(selection.settingKey??selection.kind)+':'+(selection.fromCompanyId??'')+':'+(selection.kind==='standard'?standard?.latestVersion??0:view.companySettings.find(s=>s.settingKey===selection.settingKey)?.latestVersion??0)} view={view} options={options} selection={selection} label={label} show={show} companyName={companyName} busy={busy} run={run}/>}
  </>;
 }
@@ -60,7 +61,7 @@ export function SettingsScopeEditor({view,options,selection}:{view:ProbationSett
 function VersionBadge({version,state}:{version:number;state:string}){const t=useTranslations('probation');return <span className="v9-badge">{t('version',{version})} · {t(state==='published'?'published':state==='retired'?'retired':'draft')}</span>;}
 
 function ScopeEditor({view,options,selection,label,show,companyName,busy,run}:{view:ProbationSettingsScopeView;options:ProbationAdministrationOptions;selection:ScopeSelection;label:(field:ProbationScopedField)=>string;show:(field:ProbationScopedField,value:unknown)=>string;companyName:(id:string)=>string;busy:boolean;run:(work:()=>Promise<{ok:boolean;detail?:string}>,done?:string)=>void}){
- const t=useTranslations('probation');
+ const t=useTranslations('probation'),pc=useTranslations('probationConfig');
  const standard=view.standard,standardPublished=(standard?.published?.data??null) as ProbationSettings|null;
  const existing=selection.kind==='standard'?standard:view.companySettings.find(s=>s.settingKey===selection.settingKey)??null;
  const source=existing?.draft??existing?.published??null;
@@ -94,19 +95,19 @@ function ScopeEditor({view,options,selection,label,show,companyName,busy,run}:{v
   if(field==='overrides'){const rules=(value??[]) as NonNullable<ProbationSettings['overrides']>;if(selection.kind==='standard')return <p className="v9-muted">{t('settingsScope.rulesInCompanySetting')}</p>;if(!singleCompany)return <p className="v9-muted">{t('settingsScope.rulesOneCompany')}</p>;return <div className="v9-stack">{rules.map((rule,index)=><fieldset className="probation-criterion" key={index}><legend>{t('scope.rule',{index:index+1})}</legend><ScopeFields organisationMapping={standardPublished?.organisationMapping} value={rule} options={options} companyId={singleCompany} disabled={busy} change={patch=>change(rules.map((r,i)=>i===index?{...r,...patch}:r))}/><label className="v9-field"><span>{t('settings.kpiGate')}</span><select value={rule.kpiGate} disabled={busy} onChange={e=>change(rules.map((r,i)=>i===index?{...r,kpiGate:e.target.value as typeof r.kpiGate}:r))}>{(['block','warn','off'] as const).map(mode=><option key={mode} value={mode}>{t('kpiModes.'+mode)}</option>)}</select></label><button type="button" className="v9-button" disabled={busy} onClick={()=>change(rules.filter((_,i)=>i!==index))}>{t('remove')}</button></fieldset>)}<button type="button" className="v9-button" disabled={busy||rules.length>=100} onClick={()=>change([...rules,{kpiGate:'block'}])}>{t('scope.addRule')}</button></div>;}
   return null;
  };
- return <section className="v9-panel v9-stack" aria-labelledby="probation-scope-editor"><DraftGuard dirty={dirty}/>
+ return <section className="pcg-card" aria-labelledby="probation-scope-editor"><DraftGuard dirty={dirty}/>
   <div className="v9-heading"><h2 id="probation-scope-editor">{t('settingsScope.editing',{name:name||t('settingsScope.newCompanySetting')})}</h2>{existing&&<VersionBadge version={existing.latestVersion} state={existing.latestState}/>}</div>
   {selection.kind==='standard'?<p className="v9-muted">{t('settingsScope.standardHelp')}</p>:<p className="v9-muted">{t('settingsScope.companyHelp')}</p>}
   {selection.kind==='company'&&!standardPublished&&<p className="v9-notice">{t('settingsScope.waitsForStandard')}</p>}
   {selection.kind==='company'&&<><label className="v9-field"><span>{t('settingsScope.name')}</span><input value={name} maxLength={200} disabled={busy} onChange={e=>{setName(e.target.value);setDirty(true);}}/></label>
    <fieldset className="v9-stack"><legend>{t('settingsScope.columns.appliesTo')}</legend><div className="v9-fields">{view.companies.map(company=>{const other=otherMembers.get(company.id);return <label key={company.id} className="v9-actions"><input type="checkbox" checked={companyIds.includes(company.id)} disabled={busy} onChange={e=>{setCompanyIds(e.target.checked?[...companyIds,company.id]:companyIds.filter(id=>id!==company.id));setDirty(true);}}/>{company.name}{other&&<span className="v9-muted"> · {t('settingsScope.inOther',{name:other})}</span>}</label>;})}</div>{companyIds.some(id=>otherMembers.has(id))&&<p className="v9-notice v9-error" role="alert">{t('settingsScope.overlap',{companies:companyIds.filter(id=>otherMembers.has(id)).map(companyName).join(', ')})}</p>}</fieldset></>}
-  <div className="probation-list-table"><table><thead><tr><th>{t('settingsScope.columns.field')}</th>{selection.kind==='company'&&<th>{standard?.published?t('settingsScope.standardVersion',{version:standard.published.version}):t('settingsScope.groupStandard')}</th>}<th>{t('settingsScope.columns.thisSetting')}</th></tr></thead><tbody>
-   {EDITABLE.map(field=>{
-    if(selection.kind==='standard')return <tr key={field}><td data-label={t('settingsScope.columns.field')}><strong>{label(field)}</strong>{standardPublished&&!sameProbationValue(probationFieldValue(standardPublished,field),probationFieldValue(standardValue,field))&&<p className="v9-badge v9-badge-amber">{t('settingsScope.changed')}</p>}</td><td data-label={t('settingsScope.columns.thisSetting')}>{editor(field,probationFieldValue(standardValue,field),value=>changeStandard(field,value))}</td></tr>;
+  <div className="pcg-grid2">{SETTINGS_CARDS.map(card=><section key={card.id} className="pcg-card" aria-labelledby={'probation-scope-card-'+card.id} data-card={card.id}><h3 id={'probation-scope-card-'+card.id}>{pc('cards.'+card.id)}</h3>
+   {card.fields.map((field:ProbationScopedField)=>{
+    if(selection.kind==='standard')return <div key={field} className="pcg-field-group" data-field={field}><strong>{label(field)}</strong>{standardPublished&&!sameProbationValue(probationFieldValue(standardPublished,field),probationFieldValue(standardValue,field))&&<p className="v9-badge v9-badge-amber">{t('settingsScope.changed')}</p>}{editor(field,probationFieldValue(standardValue,field),value=>changeStandard(field,value))}</div>;
     const overridden=Object.hasOwn(override,field)&&(override as Record<string,unknown>)[field]!==undefined;
-    return <tr key={field}><td data-label={t('settingsScope.columns.field')}><strong>{label(field)}</strong>{redundant.includes(field)&&<p className="v9-badge v9-badge-amber">{t('settingsScope.sameAsStandard')}</p>}</td><td data-label={t('settingsScope.columns.standard')}>{show(field,probationFieldValue(base,field))}</td><td data-label={t('settingsScope.columns.thisSetting')}><div className="probation-actions" role="radiogroup" aria-label={label(field)}><label className="v9-actions"><input type="radio" name={'mode-'+field} checked={!overridden} disabled={busy} onChange={()=>inherit(field)}/>{t('settingsScope.inherited')}</label><label className="v9-actions"><input type="radio" name={'mode-'+field} checked={overridden} disabled={busy} onChange={()=>changeOverride(field,structuredClone(probationFieldValue(base,field)))}/>{t('settingsScope.override')}</label></div>{overridden&&editor(field,(override as Record<string,unknown>)[field],value=>changeOverride(field,value))}</td></tr>;
+    return <div key={field} className="pcg-field-group" data-field={field}><strong>{label(field)}</strong>{redundant.includes(field)&&<p className="v9-badge v9-badge-amber">{t('settingsScope.sameAsStandard')}</p>}<span className="pcg-field-standard">{standard?.published?t('settingsScope.standardVersion',{version:standard.published.version}):t('settingsScope.groupStandard')}: {show(field,probationFieldValue(base,field))}</span><div className="probation-actions" role="radiogroup" aria-label={label(field)}><label className="v9-actions"><input type="radio" name={'mode-'+field} checked={!overridden} disabled={busy} onChange={()=>inherit(field)}/>{t('settingsScope.inherited')}</label><label className="v9-actions"><input type="radio" name={'mode-'+field} checked={overridden} disabled={busy} onChange={()=>changeOverride(field,structuredClone(probationFieldValue(base,field)))}/>{t('settingsScope.override')}</label></div>{overridden&&editor(field,(override as Record<string,unknown>)[field],value=>changeOverride(field,value))}</div>;
    })}
-  </tbody></table></div>
+  </section>)}</div>
   {selection.kind==='company'&&<p className="v9-muted">{t('settingsScope.extensionsFixed',{months:DEFAULT_PROBATION_CONFIG.extensionMonths.join(' / '),max:DEFAULT_PROBATION_CONFIG.maxExtensions})}</p>}
   {selection.kind==='standard'&&<p className="v9-muted">{t('settingsScope.extensionsFixed',{months:DEFAULT_PROBATION_CONFIG.extensionMonths.join(' / '),max:DEFAULT_PROBATION_CONFIG.maxExtensions})}</p>}
   {differences.length>0&&<section className="v9-stack" aria-labelledby="probation-standard-diff"><h3 id="probation-standard-diff">{t('settingsScope.diffTitle')}</h3><p className="v9-muted">{t('settingsScope.diffHelp')}</p><div className="probation-list-table"><table><thead><tr><th>{t('settingsScope.columns.company')}</th><th>{t('settingsScope.columns.differences')}</th></tr></thead><tbody>{differences.map(row=><tr key={row.company.id}><td>{row.company.name}</td><td>{row.fields.map(field=>label(field)+': '+show(field,probationFieldValue(row.company.data!,field))+' → '+show(field,probationFieldValue(standardValue,field))).join(' · ')}</td></tr>)}</tbody></table></div></section>}
@@ -117,4 +118,39 @@ function ScopeEditor({view,options,selection,label,show,companyName,busy,run}:{v
   {selection.kind==='company'&&existing&&existing.latestState!=='retired'&&<details><summary>{t('settingsScope.retire')}</summary><div className="v9-stack"><p className="v9-muted">{t('settingsScope.retireHelp')}</p><label className="v9-field"><span>{t('reason')}</span><textarea value={retireReason} maxLength={2000} disabled={busy} onChange={e=>setRetireReason(e.target.value)}/></label><ActionButton guardNavigation aria-busy={busy} type="button" className="v9-button" disabled={busy||retireReason.trim().length<3} onClick={()=>run(()=>retireCompanySetting({settingKey:existing.settingKey,expectedVersion:existing.latestVersion,reason:retireReason}),t('settingsScope.retiredNotice'))}>{t('settingsScope.retire')}</ActionButton></div></details>}
   {selection.kind==='company'&&standardPublished&&<p className="v9-muted">{t('settingsScope.resolvedPreview')}: {probationOverrideFields(override).length?probationOverrideFields(override).map(f=>label(f)+' '+show(f,probationFieldValue(resolveProbationSettings(standardPublished,override),f))).join(' · '):t('settingsScope.noOverrides')}</p>}
  </section>;
+}
+
+/**
+ * The published group standard, read-only, as the prototype's settings cards (Who gets a case, Review plans, Timing,
+ * KPIs and reminders, Extensions). Editing opens the scope editor ("Edit group standard"); values come from the
+ * published standard only.
+ */
+function StandardCards({data,show,label}:{data:ProbationSettings;show:(field:ProbationScopedField,value:unknown)=>string;label:(field:ProbationScopedField)=>string}){
+ const t=useTranslations('probation'),pc=useTranslations('probationConfig');
+ const value=(field:ProbationScopedField)=>probationFieldValue(data,field);
+ const cardFields=(id:SettingsCardId):readonly ProbationScopedField[]=>SETTINGS_CARDS.find(card=>card.id===id)?.fields??[];
+ const fact=(field:ProbationScopedField)=><div key={field} data-field={field}><dt>{label(field)}</dt><dd>{show(field,value(field))}</dd></div>;
+ return <div className="pcg-grid2" aria-label={pc('settings.standardCards')} role="group">
+  <section className="pcg-card" aria-labelledby="probation-card-who"><div><h2 id="probation-card-who">{pc('cards.who')}</h2><p className="pcg-sub">{pc('settings.whoHelp')}</p></div>
+   <div className="pcg-chips" aria-label={label('eligibleGrades')} role="list">{data.eligibleGrades.map(grade=><span role="listitem" key={grade} className="pcg-pill pcg-pill-info">{grade}</span>)}</div>
+   <dl className="pcg-facts">{fact('gradeHEnabled')}</dl>
+  </section>
+  <section className="pcg-card" aria-labelledby="probation-card-plans"><div><h2 id="probation-card-plans">{pc('cards.plans')}</h2><p className="pcg-sub">{pc('settings.plansHelp')}</p></div>
+   <div className="pcg-table"><table><thead><tr><th>{pc('settings.planPeriod')}</th><th>{pc('settings.planReviews')}</th></tr></thead><tbody>
+    {data.plans.map((plan,index)=><tr key={index}><td>{pc('settings.planMonths',{months:plan.months})}</td><td>{plan.midpointMonths?pc('settings.planMidpoint',{midpoint:plan.midpointMonths}):pc('settings.planFinal')}</td></tr>)}
+   </tbody></table></div>
+   <dl className="pcg-facts">{fact('defaultMonths')}</dl>
+  </section>
+  <section className="pcg-card" aria-labelledby="probation-card-timing"><h2 id="probation-card-timing">{pc('cards.timing')}</h2>
+   <dl className="pcg-facts">{cardFields('timing').map(fact)}</dl>
+   <p className="pcg-hint">{t('settings.calendar')}</p>
+  </section>
+  <section className="pcg-card" aria-labelledby="probation-card-kpis"><h2 id="probation-card-kpis">{pc('cards.kpis')}</h2>
+   <dl className="pcg-facts">{cardFields('kpis').map(fact)}</dl>
+  </section>
+  <section className="pcg-card" aria-labelledby="probation-card-extensions"><h2 id="probation-card-extensions">{pc('cards.extensions')}</h2>
+   <div className="pcg-chips">{DEFAULT_PROBATION_CONFIG.extensionMonths.map(months=><span key={months} className="pcg-pill pcg-pill-info">{pc('settings.extensionMonths',{months})}</span>)}</div>
+   <dl className="pcg-facts">{fact('maxExtensions')}{fact('lowBand')}</dl>
+  </section>
+ </div>;
 }

@@ -54,8 +54,8 @@ export function HtmlFormImport({companyId,imports}:{companyId:string;imports:Pro
  const refusal=(r:ProbationFormImportResult)=>r.code==='excluded'?t('refusals.excluded',{reason:t.has('exclusionReasons.'+r.reason)?t('exclusionReasons.'+r.reason):t('exclusionReasons.unavailable')}):r.code==='wrong_version'?t('refusals.wrong_version',{version:r.version??'—'}):r.code==='invalid_field'?t('refusals.invalid_field',{field:r.field??'—'}):t.has('refusals.'+r.code)?t('refusals.'+r.code):t('refusals.not_saved');
  const found=(r:ProbationFormImportResult)=>(r.summary??[]).map(s=>s.part===1?t('partSummary.part1',{kpis:s.kpis??0,signatures:s.signatures,status:t('partStatus.'+s.status)}):t('partSummary.review',{part:s.part,ratings:s.managerRatings??0,signatures:s.signatures,status:t('partStatus.'+s.status)})).join(' · ');
  const pending=rows.length>0&&!done;
- return <section className="v9-panel v9-stack" aria-labelledby="probation-html-import"><DraftGuard dirty={pending&&ready.length>0}/>
-  <h2 id="probation-html-import">{t('title')}</h2><p className="v9-muted">{t('help')}</p>
+ return <section className="pcg-card" aria-labelledby="probation-html-import"><DraftGuard dirty={pending&&ready.length>0}/>
+  <div><h2 id="probation-html-import">{t('title')}</h2><p className="pcg-sub">{t('help')}</p></div>
   <div className="probation-actions">
    <button type="button" className="v9-button" disabled={reading||importing} onClick={()=>input.current?.click()}>{t('choose')}</button>
    <input ref={input} type="file" multiple accept=".html,.htm,.pdf,text/html,application/pdf" hidden aria-label={t('fileLabel')} onChange={e=>void choose([...(e.target.files??[])])}/>

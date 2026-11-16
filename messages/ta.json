@@ -36923,6 +36923,84 @@
       "noPart": "This part is not part of this case's review plan."
     }
   },
+  "probationConfig": {
+    "crumb": "Probation Confirmation / Configuration / {page}",
+    "live": "Live",
+    "preparation": "Preparation",
+    "settings": {
+      "title": "Probation settings",
+      "sub": "Group standard version {version} published · company settings override only the fields they tick · changes apply to new cases only",
+      "subNoStandard": "No group standard published yet · each company uses its own settings version · changes apply to new cases only",
+      "subCompany": "Changes apply to new cases only.",
+      "editStandard": "Edit group standard",
+      "newCompanySetting": "New company setting",
+      "bannerLead": "Group standard with company settings.",
+      "banner": "The group standard applies the same way to every company. A company setting changes only the fields it ticks for its companies; every other field follows the standard, including later changes to it.",
+      "live": "Live in {live} of {total} companies. Running cases keep the settings version they started with.",
+      "running": "Running cases keep the settings version they started with.",
+      "standardCards": "Group standard settings",
+      "whoHelp": "A case opens automatically when an employee’s Personnel Management status becomes Probation (on activation, before, on or after the start date). Draft records never open a case.",
+      "plansHelp": "Picked from the Probation Period in Personnel Management.",
+      "planPeriod": "Probation Period",
+      "planReviews": "Reviews",
+      "planMonths": "{months} Month(s)",
+      "planMidpoint": "Part 2 at Month {midpoint} · Part 3 on the end date",
+      "planFinal": "Part 3 on the end date only",
+      "extensionMonths": "{months} months"
+    },
+    "cards": {
+      "who": "Who gets a case",
+      "plans": "Review plans",
+      "timing": "Timing",
+      "kpis": "Week 1 KPIs and reminders",
+      "extensions": "Extensions and results"
+    },
+    "form": {
+      "sub": "Criteria, weights, rating scale, bands and guidance are saved with each form version. Each case keeps the form it started on.",
+      "versions": "Form versions",
+      "formTitle": "Form",
+      "gradesTitle": "Job grade assignment",
+      "gradesHelp": "New probation cases in these grades (Personnel Management Job Grade at the case start) use this form. Leave it empty to use the form for the normal eligible grades.",
+      "gradesNote": "Changes to the grade assignment apply to new cases only.",
+      "noGrades": "No grades",
+      "chooseGrades": "Choose job grades…",
+      "selected": "{count} selected",
+      "searchGrades": "Search grade, e.g. 12",
+      "selectAll": "Select all",
+      "clear": "Clear",
+      "noGradeMatch": "No grade matches “{query}”.",
+      "done": "Done",
+      "criteriaTitle": "Criteria and weights",
+      "section": "Section {letter} · {name}",
+      "sectionTotal": "Criteria total {total}% of {weight}%",
+      "criterion": "Criterion",
+      "weight": "Weight %",
+      "guidance": "Guidance",
+      "order": "Order and remove",
+      "criterionPlaceholder": "Criterion name",
+      "weightFor": "Weight for {name}",
+      "newCriterion": "new criterion",
+      "hideGuidance": "Hide",
+      "viewGuidance": "View",
+      "editGuidance": "Edit",
+      "moveUp": "Move {name} up",
+      "moveDown": "Move {name} down",
+      "up": "Up",
+      "down": "Down",
+      "removeNamed": "Remove {name}",
+      "addCriterion": "Add criterion to Section {letter}",
+      "formTotal": "Form total {total}%",
+      "formTotalParts": "(Section A {a}% · Section B {b}%). Every criterion is rated 1–5.",
+      "scaleTitle": "Rating scale",
+      "bandsTitle": "Bands"
+    },
+    "intake": {
+      "sub": "Bring in staff who were already on probation using the offline HTML form, then switch probation on per company.",
+      "extensionsTitle": "2. Confirm extensions already used",
+      "activationTitle": "3. Activation by company",
+      "noExtensions": "No cases with an existing extension."
+    }
+  },
   "templateEditor": {
     "newField": "புதிய புலம்",
     "version": "வார்ப்புரு பதிப்பு",
@@ -40173,7 +40251,8 @@
       "edit": "Edit",
       "view": "View",
       "editNamed": "Open {name}",
-      "probationNotAllowed": "You cannot configure Probation automation."
+      "probationNotAllowed": "You cannot configure Probation automation.",
+      "cardIntro": "Automate documents, emails, approvals and reminders for each case. Active workflows run when their trigger and conditions match."
     },
     "editor": {
       "untitled": "Untitled workflow",
@@ -40310,7 +40389,25 @@
       "close": "Close",
       "reasonCreate": "Created in the template builder",
       "reasonSave": "Edited in the template builder",
-      "reasonRetire": "Retired in the template builder"
+      "reasonRetire": "Retired in the template builder",
+      "goLiveReady": "All outcome letters are ready.",
+      "goLiveMissing": "Publish a letter template for each outcome before go-live.",
+      "letter": "Letter",
+      "versionPill": "v{version} {state}",
+      "editLetter": "Edit {name} in the letter template editor",
+      "signing": {
+        "chain": "signing: {chain}",
+        "existing": "signing: the existing letter signing route",
+        "missing": "a routing or group that was removed",
+        "people": "{count, plural, one {1 named person} other {# named people}}",
+        "employee": "the employee",
+        "directSuperior": "the Direct Superior",
+        "action": {
+          "review": "Review",
+          "approve": "Approve",
+          "sign": "Sign"
+        }
+      }
     },
     "groups": {
       "title": "Assignment groups",
@@ -40363,7 +40460,10 @@
       "cancel": "Cancel",
       "reasonCreate": "Created in the routing rules",
       "reasonSave": "Edited in the routing rules",
-      "reasonRetire": "Retired in the routing rules"
+      "reasonRetire": "Retired in the routing rules",
+      "routingNamed": "Routing “{name}”",
+      "usedByList": "Used by: {list}",
+      "groupName": "Group name"
     },
     "move": {
       "title": "Move Probation workflows to shared workflows",

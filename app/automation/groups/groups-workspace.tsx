@@ -9,6 +9,7 @@ import {PeopleSearch} from '../people-search';
 import type {NamedOption} from '../recipients';
 import {saveRoutingAction} from '../actions';
 import {LEGACY_BUILDERS,type AutomationPageAccess} from '../types';
+import {ConfigHead} from '@/app/lifecycle/probation/settings/config-head';
 
 export type ListedRouting = { routing: Routing; revision: number; retired: boolean; usedBy: string[] };
 export type RoutingOptions = { businessGroups: NamedOption[]; companies: (NamedOption & { businessGroupId: string })[]; departments: (NamedOption & { companyId: string })[]; jobTitles: string[] };
@@ -18,19 +19,21 @@ export function GroupsWorkspace({access,groups,routings,options,people:initialPe
  const t=useTranslations('automation'),[people,setPeople]=useState(initialPeople),[creating,setCreating]=useState<ListedRouting|null>(null);
  const live=routings.filter(r=>!r.retired),retired=routings.filter(r=>r.retired);
  const names=routings.map(r=>r.routing.name.trim().toLowerCase());
- return <main className="v9-stack">
-  <p className="automation-crumb">{t('crumb')} / {t('groups.title')}</p>
-  <header className="v9-heading"><div><h1>{t('groups.title')}</h1><p className="v9-muted">{t('groups.intro')}</p></div></header>
-  <section className="v9-panel v9-stack" aria-label={t('groups.groups')}>
-   <h2>{t('groups.groups')}</h2><p className="v9-muted">{t('groups.groupsIntro')}</p>
-   {groups.length===0?<p className="v9-muted">{t('groups.noGroups')}</p>:<ul className="automation-list">{groups.map(g=><li key={g.id} className="automation-item"><div className="automation-item-text"><h3>{g.name}</h3><p>{t('groups.usedBy',{count:routings.filter(r=>!r.retired&&r.routing.rows.some(row=>row.assignTo.kind==='group'&&row.assignTo.groupId===g.id)).length})}</p></div></li>)}</ul>}
-   {access.legacy?<p><Link className="v9-button" href={LEGACY_BUILDERS.groups}>{t('groups.editGroups')}</Link></p>:<p className="v9-muted">{t('groups.groupsReadOnly')}</p>}
+ // Prototype GroupsPage (lane M3): a card per assignment group with what uses it, then Routing rules as routing cards.
+ // Groups, their members and open task limits stay in the On/Off Boarding configuration (ADR decision 2).
+ const usedBy=(groupId:string)=>live.filter(r=>r.routing.rows.some(row=>row.assignTo.kind==='group'&&row.assignTo.groupId===groupId)).map(r=>t('groups.routingNamed',{name:r.routing.name}));
+ return <main className="v9-stack pcg">
+  <ConfigHead crumb={t('crumb')+' / '+t('groups.title')} title={t('groups.title')} sub={t('groups.intro')} actions={access.legacy?<Link className="v9-button" href={LEGACY_BUILDERS.groups}>{t('groups.editGroups')}</Link>:undefined}/>
+  <section className="v9-stack" aria-labelledby="automation-groups-title">
+   <div><h2 id="automation-groups-title" className="sr-only">{t('groups.groups')}</h2><p className="pcg-hint">{t('groups.groupsIntro')}</p>{!access.legacy&&<p className="pcg-hint">{t('groups.groupsReadOnly')}</p>}</div>
+   {groups.length===0?<p className="v9-muted">{t('groups.noGroups')}</p>:<ul className="pcg-grid2" style={{listStyle:'none',margin:0,padding:0}}>{groups.map(g=>{const used=usedBy(g.id);return <li key={g.id} className="pcg-card" aria-label={g.name}>
+    <div><span className="pcg-hint">{t('groups.groupName')}</span><h3 className="pcg-group-name">{g.name}</h3></div>
+    <p className="pcg-hint">{used.length?t('groups.usedByList',{list:used.join('; ')}):t('groups.usedBy',{count:0})}</p>
+   </li>;})}</ul>}
   </section>
-  <section className="v9-panel v9-stack" aria-label={t('groups.routings')}>
-   <div className="automation-row automation-between"><h2>{t('groups.routings')}</h2>
+  <section className="pcg-card" aria-label={t('groups.routings')}>
+   <div className="pcg-row pcg-between" style={{alignItems:'flex-start'}}><div style={{flex:'1 1 480px'}}><h2>{t('groups.routings')}</h2><p className="pcg-sub">{t('groups.routingIntro')} {t('groups.approvalNote')}</p></div>
     <button type="button" className="v9-button v9-button-primary" disabled={!!creating} onClick={()=>setCreating({routing:{id:crypto.randomUUID(),name:'',rows:[{match:{},assignTo:{kind:'group',groupId:groups[0]?.id??''}}]},revision:0,retired:false,usedBy:[]})}>{t('groups.newRouting')}</button></div>
-   <p className="v9-muted">{t('groups.routingIntro')}</p>
-   <p className="v9-muted">{t('groups.approvalNote')}</p>
    <details className="automation-details"><summary>{t('people.title')}</summary><PeopleSearch known={people} onAdd={person=>setPeople(list=>list.some(p=>p.id===person.id)?list:[...list,person])}/></details>
    {creating&&<RoutingEditor key={creating.routing.id} item={creating} groups={groups} options={options} people={people} takenNames={names} onDone={()=>setCreating(null)}/>}
    {live.length===0&&!creating&&<p className="v9-muted">{t('groups.noRoutings')}</p>}
@@ -66,12 +69,12 @@ function RoutingEditor({item,groups,options,people,takenNames,onDone}:{item:List
   start(async()=>{const result=await saveRoutingAction({routing:draft,retired:retire,expectedRevision:revision,reason:retire?t('groups.reasonRetire'):revision?t('groups.reasonSave'):t('groups.reasonCreate')});
    if(!result.ok){setMessage({kind:'error',text:result.detail??t('errors.unavailable'),problems:result.problems});return;}
    setRevision(result.result.revision);setDirty(false);setMessage({kind:'status',text:retire?t('groups.retiredNow',{name:draft.name}):t('editor.saved')});router.refresh();if(onDone)onDone();});};
- return <article className="automation-routing v9-stack" aria-label={draft.name||t('groups.newRoutingName')}>
+ return <article className="pcg-rt-card" aria-label={draft.name||t('groups.newRoutingName')}>
   <div className="automation-row automation-between">
    <label className="v9-field"><span>{t('groups.routingName')}</span><input value={draft.name} maxLength={200} disabled={busy} aria-invalid={!draft.name.trim()||duplicate} onChange={e=>change(r=>{r.name=e.target.value;})}/></label>
    <span className="v9-muted">{item.usedBy.length?t('groups.usedIn',{list:item.usedBy.slice(0,3).join('; '),more:Math.max(0,item.usedBy.length-3)}):t('groups.notUsed')}</span>
   </div>
-  <ol className="automation-steps">{draft.rows.map((row,index)=><li key={index} className="automation-step">
+  <ol className="pcg-rt-rows">{draft.rows.map((row,index)=><li key={index} className="pcg-rt-row">
    <div className="automation-routing-row">
     {DIMENSIONS.map(dimension=><div key={dimension} className="v9-field"><span>{t('groups.dimension.'+dimension)}</span>
      <MultiSelect label={t('groups.rowDimension',{row:index+1,dimension:t('groups.dimension.'+dimension)})} value={row.match[dimension]??[]} options={choices(dimension,row)} emptyLabel={t('groups.any')} disabled={busy}

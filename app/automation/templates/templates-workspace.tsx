@@ -10,9 +10,11 @@ import {MultiSelect} from '../multi-select';
 import {recipientKey,recipientOptions,recipientsFromKeys,type NamedOption} from '../recipients';
 import {saveEmailTemplateAction} from '../actions';
 import {LEGACY_BUILDERS,type AutomationFilter,type AutomationPageAccess} from '../types';
+import {ConfigBanner,ConfigHead} from '@/app/lifecycle/probation/settings/config-head';
+import {sortedDocumentRouting,type DocumentRouting} from '@/lib/document-signing-routing';
 
 export type ListedEmailTemplate = { template: AutomationEmailTemplate; revision: number; retired: boolean };
-export type LetterSection = { companies: NamedOption[]; company: NamedOption; templates: { id: string; name: string; state: string; version: number; outcome: string }[] } | null;
+export type LetterSection = { companies: NamedOption[]; company: NamedOption; templates: { id: string; name: string; state: string; version: number; outcome: string; routing?: DocumentRouting }[] } | null;
 type Refs = { routings: (NamedOption & { retired?: boolean })[]; groups: NamedOption[]; people: NamedOption[] };
 const catalogue = PROBATION_AUTOMATION_CATALOGUE;
 
@@ -21,31 +23,41 @@ export function TemplatesWorkspace({filter,access,emails,letters,refs}:{filter:A
  const t=useTranslations('automation'),[editing,setEditing]=useState<ListedEmailTemplate|null>(null);
  const showProbation=filter==='all'||filter==='probation',legacy=(['onb','off','contract_staff'] as const).filter(m=>filter==='all'||filter===m);
  const published=new Set(letters?.templates.filter(l=>l.state==='published').map(l=>l.outcome)??[]);
- return <main className="v9-stack">
-  <p className="automation-crumb">{t('crumb')} / {t('templates.title')}</p>
-  <header className="v9-heading"><div><h1>{t('templates.title')}</h1><p className="v9-muted">{t('templates.intro')}</p></div></header>
+ // Prototype TemplatesPage (lane M3): head, module chips, the go-live check banner, Document templates rows (name,
+ // module · signing summary, Probation / Letter / version pills, Edit), then Email templates rows.
+ const ready=['confirm','extend','not_confirm'].filter(o=>published.has(o)).length;
+ const who=(step:DocumentRouting[number])=>{const w=step.who;
+  if(w.kind==='routing')return refs.routings.find(r=>r.id===w.routingId)?.name??t('templates.signing.missing');
+  if(w.kind==='group')return refs.groups.find(g=>g.id===w.groupId)?.name??t('templates.signing.missing');
+  if(w.kind==='people')return t('templates.signing.people',{count:w.userIds.length});
+  return t('templates.signing.'+w.kind);};
+ const signing=(routing:DocumentRouting|undefined)=>routing?.length?t('templates.signing.chain',{chain:sortedDocumentRouting(routing).map(step=>t('templates.signing.action.'+step.action)+' '+who(step)).join(' → ')}):t('templates.signing.existing');
+ return <main className="v9-stack pcg">
+  <ConfigHead crumb={t('crumb')+' / '+t('templates.title')} title={t('templates.title')} sub={t('templates.intro')}/>
   <FilterChips path="/automation/templates" current={filter}/>
   {showProbation&&!access.probation&&filter==='probation'&&<p className="v9-notice">{t('workflows.probationNotAllowed')}</p>}
   {showProbation&&access.probation&&<>
-   <section className="v9-panel v9-stack" aria-label={t('templates.documents')}>
-    <h2>{t('templates.documents')}</h2><p className="v9-muted">{t('templates.documentsIntro')}</p>
+   {letters&&<ConfigBanner tone={ready===3?'ok':'warn'} role="status" lead={t('templates.goLive',{count:ready})}>{ready===3?t('templates.goLiveReady'):t('templates.goLiveMissing')}</ConfigBanner>}
+   <section className="pcg-card" aria-label={t('templates.documents')}>
+    <div className="pcg-row pcg-between" style={{alignItems:'flex-start'}}><div><h2>{t('templates.documents')}</h2><p className="pcg-sub">{t('templates.documentsIntro')}</p></div>
+     {letters&&<Link className="v9-button" href={`/lifecycle/probation/templates?company=${letters.company.id}`}>{t('templates.openLetterEditor')}</Link>}</div>
     {!letters?<p className="v9-muted">{t('templates.noLetterCompany')}</p>:<>
-     {letters.companies.length>1&&<nav className="automation-chips" aria-label={t('templates.company')}>{letters.companies.map(c=><Link key={c.id} className="automation-chip" href={`/automation/templates?module=${filter}&company=${c.id}`} aria-current={c.id===letters.company.id?'page':undefined}>{c.name}</Link>)}</nav>}
-     <p className="v9-muted">{t('templates.goLive',{count:['confirm','extend','not_confirm'].filter(o=>published.has(o)).length})}</p>
+     {letters.companies.length>1&&<nav className="pcg-chips" aria-label={t('templates.company')}>{letters.companies.map(c=><Link key={c.id} className="pcg-mchip" href={`/automation/templates?module=${filter}&company=${c.id}`} aria-current={c.id===letters.company.id?'page':undefined}>{c.name}</Link>)}</nav>}
      {letters.templates.length===0&&<p className="v9-muted">{t('templates.noLetters')}</p>}
-     <ul className="automation-list">{letters.templates.map(l=><li key={l.id} className="automation-item"><div className="automation-item-text"><h3>{l.name}</h3><p>{t('templates.letterLine',{version:l.version,state:t('templates.state.'+l.state)})}</p></div></li>)}</ul>
-     <p><Link className="v9-button" href={`/lifecycle/probation/templates?company=${letters.company.id}`}>{t('templates.openLetterEditor')}</Link></p>
+     <ul className="pcg-tl">{letters.templates.map(l=><li key={l.id} className="pcg-tl-row"><div><h3>{l.name}</h3><p>{t('modules.probation')} · {signing(l.routing)}</p></div>
+      <div className="pcg-tl-pills"><span className="pcg-kp">{t('modules.probation')}</span><span className="pcg-kp pcg-kp-letter">{t('templates.letter')}</span><span className={l.state==='draft'?'pcg-kp pcg-kp-warn':'pcg-kp'}>{t('templates.versionPill',{version:l.version,state:t('templates.state.'+l.state)})}</span>
+       <Link className="v9-button" aria-label={t('templates.editLetter',{name:l.name})} href={`/lifecycle/probation/templates?company=${letters.company.id}`}>{t('workflows.edit')}</Link></div></li>)}</ul>
     </>}
    </section>
-   <section className="v9-panel v9-stack" aria-label={t('templates.emails')}>
-    <div className="automation-row automation-between"><h2>{t('templates.emails')}</h2>
+   <section className="pcg-card" aria-label={t('templates.emails')}>
+    <div className="pcg-row pcg-between" style={{alignItems:'flex-start'}}><div><h2>{t('templates.emails')}</h2><p className="pcg-sub">{t('templates.emailsIntro')}</p></div>
      <button type="button" className="v9-button v9-button-primary" onClick={()=>setEditing({template:{id:crypto.randomUUID(),module:'probation',name:t('templates.newName'),active:true,subject:'',body:'',cc:[]},revision:0,retired:false})}>{t('templates.newEmail')}</button></div>
-    <p className="v9-muted">{t('templates.emailsIntro')}</p>
     {emails.length===0&&<p className="v9-muted">{t('templates.noEmails')}</p>}
-    <ul className="automation-list">{emails.map(item=><li key={item.template.id} className="automation-item">
-     <div className="automation-item-text"><h3>{item.template.name}</h3><p>{t('modules.probation')} · {item.template.subject}</p></div>
-     <div className="automation-row">
-      {item.retired?<span className="automation-pill">{t('status.retired')}</span>:!item.template.active&&<span className="automation-pill automation-pill-warn">{t('templates.turnedOff')}</span>}
+    <ul className="pcg-tl">{emails.map(item=><li key={item.template.id} className="pcg-tl-row">
+     <div><h3>{item.template.name}</h3><p>{t('modules.probation')} · {item.template.subject}</p></div>
+     <div className="pcg-tl-pills">
+      <span className="pcg-kp">{t('modules.probation')}</span>
+      {item.retired?<span className="pcg-kp">{t('status.retired')}</span>:!item.template.active&&<span className="pcg-kp pcg-kp-warn">{t('templates.turnedOff')}</span>}
       <button type="button" className="v9-button" aria-label={t('templates.editNamed',{name:item.template.name})} onClick={()=>setEditing(item)}>{item.retired?t('workflows.view'):t('workflows.edit')}</button>
      </div></li>)}</ul>
    </section>
@@ -72,7 +84,7 @@ export function EmailEditor({initial,refs,onClose}:{initial:ListedEmailTemplate;
   start(async()=>{const result=await saveEmailTemplateAction({template:draft,retired,expectedRevision:revision,reason:retired?t('templates.reasonRetire'):revision?t('templates.reasonSave'):t('templates.reasonCreate')});
    if(!result.ok){setMessage({kind:'error',text:result.detail??t('errors.unavailable'),problems:result.problems});return;}
    setRevision(result.result.revision);setDirty(false);setMessage({kind:'status',text:t('editor.saved')});router.refresh();if(retired)onClose();});};
- return <section className="v9-panel v9-stack automation-editor" aria-label={t('templates.editorTitle',{name:draft.name})}>
+ return <section className="pcg-card automation-editor" aria-label={t('templates.editorTitle',{name:draft.name})}>
   <div className="automation-row automation-between"><h2>{draft.name||t('templates.newName')}</h2><button type="button" className="v9-button" onClick={()=>{if(!dirty||window.confirm(t('editor.leaveUnsaved')))onClose();}}>{t('templates.close')}</button></div>
   <div className="v9-fields">
    <label className="v9-field"><span>{t('templates.name')}</span><input value={draft.name} maxLength={200} disabled={readOnly} onChange={e=>change({name:e.target.value})}/></label>
