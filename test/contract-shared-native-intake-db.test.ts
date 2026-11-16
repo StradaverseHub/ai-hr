@@ -15,7 +15,7 @@ import {closeAll,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppU
 let b:Base,admin:SessionContext;
 const year=Number(todayInKualaLumpur().slice(0,4)),start=`${year}-01-01`,end=`${year+1}-12-31`;
 beforeAll(migrateTestDb);afterAll(closeAll);
-beforeEach(async()=>{await resetDb();b=await seedBase();for(const m of ['lifecycle','payroll','typed_pay_components'] as const)await setModule(b.tenantId,m,'active');admin=await entitledCtx(b);});
+beforeEach(async()=>{await resetDb();b=await seedBase();for(const m of ['lifecycle','payroll','typed_pay_components'] as const)await setModule(b.tenantId,m,'active');admin=await entitledCtx(b);const [person]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional verified Contract administrator',${randomUUID()+'@intake.test'}) returning id`);await owner.db.execute(sql`update app_user set person_id=${person.id}::uuid where tenant_id=${b.tenantId}::uuid and id=${admin.userId}::uuid`);admin={...admin,personId:person.id};});
 async function account(name:string){const [person]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,${name},${randomUUID()+'@intake.test'}) returning id`);const userId=await createAppUser(b.tenantId,person.id,'employee');return {...admin,userId,personId:person.id,roles:['employee'],grants:undefined} as SessionContext;}
 async function document(employmentId:string,title:string){const pdf=await PDFDocument.create();pdf.addPage().drawText(title);return addEmployeeDocument(admin,{employmentId,title,fileName:'fictional.pdf',mimeType:'application/pdf',content:Buffer.from(await pdf.save())});}
 async function fixture(){
