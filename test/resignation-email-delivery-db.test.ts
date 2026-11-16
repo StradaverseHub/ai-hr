@@ -8,7 +8,12 @@ import {hireEmployee} from '../core/org';
 import {commandResignationJourney,submitResignationJourney} from '../packs/lifecycle/resignation/service';
 import {deliverAutomationEmails,queueAutomationEmailTx} from '../core/automation-email-delivery';
 import {prepareResignationProofTx,resignationRuntimeKey} from '../core/resignation-proof';
-import type {SessionContext,Tx} from '../db/client';
+import {client,type SessionContext,type Tx} from '../db/client';
+import {generate} from 'otplib';
+import {bootstrapInternalOwner} from '../lib/internal-auth/bootstrap';
+import {changeInitialPassword,credentialByLogin,startLogin,verifyMfa} from '../lib/internal-auth/service';
+import {assertActiveCredential,type Credential} from '../lib/internal-auth/credential';
+import {admittedAuthSql,readRecord} from '../lib/internal-auth/store';
 import type {Document,EmailAsset,Template} from '../lib/lifecycle-v9-model';
 import type {ResignationCaseView} from '../lib/resignation-journey';
 import type {AutomationDeliveryRequest,AutomationDeliveryResult,AutomationEmailContent,AutomationMailTarget} from '../lib/automation-email-ipc';
@@ -99,6 +104,29 @@ describe('Offboarding signed email delivery custody',()=>{
    await owner.db.execute(sql`select app.automation_email_finish(${request.deliveryId}::uuid,${request.leaseToken}::uuid,'sent',null)`);return{outcome:'sent',error:null};
   });
   expect(sent).toEqual({attempted:1,sent:1,held:0,failed:0,cancelled:0});expect((await deliveries(f))[0].status).toBe('sent');expect(await deliverAutomationEmails(runtime(f),port,async()=>{throw Error('Completed delivery must never call SMTP again.');})).toMatchObject({attempted:0});
+ },90000);
+ it('delivers to an account-only HR recipient through its actual verified credential and native issuer/subject binding',async()=>{
+  const {f,value}=await signedFixture(),userId=await createAppUser(f.base.tenantId,null,'hr_admin');
+  const[account]=await owner.db.execute<{person_id:string|null}>(sql`select person_id from app_user where id=${userId}::uuid`);expect(account.person_id).toBeNull();
+  const temporary='Fictional temporary credential 771!',password='Fictional replacement credential 992!',email='account-only-hr@resignation-fixture.invalid';
+  await bootstrapInternalOwner(owner.client,{appUserId:userId,organization:'accountonly',username:'recipient.hr',email,password:temporary,installationOperator:false});
+  const login=await startLogin({organization:'accountonly',username:'recipient.hr',password:temporary,native:false});
+  if(login.step!=='password')throw Error('Expected account-only fixture initial password challenge.');
+  const setup=await changeInitialPassword(login.challenge,password);if(setup.step!=='enroll'||!setup.secret)throw Error('Expected account-only fixture MFA enrollment.');
+  expect((await verifyMfa(setup.challenge,await generate({secret:setup.secret}))).step).toBe('complete');
+  const credential=(await credentialByLogin('accountonly','recipient.hr'))!;expect(credential).toMatchObject({email,emailVerified:true,enabled:true,issuer:ORIGIN+'/auth/'+f.base.tenantId});
+  expect(await assertActiveCredential(admittedAuthSql,credential)).toEqual({app_user_id:userId,tenant_id:f.base.tenantId});
+  const[principal]=await client`select * from app.principal_by_identity(${credential.issuer},${credential.subject})`;expect(principal.person_id).toBeNull();expect(principal.app_user_id).toBe(userId);
+  expect(await queue(f,value,'account-only-hr',[userId],[])).toMatchObject({queued:1,to:[userId],cc:[],unreachable:[]});
+  const sent=await deliverAutomationEmails(runtime(f),port,async request=>{
+   const mail=await target(request);expect(mail).not.toBeNull();expect(mail!.payload.mail.to).toEqual([userId]);expect(mail!.bindings).toEqual([{userId,issuer:credential.issuer,subject:credential.subject}]);
+   // This is the same private credential/principal check used before constructing the SMTP envelope.
+   const current=await readRecord<Credential>(admittedAuthSql,'credential:'+mail!.bindings[0].subject);expect(current).not.toBeNull();expect(current!.email).toBe(email);expect(await assertActiveCredential(admittedAuthSql,current!)).toEqual({app_user_id:userId,tenant_id:f.base.tenantId});
+   const proof={bindings:mail!.bindings,addresses:[current!.email],relayRevision:'1'};
+   const[started]=await owner.db.execute<{started:boolean}>(sql`select app.automation_email_start(${request.deliveryId}::uuid,${request.leaseToken}::uuid,${ORIGIN},${JSON.stringify(proof)}::jsonb) as started`);expect(started.started).toBe(true);
+   await owner.db.execute(sql`select app.automation_email_finish(${request.deliveryId}::uuid,${request.leaseToken}::uuid,'sent',null)`);return{outcome:'sent',error:null};
+  });
+  expect(sent).toEqual({attempted:1,sent:1,held:0,failed:0,cancelled:0});expect((await deliveries(f))[0]).toMatchObject({status:'sent',mail_key:'account-only-hr:0'});
  },90000);
  it('rejects unsigned, altered and same-tenant foreign-case documents plus mismatched template, asset hash and case-file references at the native boundary',async()=>{
   const {f,value,document,emailId,another}=await signedFixture();await identity(f,f.employeeUserId);const foreign=await another();const {content}=await storedContent(f,value,document,emailId),foreignStored=await storedContent(f,foreign.value,foreign.document,emailId);
