@@ -35977,7 +35977,7 @@
       "suggestionsUnavailable": "Name suggestions are unavailable. You can still enter a name and apply filters.",
       "search": "Employee name",
       "cases": "Cases",
-      "empty": "No probation cases match these filters.",
+      "empty": "No probation cases match these filters. Dropdowns list only values from current cases, so they stay at “All” when no cases exist.",
       "pageRows": "Showing {from}–{to} of {total}",
       "planReview": "Plan review required",
       "workingOverdue": "{days} working days overdue",
@@ -35996,7 +35996,7 @@
         "overridden": "Suggestion overridden"
       },
       "extensionsUsed": "{used} / {max}",
-      "startsOn": "Starts {date}",
+      "startsOn": "Start date {date}",
       "actions": {
         "open": "Open",
         "review_letter": "Review letter",
@@ -36004,7 +36004,78 @@
         "log_followup": "Log follow-up"
       },
       "mineOnly": "Showing only cases with work waiting on you.",
-      "mineClear": "Show all cases"
+      "mineClear": "Show all cases",
+      "breadcrumb": "Probation Confirmation / Probation tracker",
+      "intro": "Track employees with Probation status in Personnel Management and their confirmation progress.",
+      "synced": "Synced from Personnel Management. Every employee whose status is <b>Probation</b> gets a case here automatically, including records activated before their start date.",
+      "tiles": {
+        "overdue": "Overdue steps",
+        "end_passed": "End passed, no outcome",
+        "ending14": "Ending within 14 days",
+        "low_result": "Low result (Band 1–2 by default)",
+        "kpi_submit": "KPIs not submitted",
+        "kpi_ack": "KPIs not acknowledged",
+        "overridden": "Suggestion overridden"
+      },
+      "hints": {
+        "search": "Personnel Management · Full name (as per IC/passport)",
+        "businessGroup": "Personnel Management · recorded at case start",
+        "businessUnit": "Personnel Management · recorded at case start",
+        "department": "Personnel Management · Department",
+        "grade": "Personnel Management · Job Grade at case start"
+      },
+      "namePlaceholder": "Type a name…",
+      "showClosed": "Show closed cases",
+      "caseCount": "{shown} of {total} cases",
+      "filteredBy": "filtered by “{tile}”",
+      "columns": {
+        "employee": "Employee",
+        "organisation": "Business group · unit",
+        "endOn": "Probation end",
+        "plan": "Review plan",
+        "stage": "Stage",
+        "waiting": "Waiting on",
+        "due": "Due",
+        "flags": "Flags",
+        "extensions": "Ext.",
+        "extensionsFull": "Extensions used",
+        "action": "Action"
+      },
+      "planMonths": "{months, plural, one {# month} other {# months}}",
+      "planParts": {
+        "both": "Part 2 + Part 3",
+        "p3": "Part 3 only",
+        "p2": "Part 2 only"
+      },
+      "stage": {
+        "1": "Week 1 KPIs",
+        "2": "Part 2 Mid-Probation",
+        "3": "Part 3 Final review",
+        "afterExtension": "{stage} (after extension)"
+      },
+      "what": {
+        "kpis": "KPI submission",
+        "self": "self-assessment",
+        "assessment": "assessment",
+        "acknowledge": "signature",
+        "approval": "approval",
+        "letter": "letter"
+      },
+      "waitingOn": "{role} · {name} · {step}",
+      "pills": {
+        "end_passed": "End date passed",
+        "ending14": "Ends within 14 days",
+        "low_result": "Band {band} · low result",
+        "low_actioned": "PBP action recorded",
+        "kpi_submit": "KPIs not submitted",
+        "kpi_ack": "KPIs not acknowledged",
+        "overridden": "Suggestion overridden",
+        "plan_review": "Plan review required"
+      },
+      "links": {
+        "settings": "Probation settings",
+        "intake": "Intake and activation"
+      }
     },
     "applyFilters": "Apply filters",
     "clearFilters": "Clear filters",
@@ -40319,7 +40390,8 @@
       "change": "Change",
       "created": "Created",
       "status": "Status",
-      "actions": "Actions"
+      "actions": "Actions",
+      "from": "From"
     },
     "events": {
       "confirmation": "Confirmation",
@@ -40370,7 +40442,12 @@
       "saveForApproval": "Save changes for approval",
       "notPending": "Posting {posting} is no longer waiting for approval.",
       "backToPostings": "Back to Personnel postings"
-    }
+    },
+    "introGroup": "Changes to Personnel Management created by workflows wait here as drafts. Approve applies the change, and Edit opens the event movement in Personnel Management. Probation postings are approved by <b>{group}</b>, set in Probation settings.",
+    "sources": {
+      "probation": "Probation"
+    },
+    "approverGroupFallback": "the posting approver group"
   },
   "probationLetters": {
     "routing": {
