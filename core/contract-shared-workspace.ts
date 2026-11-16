@@ -19,3 +19,8 @@ export function contractSharedWorkspace(ctx:SessionContext,caseId:string){
   return {view,...row.workspace,reasons};
  });
 }
+export type ContractConfigurationChoices={accessAdmin:boolean;companies:{id:string;name:string}[];scopes:{id:string;name:string;parentId:string|null}[];people:{id:string;name:string}[];groups:{id:string;name:string}[]};
+export function contractSharedConfigurationChoices(ctx:SessionContext){return withScopedLifecycleTenant(ctx,async tx=>{const [row]=await tx.execute<{choices:ContractConfigurationChoices}>(sql`select app.contract_shared_configuration_choices() as choices`);return row.choices;});}
+export function contractSharedAccessPeople(ctx:SessionContext,search:string){z.string().max(100).parse(search);return withScopedLifecycleTenant(ctx,async tx=>{const [row]=await tx.execute<{people:{id:string;name:string}[]}>(sql`select app.contract_shared_access_people(${search}) as people`);return row.people;});}
+export type ContractWaitingMetadata={caseId:string;waitingOn:string;waitingFor:string};
+export function contractSharedWaiting(ctx:SessionContext,caseIds:string[]){const ids=z.array(z.uuid()).max(100).parse(caseIds);if(!ids.length)return Promise.resolve([] as ContractWaitingMetadata[]);return withScopedLifecycleTenant(ctx,async tx=>{const [row]=await tx.execute<{waiting:ContractWaitingMetadata[]}>(sql`select app.contract_shared_tracker_waiting(${`{${ids.join(',')}}`}::uuid[]) as waiting`);return row.waiting;});}

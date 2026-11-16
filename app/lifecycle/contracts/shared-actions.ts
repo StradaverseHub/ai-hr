@@ -19,6 +19,8 @@ export async function previewSharedDecision(input:Parameters<typeof owner.previe
 export async function readSharedDecisionPreview(id:string){return perform(s=>owner.readContractSharedDecisionPreview(s,id),false);}
 export async function submitSharedDecision(input:Parameters<typeof owner.submitContractSharedDecision>[1]){return perform(s=>owner.submitContractSharedDecision(s,input));}
 export async function adoptSharedCase(id:string){return perform(s=>owner.adoptContractSharedCase(s,id));}
+export async function openSharedPeriod(input:Parameters<typeof owner.openContractSharedPeriod>[1]){return perform(s=>owner.openContractSharedPeriod(s,input));}
 export async function saveSharedSettings(input:Parameters<typeof owner.saveContractSharedSettings>[1]){return perform(s=>owner.saveContractSharedSettings(s,input));}
 export async function saveSharedRole(input:Parameters<typeof owner.saveContractSharedRole>[1]){return perform(s=>owner.saveContractSharedRole(s,input));}
 export async function saveSharedMember(input:Parameters<typeof owner.saveContractSharedMember>[1]){return perform(s=>owner.saveContractSharedMember(s,input));}
+export async function searchSharedPeople(search:string){return perform(s=>owner.contractSharedAccessPeople(s,search),false);}

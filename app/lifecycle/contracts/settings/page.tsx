@@ -1,7 +1,8 @@
 import {redirect,notFound} from 'next/navigation';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
-import {contractCompanies,contractSettings,contractConfigurationChoices,contractTemplates} from '@/packs/contracts/service';
+import {contractSharedConfigurationChoices,contractSharedSettings,contractSharedAccess} from '@/packs/contracts/service';
 import {todayInKualaLumpur} from '@/lib/hr-date';
-import {ContractSettingsEditor} from './settings';
+import {SharedContractSettings} from './shared-settings';
 import '../../v9/workspace.css';
-export default async function Page(){const s=await requireScopedLifecycleModule();if(!s)redirect('/login');const companies=(await contractCompanies(s)).filter(c=>c.configure);if(!companies.length)notFound();const stored=await contractSettings(s),settings={configurations:Array.from(stored.configurations),roles:Array.from(stored.roles)},choices=await Promise.all(companies.map(async c=>({companyId:c.id,...await contractConfigurationChoices(s,c.id)})));return <main className="v9-workspace"><ContractSettingsEditor companies={companies} templatesAvailable={companies.some(c=>c.gbs)||(await contractTemplates(s)).length>0} settings={settings} choices={choices} today={todayInKualaLumpur()}/></main>;}
+import '../shared-contract.css';
+export default async function Page({searchParams}:{searchParams:Promise<{companyId?:string}>}){const s=await requireScopedLifecycleModule();if(!s)redirect('/login');const choices=await contractSharedConfigurationChoices(s);if(!choices.accessAdmin&&!choices.companies.length)notFound();const requested=(await searchParams).companyId,companyId=choices.companies.find(c=>c.id===requested)?.id??choices.companies[0]?.id??null;const [settings,access]=await Promise.all([companyId?contractSharedSettings(s,companyId):null,choices.accessAdmin?contractSharedAccess(s):null]);return <main className="v9-workspace"><SharedContractSettings key={companyId+':'+settings?.revision} choices={choices} companyId={companyId} stored={settings} access={access} today={todayInKualaLumpur()}/></main>;}
