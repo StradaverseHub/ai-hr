@@ -12,7 +12,7 @@ type Fixture={version:1;tenantId:string;companyId:string;actors:Actor[];lastWork
 async function main(){
  const {randomUUID}=await import('node:crypto'),{and,eq,isNull,sql}=await import('drizzle-orm');
  const {createDb,client}=await import('../db/client'),s=await import('../db/schema');
- const {resolveEntitlementsTx}=await import('../core/entitlements'),{assignRole,createDepartment,createPosition}=await import('../core/admin'),{hireEmployee}=await import('../core/org'),{setCompensation}=await import('../core/comp');
+ const {resolveEntitlementsTx}=await import('../core/entitlements'),{assignRole,createDepartment,createPosition,createJobGrade}=await import('../core/admin'),{hireEmployee,setEmploymentGrade}=await import('../core/org'),{setCompensation}=await import('../core/comp');
  const {v9Setup,v9SaveConfig,v9Configuration,v9CaseDetail,v9Command}=await import('../packs/lifecycle/service');
  const {saveAutomationWorkflow}=await import('../packs/automation/service');
  const {resignationEmployeeView,installResignationDefaults}=await import('../packs/lifecycle/resignation/service');
@@ -35,10 +35,12 @@ async function main(){
    const [company]=await owner.db.select({id:s.company.id}).from(s.company).where(and(eq(s.company.tenantId,tenantId),isNull(s.company.archivedAt))).orderBy(s.company.id).limit(1);if(!company)throw Error('Seeded company required.');
    const department=await createDepartment(root,{companyId:company.id,name:'Fictional resignation browser team'});
    const position=await createPosition(root,{companyId:company.id,title:'Fictional resignation coordinator'});
+   const grade=await createJobGrade(root,{code:'RJ_BROWSER',name:'Fictional resignation grade',scopeCompanyIds:[company.id]});
    const actors:Actor[]=[{key:'configurer',userId:user.id,personId:user.personId,name:'Fixture configuration administrator'}];
    const manager=await hireEmployee(root,{person:{fullName:'Fictional resignation manager',primaryEmail:'rj-manager@example.invalid'},companyId:company.id,departmentId:department.id,positionId:position.id,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
    for(const key of ['manager','bp','accept','retain','decline','recall','outsider']){
     const hired=key==='manager'?manager:await hireEmployee(root,{person:{fullName:'Fictional resignation '+key,primaryEmail:'rj-'+key+'@example.invalid'},companyId:company.id,departmentId:department.id,positionId:position.id,employmentType:'full_time',hiredOn:todayInKualaLumpur(),reportingManagerEmploymentId:manager.employmentId});
+    await setEmploymentGrade(root,{employmentId:hired.employmentId,gradeId:grade.id});
     const [account]=await owner.db.insert(s.appUser).values({tenantId,personId:hired.personId,workosUserId:'resignation-browser:'+key,onboardedAt:new Date()}).returning();
     await assignRole(root,{appUserId:account.id,role:key==='manager'?'hr_admin':'employee',...(key==='manager'?{companyId:company.id}:{})});
     actors.push({key,userId:account.id,personId:hired.personId,employmentId:hired.employmentId,name:'Fictional resignation '+key});
