@@ -41,6 +41,7 @@ export type ResignationLetter = {
   receipts: {id: string; fingerprint: string}[];
   fieldLabels: Record<string, string>;
   /** Frozen unsigned-print identities; a completed signature always prints its actual authenticated receipt. */
+  personIds?: Record<string, string>;
   signers?: Record<string, {name: string | null; title: string | null; label: string | null; role: string}>;
 };
 export type ResignationLetterEvent = {
@@ -64,6 +65,7 @@ export type GenerateResignationLetterInput = {
   fallbackRouting?: DocumentRouting;
   fieldLabels?: Record<string, string>;
   /** Authoritative Personnel display facts keyed by resolved user ID; omitted facts fall back to the routing label. */
+  personIds?: Record<string, string>;
   signers?: Record<string, {name: string | null; title?: string | null}>;
   /** Regeneration preserves the generated letter date, but resets signatures and pins the new template version. */
   previous?: ResignationLetter;
@@ -194,6 +196,7 @@ export function generateResignationLetter(input: GenerateResignationLetterInput,
   if (problems.length) invalid(problems.join(' '));
   const resolved = resolveDocumentRouting(routing, {...input.context, fallback: null});
   if (resolved.unresolved.length || resolved.route.steps.some(step => !step.holderId)) invalid(resolved.unresolved.map(step => `${step.meantFor}: ${step.reason}`).join(' ') || 'Nobody is assigned to a letter step.');
+  for (const step of resolved.route.steps) if (step.holderId && input.personIds?.[step.holderId]) step.holderPersonId = input.personIds[step.holderId];
   validateSigningRoute(resolved.route, RULES);
   if (input.kind === 'retention') {
     const lastStage = Math.max(...resolved.route.steps.map(step => step.stage));
