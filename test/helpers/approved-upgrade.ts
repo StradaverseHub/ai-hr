@@ -239,9 +239,13 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5211,when:1794841005811,tag:'5811_contract_shared_worker_binding'},
  {idx:5212,when:1794841005812,tag:'5812_contract_shared_identity_context'},
  {idx:5213,when:1794841005813,tag:'5813_contract_shared_email_notifications'},
+ {idx:5226,when:1794841005826,tag:'5826_automation_shared_assignment_groups'},
+ {idx:5228,when:1794841005828,tag:'5828_automation_email_test_self'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5826_automation_shared_assignment_groups':'4b112e626b80a509c6687fbfd3153bd56bd4ddfdda5cf1fb5c236f8bb9ff86f8',
+ '5828_automation_email_test_self':'2896fd06a661a233ba868a4c1b8e5d0dd8e6420f78f20bc847233fa896a605de',
  '5813_contract_shared_email_notifications':'dffc41e7da79471a45e00cf2fc8914107ac94978e856d40b863eef510f0a58eb',
  '5812_contract_shared_identity_context':'52297a99fc31f991954be72225bd15b1929de02fe0c798558498fb873f511345',
  '5811_contract_shared_worker_binding':'06f410b065580e27f79add6d988e0b3aaacb81ef786416ed395417860885d1e4',
