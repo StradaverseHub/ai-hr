@@ -812,3 +812,23 @@ after those substitutions: `2dde4317cde38383935b881c16479f7224edcbd588c09a5d4443
 This is source-binding evidence only. Original failed gate 43938744762 remains failed; its missing
 unit/browser coverage, the allocation-owner repair, whole types, canonical build, migration rehearsal,
 rendered acceptance and authenticated staging admission still require their actual verification.
+
+
+### Comprehensive Movement verification-repair binding (17 November 2026)
+
+Under the same explicit repository-owner approval above for all coordinated AI binding and migration
+ordering, the release coordinator carries forward the existing 28 active approvals over pre-binding
+repair source `bac5169fc6b03fd7398051791bf2c365e3ff0668`. The changes bind controlled Personnel presentation, record-only
+salary amendment history, shared-lock display reads and the planner-visible projection of the existing
+dated payment-method owner. The native Agent DTO, provider purposes, outbound fields, serializers,
+policies and transports remain unchanged. No additional approval, promotion or outbound action is granted.
+
+The exact provider digest is `d4b66dced0bf4db26f3276e6b48e5c7fbf744e7d0d68038ae3653ae8727bf740` over 1635 files. Reversing
+only the 28 matching previous-digest substitutions reproduces the prior registry byte-for-byte. Pending
+and retired records and all historical approval/evaluation metadata remain unchanged. The regenerated
+agent digest is `4f5309ff8e2af1132dd31565c44306ea5936aca0b1ca468522099c78d70cd956` over 494 files.
+
+Original full gate43943737895 and unchanged-source scale reproduction43951241825 retain their failed
+identities. Development runs43952343985,43952356442,43953766240 and43953835964 retain their own source
+and check coverage. This binding supplies no passing gate or staging acceptance; all final verification,
+authenticated admission and rendered staging checks remain required.
