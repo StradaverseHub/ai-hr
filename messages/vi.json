@@ -600,7 +600,8 @@
     "automationOnOffWorkflows": "On/Off Boarding workflows",
     "automationOnOffTemplates": "On/Off Boarding templates",
     "automationOnOffGroups": "On/Off Boarding assignment groups",
-    "probationPostings": "Personnel postings"
+    "probationPostings": "Personnel postings",
+    "probationAccess": "Access"
   },
   "dashboard": {
     "viewAll": "Xem tất cả"

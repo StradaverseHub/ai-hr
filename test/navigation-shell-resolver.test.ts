@@ -95,21 +95,26 @@ describe('shared shell policy preserves the pre-extraction visibility contract',
       '/lifecycle/probation/settings','/lifecycle/probation/forms','/lifecycle/probation/intake',
     ]);
     expect(inFamily({probationAccess:{page:true,configure:false}},'/lifecycle/probation')).toEqual(['/lifecycle/probation','/lifecycle/probation/postings']);
+    // Probation Access (lane K's page): a system administrator who configures Probation; not every configurer.
+    expect(inFamily({isAdmin:true,enabledModules:[],probationAccess:{page:false,configure:true}},'/lifecycle/probation')).toEqual([
+      '/lifecycle/probation/settings','/lifecycle/probation/forms','/lifecycle/probation/intake','/lifecycle/probation/access',
+    ]);
+    expect(inFamily({isAdmin:true,enabledModules:[],probationAccess:{page:true,configure:false}},'/lifecycle/probation')).not.toContain('/lifecycle/probation/access');
     expect(inFamily({contractStaffAccess:{page:false,configure:true}},'/lifecycle/contracts')).toEqual([
       '/lifecycle/contracts/settings','/lifecycle/contracts/workflows','/lifecycle/contracts/templates',
     ]);
   });
 
-  it('resolves the canonical ten scoped descriptors in their declared interleaved order', () => {
-    const rows = resolve({enabledModules:[],probationAccess:{page:true,configure:true,intake:true},
+  it('resolves the canonical eleven scoped descriptors in their declared interleaved order', () => {
+    const rows = resolve({isAdmin:true,enabledModules:[],probationAccess:{page:true,configure:true,intake:true},
       contractStaffAccess:{page:true,configure:true,intake:true}}).destinations.filter(row=>
         row.href.startsWith('/lifecycle/probation') || row.href.startsWith('/lifecycle/contracts'));
     expect(rows.map(row=>row.href)).toEqual([
       '/lifecycle/probation','/lifecycle/probation/postings','/lifecycle/contracts','/lifecycle/probation/settings','/lifecycle/probation/forms',
-      '/lifecycle/probation/intake','/lifecycle/contracts/intake','/lifecycle/contracts/settings',
+      '/lifecycle/probation/intake','/lifecycle/probation/access','/lifecycle/contracts/intake','/lifecycle/contracts/settings',
       '/lifecycle/contracts/workflows','/lifecycle/contracts/templates',
     ]);
-    expect(SCOPED_LIFECYCLE_NAVIGATION).toHaveLength(10);
+    expect(SCOPED_LIFECYCLE_NAVIGATION).toHaveLength(11);
     rows.forEach((row,index)=>expect(row).toBe(SCOPED_LIFECYCLE_NAVIGATION[index]));
     expect(SCOPED_LIFECYCLE_NAVIGATION.filter(row=>row.access==='configureOrIntake').map(row=>row.href)).toEqual(['/lifecycle/probation/intake']);
     expect(inFamily({probationAccess:{page:false,configure:false,intake:true}},'/lifecycle/probation')).toEqual(['/lifecycle/probation/intake']);
