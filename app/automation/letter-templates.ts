@@ -2,8 +2,11 @@ import 'server-only';
 import type {SessionContext} from '@/db/client';
 import {probationAdministrationOptions,probationLetterTemplates} from '@/packs/probation/service';
 import type {NamedOption} from './recipients';
+import {probationTemplateRouting,type ProbationRoutedTemplate} from '@/core/probation-letter-routing';
+import type {DocumentRouting} from '@/lib/document-signing-routing';
 
-export type ProbationLetterChoice = NamedOption & { state: 'draft' | 'published' | 'retired'; version: number; outcome: string };
+/** `routing`: the template version's signing and review routing (empty = the existing letter signing route). */
+export type ProbationLetterChoice = NamedOption & { state: 'draft' | 'published' | 'retired'; version: number; outcome: string; routing: DocumentRouting };
 /**
  * Probation letter templates of one company the viewer configures, through the existing Probation template service
  * (letters and their signing routing stay with Probation; lane D owns signing routing). One company per request: the
@@ -17,6 +20,6 @@ export async function probationLetterChoices(ctx:SessionContext,companyId?:strin
  const definitions=await probationLetterTemplates(ctx,company.id),seen=new Set<string>(),templates:ProbationLetterChoice[]=[];
  // Rows are ordered by key, then newest version first: the first row of each key is its latest version.
  for(const definition of definitions){if(seen.has(definition.key))continue;seen.add(definition.key);
-  if(definition.state!=='retired')templates.push({id:definition.key,name:definition.data.name,state:definition.state,version:definition.version,outcome:definition.data.outcome});}
+  if(definition.state!=='retired')templates.push({id:definition.key,name:definition.data.name,state:definition.state,version:definition.version,outcome:definition.data.outcome,routing:probationTemplateRouting(definition.data as ProbationRoutedTemplate)});}
  return {companies:options.companies,company,templates};
 }

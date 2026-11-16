@@ -57,3 +57,15 @@ export function workflowSummary(workflow: AutomationWorkflow, catalogue: Automat
   const steps = workflow.steps.length > 3 ? `${workflow.steps.length} steps` : workflow.steps.map(s => catalogue.stepTypes.find(x => x.id === s.type)?.label ?? s.type).join(' → ') || 'No steps yet';
   return triggerText(trigger, workflow.trigger) + conditions + ' · ' + steps;
 }
+/**
+ * The prototype list row's two lines (lane M3): "When … · if … · 3 steps" (the trigger) and the step chain
+ * "Generate a document → Send an email" (muted). Same facts as workflowSummary.
+ */
+export function workflowListLines(workflow: AutomationWorkflow, catalogue: AutomationModuleCatalogue): { trigger: string; steps: string } {
+  const trigger = catalogue.triggers.find(t => t.id === workflow.trigger.event);
+  const label = (field: string) => catalogue.conditionFields.find(f => f.id === field)?.label ?? field;
+  const conditions = workflow.conditions.length ? ' · if ' + workflow.conditions.map(c => describeAutomationCondition(c, label)).join(' and ') : '';
+  const count = workflow.steps.length === 1 ? '1 step' : `${workflow.steps.length} steps`;
+  const steps = workflow.steps.map(s => catalogue.stepTypes.find(x => x.id === s.type)?.label ?? s.type).join(' → ') || 'No steps yet';
+  return { trigger: triggerText(trigger, workflow.trigger) + conditions + ' · ' + count, steps };
+}
