@@ -41051,5 +41051,14 @@
       "validFrom": "from {date}",
       "validTo": "until {date}"
     }
+  },
+  "contractHome": {
+    "title": "Contract signatures",
+    "count": "{count, plural, one {# letter is waiting for your signature} other {# letters are waiting for your signature}}",
+    "sign": "Sign letter",
+    "all": "View all {count}",
+    "unnamed": "Contract letter",
+    "unavailable": "Contract signatures could not be loaded. Open Tasks to try again.",
+    "openTasks": "Open Tasks"
   }
 }
