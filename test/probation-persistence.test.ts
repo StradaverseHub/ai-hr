@@ -796,7 +796,7 @@ describe('Probation work in My Action Centre (migration 5751)',()=>{
   expect((await current(peer.ctx)).allowedCommands).toContain('approve');
   expect(onCase(await probationTaskList(peer.ctx,{category:'approval'}))).toEqual([expect.objectContaining({partId:ids.part,kind:'approve',category:'approval',href,companyId:b.companyId})]);
   expect(onCase(await probationTaskList(peer.ctx,{category:'task'}))).toEqual([]);
-  expect((await listPendingTasks(peer.ctx,undefined,modules)).filter(task=>task.kind==='probationApproval').map(task=>task.id)).toEqual([ids.part]);
+  expect((await listPendingTasks(peer.ctx,undefined,modules)).filter(task=>task.kind==='probationApproval').map(task=>task.id)).toEqual([ids.part+':approve']);
   expect((await listPendingTasks(peer.ctx,undefined,{...modules,probation:false})).filter(task=>task.kind.startsWith('probation'))).toEqual([]);
   expect((await probationTaskList(peer.ctx,{category:'approval',companyIds:[randomUUID()]})).items).toEqual([]);
   // The tracker filtered to the caller's work shows the same case.
