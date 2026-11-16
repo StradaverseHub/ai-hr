@@ -273,6 +273,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5757_probation_legacy_workflow_move',
    '5758_probation_routed_overrides',
    '5759_probation_employee_own_steps_only',
+   // Lane J (16 November 2026): imported saved offline evaluation forms.
+   '5762_probation_form_import',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -375,6 +377,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    // 5755: routed Probation steps (assignment facts for the V9 assignment owner).
    // 5756: approver choices on form approval rows (approver role helper, form route validator, group membership and label helpers, routing context and approver freeze).
    // 5757: legacy Probation workflows move to the shared engine (legacy audience, move and its list, daily overdue summary cases).
+   // 5762: imported saved evaluation forms (import, the reviewer's list and the original-file download).
    // Board 511aa74a (5695): the rehire link guard, its Roll Back writer and blockers, and the person-state count.
    'app._access_bootstrap_eligible(uuid,uuid)','app._access_workforce_list_rows(uuid[])','app._ai_control_context_for_purpose(text,boolean,boolean)',
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()','app._assert_assistant_rewards_presentation_v1(text)',
@@ -438,6 +441,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.probation_assignment_facts(uuid,text[],uuid[])','app.probation_automation_context(uuid)','app.probation_automation_notify(uuid,uuid,text,text,uuid[])',
    'app.probation_company_ancestors(uuid[])','app.probation_config_write_company(uuid,text,jsonb,boolean,integer)','app.probation_did_not_join(uuid)',
    'app.probation_form_approver_label(text)','app.probation_form_approver_role(text)','app.probation_form_freeze_approvers(uuid,jsonb)',
+   'app.probation_form_import(uuid,text,text,bytea,jsonb)','app.probation_form_import_read(uuid)','app.probation_form_imports(uuid)',
    'app.probation_form_routing_context(uuid)','app.probation_general_delegate(uuid,uuid,text)','app.probation_holders_set(uuid[])',
    'app.probation_legacy_audience(uuid,uuid)','app.probation_letter_freeze_route(uuid,jsonb,jsonb)','app.probation_letter_routed(jsonb)',
    'app.probation_letter_routing_context(uuid)','app.probation_letter_routing_signatures_ok(jsonb)','app.probation_letter_routing_valid(jsonb)',
@@ -743,6 +747,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'automation_email_delivery':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
    // 5757: moved notify-only Probation workflow definitions, owner only (written through app.probation_workflow_move).
    'probation_workflow_move':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
+   // 5762: imported saved evaluation forms, owner only (written and read through the app.probation_form_import* functions).
+   'probation_form_import':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
    'automation_routing_version':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
    'automation_workflow_version':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
    'personnel_posting':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
@@ -777,6 +783,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {schemaname:'public',tablename:'lc_v9_email_hold',policyname:'v9_email_hold_storage_owner',permissive:'PERMISSIVE',roles:'{OWNER}',cmd:'ALL',qual:'b326b5062b2f0e69046810717534cb09',with_check:'b326b5062b2f0e69046810717534cb09'},
    {schemaname:'public',tablename:'personnel_posting',policyname:'personnel_posting_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
    {schemaname:'public',tablename:'personnel_posting',policyname:'personnel_posting_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'8b0333122d2e162cc1eff24b8b0fc365',with_check:null},
+   {schemaname:'public',tablename:'probation_form_import',policyname:'probation_form_import_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
    {schemaname:'public',tablename:'probation_settings_scope_member',policyname:'probation_settings_scope_member_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
    {schemaname:'public',tablename:'probation_settings_scope_member',policyname:'probation_settings_scope_member_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'782ac6da7f7880201b39db019eaaac01',with_check:null},
    {schemaname:'public',tablename:'probation_settings_scope_version',policyname:'probation_settings_scope_version_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
@@ -882,6 +889,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const boardReleaseKeys = [
    { rel: 'lc_v9_email_hold', conname: 'lc_v9_email_hold_company_tenant_fk', convalidated: true, action: 'a' },
    { rel: 'personnel_posting', conname: 'personnel_posting_company_tenant_fk', convalidated: true, action: 'a' },
+   { rel: 'probation_form_import', conname: 'probation_form_import_company_tenant_fk', convalidated: true, action: 'a' },
    { rel: 'probation_settings_scope_member', conname: 'probation_settings_scope_member_company_tenant_fk', convalidated: true, action: 'a' },
   ];
   const boardReleaseNames = new Set(boardReleaseKeys.map(row => row.conname));

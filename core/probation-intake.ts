@@ -7,6 +7,7 @@ import {validateProbationOfflinePdf} from '../lib/probation-offline-pdf';
 import {ProbationError,type ProbationPersonnel} from './probation';
 import {employmentStatusSql} from './employment-status-sql';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {parseSavedProbationForm,importedFormSummary,type ImportedProbationForm,type ProbationFormRefusal} from '../lib/probation-intake-html';
 import type {ProbationIntakeDisposition,ProbationIntakeStageOption,ProbationRequiredIntakePart,ProbationOfflineFinalDecision} from '../lib/probation-intake-model';
 export type ProbationIntakeCandidate={source:ProbationPersonnel;classification:'excluded'|'held'|'ready'|'already_admitted';issues:string[];canReview:boolean;canValidate:boolean;requiredParts:ProbationRequiredIntakePart[];stageOptions:ProbationIntakeStageOption[];offlineDecisionReady:boolean;offlineDecision:ProbationOfflineFinalDecision|null;holders:{role:string;name:string;userId:string}[];sourceDigest:string;disposition:ProbationIntakeDisposition|null;evidence:{id:string;name:string;reason:string;createdAt:string}[]};
 export type ProbationIntakeWorkspace={candidates:ProbationIntakeCandidate[];truncated:boolean;excludedCount:number};
@@ -56,3 +57,58 @@ export function probationActivationCounts(ctx:SessionContext,companyIds:string[]
   return [...rows];
  });
 }
+
+/* ---------- Saved HTML evaluation forms (handoff §5 Part C items 1-2; migration 5762) ---------- */
+export type ProbationFormImportPart={part:1|2|3;status:'signed'|'started'|'not_started';applied:'draft_filled'|'kept_system_values'|'part_not_open'|'no_part'|'nothing'|'staged';fields?:string[]};
+export type ProbationFormImportRefusal=ProbationFormRefusal|'not_entitled'|'no_employee'|'name_mismatch'|'excluded'|'no_settings'|'opens_automatically'|'case_closed'|'not_saved';
+export type ProbationFormImportResult={
+ file:string;result:'previewed'|'merged'|'staged'|'unchanged'|'refused';
+ code?:ProbationFormImportRefusal;reason?:string;version?:string;field?:string;message?:string;
+ employee?:{name:string;id:string};summary?:ReturnType<typeof importedFormSummary>;warnings:string[];
+ importId?:string;caseId?:string|null;previous?:'merged'|'staged';parts?:ProbationFormImportPart[];
+};
+export type ProbationFormImportRow={id:string;fileName:string;contentHash:string;formVersion:string;result:'merged'|'staged';employmentId:string;caseId:string|null;employeeCode:string|null;employeeName:string;importedAt:string;importedBy:string;summary:ProbationFormImportPart[]};
+
+function readSavedForm(input:{name:string;content:Buffer}):{result:ProbationFormImportResult;form:ImportedProbationForm|null}{
+ const parsed=parseSavedProbationForm({name:input.name,bytes:input.content});
+ if(!parsed.ok)return{form:null,result:{file:input.name,result:'refused',code:parsed.code,version:parsed.version,field:parsed.field,message:parsed.message,warnings:[]}};
+ return{form:parsed.form,result:{file:input.name,result:'previewed',employee:{name:parsed.form.employee.name,id:parsed.form.employee.id},summary:importedFormSummary(parsed.form),warnings:parsed.warnings}};
+}
+/** Reads one saved form on the server (no database write). The caller must hold intake access to the company. */
+export async function previewProbationSavedForm(ctx:SessionContext,input:{companyId:string;name:string;content:Buffer}):Promise<ProbationFormImportResult>{
+ await assertProbationIntakeCompany(ctx,input.companyId);
+ return readSavedForm(input).result;
+}
+
+/**
+ * Imports one saved form in its own transaction: authorised in the database by the existing intake authority on the
+ * matched employment (its actual PBP or GBS reviewer). A refused or failed file changes nothing and never blocks others.
+ */
+export async function importProbationSavedForm(ctx:SessionContext,input:{companyId:string;name:string;content:Buffer}):Promise<ProbationFormImportResult>{
+ await assertProbationIntakeCompany(ctx,input.companyId);
+ const{form,result}=readSavedForm(input);
+ if(!form)return result;
+ const base={file:input.name,employee:result.employee,summary:result.summary,warnings:result.warnings};
+ type Stored={result:'merged'|'staged'|'unchanged'|'refused';code?:ProbationFormImportRefusal;reason?:string;importId?:string;caseId?:string|null;previous?:'merged'|'staged';parts?:ProbationFormImportPart[]};
+ let data:Stored;
+ try{
+  data=await withScopedLifecycleTenant(ctx,async tx=>{
+   assertModuleEnabled(ctx,'lifecycle',input.companyId);
+   const[row]=await tx.execute<{data:Stored}>(sql`select app.probation_form_import(${input.companyId}::uuid,${form.employee.id},${input.name.slice(0,200)},${input.content},${JSON.stringify(form)}::jsonb) as data`);
+   return row.data;
+  });
+ }catch{return{...base,result:'refused',code:'not_saved'};}
+ return{...base,...data};
+}
+
+async function assertProbationIntakeCompany(ctx:SessionContext,companyId:string){
+ id.parse(companyId);
+ const companies=await probationIntakeCompanies(ctx);
+ if(!companies.some(company=>company.id===companyId))throw new ProbationError('forbidden','Probation intake is unavailable for this company in your scope.');
+}
+
+/** The latest saved-form imports the reader may review in this company (bounded in the database). */
+export function probationFormImports(ctx:SessionContext,companyId:string):Promise<ProbationFormImportRow[]>{return withScopedLifecycleTenant(ctx,async tx=>{assertModuleEnabled(ctx,'lifecycle',id.parse(companyId));const[row]=await tx.execute<{data:ProbationFormImportRow[]}>(sql`select app.probation_form_imports(${companyId}::uuid) as data`);return row.data;});}
+
+/** The original uploaded bytes, for download only (never rendered). */
+export function readProbationFormImport(ctx:SessionContext,importId:string):Promise<{name:string;content:Buffer}>{return withScopedLifecycleTenant(ctx,async tx=>{const[row]=await tx.execute<{original_name:string;original_content:Buffer}>(sql`select * from app.probation_form_import_read(${id.parse(importId)}::uuid)`);if(!row)throw new ProbationError('forbidden','The imported form is unavailable.');return{name:row.original_name,content:row.original_content};});}

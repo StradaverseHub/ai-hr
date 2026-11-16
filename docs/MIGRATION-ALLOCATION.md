@@ -1,3 +1,18 @@
+# Imported saved Probation evaluation forms — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-import-20261116` (lane J of the Probation Confirmation build) appends
+`5762_probation_form_import` at idx 5162 / when 1793330005462 (assigned by the build coordinator; 5760/5761 belong to
+lane I). SHA256 `7accc885810776b61d2b4b5c292798f62aad1f2434280d80cc787d2946e8215d`. It adds one owner-only table,
+`probation_form_import` (forced row security, owner policy, no application grant, the ADR-0174
+`probation_form_import_company_tenant_fk` key), holding the original saved v22.9.26 form bytes with their SHA-256, the
+validated values and what the import did; and three functions granted to `ai_hr_app`: `app.probation_form_import`
+(one file per transaction under `app.probation_write_lock`, authorised by the employment's actual PBP/GBS reviewer;
+merges blank drafts into a matching open case with a `probation.html_form_imported` history event, stages an eligible
+employee without a case for the reviewed cut-over, or refuses with a code and writes nothing),
+`app.probation_form_imports` (bounded reviewer list) and `app.probation_form_import_read` (original bytes for download).
+No existing table, row, function, grant or purpose-owned object changes. The installed ledgers were not read; recheck
+watermarks and peer claims at admission. This allocation grants no installation authority.
+
 # The Probation employee holds only their own steps — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/probation-lane-overrides-20261116` (lane H2 of the Probation Confirmation build) appends
