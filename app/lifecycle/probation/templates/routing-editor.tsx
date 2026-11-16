@@ -29,13 +29,13 @@ export function newRoutingStep(routing:DocumentRouting,id:string,who:DocumentRou
  * (Review · Approve · Sign), Who, Owns the document; Add / Remove step; signature blocks linked to Sign steps. Problems
  * are the same pure checks the server applies. `editable` is false while the version is read-only.
  */
-export function TemplateRoutingEditor({value,blocks,choices,editable,onChange,onBlocksChange,newId}:{
- value:DocumentRouting;blocks:readonly Block[];choices:RoutingChoices;editable:boolean;
+export function TemplateRoutingEditor({value,blocks,choices,editable,onChange,onBlocksChange,newId,requireSign=true}:{
+ requireSign?:boolean;value:DocumentRouting;blocks:readonly Block[];choices:RoutingChoices;editable:boolean;
  onChange:(routing:DocumentRouting)=>void;onBlocksChange:(blocks:Block[])=>void;newId:()=>string;
 }){
  const t=useTranslations('probationLetters');
  const known={routings:new Set(choices.routings.map(r=>r.id)),groups:new Set(choices.groups.map(g=>g.id)),people:new Set(choices.people.map(p=>p.id))};
- const problems=[...documentRoutingProblems(value,{routingExists:id=>known.routings.has(id),groupExists:id=>known.groups.has(id),personExists:id=>known.people.has(id)}),...documentRoutingSignatureProblems(value,blocks)];
+ const problems=[...documentRoutingProblems(value,{routingExists:id=>known.routings.has(id),groupExists:id=>known.groups.has(id),personExists:id=>known.people.has(id)},{requireSign}),...documentRoutingSignatureProblems(value,blocks)];
  const name=(list:readonly RoutingChoice[],id:string)=>list.find(item=>item.id===id)?.name??t('routing.unknown');
  const whoLabel=(who:DocumentRoutingWho)=>who.kind==='employee'?t('routing.whoEmployee'):who.kind==='directSuperior'?t('routing.whoDirectSuperior'):who.kind==='routing'?t('routing.whoRouting',{name:name(choices.routings,who.routingId)}):who.kind==='group'?t('routing.whoGroup',{name:name(choices.groups,who.groupId)}):t('routing.whoPeople');
  const update=(id:string,patch:Partial<DocumentRoutingStep>)=>onChange(value.map(step=>step.id===id?{...step,...patch}:patch.owner?{...step,owner:false}:step));

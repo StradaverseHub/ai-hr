@@ -9,11 +9,15 @@ import {WorkflowEditorShell,WorkflowField} from '../../lifecycle/workflow-editor
 import {MultiSelect} from '../multi-select';
 import {PeopleSearch} from '../people-search';
 import {recipientKey,recipientOptions,recipientsFromKeys,type NamedOption} from '../recipients';
+import {OFFBOARDING_LETTER_TRIGGERS,OFFBOARDING_POSTING_EVENTS} from '@/lib/automation/catalogues/offboarding';
+import {offboardingStepParamProblems} from '@/lib/automation/offboarding';
+import {OffboardingStepFields} from './offboarding-step-fields';
 import {saveWorkflowAction} from '../actions';
 import {ConditionRows} from './condition-rows';
 import {DryRunPanel} from './dry-run-panel';
 
 export type WorkflowEditorReferences = {
+  postingApproverGroupId?:string|null;
   routings: (NamedOption & { retired?: boolean })[];
   groups: NamedOption[];
   people: NamedOption[];
@@ -49,20 +53,20 @@ export function conditionsWithIds(workflow: AutomationWorkflow, choices: Readonl
 const text = (value: unknown) => typeof value === 'string' ? value : '';
 
 /** The shared workflow editor for a module on the shared engine (Probation first). Saves through the shared store. */
-export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,onClose}:{catalogue:AutomationModuleCatalogue;initial:AutomationWorkflow;revision:number;refs:WorkflowEditorReferences;onClose:()=>void}){
+export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,onClose,editable=true}:{editable?:boolean;catalogue:AutomationModuleCatalogue;initial:AutomationWorkflow;revision:number;refs:WorkflowEditorReferences;onClose:()=>void}){
  const t=useTranslations('automation'),router=useRouter(),[busy,start]=useTransition();
  const [converted]=useState(()=>conditionsWithIds(initial,refs.conditionValues));
  const [draft,setDraft]=useState(converted),[revision,setRevision]=useState(savedRevision),[dirty,setDirty]=useState(savedRevision===0||converted!==initial),[note,setNote]=useState(''),[message,setMessage]=useState<Message|null>(null),[people,setPeople]=useState(refs.people);
  const fields=useRef<Record<string,HTMLInputElement|HTMLTextAreaElement|null>>({});
- const readOnly=initial.status==='retired'||busy;
+ const readOnly=!editable||initial.status==='retired'||busy;
  const change=(edit:(workflow:AutomationWorkflow)=>void)=>{setDraft(current=>{const next=structuredClone(current);edit(next);return next;});setDirty(true);setMessage(null);};
  const setStep=(index:number,edit:(step:AutomationStep)=>void)=>change(w=>edit(w.steps[index]));
  const references:AutomationReferences={routingExists:id=>refs.routings.some(r=>r.id===id&&!r.retired),groupExists:id=>refs.groups.some(g=>g.id===id),personExists:id=>people.some(p=>p.id===id)};
  const stepReferences={emailTemplates:refs.emailTemplates,letterTemplateIds:refs.letterTemplates?.map(l=>l.id)??null};
- const problems=draft.status==='retired'?[]:[...automationWorkflowProblems(draft,catalogue,references),...probationStepParamProblems(draft,stepReferences)];
+ const problems=draft.status==='retired'?[]:[...automationWorkflowProblems(draft,catalogue,references),...probationStepParamProblems(draft,stepReferences),...offboardingStepParamProblems(draft,{...stepReferences,postingApproverGroupId:refs.postingApproverGroupId,references})];
  const warnings=[...automationMergeWarnings(draft,catalogue),...probationStepParamWarnings(draft,stepReferences)];
  const trigger=catalogue.triggers.find(x=>x.id===draft.trigger.event);
- const recipients=recipientOptions(catalogue,{routings:refs.routings,groups:refs.groups,people},{routing:name=>t('recipients.routing',{name}),group:name=>t('recipients.group',{name})});
+ const recipients=recipientOptions(catalogue,{routings:refs.routings,groups:refs.groups,people},{routing:name=>t('recipients.routing',{name}),group:name=>t('recipients.group',{name})}).filter(option=>draft.module!=='off'||option.value!=='pending'||(OFFBOARDING_LETTER_TRIGGERS as readonly string[]).includes(draft.trigger.event));
  const merge=mergeFieldsForTrigger(catalogue,draft.trigger.event),mergeGroups=[...new Set(merge.map(m=>m.group))];
  const valuesFor=(field:string)=>refs.conditionValues[field]??[];
 
@@ -92,7 +96,7 @@ export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,on
   <div className="v9-field"><span>{t('editor.cc')}</span><MultiSelect label={t('editor.stepCc',{step:index+1})} value={step.cc.map(recipientKey)} options={recipients} disabled={readOnly} onChange={keys=>setStep(index,s=>{s.cc=recipientsFromKeys(keys);})}/></div>
  </div>;
  const newStep=(type:string):AutomationStep=>({id:crypto.randomUUID(),type,conditions:[],to:type==='sendEmail'||type==='notify'?[{kind:'role',role:'employee'}]:[],cc:[],
-  params:type==='notify'?{subject:'',body:''}:type==='sendEmail'?{emailTemplateId:''}:type==='generateDocument'?{letterTemplateId:''}:type==='createPosting'?{eventType:''}:type==='startOffboarding'?{exitReason:'Non-confirmation'}:{}});
+  params:type==='notify'?{subject:'',body:''}:type==='sendEmail'?{emailTemplateId:''}:type==='generateDocument'?{letterTemplateId:''}:type==='createPosting'?{eventType:''}:type==='startOffboarding'?{exitReason:draft.module==='off'?'Resignation':'Non-confirmation'}:type==='requestDecision'?{choices:'both',watch:[],canComment:true,dueDays:null}:type==='requestApproval'?{layers:[]}:{}});
  const stepBody=(step:AutomationStep,index:number)=>{
   if(step.type==='notify')return <div className="v9-stack">{toCc(index,step)}
    <div className="v9-field"><div className="automation-row automation-between"><label htmlFor={`automation-subject-${index}`}>{t('editor.subject')}</label>{picker(index,'subject')}</div>
@@ -109,13 +113,13 @@ export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,on
    ?<WorkflowField label={t('editor.letterTemplate')}><select value={text(step.params.letterTemplateId)} disabled={readOnly} onChange={e=>setStep(index,s=>{s.params.letterTemplateId=e.target.value;})}><option value="">{t('editor.choose')}</option>{[...refs.letterTemplates,...(text(step.params.letterTemplateId)&&!refs.letterTemplates.some(l=>l.id===step.params.letterTemplateId)?[{id:text(step.params.letterTemplateId),name:t('notAvailable',{value:text(step.params.letterTemplateId)})}]:[])].map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select></WorkflowField>
    :<WorkflowField label={t('editor.letterTemplateId')}><input value={text(step.params.letterTemplateId)} disabled={readOnly} onChange={e=>setStep(index,s=>{s.params.letterTemplateId=e.target.value.trim();})}/></WorkflowField>}
    <p className="v9-muted">{t('editor.letterNote')}</p></div>;
-  if(step.type==='createPosting')return <div className="v9-stack"><WorkflowField label={t('editor.postingEvent')}><select value={text(step.params.eventType)} disabled={readOnly} onChange={e=>setStep(index,s=>{s.params.eventType=e.target.value;})}><option value="">{t('editor.choose')}</option>{PROBATION_POSTING_EVENTS.map(event=><option key={event} value={event}>{event}</option>)}</select></WorkflowField><p className="v9-muted">{t('editor.postingNote')}</p></div>;
+  if(step.type==='createPosting')return <div className="v9-stack"><WorkflowField label={t('editor.postingEvent')}><select value={text(step.params.eventType)} disabled={readOnly} onChange={e=>setStep(index,s=>{s.params.eventType=e.target.value;})}><option value="">{t('editor.choose')}</option>{(draft.module==='off'?OFFBOARDING_POSTING_EVENTS:PROBATION_POSTING_EVENTS).map(event=><option key={event} value={event}>{event}</option>)}</select></WorkflowField><p className="v9-muted">{t('editor.postingNote')}</p></div>;
   if(step.type==='startOffboarding')return <div className="v9-stack"><WorkflowField label={t('editor.exitReason')}><input value={text(step.params.exitReason)} maxLength={200} disabled={readOnly} onChange={e=>setStep(index,s=>{s.params.exitReason=e.target.value;})}/></WorkflowField><p className="v9-muted">{t('editor.offboardingNote')}</p></div>;
   return null;
  };
 
  return <div className="v9-stack">
-  <WorkflowEditorShell title={draft.name||t('editor.untitled')} moduleLabel={catalogue.label} stateLabel={t('status.'+draft.status)} required={draft.required}
+  <WorkflowEditorShell title={draft.name||t('editor.untitled')} moduleLabel={catalogue.label} stateLabel={draft.module==='off'&&draft.status==='paused'?'Draft':t('status.'+draft.status)} required={draft.required}
    description={<div className="v9-fields">
     <WorkflowField label={t('editor.name')}><input value={draft.name} maxLength={200} disabled={readOnly} aria-invalid={!draft.name.trim()} onChange={e=>change(w=>{w.name=e.target.value;})}/></WorkflowField>
     <label className="automation-check"><input type="checkbox" checked={draft.required} disabled={readOnly} onChange={e=>change(w=>{w.required=e.target.checked;})}/><span>{t('editor.required')}</span></label>
@@ -144,6 +148,7 @@ export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,on
        <button type="button" className="v9-button" aria-label={t('editor.removeStep',{step:index+1})} disabled={readOnly} onClick={()=>change(w=>{w.steps.splice(index,1);})}>{t('editor.remove')}</button>
       </span></div>
      {stepBody(step,index)}
+     {draft.module==='off'&&<OffboardingStepFields step={step} trigger={draft.trigger.event} disabled={readOnly} recipients={recipients} change={patch=>setStep(index,s=>{if(Array.isArray(patch._decisionTo)){s.to=patch._decisionTo;delete patch._decisionTo;}s.params={...s.params,...patch};})}/>}
      <div className="automation-step-conditions"><b>{t('editor.stepOnlyIf')}</b>
       <ConditionRows catalogue={catalogue} trigger={draft.trigger.event} conditions={step.conditions} valuesFor={valuesFor} disabled={readOnly} label={t('editor.stepConditions',{step:index+1})} addLabel={t('editor.addStepCondition')} hint={t('editor.stepConditionHint')} onChange={next=>setStep(index,s=>{s.conditions=next;})}/></div>
     </li>)}</ol>
@@ -152,11 +157,11 @@ export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,on
    dryRun={<div className="v9-stack">
     {problems.length>0&&<section className="automation-issues" aria-label={t('editor.problems')}><b>{t('editor.problems')}</b><ul>{problems.map((p,i)=><li key={i}>{p}</li>)}</ul></section>}
     {warnings.length>0&&<section className="automation-notes" aria-label={t('editor.warnings')}><b>{t('editor.warnings')}</b><ul>{warnings.map((w,i)=><li key={i}>{w}</li>)}</ul></section>}
-    {draft.module==='probation'&&<DryRunPanel workflow={draft} catalogue={catalogue}/>}
+    {(draft.module==='probation'||draft.module==='off')&&<DryRunPanel workflow={draft} catalogue={catalogue}/>}
    </div>}
    actions={<>
     {message&&<div className={message.kind==='error'?'v9-notice v9-error':'v9-notice'} role={message.kind==='error'?'alert':'status'}>{message.text}{message.problems?.length?<ul>{message.problems.map((p,i)=><li key={i}>{p}</li>)}</ul>:null}</div>}
-    {initial.status!=='retired'&&<>
+    {editable&&initial.status!=='retired'&&<>
      <WorkflowField label={t('editor.note')}><input value={note} maxLength={500} disabled={readOnly} placeholder={t('editor.notePlaceholder')} onChange={e=>setNote(e.target.value)}/></WorkflowField>
      <div className="automation-row">
       {draft.status==='live'
@@ -168,7 +173,7 @@ export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,on
      </div>
      <p className="v9-muted">{t('editor.runsKeep')}</p>
     </>}
-    {initial.status==='retired'&&<div className="automation-row"><p className="v9-muted">{t('editor.retiredReadOnly')}</p><button type="button" className="v9-button" onClick={onClose}>{t('editor.back')}</button></div>}
+    {(!editable||initial.status==='retired')&&<div className="automation-row"><p className="v9-muted">{t('editor.retiredReadOnly')}</p><button type="button" className="v9-button" onClick={onClose}>{t('editor.back')}</button></div>}
    </>}
   />
  </div>;

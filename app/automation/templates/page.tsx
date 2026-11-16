@@ -1,3 +1,7 @@
+import {v9Configuration} from '@/packs/lifecycle/service';
+import {LifecycleTemplateSection} from '../lifecycle-configuration';
+import {FilterChips} from '../filter-chips';
+import {ConfigHead} from '@/app/lifecycle/probation/settings/config-head';
 import {notFound} from 'next/navigation';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
 import {automationAssignmentGroups,automationPeopleNames,listAutomationEmailTemplates,listAutomationRoutings} from '@/packs/automation/service';
@@ -19,5 +23,9 @@ export default async function Page({searchParams}:{searchParams:Promise<Record<s
   refs.groups=groups;
   refs.people=await automationPeopleNames(ctx,stored.flatMap(e=>e.template.cc.flatMap(r=>r.kind==='person'?[r.userId]:[])));
  }
- return <TemplatesWorkspace filter={filter} access={access} emails={emails} letters={letters} refs={refs}/>;
+ const lifecycle=access.legacy&&(filter==='all'||filter==='onb'||filter==='off')?await v9Configuration(ctx):null;
+ const routes=lifecycle?await listAutomationRoutings(ctx):[];
+ const lifecycleSection=lifecycle?<LifecycleTemplateSection initial={lifecycle} filter={filter==='onb'?'onb':filter==='off'?'off':'all'} choices={{routings:routes.filter(r=>!r.retired).map(r=>({id:r.routing.id,name:r.routing.name})),groups:lifecycle.config?.groups??[],people:lifecycle.users}}/>:null;
+ if(filter==='onb'||filter==='off')return <main className="v9-stack pcg"><ConfigHead crumb="Configuration / Templates" title="Templates" sub="Document and email templates shared by the lifecycle modules."/><FilterChips path="/automation/templates" current={filter}/>{lifecycleSection??<p className="v9-notice">You cannot configure this module.</p>}</main>;
+ return <TemplatesWorkspace lifecycleSection={lifecycleSection} filter={filter} access={access} emails={emails} letters={letters} refs={refs}/>;
 }

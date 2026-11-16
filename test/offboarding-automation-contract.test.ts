@@ -29,9 +29,10 @@ describe('Offboarding catalogue and module isolation',()=>{
   expect(mergeFieldsForTrigger(O,'offerDue').some(f=>f.key==='retention.replyBy')).toBe(true);
   expect(mergeFieldsForTrigger(O,'signRequest').some(f=>f.key==='letter.where')).toBe(true);
  });
- it('allows only email and notify on letter/reminder events',()=>{
-  for(const event of ['offerDue','signRequest','sentBack','released'])expect(problems(event,step('requestDecision',{choices:'both'}))).toContain('Step 1: This trigger only sends emails and notifications.');
+ it('allows only notifications on letter/reminder events',()=>{
+  for(const event of ['offerDue','signRequest','sentBack','released'])expect(problems(event,step('requestDecision',{choices:'both'}))).toContain('Step 1: This trigger only sends notifications.');
   expect(problems('signRequest',step('notify',{subject:'Action needed'}))).toEqual([]);
+  for(const event of ['offerDue','signRequest','sentBack','released'])expect(problems(event,step('sendEmail',{emailTemplateId:'email'}))).toContain('Step 1: This trigger only sends notifications.');
  });
  it('refuses pending recipients outside letter events including nested FYI lists',()=>{
   const s=step('requestDecision',{choices:'both',watch:[{kind:'pending'}]});

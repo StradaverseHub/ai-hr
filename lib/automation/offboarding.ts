@@ -70,7 +70,7 @@ export function offboardingStepParamProblems(workflow:AutomationWorkflow,refs:Of
  const problems:string[]=[],event=workflow.trigger.event,letter=includes(OFFBOARDING_LETTER_TRIGGERS,event),notifyOnly=includes(OFFBOARDING_NOTIFY_TRIGGERS,event);
  for(const [index,step] of workflow.steps.entries()){
   const at=`Step ${index+1}: `,add=(problem:string)=>problems.push(at+problem),p=step.params;
-  if(notifyOnly&&!['notify','sendEmail'].includes(step.type))add('This trigger only sends emails and notifications.');
+  if(notifyOnly&&step.type!=='notify')add('This trigger only sends notifications.');
   recipientProblems([...step.to,...step.cc],refs.references,letter).forEach(add);
   if(['requestDecision','createPosting'].includes(step.type)&&!offboardingDueValueValid(p.dueDays))add('Due within must be 1 to 60 working days, or left blank.');
   if(step.type==='requestDecision'){
