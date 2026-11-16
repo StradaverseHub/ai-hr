@@ -47,6 +47,8 @@ export async function submitResignation(
   const personId = ctx.personId;
   return withTenant(ctx, async (tx) => {
     if(!await isOwnPersonTx(tx,ctx))throw new ResignationError('This account is not linked to an employee profile.');
+    const [cutover]=await tx.execute<{enabled:boolean}>(sql`select app.resignation_managed_submission_enabled(${p.employmentId}::uuid) as enabled`);
+    if(cutover?.enabled)throw new ResignationError('Use the current resignation form in My Profile to submit this request.');
     const [subject]=await tx.select({id:employment.id}).from(employment).where(and(ownPersonPredicate(ctx),eq(employment.id,p.employmentId),eq(employment.personId,personId))).limit(1).for('update');
     if(!subject)throw new ResignationError('This account is not linked to the selected employee profile.');
     const [open] = await tx
