@@ -733,3 +733,15 @@ Proposed merged provider fingerprint (not approved):
 The current derived agent fingerprint is `3de54444b147cff0a8472c256656e66146a88c5b5a862dc79a190af6f9dc961f`
 over494 files, with Irwin's prior approval literals retained. Any future approved rebinding must regenerate
 that derived agent manifest again. The owner's latest instruction is to stop before release and await approval.
+
+
+### Owner-approved merged performance source (17 November 2026)
+
+The owner explicitly instructed: "Approve the merged-source AI rebinding for 893daeda6. Run the full release gate, then deploy to staging after Claude’s release is complete and all checks pass. Verify the locking and query improvements."
+The release coordinator carries forward the same 28 active approvals from `800269d5…` to
+`a39b180ee690c1f05e3a1ebe0c7236d616347baf80fd83f7e7d8d46e394d3cbc` (1,624 covered files),
+for application source `893daeda66793265d606a6cf7f49591129ce176d`. Original review metadata, historical
+and pending approvals and evaluated/promoted agent identities are preserved. Provider payloads, purposes
+and transports are unchanged by this rebinding. The derived agent manifest is regenerated after updating
+the literal registry. This supersedes the preceding release hold for this exact source and authorizes
+conditional staging installation only; it grants no production deployment or package publication authority.
