@@ -6177,6 +6177,13 @@
       "breakpoints": true
     },
     {
+      "idx": 5171,
+      "version": "7",
+      "when": 1793330005471,
+      "tag": "5771_assistant_legacy_index_shared_access",
+      "breakpoints": true
+    },
+    {
       "idx": 5250,
       "version": "7",
       "when": 1793330005550,

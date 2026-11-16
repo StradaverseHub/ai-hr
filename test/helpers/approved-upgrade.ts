@@ -227,10 +227,12 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5166,when:1793330005466,tag:'5766_probation_reshape_company_in_use'},
  // Board 237c31e6: request-bound approver Employee ID readers for the Attendance approval progress panel (16 Nov 2026).
  {idx:5170,when:1793330005470,tag:'5770_attendance_workflow_approver_codes'},
+ {idx:5171,when:1793330005471,tag:'5771_assistant_legacy_index_shared_access'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5770_attendance_workflow_approver_codes':'f71cf33a9ced5f4e1007de02388a858bd31c64006a422352193bd7c14e367ec0',
+ '5771_assistant_legacy_index_shared_access':'433dfd7549b496b034bdeaa2c06484b700b5dd5647213106d68487f0b485c7c0',
  '5761_probation_automation_recipients_and_tracker_steps':'c39e471adb80e51b56466c264bc6546dc6ce48a354e30d8e9ef3629a82b2184b',
  '5760_probation_queue_kinds_and_pbp_tasks':'c3ab5ddf4c702dd1ca947b3a350c7e852ab8699524c9da7fcad11f19887cdb59',
  '5150_attendance_policy_dated_rounding':'f1549fefc467398d9701ba5428e238134a8ca248fb645046b4b23877280e3408',

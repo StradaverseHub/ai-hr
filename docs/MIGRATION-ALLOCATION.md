@@ -125,6 +125,24 @@ statement trigger on `recruitment_interview`. PRECONDITION: applies after `5720`
 throwaway and CI databases. Recheck the installed ledgers and peer claims at admission; this allocation grants no installation
 authority.
 
+<!-- 5771_assistant_legacy_index_shared_access -->
+# Assistant metadata discovery shares Access — 16 November 2026 MYT (source allocation; installation held)
+
+Branch `codex/architecture-performance-review-index-20261116` allocates `5771_assistant_legacy_index_shared_access` at idx 5171 /
+when 1793330005471, above main/alpha's 5766 and the freshly read staging watermark (881 entries,
+1793330005466). SHA256 `433dfd7549b496b034bdeaa2c06484b700b5dd5647213106d68487f0b485c7c0`. The installed function is owned by ai_hr_owner.
+Only `app.assistant_legacy_reviews_index(text)` changes: its advisory Access acquisition becomes shared.
+Principal freshness, current-person binding, allowed kinds, history windows, deterministic ordering, 25-row cap,
+owner, grants and every command owner remain unchanged. Applied SQL is untouched.
+
+This allocation is not installation authority. After the owner connected the production VPN on 16 November,
+a restricted-owner READ ONLY aggregate verified production at 853 entries / maximum 1793330005395.
+The new when is above both fresh installation maxima. Recheck peer source allocations and both installed ledgers
+at release admission; renumber this unapplied source if a higher watermark or conflicting claim appears.
+Restricted-owner and native concurrency/equivalence checks are required before release.
+
+Owner direction: merge Irwin f0443eaf27d3584f55b6a2e7d48558bd553d4149 and allocate after its 5770 (idx 5170 / when 1793330005470). Stop before release and wait for owner approval; Claude releases first. SQL bytes are unchanged by this source-only renumbering.
+
 <!-- 5770_attendance_workflow_approver_codes -->
 # Board 237c31e6: approver Employee ID readers for Attendance approval progress — 16 November 2026 MYT (unapplied, re-allocated as 5770)
 

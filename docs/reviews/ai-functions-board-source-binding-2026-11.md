@@ -688,6 +688,64 @@ source beyond both sides' own reviewed changes. No provider transform, outbound 
 28 approvals were carried forward from `e4fcddfb…` to `800269d5…` (1,624 files) and the agent manifest regenerated
 (`97bd0705…`, 493 files), under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.
 
+
+### Architecture and performance remediation: staging-only approval (16 November 2026)
+
+The repository owner explicitly answered "Approve staging-only rebinding" in the architecture/performance
+remediation chat on 16 November 2026. The release coordinator carries forward the same 28 continuing approvals
+for this performance batch, based on main/alpha `59f06b08db014e01cd553a827c62ccf864d33f78`.
+The approval question identified the initial `b8d54c6b…` fingerprint. During qualification the preview retained
+its native administrator predicate explicitly (previously enforced by the label-epoch write's RLS policy), so
+the repaired batch's final provider fingerprint is
+`ecd371dec4b42af57c5d415fafe480d5b2b681a02320b49523edcadf4ed92c58` over 1,623 files.
+The owner subsequently answered "Approve final staging rebinding" for this exact fingerprint and the seven
+legacy module-list wrappers, after qualification identified their separate principal-lock interval.
+The standing 12 November staging rebinding approval recorded above also applies. The agent manifest is
+`b812933fc0c4ce8b7cddf6522d21f58de1721b66eb2e501408c6b559fb828ee7` over 494 files.
+
+The intermediate `1123ea58…` source was superseded when tracing the actual module list wrappers showed
+that the principal proof also needed enforced read-only carriers. This completes the same locking repair.
+
+Covered application changes are `core/assistant-actions/module-action-review-store.ts` (read-only carriers for
+the seven qualified legacy metadata lists), `core/import-history.ts` (distinct preview lock), `core/cost-allocation-import.ts`
+(shared Access plus preserved native administrator admission; unchanged exclusive compensation and complete
+stale-review checks), and `core/payroll.ts` (same effective-history header and exact SQL joined count).
+Migration 5767 changes only the assistant metadata index's Access advisory lock to shared, preserving its
+principal, current-person binding, history windows, ordering, packet and command owners.
+No provider transform, outbound field, approved purpose, transport, tool registration or action tier changes.
+Only the 28 active fingerprint literals change. Original review metadata, pending and historical approvals,
+and existing evaluation/promotion identities remain unchanged. This authorizes no production deployment.
+Hosted verification, production watermark admission and staging release/acceptance are separate requirements.
+
+
+### Performance and Irwin integration — prepared, release held (16 November 2026)
+
+Owner direction: merge Irwin f0443eaf27d3584f55b6a2e7d48558bd553d4149, move the unapplied assistant metadata
+migration to 5771 (idx 5171 / when 1793330005471), let Claude release first, and stop before release pending
+owner approval. The two prior source bindings above remain historical approvals for their separate trees.
+The integration retains Irwin's literal approval registry unchanged; it does not carry any record forward
+to the newly generated merged fingerprint. Provider egress therefore remains closed for this unapproved
+merged source. Generated manifests describe the actual merged bytes; they do not grant approval.
+No staging installation, main/alpha advancement or production package publication is authorized by this merge.
+
+Proposed merged provider fingerprint (not approved):
+`a39b180ee690c1f05e3a1ebe0c7236d616347baf80fd83f7e7d8d46e394d3cbc` over1624 files.
+The current derived agent fingerprint is `3de54444b147cff0a8472c256656e66146a88c5b5a862dc79a190af6f9dc961f`
+over494 files, with Irwin's prior approval literals retained. Any future approved rebinding must regenerate
+that derived agent manifest again. The owner's latest instruction is to stop before release and await approval.
+
+
+### Owner-approved merged performance source (17 November 2026)
+
+The owner explicitly instructed: "Approve the merged-source AI rebinding for 893daeda6. Run the full release gate, then deploy to staging after Claude’s release is complete and all checks pass. Verify the locking and query improvements."
+The release coordinator carries forward the same 28 active approvals from `800269d5…` to
+`a39b180ee690c1f05e3a1ebe0c7236d616347baf80fd83f7e7d8d46e394d3cbc` (1,624 covered files),
+for application source `893daeda66793265d606a6cf7f49591129ce176d`. Original review metadata, historical
+and pending approvals and evaluated/promoted agent identities are preserved. Provider payloads, purposes
+and transports are unchanged by this rebinding. The derived agent manifest is regenerated after updating
+the literal registry. This supersedes the preceding release hold for this exact source and authorizes
+conditional staging installation only; it grants no production deployment or package publication authority.
+
 ### Re-binding for breadcrumb task ancestry (16 November 2026)
 
 The breadcrumb repair branch is based on main/alpha `59f06b08d`. The only changed covered source is
@@ -710,3 +768,33 @@ standing staging re-bind pre-approval of 12 November 2026, the same 29 already-a
 remain unchanged. The agent manifest is `1da03e300d47181a3a1a803e3f35d4b2159be8989b56f77fa01ed8ce81b68e52` over 493 files.
 No provider transform, outbound field, purpose or transport was added by the breadcrumb repair. This binding grants
 no production authority. The owner separately requires approval before this candidate is released.
+
+
+### Current staging baseline integration approved (17 November 2026)
+
+After Claude's Irwin release and the breadcrumb release both completed, staging and aligned main/alpha
+identified `bcba1f3e8faaf75c760599750ec9b4dc1d5a0f73`, build `Ch5zYMucPS30OBYzbIX5L`.
+The coordinator preserved that accepted baseline through normal merge `e141d379e`. This changes the
+covered-source identity beyond the prior exact `893daeda6` approval. The owner explicitly answered
+"Approve current-baseline staging rebinding" for the new provider fingerprint
+`0b60766ac33a0418d98b24ff7da5aaab08d17c927ced7d9c7853b929bc35930b` (1,624 files).
+The same 28 active approvals carry forward; original review metadata, historical and pending records
+and evaluated/promoted agent identities are unchanged. Provider payloads, purposes and transports do
+not change. The derived agent manifest is regenerated after the literal update. The existing direction
+to run the full gate and deploy only to staging after all checks pass remains in effect. No production
+installation or package publication is authorized.
+
+### Re-binding the Recruitment group 2 staging candidate (17 November 2026)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` (Recruitment slices 1–25, migrations 5850–5877) merged the staging
+baseline `9bdfb45968` (main/alpha/staging). Under the owner's standing staging re-bind pre-approval of 12 November 2026
+("I approve fully on the rebinding and the AI approval, dont have to wait for my decision"), the same 28 already-approved
+records carry forward from `0b60766ac33a0418d98b24ff7da5aaab08d17c927ced7d9c7853b929bc35930b` to
+`ec4ca199a676cc1cb5fe0a5f2bb79efc7ad396522e8fee1c01caf7eabb36c85c` over 1,683 files. Statuses, purposes, reviewers and
+original approval evidence are unchanged; no existing contract gains a provider transform, outbound field, purpose or transport.
+
+The 59 additional covered files come from Recruitment slice 24's new contract `recruitment_match_summary_v1` (outbound field
+`authored_candidate_profile`). That contract is a NEW purpose: it has no approval record and stays pending, so the gateway refuses
+it; this re-binding does not approve it (owner decision D-069/D-071: legal review first). The agent manifest is
+`02eab39abae004848925dc964f4577b05aadad6300c5d79e013ecaa1c7299377` over 496 files, regenerated after the literal update.
+This binding grants no production authority.
