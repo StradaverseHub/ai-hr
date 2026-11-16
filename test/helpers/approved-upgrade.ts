@@ -236,11 +236,11 @@ export const APPROVED_UPGRADE_TAIL=[
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5804_shared_email_rich_body':'96dd54e4b9bd66c015296ec0874b32c6de2af9af7c40b6f5812eaa7d3e408754',
- '5805_native_contract_counter_and_cutover':'f4480fd304085862acc004f58d6c8714221c147046536abe0d03036159802066',
- '5806_contract_shared_projections':'c15f8b76fc56cc6d10df186872acd230733f8e70a3d876855886f2e4a6cd41a7',
- '5800_contract_shared_access':'502f7699066b0e0da792325a2c175e765b316d143a65f0a371263332c5e4ec79',
- '5801_contract_shared_flows':'c615e42b835d815cfbe0bcff98948a3004bedd77264d48102ce8aa1479f338c5',
- '5802_contract_shared_builders':'9b122da8c95df6684689ae9621efb8f86bad684ec0facac3ea34cc4392661d14',
+ '5805_native_contract_counter_and_cutover':'81ec31cfbd893e9211629d24ad60999974859dcc746aeab3871802ca2e1ac140',
+ '5806_contract_shared_projections':'4bbd6c7a6bcd85f677ab1450fe36a80104d85bc50181fb9893e074acf5f59acf',
+ '5800_contract_shared_access':'08671eb8f4654fb52af284d4202fc56f98befc38bca4bcab5b279cdb531dc756',
+ '5801_contract_shared_flows':'e87c448c73d9aabc6e571def4580d47507aad04b081b0a706446f2c0f6324145',
+ '5802_contract_shared_builders':'c0fda7bf21a7d01dd214b7527736910eff7e0260962e1f67efda36ab2ffa97d0',
  '5803_shared_document_templates':'adce2251c00b32bb1913ef5c385f40782fdbb2c28274d3cc611c4305f77c0e12',
  '5761_probation_automation_recipients_and_tracker_steps':'c39e471adb80e51b56466c264bc6546dc6ce48a354e30d8e9ef3629a82b2184b',
  '5760_probation_queue_kinds_and_pbp_tasks':'c3ab5ddf4c702dd1ca947b3a350c7e852ab8699524c9da7fcad11f19887cdb59',

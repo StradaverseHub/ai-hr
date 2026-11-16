@@ -10,14 +10,14 @@ import {parseContractAmount, ContractManagementError} from './contract-managemen
 
 export const CONTRACT_CASE_PERMISSIONS = ['view', 'seePay', 'decide', 'decline', 'manual', 'workflows', 'templates', 'groups', 'access'] as const;
 export type ContractCasePermission = typeof CONTRACT_CASE_PERMISSIONS[number];
-export type ContractFlowStage = 'open' | 'approval' | 'workflow' | 'document' | 'posting' | 'pay' | 'renewed' | 'converted' | 'offboarding';
+export type ContractFlowStage = 'open' | 'approval' | 'workflow' | 'document' | 'posting' | 'pay' | 'renewed' | 'converted' | 'offboarding' | 'superseded';
 export type ContractDecisionKind = 'renew' | 'convert' | 'end';
 export type ContractFlowDecision = {
   kind: ContractDecisionKind; startOn: string | null; endOn: string | null; months: number | null;
   payChanges: boolean; salaryCents: string | null; reason: string; endReason: string | null;
   submittedBy: string; submittedAt: string; revision: number;
 };
-export type ContractFlowFlag = 'fallback' | 'employee_cannot_sign' | 'sent_back' | 'template_stopped' | 'posting_mismatch' | 'no_workflow' | 'pay_pending';
+export type ContractFlowFlag = 'fallback' | 'employee_cannot_sign' | 'sent_back' | 'template_stopped' | 'posting_mismatch' | 'no_workflow' | 'pay_pending' | 'source_changed';
 export type ContractFlow = {
   version: 2; revision: number; stage: ContractFlowStage;
   period: {id: string; startOn: string; endOn: string; number: string; sourceRevision: string};
@@ -26,6 +26,7 @@ export type ContractFlow = {
   posting: {id: string; approvedBy: string | null; approvedAt: string | null} | null;
   payConfirmation: {by: string; at: string} | null;
   offboardingId: string | null; declined: {reason: string; notes: string; by: string; at: string} | null;
+  firstReminderOn?:string|null;sourceClosure?:{reason:string;at:string};
 };
 export type ContractFlowActor = {userId: string; permissions: readonly ContractCasePermission[]; postingApprover: boolean; admin: boolean};
 export type ContractFlowSettings = {
@@ -119,8 +120,14 @@ export function recordContractFlowDecline(record: ContractFlow, input: {actor: C
 }
 export function contractFlowDisplay(record: ContractFlow, input: {today: string; firstReminderOn: string | null; stallEnabled: boolean; stallDays: number}): {status: 'Upcoming' | 'Decision needed' | 'In progress' | 'Closed'; stalledDays: number | null} {
   if (!isCalendarDate(input.today)) refuse('Use the HR business date.');
-  const closed = ['renewed', 'converted', 'offboarding'].includes(record.stage);
+  const closed = ['renewed', 'converted', 'offboarding','superseded'].includes(record.stage);
   const status = closed ? 'Closed' : record.stage !== 'open' ? 'In progress' : record.period.endOn < input.today || input.firstReminderOn && input.today >= input.firstReminderOn ? 'Decision needed' : 'Upcoming';
   const days = Math.floor((Date.parse(input.today + 'T00:00:00+08:00') - Date.parse(record.lastActivityAt)) / 86400000);
   return {status, stalledDays: !closed && record.stage !== 'open' && input.stallEnabled && days >= input.stallDays ? days : null};
+}
+/** Only a storage worker supplies verified native changes here. This never changes Personnel or waives a pay tick. */
+export function supersedeContractFlow(record:ContractFlow,input:{reason:string;at:string}):ContractFlow{
+ if(['renewed','converted','offboarding','superseded'].includes(record.stage)||record.posting?.approvedAt)return record;
+ if(!input.reason.trim())refuse('Record why Personnel no longer matches this period.');
+ return {...touched(record,input.at),stage:'superseded',sourceClosure:{reason:input.reason.trim(),at:input.at},flags:[...new Set([...record.flags,'source_changed' as const])]};
 }

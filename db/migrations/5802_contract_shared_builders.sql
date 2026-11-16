@@ -47,11 +47,38 @@ $$;
 --> statement-breakpoint
 ALTER FUNCTION app.automation_workflow_save(uuid,text,text,boolean,jsonb,integer,text) RENAME TO automation_workflow_save_before_contract_permissions;
 --> statement-breakpoint
-CREATE FUNCTION app.automation_workflow_save(p_workflow uuid,p_module text,p_status text,p_required boolean,p_definition jsonb,p_expected integer,p_reason text) RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+CREATE FUNCTION app.automation_workflow_save(p_workflow uuid, p_module text, p_status text, p_required boolean, p_definition jsonb, p_expected integer, p_reason text)
+RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid := app.current_tenant_id(); prior public.automation_workflow_version; v_revision integer;
 BEGIN
- PERFORM app.access_workforce_write_lock();
- IF app.automation_can_manage(p_module,'workflows') IS NOT TRUE THEN RAISE EXCEPTION 'This builder is unavailable' USING ERRCODE='42501';END IF;
- RETURN app.automation_workflow_save_before_contract_permissions(p_workflow,p_module,p_status,p_required,p_definition,p_expected,p_reason);
+  IF t IS NULL OR app.current_user_id() IS NULL THEN RAISE EXCEPTION 'A signed-in tenant user is required' USING ERRCODE='42501'; END IF;
+  PERFORM app.access_workforce_write_lock();
+  IF p_workflow IS NULL OR NOT app.automation_can_manage(p_module,'workflows') THEN RAISE EXCEPTION 'You cannot configure workflows for this module' USING ERRCODE='42501'; END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended('automation-workflow:'||t::text||':'||p_workflow::text, 0));
+  SELECT * INTO prior FROM public.automation_workflow_version WHERE tenant_id = t AND workflow_id = p_workflow ORDER BY revision DESC LIMIT 1;
+  IF coalesce(prior.revision, 0) IS DISTINCT FROM p_expected THEN RAISE EXCEPTION 'This workflow changed since you opened it; reload before saving' USING ERRCODE='40001'; END IF;
+  IF prior.revision IS NOT NULL AND prior.module <> p_module THEN RAISE EXCEPTION 'A workflow cannot move to another module' USING ERRCODE='22023'; END IF;
+  IF prior.status = 'retired' THEN RAISE EXCEPTION 'A retired workflow cannot change' USING ERRCODE='22023'; END IF;
+  IF coalesce(p_status, '') NOT IN ('live','paused','retired') OR p_required IS NULL OR length(btrim(coalesce(p_reason, ''))) NOT BETWEEN 1 AND 500 THEN RAISE EXCEPTION 'Choose a status and give a reason' USING ERRCODE='22023'; END IF;
+  -- Each type is checked in its own statement before a function that would fail on another type: SQL does not
+  -- promise the order in which OR operands are evaluated.
+  IF jsonb_typeof(p_definition) IS DISTINCT FROM 'object' THEN RAISE EXCEPTION 'The workflow definition is incomplete or too large' USING ERRCODE='22023'; END IF;
+  IF jsonb_typeof(p_definition->'trigger') IS DISTINCT FROM 'object' OR jsonb_typeof(p_definition->'conditions') IS DISTINCT FROM 'array' OR jsonb_typeof(p_definition->'steps') IS DISTINCT FROM 'array'
+  THEN RAISE EXCEPTION 'The workflow definition is incomplete or too large' USING ERRCODE='22023'; END IF;
+  IF pg_column_size(p_definition) > 262144
+     OR p_definition->>'module' IS DISTINCT FROM p_module OR p_definition->>'id' IS DISTINCT FROM p_workflow::text
+     OR length(btrim(coalesce(p_definition->>'name', ''))) NOT BETWEEN 1 AND 200
+     OR jsonb_typeof(p_definition->'trigger'->'event') IS DISTINCT FROM 'string'
+     OR jsonb_array_length(p_definition->'conditions') > 20
+     OR jsonb_array_length(p_definition->'steps') NOT BETWEEN (CASE WHEN p_module='contract_staff' AND p_status='paused' THEN 0 ELSE 1 END) AND 40
+  THEN RAISE EXCEPTION 'The workflow definition is incomplete or too large' USING ERRCODE='22023'; END IF;
+  v_revision := coalesce(prior.revision, 0) + 1;
+  INSERT INTO public.automation_workflow_version (tenant_id, workflow_id, revision, module, status, required, definition, reason, saved_by)
+  VALUES (t, p_workflow, v_revision, p_module, p_status, p_required, p_definition - 'status' - 'required', btrim(p_reason), app.current_user_id());
+  INSERT INTO public.domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, actor_id, payload)
+  VALUES (t, 'automation_workflow', p_workflow, CASE WHEN v_revision = 1 THEN 'automation.workflow.created' ELSE 'automation.workflow.saved' END, 'user'::actor_type, app.current_user_id(),
+    jsonb_build_object('module', p_module, 'revision', v_revision, 'status', p_status, 'previousStatus', prior.status, 'required', p_required));
+  RETURN v_revision;
 END $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.automation_workflow_save_before_contract_permissions(uuid,text,text,boolean,jsonb,integer,text),app.automation_workflow_save(uuid,text,text,boolean,jsonb,integer,text) FROM PUBLIC,ai_hr_app;

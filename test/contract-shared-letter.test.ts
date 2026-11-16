@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {actOnContractLetter, contractEmployeeSignaturePending, contractLetterCanEdit, contractLetterRoutingProblems, declineContractLetter, editContractLetterBlocks, refreshContractLetterValues, resendContractLetter, resolveContractLetterRouting, type ContractLetterFlow} from '../lib/contract-letter-flow';
+import {actOnContractLetter, contractEmployeeSignaturePending, contractLetterCanEdit, contractLetterDocument, contractLetterFingerprintSource, contractLetterRoutingProblems, declineContractLetter, editContractLetterBlocks, refreshContractLetterValues, resendContractLetter, resolveContractLetterRouting, type ContractLetterFlow} from '../lib/contract-letter-flow';
 import {documentRoutingProblems, type DocumentRouting, type DocumentRoutingResolveContext} from '../lib/document-signing-routing';
 import {pendingSigningSteps, type SigningStep} from '../lib/document-signing-model';
 const at = '2026-11-16T02:00:00Z', hash = 'a'.repeat(64);
@@ -18,6 +18,32 @@ function act(record: ContractLetterFlow, step: SigningStep, action: 'signed' | '
   return actOnContractLetter(record, {id: `${record.document.actions.length}:${step.id}`, actorId: step.holderId!, actorPersonId: `person-${step.holderId}`, actorName: step.holderId!, stepId: step.id, revision: record.document.contentRevision, hash: record.document.contentHash, action, comment, at, method: 'typed', value: step.holderId!, consent: true});
 }
 describe('Contract document routing policy', () => {
+  it('renders only case edits and canonicalizes saved JSON without altering the pinned template',()=>{
+    const record=letter();record.definition={name:'Renewal letter',blocks:[{id:'paragraph1',type:'text',text:'Dear {employee.name}',section:''}],fields:[]};
+    record.blocks.paragraph1='Hello {employee.name}';
+    expect(contractLetterDocument(record).blocks[0].text).toBe('Hello {employee.name}');
+    expect(record.definition.blocks[0].text).toBe('Dear {employee.name}');
+    const reordered=JSON.parse(JSON.stringify(record,(_key,value)=>value&&!Array.isArray(value)&&typeof value==='object'?Object.fromEntries(Object.entries(value).reverse()):value)) as ContractLetterFlow;
+    expect(contractLetterFingerprintSource(reordered)).toBe(contractLetterFingerprintSource(record));
+    expect(contractLetterFingerprintSource({...record,generatedOn:'2026-11-17'})).not.toBe(contractLetterFingerprintSource(record));
+  });
+  it('keeps merge fields live through Review, binds the first signature to current values, and retains original review evidence',()=>{
+    let record=letter();
+    record=act(record,pendingSigningSteps(record.document)[0],'reviewed');
+    const review=structuredClone(record.document.actions[0]);
+    record=refreshContractLetterValues(record,{'employee.name':'Updated Personnel name'},'b'.repeat(64));
+    expect(pendingSigningSteps(record.document).map(step=>step.id)).toEqual(['bp']);
+    expect(record.document.actions[0]).toEqual(review);
+    expect(()=>actOnContractLetter(record,{id:'stale-sign',actorId:'bp-user',actorPersonId:'person-bp-user',actorName:'BP',stepId:'bp',revision:1,hash,action:'signed',method:'typed',value:'BP',consent:true,at})).toThrow('changed');
+    expect(pendingSigningSteps({...record.document,subjectType:'probation'}).map(step=>step.id)).toEqual(['review']);
+    record=act(record,pendingSigningSteps(record.document)[0]);
+    expect(record.valuesFixed).toBe(true);expect(record.document.actions[1].contentHash).toBe('b'.repeat(64));
+    expect(refreshContractLetterValues(record,{'employee.name':'A later name'},'c'.repeat(64))).toEqual(record);
+    record=act(record,pendingSigningSteps(record.document)[0]);
+    expect(record.state).toBe('released');
+    expect(record.document.actions[0].contentHash).toBe(hash);
+    expect(record.document.actions.filter(action=>action.action==='signed').every(action=>action.contentHash==='b'.repeat(64))).toBe(true);
+  });
   it('requires an owner and permits review-only without changing Probation defaults', () => {
     const onlyReview = [routing[0]];
     expect(contractLetterRoutingProblems(onlyReview, refs)).toEqual([]);

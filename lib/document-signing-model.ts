@@ -48,6 +48,8 @@ export type SigningRoutingMeta = {
   /** Last owner fallback: the case owner named by the subject adapter (for Probation, the PBP). */
   caseOwnerId: string | null;
   fallbackGroupId?: string | null;
+  /** Contract merge fields stay live until first signature. Text revisions still invalidate every receipt. */
+  liveMergeReviews?: boolean;
 };
 export type SigningDocument = {
   tenantId: string; companyId: string; subjectId: string; subjectType: string;
@@ -85,7 +87,9 @@ export function validateSigningRoute(route: SigningRoute, rules: SigningGuardrai
     if (owner.holderId && independent.every(s=>s.holderId!==null&&(s.holderId===owner.holderId||Boolean(owner.holderPersonId)&&s.holderPersonId===owner.holderPersonId))) invalid('The approving person must be different from the submitting manager.');
   }
 }
-const atCurrentContent=(action:SigningAction,document:SigningDocument)=>action.contentRevision===document.contentRevision&&action.contentHash===document.contentHash;
+const atCurrentContent=(action:SigningAction,document:SigningDocument)=>action.contentRevision===document.contentRevision&&(
+ action.contentHash===document.contentHash||document.subjectType==='contract'&&document.routing?.liveMergeReviews===true&&action.signature===null&&['reviewed','approved','returned','resent'].includes(action.action)
+);
 /** Actions of the current round: current content, after the latest re-send of that content. */
 export function currentRoundActions(document: SigningDocument): SigningAction[] {
   let start=0;

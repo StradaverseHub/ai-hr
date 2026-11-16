@@ -15,8 +15,8 @@ export type ContractSharedSummary={
 };
 export type ContractSharedContext={
  id:string;caseNumber:string;companyId:string;employmentId:string;permissions:ContractCasePermission[];
- source:Omit<ContractSource,'salaryCents'|'allowanceCents'|'allowanceComponentId'>&{contractNumber:number|null;departmentId:string|null;jobTitle:string|null;businessUnitId:string|null;salaryCents?:string|null;allowanceCents?:string|null;allowanceComponentId?:string|null};
- flow:ContractFlow|null;legacyState:string;sourceConflict:string|null;cutoverAvailable:boolean;
+ source:Omit<ContractSource,'salaryCents'|'allowanceCents'|'allowanceComponentId'>&{contractNumber:number|null;periodRevision:string|null;departmentId:string|null;jobTitle:string|null;businessUnitId:string|null;salaryCents?:string|null;allowanceCents?:string|null;allowanceComponentId?:string|null};
+ sourceCurrent:boolean;flow:ContractFlow|null;legacyState:string;sourceConflict:string|null;cutoverAvailable:boolean;
 };
 export async function contractSharedPage(ctx:SessionContext,raw:{search?:string;limit?:number;offset?:number}={}){
  const input=z.object({search:z.string().max(100).default(''),limit:z.number().int().min(1).max(100).default(50),offset:z.number().int().min(0).max(100000).default(0)}).strict().parse(raw);

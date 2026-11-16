@@ -51,8 +51,9 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,
 $$;
 --> statement-breakpoint
 CREATE FUNCTION app.contract_shared_case_permitted(p_case uuid,p_permission text) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT EXISTS(SELECT 1 FROM public.contract_case c WHERE c.tenant_id=app.current_tenant_id() AND c.id=p_case AND app.contract_case_company_current(c.id)
- AND app.contract_shared_permitted(p_permission,c.company_id,(SELECT coalesce(co.parent_company_id,co.id) FROM public.company co WHERE co.tenant_id=c.tenant_id AND co.id=c.company_id),c.employment_id))
+ SELECT EXISTS(SELECT 1 FROM public.contract_case c WHERE c.tenant_id=app.current_tenant_id() AND c.id=p_case
+ AND (app.contract_case_company_current(c.id) OR p_permission IN('view','seePay'))
+ AND app.contract_shared_permitted(p_permission,c.company_id,(SELECT coalesce(co.parent_company_id,co.id) FROM public.company co WHERE co.tenant_id=c.tenant_id AND co.id=c.company_id),CASE WHEN app.contract_case_company_current(c.id) THEN c.employment_id ELSE NULL END))
 $$;
 --> statement-breakpoint
 CREATE FUNCTION app.contract_shared_access_admin() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -140,8 +141,8 @@ BEGIN
  SELECT coalesce(array_agg(v),'{}'::text[]) INTO v_permissions FROM jsonb_array_elements_text(p_data->'automaticSuperior'->'permissions') v;
  IF NOT v_permissions<@ARRAY['view','seePay','decide','decline','manual']::text[] THEN RAISE EXCEPTION 'Invalid team permissions' USING ERRCODE='22023';END IF;
  -- Group identity, not a display name. Never accept a deleted group and silently send sensitive work elsewhere.
- IF NOT EXISTS(SELECT 1 FROM app.automation_assignment_groups() g WHERE g.group_id=p_data->>'fallbackGroupId')
- OR NOT EXISTS(SELECT 1 FROM app.automation_assignment_groups() g WHERE g.group_id=p_data->>'postingApproverGroupId')
+ IF NOT EXISTS(SELECT 1 FROM public.lc_v9_config c CROSS JOIN LATERAL jsonb_array_elements(c.data->'groups') g WHERE c.tenant_id=t AND g->>'id'=p_data->>'fallbackGroupId')
+ OR NOT EXISTS(SELECT 1 FROM public.lc_v9_config c CROSS JOIN LATERAL jsonb_array_elements(c.data->'groups') g WHERE c.tenant_id=t AND g->>'id'=p_data->>'postingApproverGroupId')
  THEN RAISE EXCEPTION 'Choose existing fallback and posting approver groups' USING ERRCODE='22023';END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('contract-settings:'||t::text||':'||p_company::text,0));
  SELECT revision INTO r FROM public.contract_shared_settings WHERE tenant_id=t AND company_id=p_company;
@@ -168,3 +169,12 @@ $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.contract_shared_company_in_use(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.contract_shared_company_in_use(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.contract_shared_setting_groups(p_company uuid) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.contract_shared_permitted('access',p_company) IS NOT TRUE THEN RAISE EXCEPTION 'Contract settings are unavailable' USING ERRCODE='42501';END IF;
+ RETURN coalesce((SELECT jsonb_agg(jsonb_build_object('id',g->>'id','name',g->>'name')) FROM public.lc_v9_config c CROSS JOIN LATERAL jsonb_array_elements(c.data->'groups') g WHERE c.tenant_id=app.current_tenant_id()),'[]'::jsonb);
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.contract_shared_setting_groups(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.contract_shared_setting_groups(uuid) TO ai_hr_app;

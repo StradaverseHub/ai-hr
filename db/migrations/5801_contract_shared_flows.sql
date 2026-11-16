@@ -49,6 +49,8 @@ BEGIN
  OR coalesce(c.data->'decisionDraft','null'::jsonb) IS DISTINCT FROM 'null'::jsonb
  OR EXISTS(SELECT 1 FROM public.contract_document d WHERE d.tenant_id=c.tenant_id AND d.case_id=c.id)
  OR EXISTS(SELECT 1 FROM public.contract_effect e WHERE e.tenant_id=c.tenant_id AND e.case_id=c.id)
+ OR EXISTS(SELECT 1 FROM public.contract_date_amendment a WHERE a.tenant_id=c.tenant_id AND a.case_id=c.id AND a.status IN('pending','failed'))
+ OR EXISTS(SELECT 1 FROM public.contract_generation_request g WHERE g.tenant_id=c.tenant_id AND g.case_id=c.id AND g.status IN('pending','failed'))
  THEN RAISE EXCEPTION 'This legacy case has work in progress; finish its pinned flow before cutover' USING ERRCODE='40001';END IF;
  f:=jsonb_build_object('version',2,'revision',1,'stage','open','period',jsonb_build_object('id',c.term_id,'startOn',c.data->'term'->>'startOn','endOn',c.data->'term'->>'endOn','number',c.number,'sourceRevision',c.data->'term'->>'sourceRevision'),
  'decision',NULL,'decisionHistory','[]'::jsonb,'flags','[]'::jsonb,'lastActivityAt',now(),'posting',NULL,'payConfirmation',NULL,'offboardingId',NULL,'declined',NULL);

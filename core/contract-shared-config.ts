@@ -45,6 +45,13 @@ export async function saveContractSharedSettings(ctx: SessionContext, raw: unkno
     });
   } catch (error) {return refused(error);}
 }
+export function contractSharedSettingGroups(ctx:SessionContext,companyId:string){
+ z.uuid().parse(companyId);
+ return withScopedLifecycleTenant(ctx,async tx=>{
+  const [row]=await tx.execute<{groups:{id:string;name:string}[]}>(sql`select app.contract_shared_setting_groups(${companyId}::uuid) as groups`);
+  return row.groups;
+ });
+}
 export function contractSharedAccess(ctx: SessionContext): Promise<{roles: ContractAccessRole[]; members: ContractAccessMember[]}> {
   return withScopedLifecycleTenant(ctx, async tx => {
     const [allowed] = await tx.execute<{ok: boolean}>(sql`select app.contract_shared_access_admin() as ok`);
