@@ -1,21 +1,160 @@
 'use client';
-import {useContractSharedCopy} from '@/lib/contract-shared-copy';
-import {useRef,useState,useTransition} from 'react';
+import { useContractSharedCopy } from '@/lib/contract-shared-copy';
+import { useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
-import {CheckCircle2,Circle} from 'lucide-react';
-import type {ContractSharedApproval} from '@/packs/contracts/service';
-import {actSharedApproval} from '../../shared-actions';
-import {contractTimestamp} from '../../shared';
-import {ContractTerms,ContractPanel,ContractFeedback,contractDate} from '../../shared-case-ui';
-export function SharedApprovalPage({approval:initial}:{approval:ContractSharedApproval}){const copy=useContractSharedCopy();
- const [approval,setApproval]=useState(initial),[reason,setReason]=useState(''),[error,setError]=useState(''),[status,setStatus]=useState(''),[busy,start]=useTransition();
- const attempt=useRef<{key:string;id:string}|null>(null);
- function act(action:'approve'|'reject'){
-  if(!approval.pendingLayerId)return;
-  const payload={id:approval.id,layerId:approval.pendingLayerId,revision:approval.contentRevision,hash:approval.contentHash,action,reason},key=JSON.stringify(payload);
-  if(attempt.current?.key!==key)attempt.current={key,id:crypto.randomUUID()};
-  const actionId=attempt.current.id;
-  start(async()=>{setError('');setStatus('');try{const response=await actSharedApproval({...payload,actionId});if(response.ok){setApproval(response.value);setStatus(action==='approve'?'Approval recorded.':'Decision returned with your reason.');setReason('');attempt.current=null;}else setError(response.error);}catch{setError('The action could not be completed. Your entries are still here. Try again.');}});
- }
- return <div className="v9-stack"><header className="v9-header"><div><h1>{copy("Review contract decision")}</h1><p>{approval.employeeName} · {approval.employeeCode} · {approval.company}</p></div><Link className="v9-button" href="/approvals?category=contracts">{copy("Approval Items")}</Link></header><ContractFeedback error={error} status={status}/><div className="contract-layout"><div className="v9-stack"><ContractPanel title={copy("Submitted decision")}><p>{copy("Contract #")}{approval.period.number} · {contractDate(approval.period.startOn)}–{contractDate(approval.period.endOn)}</p><ContractTerms decision={approval.decision}/><p className="v9-muted">{copy("Decision revision ")}{approval.decisionRevision}{copy(". Your action applies to these submitted terms.")}</p></ContractPanel><ContractPanel title={copy("Your decision")}>{approval.canAct?<><label className="v9-field"><span>{copy("Comment / reason for rejection")}</span><textarea rows={4} maxLength={5000} value={reason} disabled={busy} onChange={e=>setReason(e.target.value)}/></label><div className="v9-actions"><button className="v9-button v9-button-primary" disabled={busy} aria-busy={busy} onClick={()=>act('approve')}>{copy("Approve")}</button><button className="v9-button" disabled={busy||!reason.trim()} onClick={()=>act('reject')}>{copy("Reject and return decision")}</button></div><p className="v9-muted">{copy("Rejection requires a reason and reopens the decision for its owner.")}</p></>:<p>{approval.status==='pending'?copy("This approval is waiting for its current eligible approver."):approval.status==='approved'?copy("All approval layers are complete."):approval.status==='rejected'?copy("This decision was rejected. The decision owner can submit revised terms."):copy("This approval belongs to an earlier decision and can no longer be acted on.")}</p>}</ContractPanel>{approval.history.length>0&&<ContractPanel title={copy("Approval history")}><ol className="contract-rail">{approval.history.map(item=><li key={item.id}><CheckCircle2 aria-hidden/><div><strong>{item.actorName}</strong> · {item.action==='approved'?copy("Approved"):copy("Returned")}<p>{item.comment}</p><small>{contractTimestamp(item.at)}</small></div></li>)}</ol></ContractPanel>}</div><aside><ContractPanel title={copy("Approval layers")}><ol className="contract-rail">{approval.layers.map(layer=><li key={layer.id}>{layer.fulfilled?<CheckCircle2 aria-hidden/>:<Circle aria-hidden/>}<div><strong>{layer.label}</strong><p>{layer.assigneeName||'Eligible members of the assigned group'}</p><small>{layer.fulfilled?copy("Completed"):layer.id===approval.pendingLayerId?copy("Current layer"):copy("Waiting")}</small></div></li>)}</ol></ContractPanel></aside></div></div>;
+import { CheckCircle2, Circle } from 'lucide-react';
+import type { ContractSharedApproval } from '@/packs/contracts/service';
+import { actSharedApproval } from '../../shared-actions';
+import { contractTimestamp } from '../../shared';
+import { ContractTerms, ContractPanel, ContractFeedback, contractDate } from '../../shared-case-ui';
+export function SharedApprovalPage({ approval: initial }: { approval: ContractSharedApproval }) {
+  const copy = useContractSharedCopy();
+  const [approval, setApproval] = useState(initial),
+    [reason, setReason] = useState(''),
+    [error, setError] = useState(''),
+    [status, setStatus] = useState(''),
+    [busy, start] = useTransition();
+  const attempt = useRef<{ key: string; id: string } | null>(null);
+  function act(action: 'approve' | 'reject') {
+    if (!approval.pendingLayerId) return;
+    const payload = {
+        id: approval.id,
+        layerId: approval.pendingLayerId,
+        revision: approval.contentRevision,
+        hash: approval.contentHash,
+        action,
+        reason,
+      },
+      key = JSON.stringify(payload);
+    if (attempt.current?.key !== key) attempt.current = { key, id: crypto.randomUUID() };
+    const actionId = attempt.current.id;
+    start(async () => {
+      setError('');
+      setStatus('');
+      try {
+        const response = await actSharedApproval({ ...payload, actionId });
+        if (response.ok) {
+          setApproval(response.value);
+          setStatus(action === 'approve' ? 'Approval recorded.' : 'Decision returned with your reason.');
+          setReason('');
+          attempt.current = null;
+        } else setError(response.error);
+      } catch {
+        setError('The action could not be completed. Your entries are still here. Try again.');
+      }
+    });
+  }
+  return (
+    <div className="v9-stack">
+      <header className="v9-header">
+        <div>
+          <h1>{copy('Review contract decision')}</h1>
+          <p>
+            {approval.employeeName} · {approval.employeeCode} · {approval.company}
+          </p>
+        </div>
+        <Link className="v9-button" href="/approvals?category=contracts">
+          {copy('Approval Items')}
+        </Link>
+      </header>
+      <ContractFeedback error={error} status={status} />
+      <div className="contract-layout">
+        <div className="v9-stack">
+          <ContractPanel title={copy('Submitted decision')}>
+            <p>
+              {copy('Contract #')}
+              {approval.period.number} · {contractDate(approval.period.startOn)}–{contractDate(approval.period.endOn)}
+            </p>
+            <ContractTerms decision={approval.decision} />
+            <p className="v9-muted">
+              {copy('Decision revision ')}
+              {approval.decisionRevision}
+              {copy('. Your action applies to these submitted terms.')}
+            </p>
+          </ContractPanel>
+          <ContractPanel title={copy('Your decision')}>
+            {approval.canAct ? (
+              <>
+                <label className="v9-field">
+                  <span>{copy('Comment / reason for rejection')}</span>
+                  <textarea
+                    rows={4}
+                    maxLength={5000}
+                    value={reason}
+                    disabled={busy}
+                    onChange={(e) => setReason(e.target.value)}
+                  />
+                </label>
+                <div className="v9-actions">
+                  <button
+                    className="v9-button v9-button-primary"
+                    disabled={busy}
+                    aria-busy={busy}
+                    onClick={() => act('approve')}
+                  >
+                    {copy('Approve')}
+                  </button>
+                  <button className="v9-button" disabled={busy || !reason.trim()} onClick={() => act('reject')}>
+                    {copy('Reject and return decision')}
+                  </button>
+                </div>
+                <p className="v9-muted">
+                  {copy('Rejection requires a reason and reopens the decision for its owner.')}
+                </p>
+              </>
+            ) : (
+              <p>
+                {approval.status === 'pending'
+                  ? copy('This approval is waiting for its current eligible approver.')
+                  : approval.status === 'approved'
+                    ? copy('All approval layers are complete.')
+                    : approval.status === 'rejected'
+                      ? copy('This decision was rejected. The decision owner can submit revised terms.')
+                      : copy('This approval belongs to an earlier decision and can no longer be acted on.')}
+              </p>
+            )}
+          </ContractPanel>
+          {approval.history.length > 0 && (
+            <ContractPanel title={copy('Approval history')}>
+              <ol className="contract-rail">
+                {approval.history.map((item) => (
+                  <li key={item.id}>
+                    <CheckCircle2 aria-hidden />
+                    <div>
+                      <strong>{item.actorName}</strong> ·{' '}
+                      {item.action === 'approved' ? copy('Approved') : copy('Returned')}
+                      <p>{item.comment}</p>
+                      <small>{contractTimestamp(item.at)}</small>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </ContractPanel>
+          )}
+        </div>
+        <aside>
+          <ContractPanel title={copy('Approval layers')}>
+            <ol className="contract-rail">
+              {approval.layers.map((layer) => (
+                <li key={layer.id}>
+                  {layer.fulfilled ? <CheckCircle2 aria-hidden /> : <Circle aria-hidden />}
+                  <div>
+                    <strong>{layer.label}</strong>
+                    <p>{layer.assigneeName || 'Eligible members of the assigned group'}</p>
+                    <small>
+                      {layer.fulfilled
+                        ? copy('Completed')
+                        : layer.id === approval.pendingLayerId
+                          ? copy('Current layer')
+                          : copy('Waiting')}
+                    </small>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </ContractPanel>
+        </aside>
+      </div>
+    </div>
+  );
 }
