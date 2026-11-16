@@ -40729,7 +40729,8 @@
       "documents": "Contract document templates",
       "documentsHelp": "Published versions are pinned when a letter is generated. Saving a draft does not change existing letters.",
       "draftOnly": "Draft only",
-      "emailHelp": "Reusable Contract emails and recipients, managed in HR Automation."
+      "emailHelp": "Reusable Contract emails and recipients, managed in HR Automation.",
+      "noEmails": "No Contract email templates yet. Create the wording here, then choose it in a workflow."
     },
     "sharedGroups": {
       "intro": "Members are shared across HR Automation. Updating a group does not grant access to its cases.",

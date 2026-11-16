@@ -7,6 +7,7 @@ import postgres from 'postgres';
 import {migrate} from 'drizzle-orm/postgres-js/migrator';
 import {expect,it} from 'vitest';
 import {createDb} from '../db/client';
+import {seedCatalogs} from '../scripts/seed-catalogs';
 it('keeps prepared target and cached start callers on the native capability after the test-purpose upgrade',async()=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:{tag:string;when:number}[]};
  const boundary=journal.entries.findIndex(entry=>entry.tag==='5828_automation_email_test_self');expect(boundary).toBeGreaterThan(0);
@@ -20,6 +21,7 @@ it('keeps prepared target and cached start callers on the native capability afte
   await admin.unsafe(`CREATE DATABASE "${name}"`);created=true;mkdirSync(join(directory,'meta'));
   for(const entry of journal.entries.slice(0,boundary))copyFileSync('db/migrations/'+entry.tag+'.sql',join(directory,entry.tag+'.sql'));
   writeFileSync(join(directory,'meta/_journal.json'),JSON.stringify({...journal,entries:journal.entries.slice(0,boundary)}));await migrate(storage.db,{migrationsFolder:directory});
+  await seedCatalogs(storage.db);
   await storage.client`insert into tenant(id,workos_org_id,name) values(${tenant},${randomUUID()},'Fictional template upgrade')`;
   await storage.client`insert into company(id,tenant_id,legal_name) values(${company},${tenant},'Fictional retained company')`;
   await storage.client`insert into person(id,tenant_id,full_name,primary_email) values(${person},${tenant},'Fictional retained editor','retained-editor@upgrade.invalid')`;
