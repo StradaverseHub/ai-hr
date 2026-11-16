@@ -1,7 +1,7 @@
 /** Presentation ancestry only; callers supply the viewer's already-admitted navigation rows. */
 export type BreadcrumbEntry = {href:string;label:string;section:string|null;parent:string|null;parentHref:string|null};
 type Step = {href:string;labelKey:string};
-type Family = {path:string;owner:string;steps:readonly Step[];preserve?:readonly string[]};
+type Family = {path:string;owner:string;steps:readonly Step[];preserve?:readonly string[];recordChildrenOnly?:boolean};
 const settings:Step={href:'/payroll/setup',labelKey:'nav.payrollSettings'};
 const transactions:Step={href:'/payroll/transactions',labelKey:'nav.payrollTransactions'};
 const attendance:Step={href:'/admin/attendance/settings',labelKey:'nav.attendanceSettingsPage'};
@@ -25,7 +25,8 @@ export const BREADCRUMB_FAMILIES:readonly Family[]=[
  {path:'/payroll/history-import',owner:transactions.href,steps:[transactions,{href:'/payroll/history-import',labelKey:'payroll.historyImport.title'}],preserve:['companyId']},
  {path:'/payroll/history-import/logs',owner:transactions.href,steps:[transactions,{href:'/payroll/history-import',labelKey:'payroll.historyImport.title'},{href:'/payroll/history-import/logs',labelKey:'payroll.historyRevisions.logFile'}],preserve:['companyId']},
  {path:'/payroll/transactions/individual/imports',owner:transactions.href,steps:[transactions,{href:'/payroll/transactions/individual',labelKey:'payroll.transactions.individual.title'},{href:'/payroll/transactions/individual/imports',labelKey:'payroll.individualImport.log'}],preserve:['employmentId','companyId']},
- attendanceList('/admin/attendance','attendanceSettingsHub.shift.title'),
+ // This namespace also contains HR siblings. Only new/UUID Shift records belong to the Shift list.
+ {...attendanceList('/admin/attendance','attendanceSettingsHub.shift.title'),recordChildrenOnly:true},
  attendanceList('/admin/attendance/file-mappings','attendanceSettingsHub.fileMapping.title'),
  attendanceList('/admin/attendance/schedule','attendanceSettingsHub.schedule.title'),
  attendanceList('/admin/attendance-allowance','attendanceSettingsHub.allowance.title'),
@@ -49,9 +50,10 @@ export const BREADCRUMB_VIEWS:Readonly<Record<string,{param:string;labels:Readon
 export type BreadcrumbPart={label:string;href?:string};
 export type BreadcrumbTrail={parts:BreadcrumbPart[];detail:boolean};
 const beneath=(path:string,parent:string)=>path===parent||path.startsWith(parent+'/');
+const RECORD_CHILD=/^\/(?:new|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/|$)/i;
 /** A hidden owner never becomes visible through breadcrumb metadata. Group headings without a landing stay text. */
 export function resolveBreadcrumbTrail(pathname:string,search:string,entries:readonly BreadcrumbEntry[],active:BreadcrumbEntry|null,translate:(key:string)=>string):BreadcrumbTrail|null {
- const family=BREADCRUMB_FAMILIES.filter(f=>beneath(pathname,f.path)).sort((a,b)=>b.path.length-a.path.length)[0];
+ const family=BREADCRUMB_FAMILIES.filter(f=>beneath(pathname,f.path)&&(!f.recordChildrenOnly||pathname===f.path||RECORD_CHILD.test(pathname.slice(f.path.length)))).sort((a,b)=>b.path.length-a.path.length)[0];
  const owner=family&&entries.find(e=>e.href.split('?')[0]===family.owner);
  if(family&&owner){
   const params=new URLSearchParams(search);

@@ -9,9 +9,10 @@ const translate=(key:string)=>key.split('.').reduce((v,k)=>v[k],en as any) as st
 
 describe('audited breadcrumb journeys',()=>{
  it.each(cases)('$auditEntry has its explicit task ancestry without a first-child module link',c=>{
-  const trail=resolveBreadcrumbTrail(c.pathname,c.search,entries,c.active,translate);
+  const recordId='00000000-0000-4000-8000-000000000082';
+  const trail=resolveBreadcrumbTrail(c.pathname.replaceAll(':id',recordId),c.search,entries,{...c.active,href:c.active.href.replaceAll(':id',recordId)},translate);
   expect(trail).not.toBeNull();
-  expect(trail!.parts.flatMap(p=>p.href?[p.href]:[])).toEqual(c.expectedLinks);
+  expect(trail!.parts.flatMap(p=>p.href?[p.href.replaceAll(recordId,':id')]:[])).toEqual(c.expectedLinks);
   expect(trail!.parts.every(p=>p.label&&p.label!=='undefined')).toBe(true);
  });
  it('names the Termination Reasons subpage instead of repeating the Movement Settings heading',()=>{
@@ -23,6 +24,14 @@ describe('audited breadcrumb journeys',()=>{
   const trail=resolveBreadcrumbTrail(active.href,'tab=grid',[],active,translate)!;
   expect(trail.detail).toBe(false);
   expect(trail.parts.slice(-2)).toEqual([{label:'Transaction View',href:'/payroll/transaction-view'},{label:'Transaction Detail'}]);
+ });
+ it('keeps Schedule Assignment and its bulk form under their HR entry rather than Shift settings',()=>{
+  const active={...entry('/admin/attendance/schedule-assignment','Attendance'),label:'Schedule Assignment'};
+  const root=resolveBreadcrumbTrail(active.href,'',[...entries,active],active,translate)!;
+  expect(root.parts.filter(p=>p.href)).toEqual([]);expect(root.parts.at(-1)?.label).toBe('Schedule Assignment');
+  const bulk=resolveBreadcrumbTrail(active.href+'/bulk','',[...entries,active],active,translate)!;
+  expect(bulk.detail).toBe(true);
+  expect(bulk.parts.filter(p=>p.href).map(p=>p.href)).toEqual(['/admin/attendance/schedule-assignment']);
  });
  it('preserves the selected loan employee while dropping unrelated query controls',()=>{
   const trail=resolveBreadcrumbTrail('/admin/loans/record','employmentId=fictional&error=private&q=ignored',entries,null,translate)!;
