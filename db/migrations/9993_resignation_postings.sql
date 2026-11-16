@@ -11,7 +11,8 @@ ALTER TABLE public.personnel_posting DROP CONSTRAINT personnel_posting_status_sh
 ALTER TABLE public.personnel_posting ADD CONSTRAINT personnel_posting_status_shape CHECK(
  (status IN ('pending','rejected') AND approved_by IS NULL AND approved_at IS NULL AND applied IS NULL AND movement_id IS NULL)
  OR (status='approved' AND approved_by IS NOT NULL AND approved_at IS NOT NULL AND applied IS NOT NULL));
-ALTER TABLE public.personnel_posting ADD COLUMN rejected_by uuid REFERENCES public.app_user(id);
+ALTER TABLE public.personnel_posting ADD COLUMN rejected_by uuid;
+ALTER TABLE public.personnel_posting ADD CONSTRAINT personnel_posting_rejected_by_tenant_fk FOREIGN KEY(rejected_by,tenant_id) REFERENCES public.app_user(id,tenant_id);
 ALTER TABLE public.personnel_posting ADD COLUMN rejected_at timestamptz;
 ALTER TABLE public.personnel_posting ADD COLUMN rejection_reason text CHECK(rejection_reason IS NULL OR length(rejection_reason) BETWEEN 1 AND 2000);
 ALTER TABLE public.personnel_posting ADD COLUMN due_on date;
