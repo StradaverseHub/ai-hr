@@ -167,6 +167,7 @@ describe('c3258a72 · listPayslipLessEligibleWithSkip on a processed run', () =>
     const late = await hire('Late Lina', 3500);
 
     const rows = await listPayslipLessEligibleWithSkip(a, { batchId });
+    expect((await payslipLessEligibleWithSkipPage(a,{batchId,page:parsePageQuery()})).rows).toEqual(rows);
     const byId = new Map(rows.map((r) => [r.employmentId, r]));
     expect(byId.get(director.employmentId)!.skip).toBe('NOTHING_PAYABLE_THIS_PERIOD');
     expect(byId.get(director.employmentId)!.blockers).toEqual([]);

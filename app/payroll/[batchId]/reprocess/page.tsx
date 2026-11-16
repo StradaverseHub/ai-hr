@@ -202,7 +202,7 @@ export default async function ReprocessPage({
     gross: sl.gross,
     net: sl.net,
     // version 1 = as first generated, so the number of prior recalculations is version - 1. Already on
-    // batchDetail's projection: no extra read, no join, and therefore no Department column here.
+    // the native page projection: no extra read and therefore no Department column here.
     reprocessedTimes: Math.max(0, (sl.version ?? 1) - 1),
   }));
 
@@ -314,7 +314,7 @@ export default async function ReprocessPage({
                 ADDITION, whose first payslip collects the one-offs already waiting for that person
                 exactly as the original processing would have. Saying only the first half would now be
                 a false reassurance, so the second half is stated whenever the group is on screen. */}
-            {newCandidates.length > 0 && ` ${t('reprocessNewCollects')}`}
+            {additions.runTotal > 0 && ` ${t('reprocessNewCollects')}`}
           </p>
           {/* b372e923 — `from` rides the SUBMIT, not just the address bar. The action redirects, and a
               redirect builds a brand-new URL: without this the reprocess result lands on a URL carrying

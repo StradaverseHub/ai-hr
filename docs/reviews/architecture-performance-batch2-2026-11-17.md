@@ -1,0 +1,21 @@
+# Own Leave and Payroll paging review
+
+Scope: AP-062 and the candidate-selection portion of AP-045, against accepted staging base 9bdfb45969c4bff81a9b9830b52403a95e82bdc6. Production is outside this batch. The original audit and failed runs retain their original identities.
+
+## Standards
+
+Independent fresh-context standards review of 3342531271c095a825ad67a5df942e0f74e94e7a found two concrete P1 issues: invalid TSX at the inserted existing-payslip pager, and navigation accidentally conditional on Skipped additions. Both were fixed and independently rechecked at c972532570f3eb1fa5e9569c74103ab7ef208776. No additional hard architecture/security violation was identified by source review. This is not a test or acceptance result.
+
+## Spec
+
+Independent fresh-context specification review found the same two P1 issues, fixed and rechecked as above. Selection/review/FormData equality and persistent idempotency are covered by added DOM fixtures. Native skip/readiness equivalence was added to existing financial fixtures. One behavior remains explicitly pending owner clarification: the previous answer covered displayed-page New/Pending defaults; the implementation currently also limits stale existing-payslip defaults to the visible page. Do not silently treat this as an approved behavior extension.
+
+## Development evidence
+
+- 2858a55d3 / focused 43931609323: native 121 passed / 2 failed. Missing suspended-tenant refusal after allowing READ ONLY metadata, plus missing fixture primaryEmail, were repaired. Whole typecheck failed on the same fixture email omission. Raw failures retained.
+- 3342531271c095a825ad67a5df942e0f74e94e7a / focused 43934876702: all 162 native cases passed across 13 DB files, no skipped cases. 151 no-DB/DOM cases passed across 9 files; Reprocess DOM could not transform because of the pager syntax. Whole typecheck and Linux build failed on that syntax. This run remains failed.
+- c972532570f3eb1fa5e9569c74103ab7ef208776 / focused 43935883124: repaired candidate under hosted verification, with additional skip/readiness and pending-money regression fixtures. Selected tests passed: 177 native cases in 15 files and 191 unit/DOM cases in 10 files. Whole typecheck and Linux build still pending.
+
+## Limits and release boundary
+
+Reprocess disclosure/history and recorded result populations remain separate open paging work. The global overtime availability proof retains its complete native cohort to preserve refusal semantics. No complete-request latency or numerical payroll improvement is claimed. Sixty of 62 observations remain open; no batch2 finding is closed before staging acceptance. Migration 5880 is unapplied and provisional pending shared allocation/order reconciliation. Both descriptive AI manifests are regenerated; literal approvals remain at the previously approved source and require exact final-source owner approval before rebinding.

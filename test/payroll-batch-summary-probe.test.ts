@@ -106,7 +106,17 @@ it('reads the exact effective header and visible slip count without exporting di
   const expected=registerRows.filter(row=>row.name.toLowerCase().includes(q.toLowerCase())||(row.employeeCode??'').toLowerCase().includes(q.toLowerCase()));
   expect(actual.state.total).toBe(expected.length);expect(actual.rows.map(row=>row.id)).toEqual(expected.slice(0,25).map(row=>row.id));expect(actual.runTotal).toBe(1000);
  }
- expect(Buffer.byteLength(JSON.stringify((await payrollEmployeeSelectionPage(root,{batchId,kind:'reprocess',page:parsePageQuery()})).rows))).toBeLessThan(Buffer.byteLength(JSON.stringify(exact))/10);
+ const defaultSelection=await payrollEmployeeSelectionPage(root,{batchId,kind:'reprocess',page:parsePageQuery()});
+ const defaultRemoval=await payrollEmployeeSelectionPage(root,{batchId,kind:'remove',page:parsePageQuery()});
+ const selectionPayloads={
+  fullDetailBytes:Buffer.byteLength(JSON.stringify(exact)),
+  reprocessPageBytes:Buffer.byteLength(JSON.stringify(defaultSelection.rows)),
+  fullRemovalRowsBytes:Buffer.byteLength(JSON.stringify(removable)),
+  removalPageBytes:Buffer.byteLength(JSON.stringify(defaultRemoval.rows)),
+  fullRows:1000,pageRows:defaultSelection.rows.length,
+ };
+ expect(selectionPayloads.reprocessPageBytes).toBeLessThan(selectionPayloads.fullDetailBytes/10);
+ expect(selectionPayloads.removalPageBytes).toBeLessThan(selectionPayloads.fullRemovalRowsBytes/10);
  const firstPage=registerRows.slice(0,25),offPage=registerRows.at(-1)!;
  expect(firstPage.some(row=>row.employmentId===offPage.employmentId)).toBe(false);
  const bannerIds=[offPage.employmentId,extra[0].employmentId,firstPage[0].employmentId.toUpperCase(),'not-a-uuid'];
@@ -196,7 +206,7 @@ it('reads the exact effective header and visible slip count without exporting di
  const searched=await payslipLessEligiblePage(root,{batchId,page:parsePageQuery(),search:'NEW0007'});
  expect(searched.state.total).toBe(1);expect(searched.rows[0].employeeCode).toBe('NEW-0007');expect(searched.runTotal).toBe(1000);
  for(const ctx of [foreign,worker,scoped])expect((await payslipLessEligiblePage(ctx,{batchId,page:parsePageQuery()})).rows).toEqual(await listPayslipLessEligible(ctx,{batchId}));
- if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'payroll-selection-paging-probe.json'),JSON.stringify({kind:'NATIVE_PAYROLL_SELECTION_PAGING',releaseEligible:false,groupCompanies:71,physicalEmployments:2001,paidPopulationBeforeHistoryChange:1000,unpaidPopulationBeforeHistoryChange:1000,pageDefault:25,equivalentRowsCountsAndReadiness:true,allNativeRolesAndGroupCompanyScopes:true,financialCommandsChanged:false},null,2));
+ if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'payroll-selection-paging-probe.json'),JSON.stringify({kind:'NATIVE_PAYROLL_SELECTION_PAGING',releaseEligible:false,groupCompanies:71,physicalEmployments:2001,paidPopulationBeforeHistoryChange:1000,unpaidPopulation:1000,pageDefault:25,selectionPayloads,equivalentRowsCountsAndReadiness:true,allNativeRolesAndGroupCompanyScopes:true,financialCommandsChanged:false},null,2));
  const bestBeforeMs = Math.min(...phases.filter(p => p.name === 'original' || p.name === 'restored-original').map(p => p.elapsedMs));
  const worstAfterMs = Math.max(...phases.filter(p => p.name.startsWith('register-page')).map(p => p.elapsedMs));
  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'payroll-batch-summary-probe.json'),JSON.stringify({kind:'NATIVE_PAYROLL_BATCH_SUMMARY',releaseEligible:false,physicalMembers:1001,groupCompanies:71,visibleDetailRows:exact?.slips.length,readsPerPhase:5,phases,comparison:{bestBeforeMs,worstAfterMs,noRegression:worstAfterMs<=bestBeforeMs},numericalPayrollCalculationClaim:false},null,2));
