@@ -240,10 +240,14 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5212,when:1794841005812,tag:'5812_contract_shared_identity_context'},
  {idx:5218,when:1794841005818,tag:'5818_contract_shared_tracker'},
  {idx:5219,when:1794841005819,tag:'5819_contract_shared_period_open'},
+ {idx:5220,when:1794841005820,tag:'5820_contract_shared_case_workspace'},
+ {idx:5221,when:1794841005821,tag:'5821_contract_shared_assigned_work'},
  {idx:5230,when:1794841005830,tag:'5830_contract_shared_tracker_choices'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5820_contract_shared_case_workspace':'d463af063a32e5abbba0485bac85c2eade319e1363d40df6ccb4c11c688e4eba',
+ '5821_contract_shared_assigned_work':'8880d4a73eb8b577e06ba4aec4d139b1bd0c693b8997e900b4d7dc1946c07d30',
  '5830_contract_shared_tracker_choices':'ffe03a1ed05a62c27ec5fc554c50f0fc1cff854e2dc21ff2428c7db49a77a65a',
  '5819_contract_shared_period_open':'ca6b1667583d3b8544f1a6d8b4eb3168140d67a9fc4c916b9fa98b03f2c49c3c',
  '5818_contract_shared_tracker':'b20ac0a47fb09b78bb02f71566726d0c3b09bb4f574d0e492c85cec4730a0daa',

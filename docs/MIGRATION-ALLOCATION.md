@@ -3933,3 +3933,5 @@ grant, function, column or row changes; existing rows already satisfy the wider 
 `1b92edf3fe85d66954e50f5677bc1cf5122f8fe92faf22db636181c5ed8503f8`. The approved upgrade tail pin
 (`test/helpers/approved-upgrade.ts`) and `test/tenant-company-fk-upgrade.test.ts` carry `5162`. Recheck peer claims and
 the installed ledger at admission. This entry carries no deployment authority.
+
+Contract screens owner: 5820–5821 (idx5220–5221, when1794841005820–5821), within the Contract5810–5829 block reserved by the parent. Shaped workspace/configuration/recovery reads and canonical assigned-work projections; normal hosted migration verification. Tracker5818–5819 are prerequisites, and sibling5830 remains ordered afterward.
