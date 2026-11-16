@@ -9,13 +9,16 @@ import {probationTimestamp} from '@/lib/probation-display';
  */
 export function AutomationHistory({runs}:{runs:ProbationAutomationHistoryRun[]}){
  const t=useTranslations('probation');
- return <section className="v9-panel v9-stack" aria-label={t('automationHistory.title')}><h2>{t('automationHistory.title')}</h2>
-  {!runs.length?<p className="v9-muted">{t('automationHistory.empty')}</p>:<ol className="v9-list">{runs.map(run=><li key={run.id}>
-   <strong>{run.triggerLabel}</strong> · <span className={run.status==='failed'?'v9-badge v9-badge-amber':'v9-badge'}>{t('automationHistory.status.'+run.status)}</span> · {probationTimestamp(run.startedAt)}
-   {run.failure&&<p role="status" className="v9-notice v9-warning">{run.failure}</p>}
-   <ul className="v9-list">{run.entries.map((entry,index)=><li key={index}><span className="v9-muted">{probationTimestamp(entry.at)}</span> {entry.message}
-    {entry.recipients>0&&<span className="v9-muted"> · {t('automationHistory.recipients',{count:entry.recipients})}</span>}
-    {entry.unresolved.map((item,i)=><p key={i} className="v9-muted">{t('automationHistory.unresolved',{who:item.meantFor,reason:item.reason})}</p>)}</li>)}</ul>
+ return <section className="pcc-card" aria-label={t('automationHistory.title')}><h2>{t('automationHistory.title')}</h2>
+  {!runs.length?<p className="pcc-muted">{t('automationHistory.empty')}</p>:<ol className="pcc-hist">{runs.map(run=><li key={run.id}>
+   <span className="pcc-muted pcc-num">{probationTimestamp(run.startedAt)}</span>
+   <div className="pcc-stack" style={{gap:6}}>
+    <span><b>{run.triggerLabel}</b> · <span className={run.status==='failed'?'pcc-pill pcc-pill-warn':run.status==='done'?'pcc-pill pcc-pill-ok':'pcc-pill'}>{t('automationHistory.status.'+run.status)}</span></span>
+    {run.failure&&<p role="status" className="pcc-banner pcc-banner-warn">{run.failure}</p>}
+    {run.entries.length>0&&<ul className="pcc-wl">{run.entries.map((entry,index)=><li key={index} className="pcc-small"><span className="pcc-muted pcc-num">{probationTimestamp(entry.at)}</span> {entry.message}
+     {entry.recipients>0&&<span className="pcc-muted"> · {t('automationHistory.recipients',{count:entry.recipients})}</span>}
+     {entry.unresolved.map((item,i)=><p key={i} className="pcc-muted">{t('automationHistory.unresolved',{who:item.meantFor,reason:item.reason})}</p>)}</li>)}</ul>}
+   </div>
   </li>)}</ol>}
  </section>;
 }

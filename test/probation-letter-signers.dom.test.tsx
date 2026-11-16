@@ -51,7 +51,7 @@ describe('letters name their signers (L3, L4)',()=>{
  });
  it('names who holds each pending step under Required signers, and the rendered letter shows the signers',()=>{
   render(<NextIntlClientProvider locale="en" messages={messages}><LetterView letter={letter([reviewed])} actor={{id:'viewer',name:'Fictional Viewer'}}/></NextIntlClientProvider>);
-  const list=screen.getByRole('heading',{name:messages.probation.letters.signingHistory}).closest('section')!;
+  const list=screen.getByRole('heading',{name:messages.probation.caseView.letter.routing}).closest('section')!;
   const rows=within(list).getAllByRole('listitem').map(item=>item.textContent);
   expect(rows).toEqual([
    'Review · Fictional Reviewer · 16/11/2026 12:11',

@@ -1,3 +1,4 @@
+import '../case.css';
 import {ProbationCasePage} from '../../case-page';
 /** A part's own address keeps working (task links use it): the case view opened on that part's tab, any cycle. */
 export default async function Page({params}:{params:Promise<{id:string;partId:string}>}){

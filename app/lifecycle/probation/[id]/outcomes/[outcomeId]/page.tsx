@@ -1,3 +1,4 @@
+import '../../case.css';
 import {notFound} from 'next/navigation';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
 import {probationCase,probationLetterTemplates,probationLetterTemplateChoices} from '@/packs/probation/service';
