@@ -6196,6 +6196,20 @@
       "when": 1794841005803,
       "tag": "5803_shared_document_templates",
       "breakpoints": true
+    },
+    {
+      "idx": 5204,
+      "version": "7",
+      "when": 1794841005804,
+      "tag": "5804_shared_email_rich_body",
+      "breakpoints": true
+    },
+    {
+      "idx": 5205,
+      "version": "7",
+      "when": 1794841005805,
+      "tag": "5805_native_contract_counter_and_cutover",
+      "breakpoints": true
     }
   ]
 }

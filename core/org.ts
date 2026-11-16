@@ -3000,6 +3000,7 @@ export type EmploymentInfoInput = {
    *  deliberate (one date, one home: the employment review keeps watching what HR maintains).
    *  undefined = untouched, ''/null = clear, exactly like every other field on this input. */
   contractStartDate?: string | null;
+  contractNumber?: number | string | null;
   contractEndDate?: string | null;
   contractRemark?: string | null;
   /** 2260a06b — the internship end date (pre-existing 0110 review column). Shown and maintained for an Intern
@@ -3315,6 +3316,12 @@ export async function setEmploymentInfo(
     set[f] = v || null;
   }
 
+  if(p.contractNumber!==undefined){
+    const value=p.contractNumber;
+    if(value==null||value==='')set.contractNumber=null;
+    else {const number=Number(value);if(!Number.isSafeInteger(number)||number<1||number>100000)throw new Error('Contract number must be a whole number between 1 and 100,000.');set.contractNumber=number;}
+  }
+
   if (Object.keys(set).length === 0) throw new Error('Nothing to change.');
 
   const run = async (tx: Tx) => {
@@ -3364,6 +3371,7 @@ export async function setEmploymentInfo(
         // 8590615a — the contract group, in the before projection so the change-history diff carries all
         // three (the payload's `before`/`after` are built from exactly this select).
         contractStartDate: employment.contractStartDate,
+        contractNumber: employment.contractNumber,
         contractEndDate: employment.contractEndDate,
         contractRemark: employment.contractRemark,
         internshipEndDate: employment.internshipEndDate,
@@ -3382,6 +3390,11 @@ export async function setEmploymentInfo(
       .where(eq(employment.id, p.employmentId))
       .limit(1);
     if (!before) throw new Error('Employment not found');
+    if('contractNumber' in set&&set.contractNumber!==before.contractNumber){
+      const [lock]=await tx.execute<{locked:boolean}>(sql`select app.contract_shared_number_locked(${p.employmentId}::uuid) as locked`);
+      if(lock?.locked)throw new Error('A contract decision is in progress. Update the contract number through its approved Personnel posting.');
+    }
+
 
     const [labelEmployment]=await tx.select({companyId:employment.companyId}).from(employment).where(eq(employment.id,p.employmentId)).limit(1);
     // 1001ff61 — the org/job fields are now catalog-backed dropdowns. Reject a value that is not an ACTIVE

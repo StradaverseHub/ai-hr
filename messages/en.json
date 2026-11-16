@@ -1405,7 +1405,8 @@
         "pendingMovementItem": "{kind} — takes effect {date}",
         "pendingMovementNote": "The values below are today's. They will not change until each date arrives.",
         "resignationMovementNote": "Resignation dates are maintained through Movement. Pending and future events do not replace the currently applicable information.",
-        "resignationMovementLink": "Record or correct resignation in Movement"
+        "resignationMovementLink": "Record or correct resignation in Movement",
+        "contractNumber": "Contract number"
       },
       "documents": {
         "title": "Documents",

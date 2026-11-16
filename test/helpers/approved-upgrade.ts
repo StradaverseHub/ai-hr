@@ -229,10 +229,14 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5201,when:1794841005801,tag:'5801_contract_shared_flows'},
  {idx:5202,when:1794841005802,tag:'5802_contract_shared_builders'},
  {idx:5203,when:1794841005803,tag:'5803_shared_document_templates'},
+ {idx:5204,when:1794841005804,tag:'5804_shared_email_rich_body'},
+ {idx:5205,when:1794841005805,tag:'5805_native_contract_counter_and_cutover'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
- '5800_contract_shared_access':'5e49150683fd19cd401e930de67dab96b03c40f08f226612b8513274dac9b4ca',
+ '5804_shared_email_rich_body':'e35260fa19bba07030b8a534064846cc3296dfd6bb9d04fb028c93c1118abbf1',
+ '5805_native_contract_counter_and_cutover':'f4480fd304085862acc004f58d6c8714221c147046536abe0d03036159802066',
+ '5800_contract_shared_access':'541951b113d416047eda19b5d228e7d040a6f7918b187cb5a922a4c714514c70',
  '5801_contract_shared_flows':'c615e42b835d815cfbe0bcff98948a3004bedd77264d48102ce8aa1479f338c5',
  '5802_contract_shared_builders':'174ee40d0f80116d71ae1bafeddbb9e5eaa57de6852c7934d144e89b8124a346',
  '5803_shared_document_templates':'0fab1cf185f4bde90d5ab8d43703a8a3b4336077f2c41bda426023d491a898f6',
@@ -428,6 +432,8 @@ async function table(db:Database,name:string):Promise<Row[]>{return (await db.cl
  * may hold a value there. migrateApprovedUpgrade proves each column present and null on every row once its
  * migration is applied; a retained row is then compared without it (withoutCombinedReleaseNulls). */
 export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;columns:readonly string[]}[]=Object.freeze([
+ {tag:'5804_shared_email_rich_body',table:'automation_email_template_version',columns:['body_doc']},
+ {tag:'5805_native_contract_counter_and_cutover',table:'employment',columns:['contract_number']},
  {tag:'5010_employee_import_staged_job',table:'employment',columns:['import_pending_attempt_id']},
  {tag:'5010_employee_import_staged_job',table:'person',columns:['import_pending_attempt_id']},
  {tag:'5012_import_release_visibility',table:'domain_event',columns:['import_pending_attempt_id']},

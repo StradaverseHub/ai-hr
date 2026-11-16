@@ -1,25 +1,19 @@
 'use client';
 import Link from 'next/link';
-import {useRef,useState,useTransition} from 'react';
-import {useRouter} from 'next/navigation';
+import {useState} from 'react';
 import {useTranslations} from 'next-intl';
-import {PROBATION_AUTOMATION_CATALOGUE} from '@/lib/automation/catalogues/probation';
-import {automationEmailMergeWarnings,automationEmailTemplateProblems,type AutomationEmailTemplate} from '@/lib/automation/email';
+import {type AutomationEmailTemplate} from '@/lib/automation/email';
 import {FilterChips,LegacyBuilderCard} from '../filter-chips';
-import {MultiSelect} from '../multi-select';
-import {recipientKey,recipientOptions,recipientsFromKeys,type NamedOption} from '../recipients';
-import {saveEmailTemplateAction} from '../actions';
+import {type NamedOption} from '../recipients';
 import {LEGACY_BUILDERS,type AutomationFilter,type AutomationPageAccess} from '../types';
 import {ConfigBanner,ConfigHead} from '@/app/lifecycle/probation/settings/config-head';
 import {sortedDocumentRouting,type DocumentRouting} from '@/lib/document-signing-routing';
-import {automationCatalogue} from '@/lib/automation/catalogues';
 import {ContractTemplates,type ContractTemplatesData} from './contract-templates';
 import {EmailEditor} from './email-editor';
 
 export type ListedEmailTemplate = { template: AutomationEmailTemplate; revision: number; retired: boolean };
 export type LetterSection = { companies: NamedOption[]; company: NamedOption; templates: { id: string; name: string; state: string; version: number; outcome: string; routing?: DocumentRouting }[] } | null;
 export type Refs = { routings: (NamedOption & { retired?: boolean })[]; groups: NamedOption[]; people: NamedOption[] };
-const catalogue = PROBATION_AUTOMATION_CATALOGUE;
 
 /** HR Automation › Templates (prototype TemplatesPage and EmailDrawer; mockup 14). Document signing routing stays in the letter editor. */
 export function TemplatesWorkspace({filter,access,emails,letters,refs,contract}:{filter:AutomationFilter;access:AutomationPageAccess;emails:ListedEmailTemplate[];letters:LetterSection;refs:Refs;contract?:ContractTemplatesData}){

@@ -25,5 +25,5 @@ export function automationDocumentTemplateWarnings(template:AutomationDocumentTe
  return documentRoutingSignatureProblems(template.routing,template.blocks);
 }
 export function automationDocumentMatches(template:AutomationDocumentTemplate,read:(field:string)=>string|null):boolean{
- return Object.entries(template.rules).every(([field,values])=>!values?.length||values.includes(read(field)??''));
+ return Object.entries(template.rules).every(([field,values])=>!values?.length||values.some(value=>value===read(field)));
 }

@@ -3,6 +3,11 @@
 Status: owner-approved direction, 16 November 2026; implementation and verification in progress.
 Extends `2026-11-15-probation-shared-automation.md`. Installation is a separate verified release.
 
+Release hold: the owner subsequently instructed “Stop before release, wait for my approval.” Continue implementation
+and hosted verification on the owned branch. Present the finished candidate and evidence, then wait for explicit
+approval before main/alpha integration, staging installation or any other release action. Earlier staging
+authorization is superseded by this hold; production remains separately unauthorized.
+
 ## Decision
 
 The owner reviewed the Contract Management tracker, Renew/Convert/End decisions, consequence preview, case progress,

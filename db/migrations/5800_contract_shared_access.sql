@@ -8,11 +8,13 @@ CREATE TABLE public.contract_access_role (
  PRIMARY KEY(tenant_id,id), UNIQUE(tenant_id,name)
 );
 --> statement-breakpoint
+CREATE UNIQUE INDEX contract_access_role_name ON public.contract_access_role(tenant_id,lower(name));
+--> statement-breakpoint
 CREATE TABLE public.contract_access_member (
  tenant_id uuid NOT NULL REFERENCES public.tenant(id), id uuid NOT NULL DEFAULT gen_random_uuid(), role_id uuid NOT NULL,
  user_id uuid NOT NULL REFERENCES public.app_user(id), company_id uuid REFERENCES public.company(id), business_unit_id uuid REFERENCES public.business_unit(id),
  valid_from date NOT NULL, valid_to date, revoked_at timestamptz,
- created_by uuid NOT NULL REFERENCES public.app_user(id), created_at timestamptz NOT NULL DEFAULT now(),
+ revision integer NOT NULL DEFAULT 1 CHECK(revision>0), created_by uuid NOT NULL REFERENCES public.app_user(id), created_at timestamptz NOT NULL DEFAULT now(),
  PRIMARY KEY(tenant_id,id), FOREIGN KEY(tenant_id,role_id) REFERENCES public.contract_access_role(tenant_id,id),
  CHECK(valid_to IS NULL OR valid_to>=valid_from)
 );
@@ -55,7 +57,8 @@ $$;
 --> statement-breakpoint
 CREATE FUNCTION app.contract_shared_access_admin() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT coalesce(app.contract_verified_human(app.current_user_id()) AND
- (app.access_capability_allowed('access.system_admin',NULL) OR app.access_capability_allowed('access.configure',NULL)),false)
+ (app.access_capability_allowed('access.system_admin',NULL) OR app.access_capability_allowed('access.configure',NULL)
+ OR EXISTS(SELECT 1 FROM public.contract_access_member m JOIN public.contract_access_role r ON r.tenant_id=m.tenant_id AND r.id=m.role_id WHERE m.tenant_id=app.current_tenant_id() AND m.user_id=app.current_user_id() AND m.revoked_at IS NULL AND m.company_id IS NULL AND m.business_unit_id IS NULL AND 'access'=ANY(r.permissions) AND m.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (m.valid_to IS NULL OR m.valid_to>=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date))),false)
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.contract_shared_permitted(text,uuid,uuid,uuid),app.contract_shared_case_permitted(uuid,text),app.contract_shared_access_admin() FROM PUBLIC;
@@ -97,8 +100,8 @@ BEGIN
  RETURN coalesce(r,0)+1;
 END $$;
 --> statement-breakpoint
-CREATE FUNCTION app.contract_shared_member_save(p_id uuid,p_role uuid,p_user uuid,p_company uuid,p_unit uuid,p_from date,p_to date,p_revoke boolean) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE t uuid:=app.current_tenant_id();
+CREATE FUNCTION app.contract_shared_member_save(p_id uuid,p_role uuid,p_user uuid,p_company uuid,p_unit uuid,p_from date,p_to date,p_revoke boolean,p_expected integer DEFAULT 0) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id();prior public.contract_access_member;
 BEGIN
  PERFORM app.access_workforce_write_lock();
  IF app.contract_shared_access_admin() IS NOT TRUE THEN RAISE EXCEPTION 'Contract access administration is unavailable' USING ERRCODE='42501';END IF;
@@ -108,16 +111,20 @@ BEGIN
  OR p_unit IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.business_unit WHERE tenant_id=t AND id=p_unit)
  THEN RAISE EXCEPTION 'Invalid role assignment' USING ERRCODE='22023';END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('contract-member:'||t::text||':'||p_id::text,0));
+ SELECT * INTO prior FROM public.contract_access_member WHERE tenant_id=t AND id=p_id FOR UPDATE;
+ IF coalesce(prior.revision,0) IS DISTINCT FROM p_expected THEN RAISE EXCEPTION 'Assignment changed; reload' USING ERRCODE='40001';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('contract-member-scope:'||t::text||':'||p_role::text||':'||p_user::text,0));
+ IF NOT p_revoke AND EXISTS(SELECT 1 FROM public.contract_access_member m WHERE m.tenant_id=t AND m.id<>p_id AND m.role_id=p_role AND m.user_id=p_user AND m.revoked_at IS NULL AND m.company_id IS NOT DISTINCT FROM p_company AND m.business_unit_id IS NOT DISTINCT FROM p_unit AND daterange(m.valid_from,m.valid_to+1,'[)') && daterange(p_from,p_to+1,'[)')) THEN RAISE EXCEPTION 'This person already has an overlapping assignment for this scope' USING ERRCODE='22023';END IF;
  IF EXISTS(SELECT 1 FROM public.contract_access_member WHERE tenant_id=t AND id=p_id AND (role_id<>p_role OR user_id<>p_user)) THEN RAISE EXCEPTION 'Assignment identity cannot change' USING ERRCODE='22023';END IF;
  INSERT INTO public.contract_access_member(tenant_id,id,role_id,user_id,company_id,business_unit_id,valid_from,valid_to,revoked_at,created_by)
  VALUES(t,p_id,p_role,p_user,p_company,p_unit,p_from,p_to,CASE WHEN p_revoke THEN now() END,app.current_user_id())
- ON CONFLICT(tenant_id,id) DO UPDATE SET company_id=excluded.company_id,business_unit_id=excluded.business_unit_id,valid_from=excluded.valid_from,valid_to=excluded.valid_to,revoked_at=excluded.revoked_at;
- INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) VALUES(t,'contract_access_member',p_id,'contract.access.assignment.saved','user',app.current_user_id(),jsonb_build_object('revoked',p_revoke));
+ ON CONFLICT(tenant_id,id) DO UPDATE SET company_id=excluded.company_id,business_unit_id=excluded.business_unit_id,valid_from=excluded.valid_from,valid_to=excluded.valid_to,revoked_at=excluded.revoked_at,revision=contract_access_member.revision+1;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) VALUES(t,'contract_access_member',p_id,'contract.access.assignment.saved','user',app.current_user_id(),jsonb_build_object('before',to_jsonb(prior),'after',(SELECT to_jsonb(m) FROM public.contract_access_member m WHERE m.tenant_id=t AND m.id=p_id)));
  RETURN p_id;
 END $$;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION app.contract_shared_role_save(uuid,text,text[],integer),app.contract_shared_member_save(uuid,uuid,uuid,uuid,uuid,date,date,boolean) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.contract_shared_role_save(uuid,text,text[],integer),app.contract_shared_member_save(uuid,uuid,uuid,uuid,uuid,date,date,boolean) TO ai_hr_app;
+REVOKE ALL ON FUNCTION app.contract_shared_role_save(uuid,text,text[],integer),app.contract_shared_member_save(uuid,uuid,uuid,uuid,uuid,date,date,boolean,integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.contract_shared_role_save(uuid,text,text[],integer),app.contract_shared_member_save(uuid,uuid,uuid,uuid,uuid,date,date,boolean,integer) TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.contract_shared_settings_save(p_company uuid,p_expected integer,p_data jsonb) RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE t uuid:=app.current_tenant_id();r integer;v_permissions text[];

@@ -1405,7 +1405,8 @@
         "pendingMovementItem": "{kind} — berkuat kuasa {date}",
         "pendingMovementNote": "Nilai di bawah ialah nilai hari ini. Ia tidak akan berubah sehingga tarikh masing-masing tiba.",
         "resignationMovementNote": "Tarikh peletakan jawatan diurus melalui Pergerakan. Peristiwa tertunda dan akan datang tidak menggantikan maklumat yang sedang berkuat kuasa.",
-        "resignationMovementLink": "Rekod atau betulkan peletakan jawatan dalam Pergerakan"
+        "resignationMovementLink": "Rekod atau betulkan peletakan jawatan dalam Pergerakan",
+        "contractNumber": "Contract number"
       },
       "documents": {
         "title": "Dokumen",

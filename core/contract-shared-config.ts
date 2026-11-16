@@ -21,7 +21,7 @@ function refused(error: unknown): never {
   throw error;
 }
 export type ContractAccessRole = {id: string; name: string; permissions: (typeof CONTRACT_CASE_PERMISSIONS)[number][]; revision: number};
-export type ContractAccessMember = {id: string; roleId: string; userId: string; name: string; companyId: string | null; businessUnitId: string | null; validFrom: string; validTo: string | null; revokedAt: string | null};
+export type ContractAccessMember = {id: string; roleId: string; userId: string; name: string; companyId: string | null; businessUnitId: string | null; validFrom: string; validTo: string | null; revokedAt: string | null;revision:number};
 export function contractSharedSettings(ctx: SessionContext, companyId: string): Promise<{revision: number; settings: ContractFlowSettings; accessAdmin: boolean}> {
   z.uuid().parse(companyId);
   return withScopedLifecycleTenant(ctx, async tx => {
@@ -49,7 +49,7 @@ export function contractSharedAccess(ctx: SessionContext): Promise<{roles: Contr
     const [allowed] = await tx.execute<{ok: boolean}>(sql`select app.contract_shared_access_admin() as ok`);
     if (!allowed?.ok) throw new ContractManagementError('forbidden', 'Contract access administration is unavailable.');
     const roles = await tx.execute<ContractAccessRole>(sql`select id,name,permissions,revision from contract_access_role where tenant_id=app.current_tenant_id() order by lower(name),id limit 200`);
-    const members = await tx.execute<ContractAccessMember>(sql`select m.id,m.role_id as "roleId",m.user_id as "userId",p.full_name as name,m.company_id as "companyId",m.business_unit_id as "businessUnitId",m.valid_from::text as "validFrom",m.valid_to::text as "validTo",m.revoked_at::text as "revokedAt" from contract_access_member m join app_user u on u.tenant_id=m.tenant_id and u.id=m.user_id join person p on p.tenant_id=u.tenant_id and p.id=u.person_id where m.tenant_id=app.current_tenant_id() order by p.full_name,m.id limit 1000`);
+    const members = await tx.execute<ContractAccessMember>(sql`select m.id,m.revision,m.role_id as "roleId",m.user_id as "userId",p.full_name as name,m.company_id as "companyId",m.business_unit_id as "businessUnitId",m.valid_from::text as "validFrom",m.valid_to::text as "validTo",m.revoked_at::text as "revokedAt" from contract_access_member m join app_user u on u.tenant_id=m.tenant_id and u.id=m.user_id join person p on p.tenant_id=u.tenant_id and p.id=u.person_id where m.tenant_id=app.current_tenant_id() order by p.full_name,m.id limit 1000`);
     return {roles: [...roles], members: [...members]};
   });
 }
@@ -61,10 +61,10 @@ export async function saveContractSharedRole(ctx: SessionContext, raw: unknown):
   });} catch (error) {return refused(error);}
 }
 export async function saveContractSharedMember(ctx: SessionContext, raw: unknown): Promise<{id: string}> {
-  const input = z.object({id: z.uuid(), roleId: z.uuid(), userId: z.uuid(), companyId: z.uuid().nullable(), businessUnitId: z.uuid().nullable(), validFrom: z.iso.date(), validTo: z.iso.date().nullable(), revoked: z.boolean()}).strict().parse(raw);
+  const input = z.object({id: z.uuid(), roleId: z.uuid(), userId: z.uuid(), companyId: z.uuid().nullable(), businessUnitId: z.uuid().nullable(), validFrom: z.iso.date(), validTo: z.iso.date().nullable(), revoked: z.boolean(),expectedRevision:z.number().int().min(0).default(0)}).strict().parse(raw);
   if (input.validTo && input.validTo < input.validFrom) throw new ContractManagementError('invalid', 'Valid to must not precede Valid from.');
   try {return await withScopedLifecycleTenant(ctx, async tx => {
-    const [row] = await tx.execute<{id: string}>(sql`select app.contract_shared_member_save(${input.id}::uuid,${input.roleId}::uuid,${input.userId}::uuid,${input.companyId}::uuid,${input.businessUnitId}::uuid,${input.validFrom}::date,${input.validTo}::date,${input.revoked}) as id`);
+    const [row] = await tx.execute<{id: string}>(sql`select app.contract_shared_member_save(${input.id}::uuid,${input.roleId}::uuid,${input.userId}::uuid,${input.companyId}::uuid,${input.businessUnitId}::uuid,${input.validFrom}::date,${input.validTo}::date,${input.revoked},${input.expectedRevision}) as id`);
     return row;
   });} catch (error) {return refused(error);}
 }

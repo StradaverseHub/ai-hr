@@ -1,17 +1,14 @@
 'use client';
-import Link from 'next/link';
+import {EmailBodyEditor} from '@/components/email-body-editor';
+import {automationEmailBodyDoc,automationEmailBodyText} from '@/lib/automation/email';
 import {useRef,useState,useTransition} from 'react';
 import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
 import {PROBATION_AUTOMATION_CATALOGUE} from '@/lib/automation/catalogues/probation';
 import {automationEmailMergeWarnings,automationEmailTemplateProblems,type AutomationEmailTemplate} from '@/lib/automation/email';
-import {FilterChips,LegacyBuilderCard} from '../filter-chips';
 import {MultiSelect} from '../multi-select';
-import {recipientKey,recipientOptions,recipientsFromKeys,type NamedOption} from '../recipients';
+import {recipientKey,recipientOptions,recipientsFromKeys} from '../recipients';
 import {saveEmailTemplateAction} from '../actions';
-import {LEGACY_BUILDERS,type AutomationFilter,type AutomationPageAccess} from '../types';
-import {ConfigBanner,ConfigHead} from '@/app/lifecycle/probation/settings/config-head';
-import {sortedDocumentRouting,type DocumentRouting} from '@/lib/document-signing-routing';
 import {automationCatalogue} from '@/lib/automation/catalogues';
 
 
@@ -43,8 +40,7 @@ export function EmailEditor({initial,refs,onClose}:{initial:ListedEmailTemplate;
   {!draft.active&&<p className="v9-notice">{t('templates.offNote')}</p>}
   <div className="v9-field"><div className="automation-row automation-between"><label htmlFor="automation-email-subject">{t('editor.subject')}</label>{picker('subject')}</div>
    <input id="automation-email-subject" ref={element=>{fields.current.subject=element;}} value={draft.subject} maxLength={500} disabled={readOnly} aria-invalid={!draft.subject.trim()} onChange={e=>change({subject:e.target.value})}/></div>
-  <div className="v9-field"><div className="automation-row automation-between"><label htmlFor="automation-email-body">{t('editor.message')}</label>{picker('body')}</div>
-   <textarea id="automation-email-body" ref={element=>{fields.current.body=element;}} value={draft.body} rows={10} maxLength={20000} disabled={readOnly} onChange={e=>change({body:e.target.value})}/></div>
+  <div className="v9-field"><span>{t('editor.message')}</span><EmailBodyEditor value={automationEmailBodyDoc(draft)} onChange={bodyDoc=>change({bodyDoc,body:automationEmailBodyText(bodyDoc)})} disabled={readOnly} fields={catalogue.mergeFields.map(field=>({key:field.key,label:field.label}))} aria-label={t('editor.message')}/></div>
   <div className="v9-field"><span>{t('templates.cc')}</span><MultiSelect label={t('templates.cc')} value={draft.cc.map(recipientKey)} options={recipients} disabled={readOnly} onChange={keys=>change({cc:recipientsFromKeys(keys)})}/></div>
   <p className="v9-muted">{t('editor.mergeHelp',{example:'{{employee.name}}'})}</p>
   {problems.length>0&&<section className="automation-issues" aria-label={t('editor.problems')}><b>{t('editor.problems')}</b><ul>{problems.map((p,i)=><li key={i}>{p}</li>)}</ul></section>}

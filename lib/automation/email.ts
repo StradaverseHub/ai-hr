@@ -13,12 +13,15 @@
  * Step settings (`params`) belong to the module that executes them (lib/automation/workflow.ts). These checks are the
  * Probation builder's: they never relax the shared envelope's problems and only add to them. Pure, dependency-free.
  */
+import {createEmailBodyDocSchema,type EmailBodyDoc} from '../email-body/doc';
+import {legacyBodyToDoc,docToLegacyText} from '../email-body/legacy';
+import {renderEmailBody} from '../email-body/render';
 import type {AutomationModule,AutomationModuleCatalogue} from './catalogue';
 import type {AutomationRecipient,AutomationReferences,AutomationWorkflow} from './workflow';
 
 export type AutomationEmailTemplate = {
   id: string; module: AutomationModule; name: string; active: boolean;
-  subject: string; body: string;
+  subject: string; body: string; bodyDoc?: EmailBodyDoc;
   /** Always copied, in addition to the step's own CC list. */
   cc: AutomationRecipient[];
 };
@@ -56,6 +59,10 @@ export function automationEmailTemplateProblems(template: AutomationEmailTemplat
   if (!template.subject.trim()) problems.push('Write a subject.');
   if (template.subject.length > MAX_EMAIL_SUBJECT) problems.push(`Use a subject of at most ${MAX_EMAIL_SUBJECT} characters.`);
   if (template.body.length > MAX_EMAIL_BODY) problems.push(`Use a message of at most ${MAX_EMAIL_BODY} characters.`);
+  if(template.bodyDoc){
+    const result=createEmailBodyDocSchema({fieldAllowed:key=>catalogue.mergeFields.some(field=>field.key===key),imageIds:[],documentIds:[]}).safeParse(template.bodyDoc);
+    if(!result.success)problems.push('The rich email body contains invalid content or unavailable fields.');
+  }
   problems.push(...recipientListProblems('CC', template.cc, catalogue, refs));
   return problems;
 }
@@ -120,4 +127,15 @@ export function probationStepParamWarnings(workflow: AutomationWorkflow, refs: P
     if (template && !template.retired && !template.active) warnings.push(`Step ${i + 1}: the email template “${template.name}” is turned off, so this step is skipped and noted on the case.`);
   });
   return warnings;
+}
+
+/** Shared text uses double-braced fields; V9 rich nodes carry the bare canonical key. */
+export function automationEmailBodyDoc(template:Pick<AutomationEmailTemplate,'body'|'bodyDoc'>):EmailBodyDoc {
+ return template.bodyDoc??legacyBodyToDoc(template.body.replace(/\{\{\s*([^{}\s]+)\s*\}\}/g,'{$1}'));
+}
+export function automationEmailBodyText(doc:EmailBodyDoc):string {
+ return docToLegacyText(doc).replace(/\{([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)?)\}/g,'{{$1}}');
+}
+export function renderAutomationEmailBody(template:Pick<AutomationEmailTemplate,'body'|'bodyDoc'>,values:Readonly<Record<string,string|undefined>>) {
+ return template.bodyDoc?renderEmailBody(template.bodyDoc,{values}):{text:fillAutomationMergeFields(template.body,values),html:undefined};
 }

@@ -1405,7 +1405,8 @@
         "pendingMovementItem": "{kind} — có hiệu lực ngày {date}",
         "pendingMovementNote": "Các giá trị bên dưới là giá trị hiện tại. Chúng sẽ không thay đổi cho đến khi đến ngày tương ứng.",
         "resignationMovementNote": "Ngày nghỉ việc được quản lý qua Biến động nhân sự. Sự kiện đang chờ hoặc có hiệu lực trong tương lai không thay thế thông tin hiện hành.",
-        "resignationMovementLink": "Ghi nhận hoặc sửa thông tin nghỉ việc trong Biến động nhân sự"
+        "resignationMovementLink": "Ghi nhận hoặc sửa thông tin nghỉ việc trong Biến động nhân sự",
+        "contractNumber": "Contract number"
       },
       "documents": {
         "title": "Tài liệu",

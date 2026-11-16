@@ -1307,6 +1307,7 @@ async function applyEmploymentInfoSection(
     // both-dates-required check from firing on a non-contract save. contractEndDate is the pre-existing
     // employment-review column, written here on purpose so the two screens share one date.
     contractStartDate: str('contractStartDate'),
+    contractNumber: str('contractNumber'),
     contractEndDate: str('contractEndDate'),
     contractRemark: str('contractRemark'),
     // 2260a06b — the Internship Information block, rendered only for an Intern; absent (undefined) otherwise.
