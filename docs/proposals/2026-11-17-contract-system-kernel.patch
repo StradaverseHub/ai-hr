@@ -1,0 +1,69 @@
+# REVIEW PROPOSAL ONLY — NOT APPLIED. Final native ports and tests must be completed after explicit approval.
+diff --git a/core/bulk-job.ts b/core/bulk-job.ts
+--- a/core/bulk-job.ts
++++ b/core/bulk-job.ts
+@@
+- id:string;tenant_id:string;kind:string;created_by:string;context:SessionContext;operation_key:string;exclusive_key:string;
++ id:string;tenant_id:string;kind:string;created_by:string|null;context:SessionContext;operation_key:string;exclusive_key:string;
+diff --git a/core/bulk-job-worker.ts b/core/bulk-job-worker.ts
+--- a/core/bulk-job-worker.ts
++++ b/core/bulk-job-worker.ts
+@@
+ export type BulkJobHandler<P=any>={
+  kind:string;
++ /** Fixed Contract system consumers only; no human SessionContext or app-role transaction. */
++ systemOwner?:true;
++ prepareSystem?(job:BulkJobRow,unit:BulkJobDiscardUnit):Promise<{plan:unknown}>;
++ finalizeSystem?(job:BulkJobRow,unit:BulkJobDiscardUnit):Promise<'more'|BulkJobFinalized>;
+@@
+ export async function bulkJobContext(connection:postgres.ReservedSql|postgres.Sql,job:Pick<BulkJobRow,'context'|'created_by'|'tenant_id'>):Promise<SessionContext>{
++ if(job.created_by===null)throw new BulkJobAuthorityLost();
+@@
+ async function processClaimed(connection:postgres.ReservedSql,handler:BulkJobHandler,c:Claimed){
+  const job=c.job;const unit=unitOf(connection,c);
++ if(job.created_by===null)return processContractSystemClaimed(connection,handler,c,unit);
++ if(handler.systemOwner)return failJob(connection,handler,c,null,'A system job cannot run with a human creator.',[],new BulkJobConfigurationError('Invalid system principal.'));
+@@
++/** Fixed allowlist: declaring a handler flag on another kind grants it nothing. */
++async function processContractSystemClaimed(connection:postgres.ReservedSql,handler:BulkJobHandler,c:Claimed,unit:BulkJobUnit){
++ const job=c.job;
++ if(!['contract_schedule','contract_scheduled_automation'].includes(job.kind)||!handler.systemOwner||!handler.prepareSystem||!handler.finalizeSystem||!handler.finalizeOwner)
++  return failJob(connection,handler,c,null,'This system job has no authorized owner.',[],new BulkJobConfigurationError('Invalid system job kind.'));
++ const systemUnit:BulkJobDiscardUnit={metric:unit.metric,set:unit.set,step:async()=>{throw new BulkJobConfigurationError('System jobs have no app-role steps.');},verifySeal:unit.verifySeal,
++  ownerTx:fn=>ownerTransaction(connection,c,'system',async owner=>{
++   await owner`select set_config('app.tenant_id',${job.tenant_id},true),set_config('app.user_id','',true),set_config('jit','off',true)`;
++   const [held]=await owner<{ok:boolean}[]>`select app.contract_shared_system_job_held(${job.id}::uuid) as ok`;
++   if(!held?.ok)throw new BulkJobAuthorityLost();
++   return fn(owner);
++  })};
++ // Required final implementation: owner-only queued -> preparing -> finalizing state transitions, sealed plan,
++ // bounded finalizeSystem calls, existing transient backoff/failure records, and quiet owner-only terminal cleanup.
++ // Every systemUnit.ownerTx must validate provenance/source as well as the existing kernel lease capability.
++}
+diff --git a/db/migrations/PROPOSED_contract_system_jobs.sql b/db/migrations/PROPOSED_contract_system_jobs.sql
+new file mode 100644
+--- /dev/null
++++ b/db/migrations/PROPOSED_contract_system_jobs.sql
+@@
++-- Allocation and final native definitions remain to be reviewed. This file is not an installed migration.
++CREATE TABLE app.contract_system_job_source (
++ job_id uuid PRIMARY KEY REFERENCES public.bulk_job(id) DEFERRABLE INITIALLY DEFERRED,
++ tenant_id uuid NOT NULL REFERENCES public.tenant(id),
++ kind text NOT NULL CHECK(kind IN('contract_schedule','contract_scheduled_automation')),
++ cause text NOT NULL CHECK(cause IN('morning','caseOpened','beforeContractEnd','afterContractEnd')),
++ source_date date NOT NULL,
++ event_id uuid,
++ input_digest bytea NOT NULL,
++ created_at timestamptz NOT NULL DEFAULT now()
++);
++REVOKE ALL ON app.contract_system_job_source FROM PUBLIC,ai_hr_app;
++ALTER TABLE public.bulk_job ALTER COLUMN created_by DROP NOT NULL;
++ALTER TABLE public.bulk_job ADD CONSTRAINT bulk_job_system_principal_kind
++ CHECK(created_by IS NOT NULL OR kind IN('contract_schedule','contract_scheduled_automation'));
++-- Required native admission: preserve the existing5041 human capture body exactly; an additional NULL-creator
++-- branch must require the storage owner, current tenant, no current human user, exact private source/provenance,
++-- input-shape/digest match, fixed kind and current tenant/module/company/period guard. No app-role grant.
++-- Required held function: existing bulk_job_capability_held + fixed kind/finalize_owner + NULL creator + provenance
++-- + exact canonical context/input + fresh native source. Never accept current_user=NULL alone as authority.
++-- Required Contract adapters: scheduled event actor fields NULL, exact event/provenance foreign binding, fixed
++-- allowed triggers and no decision/effect permission broadening; mail delivery validates the same provenance.

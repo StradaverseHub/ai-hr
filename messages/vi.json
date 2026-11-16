@@ -39932,6 +39932,20 @@
           "title": "Đã hủy bản xem trước quyết định",
           "body": "Chưa có quyết định hợp đồng nào được gửi."
         }
+      },
+      "contractSetup": {
+        "completed": {
+          "title": "Đã chuẩn bị cấu hình Hợp đồng ban đầu",
+          "body": "Kiểm tra quy trình và mẫu trong HR Automation."
+        },
+        "failed": {
+          "title": "Cấu hình Hợp đồng ban đầu cần xử lý",
+          "body": "Kiểm tra các nhóm, định tuyến và kết quả cấu hình đã ghi nhận."
+        },
+        "cancelled": {
+          "title": "Đã dừng cấu hình Hợp đồng ban đầu",
+          "body": "Các quy trình và mẫu hiện có được giữ nguyên."
+        }
       }
     },
     "panel": {

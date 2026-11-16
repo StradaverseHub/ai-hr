@@ -39932,6 +39932,20 @@
           "title": "Pratonton keputusan dibatalkan",
           "body": "Tiada keputusan kontrak dihantar."
         }
+      },
+      "contractSetup": {
+        "completed": {
+          "title": "Persediaan awal Kontrak sedia",
+          "body": "Semak aliran kerja dan templat dalam HR Automation."
+        },
+        "failed": {
+          "title": "Persediaan awal Kontrak memerlukan perhatian",
+          "body": "Semak kumpulan, penghalaan dan hasil persediaan yang direkodkan."
+        },
+        "cancelled": {
+          "title": "Persediaan awal Kontrak dihentikan",
+          "body": "Aliran kerja dan templat sedia ada dikekalkan."
+        }
       }
     },
     "panel": {
