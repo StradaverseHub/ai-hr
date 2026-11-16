@@ -269,7 +269,8 @@ export async function ownAttendanceApplication(ctx: SessionContext, employmentId
 
 async function submissionRoute(ctx:SessionContext,employmentId:string,type:Parameters<typeof att.ownAttendanceSubmissionRoute>[2]){
   const route=await att.ownAttendanceSubmissionRoute(ctx,employmentId,type);
-  return route.available ? {available:true as const,firstApprovers:route.firstApprovers,fingerprint:route.fingerprint} : route;
+  // The mobile v2 contract is unchanged (237c31e6): the refusal carries its reason only.
+  return route.available ? {available:true as const,firstApprovers:route.firstApprovers,fingerprint:route.fingerprint} : {available:false as const,reason:route.reason};
 }
 
 // ── Commands ───────────────────────────────────────────────────────────────────────────────────────────────

@@ -28231,7 +28231,7 @@
     "routeUnavailable": "Không thể xác nhận người duyệt đủ điều kiện tiếp theo từ luồng đã lưu. Nhờ HR kiểm tra phân công.",
     "someApproversUnavailable": "Hiện chưa xác nhận được quyền phê duyệt của một số người đã lưu. Hãy nhờ nhân sự kiểm tra phân công.",
     "notStarted": "Chưa bắt đầu",
-    "notRequired": "Không cần quyết định thêm",
+    "notRequired": "Không bắt buộc",
     "currentEmployeeId": "Mã nhân viên hiện tại",
     "routingRecord": "Tham chiếu luồng đã lưu",
     "notRecorded": "Chưa ghi nhận",
@@ -28310,7 +28310,28 @@
     "escalatedBy": "Hệ thống tự động chuyển cấp",
     "submittedOnBehalfBy": "Được gửi thay bởi {name}",
     "approvedOnBehalf": "Đã phê duyệt thay",
-    "rejectedOnBehalf": "Đã từ chối thay"
+    "rejectedOnBehalf": "Đã từ chối thay",
+    "pendingApproval": "Chờ phê duyệt",
+    "waitingPreviousLevel": "Chờ cấp trước phê duyệt",
+    "skippedNotRequired": "Bỏ qua / Không bắt buộc",
+    "levelOrdinal": {
+      "1": "thứ nhất",
+      "2": "thứ hai",
+      "3": "thứ ba",
+      "4": "thứ tư",
+      "5": "thứ năm",
+      "6": "thứ sáu",
+      "7": "thứ bảy",
+      "8": "thứ tám",
+      "9": "thứ chín",
+      "10": "thứ mười"
+    },
+    "progressMessage": "Đã hoàn tất phê duyệt cấp {completed}. Đang chờ phê duyệt cấp {waiting}.",
+    "progressWaiting": "Đang chờ phê duyệt cấp {waiting}.",
+    "progressFinal": "Trạng thái chung của đơn: {status}.",
+    "configurationWarning": "Không xác định được người phê duyệt cho cấp này. Hãy đề nghị bộ phận nhân sự kiểm tra thiết lập phê duyệt.",
+    "levelOfTotal": "Cấp {level}/{total}",
+    "viewApprovalProgress": "Xem tiến trình phê duyệt"
   },
   "scheduleDrafts": {
     "staleLadder": "Các khoảng thời gian hoặc mức tính làm thêm giờ đã thay đổi trong phần Chung. Bản nháp của bạn vẫn còn ở đây. Hãy tải lại trang này trước khi lưu cài đặt làm thêm giờ. Các thay đổi chưa lưu chỉ bị bỏ sau khi bạn xác nhận.",

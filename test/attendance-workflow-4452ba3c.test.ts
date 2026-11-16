@@ -77,8 +77,9 @@ describe('automatic skip when the reporting chain has genuinely ended (decided a
   await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,loginTop.userId!));
   await reports(loginChild,loginMid);await reports(loginMid,loginTop);
   await saveAttendanceWorkflow(adminCtx(base),workflow([lone,inactiveChild,loginChild],[level([superior(1)]),level([superior(2)]),level([superior(3)])]));
-  for(const applicant of [lone,inactiveChild,loginChild]){
-   expect(await ownAttendanceSubmissionRoute(applicant.ctx,applicant.employmentId,'irregularity')).toEqual({available:false,reason:'unresolved'});
+  // 237c31e6: the refusal names the configured level that cannot be resolved, for the warning on that level.
+  for(const [applicant,levelIndex] of [[lone,0],[inactiveChild,1],[loginChild,2]] as const){
+   expect(await ownAttendanceSubmissionRoute(applicant.ctx,applicant.employmentId,'irregularity')).toEqual({available:false,reason:'unresolved',problem:{code:expect.any(String),levelIndex},levelCount:3});
    await expect(submit(applicant)).rejects.toMatchObject({reason:'unresolved'});
   }
   expect(await owner.db.select().from(schema.attendanceWorkflowRequest)).toEqual([]);
@@ -111,7 +112,7 @@ describe('automatic skip when the reporting chain has genuinely ended (decided a
  it('refuses a route whose every level would be skipped (never zero approvers)',async()=>{
   const a=await actor('Fictional all-skipped A'),b=await actor('Fictional all-skipped B');await reports(a,b);
   await saveAttendanceWorkflow(adminCtx(base),workflow([a],[level([superior(2)]),level([superior(3)])]));
-  expect(await ownAttendanceSubmissionRoute(a.ctx,a.employmentId,'irregularity')).toEqual({available:false,reason:'unresolved'});
+  expect(await ownAttendanceSubmissionRoute(a.ctx,a.employmentId,'irregularity')).toEqual({available:false,reason:'unresolved',problem:{code:'missing_superior',levelIndex:0},levelCount:2});
  });
  it('the insert link check rejects tampered skipped levels and admits only the canonical resolution',async()=>{
   const a=await actor('Fictional tamper A'),b=await actor('Fictional tamper B');await reports(a,b);

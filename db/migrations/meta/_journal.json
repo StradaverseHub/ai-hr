@@ -5979,6 +5979,13 @@
       "when": 1793330005396,
       "tag": "5696_information_correction_latest_saved",
       "breakpoints": true
+    },
+    {
+      "idx": 5097,
+      "version": "7",
+      "when": 1793330005397,
+      "tag": "5697_attendance_workflow_approver_codes",
+      "breakpoints": true
     }
   ]
 }

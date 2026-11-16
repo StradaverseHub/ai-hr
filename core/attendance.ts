@@ -5528,11 +5528,14 @@ export function listAttendanceCorrections(
 /** The three day classifications a plan can be filed against. Same vocabulary as attendance.day_type. */
 export type PlanOtDayType = 'workday' | 'rest_day' | 'holiday';
 
+type AttendanceWorkflowRead = NonNullable<ReturnType<Awaited<ReturnType<typeof attendanceWorkflowsForTx>>['get']>>;
 /** One row of the Plan OT list. */
 export type OvertimePlanRow = {
   id: string;
   /** Saved current-level names; null/absent identifies a legacy reporting-line request. */
   assignedApproverNames?: string[] | null;
+  /** 237c31e6: the frozen request (with approver Employee IDs) for the "View approval progress" panel; null for legacy. */
+  workflow?: AttendanceWorkflowRead | null;
   attendanceDate: string;
   plannedStartTime: string | null;
   plannedEndTime: string | null;
@@ -6302,7 +6305,7 @@ export function myOvertimePlans(
       const workflow = workflows.get(row.id);
       return {...row, assignedApproverNames: workflow
         ? (workflow.effectiveStages[workflow.currentStage]?.approvers.map(actor => actor.name) ?? [])
-        : null};
+        : null, workflow: workflow ?? null};
     });
   });
 }
@@ -6841,7 +6844,8 @@ export type MyAttendanceRequestRow = {
   createdAt: Date;
   /** True when a supporting file was attached (the file itself streams from its own route). */
   hasAttachment: boolean;
-  workflow?: Awaited<ReturnType<typeof import('./attendance-workflow').attendanceWorkflowForTx>>;
+  /** 237c31e6: approverCodes are the frozen identities' Employee IDs (5697), read once per page. */
+  workflow?: (NonNullable<Awaited<ReturnType<typeof import('./attendance-workflow').attendanceWorkflowForTx>>> & { approverCodes?: Record<string, string | null> }) | null;
   cancellationKind?: 'cancelled' | 'withdrawn' | null;
 };
 

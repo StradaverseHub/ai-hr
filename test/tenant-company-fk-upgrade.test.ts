@@ -252,6 +252,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5695_employment_rehire_link',
    // Board 4604dccc r4 (16 November 2026): the latest saved information correction controls the SQL readers.
    '5696_information_correction_latest_saved',
+   // Board 237c31e6 (16 November 2026): the request-bound approver Employee ID readers.
+   '5697_attendance_workflow_approver_codes',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -337,10 +339,11 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.assistant_rewards_calendar_presentation_choices_v1()','app.assistant_rewards_cancel_presentation_choices_v1()','app.assistant_rewards_return_presentation_choices_v1()',
    'app.attendance_clock_policy_history(uuid,uuid)','app.attendance_correction_submitter_guard()','app.attendance_effect_window_employment()',
    'app.attendance_final_window_prove(uuid)','app.attendance_final_window_token(uuid,uuid)','app.attendance_frozen_actor_identity_keys(jsonb,text)',
-   'app.attendance_pending_visible_headers(uuid)','app.attendance_workflow_approver_login(uuid)','app.attendance_workflow_close_final_window()',
+   // Board 237c31e6 (5697): the two request-bound approver Employee ID readers, EXECUTE for the application role.
+   'app.attendance_pending_visible_headers(uuid)','app.attendance_workflow_approver_codes(uuid[])','app.attendance_workflow_approver_login(uuid)','app.attendance_workflow_close_final_window()',
    'app.attendance_workflow_escalate(uuid,date)','app.attendance_workflow_escalation_due(date,date,uuid,integer)','app.attendance_workflow_escalation_written(uuid,uuid,integer)',
    'app.attendance_workflow_hierarchy_v5(uuid,integer)','app.attendance_workflow_on_behalf_allowed(uuid,integer,text)','app.attendance_workflow_on_behalf_slot(uuid,uuid)',
-   'app.attendance_workflow_open_final_window(uuid)','app.attendance_workflow_preview_bind()','app.attendance_workflow_stage_clock()',
+   'app.attendance_workflow_open_final_window(uuid)','app.attendance_workflow_preview_bind()','app.attendance_workflow_route_approver_codes(uuid,uuid)','app.attendance_workflow_stage_clock()',
    'app.attendance_workflow_superior_diagnostic(uuid,integer)','app.bulk_job_access(uuid)','app.bulk_job_admit()',
    'app.bulk_job_attribution()','app.bulk_job_capability_held(uuid)','app.bulk_job_clear_inputs(uuid,boolean)',
    'app.bulk_job_enqueue(text,uuid,uuid[],text,bytea,jsonb)','app.bulk_job_event_attribution()','app.bulk_job_fence(uuid,text)',

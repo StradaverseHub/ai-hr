@@ -28231,7 +28231,7 @@
     "routeUnavailable": "无法根据已保存的流程确认下一位合资格审批人。请联系 HR 检查分配。",
     "someApproversUnavailable": "目前无法确认部分已保存审批人的审批资格。请人力资源部检查审批安排。",
     "notStarted": "尚未开始",
-    "notRequired": "无需后续审批",
+    "notRequired": "无需审批",
     "currentEmployeeId": "当前员工编号",
     "routingRecord": "已保存的流程参考",
     "notRecorded": "未记录",
@@ -28310,7 +28310,28 @@
     "escalatedBy": "系统自动升级",
     "submittedOnBehalfBy": "由 {name} 代为提交",
     "approvedOnBehalf": "已代为批准",
-    "rejectedOnBehalf": "已代为拒绝"
+    "rejectedOnBehalf": "已代为拒绝",
+    "pendingApproval": "待审批",
+    "waitingPreviousLevel": "等待上一级审批",
+    "skippedNotRequired": "已跳过 / 无需审批",
+    "levelOrdinal": {
+      "1": "第一",
+      "2": "第二",
+      "3": "第三",
+      "4": "第四",
+      "5": "第五",
+      "6": "第六",
+      "7": "第七",
+      "8": "第八",
+      "9": "第九",
+      "10": "第十"
+    },
+    "progressMessage": "{completed}级审批已完成，等待{waiting}级审批。",
+    "progressWaiting": "等待{waiting}级审批。",
+    "progressFinal": "申请总体状态：{status}。",
+    "configurationWarning": "无法确定此级别的审批人。请联系人事部门检查审批设置。",
+    "levelOfTotal": "第 {level} 级，共 {total} 级",
+    "viewApprovalProgress": "查看审批进度"
   },
   "scheduleDrafts": {
     "staleLadder": "“常规”部分的加班时段或费率已更改。您的草稿仍保留在此。保存加班设置前，请重新加载此页面。只有在您确认后，未保存的更改才会被丢弃。",

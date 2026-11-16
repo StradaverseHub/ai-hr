@@ -28231,7 +28231,7 @@
     "routeUnavailable": "Pelulus layak seterusnya tidak dapat disahkan daripada laluan disimpan. Minta HR menyemak penetapan.",
     "someApproversUnavailable": "Kelayakan sesetengah pelulus yang disimpan belum dapat disahkan. Minta HR menyemak penugasan.",
     "notStarted": "Belum bermula",
-    "notRequired": "Tiada keputusan lanjut diperlukan",
+    "notRequired": "Tidak Diperlukan",
     "currentEmployeeId": "ID Pekerja semasa",
     "routingRecord": "Rujukan laluan disimpan",
     "notRecorded": "Tidak direkodkan",
@@ -28310,7 +28310,28 @@
     "escalatedBy": "Eskalasi automatik oleh sistem",
     "submittedOnBehalfBy": "Dihantar bagi pihak oleh {name}",
     "approvedOnBehalf": "Diluluskan Bagi Pihak",
-    "rejectedOnBehalf": "Ditolak Bagi Pihak"
+    "rejectedOnBehalf": "Ditolak Bagi Pihak",
+    "pendingApproval": "Menunggu Kelulusan",
+    "waitingPreviousLevel": "Menunggu Kelulusan Peringkat Sebelumnya",
+    "skippedNotRequired": "Dilangkau / Tidak Diperlukan",
+    "levelOrdinal": {
+      "1": "pertama",
+      "2": "kedua",
+      "3": "ketiga",
+      "4": "keempat",
+      "5": "kelima",
+      "6": "keenam",
+      "7": "ketujuh",
+      "8": "kelapan",
+      "9": "kesembilan",
+      "10": "kesepuluh"
+    },
+    "progressMessage": "Kelulusan peringkat {completed} selesai. Menunggu kelulusan peringkat {waiting}.",
+    "progressWaiting": "Menunggu kelulusan peringkat {waiting}.",
+    "progressFinal": "Status keseluruhan permohonan: {status}.",
+    "configurationWarning": "Pelulus bagi peringkat ini tidak dapat ditentukan. Minta HR menyemak tetapan kelulusan.",
+    "levelOfTotal": "Peringkat {level} daripada {total}",
+    "viewApprovalProgress": "Lihat kemajuan kelulusan"
   },
   "scheduleDrafts": {
     "staleLadder": "Julat masa atau kadar kerja lebih masa telah berubah dalam bahagian Umum. Draf anda masih ada di sini. Muat semula halaman ini sebelum menyimpan tetapan kerja lebih masa. Perubahan yang belum disimpan hanya dibuang selepas pengesahan.",

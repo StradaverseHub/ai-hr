@@ -28231,7 +28231,7 @@
     "routeUnavailable": "The next eligible approver cannot be confirmed from the saved route. Ask HR to review the assignment.",
     "someApproversUnavailable": "Some saved approvers cannot currently be confirmed as eligible. Ask HR to review the assignment.",
     "notStarted": "Not started",
-    "notRequired": "No further decision required",
+    "notRequired": "Not Required",
     "currentEmployeeId": "Current Employee ID",
     "routingRecord": "Saved routing reference",
     "notRecorded": "Not recorded",
@@ -28310,7 +28310,28 @@
     "escalatedBy": "Automatic escalation by the system",
     "submittedOnBehalfBy": "Submitted on behalf by {name}",
     "approvedOnBehalf": "Approved On Behalf",
-    "rejectedOnBehalf": "Rejected On Behalf"
+    "rejectedOnBehalf": "Rejected On Behalf",
+    "pendingApproval": "Pending Approval",
+    "waitingPreviousLevel": "Waiting for Previous Level Approval",
+    "skippedNotRequired": "Skipped / Not Required",
+    "levelOrdinal": {
+      "1": "first",
+      "2": "second",
+      "3": "third",
+      "4": "fourth",
+      "5": "fifth",
+      "6": "sixth",
+      "7": "seventh",
+      "8": "eighth",
+      "9": "ninth",
+      "10": "tenth"
+    },
+    "progressMessage": "{completed}-level approval completed. Waiting for {waiting}-level approval.",
+    "progressWaiting": "Waiting for {waiting}-level approval.",
+    "progressFinal": "Overall request status: {status}.",
+    "configurationWarning": "The approver for this level could not be worked out. Ask HR to check the approval setup.",
+    "levelOfTotal": "Level {level} of {total}",
+    "viewApprovalProgress": "View approval progress"
   },
   "scheduleDrafts": {
     "staleLadder": "The overtime bands or rates changed in General. Your draft is still here. Reload this page before saving overtime settings. Reloading discards unsaved changes only after confirmation.",
