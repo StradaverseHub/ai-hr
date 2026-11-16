@@ -6294,6 +6294,13 @@
       "when": 1794841005830,
       "tag": "5830_contract_shared_tracker_choices",
       "breakpoints": true
+    },
+    {
+      "idx": 5296,
+      "version": "7",
+      "when": 1794841005896,
+      "tag": "5896_contract_shared_directory_and_signer_caption",
+      "breakpoints": true
     }
   ]
 }

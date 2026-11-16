@@ -3935,3 +3935,5 @@ grant, function, column or row changes; existing rows already satisfy the wider 
 the installed ledger at admission. This entry carries no deployment authority.
 
 Contract screens owner: 5820–5821 (idx5220–5221, when1794841005820–5821), within the Contract5810–5829 block reserved by the parent. Shaped workspace/configuration/recovery reads and canonical assigned-work projections; normal hosted migration verification. Tracker5818–5819 are prerequisites, and sibling5830 remains ordered afterward.
+
+Contract screens forward block5896–5899 (idx5296–5299, when1794841005896–5899) reserved by the parent after its fresh267-worktree survey found no claims. 5896 repairs5820's runtime FOUND alias collision and exposes the current canonical signer caption; 5820/5821SQL and pinned hashes remain unchanged. Failed focusedrun43944670408 is retained.
