@@ -241,9 +241,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5213,when:1794841005813,tag:'5813_contract_shared_email_notifications'},
  {idx:5227,when:1794841005827,tag:'5827_shared_automation_email_assets'},
  {idx:5229,when:1794841005829,tag:'5829_shared_automation_email_asset_delivery'},
+ {idx:5240,when:1794841005840,tag:'5840_shared_email_test_asset_source'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5840_shared_email_test_asset_source':'18e936754a6784f14911a82ea9654c2f3d8d2e9278d1d45c6663ce9c4e81a883',
  '5827_shared_automation_email_assets':'35f2cf530e008e6c47bc48f36640cc3f328a072ee29f73bb6523c41295485d66',
  '5829_shared_automation_email_asset_delivery':'96c9f4fdbb02063c6335c1d7f83dd5273d94a33515159a883712f7b30a68c925',
  '5813_contract_shared_email_notifications':'dffc41e7da79471a45e00cf2fc8914107ac94978e856d40b863eef510f0a58eb',
