@@ -12,7 +12,7 @@ mode: operate
 
 THESIS: A contract period is one accountable case. The tracker leads with filters, dates, attention and the next assigned person; the detail explains the decision before asking for commitment.
 
-OWN-WORLD: Inherit the supplied Contract HTML and approved page mockups inside the existing V9 operational system: indigo actions, cool neutral ground, white panels, compact controls and semantic status text. Preserve the shared document renderer and signature affordances.
+OWN-WORLD: Inherit the supplied Contract HTML and approved page mockups inside the existing V9 operational system: theme-driven V9 actions, cool neutral ground, white panels, compact controls and semantic status text. The existing --v9-accent/--primary binding follows AIHR's selected theme rather than introducing a fixed prototype colour. Preserve the shared document renderer and signature affordances.
 
 STORY: An authorised person finds a period, reviews Renew, Convert or End, previews actual consequences, submits, then follows assigned approval, letter, posting and manual pay steps. Employees open their assigned letter directly.
 
