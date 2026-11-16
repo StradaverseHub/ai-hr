@@ -32257,6 +32257,7 @@
     "emailLoginNote": "Log masuk adalah berasingan: pengguna log masuk dengan kod organisasi dan nama pengguna, dan akaun log masuk masih tidak boleh dibuat dua kali untuk e-mel yang sama."
   },
   "costAllocations": {
+    "replacementReview": "Sejarah syarikat telah berubah. Semak agihan yang disimpan, kemudian simpan penggantian atau sahkan bahawa tiada agihan diperlukan.",
     "title": "Peruntukan Pusat Kos",
     "description": "Rekod agihan kos pekerjaan secara berasingan daripada pusat kos organisasi utama. Peruntukan separa dibenarkan; ini tidak membahagikan penggajian.",
     "effectiveDate": "Tarikh kuat kuasa",

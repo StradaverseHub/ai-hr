@@ -1,3 +1,4 @@
+import {hasClosedPayrollCorrectionAuthorityTx} from './closed-payroll-correction-authority';
 import {organisationChoiceLabels} from '../lib/organisation-choice-label';
 /** One cost-distribution owner for manual entry, repeated-row imports and new-hire transactions. */
 import {createHash} from 'node:crypto';
@@ -57,7 +58,8 @@ export async function getEmploymentCostAllocations(ctx:SessionContext,employment
   const saved=current?await tx.select({costCenterId:rows.costCenterId,hundredths:rows.hundredths,codeSnapshot:rows.codeSnapshot,labelSnapshot:rows.labelSnapshot,label:costCenter.label,code:costCenter.code}).from(rows).leftJoin(costCenter,eq(costCenter.id,rows.costCenterId)).where(eq(rows.setId,current.id)).orderBy(asc(rows.codeSnapshot),asc(rows.costCenterId)):[];
   const choices=await tx.select({id:costCenter.id,code:costCenter.code,label:costCenter.label}).from(costCenter).where(and(isNull(costCenter.archivedAt),visibleLabelIdsCondition(costCenter,'cost_center',[subject.companyId]))).orderBy(asc(costCenter.code),asc(costCenter.id));
   const[authority]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_employment(${employmentId}::uuid,'workforce.maintain') and app.access_workforce_company(${subject.companyId}::uuid,'workforce.maintain') as allowed`);
-  return{employmentId,companyId:subject.companyId,effectiveDate:selectedDate,revision:h?.revision??0,current:current?{id:current.id,validFrom:current.validFrom,validTo:current.validTo,companyId:current.companyId,source:current.source}:null,rows:saved.map(row=>({...row,displayLabel:row.label?.trim()||row.code||row.labelSnapshot||row.codeSnapshot})),choices:organisationChoiceLabels(choices),total:saved.reduce((n,r)=>n+r.hundredths,0),canEdit:authority?.allowed===true,history:history.map(v=>({id:v.id,revision:v.revision,effectiveDate:v.validFrom,validTo:v.validTo,companyId:v.companyId,operation:v.operation,source:v.source,superseded:!!v.supersededAt,rows:historicRows.filter(r=>r.setId===v.id),createdAt:v.createdAt.toISOString()})),needsReplacement:!!current&&current.companyId!==subject.companyId};
+  const [review]=current?await tx.execute<{needed:boolean}>(sql`select exists(select 1 from domain_event where tenant_id=${ctx.tenantId}::uuid and subject_employment_id=${employmentId}::uuid and event_type='employment.cost-allocations.company-corrected' and payload->>'reviewSetId'=${current.id} and payload->>'requiresReview'='true') as needed`):[];
+  return{employmentId,companyId:subject.companyId,effectiveDate:selectedDate,revision:h?.revision??0,current:current?{id:current.id,validFrom:current.validFrom,validTo:current.validTo,companyId:current.companyId,source:current.source}:null,rows:saved.map(row=>({...row,displayLabel:row.label?.trim()||row.code||row.labelSnapshot||row.codeSnapshot})),choices:organisationChoiceLabels(choices),total:saved.reduce((n,r)=>n+r.hundredths,0),canEdit:authority?.allowed===true,history:history.map(v=>({id:v.id,revision:v.revision,effectiveDate:v.validFrom,validTo:v.validTo,companyId:v.companyId,operation:v.operation,source:v.source,superseded:!!v.supersededAt,rows:historicRows.filter(r=>r.setId===v.id),createdAt:v.createdAt.toISOString()})),needsReplacement:!!current&&(current.companyId!==subject.companyId||review?.needed===true)};
  });
 }
 export type EmploymentCostAllocationView=Awaited<ReturnType<typeof getEmploymentCostAllocations>>;
@@ -144,4 +146,14 @@ export async function readReviewedCostAllocationEffectsTx(tx:Tx,employmentId:str
 export async function assertCostAllocationTransferTx(tx:Tx,employmentId:string,date:string){
  const[used]=await tx.execute<{used:boolean}>(sql`select app.cost_allocation_transfer_required(${employmentId}::uuid,${date}::date) as used`);
  if(used?.used)throw new CostAllocationError('transfer');
+}
+
+/** A hire-company correction retires incompatible distribution revisions for review. The native
+ * allocation owner keeps every old percentage row, enforces the final company invariant and records
+ * an explicit empty destination revision; an ordinary transfer still requires its normal clear. */
+export async function reconcileHireCompanyCostAllocationsTx(tx:Tx,ctx:SessionContext,input:{employmentId:string;correctionId:string;reason:string}){
+ if(!hasClosedPayrollCorrectionAuthorityTx(tx,input.employmentId))throw new CostAllocationError('scope');
+ await assertWorkforceEmploymentTx(tx,ctx,input.employmentId,'maintain');
+ const [row]=await tx.execute<{result:{changed:boolean;retiredSetIds?:string[];reviewSetId?:string;requiresReview?:boolean}}>(sql`select app.cost_allocations_after_hire_company_correction(${input.employmentId}::uuid,${input.correctionId}::uuid,${input.reason}) as result`);
+ return row?.result??{changed:false};
 }

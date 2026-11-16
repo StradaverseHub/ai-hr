@@ -32257,6 +32257,7 @@
     "emailLoginNote": "Sign-in is separate: people sign in with organization code and username, and a sign-in account still cannot be created twice for the same email."
   },
   "costAllocations": {
+    "replacementReview": "Company history changed. Review the retained allocations, then save a replacement or confirm that no allocation is needed.",
     "title": "Cost Center Allocation",
     "description": "Record employment cost distribution separately from the primary organisational cost center. Partial allocation is allowed; this does not divide payroll.",
     "effectiveDate": "Effective date",

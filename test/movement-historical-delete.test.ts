@@ -1,3 +1,4 @@
+import {todayInKualaLumpur} from '../lib/hr-date';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {and,eq,isNull} from 'drizzle-orm';
 import * as s from '../db/schema';
@@ -20,7 +21,7 @@ describe('historical event deletion and effective-order replay',()=>{
   const [correctedDepartment]=await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:b.companyId,name:'Fictional Corrected Earlier Department'}).returning();
   await createMovementEvent(ctx,{employmentId:id,kind:'transfer',effectiveDate:'2026-02-01',departmentId:b.deptB});
   const original=await live('transfer');
-  await createMovementEvent(ctx,{employmentId:id,kind:'blacklist',blacklisted:true,remarks:'Fictional independent access restriction'});
+  await createMovementEvent(ctx,{employmentId:id,kind:'blacklist',effectiveDate:todayInKualaLumpur(),blacklisted:true,remarks:'Fictional independent access restriction'});
   const restriction=await live('blacklist');
   const [before]=await owner.db.select({blacklistedAt:s.employment.blacklistedAt}).from(s.employment).where(eq(s.employment.id,id));
   expect(before.blacklistedAt).not.toBeNull();

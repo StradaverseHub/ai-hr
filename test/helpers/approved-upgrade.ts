@@ -236,9 +236,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5176,when:1793330005476,tag:'5776_workforce_payroll_input_invalidation'},
  {idx:5177,when:1793330005477,tag:'5777_movement_closed_payroll_metadata'},
  {idx:5178,when:1793330005478,tag:'5778_movement_payroll_windows'},
+ {idx:5179,when:1793330005479,tag:'5779_hire_company_allocation_review'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5779_hire_company_allocation_review':'8a157b18ea8fe5ebaf5d86046f7ba03dd41e6532c03ef2cb7799beafeb4fc8dd',
  '5772_movement_employment_periods':'9a66595ca046bdf0bdaaf0b51e1b87cfd8811156093d37464ef854d36b7d4ef3',
  '5773_movement_payroll_protection_and_delete':'3f54dd21490e301f4c52131d449d32c883f482d67025df610fe5b84c83be1897',
  '5774_employment_payment_method_history':'4e68e7aa1c2e66f605938fef0e59ce86a137ecdbd061c0f3e5a3e5a48ff6c5d8',

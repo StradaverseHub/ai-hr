@@ -238,7 +238,7 @@ export async function correctHireEmploymentInformationTx(tx:Tx,ctx:SessionContex
 export async function hireCompanyCorrectionReviewTx(tx:Tx,ctx:SessionContext,input:{employmentId:string;companyId:string;gradeId:string|null;anchor:string}){
  const [row]=await tx.execute<{grade:boolean;policy:boolean;allocation:boolean;labels:string[]}>(sql`
   with correction as (
-   select payload,sequence from domain_event where tenant_id=${ctx.tenantId}::uuid and subject_employment_id=${input.employmentId}::uuid
+   select id,payload,sequence from domain_event where tenant_id=${ctx.tenantId}::uuid and subject_employment_id=${input.employmentId}::uuid
     and event_type='employment.information.corrected' and payload->>'source'='original-hire' and payload->'fields' ? 'companyId'
    order by sequence desc limit 1
   ) select
@@ -253,7 +253,10 @@ export async function hireCompanyCorrectionReviewTx(tx:Tx,ctx:SessionContext,inp
    exists(select 1 from correction c join employment e on e.id=${input.employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid where c.payload->>'clearedPayrollPolicyId' is not null and e.company_id=${input.companyId}::uuid and e.payroll_policy_id is null) as policy,
    exists(select 1 from correction c join employment_cost_allocation_set s on s.employment_id=${input.employmentId}::uuid and s.tenant_id=${ctx.tenantId}::uuid
     where s.superseded_at is null and s.company_id<>${input.companyId}::uuid and (s.valid_to is null or s.valid_to>${input.anchor}::date)
-     and ((c.payload->'until'->>'companyId') is null or s.valid_from<(c.payload->'until'->>'companyId')::date)) as allocation
+     and ((c.payload->'until'->>'companyId') is null or s.valid_from<(c.payload->'until'->>'companyId')::date))
+    or exists(select 1 from correction c join domain_event marker on marker.tenant_id=${ctx.tenantId}::uuid and marker.subject_employment_id=${input.employmentId}::uuid
+     and marker.event_type='employment.cost-allocations.company-corrected' and marker.payload->>'correctionId'=c.id::text and marker.payload->>'requiresReview'='true'
+     join employment_cost_allocation_set s on s.id::text=marker.payload->>'reviewSetId' and s.tenant_id=marker.tenant_id and s.employment_id=marker.subject_employment_id and s.superseded_at is null) as allocation
  `);
  return [row?.grade?'gradeId':null,row?.policy?'payrollPolicyId':null,row?.allocation?'costAllocation':null,...(row?.labels??[])].filter((field):field is string=>field!==null);
 }

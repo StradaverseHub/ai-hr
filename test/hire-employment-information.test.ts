@@ -1,4 +1,4 @@
-import {saveEmploymentCostAllocations} from '../core/employment-cost-allocations';
+import {getEmploymentCostAllocations,saveEmploymentCostAllocations} from '../core/employment-cost-allocations';
 import {assignPolicy} from '../core/payroll-policy';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {and,eq,isNull} from 'drizzle-orm';
@@ -79,7 +79,9 @@ describe('original-hire employment information',()=>{
   await correct({gradeId:targetGrade.id});
   const [targetPolicy]=await owner.db.insert(s.payrollPolicy).values({tenantId:b.tenantId,companyId:target.id,name:'Fictional Corrected Policy',policyType:'monthly'}).returning();
   await assignPolicy(ctx,{employmentId:id,policyId:targetPolicy.id});
-  await saveEmploymentCostAllocations(ctx,{employmentId:id,effectiveDate:'2026-01-01',expectedRevision:1,operation:'replace',rows:[{costCenterId:b.costCenterId,percentage:'100.00'}]});
+  const allocationView=await getEmploymentCostAllocations(ctx,id,'2026-01-01');
+  expect(allocationView.needsReplacement).toBe(true);
+  await saveEmploymentCostAllocations(ctx,{employmentId:id,effectiveDate:'2026-01-01',expectedRevision:allocationView.revision,operation:'replace',rows:[{costCenterId:b.costCenterId,percentage:'100.00'}]});
   expect((await hireCorrectionView(ctx,id)).companyReviewFields).toEqual([]);
  });
  it('flags an incompatible current company label and clears the finding through its native owner',async()=>{

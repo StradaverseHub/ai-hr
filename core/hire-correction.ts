@@ -1,3 +1,5 @@
+import {reconcileHireCompanyCostAllocationsTx} from './employment-cost-allocations';
+import {lockLabelCriteriaTx} from './system-labels';
 import {movementInformationEvidence,type MovementInformationField,type MovementInformationFact} from '../lib/movement-information-evidence';
 import {employmentPaymentMethodOnTx} from './employment-payment-method';
 import type {PaymentMethod} from '../lib/payment-methods';
@@ -877,6 +879,7 @@ export async function correctHireDetails(
       await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [input.employmentId], { configuration: true });
     }
     await assertWorkforceEmploymentTx(tx,ctx,input.employmentId,'maintain');
+    if(input.hireInformation?.companyId!==undefined)await lockLabelCriteriaTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockPayrollInputsTx(tx,{employmentIds:[input.employmentId],companyIds:input.hireInformation?.companyId?[input.hireInformation.companyId]:[]});
     return withProtectedMovementHistoryTx(tx,ctx,input.employmentId,async()=>{
@@ -893,6 +896,8 @@ export async function correctHireDetails(
 
     const informationChange=Object.keys(input.hireInformation??{}).length||Object.keys(input.endDates??{}).length
       ? await correctHireEmploymentInformationTx(tx,ctx,{employmentId:input.employmentId,changes:input.hireInformation??{},reason,endDates:input.endDates},()=>loadPlanTx(tx,ctx.tenantId,input.employmentId)) : null;
+    const allocationCorrection=informationChange?.fields.includes('companyId')&&informationChange.eventId
+      ?await reconcileHireCompanyCostAllocationsTx(tx,ctx,{employmentId:input.employmentId,correctionId:informationChange.eventId,reason}):null;
     const plan = await loadPlanTx(tx, ctx.tenantId, input.employmentId);
 
     if(await organisationManagedTx(tx))delete requested.businessUnitId;
@@ -1103,6 +1108,7 @@ export async function correctHireDetails(
         reason,
         changes,
         ...(informationChange?{employmentInformation:informationChange}:{}),
+        ...(allocationCorrection?.changed?{costAllocationCorrection:allocationCorrection}:{}),
         ...(salaryCorrection ? { salaryCorrection } : {}),
         ...(payrollReviewPeriods.length?{payrollAdjustmentReview:{periods:payrollReviewPeriods.sort(),fields:payrollReviewFields,closedPayrollUnchanged:true}}:{}),
         ...(methodCorrection?.changed?{paymentMethodCorrection:{eventId:methodCorrection.eventId,effectiveOn:plan.anchor}}:{}),

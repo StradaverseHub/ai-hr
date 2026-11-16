@@ -140,7 +140,11 @@ A company correction must also satisfy the native company-scoped catalogues. Req
 values must be corrected in the same form when they do not apply to the corrected employer. Incompatible
 inherited current grades and company-scoped labels are cleared from the live projection and explicitly
 flagged for review; their recorded assertions and issued payroll evidence remain recorded. Explicitly selected
-replacement grades must pass the corrected company's native validation. Corrected company or salary
+replacement grades must pass the corrected company's native validation. Incompatible allocation revisions
+are retired through the allocation owner, preserving every previous percentage row and audit reference.
+A native empty destination-company revision requires explicit review and replacement (or confirmation
+of no allocation). The ordinary transfer clear requirement and the final allocation/company invariant
+remain unchanged. Corrected company or salary
 periods that overlap finalized payroll show an adjustment-review notice with the affected months.
 
 A compensating method deletion removes the selected active dated revision and restores a prior

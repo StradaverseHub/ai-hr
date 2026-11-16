@@ -32257,6 +32257,7 @@
     "emailLoginNote": "Đăng nhập là riêng: người dùng đăng nhập bằng mã tổ chức và tên người dùng, và vẫn không thể tạo hai tài khoản đăng nhập cho cùng một email."
   },
   "costAllocations": {
+    "replacementReview": "Lịch sử công ty đã thay đổi. Xem lại phân bổ được lưu giữ, sau đó lưu phân bổ thay thế hoặc xác nhận không cần phân bổ.",
     "title": "Phân bổ Trung tâm Chi phí",
     "description": "Ghi nhận phân bổ chi phí lao động riêng với trung tâm chi phí tổ chức chính. Cho phép phân bổ một phần; không chia tiền lương.",
     "effectiveDate": "Ngày hiệu lực",

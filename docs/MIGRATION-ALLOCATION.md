@@ -1,3 +1,13 @@
+## Movement hire-company allocation reconciliation — 17 November 2026
+
+Reserved `5779_hire_company_allocation_review`, idx `5179`, when `1793330005479`, from the
+already held Movement 5772–5782 block. SQL SHA-256 `8a157b18ea8fe5ebaf5d86046f7ba03dd41e6532c03ef2cb7799beafeb4fc8dd`.
+This new allocation-owner command retains prior percentage rows and creates an explicit empty
+replacement for review after a proven original-hire company correction. The existing company-history
+constraint remains unchanged. Applied SQL is unchanged; 5780–5782 remain held and unused. Native
+permissions, populated/restricted-owner rehearsals, exact source binding and release admission remain
+required. Movement is first in the owner's 17 November coordinated staging release order.
+
 # Bounded Movement payroll windows — 17 November 2026 MYT (unapplied candidate)
 
 Reserved 5778, idx 5178, when 1793330005478. SHA256 `789c93999e156c08f6cfac5a79f5f58071cd1f834778454238146809e1b55106`.
