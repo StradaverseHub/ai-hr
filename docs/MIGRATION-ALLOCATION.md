@@ -13,6 +13,11 @@ ordered ledger at release admission; keep baseline SQL bytes unchanged.
 command fencing; 5802 registers Contract with the shared stores; 5803 adds immutable shared document template versions.
 No live migration has been applied and no existing case is automatically converted by these migrations.
 
+5807 adds guarded preview/submission commands and an immutable shared-case history, using the existing bulk-job
+kernel for private preflight and accepted automation events. It also adds the signing owner's derived assignment
+index for basic Round robin. The 17 November read-only survey found no other 5807–5809 file in registered worktrees.
+These remain unapplied drafts; the release hold applies to every merge and installation.
+
 <!-- 5766_probation_reshape_company_in_use -->
 # Company deletion sees the Probation reshape's owner-only referrers — 16 November 2026 MYT (unapplied, allocated)
 

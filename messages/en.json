@@ -39859,6 +39859,20 @@
           "title": "Movement import revert cancelled",
           "body": "Nothing was changed. Open Import History for details."
         }
+      },
+      "contractPreview": {
+        "completed": {
+          "title": "Decision preview ready",
+          "body": "Open the contract to review the proposed next steps."
+        },
+        "failed": {
+          "title": "Decision preview needs attention",
+          "body": "Open the contract and prepare a new preview."
+        },
+        "cancelled": {
+          "title": "Decision preview cancelled",
+          "body": "No Contract decision was submitted."
+        }
       }
     },
     "panel": {

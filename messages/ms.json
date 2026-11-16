@@ -39859,6 +39859,20 @@
           "title": "Pembatalan import pergerakan dibatalkan",
           "body": "Tiada apa-apa diubah. Buka Sejarah Import untuk butiran."
         }
+      },
+      "contractPreview": {
+        "completed": {
+          "title": "Pratonton keputusan sedia",
+          "body": "Buka kontrak untuk menyemak langkah seterusnya yang dicadangkan."
+        },
+        "failed": {
+          "title": "Pratonton keputusan memerlukan perhatian",
+          "body": "Buka kontrak dan sediakan pratonton baharu."
+        },
+        "cancelled": {
+          "title": "Pratonton keputusan dibatalkan",
+          "body": "Tiada keputusan kontrak dihantar."
+        }
       }
     },
     "panel": {

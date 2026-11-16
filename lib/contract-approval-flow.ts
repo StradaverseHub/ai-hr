@@ -18,10 +18,11 @@ export function newContractApprovalRequest(input:{id:string;caseId:string;tenant
  }
  return {id:input.id,caseId:input.caseId,decisionRevision:input.decisionRevision,subjectPersonId:input.subjectPersonId,assignments:structuredClone(input.assignments),status:'pending',document:{
   tenantId:input.tenantId,companyId:input.companyId,subjectId:input.id,subjectType:'contract-approval',contentRevision:1,contentHash:input.fingerprint,actions:[],
-  route:{version:1,steps:input.assignments.map((assignment,index)=>({id:assignment.layer.id,role:'approval:'+assignment.layer.id,kind:'approve',signature:false,stage:index+1,required:true,
-   holderId:assignment.layer.pick==='roundRobin'?assignment.selectedUserId:assignment.groupId===null&&assignment.candidateUserIds.length===1?assignment.candidateUserIds[0]:null,
-   ...(assignment.selectedUserId&&assignment.candidatePersonIds[assignment.selectedUserId]?{holderPersonId:assignment.candidatePersonIds[assignment.selectedUserId]}:{}),label:assignment.layer.name,
-  }))},
+  route:{version:1,steps:input.assignments.map((assignment,index)=>{
+   const holderId=assignment.layer.pick==='roundRobin'?assignment.selectedUserId:assignment.groupId===null&&assignment.candidateUserIds.length===1?assignment.candidateUserIds[0]:null;
+   return {id:assignment.layer.id,role:'approval:'+assignment.layer.id,kind:'approve' as const,signature:false as const,stage:index+1,required:true,holderId,
+    ...(holderId&&assignment.candidatePersonIds[holderId]?{holderPersonId:assignment.candidatePersonIds[holderId]}:{}),label:assignment.layer.name};
+  })},
  }};
 }
 export function pendingContractApproval(request:ContractApprovalRequest):ContractApprovalAssignment|null{

@@ -39859,6 +39859,20 @@
           "title": "Đã hủy việc hoàn tác nhập biến động",
           "body": "Không có gì thay đổi. Mở Lịch sử nhập để xem chi tiết."
         }
+      },
+      "contractPreview": {
+        "completed": {
+          "title": "Bản xem trước quyết định đã sẵn sàng",
+          "body": "Mở hợp đồng để xem các bước tiếp theo được đề xuất."
+        },
+        "failed": {
+          "title": "Bản xem trước quyết định cần được kiểm tra",
+          "body": "Mở hợp đồng và tạo bản xem trước mới."
+        },
+        "cancelled": {
+          "title": "Đã hủy bản xem trước quyết định",
+          "body": "Chưa có quyết định hợp đồng nào được gửi."
+        }
       }
     },
     "panel": {

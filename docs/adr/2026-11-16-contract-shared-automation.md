@@ -5,7 +5,7 @@ Extends `2026-11-15-probation-shared-automation.md`. Installation is a separate 
 
 Release hold: the owner subsequently instructed “Stop before release, wait for my approval.” Continue implementation
 and hosted verification on the owned branch. Present the finished candidate and evidence, then wait for explicit
-approval before main/alpha integration, staging installation or any other release action. Earlier staging
+approval before any merge, main/alpha integration, staging installation or any other release action. Earlier staging
 authorization is superseded by this hold; production remains separately unauthorized.
 
 ## Decision
@@ -72,6 +72,14 @@ Resolve signing holders in one bounded identity read. Exclude every login for th
 approval, including module fallback recipients. Contract may try an explicit routing default after an empty
 specific target; other consumers retain their existing matching semantics. Case letters use the case period,
 even after Personnel moves to a later period, while permitted live descriptive values follow the signature lock.
+
+Decision preflight runs on the existing bulk-job kernel. The proposer receives the relevant consequence plan,
+recipients and blockers without obtaining builder access, raw template/routing inputs or protected current pay.
+The private preview binds its requester and person, case revision and setup digest. Submission requires that
+ready proof and rechecks current authority and source. It atomically freezes immutable workflow-version references,
+records the decision and admits the event to the same job kernel. These event intents own no workflow cursor.
+Private execution inputs never enter a creator-readable job input/plan; job payloads contain request identities only.
+Signing assignment history is an indexed projection maintained by the document-signing owner, not a second task store.
 
 ## Verification and release
 

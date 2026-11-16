@@ -6217,6 +6217,13 @@
       "when": 1794841005806,
       "tag": "5806_contract_shared_projections",
       "breakpoints": true
+    },
+    {
+      "idx": 5207,
+      "version": "7",
+      "when": 1794841005807,
+      "tag": "5807_contract_shared_commands",
+      "breakpoints": true
     }
   ]
 }

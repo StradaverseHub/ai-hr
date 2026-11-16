@@ -18,7 +18,7 @@ export function contractLetterRoutingProblems(routing: DocumentRouting, refs: Do
   return documentRoutingProblems(routing, refs, {requireSign: false, requireOwner: true});
 }
 export function resolveContractLetterRouting(routing: DocumentRouting, ctx: DocumentRoutingResolveContext) {
-  return resolveDocumentRouting(routing, {...ctx, holdMissingEmployee: true});
+  return resolveDocumentRouting(routing, {...ctx, holdMissingEmployee: true,routingDefaultOnEmpty:true});
 }
 export function contractLetterCanEdit(letter: ContractLetterFlow, userId: string): boolean {
   return letter.state === 'routing' && canEditSigningContent(letter.document, userId);

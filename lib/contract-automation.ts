@@ -25,7 +25,7 @@ export function contractWorkflowRecipients(workflow: AutomationWorkflow): Automa
     return [...step.to, ...step.cc, ...(layers?.success ? layers.data.map(row => row.approver) : [])];
   });
 }
-export function contractStepParamProblems(workflow: AutomationWorkflow, refs: ContractStepReferences, recipients?: AutomationReferences): string[] {
+export function contractStepParamProblems(workflow: AutomationWorkflow, refs: ContractStepReferences, recipients?: AutomationReferences, policy:{skipUnavailableEmails?:boolean}={}): string[] {
   const problems: string[] = [];
   if (workflow.module !== 'contract_staff') return problems;
   const letterTrigger = (CONTRACT_LETTER_TRIGGERS as readonly string[]).includes(workflow.trigger.event);
@@ -38,7 +38,7 @@ export function contractStepParamProblems(workflow: AutomationWorkflow, refs: Co
       if (typeof step.params.body !== 'string' || !step.params.body.trim()) problems.push(at + 'write the message.');
       if (!step.to.length) problems.push(at + 'choose who receives the notification.');
     } else if (step.type === 'sendEmail') {
-      if (!refs.emailTemplates.some(t => t.id === step.params.emailTemplateId && !t.retired)) problems.push(at + 'choose an available email template.');
+      if (!policy.skipUnavailableEmails&&!refs.emailTemplates.some(t => t.id === step.params.emailTemplateId && !t.retired)) problems.push(at + 'choose an available email template.');
       if (!step.to.length) problems.push(at + 'choose who receives the email.');
     } else if (step.type === 'generateDocument') {
       if (typeof step.params.letterTemplateId !== 'string' || !step.params.letterTemplateId || refs.letterTemplateIds !== null && !refs.letterTemplateIds.includes(step.params.letterTemplateId)) problems.push(at + 'choose an available document template.');

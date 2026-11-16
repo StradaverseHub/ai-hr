@@ -18,7 +18,7 @@
  * step and the step records who it was meant for (`meantFor`); with no fallback member the step has no holder and blocks,
  * as a missing holder does today.
  */
-import {resolveRoutingRow,type Routing,type RoutingFacts} from './automation/routing';
+import {resolveRoutingTarget,type Routing,type RoutingFacts} from './automation/routing';
 import type {SigningRoute,SigningStep} from './document-signing-model';
 
 export const DOCUMENT_ROUTING_ACTIONS = ['review', 'approve', 'sign'] as const;
@@ -110,6 +110,7 @@ export type DocumentRoutingResolveContext = {
   describe: (who: DocumentRoutingWho) => string;
   /** Contract never delegates the employee's signature. Existing modules retain their own fallback policy. */
   holdMissingEmployee?: boolean;
+  routingDefaultOnEmpty?:boolean;
 };
 export type DocumentRoutingUnresolved = {stepId: string; meantFor: string; reason: string; fallbackGroupId: string | null; holderId: string | null};
 
@@ -122,10 +123,9 @@ function candidatesFor(who: DocumentRoutingWho, ctx: DocumentRoutingResolveConte
   if (who.kind === 'group') return groupMembers(who.groupId);
   const routing = ctx.routing(who.routingId);
   if (!routing) return {userIds: [], groupId: null, reason: 'The routing no longer exists.'};
-  const match = resolveRoutingRow(routing, ctx.facts);
-  if (!match) return {userIds: [], groupId: null, reason: `No row of “${routing.name}” matches this employee.`};
-  if (match.row.assignTo.kind === 'people') return {userIds: [...new Set(match.row.assignTo.userIds)], groupId: null, reason: match.row.assignTo.userIds.length ? null : `“${routing.name}” names nobody for this employee.`};
-  return groupMembers(match.row.assignTo.groupId);
+  const match=resolveRoutingTarget(routing,ctx.facts,ctx.groupMembers,{defaultOnEmpty:ctx.routingDefaultOnEmpty});
+  if(match.groupId&&!ctx.routingDefaultOnEmpty)return groupMembers(match.groupId);
+  return {userIds:match.userIds,groupId:match.groupId,reason:match.missing};
 }
 
 /**

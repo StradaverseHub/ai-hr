@@ -71,13 +71,18 @@ export function routedStepPeople(steps: readonly {who: {kind: string; userIds?: 
 }
 /** Everyone the routing reaches as a recipient: all members of the matched group, or all named people. */
 export function routingRecipients(routing: Routing, facts: RoutingFacts, groupMembers: (groupId: string) => readonly string[] | null, options: {defaultOnEmpty?: boolean} = {}): { userIds: string[]; missing: string | null } {
+  const resolved=resolveRoutingTarget(routing,facts,groupMembers,options);
+  return {userIds:resolved.userIds,missing:resolved.missing};
+}
+/** The same recipient resolution with the winning group retained for an approval's membership and pick policy. */
+export function resolveRoutingTarget(routing: Routing, facts: RoutingFacts, groupMembers: (groupId: string) => readonly string[] | null, options: {defaultOnEmpty?: boolean} = {}): {userIds:string[];missing:string|null;groupId:string|null} {
   const match = resolveRoutingRow(routing, facts);
-  if (!match) return { userIds: [], missing: `No row of “${routing.name}” matches this employee.` };
-  const resolve = (row: RoutingRow): {userIds: string[]; missing: string | null} => {
-    if (row.assignTo.kind === 'people') return row.assignTo.userIds.length ? {userIds: [...new Set(row.assignTo.userIds)], missing: null} : {userIds: [], missing: `“${routing.name}” names nobody for this employee.`};
+  if (!match) return { userIds: [], missing: `No row of “${routing.name}” matches this employee.`,groupId:null };
+  const resolve = (row: RoutingRow): {userIds: string[]; missing: string | null;groupId:string|null} => {
+    if (row.assignTo.kind === 'people') return row.assignTo.userIds.length ? {userIds: [...new Set(row.assignTo.userIds)], missing: null,groupId:null} : {userIds: [], missing: `“${routing.name}” names nobody for this employee.`,groupId:null};
     const members = groupMembers(row.assignTo.groupId);
-    if (!members) return {userIds: [], missing: `The group chosen in “${routing.name}” no longer exists.`};
-    return members.length ? {userIds: [...new Set(members)], missing: null} : {userIds: [], missing: `The group chosen in “${routing.name}” has no members.`};
+    if (!members) return {userIds: [], missing: `The group chosen in “${routing.name}” no longer exists.`,groupId:row.assignTo.groupId};
+    return members.length ? {userIds: [...new Set(members)], missing: null,groupId:row.assignTo.groupId} : {userIds: [], missing: `The group chosen in “${routing.name}” has no members.`,groupId:row.assignTo.groupId};
   };
   const result = resolve(match.row);
   // Contract's explicit default is the last resort inside the routing, before the module fallback group.

@@ -10,7 +10,8 @@ const action=(userId:string,personId:string,layerId:string,groups:Record<string,
 describe('Contract decision approval layers',()=>{
  it('rejects a forged frozen assignment and keeps separate approval requests distinct from their case',()=>{
   expect(request().document.subjectId).toBe('approval');
-  for(const patch of [{selectedUserId:'outsider'},{candidatePersonIds:{'ops-b':'employee-person'}},{candidatePersonIds:{}}]){
+  const patches:Partial<ContractApprovalAssignment>[]=[{selectedUserId:'outsider'},{candidatePersonIds:{'ops-b':'employee-person'}},{candidatePersonIds:{}}];
+  for(const patch of patches){
    expect(()=>newContractApprovalRequest({id:'approval',caseId:'case',tenantId:'tenant',companyId:'company',decisionRevision:1,subjectPersonId:'employee-person',fingerprint:'a'.repeat(64),assignments:[{...assignments[1],...patch}]})).toThrow('eligible');
   }
  });
