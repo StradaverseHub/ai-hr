@@ -99,7 +99,9 @@ it('refuses invented effective signing receipts even after admitting the legitim
  const original=await persisted();
  const completed=act(l,employee,{type:'complete',stepId:'employee-sign',signature:'Fictional employee',consent:true});
  const forged=structuredClone(completed);forged.document.actions[forged.document.actions.length-1].actorId=manager.userId!;
- await nativeRefusal(withTenant(employee,async tx=>{await begin(tx,employee,{type:'letterAction',documentId:l.id,documentRevision:l.revision,action:'sign',signature:'Fictional employee',consent:true});await save(tx,employee,{...data,letters:[forged]},'retained');}),'42501',/immutable action evidence/);
+ await nativeRefusal(withTenant(employee,async tx=>{await begin(tx,employee,{type:'letterAction',documentId:l.id,documentRevision:l.revision,action:'sign',signature:'Fictional employee',consent:true});await save(tx,employee,{...data,letters:[forged]},'retained');}),'42501',/current verified actor/);expect(await persisted()).toEqual(original);
+ const effectiveOnly=JSON.parse(JSON.stringify(completed)) as ResignationLetter;effectiveOnly.document.actions[effectiveOnly.document.actions.length-1].actorId=manager.userId!;
+ await nativeRefusal(withTenant(employee,async tx=>{await begin(tx,employee,{type:'letterAction',documentId:l.id,documentRevision:l.revision,action:'sign',signature:'Fictional employee',consent:true});await save(tx,employee,{...data,letters:[effectiveOnly]},'retained');}),'42501',/immutable action evidence/);expect(await persisted()).toEqual(original);
  const wrongActor=structuredClone(completed);wrongActor.history[wrongActor.history.length-1].actorId=manager.userId!;
  await nativeRefusal(withTenant(employee,async tx=>{await begin(tx,employee,{type:'letterAction',documentId:l.id,documentRevision:l.revision,action:'sign',signature:'Fictional employee',consent:true});await save(tx,employee,{...data,letters:[wrongActor]},'retained');}),'42501',/current verified actor/);expect(await persisted()).toEqual(original);
 });
@@ -135,7 +137,7 @@ it('enforces request/employment/company and clearance reference invariants',asyn
 
 it('classifies only reverse-linked managed clearance for native operators and real owner workers',async()=>{
  const clearance=randomUUID(),impostor=randomUUID(),legacy=randomUUID();
- const clearanceData=(caseId:string,managed:boolean)=>({version:9,id:caseId,module:'off',state:caseId===clearance?'pending':'closed',facts:{company:b.companyId,employmentId},...(managed?{resignationSourceCaseId:id}:{})});
+ const clearanceData=(caseId:string,managed:boolean)=>({version:9,id:caseId,module:'off',revision:1,state:caseId===clearance?'pending':'cancelled',facts:{company:b.companyId,employmentId,personId:employee.personId},...(managed?{resignationSourceCaseId:id}:{})});
  for(const[caseId,managed]of[[clearance,true],[impostor,true],[legacy,false]] as const)await owner.db.execute(sql`insert into lc_v9_case(id,tenant_id,company_id,employment_id,module,number,data) values(${caseId}::uuid,${b.tenantId}::uuid,${b.companyId}::uuid,${employmentId}::uuid,'off',${'OFB9-'+caseId},${JSON.stringify(clearanceData(caseId,managed))}::jsonb)`);
  await owner.db.execute(sql`update resignation_journey set offboarding_case_id=${clearance}::uuid where id=${id}::uuid`);
  await owner.db.execute(sql`insert into lc_onboarding_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({version:1,groups:[],access:{onboarding:[],offboarding:[b.adminUserId]}})}::jsonb) on conflict(tenant_id) do update set data=excluded.data`);
@@ -178,4 +180,11 @@ it('uses the configured case owner for a sign-only route without an explicit own
  await nativeRefusal(withTenant(fyi,tx=>begin(tx,fyi,{type:'recall',documentId:l.id,documentRevision:l.revision})),'42501');
  await withTenant(manager,async tx=>{await begin(tx,manager,{type:'recall',documentId:l.id,documentRevision:l.revision});l=act(l,manager,{type:'recall'});data={...data,letters:[l]};await save(tx,manager,data,'retention');});
  expect(await persisted()).toMatchObject({stage:'retention',revision:2});
+});
+
+it('projects salary currency from the same current canonical compensation row without a country fallback',async()=>{
+ const current=()=>withTenant(employee,async tx=>{await prepareResignationProofTx(tx,employee,{operation:'context',caseId:id,args:{employmentId,caseId:id}});const[row]=await tx.execute<{data:{basicSalary:string|null;currency:string|null}}>(sql`select app.resignation_journey_context(${employmentId}::uuid,${id}::uuid) data`);return{basicSalary:row.data.basicSalary,currency:row.data.currency};});
+ expect(await current()).toEqual({basicSalary:null,currency:null});
+ await owner.db.execute(sql`insert into compensation(tenant_id,employment_id,basic_salary,currency,valid_from,valid_to,superseded_at) values(${b.tenantId}::uuid,${employmentId}::uuid,8800,'USD','2000-01-01','9999-01-01',null),(${b.tenantId}::uuid,${employmentId}::uuid,999999,'EUR','2001-01-01',null,now()),(${b.tenantId}::uuid,${employmentId}::uuid,9900,'GBP','9999-01-01',null,null)`);
+ expect(await current()).toEqual({basicSalary:'8800.00',currency:'USD'});
 });
