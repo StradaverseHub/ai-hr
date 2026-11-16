@@ -39,3 +39,11 @@ export async function createResignationOffboardingTx(tx:import('../../db/client'
   return await v9CreateOffboardingTx(tx,ctx,{employmentId:row.intent.employmentId,type:row.intent.type,noticeDate:row.intent.noticeDate,lastDay:row.intent.lastDay},{kind:'resignation',caseId});
  }finally{await tx.execute(sql`select set_config('app.resignation_handoff','',true)`);}
 }
+
+/** Lifecycle owns resignation posting composition; Personnel remains the movement writer. */
+export {offboardingPostingAccess,offboardingPostingChoices,rejectOffboardingPosting} from '../../core/resignation-clearance';
+/** Admit only the deterministic email payload being queued, never a caller-selected runtime claim. */
+export async function prepareResignationEmailTx(tx:import('../../db/client').Tx,ctx:import('../../db/client').SessionContext,input:{caseId:string;key:string;to:readonly string[];cc:readonly string[];subject:string;body:string;content?:import('../../lib/automation-email-ipc').AutomationEmailContent}):Promise<void>{
+ const {prepareResignationProofTx}=await import('../../core/resignation-proof');
+ await prepareResignationProofTx(tx,ctx,{operation:'email',caseId:input.caseId,args:{key:input.key,to:[...input.to],cc:[...input.cc],subject:input.subject,body:input.body,content:input.content??null}});
+}

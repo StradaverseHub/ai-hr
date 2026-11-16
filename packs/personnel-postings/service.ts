@@ -3,4 +3,4 @@
 export * from '../../core/personnel-posting';
 export * from '../../lib/personnel-posting';
 
-export * from '../../core/resignation-clearance';
+export {offboardingPostingAccess,offboardingPostingChoices,rejectOffboardingPosting} from '../lifecycle/service';

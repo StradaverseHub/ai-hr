@@ -18,7 +18,6 @@ import type {NotificationSweepConnection} from './notice-projection';
 import {isModuleEnabled} from './entitlements';
 import {automationEmailIpc,type AutomationDeliveryRequest,type AutomationDeliveryResult,type AutomationEmailContent} from '../lib/automation-email-ipc';
 import {validateAutomationEmailContent} from '../lib/automation-email-content-policy';
-import {prepareResignationProofTx} from './resignation-proof';
 
 export type AutomationEmailQueued = {queued: number; to: string[]; cc: string[]; unreachable: string[]};
 /** Records the email intent in the caller's transaction (idempotent on `key`). */
@@ -27,7 +26,8 @@ export async function queueAutomationEmailTx(tx: Tx, input: {module: 'probation'
   if (input.module === 'off') {
     if (!ctx) throw new Error('Resignation email requires the authorized command context.');
     if (input.content) validateAutomationEmailContent(input.content);
-    await prepareResignationProofTx(tx,ctx,{operation:'email',caseId:input.subjectId,args:{key:input.key,to:[...input.to],cc:[...input.cc],subject:input.subject,body:input.body,content:input.content??null}});
+    const {prepareResignationEmailTx}=await import('../packs/lifecycle/service');
+    await prepareResignationEmailTx(tx,ctx,{caseId:input.subjectId,key:input.key,to:input.to,cc:input.cc,subject:input.subject,body:input.body,content:input.content});
     const [row] = await tx.execute<{data: AutomationEmailQueued}>(sql`select app.resignation_email_queue(${input.subjectId}::uuid, ${input.key}, ${array(input.to)}::uuid[], ${array(input.cc)}::uuid[], ${input.subject}, ${input.body}, ${JSON.stringify(input.content ?? null)}::jsonb) as data`);
     return row.data;
   }
