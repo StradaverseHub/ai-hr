@@ -1,5 +1,30 @@
 <!-- 5800_contract_shared_automation -->
 <!-- 5810_contract_shared_execution -->
+<!-- 5830_contract_shared_schedule -->
+# Contract scheduler and forward repairs reservation — 17 November 2026 MYT
+
+Owner: `codex/contract-shared-automation-20261116`, delegated tracker worktree
+`codex/contract-tracker-owner-20261117`. Reserve **5830–5833**, idx **5230–5233**,
+`when` **1794841005830–1794841005833**, for system-owned morning admission, defaults and tracker forward repairs.
+A read-only survey of all 263 registered worktrees found no SQL claims in 5830–5849 before this reservation.
+Existing 5800–5829 reservations remain held. Applied or checkpointed SQL bytes and hashes are immutable;
+this reservation conveys no installation authority. Verify fresh source reservations and complete installation
+ledgers before admission. The four-session coordinator has recorded Movement as the first staging release;
+Contract prepares outside the lease and must use that accepted baseline before its final release gate.
+
+A subsequent survey of the same 263 registered worktrees found no 5834–5839 SQL claims. Reserve **5834–5835**
+(idx 5234–5235, when 1794841005834–1794841005835) for the root email integration's forward repairs, and
+**5836–5839** (idx 5236–5239, when 1794841005836–1794841005839) for the delegated Contract decline/Offboarding
+owner's forward repairs. These are unapplied source reservations, with the same admission and ledger requirements.
+
+The later 265-worktree survey found no **5840–5843** claims. Reserve those tags (idx **5240–5243**,
+when **1794841005840–1794841005843**) for shared-email assets/test-purpose forward repairs, delegated to
+`codex/contract-email-assets-20261117`. The scheduler's 5830–5833 reservation must not be reused by this consumer.
+
+The next 265-worktree survey found no **5844–5847** claims. Reserve those tags (idx **5244–5247**,
+when **1794841005844–1794841005847**) for `codex/contract-automation-ui-20261117` shared-group and saved-template
+test forward repairs. All source reservations remain distinct; this is not an installed watermark.
+
 # Contract execution adapters reservation — 17 November 2026 MYT
 
 Owner: `codex/contract-shared-automation-20261116`. Reserve tags **5810–5829**, idx **5210–5229**,
