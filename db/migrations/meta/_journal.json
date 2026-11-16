@@ -6602,6 +6602,13 @@
       "when": 1794841005913,
       "tag": "5913_contract_posting_native_completion",
       "breakpoints": true
+    },
+    {
+      "idx": 5315,
+      "version": "7",
+      "when": 1794841005915,
+      "tag": "5915_contract_posting_durable_job_readiness",
+      "breakpoints": true
     }
   ]
 }

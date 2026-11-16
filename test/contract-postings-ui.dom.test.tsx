@@ -53,3 +53,9 @@ it('a conversion has no contract end/counter or new probation controls and a vie
  expect(screen.getByText(/does not create a new probation case/)).toBeInTheDocument();
  expect(screen.getByLabelText('New start / effective date')).toBeDisabled();expect(screen.queryByRole('button',{name:/Save/})).not.toBeInTheDocument();
 });
+it('shows the workflow readiness hold and refreshes status without submitting approval',()=>{
+ mount(queue({...posting(),canApprove:false,workflowReady:false}));
+ expect(screen.getByText('Posting approval is waiting for the workflow to finish.')).toBeInTheDocument();
+ expect(screen.queryByRole('button',{name:'Approve posting'})).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'Refresh status'}));expect(actions.refresh).toHaveBeenCalledOnce();expect(actions.approve).not.toHaveBeenCalled();
+});

@@ -247,9 +247,12 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5311,when:1794841005911,tag:'5911_contract_posting_canonical_assignment_receipt'},
  {idx:5312,when:1794841005912,tag:'5912_contract_posting_source_projection'},
  {idx:5313,when:1794841005913,tag:'5913_contract_posting_native_completion'},
+ {idx:5315,when:1794841005915,tag:'5915_contract_posting_durable_job_readiness'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5915_contract_posting_durable_job_readiness':'d6d2471e14534c8b8e68aa0fba0d0d4e3a2341db2f027cd88320884787359171',
+
  '5913_contract_posting_native_completion':'b267d52c086b6dabda037ada30eb5902144a236f873916cd82829dc9e7036e26',
  '5838_contract_shared_email_task_projection':'6796ee897abfa5c088b1f215afc5889cc6d1d2b3557d0f0deaac710fb23c4214',
  '5837_contract_shared_email_self_binding':'d00b83a2300a3e26a25b79150d084d61fa224b688a43ccc4475b4e854d74c6d4',
