@@ -68,12 +68,15 @@ describe('bdf7d248 — A0001 January 2026, the reporter’s own month', () => {
     expect(monthly.epfEmployer).toBe(1092);
   });
 
-  it('the employer 13%/12% step follows the MONTH, not the salary line alone', () => {
-    // A RM4,800 earner paid a RM1,000 bonus: the month is RM5,800, so the schedule row that applies is
-    // a 12% row. Before r210 the salary was banded at 13% and 13% of the bonus was added beside it,
-    // which charged the employer RM754 for a month the table prices at RM696.
+  it('a ≤RM5,000 earner whose bonus crosses RM5,000 keeps the employer at 13% (Part A bonus note, 7f5cc653)', () => {
+    // RESTATED 2026-11-16 FOR ITEM 7f5cc653 (ADR-0024 addendum 2026-11-16). This case pinned the reading
+    // bdf7d248 introduced collaterally — the employer 13%/12% step following the combined month, 696 — on
+    // a shape bdf7d248's own reporter never had (their normal wage was RM7,413). KWSP's Third Schedule
+    // Part A bonus note covers exactly this shape: normal RM4,800 is at or below RM5,000 and the bonus
+    // takes the month to RM5,800, so the employer pays 13% of the month's wages: 5,800 × 13% = 754.00 →
+    // 754 (was 696). The employee side keeps the combined row: ceil(11% × 5,800) = 638, unchanged.
     expect(epf(4800, 0)).toEqual({ employee: 528, employer: 624 });
-    expect(epf(4800, 1000)).toEqual({ employee: 638, employer: 696 });
+    expect(epf(4800, 1000)).toEqual({ employee: 638, employer: 754 });
   });
 });
 
@@ -212,33 +215,21 @@ describe('bdf7d248 — i-Topup can still only RAISE a side', () => {
 
 describe('bdf7d248 — the consequence this change has that nobody asked for', () => {
   /**
-   * READ THIS BEFORE "FIXING" THE NUMBERS BELOW. Because the employer column steps DOWN from 13% to
-   * 12% at RM5,000, a small bonus paid to an employee at or just under that line makes the month's
-   * employer contribution SMALLER than the salary run alone already produced: RM5,000 alone is RM650,
-   * RM5,000 + RM50 is RM612. The increment method clamps a negative delta at zero (ADR-0024 §6, and
-   * `deltaStat` in core/payroll.ts), so the bonus run contributes RM0 and the month ends RM38 over the
-   * table figure rather than under it — nobody is short-paid, and nothing here is silently discarded.
+   * RESTATED 2026-11-16 FOR ITEM 7f5cc653 (ADR-0024 addendum 2026-11-16). This block pinned a step-DOWN:
+   * under bdf7d248's combined reading, RM5,000 + a RM50 bonus read the 12% row (612), below the salary
+   * run's own 650, so the bonus run's negative increment was clamped to 0 and the month ended at 650.
    *
-   * This is the schedule's own arithmetic, not an artefact of the change: the RM5,000 step is a real
-   * cliff in the published table. It is pinned so the behaviour is a stated, tested consequence rather
-   * than a surprise the first time a RM4,900 employee gets a RM200 bonus, and so a future reversals ADR
-   * (§6) has a concrete case to work from.
+   * KWSP's Third Schedule Part A bonus note removes that step for an EPF Bonus 2012 bonus: normal wages
+   * of RM5,000 are at or below RM5,000 and the bonus takes the month above it, so the employer pays 13% of
+   * the month's wages, rounded up to the next ringgit — 5,050 × 13% = 656.50 → 657. The bonus run now adds
+   * 657 − 650 = 7, nothing is clamped, and the month's figure IS the table-free 13% figure.
    *
-   * ⚠️ AND IT IS THE ONE CASE WHERE THE PLAN'S HEADLINE PROMISE DOES NOT HOLD. bdf7d248's plan told the
-   * reporter, in plain words, that "an employee paid twice in one month contributes exactly what they
-   * would have contributed had it all been paid once". Everywhere else this change MAKES that true. Here
-   * it cannot: one run of RM5,050 is RM612, while RM5,000 then RM50 is RM650 + RM0 = RM650, because the
-   * clamp cannot give the RM38 back. The two readings are pinned side by side below so the divergence is
-   * a measured fact rather than a claim, and so nobody "fixes" one of them into agreement by inventing a
-   * negative EPF line on a payslip — which is what closing the gap would take, and what §6 excludes.
-   *
-   * The excess sits in the EMPLOYEE's EPF account and is an employer cost; nobody is short-paid. It is
-   * bounded by the size of the step (RM38 at this row) and only reachable when a bonus carries a month
-   * from at-or-below RM5,000 to above it. The reporter is told this when the item is marked done.
+   * What still differs is a RM5,050 month paid entirely as NORMAL wages: that is not a bonus month, so it
+   * reads the 12% row, ceil(12% × 5,100) = 612. That difference is the note's own rule, not the clamp.
    */
-  it('a bonus that crosses the RM5,000 employer step can lower the month’s employer figure', () => {
-    expect(epf(5000, 0, CFG.epf).employer).toBe(650); // 13% row
-    expect(epf(5000, 50, CFG.epf).employer).toBe(612); // 12% row — RM38 LESS for a bigger month
+  it('a bonus that crosses the RM5,000 employer step keeps 13% of the month, so no increment is clamped', () => {
+    expect(epf(5000, 0, CFG.epf).employer).toBe(650); // 13% row, 0.13 × 5,000
+    expect(epf(5000, 50, CFG.epf).employer).toBe(657); // 5,050 × 0.13 = 656.50 → 657 (was 612)
     const { runs, monthly } = computeMonthlyRuns({
       month: 1,
       profile,
@@ -248,20 +239,18 @@ describe('bdf7d248 — the consequence this change has that nobody asked for', (
       ],
     });
     expect(runs[0].epfEmployer).toBe(650);
-    expect(runs[1].epfEmployer).toBe(0); // clamped, never negative
-    expect(monthly.epfEmployer).toBe(612);
-    // The employee side has no such step, so it tops up normally.
+    expect(runs[1].epfEmployer).toBe(7); // 657 − 650, positive: no clamp (was 0, clamped)
+    expect(monthly.epfEmployer).toBe(657); // (was 612)
+    // The employee side has no such step, so it tops up normally: row 5,100 → 0.11 × 5,100 = 561.
     expect(runs[1].epfEmployee).toBe(11);
     expect(monthly.epfEmployee).toBe(561);
 
-    // THE DIVERGENCE ITSELF, pinned as a number rather than described in prose above: the same RM5,050
-    // paid as ONE run and as TWO runs no longer agree on the employer side. 612 against 650.
-    const oneRun = epf(5050, 0, CFG.epf).employer;
+    // The two runs now add up to the month's own figure: 650 + 7 = 657.
     const twoRuns = runs[0].epfEmployer + runs[1].epfEmployer;
-    expect(oneRun).toBe(612);
-    expect(twoRuns).toBe(650);
-    expect(twoRuns - oneRun).toBe(38); // the size of the step, and the whole of the disagreement
-    // The employee side DOES agree, which is why this is a statement about the employer column only.
+    expect(twoRuns).toBe(657);
+    // RM5,050 of NORMAL wages is not a bonus month: the 12% row, ceil(0.12 × 5,100) = 612, unchanged.
+    expect(epf(5050, 0, CFG.epf).employer).toBe(612);
+    // The employee side agrees either way.
     expect(epf(5050, 0, CFG.epf).employee).toBe(runs[0].epfEmployee + runs[1].epfEmployee);
   });
 

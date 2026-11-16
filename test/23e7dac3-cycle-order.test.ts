@@ -306,8 +306,12 @@ describe('23e7dac3 · the ONE case the order still changes, stated rather than h
    * with its DIRECTION and its BOUND so the worksheet's claim is checkable: the clamp can only ever
    * REMOVE a negative increment, so an out-of-order month is never under-remitted, only over — and the
    * excess is an employer cost that lands in the employee's own EPF account.
+   *
+   * 2026-11-16, item 7f5cc653: for a BONUS-stream crossing (this shape) KWSP's Part A bonus note keeps the
+   * employer at 13% of the month, so the step and the clamp no longer occur and the two orders agree. The
+   * step remains for a month that crosses RM5,000 on normal wages alone.
    */
-  it('a bonus that carries the month across the RM5,000 EPF step still clamps, and only upwards', async () => {
+  it('a bonus that carries the month across RM5,000 keeps 13% (7f5cc653), so neither order clamps', async () => {
     // RM4,990 basic, with RM40 of bonus-bucket money inside the salary run and a RM30 bonus run beside
     // it: the month is RM5,060, which is over the RM5,000 step, but the salary alone is under it.
     await setCompensation(a, { employmentId, basicSalary: 4990, monthlyAllowance: 0, effectiveFrom: '2025-01-01' });
@@ -321,18 +325,17 @@ describe('23e7dac3 · the ONE case the order still changes, stated rather than h
     await monthlyRun(0, 40);
     const reversed = await monthTotal();
 
-    // Conventional: the salary run already carries the month over the step, so no increment is negative
-    // and the month equals the single Third Schedule lookup for RM5,060.
-    expect(conventional.epfEmployer).toBe(612);
-    // Reversed: the RM30 bonus run crosses the step FIRST, its negative increment is clamped away, and
-    // the month ends ABOVE the table figure — never below it.
-    expect(reversed.epfEmployer).toBe(650);
-    expect(reversed.epfEmployer).toBeGreaterThan(conventional.epfEmployer);
-    // The bound is the size of the step, not an open-ended drift.
-    expect(round2(reversed.epfEmployer - conventional.epfEmployer)).toBe(38);
-    // Every other leg is untouched by the step and agrees exactly.
+    // RESTATED 2026-11-16 FOR ITEM 7f5cc653 (ADR-0024 addendum 2026-11-16). This pinned conventional 612
+    // (the 12% row for RM5,060) against reversed 650 (a clamped negative increment), 38 apart. KWSP's Part A
+    // bonus note removes the step for this shape: the normal wage (RM4,990) is at or below RM5,000 and the
+    // bonus money (RM40 + RM30, on the bonus stream) takes the month above it, so the employer pays 13% of
+    // the month's wages: 5,060 × 13% = 657.80 → 658. The figure only rises as the bonus grows, so no
+    // increment is negative, nothing is clamped, and both orders end on the same month.
+    expect(conventional.epfEmployer).toBe(658); // was 612
+    expect(reversed.epfEmployer).toBe(658); // was 650
+    expect(round2(reversed.epfEmployer - conventional.epfEmployer)).toBe(0); // was 38
+    // Every leg agrees exactly.
     for (const k of ITEMS) {
-      if (k === 'epfEmployer') continue;
       expect([k, reversed[k]]).toEqual([k, conventional[k]]);
     }
   });

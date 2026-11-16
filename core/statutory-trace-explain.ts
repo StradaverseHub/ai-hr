@@ -44,6 +44,11 @@ const epfTrace = lookup.extend({
   employeeOnBonus: nonneg,
   normalOnly: lookup.optional(),
   bonusEmployer: z.object({ rate: nonneg, amount: nonneg }).optional(),
+  // Item 7f5cc653 — Part A bonus note (13% of the month's actual wages, rounded up to RM1). Optional and
+  // additive: every trace written before it, and every month it does not apply to, parses unchanged.
+  employerBonusRule: z.object({
+    normalWage: nonneg, threshold: nonneg, rate: nonneg, base: nonneg, exact: nonneg, amount: nonneg,
+  }).optional(),
   flatLegs: z.object({
     normal: z.object({ employee: nonneg, employer: nonneg }),
     bonus: z.object({ employee: nonneg, employer: nonneg }),
