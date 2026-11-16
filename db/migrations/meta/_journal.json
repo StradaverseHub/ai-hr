@@ -6296,6 +6296,13 @@
       "breakpoints": true
     },
     {
+      "idx": 5235,
+      "version": "7",
+      "when": 1794841005835,
+      "tag": "5835_contract_shared_review_wording",
+      "breakpoints": true
+    },
+    {
       "idx": 5296,
       "version": "7",
       "when": 1794841005896,

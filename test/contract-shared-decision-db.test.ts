@@ -98,7 +98,14 @@ describe('protected Contract decision preview and submission',()=>{
   expect(changedSource.canEdit).toBe(false);expect(changedSource.pendingAction).toBeNull();expect(changedSource.body?.values['employee.name']).toBe('Fictional Contract subject');
   await owner.db.execute(sql`update employment set person_id=${f.employee.personId}::uuid where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`);
   const hidden=await readContractSharedLetter(f.proposer,generated.id);expect(hidden.body).toBeNull();expect(hidden.contentHash).toBeNull();
-  const reviewed=await actContractSharedLetter(f.admin,{id:letter.id,actionId:randomUUID(),stepId:letter.pendingAction!.stepId,revision:letter.contentRevision,hash:letter.contentHash!,action:'reviewed'});
+  const review={id:letter.id,actionId:randomUUID(),stepId:letter.pendingAction!.stepId,revision:letter.contentRevision,hash:letter.contentHash!,action:'reviewed' as const,blocks:{intro:'Reviewed wording for {employee.name}'}};
+  await expect(actContractSharedLetter(f.proposer,review)).rejects.toMatchObject({code:'forbidden'});
+  await expect(actContractSharedLetter(f.admin,{...review,action:'approved'})).rejects.toMatchObject({code:'invalid'});
+  expect((await readContractSharedLetter(f.admin,letter.id)).contentRevision).toBe(letter.contentRevision);
+  const reviewed=await actContractSharedLetter(f.admin,review);
+  expect(reviewed.body?.blocks.intro).toBe('Reviewed wording for {employee.name}');expect(reviewed.contentRevision).toBe(letter.contentRevision+1);
+  const replay=await actContractSharedLetter(f.admin,review);expect(replay.contentRevision).toBe(reviewed.contentRevision);expect(replay.history).toHaveLength(1);
+  await expect(actContractSharedLetter(f.admin,{...review,blocks:{intro:'A different retry'}})).rejects.toMatchObject({code:'conflict'});
   expect(reviewed.state).toBe('routing');expect(reviewed.pendingAction).toBeNull();expect(reviewed.valuesFixed).toBe(false);
   const held=await contractSharedContext(f.proposer,f.caseId);expect(held.flow?.stage).toBe('document');expect(held.flow?.flags).toContain('employee_cannot_sign');expect(held.source.contractNumber).toBe(4);
   const userId=await createAppUser(f.b.tenantId,f.employee.personId,'employee');
