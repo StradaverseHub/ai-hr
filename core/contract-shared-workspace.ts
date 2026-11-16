@@ -16,7 +16,8 @@ export function contractSharedWorkspace(ctx:SessionContext,caseId:string){
   const view=await contractSharedContextTx(tx,caseId);
   const [row]=await tx.execute<{workspace:ContractCaseWorkspace}>(sql`select app.contract_shared_workspace(${caseId}::uuid) as workspace`);
   const reasons=view.permissions.includes('decide')||view.permissions.includes('decline')?(await terminationReasonCatalogueTx(tx,ctx.tenantId)).filter(r=>r.active).map(({code,label,category})=>({code,label,category})):[];
-  return {view,...row.workspace,reasons};
+  const activity=await tx.execute<{revision:number;at:string;actorName:string|null;stage:string;decisionRevision:number|null}>(sql`select (entry->>'revision')::integer as revision,entry->>'at' as at,entry->>'actorName' as "actorName",entry->'flow'->>'stage' as stage,(entry->'flow'->'decision'->>'revision')::integer as "decisionRevision" from app.contract_shared_history(${caseId}::uuid,2147483647) entry`);
+  return {view,...row.workspace,reasons,activity:[...activity]};
  });
 }
 export type ContractConfigurationChoices={accessAdmin:boolean;companies:{id:string;name:string}[];scopes:{id:string;name:string;parentId:string|null}[];people:{id:string;name:string}[];groups:{id:string;name:string}[]};
