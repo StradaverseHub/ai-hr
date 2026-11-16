@@ -108,10 +108,9 @@ describe('shared Contract endings use native Offboarding without automatic Perso
   await owner.db.execute(sql`update employment set contract_number=4,contract_start_date=(contract_end_date+1),contract_end_date=(contract_end_date+interval '6 months')::date where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`);
   const [closed]=await owner.db.execute<{data:unknown;revision:number}>(sql`select data,revision from contract_shared_case where tenant_id=${f.b.tenantId}::uuid and case_id=${f.caseId}::uuid`);
   const reviewView=await readContractSharedLetter(f.admin,letter.id);expect(reviewView.body!.values['employee.name']).toBe(oldName);
-  // Exercise native command eligibility with the actual pre-posting step IDs. The existing public projection's
-  // pendingAction currentness is a separately tracked UI defect; it must not obscure the authorization proof.
+  expect(reviewView.pendingAction).toMatchObject({stepId:reviewStepId,kind:'review'});
   await actContractSharedLetter(f.admin,{id:letter.id,actionId:randomUUID(),stepId:reviewStepId,revision:reviewView.contentRevision,hash:reviewView.contentHash!,action:'reviewed'});
-  const signView=await readContractSharedLetter(employee,letter.id);expect(signView.layers.find(layer=>layer.id===employeeStepId)?.fulfilled).toBe(false);
+  const signView=await readContractSharedLetter(employee,letter.id);expect(signView.pendingAction).toMatchObject({stepId:employeeStepId,kind:'sign'});expect(signView.layers.find(layer=>layer.id===employeeStepId)?.fulfilled).toBe(false);
   const [replacement]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${f.b.tenantId}::uuid,'Different Personnel person, never merged into the old email task',${randomUUID()+'@ending.test'}) returning id`);
   await owner.db.execute(sql`update employment set person_id=${replacement.id}::uuid where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`);
   await expect(actContractSharedLetter(employee,{id:letter.id,actionId:randomUUID(),stepId:employeeStepId,revision:signView.contentRevision,hash:signView.contentHash!,action:'signed',method:'typed',value:'Fictional ending subject',consent:true})).rejects.toThrow();
