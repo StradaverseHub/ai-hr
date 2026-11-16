@@ -1,3 +1,8 @@
+<!-- 5830_contract_tracker_system_defaults -->
+# Contract tracker, system morning jobs and setup — 17 November 2026 MYT
+
+Owner `codex/contract-tracker-owner-20261117`, delegated by the Contract integration owner. Reserve **5830–5833**, idx **5230–5233**, when **1794841005830–1794841005833**. Parent refreshed a read-only survey of all263registered worktrees and found no competing5830–5849SQL claims. These are source allocations only, not installation authority; refresh installation watermarks and preserve ordered migration bytes at release. 5830 extends the set-based tracker; later entries carry fixed Contract system-job admission and mapped setup defaults.
+
 <!-- 5800_contract_shared_automation -->
 <!-- 5810_contract_shared_execution -->
 # Contract execution adapters reservation — 17 November 2026 MYT
