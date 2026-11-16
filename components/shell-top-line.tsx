@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { resolveBreadcrumbTrail } from '@/lib/navigation/breadcrumbs';
@@ -32,12 +32,13 @@ export function ShellRoutePath() {
     const parts = trail.detail ? [...trail.parts, {label:pageTitle ?? tTop('details')}] : trail.parts;
     return (
       <nav aria-label={tTop('breadcrumb')} className={atelier ? "atelier-crumb" : "flex min-w-0 shrink items-center gap-1 overflow-hidden whitespace-nowrap"} data-shell-path>
-        {parts.map((part,index) => <span key={index} className="contents">
-          {index > 0 && <i aria-hidden>/</i>}
+        {parts.map((part,index) => <Fragment key={index}>
           {index === parts.length - 1
             ? <b className="min-w-0 truncate" aria-current="page">{part.label}</b>
-            : part.href ? <Link href={part.href}>{part.label}</Link> : <span>{part.label}</span>}
-        </span>)}
+            : part.href
+              ? <><Link href={part.href}>{part.label}</Link><i aria-hidden>/</i></>
+              : <span className="contents">{part.label}<i aria-hidden>/</i></span>}
+        </Fragment>)}
       </nav>
     );
   }

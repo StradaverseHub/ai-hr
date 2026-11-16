@@ -106,11 +106,14 @@ describe('isolated combined release: actual shell CSS and controls',()=>{
   expect(ports.replace).toHaveBeenCalledOnce();const [url,options]=ports.replace.mock.calls[0];const sp=new URLSearchParams(String(url).slice(1));expect(Object.fromEntries(sp)).toEqual({q:'Fictional',size:'25',page:'1'});expect(options).toEqual({scroll:false});
   ports.search=String(url).slice(1);view.rerender(<Screen theme={theme}/>);expect(screen.getByText('Fictional row 26')).toBeVisible();expect(screen.queryByText('Fictional row 1')).toBeNull();
  });
- it('uses actual rail destinations for module/list links and follows the real h1 when a record changes',async()=>{
-  ports.path='/attendance/individual/2026-10-29';const view=await mount('atelier',1280,false,true,'Fictional attendance A');
+ it.each([390,1280])('uses actual rail destinations for module/list links and follows the real h1 when a record changes at %i px',async(width)=>{
+  ports.path='/attendance/individual/2026-10-29';const view=await mount('atelier',width,false,true,'Fictional attendance A');
   const crumb=await screen.findByRole('navigation',{name:en.topbar.breadcrumb});
   await waitFor(()=>expect(crumb.querySelector('[aria-current=page]')?.textContent).toBe('Fictional attendance A'));
-  const hrefs=Array.from(crumb.querySelectorAll('a')).map(link=>link.getAttribute('href'));expect(hrefs).toContain('/attendance');expect(hrefs).toContain('/attendance/clock');
+  expect(crumb.querySelector('[aria-current=page]')).toBeVisible();
+  const hrefs=Array.from(crumb.querySelectorAll('a')).map(link=>link.getAttribute('href'));expect(hrefs).toEqual(['/attendance']);
+  expect(within(crumb).queryByRole('link',{name:en.nav.moduleAttendance})).toBeNull();
+  expect(crumb.textContent).toContain(en.nav.moduleAttendance);
   // A streamed route can commit its new pathname before the previous heading is replaced.
   ports.path='/attendance/individual/2026-10-30';view.rerender(<Screen theme="atelier" title="Fictional attendance A"/>);await tick();
   view.rerender(<Screen theme="atelier" title="Fictional attendance B"/>);

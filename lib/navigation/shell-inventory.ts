@@ -64,6 +64,8 @@ export type CollapsibleGroupItem = {
   tour?: string;
   activeMatch?: 'children';
   defaultHref?: string;
+  /** Breadcrumb-only landing; must be one of the visible children. Does not change the menu trigger. */
+  breadcrumbHref?: string;
   collapsible: true;
   labelKey: string;
   icon: LucideIcon;
