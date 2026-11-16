@@ -106,7 +106,7 @@ export function offboardingStepParamProblems(workflow:AutomationWorkflow,refs:Of
    if(['Transfer','Promotion','Increment','Salary Adjustment'].includes(text(p.eventType))&&!fields.length)add('Choose at least one field to update.');
    if(!['offerEff','lwd','today'].includes(text(p.dateFrom)))add('Choose the posting effective date.');
    if(!includes(OFFBOARDING_OFFER_TRIGGERS,event)&&(fields.length||p.dateFrom==='offerEff'))add('This trigger has no retention offer fields or effective date.');
-   if(p.eventType==='Termination'&&!text(p.exitReason).trim())add('Choose the Termination exit reason.');
+   if(p.eventType==='Termination')add('Termination is posted automatically after completed clearance. Choose another event type for a resignation workflow.');
    if(refs.postingApproverGroupId!==undefined&&(!refs.postingApproverGroupId||refs.references&&!refs.references.groupExists(refs.postingApproverGroupId)))add('Choose the Personnel postings approver in Offboarding settings.');
    if('approver' in p)add('Offboarding posting approvers are set in Offboarding settings, not on this step.');
   }

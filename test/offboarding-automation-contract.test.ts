@@ -76,6 +76,16 @@ describe('Offer deadlines and posting validation',()=>{
   expect(OFFBOARDING_POSTING_EVENTS).toContain('Employment Type Change');
   expect(OFFBOARDING_POSTING_FIELDS).toEqual(['title','grade','salary']);
  });
+ it('keeps termination clearance-only and rejects unknown posting events without changing the pinned options',()=>{
+  const s=step('createPosting',{eventType:'Termination',dateFrom:'lwd',fields:[],exitReason:'Resignation'});
+  const draft=workflow('accepted',[s]),issues=offboardingStepParamProblems(draft,refs);
+  expect(issues).toContain('Step 1: Termination is posted automatically after completed clearance. Choose another event type for a resignation workflow.');
+  expect(setAutomationWorkflowStatus(draft,'live',issues).ok).toBe(false);
+  expect(setAutomationWorkflowStatus(draft,'paused',issues).ok).toBe(true);
+  expect(OFFBOARDING_POSTING_EVENTS).toContain('Termination');
+  expect(problems('offerAccepted',{...s,params:{...s.params,eventType:'Unknown event',dateFrom:'offerEff',fields:['salary']}})).toContain('Step 1: Choose the Personnel posting event type.');
+  expect(offboardingStepParamProblems({...draft,module:'probation'},refs)).toEqual([]);
+ });
  it('requires the employee to be the only last signer',()=>{
   const good=[{id:'review',order:1,action:'review' as const,owner:true,who:{kind:'group' as const,groupId:'ops'}},{id:'employee',order:2,action:'sign' as const,owner:false,who:{kind:'employee' as const}}];
   expect(retentionRoutingProblems(good)).toEqual([]);
