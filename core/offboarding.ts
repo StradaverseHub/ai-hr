@@ -146,6 +146,8 @@ export async function decideResignation(
     if (!req) throw new ResignationError('Resignation not found (or not visible).');
     if (req.status !== 'pending') throw new ResignationError(`This resignation is already ${req.status}.`);
     if(p.expectedLastWorkingDay!==undefined&&p.expectedLastWorkingDay!==req.lastWorkingDay)throw new ResignationError('That resignation changed; review it again.');
+    const [managed]=await tx.execute<{id:string;allowed:boolean}>(sql`select j.id,exists(select 1 from personnel_posting p where p.tenant_id=j.tenant_id and p.source='offboarding' and p.source_ref=j.id and p.event_type='termination' and p.status='approved' and p.applied->>'effectiveDate'=j.data->>'lastWorkingDay') as allowed from resignation_journey j where j.tenant_id=${ctx.tenantId}::uuid and j.id=${req.id}::uuid`);
+    if(managed&&(!managed.allowed||p.decision!=='accepted'))throw new ResignationError('Managed resignations record termination only after completed clearance and posting approval.');
     await assertResignationDecisionAuthorityTx(tx,ctx,req.employmentId);
 
     if (p.decision === 'accepted') {
@@ -214,7 +216,7 @@ export function listResignationRequests(
       .from(resignationRequest)
       .innerJoin(employment, eq(employment.id, resignationRequest.employmentId))
       .innerJoin(person, eq(person.id, resignationRequest.personId))
-      .where(and(opts.status ? eq(resignationRequest.status, opts.status) : undefined,opts.requestId?eq(resignationRequest.id,opts.requestId):undefined))
+      .where(and(sql`not exists(select 1 from resignation_journey managed where managed.tenant_id=${resignationRequest.tenantId} and managed.id=${resignationRequest.id})`,opts.status ? eq(resignationRequest.status, opts.status) : undefined,opts.requestId?eq(resignationRequest.id,opts.requestId):undefined))
       .orderBy(desc(resignationRequest.createdAt))
       .limit(100);
     // #42cff598: batch-fetch each request's attachments (metadata only) in one query so the inbox can
@@ -256,7 +258,7 @@ export function myResignation(ctx: SessionContext, employmentId: string) {
         createdAt: resignationRequest.createdAt,
       })
       .from(resignationRequest)
-      .where(and(ownPersonPredicate(ctx),eq(resignationRequest.personId,ctx.personId),eq(resignationRequest.employmentId, employmentId)))
+      .where(and(sql`not exists(select 1 from resignation_journey managed where managed.tenant_id=${resignationRequest.tenantId} and managed.id=${resignationRequest.id})`,ownPersonPredicate(ctx),eq(resignationRequest.personId,ctx.personId),eq(resignationRequest.employmentId, employmentId)))
       .orderBy(desc(resignationRequest.createdAt))
       .limit(1);
     return row ?? null;
@@ -364,7 +366,7 @@ function pendingResignationHeadersQuery(tx:Tx,ctx:SessionContext,companyIds?:str
       .from(resignationRequest)
       .innerJoin(employment,and(eq(employment.id,resignationRequest.employmentId),eq(employment.tenantId,resignationRequest.tenantId)))
       .leftJoin(person,and(eq(person.id,resignationRequest.personId),eq(person.tenantId,resignationRequest.tenantId)))
-      .where(and(eq(resignationRequest.tenantId,ctx.tenantId),eq(resignationRequest.status,'pending'),
+      .where(and(sql`not exists(select 1 from resignation_journey managed where managed.tenant_id=${resignationRequest.tenantId} and managed.id=${resignationRequest.id})`,eq(resignationRequest.tenantId,ctx.tenantId),eq(resignationRequest.status,'pending'),
         sql`NOT app.is_self_person(${resignationRequest.personId})`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
       .orderBy(desc(resignationRequest.createdAt),resignationRequest.id);
 }
