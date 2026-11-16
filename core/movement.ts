@@ -351,7 +351,7 @@ export type {MovementFlatField};
 
 /** 2260a06b — the Employee Type end dates join the flat changes: they are flat employment columns too, recorded
  *  on the same info leg. contractStartDate rides along when a change to Contract starts a new contract. */
-export type MovementFlatChange = { field: MovementFlatField | MovementEndDateField | MovementEmploymentPeriodField | 'contractStartDate'; before: string | null; after: string | null };
+export type MovementFlatChange = { field: MovementFlatField | MovementEndDateField | MovementEmploymentPeriodField | 'confirmationDate' | 'contractStartDate'; before: string | null; after: string | null };
 
 /** The identity half of a history row (no correction affordances — the detail view never offers them). */
 export type MovementRowSummary = Pick<
@@ -360,7 +360,7 @@ export type MovementRowSummary = Pick<
 >;
 
 export type MovementIntentField = 'tenderResignationDate' | 'resignationEffectiveDate' | 'company' | 'businessUnit' | 'department' | 'position' | 'location' |
-  'grade' | 'employmentType' | 'manager' | 'basicSalary' | 'currency' | 'payMode' | 'paymentTerm' | MovementFlatField | MovementEndDateField | MovementEmploymentPeriodField;
+  'confirmationDate' | 'grade' | 'employmentType' | 'manager' | 'basicSalary' | 'currency' | 'payMode' | 'paymentTerm' | MovementFlatField | MovementEndDateField | MovementEmploymentPeriodField;
 
 /** Saved targets only: not an applied snapshot or an invented historical before-state. */
 export type MovementPendingIntent = { values: { field: MovementIntentField; value: string | null }[] };
@@ -533,7 +533,7 @@ function flatChangesOf(groupEvents: RawEvent[]): MovementFlatChange[] {
     const fields: string[] = Array.isArray(p.fields) ? p.fields : [];
     const before = (p.before ?? {}) as Record<string, unknown>;
     const after = (p.after ?? {}) as Record<string, unknown>;
-    for (const f of [...MOVEMENT_FLAT_FIELDS, ...MOVEMENT_END_DATE_FIELDS, ...MOVEMENT_EMPLOYMENT_PERIOD_FIELDS, 'contractStartDate'] as const) {
+    for (const f of [...MOVEMENT_FLAT_FIELDS, ...MOVEMENT_END_DATE_FIELDS, ...MOVEMENT_EMPLOYMENT_PERIOD_FIELDS, 'confirmationDate', 'contractStartDate'] as const) {
       if (!fields.includes(f)) continue;
       out.push({
         field: f,
@@ -1915,7 +1915,7 @@ async function pendingIntentTx(tx: Tx, tenantId: string, event: RawEvent): Promi
       .where(and(eq(employment.tenantId, tenantId), eq(person.tenantId, tenantId), eq(employment.id, id))).limit(1);
     return row?.name ?? null;
   });
-  for (const field of ['tenderResignationDate','resignationEffectiveDate','employmentType', 'basicSalary', 'currency', 'payMode', 'paymentTerm', ...MOVEMENT_FLAT_FIELDS, ...MOVEMENT_END_DATE_FIELDS, ...MOVEMENT_EMPLOYMENT_PERIOD_FIELDS] as const) {
+  for (const field of ['tenderResignationDate','resignationEffectiveDate','employmentType', 'basicSalary', 'currency', 'payMode', 'paymentTerm', ...MOVEMENT_FLAT_FIELDS, ...MOVEMENT_END_DATE_FIELDS, ...MOVEMENT_EMPLOYMENT_PERIOD_FIELDS, 'confirmationDate'] as const) {
     if (!(field in input)) continue; // Omitted is not a clear and not today's value.
     const value: unknown = Reflect.get(input, field);
     if (value === null || typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value))) {
@@ -2269,6 +2269,7 @@ export type CreateMovementInput = {
    */
   kind: string;
   effectiveDate: string;
+  confirmationDate?: string | null;
   endDate?: string | null;
   remarks?: string | null;
   /**
@@ -2451,7 +2452,10 @@ function movementDeltas(p: CreateMovementInput, cur: MovementCurrentState) {
    * with an empty right-hand column — while keeping the guard's real job: re-submitting the same
    * confirmation date on an already-confirmed employee still changes nothing and is still refused.
    */
-  const dConfirmation = p.kind === 'confirmation' ? delta(p.effectiveDate, cur.confirmationDate) : undefined;
+  if (p.kind === 'confirmation' && p.confirmationDate !== undefined && p.confirmationDate !== p.effectiveDate) {
+    throw new Error('For a Confirmation event, Confirmation Date must match Effective Date.');
+  }
+  const dConfirmation = delta(p.kind === 'confirmation' ? p.effectiveDate : p.confirmationDate, cur.confirmationDate);
 
   const assignmentChanged =
     dDept !== undefined || dPos !== undefined || dBu !== undefined || dLoc !== undefined || !!dType;
@@ -4092,6 +4096,7 @@ async function replayInputOfTx(tx: Tx, r: ProjectedRow, g: RawEvent[], behaviour
           if ((MOVEMENT_FLAT_FIELDS as readonly string[]).includes(f)) input[f] = p.after?.[f] ?? null;
           if ((MOVEMENT_END_DATE_FIELDS as readonly string[]).includes(f)) input[f] = p.after?.[f] ?? null;
           if ((MOVEMENT_EMPLOYMENT_PERIOD_FIELDS as readonly string[]).includes(f)) input[f] = movementPeriodValue(p.after?.[f]);
+          if (f === 'confirmationDate' && behaviour !== 'confirmation') input.confirmationDate = p.after?.[f] ?? null;
           if (f === 'tenderResignationDate') {
             if(behaviour==='termination') input.resignationDate=p.after?.[f] ?? null;
             else input.tenderResignationDate=p.after?.[f] ?? null;
@@ -5043,6 +5048,7 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
         same(p.currency, cur.currency) &&
         same(p.payMode, cur.payMode) &&
         same(p.paymentTerm, cur.paymentTerm) &&
+        same(p.confirmationDate, cur.confirmationDate) &&
         (!p.employmentType || p.employmentType === cur.employmentType) &&
         (p.basicSalary === undefined || Number(p.basicSalary) === Number(cur.basicSalary ?? NaN)) &&
         MOVEMENT_FLAT_FIELDS.every((f) => same(p[f], cur[f])) &&

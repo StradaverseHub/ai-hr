@@ -32,6 +32,7 @@ export const MOVEMENT_RULE_FIELDS = [
   // 2260a06b — the end date of the (resulting) Employee Type. Migration 9750 widens the stored vocabulary.
   'contractEndDate',
   'internshipEndDate',
+  'confirmationDate',
   ...MOVEMENT_EMPLOYMENT_PERIOD_FIELDS,
   'locationId',
   'managerEmploymentId',
@@ -65,7 +66,7 @@ export type MovementFieldRule = {
 export const MOVEMENT_RULE_GROUPS: readonly { id: 'organisation' | 'labels' | 'salary'; fields: readonly MovementRuleField[] }[] = [
   {
     id: 'organisation',
-    fields: ['companyId', 'businessUnitId', 'departmentId', 'positionId', 'gradeId', 'employmentType', 'contractEndDate', 'internshipEndDate', ...MOVEMENT_EMPLOYMENT_PERIOD_FIELDS, 'locationId', 'managerEmploymentId'],
+    fields: ['companyId', 'businessUnitId', 'departmentId', 'positionId', 'gradeId', 'employmentType', 'contractEndDate', 'internshipEndDate', 'confirmationDate', ...MOVEMENT_EMPLOYMENT_PERIOD_FIELDS, 'locationId', 'managerEmploymentId'],
   },
   { id: 'labels', fields: [...MOVEMENT_FLAT_FIELDS] },
   { id: 'salary', fields: ['basicSalary', 'currency', 'payMode', 'paymentTerm'] },
@@ -74,7 +75,8 @@ export const MOVEMENT_RULE_GROUPS: readonly { id: 'organisation' | 'labels' | 's
 /** The fields a behaviour's grid offers. Company is part of Entity Transfer only; every other comparison
  *  type shows it as a read-only note and its writer ignores a submitted company. */
 export function movementRuleFieldsFor(behaviour: string): MovementRuleField[] {
-  return MOVEMENT_RULE_FIELDS.filter((f) => f !== 'companyId' || behaviour === 'entityTransfer');
+  return MOVEMENT_RULE_FIELDS.filter((f) => (f !== 'companyId' || behaviour === 'entityTransfer') &&
+    (f !== 'confirmationDate' || behaviour !== 'confirmation')); // Confirmation's own date is its Effective Date.
 }
 
 export const defaultMovementFieldRule = (field: MovementRuleField): MovementFieldRule => ({

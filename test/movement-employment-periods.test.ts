@@ -41,6 +41,9 @@ describe('Movement employment period fields', () => {
     const movement = await applied(ctx, employmentId);
     expect(movement).toMatchObject({ effectiveDate: day(-30), canEdit: true, canReverse: true });
     expect(await periods(employmentId)).toEqual(revised);
+    const normalizedBefore = await events(employmentId);
+    await expect(createMovementEvent(ctx, { employmentId, kind: 'promotion', effectiveDate: day(-30), ...revised, probationValue: '06', probationUnit: 'WEEK' })).rejects.toThrow('no changes to record');
+    expect(await events(employmentId)).toEqual(normalizedBefore);
     const detail = await movementDetail(ctx, employmentId, movement.id);
     for (const field of MOVEMENT_EMPLOYMENT_PERIOD_FIELDS) expect(detail?.flatChanges).toContainEqual({ field, before: initial[field], after: revised[field] });
     expect((await movementPendingEditInput(ctx, employmentId, movement.id))?.values).toMatchObject(revised);
@@ -103,6 +106,18 @@ describe('Movement employment period fields', () => {
     expect((await periods(employmentId)).noticeAfterConfirmationValue).toBe('5');
   });
 
+  it('maintains Confirmation Date on comparison events and restores the derived confirmation date on inverse', async () => {
+    const { ctx, employmentId } = await subject();
+    await createMovementEvent(ctx, { employmentId, kind: 'promotion', effectiveDate: day(-30), confirmationDate: day(-35) });
+    const movement = await applied(ctx, employmentId);
+    expect((await movementPendingEditInput(ctx, employmentId, movement.id))?.values).toMatchObject({ confirmationDate: day(-35) });
+    expect((await movementDetail(ctx, employmentId, movement.id))?.flatChanges).toContainEqual({ field: 'confirmationDate', before: null, after: day(-35) });
+    await reverseMovementEvent(ctx, { employmentId, movementId: movement.id, reason: 'Remove fictional confirmation date' });
+    const [restored] = await owner.db.select({ confirmationDate: employment.confirmationDate, finalConfirmationDate: employment.finalConfirmationDate }).from(employment).where(eq(employment.id, employmentId));
+    expect(restored).toEqual({ confirmationDate: null, finalConfirmationDate: null });
+    await expect(createMovementEvent(ctx, { employmentId, kind: 'confirmation', effectiveDate: day(-30), confirmationDate: day(-35) })).rejects.toThrow('must match Effective Date');
+  });
+
   it('imports the same period fields through canonical Movement admission', async () => {
     const { ctx, employmentId } = await subject();
     const [employee] = await owner.db.select({ code: employment.employeeCode }).from(employment).where(eq(employment.id, employmentId));
@@ -111,7 +126,7 @@ describe('Movement employment period fields', () => {
     expect(preview.fileErrors).toEqual([]);
     expect(preview.employees).toHaveLength(1);
     expect(preview.employees[0].rows[0]).toMatchObject({ status: 'valid', errors: [] });
-    const result = await commitMovementImport(ctx, { companyId: base.companyId, csv, fingerprints: Object.fromEntries(preview.employees.filter(row => row.fingerprint).map(row => [row.employeeCode, row.fingerprint!])), acknowledgeExcluded: true });
+    const result = await commitMovementImport(ctx, { companyId: base.companyId, csv, selection: preview.selection, inputHash: preview.inputHash, fingerprints: Object.fromEntries(preview.employees.filter(row => row.fingerprint).map(row => [row.employeeCode, row.fingerprint!])), acknowledgeExcluded: true });
     expect(result).toMatchObject({ imported: 1, failed: 0 });
     expect(await periods(employmentId)).toEqual({ ...initial, probationValue: '6', probationUnit: 'week', noticeAfterConfirmationValue: '4', noticeAfterConfirmationUnit: 'week' });
   });

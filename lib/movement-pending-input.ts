@@ -15,7 +15,7 @@ export const movementEndDateFieldFor = (employmentType: string | null | undefine
 export const MOVEMENT_PENDING_COMPARISON_FIELDS = [
   'companyId','departmentId','positionId','businessUnitId','locationId','gradeId',
   'employmentType','managerEmploymentId','basicSalary','currency','payMode','paymentTerm',
-  ...MOVEMENT_FLAT_FIELDS,...MOVEMENT_END_DATE_FIELDS,...MOVEMENT_EMPLOYMENT_PERIOD_FIELDS,
+  ...MOVEMENT_FLAT_FIELDS,...MOVEMENT_END_DATE_FIELDS,...MOVEMENT_EMPLOYMENT_PERIOD_FIELDS,'confirmationDate',
 ] as const;
 export const MOVEMENT_PENDING_INPUT_FIELDS = [...MOVEMENT_PENDING_COMPARISON_FIELDS,
   'blacklisted','terminationReasonCode','terminationNoticeDays','resignationDate','tenderResignationDate','resignationEffectiveDate',

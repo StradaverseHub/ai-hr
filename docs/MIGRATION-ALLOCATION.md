@@ -1,9 +1,9 @@
 # Movement employment-period fields — 16 November 2026 MYT (unapplied candidate)
 
 Branch `codex/personnel-movement-stage1-20261116` claims `5772_movement_employment_periods`, idx 5172,
-when 1793330005472. SHA256 `0dac500bf906ee0a29451e76a1408257d86808f60df522eacbe28384145a2cf0`. It widens the existing field-name checks on
+when 1793330005472. SHA256 `9a66595ca046bdf0bdaaf0b51e1b87cfd8811156093d37464ef854d36b7d4ef3`. It widens the existing field-name checks on
 `movement_type_field_rule` and `movement_attachment` to retain all existing names and admit the four
-probation/notice value-unit pairs. No table, column, data, grant, policy or purpose-owned object changes.
+probation/notice value-unit pairs plus Confirmation Date. No table, column, data, grant, policy or purpose-owned object changes.
 Fresh main/alpha and staging's migration ledger were checked on 16 November; their watermark was
 1793330005466. Git-discovered peer worktrees already claimed 5767, 5770 and 5771, so this candidate
 uses 5772. Production's watermark was not queried. Recheck both installed ledgers and peer claims

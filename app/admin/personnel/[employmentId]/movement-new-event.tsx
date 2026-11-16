@@ -1,6 +1,6 @@
 'use client';
 import { EmploymentPeriodValueControl, EmploymentPeriodUnitControl } from '@/components/employment-period-fields';
-import { MOVEMENT_EMPLOYMENT_PERIODS, type MovementEmploymentPeriods } from '@/lib/movement-employment-periods';
+import { MOVEMENT_EMPLOYMENT_PERIODS, type MovementEmploymentPeriods, type MovementEmploymentPeriodField } from '@/lib/movement-employment-periods';
 import { ActionButton } from '@/components/ui/action-button';
 import {DerivedOrganisationFields,useDerivedOrganisation} from '@/components/derived-organisation-fields';
 
@@ -73,6 +73,7 @@ export type MovementCurrentValues = MovementEmploymentPeriods & {
   orgLine: string | null;
   orgBase: string | null;
   /** 2260a06b — the Employee Type end dates (optional: older callers may not supply them). */
+  confirmationDate?: string | null;
   contractEndDate?: string | null;
   internshipEndDate?: string | null;
 };
@@ -255,7 +256,8 @@ export function MovementNewEvent({
 }) {
   const t = useTranslations('people.detail.movement');
   const tPay = useTranslations('people.detail');
-  const label=(id:string)=>personnelFormLabel(id,(key,fallback)=>key.startsWith('people.detail.')&&tPay.has(key.slice(14))?tPay(key.slice(14)):fallback);
+  const tRoot = useTranslations();
+  const label=(id:string)=>personnelFormLabel(id,(key,fallback)=>tRoot.has(key)?tRoot(key):fallback);
   // 476f23ed — the catalogue, with the built-in list as the fallback for a render that was given none.
   const catalog: NonNullable<typeof types> =
     types?.length ? types : KINDS.map((k) => ({ code: k, label: null, behaviourKind: k }));
@@ -382,6 +384,12 @@ export function MovementNewEvent({
     v == null ? null : PAY_MODE_OPTIONS.includes(v as 'monthly') ? tPay(`payMode_${v}` as 'payMode_monthly') : v;
   const paymentTermLabel = (v: string | null): string | null =>
     v == null ? null : PAYMENT_TERM_OPTIONS.includes(v as 'monthly') ? tPay(`paymentTerm_${v}` as 'paymentTerm_monthly') : v;
+
+  const periodUnitLabel = (field: MovementEmploymentPeriodField, value: string | null | undefined): string | null => {
+    if (!value) return null;
+    const choice = personnelFormChoices(movementField(field)).find(option => option.value === value);
+    return choice ? tRoot(choice.labelKey) : value;
+  };
 
   const nameOf = (options: MovementOption[], id: string | null): string | null =>
     id ? (options.find((o) => o.id === id)?.name ?? null) : null;
@@ -575,17 +583,21 @@ export function MovementNewEvent({
           defaultValue={typeChanges ? (saved?.internshipEndDate ?? '') : (after.internshipEndDate ?? '')} className={inputCls} />
         {typeChanges && <p className="text-xs text-muted-foreground">{t('form.endDateRequiredIntern')}</p>}
       </>) : null,
+    row('confirmationDate', 'confirmationDate', label(movementField('confirmationDate')), current.confirmationDate ?? null,
+      behaviour === 'confirmation'
+        ? <span className="text-sm text-muted-foreground">{correctionDate}</span>
+        : <input {...personnelWorkflowInput(movementField('confirmationDate'), 'movement')}
+            aria-label={label(movementField('confirmationDate'))} defaultValue={after.confirmationDate ?? ''} className={inputCls} />),
     ...MOVEMENT_EMPLOYMENT_PERIODS.flatMap(period => [
       row(period.value, period.value, label(movementField(period.value)), current[period.value] ?? null,
         <EmploymentPeriodValueControl fieldId={movementField(period.value)}
           {...personnelWorkflowControl(movementField(period.value), 'movement')}
           aria-label={label(movementField(period.value))} defaultValue={after[period.value] ?? ''} />),
-      row(period.unit, period.unit, `${label(movementField(period.unit))} · ${tPay('employmentInfo.unit')}`,
-        current[period.unit] ? personnelFormChoices(movementField(period.unit)).find(option => option.value === current[period.unit])?.labelKey
-          ? tPay(personnelFormChoices(movementField(period.unit)).find(option => option.value === current[period.unit])!.labelKey.slice(14)) : current[period.unit] : null,
+      row(period.unit, period.unit, label(movementField(period.unit)),
+        periodUnitLabel(period.unit, current[period.unit]),
         <EmploymentPeriodUnitControl fieldId={movementField(period.unit)} allowEmpty
           {...personnelWorkflowControl(movementField(period.unit), 'movement')}
-          aria-label={`${label(movementField(period.unit))} · ${tPay('employmentInfo.unit')}`}
+          aria-label={label(movementField(period.unit))}
           defaultValue={after[period.unit] ?? ''} />),
     ]),
     row('managerEmploymentId', 'manager', label(movementField('managerEmploymentId')), nameOf(managers, current.managerEmploymentId),

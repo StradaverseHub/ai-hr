@@ -3399,10 +3399,14 @@ export default async function EmployeePage({
         }),
         ...MOVEMENT_EMPLOYMENT_PERIOD_FIELDS.flatMap(field => {
           const change = movementDetailData.flatChanges.find(value => value.field === field);
-          return change ? [{key: field, label: personnelLabel(MOVEMENT_FORM_IDS[field]), before: change.before, after: change.after}] : [];
+          if (!change) return [];
+          const display = (value: string | null) => value !== null && field.endsWith('Unit') && ['month', 'week', 'day'].includes(value)
+            ? t(`employmentInfo.unit_${value}` as 'employmentInfo.unit_month') : value;
+          return [{key: field, label: personnelLabel(MOVEMENT_FORM_IDS[field]), before: display(change.before), after: display(change.after)}];
         }),
         // 2260a06b — the contract period / internship end this movement set, from its own recorded diff.
         ...([
+          ['confirmationDate', 'employment.employment_dates_and_service.confirmationdate'],
           ['contractStartDate', 'employment.employment_dates_and_service.contractstartdate'],
           ['contractEndDate', 'employment.employment_dates_and_service.contractenddate'],
           ['internshipEndDate', 'employment.draft_only_employment_fields.internshipenddate'],
@@ -3502,7 +3506,7 @@ export default async function EmployeePage({
           <ul className="mt-2 space-y-1">
             {movementDocuments.map((doc) => (
               <li key={doc.id} className="flex flex-wrap items-baseline gap-2">
-                <span className="text-xs text-muted-foreground">{(MOVEMENT_EMPLOYMENT_PERIOD_FIELDS as readonly string[]).includes(doc.field) ? personnelLabel(MOVEMENT_FORM_IDS[doc.field as typeof MOVEMENT_EMPLOYMENT_PERIOD_FIELDS[number]]) : t(`movement.field.${MOVEMENT_DOCUMENT_FIELD_KEYS[doc.field] ?? 'salary'}` as 'movement.field.salary')}</span>
+                <span className="text-xs text-muted-foreground">{((MOVEMENT_EMPLOYMENT_PERIOD_FIELDS as readonly string[]).includes(doc.field) || doc.field === 'confirmationDate') ? personnelLabel(MOVEMENT_FORM_IDS[doc.field as typeof MOVEMENT_EMPLOYMENT_PERIOD_FIELDS[number] | 'confirmationDate']) : t(`movement.field.${MOVEMENT_DOCUMENT_FIELD_KEYS[doc.field] ?? 'salary'}` as 'movement.field.salary')}</span>
                 <a
                   href={`/admin/personnel/${employmentId}/movement-documents/${doc.id}`}
                   className="font-medium text-primary hover:underline"
@@ -3526,7 +3530,7 @@ export default async function EmployeePage({
                 : field === 'paymentTerm' && value !== null && PERSONNEL_PAYMENT_TERMS.some(option => option === value)
                   ? t(`paymentTerm_${value}` as 'paymentTerm_monthly') : value;
               return <div key={field} className="grid grid-cols-2 gap-4 px-4 py-2.5 text-sm">
-                <dt className="text-muted-foreground">{(MOVEMENT_EMPLOYMENT_PERIOD_FIELDS as readonly string[]).includes(field) ? personnelLabel(MOVEMENT_FORM_IDS[field as typeof MOVEMENT_EMPLOYMENT_PERIOD_FIELDS[number]]) : t(`movement.field.${field}`)}</dt>
+                <dt className="text-muted-foreground">{((MOVEMENT_EMPLOYMENT_PERIOD_FIELDS as readonly string[]).includes(field) || field === 'confirmationDate') ? personnelLabel(MOVEMENT_FORM_IDS[field as typeof MOVEMENT_EMPLOYMENT_PERIOD_FIELDS[number] | 'confirmationDate']) : t(`movement.field.${field}`)}</dt>
                 <dd className="font-medium text-foreground">{display ?? '—'}</dd>
               </div>;
             })}

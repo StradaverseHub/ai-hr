@@ -453,6 +453,7 @@ function parseMovementForm(formData: FormData, mode: 'create' | 'edit' = 'create
     ...Object.fromEntries(MOVEMENT_FLAT_FIELDS.map((f) => [f, optional(f)])),
     ...Object.fromEntries(MOVEMENT_EMPLOYMENT_PERIOD_FIELDS.map(field => [field, optional(field)])),
     // 2260a06b — the end date of the Employee Type the movement leaves the employee with (only that row renders).
+    confirmationDate: optional('confirmationDate'),
     contractEndDate: optional('contractEndDate'),
     internshipEndDate: optional('internshipEndDate'),
     // ae9350f2 — the Termination movement's structured exit fields. The reason CODE is the only thing the

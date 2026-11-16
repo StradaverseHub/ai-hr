@@ -37,6 +37,15 @@ describe('shared Employment and Movement period controls', () => {
     expect(screen.getByRole('spinbutton', { name: label })).toBeInTheDocument();
   });
 
+  it('shows Confirmation Date as the selected Effective Date on Confirmation itself', () => {
+    const { container } = render(provider(<MovementNewEvent {...base} types={[{ code: 'confirmation', label: null, behaviourKind: 'confirmation' }]} />));
+    expect(container.querySelector('[data-field="confirmationDate"]')).toHaveTextContent(todayInKualaLumpur());
+    expect(container.querySelector('[name="confirmationDate"]')).toBeNull();
+    const effective = container.querySelector('input[name="effectiveDate"]')!;
+    fireEvent.change(effective, { target: { value: '2026-01-01' } });
+    expect(container.querySelector('[data-field="confirmationDate"]')).toHaveTextContent('2026-01-01');
+  });
+
   it('retains saved period inputs for a pending edit and omits untouched unrecorded defaults', async () => {
     const { container } = render(provider(<MovementNewEvent {...base} edit={{ movementId: 'fictional-pending', kind: 'promotion', effectiveDate: todayInKualaLumpur(), endDate: null, remarks: null, allowedKinds: ['promotion'], payrollWarning: false, pendingInput: { probationValue: '6', probationUnit: 'week' } }} />));
     expect(container.querySelector('input[name="probationValue"]')).toHaveValue(6);
