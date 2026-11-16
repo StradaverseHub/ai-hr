@@ -20,7 +20,7 @@ function nextId(rows:readonly ProbationApprovalRow[]):string{for(let n=1;;n++){c
  */
 export function ApprovalRoutingFields({value,change,disabled,users,choices}:{value:ProbationForm;change:(value:ProbationForm)=>void;disabled:boolean;users:readonly Option[];choices?:ApproverChoices}){
  const t=useTranslations('probation');
- if(!value.approvals)return <section className="v9-panel v9-stack" aria-labelledby="probation-form-routing"><h3 id="probation-form-routing">{t('formRouting.title')}</h3><p className="v9-muted">{t('formRouting.legacy')}</p>
+ if(!value.approvals)return <section className="v9-stack" aria-labelledby="probation-form-routing"><h3 id="probation-form-routing">{t('formRouting.title')}</h3><p className="v9-muted">{t('formRouting.legacy')}</p>
   <div><button type="button" className="v9-button" disabled={disabled} onClick={()=>change({...value,approvals:defaultProbationApprovals()})}>{t('formRouting.useForm')}</button></div></section>;
  const approvals=value.approvals,routings=choices?.routings??[],groups=choices?.groups??[];
  const setRows=(part:typeof PARTS[number],rows:ProbationApprovalRow[])=>change({...value,approvals:{...approvals,[part]:rows}});
@@ -29,10 +29,10 @@ export function ApprovalRoutingFields({value,change,disabled,users,choices}:{val
   if(kind==='routing')return routings.find(r=>'routing:'+r.id===row.who)?.name??t('formRouting.whoKinds.routing');
   if(kind==='group')return groups.find(g=>'group:'+g.id===row.who)?.name??t('formRouting.whoKinds.group');
   return t('formRouting.whoKinds.'+kind);};
- return <section className="v9-panel v9-stack" aria-labelledby="probation-form-routing"><h3 id="probation-form-routing">{t('formRouting.title')}</h3><p className="v9-muted">{t('formRouting.help')}</p>
+ return <section className="v9-stack" aria-labelledby="probation-form-routing"><h3 id="probation-form-routing">{t('formRouting.title')}</h3><p className="v9-muted">{t('formRouting.help')}</p>
   <p className="v9-notice" role="note">{t('formRouting.resolveNote')}</p>
   {PARTS.map(part=>{const rows=approvals[part];
-   return <fieldset key={part} className="v9-stack" data-part={part}><legend>{t('partTitle',{part})}</legend>
+   return <fieldset key={part} className="pcg-rt-card" data-part={part}><legend>{t('partTitle',{part})}</legend>
     <p className="v9-muted" data-core-steps>{t('formRouting.core',{steps:t(part==='1'?'formRouting.coreKpi':'formRouting.coreReview')})}</p>
     {probationApprovalChain(rows).map(row=>{const index=rows.indexOf(row),kind=whoKind(row.who),update=(patch:Partial<ProbationApprovalRow>)=>setRows(part,rows.map((item,i)=>i===index?{...item,...patch}:item));
      // Changing who: the Head of Department and PBP keep their role as the step id (as before); other steps a row id.
@@ -41,7 +41,7 @@ export function ApprovalRoutingFields({value,change,disabled,users,choices}:{val
       const {pick:_pick,userIds:_userIds,...rest}=row;void _pick;void _userIds;
       update({...rest,id,who,...(routed?{pick:row.pick??'any'}:{}),...(next==='people'?{userIds:[]}:{})} as ProbationApprovalRow);};
      const label=whoLabel(row);
-     return <div className="v9-fields" key={row.id} data-approval-row={row.id}>
+     return <div className="v9-fields pcg-rt-row" key={row.id} data-approval-row={row.id}>
       <label className="v9-field"><span>{t('formRouting.order')}</span><input type="number" min={1} max={9} step={1} value={row.order} disabled={disabled} onChange={e=>update({order:Math.max(1,Math.min(9,Math.floor(Number(e.target.value)||1)))})}/></label>
       <label className="v9-field"><span>{t('formRouting.action')}</span><select value={row.action} disabled={disabled} onChange={e=>update({action:e.target.value as ProbationApprovalRow['action']})}>{PROBATION_APPROVAL_ACTIONS.map(action=><option key={action} value={action}>{t('formRouting.actions.'+action)}</option>)}</select></label>
       <label className="v9-field"><span>{t('formRouting.who')}</span><select value={kind} disabled={disabled} onChange={e=>setKind(e.target.value as WhoKind)}>{WHO_KINDS.filter(option=>option===kind||!(PROBATION_APPROVAL_HOLDER_WHO as readonly string[]).includes(option)||!rows.some(other=>other.who===option)).map(option=><option key={option} value={option} disabled={option==='routing'&&!routings.length||option==='group'&&!groups.length}>{t('formRouting.whoKinds.'+option)}</option>)}</select></label>
