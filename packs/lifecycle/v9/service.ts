@@ -42,7 +42,7 @@ export type OwnCase = Pick<M.Case, 'id' | 'number' | 'module' | 'revision' | 'st
 export type PendingReturns = { held:{id:string;name:string;kind:'system'|'device';group:string|null;source:'asset'|'onboarding';catalogueId?:string;requestNumber?:string}[]; catalogue:{id:string;name:string;kind:'system'|'device';group:string;active:boolean}[]; selected:string[];
   /** d1e26f81 — the rows submission will create, with their team, method and Day (presets applied). */
   rows:{previewId:string;name:string;kind:'system'|'device';group:string|null;method:M.ReturnMethod;dueDay:number|null;dueOn:string;cardStep?:'collect'|'deactivate'}[] };
-export type CaseDetail = { returns?:PendingReturns; case: M.Case; calculation: SettlementView | null; personnelWritableKeys: string[]; native?: { config: M.Config; actor: M.Actor } };
+export type CaseDetail = { resignationDocuments?:{ownedTemplateIds:string[];configurationWarnings:string[]}; returns?:PendingReturns; case: M.Case; calculation: SettlementView | null; personnelWritableKeys: string[]; native?: { config: M.Config; actor: M.Actor } };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function identifier(value: string): string { if (!uuid.test(value)) throw new M.V9Error('A valid record identifier is required.'); return value; }
 async function admin(tx: Tx, companyId?: string): Promise<void> {
@@ -202,7 +202,8 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
   for(const field of caseFields) values['case.'+field.key]=field.key in caseLabels?caseLabels[field.key]:field.type==='date'?fmt(caseValues[field.key]??''):caseValues[field.key]??'';
 
   if (calculation?.ready) Object.assign(values, { 'leave.remaining': String(calculation.remainingLeave), 'leave.encashDays': String(calculation.encashDays), 'leave.encashAmount': `${calculation.currency} ${calculation.amount!.toFixed(2)}`, 'leave.dailyRate': `${calculation.currency} ${calculation.dailyRate!.toFixed(2)}`, 'pay.finalPayDate': fmt(calculation.payDate) });
-  return { today, now: new Date().toISOString(), actor: who, nextId: randomUUID,
+  const journey = c.module === 'off' ? await (await import('../resignation/service')).resignationOffboardingTemplateScopeTx(tx,ctx,c.id) : null;
+  return { managedResignation: journey?.managed ?? false,resignationOwnedTemplateIds:journey?.ownedTemplateIds??[], today, now: new Date().toISOString(), actor: who, nextId: randomUUID,
     onLeave: (id, date) => unavailable.some(r => r.user_id === id && r.on_date === date),
     openLoad: id => Number(sharedLoads.find(load => load.user_id === id)?.task_load ?? 0),
     lastAssigned: id => { const last = sharedLoads.find(load => load.user_id === id)?.last_auto; return last ? Date.parse(last) || 0 : 0; },
@@ -224,7 +225,10 @@ export async function v9CaseDetail(ctx: SessionContext, id: string): Promise<Cas
     if (!config) throw new M.V9Error('V9 configuration is not available.');
     const calculation = await readSettlementTx(tx, ctx, row.data, config);
     const reveal = await personalEmailRevealTx(tx, ctx);
-    return { ...(row.data.module==='off'&&row.data.state==='pending'?{returns:await pendingReturnsTx(tx,ctx,row.data,config,calculation?.lastDay??row.data.facts.lastDay)}:{}), case: reveal ? row.data : maskCasePersonalEmail(row.data), calculation, personnelWritableKeys: v9PersonnelWritableKeys, ...(row.native ? { native: { config, actor: await actor(tx, ctx) } } : {}) };
+    const journey=row.data.module==='off'?await (await import('../resignation/service')).resignationOffboardingTemplateScopeTx(tx,ctx,row.id):null;
+    const checklistTasks=row.data.state==='pending'?(M.matchChecklist(config,row.data).checklist?.tasks??[]):row.data.tasks;
+    const resignationDocuments=journey?.managed?{ownedTemplateIds:journey.ownedTemplateIds,configurationWarnings:checklistTasks.filter(task=>task.documentTemplate&&journey.ownedTemplateIds.includes(task.documentTemplate)).map(task=>`Review checklist task “${task.name}”: its linked document is owned by the resignation journey. HR must update this checklist requirement before clearance.`)}:undefined;
+    return { ...(resignationDocuments?{resignationDocuments}:{}), ...(row.data.module==='off'&&row.data.state==='pending'?{returns:await pendingReturnsTx(tx,ctx,row.data,config,calculation?.lastDay??row.data.facts.lastDay)}:{}), case: reveal ? row.data : maskCasePersonalEmail(row.data), calculation, personnelWritableKeys: v9PersonnelWritableKeys, ...(row.native ? { native: { config, actor: await actor(tx, ctx) } } : {}) };
   });
 }
 
