@@ -515,14 +515,15 @@ function epfTopupWorking(
   const legacyForeign = part === 'F' && sel?.wageMonth != null && sel.wageMonth < EPF_PART_F_START;
   const employeeRate = part === 'F' ? cfg.nonCitizenEmployeeRate ?? 0.02
     : part === 'C' ? EPF_PART_C_EMPLOYEE_RATE : part === 'E' ? 0 : cfg.employeeRate;
-  // Item 7f5cc653 — the statutory employer side under an i-Topup is the same Part A floor `epf()` charges:
-  // the bonus note keeps 13% of the actual month (rounded up to RM1) where the row would give 12%, and the
-  // top-up increment is added to that statutory rate (b6dbadc5's "statutory + increment").
+  // Item 7f5cc653 — the statutory employer AMOUNT under an i-Topup is the same Part A floor `epf()` charges:
+  // the bonus note's 13% of the actual month (rounded up to RM1) replaces the 12% row as `statutoryAmount`,
+  // and the employer side can never fall below it. The top-up formula's own rate is left as it was
+  // (statutory step on the actual wage + increment), so the note raises the floor only — no figure moves
+  // where the existing top-up already exceeds the corrected statutory amount.
   const bonusRule = part === 'A' ? partABonusRetainedEmployer(normal, bonus, cfg) : null;
   const employerRate = part === 'F' ? cfg.nonCitizenEmployerRate ?? 0.02
     : part === 'E' ? cfg.seniorEmployerRate ?? 0.04
     : part === 'C' ? epfPartCEmployerRate(actualWage)
-    : bonusRule ? bonusRule.rate
     : actualWage <= cfg.employerThreshold ? cfg.employerRateLow : cfg.employerRateHigh;
   const bands = part === 'C' ? EPF_PART_C : part === 'A' ? cfg.partA ?? MY_EPF_THIRD_SCHEDULE_PART_A
     : part === 'E' ? cfg.partE ?? MY_EPF_THIRD_SCHEDULE_PART_E : null;
