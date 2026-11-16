@@ -63,7 +63,7 @@ export type ShellNavigationFacts = {
   /** AI v2 W11 — the login handles private cases (a current handler grant, or a case it may handle). Only then is the
    * "Private cases" queue row offered; /cases still shows each login only what row security returns. */
   privateCaseHandler?: boolean;
-  probationAccess?: {page:boolean;configure:boolean;intake?:boolean};
+  probationAccess?: {page:boolean;configure:boolean;intake?:boolean;access?:boolean};
   contractStaffAccess?: {page:boolean;configure:boolean;intake?:boolean};
   onboardingAccess?: boolean;
   onboardingV9Access?: boolean;
@@ -168,8 +168,8 @@ export function resolveShellNavigation({
       case 'configure': return access.configure;
       case 'configureOrIntake': return access.configure || access.intake === true;
       case 'intake': return access.intake === true;
-      // Probation Access (/lifecycle/probation/access, lane K): a system administrator who configures Probation. The page checks again.
-      case 'admin': return isAdmin && access.configure;
+      // Probation Access (/lifecycle/probation/access): app.probation_access_admin through probationNavigationAccess().access. The page checks again.
+      case 'admin': return item.module === 'probation' && probationAccess.access === true;
     }
   });
   // ADR 2026-11-15-probation-shared-automation, decision 1: the shared builders, for anyone who configures at least one

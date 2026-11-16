@@ -95,18 +95,18 @@ describe('shared shell policy preserves the pre-extraction visibility contract',
       '/lifecycle/probation/settings','/lifecycle/probation/forms','/lifecycle/probation/intake',
     ]);
     expect(inFamily({probationAccess:{page:true,configure:false}},'/lifecycle/probation')).toEqual(['/lifecycle/probation','/lifecycle/probation/postings']);
-    // Probation Access (lane K's page): a system administrator who configures Probation; not every configurer.
-    expect(inFamily({isAdmin:true,enabledModules:[],probationAccess:{page:false,configure:true}},'/lifecycle/probation')).toEqual([
+    // Probation Access: whoever app.probation_access_admin allows (System Administrator or manage access), not every configurer.
+    expect(inFamily({enabledModules:[],probationAccess:{page:false,configure:true,access:true}},'/lifecycle/probation')).toEqual([
       '/lifecycle/probation/settings','/lifecycle/probation/forms','/lifecycle/probation/intake','/lifecycle/probation/access',
     ]);
-    expect(inFamily({isAdmin:true,enabledModules:[],probationAccess:{page:true,configure:false}},'/lifecycle/probation')).not.toContain('/lifecycle/probation/access');
+    expect(inFamily({isAdmin:true,enabledModules:[],probationAccess:{page:true,configure:true,access:false}},'/lifecycle/probation')).not.toContain('/lifecycle/probation/access');
     expect(inFamily({contractStaffAccess:{page:false,configure:true}},'/lifecycle/contracts')).toEqual([
       '/lifecycle/contracts/settings','/lifecycle/contracts/workflows','/lifecycle/contracts/templates',
     ]);
   });
 
   it('resolves the canonical eleven scoped descriptors in their declared interleaved order', () => {
-    const rows = resolve({isAdmin:true,enabledModules:[],probationAccess:{page:true,configure:true,intake:true},
+    const rows = resolve({isAdmin:true,enabledModules:[],probationAccess:{page:true,configure:true,intake:true,access:true},
       contractStaffAccess:{page:true,configure:true,intake:true}}).destinations.filter(row=>
         row.href.startsWith('/lifecycle/probation') || row.href.startsWith('/lifecycle/contracts'));
     expect(rows.map(row=>row.href)).toEqual([
