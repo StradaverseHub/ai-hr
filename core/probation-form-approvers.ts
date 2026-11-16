@@ -13,7 +13,7 @@
  */
 import {sql} from 'drizzle-orm';
 import type {Tx} from '../db/client';
-import type {Routing} from '../lib/automation/routing';
+import {routedStepPeople,type Routing} from '../lib/automation/routing';
 import {resolveDocumentRouting,type DocumentRouting,type DocumentRoutingWho} from '../lib/document-signing-routing';
 import {routedStepChooser,type RoutedAssignmentFacts} from '../lib/routed-step-assignment';
 
@@ -51,7 +51,9 @@ export async function freezeFormApproversTx(tx: Tx, partId: string, caseId: stri
   });
   if (!routing.length) return [];
   const groups = new Map(context.groups.map(group => [group.id, group.members])), routings = new Map(context.routings.map(r => [r.id, r]));
-  const people = routing.flatMap(step => step.who.kind === 'people' ? step.who.userIds : []);
+  // I8: people named on the matching row of a routing count too, not only people named on the step.
+  const routingFacts = {businessGroup: [context.facts.businessGroup, context.facts.businessGroupCompany].filter((v): v is string => !!v), company: context.facts.company, department: context.facts.department, jobTitle: context.facts.jobTitle};
+  const people = routedStepPeople(routing, id => routings.get(id) ?? null, routingFacts);
   const [facts] = await tx.execute<{data: RoutedAssignmentFacts}>(sql`select app.probation_assignment_facts(${caseId}::uuid,${`{${[...groups.keys()].map(id => '"' + id.replace(/["\\]/g, '') + '"').join(',')}}`}::text[],${`{${[...new Set(people)].join(',')}}`}::uuid[]) as data`);
   const chooser = routedStepChooser(facts.data);
   const fallbackMembers = context.fallbackGroupId ? groups.get(context.fallbackGroupId) ?? [] : [];
