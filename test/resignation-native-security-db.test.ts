@@ -79,6 +79,14 @@ it('accepts a real pending employee signature after opening and supports owner r
  await withTenant(employee,async tx=>{await begin(tx,employee,{type:'letterAction',documentId:l.id,documentRevision:l.revision,action:'sign',signature:'Fictional employee',consent:true},6);l=act(l,employee,{type:'complete',stepId:'employee-sign',signature:'Fictional employee',consent:true});data={...data,letters:[l]};await save(tx,employee,data,'retained',6);});
  expect(l.state).toBe('released');expect(l.history.filter(a=>a.action==='signed').map(a=>a.actorId)).toEqual([employee.userId]);
 });
+it('refuses invented effective signing receipts even after admitting the legitimate employee action',async()=>{
+ let l=act(realLetter(),manager,{type:'complete',stepId:'owner-review'});l=act(l,employee,{type:'open'});data={...data,decision:null,letters:[l]};await seedJourney('offer');
+ const completed=act(l,employee,{type:'complete',stepId:'employee-sign',signature:'Fictional employee',consent:true});
+ const forged=structuredClone(completed);forged.document.actions[forged.document.actions.length-1].actorId=manager.userId!;
+ await expect(withTenant(employee,async tx=>{await begin(tx,employee,{type:'letterAction',documentId:l.id,documentRevision:l.revision,action:'sign',signature:'Fictional employee',consent:true});await save(tx,employee,{...data,letters:[forged]},'retained');})).rejects.toThrow(/immutable action evidence/);
+ const wrongActor=structuredClone(completed);wrongActor.history[wrongActor.history.length-1].actorId=manager.userId!;
+ await expect(withTenant(employee,async tx=>{await begin(tx,employee,{type:'letterAction',documentId:l.id,documentRevision:l.revision,action:'sign',signature:'Fictional employee',consent:true});await save(tx,employee,{...data,letters:[wrongActor]},'retained');})).rejects.toThrow(/current verified actor/);
+});
 it('enforces request/employment/company and clearance reference invariants',async()=>{
  const other=randomUUID();await owner.db.execute(sql`insert into company(id,tenant_id,legal_name) values(${other}::uuid,${b.tenantId}::uuid,'Fictional other company')`);
  await expect(owner.db.execute(sql`update resignation_journey set company_id=${other}::uuid where id=${id}::uuid`)).rejects.toMatchObject({code:'23503'});
