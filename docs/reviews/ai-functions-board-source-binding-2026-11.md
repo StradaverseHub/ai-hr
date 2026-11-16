@@ -609,3 +609,15 @@ owner. Changed covered files: `core/attendance.ts`, `core/attendance-group-polic
 import graph. No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried forward
 from `c88b5a04…` to `1b3f89b3…` and the agent manifest regenerated (`0efc1d52…`), under the owner's standing pre-approval
 for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding for the combined Irwin release: 237c31e6, aac17dd0, 87bd9656 and 7f5cc653 (16 November 2026)
+
+The owner approved releasing boards 237c31e6 (Attendance approval progress), aac17dd0 (typed Amount on Calculated by
+Formula Pay Items), 87bd9656 (Overtime Setting None rounding and Backdate Control) and 7f5cc653 (EPF Part A bonus
+note) as one gate and one staging install (16 November 2026), on `claude/release-combined-irwin-20261116` from
+main/alpha `03b06f0de`. Added covered files beyond the notes above: `core/payroll-individual-txn.ts`,
+`packs/payroll/individual-calculation.ts`, `localization/my/payroll.ts` and `core/statutory-trace-explain.ts`, in the
+provider-data scope only through the import graph. No provider transform, outbound field, purpose or transport changed.
+The per-branch bindings above were superseded: the 28 approvals were carried forward from `b9a6f0af…` to `f446073c…`
+(1,595 files) and the agent manifest regenerated (`02c0c88c…`), under the owner's standing pre-approval for staging
+re-binds (12 November 2026). Staging only.
