@@ -559,6 +559,14 @@ export async function v9RestoreWorkflow(ctx: SessionContext, input: unknown): Pr
 export async function v9CreateOffboarding(ctx: SessionContext, input: { employmentId: string; type: M.ExitType; noticeDate: string; lastDay: string }): Promise<string> {
   return withLifecycleTenant(ctx, tx => v9CreateOffboardingTx(tx, ctx, input));
 }
+/** Preorders the canonical write locks before the protected Contract intent locks its flow row.
+ * Native proof resolves the source; this accepts no substitute employment or administrator identity. */
+export async function v9LockSharedContractOffboardingTx(tx:SqlExecutor,ctx:SessionContext,source:{caseId:string;runId:string;stepId:string}):Promise<void>{
+  if(ctx.userId)throw new M.V9Error('A protected Contract workflow owner is required.','forbidden');
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await lockTx(tx,ctx);
+  await tx.execute(sql`select app.contract_shared_offboarding_source_lock(${source.caseId}::uuid,${source.runId}::uuid,${source.stepId})`);
+}
 /** Canonical case construction for purpose-bound callers already holding an authorised tenant transaction.
  * Existing date, administrator, duplicate-exit and identity rules remain authoritative. */
 export async function v9CreateOffboardingTx(tx:Tx|SqlExecutor,ctx:SessionContext,input:{ employmentId: string; type: M.ExitType; noticeDate: string; lastDay: string },contractSource?:{kind:'contract'|'probation'|'resignation';caseId:string}|{kind:'shared-contract';caseId:string;runId:string;stepId:string}):Promise<string>{
@@ -617,7 +625,7 @@ export async function v9CreateOffboardingTx(tx:Tx|SqlExecutor,ctx:SessionContext
       number=await nextNumber(tx,'OFB9');
     }
     const c: M.Case = { version: 9, id, number, module: 'off', revision: 1, state: 'pending', facts: { confirmationDate: employee.confirmation_date, finalConfirmationDate: employee.final_confirmation_date, probationEndDate: employee.probation_end_date, provisionalEndOn: employee.provisional_end_on, name: employee.name, employeeNo: employee.employee_no, employmentId: employee.id, personId: employee.person_id, joinDate: employee.hired_on, lastDay: input.lastDay, noticeDate: input.noticeDate, employeeUserId: logins.length === 1 ? logins[0].id : null, supervisorUserId: managers.length === 1 ? managers[0].id : null, pbpUserId: null, taUserId: null, company: employee.company_id, businessGroup: assignment?.business_unit_id ?? '', department: assignment?.department_id ?? '', grade: employee.grade_id ?? '', title: assignment?.position_id ?? '', employmentType: assignment?.employment_type ?? '', caseType: input.type }, checklistId: null, checklistName: '', override: 'automatic', tasks: [], items: [], documents: [], runs: [], mails: [], files: [], pmChanges: [], log: [], sourceRevision: '', submittedAt: null, closedAt: null, closedBy: null, closeReason: '', cancelReason: '', revokeDate: input.lastDay, finalFigures: null, review: null };
-    const who = await actor(tx, ctx); c.log.push({ id: randomUUID(), at: new Date().toISOString(), actor: who, action: 'case.created', detail: 'Created from Personnel Management.' });
+    const who = await actor(tx, ctx); c.log.push({ id: randomUUID(), at: new Date().toISOString(), actor: who, action: 'case.created', detail: contractSource?.kind==='shared-contract'?'Created from Contract Management. Personnel termination remains manual until clearance is available.':'Created from Personnel Management.' });
     if(contractSource)Object.assign(c,contractSource.kind==='shared-contract'?{contractSharedSourceCaseId:contractSource.caseId,contractSharedSourceLetter:{letterId:sharedContractIntent!.letterId,signingDocumentId:sharedContractIntent!.signingDocumentId,hash:sharedContractIntent!.letterHash},contractSharedTerminationReason:sharedContractIntent!.reason,contractSharedClearance:'pending-manual-personnel'}:contractSource.kind==='contract'?{contractSourceCaseId:contractSource.caseId,contractSourceLetter:contractLetter}:{probationSourceCaseId:contractSource.caseId});
 >>>>>>> ce216db02 (Route shared Contract endings through canonical Offboarding and retain decline evidence)
     c.sourceRevision = createHash('sha256').update(JSON.stringify({ employee, assignment })).digest('hex');

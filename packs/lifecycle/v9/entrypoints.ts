@@ -42,6 +42,7 @@ export const v9OwnItem: Service['v9OwnItem'] = async (...args) => (await load())
 export const v9PreviewWorkflow: Service['v9PreviewWorkflow'] = async (...args) => (await load()).v9PreviewWorkflow(...args);
 
 export const v9CreateOffboardingTx: Service['v9CreateOffboardingTx'] = async (...args) => (await load()).v9CreateOffboardingTx(...args);
+export const v9LockSharedContractOffboardingTx: Service['v9LockSharedContractOffboardingTx'] = async (...args) => (await load()).v9LockSharedContractOffboardingTx(...args);
 
 export const v9PreviewWorkflowRemoval: Service['v9PreviewWorkflowRemoval'] = async (...args) => (await load()).v9PreviewWorkflowRemoval(...args);
 export const v9RemoveWorkflow: Service['v9RemoveWorkflow'] = async (...args) => (await load()).v9RemoveWorkflow(...args);
