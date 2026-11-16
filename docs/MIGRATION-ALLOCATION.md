@@ -1,3 +1,17 @@
+<!-- 5764_probation_routed_holders -->
+# One owner for a Probation case's PBP and Head of Department — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-access-20261116` (lane K of the Probation Confirmation build) appends
+`5764_probation_routed_holders` at idx 5164 / when 1793330005464 (assigned by the build coordinator). SHA256 `30f0d7b6c019127bbce33b44061a88c092ba12c803d307cd19d828bdcba9826a`.
+It adds three owner-only functions: `app.probation_routed_holders` (the single resolver of a case's holders: PBP and
+Head of Department from the shared routings "BP by business group" and "HOD by business group and department" with
+the shared routing rule and fallback group; while a routing has no rows its adapter answers as today, the V9 bpRules
+list with the PBP opt-in and the department head) and the two routing-rule helpers `app.probation_routing_dimension`
+and `app.probation_routing_weight`. It replaces, with unchanged signatures and grants, `app.probation_holders_set`
+(now answering from the resolver), `app.probation_role` and `app.probation_visible_among`. No table, row, grant,
+policy or purpose-owned object changes. The installed ledgers were not read; recheck watermarks and peer claims at
+admission. This allocation grants no installation authority.
+
 <!-- 5763_probation_access_roles -->
 # Probation access roles and the Direct Superiors rule — 16 November 2026 MYT (unapplied, allocated)
 

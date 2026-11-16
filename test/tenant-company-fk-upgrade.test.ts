@@ -279,6 +279,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5762_probation_form_import',
    // Lane K (16 November 2026): Probation access roles, scoped members and the Direct Superiors rule.
    '5763_probation_access_roles',
+   // Lane K2 (16 November 2026): the shared routings own a case's PBP and Head of Department.
+   '5764_probation_routed_holders',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -309,6 +311,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const privateFunctions=[
    // 5763: Probation access helpers, owner only.
    'app.probation_access_scope_check(uuid,uuid,date,date)','app.probation_intake_admin_for(uuid,uuid,uuid)','app.probation_permitted_companies(uuid,text[])','app.probation_permitted_scope(text,uuid[])','app.probation_postings_admin(uuid[])','app.probation_superior_rule()',
+   // 5764: the routed holder resolver and routing-rule helpers, owner only.
+   'app.probation_routed_holders(uuid[])','app.probation_routing_dimension(jsonb,text[])','app.probation_routing_weight(jsonb,integer)',
    // 5763: Probation access helpers, owner only.
    'app.probation_access_scope_check(uuid,uuid,date,date)','app.probation_intake_admin_for(uuid,uuid,uuid)','app.probation_permitted_companies(uuid,text[])','app.probation_permitted_scope(text,uuid[])','app.probation_postings_admin(uuid[])','app.probation_superior_rule()',
    // 5760: owner-only helpers.
@@ -390,6 +394,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    // 5762: imported saved evaluation forms (import, the reviewer's list and the original-file download).
    // Board 511aa74a (5695): the rehire link guard, its Roll Back writer and blockers, and the person-state count.
    // 5763: Probation access (role, member and rule commands, the page reader, people search and navigation, permission and scope helpers).
+   // 5764: the routed PBP and Head of Department resolver and its two routing-rule helpers, owner only.
    'app._access_bootstrap_eligible(uuid,uuid)','app._access_workforce_list_rows(uuid[])','app._ai_control_context_for_purpose(text,boolean,boolean)',
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()','app._assert_assistant_rewards_presentation_v1(text)',
    'app._assistant_assigned_index_login(uuid,boolean)','app._assistant_presentation_feature_unpaused_v1()','app._assistant_rewards_calendar_choice_payload_v1()',
@@ -465,7 +470,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.probation_overdue_summary_cases(uuid,date)','app.probation_pending_signer_kinds(uuid)','app.probation_permitted(text,uuid)',
    'app.probation_permitted_companies(uuid,text[])','app.probation_permitted_scope(text,uuid[])','app.probation_posting_approved()',
    'app.probation_postings_admin(uuid[])','app.probation_record_low_result_action(uuid,text)','app.probation_record_override(uuid)',
-   'app.probation_record_posting_effect(uuid,uuid,uuid,jsonb,jsonb)','app.probation_settings_materialize(uuid[])','app.probation_settings_scope_admin()',
+   'app.probation_record_posting_effect(uuid,uuid,uuid,jsonb,jsonb)','app.probation_routed_holders(uuid[])','app.probation_routing_dimension(jsonb,text[])',
+   'app.probation_routing_weight(jsonb,integer)','app.probation_settings_materialize(uuid[])','app.probation_settings_scope_admin()',
    'app.probation_settings_scope_check(text,jsonb)','app.probation_settings_scope_refresh(uuid)','app.probation_settings_scope_retire(uuid,integer,text)',
    'app.probation_settings_scope_save(uuid,text,text,uuid[],jsonb,boolean,integer,text)','app.probation_shared_workflow_triggers()','app.probation_source_from_start(jsonb,uuid)',
    'app.probation_superior_rule()','app.probation_task_list(text,integer)','app.probation_tracker_cases()',
