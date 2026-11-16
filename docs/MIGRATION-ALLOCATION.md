@@ -1,3 +1,20 @@
+# Approver choices on Probation form approval rows — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-last-20261116` (lane G1 of the Probation Confirmation build) appends
+`5756_probation_form_approver_choices` at idx 5156 / when 1793330005456 (assigned by the build coordinator). SHA256
+`58c393bf5583abeb5a46bc6078ad756aee0691f24b3d68f80fec169218fe996e`. It adds two functions granted to `ai_hr_app`, both
+authorized for the submitting Line Manager of the Part (`app.probation_form_routing_context(uuid)`,
+`app.probation_form_freeze_approvers(uuid,jsonb)`, the latter under the Probation write lock and audited), and four
+owner-only helpers (`app.probation_form_approver_role(text)`, `app.probation_v9_group_member(text,uuid)`,
+`app.probation_form_approver_label(text)`, `app.probation_validate_form_route(jsonb,integer)`). It re-creates in place,
+with the same signatures, owners and grants, `app.probation_prepare_signing` and `app.probation_task_list` (5751 bodies),
+`app.probation_resolve_route_unchecked` (5755), `app.probation_commands` and `app.probation_part_command` (5746),
+`app.probation_signing_access` and `app.probation_signatures_complete` (5752), `app.probation_actor_just_signed` (0949)
+and `app.document_signing_act` (5747), each keeping its previous behaviour for Head of Department / PBP rows, default
+rows and existing parts. Inserts `probation_delegate` rows (kind `missing_holder`) at run time only; no table, row,
+grant or purpose-owned object changes. The installed ledgers were not read; recheck watermarks and peer claims at
+admission. This allocation grants no installation authority.
+
 # Routed Probation steps: assignment, delegation, form approval choices — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/probation-lane-finish-20261116` (lane F) appends `5755_probation_routed_assignment` at idx 5155 / when

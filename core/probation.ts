@@ -15,8 +15,9 @@ import {todayInKualaLumpur,addCalendarMonths} from '../lib/hr-date';
 import {addDaysIso} from '../lib/roster-month';
 import {isCalendarDate} from '../lib/calendar-date';
 import {DEFAULT_PROBATION_CONFIG,createProbationCase,editProbationPart,managerSubmissionIssues,probationRoute,type ProbationCase,type ProbationPart,type ProbationConfig,type ProbationRole,ProbationError} from '../lib/probation-model';
-import {DEFAULT_PROBATION_FORM,validateProbationForm,scoreProbationForm,probationFormIssues,type ProbationForm} from '../lib/probation-form';
-import {pendingSigningSteps,signingComplete,type SigningRoute,type SigningDocument,type SigningGuardrails} from '../lib/document-signing-model';
+import {DEFAULT_PROBATION_FORM,validateProbationForm,scoreProbationForm,probationFormIssues,probationApprovalRouted,type ProbationForm} from '../lib/probation-form';
+import {pendingSigningSteps,signingComplete,signingStepAction,type SigningRoute,type SigningDocument,type SigningGuardrails} from '../lib/document-signing-model';
+import {freezeFormApproversTx} from './probation-form-approvers';
 import {createSigningDocumentTx,readSigningDocumentTx,recordDocumentSigningActionTx,reviseSigningDocumentTx,refreshCanonicalProbationSigningRouteTx,declineDocumentAcknowledgementTx} from '../packs/document-signing/service';
 export {DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,ProbationError};
 export type {ProbationCase,ProbationPart,ProbationConfig,ProbationRole,ProbationForm};
@@ -62,6 +63,17 @@ export function saveProbationConfiguration(ctx:SessionContext,input:{companyId:s
   // The form version's named alternate signer must be a current login of this tenant (the route configuration's rule).
   const alternate=form.duplicateRolePolicy?.mode==='named_alternate'?form.duplicateRolePolicy.alternateUserId:null;
   if(alternate){const[row]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from app_user u where u.id=${uuid(alternate)}::uuid and u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id)) as ok`);if(!row?.ok)throw new ProbationError('invalid','Choose a current person as the named alternate signer.');}
+  // 5756: routing, group and named-people approval rows must name live routings, existing groups and current people.
+  const routed=Object.values(form.approvals??{}).flat().filter(row=>probationApprovalRouted(row.who));
+  if(routed.length){
+   const{automationReferencesTx}=await import('./automation-builder');
+   const refs=await automationReferencesTx(tx,routed.flatMap(row=>row.who==='people'?row.userIds??[]:[]));
+   for(const row of routed){
+    if(row.who.startsWith('routing:')&&!refs.routingExists(row.who.slice(8)))throw new ProbationError('invalid','An approval step names a routing that no longer exists. Choose another routing.');
+    if(row.who.startsWith('group:')&&!refs.groupExists(row.who.slice(6)))throw new ProbationError('invalid','An approval step names an assignment group that no longer exists. Choose another group.');
+    if(row.who==='people'&&(row.userIds??[]).some(id=>!refs.personExists(id)))throw new ProbationError('invalid','An approval step names someone who is no longer a current person. Choose current people.');
+   }
+  }
  }
  const[row]=await tx.execute<{id:string}>(sql`select app.probation_config_write(${uuid(input.companyId)}::uuid,${input.kind},${json(data)}::jsonb,${input.publish},${input.expectedVersion}) as id`);return row.id;
 });}
@@ -151,7 +163,8 @@ export function saveProbationDraft(ctx:SessionContext,input:{caseId:string;partI
  const[row]=await tx.execute<{revision:number}>(sql`select app.probation_save_draft(${part.id}::uuid,${input.rater},${json(input.patch)}::jsonb,${input.revision}) as revision`);return row.revision;
 });}
 async function signingTx(tx:Tx,ctx:SessionContext,view:ProbationCaseView,part:ProbationPartView):Promise<{id:string;document:SigningDocument}>{
- if(!part.managerSubmittedAt&&part.canEditManager)await tx.execute(sql`select app.probation_prepare_signing(${part.id}::uuid)`);
+ // 5756: once the route is frozen from the form version, each routing, group or named-people approval step gets its person.
+ if(!part.managerSubmittedAt&&part.canEditManager){await tx.execute(sql`select app.probation_prepare_signing(${part.id}::uuid)`);await freezeFormApproversTx(tx,part.id,view.record.id);}
  const[source]=await tx.execute<{data:{contentHash:string;contentRevision:number}}>(sql`select app.probation_signing_content(${part.id}::uuid) as data`);
  const[routes]=await tx.execute<{route:SigningRoute}>(sql`select app.probation_resolved_route(${part.id}::uuid) as route`);
  const[rules]=await tx.execute<{rules:SigningGuardrails}>(sql`select app.probation_signing_guardrails(${part.id}::uuid) as rules`);
@@ -188,7 +201,8 @@ export function actOnProbation(ctx:SessionContext,input:{caseId:string;partId:st
    if(input.command==='approve'&&JSON.stringify(input.coveredStepIds??[])!==JSON.stringify(step.coveredStepIds??[])){
     throw new ProbationError('conflict','The pending approval roles changed. Review the current role coverage before signing.');
    }
-   await recordDocumentSigningActionTx(tx,ctx,{id:stored.id,stepId:step.id,revision:stored.document.contentRevision,hash:stored.document.contentHash,action:input.command==='return'?'returned':'signed',comment:input.command==='acknowledge'?part.employeeComments:input.reason,method:input.method,value:input.value,consent:input.consent,actionId:input.actionId});
+   // 5756: a Review step and an Approve step without signature record their decision; every other step signs, as before.
+   await recordDocumentSigningActionTx(tx,ctx,{id:stored.id,stepId:step.id,revision:stored.document.contentRevision,hash:stored.document.contentHash,action:input.command==='return'?'returned':input.command==='approve'?signingStepAction(stored.document,step):'signed',comment:input.command==='acknowledge'?part.employeeComments:input.reason,method:input.method,value:input.value,consent:input.consent,actionId:input.actionId});
   }
  }
  if(input.command==='approve'){await tx.execute(sql`select app.probation_review_transition(${part.id}::uuid)`);await emitPartEventsTx(tx,ctx,view,part,input.command,null);return{revision:part.revision};}

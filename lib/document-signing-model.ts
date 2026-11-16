@@ -24,6 +24,13 @@ export type SigningStep = {
   owner?: boolean;
   /** Set when nobody resolved and the fallback group took the step: who the step was meant for. */
   meantFor?: string;
+  /**
+   * `false` on an Approve step that records a decision without a signature on a document without template routing
+   * (Probation form approval rows, migration 5756). Absent: an Approve step signs, as before.
+   */
+  signature?: false;
+  /** Display name of who the step was routed to (a routing or assignment group name), frozen with the route. */
+  label?: string;
 };
 export type SigningRoute = {version: number; steps: SigningStep[]};
 export type SigningGuardrails = {requiredRoles: string[]; independentApprovalFromRole?: string};
@@ -57,6 +64,7 @@ export function validateSigningRoute(route: SigningRoute, rules: SigningGuardrai
   for (const step of route.steps) {
     if (!step.id || ids.has(step.id) || !step.role || !Number.isSafeInteger(step.stage) || step.stage < 0 || !SIGNING_STEP_KINDS.includes(step.kind)) invalid('Every signing step needs a unique identity, role and stage.');
     if (step.owner !== undefined && typeof step.owner !== 'boolean') invalid('Every signing step needs a unique identity, role and stage.');
+    if (step.signature !== undefined && (step.signature !== false || step.kind !== 'approve')) invalid('Every signing step needs a unique identity, role and stage.');
     ids.add(step.id);
   }
   if (route.steps.filter(step=>step.owner).length>1) invalid('Only one step can own the document.');
@@ -115,10 +123,13 @@ export function signingComplete(document: SigningDocument, rules: SigningGuardra
   }
   return true;
 }
-/** The action a step takes. Template-routing documents record Review and Approve as decisions without a signature. */
-export function signingStepAction(document: SigningDocument, step: SigningStep): 'signed' | 'reviewed' | 'approved' {
+/**
+ * The action a step takes. Template-routing documents record Review and Approve as decisions without a signature; so
+ * does an Approve step marked `signature: false` (a Probation form "Approve" row).
+ */
+export function signingStepAction(document: SigningDocument, step: Pick<SigningStep,'kind'|'signature'>): 'signed' | 'reviewed' | 'approved' {
   if(step.kind==='review')return 'reviewed';
-  if(step.kind==='approve'&&document.routing)return 'approved';
+  if(step.kind==='approve'&&(document.routing||step.signature===false))return 'approved';
   return 'signed';
 }
 /** Review and Approve steps belong in approval queues; Sign and acknowledgement steps in task queues (handoff B5). */

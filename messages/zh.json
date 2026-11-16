@@ -35705,7 +35705,9 @@
       "pbp": "人力资源业务伙伴",
       "gbs": "GBS People Ops",
       "admin": "指定准备人员",
-      "system": "后台处理"
+      "system": "后台处理",
+      "superior": "Direct Superior",
+      "people": "Named people"
     },
     "columns": {
       "employee": "员工",
@@ -35836,7 +35838,15 @@
       "frozenFacts": "此评审保留为签署内容捕获的员工及试用期详情。",
       "combinedConsent": "我确认这是我为以下角色所作的签署：{roles}。",
       "combinedHistory": "由同一次签署涵盖",
-      "onBehalfOf": "on behalf of {name}"
+      "onBehalfOf": "on behalf of {name}",
+      "reviewStep": "Review",
+      "approveStep": "Approve",
+      "reviewed": "Reviewed",
+      "approved": "Approved",
+      "decisionComment": "Comment (optional)",
+      "markReviewed": "Mark as reviewed",
+      "markApproved": "Approve",
+      "meantFor": "Meant for {who}; the fallback group took it"
     },
     "controls": {
       "title": "获授权的评审控制",
@@ -36445,14 +36455,34 @@
       "action": "Action",
       "who": "Who",
       "actions": {
-        "approve_sign": "Approve and sign"
+        "approve_sign": "Approve and sign",
+        "review": "Review",
+        "approve": "Approve"
       },
       "remove": "Remove the {who} step",
       "add": "Add approval step",
       "none": "No approval steps.",
       "partThreeRequired": "Part 3 needs at least one approval step.",
-      "reserved": "Approval steps resolve to the Head of Department or the People Business Partner, through their current holders, delegations and the policy below. Routings, assignment groups, named people and the Direct Superior cannot sign probation reviews yet.",
-      "policyInherit": "Use the signing routes configuration’s setting"
+      "reserved": "Head of Department, People Business Partner and Direct Superior steps follow the case’s current holders, their delegations and the policy below.",
+      "policyInherit": "Use the signing routes configuration’s setting",
+      "whoKinds": {
+        "hod": "Head of Department",
+        "pbp": "People Business Partner",
+        "superior": "Direct Superior",
+        "routing": "A routing",
+        "group": "An assignment group",
+        "people": "Named people"
+      },
+      "routing": "Routing",
+      "group": "Assignment group",
+      "people": "People",
+      "pick": "Who takes it",
+      "picks": {
+        "any": "Any member",
+        "roundRobin": "Round robin"
+      },
+      "missingChoice": "No longer available: choose another",
+      "resolveNote": "A routing, an assignment group or named people gives the step to one person, chosen by the step’s rule when the Line Manager submits, and that person keeps it for the part. If nobody is available, the case’s fallback group takes it and the case records who it was meant for."
     }
   },
   "templateEditor": {

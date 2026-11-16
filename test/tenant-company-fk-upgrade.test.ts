@@ -265,6 +265,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    // Lane F (16 November 2026): real email for shared workflow steps.
    '5754_automation_email_delivery',
    '5755_probation_routed_assignment',
+   '5756_probation_form_approver_choices',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -293,6 +294,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // callable by the application role, and none is callable by PUBLIC. The policy-side and trigger-WHEN helpers are
   // granted to exactly the roles their policies or the domain_event writers are (test/policy-helper-function-grants).
   const privateFunctions=[
+   // 5756: approver role, group membership, approver label and form route checks, owner only.
+   'app.probation_form_approver_role(text)','app.probation_v9_group_member(text,uuid)','app.probation_form_approver_label(text)','app.probation_validate_form_route(jsonb,integer)',
    // Probation core (5742, 5744-5746, 5749-5751): internal helpers, never granted to the application role.
    'app.probation_company_ancestors(uuid[])',
    'app.probation_config_write_company(uuid,text,jsonb,boolean,integer)',
@@ -361,6 +364,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    // 5753: Probation outcomes on the shared workflow runner (context, notify, outcome runs, posting effect, posting-approval trigger).
    // 5754: shared workflow email (queue, the private sender's target, start and finish, and the owner-only immutability trigger).
    // 5755: routed Probation steps (assignment facts for the V9 assignment owner).
+   // 5756: approver choices on form approval rows (approver role helper, form route validator, group membership and label helpers, routing context and approver freeze).
    'app._access_bootstrap_eligible(uuid,uuid)','app._access_workforce_list_rows(uuid[])','app._ai_control_context_for_purpose(text,boolean,boolean)',
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()','app._assert_assistant_rewards_presentation_v1(text)',
    'app._assistant_assigned_index_login(uuid,boolean)','app._assistant_presentation_feature_unpaused_v1()','app._assistant_rewards_calendar_choice_payload_v1()',
@@ -420,7 +424,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.personnel_posting_people(uuid[])','app.personnel_posting_record_movement(uuid,text)','app.personnel_posting_values_ok(text,jsonb)',
    'app.personnel_posting_visible(text,uuid,text)','app.personnel_private_search_entries(text,uuid[])','app.personnel_search_candidates(uuid[],boolean,boolean,text,text,text,text,text[])',
    'app.probation_assignment_facts(uuid,text[],uuid[])','app.probation_automation_context(uuid)','app.probation_automation_notify(uuid,uuid,text,text,uuid[])','app.probation_company_ancestors(uuid[])',
-   'app.probation_config_write_company(uuid,text,jsonb,boolean,integer)','app.probation_did_not_join(uuid)','app.probation_general_delegate(uuid,uuid,text)',
+   'app.probation_config_write_company(uuid,text,jsonb,boolean,integer)','app.probation_did_not_join(uuid)','app.probation_form_approver_label(text)','app.probation_form_approver_role(text)','app.probation_form_freeze_approvers(uuid,jsonb)','app.probation_form_routing_context(uuid)','app.probation_general_delegate(uuid,uuid,text)',
    'app.probation_holders_set(uuid[])','app.probation_letter_freeze_route(uuid,jsonb,jsonb)','app.probation_letter_routed(jsonb)',
    'app.probation_letter_routing_context(uuid)','app.probation_letter_routing_signatures_ok(jsonb)','app.probation_letter_routing_valid(jsonb)',
    'app.probation_max_extensions(jsonb)','app.probation_outcome_automation(uuid)','app.probation_posting_approved()',
@@ -428,7 +432,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.probation_settings_scope_admin()','app.probation_settings_scope_check(text,jsonb)','app.probation_settings_scope_refresh(uuid)',
    'app.probation_settings_scope_retire(uuid,integer,text)','app.probation_settings_scope_save(uuid,text,text,uuid[],jsonb,boolean,integer,text)','app.probation_source_from_start(jsonb,uuid)',
    'app.probation_task_list(text,integer)','app.probation_tracker_cases()','app.probation_tracker_page(uuid[])',
-   'app.probation_visible_among(uuid[])','app.probation_visible_case_ids()','app.register_import_release(uuid,boolean)',
+   'app.probation_v9_group_member(text,uuid)','app.probation_validate_form_route(jsonb,integer)','app.probation_visible_among(uuid[])','app.probation_visible_case_ids()','app.register_import_release(uuid,boolean)',
    'app.reward_access_observation_due(uuid)','app.reward_access_self_change_guard()','app.reward_actor_holds_role(text)',
    'app.reward_actor_page_level(text)','app.reward_config_apply_confirmed_pat(uuid,uuid)','app.reward_config_architecture_for_source(uuid,uuid,uuid,date)',
    'app.reward_config_change_recipients(uuid)','app.reward_config_change_record(text,text,uuid,text,uuid[],text,text,boolean,integer,jsonb,uuid,uuid[],text)','app.reward_config_change_visible(text,uuid[])',

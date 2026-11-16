@@ -5,15 +5,31 @@ export type ProbationCriterion={id:string;section:'role'|'principles';title:stri
  * (the Line Manager's signed assessment, then the employee's acknowledgement), the rows run by `order`, lower first;
  * rows sharing an order run one after another in the order listed. Editable only by saving a new version (published
  * versions are immutable), and a case keeps the form version it started on, so a Part keeps the routing it opened with.
- * `who` names who resolves the step: 'hod' (Head of Department) and 'pbp' (People Business Partner) resolve through
- * the existing holder rules, delegation and duplicate-role policy. The other shapes are reserved for routings
- * ('routing:<id>'), assignment groups ('group:<id>'), named people ('user:<id>') and the Direct Superior
- * ('superior'); the signing runtime does not resolve them yet, so a form naming them cannot be saved.
+ *
+ * `who` names who resolves the step (migration 5756): 'hod' (Head of Department), 'pbp' (People Business Partner) and
+ * 'superior' (the employee's Direct Superior) resolve through the case's current holders, delegation and the
+ * duplicate-role policy. 'routing:<id>' (a shared routing), 'group:<id>' (an assignment group) and 'people' (the named
+ * `userIds`) resolve to one person, chosen by `pick` (any member, or round robin) through lib/routed-step-assignment.ts
+ * when the Line Manager submits; nobody available → the case's fallback group, recorded on the Part. The chosen person
+ * is kept for the Part. `action`: Review (a decision, no signature), Approve (a decision, no signature) or Approve and
+ * sign. Review and Approve steps are Approval Items; Approve and sign is an Approval Item that takes a signature.
  */
 export const PROBATION_APPROVAL_ACTIONS=['review','approve','approve_sign'] as const;
 export type ProbationApprovalAction=typeof PROBATION_APPROVAL_ACTIONS[number];
+/** Who resolves through the case's own holders; the rest are routed to one person. */
+export const PROBATION_APPROVAL_HOLDER_WHO=['hod','pbp','superior'] as const;
+/** Kept for callers of the earlier model: the holders that existed before routed approvers. */
 export const PROBATION_APPROVAL_SIGNING_WHO=['hod','pbp'] as const;
-export type ProbationApprovalRow={id:string;order:number;action:ProbationApprovalAction;who:string};
+export const PROBATION_APPROVAL_PICKS=['any','roundRobin'] as const;
+export type ProbationApprovalPick=typeof PROBATION_APPROVAL_PICKS[number];
+export const MAX_PROBATION_APPROVAL_PEOPLE=20;
+export type ProbationApprovalRow={id:string;order:number;action:ProbationApprovalAction;who:string;
+ /** Routing, group and named-people rows: how one person is chosen (default any member). */
+ pick?:ProbationApprovalPick;
+ /** Named-people rows only: the people one of whom takes the step. */
+ userIds?:string[]};
+/** A routed row (routing, assignment group or named people): one person is chosen and kept for the Part. */
+export function probationApprovalRouted(who:string):boolean{return who==='people'||/^(routing|group):/.test(who);}
 export type ProbationApprovalRouting=Record<'1'|'2'|'3',ProbationApprovalRow[]>;
 export type ProbationFormDuplicateRolePolicy={mode:'escalate'|'sign_once'|'named_alternate';alternateUserId?:string|null};
 export type ProbationForm={targetGrades?:string[];version:number;name:string;criteria:ProbationCriterion[];ratingLabels:string[];bands:{min:number;band:number;label:string}[];employeeCommentsRequired:boolean;
@@ -27,26 +43,32 @@ export function defaultProbationApprovals():ProbationApprovalRouting{return{'1':
 export function probationApprovalChain(rows:readonly ProbationApprovalRow[]):ProbationApprovalRow[]{return rows.map((row,index)=>({row,index})).sort((a,b)=>a.row.order-b.row.order||a.index-b.index).map(item=>item.row);}
 export function probationApprovalIssues(form:Pick<ProbationForm,'approvals'|'duplicateRolePolicy'>):string[]{
  const issues:string[]=[];
- if(form.duplicateRolePolicy!==undefined){const policy=form.duplicateRolePolicy;if(!policy||!['escalate','sign_once','named_alternate'].includes(policy.mode))issues.push('policy:mode');else if(policy.mode==='named_alternate'&&!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(policy.alternateUserId??''))issues.push('policy:alternate');}
+ if(form.duplicateRolePolicy!==undefined){const policy=form.duplicateRolePolicy;if(!policy||!['escalate','sign_once','named_alternate'].includes(policy.mode))issues.push('policy:mode');else if(policy.mode==='named_alternate'&&!UUID.test(policy.alternateUserId??''))issues.push('policy:alternate');}
  if(form.approvals===undefined)return issues;
  for(const part of ['1','2','3'] as const){
   const rows=form.approvals?.[part];if(!Array.isArray(rows)||rows.length>10){issues.push(part+':rows');continue;}
-  // Part 3 decides the outcome: someone independent of the Line Manager must approve it (signing rule).
-  if(part==='3'&&!rows.length)issues.push('3:approval_required');
+  // Part 3 decides the outcome: someone independent of the Line Manager must approve it (signing rule); a Review alone does not.
+  if(part==='3'&&!rows.some(row=>row?.action==='approve'||row?.action==='approve_sign'))issues.push('3:approval_required');
   const ids=new Set<string>(),who=new Set<string>();
   for(const row of rows){
-   if(!/^[a-z][a-z0-9_]{0,39}$/.test(row?.id??'')||ids.has(row.id))issues.push(part+':id');ids.add(row?.id);
+   const holder=(PROBATION_APPROVAL_HOLDER_WHO as readonly string[]).includes(row?.who);
+   // Head of Department and PBP steps keep their role as the step id (as before); other steps use the row id, which must
+   // not collide with a core step or those role ids.
+   if(!/^[a-z][a-z0-9_]{0,39}$/.test(row?.id??'')||ids.has(row.id)||['lm','employee'].includes(row.id)||!['hod','pbp'].includes(row?.who)&&['hod','pbp'].includes(row.id))issues.push(part+':id');ids.add(row?.id);
    if(!Number.isInteger(row?.order)||row.order<1||row.order>9)issues.push(part+':'+row?.id+':order');
    if(!PROBATION_APPROVAL_ACTIONS.includes(row?.action))issues.push(part+':'+row?.id+':action');
-   else if(row.action!=='approve_sign')issues.push(part+':'+row.id+':action_unsupported');
-   if(typeof row?.who!=='string'||!/^(hod|pbp|superior|(routing|group|user):[A-Za-z0-9_-]{1,80})$/.test(row.who))issues.push(part+':'+row?.id+':who');
-   else if(!(PROBATION_APPROVAL_SIGNING_WHO as readonly string[]).includes(row.who))issues.push(part+':'+row.id+':who_unsupported');
-   else if(who.has(row.who))issues.push(part+':'+row.id+':who_duplicate');
-   who.add(row?.who);
+   if(typeof row?.who!=='string'||!/^(hod|pbp|superior|people|routing:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|group:[A-Za-z0-9_-]{1,80})$/.test(row.who)){issues.push(part+':'+row?.id+':who');continue;}
+   if(row.pick!==undefined&&(holder||!PROBATION_APPROVAL_PICKS.includes(row.pick)))issues.push(part+':'+row.id+':pick');
+   if(row.who==='people'){const people=row.userIds;if(!Array.isArray(people)||!people.length||people.length>MAX_PROBATION_APPROVAL_PEOPLE||people.some(id=>!UUID.test(id))||new Set(people).size!==people.length)issues.push(part+':'+row.id+':people');}
+   else if(row.userIds!==undefined)issues.push(part+':'+row.id+':people');
+   const key=row.who==='people'?'people:'+[...(row.userIds??[])].sort().join(','):row.who;
+   if(who.has(key))issues.push(part+':'+row.id+':who_duplicate');
+   who.add(key);
   }
  }
  return [...new Set(issues)];
 }
+const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
 const guidance=[
  ['kpi','KPI Achievement Progress','Progress against agreed KPIs, targets and deliverables',[], 'What results demonstrate progress against the acknowledged Week 1 KPIs?'],
@@ -66,10 +88,9 @@ export function validateProbationForm(form:ProbationForm){
  for(const c of form.criteria){if(!/^[a-z][a-z0-9_]{0,39}$/.test(c.id)||ids.has(c.id)||!c.title.trim()||!['role','principles'].includes(c.section)||!Number.isInteger(c.weight)||c.weight<1||c.weight>100||!c.standard.trim()||!c.prompt.trim())throw Error('Each criterion needs a unique ID, title, guidance and whole percentage weight.');ids.add(c.id);total+=c.weight;}
  if(total!==100||form.criteria.filter(c=>c.section==='role').reduce((n,c)=>n+c.weight,0)!==50)throw Error('Role and Leadership Principle weights must each total 50%.');
  const routing=probationApprovalIssues(form);
- if(routing.some(issue=>issue.endsWith(':who_unsupported')))throw Error('Approval steps can resolve to the Head of Department or the People Business Partner. Routings, assignment groups, named people and the Direct Superior cannot sign probation reviews yet.');
- if(routing.some(issue=>issue.endsWith(':action_unsupported')))throw Error('Approval steps approve and sign. Review-only and approve-without-signature steps cannot run on probation reviews yet.');
- if(routing.includes('3:approval_required'))throw Error('Part 3 needs at least one approval step: someone other than the Line Manager approves the outcome.');
- if(routing.length)throw Error('Check the approval steps: a unique ID, an order from 1 to 9, an action and who for each step, each person or role at most once per Part.');
+ if(routing.includes('3:approval_required'))throw Error('Part 3 needs at least one Approve or Approve and sign step: someone other than the Line Manager approves the outcome.');
+ if(routing.some(issue=>issue.endsWith(':people')))throw Error('A named-people approval step names between 1 and 20 different people.');
+ if(routing.length)throw Error('Check the approval steps: a unique ID, an order from 1 to 9, an action and who for each step, each person, role, routing or group at most once per Part.');
  const bands=[...form.bands].sort((a,b)=>a.min-b.min);if(bands.length!==5||bands[0].min!==100||new Set(bands.map(b=>b.band)).size!==5||bands.some((b,i)=>!Number.isInteger(b.min)||b.min<100||b.min>500||b.band!==i+1||!b.label.trim())||bands.some((b,i)=>i>0&&b.min<=bands[i-1].min))throw Error('Provide five ordered score bands covering 1.00–5.00.');
 }
 export function scoreProbationForm(form:ProbationForm,assessment:Assessment){
