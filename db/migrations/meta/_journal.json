@@ -6287,6 +6287,13 @@
       "when": 1794841005830,
       "tag": "5830_contract_shared_tracker_choices",
       "breakpoints": true
+    },
+    {
+      "idx": 5232,
+      "version": "7",
+      "when": 1794841005832,
+      "tag": "5832_contract_shared_starting_setup",
+      "breakpoints": true
     }
   ]
 }
