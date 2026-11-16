@@ -40,7 +40,7 @@ export const DEFAULT_CONTRACT_FLOW_SETTINGS: ContractFlowSettings = {
 function refuse(message: string): never {throw new ContractManagementError('invalid', message);}
 function conflict(message: string): never {throw new ContractManagementError('conflict', message);}
 function actorCan(actor: ContractFlowActor, permission: ContractCasePermission) {
-  if (!actor.userId || !actor.admin && !actor.permissions.includes(permission)) throw new ContractManagementError('forbidden', 'This Contract action is unavailable.');
+  if (!actor.userId || !actor.admin && (!actor.permissions.includes('view') || !actor.permissions.includes(permission))) throw new ContractManagementError('forbidden', 'This Contract action is unavailable.');
 }
 function timestamp(at: string) {if (!Number.isFinite(Date.parse(at))) refuse('A verified action time is required.');}
 function revision(record: ContractFlow, expected: number) {if (record.revision !== expected) conflict('This case changed. Reload before acting.');}

@@ -8,7 +8,7 @@ import type {AutomationRecipient} from './automation/workflow';
 import type {ContractFlow} from './contract-case-flow';
 
 export type ContractAutomationContext={
- caseId:string;companyId:string;employeeUserIds:string[];superiorUserIds:string[];
+ caseId:string;companyId:string;subjectPersonId:string;userPersonIds:Record<string,string>;employeeUserIds:string[];superiorUserIds:string[];
  employeeName:string;employeeCode:string;jobTitle:string;company:string;businessGroup:string;businessGroupId:string|null;
  businessUnitId:string|null;department:string;departmentId:string|null;managerName:string;
  startOn:string;endOn:string;contractNumber:number|null;flow:ContractFlow|null;
@@ -20,7 +20,7 @@ const decisionName={renew:'Renew',convert:'Convert to permanent',end:'End'};
 export function contractAutomationRead(context:ContractAutomationContext,trigger:string,today:string){
  const available=new Set(conditionFieldsForTrigger(CONTRACT_AUTOMATION_CATALOGUE,trigger).map(field=>field.id));
  const decision=context.flow?.decision;
- const days=Math.round((Date.parse(context.endOn+'T00:00:00Z')-Date.parse(today+'T00:00:00Z'))/86400000);
+ const days=Math.round((Date.parse((context.flow?.period.endOn??context.endOn)+'T00:00:00Z')-Date.parse(today+'T00:00:00Z'))/86400000);
  const values:Record<string,AutomationFactValue>={
   decision:decision?decisionName[decision.kind]:null,endReason:decision?.endReason??null,
   declineReason:context.flow?.declined?.reason??null,businessGroup:context.businessGroupId,
@@ -31,7 +31,7 @@ export function contractAutomationRead(context:ContractAutomationContext,trigger
 }
 export function contractAutomationRecipients(list:readonly AutomationRecipient[],context:ContractAutomationContext,options:{fallback?:boolean;excludeEmployee?:boolean}={}):AutomationRecipientResolution{
  const active=new Set(context.activePeople),employees=new Set(context.employeeUserIds);
- const eligible=(ids:readonly string[])=>[...new Set(ids)].filter(id=>active.has(id)&&(!options.excludeEmployee||!employees.has(id)));
+ const eligible=(ids:readonly string[])=>[...new Set(ids)].filter(id=>active.has(id)&&(!options.excludeEmployee||!employees.has(id)&&!!context.userPersonIds[id]&&context.userPersonIds[id]!==context.subjectPersonId));
  const groups=new Map(context.groups.map(group=>[group.id,eligible(group.members)]));
  const routings=new Map(context.routings.map(routing=>[routing.id,{...routing,rows:routing.rows.map(row=>row.assignTo.kind==='people'?{...row,assignTo:{kind:'people' as const,userIds:eligible(row.assignTo.userIds)}}:row)}]));
  const fallback=options.fallback!==false&&context.fallbackGroupId?{groupId:context.fallbackGroupId,members:groups.get(context.fallbackGroupId)??[]}:null;
@@ -40,16 +40,17 @@ export function contractAutomationRecipients(list:readonly AutomationRecipient[]
   facts:{businessGroup:[context.businessGroupId,context.businessUnitId].filter((id):id is string=>!!id),company:context.companyId,department:context.departmentId,jobTitle:context.jobTitle},
   groupMembers:id=>groups.get(id)??null,routing:id=>routings.get(id)??null,person:id=>eligible([id]).length>0,
   pending:()=>context.pending?{...context.pending,userIds:eligible(context.pending.userIds)}:null,
-  fallback,describe:recipient=>recipient.kind==='role'?(recipient.role==='employee'?'The employee':'Their Direct Superior'):recipient.kind==='routing'?`Routing: ${routings.get(recipient.routingId)?.name??'unavailable'}`:recipient.kind==='group'?`Assignment group: ${context.groups.find(group=>group.id===recipient.groupId)?.name??'unavailable'}`:recipient.kind==='person'?'A named person':'Whoever’s step is pending',
+  fallback,routingDefaultOnEmpty:true,describe:recipient=>recipient.kind==='role'?(recipient.role==='employee'?'The employee':'Their Direct Superior'):recipient.kind==='routing'?`Routing: ${routings.get(recipient.routingId)?.name??'unavailable'}`:recipient.kind==='group'?`Assignment group: ${context.groups.find(group=>group.id===recipient.groupId)?.name??'unavailable'}`:recipient.kind==='person'?'A named person':'Whoever’s step is pending',
  });
 }
 export function contractAutomationMergeValues(context:ContractAutomationContext,today:string):Record<string,string>{
  const decision=context.flow?.decision;
+ const period=context.flow?.period;
  return {
   'employee.name':context.employeeName,'employee.id':context.employeeCode,'employee.jobTitle':context.jobTitle,
   'org.company':context.company,'org.businessGroup':context.businessGroup,'org.department':context.department,
-  'people.lineManager':context.managerName,'contract.start':context.startOn,'contract.end':context.endOn,
-  'contract.number':context.contractNumber==null?'':String(context.contractNumber),
+  'people.lineManager':context.managerName,'contract.start':period?.startOn??context.startOn,'contract.end':period?.endOn??context.endOn,
+  'contract.number':period?period.number:context.contractNumber==null?'':String(context.contractNumber),
   'contract.newStart':decision?.startOn??'','contract.newEnd':decision?.endOn??'',
   'contract.term':decision?.months==null?'':String(decision.months),'contract.salary':decision?.salaryCents==null?'':formatContractCents(decision.salaryCents),
   'contract.reason':decision?.reason??'','case.link':`/lifecycle/contracts/${context.caseId}`,today,

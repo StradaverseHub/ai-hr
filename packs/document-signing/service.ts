@@ -92,14 +92,16 @@ async function store(tx:Tx,row:StoredDocument,next:SigningDocument,operation:'re
 }
 
 async function hydrateRoute(tx:Tx,ctx:SessionContext,route:SigningRoute):Promise<SigningRoute>{
-  const steps=[];
-  for(const step of route.steps){
-    if(!step.holderId){steps.push({...step,holderPersonId:undefined});continue;}
-    const [holder]=await tx.execute<{person_id:string}>(sql`select person_id from app_user where id=${step.holderId}::uuid and tenant_id=${ctx.tenantId}::uuid and archived_at is null and not app.login_blocked(id)`);
-    if(!holder)throw new SigningError('invalid','The current signing holder is unavailable.');
-    steps.push({...step,holderPersonId:holder.person_id});
-  }
-  return {...route,steps};
+  if(!route.steps.length||route.steps.length>30)throw new SigningError('invalid','Choose a valid published signing route.');
+  const ids=[...new Set(route.steps.flatMap(step=>step.holderId?[step.holderId]:[]))];
+  const holders=ids.length?await tx.execute<{id:string;person_id:string}>(sql`select id,person_id from app_user where id in (${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}) and tenant_id=${ctx.tenantId}::uuid and person_id is not null and archived_at is null and not app.login_blocked(id)`):[];
+  const people=new Map(holders.map(holder=>[holder.id,holder.person_id]));
+  return {...route,steps:route.steps.map(step=>{
+    if(!step.holderId)return {...step,holderPersonId:undefined};
+    const personId=people.get(step.holderId);
+    if(!personId)throw new SigningError('invalid','The current signing holder is unavailable.');
+    return {...step,holderPersonId:personId};
+  })};
 }
 
 

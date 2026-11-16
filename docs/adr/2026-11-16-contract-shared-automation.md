@@ -59,6 +59,20 @@ Posting group/admin authority is distinct from native movement-editor and Payrol
 posting keeps it pending unless the actor also holds approval authority. Group changes must not implicitly approve
 or apply pending work. Signed employment outcomes remain human actions; models propose none of these decisions.
 
+## Engineering ownership
+
+The shared automation run owns frozen workflow versions, cursors and step receipts. Contract adds catalogue and
+subject adapters, not another workflow engine. The document-signing pack owns persisted routes, actor-bound
+receipts and their revision history; a Contract letter's rendered definition and agreed terms are subject data.
+Decision approval is separate from a signature on a letter, while using the same ordered signing primitives.
+Personnel posting and movement services own approved record changes and effective dates. Payroll remains the
+only writer of pay. Action Centre and employee task projections derive work from those owners.
+
+Resolve signing holders in one bounded identity read. Exclude every login for the employee person from decision
+approval, including module fallback recipients. Contract may try an explicit routing default after an empty
+specific target; other consumers retain their existing matching semantics. Case letters use the case period,
+even after Personnel moves to a later period, while permitted live descriptive values follow the signature lock.
+
 ## Verification and release
 
 Prove decision/date/amount validation, permission denial, stale actions, routing order/parallelism, owner send-back,

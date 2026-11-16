@@ -1,6 +1,7 @@
 import {describe,expect,it} from 'vitest';
-import {contractAutomationRead,contractAutomationRecipients,type ContractAutomationContext} from '../lib/contract-automation-context';
-const context:ContractAutomationContext={caseId:'case',companyId:'company',employeeUserIds:['employee'],superiorUserIds:[],employeeName:'Fictional employee',employeeCode:'E1',jobTitle:'Engineer',company:'Company',businessGroup:'Group',businessGroupId:'bg',businessUnitId:'unit',department:'Engineering',departmentId:'department',managerName:'',startOn:'2026-01-01',endOn:'2026-12-31',contractNumber:4,flow:null,fallbackGroupId:'ops',postingApproverGroupId:'ops',groups:[{id:'ops',name:'People Ops',members:['ops','blocked']}],routings:[{id:'ceo',name:'CEO by group',rows:[{match:{businessGroup:['bg']},assignTo:{kind:'people',userIds:['chief']}}]}],activePeople:['employee','ops','chief'],names:{},pending:null};
+import {contractAutomationRead,contractAutomationRecipients,contractAutomationMergeValues,type ContractAutomationContext} from '../lib/contract-automation-context';
+import {newContractFlow} from '../lib/contract-case-flow';
+const context:ContractAutomationContext={caseId:'case',companyId:'company',subjectPersonId:'person-employee',userPersonIds:{employee:'person-employee',ops:'person-ops',chief:'person-chief'},employeeUserIds:['employee'],superiorUserIds:[],employeeName:'Fictional employee',employeeCode:'E1',jobTitle:'Engineer',company:'Company',businessGroup:'Group',businessGroupId:'bg',businessUnitId:'unit',department:'Engineering',departmentId:'department',managerName:'',startOn:'2026-01-01',endOn:'2026-12-31',contractNumber:4,flow:null,fallbackGroupId:'ops',postingApproverGroupId:'ops',groups:[{id:'ops',name:'People Ops',members:['ops','blocked']}],routings:[{id:'ceo',name:'CEO by group',rows:[{match:{businessGroup:['bg']},assignTo:{kind:'people',userIds:['chief']}}]}],activePeople:['employee','ops','chief'],names:{},pending:null};
 describe('Contract shared resolution',()=>{
  it('uses native hierarchy ids and includes everyone matched for email recipients',()=>{
   expect(contractAutomationRecipients([{kind:'routing',routingId:'ceo'}],context)).toMatchObject({userIds:['chief'],fallbackUsed:false});
@@ -19,5 +20,24 @@ describe('Contract shared resolution',()=>{
  it('does not supply decision-only facts on contract-date triggers',()=>{
   const read=contractAutomationRead(context,'beforeContractEnd','2026-12-01');
   expect(read('daysToEnd')).toBe('30');expect(read('businessGroup')).toBe('bg');expect(read('decision')).toBeUndefined();
+ });
+ it('tries the explicit default after an empty matching target, then uses module fallback if the default is empty',()=>{
+  const routed={...context,routings:[{id:'ceo',name:'CEO',rows:[
+   {match:{businessGroup:['bg']},assignTo:{kind:'people' as const,userIds:['blocked']}},
+   {match:{company:['company']},assignTo:{kind:'people' as const,userIds:['employee']}},
+   {match:{},assignTo:{kind:'people' as const,userIds:['chief']}},
+  ]}]};
+  expect(contractAutomationRecipients([{kind:'routing',routingId:'ceo'}],routed)).toMatchObject({userIds:['chief'],fallbackUsed:false});
+  expect(contractAutomationRecipients([{kind:'routing',routingId:'ceo'}],{...routed,activePeople:['ops']})).toMatchObject({userIds:['ops'],fallbackUsed:true});
+ });
+ it('excludes every login for the employee person, including ambiguous accounts and fallback membership',()=>{
+  const duplicate={...context,employeeUserIds:[],activePeople:['second-login','ops'],userPersonIds:{'second-login':'person-employee',ops:'person-ops'},groups:[{id:'ops',name:'Ops',members:['second-login','ops']}]};
+  expect(contractAutomationRecipients([{kind:'person',userId:'second-login'}],duplicate,{excludeEmployee:true})).toMatchObject({userIds:['ops'],fallbackUsed:true});
+  expect(contractAutomationRecipients([{kind:'person',userId:'second-login'}],duplicate).userIds).toEqual(['second-login']);
+ });
+ it('keeps the case period in later letters and date facts after Personnel advances to the next period',()=>{
+  const previous={...context,flow:newContractFlow({id:'old-period',startOn:'2025-01-01',endOn:'2025-12-31',number:'3',sourceRevision:'old-source'},'2026-01-01T00:00:00Z')};
+  expect(contractAutomationMergeValues(previous,'2026-01-01')).toMatchObject({'contract.start':'2025-01-01','contract.end':'2025-12-31','contract.number':'3'});
+  expect(contractAutomationRead(previous,'afterContractEnd','2026-01-01')('daysToEnd')).toBe('-1');
  });
 });

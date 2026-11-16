@@ -237,7 +237,7 @@ export const APPROVED_UPGRADE_TAIL=[
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5804_shared_email_rich_body':'96dd54e4b9bd66c015296ec0874b32c6de2af9af7c40b6f5812eaa7d3e408754',
  '5805_native_contract_counter_and_cutover':'81ec31cfbd893e9211629d24ad60999974859dcc746aeab3871802ca2e1ac140',
- '5806_contract_shared_projections':'4bbd6c7a6bcd85f677ab1450fe36a80104d85bc50181fb9893e074acf5f59acf',
+ '5806_contract_shared_projections':'529382c2654d1a3cad7aaaa00848277848a76bb4920b41f0a881db80880fa997',
  '5800_contract_shared_access':'08671eb8f4654fb52af284d4202fc56f98befc38bca4bcab5b279cdb531dc756',
  '5801_contract_shared_flows':'e87c448c73d9aabc6e571def4580d47507aad04b081b0a706446f2c0f6324145',
  '5802_contract_shared_builders':'c0fda7bf21a7d01dd214b7527736910eff7e0260962e1f67efda36ab2ffa97d0',

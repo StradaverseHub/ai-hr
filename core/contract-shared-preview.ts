@@ -20,7 +20,7 @@ export type ContractDryRunEvent={decision?:string;endReason?:string;declineReaso
 export async function contractTerminationReasons(ctx:SessionContext){
  return (await terminationReasonCatalogue(ctx)).filter(reason=>reason.active).map(reason=>({code:reason.code,label:reason.label,builtIn:reason.builtIn}));
 }
-type PreviewReferences={participants:{id:string;name:string;role:'employee'|'directSuperior'}[];groups:ContractAutomationContext['groups'];people:{id:string;name:string}[];routings:Routing[];fallbackGroupId:string|null;postingApproverGroupId:string|null;documents:SigningDocument[];templates:{emails:{id:string;name:string;active:boolean;retired:boolean}[];documents:{id:string}[]}};
+type PreviewReferences={participants:{id:string;name:string;role:'employee'|'directSuperior'}[];groups:ContractAutomationContext['groups'];people:{id:string;personId:string;name:string}[];routings:Routing[];fallbackGroupId:string|null;postingApproverGroupId:string|null;documents:SigningDocument[];templates:{emails:{id:string;name:string;active:boolean;retired:boolean}[];documents:{id:string}[]}};
 export function dryRunContractWorkflow(ctx:SessionContext,input:{workflow:AutomationWorkflow;caseId:string;event:ContractDryRunEvent}){
  z.uuid().parse(input.caseId);
  if(input.workflow?.module!=='contract_staff'||!Array.isArray(input.workflow.steps)||input.workflow.steps.length>40)throw new AutomationError('invalid','Choose a bounded Contract workflow.');
@@ -30,7 +30,7 @@ export function dryRunContractWorkflow(ctx:SessionContext,input:{workflow:Automa
   const [row]=await tx.execute<{refs:PreviewReferences}>(sql`select app.contract_shared_preview_references(${input.caseId}::uuid) as refs`);
   const refs=row.refs,source=view.source,pending=refs.documents.flatMap(document=>pendingSigningSteps(document));
   const context:ContractAutomationContext={
-   caseId:view.id,companyId:view.companyId,employeeUserIds:refs.participants.filter(p=>p.role==='employee').map(p=>p.id),superiorUserIds:refs.participants.filter(p=>p.role==='directSuperior').map(p=>p.id),
+   caseId:view.id,companyId:view.companyId,subjectPersonId:source.personId,userPersonIds:Object.fromEntries(refs.people.map(person=>[person.id,person.personId])),employeeUserIds:refs.participants.filter(p=>p.role==='employee').map(p=>p.id),superiorUserIds:refs.participants.filter(p=>p.role==='directSuperior').map(p=>p.id),
    employeeName:source.name,employeeCode:source.employeeId,jobTitle:source.designation,company:source.company,businessGroup:source.businessGroup,businessGroupId:source.businessGroupId??null,
    businessUnitId:source.businessUnitId,department:source.department,departmentId:source.departmentId,managerName:source.manager,
    startOn:source.startOn,endOn:source.endOn,contractNumber:source.contractNumber,flow:view.flow,

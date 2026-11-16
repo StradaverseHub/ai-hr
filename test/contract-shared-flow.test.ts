@@ -32,6 +32,7 @@ describe('Contract shared decision ownership', () => {
     const input = {actor, expectedRevision: 1, draft, at, preflightProblems: ['CEO routing resolves nobody.']};
     expect(() => submitContractFlowDecision(fresh(), input)).toThrow('Can’t submit');
     expect(() => submitContractFlowDecision(fresh(), {...input, actor: {...actor, permissions: []}})).toThrow('unavailable');
+    expect(() => submitContractFlowDecision(fresh(), {...input, actor: {...actor, permissions: ['decide']}})).toThrow('unavailable');
     expect(() => submitContractFlowDecision(fresh(), {...input, expectedRevision: 2})).toThrow('changed');
     expect(fresh().decision).toBeNull();
     expect(() => submitContractFlowDecision(submitted(), {...input, expectedRevision: 2, preflightProblems: []})).toThrow('fixed');
@@ -74,7 +75,7 @@ describe('Posting approval and separate manual Payroll confirmation', () => {
     const record: ContractFlow = {...submitted(), stage: 'document'};
     const input = {actor, expectedRevision: 2, employeeStepPending: true, reason: 'Resignation', notes: 'Reported to BP', at};
     expect(() => recordContractFlowDecline(record, input)).toThrow('unavailable');
-    const hr = {...actor, permissions: ['decline'] as const};
+    const hr = {...actor, permissions: ['view', 'decline'] as const};
     expect(recordContractFlowDecline(record, {...input, actor: hr}).declined).toMatchObject({by: 'manager', reason: 'Resignation'});
     expect(() => recordContractFlowDecline(record, {...input, actor: hr, employeeStepPending: false})).toThrow('pending');
   });

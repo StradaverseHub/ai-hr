@@ -70,13 +70,21 @@ export function routedStepPeople(steps: readonly {who: {kind: string; userIds?: 
   return [...people].slice(0, 200);
 }
 /** Everyone the routing reaches as a recipient: all members of the matched group, or all named people. */
-export function routingRecipients(routing: Routing, facts: RoutingFacts, groupMembers: (groupId: string) => readonly string[] | null): { userIds: string[]; missing: string | null } {
+export function routingRecipients(routing: Routing, facts: RoutingFacts, groupMembers: (groupId: string) => readonly string[] | null, options: {defaultOnEmpty?: boolean} = {}): { userIds: string[]; missing: string | null } {
   const match = resolveRoutingRow(routing, facts);
   if (!match) return { userIds: [], missing: `No row of “${routing.name}” matches this employee.` };
-  if (match.row.assignTo.kind === 'people') return match.row.assignTo.userIds.length ? { userIds: [...new Set(match.row.assignTo.userIds)], missing: null } : { userIds: [], missing: `“${routing.name}” names nobody for this employee.` };
-  const members = groupMembers(match.row.assignTo.groupId);
-  if (!members) return { userIds: [], missing: `The group chosen in “${routing.name}” no longer exists.` };
-  return members.length ? { userIds: [...new Set(members)], missing: null } : { userIds: [], missing: `The group chosen in “${routing.name}” has no members.` };
+  const resolve = (row: RoutingRow): {userIds: string[]; missing: string | null} => {
+    if (row.assignTo.kind === 'people') return row.assignTo.userIds.length ? {userIds: [...new Set(row.assignTo.userIds)], missing: null} : {userIds: [], missing: `“${routing.name}” names nobody for this employee.`};
+    const members = groupMembers(row.assignTo.groupId);
+    if (!members) return {userIds: [], missing: `The group chosen in “${routing.name}” no longer exists.`};
+    return members.length ? {userIds: [...new Set(members)], missing: null} : {userIds: [], missing: `The group chosen in “${routing.name}” has no members.`};
+  };
+  const result = resolve(match.row);
+  // Contract's explicit default is the last resort inside the routing, before the module fallback group.
+  // Do not try a different, less-specific business rule or change existing consumers' matching semantics.
+  if (result.userIds.length || !options.defaultOnEmpty || routingRowSpecificity(match.row) === 0) return result;
+  const defaultRow = routing.rows.find(row => routingRowSpecificity(row) === 0);
+  return defaultRow ? resolve(defaultRow) : result;
 }
 
 /** Save-time problems for a routing. Empty means valid. */

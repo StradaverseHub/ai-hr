@@ -80,7 +80,7 @@ BEGIN
   'templates',app.automation_template_choices('contract_staff'),
   'groups',coalesce((SELECT jsonb_agg(jsonb_build_object('id',g->>'id','name',g->>'name','members',coalesce(g->'members','[]'::jsonb))) FROM
    (SELECT g FROM public.lc_v9_config c CROSS JOIN LATERAL jsonb_array_elements(coalesce(c.data->'groups','[]'::jsonb)) g WHERE c.tenant_id=app.current_tenant_id() LIMIT 200) groups),'[]'::jsonb),
-  'people',coalesce((SELECT jsonb_agg(jsonb_build_object('id',u.id,'name',p.full_name)) FROM
+  'people',coalesce((SELECT jsonb_agg(jsonb_build_object('id',u.id,'personId',u.person_id,'name',p.full_name)) FROM
    (SELECT id,person_id FROM public.app_user WHERE tenant_id=app.current_tenant_id() AND app.contract_verified_human(id) ORDER BY id LIMIT 2000) u
    JOIN public.person p ON p.id=u.person_id AND p.tenant_id=app.current_tenant_id()),'[]'::jsonb),
   'routings',coalesce((SELECT jsonb_agg(jsonb_build_object('id',r.routing_id,'name',r.name,'rows',r.routing_rows)) FROM
