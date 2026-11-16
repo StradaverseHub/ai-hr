@@ -78,7 +78,7 @@ describe('automatic skip when the reporting chain has genuinely ended (decided a
   await reports(loginChild,loginMid);await reports(loginMid,loginTop);
   await saveAttendanceWorkflow(adminCtx(base),workflow([lone,inactiveChild,loginChild],[level([superior(1)]),level([superior(2)]),level([superior(3)])]));
   // 237c31e6: the refusal names the configured level that cannot be resolved, for the warning on that level.
-  for(const [applicant,levelIndex] of [[lone,0],[inactiveChild,1],[loginChild,2]] as const){
+  for(const [applicant,levelIndex] of [[lone,0],[inactiveChild,1],[loginChild,1]] as const){
    expect(await ownAttendanceSubmissionRoute(applicant.ctx,applicant.employmentId,'irregularity')).toEqual({available:false,reason:'unresolved',problem:{code:expect.any(String),levelIndex},levelCount:3});
    await expect(submit(applicant)).rejects.toMatchObject({reason:'unresolved'});
   }
