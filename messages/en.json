@@ -785,7 +785,8 @@
         "dateToLabel": "{name} to",
         "choicePending": "Updating the list…",
         "choiceFailed": "Could not update the list. Try again."
-      }
+      },
+      "rehiredAs": "Rehired as {code}"
     },
     "switcher": {
       "ariaLabel": "Search employee",
@@ -1749,7 +1750,8 @@
           "employmentTypeChange": "Employment Type Change",
           "gradeChange": "Grade Change",
           "joinDateChange": "Join Date Change",
-          "groupJoinDateCorrection": "Group Join Date Correction"
+          "groupJoinDateCorrection": "Group Join Date Correction",
+          "rehire": "Rehired"
         },
         "form": {
           "eventType": "Event Type",
@@ -1799,6 +1801,7 @@
           "closedPayrollTitle": "Payroll for {periods} is already closed.",
           "closedPayrollBody": "This correction updates the employee's record and future processing. The closed payroll, released payslips and statutory submissions keep their finalised figures and will not be recalculated. If an amount needs adjusting, use the payroll correction process. A corrected salary takes effect from the first month after the closed payroll.",
           "closedPayrollAcknowledge": "I understand that closed payroll will not change.",
+          "dateClosedPayrollOptional": "If this date moves across a closed payroll month, tick below. Closed payroll, payslips and statutory submissions stay exactly as they were paid.",
           "mustChange": "Required to change",
           "endDateRequiredContract": "Required because the new Employee Type is Contract. The contract starts on the effective date and must end after it.",
           "endDateRequiredIntern": "Required because the new Employee Type is Intern. The internship must end after the effective date.",
@@ -1917,7 +1920,75 @@
         "payrollClosedBadge": "Payroll closed: {periods}",
         "informationCorrected": "Information corrected",
         "informationNeedsReview": "Correction needs review",
-        "historyBadge": "History"
+        "historyBadge": "History",
+        "rehire": {
+          "intro": "Rehired starts a new employment period for {name}. The previous period ({code}, {start} to {end}), resignation, payslips and EA Forms stay exactly as they are. Personal details, IC, EPF/SOCSO/tax numbers, bank details and login carry over.",
+          "effectiveDate": "Rehired Effective Date",
+          "effectiveDateHint": "After {date}, the last working day",
+          "employeeCode": "New Employee ID",
+          "employeeCodeHint": "Suggested from the company's numbering; you can change it",
+          "employeeCodeAutoHint": "Issued from the company's numbering when you save",
+          "employeeCodeManualHint": "This company has no Employee ID numbering. Enter the new Employee ID.",
+          "groupJoinDate": "Group Join Date",
+          "groupJoinDateHint": "Defaults to the Rehired date. Set an earlier date only if service continues",
+          "none": "None",
+          "selectPlaceholder": "Select…",
+          "cancel": "Cancel",
+          "save": "Save Rehired",
+          "unavailable": "Rehired can be recorded only for a Resigned employee with no current employment.",
+          "previousId": "Returning employee · previous ID {code}",
+          "rollBack": "Roll Back",
+          "rollBackTitle": "Roll back this Rehired event?",
+          "rollBackDescription": "The new employment period and its Employee ID are removed. The previous period stays Resigned and unchanged. This is allowed only while the new period has no payroll, attendance, leave or requests recorded.",
+          "rolledBack": "Rehired event rolled back. The previous period is unchanged.",
+          "error": {
+            "permission": "You do not have permission to record a Rehired event for this employee.",
+            "typeInactive": "The Rehired event type is switched off in Movement Settings.",
+            "notResigned": "Rehired can be recorded only for an employee whose status is Resigned.",
+            "blacklisted": "This employee is Blacklisted. Clear the blacklist before recording Rehired.",
+            "currentEmployment": "This person already has a current or future employment.",
+            "alreadyRehired": "This employment period was already rehired as {code}. Record any further event on that period.",
+            "dateInvalid": "Enter a valid Rehired Effective Date.",
+            "dateNotAfterEnd": "The Rehired Effective Date must be after {date}.",
+            "groupJoinDateInvalid": "The Group Join Date must be a valid date on or before the Rehired Effective Date.",
+            "companyUnavailable": "Choose a company, business unit, position, grade and direct superior you administer.",
+            "departmentRequired": "Choose a department.",
+            "employmentTypeInvalid": "Choose an employment type.",
+            "salaryInvalid": "Enter a basic salary of zero or more.",
+            "employeeCodeRequired": "Enter the new Employee ID.",
+            "employeeCodeNotAllowed": "This company's Employee ID numbering does not allow a manual Employee ID.",
+            "employeeCodeInvalid": "The Employee ID may contain only letters, numbers and dashes, up to 30 characters.",
+            "employeeCodeTaken": "Employee ID {code} is already in use.",
+            "managerInvalid": "Choose another direct superior.",
+            "reasonRequired": "Enter a reason for the roll back.",
+            "rollbackUnavailable": "This employment period was not started by a Rehired event.",
+            "rollbackBlocked": "This Rehired event cannot be rolled back because the new period already has {blockers}."
+          },
+          "blocker": {
+            "payroll": "payroll records",
+            "attendance": "attendance records",
+            "leave": "leave taken",
+            "request": "requests",
+            "lifecycle": "a recorded exit",
+            "movement": "later movement or salary changes",
+            "reports": "employees reporting to them",
+            "other": "other recorded activity"
+          }
+        },
+        "periods": {
+          "title": "Employment Periods",
+          "period": "Period",
+          "employeeId": "Employee ID",
+          "company": "Company",
+          "dates": "Dates",
+          "status": "Status",
+          "current": "Current",
+          "previous": "Previous",
+          "range": "{start} to {end}",
+          "onwards": "{start} onwards",
+          "rehiredAs": "Rehired as {code}",
+          "rehiredFrom": "Rehired from {code}"
+        }
       },
       "salaryCurrency": "Currency",
       "emergency": {
@@ -3552,6 +3623,7 @@
       "effectiveDate": "Effective Date",
       "effectiveDateHint": "Any date from {start} up to today ({today}). Defaults to today.",
       "effectiveDateFollowsJoin": "Earliest date: {start}, the Group Join Date entered below.",
+      "historyClosedPayroll": "Closed payroll kept unchanged: {periods}.",
       "effectiveDateJoin": "Choosing {start}, the Group Join Date, corrects the employee’s original hire details. Company, Employment Type, Business Unit, Department, Position, organisation labels and Direct Superior apply from the Effective Date until the next recorded change.",
       "timeline": {
         "title": "Records in Effective Date order",

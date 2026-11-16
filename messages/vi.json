@@ -785,7 +785,8 @@
         "dateToLabel": "{name} đến",
         "choicePending": "Đang cập nhật danh sách…",
         "choiceFailed": "Không thể cập nhật danh sách. Hãy thử lại."
-      }
+      },
+      "rehiredAs": "Đã tái tuyển dụng với mã {code}"
     },
     "switcher": {
       "ariaLabel": "Tìm nhân viên",
@@ -1749,7 +1750,8 @@
           "employmentTypeChange": "Thay đổi loại hình lao động",
           "gradeChange": "Thay đổi cấp bậc",
           "joinDateChange": "Thay đổi Ngày gia nhập",
-          "groupJoinDateCorrection": "Điều chỉnh Ngày gia nhập tập đoàn"
+          "groupJoinDateCorrection": "Điều chỉnh Ngày gia nhập tập đoàn",
+          "rehire": "Tái tuyển dụng"
         },
         "form": {
           "eventType": "Loại sự kiện",
@@ -1799,6 +1801,7 @@
           "closedPayrollTitle": "Bảng lương {periods} đã được khóa sổ.",
           "closedPayrollBody": "Việc điều chỉnh này cập nhật hồ sơ nhân viên và các lần xử lý sau. Bảng lương đã khóa, phiếu lương đã phát hành và các hồ sơ nộp theo luật định giữ nguyên số liệu cuối cùng và sẽ không được tính lại. Nếu cần điều chỉnh số tiền, hãy dùng quy trình điều chỉnh lương. Mức lương đã điều chỉnh có hiệu lực từ tháng đầu tiên sau kỳ lương đã khóa.",
           "closedPayrollAcknowledge": "Tôi hiểu rằng bảng lương đã khóa sẽ không thay đổi.",
+          "dateClosedPayrollOptional": "Nếu ngày này vượt qua tháng lương đã chốt, hãy đánh dấu bên dưới. Bảng lương đã chốt, phiếu lương và hồ sơ nộp theo luật định giữ nguyên như khi đã trả.",
           "mustChange": "Bắt buộc thay đổi",
           "endDateRequiredContract": "Bắt buộc vì Loại nhân viên mới là Hợp đồng. Hợp đồng bắt đầu từ ngày hiệu lực và phải kết thúc sau ngày đó.",
           "endDateRequiredIntern": "Bắt buộc vì Loại nhân viên mới là Thực tập. Kỳ thực tập phải kết thúc sau ngày hiệu lực.",
@@ -1917,7 +1920,75 @@
         "payrollClosedBadge": "Đã khóa lương: {periods}",
         "informationCorrected": "Thông tin đã được sửa",
         "informationNeedsReview": "Cần xem xét bản sửa đổi",
-        "historyBadge": "Lịch sử"
+        "historyBadge": "Lịch sử",
+        "rehire": {
+          "intro": "Tái tuyển dụng bắt đầu một giai đoạn làm việc mới cho {name}. Giai đoạn trước ({code}, {start} đến {end}), việc nghỉ việc, phiếu lương và Biểu mẫu EA được giữ nguyên. Thông tin cá nhân, số CMND/IC, số EPF/SOCSO/thuế, thông tin ngân hàng và tài khoản đăng nhập được giữ lại.",
+          "effectiveDate": "Ngày hiệu lực tái tuyển dụng",
+          "effectiveDateHint": "Sau ngày {date}, ngày làm việc cuối cùng",
+          "employeeCode": "Mã nhân viên mới",
+          "employeeCodeHint": "Được gợi ý theo quy tắc đánh số của công ty; bạn có thể thay đổi",
+          "employeeCodeAutoHint": "Được cấp theo quy tắc đánh số của công ty khi lưu",
+          "employeeCodeManualHint": "Công ty này chưa có quy tắc đánh số mã nhân viên. Hãy nhập mã nhân viên mới.",
+          "groupJoinDate": "Ngày gia nhập tập đoàn",
+          "groupJoinDateHint": "Mặc định là ngày tái tuyển dụng. Chỉ đặt ngày sớm hơn nếu thâm niên được tính liên tục",
+          "none": "Không có",
+          "selectPlaceholder": "Chọn…",
+          "cancel": "Hủy",
+          "save": "Lưu tái tuyển dụng",
+          "unavailable": "Chỉ có thể ghi nhận tái tuyển dụng cho nhân viên đã nghỉ việc và không có hợp đồng hiện tại.",
+          "previousId": "Nhân viên quay lại · mã trước đây {code}",
+          "rollBack": "Hoàn tác",
+          "rollBackTitle": "Hoàn tác sự kiện tái tuyển dụng này?",
+          "rollBackDescription": "Giai đoạn làm việc mới và mã nhân viên của nó sẽ bị xóa. Giai đoạn trước vẫn ở trạng thái Đã nghỉ việc và không thay đổi. Chỉ được phép khi giai đoạn mới chưa có lương, chấm công, nghỉ phép hoặc yêu cầu.",
+          "rolledBack": "Đã hoàn tác sự kiện tái tuyển dụng. Giai đoạn trước không thay đổi.",
+          "error": {
+            "permission": "Bạn không có quyền ghi nhận tái tuyển dụng cho nhân viên này.",
+            "typeInactive": "Loại sự kiện tái tuyển dụng đã bị tắt trong Cài đặt biến động.",
+            "notResigned": "Chỉ có thể ghi nhận tái tuyển dụng cho nhân viên có trạng thái Đã nghỉ việc.",
+            "blacklisted": "Nhân viên này nằm trong danh sách đen. Hãy gỡ khỏi danh sách đen trước khi tái tuyển dụng.",
+            "currentEmployment": "Người này đã có một hợp đồng hiện tại hoặc trong tương lai.",
+            "alreadyRehired": "Giai đoạn này đã được tái tuyển dụng với mã {code}. Hãy ghi các sự kiện tiếp theo vào giai đoạn đó.",
+            "dateInvalid": "Hãy nhập ngày hiệu lực tái tuyển dụng hợp lệ.",
+            "dateNotAfterEnd": "Ngày hiệu lực tái tuyển dụng phải sau ngày {date}.",
+            "groupJoinDateInvalid": "Ngày gia nhập tập đoàn phải là ngày hợp lệ, không muộn hơn ngày hiệu lực tái tuyển dụng.",
+            "companyUnavailable": "Hãy chọn công ty, đơn vị kinh doanh, vị trí, bậc và cấp trên trực tiếp mà bạn quản lý.",
+            "departmentRequired": "Hãy chọn phòng ban.",
+            "employmentTypeInvalid": "Hãy chọn loại hình làm việc.",
+            "salaryInvalid": "Hãy nhập lương cơ bản từ 0 trở lên.",
+            "employeeCodeRequired": "Hãy nhập mã nhân viên mới.",
+            "employeeCodeNotAllowed": "Quy tắc đánh số của công ty này không cho phép nhập mã nhân viên thủ công.",
+            "employeeCodeInvalid": "Mã nhân viên chỉ gồm chữ, số và dấu gạch ngang, tối đa 30 ký tự.",
+            "employeeCodeTaken": "Mã nhân viên {code} đã được sử dụng.",
+            "managerInvalid": "Hãy chọn cấp trên trực tiếp khác.",
+            "reasonRequired": "Hãy nhập lý do hoàn tác.",
+            "rollbackUnavailable": "Giai đoạn này không bắt đầu từ sự kiện tái tuyển dụng.",
+            "rollbackBlocked": "Không thể hoàn tác sự kiện tái tuyển dụng vì giai đoạn mới đã có {blockers}."
+          },
+          "blocker": {
+            "payroll": "dữ liệu lương",
+            "attendance": "dữ liệu chấm công",
+            "leave": "ngày nghỉ đã dùng",
+            "request": "yêu cầu",
+            "lifecycle": "ghi nhận nghỉ việc",
+            "movement": "biến động hoặc thay đổi lương sau đó",
+            "reports": "nhân viên báo cáo trực tiếp",
+            "other": "hoạt động khác đã ghi nhận"
+          }
+        },
+        "periods": {
+          "title": "Các giai đoạn làm việc",
+          "period": "Giai đoạn",
+          "employeeId": "Mã nhân viên",
+          "company": "Công ty",
+          "dates": "Thời gian",
+          "status": "Trạng thái",
+          "current": "Hiện tại",
+          "previous": "Trước đây",
+          "range": "{start} đến {end}",
+          "onwards": "Từ {start}",
+          "rehiredAs": "Đã tái tuyển dụng với mã {code}",
+          "rehiredFrom": "Tái tuyển dụng từ {code}"
+        }
       },
       "salaryCurrency": "Tiền tệ",
       "emergency": {
@@ -3552,6 +3623,7 @@
       "effectiveDate": "Ngày hiệu lực",
       "effectiveDateHint": "Bất kỳ ngày nào từ {start} đến hôm nay ({today}). Mặc định là hôm nay.",
       "effectiveDateFollowsJoin": "Ngày sớm nhất: {start}, Ngày gia nhập tập đoàn đã nhập bên dưới.",
+      "historyClosedPayroll": "Bảng lương đã chốt giữ nguyên: {periods}.",
       "effectiveDateJoin": "Chọn {start}, Ngày gia nhập tập đoàn, sẽ sửa thông tin tuyển dụng ban đầu của nhân viên. Công ty, Loại hình lao động, Đơn vị kinh doanh, Phòng ban, Chức vụ, nhãn tổ chức và Cấp trên trực tiếp áp dụng từ Ngày hiệu lực đến thay đổi được ghi nhận tiếp theo.",
       "timeline": {
         "title": "Các bản ghi theo thứ tự Ngày hiệu lực",

@@ -5,6 +5,7 @@ import {personnelPrivateCriteriaFrom, personnelPrivateCriteriaSql} from '@/core/
 import {employeeListColumnsFrom, LIST_PREFERENCES_SQL} from '@/core/employee-list-prefs';
 import {administratorPhotoRowsSql, employmentPhotoIdsTx} from '@/core/person-photo';
 import {listConfigs} from '@/core/employee-id-config';
+import {rehiredAsForEmploymentsTx} from '@/core/rehire';
 import type {WorkforcePageRead} from '@/lib/workforce-authz';
 import {sql} from 'drizzle-orm';
 import type {PageQuery} from '@/lib/pagination';
@@ -45,9 +46,13 @@ export async function readPersonnelPageTx(access: WorkforcePageRead, p: {
   const employees = query.draftOnly ? [] : overview.employees.rows;
   // 597c810a — photos for the page's own rows only, after the rows are known.
   const photoIds = overview.pagePhotos ?? await employmentPhotoIdsTx(tx, session, employees.map(e => e.employmentId));
+  // Board 511aa74a — "Rehired as {code}" for the page's own rows: one bounded statement, only when a row has
+  // ended (only an ended period can have been rehired from).
+  const ended = employees.filter(e => e.terminatedOn || e.lastWorkingDate || e.resignationDate).map(e => e.employmentId);
+  const rehiredAs = ended.length ? await rehiredAsForEmploymentsTx(tx, ended) : new Map<string, {employmentId: string; employeeCode: string | null}>();
   return {
     session, scopeIds, maintainIds, canCreate, overview,
     privateCriteria: criteria ? personnelPrivateCriteriaFrom(overview.attached.criteria) : null,
-    companies, departments, drafts, savedColumns: employeeListColumnsFrom(access.extra), idConfigs, photoIds,
+    companies, departments, drafts, savedColumns: employeeListColumnsFrom(access.extra), idConfigs, photoIds, rehiredAs,
   };
 }

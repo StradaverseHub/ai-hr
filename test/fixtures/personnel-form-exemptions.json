@@ -559,8 +559,8 @@
       "context": "MovementNewEvent",
       "name": "acknowledgeClosedPayroll",
       "hidden": false,
-      "occurrences": 1,
-      "reason": "646355e5 (ADR-0164) closed-payroll acknowledgement on a movement correction: an instruction to the correction service (MovementClosedPayrollAcknowledgementError), not a Personnel fact. The checkbox shipped with 646355e5 without an exemption entry."
+      "occurrences": 2,
+      "reason": "646355e5 (ADR-0164) closed-payroll acknowledgement on a movement correction: an instruction to the correction service (MovementClosedPayrollAcknowledgementError), not a Personnel fact. The checkbox shipped with 646355e5 without an exemption entry. Board 4604dccc r3 adds the second occurrence: the same confirmation on a new Group Join Date Correction / Join Date Change."
     },
     {
       "tag": "input",
@@ -917,9 +917,9 @@
       "tag": "input",
       "context": "MovementHistoryActions",
       "hidden": true,
-      "occurrences": 1,
+      "occurrences": 2,
       "name": "employmentId",
-      "reason": "Guarded action record/subject pointer (employmentId) used by MovementHistoryActions (Employment History Roll Back); the server owner checks subject/record scope. This does not edit a Personnel fact."
+      "reason": "Guarded action record/subject pointer (employmentId) used by MovementHistoryActions (Employment History Roll Back); the server owner checks subject/record scope. This does not edit a Personnel fact. Board 511aa74a: the Rehired Roll Back form carries the same pointer to the rehired period."
     },
     {
       "tag": "input",
@@ -933,9 +933,9 @@
       "tag": "input",
       "context": "MovementHistoryActions",
       "hidden": true,
-      "occurrences": 1,
+      "occurrences": 2,
       "name": "movementPage",
-      "reason": "Fixed navigation mode for the action return."
+      "reason": "Fixed navigation mode for the action return. Board 511aa74a: the Rehired Roll Back form carries the same return mode."
     },
     {
       "tag": "input",
@@ -952,6 +952,24 @@
       "occurrences": 1,
       "name": "from",
       "reason": "Carries the validated return destination for the action."
+    }
+  ],
+  "app/admin/personnel/[employmentId]/rehire-form.tsx": [
+    {
+      "tag": "input",
+      "context": "RehireEventForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) naming the previous period a Rehired event starts from; core/rehire.ts checks Workforce maintain on it and on the person. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "RehireEventForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employeeIdMode",
+      "reason": "Auto Running Number or Manual Key In, derived from the company's Employee ID setup and whether HR kept the suggested number; core/rehire.ts re-resolves the live setup and refuses a manual ID the setup does not allow. It carries no Personnel fact."
     }
   ]
 }

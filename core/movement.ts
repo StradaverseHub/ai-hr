@@ -4,7 +4,8 @@ import {personnelInformationCorrections,type InformationHistoryCorrection} from 
 import {withProbationPersonnelIntentTx,withProbationDateShiftIntentTx,probationMovementAuthorityTx} from './probation-effect-authority';
 import { withExitDateAuthorityTx } from './exit-date-authority';
 import { isDatabaseError } from '../lib/db-error';
-import { hasClosedPayrollCorrectionAuthorityTx, withClosedPayrollCorrectionAuthorityTx } from './closed-payroll-correction-authority';
+import { hasClosedPayrollCorrectionAuthorityTx, withClosedPayrollCorrectionAuthorityTx, MovementClosedPayrollAcknowledgementError, payrollPreservationRefusal } from './closed-payroll-correction-authority';
+export { MovementClosedPayrollAcknowledgementError };
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,workforceEmploymentPredicate,WorkforceAccessError} from './workforce-access';
 import {withAccessDisplayRead} from './access-configuration-lock';
 import {withPersonnelRead} from './personnel-read-bounds';
@@ -277,6 +278,8 @@ export type MovementHistoryRow = {
    * canonical movementHistoryTx always supplies it, null for rows without a recorded exit event. */
   recordedExit?: MovementRecordedExit | null;
   recordedResignation?: MovementRecordedResignation | null;
+  /** Board 511aa74a — on a Rehired row only: the previous period it started from, as recorded on the event. */
+  rehiredFrom?: { employmentId: string; employeeCode: string | null } | null;
 };
 
 /**
@@ -1293,6 +1296,8 @@ type Correctability = { canReverse: boolean; canEdit: boolean; stateChanging: bo
 function correctabilityOf(row: ProjectedRow, group: RawEvent[], isLatest: boolean, behaviour:string|null): Correctability {
   const stateChanging = group.some((e) => STATE_CHANGING_EVENT_TYPES.has(e.eventType));
   if (!group.length || !behaviour) return { canReverse: false, canEdit: false, stateChanging };
+  // Board 511aa74a — a Rehired event created an employment; only its own Roll Back (core/rehire.ts) can undo it.
+  if (behaviour === 'rehire') return { canReverse: false, canEdit: false, stateChanging };
   // 1d58019a Step 2 (ADR-0166) — a Termination row must BE a termination in the ledger: its own
   // employment.terminated leg, or the scheduled intent. Since a tenant's own type may carry the Termination
   // behaviour, a type re-pointed around the service after use (the service locks a used type's behaviour)
@@ -1606,6 +1611,14 @@ async function personnelCorrectionViewTx(tx:Tx,events:RawEvent[],rows:ProjectedR
  }};
 }
 
+/** Board 511aa74a — the previous period a Rehired event names (core/rehire.ts writes both keys). */
+function rehiredFromOf(payload: unknown): { employmentId: string; employeeCode: string | null } | null {
+  const p = (payload ?? {}) as { fromEmploymentId?: unknown; previousEmployeeCode?: unknown };
+  return typeof p.fromEmploymentId === 'string'
+    ? { employmentId: p.fromEmploymentId, employeeCode: typeof p.previousEmployeeCode === 'string' ? p.previousEmployeeCode : null }
+    : null;
+}
+
 /** The Employment History list — a Hired-first, date-ascending projection over the event ledger. */
 export async function movementHistory(ctx: SessionContext, employmentId: string): Promise<MovementHistoryRow[]> {
   return (await readWorkforceMovementHistory(ctx,employmentId)).movements;
@@ -1722,6 +1735,7 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
         hireCorrection: r.kind === 'hired' ? hireTrace : null,
         recordedExit: primaryEvent ? movementRecordedExitOf(primaryEvent, (code) => resolvedTypes.get(code)?.behaviourKind) : null,
         recordedResignation:primaryEvent?movementRecordedResignationOf(primaryEvent):null,
+        ...(r.kind==='rehire'&&primaryEvent?{rehiredFrom:rehiredFromOf(primaryEvent.payload)}:{}),
       };
     });
     const resignation=includeResignation?await resignationInformationFromProjection(tx,employmentId,projection):null;
@@ -2229,6 +2243,9 @@ export function movementCurrentStateTx(tx:Tx,employmentId:string):Promise<Moveme
 
 export type CreateMovementInput = {
   employmentId: string;
+  /** Board 4604dccc r3 — HR confirmed closed payroll between the old and new date stays as paid (Group Join Date
+   *  Correction and Join Date Change only; every other kind ignores it). */
+  acknowledgeClosedPayroll?: boolean;
   /**
    * 476f23ed — WIDENED from MovementKind to string. The submitted type may be one of the ORGANISATION's
    * own catalogue codes (Movement Settings), which by definition cannot be enumerated at compile time.
@@ -3392,12 +3409,16 @@ async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateM
     // (internal company transfer, rehire into another group company, restructure). The effective date IS the
     // new Join Date. The Group Join Date is deliberately untouched — group service continues across the move,
     // which is the whole point of keeping the two dates apart.
-    case 'joinDateChange':
-      return setEmploymentInfo(ctx, {
+    // Board 4604dccc r3 — a closed payroll between the old and new date needs HR's confirmation (acknowledgeClosedPayroll),
+    // which enters Movement's correction authority for this writer only; closed payroll stays as paid.
+    case 'joinDateChange': {
+      const write = () => setEmploymentInfo(ctx, {
         employmentId: p.employmentId,
         joinDate: p.effectiveDate,
         movement: { type: 'joinDateChange', remarks, groupId: randomUUID() },
       },tx);
+      return p.acknowledgeClosedPayroll === true ? withClosedPayrollCorrectionAuthorityTx(tx, p.employmentId, write) : write();
+    }
 
     // 89ea527b — Group Join Date Correction: the authorized historical-data correction of the master service
     // date. This is the ONLY route to hired_on after creation, and it MOVES LEAVE ENTITLEMENT (service bands
@@ -3406,11 +3427,12 @@ async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateM
     // Board 4604dccc r2 — the dated records then start on the corrected date, so movements dated between the new and
     // the old Group Join Date can be recorded after it (New Event, or later rows of the same Movement import).
     case 'groupJoinDateCorrection': {
-      const saved = await setEmploymentInfo(ctx, {
+      const write = () => setEmploymentInfo(ctx, {
         employmentId: p.employmentId,
         hiredOn: p.effectiveDate,
         movement: { type: 'groupJoinDateCorrection', remarks, groupId: randomUUID() },
       },tx);
+      const saved = p.acknowledgeClosedPayroll === true ? await withClosedPayrollCorrectionAuthorityTx(tx, p.employmentId, write) : await write();
       await alignHistoryToGroupJoinDateTx(tx, ctx, p.employmentId, 'groupJoinDateCorrection', (message) => new Error(message));
       return saved;
     }
@@ -3805,14 +3827,6 @@ export class MovementReasonRequiredError extends Error {
  * not confirmed that closed payroll stays as issued. Correcting is allowed (the approved plan); doing it
  * without that explicit acknowledgement is not. `periods` are the closed 'YYYY-MM' months involved.
  */
-export class MovementClosedPayrollAcknowledgementError extends Error {
-  constructor(readonly periods: string[]) {
-    super(
-      `Payroll for ${periods.join(', ')} is already closed. Confirm that the closed payroll, released payslips and statutory submissions will not change, then save the correction again.`,
-    );
-    this.name = 'MovementClosedPayrollAcknowledgementError';
-  }
-}
 
 function assertMovementAdmin(ctx: SessionContext, what: string): void {
   const roles = ctx.roles ?? [];
@@ -4550,18 +4564,14 @@ async function reversalGuardTx(tx: Tx, ctx: SessionContext, employmentId: string
 
 /**
  * 646355e5 — before an acknowledged correction behind closed payroll changes anything, retain the issued
- * payslip document metadata through the ADR-0163 owner. Same readiness rule: a payslip whose original
- * metadata can no longer be verified refuses the correction rather than stamping today's master as issued.
+ * payslip document metadata through the ADR-0163 owner. Board 4604dccc r3 (migration 5690): the owner fixes each
+ * payslip's details from the recorded history as at its payroll, so payroll history no longer refuses the correction.
  * Payroll transactions and canonical payslip amounts are never touched here.
  */
 async function preserveClosedPayrollDocumentsTx(tx: Tx, employmentId: string): Promise<number> {
-  const [ready] = await tx.execute<{ ready: boolean }>(sql`select app.information_payroll_ready(${employmentId}::uuid) as ready`);
-  if (!ready?.ready) {
-    throw new MovementNotCorrectableError(
-      'Original historical information cannot be verified after intervening changes. Ask the payroll administrator to reconcile the historical document evidence before correcting this event.',
-    );
-  }
-  const [preserved] = await tx.execute<{ count: number }>(sql`select app.preserve_information_payroll(${employmentId}::uuid) as count`);
+  let preserved: { count: number } | undefined;
+  try { [preserved] = await tx.execute<{ count: number }>(sql`select app.preserve_information_payroll(${employmentId}::uuid) as count`); }
+  catch (error) { const refusal = payrollPreservationRefusal(error); if (refusal) throw new MovementNotCorrectableError(refusal); throw error; }
   return Number(preserved?.count ?? 0);
 }
 

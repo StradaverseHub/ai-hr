@@ -15,7 +15,7 @@
  * the whole design of 476f23ed, and this list is the fixed half of it.
  */
 
-/** The movement kinds HR can CREATE from the New Event form. Rehire is a future enhancement; a "custom
+/** The movement kinds HR can CREATE from the New Event form. A "custom
  *  event" is no longer one — since 476f23ed a tenant adds its own through Movement Settings, mapped onto
  *  one of the kinds below. */
 export const MOVEMENT_KINDS = [
@@ -48,6 +48,10 @@ export const MOVEMENT_KINDS = [
   'joinDateChange',
   'groupJoinDateCorrection',
   'historicalHire',
+  // Board 511aa74a — REHIRED. A resigned employee returns: a NEW employment for the SAME person (core/rehire.ts),
+  // recorded from New Event only (not the movement import). Its own command, never the generic dispatcher; not
+  // a comparison kind and not configurable, so no tenant type can carry it.
+  'rehire',
 ] as const;
 export type MovementKind = (typeof MOVEMENT_KINDS)[number];
 

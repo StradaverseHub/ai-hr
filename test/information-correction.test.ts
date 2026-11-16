@@ -122,12 +122,17 @@ describe('8550b282 information-only corrections',()=>{
   await expect(apply(permanent,{employmentType:'contract'})).rejects.toThrow('contract start and end');
   expect(await informationCorrectionHistory(ctx(),id)).toHaveLength(1);expect(await informationCorrectionHistory(ctx(),permanent)).toHaveLength(0);
  });
- it('stops when historical original metadata cannot be verified after a later change',async()=>{
-  const id=await fixture();await closedSlip(id);
+ // Board 4604dccc r3 (migration 5690) — a later change no longer stops the correction: the payslip keeps the grade it
+ // was issued with, taken from the recorded change, and the later grade is never stamped onto it.
+ it('corrects after a later change, keeping the payslip grade from the recorded history',async()=>{
+  const id=await fixture();const {slip}=await closedSlip(id);
   const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:'G02',name:'Changed later'}).returning();
   await setEmploymentGrade(ctx(),{employmentId:id,gradeId:grade.id});
-  await expect(apply(id,{hiredOn:'2025-01-01'})).rejects.toThrow('Original historical information cannot be verified');
-  expect(await owner.db.select().from(schema.informationPayslipSnapshot)).toHaveLength(0);
+  await apply(id,{hiredOn:'2025-01-01'});
+  const [snapshot]=await owner.db.select().from(schema.informationPayslipSnapshot).where(eq(schema.informationPayslipSnapshot.payslipId,slip.id));
+  expect(snapshot.grade).not.toBe('Changed later');
+  expect((snapshot.documentMetadata as {snapshotBasis:{reconstructed:string[]}}).snapshotBasis.reconstructed).toContain('jobGrade');
+  expect((await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,slip.id)))[0]).toEqual(slip);
  });
  it('corrects a compatible company without moving prior payroll or its dated assignment',async()=>{
   const id=await fixture(),{slip,batch}=await closedSlip(id,{epfEmployee:315,epfEmployer:369,pcb:10,socsoEmployee:12,socsoEmployer:18,eisEmployee:3,eisEmployer:3,bases:{epf:3000,socso:3000,eis:3000}});
@@ -316,7 +321,6 @@ describe('8550b282 information-only corrections',()=>{
   const id=await fixture(),{slip}=await closedSlip(id);
   const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:'LEGACY',name:'Later grade'}).returning();
   await setEmploymentGrade(ctx(),{employmentId:id,gradeId:grade.id});
-  await expect(apply(id,{hiredOn:'2025-01-01'})).rejects.toThrow('reconcile the historical');
   const manifest={version:1 as const,tenantId:b.tenantId,actorUserId:ctx().userId!,verifiedOriginals:true as const,items:[{payslipId:slip.id,employmentId:id,companyId:b.companyId,original:{grade:null,employmentType:'full_time' as const,hiredOn:'2025-01-15',joinDate:null},evidence:[{path:'private-original.pdf',sha256:'a'.repeat(64),reference:'Reviewed original statement'}]}]};
   expect(await reconcileInformationSnapshots(owner,manifest)).toMatchObject({mode:'dry-run',missing:1});
   expect(await owner.db.select().from(schema.informationPayslipSnapshot)).toHaveLength(0);

@@ -22,8 +22,10 @@ async function closedSlip(id:string){
  const [batch]=await owner.db.insert(s.payrollBatch).values({tenantId:b.tenantId,companyId:b.companyId,payPeriodId:period.id,payPeriod:'2026-06',batchDate:'2026-06-25',status:'closed',releasedAt:new Date('2026-06-25T00:00:00Z')}).returning();
  const [slip]=await owner.db.insert(s.payslip).values({tenantId:b.tenantId,batchId:batch.id,employmentId:id,basicSalary:'3000.00',grossPay:'3000.00',statutory:{epfEmployee:330,epfEmployer:390},totalDeductions:'330.00',netPay:'2670.00',employerCost:'3390.00'}).returning();return{batch,slip};
 }
-const repair=readFileSync('db/migrations/0873_movement_exit_payroll_preservation.sql','utf8');
-async function installRepair(){for(const block of repair.split('--> statement-breakpoint'))if(block.trim())await owner.client.unsafe(block);}
+// Restores the installed owners after a test swaps in the 0698 original: 0873, then every later replacement of the same
+// functions (board 4604dccc r3: 5690), so the shared test database never keeps an older definition for later tests.
+const repairs=['0873_movement_exit_payroll_preservation','5690_information_payslip_snapshot_from_history'].map(tag=>readFileSync(`db/migrations/${tag}.sql`,'utf8'));
+async function installRepair(){for(const repair of repairs)for(const block of repair.split('--> statement-breakpoint'))if(block.trim())await owner.client.unsafe(block);}
 describe('646355e5 — ended employment retains finalised payroll before correction',()=>{
  it('upgrades the populated strict helper and restores the employee while keeping the payslip document byte-identical',async()=>{
   const {employmentId}=await hire(),ctx=adminCtx(b);
@@ -53,12 +55,24 @@ describe('646355e5 — ended employment retains finalised payroll before correct
   expect((await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,batch.id)))[0]).toEqual(batch);
   const after=await payslipForReview(ctx,{companyIds:[b.companyId],payslipId:slip.id});expect(after).toEqual(before);expect(await document(after!)).toEqual(pdfBefore);
  });
- it('refuses to invent original metadata after a legacy primary-only exit changed status after closure',async()=>{
+ // Board 4604dccc r3 (migration 5690) — a later change no longer refuses: the snapshot is taken from the recorded
+ // history as at the payroll, nothing unknowable is invented (it keeps what the document shows), payroll is untouched.
+ it('preserves the payslip details from recorded history after a legacy primary-only exit changed status after closure',async()=>{
   const {employmentId}=await hire(),ctx=adminCtx(b),{slip}=await closedSlip(employmentId);
   await terminateEmployment(ctx,{employmentId,terminationDate:day(-2),terminationReason:'Fictional legacy direct exit'});
-  const [ready]=await withTenant(ctx,tx=>tx.execute<{ready:boolean}>(sql`select app.information_payroll_ready(${employmentId}::uuid) as ready`));expect(ready.ready).toBe(false);
-  await expect(withTenant(ctx,tx=>tx.execute(sql`select app.preserve_information_payroll(${employmentId}::uuid)`))).rejects.toThrow();
-  expect(await owner.db.select().from(s.informationPayslipSnapshot).where(eq(s.informationPayslipSnapshot.employmentId,employmentId))).toHaveLength(0);
+  // Readiness now answers only who may correct; the payroll history is not part of it.
+  const [access]=await withTenant(ctx,tx=>tx.execute<{ready:boolean;access:boolean}>(sql`select app.information_payroll_ready(${employmentId}::uuid) as ready,(app.is_admin_for(e.company_id) and app.access_workforce_employment(e.id,'workforce.maintain')) as access from employment e where e.id=${employmentId}::uuid`));
+  expect(access.ready).toBe(access.access);
+  const snapshots=()=>owner.db.select().from(s.informationPayslipSnapshot).where(eq(s.informationPayslipSnapshot.employmentId,employmentId));
+  if(access.access){
+   await withTenant(ctx,tx=>tx.execute(sql`select app.preserve_information_payroll(${employmentId}::uuid)`));
+   const rows=await snapshots();expect(rows).toHaveLength(1);
+   expect((rows[0].documentMetadata as {snapshotBasis?:{reconstructed:string[];asDisplayed:string[]}}).snapshotBasis).toBeTruthy();
+  }else{
+   // Refused by access (42501), never by the payroll history.
+   let failure:unknown;try{await withTenant(ctx,tx=>tx.execute(sql`select app.preserve_information_payroll(${employmentId}::uuid)`));}catch(error){failure=error;}
+   expect(pgSqlState(failure)).toBe('42501');expect(await snapshots()).toHaveLength(0);
+  }
   expect((await owner.db.select().from(s.payslip).where(eq(s.payslip.id,slip.id)))[0]).toEqual(slip);
  });
 });

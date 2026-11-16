@@ -5960,6 +5960,20 @@
       "breakpoints": true
     },
     {
+      "idx": 5090,
+      "version": "7",
+      "when": 1793330005390,
+      "tag": "5690_information_payslip_snapshot_from_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 5095,
+      "version": "7",
+      "when": 1793330005395,
+      "tag": "5695_employment_rehire_link",
+      "breakpoints": true
+    },
+    {
       "idx": 5140,
       "version": "7",
       "when": 1793330005440,
