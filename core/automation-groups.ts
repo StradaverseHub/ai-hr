@@ -8,7 +8,7 @@ import {pgSqlState} from '../lib/db-error';
 export type AutomationAssignmentGroup={id:string;name:string;members:string[];limit:number};
 export type AutomationGroupWorkspace={revision:number;v9Revision:number|null;groups:AutomationAssignmentGroup[];people:{id:string;name:string}[]};
 const group=z.object({id:z.string().regex(/^[A-Za-z0-9_-]{1,100}$/),name:z.string().trim().min(1).max(200),members:z.array(z.uuid()).max(500),limit:z.number().int().min(0).max(1000)}).strict();
-const schema=z.object({revision:z.number().int().positive(),v9Revision:z.number().int().positive().nullable(),groups:z.array(group).max(500),reason:z.string().trim().min(1).max(1000)}).strict();
+const schema=z.object({revision:z.number().int().positive(),v9Revision:z.number().int().positive().nullable(),groups:z.array(group).max(100),reason:z.string().trim().min(1).max(1000)}).strict();
 export function automationGroupWorkspace(ctx:SessionContext):Promise<AutomationGroupWorkspace|null>{
  return withScopedLifecycleTenant(ctx,async tx=>(await tx.execute<{data:AutomationGroupWorkspace|null}>(sql`select app.automation_assignment_group_workspace() as data`))[0]?.data??null);
 }

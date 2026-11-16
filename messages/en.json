@@ -40744,7 +40744,7 @@
       "removeLabel": "Remove {person} from {group}",
       "noMembers": "No members. Work that needs this group will need attention.",
       "discardNew": "Discard new group",
-      "behavior": "Open task limits keep their existing Onboarding and Offboarding behavior. Contract approvals use the selected assignment method. To replace or delete an existing group, use the existing group replacement flow after checking its references.",
+      "behavior": "Existing memberships are retained here. Open task limits keep their existing Onboarding and Offboarding behavior; Contract approvals use the selected assignment method. Group deletion and member removal stay with the existing authorized lifecycle group flow.",
       "invalid": "Use a different name for each group and a whole task limit between 0 and 1,000.",
       "saved": "Assignment groups saved.",
       "failed": "Groups could not be saved. Your changes are kept here; try again.",

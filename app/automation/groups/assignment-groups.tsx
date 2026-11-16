@@ -19,7 +19,7 @@ export function AssignmentGroups({initial,usedBy}:{initial:AutomationGroupWorksp
   }catch{setNotice({error:true,text:t('failed')});}
  });
  return <section className="v9-stack" aria-labelledby="shared-group-members-title">
-  <div className="automation-row automation-between"><div><h2 id="shared-group-members-title">{common('groups.title')}</h2><p className="v9-muted">{t('intro')}</p></div><button type="button" className="v9-button" disabled={busy||draft.groups.length>=500} onClick={()=>edit(next=>{next.groups.push({id:crypto.randomUUID(),name:t('new'),members:[],limit:20});})}>{t('new')}</button></div>
+  <div className="automation-row automation-between"><div><h2 id="shared-group-members-title">{common('groups.title')}</h2><p className="v9-muted">{t('intro')}</p></div><button type="button" className="v9-button" disabled={busy||draft.groups.length>=100} onClick={()=>edit(next=>{next.groups.push({id:crypto.randomUUID(),name:t('new'),members:[],limit:20});})}>{t('new')}</button></div>
   {!draft.groups.length&&<p className="v9-notice">{t('empty')}</p>}
   <div className="pcg-grid2">{draft.groups.map(group=><article className="pcg-card v9-stack" key={group.id} aria-label={group.name||t('unnamed')}>
    <div className="v9-fields"><label className="v9-field"><span>{t('name')}</span><input value={group.name} maxLength={200} disabled={busy} onChange={event=>edit(next=>{next.groups.find(item=>item.id===group.id)!.name=event.target.value;})}/></label><label className="v9-field"><span>{t('limit')}</span><input type="number" min={0} max={1000} step={1} value={group.limit} disabled={busy} onChange={event=>edit(next=>{next.groups.find(item=>item.id===group.id)!.limit=Number(event.target.value);})}/></label></div>
