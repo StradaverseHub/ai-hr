@@ -147,7 +147,16 @@ describe('isolated combined release: actual shell CSS and controls',()=>{
  });
  for(const theme of themes)it(`${theme} public tour pauses and login remains contained on a phone`,async()=>{
   document.documentElement.setAttribute('data-ui-theme',theme);await page.viewport(1440,900);
-  const noRequests=vi.fn(()=>{throw new Error('No authentication request is permitted in this blank fixture');});vi.stubGlobal('fetch',noRequests);
+  // Continuing to a workspace enables public Microsoft availability discovery. Keep the real
+  // watcher, but permit only its credential-free request, never a credential submission.
+  const publicDiscovery=vi.fn<typeof fetch>(async()=>Response.json({microsoft:false}));vi.stubGlobal('fetch',publicDiscovery);
+  const expectOnlyPublicDiscovery=()=>{
+   expect(publicDiscovery).toHaveBeenCalled();
+   for(const call of publicDiscovery.mock.calls)expect(call).toEqual([
+    '/login/entra/options?organization=fictional-workspace',
+    {credentials:'omit',redirect:'error',cache:'no-store',signal:expect.any(AbortSignal)},
+   ]);
+  };
   const view=render(providers(theme,<InternalAuthForm/>));
   const story=screen.getByRole('region',{name:editorial.storyLabel});
   fireEvent.click(await within(story).findByRole('button',{name:editorial.stop}));
@@ -160,9 +169,12 @@ describe('isolated combined release: actual shell CSS and controls',()=>{
   fireEvent.click(within(story).getByRole('button',{name:editorial.stop}));
   expect(screen.queryByLabelText(en.internalAuth.password)).toBeNull();
   fireEvent.change(screen.getByLabelText(editorial.workspaceLabel),{target:{value:'fictional-workspace'}});
+  expect(publicDiscovery).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button',{name:editorial.continueLabel}));
+  // Exercise the watcher's real focus refresh instead of racing its 250ms initial timer.
+  fireEvent.focus(window);await waitFor(expectOnlyPublicDiscovery);
   await page.viewport(390,844);await tick();const button=screen.getByRole('button',{name:en.internalAuth.signIn});expect(box(button).left).toBeGreaterThanOrEqual(0);expect(box(button).right).toBeLessThanOrEqual(390);expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
-  expect(screen.getByLabelText(en.internalAuth.password)).toHaveValue('');expect(screen.getByLabelText(en.internalAuth.username)).toHaveValue('');expect(noRequests).not.toHaveBeenCalled();await capture(`${theme}-blank-login-phone`,view.container.querySelector('main')!);
+  expect(screen.getByLabelText(en.internalAuth.password)).toHaveValue('');expect(screen.getByLabelText(en.internalAuth.username)).toHaveValue('');await capture(`${theme}-blank-login-phone`,view.container.querySelector('main')!);expectOnlyPublicDiscovery();
  },15000);
  for(const theme of themes)it(`${theme} workspace focus rings the whole composer including Send without submission`,async()=>{
   document.documentElement.setAttribute('data-ui-theme',theme);await page.viewport(390,844);
