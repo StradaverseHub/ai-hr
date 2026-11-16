@@ -7,8 +7,8 @@ import {lockAccessConfigurationReadTx} from './access-configuration-lock';
 import type {ContractSharedContext} from './contract-shared-read';
 import {ContractManagementError} from '../lib/contract-management-model';
 export type ContractSharedPeriodContext={
- employmentId:string;companyId:string;source:ContractSharedContext['source'];permissions:ContractSharedContext['permissions'];
- sourceRevision:string;sourceIssue:'verify_period'|'period_changed'|null;canOpen:boolean;existingCaseId:string|null;
+ employmentId:string;companyId:string;source:Omit<ContractSharedContext['source'],'startOn'|'endOn'>&{startOn:string|null;endOn:string|null};permissions:ContractSharedContext['permissions'];
+ sourceRevision:string;sourceIssue:'verify_period'|'period_changed'|'native_intake_required'|null;canOpen:boolean;existingCaseId:string|null;
 };
 export function contractSharedPeriodContext(ctx:SessionContext,employmentId:string):Promise<ContractSharedPeriodContext>{
  z.uuid().parse(employmentId);

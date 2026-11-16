@@ -15,7 +15,7 @@ export type ContractSharedSummary={
 };
 export type ContractSharedContext={
  id:string;caseNumber:string;companyId:string;employmentId:string;permissions:ContractCasePermission[];
- source:Omit<ContractSource,'salaryCents'|'allowanceCents'|'allowanceComponentId'>&{contractNumber:number|null;periodRevision:string|null;departmentId:string|null;jobTitle:string|null;businessUnitId:string|null;salaryCents?:string|null;allowanceCents?:string|null;allowanceComponentId?:string|null};
+ source:Omit<ContractSource,'salaryCents'|'allowanceCents'|'allowanceComponentId'>&{contractNumber:number|null;periodRevision:string|null;departmentId:string|null;jobTitle:string|null;businessUnitId:string|null;salaryCents?:string|null;allowanceCents?:string|null;allowanceComponentId?:string|null;nativeIntakeRequired?:boolean};
  sourceCurrent:boolean;flow:ContractFlow|null;legacyState:string;sourceConflict:string|null;cutoverAvailable:boolean;
 };
 export async function contractSharedPage(ctx:SessionContext,raw:{search?:string;limit?:number;offset?:number}={}){

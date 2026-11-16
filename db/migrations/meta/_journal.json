@@ -6373,6 +6373,13 @@
       "breakpoints": true
     },
     {
+      "idx": 5249,
+      "version": "7",
+      "when": 1794841005849,
+      "tag": "5849_contract_shared_case_references",
+      "breakpoints": true
+    },
+    {
       "idx": 5296,
       "version": "7",
       "when": 1794841005896,
@@ -6391,6 +6398,13 @@
       "version": "7",
       "when": 1794841005898,
       "tag": "5898_contract_shared_work_page",
+      "breakpoints": true
+    },
+    {
+      "idx": 5304,
+      "version": "7",
+      "when": 1794841005904,
+      "tag": "5904_contract_shared_native_intake_guard",
       "breakpoints": true
     }
   ]
