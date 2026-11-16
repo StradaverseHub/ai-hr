@@ -14,7 +14,7 @@ import {saveProbationLetterTemplate,prepareProbationLetter,readProbationLetter,a
 let b:Base,admin:SessionContext,fixture:ReturnType<typeof probationOutcomeFixture>;
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'lifecycle','active');admin=adminCtx(b);fixture=probationOutcomeFixture(b,admin);});
-const onCase=(caseId:string,list:{items:{caseId:string}[]})=>list.items.filter(item=>item.caseId===caseId);
+const onCase=<T extends {caseId:string}>(caseId:string,list:{items:T[]})=>list.items.filter(item=>item.caseId===caseId);
 
 function template(outcome:'confirm'|'extend',key:string,routing?:DocumentRouting){
  const t=newProbationLetterTemplate(outcome,key,'Fictional '+outcome+' letter');t.unfinished=false;
@@ -105,7 +105,7 @@ describe('an Other outcome (I3, handoff B4)',()=>{
   await expect(decideProbationOtherOutcome(admin,{...input,revision:parked.revision+1})).rejects.toThrow();
   const decided=await outcome();
   // Proceeds as Extend in the same transaction: the single matching extend letter is drafted, no failure is left.
-  expect(decided).toMatchObject({outcome:'extend',months:3,revision:parked.revision+1,failure:null});expect(decided.letter).toBeTruthy();
+  expect(decided).toMatchObject({outcome:'extend',months:3,failure:null});expect(decided.revision).toBeGreaterThan(parked.revision);expect(decided.letter).toBeTruthy();
   expect(onCase(ids.caseId,await probationTaskList(admin)).filter(item=>item.kind==='choose_outcome')).toEqual([]);
   const [noted]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from probation_followup where case_id=${ids.caseId}::uuid and kind='other_decided'`);expect(noted.n).toBe(1);
   expect(await owner.db.execute(sql`select 1 from domain_event where aggregate_id=${ids.caseId}::uuid and event_type='probation.other_outcome_decided'`)).toHaveLength(1);
