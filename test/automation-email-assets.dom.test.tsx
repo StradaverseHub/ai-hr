@@ -6,6 +6,7 @@ import messages from '../messages/en.json';
 import {AutomationEmailAssets,ContractEmailCaseFiles} from '../app/automation/templates/automation-email-assets';
 import type {AutomationEmailTemplate} from '../lib/automation/email';
 const refresh=vi.fn();vi.mock('next/navigation',()=>({useRouter:()=>({refresh})}));
+vi.mock('../app/automation/templates/assets/actions',()=>({readContractEmailFilePage:vi.fn()}));
 const render=(ui:ReactNode)=>mount(<NextIntlClientProvider locale="en" timeZone="Asia/Kuala_Lumpur" messages={messages}>{ui}</NextIntlClientProvider>);
 afterEach(()=>{vi.unstubAllGlobals();refresh.mockClear();});
 const id='a1b2c3d4-1111-4111-8111-a1b2c3d4e5f6',caseId='b1b2c3d4-1111-4111-8111-a1b2c3d4e5f6',slotId='c1b2c3d4-1111-4111-8111-a1b2c3d4e5f6';

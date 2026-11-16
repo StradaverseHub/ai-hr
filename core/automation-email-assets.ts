@@ -41,3 +41,10 @@ export async function automationEmailCaseFiles(ctx:SessionContext,caseId:string)
   return row?.files??[];
  });
 }
+export async function automationEmailCaseFilePage(ctx:SessionContext,caseId:string,input:{limit?:number;offset?:number}={}){
+ z.uuid().parse(caseId);const page=z.object({limit:z.number().int().min(1).max(50).default(50),offset:z.number().int().min(0).max(100000).default(0)}).strict().parse(input);
+ return withScopedLifecycleTenant(ctx,async tx=>{
+  const [row]=await tx.execute<{page:{items:AutomationEmailCaseFileSet[];hasMore:boolean;limit:number;offset:number}}>(sql`select app.automation_email_case_files_page(${caseId}::uuid,${page.limit},${page.offset}) as page`);
+  return row.page;
+ });
+}

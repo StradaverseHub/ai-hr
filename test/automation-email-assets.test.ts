@@ -1,12 +1,16 @@
 import {describe,it,expect} from 'vitest';
 import {automationEmailAttachmentSettingsSchema} from '../lib/automation-email-assets';
-import {fillAutomationMergeFields} from '../lib/automation/email';
+import {fillAutomationMergeFields,automationEmailBodyDoc,automationEmailBodyText} from '../lib/automation/email';
 import {automationEmailContent} from '../lib/automation-email-content';
 describe('Shared email attachment settings',()=>{
  it('does not resolve inherited object properties as merge fields',()=>{
   expect(fillAutomationMergeFields('{{constructor}} {{__proto__}} {{employee.name}}',{'employee.name':'Ali'})).toBe('{{constructor}} {{__proto__}} Ali');
   expect(fillAutomationMergeFields('{{constructor}}',JSON.parse('{"constructor":"Own value"}'))).toBe('Own value');
   expect(fillAutomationMergeFields('{{employee.name}} {{today}}',{'employee.name':'',today:null})).toBe('{{employee.name}} {{today}}');
+  const body='Dear {{employee.name}}, {{constructor}} {{unknown.field}} {literal}';
+  const doc=automationEmailBodyDoc({body,module:'contract_staff'});expect(automationEmailBodyText(doc)).toBe(body);
+  const content=automationEmailContent({module:'contract_staff',origin:'https://mail.example.test',linkPath:'/lifecycle/contracts/example',body,richBody:{doc,values:{'employee.name':'Ali'}}});
+  expect(content.text).toBe('Dear Ali, {{constructor}} {{unknown.field}} {literal}');
  });
  it('refuses duplicate slots, unbounded files and inline non-images',()=>{
   const slot={id:'a1b2c3d4-1111-4111-8111-a1b2c3d4e5f6',label:'Voucher',required:true};

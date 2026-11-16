@@ -17,6 +17,7 @@ import {createEmailBodyDocSchema,type EmailBodyDoc} from '../email-body/doc';
 import {legacyBodyToDoc,docToLegacyText} from '../email-body/legacy';
 import {renderEmailBody} from '../email-body/render';
 import {automationEmailAttachmentSettingsSchema,type AutomationEmailAsset,type AutomationEmailSlot} from '../automation-email-assets';
+import {AUTOMATION_CATALOGUES,automationCatalogue} from './catalogues';
 import type {AutomationModule,AutomationModuleCatalogue} from './catalogue';
 import type {AutomationRecipient,AutomationReferences,AutomationWorkflow} from './workflow';
 
@@ -134,11 +135,30 @@ export function probationStepParamWarnings(workflow: AutomationWorkflow, refs: P
 }
 
 /** Shared text uses double-braced fields; V9 rich nodes carry the bare canonical key. */
-export function automationEmailBodyDoc(template:Pick<AutomationEmailTemplate,'body'|'bodyDoc'>):EmailBodyDoc {
- return template.bodyDoc??legacyBodyToDoc(template.body.replace(/\{\{\s*([^{}\s]+)\s*\}\}/g,'{$1}'));
+export function automationEmailBodyDoc(template:Pick<AutomationEmailTemplate,'body'|'bodyDoc'>&Partial<Pick<AutomationEmailTemplate,'module'>>):EmailBodyDoc {
+ if(template.bodyDoc)return template.bodyDoc;
+ const catalogue=template.module?automationCatalogue(template.module):null;
+ const known=new Set((catalogue?[catalogue]:Object.values(AUTOMATION_CATALOGUES)).flatMap(item=>item?.mergeFields.map(field=>field.key)??[]));
+ // Only shared double-braced, known keys become rich atoms. Unknown tokens and literal braces remain exact text.
+ let prefix='\uE000';while(template.body.includes(prefix))prefix+='\uE000';
+ const retained:string[]=[];
+ const protectedBody=template.body.replace(/\{\{\s*([^{}\s]+)\s*\}\}|(?<!\{)\{([^{}]+)\}(?!\})/g,(token,key:string|undefined)=>{
+  if(key&&known.has(key))return `{${key}}`;
+  retained.push(token);return prefix+(retained.length-1)+'\uE001';
+ });
+ const placeholder=new RegExp(prefix+'(\\d+)\uE001','g');
+ const restore=(node:unknown):unknown=>Array.isArray(node)?node.map(restore):node&&typeof node==='object'?Object.fromEntries(Object.entries(node).map(([key,value])=>[key,key==='text'&&typeof value==='string'?value.replace(placeholder,(token,index:string)=>retained[Number(index)]??token):restore(value)])):node;
+ return restore(legacyBodyToDoc(protectedBody)) as EmailBodyDoc;
 }
 export function automationEmailBodyText(doc:EmailBodyDoc):string {
- return docToLegacyText(doc).replace(/\{([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)?)\}/g,'{{$1}}');
+ const fields=(node:unknown):unknown=>{
+  if(Array.isArray(node))return node.map(fields);
+  if(!node||typeof node!=='object')return node;
+  const value=node as Record<string,unknown>;
+  if(value.type==='field')return {type:'text',text:`{{${(value.attrs as {key:string}).key}}}`,...(value.marks?{marks:value.marks}:{})};
+  return Object.fromEntries(Object.entries(value).map(([key,item])=>[key,fields(item)]));
+ };
+ return docToLegacyText(fields(doc) as EmailBodyDoc);
 }
 export function renderAutomationEmailBody(template:Pick<AutomationEmailTemplate,'body'|'bodyDoc'>,values:Readonly<Record<string,string|undefined>>) {
  return template.bodyDoc?renderEmailBody(template.bodyDoc,{values}):{text:fillAutomationMergeFields(template.body,values),html:undefined};

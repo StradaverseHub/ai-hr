@@ -244,6 +244,7 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5228,when:1794841005828,tag:'5828_automation_email_test_self'},
  {idx:5229,when:1794841005829,tag:'5829_shared_automation_email_asset_delivery'},
  {idx:5240,when:1794841005840,tag:'5840_shared_email_test_asset_source'},
+ {idx:5241,when:1794841005841,tag:'5841_shared_email_case_file_pages'},
  {idx:5244,when:1794841005844,tag:'5844_shared_groups_preserve_members'},
  {idx:5245,when:1794841005845,tag:'5845_shared_groups_member_identity'},
 ] as const;
@@ -253,6 +254,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5844_shared_groups_preserve_members':'3d5b0933efdee689848653da194bda914e93e7a94246c3b1345ad684e9e7ad9a',
  '5826_automation_shared_assignment_groups':'4b112e626b80a509c6687fbfd3153bd56bd4ddfdda5cf1fb5c236f8bb9ff86f8',
  '5828_automation_email_test_self':'2f14899f4fffb1c84cf20d6ba60b282b8f443a53471342611648583663a8afcc',
+ '5841_shared_email_case_file_pages':'bc583120fb2148723ec7dcbeb43aa8e12a8491c1c2c07922b8a6f33f76c58f32',
  '5840_shared_email_test_asset_source':'18e936754a6784f14911a82ea9654c2f3d8d2e9278d1d45c6663ce9c4e81a883',
  '5827_shared_automation_email_assets':'35f2cf530e008e6c47bc48f36640cc3f328a072ee29f73bb6523c41295485d66',
  '5829_shared_automation_email_asset_delivery':'96c9f4fdbb02063c6335c1d7f83dd5273d94a33515159a883712f7b30a68c925',
