@@ -6275,10 +6275,24 @@
       "breakpoints": true
     },
     {
+      "idx": 5227,
+      "version": "7",
+      "when": 1794841005827,
+      "tag": "5827_shared_automation_email_assets",
+      "breakpoints": true
+    },
+    {
       "idx": 5228,
       "version": "7",
       "when": 1794841005828,
       "tag": "5828_automation_email_test_self",
+      "breakpoints": true
+    },
+    {
+      "idx": 5229,
+      "version": "7",
+      "when": 1794841005829,
+      "tag": "5829_shared_automation_email_asset_delivery",
       "breakpoints": true
     }
   ]
