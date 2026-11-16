@@ -672,7 +672,8 @@ const probationPackKind=(item:ProbationTaskItem)=>item.category==='approval'?'pr
  */
 export async function pendingProbationTasks(ctx:SessionContext,scopeIds:string[]|undefined):Promise<import('../lib/assigned-work').PackTaskItem[]>{
  const list=await probationTaskList(ctx,{companyIds:scopeIds});
- return list.items.map(item=>({id:item.partId,kind:probationPackKind(item),subjectName:item.employeeName,createdAt:new Date(item.updatedAt).toISOString(),linkPath:item.href}));
+ // L5: the step code and part name the task on /tasks ("Sign probation letter"), never a generic "Probation task".
+ return list.items.map(item=>({id:item.partId,kind:probationPackKind(item),subjectName:item.employeeName,createdAt:new Date(item.updatedAt).toISOString(),linkPath:item.href,action:{code:item.kind,part:item.partType===null||item.partType===undefined?null:Number(item.partType)||null}}));
 }
 
 async function sealProbationRenderTx(tx:Tx,ctx:SessionContext,requestId:string):Promise<'sealed'|'held'|'paused'>{

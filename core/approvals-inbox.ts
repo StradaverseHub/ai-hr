@@ -36,7 +36,7 @@ import {pendingReviewCandidatesExistSql,pendingReviewTaskMetadata} from './emplo
 import {pendingPerformanceTasks} from '../packs/performance/service';
 import {pendingRewardTasks} from '../packs/rewards/service';
 import {pendingProbationTasks} from '../packs/probation/service';
-import type {PackTaskItem,PackTaskKind,PackTaskProvider} from '../lib/assigned-work';
+import type {PackTaskAction,PackTaskItem,PackTaskKind,PackTaskProvider} from '../lib/assigned-work';
 import type {AccountTaskBundle,AccountTaskModules,AccountTaskRead} from './account-task-bundle';
 
 /** The account task statement, loaded on first use: this file is reached from the root layout and from narrow unit
@@ -73,6 +73,8 @@ export type PendingTaskItem = {
   createdAt: string;
   /** Where the user acts on it — the matching /approvals section where one exists. */
   linkPath: string;
+  /** Probation's step code and part (lib/assigned-work.ts PackTaskAction), for a plain-language title; absent elsewhere. */
+  action?: PackTaskAction;
 };
 
 /**
@@ -293,7 +295,7 @@ async function loadPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,m
     ...profile.map(row=>({id:row.id,kind:'profile' as const,subjectName:row.employee,createdAt:iso(row.createdAt),linkPath:`/admin/personnel/profile-changes?assigned=1&requestId=${row.id}#request-${row.id}`})),
     ...projectTasks(claimResult.items,'claim'),...projectTasks(resignations,'resignation'),
     ...projectTasks(managerReviews,'managerReview'),...projectTasks(hrReviews,'hrReview'),
-    ...packTasks.map(({id,kind,subjectName,createdAt,linkPath})=>({id,kind,subjectName,createdAt,linkPath})),
+    ...packTasks.map(({id,kind,subjectName,createdAt,linkPath,action})=>({id,kind,subjectName,createdAt,linkPath,...(action?{action:{code:action.code,part:action.part}}:{})})),
   ];
   items.sort((a,b)=>a.createdAt<b.createdAt?1:a.createdAt>b.createdAt?-1:a.kind.localeCompare(b.kind)||a.id.localeCompare(b.id));
   const omittedClaims=Math.max(0,claimResult.total-claimResult.items.length);

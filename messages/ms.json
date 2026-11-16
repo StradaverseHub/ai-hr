@@ -36678,6 +36678,80 @@
         "skipped": "Skipped",
         "failed": "Failed"
       }
+    },
+    "taskKinds": {
+      "submit_employee": {
+        "title": "Complete your self-assessment · Part {part}",
+        "action": "Open form"
+      },
+      "submit_manager_kpis": {
+        "title": "Set Week 1 KPIs and sign",
+        "action": "Set KPIs"
+      },
+      "submit_manager": {
+        "title": "Complete the Line Manager assessment and sign · Part {part}",
+        "action": "Open assessment"
+      },
+      "acknowledge": {
+        "title": "Acknowledge and sign · Part {part}",
+        "action": "Acknowledge"
+      },
+      "approve": {
+        "title": "Approve Part {part}",
+        "action": "Review and approve"
+      },
+      "record": {
+        "title": "Record the completed Part {part}",
+        "action": "Record"
+      },
+      "confirm_extension": {
+        "title": "Confirm the extension · Part {part}",
+        "action": "Confirm extension"
+      },
+      "confirm_refusal": {
+        "title": "Confirm a declined signature · Part {part}",
+        "action": "Confirm"
+      },
+      "kpi_exception": {
+        "title": "Decide on the KPI acknowledgement hold · Part {part}",
+        "action": "Decide"
+      },
+      "employee_wait_exception": {
+        "title": "Decide whether to continue without the self-assessment · Part {part}",
+        "action": "Decide"
+      },
+      "letter_sign": {
+        "title": "Sign probation letter",
+        "action": "Sign letter"
+      },
+      "letter_review": {
+        "title": "Review probation letter",
+        "action": "Review letter"
+      },
+      "letter_approve": {
+        "title": "Approve probation letter",
+        "action": "Approve letter"
+      },
+      "letter_revise": {
+        "title": "Update probation letter after send-back",
+        "action": "Update letter"
+      },
+      "letter_release": {
+        "title": "Release probation letter",
+        "action": "Release letter"
+      },
+      "low_result_action": {
+        "title": "Record low-result action",
+        "action": "Record action"
+      },
+      "choose_outcome": {
+        "title": "Decide Other outcome",
+        "action": "Decide outcome"
+      },
+      "other": {
+        "title": "Probation task",
+        "action": "Open"
+      }
     }
   },
   "templateEditor": {
