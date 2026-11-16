@@ -7,7 +7,7 @@ import {hireEmployee,setEmploymentInfo} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {v9Setup,v9Workspace,v9SaveConfig} from '../packs/lifecycle/service';
 import {adoptContractSharedCase,previewContractSharedDecision,readContractSharedDecisionPreview,submitContractSharedDecision,contractSharedHistory,contractSharedContext,contractPreviewJobHandler,contractAutomationJobHandler,readContractSharedApproval,actContractSharedApproval,readContractSharedLetter,actContractSharedLetter,renderContractSharedLetter,bindContractSharedEmployee} from '../packs/contracts/service';
-import {saveAutomationDocumentTemplate,saveAutomationWorkflow,automationBuilderAccess,type AutomationWorkflow} from '../packs/automation/service';
+import {saveAutomationDocumentTemplate,saveAutomationWorkflow,saveAutomationEmailTemplate,automationEmailBodyDoc,automationBuilderAccess,type AutomationWorkflow} from '../packs/automation/service';
 import {runBulkJobTick} from '../core/bulk-job-worker';
 import {readBulkJob} from '../core/bulk-job';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -72,6 +72,30 @@ const draft={kind:'renew' as const,months:6,payChanges:false,reason:'Continue th
 let f:Awaited<ReturnType<typeof fixture>>;
 beforeEach(async()=>{f=await fixture();});
 describe('protected Contract decision preview and submission',()=>{
+ it('queues shared email with frozen rich wording, default CC and a source-bound individual approval link',async()=>{
+  const origin='https://contract-mail-fixture.invalid',templateId=randomUUID();
+  for(const userId of [f.admin.userId!,f.proposer.userId!])await owner.db.execute(sql`insert into app_external_identity(issuer,subject,app_user_id) values(${origin+'/auth/'+f.b.tenantId},${randomUUID()},${userId}::uuid)`);
+  await saveAutomationEmailTemplate(f.admin,{template:{id:templateId,module:'contract_staff',name:'Contract decision receipt',active:true,subject:'Review {{employee.name}}',body:'The agreed salary is {{contract.salary}}. Open {{case.link}}',bodyDoc:automationEmailBodyDoc({body:'The agreed salary is {{contract.salary}}. Open {{case.link}}'}),cc:[{kind:'person',userId:f.proposer.userId!}]},expectedRevision:0,retired:false,reason:'Fictional reviewed email'});
+  const workflow={...f.workflow,steps:[{id:randomUUID(),type:'sendEmail',conditions:[],to:[{kind:'person' as const,userId:f.admin.userId!}],cc:[],params:{emailTemplateId:templateId}},...f.workflow.steps]};
+  await saveAutomationWorkflow(f.admin,{workflow,expectedRevision:1,reason:'Include the shared decision receipt'});
+  const requested=await previewContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,draft});await finishPreview(requested.jobId,f.proposer);
+  const preview=await readContractSharedDecisionPreview(f.proposer,requested.previewId);expect(preview.plan?.blockers).toEqual([]);
+  const accepted=await submitContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,previewId:requested.previewId});await finishAutomation(accepted.jobId,f.proposer);
+  const deliveries=await owner.db.execute<{id:string;key:string;payload:{linkPath:string;mail:{subject:string;body:string;to:string[];cc:string[];richBody:{values:Record<string,string>}}}}>(sql`select id,mail_key as key,payload from automation_email_delivery where tenant_id=${f.b.tenantId}::uuid order by mail_key`);
+  expect(deliveries).toHaveLength(2);
+  const workflowMail=deliveries.find(item=>!item.key.startsWith('approval:'))!,assignment=deliveries.find(item=>item.key.startsWith('approval:'))!;
+  expect(workflowMail.payload.mail).toMatchObject({subject:'Review Fictional Contract subject',to:[f.admin.userId],cc:[f.proposer.userId]});
+  expect(workflowMail.payload.mail.body).toContain('{{case.link}}');expect(workflowMail.payload.mail.richBody.values['contract.salary']).toBe('4976.21');
+  await saveAutomationEmailTemplate(f.admin,{template:{id:templateId,module:'contract_staff',name:'Contract decision receipt',active:true,subject:'Later wording',body:'Later body',cc:[]},expectedRevision:1,retired:false,reason:'Later edits do not rewrite queued mail'});
+  const [approval]=await owner.db.execute<{id:string}>(sql`select id from contract_shared_approval where tenant_id=${f.b.tenantId}::uuid and case_id=${f.caseId}::uuid`);
+  const token=randomUUID();await owner.db.execute(sql`update automation_email_delivery set status='leased',lease_token=${token}::uuid,lease_until=now()+interval '3 minutes' where id=${assignment.id}::uuid`);
+  const target=async()=>(await owner.db.execute<{target:{payload:{linkPath:string}}|null}>(sql`select app.automation_email_target(${assignment.id}::uuid,${token}::uuid,${origin}) as target`))[0].target;
+  expect((await target())?.payload.linkPath).toBe('/lifecycle/contracts/approvals/'+approval.id);
+  const pending=await readContractSharedApproval(f.admin,approval.id);
+  await actContractSharedApproval(f.admin,{id:approval.id,actionId:randomUUID(),layerId:pending.pendingLayerId!,revision:pending.contentRevision,hash:pending.contentHash,action:'approve',reason:'Agreed'});
+  expect(await target()).toBeNull();
+  const [frozen]=await owner.db.execute<{subject:string}>(sql`select payload->'mail'->>'subject' as subject from automation_email_delivery where id=${workflowMail.id}::uuid`);expect(frozen.subject).toBe('Review Fictional Contract subject');
+ });
  it('executes pinned approvals, holds and verifies the employee login, and freezes agreed values without automatic Personnel or Payroll writes',async()=>{
   const requested=await previewContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,draft});
   await finishPreview(requested.jobId,f.proposer);
