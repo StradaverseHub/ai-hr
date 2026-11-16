@@ -45,7 +45,7 @@ describe('shared Contract preserves the native first post-retirement intake',()=
   expect(row).toMatchObject({caseId:null,sourceIssue:'native_intake_required',canOpen:false});const period=await C.contractSharedPeriodContext(viewer,f.subject.employmentId);
   expect(period).toMatchObject({sourceIssue:'native_intake_required',canOpen:false,source:{nativeIntakeRequired:true}});expect(JSON.stringify(period)).not.toMatch(/health_pending|healthDocument|approvalDocument|salaryCents|500000/);
   await expect(C.openContractSharedPeriod(admin,{employmentId:f.subject.employmentId,sourceRevision:row.sourceRevision!})).rejects.toMatchObject({code:'conflict'});expect(await counts()).toEqual(before);
-  await setCompensation(admin,{employmentId:f.subject.employmentId,basicSalary:5100,effectiveFrom:start,remarks:'Legitimate native pay correction changes the custody source'});
+  await setCompensation(admin,{employmentId:f.subject.employmentId,basicSalary:5100,effectiveFrom:`${year}-02-01`,remarks:'Legitimate native pay correction changes the custody source'});
   expect(await privateHold(f.subject.employmentId)).toEqual({actual:null,projected:null});
  });
  it('keeps independently verified proof on the native intake path rather than inventing a generic first term',async()=>{
