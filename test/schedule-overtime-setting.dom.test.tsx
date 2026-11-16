@@ -123,9 +123,9 @@ describe('87bd9656 · Overtime Rounding and Overtime Backdate Control',()=>{
  it('groups Approval Method, Rounding and Backdate Control into their own labelled sections',()=>{
   const {form}=show();
   expect(sections(form)).toEqual(['approval','rounding','backdate']);
-  expect(screen.getByRole('region',{name:words.approvalTitle})).toContainElement(form.querySelector('select[name="otApproval"]'));
-  expect(screen.getByRole('region',{name:words.roundingTitle})).toContainElement(form.querySelector('select[name="otRoundingStep"]'));
-  expect(screen.getByRole('region',{name:words.backdateTitle})).toContainElement(form.querySelector('input[name="otBackdateControl"]'));
+  expect(screen.getByRole('region',{name:words.approvalTitle})).toContainElement(form.querySelector<HTMLElement>('select[name="otApproval"]'));
+  expect(screen.getByRole('region',{name:words.roundingTitle})).toContainElement(form.querySelector<HTMLElement>('select[name="otRoundingStep"]'));
+  expect(screen.getByRole('region',{name:words.backdateTitle})).toContainElement(form.querySelector<HTMLElement>('input[name="otBackdateControl"]'));
  });
  it('greys out Overtime Rounding to Minute for None and does not post it; choosing Round Up restores the interval',()=>{
   const {form}=show();
