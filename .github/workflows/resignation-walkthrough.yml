@@ -3,6 +3,7 @@ run-name: Resignation production renderer · ${{ inputs.candidate_ref || github.
 on:
   # Temporary, development-only bootstrap. Exact compared file paths are verified through the read-only API.
   # This renderer shares the exact approved 8192 MB hosted build admission roster.
+  # Exact disposable role prerequisites are admitted before migration; production guards stay unchanged.
   # It has no release or installation credentials.
   push:
     branches: ['codex/resignation-journey-20261116']
