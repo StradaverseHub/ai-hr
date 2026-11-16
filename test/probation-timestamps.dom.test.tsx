@@ -16,7 +16,7 @@ describe('Probation screens print readable times (L2)',()=>{
   p1.signing={id:'signing',document:{tenantId:'tenant',companyId:view.record.companyId,subjectId:p1.id,subjectType:'probation',contentRevision:1,contentHash:'hash',route:p1.route,
    actions:[{id:'a1',stepId:'lm',contentRevision:1,contentHash:'hash',actorId:fixtureManager,actorPersonId:'person',actorName:'Fictional Manager',representedId:fixtureManager,role:'lm',at:'2026-11-16T04:11:38.493Z',action:'signed',comment:'',signature:{method:'typed',value:'Fictional Manager',consent:true}}]}};
   render(<NextIntlClientProvider locale="en" messages={messages}><PartEditor view={view} part={p1} actor={{id:'viewer',name:'Viewer'}}/></NextIntlClientProvider>);
-  const history=screen.getByRole('heading',{name:messages.probation.signing.title}).closest('section')!;
+  const history=screen.getByRole('heading',{name:messages.probation.caseView.form.signatures}).closest('section')!;
   expect(within(history).getByText('Fictional Manager · 16/11/2026 12:11')).toBeInTheDocument();
   expect(history.textContent).not.toMatch(raw);
  });

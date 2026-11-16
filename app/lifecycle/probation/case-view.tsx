@@ -4,8 +4,8 @@ import Link from 'next/link';
 import {useState,useTransition,type ReactNode} from 'react';
 import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
-import {ArrowLeft,Check,FileText} from 'lucide-react';
-import type {ProbationCaseView,ProbationPartView,ProbationAutomationHistoryRun} from '@/packs/probation/service';
+import {Check} from 'lucide-react';
+import type {ProbationCaseView,ProbationPartView,ProbationAutomationHistoryRun,ProbationLetterView} from '@/packs/probation/service';
 import {probationDate,probationTimestamp} from '@/lib/probation-display';
 import {CaseDateControls} from './case-date-controls';
 import {LegacyReconciliationControls} from './legacy-reconciliation-controls';
@@ -13,6 +13,8 @@ import {addFollowup} from './actions';
 import {LowResultActions} from './pbp-decisions';
 import {AutomationHistory} from './automation-history';
 import {PartEditor} from './part-editor';
+import {LetterView} from './letter-view';
+import {useProbationWaitingLabel} from './case-labels';
 import {probationCaseClosed,probationCurrentPart,probationDayDiff,probationOutcomeState,probationPartState,probationPartsByType,probationRouteSteps,probationWaitingOn,type ProbationCaseTab,type ProbationStepState} from './case-stage';
 
 /**
@@ -21,7 +23,9 @@ import {probationCaseClosed,probationCurrentPart,probationDayDiff,probationOutco
  * letters / Files / History. Each tab is its own address, so only the selected tab's data is read on the server; every
  * action keeps its own server-side check.
  */
-export type ProbationCaseViewProps={view:ProbationCaseView;today:string;tab:ProbationCaseTab;part:ProbationPartView|null;actor:{id:string;name:string};signerCandidates?:{id:string;name:string}[];history?:ProbationAutomationHistoryRun[]};
+export type ProbationCaseViewProps={view:ProbationCaseView;today:string;tab:ProbationCaseTab;part:ProbationPartView|null;actor:{id:string;name:string};signerCandidates?:{id:string;name:string}[];history?:ProbationAutomationHistoryRun[];
+ /** Outcome & letters: the latest letter, read on the server (it authorizes and hides private content). */
+ letter?:ProbationLetterView|null;letterSignerCandidates?:{id:string;name:string}[]};
 const caseHref=(view:ProbationCaseView)=>'/lifecycle/probation/'+view.record.id;
 export function probationTabHref(view:ProbationCaseView,tab:ProbationCaseTab):string{
  if(tab==='p1'||tab==='p2'||tab==='p3'){const part=probationPartsByType(view).find(p=>'p'+p.type===tab);return part?caseHref(view)+'/'+part.id:caseHref(view);}
@@ -32,7 +36,7 @@ function Step({state,children,dashed}:{state:ProbationStepState;children:ReactNo
  return <li className="probation-step" data-state={state} data-dashed={dashed?'true':undefined} aria-current={state==='current'||state==='overdue'||state==='returned'?'step':undefined}>
   {state==='done'&&<Check size={14} aria-hidden="true"/>}<span>{children}</span><span className="sr-only"> ({t('stepState.'+state)})</span></li>;
 }
-export function ProbationCaseViewScreen({view,today,tab,part,actor,signerCandidates,history}:ProbationCaseViewProps){
+export function ProbationCaseViewScreen({view,today,tab,part,actor,signerCandidates,history,letter,letterSignerCandidates}:ProbationCaseViewProps){
  const t=useTranslations('probation'),c=useTranslations('probation.caseView');
  const name=(id:string|null|undefined)=>id?view.holderNames[id]??null:null;
  const role=(r:string)=>t.has('roles.'+r)?t('roles.'+r):/^(routing:|group:|people$)/.test(r)?t('roles.approver'):r;
@@ -41,19 +45,20 @@ export function ProbationCaseViewScreen({view,today,tab,part,actor,signerCandida
  const stage=view.startStatus==='did_not_join'?t('caseStates.didNotJoin'):closed?t('caseStates.'+view.record.state):view.startStatus==='waiting_for_start'?t('caseStates.waitingForStart'):current?partName(current,'stage'):c('stage.outcome');
  const due=current&&current.state!=='not_issued'&&view.startStatus!=='waiting_for_start'?current.dueOn:null,left=due?probationDayDiff(today,due):0;
  const dueText=due?' · '+c('due',{date:probationDate(due)})+' ('+(left<0?c('daysOverdue',{count:-left}):left===0?c('dueToday'):c('daysLeft',{count:left}))+')':'';
- const waitingText=closed?c('closed'):!waiting?'':waiting.what==='opens'?c('opens',{date:probationDate(waiting.date)}):c('waitingOn',{who:(()=>{const who=name(waiting.holderId),roleLabel=waiting.label??role(waiting.role);return who?c('who',{role:roleLabel,name:who,what:c('what.'+waiting.what)}):c('whoNoName',{role:roleLabel,what:c('what.'+waiting.what)});})()});
+ const waitingLabel=useProbationWaitingLabel(view),who=waiting&&waiting.what!=='opens'?waitingLabel(waiting):null,mine=!!waiting&&!!waiting.holderId&&waiting.holderId===actor.id;
  const routeSteps=current&&current.state!=='not_issued'&&view.startStatus!=='waiting_for_start'?probationRouteSteps(current):[];
  const stepLabel=(s:ReturnType<typeof probationRouteSteps>[number])=>['self','lmKpis','lmAssess','ack'].includes(s.kind)?c('steps.'+s.kind):c('steps.'+s.kind,{who:name(s.holderId)??s.label??role(s.role)});
  const f=view.record.facts,lm=name(f.holders.lm),pbp=name(f.holders.pbp);
  const tabs:[ProbationCaseTab,string][]=[...shown.map(p=>['p'+p.type as ProbationCaseTab,partName(p,'tabs')] as [ProbationCaseTab,string]),['outcome',c('tabs.outcome')],['files',c('tabs.files',{count:view.files.length})],['history',c('tabs.history')]];
  const currentTab:ProbationCaseTab|null=current?'p'+current.type as ProbationCaseTab:!closed&&view.startStatus!=='waiting_for_start'?'outcome':null;
- const statePill=view.record.state==='confirmed'?'v9-badge v9-badge-green':closed?'v9-badge v9-badge-red':'v9-badge v9-badge-indigo';
- return <main>
-  <div><Link className="v9-button" href="/lifecycle/probation"><ArrowLeft size={16}/>{t('backTracker')}</Link></div>
-  <section className="v9-panel v9-stack" aria-labelledby="probation-case-heading">
-   <div className="v9-heading" style={{alignItems:'flex-start'}}>
-    <div><h1 id="probation-case-heading">{c('heading',{stage})}</h1><p className="v9-muted" data-testid="probation-waiting">{waitingText}{!closed&&dueText}</p></div>
-    <div className="probation-actions"><span className={statePill}>{closed?stage:t('title')}</span><span className="v9-muted">{f.employeeCode??'—'}</span></div>
+ const statePill=view.record.state==='confirmed'?'pcc-pill pcc-pill-ok':closed?'pcc-pill pcc-pill-bad':'pcc-pill pcc-pill-acc';
+ return <main className="pcc">
+  <Link className="pcc-back" href="/lifecycle/probation"><span aria-hidden="true">‹ </span>{c('back')}</Link>
+  <section className="pcc-card pcc-head" aria-labelledby="probation-case-heading">
+   <div className="pcc-row pcc-between">
+    <div><h1 id="probation-case-heading">{c('heading',{stage})}</h1>
+     <p className="pcc-waiting" data-testid="probation-waiting">{closed?c('closed'):waiting?.what==='opens'?c('opens',{date:probationDate(waiting.date)}):who?<>{mine?<b>{c('yourStep')} </b>:c('waitingOnLabel')+' '}{who.text}</>:null}{!closed&&dueText}</p></div>
+    <div className="pcc-row"><span className={statePill}>{closed?stage:c('pill')}</span></div>
    </div>
    <ol className="probation-stepper" aria-label={c('partsLabel')}>
     {shown.map(p=>{const state=probationPartState(view,p,today);return <Step key={p.id} state={state}>{c('short.'+p.type)}{p.state==='completed_offline'?' ('+t('partStates.completed_offline').toLowerCase()+')':''}</Step>;})}
@@ -68,20 +73,21 @@ export function ProbationCaseViewScreen({view,today,tab,part,actor,signerCandida
     <div><dt>{c('facts.probation')}</dt><dd>{probationDate(view.record.startOn)} – {probationDate(view.record.endOn)}<small>{f.probationMonths?c('months',{months:f.probationMonths}):'—'}</small></dd></div>
     <div><dt>{c('facts.plan')}</dt><dd>{view.record.planMonths===6||view.record.planMonths===3?c('plan.'+view.record.planMonths):c('plan.other',{months:view.record.planMonths})}</dd></div>
     <div><dt>{c('facts.extensions')}</dt><dd>{t('extensionCount',{count:view.record.extensionCount,max:view.record.config.maxExtensions})}</dd></div>
-    <div><dt>{c('facts.people')}</dt><dd>{c('peopleLm',{name:lm??'—'})}<small>{c('peoplePbp',{name:pbp??'—'})}</small></dd></div>
+    <div><dt>{c('facts.people')}</dt><dd style={{fontWeight:500}}>{c('peopleLm',{name:lm??'—'})}<small>{c('peoplePbp',{name:pbp??'—'})}</small></dd></div>
    </dl>
   </section>
-  {view.startStatus==='waiting_for_start'&&<p className="v9-notice" role="status">{c('waitingStart',{date:probationDate(view.record.startOn)})}</p>}
-  {view.startStatus==='did_not_join'&&<p className="v9-notice" role="status">{t('startStatus.didNotJoin')}</p>}
-  {!view.runtimeEnabled&&<p className="v9-notice">{t(view.sourceMoved?'sourceMoved':'runtimePaused')}</p>}
-  {view.parts.some(p=>p.override&&p.state!=='cancelled')&&<p className="v9-notice v9-warning" role="status"><span className="v9-badge v9-badge-amber">{t('tracker.flags.overridden')}</span> {t('overrideNotice')}</p>}
-  {f.gradeId!==f.currentGradeId&&<p className="v9-notice v9-warning">{t('gradeChanged')}</p>}
-  {view.record.planFlag&&<p className="v9-notice v9-warning">{t('planFlag')}</p>}
+  {view.startStatus==='waiting_for_start'&&<p className="pcc-wait" role="status"><b>{c('waitingStart',{date:probationDate(view.record.startOn)})}</b></p>}
+  {view.startStatus==='did_not_join'&&<p className="pcc-banner" role="status">{t('startStatus.didNotJoin')}</p>}
+  {!closed&&who&&!mine&&<p className="pcc-wait" data-testid="probation-next-action"><span>{c('nextAction')} <b>{who.text}</b>.</span></p>}
+  {!view.runtimeEnabled&&<p className="pcc-banner">{t(view.sourceMoved?'sourceMoved':'runtimePaused')}</p>}
+  {view.parts.some(p=>p.override&&p.state!=='cancelled')&&<p className="pcc-banner pcc-banner-warn" role="status"><span className="pcc-pill pcc-pill-warn">{t('tracker.flags.overridden')}</span> {t('overrideNotice')}</p>}
+  {f.gradeId!==f.currentGradeId&&<p className="pcc-banner pcc-banner-warn">{t('gradeChanged')}</p>}
+  {view.record.planFlag&&<p className="pcc-banner pcc-banner-warn">{t('planFlag')}</p>}
   <nav className="probation-tabs" aria-label={c('tabs.label')}>
    {tabs.map(([key,label])=><Link key={key} href={probationTabHref(view,key)} aria-current={tab===key?'page':undefined}>{label}{currentTab===key&&<span className="probation-tab-dot" title={c('tabs.current')}><span className="sr-only">{c('tabs.current')}</span></span>}</Link>)}
   </nav>
-  {(tab==='p1'||tab==='p2'||tab==='p3')&&(part?<PartTab view={view} part={part} actor={actor} signerCandidates={signerCandidates}/>:<p className="v9-notice">{c('noPart')}</p>)}
-  {tab==='outcome'&&<OutcomeTab view={view}/>}
+  {(tab==='p1'||tab==='p2'||tab==='p3')&&(part?<PartTab view={view} part={part} actor={actor} signerCandidates={signerCandidates}/>:<p className="pcc-card pcc-empty">{c('noPart')}</p>)}
+  {tab==='outcome'&&<OutcomeTab view={view} actor={actor} letter={letter??null} letterSignerCandidates={letterSignerCandidates}/>}
   {tab==='files'&&<FilesTab view={view}/>}
   {tab==='history'&&<HistoryTab view={view} history={history}/>}
  </main>;
@@ -90,33 +96,50 @@ function PartTab({view,part,actor,signerCandidates}:{view:ProbationCaseView;part
  const t=useTranslations('probation'),c=useTranslations('probation.caseView');
  const cycles=view.parts.filter(p=>p.type===part.type&&p.id!==part.id);
  return <>
-  {cycles.length>0&&<nav className="probation-actions" aria-label={c('earlierCycles')}><span className="v9-muted">{c('earlierCycles')}</span>{cycles.map(p=><Link key={p.id} className="v9-button" href={'/lifecycle/probation/'+view.record.id+'/'+p.id}>{c('cycleLink',{cycle:p.cycle,state:t('partStates.'+p.state)})}</Link>)}</nav>}
+  {cycles.length>0&&<nav className="pcc-row" aria-label={c('earlierCycles')}><span className="pcc-muted pcc-small">{c('earlierCycles')}</span>{cycles.map(p=><Link key={p.id} className="v9-button" href={'/lifecycle/probation/'+view.record.id+'/'+p.id}>{c('cycleLink',{cycle:p.cycle,state:t('partStates.'+p.state)})}</Link>)}</nav>}
   <PartEditor embedded signerCandidates={signerCandidates} key={part.id+':'+part.storageRevision+':'+view.runtimeEnabled} view={view} part={part} actor={actor}/>
  </>;
 }
-function OutcomeTab({view}:{view:ProbationCaseView}){
+/** Outcome & letters (prototype OutcomeTab): low-result actions, the outcome records, the latest letter in full, earlier letters. */
+function OutcomeTab({view,actor,letter,letterSignerCandidates}:{view:ProbationCaseView;actor:{id:string;name:string};letter:ProbationLetterView|null;letterSignerCandidates?:{id:string;name:string}[]}){
  const t=useTranslations('probation'),c=useTranslations('probation.caseView');
  const operations=view.roles.includes('pbp')||view.roles.includes('gbs');
+ const others=letter?view.letterTasks.filter(task=>task.partId!==letter.id):view.letterTasks;
  return <div className="probation-tabpanel">
   <LowResultActions view={view}/>
-  {!view.outcomes.length&&!view.letterTasks.length&&<p className="v9-panel v9-muted">{c('noOutcome')}</p>}
-  {view.outcomes.length>0&&<section className="v9-panel v9-stack"><h2>{t('outcomeRecords')}</h2><ul className="v9-list">{view.outcomes.map(outcome=><li key={outcome.id}><strong>{t.has('outcomes.'+outcome.outcome)?t('outcomes.'+outcome.outcome):outcome.outcome}</strong> · {t.has('outcomeStates.'+outcome.state)?t('outcomeStates.'+outcome.state):outcome.state}{outcome.releasedAt&&<span className="v9-muted"> · {probationTimestamp(outcome.releasedAt)}</span>}{view.runtimeEnabled&&(outcome.state==='release_requested'||outcome.filingState==='pending')&&<p className="v9-notice">{t('letters.filingPending')}</p>}{outcome.failure&&<p role="alert">{t('outcomeFailed')}</p>}{operations&&view.runtimeEnabled&&<Link className="v9-button" href={'/lifecycle/probation/'+view.record.id+'/outcomes/'+outcome.id}>{t('manageOutcome')}</Link>}</li>)}</ul></section>}
-  {view.letterTasks.length>0&&<section className="v9-panel v9-stack"><h2>{t('letters.tasks')}</h2><ul className="v9-list">{view.letterTasks.map(letter=><li key={letter.partId}><strong>{letter.label}</strong><p>{letter.waitingName??(letter.waitingRole?t('roles.'+letter.waitingRole):t('letters.waiting'))}</p><Link className="v9-button" href={'/lifecycle/probation/'+view.record.id+'/letters/'+letter.partId}>{t('letters.open')}</Link></li>)}</ul></section>}
+  {!view.outcomes.length&&!view.letterTasks.length&&<p className="pcc-card pcc-empty">{c('noOutcome')}</p>}
+  {view.outcomes.length>0&&<section className="pcc-card" aria-labelledby="pcc-outcomes"><h2 id="pcc-outcomes">{t('outcomeRecords')}</h2><ul className="pcc-wl">{view.outcomes.map(outcome=><li className="pcc-wi" key={outcome.id}>
+   <div><h4>{t.has('outcomes.'+outcome.outcome)?t('outcomes.'+outcome.outcome):outcome.outcome}</h4><p>{t.has('outcomeStates.'+outcome.state)?t('outcomeStates.'+outcome.state):outcome.state}{outcome.releasedAt&&<> · {probationTimestamp(outcome.releasedAt)}</>}</p>
+    {view.runtimeEnabled&&(outcome.state==='release_requested'||outcome.filingState==='pending')&&<p className="pcc-small">{t('letters.filingPending')}</p>}{outcome.failure&&<p role="alert" className="pcc-small">{t('outcomeFailed')}</p>}</div>
+   {operations&&view.runtimeEnabled&&<Link className="v9-button" href={'/lifecycle/probation/'+view.record.id+'/outcomes/'+outcome.id}>{t('manageOutcome')}</Link>}
+  </li>)}</ul></section>}
+  {letter&&<LetterView embedded key={letter.id+':'+letter.storageRevision+':'+letter.signing?.document.actions.length} letter={letter} actor={actor} signerCandidates={letterSignerCandidates}/>}
+  {others.length>0&&<section className="pcc-card" aria-labelledby="pcc-letters"><h2 id="pcc-letters">{letter?c('earlierLetters'):t('letters.tasks')}</h2><ul className="pcc-wl">{others.map(task=><li className="pcc-wi" key={task.partId}>
+   <div><h4>{task.label}</h4><p>{task.waitingName??(task.waitingRole?t('roles.'+task.waitingRole):t('letters.waiting'))}</p></div>
+   <Link className="v9-button" href={'/lifecycle/probation/'+view.record.id+'/letters/'+task.partId}>{t('letters.open')}</Link>
+  </li>)}</ul></section>}
  </div>;
 }
+/** Files (prototype): each filed document with what it is and a download link; access is checked by the file route. */
 function FilesTab({view}:{view:ProbationCaseView}){
  const t=useTranslations('probation'),c=useTranslations('probation.caseView');
- return <section className="v9-panel v9-stack"><h2>{t('files.title')}</h2>{!view.files.length?<p className="v9-muted">{c('filesEmpty')}</p>:<ul className="v9-list">{view.files.map(file=><li key={file.id}><FileText size={16} aria-hidden="true"/> <a href={'/lifecycle/probation/'+view.record.id+'/files/'+file.id} data-unsaved-guard="ignore" target="_blank" rel="noreferrer">{file.name}</a> · {t('version',{version:file.revision})}{file.filingState==='pending'&&<span className="v9-badge">{t('files.filingPending')}</span>}</li>)}</ul>}</section>;
+ return <section className="pcc-card" aria-label={t('files.title')}>{!view.files.length?<p className="pcc-empty">{c('filesEmpty')}</p>:<ul className="pcc-wl">{view.files.map(file=><li className="pcc-wi" key={file.id}>
+  <div><h4>{file.name}</h4><p>{c.has('fileKinds.'+file.kind)?c('fileKinds.'+file.kind):file.kind} · {t('version',{version:file.revision})}{file.filingState==='pending'&&<> · <span className="pcc-pill pcc-pill-warn">{t('files.filingPending')}</span></>}</p></div>
+  <a className="v9-button" href={'/lifecycle/probation/'+view.record.id+'/files/'+file.id} data-unsaved-guard="ignore" target="_blank" rel="noreferrer" aria-label={c('downloadFile',{name:file.name})}>{c('download')}</a>
+ </li>)}</ul>}</section>;
 }
 function HistoryTab({view,history}:{view:ProbationCaseView;history?:ProbationAutomationHistoryRun[]}){
  const t=useTranslations('probation'),router=useRouter(),[busy,start]=useTransition(),[kind,setKind]=useState<'followup'|'development'|'extension_recommendation'|'nonconfirmation_recommendation'>('followup'),[note,setNote]=useState(''),[error,setError]=useState('');
  const operations=view.roles.includes('pbp')||view.roles.includes('gbs'),development=view.runtimeEnabled&&(operations||view.roles.includes('lm'));
  const save=()=>{setError('');start(async()=>{const result=await addFollowup({caseId:view.record.id,kind,note});if(!result.ok){setError(result.detail??t('errors.unavailable'));return;}setNote('');router.refresh();});};
+ const actor=(id:string)=>view.holderNames[id]??null;
  return <div className="probation-tabpanel">
   {history&&<AutomationHistory runs={history}/>}
-  <section className="v9-panel v9-stack"><h2>{t('followup.title')}</h2>{error&&<p className="v9-notice v9-error" role="alert">{error}</p>}
-   {development&&<><label className="v9-field"><span>{t('followup.kind')}</span><select value={kind} disabled={busy} onChange={e=>setKind(e.target.value as typeof kind)}>{(['followup','development','extension_recommendation','nonconfirmation_recommendation'] as const).map(value=><option key={value} value={value}>{t('followup.'+value)}</option>)}</select></label><label className="v9-field"><span>{t('followup.note')}</span><textarea value={note} maxLength={10000} disabled={busy} onChange={e=>setNote(e.target.value)}/></label><div><ActionButton guardNavigation aria-busy={busy} type="button" className="v9-button" disabled={busy||!note.trim()} onClick={save}>{t('followup.save')}</ActionButton></div></>}
-   {!view.followups.length?<p className="v9-muted">{t('followup.empty')}</p>:<ol className="v9-list">{view.followups.map(followup=><li key={followup.id}><strong>{t.has('followup.'+followup.kind)?t('followup.'+followup.kind):followup.kind}</strong> · {probationTimestamp(followup.at)}<p className="probation-note">{followup.note}</p></li>)}</ol>}</section>
+  <section className="pcc-card" aria-labelledby="pcc-followups"><h2 id="pcc-followups">{t('followup.title')}</h2>{error&&<p className="pcc-banner pcc-banner-bad" role="alert">{error}</p>}
+   {!view.followups.length?<p className="pcc-muted">{t('followup.empty')}</p>:<ol className="pcc-hist">{view.followups.map(followup=><li key={followup.id}><span className="pcc-muted pcc-num">{probationTimestamp(followup.at)}</span>
+    <span><b>{actor(followup.actorId)??(t.has('followup.'+followup.kind)?t('followup.'+followup.kind):followup.kind)}</b>{actor(followup.actorId)?' · '+(t.has('followup.'+followup.kind)?t('followup.'+followup.kind):followup.kind):''}<span className="probation-note" style={{display:'block'}}>{followup.note}</span></span></li>)}</ol>}
+   {development&&<div className="pcc-stack"><div className="pcc-grid2"><label className="pcc-field"><span>{t('followup.kind')}</span><select value={kind} disabled={busy} onChange={e=>setKind(e.target.value as typeof kind)}>{(['followup','development','extension_recommendation','nonconfirmation_recommendation'] as const).map(value=><option key={value} value={value}>{t('followup.'+value)}</option>)}</select></label></div><label className="pcc-field"><span>{t('followup.note')}</span><textarea value={note} maxLength={10000} disabled={busy} onChange={e=>setNote(e.target.value)}/></label><div><ActionButton guardNavigation aria-busy={busy} type="button" className="v9-button" disabled={busy||!note.trim()} onClick={save}>{t('followup.save')}</ActionButton></div></div>}
+  </section>
   {operations&&<CaseDateControls view={view}/>}
   <LegacyReconciliationControls view={view}/>
  </div>;

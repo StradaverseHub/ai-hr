@@ -67,6 +67,11 @@ export function probationRouteSteps(part:ProbationPartView):ProbationRouteStep[]
 export type ProbationWaiting={role:string;holderId:string|null;label:string|null;what:'kpis'|'self'|'assessment'|'returned'|'acknowledge'|'approve'|'review'|'sign'|'opens';date?:string}|null;
 export function probationWaitingOn(view:ProbationCaseView):ProbationWaiting{
  const part=probationCurrentPart(view);if(!part||view.startStatus==='waiting_for_start')return null;
+ return probationPartWaiting(view,part);
+}
+/** Who one part waits on (the part tab's bottom note); null once the part is settled or the case closed. */
+export function probationPartWaiting(view:ProbationCaseView,part:ProbationPartView):ProbationWaiting{
+ if(view.startStatus==='waiting_for_start'||probationCaseClosed(view)||probationPartDone(part)||part.state==='cancelled')return null;
  if(part.state==='not_issued')return{role:'',holderId:null,label:null,what:'opens',date:part.issueOn};
  const holders=view.record.facts.holders;
  const step=probationRouteSteps(part).find(s=>s.state==='current'||s.state==='returned'||s.state==='overdue');

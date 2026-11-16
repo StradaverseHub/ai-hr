@@ -42,10 +42,10 @@ describe('Probation case view (L1, prototype CaseView)',()=>{
   expect(tabs[0]).toHaveAttribute('href','/lifecycle/probation/'+view.record.id+'/'+p1.id);
   expect(tabs[1]).toHaveAttribute('aria-current','page');expect(tabs[3]).toHaveAttribute('href','/lifecycle/probation/'+view.record.id+'?tab=outcome');
   // The part form: its own sections, without the standalone page's heading, back link or parts list.
-  expect(screen.getByRole('heading',{name:messages.probation.signing.title})).toBeInTheDocument();
+  expect(screen.getByRole('heading',{name:cv.form.signatures})).toBeInTheDocument();
   expect(screen.queryByRole('link',{name:messages.probation.backCase})).not.toBeInTheDocument();
   expect(screen.queryByRole('heading',{level:1,name:'Part 2'})).not.toBeInTheDocument();
-  expect(screen.getByRole('link',{name:messages.probation.backTracker})).toHaveAttribute('href','/lifecycle/probation');
+  expect(screen.getByRole('link',{name:cv.back})).toHaveAttribute('href','/lifecycle/probation');
  });
  it('keeps every case action: low result, outcome records and letters on Outcome & letters; follow-ups, date review and workflow history on History; files on Files',()=>{
   const{view,p2}=onPart2();view.roles=['pbp'];
@@ -71,7 +71,8 @@ describe('Probation case view (L1, prototype CaseView)',()=>{
   expect(screen.getByRole('button',{name:messages.probation.dates.request})).toBeInTheDocument();
   history.unmount();
   show({view,tab:'files'});
-  expect(screen.getByRole('link',{name:'Part 1 completed form.pdf'})).toHaveAttribute('href','/lifecycle/probation/'+view.record.id+'/files/file');
+  expect(screen.getByRole('link',{name:'Download Part 1 completed form.pdf'})).toHaveAttribute('href','/lifecycle/probation/'+view.record.id+'/files/file');
+  expect(screen.getByText(cv.fileKinds.completed_part+' · Version 1')).toBeInTheDocument();
  });
  it('names a closed case, opens it on Outcome & letters and shows the empty states plainly',()=>{
   const{view}=probationCaseFixture();
