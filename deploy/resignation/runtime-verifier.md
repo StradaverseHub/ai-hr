@@ -1,6 +1,6 @@
 # Resignation runtime verifier
 
-Migration 9991 intentionally fails closed until the release operator provisions its verifier. Follow repository environment policy and the staging queue/lease; this file grants no production deployment authority.
+Migration 5783 (the byte-identical final allocation of draft 9991) intentionally fails closed until the release operator provisions its verifier. Follow repository environment policy and the staging queue/lease; this file grants no production deployment authority.
 
 The application derives a dedicated `aihr-resignation-runtime-v1` HMAC key from the existing protected `AUTH_SESSION_KEY`. It does not reuse the organisation admission key, decrypt credentials, or give the application database role owner access. Native SQL authorizes each current actor and command; exact derived JSON is accepted only with a short-lived proof bound to that actor, tenant and database transaction. Private aggregate reads use separately signed scopes.
 
