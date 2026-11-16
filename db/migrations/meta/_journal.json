@@ -6308,6 +6308,13 @@
       "when": 1794841005848,
       "tag": "5848_contract_shared_virtual_period",
       "breakpoints": true
+    },
+    {
+      "idx": 5249,
+      "version": "7",
+      "when": 1794841005849,
+      "tag": "5849_contract_shared_case_references",
+      "breakpoints": true
     }
   ]
 }
