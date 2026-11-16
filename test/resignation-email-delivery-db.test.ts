@@ -51,7 +51,7 @@ async function signedFixture(){
  };
  const signed=await release(f.journey);
  const another=async()=>{
-  const person=await hireEmployee(f.admin,{person:{fullName:'Second mail fixture employee'},companyId:f.base.companyId,departmentId:f.base.deptA,employmentType:'full_time',hiredOn:'2026-01-01'}),userId=await createAppUser(f.base.tenantId,person.personId,'employee');
+  const person=await hireEmployee(f.admin,{person:{fullName:'Second mail fixture employee',primaryEmail:randomUUID()+'@mail-fixture.example.test'},companyId:f.base.companyId,departmentId:f.base.deptA,employmentType:'full_time',hiredOn:'2026-01-01'}),userId=await createAppUser(f.base.tenantId,person.personId,'employee');
   const ctx:SessionContext={tenantId:f.base.tenantId,userId,personId:person.personId,roles:['employee'],entitlements:harnessSnapshot(f.base.tenantId)};
   return release(await submitResignationJourney(ctx,{employmentId:person.employmentId,lastWorkingDay:f.lastWorkingDay,reason:'Second independent case.'}));
  };

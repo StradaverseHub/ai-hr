@@ -8,7 +8,7 @@ CREATE FUNCTION app.resignation_email_queue(p_subject uuid,p_key text,p_to uuid[
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE t uuid:=app.current_tenant_id(); j public.resignation_journey%ROWTYPE;
   to_ids uuid[]; cc_ids uuid[]; unreachable uuid[]; queued integer:=0;
-  content jsonb:=nullif(p_content,'null'::jsonb); doc jsonb; asset jsonb; file_ref jsonb; total_bytes bigint:=0;
+  mail_content jsonb:=nullif(p_content,'null'::jsonb); doc jsonb; asset jsonb; file_ref jsonb; total_bytes bigint:=0;
 BEGIN
   PERFORM app.resignation_runtime_consume('email',p_subject,jsonb_build_object('key',p_key,'to',to_jsonb(p_to),'cc',to_jsonb(coalesce(p_cc,'{}'::uuid[])),'subject',p_subject_line,'body',p_body,'content',p_content));
   IF app.automation_can_run('off',p_subject) IS NOT TRUE THEN RAISE EXCEPTION 'This workflow runner is not permitted here' USING ERRCODE='42501'; END IF;
@@ -18,36 +18,36 @@ BEGIN
   IF length(coalesce(p_key,'')) NOT BETWEEN 1 AND 300 OR length(coalesce(p_subject_line,'')) NOT BETWEEN 1 AND 500
     OR length(coalesce(p_body,''))>20000 OR coalesce(cardinality(p_to),0) NOT BETWEEN 1 AND 200
     OR coalesce(cardinality(p_cc),0)>200 THEN RAISE EXCEPTION 'Invalid workflow email' USING ERRCODE='22023'; END IF;
-  IF content IS NOT NULL THEN
-    IF jsonb_typeof(content)<>'object' OR octet_length(content::text)>1000000
-      OR jsonb_typeof(content->'documents') IS DISTINCT FROM 'array'
-      OR jsonb_typeof(content->'pdfDocumentIds') IS DISTINCT FROM 'array'
-      OR jsonb_typeof(content->'linkDocumentIds') IS DISTINCT FROM 'array'
-      OR length(coalesce(content->>'number','')) NOT BETWEEN 1 AND 160
-      OR jsonb_array_length(content->'documents')>20
-      OR jsonb_typeof(coalesce(content->'assets','[]'::jsonb))<>'array'
-      OR jsonb_typeof(coalesce(content->'files','[]'::jsonb))<>'array'
-      OR jsonb_array_length(content->'pdfDocumentIds')+jsonb_array_length(coalesce(content->'assets','[]'::jsonb))+jsonb_array_length(coalesce(content->'files','[]'::jsonb))>20
-      OR octet_length(coalesce(content->>'html',''))>256000
+  IF mail_content IS NOT NULL THEN
+    IF jsonb_typeof(mail_content)<>'object' OR octet_length(mail_content::text)>1000000
+      OR jsonb_typeof(mail_content->'documents') IS DISTINCT FROM 'array'
+      OR jsonb_typeof(mail_content->'pdfDocumentIds') IS DISTINCT FROM 'array'
+      OR jsonb_typeof(mail_content->'linkDocumentIds') IS DISTINCT FROM 'array'
+      OR length(coalesce(mail_content->>'number','')) NOT BETWEEN 1 AND 160
+      OR jsonb_array_length(mail_content->'documents')>20
+      OR jsonb_typeof(coalesce(mail_content->'assets','[]'::jsonb))<>'array'
+      OR jsonb_typeof(coalesce(mail_content->'files','[]'::jsonb))<>'array'
+      OR jsonb_array_length(mail_content->'pdfDocumentIds')+jsonb_array_length(coalesce(mail_content->'assets','[]'::jsonb))+jsonb_array_length(coalesce(mail_content->'files','[]'::jsonb))>20
+      OR octet_length(coalesce(mail_content->>'html',''))>256000
     THEN RAISE EXCEPTION 'Invalid workflow email content' USING ERRCODE='22023'; END IF;
-    FOR doc IN SELECT value FROM jsonb_array_elements(content->'documents') LOOP
+    FOR doc IN SELECT value FROM jsonb_array_elements(mail_content->'documents') LOOP
       IF doc->>'status' IS DISTINCT FROM 'signed' OR NOT EXISTS (
         SELECT 1 FROM jsonb_array_elements(coalesce(j.data->'releasedDocuments','[]'::jsonb)) frozen WHERE frozen=doc
       ) THEN RAISE EXCEPTION 'Only this case''s frozen released documents can be emailed' USING ERRCODE='22023'; END IF;
     END LOOP;
-    IF EXISTS (SELECT 1 FROM jsonb_array_elements_text((content->'pdfDocumentIds')||(content->'linkDocumentIds')) wanted
-      WHERE NOT EXISTS(SELECT 1 FROM jsonb_array_elements(content->'documents') d WHERE d->>'id'=wanted))
+    IF EXISTS (SELECT 1 FROM jsonb_array_elements_text((mail_content->'pdfDocumentIds')||(mail_content->'linkDocumentIds')) wanted
+      WHERE NOT EXISTS(SELECT 1 FROM jsonb_array_elements(mail_content->'documents') d WHERE d->>'id'=wanted))
     THEN RAISE EXCEPTION 'An attached document is unavailable' USING ERRCODE='22023'; END IF;
-    FOR asset IN SELECT value FROM jsonb_array_elements(coalesce(content->'assets','[]'::jsonb)) LOOP
+    FOR asset IN SELECT value FROM jsonb_array_elements(coalesce(mail_content->'assets','[]'::jsonb)) LOOP
       IF NOT EXISTS(SELECT 1 FROM public.lc_v9_email_asset a WHERE a.id::text=asset->>'id' AND a.tenant_id=t
-        AND a.email_template_id=content->>'emailTemplateId' AND a.kind=asset->>'kind' AND a.filename=asset->>'name'
+        AND a.email_template_id=mail_content->>'emailTemplateId' AND a.kind=asset->>'kind' AND a.filename=asset->>'name'
         AND a.mime_type=asset->>'mimeType' AND a.content_hash=asset->>'contentHash' AND octet_length(a.content)=(asset->>'size')::integer)
         OR asset->>'kind'='image' AND length(trim(coalesce(asset->>'alt','')))=0
       THEN RAISE EXCEPTION 'An email asset changed or belongs to another template' USING ERRCODE='22023'; END IF;
       total_bytes:=total_bytes+(asset->>'size')::bigint;
       IF total_bytes>20000000 THEN RAISE EXCEPTION 'Workflow email attachments exceed the total limit' USING ERRCODE='22023'; END IF;
     END LOOP;
-    FOR file_ref IN SELECT value FROM jsonb_array_elements(coalesce(content->'files','[]'::jsonb)) LOOP
+    FOR file_ref IN SELECT value FROM jsonb_array_elements(coalesce(mail_content->'files','[]'::jsonb)) LOOP
       IF NOT EXISTS(SELECT 1 FROM public.resignation_journey_file f WHERE f.tenant_id=t AND f.case_id=p_subject
         AND f.id::text=file_ref->>'storageId' AND f.id::text=file_ref->>'id' AND f.name=file_ref->>'name' AND f.content_hash=file_ref->>'contentHash')
       THEN RAISE EXCEPTION 'A required case file is unavailable' USING ERRCODE='22023'; END IF;
@@ -72,7 +72,7 @@ BEGIN
     WITH inserted AS (
       INSERT INTO public.automation_email_delivery(tenant_id,module,subject_id,mail_key,payload,created_by)
       SELECT t,'off',p_subject,p_key||':'||g::text,jsonb_build_object('version',1,'module','off','subjectId',p_subject,
-        'linkPath','/lifecycle/resignations/'||p_subject::text,'content',content,
+        'linkPath','/lifecycle/resignations/'||p_subject::text,'content',mail_content,
         'mail',jsonb_build_object('id',p_key||':'||g::text,'to',to_jsonb(to_ids[g*8+1:g*8+8]),
           'cc',CASE WHEN g=0 THEN to_jsonb(cc_ids) ELSE '[]'::jsonb END,'subject',p_subject_line,'body',coalesce(p_body,''),
           'delivery',jsonb_build_object('version',1,'sender','noreply'))),app.current_user_id()
