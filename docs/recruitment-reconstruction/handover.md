@@ -235,3 +235,6 @@ State at the head of `claude/rea-web-app-reconstruction-2c12ee` (pushed):
 - Not rendered; nothing on staging.
 
 All group 2 slices (19–25) are built. Owner: D-065 to D-070; the slice 24 provider-data approval; rendered checks on an installation.
+
+Update 2026-11-16: the owner accepted the recommendations for D-065 to D-070 (D-071); no code changes. Still open: the slice 24
+provider-data approval (after legal review), re-binding existing provider approvals before staging, and rendered checks on an installation.
