@@ -1753,7 +1753,9 @@
           "gradeChange": "Thay đổi cấp bậc",
           "joinDateChange": "Thay đổi Ngày gia nhập",
           "groupJoinDateCorrection": "Điều chỉnh Ngày gia nhập tập đoàn",
-          "rehire": "Tái tuyển dụng"
+          "rehire": "Tái tuyển dụng",
+          "contractRenewal": "Gia hạn hợp đồng",
+          "contractTermination": "Kết thúc hợp đồng"
         },
         "form": {
           "eventType": "Loại sự kiện",

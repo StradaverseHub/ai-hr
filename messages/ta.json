@@ -1753,7 +1753,9 @@
           "gradeChange": "பணி நிலை மாற்றம்",
           "joinDateChange": "சேர்ந்த தேதி மாற்றம்",
           "groupJoinDateCorrection": "குழு சேர்ந்த தேதி திருத்தம்",
-          "rehire": "மீண்டும் பணியமர்த்தல்"
+          "rehire": "மீண்டும் பணியமர்த்தல்",
+          "contractRenewal": "ஒப்பந்தப் புதுப்பிப்பு",
+          "contractTermination": "ஒப்பந்த முடிவு"
         },
         "form": {
           "eventType": "நிகழ்வு வகை",

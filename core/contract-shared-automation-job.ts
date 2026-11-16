@@ -10,6 +10,7 @@ import {contractSharedAutomationContext} from './contract-shared-context';
 import {contractAutomationRead,contractAutomationPending} from '../lib/contract-automation-context';
 import {queueAutomationEmailTx} from './automation-email-delivery';
 import {activateContractSharedApproval,activateContractSharedLetter} from './contract-shared-signing';
+import {activateContractSharedPosting} from './contract-shared-postings';
 import {contractSharedEmailExecutors} from './contract-shared-email';
 import {CONTRACT_AUTOMATION_CATALOGUE} from '../lib/automation/catalogues/contracts';
 import {runAutomationEvent,resumeAutomationRun,sqlAutomationRunStore,type AutomationExecutors,type AutomationRuntimeGuards,type AutomationRun} from '../packs/automation/service';
@@ -63,6 +64,10 @@ export const contractAutomationJobHandler:BulkJobHandler<never>={
     ...contractSharedEmailExecutors(db,{context,today,templates:inputs.runtimeEmails,letterValues}),
     requestApproval:step=>activateContractSharedApproval(db,workerCtx,{view:inputs.view,context,step,lastAssigned:inputs.definitions.lastAssigned,today}),
     generateDocument:step=>activateContractSharedLetter(db,workerCtx,{view:inputs.view,context,step,templates:inputs.definitions.documents,lastAssigned:inputs.definitions.lastAssigned,today}),
+    createPosting:async step=>{
+     const posting=await activateContractSharedPosting(db,{caseId:event.case_id,runId:step.run.id,stepId:step.step.id});
+     return posting.skipped?{status:'skipped',reason:posting.reason??'This decision creates no Personnel posting.'}:{status:'done',message:`Personnel posting PP-${posting.number} is waiting for approval.`};
+    },
     notifyFailure:async(_run,reason)=>{
      await db.execute(sql`select app.contract_shared_execution_attention(${event.id}::uuid,${reason.slice(0,1000)})`);
     },

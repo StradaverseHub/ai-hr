@@ -1753,7 +1753,9 @@
           "gradeChange": "Grade Change",
           "joinDateChange": "Join Date Change",
           "groupJoinDateCorrection": "Group Join Date Correction",
-          "rehire": "Rehired"
+          "rehire": "Rehired",
+          "contractRenewal": "Contract Renewal",
+          "contractTermination": "Contract Termination"
         },
         "form": {
           "eventType": "Event Type",

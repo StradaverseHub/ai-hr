@@ -1,4 +1,8 @@
 -- Forward refinements: one set-based scope for queue/tasks and idempotent canonical posting receipts.
+ALTER TABLE public.personnel_posting ADD CONSTRAINT personnel_posting_contract_values_shape CHECK(source<>'contract_staff' OR (
+ app.personnel_posting_values_ok(event_type,proposed) AND (edited IS NULL OR app.personnel_posting_values_ok(event_type,edited)) AND (applied IS NULL OR app.personnel_posting_values_ok(event_type,applied)))) NOT VALID;
+ALTER TABLE public.personnel_posting VALIDATE CONSTRAINT personnel_posting_contract_values_shape;
+--> statement-breakpoint
 CREATE FUNCTION app.contract_shared_posting_scope() RETURNS TABLE(company_id uuid,group_name text)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  WITH RECURSIVE admin_scopes(id) AS (
@@ -71,6 +75,7 @@ BEGIN
  PERFORM app.access_workforce_write_lock();
  SELECT * INTO p FROM public.personnel_posting WHERE tenant_id=app.current_tenant_id() AND id=p_id;
  IF p.id IS NULL OR p.source<>'contract_staff' OR (app.contract_shared_posting_approver(p.company_id) OR p.status='approved' AND app.access_workforce_employment(p.employment_id,'workforce.maintain')) IS NOT TRUE THEN RAISE EXCEPTION 'Contract posting application unavailable' USING ERRCODE='42501';END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.contract_shared_posting r JOIN public.contract_case c ON c.tenant_id=r.tenant_id AND c.id=r.case_id WHERE r.tenant_id=p.tenant_id AND r.posting_id=p.id AND r.case_id=p.source_ref AND c.employment_id=p.employment_id AND c.company_id=p.company_id) THEN RAISE EXCEPTION 'Contract posting source changed' USING ERRCODE='40001';END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('leave-dependency-configuration:'||p.tenant_id::text,0));
  PERFORM statutory.id FROM public.employee_statutory_my statutory JOIN public.employment e ON e.tenant_id=statutory.tenant_id AND e.person_id=statutory.person_id
  WHERE e.tenant_id=p.tenant_id AND e.id=p.employment_id FOR UPDATE OF statutory;
@@ -80,12 +85,15 @@ REVOKE ALL ON FUNCTION app.contract_shared_posting_prelock(uuid) FROM PUBLIC,ai_
 ALTER FUNCTION app.contract_shared_posting_intent(uuid) RENAME TO contract_shared_posting_intent_before_source_lock;
 CREATE FUNCTION app.contract_shared_posting_intent(p_id uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE result jsonb;remark text;
+DECLARE result jsonb;remark text;previous_end text;
 BEGIN
  PERFORM app.contract_shared_posting_prelock(p_id);
  result:=app.contract_shared_posting_intent_before_source_lock(p_id);
- SELECT coalesce(nullif(btrim(p.applied->>'remarks'),''),'Personnel posting PP-'||p.number::text) INTO remark FROM public.personnel_posting p WHERE p.tenant_id=app.current_tenant_id() AND p.id=p_id;
- RETURN result||jsonb_build_object('remarks',remark);
+ --5904 owns actual first-post-retirement health/intake custody. It may hold a pending movement,
+ -- but completed receipts and their separate historical Payroll attestation remain untouched.
+ IF result->'completed'='false'::jsonb AND app.contract_shared_native_intake_hold((result->>'employmentId')::uuid) IS NOT NULL THEN RAISE EXCEPTION 'Review the native Personnel intake before applying this Contract posting' USING ERRCODE='40001';END IF;
+ SELECT coalesce(nullif(btrim(p.applied->>'remarks'),''),'Personnel posting PP-'||p.number::text),p.applied->>'previousEndDate' INTO remark,previous_end FROM public.personnel_posting p WHERE p.tenant_id=app.current_tenant_id() AND p.id=p_id;
+ RETURN result||jsonb_build_object('remarks',remark,'previousEndDate',previous_end,'movementKind',CASE result->>'kind' WHEN 'contractConversion' THEN 'employmentTypeChange' ELSE 'contractRenewal' END);
 END $$;
 REVOKE ALL ON FUNCTION app.contract_shared_posting_intent_before_source_lock(uuid) FROM PUBLIC,ai_hr_app;
 REVOKE ALL ON FUNCTION app.contract_shared_posting_intent(uuid) FROM PUBLIC;
@@ -120,9 +128,59 @@ BEGIN
  SELECT * INTO e FROM public.employment WHERE tenant_id=i.tenant_id AND id=i.employment_id;
  IF p_group IS NULL OR (r.movement_group_id IS NOT NULL AND r.movement_group_id IS DISTINCT FROM p_group) OR to_jsonb(e) IS DISTINCT FROM i.old_employment||i.desired OR i.effective_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
  OR (i.kind='contractConversion' AND NOT EXISTS(SELECT 1 FROM public.assignment a WHERE a.tenant_id=i.tenant_id AND a.employment_id=i.employment_id AND a.employment_type='full_time' AND a.valid_from=i.effective_on AND a.valid_to IS NULL AND a.superseded_at IS NULL))
- OR NOT EXISTS(SELECT 1 FROM public.domain_event d WHERE d.tenant_id=i.tenant_id AND d.subject_employment_id=i.employment_id AND d.occurred_at=now() AND d.payload->'movement'->>'groupId'=p_group::text AND d.payload->'movement'->>'type'=i.kind) THEN RAISE EXCEPTION 'The canonical Contract movement did not apply the agreed values' USING ERRCODE='23514';END IF;
+ OR NOT EXISTS(SELECT 1 FROM public.domain_event d WHERE d.tenant_id=i.tenant_id AND d.subject_employment_id=i.employment_id AND d.occurred_at=now() AND d.payload->'movement'->>'groupId'=p_group::text AND d.payload->'movement'->>'type'=CASE i.kind WHEN 'contractConversion' THEN 'employmentTypeChange' ELSE 'contractRenewal' END) THEN RAISE EXCEPTION 'The canonical Contract movement did not apply the agreed values' USING ERRCODE='23514';END IF;
  UPDATE public.contract_shared_posting SET applied_at=now(),movement_group_id=p_group WHERE tenant_id=i.tenant_id AND posting_id=i.posting_id;
  UPDATE public.contract_shared_posting_tx SET consumed=true WHERE tenant_id=i.tenant_id AND transaction_id=i.transaction_id AND backend_pid=i.backend_pid AND employment_id=i.employment_id;
 END $$;
 REVOKE ALL ON FUNCTION app.contract_shared_posting_applied(uuid,uuid) FROM PUBLIC,ai_hr_app;
 GRANT EXECUTE ON FUNCTION app.contract_shared_posting_applied(uuid,uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- Case View receives receipt names/team only. Monetary values and action authority remain separate owners.
+CREATE FUNCTION app.contract_shared_posting_case_summary(p_case uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE result jsonb;
+BEGIN
+ IF app.contract_shared_case_permitted(p_case,'view') IS NOT TRUE THEN RAISE EXCEPTION 'Contract case unavailable' USING ERRCODE='42501';END IF;
+ SELECT jsonb_build_object('postingId',p.id,'label','PP-'||p.number::text,'eventType',p.event_type,'status',p.status,
+ 'approverGroupName',g->>'name','approvedByName',(SELECT a.actor_name FROM public.contract_case_activity a WHERE a.tenant_id=p.tenant_id AND a.case_id=p.source_ref AND a.action='shared.posting_approved' AND a.detail->>'postingId'=p.id::text ORDER BY a.occurred_at DESC,a.id DESC LIMIT 1),
+ 'approvedAt',p.approved_at,'movementAppliedAt',r.applied_at,'effectiveDate',coalesce(p.applied,p.edited,p.proposed)->>'effectiveDate',
+ 'payConfirmedByName',(SELECT a.actor_name FROM public.contract_case_activity a WHERE a.tenant_id=p.tenant_id AND a.case_id=p.source_ref AND a.action='shared.pay_confirmed' AND a.detail->>'postingId'=p.id::text ORDER BY a.occurred_at DESC,a.id DESC LIMIT 1),
+ 'payConfirmedAt',f.data->'payConfirmation'->>'at','caseRevision',f.revision,
+ 'canConfirmPay',app.contract_shared_posting_approver(c.company_id) IS TRUE AND p.status='approved' AND f.data->>'stage'='pay' AND f.data->'decision'->'payChanges'='true'::jsonb)
+ INTO result FROM public.contract_case c JOIN public.contract_shared_case f ON f.tenant_id=c.tenant_id AND f.case_id=c.id
+ JOIN public.personnel_posting p ON p.tenant_id=f.tenant_id AND p.id=(f.data->'posting'->>'id')::uuid AND p.source='contract_staff' AND p.source_ref=c.id
+ JOIN public.contract_shared_posting r ON r.tenant_id=p.tenant_id AND r.posting_id=p.id
+ LEFT JOIN public.contract_shared_settings s ON s.tenant_id=c.tenant_id AND s.company_id=c.company_id
+ LEFT JOIN public.lc_v9_config v ON v.tenant_id=c.tenant_id
+ LEFT JOIN LATERAL(SELECT value g FROM jsonb_array_elements(coalesce(v.data->'groups','[]'::jsonb)) WHERE value->>'id'=coalesce(s.posting_group_id,v.data->>'peopleOpsGroup') LIMIT 1) groups ON true
+ WHERE c.tenant_id=app.current_tenant_id() AND c.id=p_case;
+ RETURN result;
+END $$;
+REVOKE ALL ON FUNCTION app.contract_shared_posting_case_summary(uuid) FROM PUBLIC,ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.contract_shared_posting_case_summary(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Conversion uses the native Employment Type Change movement; the posting retains its Contract outcome.
+CREATE OR REPLACE FUNCTION app.contract_shared_posting_record_movement(p_id uuid,p_group uuid,p_scheduled boolean) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE p public.personnel_posting;i public.contract_shared_posting_tx;f public.contract_shared_case;d public.domain_event;next_data jsonb;
+BEGIN
+ SELECT * INTO i FROM public.contract_shared_posting_tx WHERE tenant_id=app.current_tenant_id() AND posting_id=p_id AND transaction_id=txid_current() AND backend_pid=pg_backend_pid() AND login_name=session_user AND actor_user_id IS NOT DISTINCT FROM app.current_user_id();
+ SELECT * INTO p FROM public.personnel_posting WHERE tenant_id=i.tenant_id AND id=i.posting_id FOR UPDATE;
+ IF p.id IS NULL OR p.approved_by IS DISTINCT FROM app.current_user_id() OR p.approved_at IS DISTINCT FROM now() OR p.movement_id IS NOT NULL THEN RAISE EXCEPTION 'Only the current approval can bind this movement' USING ERRCODE='42501';END IF;
+ SELECT * INTO d FROM public.domain_event WHERE tenant_id=p.tenant_id AND subject_employment_id=p.employment_id AND occurred_at=now() AND payload->'movement'->>'groupId'=p_group::text AND payload->'movement'->>'type'=CASE p.event_type WHEN 'contractConversion' THEN 'employmentTypeChange' ELSE 'contractRenewal' END ORDER BY sequence LIMIT 1;
+ IF d.id IS NULL OR (p_scheduled AND (d.event_type<>'employment.movement.scheduled' OR d.payload->'input'->>'contractPostingId' IS DISTINCT FROM p.id::text OR d.payload->>'effectiveDate' IS DISTINCT FROM p.applied->>'effectiveDate' OR (d.payload->>'effectiveDate')::date<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)) THEN RAISE EXCEPTION 'Canonical Contract movement receipt required' USING ERRCODE='23514';END IF;
+ IF NOT p_scheduled THEN PERFORM app.contract_shared_posting_applied(p.id,p_group);ELSE
+  UPDATE public.contract_shared_posting SET movement_group_id=p_group WHERE tenant_id=p.tenant_id AND posting_id=p.id;
+  UPDATE public.contract_shared_posting_tx SET consumed=true WHERE tenant_id=i.tenant_id AND transaction_id=i.transaction_id AND backend_pid=i.backend_pid AND employment_id=i.employment_id;
+ END IF;
+ UPDATE public.personnel_posting SET movement_id=d.id::text WHERE tenant_id=p.tenant_id AND id=p.id;
+ SELECT * INTO f FROM public.contract_shared_case WHERE tenant_id=p.tenant_id AND case_id=p.source_ref FOR UPDATE;
+ next_data:=f.data||jsonb_build_object('revision',f.revision+1,'stage',CASE WHEN f.data->'decision'->'payChanges'='true'::jsonb THEN 'pay' WHEN p.event_type='contractRenewal' THEN 'renewed' ELSE 'converted' END,
+ 'posting',jsonb_build_object('id',p.id,'approvedBy',app.current_user_id(),'approvedAt',now()),'lastActivityAt',now());
+ IF f.data->'decision'->'payChanges'='true'::jsonb AND NOT(next_data->'flags' ? 'pay_pending') THEN next_data:=jsonb_set(next_data,'{flags}',(next_data->'flags')||'"pay_pending"'::jsonb);END IF;
+ UPDATE public.contract_shared_case SET data=next_data,revision=revision+1,updated_at=now() WHERE tenant_id=f.tenant_id AND case_id=f.case_id;
+ PERFORM app.contract_audit(f.case_id,'shared.posting_approved',jsonb_build_object('postingId',p.id,'movementId',d.id,'movementGroupId',p_group,'scheduled',p_scheduled,'effectiveDate',p.applied->>'effectiveDate'));
+END $$;
+REVOKE ALL ON FUNCTION app.contract_shared_posting_record_movement(uuid,uuid,boolean) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.contract_shared_posting_record_movement(uuid,uuid,boolean) TO ai_hr_app;

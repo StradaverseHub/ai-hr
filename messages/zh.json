@@ -1753,7 +1753,9 @@
           "gradeChange": "职级变更",
           "joinDateChange": "入职日期变更",
           "groupJoinDateCorrection": "集团入职日期更正",
-          "rehire": "重新雇用"
+          "rehire": "重新雇用",
+          "contractRenewal": "续签合同",
+          "contractTermination": "合同终止"
         },
         "form": {
           "eventType": "事件类型",

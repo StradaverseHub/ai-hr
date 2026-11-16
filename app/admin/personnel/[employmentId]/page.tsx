@@ -1,4 +1,5 @@
 import {DerivedOrganisationControl} from '@/components/derived-organisation-fields';
+import {isContractPostingMovementKind} from '@/core/movement-kinds';
 import { ActionButton } from '@/components/ui/action-button';
 import { ExportDownloadLink } from '@/components/export-download-link';
 import {latestPersonnelHistory} from '@/lib/personnel-history';
@@ -3619,7 +3620,7 @@ export default async function EmployeePage({
         // already labelled. The island holds no server imports, so the catalogue is resolved here; passing
         // `behaviourKind` is what lets the form ask for the right fields for one of their OWN types.
         types: movementTypes
-          .filter((r) => r.active)
+          .filter((r) => r.active&&!isContractPostingMovementKind(r.behaviourKind))
           .filter((r) => (r.behaviourKind === 'rehire' ? canRehire : canCreateMovement))
           .map((r) => ({ code: r.code, label: r.label, behaviourKind: r.behaviourKind, description: r.description, ...typeControls(r.code) })),
         cancelHref:historyHref,
@@ -3706,7 +3707,7 @@ export default async function EmployeePage({
         key={movementEditRow.id}
         {...movementFormProps}
         types={movementTypes
-          .filter((r) => r.active || r.code === (movementEditRow.correctionKind ?? movementEditRow.kind))
+          .filter((r) => !isContractPostingMovementKind(r.behaviourKind)&&(r.active || r.code === (movementEditRow.correctionKind ?? movementEditRow.kind)))
           .map((r) => ({ code: r.code, label: r.label, behaviourKind: r.behaviourKind, ...typeControls(r.code) }))}
         edit={{
           movementId: movementEditRow.id,
@@ -3717,7 +3718,7 @@ export default async function EmployeePage({
           pendingInput: movementEditInput?.values,
           pendingUnavailable: movementEditInput?.unavailable,
           // Every replacement goes through the destination's canonical validation in the same transaction.
-          allowedKinds: Array.from(new Set([movementEditRow.correctionKind ?? movementEditRow.kind, ...movementTypes.filter(r => r.active).map(r => r.code)])),
+          allowedKinds: Array.from(new Set([movementEditRow.correctionKind ?? movementEditRow.kind, ...movementTypes.filter(r => r.active&&!isContractPostingMovementKind(r.behaviourKind)).map(r => r.code)])),
           payrollWarning: movementEditRow.payrollWarning,
           payrollClosedPeriods: movementEditRow.payrollClosedPeriods,
           availableClosedPayrollPeriods: closedPayrollPeriods,

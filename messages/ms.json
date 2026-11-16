@@ -1753,7 +1753,9 @@
           "gradeChange": "Perubahan Gred",
           "joinDateChange": "Perubahan Tarikh Menyertai",
           "groupJoinDateCorrection": "Pembetulan Tarikh Menyertai Kumpulan",
-          "rehire": "Diambil Semula"
+          "rehire": "Diambil Semula",
+          "contractRenewal": "Pembaharuan kontrak",
+          "contractTermination": "Penamatan kontrak"
         },
         "form": {
           "eventType": "Jenis Acara",

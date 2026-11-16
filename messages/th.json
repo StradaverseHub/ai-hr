@@ -1753,7 +1753,9 @@
           "gradeChange": "เปลี่ยนระดับงาน",
           "joinDateChange": "การเปลี่ยนวันที่เข้าร่วม",
           "groupJoinDateCorrection": "การแก้ไขวันที่เข้าร่วมกลุ่ม",
-          "rehire": "จ้างกลับเข้าทำงาน"
+          "rehire": "จ้างกลับเข้าทำงาน",
+          "contractRenewal": "ต่อสัญญาจ้าง",
+          "contractTermination": "สิ้นสุดสัญญาจ้าง"
         },
         "form": {
           "eventType": "ประเภทเหตุการณ์",

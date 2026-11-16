@@ -29,6 +29,8 @@ it('separates scheduled Personnel application from the required manual Payroll a
  const declaration=screen.getByRole('checkbox',{name:'I have entered the agreed basic salary separately in Payroll.'});
  expect(declaration).toBeRequired();expect(declaration).not.toBeChecked();
  fireEvent.click(screen.getByRole('button',{name:'Confirm Payroll entry'}));expect(actions.pay).not.toHaveBeenCalled();
+ // The shared ActionButton refuses a second activation in the same event turn.
+ await Promise.resolve();
  fireEvent.click(declaration);fireEvent.click(screen.getByRole('button',{name:'Confirm Payroll entry'}));
  await waitFor(()=>expect(actions.pay).toHaveBeenCalledOnce());
  const form=actions.pay.mock.calls[0][0] as FormData;

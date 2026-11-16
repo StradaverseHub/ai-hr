@@ -15,7 +15,6 @@ export const MOVEMENT_PENDING_COMPARISON_FIELDS = [
   'companyId','departmentId','positionId','businessUnitId','locationId','gradeId',
   'employmentType','managerEmploymentId','basicSalary','currency','payMode','paymentTerm',
   ...MOVEMENT_FLAT_FIELDS,...MOVEMENT_END_DATE_FIELDS,
-  'contractPostingId','contractStartDate','contractNumber',
 ] as const;
 export const MOVEMENT_PENDING_INPUT_FIELDS = [...MOVEMENT_PENDING_COMPARISON_FIELDS,
   'blacklisted','terminationReasonCode','terminationNoticeDays','resignationDate','tenderResignationDate','resignationEffectiveDate',

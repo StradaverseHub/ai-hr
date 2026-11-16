@@ -2,7 +2,8 @@ import {organisationManagedTx,organisationBusinessUnit} from './organisation-wri
 import {deriveCompanyOrganisationTx,recordEmploymentOrganisationTagsTx,employmentOrganisationTagsTx} from './company-organisation';
 import {personnelInformationCorrections,type InformationHistoryCorrection} from '../lib/personnel-history';
 import {withProbationPersonnelIntentTx,withProbationDateShiftIntentTx,probationMovementAuthorityTx} from './probation-effect-authority';
-import {withContractPostingIntentTx,contractPostingMovementAuthorityTx} from './contract-posting-authority';
+import {withContractPostingIntentTx,contractPostingMovementAuthorityTx,type ContractPostingIntent} from './contract-posting-authority';
+import {isContractPostingMovementKind} from './movement-kinds';
 import { withExitDateAuthorityTx } from './exit-date-authority';
 import { isDatabaseError } from '../lib/db-error';
 import { hasClosedPayrollCorrectionAuthorityTx, withClosedPayrollCorrectionAuthorityTx, MovementClosedPayrollAcknowledgementError, payrollPreservationRefusal } from './closed-payroll-correction-authority';
@@ -1299,6 +1300,7 @@ function correctabilityOf(row: ProjectedRow, group: RawEvent[], isLatest: boolea
   if (!group.length || !behaviour) return { canReverse: false, canEdit: false, stateChanging };
   // Board 511aa74a — a Rehired event created an employment; only its own Roll Back (core/rehire.ts) can undo it.
   if (behaviour === 'rehire') return { canReverse: false, canEdit: false, stateChanging };
+  if (isContractPostingMovementKind(behaviour)||group.some(event=>!!(event.payload as {movement?:MovementTag}|null)?.movement?.contractPostingId)) return {canReverse:false,canEdit:false,stateChanging};
   // 1d58019a Step 2 (ADR-0166) — a Termination row must BE a termination in the ledger: its own
   // employment.terminated leg, or the scheduled intent. Since a tenant's own type may carry the Termination
   // behaviour, a type re-pointed around the service after use (the service locks a used type's behaviour)
@@ -2375,7 +2377,8 @@ function movementDeltas(p: CreateMovementInput, cur: MovementCurrentState) {
   const dPos = delta(p.positionId, cur.positionId);
   const dBu = delta(p.businessUnitId, cur.businessUnitId);
   const dLoc = delta(p.locationId, cur.locationId);
-  const desiredType = p.kind === 'contractConversion' ? 'full_time' : p.employmentType;
+  const contractPosting=!!p.contractPostingId&&(p.kind==='contractRenewal'||p.kind==='employmentTypeChange');
+  const desiredType = contractPosting&&p.kind==='employmentTypeChange' ? 'full_time' : p.employmentType;
   const dType = desiredType && desiredType !== cur.employmentType ? desiredType : undefined;
   const dGrade = delta(p.gradeId, cur.gradeId);
   const dManager = delta(p.managerEmploymentId, cur.managerEmploymentId);
@@ -2417,10 +2420,10 @@ function movementDeltas(p: CreateMovementInput, cur: MovementCurrentState) {
       if (dType === 'contract' && p.effectiveDate !== cur.contractStartDate) endDates.contractStartDate = p.effectiveDate;
     }
   }
-  if (p.kind === 'contractRenewal' || p.kind === 'contractConversion') {
+  if (contractPosting) {
     if (!p.contractPostingId) throw new Error('An approved Contract posting is required.');
     const start = delta(p.contractStartDate, cur.contractStartDate);
-    const end = delta(p.kind === 'contractConversion' ? null : p.endDate, cur.contractEndDate);
+    const end = delta(p.kind === 'employmentTypeChange' ? null : p.endDate, cur.contractEndDate);
     const number = p.kind === 'contractRenewal' ? delta(p.contractNumber, cur.contractNumber ?? null) : undefined;
     if (start !== undefined) endDates.contractStartDate = start;
     if (end !== undefined) endDates.contractEndDate = end;
@@ -2613,7 +2616,7 @@ async function applyComparisonMovementTx(
 ) {
   // Acquire the person owner before any info/assignment leg can lock employment.
   await lockEmploymentStatutoryOwnerTx(tx,p.employmentId);
-  const placement = movementHasOrganisationInput(p) || (p.companyId !== undefined && p.companyId !== null);
+  const placement = !contractPostingMovementAuthorityTx(tx,p as unknown as Record<string,unknown>)&&(movementHasOrganisationInput(p) || (p.companyId !== undefined && p.companyId !== null));
   const lifted = placement && isCalendarDate(p.effectiveDate) && p.effectiveDate <= todayInKualaLumpur()
     ? await liftCorrectionBoundariesTx(tx, ctx, p.employmentId, p.effectiveDate)
     : null;
@@ -2679,6 +2682,7 @@ async function applyComparisonLegsTx(
       // 476f23ed — the TAG carries the catalogue code (what the organisation calls this event); `kind`
       // carries the behaviour that just ran. They are identical for every built-in type.
       const t: MovementTag = { type: p.typeCode ?? kind, groupId, effectiveDate: p.effectiveDate };
+      if(contractPostingMovementAuthorityTx(tx,p as unknown as Record<string,unknown>))t.contractPostingId=p.contractPostingId;
       // ADR-0030 redact-to-reference: comp events never carry remark text — it lives on the comp row.
       if (opts.withRemarks) {
         t.remarks = remarks;
@@ -2868,6 +2872,11 @@ function scheduledInputOf(p: CreateMovementInput): Record<string, unknown> {
   for (const k of MOVEMENT_PENDING_COMPARISON_FIELDS) {
     const v = (p as Record<string, unknown>)[k];
     if (v !== undefined) out[k] = v;
+  }
+  if(p.contractPostingId){
+    out.contractPostingId=p.contractPostingId;
+    out.contractStartDate=p.contractStartDate;
+    out.contractNumber=p.contractNumber;
   }
   return out;
 }
@@ -3356,7 +3365,7 @@ function movementHasOrganisationInput(p:CreateMovementInput){
 /** Private admission data never comes from a form or caller-supplied baseline. */
 async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput,futureAdmission?:{baseline?:MovementCurrentState;capture?:(baseline:MovementCurrentState)=>void;expectedBehaviour?:string},correction?:{fromGroupId:string|null;allowInactive?:boolean},captureGradeBefore=false){
   const contractAuthority = contractPostingMovementAuthorityTx(tx,rawInput as unknown as Record<string,unknown>);
-  if ((rawInput.kind === 'contractRenewal' || rawInput.kind === 'contractConversion') && !contractAuthority) throw new Error('Record this movement through its approved Contract Personnel posting.');
+  if ((isContractPostingMovementKind(rawInput.kind)||rawInput.contractPostingId) && !contractAuthority) throw new Error('Record this movement through its approved Contract Personnel posting.');
   const roles = ctx.roles ?? [];
   if (!(roles.includes('super_admin') || roles.includes('hr_admin'))&&!probationMovementAuthorityTx(tx,rawInput)&&!contractAuthority) {
     throw new Error('Only an admin can record a movement.');
@@ -3366,7 +3375,8 @@ async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateM
   // mapped to, and its code travels on as `typeCode` so the ledger records what HR chose. A type that was
   // switched off is refused here rather than silently applied — that is the whole point of switching it off.
   const p = await resolveInputTypeTx(tx, ctx, rawInput, 'record', {allowInactive:correction?.allowInactive===true});
-  if(isComparisonKind(p.kind)&&movementHasOrganisationInput(p)&&isCalendarDate(p.effectiveDate)){
+  if((isContractPostingMovementKind(p.kind)||p.contractPostingId)&&(!contractAuthority||!contractPostingMovementAuthorityTx(tx,p as unknown as Record<string,unknown>)))throw new Error('Record this movement through its approved Contract Personnel posting.');
+  if(isComparisonKind(p.kind)&&!contractAuthority&&movementHasOrganisationInput(p)&&isCalendarDate(p.effectiveDate)){
     const current=await movementCurrentStateTx(tx,p.employmentId);
     const companyId=p.kind==='entityTransfer'&&p.companyId?p.companyId:current.companyId;
     await assertWorkforceCompanyTx(tx,ctx,companyId,'maintain');
@@ -3739,12 +3749,13 @@ export async function applyDueMovementsTx(
 
     let changes: MovementChange[] = [];
     try {
-      const isContractPosting = behaviourKind === 'contractRenewal' || behaviourKind === 'contractConversion';
+      const isContractPosting = !!input.contractPostingId;
       const applyContract = () => withContractPostingIntentTx(tx,input.contractPostingId ?? '',async intent=>{
         if(intent.completed)return {changes:[] as MovementChange[]};
         const exact={...input,contractStartDate:intent.kind==='contractRenewal'?intent.effectiveDate:null,contractNumber:intent.contractNumber};
         if(!contractPostingMovementAuthorityTx(tx,exact as unknown as Record<string,unknown>))throw new Error('The scheduled Contract posting differs from its approved intent.');
         const result=await applyComparisonMovementTx(tx,ctx,exact,behaviourKind as ComparisonKind,{groupId:r.groupId!,allSecondary:true});
+        await appendContractPeriodClosureTx(tx,ctx,intent);
         await tx.execute(sql`select app.contract_shared_posting_applied(${intent.postingId}::uuid,${r.groupId}::uuid)`);
         return result;
       });
@@ -5132,10 +5143,17 @@ export function applyApprovedProbationDateShiftTx(tx:Tx,ctx:SessionContext,reque
 export function applyApprovedContractPostingMovementTx(tx:Tx,ctx:SessionContext,postingId:string){return withContractPostingIntentTx(tx,postingId,async intent=>{
  if(intent.completed)return {alreadyApplied:true as const,groupId:intent.groupId};
  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
- const input:CreateMovementInput={employmentId:intent.employmentId,kind:intent.kind,effectiveDate:intent.effectiveDate,endDate:intent.endDate,contractPostingId:intent.postingId,contractStartDate:intent.kind==='contractRenewal'?intent.effectiveDate:null,contractNumber:intent.contractNumber,remarks:intent.remarks};
+ const input:CreateMovementInput={employmentId:intent.employmentId,kind:intent.movementKind,effectiveDate:intent.effectiveDate,endDate:intent.endDate,...(intent.kind==='contractConversion'?{employmentType:'full_time' as const}:{}),contractPostingId:intent.postingId,contractStartDate:intent.kind==='contractRenewal'?intent.effectiveDate:null,contractNumber:intent.contractNumber,remarks:intent.remarks};
  const result=await dispatchMovementEventTx(tx,ctx,input);
  if(!('groupId' in result)||typeof result.groupId!=='string')throw new Error('The Contract movement did not record a canonical group.');
  const scheduled='scheduled' in result&&result.scheduled===true;
+ if(!scheduled)await appendContractPeriodClosureTx(tx,ctx,intent);
  await tx.execute(sql`select app.contract_shared_posting_record_movement(${postingId}::uuid,${result.groupId}::uuid,${scheduled})`);
  return {alreadyApplied:false as const,groupId:result.groupId,scheduled,result};
 });}
+
+/** Closes only the old fixed-term period in the existing Movement history, never the employment or Payroll. */
+async function appendContractPeriodClosureTx(tx:Tx,ctx:SessionContext,intent:Readonly<ContractPostingIntent>){
+ await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:intent.employmentId,eventType:'employment.movement.recorded',actor:actorOf(ctx),subjectEmploymentId:intent.employmentId,
+  payload:{type:'contractTermination',effectiveDate:intent.previousEndDate,endDate:null,remarks:'Contract expiry before the agreed next employment period',reasonCode:'contract_expiry',contractPeriodOnly:true,sourcePostingId:intent.postingId,movement:{type:'contractTermination',groupId:randomUUID(),effectiveDate:intent.previousEndDate,contractPostingId:intent.postingId}}});
+}

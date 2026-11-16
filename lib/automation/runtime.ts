@@ -83,7 +83,6 @@ export type AutomationStepExecutor = (context: AutomationStepContext) => Promise
 export type AutomationExecutors = {
   notify?: AutomationStepExecutor;
   requestDecision?: AutomationStepExecutor;
-  requestApproval?: AutomationStepExecutor;
   sendEmail?: AutomationStepExecutor;
   generateDocument?: AutomationStepExecutor;
   createPosting?: AutomationStepExecutor;

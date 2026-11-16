@@ -21,6 +21,7 @@ import {pgSqlState} from '../lib/db-error';
 import {withScopedLifecycleTenant} from './module-gate';
 import {createMovementEventTx,movementLedgerMarkerTx,movementRowsAfterSequenceTx,applyApprovedContractPostingMovementTx} from './movement';
 import {decideResignation} from './offboarding';
+import {readContractSharedPostingTx,approveContractSharedPostingTx} from './contract-shared-postings';
 import {movementNeedsEntitlementReprojection} from './movement-kinds';
 import {
   isPersonnelPostingEvent,normalisePostingValues,postingCurrentValues,postingDisplayStatus,postingLabel,
@@ -225,6 +226,12 @@ export type ApprovedPersonnelPosting = { id: string; movementId: string; employm
  */
 export async function approvePersonnelPostingTx(tx: Tx, ctx: SessionContext, input: { id: string; revision: number; values?: Record<string, unknown>;eventType?:PersonnelPostingEvent }): Promise<ApprovedPersonnelPosting> {
   if (!UUID.test(input.id) || !Number.isInteger(input.revision)) throw new PersonnelPostingError('not_found', 'Posting not found.');
+  const contract=await readContractSharedPostingTx(tx,input.id);
+  if(contract){
+    if(input.eventType&&input.eventType!==contract.eventType)throw new PersonnelPostingError('invalid','The Contract posting event type is fixed.');
+    const approved=await approveContractSharedPostingTx(tx,ctx,input);
+    return {id:input.id,movementId:approved.movementId,employmentId:approved.employmentId,eventType:approved.eventType,values:approved.values,behaviourKind:approved.eventType==='contractConversion'?'employmentTypeChange':'contractRenewal'};
+  }
   input={...input};
   if(input.eventType){
     const before=await personnelPostingTx(tx,input.id);
@@ -245,12 +252,12 @@ export async function approvePersonnelPostingTx(tx: Tx, ctx: SessionContext, inp
   const [approved] = await guarded(() => tx.execute<{ data: { id: string; number: number; employmentId: string; eventType: PersonnelPostingEvent; values: PersonnelPostingValues; movementId?:string; alreadyApplied?:boolean } }>(
     sql`select app.personnel_posting_approve(${input.id}::uuid, ${input.revision}, ${corrected ? JSON.stringify(corrected) : null}::jsonb) as data`));
   const {employmentId, eventType, values: applied, number} = approved.data;
-  if(approved.data.alreadyApplied&&approved.data.movementId)return {id:input.id,movementId:approved.data.movementId,employmentId,eventType,values:applied,behaviourKind:eventType};
+  if(approved.data.alreadyApplied&&approved.data.movementId)return {id:input.id,movementId:approved.data.movementId,employmentId,eventType,values:applied,behaviourKind:eventType==='contractConversion'?'employmentTypeChange':eventType};
   if(eventType==='contractRenewal'||eventType==='contractConversion'){
     const result=await applyApprovedContractPostingMovementTx(tx,ctx,input.id);
     const [event]=await tx.execute<{id:string}>(sql`select id from domain_event where tenant_id=${ctx.tenantId}::uuid and subject_employment_id=${employmentId}::uuid and payload->'movement'->>'groupId'=${result.groupId} order by sequence limit 1`);
     if(!event)throw new PersonnelPostingError('invalid','The Contract movement receipt is unavailable.');
-    return {id:input.id,movementId:event.id,employmentId,eventType,values:applied,behaviourKind:eventType};
+    return {id:input.id,movementId:event.id,employmentId,eventType,values:applied,behaviourKind:eventType==='contractConversion'?'employmentTypeChange':eventType};
   }
   const posting=await personnelPostingTx(tx,input.id);
   if(!posting)throw new PersonnelPostingError('not_found','Posting not found.');
