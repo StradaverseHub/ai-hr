@@ -51,7 +51,7 @@ DECLARE k text;
 BEGIN
  IF p_event NOT IN ('promotion','transfer','increment','confirmation','salaryAdjustment','employmentTypeChange','termination') OR jsonb_typeof(p_values) IS DISTINCT FROM 'object' THEN RETURN false; END IF;
  IF app.personnel_posting_day(p_values->'effectiveDate') IS NULL THEN RETURN false; END IF;
- IF EXISTS(SELECT 1 FROM jsonb_object_keys(p_values) k WHERE k NOT IN ('effectiveDate','remarks','positionId','position','gradeId','jobGrade','basicSalary','exitReason','resignationDate')) THEN RETURN false; END IF;
+ IF EXISTS(SELECT 1 FROM jsonb_object_keys(p_values) AS fields(field_name) WHERE fields.field_name NOT IN ('effectiveDate','remarks','positionId','position','gradeId','jobGrade','basicSalary','exitReason','resignationDate')) THEN RETURN false; END IF;
  IF p_values ? 'remarks' AND jsonb_typeof(p_values->'remarks')<>'null' THEN
   IF jsonb_typeof(p_values->'remarks')<>'string' OR length(p_values->>'remarks')>200 THEN RETURN false; END IF;
  END IF;

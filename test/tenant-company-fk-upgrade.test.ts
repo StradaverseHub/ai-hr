@@ -392,6 +392,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // the roles that evaluate it (test/rewards-config-grants-lock.test.ts), so no added function is callable by PUBLIC.
   const publicFunctions:string[]=[];
   const addedFunctions=[
+   // Verified managed-V9 classification; a scoped native boolean, callable by the application only.
+   'app.resignation_offboarding_case_managed(uuid)',
    // Final shared directory and managed-submission cutover helpers.
    'app.contract_configuration_directory(uuid[],text,uuid[])','app.resignation_managed_submission_enabled(uuid)','app.resignation_submission_guard()',
    // Resignation9991/9992/9993/9995: explicit native entry points and private implementation identities.
