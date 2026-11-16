@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {beforeAll,beforeEach,afterAll,afterEach,vi,describe,it,expect} from 'vitest';
-import {owner,migrateTestDb,resetDb,closeAll} from './harness';
+import {owner,migrateTestDb,resetDb,closeAll,createAppUser} from './harness';
 import {resignationJourneyFixture} from './helpers/resignation-journey-fixture';
 import {commandResignationJourney} from '../packs/lifecycle/service';
 import {v9CaseDetail,v9Command,v9CreateOffboarding,v9Sweep} from '../packs/lifecycle/v9/service';
@@ -37,6 +37,11 @@ describe('one communication owner for managed resignation clearance',()=>{
   detail=await v9CaseDetail(f.admin,id);expect(detail.case.documents).toEqual([]);expect(detail.case.runs).toEqual([]);expect(detail.case.mails).toEqual([]);expect(detail.case.tasks[0].status).toBe('todo');
   const [source]=await owner.db.execute<{letters:number}>(sql`select jsonb_array_length(data->'releasedDocuments') as letters from resignation_journey where id=${journey.id}::uuid`);expect(source.letters).toBe(1);
   const clearanceTemplateId=randomUUID();f.config.templates.push({id:clearanceTemplateId,name:'Separate clearance form',module:'off',type:'Form',rules:{},hrStep:'none',employeeAck:false,retired:false,currentVersion:1,versions:[{version:1,state:'published',at:new Date().toISOString(),by:'Fixture owner',blocks:[{id:'handover-record',type:'text',text:'Clearance inventory check.',section:''}],fields:[]}]});await save();await v9Command(f.admin,id,detail.case.revision,{type:'generate',template:clearanceTemplateId});const manual=await v9CaseDetail(f.admin,id);expect(manual.case.documents).toEqual([expect.objectContaining({templateId:clearanceTemplateId})]);expect(manual.case.runs).toEqual([]);
+ },90000);
+ it('keeps the exact pinned shared template owned when Start offboarding succeeds before its letter generation blocks',async()=>{
+  const f=await resignationJourneyFixture(),templateId=randomUUID(),accountOnlySigner=await createAppUser(f.base.tenantId,null,'employee');f.config.templates.push({id:templateId,name:'Pinned acceptance requiring a linked signer',module:'off',type:'Letter',rules:{},hrStep:'none',employeeAck:false,retired:false,currentVersion:1,versions:[{version:1,state:'published',at:new Date().toISOString(),by:'Fixture owner',blocks:[{id:'body',type:'text',text:'Acceptance owned by the shared journey.',section:''},{id:'sign',type:'signature',role:'step:sign',text:'',section:''}],fields:[],routing:[{id:'sign',order:1,action:'sign',who:{kind:'people',userIds:[accountOnlySigner]},owner:true}]}]});await owner.db.execute(sql`update lc_v9_config set data=${JSON.stringify(f.config)}::jsonb where tenant_id=${f.base.tenantId}::uuid`);
+  await f.workflow('accepted',[{id:'clearance',type:'startOffboarding',conditions:[],to:[],cc:[],params:{}},{id:'acceptance',type:'generateDocument',conditions:[],to:[],cc:[],params:{letterTemplateId:templateId}}]);const accepted=await commandResignationJourney(f.admin,{caseId:f.journey.id,revision:f.journey.revision,command:{type:'accept',lastWorkingDay:f.lastWorkingDay,replacementNeeded:false}});expect(accepted.offboardingCaseId).toBeTruthy();expect(accepted.letters).toEqual([]);expect(accepted.blocked.join(' ')).toMatch(/linked Person/);
+  const detail=await v9CaseDetail(f.admin,accepted.offboardingCaseId!);expect(detail.resignationDocuments?.ownedTemplateIds).toEqual([templateId]);await expect(v9Command(f.admin,detail.case.id,detail.case.revision,{type:'generate',template:templateId})).rejects.toThrow(/owned by the linked resignation journey/);const unchanged=await v9CaseDetail(f.admin,detail.case.id);expect(unchanged.case.documents).toEqual([]);
  },90000);
  it('leaves a pre-existing native case on its legacy document/email owner, even if a raw source label names another journey',async()=>{
   const {f,journey,templateId}=await managedClearance();const employee=await hireEmployee(f.admin,{person:{fullName:'Legacy clearance employee',primaryEmail:'legacy-clearance@example.test'},companyId:f.base.companyId,departmentId:f.base.deptA,employmentType:'full_time',hiredOn:'2026-01-01'});

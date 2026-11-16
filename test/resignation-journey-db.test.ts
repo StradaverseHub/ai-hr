@@ -2,9 +2,10 @@ import {beforeAll,beforeEach,afterAll,afterEach,vi,describe,it,expect} from 'vit
 import {setCompensation} from '../core/comp';
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
+import {withTenant} from '../db/client';
 import {owner,migrateTestDb,resetDb,closeAll} from './harness';
 import {resignationJourneyFixture} from './helpers/resignation-journey-fixture';
-import {commandResignationJourney,resignationCase,resignationInbox,submitResignationJourney} from '../packs/lifecycle/service';
+import {commandResignationJourney,resignationCase,resignationInbox,resignationEmployeeView,submitResignationJourney,installResignationDefaults} from '../packs/lifecycle/service';
 import {myResignation,listResignationRequests,decideResignation,submitResignation} from '../core/offboarding';
 
 beforeAll(migrateTestDb);beforeEach(resetDb);afterEach(()=>vi.unstubAllEnvs());afterAll(closeAll);
@@ -38,6 +39,29 @@ describe('managed resignation service composes one workflow authority',()=>{
   await setCompensation(f.admin,{employmentId:f.employee.employmentId,basicSalary:5000,currency:'SGD',effectiveFrom:withdrawn.submittedOn});expect((await resignationCase(f.staff,withdrawn.id)).currency).toBe('USD');
   const next=await submitResignationJourney(f.staff,{employmentId:f.employee.employmentId,lastWorkingDay:f.lastWorkingDay});expect(next.currency).toBe('SGD');expect(next.priorCases[0].currency).toBe('USD');
   const unknown=await resignationJourneyFixture();expect(unknown.journey.currency).toBeNull();
+ },90000);
+ it('records an unconfigured submission, flags the real PeopleOps team and repairs from fresh Live workflows exactly once',async()=>{
+  const f=await resignationJourneyFixture({decisionWorkflow:false,peopleOps:'watcher'});expect(f.journey.stage).toBe('decision');expect(f.journey.deciders).toEqual([]);expect(f.journey.blocked.join(' ')).toMatch(/Nobody was asked/);
+  const repairs=await resignationInbox(f.watcher,{kind:'tasks'});expect(repairs.items.map(item=>item.kind)).toEqual(['repair']);const[authority]=await withTenant(f.watcher,tx=>tx.execute<{configure:boolean}>(sql`select app.automation_can_configure('off') as configure`));expect(authority.configure).toBe(false);
+  await expect(commandResignationJourney(f.staff,{caseId:f.journey.id,revision:f.journey.revision,command:{type:'runWorkflowsAgain'}})).rejects.toMatchObject({code:'forbidden'});
+  await f.workflow('submitted',[{id:'received',type:'notify',conditions:[],to:[{kind:'role',role:'employee'}],cc:[],params:{subject:'Submission recorded',body:'Your resignation is recorded.'}}]);
+  const stillMissing=await commandResignationJourney(f.watcher,{caseId:f.journey.id,revision:f.journey.revision,command:{type:'runWorkflowsAgain'}});expect(stillMissing.deciders).toEqual([]);const [oldRun]=await owner.db.execute<{id:string;snapshot:unknown}>(sql`select id,to_jsonb(r) as snapshot from automation_run r where tenant_id=${f.base.tenantId}::uuid and subject_id=${f.journey.id}::uuid order by started_at,id limit 1`);expect(oldRun).toBeTruthy();
+  await f.workflow('submitted',[{id:'decision',type:'requestDecision',conditions:[],to:[{kind:'person',userId:f.managerUserId}],cc:[],params:{choices:'both',watch:[],canComment:true}}]);
+  const assigned=await commandResignationJourney(f.watcher,{caseId:f.journey.id,revision:stillMissing.revision,command:{type:'runWorkflowsAgain'}});expect(assigned.deciders.map(person=>person.id)).toEqual([f.managerUserId]);expect(assigned.blocked).toEqual([]);expect((await resignationInbox(f.watcher,{kind:'tasks'})).items.filter(task=>task.kind==='repair')).toEqual([]);
+  const [unchanged]=await owner.db.execute<{snapshot:unknown}>(sql`select to_jsonb(r) as snapshot from automation_run r where id=${oldRun.id}::uuid`);expect(unchanged.snapshot).toEqual(oldRun.snapshot);
+  await expect(commandResignationJourney(f.watcher,{caseId:assigned.id,revision:assigned.revision,command:{type:'runWorkflowsAgain'}})).rejects.toMatchObject({code:'forbidden'});
+  const waiting=await owner.db.execute(sql`select id from automation_run where subject_id=${assigned.id}::uuid and status='waiting'`);expect(waiting).toHaveLength(1);
+ },90000);
+ it('keeps submission open without configuration and truthfully records an absent repair audience',async()=>{
+  const f=await resignationJourneyFixture({decisionWorkflow:false});await owner.db.execute(sql`update lc_onboarding_config set data=jsonb_set(jsonb_set(data,'{groups}', '[]'::jsonb),'{access,offboarding}','[]'::jsonb) where tenant_id=${f.base.tenantId}::uuid`);
+  const closed=await commandResignationJourney(f.staff,{caseId:f.journey.id,revision:f.journey.revision,command:{type:'withdraw'}});const form=await resignationEmployeeView(f.staff,f.employee.employmentId);expect(form.canSubmit).toBe(true);expect(form.unavailableReason).toBeNull();expect(form.configurationMessage).toBeTruthy();
+  const recorded=await submitResignationJourney(f.staff,{employmentId:f.employee.employmentId,lastWorkingDay:closed.lastWorkingDay});expect(recorded.stage).toBe('decision');expect(recorded.blocked.join(' ')).toMatch(/No repair notification was sent/);expect(recorded.tasks.filter(task=>task.kind==='repair')).toEqual([]);
+ },90000);
+ it('installs defaults through canonical shared groups in dependency order and never overwrites customized definitions',async()=>{
+  const f=await resignationJourneyFixture({decisionWorkflow:false});const installed=await installResignationDefaults(f.admin);expect(installed).toMatchObject({workflows:11,templates:2,emails:3,groups:2});
+  const [shared]=await owner.db.execute<{groups:{id:string;members:string[]}[]}>(sql`select data->'groups' as groups from lc_onboarding_config where tenant_id=${f.base.tenantId}::uuid`);expect(shared.groups.find(group=>group.id===f.groupId)?.members).toEqual([f.managerUserId]);
+  await owner.db.execute(sql`update lc_v9_config set data=jsonb_set(data,'{templates}',(select jsonb_agg(case when t->>'id'='a0710000-0000-4000-8000-000000000002' then t||jsonb_build_object('name','Customized acceptance') else t end) from jsonb_array_elements(data->'templates') t)) where tenant_id=${f.base.tenantId}::uuid`);
+  expect(await installResignationDefaults(f.admin)).toMatchObject({workflows:0,templates:0,emails:0,groups:0});const[stored]=await owner.db.execute<{name:string;allPaused:boolean}>(sql`select (select t->>'name' from lc_v9_config c,jsonb_array_elements(c.data->'templates') t where c.tenant_id=${f.base.tenantId}::uuid and t->>'id'='a0710000-0000-4000-8000-000000000002') as name,(select bool_and(status='paused') from automation_workflow_version where tenant_id=${f.base.tenantId}::uuid) as "allPaused"`);expect(stored).toEqual({name:'Customized acceptance',allPaused:true});expect((await resignationCase(f.staff,f.journey.id)).stage).toBe('decision');
  },90000);
  it('acceptance keeps employment active and leave unfrozen until clearance; replacement creates one actionable HR request',async()=>{
   const f=await resignationJourneyFixture();const accepted=await commandResignationJourney(f.admin,{caseId:f.journey.id,revision:f.journey.revision,command:{type:'accept',lastWorkingDay:f.lastWorkingDay,replacementNeeded:true}});
