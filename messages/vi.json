@@ -3563,6 +3563,7 @@
       "loading": "Đang tải…",
       "saved": "Đã sửa thông tin. Giao dịch hoàn tất không thay đổi.",
       "unchanged": "Không thay đổi — bỏ qua dòng này.",
+      "effectiveDateOnly": "Không có gì để chỉnh sửa. Ngày hiệu lực chỉ xác định khi nào các giá trị đã chỉnh sửa được áp dụng. Để thay đổi ngày bắt đầu hồ sơ của nhân viên ({date}), hãy chỉnh sửa Ngày gia nhập tập đoàn.",
       "history": "Lịch sử chỉnh sửa",
       "noHistory": "Chưa có bản ghi chỉ chỉnh sửa thông tin.",
       "importHelp": "Mã công ty xác minh công ty hiện tại. Mã công ty mới không bắt buộc. Ô chỉnh sửa trống giữ nguyên giá trị. Xem mã hệ thống trên các trang tham chiếu. Tối đa 200 dòng.",
@@ -7429,7 +7430,13 @@
         "running": "Đang xử lý lại các nhân viên đã chọn",
         "progress": "Đã xong {done}/{total} nhân viên",
         "help": "Bạn có thể rời khỏi trang này. Mỗi nhân viên được tính lại riêng, và kết quả sẽ hiện ở đây khi việc xử lý lại hoàn tất."
-      }
+      },
+      "registerSearchLabel": "Tìm nhân viên trong lần chạy này",
+      "registerSearchPlaceholder": "Tìm theo tên nhân viên hoặc Mã nhân viên",
+      "registerSearchSubmit": "Tìm",
+      "registerSearchClear": "Xóa tìm kiếm",
+      "registerSearchSummary": "{n} trên {total} nhân viên khớp với “{q}”",
+      "registerSearchEmpty": "Không có nhân viên nào trong lần chạy này khớp với “{q}”."
     },
     "transactions": {
       "title": "Nhập liệu giao dịch",

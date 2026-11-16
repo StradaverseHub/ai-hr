@@ -41,6 +41,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { applicationDatabaseBudget } from '../db/capacity';
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
 import { pageState, type PageQuery } from '../lib/pagination';
+import { foldEmployeeCode } from '../lib/employee-search';
 import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withPayrollTenant` — all 38 exported entry
 // points, THE ENGINE included, refuse a tenant without the Payroll module. The `tx`-taking helpers
@@ -11623,6 +11624,9 @@ export function listBatches(
   companyIds?: string[],
   payPeriod?: string | readonly string[],
   statuses?: readonly (typeof payrollBatch.$inferSelect.status)[],
+  // fd8156d4 — the Payroll Process dashboard lists newest period first, then company A to Z, then run.
+  // Opt-in so every other caller keeps the period/run order it was written against.
+  order: 'run' | 'company' = 'run',
 ) {
   const periodFilter = Array.isArray(payPeriod)
     ? inArray(payrollBatch.payPeriod, payPeriod as string[])
@@ -11691,8 +11695,63 @@ export function listBatches(
           or(isNull(payrollBatch.historyImportAttemptId),gt(payrollBatch.employeeCount,0)),
         ),
       )
-      .orderBy(desc(payrollBatch.payPeriod), payrollBatch.runSeq),
+      .orderBy(
+        ...(order === 'company'
+          ? [desc(payrollBatch.payPeriod), asc(company.legalName), asc(payrollBatch.runSeq), asc(payrollBatch.id)]
+          : [desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq)]),
+      ),
   );
+}
+
+/**
+ * fd8156d4 — the period the Payroll Process dashboard opens on when the address names none: the latest
+ * payroll period that has a run in the same population the list shows (same effective-history source,
+ * company inner join, company filter and empty-imported-history exclusion as listBatches). One set-based
+ * aggregate over the scoped companies, never a per-company loop. A pay_period row is opened by the same
+ * transaction that inserts its first run (createBatch / createAdditionalRun) and deleted with its last
+ * draft run, so "a run exists" is the created-period fact without opening on a month whose list is empty.
+ * Null when nothing is visible; the caller then falls back to the tenant's current month.
+ */
+export function latestPayrollDashboardPeriod(ctx: SessionContext, companyIds?: string[]) {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ period: sql<string | null>`max(${payrollBatch.payPeriod})` })
+      .from(payrollHistoryEffectiveBatch)
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .where(
+        and(
+          companyIds && companyIds.length ? inArray(payrollBatch.companyId, companyIds) : undefined,
+          or(isNull(payrollBatch.historyImportAttemptId), gt(payrollBatch.employeeCount, 0)),
+        ),
+      );
+    return row?.period ?? null;
+  });
+}
+
+/**
+ * fd8156d4 — the configured Payroll Cycle NAMES the dashboard's cycle dropdown offers: live cycles of the
+ * scoped companies, de-duplicated case-insensitively (seventy companies each with "Monthly" is one option),
+ * in the catalogue's own sort order. One grouped statement, bounded.
+ */
+export function payrollDashboardCycleNames(ctx: SessionContext, companyIds?: string[]) {
+  return withTenant(ctx, async (tx) => {
+    const key = sql`lower(btrim(${payrollCycle.name}))`;
+    const rows = await tx
+      .select({ name: sql<string>`min(btrim(${payrollCycle.name}))` })
+      .from(payrollCycle)
+      .innerJoin(company, eq(company.id, payrollCycle.companyId))
+      .where(
+        and(
+          companyIds && companyIds.length ? inArray(payrollCycle.companyId, companyIds) : undefined,
+          isNull(payrollCycle.archivedAt),
+          sql`btrim(${payrollCycle.name}) <> ''`,
+        ),
+      )
+      .groupBy(key)
+      .orderBy(sql`min(${payrollCycle.sortOrder})`, key)
+      .limit(500);
+    return rows.map((r) => r.name);
+  });
 }
 
 export type LeaverAdvisoryRow = {
@@ -12445,10 +12504,22 @@ export function batchDetail(ctx: SessionContext, batchId: string) {
 }
 
 /** Count and page the exact joined register in one SQL snapshot after the history barrier. */
-export function payrollRunRegisterPage(ctx: SessionContext, batchId: string, page: PageQuery) {
+export function payrollRunRegisterPage(ctx: SessionContext, batchId: string, page: PageQuery, search?: string) {
   return withTenant(ctx, async tx => {
     const batch = await readBatchHeaderTx(tx, batchId);
     if (!batch) return null;
+    // fd8156d4 — the run page's employee search, over the WHOLE run in SQL. The same rule as
+    // lib/employee-search.ts matchesEmployeeSearch: case-insensitive substring of the name or the
+    // Employee ID, or of the ID with spaces, dots, underscores and hyphens folded away on both sides.
+    // position() is a literal substring test, so a typed % or _ is never a wildcard.
+    const raw = (search ?? '').trim().toLowerCase();
+    const folded = foldEmployeeCode(search ?? '');
+    const code = sql`lower(coalesce(${employment.employeeCode}, ''))`;
+    const matched = raw
+      ? sql<boolean>`(position(${raw}::text in lower(${person.fullName})) > 0
+          or position(${raw}::text in ${code}) > 0
+          or (${folded}::text <> '' and position(${folded}::text in regexp_replace(${code}, '[[:space:]._-]', '', 'g')) > 0))`
+      : sql<boolean>`true`;
     // Both consumers reference the same CTE, so Postgres materializes one narrow RLS-visible set.
     // The payload stays on payslip and is fetched only for the requested page.
     const visibleRegister = tx.$with('visible_register').as(tx.select({
@@ -12456,15 +12527,25 @@ export function payrollRunRegisterPage(ctx: SessionContext, batchId: string, pag
       employmentId: payslip.employmentId,
       name: person.fullName,
       employeeCode: employment.employeeCode,
+      matched: matched.as('matched'),
     }).from(payslip)
       .innerJoin(employment, eq(employment.id, payslip.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
       // A run the background job is still processing shows no register: its payslips become the run's together,
       // when the job's finalize flips it to processed.
       .where(and(eq(payslip.batchId, batchId), batch.status === 'processing' ? sql`false` : undefined)));
-    const registerTotal = tx.select({ total: sql<number>`count(*)`.mapWith(Number).as('total') })
-      .from(visibleRegister).as('register_total');
-    const registerPage = tx.select().from(visibleRegister)
+    // `total` is the searched population (the pager and the count); `runTotal` is every visible payslip
+    // of the run, which the run's own actions (Close, Reprocess, Remove) are gated on whatever is typed.
+    const registerTotal = tx.select({
+      total: sql<number>`count(*) filter (where ${visibleRegister.matched})`.mapWith(Number).as('total'),
+      runTotal: sql<number>`count(*)`.mapWith(Number).as('run_total'),
+    }).from(visibleRegister).as('register_total');
+    const registerPage = tx.select({
+      id: visibleRegister.id,
+      employmentId: visibleRegister.employmentId,
+      name: visibleRegister.name,
+      employeeCode: visibleRegister.employeeCode,
+    }).from(visibleRegister).where(sql`${visibleRegister.matched}`)
       .orderBy(asc(visibleRegister.name), asc(visibleRegister.id)).limit(page.limit)
       // An oversized URL offset cannot address a real row, but must still fit Postgres bigint.
       .offset(Math.min(page.offset, Number.MAX_SAFE_INTEGER))
@@ -12489,6 +12570,7 @@ export function payrollRunRegisterPage(ctx: SessionContext, batchId: string, pag
       : sql<string|null>`null`;
     const entries = await tx.with(visibleRegister).select({
       total: registerTotal.total,
+      runTotal: registerTotal.runTotal,
       closeCycleName,
       employmentId: registerPage.employmentId,
       name: registerPage.name,
@@ -12509,7 +12591,7 @@ export function payrollRunRegisterPage(ctx: SessionContext, batchId: string, pag
       .orderBy(asc(registerPage.name), asc(registerPage.id));
     const rows = entries.flatMap(({ slip, employmentId, name, employeeCode }) =>
       slip === null || employmentId === null || name === null ? [] : [{ ...slip, employmentId, name, employeeCode }]);
-    return { batch, closeCycleName:entries[0].closeCycleName, slipPage: { rows, state: pageState(page, entries[0].total, rows.length) } };
+    return { batch, closeCycleName:entries[0].closeCycleName, runPayslipCount: entries[0].runTotal, slipPage: { rows, state: pageState(page, entries[0].total, rows.length) } };
   });
 }
 

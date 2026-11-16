@@ -67,7 +67,7 @@ it('reads the exact effective header and visible slip count without exporting di
   expect(await batchHeader(ctx,id)).toEqual(old?{batch:old.batch}:null);
   expect(await countProbe(ctx,id)).toEqual(old?{batch:old.batch,slipCount:old.slips.length}:null);
   const page=parsePageQuery();
-  expect(await payrollRunRegisterPage(ctx,id,page)).toEqual(old?{batch:old.batch,closeCycleName:old.batch.status==='processed'?cycle.name:null,slipPage:paginateRows(old.slips.map(({totalDeductions:_d,employerCost:_c,...row})=>row),page)}:null);
+  expect(await payrollRunRegisterPage(ctx,id,page)).toEqual(old?{batch:old.batch,closeCycleName:old.batch.status==='processed'?cycle.name:null,runPayslipCount:old.slips.length,slipPage:paginateRows(old.slips.map(({totalDeductions:_d,employerCost:_c,...row})=>row),page)}:null);
  }
  const exact=await batchDetail(root,batchId);expect(exact?.slips.length).toBe(1000);expect(exact).not.toBeNull();
  const list=exact!.slips;
@@ -82,7 +82,7 @@ it('reads the exact effective header and visible slip count without exporting di
  expect(tied).toHaveLength(2);
  for(const raw of [{},{page:'1',size:'50'},{page:'200',size:'200'},{page:String(Number.MAX_SAFE_INTEGER),size:'200'},{size:'all'}]){
   const page=parsePageQuery(raw);
-  expect(await payrollRunRegisterPage(root,batchId,page)).toEqual({batch:exact!.batch,closeCycleName:cycle.name,slipPage:paginateRows(registerRows,page)});
+  expect(await payrollRunRegisterPage(root,batchId,page)).toEqual({batch:exact!.batch,closeCycleName:cycle.name,runPayslipCount:registerRows.length,slipPage:paginateRows(registerRows,page)});
  }
  const firstPage=registerRows.slice(0,25),offPage=registerRows.at(-1)!;
  expect(firstPage.some(row=>row.employmentId===offPage.employmentId)).toBe(false);

@@ -3563,6 +3563,7 @@
       "loading": "加载中…",
       "saved": "信息已更正，已完成的交易保持不变。",
       "unchanged": "未更改 — 将跳过此行。",
+      "effectiveDateOnly": "没有需要更正的内容。生效日期仅决定更正后的值从何时开始适用。如需更改员工记录的起始日期（{date}），请更正集团入职日期。",
       "history": "更正历史",
       "noHistory": "尚无仅信息更正记录。",
       "importHelp": "公司代码用于核对现有公司。新公司代码为可选项。空白更正单元格表示保持原值。系统代码见参考表。最多200行。",
@@ -7429,7 +7430,13 @@
         "running": "正在重新处理所选员工",
         "progress": "已完成 {done}/{total} 名员工",
         "help": "您可以离开此页面。每位员工单独重新计算，重新处理完成后结果会显示在这里。"
-      }
+      },
+      "registerSearchLabel": "在本次运行中搜索员工",
+      "registerSearchPlaceholder": "按员工姓名或员工编号搜索",
+      "registerSearchSubmit": "搜索",
+      "registerSearchClear": "清除搜索",
+      "registerSearchSummary": "{total} 名员工中有 {n} 名匹配“{q}”",
+      "registerSearchEmpty": "本次运行中没有与“{q}”匹配的员工。"
     },
     "transactions": {
       "title": "交易录入",

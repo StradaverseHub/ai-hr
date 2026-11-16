@@ -3563,6 +3563,7 @@
       "loading": "Loading…",
       "saved": "Information corrected. Completed transactions remain unchanged.",
       "unchanged": "Unchanged — this row will be skipped.",
+      "effectiveDateOnly": "Nothing to correct. The Effective Date only sets when corrected values apply. To change the date the employee’s records start ({date}), correct the Group Join Date.",
       "history": "Correction history",
       "noHistory": "No information-only corrections recorded.",
       "importHelp": "Company Code verifies the existing company. New Company Code is optional. Blank correction cells mean unchanged. Use the reference sheets for system codes. Maximum 200 rows.",
@@ -6705,7 +6706,13 @@
         "running": "Reprocessing the selected employees",
         "progress": "{done} of {total} employees done",
         "help": "You can leave this page. Each employee is recalculated on its own, and the results appear here when the reprocess finishes."
-      }
+      },
+      "registerSearchLabel": "Search employees in this run",
+      "registerSearchPlaceholder": "Search by employee name or Employee ID",
+      "registerSearchSubmit": "Search",
+      "registerSearchClear": "Clear search",
+      "registerSearchSummary": "{n} of {total} employees match “{q}”",
+      "registerSearchEmpty": "No employee in this run matches “{q}”."
     },
     "reports": {
       "pageTitle": "Payroll",
