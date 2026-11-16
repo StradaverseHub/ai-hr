@@ -90,7 +90,7 @@ describe('Contract canonical signing company entitlement guard',()=>{
   }
   const approvalActor=await fresh();await proveOff(approvalActor);
   const readonlyApproval=await readContractSharedApproval(approvalActor,before.id);expect(readonlyApproval.canAct).toBe(false);expect(readonlyApproval.history).toHaveLength(0);
-  await expect(actContractSharedApproval(approvalActor,{id:before.id,actionId:randomUUID(),layerId:before.pendingLayerId!,revision:before.contentRevision,hash:before.contentHash,action:'approve',reason:'Fictional actual assigned approval'})).rejects.toMatchObject({code:'forbidden'});
+  await expect(actContractSharedApproval(approvalActor,{id:before.id,actionId:randomUUID(),layerId:before.pendingLayerId!,revision:before.contentRevision,hash:before.contentHash,action:'approve',reason:'Fictional actual assigned approval'})).rejects.toMatchObject({code:'conflict'});
   const [approvalSigning]=await owner.db.execute<{id:string}>(sql`select signing_document_id as id from contract_shared_approval where tenant_id=${f.b.tenantId}::uuid and id=${before.id}::uuid`);
   await expect(withTenant(approvalActor,tx=>recordDocumentSigningActionTx(tx,approvalActor,{id:approvalSigning.id,actionId:randomUUID(),stepId:before.pendingLayerId!,revision:before.contentRevision,hash:before.contentHash,action:'approved',comment:'A disabled company cannot use the generic entry point'}))).rejects.toThrow();
   expect((await readContractSharedApproval(approvalActor,before.id)).history).toHaveLength(0);
@@ -106,7 +106,7 @@ describe('Contract canonical signing company entitlement guard',()=>{
   await setModule(f.b.tenantId,'lifecycle','disabled',f.b.companyId);
   const letterActor=await fresh();await proveOff(letterActor);
   const readonlyLetter=await readContractSharedLetter(letterActor,letterBefore.id);expect(readonlyLetter.body).not.toBeNull();expect(readonlyLetter.pendingAction).toBeNull();expect(readonlyLetter.canEdit).toBe(false);
-  await expect(actContractSharedLetter(letterActor,{id:letterBefore.id,actionId:randomUUID(),stepId:letterBefore.pendingAction!.stepId,revision:letterBefore.contentRevision,hash:letterBefore.contentHash!,action:'reviewed'})).rejects.toMatchObject({code:'forbidden'});
+  await expect(actContractSharedLetter(letterActor,{id:letterBefore.id,actionId:randomUUID(),stepId:letterBefore.pendingAction!.stepId,revision:letterBefore.contentRevision,hash:letterBefore.contentHash!,action:'reviewed'})).rejects.toMatchObject({code:'conflict'});
   const [letterSigning]=await owner.db.execute<{id:string}>(sql`select signing_document_id as id from contract_shared_letter where tenant_id=${f.b.tenantId}::uuid and id=${letterBefore.id}::uuid`);
   await expect(withTenant(letterActor,tx=>recordDocumentSigningActionTx(tx,letterActor,{id:letterSigning.id,actionId:randomUUID(),stepId:letterBefore.pendingAction!.stepId,revision:letterBefore.contentRevision,hash:letterBefore.contentHash!,action:'reviewed',comment:'A disabled company cannot bypass the Contract action'}))).rejects.toThrow();
   const [retained]=await owner.db.execute<{actions:number}>(sql`select jsonb_array_length(d.data->'actions') as actions from contract_shared_letter l join document_signing_document d on d.tenant_id=l.tenant_id and d.id=l.signing_document_id where l.tenant_id=${f.b.tenantId}::uuid and l.id=${letterRow.id}::uuid`);

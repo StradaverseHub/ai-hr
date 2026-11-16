@@ -1,3 +1,8 @@
+<!-- 5917_contract_work_exact_document_join -->
+# Contract assigned-work exact-document materialization — 17 November 2026 MYT
+
+A fresh 268-worktree SQL and allocation survey found no 5917 claim. Reserve **5917**, idx **5317**, when **1794841005917**, for the screen owner's read-only WorkPage query repair. The standard native 1,000-case profile exposed all signing documents being scanned for each period; materialize the exact authorized approval/document join before evaluating the existing pure signing helpers. All existing company, tenant, current-period, verified identity and pending-action predicates remain. No grants, writers, email/Form policy changes, JIT or CI-profile changes. Parent notified; source-only, no installation or release.
+
 <!-- 5916_contract_ordinary_signing_company_gate -->
 # Ordinary Contract company-entitlement denial — 17 November 2026 MYT
 
