@@ -1,3 +1,4 @@
+import {documentFieldValueProblem,documentRequiredFieldProblems,documentResponsePatch} from './document-form-fields';
 import { bulkAssignmentProblem, RETURN_BULK_LABELS } from './lifecycle-bulk-assignment';
 import { personnelMergeLabels } from '@/lib/lifecycle-v9-personnel-merge-fields';
 import type { Note as LifecycleNote } from './onboarding-model';
@@ -367,16 +368,7 @@ export function currentVersion(template: Template): TemplateVersion | null {
 }
 export function activeDocument(c: Case, templateId: string): Document | null { return c.documents.filter(d => d.templateId === templateId && d.status !== 'superseded' && d.status !== 'withdrawn').at(-1) ?? null; }
 export function validateFieldValue(field: Field, value: string): void {
-  if (value.length > 20000) throw new V9Error('A field exceeds the allowed length.');
-  if (field.type === 'select' && value && !field.options.includes(value)) throw new V9Error(`Choose a valid option for ${field.label}.`);
-  if (field.type === 'date' && value && !validDate(value)) throw new V9Error(`Enter a valid date for ${field.label}.`);
-  if (field.type === 'checkbox' && value && !['true', 'false'].includes(value)) throw new V9Error(`Choose a valid value for ${field.label}.`);
-  if (field.type === 'number' && value && !Number.isFinite(Number(value))) throw new V9Error(`Enter a valid number for ${field.label}.`);
-  if (field.type === 'email' && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) throw new V9Error(`Enter a valid email for ${field.label}.`);
-  if (field.type === 'table' && value) {
-    let rows: unknown; try { rows = JSON.parse(value); } catch { throw new V9Error(`Enter valid rows for ${field.label}.`); }
-    if (!Array.isArray(rows) || rows.length > 50 || !rows.every(row => Array.isArray(row) && row.length === (field.columns?.length ?? 0) && row.every(cell => typeof cell === 'string' && cell.length <= 1000))) throw new V9Error(`Enter valid rows for ${field.label}.`);
-  }
+  const problem=documentFieldValueProblem(field,value);if(problem)throw new V9Error(problem);
 }
 export function documentFinal(d: Document): boolean { return ['completed', 'signed', 'acknowledged'].includes(d.status) || d.templateType === 'Attachment' && ['sent', 'opened'].includes(d.status); }
 /** Unused case-form answers never travel with a released document's merge snapshot. */
@@ -479,11 +471,9 @@ export function saveDocument(c: Case, id: string, values: Record<string, string>
   if (owner === 'hr' && documentDeliveryReserved(c, id)) throw new V9Error('This document is frozen for email delivery.', 'conflict');
   if (owner === 'hr' && (doc.hrSignature || doc.employeeSignature)) throw new V9Error('Signed document fields are frozen. Prepare a new document to make this correction.', 'conflict');
   if (owner === 'employee' && !['sent', 'opened'].includes(doc.status)) throw new V9Error('This document has not been released to you.');
-  for (const [key, value] of Object.entries(values)) {
-    const field = doc.fields.find(f => f.id === key); if (!field || field.owner !== owner) throw new V9Error('This field cannot be changed.', 'forbidden');
-    validateFieldValue(field, value);
-    doc.values[key] = value;
-  }
+  const saved=documentResponsePatch(doc.fields,doc.values,values,doc.fields.filter(field=>field.owner===owner).map(field=>field.id));
+  if(saved.problems.length)throw new V9Error(saved.problems[0],saved.problems[0]==='This field cannot be changed.'?'forbidden':'invalid');
+  doc.values=saved.values;
   appendLog(c, env, 'document.saved', doc.name);
 }
 /** Per-person wording is stored on the saved instance, never on the published template. */
@@ -514,21 +504,14 @@ export function signDocument(c: Case, config: Config, id: string, role: 'employe
   if (missing.length) throw new V9Error(`Complete missing document fields: ${[...new Set(missing)].join(', ')}.`);
   if (role === 'employee') {
     if (!['sent', 'opened'].includes(doc.status)) throw new V9Error('This document is not ready for employee completion.', 'conflict');
-    for (const field of doc.fields) if (!field.when || doc.values[field.when.field] === field.when.value) {
-      validateFieldValue(field, doc.values[field.id] ?? '');
-      if (field.required && (!doc.values[field.id]?.trim() || field.type === 'checkbox' && doc.values[field.id] !== 'true' || field.type === 'table' && doc.values[field.id] === '[]')) throw new V9Error(`Complete ${field.label} before signing.`);
-    }
+    const problems=documentRequiredFieldProblems(doc.fields,doc.values,'employee');if(problems.length)throw new V9Error(problems[0]);
     doc.employeeSignature = { ...signature, at: env.now, by: { ...env.actor } };
     doc.status = hrStep === 'after' ? 'countersign' : employeeAck ? 'acknowledged' : 'signed';
     for (const field of doc.fields) if (field.pmKey && !field.pmKey.startsWith('case.') && field.owner === 'employee' && (!field.when || doc.values[field.when.field] === field.when.value) && (doc.values[field.id] ?? '') !== (doc.mergeValues?.[field.pmKey] ?? '') && !c.pmChanges.some(p => p.documentId === id && p.field === field.pmKey)) c.pmChanges.push({ id: env.nextId(), documentId: id, field: field.pmKey, before: doc.mergeValues?.[field.pmKey] ?? '', after: doc.values[field.id] ?? '', sourceRevision: c.sourceRevision, status: 'proposed' });
   } else {
     if (hrStep !== 'after' && (!doc.signatoryUserId || doc.signatoryUserId !== env.actor.id)) throw new V9Error('Only the designated company HR signatory can sign this document.', 'forbidden');
     if (hrStep === 'before' && doc.status !== 'draft' || hrStep === 'after' && doc.status !== 'countersign' || hrStep === 'none') throw new V9Error('This document does not need an HR signature at this stage.', 'conflict');
-    for (const field of doc.fields) if (field.owner !== 'employee' && (!field.when || doc.values[field.when.field] === field.when.value)) {
-      const value = doc.values[field.id] ?? '';
-      validateFieldValue(field, value);
-      if (field.required && (!value.trim() || field.type === 'checkbox' && value !== 'true' || field.type === 'table' && value === '[]')) throw new V9Error(`Complete ${field.label} before signing.`);
-    }
+    const problems=documentRequiredFieldProblems(doc.fields,doc.values,'hr');if(problems.length)throw new V9Error(problems[0]);
     doc.hrSignature = { ...signature, at: env.now, by: { ...env.actor }, printedTitle: hrStep === 'after' ? env.actorSignatoryTitle ?? '' : doc.mergeValues?.['signatory.title'] ?? env.mergeValues['signatory.title'] ?? '' }; doc.status = hrStep === 'before' ? 'hrsigned' : 'signed';
   }
   if (documentFinal(doc)) linkedTasks(c, doc, 'signed'); appendLog(c, env, 'document.signed', `${doc.name} · ${role}`);
