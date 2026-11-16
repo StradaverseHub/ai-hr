@@ -22,6 +22,8 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
 import { myRequestCorrection } from '@/app/me/actions';
 import { OnBehalfBanner } from '@/app/attendance/on-behalf/banner';
 import { CorrectionDialog, CorrectionForm, LeaveInsteadNote, type CorrectionCopy } from './correction-form';
+import { AttendanceSubmissionRouteProgress } from '@/components/attendance-route-progress';
+import type { ReactNode } from 'react';
 import {
   KIND_OF_SECTION,
   defaultSection,
@@ -153,8 +155,9 @@ export default async function AttendanceIrregularityPage({
     myAttendanceCorrections(s, me.employmentId, { limit: 200 }),
     onBehalf ? attendanceSubmissionRouteOnBehalf(s, me.employmentId, 'irregularity') : ownAttendanceSubmissionRoute(s, me.employmentId, 'irregularity'),
   ]);
-  const routeCopy = await getTranslations('attendanceWorkflow');
-  const approver = route.available ? route.firstApprovers.map(actor => actor.kind === 'hr_admin' ? routeCopy('hr') : actor.name).join(', ') : routeCopy(`submissionRefusals.${route.reason}`);
+  // 237c31e6 — "Goes to" is the approval progress panel: every level and approver (name · Employee ID) before Submit,
+  // or the refusal with a warning on the level that cannot be resolved. Resolved once here, read-free.
+  const approver = await AttendanceSubmissionRouteProgress({ route });
   const workflowFingerprint = route.available ? route.fingerprint : null;
 
   // An employee who is not on clocking at all has no attendance rows, and every scheduled day in the
@@ -437,7 +440,7 @@ type T = Awaited<ReturnType<typeof getTranslations<'me'>>>;
  *  off the row and cannot be taken from the open tab by accident. */
 type CorrectionRequest = {
   copy: CorrectionCopy;
-  approver: string;
+  approver: ReactNode;
   workflowFingerprint: string | null;
   submitAction: AttendanceSubmissionAction;
   minDate: string;

@@ -49,3 +49,11 @@ export const v9RestoreWorkflow: Service['v9RestoreWorkflow'] = async (...args) =
 
 export const v9PlanWorkflow: Service['v9PlanWorkflow'] = async (...args) => (await load()).v9PlanWorkflow(...args);
 export const v9EmailHoldInbox: Service['v9EmailHoldInbox'] = async (...args) => (await load()).v9EmailHoldInbox(...args);
+
+/** Configuration shares the same lazy server boundary as the case services. */
+type ConfigurationService = typeof import('./configuration');
+async function loadConfiguration(): Promise<ConfigurationService> {
+  const loaded = await import('./configuration');
+  return (loaded as { default?: ConfigurationService }).default ?? loaded;
+}
+export const v9Configuration: ConfigurationService['v9Configuration'] = async (...args) => (await loadConfiguration()).v9Configuration(...args);

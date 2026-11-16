@@ -3,8 +3,10 @@
 import { useId, useRef, useState, type ChangeEvent } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { lifecycleEmailFieldGroups } from '@/lib/lifecycle-v9-email-fields';
+import type {LifecycleMergeFieldGroup} from '@/lib/lifecycle-v9-resignation-fields';
 
-export function EmailMergeInput({ label, value, disabled, onChange }: {
+export function EmailMergeInput({ label, value, disabled, onChange, fieldGroups = lifecycleEmailFieldGroups }: {
+  fieldGroups?:readonly LifecycleMergeFieldGroup[];
   label: 'Subject' | 'Body';
   value: string;
   disabled: boolean;
@@ -20,10 +22,12 @@ export function EmailMergeInput({ label, value, disabled, onChange }: {
   const field = label.toLowerCase();
   const maxLength = label === 'Subject' ? 1000 : 20000;
   const term = query.trim().toLowerCase();
-  const groups = lifecycleEmailFieldGroups.map(group => ({
+  const personnelOnly=fieldGroups===lifecycleEmailFieldGroups;
+  const sourceLabel=personnelOnly?'Personnel Management':'Offboarding';
+  const groups = fieldGroups.map(group => ({
     ...group,
     fields: group.fields.filter(option =>
-      `${group.label} ${option.label} ${option.key} Personnel Management`.toLowerCase().includes(term)),
+      `${group.label} ${option.label} ${option.key} ${sourceLabel}`.toLowerCase().includes(term)),
   })).filter(group => group.fields.length);
 
   function rememberSelection() {
@@ -81,20 +85,20 @@ export function EmailMergeInput({ label, value, disabled, onChange }: {
       </button>
       <span className="v9-muted" role="status">{announcement}</span>
     </div>
-    {open && !disabled && <section id={pickerId} aria-label={`${label} Personnel fields`}
+    {open && !disabled && <section id={pickerId} aria-label={`${label} ${personnelOnly?'Personnel':'merge'} fields`}
       className="v9-panel v9-stack" style={{ width: 'min(24rem, 100%)', maxHeight: '18rem', overflowY: 'auto' }}>
-      <input className="v9-input" type="search" autoFocus placeholder="Search Personnel fields"
+      <input className="v9-input" type="search" autoFocus placeholder={personnelOnly?'Search Personnel fields':'Search merge fields'}
         aria-label={`Search ${field} fields`} value={query} onChange={event => setQuery(event.target.value)} />
       {groups.map(group => <div className="v9-stack" key={group.label}>
         <strong>{group.label}</strong>
         {group.fields.map(option => <button key={option.key} className="rounded-md px-2 py-1.5 text-left hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring" type="button"
-          aria-label={`${option.label} · {${option.key}} · Personnel Management`}
+          aria-label={`${option.label} · {${option.key}} · ${sourceLabel}`}
           onClick={() => insert(option.key, option.label)}>
           <span className="block font-medium">{option.label}</span>
-          <small className="v9-muted">{'{' + option.key + '}'} · Personnel Management</small>
+          <small className="v9-muted">{'{' + option.key + '}'} · {sourceLabel}</small>
         </button>)}
       </div>)}
-      {!groups.length && <p className="v9-muted">No matching Personnel fields.</p>}
+      {!groups.length && <p className="v9-muted">No matching {personnelOnly?'Personnel':'merge'} fields.</p>}
     </section>}
   </div>;
 }

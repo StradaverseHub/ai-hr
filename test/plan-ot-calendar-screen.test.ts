@@ -267,8 +267,11 @@ describe('E · the two right-hand panels, and what happened to their keys', () =
   });
   it('does not name a reporting-line superior as the configured workflow approver', () => {
     expect(APPLY).toContain("ownAttendanceSubmissionRoute(s, me.employmentId, 'self_overtime')");
-    expect(APPLY).toContain('submissionRefusals.');
-    expect(APPLY).toContain('route.firstApprovers');
+    // 237c31e6: "Goes to" is the approval progress panel — every level and approver from the configured route, or the
+    // native submission refusal — rendered by the shared component rather than the first approver's name.
+    expect(APPLY).toContain('AttendanceSubmissionRouteProgress({ route })');
+    expect(APPLY).not.toContain('route.firstApprovers');
+    expect(read('components/attendance-route-progress.tsx')).toContain('submissionRefusals.');
     expect(LIST).toContain('p.assignedApproverNames');
     expect(MESSAGES.en.me.overtimeRequestHelp).not.toContain('goes to your superior');
     for (const messages of Object.values(MESSAGES)) {

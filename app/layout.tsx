@@ -60,6 +60,7 @@ import {withBackgroundReadWork,withSharedReadSnapshot} from '@/db/client';
 import '@/core/home-request-preamble';
 import {requestReadScope} from '@/lib/request-read-scope';
 import {lifecycleModuleInbox} from './lifecycle/module-inbox';
+import {offboardingPostingAccess} from '@/packs/personnel-postings/service';
 import {lifecycleModuleNavigation} from './lifecycle/workflow-availability';
 import { onboardingTasks, onboardingNavigation } from '@/packs/lifecycle/service';
 import { adminSectionHref, latestOnehrAdminCycleId } from '@/packs/performance/service';
@@ -234,10 +235,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // belongs to whichever surface calls it.
   const claimsEnabled = isModuleEnabledOrFalse(session, 'claims');
   const lifecycleEnabled=isModuleEnabledOrFalse(session,'lifecycle');
-  const [onboardingNav,onboardingQueue,scopedLifecycleNavigation]=await Promise.all([
+  const [onboardingNav,onboardingQueue,scopedLifecycleNavigation,offboardingPostingsAccess]=await Promise.all([
     lifecycleEnabled?onboardingNavigation(session):Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0}),
     lifecycleEnabled?onboardingTasks(session):Promise.resolve([]),
     lifecycleModuleNavigation(session),
+    lifecycleEnabled?offboardingPostingAccess(session).catch(()=>false):Promise.resolve(false),
   ]);
   const onboardingAccess=onboardingNav.module;
   const lifecycleInbox=await lifecycleModuleInbox(session,scopedLifecycleNavigation);
@@ -326,6 +328,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               onboardingAccess={onboardingAccess}
               probationAccess={scopedLifecycleNavigation.probation}
               contractStaffAccess={scopedLifecycleNavigation.contractStaff}
+              offboardingPostingsAccess={offboardingPostingsAccess}
               onboardingV9Access={onboardingNav.v9}
               onboardingV9Navigation={onboardingNav.v9Navigation}
               onboardingJoinerCount={onboardingNav.joiners}

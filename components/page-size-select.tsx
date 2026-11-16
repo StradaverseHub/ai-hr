@@ -1,5 +1,6 @@
 'use client';
 
+import {useId} from 'react';
 import { useRouter } from 'next/navigation';
 
 /**
@@ -19,7 +20,7 @@ export function PageSizeSelect({
   options: { value: string; label: string; href: string }[];
 }) {
   const router = useRouter();
-  const id = `page-size-${value}`;
+  const id = useId();
 
   return (
     <div className="flex items-center gap-2">

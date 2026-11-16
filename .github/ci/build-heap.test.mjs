@@ -98,5 +98,5 @@ test('one identical bounded profile everywhere it applies: every admission is 81
   assert.equal(jobs.length,1,name);assert.deepEqual([...jobs[0].matchAll(/runs-on:\s*(\S+)/g)].map(m=>m[1]),['ubuntu-24.04'],name);
   assert.doesNotMatch(jobs[0],/container:|services:/,name);
  }
- assert.deepEqual(admitting,['ai-orchestrator-walkthrough.yml','alpha-focused-checks.yml','alpha-staging.yml']);
+ assert.deepEqual(admitting,['ai-orchestrator-walkthrough.yml','alpha-focused-checks.yml','alpha-staging.yml','resignation-walkthrough.yml']);
 });

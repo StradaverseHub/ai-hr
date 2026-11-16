@@ -58,6 +58,9 @@ import { plannedOvertimeMinutes } from '../lib/overtime-duration';
 import { isDatabaseError } from '../lib/db-error';
 import { HR_LOCAL_TZ, todayInKualaLumpur } from '../lib/hr-date';
 import { publicErrorMessage } from '../lib/public-error';
+import { OvertimeBackdateNotAllowedError } from '../lib/overtime-backdate';
+import { mobileTranslator } from '../lib/mobile-api/server-text';
+import type { Locale } from '../i18n/config';
 import { encodeCursor } from '../lib/mobile-api/v2/common';
 import {
   ATTENDANCE_APPLICATIONS_CURSOR, AttendanceCorrectionResult, AttendanceWithdrawResult, OvertimePlanResult, ReplacementLeaveResult,
@@ -269,7 +272,8 @@ export async function ownAttendanceApplication(ctx: SessionContext, employmentId
 
 async function submissionRoute(ctx:SessionContext,employmentId:string,type:Parameters<typeof att.ownAttendanceSubmissionRoute>[2]){
   const route=await att.ownAttendanceSubmissionRoute(ctx,employmentId,type);
-  return route.available ? {available:true as const,firstApprovers:route.firstApprovers,fingerprint:route.fingerprint} : route;
+  // The mobile v2 contract is unchanged (237c31e6): the refusal carries its reason only.
+  return route.available ? {available:true as const,firstApprovers:route.firstApprovers,fingerprint:route.fingerprint} : {available:false as const,reason:route.reason};
 }
 
 // ── Commands ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -290,12 +294,15 @@ export function attendanceCommandRefusal(e: unknown): AttendanceCommandRefusal {
   // The overtime plan's two dated refusals (an approved plan still waiting for the day; overtime already counted on
   // it). Typed for the web's localized sentence; here the kernel's own sentence travels as the message.
   if (e instanceof att.OvertimePlanAlreadyApprovedError || e instanceof att.OvertimeAlreadyCountedError) return refuse('invalid');
+  // 87bd9656 — Overtime Backdate Control. The overtime plan command replaces this English sentence with the
+  // translated one (requestOwnOvertimePlanV2); any other caller still gets a refusal, never a 500.
+  if (e instanceof OvertimeBackdateNotAllowedError) return refuse('invalid');
   if (e instanceof att.ClockDataChangedError || plainRefusal(e)) return refuse('invalid');
   throw e;
 }
 
-async function command<S extends z.ZodType, R>(run: () => Promise<z.output<S>>, refusal: (e: unknown) => R): Promise<z.output<S> | R> {
-  try { return await run(); } catch (e) { return refusal(e); }
+async function command<S extends z.ZodType, R>(run: () => Promise<z.output<S>>, refusal: (e: unknown) => R | Promise<R>): Promise<z.output<S> | R> {
+  try { return await run(); } catch (e) { return await refusal(e); }
 }
 
 /**
@@ -345,7 +352,7 @@ export async function overtimePlanOfferV2(ctx: SessionContext, employmentId: str
  * requestAttendanceCorrection with requestedOtMinutes, the window, the reason and the remark. The kernel files it as
  * `self_overtime`, validates it and routes it. Replays its first accepted answer under the same requestId.
  */
-export async function requestOwnOvertimePlanV2(ctx: SessionContext, employmentId: string, p: OvertimePlanCommand): Promise<z.output<typeof OvertimePlanResult>> {
+export async function requestOwnOvertimePlanV2(ctx: SessionContext, employmentId: string, p: OvertimePlanCommand, locale: Locale = 'en'): Promise<z.output<typeof OvertimePlanResult>> {
   if (!attendanceEnabled(ctx)) return MODULE_OFF;
   const minutes = plannedOvertimeMinutes(p.plannedStart, p.plannedEnd);
   // myRequestOvertime's own sentence for the same refusal.
@@ -361,7 +368,13 @@ export async function requestOwnOvertimePlanV2(ctx: SessionContext, employmentId
       employmentId, date: p.date, requestedOtMinutes: minutes, reason, remark, plannedStartTime: p.plannedStart, plannedEndTime: p.plannedEnd, ...routing,
     }, tx);
     return { outcome: 'submitted' as const, id: out.correctionId, date: p.date, minutes };
-  }), attendanceCommandRefusal);
+  }), async (e) => {
+    const refusal = attendanceCommandRefusal(e);
+    if (!(e instanceof OvertimeBackdateNotAllowedError)) return refusal;
+    // 87bd9656 — the web's own sentence (scheduleOvertimeSetting.backdateRefused) in the app's language.
+    const t = await mobileTranslator(locale, 'scheduleOvertimeSetting');
+    return { ...refusal, message: t('backdateRefused', { days: e.limitDays, date: e.earliestDate }) ?? refusal.message };
+  });
 }
 
 // ── Replacement leave (Leave Credit) ───────────────────────────────────────────────────────────────────────

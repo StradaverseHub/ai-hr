@@ -7,14 +7,15 @@ import {PERFORMANCE_AREA_TABS} from '../packs/performance/onehr/tab-model';
 describe('composed application navigation declarations, not permission or execution proof',()=>{
  it('preserves every existing shell identity and composes published owner references',()=>{
   const app=declaredApplicationNavigationCatalogue(),shell=declaredNavigationCatalogue();
-  expect(app.issues).toEqual([]);expect(app.declarations).toHaveLength(221);
+  expect(app.issues).toEqual([]);expect(app.declarations).toHaveLength(222);
   expect(app.declarations.slice(0,shell.declarations.length)).toEqual(shell.declarations);
+  expect(app.declarations.find(row=>row.id==='shell.offboardingPostings')).toMatchObject({sourceOwner:'lib/navigation/shell-inventory.ts',sourceKey:'shell-slot:offboardingPostings',declaredHref:'/lifecycle/offboarding/postings'});
   const sources:object[]=[...CENTRE_TABS,...Object.values(CENTRE_SECTIONS).flat(),...PAYROLL_CYCLE_PAGES,...SECURITY_PAGES,...PERFORMANCE_AREA_TABS];
   for(const registry of MODULE_SUBMENU_REGISTRIES)sources.push(...registry.items);
   expect(sources).toHaveLength(59);
   for(const descriptor of sources)expect(app.declarations.filter(row=>row.descriptor===descriptor)).toHaveLength(1);
-  expect(new Set(app.declarations.map(row=>row.id)).size).toBe(221);
-  expect(new Set(app.declarations.map(row=>row.sourceKey)).size).toBe(221);
+  expect(new Set(app.declarations.map(row=>row.id)).size).toBe(222);
+  expect(new Set(app.declarations.map(row=>row.sourceKey)).size).toBe(222);
   expect(app.declarations.find(row=>row.id==='shell.rewardsAllReviews')).toMatchObject({
    sourceOwner:'packs/rewards/index.ts',sourceKey:'shell-slot:rewardsAllReviews',declaredHref:'/rewards/reviews',
   });

@@ -2,13 +2,13 @@ import { client, withSystemWork } from '../../db/client';
 import { lifecycleV9DeliveryRequest } from '../lifecycle-v9-delivery-model';
 import type { AutomationDeliveryRequest, AutomationDeliveryResult, AutomationMailTarget } from '../automation-email-ipc';
 import { notificationSmtpFailure } from '../notification-email-model';
+import {automationEmailContent,type AutomationStoredFile} from '../automation-email-content';
 import { normaliseManagedEmailSender } from '../managed-email-policy';
 import { internalConfig, internalIssuer } from './config';
 import { admittedAuthSql, readRecord } from './store';
 import { assertActiveCredential, InternalAuthError, type Credential } from './service';
 import { readLifecycleRelayTx } from './active-relay';
 import { sendSmtp, type MailTransport } from './smtp';
-import {automationEmailContent} from '../automation-email-content';
 
 /**
  * Shared workflow email (migration 5754), sent the way On/Off Boarding V9 mail is (lib/internal-auth/lifecycle-v9-mail.ts):
@@ -43,8 +43,15 @@ export async function internalAutomationMail(input: AutomationDeliveryRequest, t
   // One copy per address; To wins over CC.
   const seen = new Set<string>(), unique = (list: (string | undefined)[]) => list.filter((address): address is string => { const key = address!.toLowerCase(); if (seen.has(key)) return false; seen.add(key); return true; });
   const toAddresses = unique(addresses.slice(0, mail.to.length)), ccAddresses = unique(addresses.slice(mail.to.length));
-  let content:{text:string;html?:string};
-  try { content=automationEmailContent({module:target.module,origin,linkPath:target.payload.linkPath,body:mail.body,richBody:mail.richBody}); } catch { return { outcome: 'skipped', error: 'notEligible' }; }
+  let content: Awaited<ReturnType<typeof automationEmailContent>>;
+  try {
+    // Preserve the existing Offboarding transport. Shared Contract/Probation attachments remain disabled
+    // pending the separate, concrete attachment-transport approval; their existing text/rich body still renders.
+    content=target.module==='off'?await automationEmailContent(target,origin,{
+      files:async()=>await withSystemWork(()=>client`select * from app.resignation_email_files(${id}::uuid,${token}::uuid,${origin})`) as unknown as AutomationStoredFile[],
+      assets:async()=>await withSystemWork(()=>client`select * from app.resignation_email_assets(${id}::uuid,${token}::uuid,${origin})`) as unknown as AutomationStoredFile[],
+    }):{...automationEmailContent({module:target.module,origin,linkPath:target.payload.linkPath,body:mail.body,richBody:mail.richBody}),attachments:[]};
+  } catch { return { outcome: 'skipped', error: 'notEligible' }; }
   const currentRelay = await readLifecycleRelayTx(admittedAuthSql, target.tenantId);
   if (!currentRelay || currentRelay.revision !== active.revision || currentRelay.senderName !== active.senderName) return { outcome: 'skipped', error: 'relayUnavailable' };
   const proof = { bindings: target.bindings, addresses, relayRevision: active.revision, senderProfile: 'noreply', senderName: active.senderName ?? active.relay.config.fromName, senderAddress: active.relay.config.from };
@@ -52,7 +59,7 @@ export async function internalAutomationMail(input: AutomationDeliveryRequest, t
   if (!started) return { outcome: 'skipped', error: 'notEligible' };
   let result: AutomationDeliveryResult;
   try {
-    await transport(active.relay, { to: toAddresses.length === 1 ? toAddresses[0] : toAddresses, cc: ccAddresses, subject: mail.subject, ...content, attachments: [], ...(active.senderName ? { senderName: active.senderName } : {}), messageId: `<automation.${id}@${new URL(origin).hostname}>` });
+    await transport(active.relay, { to: toAddresses.length === 1 ? toAddresses[0] : toAddresses, cc: ccAddresses, subject: mail.subject, ...content, ...(active.senderName ? { senderName: active.senderName } : {}), messageId: `<automation.${id}@${new URL(origin).hostname}>` });
     result = { outcome: 'sent', error: null };
   } catch (error) { result = notificationSmtpFailure(error); }
   const finished = (await withSystemWork(()=>client`select app.automation_email_finish(${id}::uuid,${token}::uuid,${result.outcome},${result.error}) as finished`))[0]?.finished === true;

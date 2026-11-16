@@ -69,7 +69,7 @@ describe('cdb1c6ca · B — the confirmation screen', () => {
       expect(SCREEN).toContain(token);
     }
     expect(SCREEN).toContain("t('closeConfirmTitle', { month, cycle })");
-    expect(SCREEN).toContain("t('closeConfirmBody', { n: slips.length })");
+    expect(SCREEN).toContain("t('closeConfirmBody', { n: slipCount })");
     expect(SCREEN).toContain('const month = formatPayPeriodMonth(batch.payPeriod, locale);');
     expect(SCREEN).toContain('payrollCloseCycleLabel(');
   });

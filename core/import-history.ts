@@ -230,6 +230,8 @@ export interface ImportRevertHandler{
  kind:ImportKind;
  /** Optional locks taken first in the revert transaction (before the attempt row) to keep a stable order. */
  lock?(tx:Tx,ctx:SessionContext):Promise<void>;
+ /** Pure inspection may use a shared authority interval; compensation always uses lock above. */
+ previewLock?(tx:Tx,ctx:SessionContext):Promise<void>;
  /** Per-item eligibility and the values that will be restored. `fingerprint` must change whenever the
   * current state an item would restore over changes; it is part of the preview hash. */
  inspect(tx:Tx,ctx:SessionContext,items:ImportAttemptItemRow[],options:{lock:boolean}):Promise<ImportRevertInspection>;
@@ -255,7 +257,7 @@ async function revertPlanTx(tx:Tx,ctx:SessionContext,source:ImportAttemptRow,han
 export async function previewImportRevert(ctx:SessionContext,attemptId:string,handler:ImportRevertHandler){
  if(!uuid.test(attemptId))fail('Import attempt unavailable.');
  return withTenant(ctx,async tx=>{
-  await handler.lock?.(tx,ctx);await principalTx(tx,ctx);
+  await (handler.previewLock??handler.lock)?.(tx,ctx);await principalTx(tx,ctx);
   const[source]=await tx.select().from(attempt).where(eq(attempt.id,attemptId));if(!source||source.kind!==handler.kind)fail('Import attempt unavailable.');
   const plan=await revertPlanTx(tx,ctx,source,handler,false);
   return{attemptId,kind:source.kind,eligible:plan.blockers.length===0,items:plan.inspection,blockers:plan.blockers,previewHash:plan.previewHash};

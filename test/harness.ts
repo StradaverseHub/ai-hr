@@ -44,6 +44,9 @@ const ALL_TABLES = [
   // ESS pending photo bytes must not survive a fixture reset.
   'profile_photo_proposal','profile_change_attachment',
   'lc_onboarding_case_revision','lc_onboarding_private_revision','lc_onboarding_notice','lc_onboarding_config','lc_onboarding_config_history','lc_onboarding_case','lc_onboarding_private','lc_onboarding_note','lc_onboarding_seen',
+  // Explicitly clear managed cases and transaction custody/notification receipts between fixtures.
+  // The singleton verifier is installation configuration, provisioned explicitly by its fixture.
+  'resignation_journey_file','resignation_journey','app.resignation_runtime_state','app.resignation_notification_receipt',
   'system_label_collision_baseline', 'system_label_criteria_epoch',
   'overtime_pattern_epoch','overtime_pattern','overtime_pattern_version','overtime_pattern_version_company','overtime_pattern_version_state','overtime_pattern_legacy_binding','overtime_pattern_assignment','overtime_pattern_assignment_employment',
   'app.attendance_policy_company_epoch','attendance_policy_request_contract',

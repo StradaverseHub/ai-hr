@@ -65,13 +65,13 @@ vi.mock('next/link', () => ({
 // Imported AFTER the mocks so the component picks them up.
 const { Pager } = await import('../components/pager');
 
-async function renderPager(locale: string, messages: Record<string, unknown>, page: number, total: number, theme: UiTheme = 'classic') {
+async function renderPager(locale: string, messages: Record<string, unknown>, page: number, total: number, theme: UiTheme = 'classic', maxPageSize?:number) {
   current.locale = locale;
   current.messages = messages;
   current.theme = theme;
   const q = parsePageQuery({ page: String(page) });
   const shown = Math.max(0, Math.min(25, total - q.offset));
-  const el = await Pager({ basePath: '/admin/pay-components', params: { q: 'lee' }, state: pageState(q, total, shown) });
+  const el = await Pager({ basePath: '/admin/pay-components', params: { q: 'lee' }, maxPageSize, state: pageState(q, total, shown) });
   return render(el);
 }
 
@@ -85,6 +85,22 @@ const LOCALES = [
 ] as const;
 
 describe('the server pager', () => {
+  it('caps rich aggregate choices while preserving the shared pager default sizes',async()=>{
+    const first=await renderPager('en',en as unknown as Record<string,unknown>,0,500,'classic',100);
+    expect(screen.getAllByRole('option').map(option=>option.getAttribute('value'))).toEqual(['25','50','100']);
+    expect(screen.getByText('Next →').closest('a')).toHaveAttribute('href',expect.stringContaining('page=1'));
+    first.unmount();
+    await renderPager('en',en as unknown as Record<string,unknown>,0,500);
+    expect(screen.getAllByRole('option').map(option=>option.getAttribute('value'))).toEqual(['25','50','100','200','all']);
+  });
+
+  it('gives independently paged sources distinct labelled size controls',async()=>{
+    await renderPager('en',en as unknown as Record<string,unknown>,0,500);
+    await renderPager('en',en as unknown as Record<string,unknown>,0,500);
+    const controls=screen.getAllByRole('combobox',{name:en.pagination.rowsPerPage});
+    expect(controls).toHaveLength(2);expect(controls[0].id).not.toBe(controls[1].id);
+  });
+
   it('offers first / previous / a window of page numbers / next / last', async () => {
     await renderPager('en', en as unknown as Record<string, unknown>, 6, 328);
     expect(screen.getByText('« First')).toBeInTheDocument();
