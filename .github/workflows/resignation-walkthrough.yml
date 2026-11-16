@@ -1,7 +1,8 @@
 name: resignation-walkthrough
 run-name: Resignation production renderer · ${{ inputs.candidate_ref || github.ref_name }}
 on:
-  # Temporary, development-only bootstrap. It has no release or installation credentials.
+  # Temporary, development-only bootstrap. Exact compared file paths are verified through the read-only API.
+  # It has no release or installation credentials.
   push:
     branches: ['codex/resignation-journey-20261116']
     paths: ['.github/workflows/resignation-walkthrough.yml']
