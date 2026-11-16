@@ -523,13 +523,22 @@ are in the provider-data scope only through the import graph. No provider transf
 transport changed. The 28 approvals were carried forward to `c62cade8…` and the agent manifest regenerated
 (`d3afe9c7…`), under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.
 
+### Re-binding for the earlier Group Join Date over closed payroll fix (16 November 2026)
+
+`claude/gjd-earlier-closed-salary`, cut from main/alpha `8244cfa81` (binding `c62cade8…`), keeps a salary record a
+closed payroll was paid under when the Group Join Date moves (staging DB-V-06E997; owner, 16 November 2026: "Completed
+payroll stays unchanged and no historical recalculation will run"). Changed covered files: `core/movement-history.ts`,
+`core/information-correction.ts`, `lib/information-correction.ts` and the six `messages/*.json` catalogues, in the
+provider-data scope only through the import graph. No provider transform, outbound field, purpose or transport changed.
+The 28 approvals were carried forward to `1aad1797…` and the agent manifest regenerated (`306e3222…`), under the owner's
+standing pre-approval for staging re-binds (12 November 2026). Staging only.
 ### Re-binding for the Probation Confirmation reshape onto shared HR automation (16 November 2026)
 
-`claude/probation-confirmation-aihr-b81c70`, merged with main/alpha `8244cfa81` (binding `c62cade8…`), at `55e9ff7ac`, adds
+`claude/probation-confirmation-aihr-b81c70`, merged with main/alpha `9d32dfab1` (binding `1aad1797…`), at its final merge, adds
 the shared HR Automation builders and runner, Personnel postings, document signing review routing and the Probation
 settings, queue, routing and outcome changes (ADR `docs/adr/2026-11-15-probation-shared-automation.md`, migrations
-5740–5757). The changed files reach the provider-data scope only through the import graph (message catalogues,
+5740–5759). The changed files reach the provider-data scope only through the import graph (message catalogues,
 company referrers, the approvals and Today task sources); no file under lib/ai, core/ai*, core/assistant*,
 core/teras* or core/loops changed. No provider transform, outbound field, purpose or transport changed. The 28 approvals
-were carried forward to `f1df923e…` and the agent manifest regenerated (`b46f0db0…`), under the owner's standing
+were carried forward to `2811064b…` and the agent manifest regenerated (`e11a6cf7…`), under the owner's standing
 pre-approval for staging re-binds (12 November 2026). This binding grants no production authority.
