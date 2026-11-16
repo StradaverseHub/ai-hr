@@ -10,8 +10,11 @@ export function automationEmailSampleValues(catalogue:AutomationModuleCatalogue,
  if(sample==='noDecision')for(const field of catalogue.mergeFields)if(field.group==='Decision'||field.group==='Letter')delete values[field.key];
  return values;
 }
-export function automationEmailPreview(template:AutomationEmailTemplate,catalogue:AutomationModuleCatalogue,sample:AutomationEmailSample){
+export function automationEmailPreview(template:AutomationEmailTemplate,catalogue:AutomationModuleCatalogue,sample:AutomationEmailSample,documents:readonly{id:string;name:string}[]=[]){
  const values=automationEmailSampleValues(catalogue,sample),labels=new Map(catalogue.mergeFields.map(field=>[field.key,field.label]));
- const body=renderEmailBody(automationEmailBodyDoc(template),{values,readableMissing:true,missingLabel:key=>labels.get(key)});
+ const body=renderEmailBody(automationEmailBodyDoc(template),{values,readableMissing:true,missingLabel:key=>labels.get(key),
+  images:(template.assets??[]).filter(asset=>asset.kind==='image').map(asset=>({id:asset.id,alt:asset.alt||asset.name,cid:'v9-image.'+asset.id+'@aihr'})),
+  documentLink:id=>documents.find(document=>document.id===id)?{name:documents.find(document=>document.id===id)!.name,placeholder:'#example-document-'+id}:null,
+ });
  return {...body,subject:fillAutomationMergeFields(template.subject,values)};
 }

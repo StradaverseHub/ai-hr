@@ -44,6 +44,12 @@ describe('Shared assignment groups through the exact Contract groups grant',()=>
   await expect(saveAutomationAssignmentGroups(editor,{...request,groups:[...view.groups,{id:randomUUID(),name:'Foreign member',members:[randomUUID()],limit:20}]})).rejects.toMatchObject({code:'invalid'});
   expect(await input()).toEqual(view);
  });
+ it('retains existing memberships and refuses removing a member through the new shared grant',async()=>{
+  const view=await input(),groupId=randomUUID();
+  const added=await saveAutomationAssignmentGroups(editor,{revision:view.revision,v9Revision:view.v9Revision,groups:[...view.groups,{id:groupId,name:'Retained membership',members:[editor.userId!],limit:20}],reason:'Add the actual member'});
+  await expect(saveAutomationAssignmentGroups(editor,{revision:added.revision,v9Revision:added.v9Revision,groups:added.groups.map(group=>group.id===groupId?{...group,members:[]}:group),reason:'Removal stays with the existing owner flow'})).rejects.toMatchObject({code:'invalid'});
+  expect(await input()).toEqual(added);
+ });
  it('reads only group facts across 70 companies and 1,000 employments, including a company-scoped groups grant',async()=>{
   const before=await input();
   await owner.db.execute(sql`with companies as(insert into company(tenant_id,legal_name) select ${b.tenantId}::uuid,'Group fixture company '||n from generate_series(1,70) n returning id),
