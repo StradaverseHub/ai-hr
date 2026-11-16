@@ -1191,6 +1191,14 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
     isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:
      isAssignmentPolicy(row)?{...row,qual:expectedAssignmentQuals[0]}:row),
   };
+  {// TEMPORARY DIAGNOSTIC (recruitment pins): removed before the release gate.
+   const expectedTerminal={...beforePerformancePrivileges,policies:beforePerformancePrivileges.policies.filter(row=>!isBoardRetiredPolicy(row)&&!isLanePolicy(row))} as Record<string,unknown[]>;
+   const out:Record<string,unknown>={};
+   for(const k of Object.keys(expectedTerminal)){const e=new Set((expectedTerminal[k]).map(r=>JSON.stringify(r)));const g=new Set(((terminalComparable as Record<string,unknown[]>)[k]).map(r=>JSON.stringify(r)));
+    out[k+'Added']=[...g].filter(x=>!e.has(x)).map(x=>JSON.parse(x));out[k+'Removed']=[...e].filter(x=>!g.has(x)).map(x=>JSON.parse(x));}
+   out.ownerRole=ownerRole;
+   console.log('RECRUITMENT_PINS_BEGIN'+Buffer.from(JSON.stringify(out)).toString('base64')+'RECRUITMENT_PINS_END');
+  }
   expect(terminalComparable).toEqual({...beforePerformancePrivileges,policies:beforePerformancePrivileges.policies.filter(row=>!isBoardRetiredPolicy(row)&&!isLanePolicy(row))});
   const complete=await ledger();expect(complete).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);expect(complete.slice(0,671)).toEqual(afterLedger);
   expect(complete.slice(0,performanceStart)).toEqual(beforePerformanceLedger);
