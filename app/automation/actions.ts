@@ -8,7 +8,9 @@ import {
   saveAutomationDocumentTemplate,automationDocumentVersions,
   type AutomationDryRun,type AutomationEmailTemplate,type AutomationRecipient,type AutomationWorkflow,type Routing,
 } from '@/packs/automation/service';
+import {contractConfigurationDirectory} from '@/packs/contracts/service';
 import {probationCase,probationSummaryRows,moveProbationWorkflowsToShared} from '@/packs/probation/service';
+import {resignationConfigurationCases,resignationWorkflowDryRun,installResignationDefaults} from '@/packs/lifecycle/service';
 import {PROBATION_AUTOMATION_CATALOGUE} from '@/lib/automation/catalogues/probation';
 import {PROBATION_DEFAULTS} from './probation-defaults';
 import {contractSharedPage,dryRunContractWorkflow,type ContractDryRunEvent} from '@/packs/contracts/service';
@@ -18,7 +20,7 @@ async function execute<T>(work: () => Promise<T>): Promise<ActionResult<T>> {
   try { const result = await work(); revalidatePath('/automation', 'layout'); return { ok: true, result }; }
   catch (error) {
     if (error instanceof AutomationError) return { ok: false, code: error.code, detail: error.message, problems: [...error.problems] };
-    if (error instanceof Error && error.name === 'ProbationError') return { ok: false, code: 'review', detail: error.message };
+    if (error instanceof Error && ['ProbationError','ResignationJourneyError','ResignationError'].includes(error.name)) return { ok: false, code: 'review', detail: error.message };
     return { ok: false, code: 'unavailable' };
   }
 }
@@ -140,3 +142,16 @@ export async function dryRunWorkflowAction(input: { workflow: AutomationWorkflow
     return { employeeName: facts.employeeName, run };
   });
 }
+
+/** Offboarding dry runs use the same current case authority as the journey; no effects are executed. */
+export async function searchOffboardingCasesAction(search:string){
+ return execute(async()=>{const rows=await resignationConfigurationCases(await requireScopedLifecycleModule(),{search:String(search??'').slice(0,100),limit:20});return rows.map(row=>({id:row.id,name:row.employeeName,detail:[row.employeeCode,row.number].filter(Boolean).join(' · ')}));});
+}
+export async function dryRunOffboardingWorkflowAction(input:{workflow:AutomationWorkflow;caseId:string}){
+ return execute(async()=>resignationWorkflowDryRun(await requireScopedLifecycleModule(),input));
+}
+
+/** Explicit, idempotent setup. New defaults remain Draft until a configurer reviews and activates them. */
+export async function installOffboardingDefaultsAction(){return execute(async()=>installResignationDefaults(await requireScopedLifecycleModule()));}
+/** Selected-company Contract reviewer search, behind the module owner's exact authority. */
+export async function searchContractReviewersAction(input:{companyId:string;query:string;selectedUserIds:string[]}){return execute(async()=>contractConfigurationDirectory(await requireScopedLifecycleModule(),input));}

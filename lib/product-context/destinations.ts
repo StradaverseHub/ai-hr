@@ -161,6 +161,9 @@ export const FORWARD_STUBS:ReadonlySet<string>=new Set(['/control-tower','/contr
  '/admin/attendance/settings/formula-builder','/admin/attendance/settings/formula-builder/new']);
 /** Native workflow grants and an active View As session cannot be inferred from a coarse role or module. */
 export const NATIVE_SCOPE_ONLY_PAGES:ReadonlySet<string>=new Set([
+ // Resignation postings use configured/current-or-pending group membership plus company/workforce authority.
+ // The shell resolves offboardingPostingAccess; a coarse HR role must not advertise this queue.
+ '/lifecycle/offboarding/postings',
  '/admin/attendance/settings/offline-clocking',
  '/payroll/statutory-forms/filing-history',
  '/admin/rewards/access/view-as',

@@ -4,7 +4,7 @@ import {useTranslations} from 'next-intl';
 import {conditionFieldsForTrigger,type AutomationModuleCatalogue} from '@/lib/automation/catalogue';
 import {describeAutomationCondition} from '@/lib/automation/conditions';
 import type {AutomationDryRun,AutomationWorkflow} from '@/lib/automation/workflow';
-import {dryRunWorkflowAction,searchProbationCasesAction,dryRunContractWorkflowAction,searchContractCasesAction} from '../actions';
+import {dryRunWorkflowAction,searchProbationCasesAction,dryRunContractWorkflowAction,searchContractCasesAction,searchOffboardingCasesAction,dryRunOffboardingWorkflowAction} from '../actions';
 import type {DryRunEventFacts} from '../types';
 
 type CaseChoice = { id: string; name: string; detail: string };
@@ -23,8 +23,8 @@ export function DryRunPanel({workflow,catalogue,values={}}:{workflow:AutomationW
  const [result,setResult]=useState<{employeeName:string;run:AutomationDryRun}|null>(null),[error,setError]=useState('');
  const available=new Set(conditionFieldsForTrigger(catalogue,workflow.trigger.event).map(f=>f.id));
  const label=(id:string)=>field(id)?.label??id,stepLabel=(type:string)=>catalogue.stepTypes.find(s=>s.id===type)?.label??type;
- const find=()=>{setError('');start(async()=>{const found=await (workflow.module==='contract_staff'?searchContractCasesAction(query):searchProbationCasesAction(query));if(!found.ok){setError(found.detail??t('errors.unavailable'));return;}setCases(found.result);setCaseId(found.result[0]?.id??'');});};
- const run=()=>{if(!caseId)return;setError('');start(async()=>{const outcome=await (workflow.module==='contract_staff'?dryRunContractWorkflowAction({workflow,caseId,event}):dryRunWorkflowAction({workflow,caseId,event}));if(!outcome.ok){setError(outcome.detail??t('errors.unavailable'));setResult(null);return;}setResult(outcome.result);});};
+ const find=()=>{setError('');start(async()=>{const found=await (workflow.module==='contract_staff'?searchContractCasesAction(query):workflow.module==='off'?searchOffboardingCasesAction(query):searchProbationCasesAction(query));if(!found.ok){setError(found.detail??t('errors.unavailable'));return;}setCases(found.result);setCaseId(found.result[0]?.id??'');});};
+ const run=()=>{if(!caseId)return;setError('');start(async()=>{const outcome=await (workflow.module==='contract_staff'?dryRunContractWorkflowAction({workflow,caseId,event}):workflow.module==='off'?dryRunOffboardingWorkflowAction({workflow,caseId}):dryRunWorkflowAction({workflow,caseId,event}));if(!outcome.ok){setError(outcome.detail??t('errors.unavailable'));setResult(null);return;}setResult(outcome.result);});};
  const select=(key:keyof DryRunEventFacts,id:string,values:string[])=>available.has(id)&&<label className="v9-field" key={key}><span>{label(id)}</span><select value={event[key]??''} onChange={e=>{setEvent({...event,[key]:e.target.value});setResult(null);}}>{values.map(v=><option key={v} value={v}>{v}</option>)}</select></label>;
  return <section className="automation-dry v9-stack" aria-label={t('dry.title')}>
   <div><h3>{t('dry.title')}</h3><p className="v9-muted">{t('dry.intro')}</p></div>

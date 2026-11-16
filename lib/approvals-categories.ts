@@ -62,12 +62,12 @@ export const ADMIN_ONLY_CATEGORIES: readonly ApprovalCategory[] = [
  */
 export function parseApprovalCategory(
   raw: string | string[] | undefined,
-  opts: { admin: boolean },
+  opts: { admin: boolean; resignationAccess?:boolean },
 ): ApprovalCategory {
   const v = Array.isArray(raw) ? raw[0] : raw;
   if (!v || !(APPROVAL_CATEGORIES as readonly string[]).includes(v)) return 'all';
   const cat = v as ApprovalCategory;
-  if (!opts.admin && ADMIN_ONLY_CATEGORIES.includes(cat)) return 'all';
+  if (!opts.admin && ADMIN_ONLY_CATEGORIES.includes(cat) && !(cat==='resignations'&&opts.resignationAccess)) return 'all';
   return cat;
 }
 

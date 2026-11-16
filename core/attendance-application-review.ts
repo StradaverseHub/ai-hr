@@ -1,7 +1,7 @@
 /** Read-only request context. Historical missing evidence stays missing; no schedule re-derivation. */
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client';
-import { attendance, assignment, department, businessUnit, position, employment, shift } from '../db/schema';
+import { attendance, assignment, department, businessUnit, position, shift } from '../db/schema';
 import { isAttendanceTrace } from './attendance-trace';
 import { recordedAttendanceProgress, type AttendanceProgressWorkflow } from '../lib/attendance-progress';
 import type { attendanceWorkflowForTx } from './attendance-workflow';
@@ -36,12 +36,4 @@ export async function attendanceApplicationReviewTx(tx: Tx, p: { employmentId: s
     .orderBy(asc(assignment.id)).limit(2);
   return { record: record ? { id: record.id, checkInAt: record.checkInAt, checkOutAt: record.checkOutAt, status: record.status, dayType: record.dayType, workedMinutes: record.workedMinutes, underMinutes: record.underMinutes } : null,
     schedule: trace?.schedule ?? null, currentShiftName: shiftReference?.name ?? null, organisation: assignments.length === 1 ? assignments[0] : null };
-}
-
-/** Current employee codes are labelled as such; a decision's recorded name is never replaced. */
-export async function attendanceApproverCodesTx(tx: Tx, ids: readonly string[]) {
-  if (!ids.length) return {} as Record<string, string | null>;
-  const rows = await tx.select({ id: employment.id, code: employment.employeeCode }).from(employment)
-    .where(sql`${employment.id} in (${sql.join([...new Set(ids)].map(id => sql`${id}::uuid`), sql`,`)})`).orderBy(asc(employment.id));
-  return Object.fromEntries(rows.map(row => [row.id, row.code]));
 }

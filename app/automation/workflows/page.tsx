@@ -1,5 +1,8 @@
 import {getTranslations} from 'next-intl/server';
 import {contractTerminationReasons} from '@/packs/contracts/service';
+import {offboardingSettings} from '@/lib/automation/offboarding';
+import {LifecycleWorkflowSection} from '../lifecycle-configuration';
+import {v9Configuration} from '@/packs/lifecycle/service';
 import {notFound} from 'next/navigation';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
 import {automationTemplateChoices,automationAssignmentGroups,automationPeopleNames,automationRoutingOptions,listAutomationDocumentTemplates,listAutomationEmailTemplates,listAutomationRoutings,listAutomationWorkflows} from '@/packs/automation/service';
@@ -14,6 +17,7 @@ export default async function Page({searchParams}:{searchParams:Promise<Record<s
  const ctx=await requireScopedLifecycleModule(),query=await searchParams,access=await automationPageAccess(ctx,'workflows');
  if(!access.any)notFound();
  const filter=automationFilter(query.module,access);
+ const lifecycle=access.legacy&&(filter==='all'||filter==='onb'||filter==='off')?await v9Configuration(ctx):null;
  const refs:WorkflowEditorReferences={routings:[],groups:[],people:[],emailTemplates:[],letterTemplates:null,conditionValues:{}};
  let workflows:ListedWorkflow[]=[],defaultsMissing=0;
  if(access.probation&&(filter==='all'||filter==='probation')){
@@ -46,5 +50,11 @@ export default async function Page({searchParams}:{searchParams:Promise<Record<s
    letterTemplates:choices.documents.map(d=>({id:d.id,name:d.name})),
    conditionValues:{businessGroup:options.businessGroups.map(o=>({value:o.id,label:o.name})),endReason:reasonChoices,declineReason:reasonChoices}}};
  }
- return <WorkflowsWorkspace filter={filter} access={access} workflows={workflows} refs={refs} defaultsMissing={defaultsMissing} contract={contract}/>;
+ let offboarding:import('./workflows-workspace').OffboardingWorkspace|undefined;
+ if(access.legacy&&(filter==='all'||filter==='off')){
+  const [stored,routings,options]=await Promise.all([listAutomationWorkflows(ctx,{module:'off'}),listAutomationRoutings(ctx),automationRoutingOptions(ctx)]);
+  const configuration=lifecycle!,config=configuration.config;
+  offboarding={workflows:stored.map(w=>({workflow:w.workflow,revision:w.revision})),editable:configuration.offboardingEditable,refs:{postingApproverGroupId:config?offboardingSettings(config).postingApproverGroupId:null,routings:routings.map(r=>({id:r.routing.id,name:r.routing.name,retired:r.retired})),groups:config?.groups??[],people:configuration.users,emailTemplates:(config?.emails??[]).filter(e=>e.module==='off').map(e=>({id:e.id,name:e.name,active:e.active,retired:false,subject:e.subject})),letterTemplates:(config?.templates??[]).filter(t=>t.module==='off'&&!t.retired).map(t=>({id:t.id,name:t.name})),conditionValues:{document:(config?.templates??[]).filter(t=>t.module==='off'&&!t.retired).map(t=>({value:t.id,label:t.name})),businessGroup:options.businessGroups.map(v=>({value:v.id,label:v.name})),company:options.companies.map(v=>({value:v.id,label:v.name})),department:options.departments.map(v=>({value:v.id,label:v.name})),jobTitle:options.jobTitles.map(v=>({value:v,label:v})),jobGrade:options.jobGrades.map(v=>({value:v,label:v}))}}};
+ }
+ return <WorkflowsWorkspace contract={contract} onboardingSection={lifecycle?<LifecycleWorkflowSection initial={lifecycle} filter={filter==='onb'?'onb':filter==='off'?'off':'all'} initialSelected={typeof query.workflow==='string'?query.workflow:undefined}/>:undefined} offboarding={offboarding} filter={filter} access={access} workflows={workflows} refs={refs} defaultsMissing={defaultsMissing}/>;
 }

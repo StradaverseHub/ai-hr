@@ -73,6 +73,16 @@ export async function attendanceGroupPolicyOnTx(tx:Tx,ctx:SessionContext,p:{comp
  if(!row)return null;
  return {id:row.id,companyId:row.companyId,ruleId:row.ruleId,ordinal:row.ordinal,effectiveFrom:row.effectiveFrom,policy:validateAttendanceGroupPolicy(row.policy,4320),activation:{epoch:row.activationEpoch,actorUserId:row.createdByUserId,recordedAt:row.createdAt.toISOString(),reason:row.reason}};
 }
+/** 87bd9656 — whether any revision of this employer in force by `date` carries an Overtime Backdate Control
+ * limit. One indexed tenant/company read, so the submission owner resolves a legacy date's Schedule Group only
+ * for employers that use the control. */
+export async function hasAttendanceBackdateLimitRevisionTx(tx:Tx,ctx:SessionContext,p:{companyId:string;date:string}):Promise<boolean>{
+ overtimeUuid(p.companyId,'companyId');overtimeDate(p.date,'attendanceDate');
+ const [row]=await tx.select({id:attendanceGroupPolicyRevision.id}).from(attendanceGroupPolicyRevision).where(and(eq(attendanceGroupPolicyRevision.tenantId,ctx.tenantId),
+  eq(attendanceGroupPolicyRevision.companyId,p.companyId),lte(attendanceGroupPolicyRevision.effectiveFrom,p.date),
+  sql`(${attendanceGroupPolicyRevision.policy}->'overtime') ? 'backdateLimitDays'`)).limit(1);
+ return !!row;
+}
 export async function scheduleAttendanceGroupPolicy(ctx:SessionContext,p:{companyId:string;ruleId:string;expectedOrdinal:number;
  effectiveFrom:string;reason:string;policy:unknown}):Promise<{id:string;ordinal:number;effectiveFrom:string}>{
  overtimeUuid(p.ruleId,'ruleId');

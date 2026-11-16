@@ -2,3 +2,5 @@
  * approval through the movement writer. Personnel Management owns the fact; only approval writes it. */
 export * from '../../core/personnel-posting';
 export * from '../../lib/personnel-posting';
+
+export {offboardingPostingAccess,offboardingPostingChoices,rejectOffboardingPosting} from '../lifecycle/service';

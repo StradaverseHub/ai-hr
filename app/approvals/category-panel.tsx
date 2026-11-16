@@ -87,6 +87,8 @@ export async function CategoryPanel({
   allCount,
   admin,
   attendanceOnly = false,
+  resignationAccess = false,
+  resignationFyiCount = 0,
 }: {
   /** The currently selected category (already parsed + admin-coerced by the page). */
   category: ApprovalCategory;
@@ -98,8 +100,11 @@ export async function CategoryPanel({
   allCount: number;
   admin: boolean;
   attendanceOnly?: boolean;
+  resignationAccess?:boolean;
+  resignationFyiCount?:number;
 }) {
   const t = await getTranslations('approvals');
+  const journey=await getTranslations('resignationJourney');
 
   const item = (cat: ApprovalCategory, label: string, count: number, Icon: LucideIcon) => {
     const selected = category === cat;
@@ -118,6 +123,7 @@ export async function CategoryPanel({
         <Icon className="size-4 shrink-0" aria-hidden />
         <span className="min-w-0 flex-1 truncate">{label}</span>
         {/* Pending badge — same muted "(n)" figure family as SectionHeader, right-aligned tabular-nums. */}
+        {(cat==='resignations'||cat==='all')&&resignationFyiCount>0&&<span className="shrink-0 rounded-full bg-blue-50 px-1.5 py-0.5 text-[11px] text-blue-700 dark:bg-blue-950 dark:text-blue-200">{journey('fyiCount',{count:resignationFyiCount})}</span>}
         <span className={cn('shrink-0 text-xs tabular-nums', selected ? 'text-primary' : 'text-muted-foreground')}>
           {count}
         </span>
@@ -130,7 +136,7 @@ export async function CategoryPanel({
       <nav aria-label={t('title')} className="space-y-3">
         {item('all', t('categoryAll'), allCount, ListChecks)}
         {PANEL_GROUPS.map(({ group, categories }) => {
-          const visible = categories.filter((c) => (admin || !ADMIN_ONLY_CATEGORIES.includes(c)) && (!attendanceOnly || c === 'attendance' || c === 'overtime'));
+          const visible = categories.filter((c) => (admin || c==='resignations'&&resignationAccess || !ADMIN_ONLY_CATEGORIES.includes(c)) && (!attendanceOnly || c === 'attendance' || c === 'overtime'));
           if (visible.length === 0) return null;
           return (
             <div key={group} className="space-y-0.5">

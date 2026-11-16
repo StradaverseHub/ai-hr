@@ -13,7 +13,7 @@ import type {LetterDocument} from '../lib/letter-model';
 import {withTenant,type SessionContext} from '../db/client';
 import {closeAll,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppUser,owner,type Base} from './harness';
 import * as S from '../db/schema';
-import {contractNavigationAccess,contractInbox,reconcileContractSource,contractCompanies,canConfigureContractWorkflows,setupContractManagement,contractWorkflowWorkspace,assignContractRole,captureContractRetirementEvidence,saveContractTemplate,publishContractTemplate,saveContractWorkflow,saveContractConfiguration,contractSettings,intakeContract,previewContractIntake,contractCase,contractCases,submitContractDecision,confirmContractDecision,decideContractApproval,acceptContract,retryContractRecords,amendContractEnd,contractLetterEditor,releaseContractLetter,handoffContract,sweepContractManagement} from '../packs/contracts/service';
+import {contractConfigurationDirectory,contractConfigurationWorkflows,contractDirectory,contractNavigationAccess,contractInbox,reconcileContractSource,contractCompanies,canConfigureContractWorkflows,setupContractManagement,contractWorkflowWorkspace,assignContractRole,captureContractRetirementEvidence,saveContractTemplate,publishContractTemplate,saveContractWorkflow,saveContractConfiguration,contractSettings,intakeContract,previewContractIntake,contractCase,contractCases,submitContractDecision,confirmContractDecision,decideContractApproval,acceptContract,retryContractRecords,amendContractEnd,contractLetterEditor,releaseContractLetter,handoffContract,sweepContractManagement} from '../packs/contracts/service';
 let b:Base,admin:SessionContext;
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'lifecycle','active');admin=await entitledCtx(b);});
@@ -253,4 +253,16 @@ describe('isolated Contract Staff native custody',()=>{
   await submitContractDecision(f.manager.ctx,{...input,revision:rejected.record.revision,reason:'Revised submission after review of the actual delivery schedule'});const updated=await contractCase(f.pbp,f.caseId);expect(updated.record.decision?.revision).toBe(2);expect(updated.record.requiresResubmission).toBe(false);expect(updated.record.decisionHistory[0].approvalSnapshot?.find(s=>s.state==='rejected')?.actions[0]).toMatchObject({actorPersonId:f.chief.personId,comment:'The actual delivery schedule needs another review'});expect(await withTenant(f.subject.ctx,tx=>tx.execute(sql`select data from contract_case_revision where case_id=${f.caseId}::uuid`))).toEqual([]);
  });
 
+});
+
+it('keeps the shared Contract reviewer adapter equivalent to its owner directory without disclosing it to an employee',async()=>{
+ const fixture=await liveModule();
+ const existing=await contractDirectory(admin,b.companyId),selectedUserIds=existing.map(user=>user.id);
+ const projected=await contractConfigurationDirectory(admin,{companyId:b.companyId,query:'',selectedUserIds});
+ expect(projected.map(user=>({id:user.id,name:user.name,employeeId:user.employeeId}))).toEqual(existing.map(user=>({id:user.id,name:user.name,employeeId:user.employeeId})));
+ expect(await contractConfigurationDirectory(fixture.subject.ctx,{companyId:b.companyId,query:'Fictional',selectedUserIds})).toEqual([]);
+ const builder=await contractConfigurationWorkflows(admin);
+ expect(builder.workflows.map(row=>row.id).sort()).toEqual((await contractWorkflowWorkspace(admin)).workflows.map(row=>row.id).sort());
+ expect(builder.cases.length).toBeLessThanOrEqual(20);
+ expect(builder.cases.every(row=>Object.keys(row).sort().join(',')==='companyId,id,name,number')).toBe(true);
 });

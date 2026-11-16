@@ -1,3 +1,5 @@
+import type {DocumentRouting} from './document-signing-routing';
+import type {AutomationRecipient} from './automation/workflow';
 import { bulkAssignmentProblem, RETURN_BULK_LABELS } from './lifecycle-bulk-assignment';
 import { personnelMergeLabels } from '@/lib/lifecycle-v9-personnel-merge-fields';
 import type { Note as LifecycleNote } from './onboarding-model';
@@ -68,7 +70,7 @@ export type Field = {
   when: { field: string; value: string } | null;
 };
 export type Block = { id: string; type: 'letterhead' | 'heading' | 'subheading' | 'text' | 'fields' | 'field' | 'table' | 'signature'; text: string; section: string; fieldId?: string; columns?: string; rows?: string; role?: string; label?: string };
-export type TemplateVersion = { version: number; state: 'draft' | 'published'; at: string; by: string; blocks: Block[]; fields: Field[] };
+export type TemplateVersion = { version: number; state: 'draft' | 'published'; at: string; by: string; blocks: Block[]; fields: Field[]; routing?: DocumentRouting };
 export type Template = {
   id: string; name: string; module: Module; type: 'Form' | 'Letter' | 'Acknowledgement' | 'Attachment';
   rules: Rules; hrStep: 'none' | 'before' | 'after'; employeeAck: boolean; retired: boolean;
@@ -101,7 +103,9 @@ export type EmailTemplate = {
   recipientReview?: true;
   /** Board 6bdda222: the structured rich body. Without it the legacy text body sends exactly as before. */
   bodyDoc?: EmailBodyDoc;
-  slots: { id: string; label: string; required: boolean }[]; files?: EmailAsset[]; images?: EmailAsset[];
+  /** Offboarding-only named routing CC; existing Role CC is preserved. */
+  routingCc?: AutomationRecipient[];
+  slots: { id: string; label: string; required: boolean; by?: AutomationRecipient }[]; files?: EmailAsset[]; images?: EmailAsset[];
 };
 export type Trigger = {
   event: 'submitted' | 'hrSigned' | 'docSigned' | 'taskDone' | 'fileUploaded' | 'manual' | 'beforeJoin' | 'afterJoin' | 'beforeLWD' | 'afterLWD'; days: number;
@@ -208,6 +212,8 @@ export type Config = {
   emails: EmailTemplate[]; workflows: Workflow[]; groups: Group[]; peopleOpsGroup: string | null;
   bpRules: { rules: Pick<Rules, 'businessGroup' | 'company' | 'department'>; userId: string }[];
   settlementPolicy?: SettlementPolicy;
+  /** Omitted fields preserve existing settings; null reofferMonths means no retention time limit. */
+  offboarding?: { postingApproverGroupId?: string | null; reofferMonths?: number | null };
   signatoryTitles?: Record<string,string>;
   companies?: { companyId: string; signatoryUserId: string | null; signatoryTitle: string; allowedSignatoryUserIds?: string[]; letterhead?: { registrationNo?: string; address?: string; color?: string } }[];
 };
@@ -224,6 +230,9 @@ export type Environment = {
   actorSignatoryTitle?: string;
   /** Production workflows wait for the durable transport acknowledgement. */
   requireDeliveryAck?: boolean;
+  /** Set only by the service's verified journey/clearance link; that shared runner owns resignation letters and mail. */
+  managedResignation?: boolean;
+  resignationOwnedTemplateIds?: readonly string[];
   /** A real Native onboarding contact; this is never an app-user identity or login grant. */
   onboardingContact?: { email: string; sourceRevision: string };
   /** d1e26f81 — the Leaver calculator's effective last working day, when the service could compute it. */
@@ -291,6 +300,8 @@ export function submit(c: Case, config: Config, env: Environment): void {
   if (c.module === 'off' && !(['Resignation', 'Termination', 'Contract end', 'Retirement', 'Non-confirmation'] as string[]).includes(c.facts.caseType)) throw new V9Error('Choose the offboarding case type.');
   if (c.module === 'off') { const missing = missingV9CaseFields(resolveV9CaseFields('off',config.caseForms?.off), c.facts, offCaseFormValues(c), true); if (missing.length) throw new V9Error('Complete: '+missing.map(field=>field.label).join(', ')); }
   const selected = matchChecklist(config, c), extra: Record<string, number> = {};
+  const conflicting=env.managedResignation?selected.checklist?.tasks.find(task=>task.documentTemplate&&env.resignationOwnedTemplateIds?.includes(task.documentTemplate)):null;
+  if(conflicting)throw new V9Error(`Review checklist task “${conflicting.name}”: this document is owned by the resignation journey. HR must update the checklist requirement before starting clearance.`,'conflict');
   c.checklistId = selected.checklist?.id ?? null; c.checklistName = selected.checklist?.name ?? 'No checklist';
   c.tasks = (selected.checklist?.tasks ?? []).map(def => {
     const dueOn = taskDate(c.module, anchor, def.due), opensOn = def.opens === null ? null : taskDate(c.module, anchor, def.opens);
@@ -399,6 +410,7 @@ export function personnelFieldSourceValue(field: Field, values: Readonly<Record<
   return validDate(iso) ? iso : '';
 }
 export function generate(c: Case, config: Config, templateId: string, env: Environment): Document {
+  if(c.module==='off'&&env.managedResignation&&env.resignationOwnedTemplateIds?.includes(templateId))throw new V9Error('This letter is owned by the linked resignation journey. Open it in Documents instead.','conflict');
   const existing = activeDocument(c, templateId); if (existing) return existing;
   const template = config.templates.find(t => t.id === templateId && t.module === c.module);
   // As in the source opGenerate, an explicit workflow/email reference may retain a retired
@@ -417,6 +429,7 @@ export function canRegenerate(c: Pick<Case, 'state' | 'mails'>, document: Docume
 export function regenerate(c: Case, config: Config, id: string, env: Environment): Document {
   const previous = c.documents.find(document => document.id === id);
   if (!previous) throw new V9Error('Document not found.', 'not_found');
+  if(c.module==='off'&&env.managedResignation&&env.resignationOwnedTemplateIds?.includes(previous.templateId))throw new V9Error('Regenerate this letter through the linked resignation journey.','conflict');
   if (!canRegenerate(c, previous)) throw new V9Error('This document cannot be regenerated while closed, completed, awaiting countersignature or reserved for delivery.', 'conflict');
   const template = config.templates.find(template => template.id === previous.templateId && template.module === c.module);
   if (!template || !currentVersion(template)) throw new V9Error('Publish the document template before regenerating.');
@@ -879,6 +892,7 @@ export function planWorkflow(c: Case, config: Config, workflow: Workflow, env: P
   return { matches, lines };
 }
 export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: Environment, event: 'submitted' | 'date' | 'resume' | 'hrSigned' | 'manual', options: { startNow?: boolean; continueHeld?: boolean } = {}): Run | null {
+  if (c.module === 'off' && env.managedResignation) return null;
   const unfinished = c.runs.find(r => r.workflowId === workflow.id && (r.status === 'waiting' || r.status === 'failed'));
   // A held email waits for HR: fixing a record alone sends nothing until someone presses Continue.
   if (unfinished?.hold && unfinished.status === 'waiting' && !options.continueHeld) return unfinished;

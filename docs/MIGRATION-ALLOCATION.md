@@ -4,7 +4,46 @@
 Owner `codex/contract-tracker-owner-20261117`, delegated by the Contract integration owner. Reserve **5830–5833**, idx **5230–5233**, when **1794841005830–1794841005833**. Parent refreshed a read-only survey of all263registered worktrees and found no competing5830–5849SQL claims. These are source allocations only, not installation authority; refresh installation watermarks and preserve ordered migration bytes at release. 5830 extends the set-based tracker; later entries carry fixed Contract system-job admission and mapped setup defaults.
 
 <!-- 5800_contract_shared_automation -->
+<!-- 5848_contract_shared_virtual_period -->
+<!-- 5890_contract_shared_forms -->
+<!-- 5896_contract_shared_ui_repairs -->
+# Contract virtual periods, form responses and read repairs — 17 November 2026 MYT
+
+Read-only surveys of 266 registered worktrees found **5848–5849** unclaimed and assign them to
+`codex/contract-tracker-owner-20261117` (idx 5248–5249, when 1794841005848–1794841005849).
+The same survey found foreign Recruitment migrations in **5850–5865**; those are not Contract allocations.
+The 266-worktree survey found **5890–5895** unclaimed; reserve them for the Contract ending/form-response owner
+(idx 5290–5295, when 1794841005890–1794841005895). A subsequent 267-worktree survey found **5896–5899**
+unclaimed; reserve them for `codex/contract-screens-20261117` read/projection repairs (idx 5296–5299,
+when 1794841005896–1794841005899). These reservations were sent to the four-session release coordinator.
+They grant no target-write authority. Refresh all reservations and actual ledgers before release admission.
+
 <!-- 5810_contract_shared_execution -->
+<!-- 5830_contract_shared_schedule -->
+# Contract scheduler and forward repairs reservation — 17 November 2026 MYT
+
+Owner: `codex/contract-shared-automation-20261116`, delegated tracker worktree
+`codex/contract-tracker-owner-20261117`. Reserve **5830–5833**, idx **5230–5233**,
+`when` **1794841005830–1794841005833**, for system-owned morning admission, defaults and tracker forward repairs.
+A read-only survey of all 263 registered worktrees found no SQL claims in 5830–5849 before this reservation.
+Existing 5800–5829 reservations remain held. Applied or checkpointed SQL bytes and hashes are immutable;
+this reservation conveys no installation authority. Verify fresh source reservations and complete installation
+ledgers before admission. The four-session coordinator has recorded Movement as the first staging release;
+Contract prepares outside the lease and must use that accepted baseline before its final release gate.
+
+A subsequent survey of the same 263 registered worktrees found no 5834–5839 SQL claims. Reserve **5834–5835**
+(idx 5234–5235, when 1794841005834–1794841005835) for the root email integration's forward repairs, and
+**5836–5839** (idx 5236–5239, when 1794841005836–1794841005839) for the delegated Contract decline/Offboarding
+owner's forward repairs. These are unapplied source reservations, with the same admission and ledger requirements.
+
+The later 265-worktree survey found no **5840–5843** claims. Reserve those tags (idx **5240–5243**,
+when **1794841005840–1794841005843**) for shared-email assets/test-purpose forward repairs, delegated to
+`codex/contract-email-assets-20261117`. The scheduler's 5830–5833 reservation must not be reused by this consumer.
+
+The next 265-worktree survey found no **5844–5847** claims. Reserve those tags (idx **5244–5247**,
+when **1794841005844–1794841005847**) for `codex/contract-automation-ui-20261117` shared-group and saved-template
+test forward repairs. All source reservations remain distinct; this is not an installed watermark.
+
 # Contract execution adapters reservation — 17 November 2026 MYT
 
 Owner: `codex/contract-shared-automation-20261116`. Reserve tags **5810–5829**, idx **5210–5229**,
@@ -32,6 +71,77 @@ No live migration has been applied and no existing case is automatically convert
 kernel for private preflight and accepted automation events. It also adds the signing owner's derived assignment
 index for basic Round robin. The 17 November read-only survey found no other 5807–5809 file in registered worktrees.
 These remain unapplied drafts; the release hold applies to every merge and installation.
+
+# Resignation final source allocation — 17 November 2026 (unapplied)
+
+The cross-session release coordinator reserves `5783_resignation_journey` (idx 5183 / when 1793330005483),
+`5784_resignation_configuration` (idx 5184 / when 1793330005484), `5785_resignation_postings` (idx 5185 / when 1793330005485),
+and `5786_resignation_email_delivery` (idx 5186 / when 1793330005486) for `codex/resignation-journey-20261116`.
+These replace the unapplied draft tags 9991, 9992, 9993 and 9995 respectively. All four SQL byte hashes are unchanged;
+draft identifiers in SQL header comments remain historical. Journal, upgrade pins and source references use the final tags.
+
+Applied `5771_assistant_legacy_index_shared_access` is preserved verbatim. Movement owns 5772–5782; none is taken
+or silently considered applied here. If Resignation is released first, the coordinator requires Movement to reallocate
+its still-unapplied block above the actual installed watermark before its later release. Both installed ordered ledgers,
+remote refs and peer claims must be checked again at admission. This allocation grants no deployment or production authority.
+The owner's newer COORDINATOR instruction authorizes staging only after complete verification and guarded queue admission.
+
+Earlier draft reservations below are superseded by this final source allocation.
+
+<!-- 5771_assistant_legacy_index_shared_access -->
+# Assistant metadata discovery shares Access — 16 November 2026 MYT (source allocation; installation held)
+
+Branch `codex/architecture-performance-review-index-20261116` allocates `5771_assistant_legacy_index_shared_access` at idx 5171 /
+when 1793330005471, above main/alpha's 5766 and the freshly read staging watermark (881 entries,
+1793330005466). SHA256 `433dfd7549b496b034bdeaa2c06484b700b5dd5647213106d68487f0b485c7c0`. The installed function is owned by ai_hr_owner.
+Only `app.assistant_legacy_reviews_index(text)` changes: its advisory Access acquisition becomes shared.
+Principal freshness, current-person binding, allowed kinds, history windows, deterministic ordering, 25-row cap,
+owner, grants and every command owner remain unchanged. Applied SQL is untouched.
+
+This allocation is not installation authority. After the owner connected the production VPN on 16 November,
+a restricted-owner READ ONLY aggregate verified production at 853 entries / maximum 1793330005395.
+The new when is above both fresh installation maxima. Recheck peer source allocations and both installed ledgers
+at release admission; renumber this unapplied source if a higher watermark or conflicting claim appears.
+Restricted-owner and native concurrency/equivalence checks are required before release.
+
+Owner direction: merge Irwin f0443eaf27d3584f55b6a2e7d48558bd553d4149 and allocate after its 5770 (idx 5170 / when 1793330005470). Stop before release and wait for owner approval; Claude releases first. SQL bytes are unchanged by this source-only renumbering.
+# Resignation journey — 16 November 2026 (allocated, unapplied)
+
+Owned build branch `codex/resignation-journey-20261116` reserves `9991_resignation_journey`
+(idx 5171 / when 1793330100101), `9992_resignation_configuration` (idx 5172 / when 1793330100102),
+`9993_resignation_postings` (idx 5173 / when 1793330100103), and `9995_resignation_email_delivery` (idx 5174 / when 1793330100105).
+A read-only survey of 4,290 distinct local ref heads read 4,289 journals, with maximum
+when 1793330099990 (`9990_access_administrator_coalesced_assert`); readable worktree journals
+were also surveyed. Fresh main/alpha and the observed staging source/build match
+`59f06b08db014e01cd553a827c62ccf864d33f78`. The canonical read-only verifier matched the full
+881-entry staging ledger to that source. The pre-existing journal prefix and SQL bytes stay
+unchanged. Recheck peer reservations, release predecessors and installed watermarks at
+admission. These reservations do not apply migrations or claim release priority.
+On 17 November, fresh main/alpha advanced to `f0443eaf27d3584f55b6a2e7d48558bd553d4149`
+with Attendance idx 5170. The still-unapplied resignation entries were moved to idx 5171–5174;
+their SQL and timestamps are unchanged. Optional 9994 is unused. Release remains held.
+
+<!-- 5770_attendance_workflow_approver_codes -->
+# Board 237c31e6: approver Employee ID readers for Attendance approval progress — 16 November 2026 MYT (unapplied, re-allocated as 5770)
+
+Branch `claude/fb-237c31e6-approval-progress-20261116` first drafted `5697_attendance_workflow_approver_codes` at idx 5097 /
+when 1793330005397. Before it was applied anywhere, the Probation Confirmation release installed 5740–5766 on staging
+(installed watermark when 1793330005466, ledger 881 rows), so a 5697 at when …5397 would sit below the watermark and
+could be silently skipped. It is therefore re-allocated, on the combined release branch
+`claude/release-combined-irwin-20261116-r2`, as **`5770_attendance_workflow_approver_codes`, idx 5170 / when 1793330005470**
+(the shared offset tag T, idx T − 600, when 1793330004800 + (T − 5100)), after `5766` and leaving 5767–5769 for Probation
+repairs. A scan of the 400 most recently active origin heads on 16 November 2026 found no claim above 5766 other than the
+Probation release's own. The SQL bytes are unchanged; the file's header comment still records its draft number:
+SHA256 `f71cf33a9ced5f4e1007de02388a858bd31c64006a422352193bd7c14e367ec0`.
+
+It adds two SECURITY DEFINER readers with EXECUTE for `ai_hr_app` only: `app.attendance_workflow_approver_codes(uuid[])`
+(codes of the identities frozen on the requests the caller can already read, the attendance_workflow_request SELECT
+predicates) and `app.attendance_workflow_route_approver_codes(uuid,uuid)` (codes of the route the existing resolver
+produces for a subject and a current template, for the subject, the company's HR or a reporting-line superior). No table,
+policy, existing function or row changes. The approved upgrade tail pin and hash (`test/helpers/approved-upgrade.ts`,
+`test/tenant-company-fk-upgrade.test.ts`) carry the tag. Recheck the installed watermark and peer claims at admission;
+this allocation grants no installation authority.
+
 
 <!-- 5766_probation_reshape_company_in_use -->
 # Company deletion sees the Probation reshape's owner-only referrers — 16 November 2026 MYT (unapplied, allocated)

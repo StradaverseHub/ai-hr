@@ -6,13 +6,15 @@ import { unresolvedSourceRuns, unresolvedWorkflowDeliveries, type Case } from '@
 import { readV9Case } from './actions';
 
 const displayDate = (date: string) => date ? `${date.slice(8)}/${date.slice(5, 7)}/${date.slice(0, 4)}` : '—';
-export function CaseCalculator({ c, busy, command }: { c: Case; busy: boolean; command: (command: LifecycleV9Command) => void }) {
-  const [detail, setDetail] = useState<LifecycleV9CaseDetail | null>(null), [error, setError] = useState(''), [reason, setReason] = useState('');
+export function CaseCalculator({ c, busy, command,source }: { c: Case; busy: boolean; command: (command: LifecycleV9Command) => void;source?:{detail:LifecycleV9CaseDetail|null;error:string} }) {
+  const [localDetail, setDetail] = useState<LifecycleV9CaseDetail | null>(null), [localError, setError] = useState(''), [reason, setReason] = useState('');
   useEffect(() => {
+    if(source)return;
     let active = true; setDetail(null); setError('');
     readV9Case(c.id).then(result => { if (!active) return; if (result.ok) setDetail(result.detail); else setError(result.error); });
     return () => { active = false; };
-  }, [c.id, c.revision]);
+  }, [c.id, c.revision,!!source]);
+  const detail=source?source.detail:localDetail,error=source?source.error:localError;
   if (c.module !== 'off') return null;
   const calc = detail?.calculation, current = detail?.case.revision === c.revision;
   const frozen = c.finalFigures;

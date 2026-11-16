@@ -1,3 +1,4 @@
+import { AttendanceSubmissionRouteProgress } from '@/components/attendance-route-progress';
 import { AttendanceSubmissionForm, AttendanceSubmissionButton } from '@/components/attendance-submission-form';
 import {exactOvertimeMinutesText,overtimeCapAssessment} from '@/lib/overtime-records';
 import {FormulaOvertimeDuration} from '@/components/formula-overtime-record';
@@ -120,8 +121,9 @@ export default async function ApplyOtPlanPage({
     // Records read, asked for a one-day window; there is no new read behind this block.
     isPast ? attendanceForEmploymentRange(s, me.employmentId, date, date) : Promise.resolve([]),
   ]);
-  const routeCopy = await getTranslations('attendanceWorkflow');
-  const approver = route.available ? route.firstApprovers.map(actor => actor.kind === 'hr_admin' ? routeCopy('hr') : actor.name).join(', ') : routeCopy(`submissionRefusals.${route.reason}`);
+  // 237c31e6 — "Goes to" is the approval progress panel: every level and approver (name · Employee ID) before Submit,
+  // or the native submission refusal with a warning on the level that cannot be resolved (Submit stays disabled).
+  const approver = await AttendanceSubmissionRouteProgress({ route });
 
   const day: OtPlanCalendarDay | undefined = calendar.find((d) => d.date === date);
   const clocked = actual[0];
@@ -422,7 +424,7 @@ export default async function ApplyOtPlanPage({
               <Field label={t('otGoesToLabel')}>
                 {route.available&&<input type="hidden" name="workflowFingerprint" value={route.fingerprint} />}
                 {onBehalf&&<input type="hidden" name="onBehalfOf" value={onBehalf.employmentId} />}
-                <div className={`${inputCls} flex items-center bg-muted/40`} role={route.available?undefined:'status'}>{approver}</div>
+                <div className="rounded-md border border-input bg-muted/40 px-3 py-2" data-approval-progress>{approver}</div>
               </Field>
               {route.available&&<p className="text-[11px] text-muted-foreground">{t('otWorkflowGoesToHelp')}</p>}
 

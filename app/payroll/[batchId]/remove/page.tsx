@@ -3,7 +3,7 @@ import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import {
-  batchDetail,
+  batchSummary,
   batchEditImpact,
   listBatches,
   listRemovableEmployees,
@@ -68,9 +68,9 @@ export default async function RemoveEmployeePayrollPage({
   const back = payrollListReturnTo(sp.from);
   const from = back === '/payroll' ? null : back;
 
-  const data = await batchDetail(s, batchId);
+  const data = await batchSummary(s, batchId);
   if (!data) notFound();
-  const { batch, slips } = data;
+  const { batch, slipCount } = data;
 
   // The way BACK from a removal is the Reprocess screen's New / Pending group, which only exists with
   // multi-cycle on. Off ⇒ this route does not exist, matching the absence of the button that leads here
@@ -106,7 +106,7 @@ export default async function RemoveEmployeePayrollPage({
     },
     { label: tl('colCompany'), value: listed?.company ?? '—' },
     { label: t('summaryPaymentDate'), value: paymentDate },
-    { label: tl('colEmployees'), value: String(slips.length) },
+    { label: tl('colEmployees'), value: String(slipCount) },
     { label: t('totalNet'), value: formatMoney(totals.net, currency) },
   ];
 
@@ -188,7 +188,7 @@ export default async function RemoveEmployeePayrollPage({
           second navigation. */}
       {removed > 0 && (
         <Card className="border-emerald-200 px-4 py-3 text-sm font-medium text-emerald-900 dark:border-emerald-500/30 dark:text-emerald-300">
-          ✓ {t('removeResultTitle', { n: removed, total: slips.length })}
+          ✓ {t('removeResultTitle', { n: removed, total: slipCount })}
         </Card>
       )}
 

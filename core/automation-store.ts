@@ -18,6 +18,8 @@ import {automationMergeWarnings,automationWorkflowProblems,type AutomationRefere
 import {routingProblems,type Routing,type RoutingRow} from '../lib/automation/routing';
 import {probationStepParamProblems} from '../lib/automation/email';
 import {contractStepParamProblems,contractWorkflowRecipients,contractWorkflowWarnings} from '../lib/contract-automation';
+import {offboardingAdditionalRecipients,offboardingSettings,offboardingStepParamProblems} from '../lib/automation/offboarding';
+import type {Config} from '../lib/lifecycle-v9-model';
 
 export class AutomationError extends Error {
   constructor(public readonly code: 'forbidden' | 'invalid' | 'conflict' | 'not_found', message: string, public readonly problems: readonly string[] = []) { super(message); this.name = 'AutomationError'; }
@@ -81,7 +83,7 @@ export async function saveAutomationWorkflow(ctx: SessionContext, input: { workf
   const { workflow } = input, catalogue = automationCatalogue(workflow.module);
   if (!catalogue) throw new AutomationError('invalid', 'This module does not use the shared builders yet.');
   if (!UUID.test(workflow.id)) throw new AutomationError('invalid', 'Unknown workflow.');
-  const allRecipients = workflow.module === 'contract_staff' ? contractWorkflowRecipients(workflow) : workflow.steps.flatMap(s => [...s.to, ...s.cc]);
+  const allRecipients = workflow.module === 'contract_staff' ? contractWorkflowRecipients(workflow) : [...workflow.steps.flatMap(s => [...s.to, ...s.cc]),...offboardingAdditionalRecipients(workflow)];
   const people = [...new Set(allRecipients.flatMap(r => r.kind === 'person' ? [r.userId] : []))].filter(id => UUID.test(id));
   return withScopedLifecycleTenant(ctx, async tx => {
     // Authority first, so someone who cannot configure the module learns nothing from the catalogue checks.
@@ -100,6 +102,21 @@ export async function saveAutomationWorkflow(ctx: SessionContext, input: { workf
     if (workflow.module === 'contract_staff' && workflow.status !== 'retired') {
       const [choices]=await tx.execute<{value:{emails:{id:string;active:boolean;retired:boolean}[];documents:{id:string}[]}}>(sql`select app.automation_template_choices('contract_staff') as value`);
       problems.push(...contractStepParamProblems(workflow,{emailTemplates:choices.value.emails,letterTemplateIds:choices.value.documents.map(d=>d.id)},refs));
+    }
+    if(workflow.module==='off'&&workflow.status!=='retired'){
+      const [row]=await tx.execute<{data:Config}>(sql`select data from lc_v9_config where tenant_id=app.current_tenant_id()`);
+      const config=row?.data;
+      const templates=config?.templates.filter(t=>t.module==='off')??[];
+      const emails=config?.emails.filter(t=>t.module==='off')??[];
+      const live=await tx.execute<{definition:AutomationWorkflow}>(sql`select definition from (select distinct on(workflow_id) definition,status from automation_workflow_version where tenant_id=app.current_tenant_id() and module='off' and workflow_id<>${workflow.id}::uuid order by workflow_id,revision desc) latest where status='live' limit 500`);
+      const generators=[...live.map(w=>w.definition),...(workflow.status==='live'?[workflow]:[])];
+      const generatedLetterIds=generators.flatMap(w=>w.steps.filter(step=>step.type==='generateDocument').flatMap(step=>typeof step.params.letterTemplateId==='string'?[step.params.letterTemplateId]:[]));
+      problems.push(...offboardingStepParamProblems(workflow,{
+        emailTemplates:emails.map(email=>({id:email.id,name:email.name,active:email.active,retired:false,attachments:email.attachments})),
+        letterTemplateIds:templates.map(t=>t.id),
+        letterTemplates:templates.map(t=>{const version=t.versions.find(v=>v.version===t.currentVersion&&v.state==='published')??t.versions.filter(v=>v.state==='published').sort((a,b)=>b.version-a.version)[0];return {id:t.id,retired:t.retired,published:!!version,routing:version?.routing};}),
+        postingApproverGroupId:config?offboardingSettings(config).postingApproverGroupId:null,references:refs,generatedLetterIds,
+      }));
     }
     if (workflow.status === 'live' && problems.length) throw new AutomationError('invalid', `Fix ${problems.length === 1 ? 'the problem' : `the ${problems.length} problems`} before making it live.`, problems);
     const { status, required, ...definition } = workflow;

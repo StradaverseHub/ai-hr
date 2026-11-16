@@ -22,7 +22,6 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:1382,when:1793330001528,tag:'2128_organisation_account_admission'},
  {idx:1383,when:1793330001530,tag:'2130_approved_company_retention'},
  {idx:1410,when:1793330001610,tag:'2210_personnel_projection_reuse'},
- // Pending main payroll learning, then the combined Architecture, Rewards and Registration successors.
  {idx:1411,when:1793330001611,tag:'2013_payroll_learned_baseline'},
  {idx:1412,when:1793330001612,tag:'2200_job_architecture'},
  {idx:1413,when:1793330001613,tag:'2201_job_architecture_documents'},
@@ -69,10 +68,7 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:3602,when:1793330003902,tag:'4202_attendance_clock_policy_revisions'},
  {idx:4000,when:1793330004300,tag:'4600_attendance_clock_policy_group_scope'},
  {idx:4001,when:1793330004301,tag:'4601_last_login_event_index'},
- // 50d9b809: the AI Centre control for the shared_leave_groups read (docs/MIGRATION-ALLOCATION.md, 10 November 2026).
  {idx:4200,when:1793330004500,tag:'4800_ai_shared_leave_groups_read'},
- // Architecture candidate, renumbered above the released 8d5254eb watermark (docs/MIGRATION-ALLOCATION.md, 10 November 2026).
- ...PERFORMANCE_MIGRATION_IDENTITIES.map(({idx,when,tag})=>({idx,when,tag})),
  {idx:4237,when:1793330004537,tag:'3500_ai_centre_architecture_compatibility'},
  {idx:4238,when:1793330004538,tag:'3501_ai_centre_mandate_write_order'},
  {idx:4239,when:1793330004539,tag:'4338_assistant_rewards_return_presentation_snapshot'},
@@ -80,9 +76,6 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:4241,when:1793330004541,tag:'4340_ai_management_presentation_snapshot'},
  {idx:4242,when:1793330004542,tag:'4341_home_leave_presentation_snapshot'},
  {idx:4243,when:1793330004543,tag:'4342_attendance_clock_policy_audit_scope'},
- // Combined release block above every surveyed peer (docs/MIGRATION-ALLOCATION.md, 11 November 2026): the reader/writer
- // Access lock, the staged employee import and bulk-job kernel, Personnel typed facts, the bulk conversions, and the
- // audit-chain commit seal last.
  {idx:4400,when:1793330004700,tag:'5000_access_reader_writer_core'},
  {idx:4401,when:1793330004701,tag:'5001_access_reader_writer_serialisers'},
  {idx:4402,when:1793330004702,tag:'5002_access_reader_writer_profile_values'},
@@ -131,73 +124,40 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:4490,when:1793330004790,tag:'5090_audit_chain_commit_seal'},
  {idx:4520,when:1793330004820,tag:'5120_access_review_custody_held_mode'},
  {idx:4521,when:1793330004821,tag:'5121_personnel_search_set_mapping'},
- // ccd3a65c Import History section type, renumbered above release candidate 3's 5120/5121 and PR 240's 5122 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
  {idx:4523,when:1793330004823,tag:'5123_import_history_kind'},
- // 4452ba3c attendance workflow skipped levels, renumbered after 5123 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
  {idx:4524,when:1793330004824,tag:'5124_attendance_workflow_skipped_levels'},
- // 792053e5 payroll formula repricing marker, renumbered 5125 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
  {idx:4525,when:1793330004825,tag:'5125_individual_txn_pricing_marker'},
- // 2260a06b contract/internship end dates (draft 9750), renumbered 5126 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
  {idx:4526,when:1793330004826,tag:'5126_contract_internship_end_dates'},
- // 8d02748a readable import log references, renumbered 5127 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
  {idx:4527,when:1793330004827,tag:'5127_import_log_actor_labels'},
- // Payroll history effective reads, allocated above production's 5127 and PR 240's 5128 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
  {idx:4529,when:1793330004829,tag:'5129_payroll_history_effective_reads'},
- // Background AI Formula Generator draft job (12 November 2026), allocated above 5129 (docs/MIGRATION-ALLOCATION.md).
  {idx:4530,when:1793330004830,tag:'5130_pay_formula_ai_draft_job'},
- // daa76ed4/96a54ed2 Irwin attendance workflow lane draft (block 5140-5149; final numbering at integration).
  {idx:4540,when:1793330004840,tag:'5140_attendance_workflow_cross_company_pending'},
  {idx:4541,when:1793330004841,tag:'5141_attendance_workflow_escalation'},
  {idx:4542,when:1793330004842,tag:'5142_attendance_on_behalf'},
  {idx:4543,when:1793330004843,tag:'5143_attendance_final_decision_window'},
  {idx:4544,when:1793330004844,tag:'5144_attendance_lane_security_review'},
- // 96a54ed2 AI Centre controls for the two on-behalf reads (owner decision, 12 November 2026; coordinator block 5140-5159).
  {idx:4545,when:1793330004845,tag:'5145_ai_attendance_on_behalf_reads'},
- // 2f803985 Irwin Schedule Group Overtime Setting: per-date rounding in the policy part payable count (block 5150-5159).
  {idx:4550,when:1793330004850,tag:'5150_attendance_policy_dated_rounding'},
- // Sweep reads each company's net-swing threshold (draft 9760), allocated 5160 above the Irwin 5140–5150 holds (docs/MIGRATION-ALLOCATION.md, 13 November 2026).
  {idx:4560,when:1793330004860,tag:'5160_sweep_swing_thresholds'},
- // Manager Today team minimum (draft 9770), allocated 13 November 2026 as 5161 (docs/MIGRATION-ALLOCATION.md).
  {idx:4561,when:1793330004861,tag:'5161_leave_team_minimum_present'},
- // Probation and passport loops act as request-only steps: draft 9780, allocated 13 November 2026 as 5162 (docs/MIGRATION-ALLOCATION.md).
  {idx:4562,when:1793330004862,tag:'5162_teras_loop_request_acts'},
- // 60f1fdcd Rewards direct configuration (DRAFT block 5400–5419; the integrator renumbers at admission).
  {idx:4800,when:1793330005100,tag:'5400_rewards_direct_configuration'},
- // 4de410ed/356ae8c1 Rewards dashboard preparation notices (DRAFT block 5420–5439).
  {idx:4820,when:1793330005120,tag:'5420_rewards_dashboard_preparation_notices'},
- // 5a8c382c/4a60b3ec/6bdda222 lifecycle email recipients (DRAFT block 5460–5479).
  {idx:4860,when:1793330005160,tag:'5460_lifecycle_v9_email_recipients'},
- // d1e26f81 offboarding items assignment load (DRAFT block 5480–5499).
  {idx:4880,when:1793330005180,tag:'5480_offboarding_items_assignment_load'},
- // fc804e8c Rewards Limit Controls (DRAFT block 5500–5519; the integrator renumbers at admission).
  {idx:4900,when:1793330005200,tag:'5500_rewards_limit_controls'},
- // db14e49c Rewards role permission grid (DRAFT block 5520–5539; the integrator renumbers at admission).
  {idx:4920,when:1793330005220,tag:'5520_rewards_role_permission_grid'},
- // b945f0cc Rewards off-cycle company balance (DRAFT block 5540–5559; the integrator renumbers at admission).
  {idx:4940,when:1793330005240,tag:'5540_rewards_offcycle_company_balance'},
- // fc804e8c + db14e49c Limit Controls follows its Role permissions row (board release integration, 12 Nov 2026).
  {idx:4960,when:1793330005260,tag:'5560_rewards_limit_controls_role_level'},
- // 60f1fdcd Rewards configuration owner paths (DRAFT block 5580–5599, admitted at the board release integration).
  {idx:4980,when:1793330005280,tag:'5580_rewards_config_owner_paths'},
- // 60f1fdcd + db14e49c the Role permissions grid admits the configuration editors (board release integration, 13 Nov 2026).
  {idx:5000,when:1793330005300,tag:'5600_rewards_config_editor_role_levels'},
- // 5580/5600 loose ends: predicate EXECUTE off PUBLIC and the creator's company-year lock (board release, 13 Nov 2026).
  {idx:5020,when:1793330005320,tag:'5620_rewards_config_grants_creator_lock'},
- // ADR-0174 composite company/tenant key for the 5460 email-hold projection (board release gate repair, 13 Nov 2026).
  {idx:5040,when:1793330005340,tag:'5640_lifecycle_v9_email_hold_company_tenant'},
- // Statutory follow-ups: EPF Bonus 2012 on the seeded-shape default BONUS pay item (owner decision, 14 Nov 2026).
  {idx:5060,when:1793330005360,tag:'5660_pay_component_bonus_epf_bonus_2012'},
- // Board 4604dccc: payroll history binds a record to the company of its month (dated history), 15 Nov 2026.
  {idx:5080,when:1793330005380,tag:'5680_payroll_history_dated_company'},
- // Board 4604dccc r3: payslip snapshots from recorded history; payroll history no longer blocks a correction, 15 Nov 2026.
  {idx:5090,when:1793330005390,tag:'5690_information_payslip_snapshot_from_history'},
- // Board 511aa74a Rehired: the employment period link, its guard and the rehire Roll Back void (15 Nov 2026).
  {idx:5095,when:1793330005395,tag:'5695_employment_rehire_link'},
- // Board 4604dccc r4: the latest saved information correction controls the SQL before-image readers (16 Nov 2026).
  {idx:5096,when:1793330005396,tag:'5696_information_correction_latest_saved'},
- // Probation reshape onto shared HR automation (ADR 2026-11-15-probation-shared-automation), 16 Nov 2026: shared
- // workflow/routing definitions, Personnel postings and shared email templates (new empty tables and functions), and
- // the Probation settings scope, case at activation, override event and tracker-at-scale changes (5742, 5744-5746).
  {idx:5140,when:1793330005440,tag:'5740_automation_shared_definitions'},
  {idx:5141,when:1793330005441,tag:'5741_personnel_postings'},
  {idx:5142,when:1793330005442,tag:'5742_probation_settings_scope'},
@@ -225,6 +185,12 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5164,when:1793330005464,tag:'5764_probation_routed_holders'},
  {idx:5165,when:1793330005465,tag:'5765_probation_letter_signers'},
  {idx:5166,when:1793330005466,tag:'5766_probation_reshape_company_in_use'},
+ {idx:5170,when:1793330005470,tag:'5770_attendance_workflow_approver_codes'},
+ {idx:5171,when:1793330005471,tag:'5771_assistant_legacy_index_shared_access'},
+ {idx:5183,when:1793330005483,tag:'5783_resignation_journey'},
+ {idx:5184,when:1793330005484,tag:'5784_resignation_configuration'},
+ {idx:5185,when:1793330005485,tag:'5785_resignation_postings'},
+ {idx:5186,when:1793330005486,tag:'5786_resignation_email_delivery'},
  {idx:5200,when:1794841005800,tag:'5800_contract_shared_access'},
  {idx:5201,when:1794841005801,tag:'5801_contract_shared_flows'},
  {idx:5202,when:1794841005802,tag:'5802_contract_shared_builders'},
@@ -238,6 +204,7 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5210,when:1794841005810,tag:'5810_contract_shared_execution_adapters'},
  {idx:5211,when:1794841005811,tag:'5811_contract_shared_worker_binding'},
  {idx:5212,when:1794841005812,tag:'5812_contract_shared_identity_context'},
+ {idx:5213,when:1794841005813,tag:'5813_contract_shared_email_notifications'},
  {idx:5218,when:1794841005818,tag:'5818_contract_shared_tracker'},
  {idx:5219,when:1794841005819,tag:'5819_contract_shared_period_open'},
  {idx:5220,when:1794841005820,tag:'5820_contract_shared_case_workspace'},
@@ -255,6 +222,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5830_contract_shared_tracker_choices':'ffe03a1ed05a62c27ec5fc554c50f0fc1cff854e2dc21ff2428c7db49a77a65a',
  '5819_contract_shared_period_open':'ca6b1667583d3b8544f1a6d8b4eb3168140d67a9fc4c916b9fa98b03f2c49c3c',
  '5818_contract_shared_tracker':'b20ac0a47fb09b78bb02f71566726d0c3b09bb4f574d0e492c85cec4730a0daa',
+ '5813_contract_shared_email_notifications':'dffc41e7da79471a45e00cf2fc8914107ac94978e856d40b863eef510f0a58eb',
  '5812_contract_shared_identity_context':'52297a99fc31f991954be72225bd15b1929de02fe0c798558498fb873f511345',
  '5811_contract_shared_worker_binding':'06f410b065580e27f79add6d988e0b3aaacb81ef786416ed395417860885d1e4',
  '5810_contract_shared_execution_adapters':'f166257ff49068e15adda1a78a3070df1661fb65fd67e08e76d1b65643fd10f9',
@@ -350,7 +318,6 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '3100_pay_formula_saved_availability':'7bc0ab95aea27bae36f9be299784d3d391b4a315aa0302a9c42c2dbf9996b1b8',
  '3101_attendance_shared_workflow':'f32d12965f2788dc673f0c09e128996a653341bbcf6933e47f211da021617169',
  '3110_attendance_workflow_owner_rls':'39fc4b31666120cb4befe263b8b30433d6752dbaa52cda6cdbe350b3077f8f16',
-
  '2106_account_management_subject':'d4bbd5d20d9b40294b31d022a3ec0cf29e9a290f10749493c4934db31c5cdd67',
  '2107_probation_module_permission':'da94777be8e2b3f4365851eb785a64baaf9c54e9fb64808f7c72379ee94732f8',
  '2108_rewards_entity_classification':'8f485227fba437d5a24bc8b762630c670c38364d98d10e85802ce6e05bddd1c6',
@@ -386,7 +353,6 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '2600_onboarding_current_personnel':'ef82561ecfca93f3feab8f38918c3449569b68afe944085cceb8bafd25ab60be',
  '3200_ai_centre_controls':'2182ae4a614d0b847f399af18f9cfc43e82d3c9fd6f42ca960bfe22ebf4f10e2',
  '3201_ai_centre_function_coverage':'0c7239f512174c0d941dcb441cf98bd3a685a8e4d65973dc92f136dfb6b78d8a',
- ...Object.fromEntries(PERFORMANCE_MIGRATION_IDENTITIES.map(({tag,hash})=>[tag,hash])),
  '3500_ai_centre_architecture_compatibility':'c264d042ea39709e2bcc3b7f9b33b83715a30f05b98437e60b1c1910b1e3bbf3',
  '3501_ai_centre_mandate_write_order':'821312765fb359ee0c761a200b519525d1d667bfe20b11f1889829f6d4976d76',
  '4338_assistant_rewards_return_presentation_snapshot':'1acfa11fd818c5efe53dc74c05aef351fb7b71e238dcd0dfc0d1c978672d84d8',
@@ -444,6 +410,12 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5121_personnel_search_set_mapping':'3d9b5a53b963a0f01843d090a96662da3e9f7b5c5bb0650e3064d237a3c60d54',
  '5125_individual_txn_pricing_marker':'d48a8a3e394da801bbb0e9917d74d934ab51a3470bdea1bc8d8be1b110a24837',
  '5126_contract_internship_end_dates':'cbc405c4dde11abbe8f298feaf4af0795c8cf742701f62565547eb9ec9d10796',
+ '5770_attendance_workflow_approver_codes':'f71cf33a9ced5f4e1007de02388a858bd31c64006a422352193bd7c14e367ec0',
+ '5771_assistant_legacy_index_shared_access':'433dfd7549b496b034bdeaa2c06484b700b5dd5647213106d68487f0b485c7c0',
+ '5783_resignation_journey':'130c0b99586bc316ac5203d27a65bfc0a565c4f608b8ab1ac336a8e8d41d1216',
+ '5784_resignation_configuration':'6e064c336c441fbbf01017debe9e1a748957976d3d6b2b96470747d07d7dacb5',
+ '5785_resignation_postings':'5d26a0f446c3e72ed01861544af395690b08cdce47b9fc739f0b0d7d1b22a4f5',
+ '5786_resignation_email_delivery':'52bf3fa8f4430d37fd4dabd2164f00764e73245b38ee6520d2816dca7e03459b',
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){
  expect(entries).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);
@@ -481,6 +453,7 @@ export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;col
  // Board 511aa74a (5695): no employment that predates it was rehired from another period.
  {tag:'5695_employment_rehire_link',table:'employment',columns:['rehired_from_employment_id']},
  {tag:'5760_probation_queue_kinds_and_pbp_tasks',table:'probation_outcome',columns:['extension_months']},
+ {tag:'5785_resignation_postings',table:'personnel_posting',columns:['rejected_by','rejected_at','rejection_reason','due_on','baseline_values']},
  ...['department','position','cost_center','business_unit','label_company_assignment','profile_option','job_grade','grade_group','grade_group_member']
   .map(table=>({tag:'5070_system_label_import_staged_job',table,columns:['import_pending_attempt_id']})),
 ]);

@@ -9,7 +9,7 @@ export const V9_NAVIGATION = [
   { view: 'workflows', labelKey: 'v9Workflows', submenuKey: 'sectionConfiguration', permission: 'administration', href: '/lifecycle/v9?view=workflows', automationLabelKey: 'automationOnOffWorkflows' },
   { view: 'settings', labelKey: 'v9Settings', submenuKey: 'sectionConfiguration', permission: 'administration', href: '/lifecycle/v9?view=settings' },
   { view: 'groups', labelKey: 'v9AssignmentGroups', submenuKey: 'sectionConfiguration', permission: 'administration', href: '/lifecycle/v9?view=groups', automationLabelKey: 'automationOnOffGroups' },
-  { view: 'access', labelKey: 'v9ModuleAccess', submenuKey: 'sectionConfiguration', permission: 'administration', href: '/lifecycle/v9?view=access' },
+  { view: 'access', labelKey: 'v9ModuleAccess', permission: 'administration', href: '/lifecycle/v9?view=access' },
 ] as const;
 export type V9NavigationView = typeof V9_NAVIGATION[number]['view'];
 /**

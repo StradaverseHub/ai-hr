@@ -15,6 +15,7 @@ import {contractWorkflowRecipients} from '../lib/contract-automation';
 import type {AutomationWorkflow} from '../lib/automation/workflow';
 import type {Routing} from '../lib/automation/routing';
 import type {AutomationDocumentTemplate} from '../lib/automation/document-template';
+import type {AutomationEmailTemplate} from '../lib/automation/email';
 import {todayInKualaLumpur} from '../lib/hr-date';
 
 const inputSchema=z.object({previewId:z.uuid()}).strict();
@@ -51,21 +52,36 @@ async function readPreviewInputs(owner:postgres.ReservedSql,ctx:SessionContext,c
   select workflow_id as id,revision,required,definition from(select distinct on(workflow_id) workflow_id,revision,status,required,definition from automation_workflow_version
    where tenant_id=${ctx.tenantId}::uuid and module='contract_staff' order by workflow_id,revision desc) latest
   where status='live' and definition->'trigger'->>'event'='decisionSubmitted' order by workflow_id limit 201`);
- const routingRows=await db.execute<{id:string;name:string;rows:Routing['rows']}>(sql`
-  select routing_id as id,name,routing_rows as rows from(select distinct on(routing_id) routing_id,name,routing_rows,retired,revision from automation_routing_version
-   where tenant_id=${ctx.tenantId}::uuid order by routing_id,revision desc) latest where not retired order by routing_id limit 501`);
+ const uuidArray=(ids:readonly string[])=>'{'+[...new Set(ids.filter(id=>z.uuid().safeParse(id).success))].join(',')+'}';
+ const steps=workflows.flatMap(row=>row.definition.steps);
+ const documentIds=steps.flatMap(step=>step.type==='generateDocument'&&typeof step.params.letterTemplateId==='string'?[step.params.letterTemplateId]:[]);
+ const emailIds=steps.flatMap(step=>step.type==='sendEmail'&&typeof step.params.emailTemplateId==='string'?[step.params.emailTemplateId]:[]);
+ type EmailRow={id:string;name:string;active:boolean;retired:boolean;revision:number;cc:AutomationEmailTemplate['cc'];subject:string|null;body:string|null;bodyDoc:AutomationEmailTemplate['bodyDoc']|null};
+ const emails=await db.execute<EmailRow>(sql`
+  select distinct on(template_id) template_id as id,name,active,retired,revision,cc,
+  ${execution?sql`subject,body,body_doc as "bodyDoc"`:sql`null::text as subject,null::text as body,null::jsonb as "bodyDoc"`}
+  from automation_email_template_version where tenant_id=${ctx.tenantId}::uuid and module='contract_staff' and template_id=any(${uuidArray(emailIds)}::uuid[]) order by template_id,revision desc limit 501`);
  const documents=await db.execute<{template:AutomationDocumentTemplate;version:number}>(sql`
   select v.definition as template,h.live_version as version from automation_document_template h join automation_document_template_version v on v.tenant_id=h.tenant_id and v.template_id=h.id and v.version=h.live_version
-  where h.tenant_id=${ctx.tenantId}::uuid and h.module='contract_staff' and not h.retired order by h.id limit 501`);
- const emails=await db.execute<{id:string;name:string;active:boolean;retired:boolean}>(sql`
-  select distinct on(template_id) template_id as id,name,active,retired from automation_email_template_version where tenant_id=${ctx.tenantId}::uuid and module='contract_staff' order by template_id,revision desc limit 501`);
+  where h.tenant_id=${ctx.tenantId}::uuid and h.module='contract_staff' and not h.retired and h.id=any(${uuidArray(documentIds)}::uuid[]) order by h.id limit 501`);
+ const recipients=[...workflows.flatMap(row=>contractWorkflowRecipients(row.definition)),...emails.flatMap(email=>email.cc)];
+ const routingIds=[...recipients.flatMap(recipient=>recipient.kind==='routing'?[recipient.routingId]:[]),...documents.flatMap(({template})=>template.routing.flatMap(step=>step.who.kind==='routing'?[step.who.routingId]:[]))];
+ const routingRows=await db.execute<{id:string;name:string;rows:Routing['rows']}>(sql`
+  select routing_id as id,name,routing_rows as rows from(select distinct on(routing_id) routing_id,name,routing_rows,retired,revision from automation_routing_version
+   where tenant_id=${ctx.tenantId}::uuid and routing_id=any(${uuidArray(routingIds)}::uuid[]) order by routing_id,revision desc) latest where not retired order by routing_id limit 501`);
+ const groupIds=new Set([configured?.fallback,configured?.posting,...recipients.flatMap(recipient=>recipient.kind==='group'?[recipient.groupId]:[]),...routingRows.flatMap(routing=>routing.rows.flatMap(row=>row.assignTo.kind==='group'?[row.assignTo.groupId]:[])),...documents.flatMap(({template})=>template.routing.flatMap(step=>step.who.kind==='group'?[step.who.groupId]:[]))]);
  if(workflows.length>(execution?250:200)||routingRows.length>500||documents.length>500||emails.length>500)throw new Error('Contract automation reference limits exceeded.');
- const refs:ContractContextReferences={participants:caseRow.participants,groups:configured?.groups??[],fallbackGroupId:configured?.fallback??null,postingApproverGroupId:configured?.posting??null,routings:[...routingRows],people:[],documents:caseRow.documents??[]};
- const definitions:ContractPreviewDefinitions={workflows:workflows.map(row=>({revision:row.revision,workflow:{...row.definition,id:row.id,module:'contract_staff',status:'live',required:row.required}})),documents:[...documents],emails:[...emails],lastAssigned:{}};
+ const refs:ContractContextReferences={participants:caseRow.participants,groups:(configured?.groups??[]).filter(group=>groupIds.has(group.id)),fallbackGroupId:configured?.fallback??null,postingApproverGroupId:configured?.posting??null,routings:[...routingRows],people:[],documents:caseRow.documents??[]};
+ const definitions:ContractPreviewDefinitions={workflows:workflows.map(row=>({revision:row.revision,workflow:{...row.definition,id:row.id,module:'contract_staff',status:'live',required:row.required}})),documents:[...documents],emails:emails.map(({id,name,active,retired,cc})=>({id,name,active,retired,cc})),lastAssigned:{}};
  const ids=new Set(refs.participants.map(p=>p.id));
+ for(const document of refs.documents){
+  for(const step of document.route.steps)if(step.holderId)ids.add(step.holderId);
+  if(document.routing?.caseOwnerId)ids.add(document.routing.caseOwnerId);
+ }
  for(const group of refs.groups)for(const id of group.members)ids.add(id);
  for(const routing of refs.routings)for(const row of routing.rows)if(row.assignTo.kind==='people')for(const id of row.assignTo.userIds)ids.add(id);
  for(const {workflow} of definitions.workflows)for(const recipient of contractWorkflowRecipients(workflow))if(recipient.kind==='person')ids.add(recipient.userId);
+ for(const email of emails)for(const recipient of email.cc)if(recipient.kind==='person')ids.add(recipient.userId);
  for(const {template} of definitions.documents)for(const step of template.routing)if(step.who.kind==='people')for(const id of step.who.userIds)ids.add(id);
  const valid=[...ids].filter(id=>z.uuid().safeParse(id).success);
  if(valid.length>MAX_PREVIEW_PEOPLE)throw new Error('Contract preview identity limits exceeded.');
@@ -76,7 +92,9 @@ async function readPreviewInputs(owner:postgres.ReservedSql,ctx:SessionContext,c
    where tenant_id=${ctx.tenantId}::uuid and user_id in(${sql.join(valid.map(id=>sql`${id}::uuid`),sql`, `)}) group by user_id`);
   definitions.lastAssigned=Object.fromEntries(recent.map(row=>[row.id,row.last]));
  }
- return {view:caseRow.view,refs,definitions,setupRevision:setup.revision,db};
+ if(execution&&emails.some(email=>email.subject===null||email.body===null))throw new Error('The published Contract email source is unavailable.');
+ const runtimeEmails=execution?emails.map(email=>({revision:email.revision,retired:email.retired,template:{id:email.id,module:'contract_staff' as const,name:email.name,active:email.active,subject:email.subject!,body:email.body!,cc:email.cc,...(email.bodyDoc?{bodyDoc:email.bodyDoc}:{})}})):[];
+ return {view:caseRow.view,refs,definitions,runtimeEmails,setupRevision:setup.revision,db};
 }
 
 /** Private worker reuse; the native context adapter independently checks the held kernel event capability. */

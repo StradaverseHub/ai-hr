@@ -15,14 +15,24 @@ import type {AutomationRichEmailBody} from '../lib/automation-email-content';
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
+import type {SqlExecutor} from '../db/sql-executor';
 import type {NotificationSweepConnection} from './notice-projection';
 import {isModuleEnabled} from './entitlements';
-import {automationEmailIpc,type AutomationDeliveryRequest,type AutomationDeliveryResult} from '../lib/automation-email-ipc';
+import {automationEmailIpc,type AutomationDeliveryRequest,type AutomationDeliveryResult,type AutomationEmailContent} from '../lib/automation-email-ipc';
+import {validateAutomationEmailContent} from '../lib/automation-email-content-policy';
 
 export type AutomationEmailQueued = {queued: number; to: string[]; cc: string[]; unreachable: string[]};
 /** Records the email intent in the caller's transaction (idempotent on `key`). */
-export async function queueAutomationEmailTx(tx: Tx, input: {module: 'probation'; subjectId: string; key: string; to: readonly string[]; cc: readonly string[]; subject: string; body: string;richBody?:AutomationRichEmailBody}): Promise<AutomationEmailQueued> {
+export async function queueAutomationEmailTx(tx: SqlExecutor, input: {module: 'probation'|'contract_staff'|'off'; subjectId: string; key: string; to: readonly string[]; cc: readonly string[]; subject: string; body: string;richBody?:AutomationRichEmailBody;content?:AutomationEmailContent}, ctx?: SessionContext): Promise<AutomationEmailQueued> {
   const array = (ids: readonly string[]) => `{${ids.join(',')}}`;
+  if (input.module === 'off') {
+    if (!ctx) throw new Error('Resignation email requires the authorized command context.');
+    if (input.content) validateAutomationEmailContent(input.content);
+    const {prepareResignationEmailTx}=await import('../packs/lifecycle/service');
+    await prepareResignationEmailTx(tx,ctx,{caseId:input.subjectId,key:input.key,to:input.to,cc:input.cc,subject:input.subject,body:input.body,content:input.content});
+    const [row] = await tx.execute<{data: AutomationEmailQueued}>(sql`select app.resignation_email_queue(${input.subjectId}::uuid, ${input.key}, ${array(input.to)}::uuid[], ${array(input.cc)}::uuid[], ${input.subject}, ${input.body}, ${JSON.stringify(input.content ?? null)}::jsonb) as data`);
+    return row.data;
+  }
   const [row] = await tx.execute<{data: AutomationEmailQueued}>(sql`select app.automation_email_queue_rich(${input.module}, ${input.subjectId}::uuid, ${input.key}, ${array(input.to)}::uuid[], ${array(input.cc)}::uuid[], ${input.subject.slice(0, 500)}, ${input.body.slice(0, 20000)},${input.richBody?JSON.stringify(input.richBody):null}::jsonb) as data`);
   return row.data;
 }
@@ -42,7 +52,7 @@ export async function deliverAutomationEmails(ctx: SessionContext, connection: N
   for (const {id} of due) {
     try {
       const claim = await connection.withTenant(ctx, async tx => {
-        const [job] = await tx.execute<Job>(sql`select d.id,d.module,d.subject_id,d.status,d.lease_token,d.started_at,c.company_id from automation_email_delivery d left join probation_case c on d.module='probation' and c.id=d.subject_id and c.tenant_id=d.tenant_id where d.id=${id}::uuid and d.tenant_id=${ctx.tenantId}::uuid and d.status='queued' and d.next_attempt_at<=now() for update of d skip locked`);
+        const [job] = await tx.execute<Job>(sql`select d.id,d.module,d.subject_id,d.status,d.lease_token,d.started_at,coalesce(c.company_id,contract.company_id,j.company_id) as company_id from automation_email_delivery d left join probation_case c on d.module='probation' and c.id=d.subject_id and c.tenant_id=d.tenant_id left join contract_case contract on d.module='contract_staff' and contract.id=d.subject_id and contract.tenant_id=d.tenant_id left join resignation_journey j on d.module='off' and j.id=d.subject_id and j.tenant_id=d.tenant_id where d.id=${id}::uuid and d.tenant_id=${ctx.tenantId}::uuid and d.status='queued' and d.next_attempt_at<=now() for update of d skip locked`);
         if (!job) return null;
         // The module must still be in use for the case's company; otherwise the message is cancelled, never sent.
         if (!job.company_id || ctx.entitlementsExempt === undefined && !isModuleEnabled(ctx, 'lifecycle', job.company_id)) {

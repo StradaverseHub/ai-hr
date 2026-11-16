@@ -10,3 +10,13 @@ export * from '../../core/contract-shared-tasks';
 export {contractPreviewJobHandler} from '../../core/contract-shared-preview-job';
 export {contractAutomationJobHandler} from '../../core/contract-shared-automation-job';
 export {readContractSharedApproval,actContractSharedApproval,readContractSharedLetter,actContractSharedLetter,editContractSharedLetter,bindContractSharedEmployee,renderContractSharedLetter,type ContractSharedApproval,type ContractSharedLetter} from '../../core/contract-shared-signing';
+// Ordinary Node notification workers consume this facade without loading the
+// framework-only builders. Literal imports retain the builders' server boundary.
+type ConfigurationService = typeof import('../../core/contract-configuration');
+async function loadConfiguration(): Promise<ConfigurationService> {
+ const loaded = await import('../../core/contract-configuration');
+ return (loaded as { default?: ConfigurationService }).default ?? loaded;
+}
+export const contractConfigurationWorkflows: ConfigurationService['contractConfigurationWorkflows'] = async (...args) => (await loadConfiguration()).contractConfigurationWorkflows(...args);
+export const contractConfigurationDirectory: ConfigurationService['contractConfigurationDirectory'] = async (...args) => (await loadConfiguration()).contractConfigurationDirectory(...args);
+export const contractConfigurationTemplates: ConfigurationService['contractConfigurationTemplates'] = async (...args) => (await loadConfiguration()).contractConfigurationTemplates(...args);

@@ -24,7 +24,7 @@ export function contractAutomationPending(documents:readonly SigningDocument[]):
  const pending=documents.flatMap(document=>signingSendBack(document)?[{holderId:signingDocumentOwner(document).userId,label:'Document owner'}]:pendingSigningSteps(document).map(step=>({holderId:step.holderId,label:step.label??step.role})));
  return pending.length?{userIds:[...new Set(pending.flatMap(step=>step.holderId?[step.holderId]:[]))],label:[...new Set(pending.map(step=>step.label))].join(', ')}:null;
 }
-export function contractAutomationRead(context:ContractAutomationContext,trigger:string,today:string){
+export function contractAutomationRead(context:ContractAutomationContext,trigger:string,today:string,frozenFacts?:Readonly<Record<string,unknown>>){
  const available=new Set(conditionFieldsForTrigger(CONTRACT_AUTOMATION_CATALOGUE,trigger).map(field=>field.id));
  const decision=context.flow?.decision;
  const days=Math.round((Date.parse((context.flow?.period.endOn??context.endOn)+'T00:00:00Z')-Date.parse(today+'T00:00:00Z'))/86400000);
@@ -34,7 +34,13 @@ export function contractAutomationRead(context:ContractAutomationContext,trigger
   payChanges:decision?(decision.payChanges?'Yes':'No'):null,termMonths:decision?.months==null?null:String(decision.months),
   daysToEnd:Number.isFinite(days)?String(days):null,
  };
- return (field:string):AutomationFactValue=>available.has(field)?values[field]??null:undefined;
+ // A delayed or resumed run keeps the facts of the event which started it. Do not
+ // fall back to current facts when the admitted event explicitly contains null.
+ return (field:string):AutomationFactValue=>{
+  if(!available.has(field))return undefined;
+  const value=frozenFacts?frozenFacts[field]:values[field];
+  return typeof value==='string'?value:null;
+ };
 }
 export function contractAutomationRecipients(list:readonly AutomationRecipient[],context:ContractAutomationContext,options:{fallback?:boolean;excludeEmployee?:boolean}={}):AutomationRecipientResolution{
  return resolveAutomationRecipients(list,contractAutomationRecipientContext(context,options));

@@ -970,9 +970,12 @@ describe('Slice 5 — bonus / additional-remuneration MTD (#68)', () => {
     // RM5,000 + RM5,000 is a RM10,000 month, so employee ceil(11% × 10,000) = 1,100 and employer
     // ceil(12% × 10,000) = 1,200. The employer figure was 1,300 while the rate was anchored to the
     // normal wage alone (13% of 5,000 + 13% of the bonus); that reading is the one this item reversed.
-    expect(epf(5000, 5000)).toEqual({ employee: 1100, employer: 1200 });
+    // RESTATED 2026-11-16 FOR ITEM 7f5cc653 (ADR-0024 addendum 2026-11-16): normal RM5,000 is at or below
+    // RM5,000 and the bonus takes the month above it, so KWSP's Part A bonus note sets the employer at 13%
+    // of the month: 10,000 × 13% = 1,300 (was 1,200, the 12% row). The employee row is unchanged at 1,100.
+    expect(epf(5000, 5000)).toEqual({ employee: 1100, employer: 1300 });
     expect(withBonus.epfEmployee).toBe(1100);
-    expect(withBonus.epfEmployer).toBe(1200);
+    expect(withBonus.epfEmployer).toBe(1300);
     expect(withBonus.epfEmployer).toBeGreaterThan(base.epfEmployer); // bonus added EPF
 
     // SOCSO + EIS: bonus EXCLUDED — identical with and without the bonus.
