@@ -15,3 +15,5 @@
 .probation-access .probation-access-scheduled{color:#6b4100}
 @container (max-width:720px){.probation-access .probation-access-perms{grid-template-columns:1fr}.probation-access .probation-access-member-row{grid-template-columns:1fr 1fr}}
 @media (max-width:720px){.probation-access .probation-access-member-row{grid-template-columns:1fr}}
+/* The "+ New role" link uses the primary button style; keep its text readable over the global link colour. */
+.probation-access a.v9-button-primary,.probation-access a.v9-button-primary:visited,.probation-access a.v9-button-primary:hover{color:var(--primary-foreground);text-decoration:none}
