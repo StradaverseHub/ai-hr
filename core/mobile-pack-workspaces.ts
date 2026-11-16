@@ -15,7 +15,7 @@ import {hasMobileBinarySignature,isMobileBinaryType,MOBILE_ATTACHMENT_TYPES} fro
 const refused=(code:'not_assigned'|'stale_step'|'decision_refused')=>({outcome:'refused' as const,code});
 class Refused extends Error{constructor(readonly code:'not_assigned'|'stale_step'|'decision_refused'){super(code);}}
 async function prepare(ctx:SessionContext,kind:PackWorkspaceKind,id:string,tx?:Tx):Promise<(PreparedPackReview&{workspace:PackWorkspace})|null>{
- const modules={attendance:false,claims:false,performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')};
+ const modules={attendance:false,claims:false,performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards'),probation:false};
  const task=(await listPendingTasks(ctx,undefined,modules)).find(t=>t.kind===kind&&t.id===id);if(!task)return null;
  const p=kind==='rewardReview'?await prepareMobileRewardReview(ctx,id,tx):await prepareMobilePerformanceReview(ctx,kind,id,task.linkPath,tx);if(!p)return null;
  const base={...p.view,kind,id,today:todayInKualaLumpur()},digest=createHash('sha256').update(canonicalJson(base)).digest('hex');

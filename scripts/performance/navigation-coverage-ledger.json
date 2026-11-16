@@ -1372,28 +1372,37 @@
       "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
     },
     {
-      "id": "shell.probationRoutes",
+      "id": "shell.probationPostings",
       "sourceOwner": "lib/navigation/shell-inventory.ts",
-      "sourceKey": "shell-slot:probationRoutes",
-      "declaredHref": "/lifecycle/probation/routes",
+      "sourceKey": "shell-slot:probationPostings",
+      "declaredHref": "/lifecycle/probation/postings",
       "status": "uncovered",
       "owner": "lib/navigation/shell-inventory.ts",
       "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
     },
     {
-      "id": "shell.probationWorkflows",
+      "id": "shell.automationWorkflows",
       "sourceOwner": "lib/navigation/shell-inventory.ts",
-      "sourceKey": "shell-slot:probationWorkflows",
-      "declaredHref": "/lifecycle/probation/workflows",
+      "sourceKey": "shell-slot:automationWorkflows",
+      "declaredHref": "/automation/workflows",
       "status": "uncovered",
       "owner": "lib/navigation/shell-inventory.ts",
       "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
     },
     {
-      "id": "shell.probationTemplates",
+      "id": "shell.automationTemplates",
       "sourceOwner": "lib/navigation/shell-inventory.ts",
-      "sourceKey": "shell-slot:probationTemplates",
-      "declaredHref": "/lifecycle/probation/templates",
+      "sourceKey": "shell-slot:automationTemplates",
+      "declaredHref": "/automation/templates",
+      "status": "uncovered",
+      "owner": "lib/navigation/shell-inventory.ts",
+      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+    },
+    {
+      "id": "shell.automationGroups",
+      "sourceOwner": "lib/navigation/shell-inventory.ts",
+      "sourceKey": "shell-slot:automationGroups",
+      "declaredHref": "/automation/groups",
       "status": "uncovered",
       "owner": "lib/navigation/shell-inventory.ts",
       "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
@@ -1403,6 +1412,15 @@
       "sourceOwner": "lib/navigation/shell-inventory.ts",
       "sourceKey": "shell-slot:probationIntake",
       "declaredHref": "/lifecycle/probation/intake",
+      "status": "uncovered",
+      "owner": "lib/navigation/shell-inventory.ts",
+      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+    },
+    {
+      "id": "shell.probationAccess",
+      "sourceOwner": "lib/navigation/shell-inventory.ts",
+      "sourceKey": "shell-slot:probationAccess",
+      "declaredHref": "/lifecycle/probation/access",
       "status": "uncovered",
       "owner": "lib/navigation/shell-inventory.ts",
       "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."

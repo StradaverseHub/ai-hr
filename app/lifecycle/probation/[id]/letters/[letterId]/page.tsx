@@ -1,3 +1,4 @@
+import '../../case.css';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
 import {viewerIdentity} from '@/lib/viewer';
 import {readProbationLetter,probationSignerCandidates} from '@/packs/probation/service';

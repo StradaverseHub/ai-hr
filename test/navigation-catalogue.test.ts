@@ -1,7 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {declaredNavigationCatalogue,resolveNavigationCatalogue} from '../lib/navigation/catalogue';
 import {resolveShellNavigation,type ShellNavigationFacts} from '../lib/navigation/shell-resolver';
-import {SIDEBAR_AUDIENCE_INVENTORY,PERFORMANCE_ADMIN_ROW,SCOPED_LIFECYCLE_NAVIGATION,isCollapsible} from '../lib/navigation/shell-inventory';
+import {SIDEBAR_AUDIENCE_INVENTORY,PERFORMANCE_ADMIN_ROW,SCOPED_LIFECYCLE_NAVIGATION,AUTOMATION_NAVIGATION,isCollapsible} from '../lib/navigation/shell-inventory';
 
 const facts:ShellNavigationFacts={isAdmin:false};
 describe('stable shell metadata uses the canonical runtime policy',()=>{
@@ -20,21 +20,37 @@ describe('stable shell metadata uses the canonical runtime policy',()=>{
   {isAdmin:false,rewardDestinations:['/rewards','/admin/rewards/access']},
   {isAdmin:false,probationAccess:{page:true,configure:true,intake:true},contractStaffAccess:{page:true,configure:true,intake:true}},
   {isAdmin:false,probationAccess:{page:false,configure:false,intake:true},contractStaffAccess:{page:false,configure:false,intake:true}},
+  {isAdmin:false,probationAccess:{page:false,configure:true},onboardingV9Access:true,onboardingV9Navigation:{onboarding:false,offboarding:false,administration:true}},
  ])('binds the exact resolver result without adding a second capability policy (%j)',capabilities=>{
   const actual=resolveNavigationCatalogue(capabilities);
   expect(actual.issues).toEqual([]);
   expect(actual.rows.map(entry=>entry.row)).toEqual(resolveShellNavigation(capabilities).destinations);
  });
- it('composes all twelve canonical scoped descriptors by reference without duplicating their visibility policy',()=>{
+ it('composes all eleven canonical scoped descriptors by reference without duplicating their visibility policy',()=>{
   const declared=declaredNavigationCatalogue().declarations.filter(row=>row.selector.startsWith('scoped/'));
-  expect(declared).toHaveLength(12);
+  expect(declared).toHaveLength(11);
   expect(declared.map(row=>row.descriptor)).toEqual(SCOPED_LIFECYCLE_NAVIGATION);
   expect(declared.every((row,index)=>row.descriptor===SCOPED_LIFECYCLE_NAVIGATION[index])).toBe(true);
   expect(declared.map(row=>row.id)).toEqual([
-   'shell.probationTracker','shell.contractManagement','shell.probationSettings','shell.probationForms',
-   'shell.probationRoutes','shell.probationWorkflows','shell.probationTemplates','shell.probationIntake',
+   'shell.probationTracker','shell.probationPostings','shell.contractManagement','shell.probationSettings','shell.probationForms',
+   'shell.probationIntake','shell.probationAccess',
    'shell.contractIntake','shell.contractSettings','shell.contractWorkflows','shell.contractTemplates',
   ]);
+ });
+ it('declares the shared HR Automation builders and keeps the moved On/Off Boarding builder identities',()=>{
+  const catalogue=declaredNavigationCatalogue();
+  const automation=catalogue.declarations.filter(row=>row.selector.startsWith('automation/'));
+  expect(automation.map(row=>[row.id,row.declaredHref])).toEqual([
+   ['shell.automationWorkflows','/automation/workflows'],['shell.automationTemplates','/automation/templates'],['shell.automationGroups','/automation/groups'],
+  ]);
+  expect(automation.every((row,index)=>row.descriptor===AUTOMATION_NAVIGATION[index])).toBe(true);
+  const moved=catalogue.declarations.filter(row=>['v9/v9Templates','v9/v9Workflows','v9/v9AssignmentGroups'].includes(row.selector));
+  expect(moved.map(row=>[row.descriptor.labelKey,row.declaredHref,row.placement])).toEqual([
+   ['automationOnOffTemplates','/lifecycle/v9?view=templates',{area:'ops',module:'automation',section:'config'}],
+   ['automationOnOffWorkflows','/lifecycle/v9?view=workflows',{area:'ops',module:'automation',section:'config'}],
+   ['automationOnOffGroups','/lifecycle/v9?view=groups',{area:'ops',module:'automation',section:'config'}],
+  ]);
+  expect(catalogue.declarations.some(row=>['shell.probationWorkflows','shell.probationTemplates'].includes(row.id))).toBe(false);
  });
  it('retains Performance admin identity at the declared address and a substituted latest cycle',()=>{
   const base=resolveNavigationCatalogue({...facts,canAdministerOnehr:true});

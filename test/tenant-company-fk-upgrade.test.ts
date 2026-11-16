@@ -252,6 +252,41 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5695_employment_rehire_link',
    // Board 4604dccc r4 (16 November 2026): the latest saved information correction controls the SQL readers.
    '5696_information_correction_latest_saved',
+   // Probation reshape onto shared HR automation (16 November 2026): shared definitions, Personnel postings (whose
+   // company key follows ADR-0174) and shared email templates.
+   '5740_automation_shared_definitions',
+   '5741_personnel_postings',
+   '5742_probation_settings_scope',
+   '5743_automation_email_templates',
+   '5744_probation_case_at_activation',
+   '5745_probation_outcome_override_event',
+   '5746_probation_tracker_scale_and_extensions',
+   '5747_document_signing_review_routing',
+   '5748_automation_runs',
+   '5749_probation_delegation',
+   '5750_probation_tracker_plan_robustness',
+   '5751_probation_queues_and_form_routing',
+   '5752_probation_letter_routing',
+   '5753_probation_outcome_automation',
+   // Lane F (16 November 2026): real email for shared workflow steps.
+   '5754_automation_email_delivery',
+   '5755_probation_routed_assignment',
+   '5756_probation_form_approver_choices',
+   '5757_probation_legacy_workflow_move',
+   '5758_probation_routed_overrides',
+   '5759_probation_employee_own_steps_only',
+   '5760_probation_queue_kinds_and_pbp_tasks',
+   '5761_probation_automation_recipients_and_tracker_steps',
+   // Lane J (16 November 2026): imported saved offline evaluation forms.
+   '5762_probation_form_import',
+   // Lane K (16 November 2026): Probation access roles, scoped members and the Direct Superiors rule.
+   '5763_probation_access_roles',
+   // Lane K2 (16 November 2026): the shared routings own a case's PBP and Head of Department.
+   '5764_probation_routed_holders',
+   // Lane L (16 November 2026): letter signers for unsigned signature blocks and Required signers.
+   '5765_probation_letter_signers',
+   // Release gate (16 November 2026): company deletion sees the reshape's owner-only company referrers.
+   '5766_probation_reshape_company_in_use',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -280,6 +315,38 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // callable by the application role, and none is callable by PUBLIC. The policy-side and trigger-WHEN helpers are
   // granted to exactly the roles their policies or the domain_event writers are (test/policy-helper-function-grants).
   const privateFunctions=[
+   // 5763: Probation access helpers, owner only.
+   'app.probation_access_scope_check(uuid,uuid,date,date)','app.probation_intake_admin_for(uuid,uuid,uuid)','app.probation_permitted_companies(uuid,text[])','app.probation_permitted_scope(text,uuid[])','app.probation_postings_admin(uuid[])','app.probation_superior_rule()',
+   // 5764: the routed holder resolver and routing-rule helpers, owner only.
+   'app.probation_routed_holders(uuid[])','app.probation_routing_dimension(jsonb,text[])','app.probation_routing_weight(jsonb,integer)',
+   // 5763: Probation access helpers, owner only.
+   'app.probation_access_scope_check(uuid,uuid,date,date)','app.probation_intake_admin_for(uuid,uuid,uuid)','app.probation_permitted_companies(uuid,text[])','app.probation_permitted_scope(text,uuid[])','app.probation_postings_admin(uuid[])','app.probation_superior_rule()',
+   // 5760: owner-only helpers.
+   'app.probation_pending_signer_kinds(uuid)',
+   // Board 511aa74a (5695): the rehire link guard is a trigger function, owner only.
+   'app.employment_rehire_link_guard()',
+   // 5756: approver role, group membership, approver label and form route checks, owner only.
+   'app.probation_form_approver_role(text)','app.probation_v9_group_member(text,uuid)','app.probation_form_approver_label(text)','app.probation_validate_form_route(jsonb,integer)',
+   // Probation core (5742, 5744-5746, 5749-5751): internal helpers, never granted to the application role.
+   'app.probation_company_ancestors(uuid[])',
+   'app.probation_config_write_company(uuid,text,jsonb,boolean,integer)',
+   'app.probation_did_not_join(uuid)',
+   'app.probation_general_delegate(uuid,uuid,text)',
+   'app.probation_holders_set(uuid[])',
+   'app.probation_settings_materialize(uuid[])',
+   'app.probation_settings_scope_check(text,jsonb)',
+   'app.probation_source_from_start(jsonb,uuid)',
+   'app.probation_visible_among(uuid[])',
+   // 5752: routed letter template checks, owner only.
+   'app.probation_letter_routed(jsonb)','app.probation_letter_routing_signatures_ok(jsonb)','app.probation_letter_routing_valid(jsonb)',
+   // 5753: the posting-approval trigger function, owner only.
+   'app.probation_posting_approved()',
+   // 5754: the workflow email immutability trigger function, owner only.
+   'app.automation_email_immutable()',
+   // 5748: the run-log bound check, owner only.
+   'app.automation_run_log_valid(jsonb)',
+   // 5741: the approval-commit trigger and two internal posting value helpers, never granted to the application role.
+   'app.personnel_posting_approval_complete()','app.personnel_posting_day(jsonb)','app.personnel_posting_values_ok(text,jsonb)',
    // Board window 4 (5124): a trigger function, never granted to the application role.
    // 5129: the set-wise effective-snapshot owner, inlined into app.payroll_history_effective and the batch aggregate.
    // Board release block 5400-5560: three trigger functions, owner only.
@@ -302,8 +369,6 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.bulk_job_input_shape_valid(jsonb)','app.bulk_job_lease_capability(uuid,uuid,text)','app.bulk_job_seal_verify(uuid,text)',
    'app.bulk_job_step_digest(text,integer,jsonb,text,jsonb,text)','app.bulk_job_value_digest(jsonb)','app.domain_event_chain_arm()',
    'app.domain_event_chain_seal_now()','app.employee_import_revert_release(uuid,boolean)','app.employment_void_reference_blockers(uuid[])',
-   // Board 511aa74a (5695): the rehire link guard is a trigger function, owner only.
-   'app.employment_rehire_link_guard()',
    'app.import_discard_batch(uuid,uuid,uuid,text,integer)','app.import_marker_visible(uuid)','app.import_settle(uuid,uuid,integer)',
    'app.label_import_marker_visible(uuid)','app.leave_ledger_stage_stamp()','app.movement_revert_capture_never_commits()',
    'app.movement_revert_capture_row()','app.notification_event_processing_enqueue()','app.org_structure_statement_lock()',
@@ -323,6 +388,19 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    // Board release block 5400-5560 (12 November 2026): the Rewards, dashboard and On/Off Boarding functions. Kept sorted.
    // daa76ed4/96a54ed2 (5140-5144, origin/alpha 65e23a1e7): the attendance resolution, escalation, on-behalf and final-window functions.
    // 5160 (origin/alpha de15677b0): the sweep's net-swing threshold reader.
+   // Probation reshape (5740, 5741, 5743; 16 November 2026): shared automation and Personnel postings functions.
+   // 5747/5748: document signing review-routing helpers and the shared workflow-run functions.
+   // Probation core (5742, 5744-5746, 5749, 5751; 16 November 2026): settings scope, case at activation, override event, set-based access and tracker, delegation, work queues.
+   // 5752: routed Probation letters (routing context, route freeze and three owner-only template checks).
+   // 5753: Probation outcomes on the shared workflow runner (context, notify, outcome runs, posting effect, posting-approval trigger).
+   // 5754: shared workflow email (queue, the private sender's target, start and finish, and the owner-only immutability trigger).
+   // 5755: routed Probation steps (assignment facts for the V9 assignment owner).
+   // 5756: approver choices on form approval rows (approver role helper, form route validator, group membership and label helpers, routing context and approver freeze).
+   // 5757: legacy Probation workflows move to the shared engine (legacy audience, move and its list, daily overdue summary cases).
+   // 5762: imported saved evaluation forms (import, the reviewer's list and the original-file download).
+   // Board 511aa74a (5695): the rehire link guard, its Roll Back writer and blockers, and the person-state count.
+   // 5763: Probation access (role, member and rule commands, the page reader, people search and navigation, permission and scope helpers).
+   // 5764: the routed PBP and Head of Department resolver and its two routing-rule helpers, owner only.
    'app._access_bootstrap_eligible(uuid,uuid)','app._access_workforce_list_rows(uuid[])','app._ai_control_context_for_purpose(text,boolean,boolean)',
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()','app._assert_assistant_rewards_presentation_v1(text)',
    'app._assistant_assigned_index_login(uuid,boolean)','app._assistant_presentation_feature_unpaused_v1()','app._assistant_rewards_calendar_choice_payload_v1()',
@@ -341,58 +419,93 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.attendance_workflow_escalate(uuid,date)','app.attendance_workflow_escalation_due(date,date,uuid,integer)','app.attendance_workflow_escalation_written(uuid,uuid,integer)',
    'app.attendance_workflow_hierarchy_v5(uuid,integer)','app.attendance_workflow_on_behalf_allowed(uuid,integer,text)','app.attendance_workflow_on_behalf_slot(uuid,uuid)',
    'app.attendance_workflow_open_final_window(uuid)','app.attendance_workflow_preview_bind()','app.attendance_workflow_stage_clock()',
-   'app.attendance_workflow_superior_diagnostic(uuid,integer)','app.bulk_job_access(uuid)','app.bulk_job_admit()',
-   'app.bulk_job_attribution()','app.bulk_job_capability_held(uuid)','app.bulk_job_clear_inputs(uuid,boolean)',
-   'app.bulk_job_enqueue(text,uuid,uuid[],text,bytea,jsonb)','app.bulk_job_event_attribution()','app.bulk_job_fence(uuid,text)',
-   'app.bulk_job_held(uuid)','app.bulk_job_input_conforms(jsonb,integer,jsonb)','app.bulk_job_input_shape_valid(jsonb)',
-   'app.bulk_job_lease_capability(uuid,uuid,text)','app.bulk_job_mark_watched(uuid)','app.bulk_job_notice_recipients(uuid)',
-   'app.bulk_job_pending_steps(uuid,integer)','app.bulk_job_request_cancel(uuid,text)','app.bulk_job_scope_current(text,uuid[])',
-   'app.bulk_job_seal_verify(uuid,text)','app.bulk_job_step_digest(text,integer,jsonb,text,jsonb,text)','app.bulk_job_step_update(uuid,integer[],jsonb)',
-   'app.bulk_job_steps_put(uuid,boolean,jsonb)','app.bulk_job_value_digest(jsonb)','app.bulk_job_waiting(uuid)',
-   'app.bulk_job_worker_ready(text)','app.bulk_job_worker_update(uuid,jsonb)','app.contract_renewal_open(uuid)',
-   'app.delegated_approval_subjects(uuid[],text,text)','app.domain_event_chain_arm()','app.domain_event_chain_flush(uuid)',
+   'app.attendance_workflow_superior_diagnostic(uuid,integer)','app.automation_active_users(uuid[])','app.automation_assignment_groups()',
+   'app.automation_can_configure(text)','app.automation_can_configure_any()','app.automation_can_run(text,uuid)',
+   'app.automation_email_finish(uuid,uuid,text,text)','app.automation_email_immutable()','app.automation_email_queue(text,uuid,text,uuid[],uuid[],text,text)',
+   'app.automation_email_start(uuid,uuid,text,jsonb)','app.automation_email_target(uuid,uuid,text)','app.automation_email_template_save(uuid,text,text,boolean,text,text,jsonb,boolean,integer,text)',
+   'app.automation_routing_save(uuid,text,jsonb,boolean,integer,text)','app.automation_run_log_valid(jsonb)','app.automation_run_save(uuid,text,text,integer,uuid,jsonb,jsonb,text)',
+   'app.automation_run_start(uuid,text,uuid,integer,uuid,text,text,text,jsonb,jsonb)','app.automation_run_subject_access(text,uuid)','app.automation_runner_waiting(text,uuid,uuid)',
+   'app.automation_runner_workflows(text,text,uuid)','app.automation_workflow_save(uuid,text,text,boolean,jsonb,integer,text)','app.bulk_job_access(uuid)',
+   'app.bulk_job_admit()','app.bulk_job_attribution()','app.bulk_job_capability_held(uuid)',
+   'app.bulk_job_clear_inputs(uuid,boolean)','app.bulk_job_enqueue(text,uuid,uuid[],text,bytea,jsonb)','app.bulk_job_event_attribution()',
+   'app.bulk_job_fence(uuid,text)','app.bulk_job_held(uuid)','app.bulk_job_input_conforms(jsonb,integer,jsonb)',
+   'app.bulk_job_input_shape_valid(jsonb)','app.bulk_job_lease_capability(uuid,uuid,text)','app.bulk_job_mark_watched(uuid)',
+   'app.bulk_job_notice_recipients(uuid)','app.bulk_job_pending_steps(uuid,integer)','app.bulk_job_request_cancel(uuid,text)',
+   'app.bulk_job_scope_current(text,uuid[])','app.bulk_job_seal_verify(uuid,text)','app.bulk_job_step_digest(text,integer,jsonb,text,jsonb,text)',
+   'app.bulk_job_step_update(uuid,integer[],jsonb)','app.bulk_job_steps_put(uuid,boolean,jsonb)','app.bulk_job_value_digest(jsonb)',
+   'app.bulk_job_waiting(uuid)','app.bulk_job_worker_ready(text)','app.bulk_job_worker_update(uuid,jsonb)',
+   'app.contract_renewal_open(uuid)','app.delegated_approval_subjects(uuid[],text,text)','app.document_signing_can_edit(jsonb,uuid)',
+   'app.document_signing_content_visible(uuid,boolean)','app.document_signing_locked(jsonb)','app.document_signing_owner(jsonb)',
+   'app.document_signing_owner_step(jsonb)','app.document_signing_pending_steps(jsonb)','app.document_signing_returned(jsonb)',
+   'app.document_signing_round_actions(jsonb)','app.domain_event_chain_arm()','app.domain_event_chain_flush(uuid)',
    'app.domain_event_chain_seal_now()','app.domain_event_chain_sealing()','app.employee_import_revert_release(uuid,boolean)',
-   // Board 511aa74a (5695): the rehire link guard, its Roll Back writer and blockers, and the person-state count.
    'app.employment_rehire_link_guard()','app.employment_rehire_person_state(uuid,date)','app.employment_rehire_rollback(uuid,text)',
-   'app.employment_rehire_rollback_blockers(uuid)',
-   'app.employment_void_reference_blockers(uuid[])','app.home_leave_presentation_index(text)','app.home_own_clock_day(uuid,date,date)',
-   'app.home_own_schedule_range(uuid,date,date)','app.import_activation_conflicts(uuid)','app.import_discard_batch(uuid,uuid,uuid,text,integer)',
-   'app.import_hidden_attempt_ids()','app.import_log_actor_facts(text,uuid[])','app.import_marker_released(uuid)',
-   'app.import_marker_visible(uuid)','app.import_pending_employment_ids()','app.import_pending_guard()',
-   'app.import_pending_person_ids()','app.import_pending_stamp()','app.import_release(uuid)',
-   'app.import_released_attempt_ids()','app.import_settle(uuid,uuid,integer)','app.label_import_marker_visible(uuid)',
-   'app.leave_ledger_stage_stamp()','app.leave_stage_digests(uuid[],uuid[],boolean)','app.leave_stage_release(uuid,uuid)',
-   'app.leave_stage_released_ids()','app.may_have_attendance_task_metadata()','app.movement_revert_capture_never_commits()',
-   'app.movement_revert_capture_row()','app.notification_event_processing_enqueue()','app.notification_projection_exists(uuid,uuid,text)',
-   'app.org_structure_statement_lock()','app.payroll_batch_period_required()','app.payroll_history_batch_admin_totals(uuid)',
-   'app.payroll_history_batch_visible_totals(uuid)','app.payroll_history_effective_ids(uuid[])','app.payroll_history_hidden_rows(text)',
-   'app.payroll_history_row_visible(text,uuid)','app.payroll_history_self_employment_ids()','app.payroll_history_stage_busy(uuid)',
-   'app.payroll_history_stage_open(uuid,uuid,text)','app.payroll_history_stage_release(uuid)','app.payroll_history_stage_stamp()',
-   'app.payroll_input_lock_keys(uuid[],uuid)','app.personnel_list_rows_for_ids(date,uuid[],uuid[])','app.personnel_overview_facts(date,uuid[])',
-   'app.personnel_overview_filter_fields(date,uuid[])','app.personnel_overview_narrow_rows(date,uuid[])','app.personnel_overview_page_rows(date,uuid[],uuid[])',
-   'app.personnel_overview_page_rows_typed(date,uuid[],uuid[])','app.personnel_private_search_entries(text,uuid[])','app.personnel_search_candidates(uuid[],boolean,boolean,text,text,text,text,text[])',
-   'app.register_import_release(uuid,boolean)','app.reward_access_observation_due(uuid)','app.reward_access_self_change_guard()',
-   'app.reward_actor_holds_role(text)','app.reward_actor_page_level(text)','app.reward_config_apply_confirmed_pat(uuid,uuid)',
-   'app.reward_config_architecture_for_source(uuid,uuid,uuid,date)','app.reward_config_change_recipients(uuid)','app.reward_config_change_record(text,text,uuid,text,uuid[],text,text,boolean,integer,jsonb,uuid,uuid[],text)',
-   'app.reward_config_change_visible(text,uuid[])','app.reward_config_companies(integer)','app.reward_config_company_eligible(uuid,integer)',
-   'app.reward_config_company_structure(uuid,date)','app.reward_config_create_planned_unit(uuid,uuid,uuid)','app.reward_config_creating()',
-   'app.reward_config_editor(uuid)','app.reward_config_editor_anywhere()','app.reward_config_grade_choices()',
-   'app.reward_config_identity_guard()','app.reward_config_library_capture_revision()','app.reward_config_library_input_guard()',
-   'app.reward_config_library_locked(uuid)','app.reward_config_library_used_by(uuid)','app.reward_config_library_viewer()',
-   'app.reward_config_page_allowed(uuid,text,text)','app.reward_config_pat_affected_units(uuid,integer)','app.reward_config_pat_confirm_apply()',
-   'app.reward_config_pat_history(uuid,integer)','app.reward_config_pat_input_guard()','app.reward_config_planned_policy_snapshot(jsonb,jsonb,jsonb,jsonb)',
-   'app.reward_config_policy_source(uuid)','app.reward_config_reprice_draft_pat(uuid,uuid)','app.reward_config_snapshot_pay_change_kind(uuid)',
-   'app.reward_config_source_org_tags(uuid,date)','app.reward_config_uploaded_binding()','app.reward_config_uploaded_binding_check(text,text,jsonb,jsonb)',
-   'app.reward_config_viewer(uuid)','app.reward_level_rank(text)','app.reward_limit_controls_access()',
-   'app.reward_limit_pin_on_submit(uuid,uuid)','app.reward_limit_reapply(uuid[],uuid,text)','app.reward_limit_version_guard()',
-   'app.reward_offcycle_balances(uuid)','app.reward_offcycle_company_funding(uuid,boolean)','app.reward_offcycle_cycle_readiness(uuid)',
-   'app.reward_offcycle_limit_pin(uuid,uuid)','app.reward_offcycle_limit_version(uuid)','app.reward_offcycle_year_save(uuid,integer,date,date)',
-   'app.reward_preparation_notices_v2()','app.reward_role_default_level(text,text)','app.reward_role_level(text,text)',
-   'app.reward_role_level_options(text,text)','app.reward_role_permission_immediate()','app.reward_role_permission_level_shape()',
-   'app.reward_role_permission_locked(text,text)','app.reward_role_permission_reader()','app.reward_role_permission_request_shape()',
-   'app.reward_role_permission_seat()','app.reward_setup_page_allowed(uuid,text,text)','app.reward_unit_level(uuid,text)',
-   'app.reward_unit_limit_version(uuid)','app.sweep_swing_thresholds(uuid[])','app.system_label_import_conflicts(uuid)',
-   'app.system_label_import_discard_batch(uuid,uuid,uuid,uuid,integer)','app.system_label_import_release_attempt(uuid,uuid)',
+   'app.employment_rehire_rollback_blockers(uuid)','app.employment_void_reference_blockers(uuid[])','app.home_leave_presentation_index(text)',
+   'app.home_own_clock_day(uuid,date,date)','app.home_own_schedule_range(uuid,date,date)','app.import_activation_conflicts(uuid)',
+   'app.import_discard_batch(uuid,uuid,uuid,text,integer)','app.import_hidden_attempt_ids()','app.import_log_actor_facts(text,uuid[])',
+   'app.import_marker_released(uuid)','app.import_marker_visible(uuid)','app.import_pending_employment_ids()',
+   'app.import_pending_guard()','app.import_pending_person_ids()','app.import_pending_stamp()',
+   'app.import_release(uuid)','app.import_released_attempt_ids()','app.import_settle(uuid,uuid,integer)',
+   'app.label_import_marker_visible(uuid)','app.leave_ledger_stage_stamp()','app.leave_stage_digests(uuid[],uuid[],boolean)',
+   'app.leave_stage_release(uuid,uuid)','app.leave_stage_released_ids()','app.may_have_attendance_task_metadata()',
+   'app.movement_revert_capture_never_commits()','app.movement_revert_capture_row()','app.notification_event_processing_enqueue()',
+   'app.notification_projection_exists(uuid,uuid,text)','app.org_structure_statement_lock()','app.payroll_batch_period_required()',
+   'app.payroll_history_batch_admin_totals(uuid)','app.payroll_history_batch_visible_totals(uuid)','app.payroll_history_effective_ids(uuid[])',
+   'app.payroll_history_hidden_rows(text)','app.payroll_history_row_visible(text,uuid)','app.payroll_history_self_employment_ids()',
+   'app.payroll_history_stage_busy(uuid)','app.payroll_history_stage_open(uuid,uuid,text)','app.payroll_history_stage_release(uuid)',
+   'app.payroll_history_stage_stamp()','app.payroll_input_lock_keys(uuid[],uuid)','app.personnel_list_rows_for_ids(date,uuid[],uuid[])',
+   'app.personnel_overview_facts(date,uuid[])','app.personnel_overview_filter_fields(date,uuid[])','app.personnel_overview_narrow_rows(date,uuid[])',
+   'app.personnel_overview_page_rows(date,uuid[],uuid[])','app.personnel_overview_page_rows_typed(date,uuid[],uuid[])','app.personnel_posting_approval_complete()',
+   'app.personnel_posting_approve(uuid,integer,jsonb)','app.personnel_posting_approver(text)','app.personnel_posting_create(text,uuid,uuid,text,jsonb,text,text)',
+   'app.personnel_posting_day(jsonb)','app.personnel_posting_edit(uuid,integer,jsonb)','app.personnel_posting_groups(text[])',
+   'app.personnel_posting_people(uuid[])','app.personnel_posting_record_movement(uuid,text)','app.personnel_posting_values_ok(text,jsonb)',
+   'app.personnel_posting_visible(text,uuid,text)','app.personnel_private_search_entries(text,uuid[])','app.personnel_search_candidates(uuid[],boolean,boolean,text,text,text,text,text[])',
+   'app.probation_access_admin()','app.probation_access_member_add(uuid,uuid,uuid,uuid,date,date)','app.probation_access_member_change(uuid,uuid,uuid,date,date)',
+   'app.probation_access_member_revoke(uuid,text)','app.probation_access_navigation()','app.probation_access_people(text)',
+   'app.probation_access_role_retire(uuid,integer,text)','app.probation_access_role_save(uuid,text,text[],integer)','app.probation_access_rule_save(boolean,boolean,boolean,integer)',
+   'app.probation_access_scope_check(uuid,uuid,date,date)','app.probation_access_view()','app.probation_assignment_facts(uuid,text[],uuid[])',
+   'app.probation_automation_active_users(uuid,uuid[])','app.probation_automation_context(uuid)','app.probation_automation_notify(uuid,uuid,text,text,uuid[])',
+   'app.probation_case_permitted(uuid,text)','app.probation_company_ancestors(uuid[])','app.probation_config_write_company(uuid,text,jsonb,boolean,integer)',
+   'app.probation_decide_other(uuid,integer,text,integer,text)','app.probation_did_not_join(uuid)','app.probation_form_approver_label(text)',
+   'app.probation_form_approver_role(text)','app.probation_form_freeze_approvers(uuid,jsonb)','app.probation_form_import(uuid,text,text,bytea,jsonb)',
+   'app.probation_form_import_read(uuid)','app.probation_form_imports(uuid)','app.probation_form_routing_context(uuid)',
+   'app.probation_general_delegate(uuid,uuid,text)','app.probation_holders_set(uuid[])','app.probation_intake_admin(uuid)',
+   'app.probation_intake_admin_for(uuid,uuid,uuid)','app.probation_legacy_audience(uuid,uuid)','app.probation_letter_freeze_route(uuid,jsonb,jsonb)',
+   'app.probation_letter_routed(jsonb)','app.probation_letter_routing_context(uuid)','app.probation_letter_routing_signatures_ok(jsonb)',
+   'app.probation_letter_routing_valid(jsonb)','app.probation_letter_signers(uuid)','app.probation_max_extensions(jsonb)',
+   'app.probation_outcome_automation(uuid)','app.probation_overdue_summary_cases(uuid,date)','app.probation_pending_signer_kinds(uuid)',
+   'app.probation_permitted(text,uuid)','app.probation_permitted_companies(uuid,text[])','app.probation_permitted_scope(text,uuid[])',
+   'app.probation_posting_approved()','app.probation_postings_admin(uuid[])','app.probation_record_low_result_action(uuid,text)',
+   'app.probation_record_override(uuid)','app.probation_record_posting_effect(uuid,uuid,uuid,jsonb,jsonb)','app.probation_reshape_company_in_use(uuid)','app.probation_routed_holders(uuid[])',
+   'app.probation_routing_dimension(jsonb,text[])','app.probation_routing_weight(jsonb,integer)','app.probation_settings_materialize(uuid[])',
+   'app.probation_settings_scope_admin()',
+   'app.probation_settings_scope_check(text,jsonb)','app.probation_settings_scope_refresh(uuid)','app.probation_settings_scope_retire(uuid,integer,text)',
+   'app.probation_settings_scope_save(uuid,text,text,uuid[],jsonb,boolean,integer,text)','app.probation_shared_workflow_triggers()','app.probation_source_from_start(jsonb,uuid)',
+   'app.probation_superior_rule()','app.probation_task_list(text,integer)','app.probation_tracker_cases()',
+   'app.probation_tracker_page(uuid[])','app.probation_v9_group_member(text,uuid)','app.probation_validate_form_route(jsonb,integer)',
+   'app.probation_visible_among(uuid[])','app.probation_visible_case_ids()','app.probation_workflow_move(jsonb,text)',
+   'app.probation_workflow_moves()','app.register_import_release(uuid,boolean)','app.reward_access_observation_due(uuid)',
+   'app.reward_access_self_change_guard()','app.reward_actor_holds_role(text)','app.reward_actor_page_level(text)',
+   'app.reward_config_apply_confirmed_pat(uuid,uuid)','app.reward_config_architecture_for_source(uuid,uuid,uuid,date)','app.reward_config_change_recipients(uuid)',
+   'app.reward_config_change_record(text,text,uuid,text,uuid[],text,text,boolean,integer,jsonb,uuid,uuid[],text)','app.reward_config_change_visible(text,uuid[])','app.reward_config_companies(integer)',
+   'app.reward_config_company_eligible(uuid,integer)','app.reward_config_company_structure(uuid,date)','app.reward_config_create_planned_unit(uuid,uuid,uuid)',
+   'app.reward_config_creating()','app.reward_config_editor(uuid)','app.reward_config_editor_anywhere()',
+   'app.reward_config_grade_choices()','app.reward_config_identity_guard()','app.reward_config_library_capture_revision()',
+   'app.reward_config_library_input_guard()','app.reward_config_library_locked(uuid)','app.reward_config_library_used_by(uuid)',
+   'app.reward_config_library_viewer()','app.reward_config_page_allowed(uuid,text,text)','app.reward_config_pat_affected_units(uuid,integer)',
+   'app.reward_config_pat_confirm_apply()','app.reward_config_pat_history(uuid,integer)','app.reward_config_pat_input_guard()',
+   'app.reward_config_planned_policy_snapshot(jsonb,jsonb,jsonb,jsonb)','app.reward_config_policy_source(uuid)','app.reward_config_reprice_draft_pat(uuid,uuid)',
+   'app.reward_config_snapshot_pay_change_kind(uuid)','app.reward_config_source_org_tags(uuid,date)','app.reward_config_uploaded_binding()',
+   'app.reward_config_uploaded_binding_check(text,text,jsonb,jsonb)','app.reward_config_viewer(uuid)','app.reward_level_rank(text)',
+   'app.reward_limit_controls_access()','app.reward_limit_pin_on_submit(uuid,uuid)','app.reward_limit_reapply(uuid[],uuid,text)',
+   'app.reward_limit_version_guard()','app.reward_offcycle_balances(uuid)','app.reward_offcycle_company_funding(uuid,boolean)',
+   'app.reward_offcycle_cycle_readiness(uuid)','app.reward_offcycle_limit_pin(uuid,uuid)','app.reward_offcycle_limit_version(uuid)',
+   'app.reward_offcycle_year_save(uuid,integer,date,date)','app.reward_preparation_notices_v2()','app.reward_role_default_level(text,text)',
+   'app.reward_role_level(text,text)','app.reward_role_level_options(text,text)','app.reward_role_permission_immediate()',
+   'app.reward_role_permission_level_shape()','app.reward_role_permission_locked(text,text)','app.reward_role_permission_reader()',
+   'app.reward_role_permission_request_shape()','app.reward_role_permission_seat()','app.reward_setup_page_allowed(uuid,text,text)',
+   'app.reward_unit_level(uuid,text)','app.reward_unit_limit_version(uuid)','app.sweep_swing_thresholds(uuid[])',
+   'app.system_label_import_conflicts(uuid)','app.system_label_import_discard_batch(uuid,uuid,uuid,uuid,integer)','app.system_label_import_release_attempt(uuid,uuid)',
   ];
   const beforeFunctions=new Set(beforePerformancePrivileges.functions.map(row=>row.fn));
   expect(afterPerformancePrivileges.functions.filter(row=>!beforeFunctions.has(row.fn)).map(row=>row.fn).sort()).toEqual(addedFunctions);
@@ -659,6 +772,24 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // policies it adds (5580's configuration-editor and owner policies and 5600's owner policies included) (qual/with_check as md5 digests, the migration owner written OWNER) and the one it retires
   // (5400 drops the second-person PAT confirmation policy). Nothing else in the privilege graph may change.
   const boardRelations:Record<string,{rls:boolean;force:boolean;acl:string|null}>={
+   'automation_run':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   // Probation reshape (5740, 5741, 5743; 16 November 2026): four append-only tables, read-only to the application.
+   'automation_email_template_version':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   // 5754: queued workflow email, owner only (the application writes through app.automation_email_queue).
+   'automation_email_delivery':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
+   // 5757: moved notify-only Probation workflow definitions, owner only (written through app.probation_workflow_move).
+   'probation_workflow_move':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
+   // 5762: imported saved evaluation forms, owner only (written and read through the app.probation_form_import* functions).
+   'probation_form_import':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
+   'probation_access_role':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
+   'probation_access_member':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
+   'probation_access_rule':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
+   'automation_routing_version':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   'automation_workflow_version':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   'personnel_posting':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   // 5742 (Probation settings scope): versions and company membership, read-only to the application.
+   'probation_settings_scope_member':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   'probation_settings_scope_version':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
    'lc_v9_email_hold':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=arw/OWNER}'},
    'reward_config_change':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
    'reward_limit_version':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
@@ -669,6 +800,15 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   };
   const boardPolicyRow=(row:(typeof afterPerformancePrivileges.policies)[number])=>({...row,roles:ownerAcl(row.roles),qual:digest(row.qual),with_check:digest(row.with_check)});
   const boardPolicies=[
+   {schemaname:'public',tablename:'automation_email_delivery',policyname:'automation_email_delivery_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
+   {schemaname:'public',tablename:'automation_email_template_version',policyname:'automation_email_template_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
+   {schemaname:'public',tablename:'automation_email_template_version',policyname:'automation_email_template_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'bac4a95592bbda57aed591f6db313641',with_check:null},
+   {schemaname:'public',tablename:'automation_routing_version',policyname:'automation_routing_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
+   {schemaname:'public',tablename:'automation_routing_version',policyname:'automation_routing_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'f20caae34239109c303ca06035783833',with_check:null},
+   {schemaname:'public',tablename:'automation_run',policyname:'automation_run_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
+   {schemaname:'public',tablename:'automation_run',policyname:'automation_run_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'e9cbf47fa5ad06022706718f7647f2b1',with_check:null},
+   {schemaname:'public',tablename:'automation_workflow_version',policyname:'automation_workflow_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
+   {schemaname:'public',tablename:'automation_workflow_version',policyname:'automation_workflow_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'bac4a95592bbda57aed591f6db313641',with_check:null},
    {schemaname:'public',tablename:'company_registration_classification',policyname:'company_registration_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'SELECT',qual:'3f508ac9bab3a400ba652cdcbc225fec',with_check:null},
    {schemaname:'public',tablename:'job_architecture_catalogue_revision',policyname:'reward_config_architecture_catalogue',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'SELECT',qual:'dbbe81253dcbe78bcb5b57df467675ae',with_check:null},
    {schemaname:'public',tablename:'job_architecture_position_revision',policyname:'reward_config_architecture_position',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'SELECT',qual:'ee611118f080c3f4c23c582744c9e6fc',with_check:null},
@@ -676,6 +816,17 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {schemaname:'public',tablename:'lc_v9_email_hold',policyname:'v9_email_hold_read',permissive:'PERMISSIVE',roles:'{public}',cmd:'SELECT',qual:'a891360032acbd07afa1f1c6e6c5be0a',with_check:null},
    {schemaname:'public',tablename:'lc_v9_email_hold',policyname:'v9_email_hold_release',permissive:'PERMISSIVE',roles:'{public}',cmd:'UPDATE',qual:'943f46d6c51979e6a3e15d49c833cfd3',with_check:'63096f37cc862794aecf97d68e8a8239'},
    {schemaname:'public',tablename:'lc_v9_email_hold',policyname:'v9_email_hold_storage_owner',permissive:'PERMISSIVE',roles:'{OWNER}',cmd:'ALL',qual:'b326b5062b2f0e69046810717534cb09',with_check:'b326b5062b2f0e69046810717534cb09'},
+   {schemaname:'public',tablename:'personnel_posting',policyname:'personnel_posting_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
+   {schemaname:'public',tablename:'personnel_posting',policyname:'personnel_posting_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'8b0333122d2e162cc1eff24b8b0fc365',with_check:null},
+   {schemaname:'public',tablename:'probation_access_member',policyname:'probation_access_member_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
+   {schemaname:'public',tablename:'probation_access_role',policyname:'probation_access_role_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
+   {schemaname:'public',tablename:'probation_access_rule',policyname:'probation_access_rule_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
+   {schemaname:'public',tablename:'probation_form_import',policyname:'probation_form_import_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
+   {schemaname:'public',tablename:'probation_settings_scope_member',policyname:'probation_settings_scope_member_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
+   {schemaname:'public',tablename:'probation_settings_scope_member',policyname:'probation_settings_scope_member_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'782ac6da7f7880201b39db019eaaac01',with_check:null},
+   {schemaname:'public',tablename:'probation_settings_scope_version',policyname:'probation_settings_scope_version_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
+   {schemaname:'public',tablename:'probation_settings_scope_version',policyname:'probation_settings_scope_version_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'782ac6da7f7880201b39db019eaaac01',with_check:null},
+   {schemaname:'public',tablename:'probation_workflow_move',policyname:'probation_workflow_move_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'c380ea6ec96fb7e23eb0498d6d773a76',with_check:'c380ea6ec96fb7e23eb0498d6d773a76'},
    {schemaname:'public',tablename:'reward_config_change',policyname:'reward_config_change_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'59492f3697ba1af7263dfebcdb7c1b78',with_check:'59492f3697ba1af7263dfebcdb7c1b78'},
    {schemaname:'public',tablename:'reward_config_change',policyname:'reward_config_change_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'b0652841b761793f00814566b72e654b',with_check:null},
    {schemaname:'public',tablename:'reward_governance',policyname:'reward_pat_draft_governance_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'042db60115c525438a1583b0609fcebb',with_check:'042db60115c525438a1583b0609fcebb'},
@@ -772,7 +923,14 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   ];
   const expansionNames = new Set(expansionRelations.map(rel => rel + '_company_tenant_fk'));
   // 5640 (board release gate repair, 13 November 2026) adds the same validated NO ACTION key to 5460's lc_v9_email_hold.
-  const boardReleaseKeys = [{ rel: 'lc_v9_email_hold', conname: 'lc_v9_email_hold_company_tenant_fk', convalidated: true, action: 'a' }];
+  // Probation reshape (16 November 2026): 5741's personnel_posting and 5742's settings-scope membership use the same key.
+  const boardReleaseKeys = [
+   { rel: 'lc_v9_email_hold', conname: 'lc_v9_email_hold_company_tenant_fk', convalidated: true, action: 'a' },
+   { rel: 'personnel_posting', conname: 'personnel_posting_company_tenant_fk', convalidated: true, action: 'a' },
+   { rel: 'probation_access_member', conname: 'probation_access_member_company_tenant_fk', convalidated: true, action: 'a' },
+   { rel: 'probation_form_import', conname: 'probation_form_import_company_tenant_fk', convalidated: true, action: 'a' },
+   { rel: 'probation_settings_scope_member', conname: 'probation_settings_scope_member_company_tenant_fk', convalidated: true, action: 'a' },
+  ];
   const boardReleaseNames = new Set(boardReleaseKeys.map(row => row.conname));
   const completeKeys = await keys();
   expect(completeKeys.filter(row => boardReleaseNames.has(row.conname))).toEqual(boardReleaseKeys);

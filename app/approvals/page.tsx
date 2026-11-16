@@ -5,6 +5,8 @@ import {LeaveCreditClaimReviewNotice} from '@/components/leave/leave-credit-clai
 import {leaveCreditClaimReviewBlocks} from '@/lib/leave-credit-claim-review';
 import { hasPendingAttendanceParticipantAssignment } from '@/packs/attendance/service';
 import { pendingRewardReviews } from '@/packs/rewards/service';
+import { probationTaskList } from '@/packs/probation/service';
+import { probationTaskLabel } from '@/lib/probation-task-labels';
 import { formatMinutesToHM } from '@/lib/overtime-duration';
 import { Fragment } from 'react';
 import Link from 'next/link';
@@ -193,13 +195,16 @@ export default async function ApprovalsPage({
   // performance queue (that work opens on /performance), and its Rewards card already comes from the
   // very queue the Rewards provider projects — reading them again would admit a viewer to an inbox
   // with nothing on it, or count one Rewards unit twice.
-  const [rewardReviews,assignedAttendance,assignedTasks]=await Promise.all([
+  // Probation Approve steps: the same bounded owner the task list's Probation source reads (migration 5751).
+  const probationOn=isModuleEnabledOrFalse(s,'lifecycle')||!!s.entitlements?.scopedModules.lifecycle?.length;
+  const [rewardReviews,probationApprovals,assignedAttendance,assignedTasks]=await Promise.all([
     !focus&&isModuleEnabledOrFalse(s,'rewards')?pendingRewardReviews(s,scopeIds):Promise.resolve([]),
+    !focus&&probationOn?probationTaskList(s,{category:'approval',companyIds:scopeIds}):Promise.resolve({count:0,capped:false,items:[]}),
     focus?Promise.resolve(focus.kind==='attendance'):attendanceOn?hasPendingAttendanceParticipantAssignment(s):Promise.resolve(false),
-    !focus&&!admin&&!manager?listPendingTasks(s,scopeIds,{attendance:attendanceOn,claims:claimsOn,performance:false,rewards:false},{noticeAcknowledgements:false}):Promise.resolve([]),
+    !focus&&!admin&&!manager?listPendingTasks(s,scopeIds,{attendance:attendanceOn,claims:claimsOn,performance:false,rewards:false,probation:false},{noticeAcknowledgements:false}):Promise.resolve([]),
   ]);
-  if(!focus&&!admin&&!manager&&!rewardReviews.length&&!assignedAttendance&&!assignedTasks.length)redirect('/');
-  const attendanceOnly=!admin&&!manager&&!rewardReviews.length&&assignedAttendance&&assignedTasks.every(task=>task.kind==='attendance');
+  if(!focus&&!admin&&!manager&&!rewardReviews.length&&!probationApprovals.items.length&&!assignedAttendance&&!assignedTasks.length)redirect('/');
+  const attendanceOnly=!admin&&!manager&&!rewardReviews.length&&!probationApprovals.items.length&&assignedAttendance&&assignedTasks.every(task=>task.kind==='attendance');
   if(admin&&categoryParam==='profileChanges')redirect('/admin/personnel/profile-changes');
   // Approvals sort (09cda965): display-only ordering, read from ?sort= so it survives reload + bulk
   // selection. Default (latest-first) matches every loader's existing desc(createdAt).
@@ -209,6 +214,8 @@ export default async function ApprovalsPage({
   const parsedCategory = parseApprovalCategory(focus?assignedApprovalCategory(focus.kind):categoryParam, { admin });
   const category = attendanceOnly && !['all','attendance','overtime'].includes(parsedCategory) ? 'all' : parsedCategory;
   const t = await getTranslations('approvals');
+  // L5: the Probation category names each step the same way /tasks does (lib/probation-task-labels.ts).
+  const tProbation = await getTranslations('probation');
   const tCreditReview=await getTranslations('replacementRequest.formulaReview');
   const tClock = await getTranslations('attendance.clockData');
   const tHistory = await getTranslations('attendanceHistory');
@@ -365,6 +372,7 @@ export default async function ApprovalsPage({
     managerReviews: managerReviews.length,
     hrReviews: hrReviews.length,
     rewards: rewardReviews.length,
+    probation: probationApprovals.items.length,
   };
   // The All badge / unfiltered header total — now INCLUDING the two review queues, so header, All badge
   // and the All Pending card are one number.
@@ -421,7 +429,8 @@ export default async function ApprovalsPage({
     (visible('resignations') ? resignations.length : 0) +
     (visible('managerReviews') ? managerReviews.length : 0) +
     (visible('hrReviews') ? hrReviews.length : 0) +
-    (visible('rewards') ? rewardReviews.length : 0);
+    (visible('rewards') ? rewardReviews.length : 0) +
+    (visible('probation') ? probationApprovals.items.length : 0);
 
   // Return params every decide form posts back, so the redirect keeps the selected category + sort.
   const nav: NavParams = { category: category === 'all' ? '' : category, sort: sortParam ?? '' };
@@ -485,6 +494,7 @@ export default async function ApprovalsPage({
           scroll to, focus, and briefly highlight the target section. Renders nothing itself. */}
       <AttentionOnArrival />
       {visible('rewards') && rewardReviews.length > 0 && <Card><SectionHeader title={t('rewards')} count={rewardReviews.length} /><ul className="divide-y divide-border">{rewardReviews.map(r => <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm"><span>{r.cycle} · {r.name}</span><Link href={`/rewards/${r.id}?view=approvals`} className="font-medium text-primary hover:underline">{t('reviewRewards')}</Link></li>)}</ul></Card>}
+      {visible('probation') && probationApprovals.items.length > 0 && <Card aria-label={t('probation')}><SectionHeader title={t('probation')} count={probationApprovals.items.length} /><ul className="divide-y divide-border">{probationApprovals.items.map(item => <li key={item.partId} className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm"><span><span className="font-medium">{item.employeeName}</span> · {tProbation(probationTaskLabel(item.kind, item.partType).title, probationTaskLabel(item.kind, item.partType).values)}{item.dueOn && <span className="text-muted-foreground"> · {t('probationDue', { date: item.dueOn })}</span>}</span><Link href={item.href} className="font-medium text-primary hover:underline">{tProbation(probationTaskLabel(item.kind, item.partType).action, probationTaskLabel(item.kind, item.partType).values)}</Link></li>)}</ul>{probationApprovals.capped && <p className="border-t border-border p-4 text-sm text-muted-foreground">{t('probationCapped', { shown: probationApprovals.items.length })} <Link href="/lifecycle/probation?mine=1" className="font-medium text-primary hover:underline">{t('probationSeeAll')}</Link></p>}</Card>}
 
       <div data-tour="approvals-intro">
         <PageHeader

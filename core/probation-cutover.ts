@@ -54,7 +54,7 @@ async function buildProbationCutoverTx(tx:Tx,ctx:SessionContext,companyId:string
    if(!record)throw new ProbationError('invalid','This source is no longer eligible.');
    const ends=probationIntakeCycleEnds(source,entry.extensionEventIds??[],record.endOn),originalFinal=record.parts.find(p=>p.type===3)!;record.extensionCount=ends.length-1;record.endOn=ends[ends.length-1];
    if(record.extensionCount!==(entry.extensionCount??0))throw new ProbationError('invalid','Review the exact canonical extension sources and the current cycle count.');
-   record.parts=[...record.parts.filter(p=>p.type!==3),...ends.map((periodEnd,cycle)=>newProbationPart(cycle===0?originalFinal.id:stableId(`${ctx.tenantId}:${source.employmentId}:extension:${cycle}`),3,cycle,probationDueDay(periodEnd,day=>calendar.has(day)),config.issueLeadDays))];
+   record.parts=[...record.parts.filter(p=>p.type!==3),...ends.map((periodEnd,cycle)=>newProbationPart(cycle===0?originalFinal.id:stableId(`${ctx.tenantId}:${source.employmentId}:extension:${cycle}`),3,cycle,probationDueDay(periodEnd,day=>calendar.has(day),config.nonWorkingDayRule),config.issueLeadDays))];
    if(entry.parts.length!==record.parts.length||record.parts.some(part=>!entry.parts.some(p=>p.type===part.type&&p.cycle===part.cycle)))throw new ProbationError('invalid','Map exactly the required Parts and cycles for the canonical review plan.');
    for(const part of record.parts){const stage=entry.parts.find(p=>p.type===part.type&&p.cycle===part.cycle)!;if(stage.status==='completed_offline'){part.state='completed_offline';part.offlinePdfId=stage.evidenceId;}else if(part.issueOn<activationOn)part.state='issued';}
    record.kpiAcknowledged=record.parts.some(p=>p.type===1&&p.state==='completed_offline');

@@ -17,8 +17,17 @@ export class AssignedWorkPrincipalUnavailableError extends Error{
  * never a band, rating, score, amount, remark or plan body — the link opens the owning screen, which
  * applies its own authorization again.
  */
-export const PACK_TASK_KINDS=['performanceReview','assessmentWork','careerPlan','calibration','rewardReview'] as const;
+export const PACK_TASK_KINDS=['performanceReview','assessmentWork','careerPlan','calibration','rewardReview',
+ // Probation (core/probation.ts pendingProbationTasks): Approve steps, and every other Probation task (employee, Line
+ // Manager, PBP and GBS tasks, letter Sign steps). Both open the case view.
+ 'probationApproval','probationTask'] as const;
 export type PackTaskKind=typeof PACK_TASK_KINDS[number];
-export type PackTaskItem={id:string;kind:PackTaskKind;subjectName:string|null;createdAt:string;linkPath:string};
+/**
+ * Probation only (lane L, L5): the plain step code of the caller's task (app.probation_task_list `kind`, for example
+ * `letter_sign`) and its part number, so the queues name the step ("Sign probation letter") instead of a generic
+ * "Probation task". A code and a part number, never content; other packs keep exactly the five keys above.
+ */
+export type PackTaskAction={code:string;part:number|null};
+export type PackTaskItem={id:string;kind:PackTaskKind;subjectName:string|null;createdAt:string;linkPath:string;action?:PackTaskAction};
 /** A pack's task provider. `scopeIds` is the company-switcher selection; undefined means no filter. */
 export type PackTaskProvider=(ctx:SessionContext,scopeIds:string[]|undefined)=>Promise<PackTaskItem[]>;

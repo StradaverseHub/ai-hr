@@ -37,7 +37,7 @@ import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModu
 import { todayInKualaLumpur } from '../lib/hr-date';
 
 const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
-const ALL: InboxModules = { attendance: false, claims: false, performance: true, rewards: true };
+const ALL: InboxModules = { attendance: false, claims: false, performance: true, rewards: true, probation: false };
 const PAYLOAD_KEYS = ['createdAt', 'id', 'kind', 'linkPath', 'subjectName'];
 const packKinds = new Set<string>(PACK_TASK_KINDS);
 const packItems = (rows: PendingTaskItem[]) => rows.filter((row) => packKinds.has(row.kind));

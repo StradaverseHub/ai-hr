@@ -1,5 +1,5 @@
 /** Shell declaration metadata, never permission policy. See ADR 2026-11-07-navigation-coverage. */
-import {SIDEBAR_AUDIENCE_INVENTORY, ADDITIONAL_ROWS, isCollapsible, PERFORMANCE_ADMIN_ROW, ONBOARDING_NODE, SCOPED_LIFECYCLE_NAVIGATION, type ChildItem} from './shell-inventory';
+import {SIDEBAR_AUDIENCE_INVENTORY, ADDITIONAL_ROWS, AUTOMATION_NAVIGATION, isCollapsible, PERFORMANCE_ADMIN_ROW, ONBOARDING_NODE, SCOPED_LIFECYCLE_NAVIGATION, type ChildItem} from './shell-inventory';
 import {resolveShellNavigation, type ShellNavigationFacts} from './shell-resolver';
 import {V9_NAVIGATION, V9_SHARED_NAVIGATION} from '../lifecycle-v9-navigation';
 import {modulePackById} from '../../packs/registry';
@@ -165,10 +165,12 @@ export const REVIEWED_SHELL_BINDINGS:Readonly<Record<string,Binding>> = {
   "scoped/contracts/contractManagement": {"id": "shell.contractManagement", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:contractManagement", "status": "declared"},
   "scoped/probation/probationSettings": {"id": "shell.probationSettings", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationSettings", "status": "declared"},
   "scoped/probation/probationForms": {"id": "shell.probationForms", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationForms", "status": "declared"},
-  "scoped/probation/probationRoutes": {"id": "shell.probationRoutes", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationRoutes", "status": "declared"},
-  "scoped/probation/probationWorkflows": {"id": "shell.probationWorkflows", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationWorkflows", "status": "declared"},
-  "scoped/probation/probationTemplates": {"id": "shell.probationTemplates", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationTemplates", "status": "declared"},
+  "scoped/probation/probationPostings": {"id": "shell.probationPostings", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationPostings", "status": "declared"},
+  "automation/automationWorkflows": {"id": "shell.automationWorkflows", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:automationWorkflows", "status": "declared"},
+  "automation/automationTemplates": {"id": "shell.automationTemplates", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:automationTemplates", "status": "declared"},
+  "automation/automationGroups": {"id": "shell.automationGroups", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:automationGroups", "status": "declared"},
   "scoped/probation/probationIntake": {"id": "shell.probationIntake", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationIntake", "status": "declared"},
+  "scoped/probation/probationAccess": {"id": "shell.probationAccess", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationAccess", "status": "declared"},
   "scoped/contracts/contractIntake": {"id": "shell.contractIntake", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:contractIntake", "status": "declared"},
   "scoped/contracts/contractSettings": {"id": "shell.contractSettings", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:contractSettings", "status": "declared"},
   "scoped/contracts/contractWorkflows": {"id": "shell.contractWorkflows", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:contractWorkflows", "status": "declared"},
@@ -202,12 +204,15 @@ export function declaredNavigationCatalogue():NavigationCatalogue {
   else append(`${prefix}/${row.labelKey}`,row);
  }
  for(const row of ADDITIONAL_ROWS)append(`additional/${row.labelKey}`,row);
- // The V9 display adapter preserves the canonical descriptor's identity and route ownership.
+ // The V9 display adapter preserves the canonical descriptor's identity and route ownership. Rows that moved into
+ // the shared HR Automation section keep their identity and address and take the label they are shown with there.
  for(const row of V9_NAVIGATION)append(`v9/${row.labelKey}`,{...row,icon:ONBOARDING_NODE.icon,exactHref:true,
+  ...('automationLabelKey' in row?{labelKey:row.automationLabelKey,submenuKey:undefined}:{}),
   ownedSubpaths:'ownedSubpaths' in row?[...row.ownedSubpaths]:undefined});
  for(const row of V9_SHARED_NAVIGATION)append(`v9Shared/${row.labelKey}`,{...row,icon:ONBOARDING_NODE.icon,exactHref:true});
  for(const row of modulePackById('rewards')!.navLinks??[])append(`rewards/${row.labelKey}`,row);
  for(const row of SCOPED_LIFECYCLE_NAVIGATION)append(`scoped/${row.module}/${row.labelKey}`,row);
+ for(const row of AUTOMATION_NAVIGATION)append(`automation/${row.labelKey}`,row);
  for(const key of ['id','sourceKey'] as const){const seen=new Set<string>();for(const row of declarations){
   if(seen.has(row[key]))issues.push({code:`duplicate-${key}`,detail:row[key]});seen.add(row[key]);
  }}

@@ -8,12 +8,13 @@ import {readAccountTaskBundle,type AccountTaskBundle} from './account-task-bundl
 import {pendingStandardFeedbackTaskMetadata,pendingOnehrFeedbackTaskMetadata} from '../packs/performance/service';
 import {onboardingAssignedTaskMetadata} from '../packs/lifecycle/service';
 import {isModuleEnabled} from './entitlements';
+import {probationModuleOn} from '../packs/probation/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {projectHomeAssignedWork,type EmployeeHomeTasks} from '../lib/employee-home-tasks';
 import {ASSIGNED_APPROVAL_KINDS,assignedApprovalHref,type AssignedApprovalKind} from '../lib/assigned-approval-focus';
 
 const taskModules=(ctx:SessionContext)=>({attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),
- performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')});
+ performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards'),probation:probationModuleOn(ctx)});
 
 async function loadAdditionalTasks(ctx:SessionContext,performance:boolean,bundle?:Promise<AccountTaskBundle|null>){
  const lifecycle=isModuleEnabled(ctx,'lifecycle');

@@ -1,0 +1,18 @@
+/**
+ * Storage shape of a template version's signing and review routing (lib/document-signing-routing.ts), for template
+ * schemas that persist it. Kept apart from core files so a module's template schema can import it without a cycle.
+ */
+import {z} from 'zod';
+import {DOCUMENT_ROUTING_ACTIONS,MAX_DOCUMENT_ROUTING_ORDER,MAX_DOCUMENT_ROUTING_PEOPLE,MAX_DOCUMENT_ROUTING_STEPS} from './document-signing-routing';
+
+export const documentRoutingSchema = z.array(z.object({
+  id: z.string().min(1).max(120), order: z.number().int().min(1).max(MAX_DOCUMENT_ROUTING_ORDER), action: z.enum(DOCUMENT_ROUTING_ACTIONS), owner: z.boolean(),
+  pick: z.enum(['any', 'roundRobin']).optional(),
+  who: z.discriminatedUnion('kind', [
+    z.object({kind: z.literal('routing'), routingId: z.uuid()}).strict(),
+    z.object({kind: z.literal('group'), groupId: z.string().min(1).max(200)}).strict(),
+    z.object({kind: z.literal('people'), userIds: z.array(z.uuid()).min(1).max(MAX_DOCUMENT_ROUTING_PEOPLE)}).strict(),
+    z.object({kind: z.literal('employee')}).strict(),
+    z.object({kind: z.literal('directSuperior')}).strict(),
+  ]),
+}).strict()).max(MAX_DOCUMENT_ROUTING_STEPS);

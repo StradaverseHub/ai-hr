@@ -1,0 +1,130 @@
+/*
+ * Lane M3: Probation configuration and HR Automation screens drawn like the approved prototype (ConfigHead, banners,
+ * cards, module chips, workflow rows, template rows, assignment-group cards, routing cards). Prototype tokens map to
+ * the app theme: --accent → --primary, --line → --border, --line-strong → --input, --subtle → --muted,
+ * --muted (text) → --muted-foreground, --bg → --card. Status colours follow the prototype palette, light and dark.
+ * Imported only by the pages of this lane; every rule is under .pcg.
+ */
+.pcg{--pcg-ok:#157a3b;--pcg-ok-soft:#e6f4ea;--pcg-warn:#9a5b00;--pcg-warn-soft:#fff4d6;--pcg-warn-line:#f0d48a;--pcg-bad:#b42318;--pcg-bad-soft:#fdecea;--pcg-info:#1d4ed8;--pcg-info-soft:#e8eefc;--pcg-violet:#6d4aa8;--pcg-violet-soft:#f0ebf8;display:grid;gap:20px;align-content:start;min-width:0}
+.dark .pcg{--pcg-ok:#5fd08a;--pcg-ok-soft:#173826;--pcg-warn:#f2c35b;--pcg-warn-soft:#3a2f14;--pcg-warn-line:#6b5520;--pcg-bad:#ff8a80;--pcg-bad-soft:#3d1d1b;--pcg-info:#8fb0ff;--pcg-info-soft:#1c2742;--pcg-violet:#c3a8f0;--pcg-violet-soft:#2b2340}
+.pcg>*,.pcg .pcg-card>*,.pcg .pcg-grid2>*{min-width:0}
+
+/* ConfigHead: breadcrumb, title, sub-line, actions on the right. */
+.pcg .pcg-crumb{margin:0;color:var(--muted-foreground);font-size:14px}
+.pcg .pcg-ph{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:flex-end;justify-content:space-between}
+.pcg .pcg-ph h1{margin:0;font-size:30px;font-weight:600;letter-spacing:-.01em;line-height:1.2}
+.pcg .pcg-ph p{margin:6px 0 0;color:var(--muted-foreground);max-width:80ch}
+.pcg .pcg-ph-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.pcg .pcg-hint{color:var(--muted-foreground);font-size:13px}
+
+/* Banners. */
+.pcg .pcg-banner{display:flex;gap:12px;align-items:flex-start;background:var(--accent);color:var(--foreground);border-radius:14px;padding:16px 20px;margin:0}
+.pcg .pcg-banner>svg{flex:none;margin-top:2px}
+.pcg .pcg-banner small{display:block;color:var(--muted-foreground);margin-top:4px;font-size:12.5px}
+.pcg .pcg-banner-plain{background:var(--muted)}
+.pcg .pcg-banner-ok{background:var(--pcg-ok-soft)}
+.pcg .pcg-banner-warn{background:var(--pcg-warn-soft);border:1px solid var(--pcg-warn-line)}
+
+/* Cards and columns. */
+.pcg .pcg-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px 22px;display:grid;gap:14px;align-content:start}
+.pcg .pcg-card h2{margin:0;font-size:17px;font-weight:600}
+.pcg .pcg-card h3{margin:0;font-size:15px;font-weight:600}
+.pcg .pcg-sub{margin:3px 0 0;color:var(--muted-foreground);font-size:13.5px}
+.pcg .pcg-card-flush{padding:0;gap:0}
+.pcg .pcg-grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px 18px;align-items:start}
+.pcg .pcg-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.pcg .pcg-between{justify-content:space-between}
+.pcg .pcg-facts{display:grid;gap:10px;margin:0}
+.pcg .pcg-facts>div{display:grid;gap:2px}
+.pcg .pcg-facts dt{font-size:12.5px;color:var(--muted-foreground)}
+.pcg .pcg-facts dd{margin:0;font-weight:500;overflow-wrap:anywhere}
+.pcg .pcg-opt{display:flex;gap:10px;align-items:center;border:1px solid var(--border);border-radius:12px;padding:11px 14px}
+.pcg .pcg-opt[data-on=true]{border-color:var(--pcg-info);background:var(--pcg-info-soft)}
+.pcg .pcg-field-group{display:grid;gap:8px;border-top:1px solid var(--border);padding-top:12px}
+.pcg .pcg-field-group:first-of-type{border-top:0;padding-top:0}
+.pcg .pcg-field-group>strong{font-size:13.5px}
+.pcg .pcg-field-standard{font-size:13px;color:var(--muted-foreground)}
+
+/* Pills and module chips. */
+.pcg .pcg-pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 10px;font-size:12.5px;font-weight:600;white-space:nowrap;background:var(--muted);color:var(--muted-foreground)}
+.pcg .pcg-pill-ok{background:var(--pcg-ok-soft);color:var(--pcg-ok)}
+.pcg .pcg-pill-warn{background:var(--pcg-warn-soft);color:var(--pcg-warn)}
+.pcg .pcg-pill-bad{background:var(--pcg-bad-soft);color:var(--pcg-bad)}
+.pcg .pcg-pill-info{background:var(--pcg-info-soft);color:var(--pcg-info)}
+.pcg .pcg-pill-violet{background:var(--pcg-violet-soft);color:var(--pcg-violet)}
+.pcg .pcg-pill-accent{background:var(--primary);color:var(--primary-foreground)}
+.pcg .pcg-chips{display:flex;flex-wrap:wrap;gap:8px}
+.pcg .pcg-mchip{display:inline-flex;align-items:center;min-height:42px;border:1px solid var(--border);background:var(--card);color:var(--foreground);border-radius:999px;padding:9px 18px;font-weight:500;font-size:14px;text-decoration:none}
+.pcg a.pcg-mchip:hover{border-color:var(--primary)}
+.pcg .pcg-mchip[aria-current=page],.pcg .pcg-mchip[aria-pressed=true]{background:var(--primary);color:var(--primary-foreground);border-color:var(--primary)}
+
+/* Workflow rows (prototype .wi). */
+.pcg .pcg-wi{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
+.pcg .pcg-wi:last-child{border-bottom:0}
+.pcg .pcg-wi h3,.pcg .pcg-wi h4{margin:0;font-size:15px;font-weight:500}
+.pcg .pcg-wi-text{flex:1 1 320px}
+.pcg .pcg-wi-text p{margin:3px 0 0;font-size:13.5px;color:var(--pcg-info);overflow-wrap:anywhere}
+.pcg .pcg-wi-text p.pcg-wi-steps{color:var(--muted-foreground)}
+.pcg .pcg-wl{list-style:none;margin:0;padding:0;display:grid}
+.pcg .pcg-card-extra{padding:0 20px 16px;display:grid;gap:12px}
+
+/* Template rows (prototype .tl-row and .kp). */
+.pcg .pcg-tl{list-style:none;margin:0;padding:0;display:grid}
+.pcg .pcg-tl-row{display:flex;flex-wrap:wrap;gap:12px 16px;justify-content:space-between;align-items:center;padding:16px 0;border-bottom:1px solid var(--border)}
+.pcg .pcg-tl-row:last-child{border-bottom:0}
+.pcg .pcg-tl-row h3,.pcg .pcg-tl-row h4{margin:0 0 4px;font-size:17px;font-weight:600}
+.pcg .pcg-tl-row p{margin:0;color:var(--muted-foreground);font-size:13px;overflow-wrap:anywhere}
+.pcg .pcg-tl-pills{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.pcg .pcg-kp{display:inline-block;background:var(--muted);color:var(--foreground);border-radius:999px;padding:6px 14px;font-size:13.5px;font-weight:500;white-space:nowrap}
+.pcg .pcg-kp-letter{background:var(--pcg-violet-soft);color:var(--pcg-violet)}
+.pcg .pcg-kp-warn{background:var(--pcg-warn-soft);color:var(--pcg-warn)}
+
+/* Assignment-group cards and routing cards (prototype GroupsPage, .rt-card/.rt-row). */
+.pcg .pcg-group-name{font-size:15px;font-weight:600;margin:0}
+.pcg .pcg-rt-card{background:var(--muted);border:0;border-radius:14px;padding:16px 18px;display:grid;gap:14px;margin:0;container-type:inline-size}
+.pcg .pcg-rt-card>legend{float:left;width:100%;font-weight:600;padding:0;margin-bottom:4px}
+.pcg .pcg-rt-card>legend+*{clear:both}
+.pcg .pcg-rt-row{border-top:1px solid var(--border);padding-top:14px;display:grid;gap:10px}
+.pcg ol.pcg-rt-rows{list-style:none;margin:0;padding:0;display:grid;gap:14px}
+.pcg .pcg-rt-card .automation-step{background:transparent;border:0;border-top:1px solid var(--border);border-radius:0;padding:14px 0 0}
+
+/* Numbered intake sections and tables. */
+.pcg .pcg-table{overflow-x:auto;border:1px solid var(--border);border-radius:16px}
+.pcg .pcg-table table{width:100%;border-collapse:collapse}
+.pcg .pcg-table th{text-align:left;font-weight:600;font-size:13.5px;padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap;background:transparent;color:var(--foreground)}
+.pcg .pcg-table td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+.pcg .pcg-table tr:last-child td{border-bottom:0}
+.pcg .pcg-table td input,.pcg .pcg-table td select{min-height:38px}
+.pcg .pcg-num-input{width:110px}
+
+@media(max-width:640px){
+ .pcg .pcg-ph h1{font-size:24px}
+ .pcg .pcg-card{padding:16px}
+ .pcg .pcg-wi{padding:14px 16px}
+ .pcg .pcg-card-extra{padding:0 16px 14px}
+}
+
+/* Links styled as buttons keep readable text over the module link colour. */
+.pcg a.v9-button{text-decoration:none}
+.pcg a.v9-button-primary,.pcg a.v9-button-primary:visited,.pcg a.v9-button-primary:hover{color:var(--primary-foreground)}
+.pcg .pcg-link{border:0;background:none;padding:0;color:var(--primary);font-weight:600;cursor:pointer}
+.pcg .pcg-link:disabled{opacity:.5;cursor:not-allowed}
+.pcg .pcg-danger{color:var(--pcg-bad)}
+.pcg .pcg-check{display:flex;gap:8px;align-items:center;padding:6px 8px;border-radius:8px;font-weight:400;cursor:pointer}
+.pcg .pcg-check:hover{background:var(--muted)}
+.pcg .pcg-check input{width:16px;height:16px;min-height:0;accent-color:var(--primary)}
+
+/* Form editor: job grade multi-select (prototype GradeSelect), criteria tables, version chips. */
+.pcg .pcg-gradeselect{position:relative;max-width:520px}
+.pcg .pcg-gradeselect-button{width:100%;min-height:44px;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;padding:8px 12px;border:1px solid var(--input);border-radius:10px;background:var(--card);color:var(--foreground);cursor:pointer}
+.pcg .pcg-gradeselect-button>span:first-child{overflow-wrap:anywhere}
+.pcg .pcg-gradeselect-list{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:12;display:grid;gap:8px;padding:10px;background:var(--popover,var(--card));border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-pop)}
+.pcg .pcg-gradeselect-options{max-height:260px;overflow-y:auto;display:grid;gap:2px}
+.pcg .pcg-criteria td{vertical-align:middle}
+.pcg .pcg-criteria input[type=number]{width:90px}
+.pcg .pcg-criteria tr.pcg-guidance td{background:var(--muted)}
+.pcg .pcg-total{font-size:13px;color:var(--muted-foreground)}
+.pcg .pcg-total-bad{color:var(--pcg-bad);font-weight:600}
+.pcg .pcg-section-head{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:baseline;justify-content:space-between}
+/* On phones .probation stacks table cells as blocks; the theme's fixed td height (2.75rem) would then clip wrapped text. */
+@media (max-width:640px){:root .probation .pcg-table tbody td,:root .probation .pcg-table th{height:auto}}

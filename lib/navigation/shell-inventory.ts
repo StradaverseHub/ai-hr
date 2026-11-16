@@ -500,19 +500,37 @@ export const ADDITIONAL_ROWS: ChildItem[] = [
 /** Shared scoped lifecycle declaration owner. Metadata names existing fact gates, never new grants. */
 export type ScopedLifecycleNavigationItem = ChildItem & {
   module: 'probation' | 'contracts';
-  access: 'page' | 'configure' | 'configureOrIntake' | 'intake';
+  /**
+   * `admin`: Probation Access (app.probation_access_admin) for a viewer who does not configure Probation. Viewers who
+   * configure Probation reach Access inside Probation settings, as the prototype draws it (lane M3).
+   */
+  access: 'page' | 'configure' | 'configureOrIntake' | 'intake' | 'admin';
 };
 export const SCOPED_LIFECYCLE_NAVIGATION: readonly ScopedLifecycleNavigationItem[] = [
   {module:'probation',access:'page',href:'/lifecycle/probation',labelKey:'probationTracker',icon:Timer,exactHref:true,ownedSubpaths:['/lifecycle/probation']},
+  // ADR 2026-11-15-probation-shared-automation, decision 4: postings approved by the posting-approver group (page fact).
+  {module:'probation',access:'page',href:'/lifecycle/probation/postings',labelKey:'probationPostings',icon:Timer,exactHref:true,ownedSubpaths:['/lifecycle/probation/postings']},
   {module:'contracts',access:'page',href:'/lifecycle/contracts',labelKey:'contractManagement',icon:ScrollText,exactHref:true,ownedSubpaths:['/lifecycle/contracts']},
-  {module:'probation',access:'configure',href:'/lifecycle/probation/settings',labelKey:'probationSettings',icon:Timer},
-  {module:'probation',access:'configure',href:'/lifecycle/probation/forms',labelKey:'probationForms',icon:Timer},
-  {module:'probation',access:'configure',href:'/lifecycle/probation/routes',labelKey:'probationRoutes',icon:Timer},
-  {module:'probation',access:'configure',href:'/lifecycle/probation/workflows',labelKey:'probationWorkflows',icon:Timer},
-  {module:'probation',access:'configure',href:'/lifecycle/probation/templates',labelKey:'probationTemplates',icon:Timer},
-  {module:'probation',access:'configureOrIntake',href:'/lifecycle/probation/intake',labelKey:'probationIntake',icon:Timer},
+  // Handoff B1: Probation Confirmation › Configuration › Probation settings (with Access inside), Form editor, Intake and
+  // activation. The Access row stays for access administrators who do not configure Probation.
+  {module:'probation',access:'configure',href:'/lifecycle/probation/settings',labelKey:'probationSettings',icon:Timer,submenuKey:'sectionConfiguration'},
+  {module:'probation',access:'configure',href:'/lifecycle/probation/forms',labelKey:'probationForms',icon:Timer,submenuKey:'sectionConfiguration'},
+  // The Routes page retired (lane E): approval routing is set on each form version; /lifecycle/probation/routes redirects to Forms.
+  {module:'probation',access:'configureOrIntake',href:'/lifecycle/probation/intake',labelKey:'probationIntake',icon:Timer,submenuKey:'sectionConfiguration'},
+  {module:'probation',access:'admin',href:'/lifecycle/probation/access',labelKey:'probationAccess',icon:Timer,submenuKey:'sectionConfiguration',ownedSubpaths:['/lifecycle/probation/access']},
   {module:'contracts',access:'intake',href:'/lifecycle/contracts/intake',labelKey:'contractIntake',icon:ScrollText},
   {module:'contracts',access:'configure',href:'/lifecycle/contracts/settings',labelKey:'contractSettings',icon:ScrollText},
   {module:'contracts',access:'configure',href:'/lifecycle/contracts/workflows',labelKey:'contractWorkflows',icon:ScrollText},
   {module:'contracts',access:'configure',href:'/lifecycle/contracts/templates',labelKey:'contractTemplates',icon:ScrollText},
+];
+
+/**
+ * ADR 2026-11-15-probation-shared-automation, decision 1: the shared "HR Automation" builders. Probation's own Workflows
+ * and Templates rows moved here (their old pages keep their addresses). Shown when the viewer configures at least one
+ * module, from each module's existing configure fact (shell-resolver.ts); every page and save checks again.
+ */
+export const AUTOMATION_NAVIGATION: readonly ChildItem[] = [
+  {href:'/automation/workflows',labelKey:'automationWorkflows',icon:Share2,ownedSubpaths:['/automation/workflows']},
+  {href:'/automation/templates',labelKey:'automationTemplates',icon:Share2,ownedSubpaths:['/automation/templates']},
+  {href:'/automation/groups',labelKey:'automationGroups',icon:Share2,ownedSubpaths:['/automation/groups']},
 ];

@@ -53,7 +53,7 @@ describe('Home other assigned-decision metadata owners',()=>{
     await owner.db.execute(sql`GRANT SELECT(status) ON public.attendance_correction TO ai_hr_app`);
    }
   });
-  const inbox=await listPendingTasks(ctx,undefined,{attendance:true,claims:false,performance:false,rewards:false});
+  const inbox=await listPendingTasks(ctx,undefined,{attendance:true,claims:false,performance:false,rewards:false,probation:false});
   expect(inbox.filter(t=>t.kind==='attendance')).toHaveLength(1201);
  });
  it('counts all resignation headers, reads no reason or attachment, and follows the actual rejection',async()=>{

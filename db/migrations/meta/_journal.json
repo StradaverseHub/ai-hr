@@ -5979,6 +5979,195 @@
       "when": 1793330005396,
       "tag": "5696_information_correction_latest_saved",
       "breakpoints": true
+    },
+    {
+      "idx": 5140,
+      "version": "7",
+      "when": 1793330005440,
+      "tag": "5740_automation_shared_definitions",
+      "breakpoints": true
+    },
+    {
+      "idx": 5141,
+      "version": "7",
+      "when": 1793330005441,
+      "tag": "5741_personnel_postings",
+      "breakpoints": true
+    },
+    {
+      "idx": 5142,
+      "version": "7",
+      "when": 1793330005442,
+      "tag": "5742_probation_settings_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 5143,
+      "version": "7",
+      "when": 1793330005443,
+      "tag": "5743_automation_email_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 5144,
+      "version": "7",
+      "when": 1793330005444,
+      "tag": "5744_probation_case_at_activation",
+      "breakpoints": true
+    },
+    {
+      "idx": 5145,
+      "version": "7",
+      "when": 1793330005445,
+      "tag": "5745_probation_outcome_override_event",
+      "breakpoints": true
+    },
+    {
+      "idx": 5146,
+      "version": "7",
+      "when": 1793330005446,
+      "tag": "5746_probation_tracker_scale_and_extensions",
+      "breakpoints": true
+    },
+    {
+      "idx": 5147,
+      "version": "7",
+      "when": 1793330005447,
+      "tag": "5747_document_signing_review_routing",
+      "breakpoints": true
+    },
+    {
+      "idx": 5148,
+      "version": "7",
+      "when": 1793330005448,
+      "tag": "5748_automation_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 5149,
+      "version": "7",
+      "when": 1793330005449,
+      "tag": "5749_probation_delegation",
+      "breakpoints": true
+    },
+    {
+      "idx": 5150,
+      "version": "7",
+      "when": 1793330005450,
+      "tag": "5750_probation_tracker_plan_robustness",
+      "breakpoints": true
+    },
+    {
+      "idx": 5151,
+      "version": "7",
+      "when": 1793330005451,
+      "tag": "5751_probation_queues_and_form_routing",
+      "breakpoints": true
+    },
+    {
+      "idx": 5152,
+      "version": "7",
+      "when": 1793330005452,
+      "tag": "5752_probation_letter_routing",
+      "breakpoints": true
+    },
+    {
+      "idx": 5153,
+      "version": "7",
+      "when": 1793330005453,
+      "tag": "5753_probation_outcome_automation",
+      "breakpoints": true
+    },
+    {
+      "idx": 5154,
+      "version": "7",
+      "when": 1793330005454,
+      "tag": "5754_automation_email_delivery",
+      "breakpoints": true
+    },
+    {
+      "idx": 5155,
+      "version": "7",
+      "when": 1793330005455,
+      "tag": "5755_probation_routed_assignment",
+      "breakpoints": true
+    },
+    {
+      "idx": 5156,
+      "version": "7",
+      "when": 1793330005456,
+      "tag": "5756_probation_form_approver_choices",
+      "breakpoints": true
+    },
+    {
+      "idx": 5157,
+      "version": "7",
+      "when": 1793330005457,
+      "tag": "5757_probation_legacy_workflow_move",
+      "breakpoints": true
+    },
+    {
+      "idx": 5158,
+      "version": "7",
+      "when": 1793330005458,
+      "tag": "5758_probation_routed_overrides",
+      "breakpoints": true
+    },
+    {
+      "idx": 5159,
+      "version": "7",
+      "when": 1793330005459,
+      "tag": "5759_probation_employee_own_steps_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 5160,
+      "version": "7",
+      "when": 1793330005460,
+      "tag": "5760_probation_queue_kinds_and_pbp_tasks",
+      "breakpoints": true
+    },
+    {
+      "idx": 5161,
+      "version": "7",
+      "when": 1793330005461,
+      "tag": "5761_probation_automation_recipients_and_tracker_steps",
+      "breakpoints": true
+    },
+    {
+      "idx": 5162,
+      "version": "7",
+      "when": 1793330005462,
+      "tag": "5762_probation_form_import",
+      "breakpoints": true
+    },
+    {
+      "idx": 5163,
+      "version": "7",
+      "when": 1793330005463,
+      "tag": "5763_probation_access_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 5164,
+      "version": "7",
+      "when": 1793330005464,
+      "tag": "5764_probation_routed_holders",
+      "breakpoints": true
+    },
+    {
+      "idx": 5165,
+      "version": "7",
+      "when": 1793330005465,
+      "tag": "5765_probation_letter_signers",
+      "breakpoints": true
+    },
+    {
+      "idx": 5166,
+      "version": "7",
+      "when": 1793330005466,
+      "tag": "5766_probation_reshape_company_in_use",
+      "breakpoints": true
     }
   ]
 }

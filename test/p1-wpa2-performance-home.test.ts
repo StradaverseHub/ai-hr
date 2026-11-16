@@ -36,7 +36,7 @@ async function expectBundledPerformance(ctx: SessionContext) {
 }
 
 const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
-const ALL: InboxModules = { attendance: false, claims: false, performance: true, rewards: false };
+const ALL: InboxModules = { attendance: false, claims: false, performance: true, rewards: false, probation: false };
 const packKinds = new Set<string>(PACK_TASK_KINDS);
 const packItems = (rows: PendingTaskItem[]) => rows.filter((row) => packKinds.has(row.kind));
 type Hired = { employmentId: string; personId: string };

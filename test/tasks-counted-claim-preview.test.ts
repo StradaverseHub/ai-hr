@@ -17,7 +17,7 @@ it('keeps the global assigned-work scope and transports a counted Claims preview
  const items=Array.from({length:25},(_,i)=>({id:'claim-'+i,kind:'claim'}));
  state.preview.mockResolvedValue({items,total:500000,claimTotal:500000});
  const html=renderToStaticMarkup(await Page());
- expect(state.preview).toHaveBeenCalledWith(state.session,undefined,{attendance:false,claims:true,performance:false,rewards:false});
+ expect(state.preview).toHaveBeenCalledWith(state.session,undefined,{attendance:false,claims:true,performance:false,rewards:false,probation:true});
  expect(state.full).not.toHaveBeenCalled();expect(state.view).toHaveBeenCalledWith(expect.objectContaining({existing:items,existingTotal:500000,claimTotal:500000}));
  expect(html).toContain('data-preview-rows="25"');expect(html).toContain('data-task-total="500000"');
 });
