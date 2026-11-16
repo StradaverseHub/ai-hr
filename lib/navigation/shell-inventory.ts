@@ -494,7 +494,7 @@ export const ADDITIONAL_ROWS: ChildItem[] = [
     {href:'/me/tp3',labelKey:'myTp3',icon:Receipt},
     {href:'/me/ea',labelKey:'myEa',icon:Receipt,ownedSubpaths:['/me/ea']},
     {href:'/admin/claims/reimbursements',labelKey:'reimbursementsDue',icon:Receipt,adminOnly:true},
-    {href:'/reports',labelKey:'reports',icon:FileBarChart,adminOnly:true,exactHref:true},
+    {href:'/reports',labelKey:'reports',icon:FileBarChart,adminOnly:true,exactHref:true,ownedSubpaths:['/reports/employee-master','/reports/builder']},
   ];
 
 /** Shared scoped lifecycle declaration owner. Metadata names existing fact gates, never new grants. */

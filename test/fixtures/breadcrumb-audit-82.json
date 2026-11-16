@@ -1,0 +1,1267 @@
+[
+  {
+    "auditEntry": "/admin/settings/dashboard?section=library",
+    "pathname": "/admin/settings/dashboard",
+    "search": "section=library",
+    "expectedLinks": [],
+    "active": {
+      "href": "/admin/settings/dashboard",
+      "label": "My Home settings",
+      "section": "System Configuration",
+      "parent": "System Configuration",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/dashboard?section=content",
+    "pathname": "/admin/settings/dashboard",
+    "search": "section=content",
+    "expectedLinks": [],
+    "active": {
+      "href": "/admin/settings/dashboard",
+      "label": "My Home settings",
+      "section": "System Configuration",
+      "parent": "System Configuration",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/holidays/replacements?",
+    "pathname": "/admin/holidays/replacements",
+    "search": "",
+    "expectedLinks": [
+      "/admin/holidays"
+    ],
+    "active": {
+      "href": "/admin/holidays",
+      "label": "Holidays",
+      "section": "System Configuration",
+      "parent": "System Configuration",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/holidays/groups?",
+    "pathname": "/admin/holidays/groups",
+    "search": "",
+    "expectedLinks": [
+      "/admin/holidays"
+    ],
+    "active": {
+      "href": "/admin/holidays",
+      "label": "Holidays",
+      "section": "System Configuration",
+      "parent": "System Configuration",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/leave/entitlements?",
+    "pathname": "/admin/leave-config/types",
+    "search": "",
+    "expectedLinks": [
+      "/admin/leave-config/settings"
+    ],
+    "active": {
+      "href": "/admin/leave-config/settings",
+      "label": "Settings",
+      "section": "Ops",
+      "parent": "Leave",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/privacy/case-handlers?",
+    "pathname": "/admin/privacy/case-handlers",
+    "search": "",
+    "expectedLinks": [
+      "/admin/privacy"
+    ],
+    "active": {
+      "href": "/admin/privacy",
+      "label": "Data Privacy",
+      "section": "System Configuration",
+      "parent": "System Configuration",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/system-testing?tab=updates",
+    "pathname": "/admin/system-testing",
+    "search": "tab=updates",
+    "expectedLinks": [],
+    "active": {
+      "href": "/admin/system-testing",
+      "label": "System Testing",
+      "section": "System Configuration",
+      "parent": "System Configuration",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/system-testing/new?",
+    "pathname": "/admin/system-testing/new",
+    "search": "",
+    "expectedLinks": [
+      "/admin/system-testing"
+    ],
+    "active": {
+      "href": "/admin/system-testing",
+      "label": "System Testing",
+      "section": "System Configuration",
+      "parent": "System Configuration",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/system-testing?tab=library",
+    "pathname": "/admin/system-testing",
+    "search": "tab=library",
+    "expectedLinks": [],
+    "active": {
+      "href": "/admin/system-testing",
+      "label": "System Testing",
+      "section": "System Configuration",
+      "parent": "System Configuration",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/system-testing?tab=team",
+    "pathname": "/admin/system-testing",
+    "search": "tab=team",
+    "expectedLinks": [],
+    "active": {
+      "href": "/admin/system-testing",
+      "label": "System Testing",
+      "section": "System Configuration",
+      "parent": "System Configuration",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/system-testing/:id?",
+    "pathname": "/admin/system-testing/:id",
+    "search": "",
+    "expectedLinks": [
+      "/admin/system-testing"
+    ],
+    "active": {
+      "href": "/admin/system-testing",
+      "label": "System Testing",
+      "section": "System Configuration",
+      "parent": "System Configuration",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/reports/builder/new?dataset=master",
+    "pathname": "/reports/employee-master/new",
+    "search": "dataset=master",
+    "expectedLinks": [
+      "/reports",
+      "/reports/employee-master"
+    ],
+    "active": {
+      "href": "/reports/employee-master/new",
+      "label": "Details",
+      "section": null,
+      "parent": null,
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/reports/employee-master/new?starter=resigned",
+    "pathname": "/reports/employee-master/new",
+    "search": "starter=resigned",
+    "expectedLinks": [
+      "/reports",
+      "/reports/employee-master"
+    ],
+    "active": {
+      "href": "/reports/employee-master/new",
+      "label": "Details",
+      "section": null,
+      "parent": null,
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/reports/employee-master/new?starter=contractExpiry",
+    "pathname": "/reports/employee-master/new",
+    "search": "starter=contractExpiry",
+    "expectedLinks": [
+      "/reports",
+      "/reports/employee-master"
+    ],
+    "active": {
+      "href": "/reports/employee-master/new",
+      "label": "Details",
+      "section": null,
+      "parent": null,
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/payroll/transactions/view?",
+    "pathname": "/payroll/transaction-view",
+    "search": "",
+    "expectedLinks": [],
+    "active": {
+      "href": "/payroll/transaction-view",
+      "label": "Transaction View",
+      "section": "Ops",
+      "parent": "Payroll",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/payroll/transaction-view?tab=fixed",
+    "pathname": "/payroll/transaction-view",
+    "search": "tab=fixed",
+    "expectedLinks": [],
+    "active": {
+      "href": "/payroll/transaction-view",
+      "label": "Transaction View",
+      "section": "Ops",
+      "parent": "Payroll",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/payroll/transaction-view?tab=individual",
+    "pathname": "/payroll/transaction-view",
+    "search": "tab=individual",
+    "expectedLinks": [],
+    "active": {
+      "href": "/payroll/transaction-view",
+      "label": "Transaction View",
+      "section": "Ops",
+      "parent": "Payroll",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/payroll/transaction-view?tab=history",
+    "pathname": "/payroll/transaction-view",
+    "search": "tab=history",
+    "expectedLinks": [],
+    "active": {
+      "href": "/payroll/transaction-view",
+      "label": "Transaction View",
+      "section": "Ops",
+      "parent": "Payroll",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/payroll/transaction-view?tab=statutory",
+    "pathname": "/payroll/transaction-view",
+    "search": "tab=statutory",
+    "expectedLinks": [],
+    "active": {
+      "href": "/payroll/transaction-view",
+      "label": "Transaction View",
+      "section": "Ops",
+      "parent": "Payroll",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/payroll/transaction-view?tab=grid",
+    "pathname": "/payroll/transaction-view",
+    "search": "tab=grid",
+    "expectedLinks": [],
+    "active": {
+      "href": "/payroll/transaction-view",
+      "label": "Transaction View",
+      "section": "Ops",
+      "parent": "Payroll",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/payroll/transaction-view?tab=outstanding",
+    "pathname": "/payroll/transaction-view",
+    "search": "tab=outstanding",
+    "expectedLinks": [],
+    "active": {
+      "href": "/payroll/transaction-view",
+      "label": "Transaction View",
+      "section": "Ops",
+      "parent": "Payroll",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/payroll-config/:id/edit?",
+    "pathname": "/admin/payroll-config/:id/edit",
+    "search": "",
+    "expectedLinks": [
+      "/payroll/setup",
+      "/admin/payroll-config"
+    ],
+    "active": {
+      "href": "/admin/payroll-config/:id/edit",
+      "label": "Details",
+      "section": null,
+      "parent": null,
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/payroll/formula-builder/new?",
+    "pathname": "/payroll/formula-builder/new",
+    "search": "",
+    "expectedLinks": [
+      "/payroll/setup",
+      "/payroll/formula-builder"
+    ],
+    "active": {
+      "href": "/payroll",
+      "label": "Payroll Process",
+      "section": "Ops",
+      "parent": "Payroll",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/payroll/formula-builder/:id?view=1",
+    "pathname": "/payroll/formula-builder/:id",
+    "search": "view=1",
+    "expectedLinks": [
+      "/payroll/setup",
+      "/payroll/formula-builder"
+    ],
+    "active": {
+      "href": "/payroll",
+      "label": "Payroll Process",
+      "section": "Ops",
+      "parent": "Payroll",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/payroll/formula-builder/:id?",
+    "pathname": "/payroll/formula-builder/:id",
+    "search": "",
+    "expectedLinks": [
+      "/payroll/setup",
+      "/payroll/formula-builder"
+    ],
+    "active": {
+      "href": "/payroll",
+      "label": "Payroll Process",
+      "section": "Ops",
+      "parent": "Payroll",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/payroll/income-tax-recalculation/:id?",
+    "pathname": "/payroll/income-tax-recalculation/:id",
+    "search": "",
+    "expectedLinks": [
+      "/payroll/setup",
+      "/payroll/income-tax-recalculation"
+    ],
+    "active": {
+      "href": "/payroll",
+      "label": "Payroll Process",
+      "section": "Ops",
+      "parent": "Payroll",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/payroll/configuration/epf?",
+    "pathname": "/payroll/configuration/epf",
+    "search": "",
+    "expectedLinks": [
+      "/payroll/setup",
+      "/payroll/configuration"
+    ],
+    "active": {
+      "href": "/payroll",
+      "label": "Payroll Process",
+      "section": "Ops",
+      "parent": "Payroll",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/payroll/configuration/socso?",
+    "pathname": "/payroll/configuration/socso",
+    "search": "",
+    "expectedLinks": [
+      "/payroll/setup",
+      "/payroll/configuration"
+    ],
+    "active": {
+      "href": "/payroll",
+      "label": "Payroll Process",
+      "section": "Ops",
+      "parent": "Payroll",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/payroll/configuration/skbbk?",
+    "pathname": "/payroll/configuration/skbbk",
+    "search": "",
+    "expectedLinks": [
+      "/payroll/setup",
+      "/payroll/configuration"
+    ],
+    "active": {
+      "href": "/payroll",
+      "label": "Payroll Process",
+      "section": "Ops",
+      "parent": "Payroll",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/payroll/configuration/eis?",
+    "pathname": "/payroll/configuration/eis",
+    "search": "",
+    "expectedLinks": [
+      "/payroll/setup",
+      "/payroll/configuration"
+    ],
+    "active": {
+      "href": "/payroll",
+      "label": "Payroll Process",
+      "section": "Ops",
+      "parent": "Payroll",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/payroll/configuration/pcb?",
+    "pathname": "/payroll/configuration/pcb",
+    "search": "",
+    "expectedLinks": [
+      "/payroll/setup",
+      "/payroll/configuration"
+    ],
+    "active": {
+      "href": "/payroll",
+      "label": "Payroll Process",
+      "section": "Ops",
+      "parent": "Payroll",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/payroll/configuration/hrdf?",
+    "pathname": "/payroll/configuration/hrdf",
+    "search": "",
+    "expectedLinks": [
+      "/payroll/setup",
+      "/payroll/configuration"
+    ],
+    "active": {
+      "href": "/payroll",
+      "label": "Payroll Process",
+      "section": "Ops",
+      "parent": "Payroll",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/payroll/history-import/logs?",
+    "pathname": "/payroll/history-import/logs",
+    "search": "",
+    "expectedLinks": [
+      "/payroll/transactions",
+      "/payroll/history-import"
+    ],
+    "active": {
+      "href": "/payroll",
+      "label": "Payroll Process",
+      "section": "Ops",
+      "parent": "Payroll",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/payroll/transactions/individual/imports?",
+    "pathname": "/payroll/transactions/individual/imports",
+    "search": "",
+    "expectedLinks": [
+      "/payroll/transactions",
+      "/payroll/transactions/individual"
+    ],
+    "active": {
+      "href": "/payroll/transactions",
+      "label": "Transaction Entry",
+      "section": "Ops",
+      "parent": "Payroll",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/payroll/transactions/zakat/election?",
+    "pathname": "/payroll/transactions/zakat/election",
+    "search": "",
+    "expectedLinks": [
+      "/payroll/transactions"
+    ],
+    "active": {
+      "href": "/payroll/transactions",
+      "label": "Transaction Entry",
+      "section": "Ops",
+      "parent": "Payroll",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/loans/:id?",
+    "pathname": "/admin/loans/:id",
+    "search": "",
+    "expectedLinks": [
+      "/payroll/transactions",
+      "/admin/loans"
+    ],
+    "active": {
+      "href": "/admin/loans/:id",
+      "label": "Details",
+      "section": null,
+      "parent": null,
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/system-labels/profile-options?",
+    "pathname": "/admin/settings/system-labels/profile-options",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/system-labels"
+    ],
+    "active": {
+      "href": "/admin/settings/people",
+      "label": "Settings",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/movement/reasons?",
+    "pathname": "/admin/settings/movement/reasons",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/movement"
+    ],
+    "active": {
+      "href": "/admin/settings/people",
+      "label": "Settings",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/movement/types/new?",
+    "pathname": "/admin/settings/movement/types/new",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/movement"
+    ],
+    "active": {
+      "href": "/admin/settings/movement",
+      "label": "Event Types",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/movement/types/demotion?",
+    "pathname": "/admin/settings/movement/types/demotion",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/movement"
+    ],
+    "active": {
+      "href": "/admin/settings/movement",
+      "label": "Event Types",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/movement/types/increment?",
+    "pathname": "/admin/settings/movement/types/increment",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/movement"
+    ],
+    "active": {
+      "href": "/admin/settings/movement",
+      "label": "Event Types",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/movement/types/confirmation?",
+    "pathname": "/admin/settings/movement/types/confirmation",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/movement"
+    ],
+    "active": {
+      "href": "/admin/settings/movement",
+      "label": "Event Types",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/movement/types/probationExtension?",
+    "pathname": "/admin/settings/movement/types/probationExtension",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/movement"
+    ],
+    "active": {
+      "href": "/admin/settings/movement",
+      "label": "Event Types",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/movement/types/termination?",
+    "pathname": "/admin/settings/movement/types/termination",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/movement"
+    ],
+    "active": {
+      "href": "/admin/settings/movement",
+      "label": "Event Types",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/movement/types/blacklist?",
+    "pathname": "/admin/settings/movement/types/blacklist",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/movement"
+    ],
+    "active": {
+      "href": "/admin/settings/movement",
+      "label": "Event Types",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/movement/types/salaryAdjustment?",
+    "pathname": "/admin/settings/movement/types/salaryAdjustment",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/movement"
+    ],
+    "active": {
+      "href": "/admin/settings/movement",
+      "label": "Event Types",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/movement/types/joinDateChange?",
+    "pathname": "/admin/settings/movement/types/joinDateChange",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/movement"
+    ],
+    "active": {
+      "href": "/admin/settings/movement",
+      "label": "Event Types",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/movement/types/groupJoinDateCorrection?",
+    "pathname": "/admin/settings/movement/types/groupJoinDateCorrection",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/movement"
+    ],
+    "active": {
+      "href": "/admin/settings/movement",
+      "label": "Event Types",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/movement/types/historicalHire?",
+    "pathname": "/admin/settings/movement/types/historicalHire",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/movement"
+    ],
+    "active": {
+      "href": "/admin/settings/movement",
+      "label": "Event Types",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/movement/types/rehire?",
+    "pathname": "/admin/settings/movement/types/rehire",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/movement"
+    ],
+    "active": {
+      "href": "/admin/settings/movement",
+      "label": "Event Types",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/movement/types/renew_contract?",
+    "pathname": "/admin/settings/movement/types/renew_contract",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/movement"
+    ],
+    "active": {
+      "href": "/admin/settings/movement",
+      "label": "Event Types",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/movement/types/contract_termination?",
+    "pathname": "/admin/settings/movement/types/contract_termination",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/movement"
+    ],
+    "active": {
+      "href": "/admin/settings/movement",
+      "label": "Event Types",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/movement/types/contract_renewal?",
+    "pathname": "/admin/settings/movement/types/contract_renewal",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/movement"
+    ],
+    "active": {
+      "href": "/admin/settings/movement",
+      "label": "Event Types",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/hiring-defaults/:id?",
+    "pathname": "/admin/settings/hiring-defaults/:id",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/hiring-defaults"
+    ],
+    "active": {
+      "href": "/admin/settings/people",
+      "label": "Settings",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/profile-requests/rules?",
+    "pathname": "/admin/settings/profile-requests/rules",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/profile-requests"
+    ],
+    "active": {
+      "href": "/admin/settings/people",
+      "label": "Settings",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/leave-config/entitlement-tables?",
+    "pathname": "/admin/leave-config/entitlement-tables",
+    "search": "",
+    "expectedLinks": [
+      "/admin/leave-config/settings"
+    ],
+    "active": {
+      "href": "/admin/leave-config/settings",
+      "label": "Settings",
+      "section": "Ops",
+      "parent": "Leave",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/attendance/new?",
+    "pathname": "/admin/attendance/new",
+    "search": "",
+    "expectedLinks": [
+      "/admin/attendance/settings",
+      "/admin/attendance"
+    ],
+    "active": {
+      "href": "/admin/attendance/settings",
+      "label": "Settings",
+      "section": "Ops",
+      "parent": "Attendance",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/attendance/schedule/:id?section=general",
+    "pathname": "/admin/attendance/schedule/:id",
+    "search": "section=general",
+    "expectedLinks": [
+      "/admin/attendance/settings",
+      "/admin/attendance/schedule"
+    ],
+    "active": {
+      "href": "/admin/attendance/settings",
+      "label": "Settings",
+      "section": "Ops",
+      "parent": "Attendance",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/attendance/:id?",
+    "pathname": "/admin/attendance/:id",
+    "search": "",
+    "expectedLinks": [
+      "/admin/attendance/settings",
+      "/admin/attendance"
+    ],
+    "active": {
+      "href": "/admin/attendance/settings",
+      "label": "Settings",
+      "section": "Ops",
+      "parent": "Attendance",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/attendance/file-mappings/new?",
+    "pathname": "/admin/attendance/file-mappings/new",
+    "search": "",
+    "expectedLinks": [
+      "/admin/attendance/settings",
+      "/admin/attendance/file-mappings"
+    ],
+    "active": {
+      "href": "/admin/attendance/settings",
+      "label": "Settings",
+      "section": "Ops",
+      "parent": "Attendance",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/attendance/file-mappings/:id/edit?",
+    "pathname": "/admin/attendance/file-mappings/:id/edit",
+    "search": "",
+    "expectedLinks": [
+      "/admin/attendance/settings",
+      "/admin/attendance/file-mappings"
+    ],
+    "active": {
+      "href": "/admin/attendance/settings",
+      "label": "Settings",
+      "section": "Ops",
+      "parent": "Attendance",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/attendance/file-mappings/builtin?",
+    "pathname": "/admin/attendance/file-mappings/builtin",
+    "search": "",
+    "expectedLinks": [
+      "/admin/attendance/settings",
+      "/admin/attendance/file-mappings"
+    ],
+    "active": {
+      "href": "/admin/attendance/settings",
+      "label": "Settings",
+      "section": "Ops",
+      "parent": "Attendance",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/attendance/schedule/new?",
+    "pathname": "/admin/attendance/schedule/new",
+    "search": "",
+    "expectedLinks": [
+      "/admin/attendance/settings",
+      "/admin/attendance/schedule"
+    ],
+    "active": {
+      "href": "/admin/attendance/settings",
+      "label": "Settings",
+      "section": "Ops",
+      "parent": "Attendance",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/attendance-allowance/new?",
+    "pathname": "/admin/attendance-allowance/new",
+    "search": "",
+    "expectedLinks": [
+      "/admin/attendance/settings",
+      "/admin/attendance-allowance"
+    ],
+    "active": {
+      "href": "/admin/attendance/settings",
+      "label": "Settings",
+      "section": "Ops",
+      "parent": "Attendance",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/attendance-allowance/:id?",
+    "pathname": "/admin/attendance-allowance/:id",
+    "search": "",
+    "expectedLinks": [
+      "/admin/attendance/settings",
+      "/admin/attendance-allowance"
+    ],
+    "active": {
+      "href": "/admin/attendance/settings",
+      "label": "Settings",
+      "section": "Ops",
+      "parent": "Attendance",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/work-locations/clocking/new?",
+    "pathname": "/admin/work-locations/clocking/new",
+    "search": "",
+    "expectedLinks": [
+      "/admin/attendance/settings",
+      "/admin/work-locations/clocking"
+    ],
+    "active": {
+      "href": "/admin/attendance/settings",
+      "label": "Settings",
+      "section": "Ops",
+      "parent": "Attendance",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/holidays/groups/new?",
+    "pathname": "/admin/holidays/groups/new",
+    "search": "",
+    "expectedLinks": [
+      "/admin/holidays"
+    ],
+    "active": {
+      "href": "/admin/holidays",
+      "label": "Holidays",
+      "section": "System Configuration",
+      "parent": "System Configuration",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/holidays/groups/:id?",
+    "pathname": "/admin/holidays/groups/:id",
+    "search": "",
+    "expectedLinks": [
+      "/admin/holidays"
+    ],
+    "active": {
+      "href": "/admin/holidays",
+      "label": "Holidays",
+      "section": "System Configuration",
+      "parent": "System Configuration",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/privacy?",
+    "pathname": "/admin/privacy",
+    "search": "",
+    "expectedLinks": [],
+    "active": {
+      "href": "/admin/privacy",
+      "label": "Data Privacy",
+      "section": "System Configuration",
+      "parent": "System Configuration",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/payroll/formula-builder/evaluations/:id?",
+    "pathname": "/payroll/formula-builder/evaluations/:id",
+    "search": "",
+    "expectedLinks": [
+      "/payroll/setup",
+      "/payroll/formula-builder"
+    ],
+    "active": {
+      "href": "/payroll",
+      "label": "Payroll Process",
+      "section": "Ops",
+      "parent": "Payroll",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/payroll/history-import/logs/:id?",
+    "pathname": "/payroll/history-import/logs/:id",
+    "search": "",
+    "expectedLinks": [
+      "/payroll/transactions",
+      "/payroll/history-import",
+      "/payroll/history-import/logs"
+    ],
+    "active": {
+      "href": "/payroll",
+      "label": "Payroll Process",
+      "section": "Ops",
+      "parent": "Payroll",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/payroll/transactions/individual/imports/batches/:id?",
+    "pathname": "/payroll/transactions/individual/imports/batches/:id",
+    "search": "",
+    "expectedLinks": [
+      "/payroll/transactions",
+      "/payroll/transactions/individual",
+      "/payroll/transactions/individual/imports"
+    ],
+    "active": {
+      "href": "/payroll/transactions",
+      "label": "Transaction Entry",
+      "section": "Ops",
+      "parent": "Payroll",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/payroll/transactions/individual/imports/:id?",
+    "pathname": "/payroll/transactions/individual/imports/:id",
+    "search": "",
+    "expectedLinks": [
+      "/payroll/transactions",
+      "/payroll/transactions/individual",
+      "/payroll/transactions/individual/imports"
+    ],
+    "active": {
+      "href": "/payroll/transactions",
+      "label": "Transaction Entry",
+      "section": "Ops",
+      "parent": "Payroll",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/payroll/transactions/zakat?",
+    "pathname": "/payroll/transactions/zakat",
+    "search": "",
+    "expectedLinks": [
+      "/payroll/transactions"
+    ],
+    "active": {
+      "href": "/payroll/transactions",
+      "label": "Transaction Entry",
+      "section": "Ops",
+      "parent": "Payroll",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/movement/types/entityTransfer?",
+    "pathname": "/admin/settings/movement/types/entityTransfer",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/movement"
+    ],
+    "active": {
+      "href": "/admin/settings/movement",
+      "label": "Event Types",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/movement/types/promotion?",
+    "pathname": "/admin/settings/movement/types/promotion",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/movement"
+    ],
+    "active": {
+      "href": "/admin/settings/movement",
+      "label": "Event Types",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/movement/types/secondment?",
+    "pathname": "/admin/settings/movement/types/secondment",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/movement"
+    ],
+    "active": {
+      "href": "/admin/settings/movement",
+      "label": "Event Types",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/movement/types/actingPosition?",
+    "pathname": "/admin/settings/movement/types/actingPosition",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/movement"
+    ],
+    "active": {
+      "href": "/admin/settings/movement",
+      "label": "Event Types",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/movement/types/orgAssignmentChange?",
+    "pathname": "/admin/settings/movement/types/orgAssignmentChange",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/movement"
+    ],
+    "active": {
+      "href": "/admin/settings/movement",
+      "label": "Event Types",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/movement/types/reportingLineChange?",
+    "pathname": "/admin/settings/movement/types/reportingLineChange",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/movement"
+    ],
+    "active": {
+      "href": "/admin/settings/movement",
+      "label": "Event Types",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/movement/types/employmentTypeChange?",
+    "pathname": "/admin/settings/movement/types/employmentTypeChange",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/movement"
+    ],
+    "active": {
+      "href": "/admin/settings/movement",
+      "label": "Event Types",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  },
+  {
+    "auditEntry": "/admin/settings/movement/types/resignation?",
+    "pathname": "/admin/settings/movement/types/resignation",
+    "search": "",
+    "expectedLinks": [
+      "/admin/settings/people",
+      "/admin/settings/movement"
+    ],
+    "active": {
+      "href": "/admin/settings/movement",
+      "label": "Event Types",
+      "section": "Ops",
+      "parent": "People",
+      "parentHref": null
+    }
+  }
+]
