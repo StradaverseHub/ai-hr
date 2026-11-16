@@ -219,7 +219,7 @@ describe('AP-062 actual Own Leave discovery and privacy carriers',()=>{
  it('keeps native ordered bounded metadata equivalent across every role and group/company scopes at group scale',async()=>{
   const who=await subject();
   await owner.db.insert(schema.company).values(Array.from({length:69},(_,i)=>({tenantId:base.tenantId,legalName:'Fictional index group '+i})));
-  const people=Array.from({length:1000},()=>({id:randomUUID(),tenantId:base.tenantId,fullName:'Fictional unrelated index person'}));
+  const people=Array.from({length:1000},()=>({id:randomUUID(),tenantId:base.tenantId,fullName:'Fictional unrelated index person',primaryEmail:randomUUID()+'@fixture.test'}));
   await owner.db.insert(schema.person).values(people);
   await owner.db.insert(schema.employment).values(people.map(p=>({tenantId:base.tenantId,personId:p.id,companyId:base.companyId,hiredOn:'2020-01-01'})));
   const now=Date.now(),expected=[];

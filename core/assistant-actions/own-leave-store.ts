@@ -4,6 +4,7 @@ import {assertHumanReviewedActionTier} from '../../lib/ai/agent-action-tier-guar
 import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 import {isModuleEnabled} from '../entitlements';
+import {TENANT_STATUS_GOOD_STANDING} from '../entitlement-types';
 import {ownLeaveHumanIntentText} from '../../lib/assistant-actions/own-leave-human-intent';
 /** UNRELEASED review custody and human-confirmation command. The human browser route calls it; no model tool does.
  * Relevant source writers and security/concurrency/retention verification must be complete before exposure.
@@ -284,6 +285,9 @@ export async function confirmOwnLeaveReview(supplied: SessionContext, confirmati
 export async function listOwnLeaveReviewsTx(tx:Tx,supplied:SessionContext):Promise<z.infer<typeof OwnLeaveReviewIndexResult>>{
   const ctx=captureContext(supplied);
   try{
+    // The old read-write-only SQL carrier implicitly refused suspension. Preserve that gate explicitly.
+    const status=ctx.entitlements?.tenantStatus;
+    if(status!=null&&!TENANT_STATUS_GOOD_STANDING.has(status))throw new OwnLeaveContentUnavailable();
     // This owner is metadata-only. Enforce the shared principal carrier for every caller.
     await tx.execute(sql`set transaction read only`);
     await boundNativeOutcomeTransactionTx(tx);

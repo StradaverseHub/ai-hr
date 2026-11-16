@@ -40,7 +40,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { applicationDatabaseBudget } from '../db/capacity';
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
-import { pageState, type PageQuery } from '../lib/pagination';
+import { pageState, parsePageQuery, type PageQuery, type PageState } from '../lib/pagination';
 import { foldEmployeeCode } from '../lib/employee-search';
 import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withPayrollTenant` — all 38 exported entry
@@ -11238,6 +11238,47 @@ export function listRemovableEmployees(ctx: SessionContext, p: { batchId: string
   });
 }
 
+
+/** Native bounded selection population. Count/filter/page precede money, department and later-month hydration.
+ * `runTotal` is deliberately independent of search: whole-run removal must never become a filtered-page test. */
+export function payrollEmployeeSelectionPage(ctx:SessionContext,p:{batchId:string;kind:'remove'|'reprocess';page:PageQuery;search?:string}) {
+ const page=parsePageQuery({page:String(p.page.page),size:String(p.page.size)});
+ return withTenant(ctx,async tx=>{
+  const needle=(p.search??'').trim().toLowerCase(),folded=foldEmployeeCode(p.search??'');
+  const matched=needle===''?sql`true`:sql`position(${needle} in lower(v.name))>0
+   or position(${needle} in lower(coalesce(v."employeeCode",'')))>0
+   or (${p.kind==='reprocess'} and ${folded}<>'' and position(${folded} in regexp_replace(lower(coalesce(v."employeeCode",'')),'[[:space:]._-]','','g'))>0)`;
+  const entries=await tx.execute<{runTotal:number;total:number;id:string|null;employmentId:string|null;name:string|null;employeeCode:string|null;gross:string|null;net:string|null;version:number|null;department:string|null;laterPeriods:string[]}>(sql`
+   with visible as materialized (
+    select ${payslip.id} as id,${payslip.employmentId} as "employmentId",${person.fullName} as name,${employment.employeeCode} as "employeeCode"
+    from ${payslip} join ${employment} on ${employment.id}=${payslip.employmentId}
+     join ${person} on ${person.id}=${employment.personId} where ${payslip.batchId}=${p.batchId}::uuid
+   ), matched as materialized (select v.*,(${matched}) as matches from visible v),
+   totals as (select count(*)::int as "runTotal",count(*) filter(where matches)::int as total from matched),
+   selected_page as (select * from matched where matches order by name,id limit ${page.limit} offset ${Math.min(page.offset,Number.MAX_SAFE_INTEGER)})
+   select totals.*,v.id,v."employmentId",v.name,v."employeeCode",d.gross_pay as gross,d.net_pay as net,d.version,
+    ${p.kind==='remove'?sql`(select dept.name from ${assignment} a join ${department} dept on dept.id=a.department_id
+     where a.employment_id=v."employmentId" and a.superseded_at is null order by a.valid_from desc,a.recorded_at desc limit 1)`:sql`null::text`} as department,
+    ${p.kind==='remove'?sql`array(select distinct b.pay_period from ${payslip} later join ${payrollBatch} b on b.id=later.batch_id
+     where later.employment_id=v."employmentId" and b.pay_period>(select pay_period from ${payrollBatch} where id=${p.batchId}::uuid)
+      and b.status in ('processed','closed') order by b.pay_period)`:sql`'{}'::text[]`} as "laterPeriods"
+   from totals left join selected_page v on true left join ${payslip} d on d.id=v.id order by v.name,v.id`);
+  const rows=entries.flatMap(row=>row.id===null||row.employmentId===null||row.name===null||row.gross===null||row.net===null?[]:[{
+   id:row.id,employmentId:row.employmentId,name:row.name,employeeCode:row.employeeCode,gross:row.gross,net:row.net,
+   version:row.version??1,department:row.department,laterPeriods:row.laterPeriods,
+  }]);
+  return {rows,state:pageState(page,entries[0].total,rows.length),runTotal:entries[0].runTotal};
+ });
+}
+
+/** Result-link identities for the explicitly recorded job selection, without loading discarded money detail. */
+export function payrollReprocessResultIdentities(ctx:SessionContext,batchId:string,employmentIds:readonly string[]){
+ if(employmentIds.length===0)return Promise.resolve([]);
+ return withTenant(ctx,tx=>tx.select({id:payslip.id,employmentId:payslip.employmentId,version:payslip.version}).from(payslip)
+  .innerJoin(employment,eq(employment.id,payslip.employmentId)).innerJoin(person,eq(person.id,employment.personId))
+  .where(and(eq(payslip.batchId,batchId),inArray(payslip.employmentId,[...employmentIds]))));
+}
+
 /**
  * Remove the selected employees' calculated results from a PROCESSED run, leaving the run processed and
  * every other payslip physically untouched.
@@ -12298,17 +12339,28 @@ export function listPayslipLessEligible(
   return withTenant(ctx, (tx) => listPayslipLessEligibleTx(tx, ctx, p));
 }
 
+/** Same eligibility and native readiness owner, evaluated only after SQL count/filter/page. */
+export function payslipLessEligiblePage(ctx:SessionContext,p:{batchId:string;page:PageQuery;search?:string}){
+ return withTenant(ctx,tx=>listPayslipLessEligibleTx(tx,ctx,{batchId:p.batchId},{page:p.page,search:p.search}));
+}
+
 /**
  * cdb1c6ca — the same read inside the caller's transaction, so Close can ask it while it holds the run's
  * locks (a nested `withTenant` opens a second connection that never joins them — db/client.ts). The body
  * is unchanged; only who opens the transaction moved.
  */
+function listPayslipLessEligibleTx(tx:Tx,ctx:SessionContext,p:{batchId:string}):Promise<PayslipLessEligibleRow[]>;
+function listPayslipLessEligibleTx(tx:Tx,ctx:SessionContext,p:{batchId:string},paging:{page:PageQuery;search?:string}):Promise<{rows:PayslipLessEligibleRow[];state:PageState;runTotal:number}>;
 function listPayslipLessEligibleTx(
   tx: Tx,
   ctx: SessionContext,
   p: { batchId: string },
-): Promise<PayslipLessEligibleRow[]> {
+  paging?:{page:PageQuery;search?:string},
+): Promise<PayslipLessEligibleRow[]|{rows:PayslipLessEligibleRow[];state:PageState;runTotal:number}> {
   return (async () => {
+    const page=paging?parsePageQuery({page:String(paging.page.page),size:String(paging.page.size)}):null;
+    let total=0,runTotal=0;
+    const result=(rows:PayslipLessEligibleRow[])=>page?{rows,state:pageState(page,total,rows.length),runTotal}:rows;
     const [batch] = await tx
       .select({id:payrollBatch.id,runType:payrollBatch.runType,payrollCycleId:payrollBatch.payrollCycleId,
         companyId: payrollBatch.companyId,
@@ -12321,13 +12373,13 @@ function listPayslipLessEligibleTx(
       .limit(1);
     // A draft has no payslips at all, so "everyone eligible with no payslip" would be the whole company —
     // a true answer to a question nobody asked. This read exists for a run that has already been processed.
-    if (!batch || batch.status !== 'processed') return [];
+    if (!batch || batch.status !== 'processed') return result([]);
 
     const [y, m] = batch.payPeriod.split('-').map(Number);
     const periodStart = `${batch.payPeriod}-01`;
     const periodEnd = `${batch.payPeriod}-${String(daysInMonth(y, m)).padStart(2, '0')}`;
 
-    const rows = await tx
+    const population = tx
       .select({
         employmentId: employment.id,
         name: person.fullName,
@@ -12348,8 +12400,22 @@ function listPayslipLessEligibleTx(
           sql`not exists (select 1 from ${payslip} where ${payslip.batchId} = ${p.batchId} and ${payslip.employmentId} = ${employment.id})`,
         ),
       )
-      .orderBy(desc(employment.createdAt), person.fullName);
-    if (rows.length === 0) return [];
+      ;
+    let rows:Awaited<typeof population>;
+    if(page){
+      const eligible=tx.$with('eligible_selection').as(population);
+      const raw=(paging?.search??'').trim().toLowerCase(),folded=foldEmployeeCode(paging?.search??'');
+      const matches=raw===''?sql`true`:sql`position(${raw} in lower(${eligible.name}))>0
+       or position(${raw} in lower(coalesce(${eligible.employeeCode},'')))>0
+       or (${folded}<>'' and position(${folded} in regexp_replace(lower(coalesce(${eligible.employeeCode},'')),'[[:space:]._-]','','g'))>0)`;
+      const counts=tx.select({total:sql<number>`count(*) filter(where ${matches})::int`.as('total'),runTotal:sql<number>`count(*)::int`.as('run_total')}).from(eligible).as('eligible_count');
+      const members=tx.select().from(eligible).where(matches).orderBy(desc(eligible.recordCreatedAt),eligible.name,eligible.employmentId)
+       .limit(page.limit).offset(Math.min(page.offset,Number.MAX_SAFE_INTEGER)).as('eligible_page');
+      const entries=await tx.with(eligible).select({total:counts.total,runTotal:counts.runTotal,row:{employmentId:members.employmentId,name:members.name,employeeCode:members.employeeCode,hiredOn:members.hiredOn,recordCreatedAt:members.recordCreatedAt}})
+       .from(counts).leftJoin(members,sql`true`).orderBy(desc(members.recordCreatedAt),members.name,members.employmentId);
+      total=entries[0].total;runTotal=entries[0].runTotal;rows=entries.flatMap(e=>e.row?.employmentId?[e.row]:[]);
+    }else rows=await population.orderBy(desc(employment.createdAt),person.fullName,employment.id);
+    if (rows.length === 0) return result([]);
 
     const ids = rows.map((r) => r.employmentId);
     const checks = await preProcessChecksTx(
@@ -12389,7 +12455,7 @@ function listPayslipLessEligibleTx(
     const { employmentIds: scopeIds } = await resolveBatchScopeFilter(tx, (batch.scope ?? null) as BatchScope | null);
     const inScope = scopeIds ? new Set(scopeIds) : null;
 
-    return rows.map((r) => ({
+    return result(rows.map((r) => ({
       employmentId: r.employmentId,
       name: r.name,
       employeeCode: r.employeeCode,
@@ -12398,7 +12464,7 @@ function listPayslipLessEligibleTx(
       outsideScope: inScope ? !inScope.has(r.employmentId) : false,
       blockers: blockerBy.get(r.employmentId) ?? [],
       warnings: warningBy.get(r.employmentId) ?? [],
-    }));
+    })));
   })();
 }
 

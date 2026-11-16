@@ -9,6 +9,9 @@ import { matchesEmployeeSearch } from '@/lib/employee-search';
 import { formatMoney } from '@/lib/money';
 import { withPayrollFrom } from '@/lib/return-to';
 import type { NothingPayableSkipKind } from '@/core/payroll-view';
+import {ClientPager} from '@/components/client-pager';
+import type {PageState} from '@/lib/pagination';
+import {PayrollSelectionSearch} from '../../selection-search';
 import { reprocessSelectedAction } from '../../actions';
 
 export type ReprocessCandidate = {
@@ -96,7 +99,9 @@ export function ReprocessForm({
   preselectedIds,
   currency,
   from,
+  paging,
 }: {
+  paging?:{existing:PageState;additions:PageState;runTotal:number;existingTotal:number;search:string};
   batchId: string;
   employees: ReprocessCandidate[];
   /**
@@ -137,15 +142,12 @@ export function ReprocessForm({
   const pendingAdditions = additions.filter((c) => !c.skip);
   const skippedAdditions = additions.filter((c) => !!c.skip);
   const addable = pendingAdditions.filter((c) => c.blockers.length === 0);
-  const [selected, setSelected] = useState<Set<string>>(
-    () =>
-      new Set([
-        ...(preselectedIds ?? []),
-        // Pre-ticked: everyone eligible whose record is ready and whom the run's chosen list already
-        // covers. See the prop's note for why the other two cases deliberately arrive unticked.
-        ...addable.filter((c) => !c.outsideScope).map((c) => c.employmentId),
-      ]),
-  );
+  type Selected=ReprocessCandidate|ReprocessAddCandidate;
+  // Page-local defaults are intentional (owner17Nov); navigation retains the exact already-picked records.
+  const [selected,setSelected]=useState<Map<string,Selected>>(()=>new Map([
+   ...employees.filter(e=>(preselectedIds??[]).includes(e.employmentId)).map(e=>[e.employmentId,e] as [string,Selected]),
+   ...addable.filter(c=>!c.outsideScope).map(c=>[c.employmentId,c] as [string,Selected]),
+  ]));
   /**
    * Idempotency token, minted ONCE PER MOUNT and posted with the form, so a double-clicked or retried
    * submit reuses the same `payroll_reprocess_job` row instead of enqueuing a second run.
@@ -158,9 +160,11 @@ export function ReprocessForm({
   const [idempotencyKey] = useState(() =>
     typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${batchId}-${Date.now()}`,
   );
-  const total = employees.length + additions.length;
-  const pickedExisting = employees.filter((e) => selected.has(e.employmentId));
-  const pickedNew = additions.filter((e) => selected.has(e.employmentId));
+  const total = paging?.runTotal ?? employees.length + additions.length;
+  const currentById=new Map<string,Selected>([...employees,...additions].map(e=>[e.employmentId,e]));
+  const pickedRows=[...selected.values()].map(e=>currentById.get(e.employmentId)??e);
+  const pickedExisting=pickedRows.filter((e):e is ReprocessCandidate=>'reprocessedTimes' in e);
+  const pickedNew=pickedRows.filter((e):e is ReprocessAddCandidate=>'hiredOn' in e);
   const picked = [...pickedNew, ...pickedExisting];
 
   /**
@@ -182,42 +186,23 @@ export function ReprocessForm({
   // pre-mangling the query would silently defeat the fold it exists for.
   const needle = q.trim();
   const visibleEmployees = useMemo(
-    () => (needle === '' ? employees : employees.filter((e) => matchesEmployeeSearch(e, needle))),
-    [employees, needle],
+    () => (paging || needle === '' ? employees : employees.filter((e) => matchesEmployeeSearch(e, needle))),
+    [employees, needle,paging],
   );
   const visibleAdditions = useMemo(
-    () => (needle === '' ? additions : additions.filter((e) => matchesEmployeeSearch(e, needle))),
+    () => (paging || needle === '' ? additions : additions.filter((e) => matchesEmployeeSearch(e, needle))),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `additions` is derived from `newCandidates`
-    [newCandidates, needle],
+    [newCandidates, needle,paging],
   );
-  /**
-   * THE TICKED PEOPLE THE SEARCH IS CURRENTLY HIDING — and the reason the hidden inputs below exist.
-   *
-   * The table bodies render the VISIBLE rows, so a ticked row that stops matching the search box is
-   * UNMOUNTED and its `<input type="checkbox" name="employmentIds">` leaves the DOM with it. Everything
-   * else on this screen — the count, the review list, the button label — is computed from `selected` over
-   * the UNFILTERED lists, so without this the operator would be told "Reprocess 3 employee(s)", shown
-   * three names in the review, and ONE employment id would be posted. The set that is reviewed and the set
-   * that is submitted must be the same set. This is the exact defect 9066bd6c found on the Remove screen;
-   * it is a contract between the review block and the form, which is why it is pinned by a FormData test.
-   *
-   * Hidden inputs rather than clearing ticks on search, for the same reason as there: the review block
-   * below already NAMES every ticked person regardless of the search, so the full selection is on screen
-   * and honoured, whereas dropping ticks as the operator types silently discards work they can see listed.
-   */
   const visiblePending = visibleAdditions.filter((c) => !c.skip);
   const visibleSkipped = visibleAdditions.filter((c) => !!c.skip);
-  const visibleIds = useMemo(
-    () => new Set([...visibleEmployees, ...visibleAdditions].map((e) => e.employmentId)),
-    [visibleEmployees, visibleAdditions],
-  );
-  const pickedOffscreen = picked.filter((e) => !visibleIds.has(e.employmentId));
+  // One hidden input per reviewed row, independent of paging, filtering or a now-disabled checkbox.
 
   const toggle = (id: string) =>
     setSelected((prev) => {
-      const next = new Set(prev);
+      const next = new Map(prev);
       if (next.has(id)) next.delete(id);
-      else next.add(id);
+      else {const row=currentById.get(id);if(row)next.set(id,row);}
       return next;
     });
 
@@ -280,7 +265,6 @@ export function ReprocessForm({
           <label className={`flex items-center gap-2 ${blocked ? 'opacity-60' : ''}`}>
             <input
               type="checkbox"
-              name="employmentIds"
               value={c.employmentId}
               checked={on}
               disabled={blocked}
@@ -326,18 +310,17 @@ export function ReprocessForm({
       {/* 65e2d5de — Search Employee, at the top of the screen where the request put it. It filters the
           rows only; it never changes the selection — and, per `blockImplicitSubmit` above, Enter in it
           filters and nothing else. It cannot reach the submit button. */}
-      <input
-        type="search"
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder={t('reprocessSearchPlaceholder')}
-        className="w-full max-w-xs rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring dark:bg-input/30"
-      />
+      {paging?<PayrollSelectionSearch query={paging.search} placeholder={t('reprocessSearchPlaceholder')}/>:<input
+        type="search" value={q} onChange={e=>setQ(e.target.value)} placeholder={t('reprocessSearchPlaceholder')}
+        className="w-full max-w-xs rounded-lg border border-border bg-background px-3 py-1.5 text-sm"/>}
+      {paging&&<>
+       <p className="text-xs text-muted-foreground">{t('reprocessPageDefaultsNote')}</p>
+       <ClientPager state={paging.additions} paramNames={{page:'newPage',size:'newSize'}} note={t('reprocessPageGroupNote')} rememberAs="payroll-reprocess-new"/>
+      </>}
 
-      {/* See `pickedOffscreen`: the checkbox of a ticked row the search has filtered away is no longer in
-          the DOM, so it carries its id here instead. Disjoint from the mounted checkboxes by construction
-          (these are exactly the picked ids NOT visible), so nothing is posted twice. */}
-      {pickedOffscreen.map((e) => (
+
+      {/* The complete reviewed selection is submitted exactly once. */}
+      {picked.map((e) => (
         <input key={e.employmentId} type="hidden" name="employmentIds" value={e.employmentId} />
       ))}
 
@@ -362,7 +345,8 @@ export function ReprocessForm({
           this is a completed outcome, not a to-do: neutral colours, unticked, outside the pending count,
           with the run page's own reason sentence. Ticking one by hand still tries them again. */}
       {skippedAdditions.length > 0 && (
-        <div className="overflow-x-auto rounded-xl border border-border">
+        {paging&&<ClientPager state={paging.existing} note={t('selectionPagingNote')} rememberAs="payroll-reprocess-existing"/>}
+      <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full min-w-[42rem] text-sm">
             <caption className="bg-muted px-3 py-2 text-left text-xs font-semibold text-foreground">
               {t('reprocessGroupSkippedTitle', { n: skippedAdditions.length })}
@@ -391,17 +375,17 @@ export function ReprocessForm({
                       search that is narrower than the word "all" — deliberately, and matching
                       remove-form.tsx. It cannot diverge from what the operator is told: the count, the
                       review list and the button label all move with it, and every id it leaves selected is
-                      still submitted (see `pickedOffscreen`). With no search it is exactly what it was. */}
+                      still submitted (the complete hidden selection below). With no search it is exactly what it was. */}
                   <button
                     type="button"
-                    onClick={() => setSelected(new Set(visibleEmployees.map((e) => e.employmentId)))}
+                    onClick={() => setSelected(new Map(visibleEmployees.map((e) => [e.employmentId,e])))}
                     className="font-medium normal-case tracking-normal text-primary hover:underline"
                   >
                     {t('reprocessSelectAll')}
                   </button>
                   <button
                     type="button"
-                    onClick={() => setSelected(new Set())}
+                    onClick={() => setSelected(new Map())}
                     className="font-medium normal-case tracking-normal text-primary hover:underline"
                   >
                     {t('reprocessClear')}
@@ -426,7 +410,6 @@ export function ReprocessForm({
                     <label className="flex items-center gap-2">
                       <input
                         type="checkbox"
-                        name="employmentIds"
                         value={e.employmentId}
                         checked={on}
                         onChange={() => toggle(e.employmentId)}
@@ -483,7 +466,7 @@ export function ReprocessForm({
           <p className="mt-1.5 text-xs text-muted-foreground">
             {/* "The other N payslips are not touched" counts PAYSLIPS, so it is the unpicked people who
                 already have one — an addition has no payslip to leave alone. */}
-            {t('reprocessReviewNote', { n: employees.length - pickedExisting.length })}
+            {t('reprocessReviewNote', { n: (paging?.existingTotal ?? employees.length) - pickedExisting.length })}
           </p>
           {pickedNew.length > 0 && (
             <p className="mt-1 text-xs text-muted-foreground">

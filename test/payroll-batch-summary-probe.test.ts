@@ -6,7 +6,7 @@ import {afterAll,beforeAll,expect,it,vi} from 'vitest';
 import {and,eq,sql} from 'drizzle-orm';
 import * as s from '../db/schema';
 import {lockPayrollHistoryWriteTx} from '../core/payroll-history-lock';
-import {batchDetail,batchHeader,batchSummary,createBatch,generatePayslips,listBatchRecalcPayslipIdentities,payrollRunRegisterPage} from '../core/payroll';
+import {batchDetail,batchHeader,batchSummary,payrollEmployeeSelectionPage,payslipLessEligiblePage,listPayslipLessEligible,listRemovableEmployees,createBatch,generatePayslips,listBatchRecalcPayslipIdentities,payrollRunRegisterPage} from '../core/payroll';
 import {GET as exportRun} from '../app/payroll/[batchId]/export/route';
 import {rowsForRun,transactionDetailReport} from '../app/payroll/[batchId]/transaction-detail-report';
 import {listPayrollRegisterAcross} from '../core/payroll-view';
@@ -66,6 +66,16 @@ it('reads the exact effective header and visible slip count without exporting di
   const outcome=async(read:()=>Promise<unknown>)=>{try{return{value:await read()};}catch(e){return{error:String(e)};}};
   const old=await outcome(async()=>{const d=await batchDetail(who,batchId);return d?{batch:d.batch,slipCount:d.slips.length}:null;});
   expect(await outcome(()=>batchSummary(who,batchId)),`${role}:${companyId??'all'}`).toEqual(old);
+  const removed=await outcome(()=>listRemovableEmployees(who,{batchId}));
+  const paged=await outcome(()=>payrollEmployeeSelectionPage(who,{batchId,kind:'remove',page:parsePageQuery()}));
+  if('error'in removed)expect(paged).toEqual(removed);
+  else{
+   const rows=removed.value as Awaited<ReturnType<typeof listRemovableEmployees>>;
+   const page=(paged as {value:Awaited<ReturnType<typeof payrollEmployeeSelectionPage>>}).value;
+   expect(page.runTotal).toBe(rows.length);expect(page.state.total).toBe(rows.length);
+   expect(new Set(page.rows.map(row=>row.employmentId))).toEqual(new Set(rows.slice(0,25).map(row=>row.employmentId)));
+  }
+
  }
  const exact=await batchDetail(root,batchId);expect(exact?.slips.length).toBe(1000);expect(exact).not.toBeNull();
  const list=exact!.slips;
@@ -82,6 +92,21 @@ it('reads the exact effective header and visible slip count without exporting di
   const page=parsePageQuery(raw);
   expect(await payrollRunRegisterPage(root,batchId,page)).toEqual({batch:exact!.batch,closeCycleName:cycle.name,runPayslipCount:registerRows.length,slipPage:paginateRows(registerRows,page)});
  }
+ const removable=await listRemovableEmployees(root,{batchId}),removeBy=new Map(removable.map(row=>[row.employmentId,row]));
+ for(const raw of [{},{page:'1',size:'50'},{page:'99',size:'200'},{page:String(Number.MAX_SAFE_INTEGER),size:'200'},{size:'all'}])for(const kind of ['remove','reprocess'] as const){
+  const query=parsePageQuery(raw),actual=await payrollEmployeeSelectionPage(root,{batchId,kind,page:query});
+  const expected=paginateRows(registerRows,query);
+  expect(actual.state).toEqual(expected.state);expect(actual.runTotal).toBe(1000);
+  expect(actual.rows.map(row=>({id:row.id,employmentId:row.employmentId,gross:row.gross,net:row.net,version:row.version})))
+   .toEqual(expected.rows.map(row=>({id:row.id,employmentId:row.employmentId,gross:row.gross,net:row.net,version:row.version})));
+  if(kind==='remove')expect(actual.rows.map(({id:_id,version:_v,...row})=>row)).toEqual(expected.rows.map(row=>removeBy.get(row.employmentId)));
+ }
+ for(const q of ['Fictional duplicate','not present','%','_']){
+  const actual=await payrollEmployeeSelectionPage(root,{batchId,kind:'reprocess',page:parsePageQuery(),search:q});
+  const expected=registerRows.filter(row=>row.name.toLowerCase().includes(q.toLowerCase())||(row.employeeCode??'').toLowerCase().includes(q.toLowerCase()));
+  expect(actual.state.total).toBe(expected.length);expect(actual.rows.map(row=>row.id)).toEqual(expected.slice(0,25).map(row=>row.id));expect(actual.runTotal).toBe(1000);
+ }
+ expect(Buffer.byteLength(JSON.stringify((await payrollEmployeeSelectionPage(root,{batchId,kind:'reprocess',page:parsePageQuery()})).rows))).toBeLessThan(Buffer.byteLength(JSON.stringify(exact))/10);
  const firstPage=registerRows.slice(0,25),offPage=registerRows.at(-1)!;
  expect(firstPage.some(row=>row.employmentId===offPage.employmentId)).toBe(false);
  const bannerIds=[offPage.employmentId,extra[0].employmentId,firstPage[0].employmentId.toUpperCase(),'not-a-uuid'];
@@ -121,6 +146,7 @@ it('reads the exact effective header and visible slip count without exporting di
  // use the snapshot after the holder commits, including the joined count and the displayed page.
  let waitingRead: ReturnType<typeof payrollRunRegisterPage> | undefined;
  let waitingSummary: ReturnType<typeof batchSummary> | undefined;
+ let waitingSelection: ReturnType<typeof payrollEmployeeSelectionPage> | undefined;
  try {
   await owner.db.transaction(async tx => {
    await lockPayrollHistoryWriteTx(tx, b.tenantId);
@@ -130,6 +156,8 @@ it('reads the exact effective header and visible slip count without exporting di
    }).where(eq(s.employment.id, firstPage[0].employmentId));
    waitingRead = payrollRunRegisterPage(root, batchId, parsePageQuery());
    waitingSummary = batchSummary(root,batchId);
+   waitingSelection = payrollEmployeeSelectionPage(root,{batchId,kind:'remove',page:parsePageQuery()});
+   void waitingSelection.catch(() => undefined);
    void waitingSummary.catch(() => undefined);
    void waitingRead.catch(() => undefined);
    const deadline = performance.now() + 7_000;
@@ -146,11 +174,29 @@ it('reads the exact effective header and visible slip count without exporting di
   });
   expect((await waitingRead)?.slipPage).toEqual(paginateRows(registerRows.slice(1), parsePageQuery()));
   expect((await waitingSummary)?.slipCount).toBe(registerRows.length-1);
+  const selection=await waitingSelection;
+  expect(selection?.runTotal).toBe(registerRows.length-1);
+  expect(selection?.rows.map(r=>r.id)).toEqual(registerRows.slice(1,26).map(r=>r.id));
  } finally {
   await waitingRead?.catch(() => undefined);
   await waitingSummary?.catch(() => undefined);
+  await waitingSelection?.catch(() => undefined);
  }
  expect(phases.find(p=>p.name==='count')!.bytes).toBeLessThan(phases.find(p=>p.name==='original')!.bytes/10);
+ // Independently exercise an unpaid population larger than a page. Native readiness must agree with
+ // the old complete reader; the page cannot quietly change dated eligibility, scope or blocker meaning.
+ const unpaid=Array.from({length:1000},(_,i)=>({personId:randomUUID(),employmentId:randomUUID(),i}));
+ await owner.db.insert(s.person).values(unpaid.map(row=>({id:row.personId,tenantId:b.tenantId,fullName:'Fictional unpaid '+String(row.i).padStart(4,'0'),primaryEmail:row.personId+'@example.invalid'})));
+ await owner.db.insert(s.employment).values(unpaid.map(row=>({id:row.employmentId,tenantId:b.tenantId,personId:row.personId,companyId:b.companyId,hiredOn:'2020-01-01',employeeCode:'NEW-'+String(row.i).padStart(4,'0')})));
+ const complete=await listPayslipLessEligible(root,{batchId});expect(complete).toHaveLength(1000);
+ for(const raw of [{},{page:'2',size:'50'},{size:'all'},{page:String(Number.MAX_SAFE_INTEGER),size:'200'}]){
+  const query=parsePageQuery(raw),actual=await payslipLessEligiblePage(root,{batchId,page:query});
+  expect(actual).toEqual({...paginateRows(complete,query),runTotal:1000});
+ }
+ const searched=await payslipLessEligiblePage(root,{batchId,page:parsePageQuery(),search:'NEW0007'});
+ expect(searched.state.total).toBe(1);expect(searched.rows[0].employeeCode).toBe('NEW-0007');expect(searched.runTotal).toBe(1000);
+ for(const ctx of [foreign,worker,scoped])expect((await payslipLessEligiblePage(ctx,{batchId,page:parsePageQuery()})).rows).toEqual(await listPayslipLessEligible(ctx,{batchId}));
+ if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'payroll-selection-paging-probe.json'),JSON.stringify({kind:'NATIVE_PAYROLL_SELECTION_PAGING',releaseEligible:false,groupCompanies:71,physicalEmployments:2001,paidPopulationBeforeHistoryChange:1000,unpaidPopulationBeforeHistoryChange:1000,pageDefault:25,equivalentRowsCountsAndReadiness:true,allNativeRolesAndGroupCompanyScopes:true,financialCommandsChanged:false},null,2));
  const bestBeforeMs = Math.min(...phases.filter(p => p.name === 'original' || p.name === 'restored-original').map(p => p.elapsedMs));
  const worstAfterMs = Math.max(...phases.filter(p => p.name.startsWith('register-page')).map(p => p.elapsedMs));
  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'payroll-batch-summary-probe.json'),JSON.stringify({kind:'NATIVE_PAYROLL_BATCH_SUMMARY',releaseEligible:false,physicalMembers:1001,groupCompanies:71,visibleDetailRows:exact?.slips.length,readsPerPhase:5,phases,comparison:{bestBeforeMs,worstAfterMs,noRegression:worstAfterMs<=bestBeforeMs},numericalPayrollCalculationClaim:false},null,2));
