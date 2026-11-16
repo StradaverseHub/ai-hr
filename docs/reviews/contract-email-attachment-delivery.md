@@ -6,4 +6,4 @@ It extends `internalAutomationMail` to resolve the immutable file/image receipts
 
 The implementation task and all verification use fictional fixtures and a fake transport. No real email is sent during the build. Enabling this path for configured live workflow recipients requires the user's explicit approval after automatic review rejected the code change as potentially sensitive HR document egress.
 
-The proposal still requires focused sender tests and integrated type verification after approval. The diff's IPC delivery type hunk must be applied to the current consolidated type declaration during integration.
+The proposal still requires focused sender tests and integrated type verification after approval. The exact unified diff uses zero context to avoid whitespace-only review lines; apply it with the corresponding zero-context option only after approval, reconciling any later consolidated type changes.

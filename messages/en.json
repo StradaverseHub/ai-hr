@@ -40730,6 +40730,30 @@
       "documentsHelp": "Published versions are pinned when a letter is generated. Saving a draft does not change existing letters.",
       "draftOnly": "Draft only",
       "emailHelp": "Reusable Contract emails and recipients, managed in HR Automation."
+    },
+    "emailAssets": {
+      "imagesTitle": "Images in email",
+      "imagesHelp": "Upload up to three images, then insert them in the body. Use PNG, JPG, GIF or WebP, up to 1 MB each.",
+      "alt": "Alt text for {name}",
+      "removeImage": "Remove image",
+      "addImage": "Add image",
+      "everyoneTitle": "Files for everyone",
+      "everyoneHelp": "These shared files accompany every email sent from this template.",
+      "removeFile": "Remove file",
+      "addFile": "Add a shared file",
+      "saveFirst": "Save the template before uploading files.",
+      "uploading": "Uploading…",
+      "personTitle": "Files per person",
+      "personHelp": "People Ops uploads each person's file on their Contract case. A required file holds the email until it is uploaded.",
+      "fileLabel": "File label",
+      "required": "Required",
+      "requiredBeforeSending": "Required before sending",
+      "removeSlot": "Remove slot",
+      "addSlot": "Add a file per person",
+      "defaultSlot": "File for this person",
+      "caseTitle": "Email files for this person",
+      "requiredFile": "Upload this file before continuing the email.",
+      "noFile": "No file uploaded."
     }
   },
   "personnelPostings": {
