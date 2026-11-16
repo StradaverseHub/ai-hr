@@ -655,12 +655,17 @@ for this performance batch, based on main/alpha `59f06b08db014e01cd553a827c62ccf
 The approval question identified the initial `b8d54c6b…` fingerprint. During qualification the preview retained
 its native administrator predicate explicitly (previously enforced by the label-epoch write's RLS policy), so
 the repaired batch's final provider fingerprint is
-`1123ea58cd92536fc2b41c6b269464bad2d478a6eb028d64ef2a0582db873a02` over 1,623 files.
-This records batch-scoped staging rebinding authorization, not an owner inspection of that later exact digest.
+`ecd371dec4b42af57c5d415fafe480d5b2b681a02320b49523edcadf4ed92c58` over 1,623 files.
+The owner subsequently answered "Approve final staging rebinding" for this exact fingerprint and the seven
+legacy module-list wrappers, after qualification identified their separate principal-lock interval.
 The standing 12 November staging rebinding approval recorded above also applies. The agent manifest is
-`07efeec802244fd835f2299a81cc506a99c35407ca179a2458185fdabf698ce9` over 494 files.
+`b812933fc0c4ce8b7cddf6522d21f58de1721b66eb2e501408c6b559fb828ee7` over 494 files.
 
-Covered application changes are `core/import-history.ts` (distinct preview lock), `core/cost-allocation-import.ts`
+The intermediate `1123ea58…` source was superseded when tracing the actual module list wrappers showed
+that the principal proof also needed enforced read-only carriers. This completes the same locking repair.
+
+Covered application changes are `core/assistant-actions/module-action-review-store.ts` (read-only carriers for
+the seven qualified legacy metadata lists), `core/import-history.ts` (distinct preview lock), `core/cost-allocation-import.ts`
 (shared Access plus preserved native administrator admission; unchanged exclusive compensation and complete
 stale-review checks), and `core/payroll.ts` (same effective-history header and exact SQL joined count).
 Migration 5767 changes only the assistant metadata index's Access advisory lock to shared, preserving its

@@ -87,6 +87,7 @@ describe('actual app-role same-login privacy recovery',()=>{
   const before=await effects();
   await owner.db.transaction(async holder=>{
    await holder.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+b.tenantId},0))`);
+   for(const c of cases)if(c.action!=='leave.apply'){const packet=await c.list(ctx);expect(packet.reviews.map(r=>r.actionId)).toEqual([ids.get(c.action)]);}
    for(const c of cases)await withTenant(ctx,async tx=>{
     await tx.execute(sql`set transaction read only`);await tx.execute(sql`set local lock_timeout='2s'`);
     const rows=await tx.execute<{action:string;action_id:string}>(sql`select * from app.assistant_legacy_reviews_index(${c.action})`);

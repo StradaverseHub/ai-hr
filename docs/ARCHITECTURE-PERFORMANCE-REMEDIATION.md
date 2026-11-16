@@ -98,3 +98,16 @@ Migration 5767 changes only the index's advisory Access lock to shared. The inst
 - Separate SQL batch, 2c54bbde6, Actions 43880638088: 3 no-DB cases passed; native result 49 passed / 2 failed. The same invalid role fixture and the populated-upgrade fixture's explicit migration-tail inventory required repair. Restricted-owner migration rehearsal passed on that candidate. Original runs and source identities remain historical evidence, not re-labelled passing receipts.
 - The owner explicitly approved staging-only AI rebinding. Final provider source: 1123ea58cd92536fc2b41c6b269464bad2d478a6eb028d64ef2a0582db873a02; no new provider fields, purposes or transports. The source-binding review note records initial versus repaired identities.
 - Staging baseline verified read-only: 59f06b08db014e01cd553a827c62ccf864d33f78 / build AnZn7z2zdHpskbEoTnSzR. No remediation installation or verified staging improvement is claimed yet.
+
+## Additional end-to-end gap discovered during remediation
+
+AP-062 (P1, open): Own Leave's discovery GET runs a separately committed privacy-expiry command and a different
+`assistant_own_leave_reviews_index()` owner, rather than the module compatibility index changed by 5767.
+Its neutral list carrier can still acquire exclusive Access through `assertAiPrincipalTx`; the separate legacy
+index and expiry owners need their own installed-definition and concurrency qualification. Preserve current-person
+privacy, expiry/body deletion, row locks, refusal behavior and command isolation before converting either interval.
+Source owners: `core/assistant-actions/own-leave-browser.ts`, `own-leave-store.ts`, and migrations 0622 / 0860.
+This is a new source-confirmed gap, not a measured latency regression. AP-033 qualification now includes the actual
+seven module-list owners under a competing shared holder, not just direct SQL calls.
+
+The combined repaired native qualification passed on 78180ca71 in Actions 43882431102. Both original whole-repository compiler jobs passed; their failed test results remain failures. The final caller-qualified source adds the seven explicit READ ONLY module-store carriers and was explicitly approved for staging-only rebinding at ecd371dec4b42af57c5d415fafe480d5b2b681a02320b49523edcadf4ed92c58. Actual caller proof and the full final release gate remain required.
