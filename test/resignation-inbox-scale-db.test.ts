@@ -4,12 +4,14 @@
 import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {sql} from 'drizzle-orm';
+import {sql,type SQL} from 'drizzle-orm';
+import {withTenant} from '../db/client';
+import {prepareResignationProofTx} from '../core/resignation-proof';
 import {beforeAll,beforeEach,afterAll,afterEach,vi,it,expect} from 'vitest';
 import type {SessionContext} from '../db/client';
 import {owner,migrateTestDb,resetDb,closeAll,createAppUser} from './harness';
 import {resignationJourneyFixture} from './helpers/resignation-journey-fixture';
-import {observeNativeRead} from './helpers/native-read-observer';
+import {observeNativeRead,type NativeReadQuery} from './helpers/native-read-observer';
 import {commandResignationJourney,resignationInbox,resignationCase} from '../packs/lifecycle/resignation/service';
 import {listResignationRequests} from '../core/offboarding';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -59,6 +61,7 @@ it('keeps all-company and single-company resignation inboxes bounded and equival
  // Four chunks keep fixture transport bounded while avoiding 1,120 service-hire loops.
  for(let offset=0;offset<rows.length;offset+=140)await owner.db.execute(sql`insert into resignation_journey(tenant_id,id,employment_id,company_id,person_id,number,stage,data,participant_ids,submitted_on) overriding system value select ${f.base.tenantId}::uuid,x."requestId",x."employmentId",x."companyId",x."personId",x.number,'decision',x.data,x.participants,'2026-11-01' from jsonb_to_recordset(${JSON.stringify(rows.slice(offset,offset+140))}::jsonb) as x("requestId" uuid,"employmentId" uuid,"companyId" uuid,"personId" uuid,number bigint,data jsonb,participants uuid[])`);
  const evidence:{role:string;scope:string;offset:number;statements:number;rows:number;ms:number}[]=[];
+ const planSources=new Map<string,NativeReadQuery[]>();
  const actors=[{name:'group HR',ctx:f.admin,kind:'approvals' as const,id:f.managerUserId},{name:'non-HR manager',ctx:manager,kind:'tasks' as const,id:managerId},{name:'FYI employee',ctx:f.watcher,kind:'approvals' as const,id:f.fyiUserId},{name:'company HR',ctx:scopedHr,kind:'approvals' as const,id:scopedHrId},{name:'own employee',ctx:f.staff,kind:'tasks' as const,id:f.employeeUserId},{name:'unassigned HR',ctx:stranger,kind:'approvals' as const,id:strangerId}];
  async function page(actor:typeof actors[number],companyIds:string[]|undefined,offset=0,filter:'all'|'assigned'|'tagged'|'team'|'overdue'='all'){
   const base=tasks.filter(t=>t.actor===actor.id&&(!companyIds||companyIds.includes(t.companyId))).sort(compare);
@@ -69,6 +72,10 @@ it('keeps all-company and single-company resignation inboxes bounded and equival
   expect(result!.items.map(t=>t.id),`${actor.name}/${companyIds?'one company':'all'}/${filter}/${offset}`).toEqual(expected.map(t=>t.id));
   expect(result!.total).toBe(selected.length);expect(result!.actionableTotal).toBe(base.filter(t=>t.kind!=='fyi').length);expect(result!.fyiTotal).toBe(base.filter(t=>t.kind==='fyi').length);expect(result!.counts).toEqual(counts);
   expect(result!.cases.map(c=>c.id)).toEqual([...new Set(expected.map(t=>t.caseId))]);
+  if(actor.id===f.managerUserId&&offset===0&&filter==='all'&&(!companyIds||companyIds[0]===companies[0].id)){
+   const statements=probe.queries.filter(q=>/from resignation_journey j cross join lateral/i.test(q.sql));
+   expect(statements).toHaveLength(2);planSources.set(companyIds?'one':'all',statements);
+  }
   expect(probe.queries.length).toBeLessThanOrEqual(4);expect(probe.queries.some(q=>q.sql.includes('resignation_journey_context'))).toBe(false);expect(probe.queries.every(q=>(q.rows??0)<=50)).toBe(true);
   if(actor.id===f.managerUserId)for(const c of result!.cases){expect(c.offer?.basicSalary).toBe('98765.43');expect(c.currentBasicSalary).toBe('24680.12');expect(c.currency).toBe('SGD');}
   if(actor.id!==f.managerUserId)for(const c of result!.cases){expect(c.offer).toBeNull();expect(c.currentBasicSalary).toBeNull();expect(c.currency).toBeNull();expect(JSON.stringify(c)).not.toMatch(/98765\.43|24680\.12|PRIVATE OFFER/);}
@@ -82,8 +89,34 @@ it('keeps all-company and single-company resignation inboxes bounded and equival
   const actual=await listResignationRequests(actor,{status:'pending'});expect(JSON.stringify(actual)).not.toContain('LEGACY PRIVATE FILE BYTES');expect(actual.map(r=>r.id)).toEqual(expected.map(p=>p.requestId));
   expect(actual.map(r=>({id:r.id,name:r.employee,code:r.employeeCode,status:r.status,documents:r.documents}))).toEqual(expected.map(p=>({id:p.requestId,name:p.name,code:p.code,status:'pending',documents:legacyFiles.filter(file=>file.requestId===p.requestId).map(file=>({id:file.id,fileName:file.fileName,mimeType:file.mimeType}))})));
  }
+ // Rebind captured placeholders only: these are the reader's actual SQL/parameters, not a second implementation.
+ const explainActual=(query:NativeReadQuery):SQL=>{
+  const fragments:SQL[]=[],pattern=/\$(\d+)/g;let from=0;for(const match of query.sql.matchAll(pattern)){
+   fragments.push(sql.raw(query.sql.slice(from,match.index)),sql`${query.params[Number(match[1])-1]}`);from=match.index!+match[0].length;
+  }
+  fragments.push(sql.raw(query.sql.slice(from)));return sql`explain (analyze,buffers,format json) ${sql.join(fragments,sql.raw(''))}`;
+ };
+ type PlanNode=Record<string,unknown>&{Plans?:PlanNode[];'Node Type':string;'Actual Rows':number;'Actual Loops':number};
+ type ActualPlan={Plan:PlanNode;'Planning Time':number;'Execution Time':number;JIT?:unknown};
+ const planEvidence=await withTenant(f.admin,async tx=>{
+  const [profile]=await tx.execute<{role:string;backend:number;bypass:boolean;rowSecurity:string;jit:string;workMem:string;sharedBuffers:string;maxParallelWorkersPerGather:string;serverVersion:string}>(sql`select current_user as role,pg_backend_pid() as backend,(select rolbypassrls from pg_roles where rolname=current_user) as bypass,current_setting('row_security') as "rowSecurity",current_setting('jit') as jit,current_setting('work_mem') as "workMem",current_setting('shared_buffers') as "sharedBuffers",current_setting('max_parallel_workers_per_gather') as "maxParallelWorkersPerGather",current_setting('server_version') as "serverVersion"`);
+  expect(profile.role).toBe('ai_hr_app');expect(profile.bypass).toBe(false);expect(profile.rowSecurity).toBe('on');expect(profile.jit).toBe('off');
+  const plans=[];
+  for(const scope of ['all','one'] as const){
+   await prepareResignationProofTx(tx,f.admin,{operation:'read',args:{mode:'inbox',companyIds:scope==='all'?[]:[companies[0].id]}});
+   const sources=planSources.get(scope);expect(sources).toHaveLength(2);
+   for(const [index,source] of sources!.entries()){
+    const [result]=await tx.execute<{'QUERY PLAN':ActualPlan[]}>(explainActual(source)),actual=result['QUERY PLAN'][0];
+    // Nonempty page cardinality independently proves that these are authorized RLS plans under the signed scope.
+    expect(actual.Plan['Actual Rows']).toBe(index===0?1:scope==='all'?50:8);
+    const nodes:Record<string,unknown>[]=[];const collect=(node:PlanNode)=>{nodes.push({type:node['Node Type'],relation:node['Relation Name']??null,rows:node['Actual Rows'],loops:node['Actual Loops'],sharedHit:node['Shared Hit Blocks']??0,sharedRead:node['Shared Read Blocks']??0,sharedWritten:node['Shared Written Blocks']??0,localHit:node['Local Hit Blocks']??0,tempRead:node['Temp Read Blocks']??0,tempWritten:node['Temp Written Blocks']??0,sortMethod:node['Sort Method']??null,sortSpaceType:node['Sort Space Type']??null,sortSpaceUsed:node['Sort Space Used']??null,hashBatches:node['Hash Batches']??null,peakMemory:node['Peak Memory Usage']??null,diskUsage:node['Disk Usage']??null});for(const child of node.Plans??[])collect(child);};collect(actual.Plan);
+    plans.push({scope,query:index===0?'count':'page',planningMs:actual['Planning Time'],executionMs:actual['Execution Time'],jit:actual.JIT??null,nodes,actualPlan:actual});
+   }
+  }
+  return{profile,hostedProfile:process.env.AIHR_CI_PG_PROFILE??null,plans};
+ });
  const other=await resignationJourneyFixture();await page(actors[0],[other.base.companyId]);await expect(resignationCase(other.admin,managed[0].requestId)).rejects.toMatchObject({code:'not_found'});
  const outsider=await resignationInbox(other.staff,{kind:'approvals',companyIds:[companies[0].id],limit:50});expect(outsider.total).toBe(0);expect(outsider.items).toEqual([]);expect(outsider.cases).toEqual([]);
- if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'resignation-inbox-scale.json'),JSON.stringify({kind:'RESIGNATION_INBOX_SCALE_V1',companies:71,employments:1120,managed:560,legacy:280,reads:evidence},null,2));
+ if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'resignation-inbox-scale.json'),JSON.stringify({kind:'RESIGNATION_INBOX_SCALE_V1',companies:71,employments:1120,managed:560,legacy:280,reads:evidence,planEvidence},null,2));
  // 300s headroom for the representative native fixture and complete role/scope/page matrix on hosted PostgreSQL.
 },300000);

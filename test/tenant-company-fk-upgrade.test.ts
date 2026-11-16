@@ -392,6 +392,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // the roles that evaluate it (test/rewards-config-grants-lock.test.ts), so no added function is callable by PUBLIC.
   const publicFunctions:string[]=[];
   const addedFunctions=[
+   // HMAC-bound missing-decision repair audience: application entry point, never PUBLIC.
+   'app.resignation_decision_repair_audience(uuid)',
    // Verified managed-V9 classification; a scoped native boolean, callable by the application only.
    'app.resignation_offboarding_case_managed(uuid)',
    // Final shared directory and managed-submission cutover helpers.
