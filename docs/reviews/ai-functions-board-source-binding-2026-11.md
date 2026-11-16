@@ -730,3 +730,15 @@ Original human reviewers, evidence references, approval timestamps and statuses 
 pending contracts remain pending. The agent manifest is regenerated after this binding.
 This preparation grants no new data disclosure or release authority. The owner's explicit
 release hold still applies: no main/alpha integration or installation.
+
+### Final shared Configuration navigation binding — 17 November 2026
+
+The approved single Configuration area replaces the older HR Automation working label, removes duplicate
+builder menu aliases and moves the existing gated Onboarding & offboarding settings entry. Existing URLs,
+engines, catalogue identities and native permissions remain unchanged; Contract template approvers without
+configuration authority retain their compatible review route. Independent source review found no new
+provider payload, purpose, tool, disclosure or execution authority. Under the same recorded standing
+staging rebind authority, the 29 previously approved records carry their existing metadata and statuses to
+`a5a4a2b7f3b74bc6c9e2f41d16b9320138db533719a7ccbde302cf096991d91d` (1640 source files).
+Pending records remain pending. The agent manifest is regenerated last. Release remains held pending
+explicit owner approval; this source binding does not authorize main/alpha integration or installation.
