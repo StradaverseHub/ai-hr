@@ -105,7 +105,7 @@ export function SharedContractSettings({
   }
   return (
     <div className="v9-stack">
-      <header className="v9-header">
+      <header className="v9-heading">
         <div>
           <h1>{copy('Contract settings and access')}</h1>
           <p>{copy('Contract policy and business authority stay here. Shared builders live in HR Automation.')}</p>

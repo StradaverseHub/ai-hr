@@ -96,7 +96,7 @@ export function SharedLetterPage({
     dirty = Object.entries(blocks).some(([key, value]) => letter.body?.blocks[key] !== value);
   return (
     <div className="v9-stack">
-      <header className="v9-header">
+      <header className="v9-heading">
         <div>
           <h1>{letter.name}</h1>
           <p>

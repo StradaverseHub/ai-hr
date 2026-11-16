@@ -46,7 +46,7 @@ export function SharedApprovalPage({ approval: initial }: { approval: ContractSh
   }
   return (
     <div className="v9-stack">
-      <header className="v9-header">
+      <header className="v9-heading">
         <div>
           <h1>{copy('Review contract decision')}</h1>
           <p>

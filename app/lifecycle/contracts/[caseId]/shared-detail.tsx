@@ -195,7 +195,7 @@ export function SharedContractDetail({
   }, [flow?.revision, flow?.stage, closed, router]);
   return (
     <div className="v9-stack">
-      <header className="v9-header">
+      <header className="v9-heading">
         <div>
           <h1>{view.source.name}</h1>
           <p>
