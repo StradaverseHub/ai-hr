@@ -40982,7 +40982,7 @@
     "notice": "Thời hạn báo trước",
     "attachment": "Tài liệu hỗ trợ",
     "openAttachment": "Mở {name}",
-    "retry": "Chạy lại quy trình",
+    "retry": "Thử lại các quy trình thất bại",
     "blocked": "Cần xử lý cấu hình của hành trình này",
     "letter": "Thư",
     "openLetter": "Mở thư",
@@ -41102,7 +41102,8 @@
     "runAgain": "Chạy lại quy trình",
     "runAgainHint": "Sau khi thiết lập được sửa, thao tác này chạy các quy trình đang hoạt động hiện tại để giao người quyết định còn thiếu.",
     "taskRepair": "Mở phần sửa quy trình",
-    "repairTaskHint": "Hồ sơ này cần người quyết định. Xem vấn đề thiết lập được ghi nhận bên dưới; chạy lại quy trình khi cấu hình đã sẵn sàng."
+    "repairTaskHint": "Hồ sơ này cần người quyết định. Xem vấn đề thiết lập được ghi nhận bên dưới; chạy lại quy trình khi cấu hình đã sẵn sàng.",
+    "awaitDecisionNextSteps": "Các bước tiếp theo sẽ xuất hiện sau khi quyết định được ghi nhận."
   },
   "offboardingPostings": {
     "breadcrumb": "Tiếp nhận và nghỉ việc / Ghi nhận biến động nhân sự",

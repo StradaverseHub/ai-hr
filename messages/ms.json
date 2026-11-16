@@ -40982,7 +40982,7 @@
     "notice": "Tempoh notis",
     "attachment": "Dokumen sokongan",
     "openAttachment": "Buka {name}",
-    "retry": "Jalankan aliran kerja semula",
+    "retry": "Cuba semula aliran kerja yang gagal",
     "blocked": "Perjalanan ini memerlukan perhatian pada konfigurasi",
     "letter": "Surat",
     "openLetter": "Buka surat",
@@ -41102,7 +41102,8 @@
     "runAgain": "Jalankan aliran kerja semula",
     "runAgainHint": "Selepas persediaan dibetulkan, tindakan ini menjalankan aliran kerja aktif semasa untuk menugaskan pembuat keputusan yang belum ditetapkan.",
     "taskRepair": "Buka pembaikan aliran kerja",
-    "repairTaskHint": "Kes ini memerlukan pembuat keputusan. Semak isu persediaan yang direkodkan di bawah; jalankan aliran kerja semula apabila konfigurasi sudah sedia."
+    "repairTaskHint": "Kes ini memerlukan pembuat keputusan. Semak isu persediaan yang direkodkan di bawah; jalankan aliran kerja semula apabila konfigurasi sudah sedia.",
+    "awaitDecisionNextSteps": "Langkah seterusnya akan dipaparkan selepas keputusan direkodkan."
   },
   "offboardingPostings": {
     "breadcrumb": "Pengurusan masuk & keluar pekerja / Catatan perjawatan",

@@ -40982,7 +40982,7 @@
     "notice": "通知期",
     "attachment": "证明文件",
     "openAttachment": "打开{name}",
-    "retry": "重新运行工作流",
+    "retry": "重试失败的工作流",
     "blocked": "此流程的配置需要处理",
     "letter": "函件",
     "openLetter": "打开函件",
@@ -41102,7 +41102,8 @@
     "runAgain": "重新运行工作流",
     "runAgainHint": "设置修正后，此操作会运行当前已启用的工作流，以指派尚缺的决策人。",
     "taskRepair": "打开工作流修复",
-    "repairTaskHint": "此个案需要决策人。请查看下方记录的设置问题；配置就绪后重新运行工作流。"
+    "repairTaskHint": "此个案需要决策人。请查看下方记录的设置问题；配置就绪后重新运行工作流。",
+    "awaitDecisionNextSteps": "记录决定后将显示后续步骤。"
   },
   "offboardingPostings": {
     "breadcrumb": "入职与离职 / 人事变动入账",
