@@ -1,3 +1,8 @@
+<!-- 5918_contract_tracker_scheduled_period -->
+# Contract tracker approved scheduled-period preview — 17 November 2026 MYT
+
+The immediate 268-worktree survey found no SQL or allocation claim for **5918**; reserve idx **5318**, when **1794841005918**, for the Contract screen owner's post-pagination scheduled-period metadata. Existing tracker authorization, intake holds, reminders, source facts and case admission remain unchanged. The bounded native join requires the same case/company/employment/person, current decision, actual approved posting, immutable subject receipt and unconsumed canonical scheduled Movement event. Only approved dates/counter, posting label/ID, kind and native schedule status are exposed; no pay, account identifiers or routing. Parent and posting owner notified. Source preparation only; no installation/release authority.
+
 <!-- 5917_contract_work_exact_document_join -->
 # Contract assigned-work exact-document materialization — 17 November 2026 MYT
 

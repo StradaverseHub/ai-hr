@@ -6623,6 +6623,13 @@
       "when": 1794841005917,
       "tag": "5917_contract_work_exact_document_join",
       "breakpoints": true
+    },
+    {
+      "idx": 5318,
+      "version": "7",
+      "when": 1794841005918,
+      "tag": "5918_contract_tracker_scheduled_period",
+      "breakpoints": true
     }
   ]
 }

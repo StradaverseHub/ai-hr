@@ -553,6 +553,11 @@ export function SharedContractDetail({
           )}
           {flow && flow.stage !== 'open' && (
             <ContractPanel title={copy('Case progress')}>
+              {flow.stage === 'workflow' && (
+                <p role="status" aria-current="step">
+                  {copy('Workflow continuing')}
+                </p>
+              )}
               <ol className="contract-progress">
                 {stages.map(([id, label]) => (
                   <li key={id} aria-current={current === id ? 'step' : undefined}>

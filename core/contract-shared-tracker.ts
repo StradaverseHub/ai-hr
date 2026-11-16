@@ -15,6 +15,7 @@ export type ContractTrackerRow={
  stage:ContractFlowStage|null;legacyState:string|null;sharedRevision:number|null;flags:ContractFlowFlag[];lastActivityAt:string|null;
  payChanges:boolean;payConfirmed:boolean;previousPayPending:boolean;payPendingCaseId:string|null;canOpen:boolean;sourceIssue:'verify_period'|'legacy_in_progress'|'period_changed'|'native_intake_required'|null;
  firstReminderOn:string|null;decisionNeeded:boolean;endPassed:boolean;stalledDays:number|null;
+ scheduledPeriod?:{postingId:string;label:string;eventType:'contractRenewal'|'contractConversion';startOn:string;endOn:string|null;contractNumber:number|null;status:'scheduled'|'awaiting_application'}|null;
 };
 export type ContractTrackerQuery={search?:string;companyId?:string|null;status?:'all'|'attention'|'upcoming'|'decision'|'progress'|'closed';limit?:number;offset?:number};
 export async function contractSharedTracker(ctx:SessionContext,raw:ContractTrackerQuery={}){

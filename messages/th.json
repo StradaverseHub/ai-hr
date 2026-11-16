@@ -41533,7 +41533,12 @@
     "c43242202b49b": "Update the agreed pay manually in Personnel Management › Payroll before confirming. This confirmation records your attestation; it does not write Payroll.",
     "cddb0c2d87986": "I confirm that Payroll has been manually updated to match the approved terms.",
     "c1e74eef3656a": "Confirm manual Payroll update",
-    "c5a929532bbae": "Open Personnel postings"
+    "c5a929532bbae": "Open Personnel postings",
+    "c6c7bd6da5dac": "Personnel · Scheduled employment change",
+    "cc3b96ff5f865": "Personnel · Awaiting effective-date application",
+    "c10b8157ec618": "Approved next period",
+    "c3c5d1206f7ac": "contractConversion",
+    "c48f4903515e2": "Permanent from"
   },
   "resignationJourney": {
     "title": "การลาออก",

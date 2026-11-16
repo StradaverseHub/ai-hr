@@ -29,6 +29,10 @@ function nextStep(row: ContractTrackerRow) {
   if (row.stage === 'posting') return 'Posting approver group';
   if (row.stage === 'pay') return 'Posting approver · Confirm manual Payroll entry';
   if (row.stage === 'offboarding') return 'Offboarding team';
+  if (row.scheduledPeriod)
+    return row.scheduledPeriod.status === 'scheduled'
+      ? 'Personnel · Scheduled employment change'
+      : 'Personnel · Awaiting effective-date application';
   if (row.stage === 'renewed' || row.stage === 'converted' || row.stage === 'superseded') return 'Completed';
   return 'Direct Superior / decision owner';
 }
@@ -138,6 +142,22 @@ export function SharedContractTracker({
                     <small>
                       {contractDate(row.startOn)}–{contractDate(row.endOn)}
                     </small>
+                    {row.scheduledPeriod && (
+                      <small>
+                        <Link href={`/lifecycle/contracts/${row.caseId}`}>
+                          {copy('Approved next period')} ·{' '}
+                          {row.scheduledPeriod.status === 'scheduled'
+                            ? copy('Scheduled')
+                            : copy('Awaiting Personnel application')}
+                        </Link>
+                        <br />
+                        {row.scheduledPeriod.eventType === 'contractConversion'
+                          ? copy('Permanent from')
+                          : copy('Contract #') + row.scheduledPeriod.contractNumber + ' · '}{' '}
+                        {contractDate(row.scheduledPeriod.startOn)}
+                        {row.scheduledPeriod.endOn && '–' + contractDate(row.scheduledPeriod.endOn)}
+                      </small>
+                    )}
                   </td>
                   <td>
                     <span className="contract-status">{copy(trackerStatus(row))}</span>

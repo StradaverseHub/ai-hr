@@ -400,6 +400,11 @@ const keys:Record<string,string>={
   "Update the agreed pay manually in Personnel Management › Payroll before confirming. This confirmation records your attestation; it does not write Payroll.": "c43242202b49b",
   "I confirm that Payroll has been manually updated to match the approved terms.": "cddb0c2d87986",
   "Confirm manual Payroll update": "c1e74eef3656a",
-  "Open Personnel postings": "c5a929532bbae"
+  "Open Personnel postings": "c5a929532bbae",
+  "Personnel · Scheduled employment change": "c6c7bd6da5dac",
+  "Personnel · Awaiting effective-date application": "cc3b96ff5f865",
+  "Approved next period": "c10b8157ec618",
+  "contractConversion": "c3c5d1206f7ac",
+  "Permanent from": "c48f4903515e2"
 };
 export function useContractSharedCopy(){const t=useTranslations('contractShared');return (text:string)=>{const caption=text.trim(),key=keys[caption];return key?text.slice(0,text.indexOf(caption))+t(key)+text.slice(text.indexOf(caption)+caption.length):text;};}
