@@ -24,7 +24,10 @@ export async function priceIndividualTxnInputTx(tx:Tx,ctx:SessionContext,p:Indiv
  await lockPayComponentCatalogReadTx(tx,ctx);
  const [item]=await tx.execute<{code:string;rule:PayRule|null}>(sql`select code,rule from pay_component where id=${p.componentId}::uuid and tenant_id=${ctx.tenantId}::uuid and archived_at is null`);
  if(!item)throw new PayFormulaError('The selected Pay Item is unavailable.');
- if(item.rule?.kind!=='formula_builder')throw new PayFormulaError('The Pay Item no longer has an assigned Formula ID. Reopen the transaction.');
+ // aac17dd0 — a typed Amount is accepted on both formula kinds: a Pay Formula Builder item (Formula ID) and an inline
+ // "Calculated by Formula" item. Method 'formula' stays Formula Builder only; every other rule kind refuses both.
+ if(p.method==='amount'&&item.rule?.kind!=='formula'&&item.rule?.kind!=='formula_builder')throw new PayFormulaError('Amount entry is available only on Pay Items that calculate their amount by formula. Reopen the transaction.');
+ if(p.method==='formula'&&item.rule?.kind!=='formula_builder')throw new PayFormulaError('The Pay Item no longer has an assigned Formula ID. Reopen the transaction.');
  const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.can_admin_payroll_for(${p.companyId}::uuid) and exists(select 1 from employment where id=${p.employmentId}::uuid and company_id=${p.companyId}::uuid and tenant_id=${ctx.tenantId}::uuid) as ok`);
  if(!allowed?.ok)throw new PayFormulaError('Transaction calculation is unavailable.');
  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(p.payPeriod)||!isTransactionEffectiveDate(p.txnDate))throw new PayFormulaError('Choose a valid payroll month and effective date.');
@@ -45,6 +48,7 @@ export async function priceIndividualTxnInputTx(tx:Tx,ctx:SessionContext,p:Indiv
   if(!cycleId){const cycles=await tx.execute<{id:string}>(sql`select id from payroll_cycle where company_id=${p.companyId}::uuid and tenant_id=${ctx.tenantId}::uuid and archived_at is null and run_type=${batch.runType}`);if(cycles.length!==1)throw new PayFormulaError('Choose the exact configured payroll cycle before calculating.');cycleId=cycles[0].id;}
  }
  if(!cycleId){const cycles=await tx.execute<{id:string}>(sql`select id from payroll_cycle where company_id=${p.companyId}::uuid and tenant_id=${ctx.tenantId}::uuid and archived_at is null and run_type='regular'`);if(cycles.length!==1)throw new PayFormulaError('Choose the configured payroll cycle before calculating.');cycleId=cycles[0].id;}
+ if(item.rule?.kind!=='formula_builder')throw new PayFormulaError('The Pay Item no longer has an assigned Formula ID. Reopen the transaction.');
  const formula=await loadSavedFormulaProgramTx(tx,ctx,item.rule.formulaId,p.companyId);
  // The selected payroll month owns payroll sources; retain an out-of-month work date on the ledger.
  const end=new Date(Date.UTC(Number(p.payPeriod.slice(0,4)),Number(p.payPeriod.slice(5)),0)).toISOString().slice(0,10);

@@ -7729,6 +7729,7 @@
         "inputType": "Input type",
         "inputTypeNone": "None",
         "amountIsFinalHint": "The amount entered here is the amount paid. A pay item’s formula is not applied to one-off transactions.",
+        "amountManualFormulaHint": "Amount entered manually. This Pay Item's formula is not used for this transaction.",
         "identicalWarning": "An identical entry already exists for this employee (same item, date, amount and remarks). Save only if it is genuinely a second one.",
         "saveAndAnother": "Save & add another",
         "cancel": "Cancel",
