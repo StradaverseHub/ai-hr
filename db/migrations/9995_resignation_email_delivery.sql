@@ -63,7 +63,7 @@ BEGIN
   ), checked AS (
     SELECT i.*,EXISTS(SELECT 1 FROM public.app_user u JOIN public.app_external_identity identity ON identity.app_user_id=u.id
       AND identity.revoked_at IS NULL AND identity.issuer LIKE '%/auth/'||t::text
-      WHERE u.id=i.id AND u.tenant_id=t AND u.person_id IS NOT NULL AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) AS reachable FROM input i
+      WHERE u.id=i.id AND u.tenant_id=t AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) AS reachable FROM input i
   ) SELECT coalesce(array_agg(id ORDER BY n) FILTER(WHERE reachable AND list=1),'{}'),
       coalesce(array_agg(id ORDER BY n) FILTER(WHERE reachable AND list=2),'{}'),
       coalesce(array_agg(id ORDER BY list,n) FILTER(WHERE NOT reachable),'{}') INTO to_ids,cc_ids,unreachable FROM checked;
