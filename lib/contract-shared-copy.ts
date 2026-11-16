@@ -372,6 +372,11 @@ const keys:Record<string,string>={
   "Record this only after the employee confirms they will not sign the renewal. The renewal routing is withdrawn, its history is retained, and the configured decline workflow continues.": "c0157c2c17fad",
   "Personnel termination reason": "cfe912d4ddc06",
   "Decline notes": "c540bd679e500",
-  "People Ops records termination manually in Personnel Management after the Offboarding handoff. This action does not terminate the Personnel record or update Payroll.": "c85b435be8744"
+  "People Ops records termination manually in Personnel Management after the Offboarding handoff. This action does not terminate the Personnel record or update Payroll.": "c85b435be8744",
+  "Form": "c2e0e960ab320",
+  "Form response capture and signing are on hold. This Form cannot be completed yet.": "c160a5c69b525",
+  "Acknowledgement": "cb0eafdef30da",
+  "Acknowledge and sign": "c3664be6d1488",
+  "I confirm this is my signature and acknowledge this document.": "cbb48fc08ea9f"
 };
 export function useContractSharedCopy(){const t=useTranslations('contractShared');return (text:string)=>{const caption=text.trim(),key=keys[caption];return key?text.slice(0,text.indexOf(caption))+t(key)+text.slice(text.indexOf(caption)+caption.length):text;};}

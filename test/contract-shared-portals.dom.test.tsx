@@ -119,3 +119,10 @@ it('records employee decline with the current case revision and retains notes af
  expect(actions.decline).toHaveBeenCalledWith({caseId,revision:9,reason:'contract_expiry',notes:'Employee confirmed they will leave.'});
  expect(screen.getByLabelText('Decline notes')).toHaveValue('Employee confirmed they will leave.');
 });
+
+it('holds Form completion while the real response and receipt owner is unavailable',()=>{
+ const value:ContractSharedLetter={...letter(),canEdit:true,body:{definition:{name:'Held Form',blocks:[{id:'answers',type:'fields',text:'',section:''}],fields:[]},blocks:{},values:{},receipts:[],fingerprintSource:'native'}};
+ mount(<SharedLetterPage letter={value} document={document}/>);
+ expect(screen.getByText('Form response capture and signing are on hold. This Form cannot be completed yet.')).toBeInTheDocument();
+ expect(screen.queryByRole('button',{name:'Accept and sign contract'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Edit wording for this case'})).not.toBeInTheDocument();
+});

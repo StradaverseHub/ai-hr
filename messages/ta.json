@@ -41502,7 +41502,12 @@
     "c0157c2c17fad": "Record this only after the employee confirms they will not sign the renewal. The renewal routing is withdrawn, its history is retained, and the configured decline workflow continues.",
     "cfe912d4ddc06": "Personnel termination reason",
     "c540bd679e500": "Decline notes",
-    "c85b435be8744": "People Ops records termination manually in Personnel Management after the Offboarding handoff. This action does not terminate the Personnel record or update Payroll."
+    "c85b435be8744": "People Ops records termination manually in Personnel Management after the Offboarding handoff. This action does not terminate the Personnel record or update Payroll.",
+    "c2e0e960ab320": "Form",
+    "c160a5c69b525": "Form response capture and signing are on hold. This Form cannot be completed yet.",
+    "cb0eafdef30da": "Acknowledgement",
+    "c3664be6d1488": "Acknowledge and sign",
+    "cbb48fc08ea9f": "I confirm this is my signature and acknowledge this document."
   },
   "resignationJourney": {
     "title": "பணி விலகல்",

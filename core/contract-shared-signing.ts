@@ -1,3 +1,4 @@
+import {derivedDocumentKind} from '../lib/document-form-fields';
 import {createHash,randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
@@ -77,6 +78,8 @@ const letterAction=z.object({id:z.uuid(),actionId:z.uuid(),stepId:z.string().min
 export async function actContractSharedLetter(ctx:SessionContext,raw:z.input<typeof letterAction>):Promise<ContractSharedLetter>{
  const input=letterAction.parse(raw);
  try{return await withScopedLifecycleTenant(ctx,async tx=>{
+  const current=await readLetterTx(tx,input.id);
+  if(current.body&&derivedDocumentKind(current.body.definition.blocks)==='Form')throw new ContractManagementError('conflict','Form response capture and signing are on hold. This Form cannot be completed yet.');
   const signature=input.action==='signed'?{method:input.method,value:input.value,consent:input.consent}:null;
   const [prepared]=input.blocks!==undefined
    ?await tx.execute<{result:{duplicate:boolean;signingDocumentId:string;revision:number;hash:string}}>(sql`select app.contract_shared_review_prepare(${input.id}::uuid,${input.stepId},${input.actionId}::uuid,${input.action},${input.comment},${input.hash},${input.revision},${JSON.stringify(input.blocks)}::jsonb) as result`)
@@ -100,6 +103,7 @@ export async function activateContractSharedLetter(tx:SqlExecutor,ctx:SessionCon
  if(ctx.userId)throw new ContractManagementError('forbidden','A protected Contract event worker is required.');
  const chosen=input.templates.find(item=>item.template.id===input.step.step.params.letterTemplateId),decision=input.view.flow?.decision;
  if(!chosen||!decision)throw new ContractManagementError('conflict','A published outcome template and accepted decision are required.');
+ if(derivedDocumentKind(chosen.template.blocks)==='Form')return {status:'failed' as const,reason:'Form response capture and signing are on hold. Choose a supported outcome letter or complete the approved Form response setup before continuing.'};
  const names={renew:'Renew',convert:'Convert to permanent',end:'End'};
  const facts={businessGroup:input.context.businessGroupId,company:input.view.companyId,department:input.context.departmentId,jobTitle:input.context.jobTitle,decision:names[decision.kind]};
  if(!automationDocumentMatches(chosen.template,field=>facts[field as keyof typeof facts]??null))throw new ContractManagementError('conflict','The outcome template does not match this decision and organisation.');
