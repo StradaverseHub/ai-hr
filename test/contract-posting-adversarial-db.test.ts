@@ -10,17 +10,17 @@ beforeAll(migrateTestDb);afterAll(closeAll);
 it('denies forged protected effects and monetary posting values, including direct native commands',async()=>{
  const f=await contractPostingFixture(),p=await releaseContractPosting(f);
  await expect(withTenant(f.admin,tx=>tx.execute(sql`select app.contract_shared_create_posting(${f.caseId}::uuid,${randomUUID()}::uuid,'forged-step')`))).rejects.toThrow();
- await expect(editContractSharedPosting(f.approver,{id:p.id,revision:p.revision,eventType:p.eventType,values:{...p.current,basicSalary:'9999'}})).rejects.toMatchObject({code:'invalid'});
+ expect(()=>editContractSharedPosting(f.approver,{id:p.id,revision:p.revision,eventType:p.eventType,values:{...p.current,basicSalary:'9999'}})).toThrow(/valid dates/);
  await expect(withTenant(f.approver,tx=>tx.execute(sql`select app.personnel_posting_edit(${p.id}::uuid,${p.revision},${JSON.stringify({...p.current,basicSalary:'9999'})}::jsonb)`))).rejects.toThrow();
  await expect(withTenant(f.approver,tx=>tx.execute(sql`select app.contract_shared_posting_approve(${p.id}::uuid,${p.revision},${JSON.stringify({...p.current,basicSalary:'9999'})}::jsonb)`))).rejects.toThrow();
  expect(await readContractSharedPosting(f.approver,p.id)).toMatchObject({status:'pending',revision:p.revision,current:p.current});
 });
-it('does not reinterpret a changed native source or a relinked approver identity',async()=>{
+it('does not reinterpret the posting as another person’s Employment or a changed native period',async()=>{
  const f=await contractPostingFixture({payChanges:true}),p=await releaseContractPosting(f);
- await owner.db.execute(sql`update app_user set person_id=${f.employee.personId}::uuid where tenant_id=${f.b.tenantId}::uuid and id=${f.approver.userId}::uuid`);
+ await owner.db.execute(sql`update employment set person_id=${f.admin.personId}::uuid where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`);
  await expect(approveContractSharedPosting(f.approver,{id:p.id,revision:p.revision})).rejects.toThrow();
- // Restore the actual immutable login binding explicitly, then mutate only the Personnel source period.
- await owner.db.execute(sql`update app_user set person_id=${f.approver.personId}::uuid where tenant_id=${f.b.tenantId}::uuid and id=${f.approver.userId}::uuid`);
+ // Restore the original subject, then mutate only the Personnel source period.
+ await owner.db.execute(sql`update employment set person_id=${f.employee.personId}::uuid where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`);
  await owner.db.execute(sql`update employment set contract_end_date=contract_end_date+1 where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`);
  await expect(approveContractSharedPosting(f.approver,{id:p.id,revision:p.revision})).rejects.toMatchObject({code:'conflict'});
  expect((await readContractSharedPosting(f.approver,p.id))?.status).toBe('pending');

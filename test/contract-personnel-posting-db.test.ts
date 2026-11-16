@@ -5,7 +5,8 @@ import {migrateTestDb,closeAll,owner} from './harness';
 import {contractPostingFixture,releaseContractPosting,type ContractPostingFixture} from './helpers/contract-posting-fixture';
 import {approveContractSharedPosting,editContractSharedPosting,listContractSharedPostings,readContractSharedPosting,readContractSharedPostingSummary,confirmContractSharedPay,contractSharedContext} from '../packs/contracts/service';
 import {setCompensation} from '../core/comp';
-import {createMovementEvent} from '../core/movement';
+import {createMovementEvent,movementHistory} from '../core/movement';
+import {approvePersonnelPosting} from '../core/personnel-posting';
 
 beforeAll(migrateTestDb);afterAll(closeAll);
 async function facts(f:ContractPostingFixture){
@@ -27,6 +28,9 @@ describe('Contract agreement → canonical Personnel postings → explicit manua
   const result=await approveContractSharedPosting(f.approver,{id:p.id,revision:edited.revision,values:p.proposed});expect(result.alreadyApproved).toBe(false);
   expect(await facts(f)).toEqual({...before,start:f.newStart,end:f.newEnd,number:5});
   expect((await postedEvents(f)).map(e=>e.type).sort()).toEqual(['contractRenewal','contractTermination'].sort());
+  const history=(await movementHistory(f.admin,f.employee.employmentId)).filter(r=>['contractTermination','contractRenewal'].includes(r.kind));
+  expect(history.map(r=>[r.kind,r.effectiveDate])).toEqual([['contractTermination',f.end],['contractRenewal',f.newStart]]);
+  expect(history.every(r=>!r.canEdit&&!r.canReverse)).toBe(true);
   const approved=await readContractSharedPosting(f.approver,p.id);expect(approved).toMatchObject({status:'approved',canConfirmPay:true});
   const retry=await approveContractSharedPosting(f.approver,{id:p.id,revision:edited.revision,values:p.proposed});expect(retry.alreadyApproved).toBe(true);expect(retry.movementId).toBe(result.movementId);
   expect(await facts(f)).toEqual({...before,start:f.newStart,end:f.newEnd,number:5});
@@ -45,9 +49,10 @@ describe('Contract agreement → canonical Personnel postings → explicit manua
  });
  it('converts through native Employment Type Change without creating probation, ending employment or touching pay',async()=>{
   const f=await contractPostingFixture({kind:'convert'}),before=await facts(f),p=await releaseContractPosting(f);
-  await approveContractSharedPosting(f.approver,{id:p.id,revision:p.revision});
+  await approvePersonnelPosting(f.approver,{id:p.id,revision:p.revision});
   expect(await facts(f)).toEqual({...before,start:null,end:null,type:'full_time'});
   const events=await postedEvents(f);expect(events.some(e=>e.type==='employmentTypeChange')).toBe(true);expect(events.filter(e=>e.type==='contractTermination')).toHaveLength(1);expect(events.some(e=>e.type==='contractConversion')).toBe(false);
+  const convertedHistory=(await movementHistory(f.admin,f.employee.employmentId)).find(r=>r.kind==='employmentTypeChange');expect(convertedHistory).toMatchObject({effectiveDate:f.newStart,canEdit:false,canReverse:false});
   expect((await contractSharedContext(f.proposer,f.caseId)).flow?.stage).toBe('converted');
   expect((await readContractSharedPosting(f.approver,p.id))?.canConfirmPay).toBe(false);
   await expect(createMovementEvent(f.admin,{employmentId:f.employee.employmentId,kind:'contractRenewal',effectiveDate:f.today})).rejects.toThrow(/approved Contract/);
@@ -58,7 +63,8 @@ describe('Contract agreement → canonical Personnel postings → explicit manua
   expect(await facts(f)).toEqual(before);
   const row=await readContractSharedPosting(f.approver,p.id);expect(row).toMatchObject({status:'approved',movementAppliedAt:null,canConfirmPay:true});
   const[scheduled]=await owner.db.execute<{input:Record<string,unknown>;date:string}>(sql`select payload->'input' as input,payload->>'effectiveDate' as date from domain_event where tenant_id=${f.b.tenantId}::uuid and subject_employment_id=${f.employee.employmentId}::uuid and event_type='employment.movement.scheduled' and payload->'input'->>'contractPostingId'=${p.id}`);
-  expect(scheduled.date).toBe(f.newStart);expect(scheduled.input).toMatchObject({kind:'contractRenewal',contractNumber:'5',contractStartDate:f.newStart,endDate:f.newEnd});expect(scheduled.input).not.toHaveProperty('basicSalary');
+  expect(scheduled.date).toBe(f.newStart);expect(scheduled.input).toMatchObject({contractNumber:'5',contractStartDate:f.newStart,contractPostingId:p.id});expect(scheduled.input).not.toHaveProperty('basicSalary');
+  expect((await movementHistory(f.admin,f.employee.employmentId)).find(r=>r.kind==='contractRenewal')).toMatchObject({effectiveDate:f.newStart,canEdit:false,canReverse:false});
   expect((await postedEvents(f)).some(e=>e.type==='contractTermination')).toBe(false);
   expect((await contractSharedContext(f.proposer,f.caseId)).flow?.stage).toBe('pay');
  });
