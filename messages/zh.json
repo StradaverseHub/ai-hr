@@ -7414,7 +7414,13 @@
         "running": "正在重新处理所选员工",
         "progress": "已完成 {done}/{total} 名员工",
         "help": "您可以离开此页面。每位员工单独重新计算，重新处理完成后结果会显示在这里。"
-      }
+      },
+      "registerSearchLabel": "在本次运行中搜索员工",
+      "registerSearchPlaceholder": "按员工姓名或员工编号搜索",
+      "registerSearchSubmit": "搜索",
+      "registerSearchClear": "清除搜索",
+      "registerSearchSummary": "{total} 名员工中有 {n} 名匹配“{q}”",
+      "registerSearchEmpty": "本次运行中没有与“{q}”匹配的员工。"
     },
     "transactions": {
       "title": "交易录入",

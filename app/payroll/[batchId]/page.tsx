@@ -15,7 +15,7 @@ import {PendingMoneyStatus,PendingOvertimeCashAmount,PendingOvertimeCashDetails}
 import { payrollPrecheckProfileHref } from '@/lib/payroll-precheck-profile';
 import { statutoryPackStale } from '@/lib/statutory-readiness';
 import { auditEvents } from '@/core/read';
-import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
+import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
 import { Pager } from '@/components/pager';
 import { parsePageQuery } from '@/lib/pagination';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -72,6 +72,7 @@ export default async function BatchPage({
     leaveFollowupError?: string;
     lfPage?: string;
     lfSize?: string;
+    q?: string;
   }>;
 }) {
   const s = await requireAdmin();
@@ -93,10 +94,25 @@ export default async function BatchPage({
   const backHref = payrollListReturnTo(from);
   // …and the two screens BELOW this one get it too, so Back is unbroken all the way down the chain.
   const fromSuffix = backHref === '/payroll' ? '' : `?from=${encodeURIComponent(backHref)}`;
-  const data = await payrollRunRegisterPage(s, batchId, parsePageQuery(sp));
+  // fd8156d4 — Search Employee on the run's register: name or Employee ID, over the WHOLE run in SQL (the
+  // same rule as the Reprocess screen's search), so the count and pager below describe the matches. Bounded
+  // like the Personnel switcher's query; the run itself is still read under the session's own authority.
+  const q = String((Array.isArray(sp.q) ? sp.q[0] : sp.q) ?? '').slice(0, 200);
+  const searching = q.trim() !== '';
+  const data = await payrollRunRegisterPage(s, batchId, parsePageQuery(sp), q);
   if (!data) notFound();
   const { batch, closeCycleName, slipPage } = data;
-  const slipCount = slipPage.state.total;
+  // The run's own payslip count, whatever is typed in the search: Close, Reprocess and Remove act on the run.
+  const slipCount = data.runPayslipCount;
+  // The register's address without the search (page and size reset with it), for the Clear search link.
+  const clearSearchHref = `/payroll/${batchId}${(() => {
+    const keep = new URLSearchParams();
+    if (from) keep.set('from', from);
+    if (hw) keep.set('hw', hw);
+    if (sp.size) keep.set('size', sp.size);
+    const qs = keep.toString();
+    return qs ? `?${qs}` : '';
+  })()}`;
   // 'processing': the background job is writing this run's payslips. Nothing of the run is shown as issued until its
   // finalize flips it to processed in one transaction; the processing panel below says where it is.
   const issued = batch.status === 'processed' || batch.status === 'closed';
@@ -608,7 +624,7 @@ export default async function BatchPage({
         </div>
       )}
 
-      <PayrollLeaveFollowup session={s} batchId={batch.id} failed={sp.leaveFollowupError === '1'} query={parsePageQuery({ page: sp.lfPage, size: sp.lfSize })} params={{ from: sp.from, hw: sp.hw, page: sp.page, size: sp.size }} />
+      <PayrollLeaveFollowup session={s} batchId={batch.id} failed={sp.leaveFollowupError === '1'} query={parsePageQuery({ page: sp.lfPage, size: sp.lfSize })} params={{ from: sp.from, hw: sp.hw, page: sp.page, size: sp.size, q: searching ? q : undefined }} />
 
       {/* ef31d251 — the "hidden from employees" statement. Nothing on this screen has ever said that a
           calculated run's payslips are invisible until Close, which is why the step was skipped on all
@@ -1204,10 +1220,36 @@ export default async function BatchPage({
       )}
 
       <Card className="overflow-hidden">
-        <SectionHeader title={t('payslipsTitle')} count={slipCount} />
+        <SectionHeader title={t('payslipsTitle')} count={slipPage.state.total} />
+        {/* fd8156d4 — a plain GET form: Enter or Search reloads this page with ?q=, which the register read
+            above applies in SQL, so it finds people on every page of the run, not just this one. */}
+        <form method="get" action={`/payroll/${batchId}`} role="search" className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
+          {from ? <input type="hidden" name="from" value={from} /> : null}
+          {hw ? <input type="hidden" name="hw" value={hw} /> : null}
+          {sp.size ? <input type="hidden" name="size" value={sp.size} /> : null}
+          <input
+            type="search"
+            name="q"
+            defaultValue={q}
+            maxLength={200}
+            aria-label={t('registerSearchLabel')}
+            placeholder={t('registerSearchPlaceholder')}
+            className={`${inputCls} w-full max-w-xs`}
+          />
+          <Button type="submit" variant="outline" size="sm">{t('registerSearchSubmit')}</Button>
+          {searching && (
+            <p className="text-xs text-muted-foreground">
+              {t('registerSearchSummary', { n: slipPage.state.total, total: slipCount, q: q.trim() })}
+              {' · '}
+              <Link href={clearSearchHref} className="font-medium text-primary hover:underline">
+                {t('registerSearchClear')}
+              </Link>
+            </p>
+          )}
+        </form>
         <Pager
           basePath={`/payroll/${batchId}`}
-          params={{ from, hw }}
+          params={{ from, hw, q: searching ? q : undefined }}
           state={slipPage.state}
         />
         <div className="overflow-x-auto">
@@ -1295,7 +1337,7 @@ export default async function BatchPage({
               {slipPage.rows.length === 0 && (
                 <tr>
                   <td colSpan={13} className="px-4 py-8 text-center text-muted-foreground">
-                    {t('noPayslips')}
+                    {searching ? t('registerSearchEmpty', { q: q.trim() }) : t('noPayslips')}
                   </td>
                 </tr>
               )}

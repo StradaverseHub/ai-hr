@@ -3,7 +3,12 @@ import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
-import { listBatches, payrollDashboardCounts } from '@/core/payroll';
+import {
+  latestPayrollDashboardPeriod,
+  listBatches,
+  payrollDashboardCounts,
+  payrollDashboardCycleNames,
+} from '@/core/payroll';
 import { payrollDashboardBatchMetadata } from '@/core/payroll-view';
 import { listCompanies } from '@/core/read';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
@@ -24,13 +29,15 @@ import {
   REPROCESS_REQUIRED,
   applyFilters,
   asArray,
+  cycleFilterOptions,
+  dashboardCycleLabel,
   dashboardHref,
+  hasExplicitPeriod,
   monthCells,
   needsReprocess,
-  parseMonths,
-  parseYear,
   periodsForYear,
   reprocessEmploymentIds,
+  resolveDashboardPeriod,
   selectedPeriods,
   summarise,
   yearOptions,
@@ -127,10 +134,20 @@ export default async function PayrollPage({
   // between 00:00 and 08:00 MYT on 1 January, and on a screen whose whole organising axis is the year
   // that means opening on the wrong one — with an empty timeline — for eight hours every New Year.
   const thisYear = Number(todayInKualaLumpur().slice(0, 4));
+  const companyFilter = asArray(sp.company);
+  // fd8156d4 — FIRST ENTRY OPENS ON THE LATEST CREATED PAYROLL PERIOD, not on today's month. Read only
+  // when the address names no period (a bare /payroll): every link this screen builds carries ?year and
+  // ?m, so a selection the reader made — including the Back round trip — always wins. One aggregate over
+  // the company scope (the ticked companies when the address names some), never a loop per company.
+  const scopedFilter = companyFilter.filter((id) => scopeIds.includes(id));
+  const latestPeriod = hasExplicitPeriod(sp)
+    ? null
+    : await latestPayrollDashboardPeriod(s, scopedFilter.length ? scopedFilter : scopeIds);
+  const period = resolveDashboardPeriod(sp, latestPeriod, thisYear);
   const filters: DashboardFilters = {
-    year: parseYear(sp.year, thisYear),
-    months: parseMonths(sp.m),
-    companyIds: asArray(sp.company),
+    year: period.year,
+    months: period.months,
+    companyIds: companyFilter,
     cycles: asArray(sp.cycle),
     statuses: asArray(sp.status),
   };
@@ -145,12 +162,15 @@ export default async function PayrollPage({
   // Encoded once here; re-validated BY SHAPE at the other end (lib/return-to.ts), never echoed raw.
   const fromQuery = encodeURIComponent(dashboardHref(filters));
 
-  const [yearBatches, allTimeCounts, companies] = await Promise.all([
+  const [yearBatches, allTimeCounts, companies, cycleNames] = await Promise.all([
     // The GRID + TIMELINE read: exactly the twelve periods of the selected year, pushed into SQL through
     // listBatches' widened period-set argument. Bounded by construction, and it is the whole year rather
     // than only the ticked months on purpose — every month cell shows its own run count, so an untick
     // must not blind the timeline to what is in the months you are not looking at.
-    listBatches(s, scopeIds, periodsForYear(filters.year)),
+    //
+    // fd8156d4 — ordered in SQL as the grid shows it: newest period first, company A to Z, then run.
+    // Filtering and paging below keep that order.
+    listBatches(s, scopeIds, periodsForYear(filters.year), undefined, 'company'),
     // The UNPUBLISHED BANNER read, and NOTHING else. ef31d251 exists because eighteen runs were
     // processed and never closed, so no employee ever saw a payslip — "a skipped one cannot sit
     // unnoticed for months". That warning has to span ALL TIME: counted off the year's rows instead, a
@@ -162,6 +182,8 @@ export default async function PayrollPage({
     // so the dropdown does not change shape as you step through years and a selected company cannot
     // vanish underneath you. Narrowed to scopeIds: a view filter must never widen the access fence.
     listCompanies(s),
+    // fd8156d4 — the configured Payroll Cycle names in scope, for the cycle dropdown. One grouped read.
+    payrollDashboardCycleNames(s, scopeIds),
   ]);
 
   // TWO passes, and the split is what makes the timeline honest. The counts on the month cells are
@@ -245,11 +267,13 @@ export default async function PayrollPage({
             {b.payPeriod}
           </Link>
         </td>
-        {/* Payroll Cycle: same pattern as the batch detail page — the runType label, plus the
-            free-text remarks (e.g. Advance Salary / Mid-Month) when present, so wizard cycles
-            stored under the generic 'off_cycle' bucket display distinctly. */}
+        {/* fd8156d4 — Payroll Cycle: the configured cycle's name ("Monthly", not "Regular"). Imported
+            history keeps "<cycle> - By Import"; a run opened under no cycle keeps its run-type word and
+            remarks exactly as before (dashboardCycleLabel). */}
         <td className="whitespace-nowrap px-3 py-2.5 text-muted-foreground">
-          {b.historyImportAttemptId?payrollRunLabel(b,t(`runType.${b.runType}`)):<>{t(`runType.${b.runType}`)}{b.remarks ? ` — ${b.remarks}` : ''}</>}
+          {b.historyImportAttemptId
+            ? payrollRunLabel(b, t(`runType.${b.runType}`))
+            : dashboardCycleLabel(b, t(`runType.${b.runType}`))}
         </td>
         <td className="px-3 py-2.5 text-muted-foreground">{b.company}</td>
         <td
@@ -476,10 +500,15 @@ export default async function PayrollPage({
           runsLabel: t('runsInMonth', { n: c.runs }),
         }))}
         companies={scopedCompanies}
-        // The cycle options are the run-type enum itself, labelled from payroll.list.runType — the ONE
-        // namespace that actually holds those four keys (r134 shipped a screen reading them from a
-        // namespace that never had them, and every run page said MISSING_MESSAGE).
-        cycleOptions={payrollRunTypeEnum.enumValues.map((v) => ({ value: v, label: t(`runType.${v}`) }))}
+        // fd8156d4 — the cycle options are the configured Payroll Cycle NAMES, plus run-type fallbacks
+        // for runs with no cycle. Run-type words still come from payroll.list.runType — the ONE namespace
+        // that holds those four keys (r134 shipped a screen reading them from one that never had them).
+        cycleOptions={cycleFilterOptions(
+          cycleNames,
+          yearBatches,
+          filters.cycles,
+          Object.fromEntries(payrollRunTypeEnum.enumValues.map((v) => [v, t(`runType.${v}`)])),
+        )}
         // 0b326d5f — THE NEW STATE IS FILTERABLE, and this is the answer to "say which". A chip the
         // filter cannot reach is worse than no chip: the whole point of the badge is "show me the runs
         // that need attention", and this single-select is the only control on the screen that can do

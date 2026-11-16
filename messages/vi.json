@@ -7414,7 +7414,13 @@
         "running": "Đang xử lý lại các nhân viên đã chọn",
         "progress": "Đã xong {done}/{total} nhân viên",
         "help": "Bạn có thể rời khỏi trang này. Mỗi nhân viên được tính lại riêng, và kết quả sẽ hiện ở đây khi việc xử lý lại hoàn tất."
-      }
+      },
+      "registerSearchLabel": "Tìm nhân viên trong lần chạy này",
+      "registerSearchPlaceholder": "Tìm theo tên nhân viên hoặc Mã nhân viên",
+      "registerSearchSubmit": "Tìm",
+      "registerSearchClear": "Xóa tìm kiếm",
+      "registerSearchSummary": "{n} trên {total} nhân viên khớp với “{q}”",
+      "registerSearchEmpty": "Không có nhân viên nào trong lần chạy này khớp với “{q}”."
     },
     "transactions": {
       "title": "Nhập liệu giao dịch",

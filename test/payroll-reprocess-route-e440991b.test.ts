@@ -129,7 +129,9 @@ describe('e440991b — the way in: the payroll run screen', () => {
   });
 
   it('requires retired-input review before generating, reprocessing or closing while preserving scoped recovery', () => {
-    expect(RUN_PAGE).toContain('await payrollRunRegisterPage(s, batchId, parsePageQuery(sp))');
+    expect(RUN_PAGE).toContain('await payrollRunRegisterPage(s, batchId, parsePageQuery(sp), q)');
+    // fd8156d4 — the run's actions stay gated on the run's own payslip count, never the searched page's.
+    expect(RUN_PAGE).toContain('const slipCount = data.runPayslipCount;');
     expect(RUN_PAGE).toContain("batch.status !== 'closed' && await payrollHasRetiredAttendanceFormulaInputs(s, batch.id)");
     expect(RUN_PAGE).toMatch(/\{batch\.status === 'draft' && !retiredFormulaInputs && \(\s*<form action=\{generateAction\}/);
     expect(RUN_PAGE).toMatch(/\{batch\.status === 'processed' && !retiredFormulaInputs &&\s*\(needsRecalc \? \([\s\S]*?\)\s*:\s*\(\s*<form action=\{closeAction\}/);
