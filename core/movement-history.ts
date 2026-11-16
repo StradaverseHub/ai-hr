@@ -529,13 +529,19 @@ export async function reapplyCorrectionBoundariesTx(tx:Tx,ctx:SessionContext,emp
  * recorded company against it.
  */
 export async function companyRecordOnTx(tx:Tx,tenantId:string,employmentId:string,day:string):Promise<string|null>{
- const inForce=sql`coalesce((select max(in_force.sequence) from domain_event in_force where in_force.tenant_id=${tenantId}::uuid and in_force.subject_employment_id=${employmentId}::uuid and in_force.event_type='employment.information.corrected' and in_force.payload->>'effectiveOn'<=${day} and (case when jsonb_typeof(in_force.payload->'fields')='array' then in_force.payload->'fields' @> '["companyId"]'::jsonb else (in_force.payload->'before'->>'companyId') is distinct from (in_force.payload->'after'->>'companyId') end)),0)`;
- const [correction]=await tx.select({companyId:sql<string|null>`nullif(${domainEvent.payload}->'before'->>'companyId','')`}).from(domainEvent)
-  .where(and(eq(domainEvent.tenantId,tenantId),eq(domainEvent.subjectEmploymentId,employmentId),eq(domainEvent.eventType,'employment.information.corrected'),sql`${domainEvent.payload}->>'effectiveOn' > ${day}`,sql`${domainEvent.sequence} > ${inForce}`))
-  .orderBy(asc(domainEvent.sequence)).limit(1);
- if(correction?.companyId)return correction.companyId;
+ const corrected=await correctionCompanyOnTx(tx,tenantId,employmentId,day);
+ if(corrected)return corrected;
  const [row]=await tx.select({companyId:assignment.companyId}).from(assignment).where(and(eq(assignment.employmentId,employmentId),isNull(assignment.supersededAt),sql`${assignment.validFrom}<=${day}::date`,sql`(${assignment.validTo} is null or ${assignment.validTo}>${day}::date)`)).orderBy(sql`${assignment.validFrom} desc`,asc(assignment.id)).limit(1);
  if(row?.companyId)return row.companyId;
  const [emp]=await tx.select({companyId:employment.companyId}).from(employment).where(eq(employment.id,employmentId)).limit(1);
  return emp?.companyId??null;
+}
+/** The before-image part of companyRecordOnTx alone: the company a correction saved after the one in force on `day`
+ * and dated after it says the employee had then, or null when the organisation owner answers from the dated record. */
+export async function correctionCompanyOnTx(tx:Tx,tenantId:string,employmentId:string,day:string):Promise<string|null>{
+ const inForce=sql`coalesce((select max(in_force.sequence) from domain_event in_force where in_force.tenant_id=${tenantId}::uuid and in_force.subject_employment_id=${employmentId}::uuid and in_force.event_type='employment.information.corrected' and in_force.payload->>'effectiveOn'<=${day} and (case when jsonb_typeof(in_force.payload->'fields')='array' then in_force.payload->'fields' @> '["companyId"]'::jsonb else (in_force.payload->'before'->>'companyId') is distinct from (in_force.payload->'after'->>'companyId') end)),0)`;
+ const [correction]=await tx.select({companyId:sql<string|null>`nullif(${domainEvent.payload}->'before'->>'companyId','')`}).from(domainEvent)
+  .where(and(eq(domainEvent.tenantId,tenantId),eq(domainEvent.subjectEmploymentId,employmentId),eq(domainEvent.eventType,'employment.information.corrected'),sql`${domainEvent.payload}->>'effectiveOn' > ${day}`,sql`${domainEvent.sequence} > ${inForce}`))
+  .orderBy(asc(domainEvent.sequence)).limit(1);
+ return correction?.companyId??null;
 }
