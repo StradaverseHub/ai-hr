@@ -245,6 +245,7 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5229,when:1794841005829,tag:'5829_shared_automation_email_asset_delivery'},
  {idx:5240,when:1794841005840,tag:'5840_shared_email_test_asset_source'},
  {idx:5241,when:1794841005841,tag:'5841_shared_email_case_file_pages'},
+ {idx:5242,when:1794841005842,tag:'5842_probation_shared_email_asset_proof'},
  {idx:5244,when:1794841005844,tag:'5844_shared_groups_preserve_members'},
  {idx:5245,when:1794841005845,tag:'5845_shared_groups_member_identity'},
  {idx:5246,when:1794841005846,tag:'5846_email_test_current_human'},
@@ -252,6 +253,7 @@ export const APPROVED_UPGRADE_TAIL=[
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5842_probation_shared_email_asset_proof':'b0deeef4ccebf79b41f57c8f44753c67a8039b50eea5414541ab87f81050bb15',
  '5846_email_test_current_human':'a3cd7270229682b341c50f05a7ef50fda655dcbc76d4deda66bc82b414318b0c',
  '5847_email_test_authority_utf8':'3ba274eada4346d5cfea1ac8dbb154e2f01374dab24325e45c9fabdd176a8186',
  '5845_shared_groups_member_identity':'970591319022c650ce991c1ff6be1ad6ed7718fd8e7679f0dd88b7cb92fc4873',
