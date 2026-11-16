@@ -529,7 +529,8 @@
     "pathname": "/payroll/transactions/zakat/election",
     "search": "",
     "expectedLinks": [
-      "/payroll/transactions"
+      "/payroll/transactions",
+      "/payroll/transactions/zakat"
     ],
     "active": {
       "href": "/payroll/transactions",

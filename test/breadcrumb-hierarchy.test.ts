@@ -14,6 +14,10 @@ describe('audited breadcrumb journeys',()=>{
   expect(trail!.parts.flatMap(p=>p.href?[p.href]:[])).toEqual(c.expectedLinks);
   expect(trail!.parts.every(p=>p.label&&p.label!=='undefined')).toBe(true);
  });
+ it('names the Termination Reasons subpage instead of repeating the Movement Settings heading',()=>{
+  const trail=resolveBreadcrumbTrail('/admin/settings/movement/reasons','',entries,null,translate)!;
+  expect(trail.detail).toBe(false);expect(trail.parts.at(-1)).toEqual({label:'Termination Reasons'});
+ });
  it('names query-selected views and keeps their page root clickable',()=>{
   const active={...entry('/payroll/transaction-view','Payroll'),label:'Transaction View'};
   const trail=resolveBreadcrumbTrail(active.href,'tab=grid',[],active,translate)!;
