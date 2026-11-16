@@ -3,13 +3,14 @@ import {act,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import {SharedApprovalPage} from '../app/lifecycle/contracts/approvals/[approvalId]/review';
+import {ContractPostingReceipt} from '../app/lifecycle/contracts/posting-receipt';
 import {ContractDecline} from '../app/lifecycle/contracts/record-decline';
 import {ContractStartingSetup} from '../app/lifecycle/contracts/settings/starting-setup';
 import {SharedLetterPage} from '../app/lifecycle/contracts/letters/[letterId]/review';
 import type {ContractSharedApproval,ContractSharedLetter} from '../packs/contracts/service';
 import {automationDocument} from '../lib/automation-document';
-const actions=vi.hoisted(()=>({approval:vi.fn(),letter:vi.fn(),edit:vi.fn(),bind:vi.fn(),setup:vi.fn(),startSetup:vi.fn(),decline:vi.fn()}));
-vi.mock('../app/lifecycle/contracts/shared-actions',()=>({actSharedApproval:actions.approval,actSharedLetter:actions.letter,editSharedLetter:actions.edit,bindSharedEmployee:actions.bind,readSharedSetup:actions.setup,startSharedSetup:actions.startSetup,recordSharedDecline:actions.decline}));
+const actions=vi.hoisted(()=>({approval:vi.fn(),letter:vi.fn(),edit:vi.fn(),bind:vi.fn(),setup:vi.fn(),startSetup:vi.fn(),decline:vi.fn(),pay:vi.fn()}));
+vi.mock('../app/lifecycle/contracts/shared-actions',()=>({actSharedApproval:actions.approval,actSharedLetter:actions.letter,editSharedLetter:actions.edit,bindSharedEmployee:actions.bind,readSharedSetup:actions.setup,startSharedSetup:actions.startSetup,recordSharedDecline:actions.decline,confirmSharedPay:actions.pay}));
 vi.mock('next/navigation',()=>({usePathname:()=>'/tasks',useRouter:()=>({refresh:vi.fn()})}));
 const caseId='b1fa7485-70d8-4403-9dab-815da20b2e01',id='aab5d59c-c75f-4dc2-9d4a-45865ea8ff81',hash='a'.repeat(64);
 function approval():ContractSharedApproval{return {id,caseId,decisionRevision:3,employeeName:'Fictional Contract Employee',employeeCode:'FC-7',company:'Fictional Company',decision:{kind:'renew',startOn:'2027-01-01',endOn:'2027-12-31',months:12,payChanges:true,salaryCents:'521012',reason:'Retain specialist work',endReason:null,submittedBy:'proposer',submittedAt:'2026-11-16T00:00:00Z',revision:3},period:{id:'period',startOn:'2026-01-01',endOn:'2026-12-31',number:'4',sourceRevision:hash},contentRevision:1,contentHash:hash,pendingLayerId:'ceo',canAct:true,status:'pending',layers:[{id:'ceo',label:'CEO',stage:1,assigneeName:'Fictional CEO',fulfilled:false}],history:[]};}
@@ -125,4 +126,16 @@ it('holds Form completion while the real response and receipt owner is unavailab
  mount(<SharedLetterPage letter={value} document={document}/>);
  expect(screen.getByText('Form response capture and signing are on hold. This Form cannot be completed yet.')).toBeInTheDocument();
  expect(screen.queryByRole('button',{name:'Accept and sign contract'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Edit wording for this case'})).not.toBeInTheDocument();
+});
+
+it('requires manual Payroll attestation and uses the exact native case receipt revision',async()=>{
+ const summary={postingId:id,label:'PP-42',eventType:'contractRenewal' as const,status:'approved' as const,approverGroupName:'Actual posting approvers',approvedByName:'Recorded Approver',approvedAt:'2026-11-17T02:00:00Z',movementAppliedAt:null,effectiveDate:'2027-01-01',payConfirmedByName:null,payConfirmedAt:null,caseRevision:14,canConfirmPay:true};
+ actions.pay.mockResolvedValue({ok:false,error:'The Contract posting changed. Review the latest receipt.'});
+ mount(<ContractPostingReceipt caseId={caseId} summary={summary} today="2026-11-17" payChanges/>);
+ expect(screen.getByText(/Current Personnel dates, contract number and employment type remain unchanged/)).toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'Confirm manual Payroll update'})).toBeDisabled();
+ fireEvent.click(screen.getByRole('checkbox',{name:'I confirm that Payroll has been manually updated to match the approved terms.'}));
+ fireEvent.click(screen.getByRole('button',{name:'Confirm manual Payroll update'}));
+ expect(await screen.findByRole('alert')).toHaveTextContent('posting changed');expect(actions.pay).toHaveBeenCalledWith({caseId,expectedRevision:14,confirmed:true});
+ expect(screen.getByRole('checkbox')).toBeChecked();
 });

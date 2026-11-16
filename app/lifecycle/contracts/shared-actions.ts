@@ -30,3 +30,5 @@ export async function startSharedSetup(input:Parameters<typeof owner.startContra
 export async function readSharedSetup(companyId:string){return perform(async s=>{const setup=await owner.contractSharedSetup(s,companyId),job=setup.jobId?await readBulkJob(s,setup.jobId,'contract_setup'):null;return {...setup,jobState:job?.state??null};},false);}
 
 export async function recordSharedDecline(input:Parameters<typeof owner.recordContractSharedDecline>[1]){return perform(s=>owner.recordContractSharedDecline(s,input));}
+
+export async function confirmSharedPay(input:Parameters<typeof owner.confirmContractSharedPay>[1]){return perform(s=>owner.confirmContractSharedPay(s,input));}
