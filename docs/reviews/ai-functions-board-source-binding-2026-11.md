@@ -564,3 +564,13 @@ TypeScript readers and, through migration 5696, the SQL company and report reade
 import graph. No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried forward
 to `d18c9c64…` and the agent manifest regenerated, under the owner's standing pre-approval for staging re-binds
 (12 November 2026). Staging only.
+
+### Re-binding for the combined batch: 4604dccc revision 4 plus the Payroll Reconciliation fixes (16 November 2026)
+
+The owner approved combining board 4604dccc revision 4 and the Payroll Reconciliation fixes
+(`claude/payroll-comparison-employee-scope-20261116`: one employee's comparison reads only that employee; the refused
+page links back to Reconciliation) into one gate and one staging install (16 November 2026). Added covered files:
+`core/payroll-view.ts` and `core/report-payroll-comparison.ts`, in the provider-data scope only through the import graph.
+No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried forward from
+`d18c9c64…` to `da60fba1…` and the agent manifest regenerated, under the owner's standing pre-approval for staging
+re-binds (12 November 2026). Staging only.
