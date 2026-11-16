@@ -144,6 +144,29 @@ describe('Offboarding letter privacy, completion and offer acceptance', () => {
     expect(preview.routing.map(step => step.queue)).toEqual(['approvals', 'tasks', 'tasks']);
   });
 
+  it('prints actual resolved unsigned signer identities or their configured role rather than an anonymous placeholder', () => {
+    const letter = generate({signers: {[people.ceo]: {name: 'Resolved executive', title: 'Chief Executive'}}}).letter;
+    const preview = resignationLetterPreview(letter, people.owner);
+    expect(preview.document?.mergeValues?.['signingStep.ceo-sign.name']).toBe('Resolved executive');
+    expect(preview.document?.mergeValues?.['signingStep.ceo-sign.title']).toBe('Chief Executive');
+    expect(preview.document?.mergeValues?.['signingStep.employee-sign.name']).toBe('Example employee');
+  });
+
+  it('only discloses merge facts printed by the visible letter and displays absent values as a dash', () => {
+    const t = template(); t.versions[0].blocks[2].text += ' {resignation.reason}';
+    const letter = generate({template: t, values: {...values(), 'resignation.reason': '', 'private.unused': 'never show this'}}).letter;
+    const preview = resignationLetterPreview(letter, people.owner);
+    expect(preview.document?.mergeValues?.['resignation.reason']).toBe('—');
+    expect(preview.document?.mergeValues).not.toHaveProperty('private.unused');
+    expect(preview.document?.mergeValues).not.toHaveProperty('retention.effectiveDateX');
+  });
+
+  it('resolves table header fields in the shared preview projection', () => {
+    const t = template(); t.versions[0].blocks[3].columns = '{employee.name}|Current|Proposed';
+    const preview = resignationLetterPreview(generate({template: t}).letter, people.owner);
+    expect(preview.document?.blocks.find(block => block.id === 'table')?.columns).toBe('Example employee|Current|Proposed');
+  });
+
   it('starts the reply clock on reaching the employee, requires opening/consent, and signing is acceptance', () => {
     let letter = generate().letter;
     letter = complete(letter, 'owner').letter;
@@ -192,6 +215,19 @@ describe('Offboarding letter privacy, completion and offer acceptance', () => {
     const lapsed = lapseResignationLetter(withEmployeeOffer());
     expect(lapsed.letter.state).toBe('lapsed'); expect(lapsed.replyClock).toBe('stop');
     expect(lapseResignationLetter(generate().letter).events).toEqual([]);
+  });
+
+  it('does not release an unusable document with an unfilled required visible form field', () => {
+    const t = template();
+    t.versions[0].fields.push({id: 'required-note', label: 'Required note', type: 'text', owner: 'hr', pmKey: null,
+      required: true, sensitive: false, options: [], section: '', when: null});
+    t.versions[0].blocks.push({id: 'required-field', type: 'field', fieldId: 'required-note', section: '', text: ''});
+    let letter = generate({template: t}).letter;
+    letter = complete(letter, 'owner').letter; letter = complete(letter, 'ceo').letter;
+    letter = act(letter, 'employee', {type: 'open'}).letter;
+    expect(() => complete(letter, 'employee')).toThrow('required visible letter field');
+    expect(letter.state).toBe('review');
+    expect(letter.history.some(action => action.actorId === people.employee && action.action === 'signed')).toBe(false);
   });
 });
 
