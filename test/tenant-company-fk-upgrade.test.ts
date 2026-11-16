@@ -319,6 +319,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // callable by the application role, and none is callable by PUBLIC. The policy-side and trigger-WHEN helpers are
   // granted to exactly the roles their policies or the domain_event writers are (test/policy-helper-function-grants).
   const privateFunctions=[
+   // Native managed-submission cutover: the insert trigger remains owner-only.
+   'app.resignation_submission_guard()',
    // Resignation9991/9993: private command verifiers and revoked original Probation implementations.
    'app.offboarding_posting_group_members(text)','app.offboarding_posting_references_ok(uuid,jsonb)','app.offboarding_posting_values_ok(text,jsonb)','app.personnel_posting_approve_probation_v1(uuid,integer,jsonb)','app.personnel_posting_create_probation_v1(text,uuid,uuid,text,jsonb,text,text)','app.personnel_posting_edit_probation_v1(uuid,integer,jsonb)','app.personnel_posting_visible_probation_v1(text,uuid,text)','app.resignation_command_allowed(uuid,jsonb)','app.resignation_journey_subject_guard()','app.resignation_managed_request_guard()','app.resignation_notification_owner()','app.resignation_notification_valid(notification)','app.resignation_pending_steps(jsonb)','app.resignation_runtime_consume(text,uuid,jsonb)','app.resignation_runtime_intent(uuid)',
    // 5763: Probation access helpers, owner only.
@@ -390,6 +392,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // the roles that evaluate it (test/rewards-config-grants-lock.test.ts), so no added function is callable by PUBLIC.
   const publicFunctions:string[]=[];
   const addedFunctions=[
+   // Final shared directory and managed-submission cutover helpers.
+   'app.contract_configuration_directory(uuid[],text,uuid[])','app.resignation_managed_submission_enabled(uuid)','app.resignation_submission_guard()',
    // Resignation9991/9992/9993/9995: explicit native entry points and private implementation identities.
    'app.offboarding_posting_choices(uuid,text)','app.offboarding_posting_due(uuid,date)','app.offboarding_posting_edit_event(uuid,integer,text,jsonb)','app.offboarding_posting_group(uuid,text)','app.offboarding_posting_group_members(text)','app.offboarding_posting_ops(uuid)','app.offboarding_posting_queue_access()','app.offboarding_posting_reassign(text,text)','app.offboarding_posting_receipt(uuid)','app.offboarding_posting_references_ok(uuid,jsonb)','app.offboarding_posting_reject(uuid,integer,text)','app.offboarding_posting_terms(uuid)','app.offboarding_posting_values_ok(text,jsonb)','app.personnel_posting_approve_probation_v1(uuid,integer,jsonb)','app.personnel_posting_create_probation_v1(text,uuid,uuid,text,jsonb,text,text)','app.personnel_posting_edit_probation_v1(uuid,integer,jsonb)','app.personnel_posting_visible_probation_v1(text,uuid,text)','app.resignation_command_allowed(uuid,jsonb)','app.resignation_configuration_usage(text[],text[])','app.resignation_email_assets(uuid,uuid,text)','app.resignation_email_files(uuid,uuid,text)','app.resignation_email_queue(uuid,text,uuid[],uuid[],text,text,jsonb)','app.resignation_handoff_active()','app.resignation_journey_access(uuid)','app.resignation_journey_admit(text,text)','app.resignation_journey_can_act(uuid,text)','app.resignation_journey_context(uuid,uuid)','app.resignation_journey_create(uuid,jsonb,uuid[])','app.resignation_journey_notify(uuid,text,uuid[],text,text)','app.resignation_journey_save(uuid,integer,text,text,jsonb,uuid[],uuid)','app.resignation_journey_subject_guard()','app.resignation_managed_clearance_ready(uuid)','app.resignation_managed_request_guard()','app.resignation_notification_owner()','app.resignation_notification_valid(notification)','app.resignation_offboarding_admit(uuid)','app.resignation_offboarding_intent(uuid)','app.resignation_offboarding_sequence(uuid)','app.resignation_pending_steps(jsonb)','app.resignation_posting_run_rejected(uuid,uuid,text)','app.resignation_request_is_managed(uuid)','app.resignation_run_retry_save(uuid,jsonb)','app.resignation_runtime_consume(text,uuid,jsonb)','app.resignation_runtime_intent(uuid)','app.resignation_runtime_readable(uuid,uuid,uuid)',
    // Board window 4 (5124): the preview binding trigger (owner only) and the superior diagnostic.
@@ -917,6 +921,15 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   expect(afterPerformancePrivileges.policies.filter(isBoardRetiredPolicy)).toEqual([]);
   // Resignation9991: exact new policies, parsed independently on their actual tables. No prefix exception.
   const resignationPolicies = [
+  {
+    "schema": "public",
+    "table": "lc_v9_config",
+    "name": "resignation_handoff_config_read",
+    "cmd": "SELECT",
+    "roles": "ai_hr_app",
+    "using": "tenant_id=app.current_tenant_id() AND app.resignation_handoff_active()",
+    "check": null
+  },
   {
     "schema": "public",
     "table": "resignation_journey",
