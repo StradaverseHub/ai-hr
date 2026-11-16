@@ -17,6 +17,6 @@ export default async function Page({searchParams}:{searchParams:Promise<Record<s
  if(!view)return <main className="pcg"><ConfigHead crumb={t('breadcrumb')} title={t('title')}/><p className="v9-notice v9-warning" role="alert">{t('forbidden')}</p></main>;
  return <main className="pcg">
   <ConfigHead crumb={t('breadcrumb')} title={t('title')} sub={t('intro')}/>
-  <AccessSection session={session} view={view} query={query} host="access"/>
+  {await AccessSection({session,view,query,host:'access'})}
  </main>;
 }

@@ -29,6 +29,6 @@ export default async function Page({searchParams}:{searchParams:Promise<Record<s
   <ConfigHead crumb={t('crumb',{page:t('settings.title')})} title={t('settings.title')} sub={sub} actions={actions}/>
   <SettingsScope view={view} query={query} live={live}/>
   <Preparation kind="settings" query={query} embedded/>
-  {access&&<AccessSection session={ctx} view={access} query={query} host="settings"/>}
+  {access?await AccessSection({session:ctx,view:access,query,host:'settings'}):null}
  </main>;
 }
