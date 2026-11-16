@@ -126,13 +126,14 @@ describe('Offboarding letter generation reuses shared template routing', () => {
   });
 
   it('lets only the owner regenerate the active unsigned letter from the latest template', () => {
-    let old = generate().letter; old = complete(old, 'owner').letter;
-    const edited = {...old, blocks: old.blocks.map(block=>block.id==='body'?{...block,text:'Case-only draft'}:block), edited:true};
+    const draft = generate().letter;
+    const edited = act(draft,'owner',{type:'edit',blocks:draft.blocks.map(block=>block.id==='body'?{...block,text:'Case-only draft'}:block)}).letter;
+    const old = complete(edited,'owner').letter;
     const latest = template(); latest.currentVersion=2; latest.versions.push({...structuredClone(latest.versions[0]),version:2,blocks:blocks().map(block=>block.id==='body'?{...block,text:'Current template wording'}:block)});
     expect(resignationLetterCapabilities(old,people.owner).canRegenerate).toBe(true);
     expect(()=>regenerate(old,'employee',latest)).toThrow(/owner/);
     expect(()=>regenerate(old,'owner',latest,99)).toThrow(/changed/);
-    const next=regenerate(edited,'owner',latest).letter;
+    const next=regenerate(old,'owner',latest).letter;
     expect(next.templateVersion).toBe(2);expect(next.revision).toBe(old.revision+1);expect(next.generatedOn).toBe(old.generatedOn);
     expect(next.blocks.find(block=>block.id==='body')?.text).toBe('Current template wording');expect(next.edited).toBe(false);
     expect(next.history).toEqual(old.history);expect(next.document.actions).toEqual([]);expect(next.receipts).toEqual([]);
