@@ -6322,6 +6322,20 @@
       "when": 1794841005845,
       "tag": "5845_shared_groups_member_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 5246,
+      "version": "7",
+      "when": 1794841005846,
+      "tag": "5846_email_test_current_human",
+      "breakpoints": true
+    },
+    {
+      "idx": 5247,
+      "version": "7",
+      "when": 1794841005847,
+      "tag": "5847_email_test_authority_utf8",
+      "breakpoints": true
     }
   ]
 }

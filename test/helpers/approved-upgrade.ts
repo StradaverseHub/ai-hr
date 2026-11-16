@@ -247,9 +247,13 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5241,when:1794841005841,tag:'5841_shared_email_case_file_pages'},
  {idx:5244,when:1794841005844,tag:'5844_shared_groups_preserve_members'},
  {idx:5245,when:1794841005845,tag:'5845_shared_groups_member_identity'},
+ {idx:5246,when:1794841005846,tag:'5846_email_test_current_human'},
+ {idx:5247,when:1794841005847,tag:'5847_email_test_authority_utf8'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5846_email_test_current_human':'a3cd7270229682b341c50f05a7ef50fda655dcbc76d4deda66bc82b414318b0c',
+ '5847_email_test_authority_utf8':'3ba274eada4346d5cfea1ac8dbb154e2f01374dab24325e45c9fabdd176a8186',
  '5845_shared_groups_member_identity':'970591319022c650ce991c1ff6be1ad6ed7718fd8e7679f0dd88b7cb92fc4873',
  '5844_shared_groups_preserve_members':'3d5b0933efdee689848653da194bda914e93e7a94246c3b1345ad684e9e7ad9a',
  '5826_automation_shared_assignment_groups':'4b112e626b80a509c6687fbfd3153bd56bd4ddfdda5cf1fb5c236f8bb9ff86f8',
