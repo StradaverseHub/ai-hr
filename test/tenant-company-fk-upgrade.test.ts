@@ -271,6 +271,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5755_probation_routed_assignment',
    '5756_probation_form_approver_choices',
    '5757_probation_legacy_workflow_move',
+   '5758_probation_routed_overrides',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);

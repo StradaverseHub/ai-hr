@@ -214,6 +214,7 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5155,when:1793330005455,tag:'5755_probation_routed_assignment'},
  {idx:5156,when:1793330005456,tag:'5756_probation_form_approver_choices'},
  {idx:5157,when:1793330005457,tag:'5757_probation_legacy_workflow_move'},
+ {idx:5158,when:1793330005458,tag:'5758_probation_routed_overrides'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -265,6 +266,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5755_probation_routed_assignment':'f1c0d942e5649071ff20eafab362dbaf363f2c1dc461684444d00480a3a81ac4',
  '5756_probation_form_approver_choices':'58c393bf5583abeb5a46bc6078ad756aee0691f24b3d68f80fec169218fe996e',
  '5757_probation_legacy_workflow_move':'16519f586b1f89c69f3758ac41cf5456cf4ae91bdd768bfe973e638982e86d21',
+ '5758_probation_routed_overrides':'824f6d210d6d9361bf4132246ea40b4662c7e48cee8a67a4af269cca6740ec35',
  '5754_automation_email_delivery':'bd1dc53c5461299006b240e7fb3fd25801a5aaaa3b6807be8995f858ffe57c05',
  '4800_ai_shared_leave_groups_read':'774dce41ba113549ec5415586d104b8d5b7712934216f2beb4d9aa0e9f00ffc5',
  '4601_last_login_event_index':'868e30d4a2840d4939a46f303ce999b2e041ae3cb6823eb8b712179ccf7d5788',

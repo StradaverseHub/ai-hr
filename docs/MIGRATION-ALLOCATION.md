@@ -1,3 +1,17 @@
+# PBP route overrides and delegation for routed Probation approver steps — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-overrides-20261116` (lane H of the Probation Confirmation build) appends
+`5758_probation_routed_overrides` at idx 5158 / when 1793330005458 (assigned by the build coordinator). SHA256
+`824f6d210d6d9361bf4132246ea40b4662c7e48cee8a67a4af269cca6740ec35`. It adds no table, column, function or grant. It re-creates in place, with
+the same signatures, owners and grants, `app.probation_route_override` (0949) so the case's PBP may override an
+unsubmitted Part route that contains routed form approver steps (Direct Superior, routing, group, named people; 5756),
+checked by `app.probation_validate_form_route` and kept to the routings of the case's pinned form version, and
+`app.probation_delegate_add` (0949) so a PBP/GBS may record a dated, reasoned delegation for such a step (the represented
+holder is the step's current person on the Part; the case's employee is refused for a routed step). Routes and steps
+without routed approvers take the 0949 bodies unchanged. No existing table, row, grant or purpose-owned object changes.
+The installed ledgers were not read; recheck watermarks and peer claims at admission. This allocation grants no
+installation authority.
+
 # Legacy Probation workflows move to the shared engine — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/probation-lane-last-20261116` (lane G2 of the Probation Confirmation build) appends
