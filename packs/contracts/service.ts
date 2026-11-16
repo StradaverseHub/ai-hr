@@ -4,6 +4,7 @@ export * from '../../core/contract-shared-config';
 export * from '../../core/contract-shared-read';
 export * from '../../core/contract-shared-preview';
 export * from '../../core/contract-shared-commands';
+export {recordContractSharedDecline} from '../../core/contract-shared-ending';
 export {contractPreviewJobHandler} from '../../core/contract-shared-preview-job';
 export {contractAutomationJobHandler} from '../../core/contract-shared-automation-job';
 export {readContractSharedApproval,actContractSharedApproval,readContractSharedLetter,actContractSharedLetter,editContractSharedLetter,bindContractSharedEmployee,renderContractSharedLetter,type ContractSharedApproval,type ContractSharedLetter} from '../../core/contract-shared-signing';
