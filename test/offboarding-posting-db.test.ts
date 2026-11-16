@@ -39,7 +39,7 @@ describe('Native Offboarding posting isolation',()=>{
   const f=await retained('SGD');await setCompensation(admin,{employmentId:f.hire.employmentId,basicSalary:1000,currency:'SGD',effectiveFrom:'2026-01-01'});
   const posting=await withTenant(admin,tx=>createPersonnelPostingTx(tx,f.input));expect((await personnelPosting(admin,posting.id))?.baseline?.currency).toBe('SGD');
   await setCompensation(admin,{employmentId:f.hire.employmentId,basicSalary:1000,currency:'USD',effectiveFrom:'2026-11-01'});
-  await expect(withTenant(admin,tx=>tx.execute(sql`select app.personnel_posting_approve(${posting.id}::uuid,1,null)`))).rejects.toThrow(/salary currency changed/i);
+  await expect(withTenant(admin,tx=>tx.execute(sql`select app.personnel_posting_approve(${posting.id}::uuid,1,null)`))).rejects.toMatchObject({cause:{code:'40001',message:'The salary currency changed since this resignation case; review the agreed offer before approving this posting'}});
   expect(await personnelPosting(admin,posting.id)).toMatchObject({status:'pending',revision:1,applied:null,movementId:null});
  });
  it('does not invent a currency for genuinely unknown legacy source facts',async()=>{
