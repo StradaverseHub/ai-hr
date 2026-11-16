@@ -832,3 +832,10 @@ Original full gate43943737895 and unchanged-source scale reproduction43951241825
 identities. Development runs43952343985,43952356442,43953766240 and43953835964 retain their own source
 and check coverage. This binding supplies no passing gate or staging acceptance; all final verification,
 authenticated admission and rendered staging checks remain required.
+
+
+The final control-type repair at `dd432052b5e939c7c908d33179394d5ce6a7bb68` retains explicit required names for ordinary
+workflow controls while controlled draft inputs stay unnamed. Under the same owner approval, only the
+28 active source digests carry forward to `fefbfc37e8bb11ba89f8bdff321d9793864cb618569aafd8199bebd4a6ed917a` (1635 files), with
+agent digest `87d6c5b769b9a1b70aac583fdefc0af6a2db912aad06fdaa97688defa3f90c2c` (494 files). Reverse digest substitution remains
+byte-identical. This changes presentation typing, not provider behavior, approved fields or permission.
