@@ -18,6 +18,8 @@ it('denies forged protected effects and monetary posting values, including direc
 it('does not reinterpret the posting as another person’s Employment or a changed native period',async()=>{
  const f=await contractPostingFixture({payChanges:true}),p=await releaseContractPosting(f);
  await owner.db.execute(sql`update employment set person_id=${f.admin.personId}::uuid where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`);
+ const changed=(await listContractSharedPostings(f.approver)).rows.find(row=>row.id===p.id);
+ expect(changed).toMatchObject({employeeName:'Fictional Contract employee',employeeCode:null,sourceCurrent:false,canApprove:false,canEdit:false,canConfirmPay:false});
  await expect(approveContractSharedPosting(f.approver,{id:p.id,revision:p.revision})).rejects.toThrow();
  // Restore the original subject, then mutate only the Personnel source period.
  await owner.db.execute(sql`update employment set person_id=${f.employee.personId}::uuid where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`);

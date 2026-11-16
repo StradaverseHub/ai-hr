@@ -224,9 +224,14 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5238,when:1794841005838,tag:'5838_contract_shared_email_task_projection'},
  {idx:5296,when:1794841005896,tag:'5896_contract_shared_directory_and_signer_caption'},
  {idx:5304,when:1794841005904,tag:'5904_contract_shared_native_intake_guard'},
+ {idx:5311,when:1794841005911,tag:'5911_contract_posting_canonical_assignment_receipt'},
+ {idx:5312,when:1794841005912,tag:'5912_contract_posting_source_projection'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5911_contract_posting_canonical_assignment_receipt':'86d530dec94eb6cce45039e05adfba1a3b671764e5b8e687f1e5a64747f0b977',
+ '5912_contract_posting_source_projection':'c4b3003dfd78efecdf4e1f9674769dcb8aee9701593bc327cdba24cdb28e746e',
+
  '5814_contract_shared_personnel_postings':'54a543202440caccc4e32f50eab39eecf76ae2497f2df850b6d6f8af02f793e3',
  '5815_contract_posting_movement_authority':'1eea9a234448186bbbfc90372deb53936b2ec92f34b87d6c08cb0567b7db0924',
  '5816_contract_posting_projections':'81a74ca3dbe2554756574c7684273a5ff7be69c615846482e794408459ed79da',

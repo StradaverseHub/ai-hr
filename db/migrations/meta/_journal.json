@@ -6441,6 +6441,20 @@
       "when": 1794841005904,
       "tag": "5904_contract_shared_native_intake_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 5311,
+      "version": "7",
+      "when": 1794841005911,
+      "tag": "5911_contract_posting_canonical_assignment_receipt",
+      "breakpoints": true
+    },
+    {
+      "idx": 5312,
+      "version": "7",
+      "when": 1794841005912,
+      "tag": "5912_contract_posting_source_projection",
+      "breakpoints": true
     }
   ]
 }
