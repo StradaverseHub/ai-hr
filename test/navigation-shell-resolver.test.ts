@@ -125,6 +125,14 @@ describe('shared shell policy preserves the pre-extraction visibility contract',
     expect(inFamily({contractStaffAccess:{page:false,configure:false,intake:true}},'/lifecycle/contracts')).toEqual(['/lifecycle/contracts/intake']);
   });
 
+  it('mounts settings once through native administration, never through its former pack row',()=>{
+    const settings='/lifecycle/v9?view=settings';
+    for(const capabilities of [{isAdmin:true},{onboardingV9Access:true,onboardingV9Navigation:{onboarding:true,offboarding:true,administration:false}},{probationAccess:{page:true,configure:true}},{contractStaffAccess:{page:true,configure:true}}])expect(hrefs(capabilities)).not.toContain(settings);
+    const allowed=resolve({isAdmin:true,onboardingV9Access:true,onboardingV9Navigation:{onboarding:true,offboarding:true,administration:true}});
+    expect(allowed.destinations.filter(row=>row.href===settings)).toHaveLength(1);
+    expect(allowed.lifecycleNavigation.some(row=>row.href===settings)).toBe(false);
+  });
+
   it('shows the shared Configuration builders to anyone who configures a module, from existing configure facts only', () => {
     const shared = ['/automation/workflows','/automation/templates','/automation/groups'];
     expect(inFamily({},'/automation')).toEqual([]);

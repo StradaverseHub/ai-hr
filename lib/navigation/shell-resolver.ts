@@ -192,7 +192,10 @@ export function resolveShellNavigation({
     .filter(row => rewardDestinations.includes(row.href) && moduleAllows(row.href));
   // The lifecycle pack's own builder rows are replaced by the V9 presentation above, including the builder views
   // placed in the shared Configuration section (automationRows), so they are dropped here like every onboarding row.
-  const v9AutomationHrefs = new Set<string>(V9_AUTOMATION_NAVIGATION.map(item => item.href));
+  // Settings moved placement too: suppress its legacy pack row before mounting it exactly once
+  // from the existing native V9 administration fact above. Placement is never an authorization source.
+  const v9AutomationHrefs = new Set<string>([...V9_AUTOMATION_NAVIGATION.map(item => item.href),
+    ...V9_NAVIGATION.filter(item=>item.view==='settings').map(item=>item.href)]);
   const destinations: ChildItem[] = [...authorizedRows.filter(row => {
     const placement = navigationPlacement(row.href);
     return !v9AutomationHrefs.has(row.href) && (!placement || !('module' in placement) || placement.module !== 'onboarding');
