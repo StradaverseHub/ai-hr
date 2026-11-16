@@ -1,3 +1,7 @@
+import {markWorkforcePayrollInputsChangedTx} from './workforce-payroll-invalidation';
+import {lockEmploymentStatutoryOwnerTx} from './employment-statutory-owner-lock';
+export {lockEmploymentStatutoryOwnerTx} from './employment-statutory-owner-lock';
+import {preserveMovementPayrollTx} from './movement-payroll-protection';
 import {employmentPaymentMethodOnTx,employmentPaymentMethodOnSql} from './employment-payment-method';
 import {lockPayrollInputsTx} from './payroll-inputs-lock';
 import {withSystemLabelCompanyTx} from './system-label-selection';
@@ -1371,7 +1375,10 @@ export async function editDelegation(
 type NativeReportingLineInput=Parameters<typeof setReportingLine>[1];
 async function reportingLinePreflightTx(tx:Tx,ctx:SessionContext,p:NativeReportingLineInput,noWait=false){
     // Delegation retains its independent relationship/decision owner. Structural edges do not.
-    if(p.lineType!=='delegate')await assertWorkforceEmploymentTx(tx,ctx,p.subordinateEmploymentId,'maintain');
+    if(p.lineType!=='delegate'){
+      await assertWorkforceEmploymentTx(tx,ctx,p.subordinateEmploymentId,'maintain');
+      await lockPayrollInputsTx(tx,{employmentIds:[p.subordinateEmploymentId]});
+    }
     if (p.subordinateEmploymentId === p.managerEmploymentId) throw new ReportingCycleError();
     // Window guard (ADR-0052 Step 4 rule #3): valid_to may not precede valid_from. Applies to every
     // line type but is the load-bearing guard for a delegation window.
@@ -1443,6 +1450,7 @@ async function writeStructuralReportingLineTx(tx:Tx,ctx:SessionContext,p:NativeR
       subjectEmploymentId: p.subordinateEmploymentId,
       payload: { ...p },
     },{returnId:reviewed});
+    await markWorkforcePayrollInputsChangedTx(tx,ctx,{employmentId:p.subordinateEmploymentId,from:p.validFrom});
     return { reportingLineId: row.id,setEventId };
 }
 
@@ -2125,6 +2133,7 @@ export async function setEmploymentGrade(
     // A movement holding the exclusive lock keeps the exclusive configuration lock it always took.
     await lockAccessConfigurationTx(tx, ctx.tenantId);
     await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId], { configuration: true });
+    await lockPayrollInputsTx(tx,{employmentIds:[p.employmentId]});
     const [before] = await tx
       .select({ gradeId: employment.gradeId })
       .from(employment)
@@ -2144,6 +2153,7 @@ export async function setEmploymentGrade(
       subjectEmploymentId: p.employmentId,
       payload: { before: before.gradeId, after: p.gradeId, ...(p.movement ? { movement: p.movement } : {}) },
     });
+    await markWorkforcePayrollInputsChangedTx(tx,ctx,{employmentId:p.employmentId,from:p.movement?.effectiveDate??todayInKualaLumpur()});
     return { id: p.employmentId, changed: true as const };
   };
   return outerTx ? run(outerTx) : withTenant(ctx, run);
@@ -2232,6 +2242,7 @@ export async function setEmploymentAssignment(
     }
     await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     if(p.companyId)await assertWorkforceCompanyTx(tx,ctx,p.companyId,'maintain');
+    await lockPayrollInputsTx(tx,{employmentIds:[p.employmentId],companyIds:p.companyId?[p.companyId]:[]});
     const [cur] = await tx
       .select()
       .from(assignment)
@@ -2437,6 +2448,7 @@ export async function setEmploymentAssignment(
       },
     });
     await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId:nextCompanyId,asOf:p.effectiveDate,trigger:p.movement?'movement':'assignment'});
+    await markWorkforcePayrollInputsChangedTx(tx,ctx,{employmentId:p.employmentId,from:p.effectiveDate});
     return { assignmentId: next.id, changed: true as const };
   };
   return outerTx ? run(outerTx) : withTenant(ctx, run);
@@ -2476,14 +2488,6 @@ export async function setEmploymentAssignment(
  * is validated directly (labelUsableByCompany has no 'location' kind): an HR-supplied location must belong to
  * the destination; a stored old-company location is cleared.
  */
-/** Serialize the existing person statutory owner before employment changes can hold row locks.
- * Employment identity is immutable; tenant RLS still scopes both reads. Absent profiles need no lock.
- * Core/org already owns this table edge; no country data is copied into employment history. */
-export async function lockEmploymentStatutoryOwnerTx(tx:Tx,employmentId:string){
-  const [identity]=await tx.select({personId:employment.personId}).from(employment).where(eq(employment.id,employmentId)).limit(1);
-  if(identity)await tx.select({id:employeeStatutoryMy.id}).from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,identity.personId)).limit(1).for('update');
-}
-
 export async function changeEmploymentCompany(
   ctx: SessionContext,
   p: {
@@ -3819,6 +3823,7 @@ export async function setEmploymentPaymentMethod(
     await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockPayrollInputsTx(tx,{employmentIds:[p.employmentId]});
+    await lockEmploymentStatutoryOwnerTx(tx,p.employmentId);
     const [before] = await tx
       .select({ paymentMethod: employment.paymentMethod, personId: employment.personId, hiredOn:employment.hiredOn })
       .from(employment)
@@ -3838,6 +3843,7 @@ export async function setEmploymentPaymentMethod(
       throw new MissingBankForTransferError();
     }
 
+    await preserveMovementPayrollTx(tx,p.employmentId,message=>new Error(message));
     await tx.execute(sql`update employment_payment_method_history set superseded_at=now() where tenant_id=${ctx.tenantId}::uuid and employment_id=${p.employmentId}::uuid and effective_on=${effectiveDate}::date and superseded_at is null`);
     const [revision]=await tx.execute<{id:string}>(sql`insert into employment_payment_method_history(tenant_id,employment_id,effective_on,payment_method,recorded_by,source) values(${ctx.tenantId}::uuid,${p.employmentId}::uuid,${effectiveDate}::date,${next},${ctx.userId??null}::uuid,${p.movement?'movement':'maintenance'}) returning id`);
     const projected=await employmentPaymentMethodOnTx(tx,p.employmentId,today);

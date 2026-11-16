@@ -1660,6 +1660,19 @@
       "salaryNegativeError": "Basic salary cannot be a negative amount. Leave it blank or enter 0 for an employee with no basic salary.",
       "salaryNotANumberError": "Basic salary must be a number. Leave it blank or enter 0 for an employee with no basic salary.",
       "paymentMethod": "Payment Method",
+    "salaryRecording": {
+      "title": "Record salary change",
+      "choice": "How should this be recorded?",
+      "newEvent": "Create a new event",
+      "updateLatest": "Update latest applicable event",
+      "amendment": "Salary amendment without an event",
+      "eventType": "Event type",
+      "target": "Event to update",
+      "selectTarget": "Select the event",
+      "latestHint": "The event keeps its shown Effective Date. A different date requires a new event or amendment.",
+      "amendmentHint": "The salary and payment method are saved together. The audit records the amendment without adding an Employment History event."
+    },
+    "salaryPayrollFrom": "Salary applies to open payroll from",
     "paymentMethodHistoryTitle": "Payment method history",
     "paymentMethodEffectiveDate": "Effective date",
     "paymentMethodRecordedAt": "Recorded at",
@@ -1926,6 +1939,8 @@
         },
         "payrollClosedBadge": "Payroll closed: {periods}",
         "informationCorrected": "Information corrected",
+      "orderConflict": "Resolve event order",
+      "orderConflictHint": "Events on this date change the same details. Edit their Effective Dates or cancel a conflicting pending event before they apply.",
         "informationNeedsReview": "Correction needs review",
         "historyBadge": "History",
         "rehire": {
@@ -6675,7 +6690,8 @@
         "hire_date": "join date changed",
         "transfer": "company transfer changed",
         "compensation": "salary changed",
-        "statutory": "statutory settings changed"
+        "statutory": "statutory settings changed",
+        "employment_information": "employment information changed"
       },
       "closeConfirmNo": "No",
       "closeBack": "Back to Payroll Process",

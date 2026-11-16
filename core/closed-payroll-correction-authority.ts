@@ -1,6 +1,6 @@
-/** 646355e5 — transaction-bound authority for an acknowledged Movement correction behind closed payroll.
- *  Same shape as exit-date-authority: a posted flag alone is never a grant; only Movement's correction
- *  owner enters this scope, after the acknowledgement, reason and payslip snapshot are in place. */
+/** Transaction-bound authority for canonical employment-history maintenance behind closed payroll.
+ * A posted flag supplies no authority. Movement enters only after current maintenance rights, payroll-input
+ * serialization and document preservation. Legacy date-maintenance doors retain their own acknowledgement rule. */
 import type { Tx } from '../db/client';
 const owners=new WeakMap<object,Map<string,number>>();
 export function hasClosedPayrollCorrectionAuthorityTx(tx:Tx|undefined,employmentId:string) {

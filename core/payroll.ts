@@ -916,7 +916,7 @@ export async function markBatchNeedsRecalc(
  * `payroll-batch.recalc-required` event (no column, no migration) and read back by
  * `listRecalcChangeCategories` for the run screen.
  */
-export const RECALC_CHANGE_CATEGORIES = ['termination', 'hire_date', 'transfer', 'compensation', 'statutory'] as const;
+export const RECALC_CHANGE_CATEGORIES = ['termination', 'hire_date', 'transfer', 'compensation', 'statutory', 'employment_information'] as const;
 export type RecalcChangeCategory = (typeof RECALC_CHANGE_CATEGORIES)[number];
 
 /**

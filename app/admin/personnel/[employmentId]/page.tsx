@@ -1,3 +1,7 @@
+import {movementTypeControls} from '@/core/movement-type-controls';
+import {SalaryRecordingChoices,type SalaryRecordingOptions} from '@/components/salary-recording-choices';
+import {latestApplicableMovementCandidates} from '@/lib/movement-latest-applicable';
+import {isComparisonKind} from '@/core/movement-kinds';
 import {employmentPaymentMethodHistory} from '@/core/employment-payment-method';
 import {movementDeleteAccess} from '@/core/movement-delete-access';
 import { MOVEMENT_EMPLOYMENT_PERIOD_FIELDS } from '@/lib/movement-employment-periods';
@@ -608,6 +612,7 @@ export default async function EmployeePage({
   // to the active ones below. A tenant that has configured nothing gets the built-in list unchanged.
   const movementTypes = movementProjection?.movementTypes ?? (admin ? await listMovementEventTypes(s, { includeUsage: false }) : []);
   const movementTypeByCode = new Map(movementTypes.map((r) => [r.code, r]));
+  const salaryTypeControls=readProfileCards&&canMaintainWorkforce?await movementTypeControls(s,movementTypes):null;
   const movementDetailData = admin && spMovement ? await movementDetail(s, employmentId, spMovement) : null;
   // 1d58019a Step 2 — the movement's supporting documents; the service applies history visibility and the
   // table's pay rule, so a document this admin may not see is simply not listed.
@@ -669,7 +674,7 @@ export default async function EmployeePage({
   const movementFormData = await readPersonnelMovementFormData(s, employmentId, movementTypes, movementFormOpen);
   const movementCurrent = movementFormData?.current ?? null;
   const typeControls = (code: string) => {
-    const c = movementFormData?.controls.get(code);
+    const c = movementFormData?.controls.get(code)??salaryTypeControls?.get(code);
     return { reasonCodes: c?.reasonCodes ?? null, ...(c?.configured ? { rules: c.rules } : {}) };
   };
   /**
@@ -2522,10 +2527,20 @@ export default async function EmployeePage({
   // Salary math is derived here on the server; the island only presents + filters (f2904eeb-safe, no
   // client fetch). Audit detail (created/updated by/on) is no longer serialized — it belongs to the
   // Audit Trail, not this screen (7c7c2f80).
+  const methodAtSalaryDate=(date:string)=>paymentMethodHistory.length?(paymentMethodHistory.filter(row=>!row.supersededAt&&row.effectiveOn<=date).sort((a,b)=>b.effectiveOn.localeCompare(a.effectiveOn))[0]?.paymentMethod??null):emp.paymentMethod;
+  const salaryRecordingOptions:SalaryRecordingOptions={
+    events:movementTypes.filter(type=>type.active&&isComparisonKind(type.behaviourKind)&&!['entityTransfer','confirmation'].includes(type.behaviourKind))
+      .filter(type=>!(typeControls(type.code).rules??[]).some(rule=>(rule.mustChange&&!['basicSalary','paymentMethod','currency','payMode','paymentTerm'].includes(rule.field))||(rule.document==='required'&&['basicSalary','paymentMethod'].includes(rule.field))||(['basicSalary','paymentMethod'].includes(rule.field)&&(!rule.included||!rule.editable))))
+      .map(type=>({code:type.code,label:movementKindLabelOf(type.code,type.label,t)})),
+    latest:latestApplicableMovementCandidates(movements,today).map(row=>({id:row.id,label:movementKindLabelOf(row.kind,movementTypeByCode.get(row.kind)?.label,t),effectiveDate:row.effectiveDate,
+      canUpdate:row.canEdit&&isComparisonKind(movementTypeByCode.get(row.correctionKind??row.kind)?.behaviourKind??row.kind),paymentMethod:methodAtSalaryDate(row.effectiveDate)})),
+    closedPeriods:closedPayrollPeriods,
+  };
   const salaryRowViews: SalaryRowView[] = salaryRows.map((r) => ({
     id: r.row.id,
     employmentId: emp.employmentId,
     effectiveDate: r.row.validFrom,
+    paymentMethod:methodAtSalaryDate(r.row.validFrom),
     currency: r.row.currency,
     basic: r.basic,
     previous: r.previous,
@@ -2557,18 +2572,7 @@ export default async function EmployeePage({
       <input type="hidden" name="employmentId" value={emp.employmentId} />
       <input type="hidden" name="tab" value="payroll" data-tab-tracker="" />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <PersonnelField fieldId="payroll.basic_salary_and_salary_history.validfrom" mode="record">
-          <DateField {...personnelControl("payroll.basic_salary_and_salary_history.validfrom", 'record')}
-
-
-            defaultValue={salaryRows.length ? today : emp.hiredOn}
-            className={inputCls}
-            label={personnelLabel("payroll.basic_salary_and_salary_history.validfrom")}
-          />
-          {salaryRows.length === 0 && (
-            <p className="mt-1 text-xs text-muted-foreground">{t('salaryInitialEffectiveHint')}</p>
-          )}
-        </PersonnelField>
+        <div className="sm:col-span-2"><SalaryRecordingChoices options={salaryRecordingOptions} defaultDate={salaryRows.length?today:emp.hiredOn} paymentMethod={emp.paymentMethod}/></div>
         {/* r374 (item 7dbaf677) — `required` DROPPED, `min="0"` KEPT. A Director paid Director Fees
             quarterly has no monthly basic; `required` meant HR could type a zero but not leave the box
             empty, and an empty box is the honest answer. A blank POST is read as an explicit zero by
@@ -2674,7 +2678,7 @@ export default async function EmployeePage({
             in-force revision carries its own Active badge and row tint rather than being identified by
             position: this table sorts and filters, so row order is the reader's choice, not the record's
             status. (The summary strip above states the same figure once more, in words.) */}
-        {salaryRowViews.length > 0 && <SalaryHistoryTable rows={salaryRowViews} />}
+        {salaryRowViews.length > 0 && <SalaryHistoryTable rows={salaryRowViews} recordingOptions={salaryRecordingOptions} />}
       </section>
 
       {/* ── R46 79eb7151, SUPERSEDED by ADR-0078 (642ecc55) — How this employee is paid ─────────────────────
@@ -3254,6 +3258,7 @@ export default async function EmployeePage({
                     {t('movement.rehire.previousId', { code: m.rehiredFrom.employeeCode ?? '—' })}
                   </Link>
                 )}
+                {m.orderConflict&&<details className="mt-1 text-xs text-amber-700 dark:text-amber-300"><summary className="cursor-pointer">{t('movement.orderConflict')}</summary><p className="mt-1 max-w-sm">{t('movement.orderConflictHint')}</p></details>}
                 {!!m.informationCorrections?.length&&<Link href={movementPageHref(employmentId,'view',m.id,movementContext)+'#information-correction-history'} className="ml-2 text-xs text-primary underline underline-offset-2">{m.informationCorrections.some(c=>c.needsReview)?t('movement.informationNeedsReview'):t('movement.informationCorrected')}</Link>}
                 {m.reversed && (
                   <span className="ml-2 rounded border border-border px-1.5 py-0.5 align-middle text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -3396,6 +3401,7 @@ export default async function EmployeePage({
         { key: 'manager', label: t('movement.field.manager'), before: movementDetailData.before?.manager, after: movementDetailData.after.manager },
         {key:'paymentMethod',label:t('paymentMethod'),before:movementDetailData.before?.paymentMethod?t(`paymentMethod_${movementDetailData.before.paymentMethod}` as 'paymentMethod_cash'):null,after:movementDetailData.after.paymentMethod?t(`paymentMethod_${movementDetailData.after.paymentMethod}` as 'paymentMethod_cash'):null},
         { key: 'salary', label: t('movement.field.salary'), before: movementDetailData.before?.salary, after: movementDetailData.after.salary },
+        ...(movementDetailData.after.salaryPayrollFrom?[{key:'salaryPayrollFrom',label:t('salaryPayrollFrom'),before:null,after:formatDmy(movementDetailData.after.salaryPayrollFrom)}]:[]),
         // 08913328 — the flat, non-dated columns THIS movement moved (Division … Category). They cannot be
         // reconstructed as-of, so they appear only when the movement's own event recorded a before/after —
         // never as today's value pretending to be part of a years-old change.

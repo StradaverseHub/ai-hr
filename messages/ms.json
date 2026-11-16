@@ -1660,6 +1660,19 @@
       "salaryNegativeError": "Gaji asas tidak boleh menjadi jumlah negatif. Biarkan kosong atau masukkan 0 bagi pekerja yang tiada gaji asas.",
       "salaryNotANumberError": "Gaji asas mesti satu nombor. Biarkan kosong atau masukkan 0 bagi pekerja yang tiada gaji asas.",
       "paymentMethod": "Kaedah Pembayaran",
+    "salaryRecording": {
+      "title": "Rekod perubahan gaji",
+      "choice": "Bagaimanakah perubahan ini direkodkan?",
+      "newEvent": "Cipta peristiwa baharu",
+      "updateLatest": "Kemas kini peristiwa terkini yang berkuat kuasa",
+      "amendment": "Pindaan gaji tanpa peristiwa",
+      "eventType": "Jenis peristiwa",
+      "target": "Peristiwa untuk dikemas kini",
+      "selectTarget": "Pilih peristiwa",
+      "latestHint": "Peristiwa mengekalkan Tarikh Berkuat Kuasa yang ditunjukkan. Tarikh lain memerlukan peristiwa baharu atau pindaan.",
+      "amendmentHint": "Gaji dan kaedah pembayaran disimpan bersama. Audit merekodkan pindaan tanpa menambah peristiwa Sejarah Pekerjaan."
+    },
+    "salaryPayrollFrom": "Gaji berkuat kuasa untuk penggajian terbuka mulai",
     "paymentMethodHistoryTitle": "Sejarah kaedah pembayaran",
     "paymentMethodEffectiveDate": "Tarikh berkuat kuasa",
     "paymentMethodRecordedAt": "Direkodkan pada",
@@ -1926,6 +1939,8 @@
         },
         "payrollClosedBadge": "Gaji ditutup: {periods}",
         "informationCorrected": "Maklumat dibetulkan",
+      "orderConflict": "Selesaikan turutan peristiwa",
+      "orderConflictHint": "Peristiwa pada tarikh ini mengubah butiran yang sama. Edit Tarikh Berkuat Kuasa atau batalkan peristiwa tertunda yang bercanggah sebelum ia digunakan.",
         "informationNeedsReview": "Pembetulan perlu disemak",
         "historyBadge": "Sejarah",
         "rehire": {
@@ -7399,7 +7414,8 @@
         "hire_date": "tarikh menyertai diubah",
         "transfer": "pertukaran syarikat diubah",
         "compensation": "gaji diubah",
-        "statutory": "tetapan berkanun diubah"
+        "statutory": "tetapan berkanun diubah",
+        "employment_information": "maklumat pekerjaan berubah"
       },
       "closeConfirmNo": "Tidak",
       "closeBack": "Kembali ke Proses Gaji",

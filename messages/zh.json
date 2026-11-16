@@ -1660,6 +1660,19 @@
       "salaryNegativeError": "基本薪金不能为负数。对于没有基本薪金的员工，请留空或填 0。",
       "salaryNotANumberError": "基本薪金必须是数字。对于没有基本薪金的员工，请留空或填 0。",
       "paymentMethod": "支付方式",
+    "salaryRecording": {
+      "title": "记录薪资变更",
+      "choice": "如何记录此变更？",
+      "newEvent": "创建新事件",
+      "updateLatest": "更新最近的已生效事件",
+      "amendment": "仅修订薪资，不创建事件",
+      "eventType": "事件类型",
+      "target": "要更新的事件",
+      "selectTarget": "选择事件",
+      "latestHint": "该事件保留所示的生效日期。其他日期请创建新事件或薪资修订。",
+      "amendmentHint": "薪资和付款方式将一并保存。审计记录此修订，不新增雇佣历史事件。"
+    },
+    "salaryPayrollFrom": "薪资自此日期起用于未结算工资",
     "paymentMethodHistoryTitle": "付款方式历史",
     "paymentMethodEffectiveDate": "生效日期",
     "paymentMethodRecordedAt": "记录时间",
@@ -1926,6 +1939,8 @@
         },
         "payrollClosedBadge": "薪资已关闭：{periods}",
         "informationCorrected": "资料已更正",
+      "orderConflict": "解决事件顺序冲突",
+      "orderConflictHint": "此日期的事件更改了相同信息。请修改生效日期或取消冲突的待生效事件，再使其生效。",
         "informationNeedsReview": "更正需要审核",
         "historyBadge": "历史",
         "rehire": {
@@ -7399,7 +7414,8 @@
         "hire_date": "入职日期已更改",
         "transfer": "公司调动已更改",
         "compensation": "薪资已更改",
-        "statutory": "法定设置已更改"
+        "statutory": "法定设置已更改",
+        "employment_information": "雇佣信息已更改"
       },
       "closeConfirmNo": "否",
       "closeBack": "返回薪资处理",

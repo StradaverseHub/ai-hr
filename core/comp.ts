@@ -504,6 +504,7 @@ export async function setCompensation(
           ? {
               movement: {
                 type: p.movement.type,
+                ...(p.movement.effectiveDate ? {effectiveDate:p.movement.effectiveDate} : {}),
                 ...(p.movement.secondary ? { secondary: true } : {}),
                 ...(p.movement.groupId ? { groupId: p.movement.groupId } : {}),
               },

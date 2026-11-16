@@ -1,3 +1,11 @@
+# Subject-specific open payroll invalidation — 17 November 2026 MYT (unapplied candidate)
+
+Integrated candidate uses reserved 5776, idx 5176, when 1793330005476, SHA256 `28624ba957c14e02dfb7305c5d94b5627be11d4cc66f65e8903e5a921436589f`.
+Adds a limited Workforce invalidation function, checking current maintenance rights and held Access/payroll-input
+locks before marking only open runs with a payslip for that employment within the supplied date window.
+Returns a count, reads no amounts, appends native recalc audit and grants no processing/closing authority.
+Recheck admission watermarks and peer claims; no installation authority.
+
 # Movement payment method field — 17 November 2026 MYT (unapplied candidate)
 
 Integrated candidate uses reserved 5775, idx 5175, when 1793330005475, SHA256 `3841610ec8f01675b16ad51b9c9523d77146f8c048790565d9862510909d3155`.
@@ -7,7 +15,7 @@ RLS to payment-method documents. No data rows or grants change. Recheck admissio
 # Dated payment method — 17 November 2026 MYT (unapplied candidate)
 
 `codex/personnel-movement-comprehensive-20261117` uses reserved 5774, idx 5174, when 1793330005474,
-SHA256 `500485fddda4cfb8a17c221873796c56a07eba386a05240a32296ec77ed0bcf9`. Adds one effective-dated employment payment-method owner with RLS,
+SHA256 `4e68e7aa1c2e66f605938fef0e59ce86a137ecdbd061c0f3e5a3e5a48ff6c5d8`. Adds one effective-dated employment payment-method owner with RLS,
 app SELECT/INSERT/UPDATE grants, tenant-linked employment FK, and an invoker dated reader.
 Existing undated non-null methods are recorded as known on installation day, without inventing prior dates.
 No payroll rows change. Recheck peer claims and installed ledgers before admission; no installation authority.

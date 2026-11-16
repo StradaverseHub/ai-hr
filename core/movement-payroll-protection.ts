@@ -1,4 +1,5 @@
 /** Employment-history maintenance protects issued payroll independently of an HR acknowledgement. */
+import {lockEmploymentStatutoryOwnerTx} from './employment-statutory-owner-lock';
 import { sql } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import { assertWorkforceEmploymentTx } from './workforce-access';
@@ -11,6 +12,7 @@ export async function preserveMovementPayrollTx(tx: Tx, employmentId: string, re
   const prior = preserved.get(tx)?.get(employmentId);
   if (prior !== undefined) return prior;
   await lockPayrollInputsTx(tx, { employmentIds: [employmentId] });
+  await lockEmploymentStatutoryOwnerTx(tx,employmentId);
   let count: number;
   try {
     const [row] = await tx.execute<{ count: number }>(sql`select app.preserve_information_payroll(${employmentId}::uuid) as count`);

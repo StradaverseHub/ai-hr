@@ -1,3 +1,4 @@
+import {conflictingMovementFields} from '../lib/movement-sequence-conflict';
 import {employmentPaymentMethodOnTx} from './employment-payment-method';
 import {PAYMENT_METHODS,type PaymentMethod} from '../lib/payment-methods';
 import {assertMovementDeleteTx} from './movement-delete-access';
@@ -225,6 +226,7 @@ export type MovementHistoryRow = {
    *  reads these flags so the affordance and the service rule cannot drift apart. */
   canEdit: boolean;
   canReverse: boolean;
+  orderConflict?:boolean;
   /** The recorded command type; a voluntary termination may display as Resignation. */
   correctionKind?: string;
   /** Board 154511c4 — recorded as history (it rewrote the period before its date, not the period after). */
@@ -344,6 +346,7 @@ export type MovementSnapshot = {
   groupJoinDate?: string | null;
   joinDate?: string | null;
   paymentMethod?:string|null;
+  salaryPayrollFrom?:string;
   salaryAmount?: string | null;
   currency?: string | null;
 };
@@ -862,7 +865,7 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
           ...base,
           // A pay change may be the primary leg of any movement (a Promotion whose only delta is salary).
           kind: mv.type,
-          effectiveDate: p.effectiveFrom ?? occDate,
+          effectiveDate: mv.effectiveDate ?? p.effectiveFrom ?? occDate,
           endDate: null,
           remarks: compRemarks.get(e.aggregateId) ?? null,
         });
@@ -1702,6 +1705,7 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
       if (group) group.push(event);
       else eventsByGroup.set(groupId, [event]);
     }
+    const dateConflicts=movementDateConflicts(rows,events);
     const movements: MovementHistoryRow[] = rows.map((r) => {
       const primaryEvent = eventsById.get(r.id);
       const g = r.groupId ? eventsByGroup.get(r.groupId) ?? [] : primaryEvent ? [primaryEvent] : [];
@@ -1714,6 +1718,7 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
       // nothing to cancel and nothing to replay. Editing one would also be a trap — the values HR typed
       // are precisely the ones another movement has already overridden.
       const terminal = status === 'superseded';
+      const cancellableConflict=terminal&&r.scheduled&&dateConflicts.has(r.id)&&!c.stateChanging;
       // The window a correction disturbs runs from the effective date forward: undoing a raise changes
       // every period after it, not just the one it started in.
       const exitDates=r.kind==='resignation'?resignationFinancialDates(g):[];
@@ -1738,7 +1743,8 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
         correctionKind:recordedMovementKind(r,g),
         ...(r.history?{history:true}:{}),
         canEdit: c.canEdit && !terminal,
-        canReverse: c.canReverse && !terminal,
+        canReverse: c.canReverse && (!terminal||cancellableConflict),
+        orderConflict:dateConflicts.has(r.id),
         payrollLocked: locked,
         payrollClosedPeriods: closedPeriods,
         payrollWarning: financial && !locked && overlapsClosedPeriod(processed, payrollFrom, null),
@@ -2067,13 +2073,20 @@ async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:str
     // WHOLE group, not just the primary event: the grade leg can carry a higher sequence than the leg
     // that owns the row, and bounding on the primary alone would drop the grade change from the After
     // column. A legacy/single-leg row has no group, so both bounds collapse to its own sequence.
-    const group = row.groupId ? events.filter((e) => tagOf(e)?.groupId === row.groupId) : [];
+    const group = groupEventsOf(events,row);
     const seqs = group.length ? group.map((e) => e.sequence) : [row.sequence];
     const afterBound = Math.max(...seqs);
     const beforeBound = Math.min(...seqs);
 
     const correctionView=await personnelCorrectionViewTx(tx,events,rows);
     const after = correctionView.apply(row.id,await snapshotAt(tx, emp, row.effectiveDate, gradeEvents, afterBound, true, companyEvents, hasDatedCompanyHistory(events)));
+    // The entered business day and the first open payroll day are distinct after a closed-payroll correction.
+    // Resolve this event's own amount by reference; never substitute the amount paid in the protected month.
+    const salaryLeg=[...group].reverse().find(event=>event.eventType==='compensation.set');
+    if(salaryLeg){
+      const [terms]=await tx.select({amount:compensation.basicSalary,currency:compensation.currency,from:compensation.validFrom}).from(compensation).where(eq(compensation.id,salaryLeg.aggregateId)).limit(1);
+      if(terms){after.salaryAmount=terms.amount;after.currency=terms.currency;after.salary=`${terms.currency} ${terms.amount}`;if(terms.from!==row.effectiveDate)after.salaryPayrollFrom=terms.from;}
+    }
     const before =
       row.kind === 'hired'
         ? null
@@ -2934,10 +2947,12 @@ async function scheduleMovementTx(
 ) {
   // Always reread the real subject under current RLS. Only the canonical rollback rehearsal below can
   // supply a verified predecessor state for a future sequence; ordinary New Event/Edit use live state.
+  await lockMovementSubjectTx(tx,p.employmentId);
   const live = await currentStateTx(tx, p.employmentId);
   const cur = admission?.baseline ?? live;
   const d = movementDeltas(p, cur);
   if (d.nothingChanged) throw new MovementNoChangeError();
+  await assertMovementDateOrderTx(tx,ctx,p,d.fields);
   admission?.capture?.({...cur});
 
   const remarks = p.remarks?.trim() || null;
@@ -3376,6 +3391,14 @@ export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:Cr
   await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
   if (!probationMovementAuthorityTx(tx, rawInput)) assertMovementAdmin(ctx, 'record a movement');
   await lockPayrollInputsTx(tx, { employmentIds: [rawInput.employmentId], companyIds: rawInput.companyId ? [rawInput.companyId] : [] });
+  if(!probationMovementAuthorityTx(tx,rawInput)&&isCalendarDate(rawInput.effectiveDate)&&rawInput.effectiveDate<=todayInKualaLumpur()){
+    const resolved=await resolveInputTypeTx(tx,ctx,rawInput,'record');
+    if(isComparisonKind(resolved.kind)){
+      await lockMovementSubjectTx(tx,resolved.employmentId);
+      const delta=movementDeltas(resolved,await currentStateTx(tx,resolved.employmentId,resolved.effectiveDate));
+      await assertMovementDateOrderTx(tx,ctx,resolved,delta.fields);
+    }
+  }
   if (!probationMovementAuthorityTx(tx, rawInput) && isCalendarDate(rawInput.effectiveDate) && rawInput.effectiveDate < todayInKualaLumpur()) {
     const input = await resolveInputTypeTx(tx, ctx, rawInput, 'record');
     if (isComparisonKind(input.kind)) {
@@ -3747,6 +3770,10 @@ export async function applyDueMovementsTx(
       a.effectiveDate === b.effectiveDate ? a.sequence - b.sequence : a.effectiveDate < b.effectiveDate ? -1 : 1,
     );
 
+  const dateConflicts=movementDateConflicts(rows,events);
+  const conflicting=due.find(row=>dateConflicts.has(row.id));
+  if(conflicting)throw new MovementNotCorrectableError(`Events on ${conflicting.effectiveDate} change the same details. Resolve their Effective Dates or cancel a conflicting pending event before they apply.`);
+
   let applied = 0;
   let noop = 0;
   let appliedEffectiveDate: string | null = null;
@@ -3945,7 +3972,7 @@ async function firstOpenDayAfterClosedTx(tx: Tx, employmentId: string, from: str
 }
 
 /** 646355e5 — where a corrected salary starts: its own date, or the first day after closed months. */
-async function salaryStartAfterClosedPayrollTx(tx: Tx, employmentId: string, effectiveDate: string): Promise<string> {
+export async function salaryStartAfterClosedPayrollTx(tx: Tx, employmentId: string, effectiveDate: string): Promise<string> {
   const firstOpen = await firstOpenDayAfterClosedTx(tx, employmentId, effectiveDate, null);
   return firstOpen && firstOpen > effectiveDate ? firstOpen : effectiveDate;
 }
@@ -4004,6 +4031,49 @@ async function undoSalaryAfterClosedPayrollTx(tx: Tx, ctx: SessionContext, emplo
   return true;
 }
 
+async function lockMovementSubjectTx(tx:Tx,employmentId:string){
+ await lockEmploymentStatutoryOwnerTx(tx,employmentId);
+ await tx.select({id:employment.id}).from(employment).where(eq(employment.id,employmentId)).for('update');
+}
+function changedMovementFields(row:ProjectedRow,events:RawEvent[]):string[]{
+ const fields=new Set(row.fields);
+ for(const event of groupEventsOf(events,row)){
+  const payload=(event.payload??{}) as {fields?:string[];fieldsChanged?:string[];before?:Record<string,unknown>;after?:Record<string,unknown>;from?:Record<string,unknown>;to?:Record<string,unknown>};
+  if(event.eventType==='compensation.set')for(const field of payload.fieldsChanged??['basicSalary'])fields.add(field);
+  else if(event.eventType==='employment.grade.changed')fields.add('gradeId');
+  else if(event.eventType==='employment.payment-method.changed')fields.add('paymentMethod');
+  else if(event.eventType==='reporting-line.set')fields.add('managerEmploymentId');
+  else if(event.eventType==='employment.info.updated')for(const field of payload.fields??[])fields.add(field);
+  else if(['employment.assignment.changed','employment.company.transferred','assignment.transferred'].includes(event.eventType)){
+   const before=payload.before??payload.from??{},after=payload.after??payload.to??{};
+   for(const field of Object.keys(after))if(after[field]!==before[field])fields.add(field);
+  }
+ }
+ return [...fields];
+}
+function movementDateConflicts(rows:ProjectedRow[],events:RawEvent[]):Set<string>{
+ const days=new Map<string,ProjectedRow[]>(),conflicts=new Set<string>();
+ for(const row of rows){if(row.kind==='hired'||row.reversed)continue;const group=days.get(row.effectiveDate)??[];group.push(row);days.set(row.effectiveDate,group);}
+ for(const group of days.values()){
+  const fields=new Map(group.map(row=>[row.id,changedMovementFields(row,events)]));
+  for(let left=0;left<group.length;left++)for(let right=left+1;right<group.length;right++){
+   if(conflictingMovementFields(fields.get(group[left].id)!,fields.get(group[right].id)!).length){conflicts.add(group[left].id);conflicts.add(group[right].id);}
+  }
+ }
+ return conflicts;
+}
+async function assertMovementDateOrderTx(tx:Tx,ctx:SessionContext,p:CreateMovementInput,fields:readonly string[]){
+ const {events,rows,statusOf,resolvedTypes}=await projectRows(tx,ctx.tenantId,p.employmentId);
+ for(const row of rows){
+  if(row.kind==='hired'||row.reversed||row.effectiveDate!==p.effectiveDate)continue;
+  if(statusOf(row)==='superseded'&&!row.scheduled)continue;
+  const conflicts=conflictingMovementFields(fields,changedMovementFields(row,events));
+  if(!conflicts.length)continue;
+  const label=resolvedTypes.get(row.kind)?.label??row.kind;
+  throw new MovementNotCorrectableError(`The ${label} event on ${p.effectiveDate} already changes ${conflicts.map(field=>FIELD_RULE_NAMES[field]??field).join(', ')}. Edit that event, cancel the conflicting pending event, or choose a different Effective Date to resolve the order before saving. Movement Event ID ${row.id}.`);
+ }
+}
+
 /** 646355e5 — one later movement to put back after an older one is corrected. */
 type ReplayStep = { movementId: string; label: string; effectiveDate: string; sequence: number; behaviour: string; input: CreateMovementInput; terminationType?: TerminationType };
 
@@ -4036,9 +4106,7 @@ async function laterReplayPlanTx(
     const replayable =
       behaviour !== null &&
       (isComparisonKind(behaviour) || ['resignation','termination','probationExtension','joinDateChange','groupJoinDateCorrection'].includes(behaviour)) &&
-      behaviour !== 'entityTransfer' &&
-      correctabilityOf(r, g, true, behaviour).canReverse &&
-      !g.some((e) => e.eventType === 'employment.company.transferred');
+      correctabilityOf(r, g, true, behaviour).canReverse;
     if (!replayable) {
       throw new MovementNotCorrectableError(
         `The later ${label} event on ${when} cannot be re-applied automatically. Roll it back first, then correct this event.`,
@@ -4096,6 +4164,9 @@ async function replayInputOfTx(tx: Tx, r: ProjectedRow, g: RawEvent[], behaviour
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const p = (e.payload ?? {}) as Record<string, any>;
     switch (e.eventType) {
+      case 'employment.company.transferred':
+        input.companyId=p.after?.companyId??null;
+        break;
       case 'employment.assignment.changed':
         for (const f of ['departmentId', 'positionId', 'businessUnitId', 'locationId', 'employmentType'] as const) {
           if (p.after && f in p.after && p.after[f] !== (p.before ?? {})[f]) input[f] = p.after[f];
@@ -4541,9 +4612,31 @@ export async function reverseMovementForImportTx(tx: Tx, ctx: SessionContext, em
   await assertMovementDeleteTx(tx,ctx,employmentId);
   await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
   // Manual Delete and whole-import reverts share the same fresh Delete permission and preservation owner.
-  const run = () => reverseMovementTx(tx, ctx, employmentId, movementId, reason.trim(), false);
+  const run = () => deleteMovementInEffectiveOrderTx(tx,ctx,employmentId,movementId,reason.trim());
   await lockPayrollInputsTx(tx, { employmentIds: [employmentId] });
   await withClosedPayrollCorrectionAuthorityTx(tx, employmentId, run);
+}
+
+/** Delete the selected decision, then restore every later intentional decision in effective order.
+ * Internal inverses require no Delete grant; the two public delete doors check it before entering here.
+ * Every source event remains in the ledger and each replay links back to the selected event. */
+async function deleteMovementInEffectiveOrderTx(tx:Tx,ctx:SessionContext,employmentId:string,movementId:string,reason:string){
+ const {events,rows,statusOf,resolvedTypes}=await projectRows(tx,ctx.tenantId,employmentId);
+ const row=rows.find(item=>item.id===movementId);
+ if(!row)throw new MovementNotCorrectableError('Movement event not found.');
+ await reversalGuardTx(tx,ctx,employmentId,movementId);
+ const group=groupEventsOf(events,row);
+ const spanEnd=Math.max(...group.map(event=>event.sequence));
+ const later=row.scheduled&&statusOf(row)==='pending'?[]:
+  await laterReplayPlanTx(tx,events,rows,statusOf,resolvedTypes,row,spanEnd,row.effectiveDate);
+ for(const step of [...later].sort((a,b)=>b.sequence-a.sequence)){
+  await reverseMovementTx(tx,ctx,employmentId,step.movementId,reason,true,{replayOf:movementId});
+ }
+ await reverseMovementTx(tx,ctx,employmentId,movementId,reason,false);
+ await replayLaterMovementsTx(tx,ctx,employmentId,later);
+ if(later.length)await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:employmentId,
+  eventType:'employment.movement.deletion-replayed',actor:actorOf(ctx),subjectEmploymentId:employmentId,
+  payload:{movementId,reason,replayedMovementIds:later.map(step=>step.movementId)}});
 }
 
 /**
@@ -4609,12 +4702,13 @@ async function reversalGuardTx(tx: Tx, ctx: SessionContext, employmentId: string
   // 941c9dac — a superseded movement never took effect and never will; there is nothing to undo. The
   // service refuses it as well as the UI hiding it, so the affordance and the rule cannot drift apart
   // (the same posture as the payroll-lock guard below).
-  if (statusOf(row) === 'superseded') {
+  const group = groupEventsOf(events,row);
+  const cancellableConflict=row.scheduled&&movementDateConflicts(rows,events).has(row.id)&&!group.some(event=>STATE_CHANGING_EVENT_TYPES.has(event.eventType));
+  if (statusOf(row) === 'superseded'&&!cancellableConflict) {
     throw new MovementNotCorrectableError(
       'This movement was overtaken by a later one and never took effect, so there is nothing to roll back.',
     );
   }
-  const group = groupEventsOf(events, row);
   const c = correctabilityOf(row, group, false, resolvedTypes.get(recordedMovementKind(row, group))?.behaviourKind??null);
   if (!c.canReverse) {
     throw new MovementNotCorrectableError(
@@ -4733,7 +4827,7 @@ export async function reverseMovementEvent(
   return withTenant(ctx, async (tx) => {
     await assertMovementDeleteTx(tx,ctx,p.employmentId);
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
-    const run = () => reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, false);
+    const run = () => deleteMovementInEffectiveOrderTx(tx,ctx,p.employmentId,p.movementId,reason);
     await lockPayrollInputsTx(tx, { employmentIds: [p.employmentId] });
     await withClosedPayrollCorrectionAuthorityTx(tx, p.employmentId, run);
     return { employmentId: p.employmentId };

@@ -1316,6 +1316,7 @@ export const employmentPaymentMethodHistory = pgTable('employment_payment_method
  source:text('source').notNull(),
 },t=>[
  foreignKey({name:'employment_payment_method_history_employment_tenant_fk',columns:[t.employmentId,t.tenantId],foreignColumns:[employment.id,employment.tenantId]}),
+ foreignKey({name:'employment_payment_method_history_actor_tenant_fk',columns:[t.recordedBy,t.tenantId],foreignColumns:[appUser.id,appUser.tenantId]}),
  uniqueIndex('employment_payment_method_history_effective_uq').on(t.employmentId,t.effectiveOn).where(sql`${t.supersededAt} IS NULL`),
  index('employment_payment_method_history_date_idx').on(t.tenantId,t.employmentId,t.effectiveOn.desc()).where(sql`${t.supersededAt} IS NULL`),
 ]);

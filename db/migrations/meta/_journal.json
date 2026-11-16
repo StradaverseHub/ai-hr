@@ -6196,6 +6196,13 @@
       "when": 1793330005475,
       "tag": "5775_movement_payment_method_field",
       "breakpoints": true
+    },
+    {
+      "idx": 5176,
+      "version": "7",
+      "when": 1793330005476,
+      "tag": "5776_workforce_payroll_input_invalidation",
+      "breakpoints": true
     }
   ]
 }

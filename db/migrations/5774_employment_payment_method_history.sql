@@ -54,7 +54,7 @@ LANGUAGE sql STABLE SET search_path TO pg_catalog,public,pg_temp AS $$
   (SELECT h.payment_method FROM public.employment_payment_method_history h
    WHERE h.employment_id=wanted AND h.tenant_id=app.current_tenant_id() AND h.superseded_at IS NULL
     AND h.effective_on<=wanted_date ORDER BY h.effective_on DESC LIMIT 1)
- ELSE (SELECT e.payment_method FROM public.employment e WHERE e.id=wanted AND e.tenant_id=app.current_tenant_id()) END;
+ ELSE (SELECT e.payment_method::text FROM public.employment e WHERE e.id=wanted AND e.tenant_id=app.current_tenant_id()) END;
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.employment_payment_method_on(uuid,date) FROM PUBLIC;

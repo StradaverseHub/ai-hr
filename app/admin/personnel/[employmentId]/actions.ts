@@ -1,4 +1,5 @@
 'use server';
+import {recordPersonnelSalary,type SalaryRecordingChoice} from '@/core/personnel-salary-recording';
 
 import { recordHistoryMovement } from '@/core/movement-history-command';
 import { MovementHistoryError } from '@/core/movement-history';
@@ -847,17 +848,28 @@ async function compensationErrorMessage(e: unknown): Promise<string> {
   return publicErrorMessage(e);
 }
 
-/* r78c — why the Basic Salary screen is NOT routed through the movement recorder, unlike Work Location.
- * It is the only writer of a FIRST salary record, and the only one that can move pay MODE, payment term
- * and rate_amount (a daily/hourly re-rating). applyComparisonMovementTx deliberately refuses a
- * structure-only change without an existing record and carries no rate_amount at all, so routing this
- * screen through it would remove both capabilities to fix a row that was never duplicated: an untagged
- * `compensation.set` projects ONE truthful "Salary Adjustment" row, not a second row beside a movement.
- * It is tagged below instead, which changes no label and no row count. */
+/** Salary Add and Edit share an explicit recording choice. The canonical composite command saves salary,
+ * payment method and date atomically. Older posts keep their original native owner for compatibility. */
+async function applySalaryRecordingChoice(s:Awaited<ReturnType<typeof requireAdmin>>,formData:FormData){
+ const mode=String(formData.get('salaryRecordingChoice')??'') as SalaryRecordingChoice;
+ const payMode=String(formData.get('payMode')??'').trim(),rate=String(formData.get('rateAmount')??'').trim();
+ return recordPersonnelSalary(s,{
+  employmentId:String(formData.get('employmentId')),choice:mode,effectiveDate:String(formData.get('effectiveFrom')??'').trim(),
+  basicSalary:Number(String(formData.get('basicSalary')??'').trim()),
+  ...(formData.has('paymentMethod')?{paymentMethod:(String(formData.get('paymentMethod')??'').trim()||null) as PaymentMethod|null}:{}),
+  eventType:String(formData.get('salaryMovementType')??'').trim()||undefined,movementId:String(formData.get('salaryMovementId')??'').trim()||undefined,
+  sourceCompensationId:String(formData.get('compensationId')??'').trim()||undefined,currency:String(formData.get('currency')??'').trim()||undefined,
+  payMode:payMode||undefined,paymentTerm:String(formData.get('paymentTerm')??'').trim()||undefined,rateAmount:payMode?(rate?Number(rate):null):undefined,
+  remarks:String(formData.get('remarks')??'').trim()||undefined,reason:String(formData.get('salaryRecordingReason')??'').trim()||undefined,
+ });
+}
+
 export async function setCompensationAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
+    if(formData.has('salaryRecordingChoice'))await applySalaryRecordingChoice(s,formData);
+    else {
     // ADR-0078 — the salary structure rides the same revision form. The three fields are always posted by
     // the redesigned form; older/partial posts (absent keys) fall through to the service's carry-forward.
     const payModeRaw = String(formData.get('payMode') ?? '').trim();
@@ -891,6 +903,7 @@ export async function setCompensationAction(formData: FormData) {
       // rather than loose, and every projected event this screen emits is accounted for.
       movement: { type: 'salaryAdjustment', groupId: randomUUID() },
     });
+    }
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(await compensationErrorMessage(e))}`));
   }
@@ -909,6 +922,8 @@ export async function editCompensationAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
+    if(formData.has('salaryRecordingChoice'))await applySalaryRecordingChoice(s,formData);
+    else {
     const rawBasic = formData.get('basicSalary');
     const rawBasicStr = String(rawBasic ?? '').trim();
     const rawFrom = String(formData.get('effectiveFrom') ?? '').trim();
@@ -948,6 +963,7 @@ export async function editCompensationAction(formData: FormData) {
       // Effective date (7c7c2f80): submitted by the edit form; the service no-ops when unchanged.
       validFrom: rawFrom !== '' ? rawFrom : undefined,
     });
+    }
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(await compensationErrorMessage(e))}`));
   }

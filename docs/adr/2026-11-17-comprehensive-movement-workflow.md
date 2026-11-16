@@ -121,3 +121,10 @@ company paths must leave no partial writes. Changed group read shapes need the r
 Run focused checks, whole-repository types and builds on standard GitHub-hosted runners. Finish all
 three stages and their integrated verification before the normal review, full release checks and
 shared staging queue/lease. This ADR grants no production deployment authority.
+
+## Development evidence and remaining admission work
+
+- The employment-period foundation at `01c70c023d14698c52961bbc08797d3a200c6418` passed 224 focused checks, whole-repository type checks and the production Linux build (Actions 43901661757).
+- Checkpoint `71b0d79f69f8cf348f99e86f3bc4f132f832c0bd` passed all 100 selected non-database checks, whole-repository type checks and the production build (Actions 43911072314). Its database phase stopped in the new payment-method reader because the legacy enum branch needed an explicit text cast; no DB behavior pass is claimed. The original job log and PostgreSQL evidence were retained.
+- Subsequent work adds historical deletion replay across later Entity Transfers, explicit same-date conflict admission and legacy pending-conflict cancellation, a bounded Workforce-only payroll invalidation owner, and the Salary Add/Edit recording choices. These require their own frozen hosted verification.
+- This remains an integrated development candidate: complete original-hire information maintenance, full event information evidence, bounded replay effects and complete rendered acceptance remain required. No staging or production installation, full-gate receipt or acceptance is claimed.

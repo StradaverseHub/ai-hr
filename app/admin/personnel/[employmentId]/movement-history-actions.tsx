@@ -23,7 +23,7 @@ export function MovementHistoryActions({employmentId, row, eventLabel, canCorrec
   employmentId: string;
   context?: MovementPageContext;
   standalone?: boolean;
-  row: Pick<MovementHistoryRow,'id'|'kind'|'status'|'canEdit'|'canReverse'|'payrollLocked'|'payrollWarning'>;
+  row: Pick<MovementHistoryRow,'id'|'kind'|'status'|'canEdit'|'canReverse'|'payrollLocked'|'payrollWarning'|'orderConflict'>;
   eventLabel: string;
   canCorrect: boolean;
   canDelete?: boolean;
@@ -32,7 +32,7 @@ export function MovementHistoryActions({employmentId, row, eventLabel, canCorrec
   rehireRollBack?: RehireRollBack;
 }) {
   const linkClass = 'text-primary hover:underline';
-  const terminal = row.status === 'reversed' || row.status === 'superseded';
+  const terminal = row.status === 'reversed' || row.status === 'superseded'&&!row.orderConflict;
   return <div className="flex flex-wrap items-center gap-3">
     <Link href={movementPageHref(employmentId,'view',row.id,context)} className={linkClass}>{labels.view}</Link>
     {canCorrect && !terminal && row.canEdit && <Link href={movementPageHref(employmentId,'edit',row.id,context)} className={linkClass}>{labels.edit}</Link>}

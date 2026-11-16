@@ -1659,6 +1659,19 @@
       "salaryNegativeError": "Lương cơ bản không thể là số âm. Hãy để trống hoặc nhập 0 đối với nhân viên không có lương cơ bản.",
       "salaryNotANumberError": "Lương cơ bản phải là một số. Hãy để trống hoặc nhập 0 đối với nhân viên không có lương cơ bản.",
       "paymentMethod": "Phương thức thanh toán",
+    "salaryRecording": {
+      "title": "Ghi nhận thay đổi lương",
+      "choice": "Bạn muốn ghi nhận thế nào?",
+      "newEvent": "Tạo sự kiện mới",
+      "updateLatest": "Cập nhật sự kiện có hiệu lực gần nhất",
+      "amendment": "Điều chỉnh lương không tạo sự kiện",
+      "eventType": "Loại sự kiện",
+      "target": "Sự kiện cần cập nhật",
+      "selectTarget": "Chọn sự kiện",
+      "latestHint": "Sự kiện giữ nguyên ngày hiệu lực đang hiển thị. Với ngày khác, hãy tạo sự kiện mới hoặc điều chỉnh lương.",
+      "amendmentHint": "Lương và phương thức thanh toán được lưu cùng nhau. Nhật ký kiểm tra ghi nhận điều chỉnh mà không thêm sự kiện vào lịch sử việc làm."
+    },
+    "salaryPayrollFrom": "Lương áp dụng cho kỳ chưa khóa từ ngày",
     "paymentMethodHistoryTitle": "Lịch sử phương thức thanh toán",
     "paymentMethodEffectiveDate": "Ngày hiệu lực",
     "paymentMethodRecordedAt": "Thời điểm ghi nhận",
@@ -1926,6 +1939,8 @@
         },
         "payrollClosedBadge": "Đã khóa lương: {periods}",
         "informationCorrected": "Thông tin đã được sửa",
+      "orderConflict": "Giải quyết thứ tự sự kiện",
+      "orderConflictHint": "Các sự kiện trong ngày này thay đổi cùng thông tin. Hãy sửa ngày hiệu lực hoặc hủy sự kiện đang chờ bị xung đột trước khi áp dụng.",
         "informationNeedsReview": "Cần xem xét bản sửa đổi",
         "historyBadge": "Lịch sử",
         "rehire": {
@@ -7399,7 +7414,8 @@
         "hire_date": "ngày vào làm đã thay đổi",
         "transfer": "việc chuyển công ty đã thay đổi",
         "compensation": "lương đã thay đổi",
-        "statutory": "thiết lập theo luật định đã thay đổi"
+        "statutory": "thiết lập theo luật định đã thay đổi",
+        "employment_information": "thông tin việc làm đã thay đổi"
       },
       "closeConfirmNo": "Không",
       "closeBack": "Quay lại Xử lý lương",
