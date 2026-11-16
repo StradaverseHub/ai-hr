@@ -205,6 +205,10 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5211,when:1794841005811,tag:'5811_contract_shared_worker_binding'},
  {idx:5212,when:1794841005812,tag:'5812_contract_shared_identity_context'},
  {idx:5213,when:1794841005813,tag:'5813_contract_shared_email_notifications'},
+ {idx:5214,when:1794841005814,tag:'5814_contract_shared_personnel_postings'},
+ {idx:5215,when:1794841005815,tag:'5815_contract_posting_movement_authority'},
+ {idx:5216,when:1794841005816,tag:'5816_contract_posting_projections'},
+ {idx:5217,when:1794841005817,tag:'5817_contract_posting_receipts_and_tasks'},
  {idx:5218,when:1794841005818,tag:'5818_contract_shared_tracker'},
  {idx:5219,when:1794841005819,tag:'5819_contract_shared_period_open'},
  {idx:5220,when:1794841005820,tag:'5820_contract_shared_case_workspace'},
@@ -223,6 +227,11 @@ export const APPROVED_UPGRADE_TAIL=[
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5814_contract_shared_personnel_postings':'54a543202440caccc4e32f50eab39eecf76ae2497f2df850b6d6f8af02f793e3',
+ '5815_contract_posting_movement_authority':'1eea9a234448186bbbfc90372deb53936b2ec92f34b87d6c08cb0567b7db0924',
+ '5816_contract_posting_projections':'81a74ca3dbe2554756574c7684273a5ff7be69c615846482e794408459ed79da',
+ '5817_contract_posting_receipts_and_tasks':'97f25f6436ae0dc36e62eaba6cc9432b5a71d4ad47774b70aa916c430f58c6a4',
+
  '5904_contract_shared_native_intake_guard':'2e3725db72f7f2a080a2a6d0db9fcd748e800ab2700e65616681c951732419c8',
  '5825_contract_shared_email_document_lifecycle':'0e53c15e1a2f4d8be4095f1fa4e3baebbde9007bb5b9ccc63f41b8b2baa78cc7',
  '5824_contract_shared_offboarding':'cbd497768b3ea5731c999dda3cf9ac3389fefd8612352186e4eb3620ca69617f',

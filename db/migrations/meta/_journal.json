@@ -6310,6 +6310,34 @@
       "breakpoints": true
     },
     {
+      "idx": 5214,
+      "version": "7",
+      "when": 1794841005814,
+      "tag": "5814_contract_shared_personnel_postings",
+      "breakpoints": true
+    },
+    {
+      "idx": 5215,
+      "version": "7",
+      "when": 1794841005815,
+      "tag": "5815_contract_posting_movement_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 5216,
+      "version": "7",
+      "when": 1794841005816,
+      "tag": "5816_contract_posting_projections",
+      "breakpoints": true
+    },
+    {
+      "idx": 5217,
+      "version": "7",
+      "when": 1794841005817,
+      "tag": "5817_contract_posting_receipts_and_tasks",
+      "breakpoints": true
+    },
+    {
       "idx": 5218,
       "version": "7",
       "when": 1794841005818,
