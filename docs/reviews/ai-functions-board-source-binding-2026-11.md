@@ -783,3 +783,28 @@ and evaluated/promoted agent identities are unchanged. Provider payloads, purpos
 not change. The derived agent manifest is regenerated after the literal update. The existing direction
 to run the full gate and deploy only to staging after all checks pass remains in effect. No production
 installation or package publication is authorized.
+
+
+### Own Leave and Payroll paging staging carry-forward (17 November 2026)
+
+The repository owner directly approved in the COORDINATOR chat: "I approve all the AI binding and migration ordering".
+The direct human instruction was independently read before applying this binding. It also follows the standing
+12 November staging-only carry-forward decision recorded above, explicitly applied to this performance work.
+The owner separately instructed that Movement must be the first of the four coordinated releases. This batch
+therefore prepares outside the staging lease and must merge the actual accepted Movement baseline after its verified
+release and lease handback; generation, this approval record and development checks do not authorize bypassing that order.
+
+Reviewed application source `6350cacc0cbf36f5c700ffd2131f7dc43a83458c` changes Own Leave's shared read/privacy intervals,
+Payroll's native candidate-page projections and the six message catalogues. Current allocated migration is
+`5787_own_leave_shared_access`, idx5187 / when1793330005487; the never-applied provisional5880 is retired.
+SQL SHA256 `843ded0c0542c47360989ef70f54dd6eed10c1d9aa5abe7cfa3b191e6e5d1f0c` is unchanged by renumbering.
+The provider fingerprint remains `d02f341541d15afcca36200fc5d891b4a9a2b981cf2a4ace09bae2a112ebdb50` over1,624files.
+The same28 active approval literals carry forward from `0b60766ac33a0418d98b24ff7da5aaab08d17c927ced7d9c7853b929bc35930b`;
+reviewers, original evidence/timestamps, purposes, pending records and the retired Attendance Formula contract are unchanged.
+No provider transform, outbound field, purpose, transport, tool registration or action tier is added or widened.
+After the literal update the derived agent manifest is `81ea5ce1721023e6189b7c258c436ec31e31df8881f75ab99493544fca217bdc`
+over494files. Any subsequent accepted-baseline integration requires regeneration, source review and another exact binding
+record under the same scoped owner decision; no evaluated/promoted agent identity is renewed by source binding.
+
+The full release gate, authenticated evidence, restricted-owner migration rehearsal, fresh ordered installation ledgers,
+arrival/rendered acceptance and guarded lease remain required. This authorizes no production installation or package publication.

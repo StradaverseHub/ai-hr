@@ -1,13 +1,20 @@
-<!-- 5880_own_leave_shared_access -->
-# Own Leave shared discovery and privacy expiry — 17 November 2026 MYT (unapplied; release held)
+<!-- 5787_own_leave_shared_access -->
+# Own Leave shared discovery and privacy expiry — 17 November 2026 MYT (unapplied)
 
-Branch `codex/performance-ownleave-payroll-20261117` reserves `5880_own_leave_shared_access` at idx 5280 / when 1794841005880.
-SHA256 `843ded0c0542c47360989ef70f54dd6eed10c1d9aa5abe7cfa3b191e6e5d1f0c`. Fresh read-only watermarks: staging883 /1793330005471, production853 /1793330005395.
-Thirty-five recently updated local/remote branch journals were checked for coordinate conflicts. The timestamp
-is above the observed Contract successor reservations (through1794841005812); idx follows the observed Recruitment
-reservation5277. Recheck all peer claims and both installations before release; this allocation grants no installation authority.
+Branch `codex/performance-ownleave-payroll-20261117` reserves `5787_own_leave_shared_access` at idx 5187 / when 1793330005487.
+SHA256 `843ded0c0542c47360989ef70f54dd6eed10c1d9aa5abe7cfa3b191e6e5d1f0c`, unchanged from the retired, never-applied
+provisional5880 / idx5280 / when1794841005880. The release coordinator freshly checked registered worktree journals
+and origin claims before assigning this free standard-offset position, after Resignation5783–5786 and below
+Contract5800+. Main/alpha remain9bdfb4596. Last verified read-only watermarks: staging883 /1793330005471,
+production853 /1793330005395. Refresh exact ordered ledgers and peer claims before admission.
+
+The owner approved AI binding and migration ordering in the coordination chat on17November; the owner's subsequent
+instruction is that Movement releases first. Readiness and that ordering do not waive native rehearsal, the full gate,
+authenticated evidence or the guarded staging lease. If lower never-applied blocks remain, coordinate their safe
+reallocation before installing any higher watermark; never silently skip them or edit applied SQL.
+
 The three ai_hr_owner functions retain exact custody, principal freshness, expiry limits/row locks and body deletion.
-A predecessor body/owner guard refuses unreviewed replacements. SQL metadata admission now permits read-only carriers;
+A predecessor body/owner guard refuses unreviewed replacements. Metadata admission permits read-only carriers;
 its Access lock and the two privacy-only expiry owners share Access. Prepare/reopen/confirm/retire authority is unchanged.
 
 <!-- 5771_assistant_legacy_index_shared_access -->
