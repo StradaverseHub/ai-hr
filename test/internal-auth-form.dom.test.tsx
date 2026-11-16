@@ -7,6 +7,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { InternalAuthForm } from '../app/login/internal-form';
+import { ActionFeedbackProvider } from '../components/action-feedback';
 import enBase from '../messages/en.json';
 import enEditorial from '../messages/login-editorial/en.json';
 const en = { ...enBase, loginEditorial: enEditorial };
@@ -139,5 +140,23 @@ describe('embedded browser forms', () => {
     const [url, init] = fetcher.mock.calls[0]; expect(url).toBe('/login/api/reset');
     expect(JSON.parse(String(init?.body))).toMatchObject({ token, code: 'RECOVERY-CODE' });
     expect(window.location.href).not.toContain(token);
+  });
+  it('a successful sign-in opens AIHR without the browser "Leave site?" prompt', async () => {
+    // The shared ActionFeedbackProvider guards beforeunload while an important action is pending. The login
+    // submit is still busy when it calls location.assign, so without the opt-out every sign-in asked to leave.
+    const prevented: boolean[] = [];
+    const assign = vi.fn(() => { const event = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(event); prevented.push(event.defaultPrevented); });
+    vi.stubGlobal('location', { ...window.location, assign });
+    vi.stubGlobal('fetch', (input:RequestInfo|URL,init?:RequestInit)=>String(input).startsWith('/login/entra/options?')
+      ?Promise.resolve(Response.json({microsoft:false})):fetcher(input,init));
+    fetcher.mockResolvedValueOnce(Response.json({ step: 'complete' }));
+    render(<NextIntlClientProvider locale="en" messages={enBase}><ActionFeedbackProvider><InternalAuthForm organization="alpha" returnTo="/home"/></ActionFeedbackProvider></NextIntlClientProvider>);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: en.loginEditorial.continueLabel }));
+    await user.type(screen.getByLabelText(en.internalAuth.username), 'employee');
+    await user.type(screen.getByLabelText(en.internalAuth.password), 'Private fixture password');
+    await user.click(screen.getByRole('button', { name: en.internalAuth.signIn }));
+    await waitFor(() => expect(assign).toHaveBeenCalledExactlyOnceWith('/home'));
+    expect(prevented).toEqual([false]);
   });
 });
