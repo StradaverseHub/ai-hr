@@ -41095,7 +41095,14 @@
     "sharedCommunications": "Thông tin liên lạc chung của hành trình",
     "sharedCommunicationsHint": "Hành trình nghỉ việc xử lý thư, email và các quy trình liên lạc của hồ sơ này. Nhiệm vụ bàn giao và các mục cần hoàn trả tiếp tục được xử lý tại đây.",
     "openSharedConfiguration": "Mở Cấu hình dùng chung",
-    "salaryMonthly": "Lương cơ bản (mỗi tháng)"
+    "salaryMonthly": "Lương cơ bản (mỗi tháng)",
+    "configurationSoftHint": "Bạn vẫn có thể gửi đơn. Đơn nghỉ việc của bạn sẽ được ghi nhận và theo dõi trong khi vấn đề thiết lập quy trình được giải quyết.",
+    "recordedPendingDecision": "Đơn nghỉ việc của bạn đã được ghi nhận. Chưa có người được giao quyền quyết định.",
+    "decisionSetupDetail": "Chưa có người được giao quyền quyết định. Cần xử lý thiết lập quy trình.",
+    "runAgain": "Chạy lại quy trình",
+    "runAgainHint": "Sau khi thiết lập được sửa, thao tác này chạy các quy trình đang hoạt động hiện tại để giao người quyết định còn thiếu.",
+    "taskRepair": "Mở phần sửa quy trình",
+    "repairTaskHint": "Hồ sơ này cần người quyết định. Xem vấn đề thiết lập được ghi nhận bên dưới; chạy lại quy trình khi cấu hình đã sẵn sàng."
   },
   "offboardingPostings": {
     "breadcrumb": "Tiếp nhận và nghỉ việc / Ghi nhận biến động nhân sự",

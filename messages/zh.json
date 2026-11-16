@@ -41095,7 +41095,14 @@
     "sharedCommunications": "共享流程通信",
     "sharedCommunicationsHint": "辞职流程负责本个案的函件、邮件和通信工作流。离职交接任务和归还事项仍在此处继续处理。",
     "openSharedConfiguration": "打开共享配置",
-    "salaryMonthly": "基本工资（每月）"
+    "salaryMonthly": "基本工资（每月）",
+    "configurationSoftHint": "您仍可提交。工作流设置问题解决期间，您的辞职申请会被记录并持续跟踪。",
+    "recordedPendingDecision": "您的辞职申请已记录，尚未指派决策人。",
+    "decisionSetupDetail": "尚未指派决策人。工作流设置需要处理。",
+    "runAgain": "重新运行工作流",
+    "runAgainHint": "设置修正后，此操作会运行当前已启用的工作流，以指派尚缺的决策人。",
+    "taskRepair": "打开工作流修复",
+    "repairTaskHint": "此个案需要决策人。请查看下方记录的设置问题；配置就绪后重新运行工作流。"
   },
   "offboardingPostings": {
     "breadcrumb": "入职与离职 / 人事变动入账",

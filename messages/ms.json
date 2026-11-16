@@ -41095,7 +41095,14 @@
     "sharedCommunications": "Komunikasi perjalanan bersama",
     "sharedCommunicationsHint": "Perjalanan peletakan jawatan mengendalikan surat, e-mel dan aliran kerja komunikasi kes ini. Tugas pelepasan dan item pemulangan diteruskan di sini.",
     "openSharedConfiguration": "Buka Konfigurasi bersama",
-    "salaryMonthly": "Gaji pokok (sebulan)"
+    "salaryMonthly": "Gaji pokok (sebulan)",
+    "configurationSoftHint": "Anda masih boleh menghantar. Peletakan jawatan anda akan direkodkan dan dijejaki sementara persediaan aliran kerja diselesaikan.",
+    "recordedPendingDecision": "Peletakan jawatan anda telah direkodkan. Pembuat keputusan belum ditugaskan.",
+    "decisionSetupDetail": "Pembuat keputusan belum ditugaskan. Persediaan aliran kerja memerlukan perhatian.",
+    "runAgain": "Jalankan aliran kerja semula",
+    "runAgainHint": "Selepas persediaan dibetulkan, tindakan ini menjalankan aliran kerja aktif semasa untuk menugaskan pembuat keputusan yang belum ditetapkan.",
+    "taskRepair": "Buka pembaikan aliran kerja",
+    "repairTaskHint": "Kes ini memerlukan pembuat keputusan. Semak isu persediaan yang direkodkan di bawah; jalankan aliran kerja semula apabila konfigurasi sudah sedia."
   },
   "offboardingPostings": {
     "breadcrumb": "Pengurusan masuk & keluar pekerja / Catatan perjawatan",
