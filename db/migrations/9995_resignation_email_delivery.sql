@@ -1,5 +1,5 @@
 -- Additive Offboarding delivery adapter. Existing Probation queue semantics and immutable receipts are unchanged.
--- idx5171 / when1793330100105; append after the resignation owner/configuration/posting migrations.
+-- idx5174 / when1793330100105; append after the resignation owner/configuration/posting migrations.
 ALTER TABLE public.automation_email_delivery DROP CONSTRAINT automation_email_delivery_module_check;
 --> statement-breakpoint
 ALTER TABLE public.automation_email_delivery ADD CONSTRAINT automation_email_delivery_module_check CHECK (module IN ('probation','off'));

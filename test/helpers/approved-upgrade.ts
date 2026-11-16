@@ -235,10 +235,10 @@ export const APPROVED_UPGRADE_TAIL=[
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5770_attendance_workflow_approver_codes':'f71cf33a9ced5f4e1007de02388a858bd31c64006a422352193bd7c14e367ec0',
- '9991_resignation_journey':'3edea4a15e18e09aa4ab80a6a8cc1d2f0a52f65dabf30dd3617af50f54dcd4e7',
+ '9991_resignation_journey':'130c0b99586bc316ac5203d27a65bfc0a565c4f608b8ab1ac336a8e8d41d1216',
  '9992_resignation_configuration':'6e064c336c441fbbf01017debe9e1a748957976d3d6b2b96470747d07d7dacb5',
  '9993_resignation_postings':'5d26a0f446c3e72ed01861544af395690b08cdce47b9fc739f0b0d7d1b22a4f5',
- '9995_resignation_email_delivery':'8527adfdc18776e3b0fdf96c840edb5cbb4ab8ab868ffcf6d5cd93292efb76fd',
+ '9995_resignation_email_delivery':'52bf3fa8f4430d37fd4dabd2164f00764e73245b38ee6520d2816dca7e03459b',
  '5761_probation_automation_recipients_and_tracker_steps':'c39e471adb80e51b56466c264bc6546dc6ce48a354e30d8e9ef3629a82b2184b',
  '5760_probation_queue_kinds_and_pbp_tasks':'c3ab5ddf4c702dd1ca947b3a350c7e852ab8699524c9da7fcad11f19887cdb59',
  '5150_attendance_policy_dated_rounding':'f1549fefc467398d9701ba5428e238134a8ca248fb645046b4b23877280e3408',

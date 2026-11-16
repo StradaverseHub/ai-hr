@@ -36,7 +36,7 @@ import '@/packs/register-all';
 import { NAVIGATION_MODULES, NAVIGATION_SECTIONS, placeNavigation, navigationPlacement, navigationRouteOwner, type NavigationWorkspace } from '@/lib/navigation-workspaces';
 import { usePublishNavIndex, type NavIndexEntry } from '@/components/nav-index-context';
 import {useShellApprovalFacts} from '@/components/shell-approval-facts';
-import {isSecurityDestination} from '@/lib/security-center-navigation';
+import {SECURITY_CENTER,isSecurityDestination} from '@/lib/security-center-navigation';
 import { openCommandBar } from '@/lib/command-bar-events';
 import { V9_SHARED_NAVIGATION } from '@/lib/lifecycle-v9-navigation';
 import { NavigationSubmenus } from '@/components/navigation-submenus';
@@ -229,7 +229,7 @@ export function Sidebar({
     {labelKey:selectedWorkspace==='strata'?'workspaceStrata':'workspaceOps',items:moduleRows},
     ...(systemRows.length ? [{labelKey:'systemConfiguration',items:[
       ...(otherSystemRows.length?[{collapsible:true,activeMatch:'children',labelKey:'systemConfiguration',icon:Settings2,children:otherSystemRows} satisfies CollapsibleGroupItem]:[]),
-      ...(securityRows.length?[{collapsible:true,activeMatch:'children',labelKey:'securityCenter',icon:ShieldCheck,children:securityRows} satisfies CollapsibleGroupItem]:[]),
+      ...(securityRows.length?[{collapsible:true,activeMatch:'children',labelKey:'securityCenter',breadcrumbHref:SECURITY_CENTER,icon:ShieldCheck,children:securityRows} satisfies CollapsibleGroupItem]:[]),
     ]}] : []),
   ];
   const isWorkspaceKey = (key?:string) => key==='workspaceOps'||key==='workspaceStrata';
@@ -312,7 +312,8 @@ export function Sidebar({
       if (isCollapsible(r)) {
         const kids = r.children.filter(canSeeChild).filter((c) => !c.disabled);
         const parent = t(r.labelKey);
-        const parentHref = r.defaultHref ?? (kids[0] ? kids[0].navigationHref ?? kids[0].href : null);
+        // A grouping heading has no destination unless it declares a real landing page.
+        const parentHref = r.defaultHref ?? (r.breadcrumbHref && kids.some(c => c.href === r.breadcrumbHref) ? r.breadcrumbHref : null);
         const activeKid = kids.filter((c) => isRowActive(c))
           .sort((a, b) => b.href.split('?')[0].length - a.href.split('?')[0].length)[0];
         for (const c of kids) {

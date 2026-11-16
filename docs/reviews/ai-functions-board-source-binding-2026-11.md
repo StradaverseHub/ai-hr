@@ -688,6 +688,29 @@ source beyond both sides' own reviewed changes. No provider transform, outbound 
 28 approvals were carried forward from `e4fcddfb…` to `800269d5…` (1,624 files) and the agent manifest regenerated
 (`97bd0705…`, 493 files), under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.
 
+### Re-binding for breadcrumb task ancestry (16 November 2026)
+
+The breadcrumb repair branch is based on main/alpha `59f06b08d`. The only changed covered source is
+`packs/payroll/index.ts`: navigation ownership metadata now associates payroll settings, loans and history imports
+with their existing task rows. No service, provider transform, outbound field, purpose, transport or permission
+changes. Under the owner's standing staging re-bind pre-approval of 12 November 2026, the existing approved
+records carry forward to `3ac2fd19076f1bd8c7bc3565fb1cc2a583d2f3fc0b42d4c216f9a258a47cfe3c` over 1,623 files.
+Their statuses, reviewers, purposes and original approval evidence remain unchanged. The provider manifest and
+agent manifest were regenerated; the agent fingerprint is `4d753fc768766c58d9dbd245b7dd332023c79cbc8b23bb73853c73e1991ec084`
+over 493 files. This binding grants no production authority.
+
+### Re-binding Irwin f0443eaf2 with breadcrumb task ancestry (16 November 2026)
+
+The owner explicitly requested exact Irwin commit `f0443eaf27d3584f55b6a2e7d48558bd553d4149` be merged before
+the breadcrumb gate. Its reviewed payroll/attendance changes and migration 5770 are preserved unchanged. The breadcrumb
+side changes covered source only in `packs/payroll/index.ts` (navigation ownership metadata). Generated conflicts were
+resolved from Irwin's approval records and both histories, then regenerated over the actual combined source. Under the
+standing staging re-bind pre-approval of 12 November 2026, the same 29 already-approved records carry forward to
+`f4b83a1fa86cf3a53f111b8be69e10f29e0e629f9fa4f50c8ea0209987034494` over 1,624 files. Statuses, purposes, reviewers and original approval evidence
+remain unchanged. The agent manifest is `1da03e300d47181a3a1a803e3f35d4b2159be8989b56f77fa01ed8ce81b68e52` over 493 files.
+No provider transform, outbound field, purpose or transport was added by the breadcrumb repair. This binding grants
+no production authority. The owner separately requires approval before this candidate is released.
+
 
 ## Resignation shared Configuration source binding — 17 November 2026
 
