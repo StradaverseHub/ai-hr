@@ -10,7 +10,7 @@ import {setCompanyParent} from '../core/admin';
 import {setCompensation} from '../core/comp';
 import {prepareCompanyOrganisationRun,companyOrganisationRuns,decideCompanyOrganisationRun,processCompanyOrganisationRun,employmentOrganisationTagsTx} from '../core/company-organisation';
 import {organisationImportWarningsTx} from '../core/derived-organisation-display';
-import {createMovementEvent,editMovementEvent,movementHistory} from '../core/movement';
+import {createMovementEvent,reverseMovementEvent,movementHistory} from '../core/movement';
 import {correctHireDetails} from '../core/hire-correction';
 import {correctInformation,previewInformationCorrection} from '../core/information-correction';
 import {createBatch,preProcessAdvisory,generatePayslips} from '../core/payroll';
@@ -53,7 +53,7 @@ it('preserves legacy choice and historical prefix, then ignores manual BU in nat
  await setEmploymentAssignment(ctx,{employmentId:next.employmentId,effectiveDate:today,businessUnitId:oldBu});expect((await versions(next.employmentId)).at(-1)?.businessUnitId).toBe(newBu);
  await createMovementEvent(ctx,{employmentId:next.employmentId,kind:'transfer',effectiveDate:today,departmentId:b.deptB,businessUnitId:oldBu});expect((await versions(next.employmentId)).at(-1)).toMatchObject({departmentId:b.deptB,businessUnitId:newBu});
  const transfer=(await movementHistory(ctx,next.employmentId)).find(row=>row.kind==='transfer')!;
- await editMovementEvent(ctx,{employmentId:next.employmentId,movementId:transfer.id,kind:'transfer',effectiveDate:today,departmentId:b.deptA,reason:'Correct the same-day department selection'});expect((await versions(next.employmentId)).at(-1)).toMatchObject({departmentId:b.deptA,businessUnitId:newBu});
+ await reverseMovementEvent(ctx,{employmentId:next.employmentId,movementId:transfer.id,reason:'Remove the incorrect same-day department selection'});expect((await versions(next.employmentId)).at(-1)).toMatchObject({departmentId:b.deptA,businessUnitId:newBu});
  await correctHireDetails(ctx,{employmentId:next.employmentId,reason:'Correct original Personnel position',changes:{positionId:b.positionId,businessUnitId:oldBu}});expect((await versions(next.employmentId)).at(-1)?.businessUnitId).toBe(newBu);
  const review=await previewInformationCorrection(ctx,{employmentId:next.employmentId,changes:{employmentType:'part_time'},reason:'Correct signed employment type'});
  await correctInformation(ctx,{employmentId:next.employmentId,changes:{employmentType:'part_time'},reason:review.reason,fingerprint:review.fingerprint,method:'manual'});expect((await versions(next.employmentId)).at(-1)).toMatchObject({employmentType:'part_time',businessUnitId:newBu});
