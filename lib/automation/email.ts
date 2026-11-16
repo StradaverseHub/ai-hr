@@ -16,6 +16,7 @@
 import {createEmailBodyDocSchema,type EmailBodyDoc} from '../email-body/doc';
 import {legacyBodyToDoc,docToLegacyText} from '../email-body/legacy';
 import {renderEmailBody} from '../email-body/render';
+import {automationEmailAttachmentSettingsSchema,type AutomationEmailAsset,type AutomationEmailSlot} from '../automation-email-assets';
 import type {AutomationModule,AutomationModuleCatalogue} from './catalogue';
 import type {AutomationRecipient,AutomationReferences,AutomationWorkflow} from './workflow';
 
@@ -24,6 +25,7 @@ export type AutomationEmailTemplate = {
   subject: string; body: string; bodyDoc?: EmailBodyDoc;
   /** Always copied, in addition to the step's own CC list. */
   cc: AutomationRecipient[];
+  assets?:AutomationEmailAsset[];slots?:AutomationEmailSlot[];documentIds?:string[];
 };
 export const MAX_EMAIL_NAME = 200;
 export const MAX_EMAIL_SUBJECT = 500;
@@ -59,8 +61,10 @@ export function automationEmailTemplateProblems(template: AutomationEmailTemplat
   if (!template.subject.trim()) problems.push('Write a subject.');
   if (template.subject.length > MAX_EMAIL_SUBJECT) problems.push(`Use a subject of at most ${MAX_EMAIL_SUBJECT} characters.`);
   if (template.body.length > MAX_EMAIL_BODY) problems.push(`Use a message of at most ${MAX_EMAIL_BODY} characters.`);
+  const settings=automationEmailAttachmentSettingsSchema.safeParse({assets:template.assets??[],slots:template.slots??[],documentIds:template.documentIds??[]});
+  if(!settings.success)problems.push(...settings.error.issues.map(issue=>issue.message));
   if(template.bodyDoc){
-    const result=createEmailBodyDocSchema({fieldAllowed:key=>catalogue.mergeFields.some(field=>field.key===key),imageIds:[],documentIds:[]}).safeParse(template.bodyDoc);
+    const result=createEmailBodyDocSchema({fieldAllowed:key=>catalogue.mergeFields.some(field=>field.key===key),imageIds:(template.assets??[]).filter(a=>a.kind==='image').map(a=>a.id),documentIds:template.documentIds??[]}).safeParse(template.bodyDoc);
     if(!result.success)problems.push('The rich email body contains invalid content or unavailable fields.');
   }
   problems.push(...recipientListProblems('CC', template.cc, catalogue, refs));
@@ -75,7 +79,7 @@ export function automationEmailMergeWarnings(template: Pick<AutomationEmailTempl
 
 /** Fills merge tokens for a preview. Unknown or empty values stay visible as the token. */
 export function fillAutomationMergeFields(text: string, values: Readonly<Record<string, string | null | undefined>>): string {
-  return text.replace(MERGE_TOKEN, (token, key: string) => { const value = values[key]; return value ? value : token; });
+  return text.replace(MERGE_TOKEN, (token, key: string) => { const value = Object.hasOwn(values,key)?values[key]:undefined; return value ? value : token; });
 }
 
 /** Personnel Management event types a Probation "Create posting" step can log (handoff A4, decision 4). */
