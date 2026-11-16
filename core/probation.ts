@@ -236,9 +236,8 @@ export function actOnProbation(ctx:SessionContext,input:{caseId:string;partId:st
 async function proceedWithOutcomeTx(tx:Tx,ctx:SessionContext,view:ProbationCaseView,part:ProbationPartView,outcome:{id:string;revision:number;outcome:string;extensionMonths?:number|null}){
  const decided=await decideOutcomeAutomationTx(tx,ctx,view,part,outcome);
  if(decided)return;
- await tx.execute(sql`savepoint probation_letter_autodraft`);
- try{const[choice]=await tx.execute<{data:{suggestedTemplateId:string|null;tie:boolean}}>(sql`select app.probation_letter_template_choices(${outcome.id}::uuid) as data`);if(!choice.data.suggestedTemplateId||choice.data.tie)throw new Error('Letter selection needs review');const{prepareProbationLetterTx}=await import('./probation-letter');await prepareProbationLetterTx(tx,ctx,{outcomeId:outcome.id,templateId:choice.data.suggestedTemplateId,revision:outcome.revision,edits:{}});await tx.execute(sql`release savepoint probation_letter_autodraft`);}
- catch{await tx.execute(sql`rollback to savepoint probation_letter_autodraft`);await tx.execute(sql`release savepoint probation_letter_autodraft`);await tx.execute(sql`select app.probation_outcome_failure(${outcome.id}::uuid,'The review is recorded. Select and complete the approved outcome letter before signing and release.')`);}
+ try{await tx.transaction(async scope=>{const[choice]=await scope.execute<{data:{suggestedTemplateId:string|null;tie:boolean}}>(sql`select app.probation_letter_template_choices(${outcome.id}::uuid) as data`);if(!choice.data.suggestedTemplateId||choice.data.tie)throw new Error('Letter selection needs review');const{prepareProbationLetterTx}=await import('./probation-letter');await prepareProbationLetterTx(scope,ctx,{outcomeId:outcome.id,templateId:choice.data.suggestedTemplateId,revision:outcome.revision,edits:{}});});}
+ catch{await tx.execute(sql`select app.probation_outcome_failure(${outcome.id}::uuid,'The review is recorded. Select and complete the approved outcome letter before signing and release.')`);}
 }
 /**
  * I3 (handoff B4, B5): the case's PBP (or GBS People Ops) chooses the real outcome of an Other outcome, with a reason
@@ -552,12 +551,12 @@ async function emitPartEventsTx(tx:Tx,ctx:SessionContext,view:ProbationCaseView,
 /** Runs the outcome's shared workflows in a savepoint; any unexpected error leaves the outcome on today's path. */
 async function decideOutcomeAutomationTx(tx:Tx,ctx:SessionContext,view:ProbationCaseView,part:ProbationPartView,outcome:{id:string;revision:number;outcome:string;extensionMonths?:number|null}):Promise<boolean>{
  const score=scoreProbationForm(view.form,part.manager),suggestion=score?(score.band>=3?'confirm':score.band===2?'extend':'not_confirm'):null;
- await tx.execute(sql`savepoint probation_outcome_automation`);
  try{
   const{runProbationOutcomeDecidedTx}=await import('./probation-automation');
-  const result=await runProbationOutcomeDecidedTx(tx,ctx,{record:view.record,partId:part.id,dueOn:part.dueOn??null,outcome:{id:outcome.id,revision:outcome.revision,outcome:outcome.outcome,extensionMonths:outcomeExtensionMonths(part,outcome)},resultBand:score?.band??null,overridden:suggestion?suggestion!==outcome.outcome:null});
-  await tx.execute(sql`release savepoint probation_outcome_automation`);return result.matched;
- }catch{await tx.execute(sql`rollback to savepoint probation_outcome_automation`);await tx.execute(sql`release savepoint probation_outcome_automation`);return false;}
+  // A nested transaction (driver savepoint): a database error inside it does not doom the recording command.
+  const result=await tx.transaction(scope=>runProbationOutcomeDecidedTx(scope,ctx,{record:view.record,partId:part.id,dueOn:part.dueOn??null,outcome:{id:outcome.id,revision:outcome.revision,outcome:outcome.outcome,extensionMonths:outcomeExtensionMonths(part,outcome)},resultBand:score?.band??null,overridden:suggestion?suggestion!==outcome.outcome:null}));
+  return result.matched;
+ }catch{return false;}
 }
 /**
  * New path (W2): an outcome decided with shared workflows resumes their frozen remaining steps once its letter is

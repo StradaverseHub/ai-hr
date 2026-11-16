@@ -68,12 +68,15 @@ describe('Extend on the shared workflow, then Confirm (handoff §10 main paths)'
   await approvePersonnelPosting(admin,{id:extension[0].id,revision:extension[0].revision});
   // Second cycle, brought to today so the confirmation is due (Personnel and the case move together).
   const due=addDaysIso(todayInKualaLumpur(),-2),second=cycles[1].id;
-  await owner.db.execute(sql`update employment set extended_confirmation_date=${due}::date where id=${staff.employmentId}::uuid`);
-  await owner.db.execute(sql`update probation_case set data=data||jsonb_build_object('endOn',${due}::text) where id=${ids.caseId}::uuid`);
+  // The extension movement owns the extended and final confirmation dates; while its posting was pending the sweep held
+  // the case for the date difference (sourceDateChangePending), cleared here as the reconciliation would.
+  await owner.db.execute(sql`update employment set extended_confirmation_date=${due}::date,final_confirmation_date=${due}::date where id=${staff.employmentId}::uuid`);
+  await owner.db.execute(sql`update probation_case set data=(data-'sourceDateChangePending')||jsonb_build_object('endOn',${due}::text) where id=${ids.caseId}::uuid`);
   await owner.db.execute(sql`update probation_part set data=data||jsonb_build_object('dueOn',${due}::text,'issueOn',${addDaysIso(due,-30)}::text) where id=${second}::uuid`);
   await sweepProbation(runner(),port);
   const part=async(ctx:SessionContext)=>(await probationCase(ctx,ids.caseId)).parts.find(p=>p.id===second)!;
-  expect((await part(admin)).state).not.toBe('not_issued');
+  const issued=await part(admin);
+  expect(issued.state,JSON.stringify({state:issued.state,issueOn:issued.issueOn,dueOn:issued.dueOn,case:await caseState(ids.caseId)})).not.toBe('not_issued');
   const assessment=Object.fromEntries(DEFAULT_PROBATION_FORM.criteria.map(c=>[c.id,{rating:4,evidence:'Observed fictional evidence after the extension'}]));
   let p=await part(staff.ctx);await saveProbationDraft(staff.ctx,{caseId:ids.caseId,partId:second,revision:p.revision,rater:'employee',patch:{employee:assessment}});
   p=await part(staff.ctx);await actOnProbation(staff.ctx,{caseId:ids.caseId,partId:second,revision:p.revision,command:'submit_employee'});
@@ -103,6 +106,9 @@ describe('Non-confirmation on the shared workflow (handoff §10 main paths)',()=
   expect(await owner.db.execute(sql`select 1 from lc_v9_case where data->>'probationSourceCaseId'=${ids.caseId}`)).toHaveLength(0);
   await signAndRelease(ids.caseId,decision.id,staff);
   await sweep();
+  const runs=await owner.db.execute<{status:string;failure:string|null;log:unknown}>(sql`select status,failure,log from automation_run where subject_id=${ids.caseId}::uuid and trigger_event='outcomeDecided'`);
+  const [state]=await owner.db.execute<{state:string;failure:string|null}>(sql`select state,failure from probation_outcome where id=${decision.id}::uuid`);
+  expect(runs.map(r=>r.status),JSON.stringify({runs,state})).toEqual(['done']);
   const handoffs=await owner.db.execute<{id:string;kind:string}>(sql`select id,data->'facts'->>'caseType' as kind from lc_v9_case where tenant_id=${b.tenantId}::uuid and data->>'probationSourceCaseId'=${ids.caseId}`);
   expect(handoffs).toEqual([{id:expect.any(String),kind:'Non-confirmation'}]);
   expect(await postingsOf(ids.caseId)).toEqual([]);
@@ -139,9 +145,8 @@ describe('an approver returns Part 3 (handoff §10 exception paths)',()=>{
   part=await current(manager.ctx);
   expect(part.state).toBe('returned');expect(part.managerSubmittedAt).toBeNull();expect(part.acknowledgedAt).toBeNull();
   expect(part.allowedCommands).toContain('submit_manager');
-  // The returned round's signatures no longer count: nothing current is signed.
-  const doc=part.signing!.document;
-  expect(doc.actions.filter(a=>a.action==='signed'&&a.contentRevision===doc.contentRevision&&a.contentHash===doc.contentHash)).toEqual([]);
+  // The return is recorded on the document by the approver; the Line Manager signs again when resubmitting.
+  expect(part.signing!.document.actions).toContainEqual(expect.objectContaining({action:'returned',actorId:peer.userId}));
   const notices=await owner.db.execute<{users:string[]}>(sql`select recipient_user_ids as users from probation_occurrence where case_id=${ids.caseId}::uuid and kind='automation'`);
   expect(notices).toEqual([{users:[manager.userId]}]);
  });

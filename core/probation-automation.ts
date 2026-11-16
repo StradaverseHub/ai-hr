@@ -252,15 +252,12 @@ function probationRuntime(tx: Tx, input: ExecutorInput): {executors: AutomationE
       if (!outcome) return {status: 'failed', reason: 'A letter can only be generated for a decided outcome.'};
       const version = input.letters.get(text(step.params.letterTemplateId));
       if (!version || version.state !== 'published') return {status: 'failed', reason: 'This company has no published version of the chosen letter template.'};
-      await tx.execute(sql`savepoint probation_automation_letter`);
       try {
         const {prepareProbationLetterTx} = await import('./probation-letter');
-        const prepared = await prepareProbationLetterTx(tx, ctx, {outcomeId: outcome.id, templateId: version.id, revision: outcome.revision, edits: {}});
-        await tx.execute(sql`release savepoint probation_automation_letter`);
+        const prepared = await tx.transaction(scope => prepareProbationLetterTx(scope, ctx, {outcomeId: outcome.id, templateId: version.id, revision: outcome.revision, edits: {}}));
         effects.documentId = prepared.documentId;
         return {status: 'wait', documentId: prepared.documentId, message: 'The letter is prepared and waits for its signatures and release.'};
       } catch (error) {
-        await tx.execute(sql`rollback to savepoint probation_automation_letter`);await tx.execute(sql`release savepoint probation_automation_letter`);
         return {status: 'failed', reason: `The letter could not be prepared: ${error instanceof Error && error.name === 'ProbationError' ? error.message : 'the letter source or template needs review.'}`};
       }
     },
@@ -382,22 +379,21 @@ export async function liveProbationTriggersTx(tx: Tx, caseId: string, triggers: 
  */
 export async function emitProbationEventsSafelyTx(tx: Tx, ctx: SessionContext, caseId: string, events: {trigger: string; occurrence: string; facts: ProbationEventFacts; pending?: string[] | null; anchors?: Record<string, string | null>; today?: string}[], knownLive?: Set<string>): Promise<void> {
   if (!events.length || knownLive && !events.some(e => knownLive.has(e.trigger))) return;
-  await tx.execute(sql`savepoint probation_events`);
+  // Nested transactions (driver savepoints): a database error inside one is rolled back to its savepoint and does not
+  // doom the caller's transaction, which a plain SQL savepoint cannot promise with this driver.
+  let live: ReadonlySet<string> = new Set(), record: ProbationAutomationCase | null = null;
   try {
-    const live = knownLive ?? await liveProbationTriggersTx(tx, caseId, [...new Set(events.map(e => e.trigger))]);
-    const record = live.size ? await probationAutomationCaseTx(tx, caseId) : null;
-    if (record) for (const event of events) if (live.has(event.trigger)) {
-      await tx.execute(sql`savepoint probation_event`);
-      try { await emitProbationEventTx(tx, ctx, {...event, record}); await tx.execute(sql`release savepoint probation_event`); }
-      catch (error) {
-        await tx.execute(sql`rollback to savepoint probation_event`); await tx.execute(sql`release savepoint probation_event`);
-        await recordProbationEventFailureTx(tx, caseId, event, error);
-      }
-    }
-    await tx.execute(sql`release savepoint probation_events`);
+    [live, record] = await tx.transaction(async scope => {
+      const triggers = knownLive ?? await liveProbationTriggersTx(scope, caseId, [...new Set(events.map(e => e.trigger))]);
+      return [triggers, triggers.size ? await probationAutomationCaseTx(scope, caseId) : null] as const;
+    });
   } catch (error) {
-    await tx.execute(sql`rollback to savepoint probation_events`); await tx.execute(sql`release savepoint probation_events`);
     for (const event of events.slice(0, 20)) await recordProbationEventFailureTx(tx, caseId, event, error);
+    return;
+  }
+  if (record) for (const event of events) if (live.has(event.trigger)) {
+    try { await tx.transaction(scope => emitProbationEventTx(scope, ctx, {...event, record})); }
+    catch (error) { await recordProbationEventFailureTx(tx, caseId, event, error); }
   }
 }
 /** The error's class only (never its message, which may carry data): e.g. `AutomationError`, `database 40001`. */
@@ -412,20 +408,18 @@ export function automationErrorClass(error: unknown): string {
  * class; the case History shows it. Recording is best effort in its own savepoint: it never fails the command.
  */
 async function recordProbationEventFailureTx(tx: Tx, caseId: string, event: {trigger: string; occurrence: string; today?: string}, error: unknown): Promise<void> {
-  await tx.execute(sql`savepoint probation_event_failure`);
   try {
-    const at = new Date().toISOString(), day = event.today ?? todayInKualaLumpur(), store = sqlAutomationRunStore(tx);
-    const reason = `This event could not be processed (${automationErrorClass(error)}). No step ran for it; check the case by hand.`;
-    for (const live of (await liveAutomationWorkflowsTx(tx, 'probation', event.trigger, caseId)).slice(0, 20)) {
-      const run = newAutomationRun({id: randomUUID(), workflow: live.workflow, revision: live.revision, subjectId: caseId, eventKey: `failed|${event.trigger}|${event.occurrence}|${day}`.slice(0, 300), skipped: null, at});
-      const started = await store.start(run);
-      if (!started.created) continue;
-      await store.save({...started.run, status: 'failed', failure: reason, log: [...started.run.log, {at, kind: 'failed', step: null, stepId: null, type: null, message: reason}]}, 'running');
-    }
-    await tx.execute(sql`release savepoint probation_event_failure`);
-  } catch {
-    await tx.execute(sql`rollback to savepoint probation_event_failure`); await tx.execute(sql`release savepoint probation_event_failure`);
-  }
+    await tx.transaction(async scope => {
+      const at = new Date().toISOString(), day = event.today ?? todayInKualaLumpur(), store = sqlAutomationRunStore(scope);
+      const reason = `This event could not be processed (${automationErrorClass(error)}). No step ran for it; check the case by hand.`;
+      for (const live of (await liveAutomationWorkflowsTx(scope, 'probation', event.trigger, caseId)).slice(0, 20)) {
+        const run = newAutomationRun({id: randomUUID(), workflow: live.workflow, revision: live.revision, subjectId: caseId, eventKey: `failed|${event.trigger}|${event.occurrence}|${day}`.slice(0, 300), skipped: null, at});
+        const started = await store.start(run);
+        if (!started.created) continue;
+        await store.save({...started.run, status: 'failed', failure: reason, log: [...started.run.log, {at, kind: 'failed', step: null, stepId: null, type: null, message: reason}]}, 'running');
+      }
+    });
+  } catch { /* Best effort: recording the failure never fails the command that raised the event. */ }
 }
 const PENDING_LABEL: Record<string, string> = {lm: 'Line Manager', employee: 'Employee', hod: 'HOD', pbp: 'PBP'};
 /** "Pending step" condition value and the users holding it, from a signing document's current pending steps. */
