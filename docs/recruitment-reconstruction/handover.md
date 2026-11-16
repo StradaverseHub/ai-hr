@@ -248,3 +248,9 @@ provider-data approval (after legal review), re-binding existing provider approv
   because main's `5740`–`5770` now sort above the old numbers. Details and order risks in docs/MIGRATION-ALLOCATION.md.
 - A staging candidate must include `f0443eaf2`; queue behind the architecture/performance release (its migration moves to
   5771) as well as the Combined Irwin ticket, so 5771 does not land below this block.
+- CI: run 43921572307 on `76a35ddb6` (64 files, type check, build): build PASS; 62 files PASS; type check failed in
+  `test/recruitment-tasks.test.ts` (Probation's new `probation` inbox flag), and `company-referrers` and `function-access` failed on
+  gaps left by slices 23 and 25, which their focused runs did not cover (the portal inbox's company keys; the `/recruitment/rewards`
+  and `/recruitment/agency-portal` routes). Fixed in `416563044`; run 43925442007 passes the type check and the 3 affected files
+  (116 tests).
+- Not rendered; nothing on staging.
