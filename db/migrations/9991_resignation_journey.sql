@@ -1,5 +1,8 @@
 -- Managed resignation journey, additive to legacy resignation requests. No historical request is replayed.
 -- Allocation: idx5167 / when1793330100101; root owns journal admission.
+-- person.id is already globally unique; this additive alternate key enables tenant-bound foreign keys.
+ALTER TABLE public.person ADD CONSTRAINT person_id_tenant_uq UNIQUE(id,tenant_id);
+--> statement-breakpoint
 ALTER TABLE public.resignation_request ADD CONSTRAINT resignation_request_tenant_id_key UNIQUE(tenant_id,id);
 --> statement-breakpoint
 CREATE TABLE public.resignation_journey (
