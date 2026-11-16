@@ -51,7 +51,7 @@ describe('one communication owner for managed resignation clearance',()=>{
   const {f,journey,templateId,legacyCaseId}=await managedClearance(true),id=legacyCaseId!;
   const allocated=await owner.db.execute<{number:string}>(sql`select number from lc_v9_case where tenant_id=${f.base.tenantId}::uuid order by number`);expect(allocated.map(row=>row.number)).toEqual(['OFB9-0001','OFB9-0002']);
   // A source label alone is not the protected bidirectional link.
-  await owner.db.execute(sql`update lc_v9_case set data=data||jsonb_build_object('resignationSourceCaseId',${journey.id}) where id=${id}::uuid`);
+  await owner.db.execute(sql`update lc_v9_case set data=data||jsonb_build_object('resignationSourceCaseId',${journey.id}::text) where id=${id}::uuid`);
   const before=await v9CaseDetail(f.admin,id);await v9Command(f.admin,id,before.case.revision,{type:'submit'});const after=await v9CaseDetail(f.admin,id);
   expect(after.resignationDocuments).toBeUndefined();expect(after.case.documents).toEqual([expect.objectContaining({templateId})]);expect(after.case.runs.length).toBeGreaterThan(0);expect(after.case.tasks).toHaveLength(1);
  },90000);

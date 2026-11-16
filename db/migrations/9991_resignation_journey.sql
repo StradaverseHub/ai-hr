@@ -516,3 +516,17 @@ BEGIN
  RETURN NEW;
 END;
 $$;
+
+--> statement-breakpoint
+-- Company deletion retains custody-protected journey history, including after a transfer or module expiry.
+-- Only a fresh administrator of this tenant's actual company receives the coarse existence bit.
+CREATE INDEX resignation_journey_company ON public.resignation_journey(tenant_id,company_id);
+CREATE FUNCTION app.resignation_company_in_use(wanted_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN coalesce(app.principal_snapshot_current() AND app.is_admin_for(wanted_company)
+  AND EXISTS(SELECT 1 FROM public.company c WHERE c.id=wanted_company AND c.tenant_id=app.current_tenant_id()),false)
+ THEN EXISTS(SELECT 1 FROM public.resignation_journey j WHERE j.tenant_id=app.current_tenant_id() AND j.company_id=wanted_company)
+ ELSE false END;
+$$;
+REVOKE ALL ON FUNCTION app.resignation_company_in_use(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.resignation_company_in_use(uuid) TO ai_hr_app;

@@ -401,6 +401,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // the roles that evaluate it (test/rewards-config-grants-lock.test.ts), so no added function is callable by PUBLIC.
   const publicFunctions:string[]=[];
   const addedFunctions=[
+   // Scoped company-retention boolean; journey rows retain their existing custody-only RLS.
+   'app.resignation_company_in_use(uuid)',
    // Reverse-linked clearance template IDs: scoped native metadata, application EXECUTE only.
    'app.resignation_offboarding_template_ids(uuid)',
    // HMAC-bound missing-decision repair audience: application entry point, never PUBLIC.
