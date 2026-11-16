@@ -10,7 +10,7 @@ CREATE FUNCTION app.automation_email_test_authority(p_tenant uuid,p_user uuid) R
   'contractPermissions',(SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY r.id),'[]'::jsonb) FROM public.contract_access_role r WHERE r.tenant_id=p_tenant),
   'probationMembers',(SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY r.id),'[]'::jsonb) FROM public.probation_access_member r WHERE r.tenant_id=p_tenant AND r.user_id=p_user),
   'probationPermissions',(SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY r.id),'[]'::jsonb) FROM public.probation_access_role r WHERE r.tenant_id=p_tenant),
-  'probationRules',(SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY r.id),'[]'::jsonb) FROM public.probation_access_rule r WHERE r.tenant_id=p_tenant),
+  'probationRules',(SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY r.tenant_id),'[]'::jsonb) FROM public.probation_access_rule r WHERE r.tenant_id=p_tenant),
   'access',(SELECT to_jsonb(g) FROM app.access_profile_write_generation g WHERE g.tenant_id=p_tenant),
   'nativeGroups',(SELECT jsonb_build_object('revision',revision,'data',data) FROM public.lc_onboarding_config WHERE tenant_id=p_tenant),
   'lifecycle',(SELECT jsonb_build_object('revision',revision,'data',data) FROM public.lc_v9_config WHERE tenant_id=p_tenant),
@@ -31,11 +31,13 @@ BEGIN
  IF template.revision IS DISTINCT FROM p_expected THEN RAISE EXCEPTION 'This email template changed' USING ERRCODE='40001';END IF;
  SELECT person_id INTO pid FROM public.app_user WHERE tenant_id=t AND id=u;
  IF template.retired OR p_request IS NULL OR length(btrim(coalesce(p_subject,''))) NOT BETWEEN 1 AND 500 OR jsonb_typeof(p_values) IS DISTINCT FROM 'object' OR octet_length(p_values::text)>65536 THEN RAISE EXCEPTION 'Save a valid template before testing it' USING ERRCODE='22023';END IF;
+ IF (SELECT count(*) FROM jsonb_each(p_values))>200 OR EXISTS(SELECT 1 FROM jsonb_each(p_values) value WHERE length(value.key)>100 OR jsonb_typeof(value.value) IS DISTINCT FROM 'string' OR length(value.value#>>'{}')>1000) THEN RAISE EXCEPTION 'Use bounded fictional preview values for this test' USING ERRCODE='22023';END IF;
  IF NOT EXISTS(SELECT 1 FROM public.app_external_identity i WHERE i.app_user_id=u AND i.revoked_at IS NULL AND i.issuer LIKE '%/auth/'||t::text) THEN RAISE EXCEPTION 'Your account needs a verified sign-in email before sending a test' USING ERRCODE='22023';END IF;
  v_body:=template.body;
- FOR v_key,v_value IN SELECT key,value FROM jsonb_each_text(p_values) LOOP
+ FOR v_key,v_value IN SELECT key,value FROM jsonb_each_text(p_values) WHERE key<>'case.link' LOOP
   v_body:=replace(v_body,'{{'||v_key||'}}',v_value);
  END LOOP;
+ IF length(v_body)>20000 THEN RAISE EXCEPTION 'The merged test message is too long' USING ERRCODE='22023';END IF;
  INSERT INTO public.automation_email_delivery(tenant_id,module,subject_id,mail_key,payload,created_by)
  VALUES(t,template.module,p_template,'test:'||u::text||':'||p_request::text,jsonb_build_object('version',1,'module',template.module,'subjectId',p_template,'purpose','templateTest',
   'test',jsonb_build_object('templateId',p_template,'revision',template.revision,'userId',u,'personId',pid,'authority',app.automation_email_test_authority(t,u)),'context',jsonb_build_object('kind','templateTest'),

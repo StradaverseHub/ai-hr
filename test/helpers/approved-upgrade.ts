@@ -245,7 +245,7 @@ export const APPROVED_UPGRADE_TAIL=[
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5826_automation_shared_assignment_groups':'4b112e626b80a509c6687fbfd3153bd56bd4ddfdda5cf1fb5c236f8bb9ff86f8',
- '5828_automation_email_test_self':'2896fd06a661a233ba868a4c1b8e5d0dd8e6420f78f20bc847233fa896a605de',
+ '5828_automation_email_test_self':'2f14899f4fffb1c84cf20d6ba60b282b8f443a53471342611648583663a8afcc',
  '5813_contract_shared_email_notifications':'dffc41e7da79471a45e00cf2fc8914107ac94978e856d40b863eef510f0a58eb',
  '5812_contract_shared_identity_context':'52297a99fc31f991954be72225bd15b1929de02fe0c798558498fb873f511345',
  '5811_contract_shared_worker_binding':'06f410b065580e27f79add6d988e0b3aaacb81ef786416ed395417860885d1e4',
