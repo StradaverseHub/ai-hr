@@ -56,7 +56,7 @@ export function SharedContractTracker({
   }
   return (
     <div className="v9-stack">
-      <header className="v9-header">
+      <header className="v9-heading">
         <div>
           <h1>{copy('Contract Management')}</h1>
           <p>{copy('Track current contract periods, decisions and the person or team needed next.')}</p>

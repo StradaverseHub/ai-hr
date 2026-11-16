@@ -40,7 +40,7 @@ export function SharedContractPeriod({
   }
   return (
     <div className="v9-stack">
-      <header className="v9-header">
+      <header className="v9-heading">
         <div>
           <h1>{period.source.name}</h1>
           <p>

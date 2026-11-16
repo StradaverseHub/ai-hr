@@ -24,7 +24,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
     <main className="v9-workspace">
       <div className="v9-stack">
         <SharedContractNavigation />
-        <header className="v9-header">
+        <header className="v9-heading">
           <div>
             <h1>{t('postingWork')}</h1>
             <p>{t('postingWorkHint')}</p>
