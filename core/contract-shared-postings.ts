@@ -10,10 +10,10 @@ import {normalisePostingValues,type PersonnelPostingValues} from '../lib/personn
 import {applyApprovedContractPostingMovementTx} from './movement';
 
 export type ContractSharedPosting={
- id:string;number:number;label:string;companyId:string;companyName:string;employmentId:string;employeeName:string;employeeCode:string;
+ id:string;number:number;label:string;companyId:string;companyName:string;employmentId:string;employeeName:string;employeeCode:string|null;
  caseId:string;caseNumber:string;eventType:'contractRenewal'|'contractConversion';proposed:PersonnelPostingValues;edited:PersonnelPostingValues|null;current:PersonnelPostingValues;
  status:'pending'|'approved';revision:number;approverGroupName:string|null;createdAt:string;editedAt:string|null;approvedAt:string|null;movementAppliedAt:string|null;
- canApprove:boolean;canEdit:boolean;caseRevision:number;canConfirmPay:boolean;payChanges:boolean;sourceCurrent?:boolean;
+ canApprove:boolean;canEdit:boolean;caseRevision:number;canConfirmPay:boolean;payChanges:boolean;sourceCurrent?:boolean;workflowReady?:boolean;
 };
 export type ContractSharedPostingPage={rows:ContractSharedPosting[];total:number;offset:number;limit:number};
 export type ContractSharedPostingSummary={postingId:string;label:string;eventType:'contractRenewal'|'contractConversion';status:'pending'|'approved';approverGroupName:string|null;approvedByName:string|null;approvedAt:string|null;movementAppliedAt:string|null;effectiveDate:string;payConfirmedByName:string|null;payConfirmedAt:string|null;caseRevision:number;canConfirmPay:boolean};
@@ -25,10 +25,10 @@ function failed(error:unknown):never{
  throw error;
 }
 async function guarded<T>(work:()=>Promise<T>):Promise<T>{try{return await work();}catch(error){return failed(error);}}
-export async function listContractSharedPostings(ctx:SessionContext,raw:{status?:'pending'|'approved'|'all';companyId?:string;offset?:number;limit?:number}={}):Promise<ContractSharedPostingPage>{
- const input=z.object({status:z.enum(['pending','approved','all']).default('pending'),companyId:z.uuid().optional(),offset:z.number().int().min(0).max(100000).default(0),limit:z.number().int().min(1).max(100).default(50)}).parse(raw);
+export async function listContractSharedPostings(ctx:SessionContext,raw:{status?:'pending'|'approved'|'all';companyId?:string;postingId?:string;offset?:number;limit?:number}={}):Promise<ContractSharedPostingPage>{
+ const input=z.object({status:z.enum(['pending','approved','all']).default('pending'),companyId:z.uuid().optional(),postingId:z.uuid().optional(),offset:z.number().int().min(0).max(100000).default(0),limit:z.number().int().min(1).max(100).default(50)}).strict().parse(raw);
  return guarded(()=>withScopedLifecycleTenant(ctx,async tx=>{
-  const[row]=await tx.execute<{page:{rows:ContractSharedPosting[];total:number}}>(sql`select app.contract_shared_postings_page(${input.status},${input.companyId??null}::uuid,${input.offset},${input.limit}) as page`);
+  const[row]=await tx.execute<{page:{rows:ContractSharedPosting[];total:number}}>(sql`select app.contract_shared_postings_page(${input.status},${input.companyId??null}::uuid,${input.offset},${input.limit},${input.postingId??null}::uuid) as page`);
   return {...row.page,offset:input.offset,limit:input.limit};
  }));
 }
@@ -75,13 +75,12 @@ export function confirmContractSharedPay(ctx:SessionContext,raw:{caseId:string;e
   const[row]=await tx.execute<{result:{caseId:string;revision:number;stage:string;confirmed:true}}>(sql`select app.contract_shared_confirm_pay(${input.caseId}::uuid,${input.expectedRevision},${input.confirmed}) as result`);return row.result;
  }));
 }
-/** Metadata only. The task owner uses the same current posting-group scope as the queue. */
-export async function pendingContractPostingTasks(ctx:SessionContext,scopeIds:string[]|undefined):Promise<import('../lib/assigned-work').PackTaskItem[]>{
- if(scopeIds!==undefined)z.array(z.uuid()).max(1000).parse(scopeIds);
- if(scopeIds?.length===0)return [];
+/** Counted metadata with bounded wire output; this source does not join the generic unbounded Pack provider. */
+export function contractSharedPostingWorkPage(ctx:SessionContext,raw:{companyIds?:string[];offset?:number;limit?:number}={}):Promise<{items:import('../lib/assigned-work').PackTaskItem[];total:number}>{
+ const input=z.object({companyIds:z.array(z.uuid()).max(1000).optional(),offset:z.number().int().min(0).max(100000).default(0),limit:z.number().int().min(1).max(100).default(20)}).strict().parse(raw);
  return guarded(()=>withScopedLifecycleTenant(ctx,async tx=>{
-  const ids=scopeIds?'{'+scopeIds.join(',')+'}':null;
-  const rows=await tx.execute<{id:string;kind:'contractPosting'|'contractPay';subject_name:string|null;created_at:Date|string;link_path:string}>(sql`select * from app.contract_shared_posting_tasks(${ids}::uuid[])`);
-  return rows.map(row=>({id:row.id,kind:row.kind,subjectName:row.subject_name,createdAt:new Date(row.created_at).toISOString(),linkPath:row.link_path}));
+  const ids=input.companyIds?'{'+input.companyIds.join(',')+'}':null;
+  const[row]=await tx.execute<{page:{items:import('../lib/assigned-work').PackTaskItem[];total:number}}>(sql`select app.contract_shared_posting_work_page(${ids}::uuid[],${input.offset},${input.limit}) as page`);
+  return {total:row.page.total,items:row.page.items.map(item=>({...item,createdAt:new Date(item.createdAt).toISOString()}))};
  }));
 }

@@ -14,7 +14,7 @@ export async function approveContractPostingAction(form:FormData){
   const posting=await readContractSharedPosting(session,id);
   if(posting)await refresh(result.employmentId,posting.caseId);
  }catch(error){unstable_rethrow(error);redirect(QUEUE+'?error='+encodeURIComponent(publicErrorMessage(error)));}
- redirect(QUEUE+'?status=approved&saved=approved#posting-'+encodeURIComponent(id));
+ redirect(QUEUE+'?status=approved&saved=approved&postingId='+encodeURIComponent(id)+'#posting-'+encodeURIComponent(id));
 }
 export async function confirmContractPayrollAction(form:FormData){
  const session=await requireScopedLifecycleModule(),id=text(form,'postingId');
@@ -24,7 +24,7 @@ export async function confirmContractPayrollAction(form:FormData){
   await confirmContractSharedPay(session,{caseId:posting.caseId,expectedRevision:Number(text(form,'caseRevision')),confirmed:text(form,'confirmed')==='on'});
   await refresh(posting.employmentId,posting.caseId);
  }catch(error){unstable_rethrow(error);redirect(QUEUE+'?status=approved&error='+encodeURIComponent(publicErrorMessage(error)));}
- redirect(QUEUE+'?status=approved&saved=pay#posting-'+encodeURIComponent(id));
+ redirect(QUEUE+'?status=approved&saved=pay&postingId='+encodeURIComponent(id)+'#posting-'+encodeURIComponent(id));
 }
 /** Same posting command on the Personnel Movement editor; it never sends a general movement payload. */
 export async function saveContractPostingAction(_previous:string|null,form:FormData):Promise<string|null>{
@@ -41,5 +41,5 @@ export async function saveContractPostingAction(_previous:string|null,form:FormD
   else throw new Error('Choose how to save this posting.');
   await refresh(posting.employmentId,posting.caseId);
  }catch(error){unstable_rethrow(error);return publicErrorMessage(error);}
- redirect(QUEUE+'?status='+(approved?'approved':'pending')+'&saved='+(approved?'approved':'edited')+'#posting-'+encodeURIComponent(id));
+ redirect(QUEUE+'?status='+(approved?'approved':'pending')+'&saved='+(approved?'approved':'edited')+'&postingId='+encodeURIComponent(id)+'#posting-'+encodeURIComponent(id));
 }
