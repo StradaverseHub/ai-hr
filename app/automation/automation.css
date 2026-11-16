@@ -40,3 +40,6 @@
 .dark .automation .automation-pill-warn,.dark .automation .automation-issues{background:#3a2c10;color:#f5d9a6}
 .dark .automation .automation-pill-info{background:#1c2a46;color:#c8d8ff}
 .dark .automation .automation-warning{color:#f5c27a}
+.automation-email-preview{width:100%;max-width:640px;min-width:0;padding:1rem;background:var(--v9-panel,#fff);border:1px solid var(--v9-border,#d5d9e3);border-radius:12px;overflow-wrap:anywhere;overflow-x:auto}
+.automation-email-preview[data-preview-width="phone"]{max-width:360px}
+.automation-email-preview pre{white-space:pre-wrap;overflow-wrap:anywhere}

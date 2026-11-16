@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import {useState,useTransition} from 'react';
+import {useState,useTransition,type ReactNode} from 'react';
 import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
 import {MAX_ROUTING_PEOPLE,routingProblems,type Routing,type RoutingDimension,type RoutingRow} from '@/lib/automation/routing';
@@ -15,7 +15,7 @@ export type ListedRouting = { routing: Routing; revision: number; retired: boole
 export type RoutingOptions = { businessGroups: NamedOption[]; companies: (NamedOption & { businessGroupId: string })[]; departments: (NamedOption & { companyId: string })[]; jobTitles: string[] };
 
 /** HR Automation › Assignment groups (prototype GroupsPage; mockup 16): groups stay in On/Off Boarding; routing rules are edited here. */
-export function GroupsWorkspace({access,groups,routings,options,people:initialPeople}:{access:AutomationPageAccess;groups:NamedOption[];routings:ListedRouting[];options:RoutingOptions;people:NamedOption[]}){
+export function GroupsWorkspace({access,groups,routings,options,people:initialPeople,groupSection}:{access:AutomationPageAccess;groups:NamedOption[];routings:ListedRouting[];options:RoutingOptions;people:NamedOption[];groupSection?:ReactNode}){
  const t=useTranslations('automation'),[people,setPeople]=useState(initialPeople),[creating,setCreating]=useState<ListedRouting|null>(null);
  const live=routings.filter(r=>!r.retired),retired=routings.filter(r=>r.retired);
  const names=routings.map(r=>r.routing.name.trim().toLowerCase());
@@ -23,14 +23,14 @@ export function GroupsWorkspace({access,groups,routings,options,people:initialPe
  // Groups, their members and open task limits stay in the On/Off Boarding configuration (ADR decision 2).
  const usedBy=(groupId:string)=>live.filter(r=>r.routing.rows.some(row=>row.assignTo.kind==='group'&&row.assignTo.groupId===groupId)).map(r=>t('groups.routingNamed',{name:r.routing.name}));
  return <main className="v9-stack pcg">
-  <ConfigHead crumb={t('crumb')+' / '+t('groups.title')} title={t('groups.title')} sub={t('groups.intro')} actions={access.legacy?<Link className="v9-button" href={LEGACY_BUILDERS.groups}>{t('groups.editGroups')}</Link>:undefined}/>
-  <section className="v9-stack" aria-labelledby="automation-groups-title">
+  <ConfigHead crumb={t('crumb')+' / '+t('groups.title')} title={t('groups.title')} sub="Shared group membership and routing rules for HR workflows." actions={access.legacy&&!groupSection?<Link className="v9-button" href={LEGACY_BUILDERS.groups}>{t('groups.editGroups')}</Link>:undefined}/>
+  {groupSection??<section className="v9-stack" aria-labelledby="automation-groups-title">
    <div><h2 id="automation-groups-title" className="sr-only">{t('groups.groups')}</h2><p className="pcg-hint">{t('groups.groupsIntro')}</p>{!access.legacy&&<p className="pcg-hint">{t('groups.groupsReadOnly')}</p>}</div>
    {groups.length===0?<p className="v9-muted">{t('groups.noGroups')}</p>:<ul className="pcg-grid2" style={{listStyle:'none',margin:0,padding:0}}>{groups.map(g=>{const used=usedBy(g.id);return <li key={g.id} className="pcg-card" aria-label={g.name}>
     <div><span className="pcg-hint">{t('groups.groupName')}</span><h3 className="pcg-group-name">{g.name}</h3></div>
     <p className="pcg-hint">{used.length?t('groups.usedByList',{list:used.join('; ')}):t('groups.usedBy',{count:0})}</p>
    </li>;})}</ul>}
-  </section>
+  </section>}
   <section className="pcg-card" aria-label={t('groups.routings')}>
    <div className="pcg-row pcg-between" style={{alignItems:'flex-start'}}><div style={{flex:'1 1 480px'}}><h2>{t('groups.routings')}</h2><p className="pcg-sub">{t('groups.routingIntro')} {t('groups.approvalNote')}</p></div>
     <button type="button" className="v9-button v9-button-primary" disabled={!!creating} onClick={()=>setCreating({routing:{id:crypto.randomUUID(),name:'',rows:[{match:{},assignTo:{kind:'group',groupId:groups[0]?.id??''}}]},revision:0,retired:false,usedBy:[]})}>{t('groups.newRouting')}</button></div>

@@ -3,6 +3,8 @@ export * from '../../core/automation-store';
 export * from '../../core/automation-email';
 export * from '../../core/automation-documents';
 export * from '../../core/automation-builder';
+export * from '../../core/automation-groups';
+export * from '../../core/automation-email-test';
 export * from '../../lib/automation/conditions';
 export * from '../../lib/automation/catalogue';
 export * from '../../lib/automation/catalogues';
