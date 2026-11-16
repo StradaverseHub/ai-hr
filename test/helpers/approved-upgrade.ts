@@ -239,9 +239,13 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5211,when:1794841005811,tag:'5811_contract_shared_worker_binding'},
  {idx:5212,when:1794841005812,tag:'5812_contract_shared_identity_context'},
  {idx:5213,when:1794841005813,tag:'5813_contract_shared_email_notifications'},
+ {idx:5227,when:1794841005827,tag:'5827_shared_automation_email_assets'},
+ {idx:5229,when:1794841005829,tag:'5829_shared_automation_email_asset_delivery'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5827_shared_automation_email_assets':'5cc9078f2d6eba830b2da1a7edc6a4627a84733db85ebc62356f39581de42d70',
+ '5829_shared_automation_email_asset_delivery':'96c9f4fdbb02063c6335c1d7f83dd5273d94a33515159a883712f7b30a68c925',
  '5813_contract_shared_email_notifications':'dffc41e7da79471a45e00cf2fc8914107ac94978e856d40b863eef510f0a58eb',
  '5812_contract_shared_identity_context':'52297a99fc31f991954be72225bd15b1929de02fe0c798558498fb873f511345',
  '5811_contract_shared_worker_binding':'06f410b065580e27f79add6d988e0b3aaacb81ef786416ed395417860885d1e4',
@@ -448,6 +452,8 @@ async function table(db:Database,name:string):Promise<Row[]>{return (await db.cl
  * may hold a value there. migrateApprovedUpgrade proves each column present and null on every row once its
  * migration is applied; a retained row is then compared without it (withoutCombinedReleaseNulls). */
 export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;columns:readonly string[]}[]=Object.freeze([
+ {tag:'5827_shared_automation_email_assets',table:'lc_v9_email_asset',columns:['automation_module','shared_subject_id','shared_slot_id','shared_source_revision']},
+ {tag:'5827_shared_automation_email_assets',table:'automation_email_template_version',columns:['assets','file_slots','document_ids']},
  {tag:'5808_contract_shared_signing',table:'contract_shared_letter',columns:['signing_document_id','decision_revision','workflow_run_id','workflow_step_id']},
  {tag:'5809_contract_shared_decision_identity',table:'contract_shared_case_revision',columns:['actor_person_id','actor_name']},
  {tag:'5810_contract_shared_execution_adapters',table:'contract_shared_event',columns:['root_event_id']},
