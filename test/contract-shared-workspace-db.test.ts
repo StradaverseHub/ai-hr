@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {sql} from 'drizzle-orm';
@@ -136,7 +137,12 @@ it('pages 1,000 actual pending approvals across 70 companies with exact native e
  admin={...await entitledCtx(b),personId:admin.personId};
  const expected=await owner.db.execute<{id:string;caseId:string;companyId:string;name:string}>(sql`select a.id,c.id as "caseId",c.company_id as "companyId",p.full_name as name from contract_shared_approval a join contract_case c on c.tenant_id=a.tenant_id and c.id=a.case_id join employment e on e.tenant_id=c.tenant_id and e.id=c.employment_id join person p on p.tenant_id=e.tenant_id and p.id=e.person_id where a.tenant_id=${b.tenantId}::uuid and e.employee_code like 'WORKSPACE-SCALE-%' order by a.id`),companies=[...new Set(expected.map(r=>r.companyId))];
  expect(companies).toHaveLength(70);checkpoint('source-oracle-read');
- const first=await contractSharedWorkPage(admin,{category:'approvals',companyIds:companies,limit:100}),second=await contractSharedWorkPage(admin,{category:'approvals',companyIds:companies,limit:100,offset:100}),last=await contractSharedWorkPage(admin,{category:'approvals',companyIds:companies,limit:100,offset:900});
+ // Read-only planner diagnostics preserve every predicate and the standard JIT-on profile.
+ const migration=readFileSync(new URL('../db/migrations/5898_contract_shared_work_page.sql',import.meta.url),'utf8'),begin=migration.indexOf(' WITH clock'),finish=migration.indexOf('\n$$;',begin),statement=migration.slice(begin,finish).replaceAll('p_cases','(NULL::uuid[])').replaceAll('p_assigned_only','true');
+ const explain=await owner.withTenant(admin,tx=>tx.execute(sql.raw('EXPLAIN (FORMAT JSON) '+statement)));
+ const plan=(explain[0] as Record<string,unknown>)['QUERY PLAN'];console.info('Contract work planner diagnostic',JSON.stringify(plan));checkpoint('native-source-estimated-plan');
+
+ const first=await contractSharedWorkPage(admin,{category:'approvals',companyIds:companies,limit:100});checkpoint('first-native-page');const second=await contractSharedWorkPage(admin,{category:'approvals',companyIds:companies,limit:100,offset:100});checkpoint('second-native-page');const last=await contractSharedWorkPage(admin,{category:'approvals',companyIds:companies,limit:100,offset:900});
  checkpoint('three-native-pages');
  expect(first.total).toBe(1000);expect(first.approvalTotal).toBe(1000);expect(first.taskTotal).toBe(0);expect(first.countsByKind).toEqual({contractApproval:1000});expect(first.hasMore).toBe(true);expect(last.hasMore).toBe(false);expect(first.items).toHaveLength(100);expect(second.items).toHaveLength(100);expect(new Set([...first.items,...second.items].map(r=>r.id)).size).toBe(200);expect(last.items).toHaveLength(100);
  const company=companies[0],single=await contractSharedWorkPage(admin,{category:'approvals',companyIds:[company],limit:100}),oracle=expected.filter(r=>r.companyId===company);expect(new Set(single.items.map(t=>t.id))).toEqual(new Set(oracle.map(r=>r.id)));expect(single.total).toBe(oracle.length);
