@@ -6,3 +6,4 @@ export * from '../../core/probation-builder-views';
 export * from '../../core/probation-intake';
 export * from '../../core/probation-cutover';
 export * from '../../core/probation-workflow-move';
+export * from '../../core/probation-access';

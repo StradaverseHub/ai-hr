@@ -219,6 +219,7 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5160,when:1793330005460,tag:'5760_probation_queue_kinds_and_pbp_tasks'},
  {idx:5161,when:1793330005461,tag:'5761_probation_automation_recipients_and_tracker_steps'},
  {idx:5162,when:1793330005462,tag:'5762_probation_form_import'},
+ {idx:5163,when:1793330005463,tag:'5763_probation_access_roles'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -275,6 +276,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5758_probation_routed_overrides':'824f6d210d6d9361bf4132246ea40b4662c7e48cee8a67a4af269cca6740ec35',
  '5759_probation_employee_own_steps_only':'df0d15c2435048949c6436329d19db429696906dc2a8760086d9e8688af440f2',
  '5762_probation_form_import':'7accc885810776b61d2b4b5c292798f62aad1f2434280d80cc787d2946e8215d',
+ '5763_probation_access_roles':'d9a8f718e1c622e8faba51d843c69b404b23b1f31327ebb75c48760b1a02afde',
  '5754_automation_email_delivery':'bd1dc53c5461299006b240e7fb3fd25801a5aaaa3b6807be8995f858ffe57c05',
  '4800_ai_shared_leave_groups_read':'774dce41ba113549ec5415586d104b8d5b7712934216f2beb4d9aa0e9f00ffc5',
  '4601_last_login_event_index':'868e30d4a2840d4939a46f303ce999b2e041ae3cb6823eb8b712179ccf7d5788',

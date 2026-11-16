@@ -1,3 +1,26 @@
+<!-- 5763_probation_access_roles -->
+# Probation access roles and the Direct Superiors rule — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-access-20261116` (lane K of the Probation Confirmation build) appends
+`5763_probation_access_roles` at idx 5163 / when 1793330005463 (assigned by the build coordinator; 5765/5766 belong to
+lane L). SHA256 `d9a8f718e1c622e8faba51d843c69b404b23b1f31327ebb75c48760b1a02afde`. It adds three owner-only tables (forced row security, owner policy, no application grant):
+`probation_access_role` (named role, permissions from the Cases and Settings families), `probation_access_member`
+(person, optional business group and company, valid from/to, revocation recorded; the ADR-0174
+`probation_access_member_company_tenant_fk` key and a `(business_group_id, tenant_id)` company key) and
+`probation_access_rule` (the Direct Superiors rule; no row keeps today's behaviour). Writes go only through the
+`app.probation_access_*` commands (write lock, System Administrator or `access.configure`, one `domain_event` each).
+It replaces, with unchanged signatures and grants, the existing Probation authority owners so the new permissions are
+enforced additively: `app.probation_visible_among`, `app.probation_role`, `app.probation_signing_access`,
+`app.probation_config_admin`, `app.probation_settings_scope_admin`, `app.automation_can_configure`,
+`app.probation_settings_scope_save`, `app.probation_config_write`, `app.probation_navigation_access`, the intake and
+activation owners (`probation_intake_companies`, `_intake_workspace`, `_personnel_source`, `_cutover_snapshot`,
+`_reactivation_cases`, `_prepare_cutover_plan`, `_approve_cutover`, `_request_activation`, `_activate_cutover`), the
+letter owners (`probation_letter_template_choices`, `_letter_preview`, `_prepare_letter`, `_letter_freeze_route`,
+`_letter_routing_context`, `_letter_release`, `_release_signed_letter`, `_letter_transition`, `_part_access`),
+`app.probation_record_low_result_action`, `app.probation_route_override` and `app.probation_delegate_add`. No existing
+table, row, policy or purpose-owned object changes. The installed ledgers were not read; recheck watermarks and peer
+claims at admission. This allocation grants no installation authority.
+
 # Imported saved Probation evaluation forms — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/probation-lane-import-20261116` (lane J of the Probation Confirmation build) appends
