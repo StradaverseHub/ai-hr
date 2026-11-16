@@ -7,12 +7,13 @@
  * Pure: no database. The Payroll and TOIL journeys are in overtime-setting-2f803985-payroll.test.ts.
  */
 import { describe, expect, it } from 'vitest';
-import { ATTENDANCE_POLICY_DAY_CLASSES, type AttendanceGroupPolicy, type AttendancePolicyDayClass } from '../lib/attendance-group-policy';
+import { ATTENDANCE_POLICY_DAY_CLASSES, validateAttendanceGroupPolicy, type AttendanceGroupPolicy, type AttendancePolicyDayClass } from '../lib/attendance-group-policy';
 import type { PolicyCalendarProof } from '../lib/attendance-policy-calendar';
 import { attendancePolicyLatenessAfterOffset, deriveAttendancePolicyDurationProposal, type PolicyDurationProposalInput } from '../packs/attendance/policy-duration';
 import { attendancePolicyPlanNotRequested } from '../packs/attendance/policy-plan-input';
 import { attendancePolicyFinancialDurationContract } from '../packs/attendance/policy-financial-contract';
 import { defaultScheduleOvertimeSetting, parseScheduleOvertimeSetting, scheduleOvertimeSettingFromPolicy, scheduleOvertimeSettingPolicy, type ScheduleOvertimeSetting } from '../lib/schedule-overtime-setting';
+import { applyOtRuleRows } from '../core/attendance-rule';
 
 const companyId = '00000000-0000-4000-8000-000000000002';
 const pattern = '00000000-0000-4000-8000-000000000001';
@@ -242,5 +243,94 @@ describe('approved order on a split night: split, method, lateness offset on the
     // The shift date's portion is consumed entirely (no part remains for it); the rest comes off the next date.
     expect(r.parts.map(part => ({ date: part.date, minutes: part.allocatedPayableMinutes }))).toEqual([{ date: '2026-11-11', minutes: 90 }]);
     expect(r.lateOffsetMinutes).toBe(150);
+  });
+});
+
+// ── 87bd9656 — None rounding, Overtime Backdate Control, and unchanged results for existing groups ─────────
+describe('87bd9656 · Overtime Rounding Method None through the shared duration owner (the request table)', () => {
+  it.each([
+    [31, 'none', null, 31], [31, 'up', 15, 45], [31, 'down', 15, 30],
+    [46, 'none', null, 46], [46, 'up', 15, 60], [46, 'down', 15, 45],
+  ] as const)('%i actual eligible minutes, %s, interval %s, pays %i', (actual, mode, step, expected) => {
+    const rounding = { mode, step } as AttendanceGroupPolicy['overtime']['rounding'];
+    const r = payable(input({ overtime: { rounding }, workedIntervals: [{ from: 540, to: 1080 + actual }], eligibleActualIntervals: [{ from: 1080, to: 1080 + actual }] }));
+    expect(r.payableMinutes).toBe(expected);
+    if (mode === 'none') expect(r.classes.flatMap(row => row.steps).some(step => step.kind === 'rounding'), 'no rounding step under None').toBe(false);
+  });
+});
+
+describe('87bd9656 · Overtime Setting save and reopen with None and the backdate control', () => {
+  const base = { previous: null, lateGraceMinutes: 0, earlyGraceMinutes: 0 };
+  it('stores None as {mode: none, step: null} and reopens it as None, not as an unsupported rounding', () => {
+    const setting: ScheduleOvertimeSetting = { ...defaultScheduleOvertimeSetting(pattern), roundingMode: 'none', roundingStep: null };
+    const stored = scheduleOvertimeSettingPolicy(setting, base);
+    expect(stored.overtime.rounding).toEqual({ mode: 'none', step: null });
+    const reopened = scheduleOvertimeSettingFromPolicy(JSON.parse(JSON.stringify(stored)));
+    expect(reopened).toEqual({ unsupportedRounding: false, setting });
+  });
+  it.each([1, 3, 365])('stores %i backdate days only when ticked, and reopens them exactly', days => {
+    const setting: ScheduleOvertimeSetting = { ...defaultScheduleOvertimeSetting(null), backdateControl: true, backdateDays: days };
+    const stored = scheduleOvertimeSettingPolicy(setting, base);
+    expect(stored.overtime.backdateLimitDays).toBe(days);
+    expect(scheduleOvertimeSettingFromPolicy(JSON.parse(JSON.stringify(stored))).setting).toEqual(setting);
+  });
+  it('writes no backdate key at all when the control is off, and never carries a previous limit forward', () => {
+    const previous = policy({ backdateLimitDays: 7 });
+    const stored = scheduleOvertimeSettingPolicy(defaultScheduleOvertimeSetting(pattern), { ...base, previous });
+    expect(Object.hasOwn(stored.overtime, 'backdateLimitDays')).toBe(false);
+    expect(JSON.stringify(stored)).not.toContain('backdateLimitDays');
+    expect(scheduleOvertimeSettingFromPolicy(stored).setting).toMatchObject({ backdateControl: false, backdateDays: null });
+  });
+  it('still reports nearest or an unoffered step as unsupported', () => {
+    expect(scheduleOvertimeSettingFromPolicy(policy({ rounding: { mode: 'up', step: 10 } })).unsupportedRounding).toBe(true);
+    expect(scheduleOvertimeSettingFromPolicy(policy({ rounding: { mode: 'none', step: null } })).unsupportedRounding).toBe(false);
+  });
+  it('round-trips every approval, method, rounding and backdate combination', () => {
+    for (const approval of ['manual', 'auto'] as const) for (const roundingMode of ['none', 'up', 'down'] as const) for (const backdateDays of [null, 1, 30]) {
+      const setting: ScheduleOvertimeSetting = { ...defaultScheduleOvertimeSetting(approval === 'auto' ? pattern : null), approval, roundingMode,
+        roundingStep: roundingMode === 'none' ? null : 30, backdateControl: backdateDays !== null, backdateDays };
+      expect(scheduleOvertimeSettingFromPolicy(JSON.parse(JSON.stringify(scheduleOvertimeSettingPolicy(setting, base)))).setting).toEqual(setting);
+    }
+  });
+});
+
+describe('87bd9656 · Overtime Setting form — None and Allow Backdate Application Within (Days)', () => {
+  const form = (fields: Record<string, string>) => { const fd = new FormData(); for (const [k, v] of Object.entries(fields)) fd.set(k, v); return fd; };
+  const manual = { otApproval: 'manual', otAutoMethod: 'actual', otRoundingMode: 'down', otRoundingStep: '15' };
+  it('reads None and ignores any posted interval', () => {
+    expect(parseScheduleOvertimeSetting(form({ ...manual, otRoundingMode: 'none', otRoundingStep: '45' }))).toMatchObject({ roundingMode: 'none', roundingStep: null });
+    expect(parseScheduleOvertimeSetting(form({ ...manual, otRoundingMode: 'none' }))).toMatchObject({ roundingMode: 'none', roundingStep: null });
+    expect(() => parseScheduleOvertimeSetting(form({ ...manual, otRoundingMode: 'up', otRoundingStep: '' }))).toThrow('15, 30 or 45');
+  });
+  it.each(['', ' ', '0', '1.5', '366', '-3', 'abc', '1e2'])('refuses %j days while the control is ticked', days => {
+    expect(() => parseScheduleOvertimeSetting(form({ ...manual, otBackdateControl: 'on', otBackdateDays: days }))).toThrow('Allow Backdate Application Within (Days)');
+  });
+  it('accepts whole days from 1 to 365', () => {
+    for (const days of [1, 3, 365]) expect(parseScheduleOvertimeSetting(form({ ...manual, otBackdateControl: 'on', otBackdateDays: String(days) })))
+      .toMatchObject({ backdateControl: true, backdateDays: days });
+  });
+  it('drops a stale day count when the control is unticked', () => {
+    expect(parseScheduleOvertimeSetting(form({ ...manual, otBackdateDays: '0' }))).toMatchObject({ backdateControl: false, backdateDays: null });
+  });
+});
+
+describe('87bd9656 · existing groups keep exactly the same results', () => {
+  it('a pre-existing Round Up / Round Down revision validates to identical bytes and pays identical minutes', () => {
+    for (const rounding of [{ mode: 'up', step: 15 }, { mode: 'down', step: 30 }] as const) {
+      // As the Overtime Setting writer stored it before 87bd9656 (canonical key order, no backdate key).
+      const stored = validateAttendanceGroupPolicy(policy({ rounding: { ...rounding }, showLatenessExceptionAfterOffset: false }), 4320), bytes = JSON.stringify(stored);
+      expect(JSON.stringify(validateAttendanceGroupPolicy(JSON.parse(bytes), 4320))).toBe(bytes);
+      const reopened = scheduleOvertimeSettingFromPolicy(JSON.parse(bytes));
+      expect(reopened.unsupportedRounding).toBe(false);
+      expect(reopened.setting).toMatchObject({ roundingMode: rounding.mode, roundingStep: rounding.step, backdateControl: false, backdateDays: null });
+      // Resaving the same choices produces the same overtime object, with no new key.
+      expect(JSON.stringify(scheduleOvertimeSettingPolicy(reopened.setting, { previous: stored, lateGraceMinutes: 0, earlyGraceMinutes: 0 }).overtime)).toBe(JSON.stringify(stored.overtime));
+      const r = payable(input({ policy: JSON.parse(bytes), workedIntervals: [{ from: 540, to: 1126 }], eligibleActualIntervals: [{ from: 1080, to: 1126 }] }));
+      expect(r.payableMinutes).toBe(rounding.mode === 'up' ? 60 : 30);
+    }
+  });
+  it('a legacy group (no dated policy) keeps its band rounding untouched', () => {
+    const rule = { applyToEarlyOt: false, otRows: [{ fromMinutes: 0, toMinutes: 0, roundingMode: 'down', roundToMinutes: 15 }] } as never;
+    expect([applyOtRuleRows(31, 0, rule), applyOtRuleRows(46, 0, rule), applyOtRuleRows(46, 0, null)]).toEqual([30, 45, 46]);
   });
 });

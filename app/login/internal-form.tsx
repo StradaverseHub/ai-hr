@@ -66,6 +66,9 @@ function InternalAuthFields({ organization = '', returnTo = '/', mode = 'login',
       const terminal = (reply.step === 'complete' || reply.step === 'activated') && !reply.recoveryCodes?.length;
       setState(terminal ? { step: 'signing-in' } : reply);
       if (reply.step === 'activated' && !reply.recoveryCodes?.length) router.replace(activationLoginHref(reply.organization));
+      // The submit button opts out of the shared leave guard (guardNavigation={false}): this assign runs while
+      // `busy` is still true, so the guard would show "Leave site?" on every successful sign-in. Nothing typed
+      // here is unsaved work, and the disabled button still refuses a second submit.
       if (reply.step === 'complete' && !reply.recoveryCodes?.length) window.location.assign(returnTo);
     } catch { setError('unavailable'); } finally { setBusy(false); }
   }
@@ -128,7 +131,7 @@ function InternalAuthFields({ organization = '', returnTo = '/', mode = 'login',
         {['enroll','mfa','reset'].includes(state.step) && <label className="block space-y-1.5"><span className="text-sm font-medium">{t(state.step === 'enroll' ? 'code' : 'codeOrRecovery')}</span><input className={field} name="code" required={state.step !== 'reset'} maxLength={64} autoComplete="one-time-code" autoCapitalize="characters" spellCheck={false}/>{state.step === 'reset' && <span className="block text-xs text-muted-foreground">{t('resetMfaHelp')}</span>}</label>}
         {['enroll', 'mfa'].includes(state.step) && !!state.rememberDays && <div className="space-y-2"><label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="rememberDevice" aria-describedby="remembered-device-help"/>{rememberedCopy.rememberWeb.replace('{days}', String(state.rememberDays))}</label><p id="remembered-device-help" className="text-xs leading-relaxed text-muted-foreground">{rememberedCopy.personalOnly}</p></div>}
         {state.step === 'accept' && <p className="text-sm leading-relaxed">{t('acceptHelp')}</p>}
-        <ActionButton aria-busy={busy} type="submit" disabled={busy} className={button}>{busy ? t('working') : t(state.step === 'login' ? 'signIn' : state.step === 'recovery' ? 'sendLink' : state.step === 'reset' ? 'resetSubmit' : 'continue')}</ActionButton>
+        <ActionButton aria-busy={busy} type="submit" disabled={busy} guardNavigation={false} className={button}>{busy ? t('working') : t(state.step === 'login' ? 'signIn' : state.step === 'recovery' ? 'sendLink' : state.step === 'reset' ? 'resetSubmit' : 'continue')}</ActionButton>
         {state.step === 'login' && <a href="/reset-password" className="block text-sm font-medium underline">{t('forgot')}</a>}
         {state.step === 'invite' && <a href={`/login?returnTo=${encodeURIComponent(`/invite/${invitation}/activate`)}`} className="block text-center text-sm underline">{t('existingLogin')}</a>}
         {!['login','invite','accept'].includes(state.step) && <a href="/login" className="block text-center text-sm underline">{t('back')}</a>}

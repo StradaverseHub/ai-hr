@@ -3,7 +3,7 @@
  *
  *   - A job's reward (recruitment administrators) is frozen on each referral by the database when the referral is made.
  *   - A hired referral's reward is decided once by a recruitment administrator of the job's company, who is neither the
- *     referrer nor the hire; the database re-checks every fact (5725's guard) rather than trusting this service.
+ *     referrer nor the hire; the database re-checks every fact (5875's guard) rather than trusting this service.
  *   - An approved reward is sent once by a payroll administrator of the receiving employment's company: one one-off earning
  *     in payroll's Individual Transactions (the kernel ledger, core/payroll-individual-txn) and the reward marked sent, in
  *     one transaction.
@@ -44,7 +44,7 @@ function mapGuard(e: unknown, fallback: 'reward_not_ready' | 'fee_not_eligible')
 
 // ── The job's reward ─────────────────────────────────────────────────────────────────────────────────────────────────
 
-/** Set or clear a job's referral reward (administrators of the job's company; 5725 refuses anyone else). */
+/** Set or clear a job's referral reward (administrators of the job's company; 5875 refuses anyone else). */
 export async function setJobReferralReward(s: SessionContext, jobId: string, value: unknown): Promise<void> {
   const amount = parseJobReward(value);
   if (amount === undefined) throw new RecruitmentError('invalid_input', ['referralReward']);

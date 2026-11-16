@@ -112,7 +112,7 @@ describe('case 137 — verification applies exactly while the company\'s candida
     expect(await submit(jobId)).toEqual({ ok: true, outcome: 'unverified' });
     expect(await submit(jobId, { verificationToken: 'A'.repeat(43) })).toEqual({ ok: true, outcome: 'unverified' });
     expect(await count('recruitment_candidate')).toBe(0);
-    // The app role cannot reach 5708's submission directly any more.
+    // The app role cannot reach 5858's submission directly any more.
     expect(await code(owner.client.begin(async (tx) => {
       await tx`set local role ai_hr_app`;
       return tx`select app.recruitment_careers_submit(${ADDRESS}, ${jobId}::uuid, ${'a'.repeat(64)}, 'Fictional', 'a@b.cd', null, null, 1, false)`;

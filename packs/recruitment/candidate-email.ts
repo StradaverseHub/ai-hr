@@ -3,7 +3,7 @@
  * templates, the composer and previews people see, queueing (receipts HR ticks and rejections, set-based, frozen at queue time), the application
  * page's list and an administrator's retry. Careers-page receipts are not in this slice (D-064: the applicant's address is not
  * verified until slice 21). Reached from outside the pack only through ./service. Delivery is
- * ./candidate-email-delivery (the sweep). db/migrations/5720_recruitment_candidate_email.sql refuses every illegal write again.
+ * ./candidate-email-delivery (the sweep). db/migrations/5870_recruitment_candidate_email.sql refuses every illegal write again.
  *
  * Nothing is queued unless the installation can send (the embedded relay, AUTH_PROVIDER=internal, has an active relay for the
  * tenant: lib/recruitment-candidate-email-ipc) AND the company's switch is on. Receipts and rejections render through
@@ -12,7 +12,7 @@
  *
  * Who reads the e-mails: the job's reviewers (administrators, recruiter, assistants, hiring managers) — the same people who may
  * reject the application and who already read the candidate's name and the job title, which is all an e-mail states besides the
- * company's wording. Interviewers read none (row security, 5720). Only administrators change settings and templates or retry.
+ * company's wording. Interviewers read none (row security, 5870). Only administrators change settings and templates or retry.
  */
 import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
@@ -113,13 +113,13 @@ export function previewCandidateEmail(c: CandidateEmailComposer, who: { candidat
 export const previewFingerprint = (c: CandidateEmailComposer, recipient: string, m: RenderedCandidateEmail) =>
   createHash('sha256').update(JSON.stringify([c.fingerprint, recipient, m.subject, m.text])).digest('hex').slice(0, 32);
 
-/** A database refusal of a queue (5720's checks) as the person's sentence. */
+/** A database refusal of a queue (5870's checks) as the person's sentence. */
 export function queueRefusal(e: unknown): never {
   let cur = e as { constraint_name?: unknown; cause?: unknown } | null | undefined;
   for (let i = 0; cur && typeof cur === 'object' && i < 4; i++, cur = cur.cause as typeof cur) {
     if (cur.constraint_name === 'recruitment_candidate_email_hourly_limit') throw new RecruitmentError('email_hourly_limit');
     if (cur.constraint_name === 'recruitment_candidate_email_settings' || cur.constraint_name === 'recruitment_candidate_email_recipient') throw new RecruitmentError('email_changed');
-    // Slice 20 (5721): what an interview or offer e-mail is about changed under it (the interview, its place, the offer).
+    // Slice 20 (5871): what an interview or offer e-mail is about changed under it (the interview, its place, the offer).
     if (cur.constraint_name === 'recruitment_candidate_email_interview' || cur.constraint_name === 'recruitment_candidate_email_offer'
       || cur.constraint_name === 'recruitment_candidate_email_reminder_time') throw new RecruitmentError('email_changed');
   }
@@ -184,12 +184,12 @@ export type CandidateEmailQueueResult = {
 /**
  * Queue one e-mail of `kind` per application, inside the caller's transaction (after the reject, archive or add it belongs to, so
  * it commits or rolls back with it). The applications are of ONE company and already locked and checked by the caller. Set-based:
- * one read of the applications, candidates and jobs, one INSERT for the set (5720 checks the set once), one event per e-mail.
+ * one read of the applications, candidates and jobs, one INSERT for the set (5870 checks the set once), one event per e-mail.
  * An application that cannot be e-mailed is skipped with its reason (no usable address; a link-like name or job title; for a rejection,
  * no preview shown) while the rest are queued. The whole action is refused only when the installation cannot send
  * (email_unavailable), the company's switch is off (email_off), a POSTED preview fingerprint no longer matches what would be sent
  * (email_changed: the wording, sender, the candidate's details or address changed) or the company would pass 500 queued e-mails in the
- * hour (email_hourly_limit; counted under the same per-company lock as 5720's check, so concurrent queues cannot pass it together).
+ * hour (email_hourly_limit; counted under the same per-company lock as 5870's check, so concurrent queues cannot pass it together).
  * Receipts are queued without a preview (the person ticks "Send receipt"); rejections take `fingerprints` (application id → the
  * fingerprint of the preview shown).
  */
@@ -247,7 +247,7 @@ const SURVEY_CHECK_URL = `https://survey.invalid/careers/s/${'a'.repeat(43)}`;
 /**
  * Slice 22: queue the company's anonymous survey for applications just hired, or just rejected with a rejection e-mail queued in this
  * transaction (`outcome`), when the company's candidate e-mail is on and it surveys that outcome. Due the company's survey days after
- * the hire, or after the rejection e-mail's own send time (5724 pins both). The frozen content keeps {surveyLink}: the sweep puts a
+ * the hire, or after the rejection e-mail's own send time (5874 pins both). The frozen content keeps {surveyLink}: the sweep puts a
  * fresh link in when it sends, so the e-mail HR can read never holds it.
  *
  * Never refuses and never undoes the decision it follows: an application that cannot get a survey (no usable address, a link-like

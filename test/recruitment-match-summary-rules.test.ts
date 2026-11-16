@@ -1,7 +1,7 @@
 /**
  * Recruitment slice 24 — the AI match summary contract with no database: what may be sent (and what never is), identifier
  * refusal, the closed reply shape (no score, rank or verdict), the registration that keeps it LOCKED (no owner approval record,
- * so the gateway's own check refuses), the AI Centre key and migration 5726.
+ * so the gateway's own check refuses), the AI Centre key and migration 5876.
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -98,9 +98,9 @@ describe('locked registration', () => {
     expect(providerDataReviewStatus(RECRUITMENT_MATCH_CONTRACT)).toBe('pending');
     expect(() => assertProviderDataContractReviewed(RECRUITMENT_MATCH_CONTRACT, PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST)).toThrow();
   });
-  it('is an AI Centre operation owned by the recruitment service and registered by migration 5726', () => {
+  it('is an AI Centre operation owned by the recruitment service and registered by migration 5876', () => {
     expect(AI_CENTRE_OPERATIONS.find((o) => o.id === 'recruitment_match_summary')?.owner).toBe('packs/recruitment/match-summary.ts#suggestMatchSummary');
-    const m = readFileSync(new URL('../db/migrations/5726_recruitment_ai_match_summary.sql', import.meta.url), 'utf8');
+    const m = readFileSync(new URL('../db/migrations/5876_recruitment_ai_match_summary.sql', import.meta.url), 'utf8');
     expect(m).toMatch(/ALTER TABLE public\.recruitment_company_setting ADD COLUMN ai_match_summary_enabled boolean NOT NULL DEFAULT false;/);
     expect(m).toMatch(/INSERT INTO app\.ai_centre_function_kind\(function_key,default_enabled\) VALUES \('read:operation_recruitment_match_summary',true\);/);
     expect(m).not.toMatch(/CREATE TABLE|GRANT/);

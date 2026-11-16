@@ -1,7 +1,7 @@
 /**
  * Recruitment slice 22 — the anonymous candidate survey's pure rules (docs/recruitment-reconstruction/specification.md "Slice 22"): the
  * survey template's link placeholder, the link the sweep puts in, the survey form, the results' minimums and figures, the public path,
- * the six languages, and 5724's agreement with the model. Expected figures are computed here from the raw answers, independently of
+ * the six languages, and 5874's agreement with the model. Expected figures are computed here from the raw answers, independently of
  * the module's tally code. Every value is fictional (QZS).
  */
 import { readFileSync } from 'node:fs';
@@ -17,7 +17,7 @@ import { RECRUITMENT_ERROR_CODES } from '../packs/recruitment/model';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (p: string) => readFileSync(`${root}${p}`, 'utf8');
-const m5724 = read('db/migrations/5724_recruitment_candidate_survey.sql');
+const m5724 = read('db/migrations/5874_recruitment_candidate_survey.sql');
 const LINK = `https://hr.qzs.example.test/careers/s/${'Ab_-'.repeat(10)}xyz`;
 
 type Answer = { outcome: 'hired' | 'rejected'; overall: number; communication: number | null; respect: number | null; process: number | null; recommend: 'yes' | 'no' | 'unsure' | null };
@@ -135,7 +135,7 @@ describe('six languages', () => {
   });
 });
 
-describe('5724 agrees with the model', () => {
+describe('5874 agrees with the model', () => {
   const flat = m5724.replace(/,\s+/g, ',').replace(/\s+/g, ' ');
   it('restates the allowlist with the survey and checks the frozen placeholder (12 characters) once in text and HTML', () => {
     expect(flat).toContain(`WHEN 'survey' THEN ARRAY[${CANDIDATE_EMAIL_PLACEHOLDERS.survey.map((p) => `'${p}'`).join(',')}]`);
@@ -147,7 +147,7 @@ describe('5724 agrees with the model', () => {
     expect(m5724).toContain("interval '17 days 1 minute'");
   });
   it('keeps every earlier refusal of the restated guard and check', () => {
-    const m5723 = read('db/migrations/5723_recruitment_candidate_response_links.sql');
+    const m5723 = read('db/migrations/5873_recruitment_candidate_response_links.sql');
     for (const sentence of ["'A rejection e-mail is sent at most three days later'", "'A candidate e-mail is queued by the current user'", "'A queued candidate e-mail is immutable'",
       "'A purged candidate e-mail stays purged'", "'Only a failed or uncertain e-mail can be retried, by an administrator'",
       "CONSTRAINT = 'recruitment_candidate_email_response_link'", "CONSTRAINT = 'recruitment_candidate_email_reminder_time'",

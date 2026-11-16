@@ -588,13 +588,22 @@
     "probationTracker": "ติดตามทดลองงาน",
     "myPayrollReadiness": "ความพร้อมสำหรับเงินเดือนของฉัน",
     "attendanceFormulaBuilder": "สูตรเวลาทำงาน",
-    "recruitment": "การสรรหา",
-    "myReferrals": "แนะนำผู้สมัคร",
-    "attendanceRequestOnBehalf": "ยื่นคำขอแทน",
-    "attendanceApproveOnBehalf": "อนุมัติแทน",
     "rewardsReviewSetup": "การตั้งค่าการพิจารณา",
     "rewardsChangeLog": "บันทึกการเปลี่ยนแปลง",
-    "rewardsLimitControls": "การควบคุมขีดจำกัด"
+    "rewardsLimitControls": "การควบคุมขีดจำกัด",
+    "attendanceRequestOnBehalf": "ยื่นคำขอแทน",
+    "attendanceApproveOnBehalf": "อนุมัติแทน",
+    "moduleHrAutomation": "HR Automation · Shared",
+    "automationWorkflows": "Workflows",
+    "automationTemplates": "Templates",
+    "automationGroups": "Assignment groups",
+    "automationOnOffWorkflows": "On/Off Boarding workflows",
+    "automationOnOffTemplates": "On/Off Boarding templates",
+    "automationOnOffGroups": "On/Off Boarding assignment groups",
+    "probationPostings": "Personnel postings",
+    "probationAccess": "Access",
+    "recruitment": "การสรรหา",
+    "myReferrals": "แนะนำผู้สมัคร"
   },
   "dashboard": {
     "viewAll": "ดูทั้งหมด"
@@ -2458,6 +2467,7 @@
           "no_data_rows": "เพิ่มเหตุการณ์อย่างน้อยหนึ่งแถวใต้หัวตาราง",
           "movement_catalog_too_large": "รายการประเภทเหตุการณ์เกินขนาดที่การนำเข้านี้รองรับ โปรดใช้การเพิ่มเหตุการณ์ทีละรายการ",
           "movement_reference_catalog_too_large": "รายการอ้างอิงเกินขนาดที่การนำเข้านี้รองรับ โปรดแก้ไขผ่านข้อมูลบุคลากร",
+          "movement_template_too_large": "แม่แบบมีขนาดใหญ่เกินกว่าจะสร้างได้สำหรับบริษัทและรายการค่าจำนวนมากนี้ ไม่มีการสร้างไฟล์ โปรดติดต่อฝ่ายสนับสนุน",
           "movement_history_too_large": "ประวัติพนักงานนี้เกินขอบเขตตรวจสอบการนำเข้า โปรดบันทึกเหตุการณ์ในข้อมูลบุคลากร",
           "change_refused": "ปฏิเสธการเปลี่ยนแปลง ไม่ได้บันทึกการเปลี่ยนแปลงใดของพนักงานคนนี้",
           "workbook_key_unavailable": "ยังไม่ได้ตั้งค่าการลงลายมือชื่อสมุดงาน โปรดติดต่อผู้ดูแลระบบ โดยยังสามารถใช้ CSV ได้",
@@ -2526,7 +2536,6 @@
           "movement_field_must_change": "ประเภทเหตุการณ์นี้กำหนดให้ฟิลด์นี้ต้องเปลี่ยน",
           "movement_document_required": "การเปลี่ยนแปลงนี้ต้องมีเอกสารประกอบ ซึ่งการนำเข้าไม่สามารถแนบได้ กรุณาบันทึกความเคลื่อนไหวนี้ในแท็บความเคลื่อนไหวแทน",
           "movement_document_not_enabled": "ประเภทเหตุการณ์นี้ไม่รับเอกสารประกอบสำหรับฟิลด์นี้",
-          "movement_template_too_large": "แม่แบบมีขนาดใหญ่เกินกว่าจะสร้างได้สำหรับบริษัทและรายการค่าจำนวนมากนี้ ไม่มีการสร้างไฟล์ โปรดติดต่อฝ่ายสนับสนุน",
           "movement_before_current_record": "วันที่นี้เร็วกว่าบันทึกบริษัทและตำแหน่งปัจจุบันของพนักงาน ซึ่งเริ่มวันที่ %date% ใช้วันที่ %date% หรือหลังจากนั้น หรือย้อนการเปลี่ยนแปลงที่สร้างบันทึกนั้นก่อน",
           "movement_already_in_company": "พนักงานอยู่ในบริษัทนี้แล้วในวันที่นี้",
           "movement_label_other_company": "ไม่สามารถใช้ค่านี้ในบริษัทของพนักงานในวันที่นี้ได้ เลือกค่าที่บริษัทนั้นใช้ได้",
@@ -2622,6 +2631,7 @@
           "referenceValues": "ค่าที่อนุญาตสำหรับแต่ละบริษัท",
           "colValue": "ค่าที่ต้องป้อนใน หลัง",
           "colLabel": "ความหมาย",
+          "allCompanies": "ทุกบริษัท",
           "screenHint": "เทมเพลตเดียวสำหรับทุกประเภทการเคลื่อนไหวและทุกบริษัท ป้อนหนึ่งแถวต่อหนึ่งฟิลด์ที่เปลี่ยน แถวที่มีบริษัท พนักงาน วันที่ และประเภทเหตุการณ์เดียวกันคือการเคลื่อนไหวเดียว",
           "downloadTemplate": "ดาวน์โหลดเทมเพลต",
           "history": "ประวัติการนำเข้า",
@@ -2656,8 +2666,7 @@
           "closedPayrollRow": "เงินเดือนของ {periods} ปิดแล้ว",
           "closedPayrollTitle": "การแก้ไขบางรายการเปลี่ยนการเคลื่อนไหวในงวดเงินเดือนที่ปิดแล้ว ({periods})",
           "closedPayrollBody": "การแก้ไขเหล่านี้จะอัปเดตข้อมูลพนักงานและการประมวลผลในอนาคต เงินเดือนที่ปิดแล้ว สลิปเงินเดือนที่ออกแล้ว และการยื่นตามกฎหมายจะคงตัวเลขที่สรุปแล้วและจะไม่ถูกคำนวณใหม่ หากไม่ยืนยัน พนักงานที่เกี่ยวข้องจะไม่ถูกบันทึก",
-          "closedPayrollAcknowledge": "ฉันเข้าใจว่าเงินเดือนที่ปิดแล้วจะไม่เปลี่ยนแปลง",
-          "allCompanies": "ทุกบริษัท"
+          "closedPayrollAcknowledge": "ฉันเข้าใจว่าเงินเดือนที่ปิดแล้วจะไม่เปลี่ยนแปลง"
         },
         "historyRow": "บันทึกเป็นประวัติ: {from} ถึง {to} ใช้ค่าก่อนหน้า บันทึกตั้งแต่ {date} ไม่เปลี่ยน"
       },
@@ -3556,6 +3565,7 @@
       "loading": "กำลังโหลด…",
       "saved": "แก้ไขข้อมูลแล้ว รายการที่เสร็จแล้วไม่เปลี่ยนแปลง",
       "unchanged": "ไม่เปลี่ยนแปลง — ข้ามแถวนี้",
+      "effectiveDateOnly": "ไม่มีสิ่งที่ต้องแก้ไข วันที่มีผลเพียงกำหนดว่าค่าที่แก้ไขจะเริ่มใช้เมื่อใด หากต้องการเปลี่ยนวันที่บันทึกของพนักงานเริ่มต้น ({date}) ให้แก้ไขวันที่เข้าร่วมกลุ่ม",
       "history": "ประวัติการแก้ไข",
       "noHistory": "ยังไม่มีประวัติการแก้ไขเฉพาะข้อมูล",
       "importHelp": "รหัสบริษัทใช้ตรวจสอบบริษัทปัจจุบัน รหัสบริษัทใหม่ไม่บังคับ ช่องแก้ไขที่ว่างจะคงค่าเดิม ดูรหัสระบบในแผ่นอ้างอิง สูงสุด 200 แถว",
@@ -3604,7 +3614,6 @@
         "failed": "ล้มเหลว",
         "unchanged": "ไม่เปลี่ยนแปลง"
       },
-      "effective": "การประมวลผลในอนาคตใช้ข้อมูลที่แก้ไขตั้งแต่ {date}",
       "templateFields": "ฟิลด์ที่เทมเพลตนี้แก้ไขได้ (ฟิลด์ใหม่ถูกไฮไลต์) เซลล์ว่างจะคงค่าเดิมไว้",
       "templateFieldsLabel": "ฟิลด์ที่เทมเพลตนี้แก้ไขได้",
       "ownersNote": "เงินเดือนพื้นฐานและวันที่ลาออกจะแก้ไขที่เหตุการณ์ที่บันทึกไว้: ใช้การนำเข้าการเคลื่อนไหวพร้อม Action \"Update\" วิธีการชำระเงินอยู่ในการนำเข้าธนาคารและข้อมูลตามกฎหมาย",
@@ -3619,10 +3628,10 @@
       "effectiveDateHint": "วันที่ใดก็ได้ตั้งแต่ {start} ถึงวันนี้ ({today}) ค่าเริ่มต้นคือวันนี้",
       "effectiveDateFollowsJoin": "วันที่เร็วที่สุด: {start} ซึ่งเป็นวันที่เข้าร่วมกลุ่มที่กรอกไว้ด้านล่าง",
       "historyClosedPayroll": "เงินเดือนที่ปิดแล้วคงเดิม: {periods}",
-      "effectiveDateJoin": "การเลือก {start} ซึ่งเป็นวันที่เข้าร่วมกลุ่ม จะแก้ไขรายละเอียดการจ้างเดิมของพนักงาน บริษัท ประเภทการจ้าง หน่วยธุรกิจ แผนก ตำแหน่ง ป้ายกำกับองค์กร และผู้บังคับบัญชาโดยตรง มีผลตั้งแต่วันที่มีผลจนถึงการเปลี่ยนแปลงที่บันทึกไว้ครั้งถัดไป",
+      "effectiveDateJoin": "การเลือก {start} ซึ่งเป็นวันที่เข้าร่วมกลุ่ม จะแก้ไขรายละเอียดการจ้างเดิมของพนักงาน บริษัท ประเภทการจ้าง หน่วยธุรกิจ แผนก ตำแหน่ง ป้ายกำกับองค์กร และผู้บังคับบัญชาโดยตรง มีผลตั้งแต่วันที่มีผลจนถึงการเคลื่อนไหวที่บันทึกไว้ครั้งถัดไปที่เปลี่ยนค่าเหล่านั้น การแก้ไขนี้แทนที่การแก้ไขก่อนหน้าตั้งแต่วันนั้นเป็นต้นไป",
       "timeline": {
         "title": "บันทึกตามลำดับวันที่มีผล",
-        "intro": "รายละเอียดที่แก้ไขนี้มีผลตั้งแต่ {date} จนถึงการเปลี่ยนแปลงที่บันทึกไว้ครั้งถัดไป บันทึกภายหลังยังคงวันที่และค่าของตนเอง ไม่มีสิ่งใดถูกเขียนทับหรือลบ",
+        "intro": "รายละเอียดที่แก้ไขนี้มีผลตั้งแต่ {date} จนถึงการเคลื่อนไหวที่บันทึกไว้ครั้งถัดไปที่เปลี่ยนค่าเหล่านั้น การแก้ไขก่อนหน้าตั้งแต่วันนี้ถูกแทนที่และยังคงอยู่ในประวัติการแก้ไข การเคลื่อนไหวยังคงวันที่และค่าของตนเอง ไม่มีสิ่งใดถูกลบ",
         "date": "วันที่มีผล",
         "record": "บันทึก",
         "company": "บริษัท",
@@ -3639,12 +3648,38 @@
           "conflict": "ขัดแย้งกับการเปลี่ยนแปลงนี้"
         }
       },
+      "replaced": {
+        "title": "การแก้ไขก่อนหน้าที่การแก้ไขนี้แทนที่",
+        "intro": "การแก้ไขล่าสุดเป็นผู้กำหนดรายละเอียดเหล่านี้ตั้งแต่ {date} การแก้ไขก่อนหน้าด้านล่างยังคงอยู่ในประวัติการแก้ไข",
+        "item": "การแก้ไขที่มีผล {date} ({fields}) บันทึกเมื่อ {saved} โดย {actor}"
+      },
       "conflictTitle": "ไม่สามารถบันทึกการแก้ไขนี้ได้",
       "conflict": "{record} เมื่อ {date} บันทึกว่า {field} เปลี่ยนจากค่าอื่น โปรดแก้ไขการเคลื่อนไหวนั้นก่อน (รหัสเหตุการณ์การเคลื่อนไหว {id}) หรือเลือกวันที่มีผลหลัง {date}",
       "closedPayroll": "เงินเดือนสำหรับ {periods} ปิดแล้วในช่วงที่แก้ไข เงินเดือนที่ปิดแล้ว สลิปเงินเดือน แบบฟอร์ม EA และการยื่นตามกฎหมายจะไม่ถูกคำนวณใหม่",
       "closedPayrollAcknowledge": "ข้าพเจ้ายืนยันว่าเงินเดือนที่ปิดแล้วคงไว้ตามที่ออก",
       "importClosedPayroll": "แถวเหล่านี้แก้ไขช่วงที่มีเงินเดือนปิดแล้ว ยืนยันด้านล่างเพื่อบันทึก หากไม่ยืนยันจะไม่บันทึกแถวเหล่านี้",
       "importClosedPayrollRow": "แถว {row} · {employee} · {periods}"
+    }
+  },
+  "importErrorLogMovement": {
+    "correction": {
+      "date": "กรอกวันที่ในรูปแบบ DD-MMM-YYYY (เช่น 06-Jan-2026) หรือเป็นวันที่ของ Excel",
+      "required": "กรอกฟิลด์นี้ - ประเภทเหตุการณ์นี้กำหนดให้ต้องกรอก",
+      "chooseCompany": "เลือกรหัสบริษัทจากชีต Reference",
+      "eventType": "เลือกประเภทเหตุการณ์ที่ใช้งานอยู่จากรายการดรอปดาวน์",
+      "chooseReference": "เลือกค่าจากรายการดรอปดาวน์หรือชีต Reference",
+      "employeeId": "ตรวจสอบรหัสพนักงานและรหัสบริษัทในแถวนี้กับข้อมูลใน Personnel",
+      "systemField": "เลือกฟิลด์ระบบที่ประเภทเหตุการณ์นี้เปลี่ยนได้ (ดูชีต Reference) หรือลบแถวนั้นออก",
+      "duplicateField": "เก็บไว้เพียงหนึ่งแถวต่อฟิลด์ระบบแต่ละฟิลด์ของการเคลื่อนไหวหนึ่งรายการ",
+      "number": "กรอกตัวเลข (เฉพาะตัวเลข ไม่มีสัญลักษณ์สกุลเงิน)",
+      "noFormula": "พิมพ์ค่าโดยตรง ไม่ใช่สูตร",
+      "movementId": "คัดลอกรหัสเหตุการณ์การเคลื่อนไหวจากประวัติการเคลื่อนไหวของพนักงาน",
+      "before": "กรอกค่าที่อยู่ในระเบียนของพนักงานตอนนี้ในช่อง ก่อน หรือดาวน์โหลดเทมเพลตใหม่",
+      "otherRows": "แก้ไขแถวอื่นของพนักงานคนนี้ แล้วอัปโหลดทั้งไฟล์อีกครั้ง",
+      "recheck": "อัปโหลดไฟล์อีกครั้งเพื่อให้ตรวจสอบกับข้อมูลปัจจุบัน",
+      "template": "ดาวน์โหลดเทมเพลตการเคลื่อนไหวปัจจุบัน คัดลอกแถวของคุณลงไป แล้วอัปโหลดอีกครั้ง",
+      "splitFile": "แบ่งไฟล์เป็นไฟล์ที่เล็กลง (ไม่เกิน 200 แถว 50 คน และ 20 แถวต่อพนักงาน) แล้วอัปโหลดทีละไฟล์",
+      "saveStopped": "ไม่มีข้อมูลใดของพนักงานคนนี้ถูกบันทึก แก้ไขปัญหา แล้วนำเข้าพนักงานคนนี้อีกครั้ง"
     }
   },
   "leave": {
@@ -5875,7 +5910,13 @@
     "rewards": "ค่าตอบแทนและรางวัล",
     "reviewRewards": "ตรวจสอบค่าตอบแทนและรางวัล",
     "focusedDescription": "คำขอนี้ได้รับมอบหมายให้คุณดำเนินการในขณะนี้",
-    "viewAllAssigned": "ดูการอนุมัติทั้งหมด"
+    "viewAllAssigned": "ดูการอนุมัติทั้งหมด",
+    "probation": "Probation",
+    "probationPart": "Part {part} review",
+    "probationDue": "due {date}",
+    "probationOpen": "Open review",
+    "probationCapped": "Showing the first {shown} approvals.",
+    "probationSeeAll": "See all in the Probation tracker"
   },
   "performance": {
     "list": {
@@ -7395,7 +7436,13 @@
         "running": "กำลังประมวลผลพนักงานที่เลือกใหม่",
         "progress": "เสร็จแล้ว {done} จาก {total} คน",
         "help": "คุณออกจากหน้านี้ได้ พนักงานแต่ละคนจะถูกคำนวณใหม่แยกกัน และผลลัพธ์จะแสดงที่นี่เมื่อการประมวลผลใหม่เสร็จสิ้น"
-      }
+      },
+      "registerSearchLabel": "ค้นหาพนักงานในรอบนี้",
+      "registerSearchPlaceholder": "ค้นหาด้วยชื่อพนักงานหรือรหัสพนักงาน",
+      "registerSearchSubmit": "ค้นหา",
+      "registerSearchClear": "ล้างการค้นหา",
+      "registerSearchSummary": "พนักงาน {n} จาก {total} คนตรงกับ “{q}”",
+      "registerSearchEmpty": "ไม่มีพนักงานในรอบนี้ที่ตรงกับ “{q}”"
     },
     "transactions": {
       "title": "บันทึกธุรกรรม",
@@ -7699,6 +7746,7 @@
         "inputType": "ประเภทข้อมูล",
         "inputTypeNone": "ไม่มี",
         "amountIsFinalHint": "จำนวนเงินที่กรอกที่นี่คือจำนวนที่จะจ่ายจริง สูตรของรายการจ่ายจะไม่ถูกนำมาใช้กับรายการครั้งเดียว",
+        "amountManualFormulaHint": "กรอกจำนวนเงินด้วยตนเอง สูตรของรายการจ่ายนี้จะไม่ถูกใช้กับรายการนี้",
         "identicalWarning": "มีรายการที่เหมือนกันทุกประการอยู่แล้วสำหรับพนักงานคนนี้ (รายการ วันที่ จำนวนเงิน และหมายเหตุเดียวกัน) บันทึกเฉพาะเมื่อเป็นรายการที่สองจริง ๆ",
         "saveAndAnother": "บันทึกและเพิ่มอีก",
         "cancel": "ยกเลิก",
@@ -9024,6 +9072,17 @@
       "traceEpfFlatRate": "อัตราคงที่ ปัดขึ้นเป็นริงกิต",
       "traceEpfRates": "ลูกจ้าง {employee} · นายจ้าง {employer}",
       "traceEpfBonusEmployerPartE": "เงินสมทบของนายจ้างจากโบนัส",
+      "traceEpfBonusRuleNormal": "ค่าจ้าง EPF ปกติ (ไม่รวม EPF Bonus 2012)",
+      "traceEpfBonusRuleBonus": "ค่าจ้าง EPF Bonus 2012",
+      "traceEpfBonusRuleTotal": "ค่าจ้าง EPF รวม",
+      "traceEpfBonusRuleRate": "อัตรานายจ้างที่กำหนดจากค่าจ้างปกติ",
+      "traceEpfBonusRuleRateValue": "{normal} ไม่เกิน {threshold} จึงเป็น {rate}",
+      "traceEpfBonusRuleEmployer": "เงินสมทบของนายจ้าง",
+      "traceEpfBonusRuleEmployerValue": "{base} × {rate} = {exact} ปัดขึ้นเป็น {amount}",
+      "traceEpfBonusRuleEmployee": "เงินสมทบของลูกจ้าง (ช่วงในตาราง)",
+      "traceEpfBonusRuleEmployeeValue": "{range} จึงเป็น {amount}",
+      "traceEpfBonusRuleEmployeeAbove": "เงินสมทบของลูกจ้าง (เกิน RM20,000)",
+      "traceEpfBonusRuleEmployeeAboveValue": "{base} × {rate} ปัดขึ้นเป็น {amount}",
       "traceEpfFlatNormal": "ลูกจ้าง / นายจ้าง จากค่าจ้างปกติ",
       "traceEpfFlatBonus": "ลูกจ้าง / นายจ้าง จากค่าจ้างโบนัส",
       "traceEpfMethod": "วิธีการ",
@@ -15304,6 +15363,8 @@
       "probation": "การยืนยันผ่านทดลองงาน",
       "contract_staff": "การจัดการสัญญา",
       "contractDateCorrection": "การแก้ไขวันที่สัญญา",
+      "probationApproval": "Approve probation review",
+      "probationTask": "Probation task",
       "recruitmentRequisitionApproval": "อนุมัติคำขออัตรากำลัง",
       "recruitmentOfferApproval": "อนุมัติข้อเสนองาน",
       "recruitmentFeedback": "ให้ความเห็นการสัมภาษณ์",
@@ -17520,7 +17581,8 @@
     "moduleLabel": {
       "leave": "การลา",
       "attendance": "การเข้างาน",
-      "claims": "การเบิกจ่าย"
+      "claims": "การเบิกจ่าย",
+      "probation": "Probation"
     },
     "taskLabel": {
       "leaveApplication": "การอนุมัติคำขอลา",
@@ -17530,7 +17592,10 @@
       "claimsClaim": "การอนุมัติการเบิกจ่าย",
       "leaveRequestCreation": "การสร้างคำขอลา",
       "leaveAmendmentRequest": "คำขอแก้ไขการลา",
-      "leaveCancellationRequest": "คำขอยกเลิกการลา"
+      "leaveCancellationRequest": "คำขอยกเลิกการลา",
+      "probationReview": "Probation review (Head of Department, PBP, GBS)",
+      "probationApprove": "Probation approval (Head of Department, PBP, GBS)",
+      "probationLetterSign": "Probation letter signature"
     },
     "groupLabel": {
       "leaveRequest": "คำขอลา",
@@ -28234,7 +28299,7 @@
     "routeUnavailable": "ยืนยันผู้อนุมัติถัดไปที่มีสิทธิ์จากเส้นทางที่บันทึกไว้ไม่ได้ โปรดให้ HR ตรวจสอบการกำหนด",
     "someApproversUnavailable": "ยังไม่สามารถยืนยันสิทธิ์ปัจจุบันของผู้อนุมัติบางรายที่บันทึกไว้ได้ โปรดให้ฝ่ายบุคคลตรวจสอบการมอบหมาย",
     "notStarted": "ยังไม่เริ่ม",
-    "notRequired": "ไม่ต้องตัดสินใจเพิ่มเติม",
+    "notRequired": "ไม่จำเป็น",
     "currentEmployeeId": "รหัสพนักงานปัจจุบัน",
     "routingRecord": "ข้อมูลอ้างอิงเส้นทางที่บันทึกไว้",
     "notRecorded": "ไม่มีบันทึก",
@@ -28313,7 +28378,28 @@
     "escalatedBy": "ระบบยกระดับโดยอัตโนมัติ",
     "submittedOnBehalfBy": "ยื่นแทนโดย {name}",
     "approvedOnBehalf": "อนุมัติแทนแล้ว",
-    "rejectedOnBehalf": "ปฏิเสธแทนแล้ว"
+    "rejectedOnBehalf": "ปฏิเสธแทนแล้ว",
+    "pendingApproval": "รอการอนุมัติ",
+    "waitingPreviousLevel": "รอการอนุมัติจากระดับก่อนหน้า",
+    "skippedNotRequired": "ข้าม / ไม่จำเป็น",
+    "levelOrdinal": {
+      "1": "ที่หนึ่ง",
+      "2": "ที่สอง",
+      "3": "ที่สาม",
+      "4": "ที่สี่",
+      "5": "ที่ห้า",
+      "6": "ที่หก",
+      "7": "ที่เจ็ด",
+      "8": "ที่แปด",
+      "9": "ที่เก้า",
+      "10": "ที่สิบ"
+    },
+    "progressMessage": "การอนุมัติระดับ{completed}เสร็จสิ้นแล้ว รอการอนุมัติระดับ{waiting}",
+    "progressWaiting": "รอการอนุมัติระดับ{waiting}",
+    "progressFinal": "สถานะโดยรวมของคำขอ: {status}",
+    "configurationWarning": "ไม่สามารถระบุผู้อนุมัติของระดับนี้ได้ โปรดให้ฝ่ายบุคคลตรวจสอบการตั้งค่าการอนุมัติ",
+    "levelOfTotal": "ระดับ {level} จาก {total}",
+    "viewApprovalProgress": "ดูความคืบหน้าการอนุมัติ"
   },
   "scheduleDrafts": {
     "staleLadder": "ช่วงเวลาหรืออัตราค่าล่วงเวลาในส่วนทั่วไปเปลี่ยนแปลงแล้ว แบบร่างของคุณยังอยู่ที่นี่ โปรดโหลดหน้านี้ใหม่ก่อนบันทึกการตั้งค่าล่วงเวลา การโหลดใหม่จะทิ้งการเปลี่ยนแปลงที่ยังไม่ได้บันทึกหลังจากคุณยืนยันเท่านั้น",
@@ -29917,7 +30003,8 @@
         "lateOffset": "หักชดเชยเวลาสายครั้งเดียว",
         "approval": "โหมดอนุมัติ",
         "autoMethod": "วิธีอนุมัติอัตโนมัติ",
-        "rounding": "การปัดเศษระยะเวลา"
+        "rounding": "การปัดเศษระยะเวลา",
+        "backdate": "ขีดจำกัดการขอล่วงเวลาย้อนหลัง"
       },
       "days": {
         "normal": "วันทำงานปกติ",
@@ -29925,7 +30012,8 @@
         "rest": "วันพักประจำสัปดาห์",
         "publicHoliday": "วันหยุดนักขัตฤกษ์",
         "replacementHoliday": "วันหยุดนักขัตฤกษ์ชดเชย"
-      }
+      },
+      "backdateDays": "{count, plural, other {# วัน}}"
     },
     "positionSearch": "ค้นหาตำแหน่ง",
     "loadMorePositions": "โหลดตำแหน่งเพิ่มเติม",
@@ -32365,7 +32453,9 @@
       "assessmentWork": "การประเมินผลงาน",
       "careerPlan": "การตรวจทานแผนอาชีพ",
       "calibration": "การปรับเทียบผลงาน",
-      "rewardReview": "การตรวจทานผลตอบแทน"
+      "rewardReview": "การตรวจทานผลตอบแทน",
+      "probationApproval": "Probation approval",
+      "probationTask": "Probation task"
     },
     "quickActions": {
       "leave": "ยื่นใบลา",
@@ -35771,7 +35861,10 @@
       "pbp": "คู่คิดธุรกิจด้านบุคลากร",
       "gbs": "GBS People Ops",
       "admin": "ผู้จัดเตรียมที่ระบุชื่อ",
-      "system": "การประมวลผลเบื้องหลัง"
+      "system": "การประมวลผลเบื้องหลัง",
+      "superior": "Direct Superior",
+      "people": "Named people",
+      "approver": "Approver"
     },
     "columns": {
       "employee": "พนักงาน",
@@ -35795,7 +35888,9 @@
       "confirmed": "ยืนยันแล้ว",
       "extended": "ขยายเวลาแล้ว",
       "not_confirmed": "ยังไม่ยืนยัน",
-      "withdrawn": "ถอนแล้ว"
+      "withdrawn": "ถอนแล้ว",
+      "waitingForStart": "Waiting for start date",
+      "didNotJoin": "Did not join"
     },
     "partStates": {
       "not_issued": "ยังไม่ออก",
@@ -35899,7 +35994,16 @@
       "missing": "ต้องแก้ไขผู้รับผิดชอบ",
       "frozenFacts": "การประเมินนี้คงรายละเอียดพนักงานและช่วงทดลองงานที่บันทึกไว้สำหรับเนื้อหาที่ลงนาม",
       "combinedConsent": "ฉันขอยืนยันว่านี่คือลายเซ็นของฉันสำหรับบทบาทต่อไปนี้: {roles}",
-      "combinedHistory": "ครอบคลุมด้วยลายเซ็นเดียวกัน"
+      "combinedHistory": "ครอบคลุมด้วยลายเซ็นเดียวกัน",
+      "onBehalfOf": "on behalf of {name}",
+      "reviewStep": "Review",
+      "approveStep": "Approve",
+      "reviewed": "Reviewed",
+      "approved": "Approved",
+      "decisionComment": "Comment (optional)",
+      "markReviewed": "Mark as reviewed",
+      "markApproved": "Approve",
+      "meantFor": "Meant for {who}; the fallback group took it"
     },
     "controls": {
       "title": "การควบคุมการประเมินที่ได้รับอนุญาต",
@@ -35925,7 +36029,9 @@
       "development": "การดำเนินการพัฒนา",
       "extension_recommendation": "คำแนะนำขยายเวลา",
       "nonconfirmation_recommendation": "คำแนะนำไม่ยืนยันผ่านทดลองงาน",
-      "refusal_request": "การพูดคุยเรื่องพนักงานปฏิเสธ"
+      "refusal_request": "การพูดคุยเรื่องพนักงานปฏิเสธ",
+      "low_result_action": "Low-result action",
+      "other_decided": "Other outcome decided"
     },
     "files": {
       "title": "เอกสารที่จัดเก็บแล้ว",
@@ -35961,7 +36067,89 @@
         "ending14": "สิ้นสุดภายใน 14 วัน",
         "low_result": "ผลลัพธ์ต่ำ",
         "kpi_submit": "ยังไม่ส่ง KPI",
-        "kpi_ack": "ยังไม่รับทราบ KPI"
+        "kpi_ack": "ยังไม่รับทราบ KPI",
+        "overridden": "Suggestion overridden"
+      },
+      "extensionsUsed": "{used} / {max}",
+      "startsOn": "Starts {date}",
+      "actions": {
+        "open": "Open",
+        "review_letter": "Review letter",
+        "record_action": "Record action",
+        "log_followup": "Log follow-up"
+      },
+      "mineOnly": "Showing only cases with work waiting on you.",
+      "mineClear": "Show all cases",
+      "breadcrumb": "Probation Confirmation / Probation tracker",
+      "intro": "Track employees with Probation status in Personnel Management and their confirmation progress.",
+      "synced": "Synced from Personnel Management. Every employee whose status is <b>Probation</b> gets a case here automatically, including records activated before their start date.",
+      "tiles": {
+        "overdue": "Overdue steps",
+        "end_passed": "End passed, no outcome",
+        "ending14": "Ending within 14 days",
+        "low_result": "Low result (Band 1–2 by default)",
+        "kpi_submit": "KPIs not submitted",
+        "kpi_ack": "KPIs not acknowledged",
+        "overridden": "Suggestion overridden"
+      },
+      "hints": {
+        "search": "Personnel Management · Full name (as per IC/passport)",
+        "businessGroup": "Personnel Management · recorded at case start",
+        "businessUnit": "Personnel Management · recorded at case start",
+        "department": "Personnel Management · Department",
+        "grade": "Personnel Management · Job Grade at case start"
+      },
+      "namePlaceholder": "Type a name…",
+      "showClosed": "Show closed cases",
+      "caseCount": "{shown} of {total} cases",
+      "filteredBy": "filtered by “{tile}”",
+      "columns": {
+        "employee": "Employee",
+        "organisation": "Business group · unit",
+        "endOn": "Probation end",
+        "plan": "Review plan",
+        "stage": "Stage",
+        "waiting": "Waiting on",
+        "due": "Due",
+        "flags": "Flags",
+        "extensions": "Ext.",
+        "extensionsFull": "Extensions used",
+        "action": "Action"
+      },
+      "planMonths": "{months, plural, one {# month} other {# months}}",
+      "planParts": {
+        "both": "Part 2 + Part 3",
+        "p3": "Part 3 only",
+        "p2": "Part 2 only"
+      },
+      "stage": {
+        "1": "Week 1 KPIs",
+        "2": "Part 2 Mid-Probation",
+        "3": "Part 3 Final review",
+        "afterExtension": "{stage} (after extension)"
+      },
+      "what": {
+        "kpis": "KPI submission",
+        "self": "self-assessment",
+        "assessment": "assessment",
+        "acknowledge": "signature",
+        "approval": "approval",
+        "letter": "letter"
+      },
+      "waitingOn": "{role} · {name} · {step}",
+      "pills": {
+        "end_passed": "End date passed",
+        "ending14": "Ends within 14 days",
+        "low_result": "Band {band} · low result",
+        "low_actioned": "PBP action recorded",
+        "kpi_submit": "KPIs not submitted",
+        "kpi_ack": "KPIs not acknowledged",
+        "overridden": "Suggestion overridden",
+        "plan_review": "Plan review required"
+      },
+      "links": {
+        "settings": "Probation settings",
+        "intake": "Intake and activation"
       }
     },
     "applyFilters": "ใช้ตัวกรอง",
@@ -36142,6 +36330,121 @@
         "pending": "รอดำเนินการ",
         "held": "พักไว้เพื่อตรวจสอบ",
         "failed": "ต้องลองใหม่"
+      },
+      "extensionsUsed": {
+        "title": "Confirm extensions already used",
+        "help": "Personnel Management keeps only the total Extended Probation Period, so the number of extensions already used cannot be worked out. Confirm 0, 1 or 2 for each case by choosing the actual extension events in the employee's review.",
+        "period": "Extended Probation Period (Personnel)",
+        "periodValue": "{original} → {extended}",
+        "used": "Extensions used",
+        "count": "{count} of {max}",
+        "notConfirmed": "Not confirmed",
+        "confirm": "Confirm",
+        "review": "Review"
+      },
+      "activationByCompany": {
+        "title": "Activation by company",
+        "help": "Employees on Probation in Personnel Management (full time) against open probation cases. A difference means someone has no case yet or a case is still open after Personnel moved on. Switching a company on still goes through the reviewed rehearsal below.",
+        "columns": {
+          "company": "Company",
+          "personnel": "Probation in Personnel",
+          "cases": "Open cases",
+          "status": "Status"
+        },
+        "match": "✓",
+        "missing": "{count, plural, one {1 employee on Probation has no case} other {# employees on Probation have no case}}",
+        "extra": "{count, plural, one {1 case more than Personnel shows} other {# cases more than Personnel shows}}",
+        "live": "Live since {date}",
+        "preparation": "Preparation"
+      },
+      "htmlImport": {
+        "title": "1. Import saved HTML evaluation forms",
+        "help": "Upload the files staff and managers saved from form v22.9.26 (“Save form”). Only the saved values inside each file are read, on the server; the page itself is never opened or run. Each file is matched to the employee by Employee ID and must name the same employee as Personnel. Fully signed parts are recorded as signed offline in the case history; started parts open as drafts. PDFs are evidence only: attach them from the case or the employee’s intake review.",
+        "choose": "Choose files",
+        "fileLabel": "Saved evaluation forms",
+        "noFile": "No file chosen · .html or .pdf",
+        "reading": "Reading…",
+        "read": "{count, plural, one {1 file read} other {# files read}}",
+        "tooMany": "Choose at most {max} files at a time.",
+        "columns": {
+          "file": "File",
+          "found": "Found in file",
+          "result": "Check"
+        },
+        "pdf": "PDF only: values can’t be read. Attach it as evidence from the case or the employee’s intake review.",
+        "statuses": {
+          "ready": "Ready",
+          "warning": "Warning",
+          "refused": "Can’t import",
+          "skipped": "Not imported",
+          "importing": "Importing…",
+          "merged": "Merged into the case",
+          "staged": "Added to intake",
+          "unchanged": "Already imported"
+        },
+        "partSummary": {
+          "part1": "Part 1: {kpis} KPIs, {signatures} signatures, {status}",
+          "review": "Part {part}: {ratings} of 9 manager ratings, {signatures} signatures, {status}"
+        },
+        "partStatus": {
+          "signed": "signed",
+          "started": "started",
+          "not_started": "not started"
+        },
+        "confirm": "I’ve checked this preview. Import the ready and warning rows; skip the rest. Each import is written to the case history.",
+        "import": "{count, plural, one {Import 1 file} other {Import # files}}",
+        "done": "Imported. Open the cases in the Probation tracker to check what was read, then continue them in the system.",
+        "resultHelp": {
+          "merged": "Merged into the existing case. Blank drafts were filled from the file. Signatures still happen in the system; to record a part as completed offline, attach its signed PDF.",
+          "staged": "No case yet: the file waits in this employee’s intake review. The case opens at the reviewed cut-over; upload the file again then to fill its drafts.",
+          "unchanged": "This exact file was already imported for this employee. Nothing changed."
+        },
+        "applied": {
+          "draft_filled": "Part {part}: drafts filled from the file",
+          "kept_system_values": "Part {part}: kept the values already in the system",
+          "part_not_open": "Part {part}: not open in the system, so nothing was filled",
+          "no_part": "Part {part}: not in this case’s plan"
+        },
+        "refusals": {
+          "file_type": "Only saved .html evaluation forms can be imported.",
+          "empty": "The file is empty.",
+          "too_large": "The file is larger than 2 MB. A saved evaluation form is much smaller; check the file.",
+          "no_block": "The file has no saved values. Open the form and use “Save form”, not the browser’s Save page.",
+          "several_blocks": "The file has more than one saved-values block, so it can’t be read safely.",
+          "block_type": "The saved-values block is not JSON, so it can’t be read safely.",
+          "damaged": "The saved values in the file are damaged and could not be read.",
+          "no_version": "The file doesn’t say which form version it is. Only form v22.9.26 can be imported.",
+          "wrong_version": "This is form v{version}. Only form v22.9.26 can be imported; nothing was guessed.",
+          "no_values": "The file has no saved values. Use “Save form” in the form itself.",
+          "invalid_field": "The field “{field}” has a value that can’t be read. Nothing was guessed; correct the form and save it again.",
+          "no_employee_id": "The file has no Employee ID, so it can’t be matched to an employee.",
+          "no_employee_name": "The file has no employee name.",
+          "not_entitled": "Probation is not available for this company.",
+          "no_employee": "No employee with this Employee ID is in this company within your intake scope.",
+          "name_mismatch": "The employee name in the file doesn’t match Personnel for this Employee ID. Check the file.",
+          "excluded": "A probation case can’t be created for this employee: {reason}.",
+          "no_settings": "Publish the probation settings for this company before importing.",
+          "opens_automatically": "This new starter’s case opens automatically now that probation is switched on. Import the file once the case is open.",
+          "case_closed": "The matching case is closed. Nothing was changed.",
+          "not_saved": "The file could not be imported. Nothing was changed; try again."
+        },
+        "exclusionReasons": {
+          "confirmed": "already confirmed in Personnel",
+          "resignation": "a resignation is recorded",
+          "ended": "the employment has ended",
+          "no_probation": "no probation applies",
+          "reviewed_exclusion": "excluded at intake",
+          "employment_type": "not a full-time employee",
+          "grade_not_enabled": "the job grade is not in the probation settings",
+          "company_transfer": "moved from another company during intake",
+          "not_eligible": "not eligible for probation",
+          "unavailable": "not available"
+        },
+        "historyTitle": "Imported forms",
+        "historyEmpty": "No saved forms imported yet.",
+        "candidateTitle": "From the imported saved form",
+        "candidateHelp": "Map each Part below with the usual rules: a signed part is Completed offline with its signed PDF attached; a started part continues as unfinished work. After cut-over, upload the file again to fill the case drafts.",
+        "candidatePart": "Part {part} {status}"
       }
     },
     "workflows": {
@@ -36265,7 +36568,23 @@
       "open": "เปิดจดหมายแจ้งผล",
       "preparationClosed": "มีการร้องขอหรือดำเนินการออกจดหมายแล้ว ตรวจสอบจดหมายที่บันทึกไว้และสถานะการจัดเก็บจากกรณี",
       "templateTie": "มีแม่แบบที่ตรงเงื่อนไขเท่ากันมากกว่าหนึ่งรายการ โปรดเลือกแม่แบบที่ตรวจทานแล้วอย่างชัดเจน",
-      "filingPending": "บันทึกคำขอออกจดหมายแล้ว งานเบื้องหลังที่มีอยู่จะสร้างและจัดเก็บ PDF ที่ลงนามก่อนนำผลไปใช้ หากเกิดข้อผิดพลาดจะแสดงไว้ให้ลองใหม่"
+      "filingPending": "บันทึกคำขอออกจดหมายแล้ว งานเบื้องหลังที่มีอยู่จะสร้างและจัดเก็บ PDF ที่ลงนามก่อนนำผลไปใช้ หากเกิดข้อผิดพลาดจะแสดงไว้ให้ลองใหม่",
+      "contentPrivate": "This letter is private until it reaches you. You can see who it is with and its status.",
+      "routingFallback": "Nobody could be found for some steps, so the fallback group took them:",
+      "sentBack": "{name} sent this letter back: {reason}",
+      "resend": "Send round again",
+      "meantFor": "meant for {who}",
+      "routedStep": {
+        "review": "Review",
+        "approve": "Approve",
+        "sign": "Sign",
+        "acknowledge": "Acknowledge"
+      },
+      "decision": {
+        "reviewed": "Mark as reviewed",
+        "approved": "Approve"
+      },
+      "holderOnBehalf": "{name} on behalf of {represented}"
     },
     "dates": {
       "title": "ทบทวนวันที่ทดลองงาน",
@@ -36335,6 +36654,608 @@
       "title": "ข้อความเริ่มต้นบางรายการสำหรับการทดลองงานไม่พร้อมใช้งาน",
       "summary": "เผยแพร่ขั้นตอนสรุปรายการเกินกำหนดระดับบริษัทหนึ่งรายการ โดยกำหนดให้คู่ค้าธุรกิจฝ่ายบุคคลเป็นผู้รับ",
       "help": "เผยแพร่ขั้นตอนที่ขาดหายเพื่อให้ส่งข้อความได้อีกครั้ง กำหนดเวลาตรวจสอบและสถานะเกินกำหนดยังมีผลอยู่"
+    },
+    "settingsScope": {
+      "subtitle": "Each company uses exactly one published setting. Changes apply to new cases only.",
+      "newSetting": "New company setting",
+      "inUse": "Settings in use",
+      "columns": {
+        "setting": "Setting",
+        "appliesTo": "Applies to",
+        "version": "Version",
+        "overrides": "Overrides",
+        "action": "Action",
+        "field": "Field",
+        "standard": "Group standard",
+        "thisSetting": "This setting",
+        "company": "Company",
+        "differences": "Fields that would change",
+        "pickedUp": "Picks up",
+        "shielded": "Shielded by an override"
+      },
+      "groupStandard": "Group standard",
+      "allCompanies": "All {count} companies",
+      "notPublished": "Not published yet. Each company uses its own settings version.",
+      "setsEveryField": "— (sets every field)",
+      "edit": "Edit",
+      "publishedAlso": "Version {version} is published and in use.",
+      "overrideSummary": "{count, plural, one {1 field} other {# fields}}: {fields}. Inherits the rest.",
+      "noOverrides": "No fields overridden.",
+      "redundant": "Same as the group standard, so it can be removed: {fields}",
+      "rule": "A company setting overrides only the fields it ticks; every other field follows the group standard, including future changes to it. A company can be in only one company setting.",
+      "noStandardTitle": "No group standard yet",
+      "noStandardHelp": "Until a group standard is published, each company keeps using its own published settings version and nothing changes. Create the standard from the company whose settings should apply to everyone, then add company settings for companies that must keep different values. Company settings take effect together with the standard.",
+      "continueDraft": "Continue the group standard draft",
+      "createFrom": "Create group standard from",
+      "startFromDefaults": "Recommended defaults",
+      "createStandard": "Create group standard",
+      "notCurrentTitle": "Companies not using the current settings yet",
+      "notCurrentHelp": "These companies started using Probation after the group standard was last published. Apply the group standard and their company setting to them.",
+      "applyNow": "Apply now",
+      "refreshed": "{company} now uses the current settings.",
+      "unknownCompany": "Unavailable company",
+      "editing": "Editing: {name}",
+      "newCompanySetting": "New company setting",
+      "standardHelp": "The group standard sets every field for all companies. Running cases keep the values they started with.",
+      "companyHelp": "Tick Override for each field this setting changes. Inherited fields follow the group standard, including later changes to it.",
+      "waitsForStandard": "No group standard is published yet. This company setting takes effect when the group standard is published.",
+      "name": "Setting name",
+      "inOther": "in {name}",
+      "overlap": "A company can be in only one company setting. Remove it from the other setting first: {companies}",
+      "standardVersion": "Group standard v{version}",
+      "inherited": "Inherited",
+      "override": "Override",
+      "sameAsStandard": "Same as the standard",
+      "changed": "Changed",
+      "extensionsFixed": "Extensions: {months} months, at most {max}. Fixed for every company.",
+      "diffTitle": "How companies differ from this standard",
+      "diffHelp": "Publishing the standard gives these companies its values for new cases, unless a company setting overrides the field. Add company settings first for companies that must keep their values.",
+      "previewTitle": "Before you publish",
+      "previewNone": "No field differs from the published group standard.",
+      "previewRunning": "Cases already running keep the values they started with either way.",
+      "resolvedNote": "Companies in this setting use these overridden fields: {fields}. Everything else follows the group standard.",
+      "resolvedPreview": "Values these companies will use",
+      "reason": "Reason for the change (optional)",
+      "close": "Close",
+      "publishedNotice": "Published. New cases use these settings.",
+      "retire": "Retire this company setting",
+      "retireHelp": "Its companies go back to the group standard for new cases. Running cases keep their values.",
+      "retiredNotice": "Company setting retired.",
+      "rulesInCompanySetting": "Narrow KPI gate rules are set in a company setting.",
+      "rulesOneCompany": "Narrow KPI gate rules can be overridden when the setting applies to one company.",
+      "ruleCount": "{count, plural, =0 {No rules} one {1 rule} other {# rules}}",
+      "daysBeforeDue": "{days} calendar days before due",
+      "planWithMidpoint": "{months} months · Part 2 at month {midpoint}",
+      "planFinalOnly": "{months} months · Part 3 only",
+      "defaultGroup": "GBS People Ops",
+      "savedGroup": "Saved group (no longer listed)",
+      "on": "On",
+      "off": "Off",
+      "truncated": "Only the first 200 settings are shown.",
+      "companyVersionTitle": "Company settings version",
+      "lockedNotice": "A group standard is published, so this company's settings come from the group standard and its company setting. Edit them above. Access below stays per company.",
+      "nonWorking": {
+        "previous": "Move to the working day before",
+        "next": "Move to the next working day"
+      },
+      "fields": {
+        "eligibleGrades": "Eligible grades",
+        "gradeHEnabled": "Grade H",
+        "defaultMonths": "Default probation months",
+        "plans": "Review plans",
+        "kpiGate": "KPI acknowledgement gate",
+        "issueLeadDays": "Review form opens",
+        "nonWorkingDayRule": "Due date on a non-working day",
+        "fallbackGroupId": "When no one can be found",
+        "postingApproverGroupId": "Who approves Personnel postings",
+        "kpiDueWorkingDays": "KPIs due after working days",
+        "kpiReminderWorkingDay": "KPI reminder on working day",
+        "firstReminderDays": "First reminder before due · days",
+        "dailyReminderDays": "Daily reminders from · days before due",
+        "lowBand": "Low-result band threshold",
+        "lmWaitsForEmployee": "Manager waits for the employee self-assessment",
+        "overrides": "Narrow KPI gate rules",
+        "maxExtensions": "Maximum extensions"
+      }
+    },
+    "startStatus": {
+      "waiting": "Waiting for start date. The case opened at activation; no reviews, tasks or reminders start before {date}. Part 1 counts from the start date.",
+      "didNotJoin": "Closed as Did not join: the hire was withdrawn or the employment ended before the start date."
+    },
+    "overrideNotice": "The Line Manager chose a different outcome from the suggestion and wrote a justification.",
+    "formRouting": {
+      "title": "Review and approval routing",
+      "help": "Who approves and signs each part, and in what order. Lower numbers go first; steps sharing a number run one after another in the order listed. A case keeps the routing of the form version it started on.",
+      "legacy": "This form version has no approval steps of its own, so its cases use the published signing routes configuration. Set approval steps here to route new cases from this form instead.",
+      "useForm": "Set approval steps on this form",
+      "core": "Always first, and not editable: {steps}.",
+      "coreKpi": "Line Manager sets and signs the KPIs → Employee acknowledges",
+      "coreReview": "Employee self-review → Line Manager assessment and signature → Employee acknowledges",
+      "order": "Order",
+      "action": "Action",
+      "who": "Who",
+      "actions": {
+        "approve_sign": "Approve and sign",
+        "review": "Review",
+        "approve": "Approve"
+      },
+      "remove": "Remove the {who} step",
+      "add": "Add approval step",
+      "none": "No approval steps.",
+      "partThreeRequired": "Part 3 needs at least one approval step.",
+      "reserved": "Head of Department, People Business Partner and Direct Superior steps follow the case’s current holders, their delegations and the policy below.",
+      "policyInherit": "Use the signing routes configuration’s setting",
+      "whoKinds": {
+        "hod": "Head of Department",
+        "pbp": "People Business Partner",
+        "superior": "Direct Superior",
+        "routing": "A routing",
+        "group": "An assignment group",
+        "people": "Named people"
+      },
+      "routing": "Routing",
+      "group": "Assignment group",
+      "people": "People",
+      "pick": "Who takes it",
+      "picks": {
+        "any": "Any member",
+        "roundRobin": "Round robin"
+      },
+      "missingChoice": "No longer available: choose another",
+      "resolveNote": "A routing, an assignment group or named people gives the step to one person, chosen by the step’s rule when the Line Manager submits, and that person keeps it for the part. If nobody is available, the case’s fallback group takes it and the case records who it was meant for."
+    },
+    "lowResult": {
+      "title": "Low result",
+      "notice": "Part {part} scored Band {band}. Record the action taken with the Line Manager.",
+      "note": "Action taken with the Line Manager",
+      "save": "Record action",
+      "waiting": "Waiting for the People Business Partner to record the action taken."
+    },
+    "otherOutcome": {
+      "title": "Outcome “Other” · PBP decision",
+      "help": "No letter is generated automatically. Choose the outcome to apply. The case then continues as that outcome: the letter, its signatures, then the posting or the offboarding case.",
+      "choice": "Decision",
+      "months": "Extension length",
+      "monthsOption": "{months} months",
+      "reason": "Reason",
+      "save": "Apply this outcome",
+      "waiting": "Waiting for the People Business Partner to choose the outcome."
+    },
+    "automationHistory": {
+      "title": "Workflow history",
+      "empty": "No shared workflow has run for this case yet.",
+      "recipients": "{count, plural, one {# person} other {# people}} reached",
+      "unresolved": "Not reached: {who}. {reason}",
+      "status": {
+        "running": "Running",
+        "waiting": "Waiting for the letter",
+        "done": "Done",
+        "skipped": "Skipped",
+        "failed": "Failed"
+      }
+    },
+    "taskKinds": {
+      "submit_employee": {
+        "title": "Complete your self-assessment · Part {part}",
+        "action": "Open form"
+      },
+      "submit_manager_kpis": {
+        "title": "Set Week 1 KPIs and sign",
+        "action": "Set KPIs"
+      },
+      "submit_manager": {
+        "title": "Complete the Line Manager assessment and sign · Part {part}",
+        "action": "Open assessment"
+      },
+      "acknowledge": {
+        "title": "Acknowledge and sign · Part {part}",
+        "action": "Acknowledge"
+      },
+      "approve": {
+        "title": "Approve Part {part}",
+        "action": "Review and approve"
+      },
+      "record": {
+        "title": "Record the completed Part {part}",
+        "action": "Record"
+      },
+      "confirm_extension": {
+        "title": "Confirm the extension · Part {part}",
+        "action": "Confirm extension"
+      },
+      "confirm_refusal": {
+        "title": "Confirm a declined signature · Part {part}",
+        "action": "Confirm"
+      },
+      "kpi_exception": {
+        "title": "Decide on the KPI acknowledgement hold · Part {part}",
+        "action": "Decide"
+      },
+      "employee_wait_exception": {
+        "title": "Decide whether to continue without the self-assessment · Part {part}",
+        "action": "Decide"
+      },
+      "letter_sign": {
+        "title": "Sign probation letter",
+        "action": "Sign letter"
+      },
+      "letter_review": {
+        "title": "Review probation letter",
+        "action": "Review letter"
+      },
+      "letter_approve": {
+        "title": "Approve probation letter",
+        "action": "Approve letter"
+      },
+      "letter_revise": {
+        "title": "Update probation letter after send-back",
+        "action": "Update letter"
+      },
+      "letter_release": {
+        "title": "Release probation letter",
+        "action": "Release letter"
+      },
+      "low_result_action": {
+        "title": "Record low-result action",
+        "action": "Record action"
+      },
+      "choose_outcome": {
+        "title": "Decide Other outcome",
+        "action": "Decide outcome"
+      },
+      "other": {
+        "title": "Probation task",
+        "action": "Open"
+      }
+    },
+    "caseView": {
+      "heading": "Probation · {stage}",
+      "stage": {
+        "1": "Part 1 · Week 1 Success Plan",
+        "2": "Part 2 · Mid-Probation Review",
+        "3": "Part 3 · Final Confirmation Review",
+        "cycle": "{part} (cycle {cycle})",
+        "outcome": "Outcome"
+      },
+      "short": {
+        "1": "Week 1 KPIs",
+        "2": "Part 2 Mid-Probation",
+        "3": "Part 3 Final review",
+        "outcome": "Outcome"
+      },
+      "tabs": {
+        "label": "Case sections",
+        "1": "Part 1 · Week 1 KPIs",
+        "2": "Part 2 · Mid-Probation",
+        "3": "Part 3 · Final",
+        "cycle": "{part} (cycle {cycle})",
+        "outcome": "Outcome & letters",
+        "files": "Files ({count})",
+        "history": "History",
+        "current": "current stage"
+      },
+      "partsLabel": "Parts",
+      "routeLabel": "Signing route for the current part",
+      "waitingOn": "Waiting on: {who}",
+      "closed": "Case closed.",
+      "opens": "Form opens {date}",
+      "due": "due {date}",
+      "daysLeft": "{count, plural, one {# day left} other {# days left}}",
+      "daysOverdue": "{count, plural, one {# day overdue} other {# days overdue}}",
+      "dueToday": "due today",
+      "who": "{role} · {name} · {what}",
+      "whoNoName": "{role} · {what}",
+      "what": {
+        "kpis": "set Week 1 KPIs and sign",
+        "self": "self-assessment",
+        "assessment": "assessment",
+        "returned": "returned part",
+        "acknowledge": "acknowledge and sign",
+        "approve": "approval",
+        "review": "review",
+        "sign": "signature"
+      },
+      "facts": {
+        "employee": "Employee",
+        "titleGrade": "Job title / grade",
+        "businessGroup": "Business group",
+        "businessUnit": "Business unit",
+        "probation": "Probation",
+        "plan": "Review plan",
+        "extensions": "Extensions used",
+        "people": "People"
+      },
+      "plan": {
+        "6": "6 months · P2 + P3",
+        "3": "3 months · P3 only",
+        "other": "{months} months"
+      },
+      "months": "{months, plural, one {# month} other {# months}}",
+      "peopleLm": "LM {name}",
+      "peoplePbp": "PBP {name}",
+      "steps": {
+        "self": "Employee self-assessment",
+        "lmKpis": "LM sets KPIs and signs",
+        "lmAssess": "LM assessment",
+        "ack": "Employee acknowledges",
+        "approveSign": "Approve and sign · {who}",
+        "approve": "Approve · {who}",
+        "review": "Review · {who}",
+        "sign": "Sign · {who}"
+      },
+      "stepState": {
+        "done": "done",
+        "current": "current",
+        "waiting": "not reached",
+        "overdue": "overdue",
+        "returned": "returned with comments"
+      },
+      "noOutcome": "The outcome is decided at the final review (Part 3 Final review).",
+      "filesEmpty": "No files yet. Completed forms and letters appear here when each part is recorded.",
+      "earlierCycles": "Earlier cycles of this part",
+      "cycleLink": "Cycle {cycle} · {state}",
+      "waitingStart": "Waiting for the start date ({date}). The record was activated in Personnel Management before the start date. Nothing is sent and no step is due until then.",
+      "noPart": "This part is not part of this case's review plan.",
+      "back": "Probation tracker",
+      "pill": "Probation",
+      "yourStep": "Your step:",
+      "waitingOnLabel": "Waiting on:",
+      "nextAction": "Next action:",
+      "outcomeHeading": "Outcome",
+      "earlierLetters": "Earlier letters",
+      "download": "Download",
+      "downloadFile": "Download {name}",
+      "fileKinds": {
+        "completed_part": "Completed evaluation form with signature page · stored on the employee file",
+        "letter_released": "Released letter · stored on the employee file",
+        "letter_draft": "Letter prepared for signatures",
+        "offline": "Original file kept as offline evidence"
+      },
+      "letter": {
+        "sub": "From the shared Templates builder · module Probation · template v{version}",
+        "routing": "Signing routing on this document",
+        "state": {
+          "released": "Released",
+          "filing": "Filing pending",
+          "sentBack": "Sent back",
+          "waitingFor": "Waiting for {names}",
+          "ready": "Ready to release",
+          "waiting": "Waiting",
+          "paused": "Paused"
+        },
+        "and": " and "
+      },
+      "form": {
+        "cycle": "{part} · after extension {count}",
+        "status": "{state} · due {date}",
+        "yourSelf": "Your self-assessment",
+        "yourLm": "Your Line Manager assessment",
+        "sections": {
+          "2": "A. Performance Progress Review · B. Leadership Principles – Mid-Point",
+          "3": "A. Role Performance Assessment · B. {count} Leadership Principles"
+        },
+        "rateHelp": "Rate every criterion 1–5. Ratings start blank. A rating of 1 or 2 needs written evidence before you can submit.",
+        "readHelp": "Ratings as submitted. A column opens once that person has submitted.",
+        "gridLabel": "Assessment criteria and ratings",
+        "col": {
+          "criterion": "Criterion",
+          "weight": "Weight",
+          "employee": "Employee",
+          "lm": "Line Manager",
+          "evidence": "Comments / evidence",
+          "yourEvidence": "Your evidence"
+        },
+        "sectionRole": "A. Role ({weight}%)",
+        "sectionPrinciples": "B. {count} Leadership Principles ({weight}%)",
+        "guide": "Guide",
+        "guideFor": "Guide for {criterion}",
+        "kpiLink": "Shows the {count} Week 1 KPIs",
+        "ratingGroup": "{who} rating for {criterion}",
+        "ratingButton": "{rating} · {label}",
+        "clearRating": "Clear",
+        "clearRatingFor": "Clear the rating for {criterion}",
+        "evidenceFor": "Evidence for {criterion}",
+        "yourEvidenceFor": "Your evidence for {criterion}",
+        "evidencePlaceholder": "Observable example / evidence",
+        "hiddenLm": "Hidden until the Line Manager submits",
+        "hiddenEmployee": "Not submitted yet",
+        "evidenceRequired": "Evidence required for a rating of {rating}",
+        "evidenceRequiredKpi": "Evidence required while the Week 1 KPIs are not acknowledged",
+        "drawer": {
+          "close": "Close",
+          "kpiTitle": "Week 1 KPIs (Part 1)",
+          "criterionTitle": "Appendix A · {criterion}",
+          "behaviours": "Key behaviours",
+          "prompt": "Evidence prompt",
+          "principles": "Evidence-based rating principles.",
+          "principlesText": "Rate observable behaviour and demonstrated results, not personality. Use examples from the full probation period. A rating of 1 or 2 requires clear evidence, prior feedback and documented development support.",
+          "noKpis": "No KPIs agreed yet.",
+          "kpiLine": "{measure} · target {target} by {date}",
+          "support": "Planned support"
+        },
+        "result": {
+          "2": "C. Overall Mid-Point Assessment",
+          "3": "C. Overall Result and Recommendation"
+        },
+        "resultSub": "Worked out by the system from the Line Manager’s ratings.",
+        "sectionA": "Section A /{max}",
+        "sectionB": "Section B /{max}",
+        "total": "Total /{max}",
+        "band": "Band",
+        "rateAll": "Rate all {count}",
+        "selfScore": "Employee self-score {score} (Band {band}). Only the Line Manager’s result drives the suggestion.",
+        "selfScoreNone": "Employee self-score not submitted. Only the Line Manager’s result drives the suggestion.",
+        "justification": {
+          "2": "Justification",
+          "3": "Recommendation and justification"
+        },
+        "justificationRequired": "Required: explain why you chose something other than the suggestion",
+        "noMidpointOutcome": "No final employment outcome is applied at the mid-point.",
+        "choice": {
+          "2": "E. Mid-Probation Status",
+          "3": "Outcome"
+        },
+        "options": {
+          "confirm": "Confirm employment",
+          "extend": "Extend probation",
+          "not_confirm": "Non-confirmation",
+          "other": "Other",
+          "satisfactory": "Progressing satisfactorily",
+          "development": "Progressing with development actions",
+          "at_risk": "At risk of not meeting probation requirements – People Team consultation required"
+        },
+        "extendHint": "{first} or {second} months",
+        "otherHint": "needs justification and a PBP decision",
+        "suggested": "suggested",
+        "extensionsUsed": "{count} of {max} extensions used",
+        "extensionLength": "Extension length (Line Manager recommends, PBP confirms)",
+        "monthsOption": "{months} months",
+        "choiceNote": "Choosing anything other than the suggestion needs a written justification and is flagged to the People Business Partner.",
+        "nothingPreselected": "Nothing is pre-selected.",
+        "managerComments": "Manager’s overall comments",
+        "coaching": "D. Coaching Summary and Development Plan",
+        "strengths": "Top strengths demonstrated",
+        "development": "Priority development areas",
+        "employeeComments2": "Employee’s comments",
+        "ackHeading": "D. Employee Comments and Acknowledgement",
+        "employeeComments3": "Employee comments",
+        "ackNote": "Discussed and received. Acknowledgement does not mean agreement.",
+        "optional": "Optional",
+        "kpiHeading": "A. Key Accountabilities and KPIs",
+        "kpiSub": "Line Manager enters 1–5 rows. They lock after the employee acknowledges and carry into the KPI criterion of every later review.",
+        "kpiCols": {
+          "no": "No.",
+          "accountability": "Key accountability",
+          "measure": "KPI / success measure",
+          "target": "Target",
+          "targetDate": "Target date"
+        },
+        "kpiField": "{field} {index}",
+        "kpiRemove": "Remove",
+        "kpiRemoveRow": "Remove accountability {index}",
+        "kpiAdd": "Add accountability · maximum 5",
+        "kpiEmpty": "Not entered yet.",
+        "supportHeading": "B. Planned Support for Employee",
+        "supportLabels": {
+          "coaching": "On-the-job training / coaching",
+          "access": "SOPs, policies, guidelines or system access",
+          "checkins": "Regular check-ins / feedback arrangements",
+          "other": "Other support required"
+        },
+        "supportPlaceholder": "Details / owner / timing",
+        "meetingHeading": "C. Meeting Acknowledgement",
+        "meetingHint": "Editable only by the employee at the acknowledgement step.",
+        "meetingNote": "Line Manager signs on submission, then the employee signs on acknowledgement.",
+        "scheduled": "Scheduled. The form opens on {opens}, {lead} days before the due date {due}.",
+        "gateBlocks": "KPI gate is set to Block: the form also waits until Part 1 is acknowledged.",
+        "signatures": "Signatures",
+        "sigWaiting": "Waiting",
+        "signHeading": "Signing and acknowledgement",
+        "signNote": "Signing means discussed and received, not agreement.",
+        "signWho": "Verified login: {name} ({role})",
+        "signFingerprint": "Your name, role, date and time and a fingerprint of this version of the form are saved with your signature.",
+        "methods": {
+          "typed": "Typed",
+          "drawn": "Drawn"
+        },
+        "issuesTitle": "{count, plural, one {# item needs fixing before submission} other {# items need fixing before submission}}",
+        "notes": {
+          "self": "Your self-assessment submission is not a signature. The Line Manager completes their assessment afterwards.",
+          "lm": "Submitting sends the review to {name} to acknowledge.",
+          "lmKpis": "You are signing as Line Manager.",
+          "ack1": "Acknowledging means the KPIs were discussed and received.",
+          "ack": "You can add comments. You cannot change ratings.",
+          "review": "Review step from the form’s approval routing · no signature needed.",
+          "approve": "Approve step from the form’s approval routing · no signature needed.",
+          "locked1": "Part 1 is recorded and locked.",
+          "locked": "This part is recorded and locked.",
+          "waiting": "Waiting on {who} ({what}).",
+          "nothing": "Nothing to do here right now."
+        },
+        "returnHeading": "Return to the Line Manager",
+        "returnHelp": "The part goes back to the Line Manager. Signatures so far are cleared and everyone signs again after the changes.",
+        "returnedBy": "Returned by {name}:",
+        "returnedNote": "Earlier signatures were cleared. The part goes through the signing route again.",
+        "decisionHeading": "Your decision"
+      }
+    }
+  },
+  "probationConfig": {
+    "crumb": "Probation Confirmation / Configuration / {page}",
+    "live": "Live",
+    "preparation": "Preparation",
+    "settings": {
+      "title": "Probation settings",
+      "sub": "Group standard version {version} published · company settings override only the fields they tick · changes apply to new cases only",
+      "subNoStandard": "No group standard published yet · each company uses its own settings version · changes apply to new cases only",
+      "subCompany": "Changes apply to new cases only.",
+      "editStandard": "Edit group standard",
+      "newCompanySetting": "New company setting",
+      "bannerLead": "Group standard with company settings.",
+      "banner": "The group standard applies the same way to every company. A company setting changes only the fields it ticks for its companies; every other field follows the standard, including later changes to it.",
+      "live": "Live in {live} of {total} companies. Running cases keep the settings version they started with.",
+      "running": "Running cases keep the settings version they started with.",
+      "standardCards": "Group standard settings",
+      "whoHelp": "A case opens automatically when an employee’s Personnel Management status becomes Probation (on activation, before, on or after the start date). Draft records never open a case.",
+      "plansHelp": "Picked from the Probation Period in Personnel Management.",
+      "planPeriod": "Probation Period",
+      "planReviews": "Reviews",
+      "planMonths": "{months} Month(s)",
+      "planMidpoint": "Part 2 at Month {midpoint} · Part 3 on the end date",
+      "planFinal": "Part 3 on the end date only",
+      "extensionMonths": "{months} months"
+    },
+    "cards": {
+      "who": "Who gets a case",
+      "plans": "Review plans",
+      "timing": "Timing",
+      "kpis": "Week 1 KPIs and reminders",
+      "extensions": "Extensions and results"
+    },
+    "form": {
+      "sub": "Criteria, weights, rating scale, bands and guidance are saved with each form version. Each case keeps the form it started on.",
+      "versions": "Form versions",
+      "formTitle": "Form",
+      "gradesTitle": "Job grade assignment",
+      "gradesHelp": "New probation cases in these grades (Personnel Management Job Grade at the case start) use this form. Leave it empty to use the form for the normal eligible grades.",
+      "gradesNote": "Changes to the grade assignment apply to new cases only.",
+      "noGrades": "No grades",
+      "chooseGrades": "Choose job grades…",
+      "selected": "{count} selected",
+      "searchGrades": "Search grade, e.g. 12",
+      "selectAll": "Select all",
+      "clear": "Clear",
+      "noGradeMatch": "No grade matches “{query}”.",
+      "done": "Done",
+      "criteriaTitle": "Criteria and weights",
+      "section": "Section {letter} · {name}",
+      "sectionTotal": "Criteria total {total}% of {weight}%",
+      "criterion": "Criterion",
+      "weight": "Weight %",
+      "guidance": "Guidance",
+      "order": "Order and remove",
+      "criterionPlaceholder": "Criterion name",
+      "weightFor": "Weight for {name}",
+      "newCriterion": "new criterion",
+      "hideGuidance": "Hide",
+      "viewGuidance": "View",
+      "editGuidance": "Edit",
+      "moveUp": "Move {name} up",
+      "moveDown": "Move {name} down",
+      "up": "Up",
+      "down": "Down",
+      "removeNamed": "Remove {name}",
+      "addCriterion": "Add criterion to Section {letter}",
+      "formTotal": "Form total {total}%",
+      "formTotalParts": "(Section A {a}% · Section B {b}%). Every criterion is rated 1–5.",
+      "scaleTitle": "Rating scale",
+      "bandsTitle": "Bands"
+    },
+    "intake": {
+      "sub": "Bring in staff who were already on probation using the offline HTML form, then switch probation on per company.",
+      "extensionsTitle": "2. Confirm extensions already used",
+      "activationTitle": "3. Activation by company",
+      "noExtensions": "No cases with an existing extension."
     }
   },
   "templateEditor": {
@@ -38698,6 +39619,1387 @@
     "appliesFromTomorrow": "การเปลี่ยนวิธีจับคู่เวลาและช่วงเวลาขั้นต่ำระหว่างการลงเวลาจะมีผลตั้งแต่พรุ่งนี้ จึงไม่มีการคำนวณการเข้างานที่บันทึกไว้แล้ววันนี้ใหม่ ประวัติจะบันทึกว่าใครเปลี่ยนและเมื่อใด",
     "systemReason": "อัปเดตในการตั้งค่ากลุ่มตารางงาน",
     "dutyRosterPoolNote": "การหมุนเวียนใช้ได้เฉพาะกะที่รวมไว้ในกะที่อนุญาตด้านบนเท่านั้น"
+  },
+  "bulkJobs": {
+    "notification": {
+      "employeeImport": {
+        "completed": {
+          "title": "นำเข้าพนักงานเสร็จสิ้น",
+          "body": "เปิดประวัติการนำเข้าเพื่อดูพนักงานที่เพิ่มเข้ามา"
+        },
+        "failed": {
+          "title": "การนำเข้าพนักงานหยุดลง",
+          "body": "ไม่มีการเพิ่มพนักงาน เปิดประวัติการนำเข้าเพื่อดูสาเหตุ"
+        },
+        "cancelled": {
+          "title": "ยกเลิกการนำเข้าพนักงานแล้ว",
+          "body": "ไม่มีการเพิ่มพนักงาน เปิดประวัติการนำเข้าเพื่อดูรายละเอียด"
+        }
+      },
+      "leaveImport": {
+        "completed": {
+          "title": "นำเข้าข้อมูลการลาเสร็จสิ้น",
+          "body": "แถวที่นำเข้าได้รวมอยู่ในยอดวันลาของพนักงานแล้ว"
+        },
+        "failed": {
+          "title": "การนำเข้าข้อมูลการลาหยุดลง",
+          "body": "แถวที่บันทึกแล้วจะยังคงอยู่ หากนำเข้าไฟล์เดิมอีกครั้ง ระบบจะข้ามแถวเหล่านั้น"
+        },
+        "cancelled": {
+          "title": "ยกเลิกการนำเข้าข้อมูลการลาแล้ว",
+          "body": "แถวที่บันทึกแล้วจะยังคงอยู่ หากนำเข้าไฟล์เดิมอีกครั้ง ระบบจะข้ามแถวเหล่านั้น"
+        }
+      },
+      "leaveProcessing": {
+        "completed": {
+          "title": "การประมวลผลวันลาเสร็จสิ้น",
+          "body": "อัปเดตตัวเลขวันลาแล้ว"
+        },
+        "failed": {
+          "title": "การประมวลผลวันลาหยุดลง",
+          "body": "พนักงานที่ประมวลผลแล้วยังคงใช้ตัวเลขเดิม เรียกใช้อีกครั้งเพื่อดำเนินการส่วนที่เหลือ"
+        },
+        "cancelled": {
+          "title": "ยกเลิกการประมวลผลวันลาแล้ว",
+          "body": "พนักงานที่ประมวลผลแล้วยังคงใช้ตัวเลขเดิม เรียกใช้อีกครั้งเพื่อดำเนินการส่วนที่เหลือ"
+        }
+      },
+      "roster": {
+        "completed": {
+          "title": "การเปลี่ยนแปลงตารางเวรเสร็จสิ้น",
+          "body": "เปิดตารางเวรเพื่อดูผลลัพธ์"
+        },
+        "failed": {
+          "title": "การเปลี่ยนแปลงตารางเวรหยุดลง",
+          "body": "เปิดตารางเวรเพื่อดูสาเหตุ"
+        },
+        "cancelled": {
+          "title": "การเปลี่ยนแปลงตารางเวรถูกยกเลิก",
+          "body": "เปิดตารางเวรเพื่อดูรายละเอียด"
+        }
+      },
+      "scheduleGroup": {
+        "completed": {
+          "title": "การกำหนดกลุ่มตารางงานเสร็จสิ้น",
+          "body": "เปิดหน้ากำหนดกลุ่มตารางงานเพื่อดูผลลัพธ์"
+        },
+        "failed": {
+          "title": "การกำหนดกลุ่มตารางงานหยุดลง",
+          "body": "เปิดหน้ากำหนดกลุ่มตารางงานเพื่อดูสาเหตุ"
+        },
+        "cancelled": {
+          "title": "การกำหนดกลุ่มตารางงานถูกยกเลิก",
+          "body": "เปิดหน้ากำหนดกลุ่มตารางงานเพื่อดูรายละเอียด"
+        }
+      },
+      "clockingImport": {
+        "completed": {
+          "title": "นำเข้าการลงเวลาเสร็จสิ้น",
+          "body": "เปิดบันทึกการนำเข้าเพื่อดูการลงเวลาที่เพิ่มเข้ามา"
+        },
+        "failed": {
+          "title": "การนำเข้าการลงเวลาหยุดลง",
+          "body": "เปิดบันทึกการนำเข้าเพื่อดูสิ่งที่บันทึกไว้และสาเหตุที่หยุด"
+        },
+        "cancelled": {
+          "title": "การนำเข้าการลงเวลาหยุดลง",
+          "body": "เปิดบันทึกการนำเข้าเพื่อดูสิ่งที่บันทึกไว้"
+        }
+      },
+      "attendanceRecomputePreview": {
+        "completed": {
+          "title": "ตัวอย่างการคำนวณใหม่พร้อมแล้ว",
+          "body": "เปิดคำนวณการลงเวลาใหม่เพื่อตรวจสอบสิ่งที่จะเปลี่ยนแปลง"
+        },
+        "failed": {
+          "title": "ตัวอย่างการคำนวณใหม่หยุดลง",
+          "body": "เปิดคำนวณการลงเวลาใหม่เพื่อดูสาเหตุ"
+        },
+        "cancelled": {
+          "title": "ตัวอย่างการคำนวณใหม่หยุดลง",
+          "body": "เปิดคำนวณการลงเวลาใหม่เพื่อเริ่มอีกครั้ง"
+        }
+      },
+      "attendanceRecompute": {
+        "completed": {
+          "title": "คำนวณการลงเวลาใหม่แล้ว",
+          "body": "เปิดคำนวณการลงเวลาใหม่เพื่อดูวันที่เปลี่ยนแปลง"
+        },
+        "failed": {
+          "title": "การคำนวณการลงเวลาใหม่หยุดลง",
+          "body": "เปิดคำนวณการลงเวลาใหม่เพื่อดูสาเหตุ"
+        },
+        "cancelled": {
+          "title": "การคำนวณการลงเวลาใหม่หยุดลง",
+          "body": "เปิดคำนวณการลงเวลาใหม่เพื่อดูรายละเอียด"
+        }
+      },
+      "payrollProcess": {
+        "completed": {
+          "title": "ประมวลผลเงินเดือนเสร็จแล้ว",
+          "body": "เปิดเงินเดือนเพื่อตรวจทานรอบที่ประมวลผลแล้ว"
+        },
+        "failed": {
+          "title": "การประมวลผลเงินเดือนหยุดลง",
+          "body": "รอบกลับเป็นฉบับร่างและไม่มีการเก็บสลิปเงินเดือน เปิดเงินเดือนเพื่อดูสาเหตุ"
+        },
+        "cancelled": {
+          "title": "ยกเลิกการประมวลผลเงินเดือนแล้ว",
+          "body": "รอบกลับเป็นฉบับร่างและไม่มีการเก็บสลิปเงินเดือน"
+        }
+      },
+      "systemLabelImport": {
+        "completed": {
+          "title": "นำเข้าป้ายกำกับระบบเสร็จสิ้น",
+          "body": "เปิดป้ายกำกับระบบเพื่อดูรหัสที่เพิ่มเข้ามา"
+        },
+        "failed": {
+          "title": "การนำเข้าป้ายกำกับระบบหยุดลง",
+          "body": "ไม่มีการเพิ่มรหัส เปิดป้ายกำกับระบบและแสดงตัวอย่างเวิร์กบุ๊กอีกครั้ง"
+        },
+        "cancelled": {
+          "title": "ยกเลิกการนำเข้าป้ายกำกับระบบแล้ว",
+          "body": "ไม่มีการเพิ่มรหัส"
+        }
+      },
+      "sectionImport": {
+        "completed": {
+          "title": "นำเข้าส่วนข้อมูลเสร็จสิ้น",
+          "body": "เปิดหน้านำเข้าเพื่อดูแถวที่อัปเดตแล้ว"
+        },
+        "failed": {
+          "title": "การนำเข้าส่วนข้อมูลหยุดลง",
+          "body": "แถวที่บันทึกไว้ก่อนหยุดยังคงอยู่ เปิดหน้านำเข้าเพื่อดูสาเหตุ"
+        },
+        "cancelled": {
+          "title": "ยกเลิกการนำเข้าส่วนข้อมูลแล้ว",
+          "body": "แถวที่บันทึกไว้ก่อนหยุดยังคงอยู่ เปิดหน้านำเข้าเพื่อดูรายละเอียด"
+        }
+      },
+      "registerImport": {
+        "completed": {
+          "title": "นำเข้าทะเบียนเสร็จสิ้น",
+          "body": "เปิดหน้านำเข้าเพื่อดูรายการทะเบียนที่บันทึกแล้ว"
+        },
+        "failed": {
+          "title": "การนำเข้าทะเบียนหยุดลง",
+          "body": "ไม่มีการบันทึกรายการทะเบียน เปิดหน้านำเข้าเพื่อดูสาเหตุ"
+        },
+        "cancelled": {
+          "title": "ยกเลิกการนำเข้าทะเบียนแล้ว",
+          "body": "ไม่มีการบันทึกรายการทะเบียน เปิดหน้านำเข้าเพื่อดูรายละเอียด"
+        }
+      },
+      "employeeImportRevert": {
+        "completed": {
+          "title": "ย้อนกลับการนำเข้าเสร็จสิ้น",
+          "body": "เปิดประวัติการนำเข้าเพื่อดูพนักงานที่ถูกยกเลิก"
+        },
+        "failed": {
+          "title": "การย้อนกลับการนำเข้าหยุดลง",
+          "body": "ไม่มีการเปลี่ยนแปลงใด ๆ เปิดประวัติการนำเข้าเพื่อดูสาเหตุ"
+        },
+        "cancelled": {
+          "title": "ยกเลิกการย้อนกลับการนำเข้าแล้ว",
+          "body": "ไม่มีการเปลี่ยนแปลงใด ๆ เปิดประวัติการนำเข้าเพื่อดูรายละเอียด"
+        }
+      },
+      "leaveGeneration": {
+        "completed": {
+          "title": "สร้างสิทธิ์การลาเสร็จแล้ว",
+          "body": "ตัวเลขวันลาได้รับการอัปเดตแล้ว"
+        },
+        "failed": {
+          "title": "การสร้างสิทธิ์การลาหยุดลง",
+          "body": "ไม่มีการเปลี่ยนแปลงใด ๆ เปิดหน้าสร้างสิทธิ์การลาเพื่อดูสาเหตุ แล้วเรียกใช้อีกครั้ง"
+        },
+        "cancelled": {
+          "title": "ยกเลิกการสร้างสิทธิ์การลาแล้ว",
+          "body": "ไม่มีการเปลี่ยนแปลงใด ๆ"
+        }
+      },
+      "leaveRecalculation": {
+        "completed": {
+          "title": "คำนวณยอดวันลาใหม่แล้ว",
+          "body": "ตัวเลขวันลาของพนักงานเป็นไปตามการตั้งค่าที่บันทึกไว้แล้ว"
+        },
+        "failed": {
+          "title": "การคำนวณวันลาใหม่หยุดลง",
+          "body": "พนักงานที่คำนวณใหม่แล้วยังคงใช้ตัวเลขใหม่ บันทึกการตั้งค่าอีกครั้งเพื่อคำนวณส่วนที่เหลือ"
+        },
+        "cancelled": {
+          "title": "ยกเลิกการคำนวณวันลาใหม่แล้ว",
+          "body": "พนักงานที่คำนวณใหม่แล้วยังคงใช้ตัวเลขใหม่ บันทึกการตั้งค่าอีกครั้งเพื่อคำนวณส่วนที่เหลือ"
+        }
+      },
+      "leaveYearType": {
+        "completed": {
+          "title": "ใช้ประเภทปีการลาแล้ว",
+          "body": "ตัวเลขวันลาของพนักงานปีแรกเป็นไปตามประเภทปีการลาที่บันทึกไว้แล้ว"
+        },
+        "failed": {
+          "title": "ไม่ได้ใช้ประเภทปีการลากับยอดวันลา",
+          "body": "ไม่มีการเปลี่ยนแปลงตัวเลขวันลา บันทึกประเภทปีการลาอีกครั้งเพื่อลองใหม่"
+        },
+        "cancelled": {
+          "title": "ยกเลิกการปรับประเภทปีการลาแล้ว",
+          "body": "ไม่มีการเปลี่ยนแปลงตัวเลขวันลา"
+        }
+      },
+      "toilSweep": {
+        "completed": {
+          "title": "การดำเนินการวันหยุดชดเชยเสร็จสิ้น",
+          "body": "เครดิตวันหยุดชดเชยที่ถึงกำหนดได้รับการดำเนินการแล้ว เปิดหน้าเครดิตวันลาเพื่อตรวจสอบ"
+        },
+        "failed": {
+          "title": "การดำเนินการวันหยุดชดเชยหยุดลง",
+          "body": "เครดิตที่ดำเนินการแล้วจะคงอยู่ตามเดิม เรียกใช้อีกครั้งเพื่อดำเนินการส่วนที่เหลือ"
+        },
+        "cancelled": {
+          "title": "ยกเลิกการดำเนินการวันหยุดชดเชยแล้ว",
+          "body": "เครดิตที่ดำเนินการแล้วจะคงอยู่ตามเดิม เรียกใช้อีกครั้งเพื่อดำเนินการส่วนที่เหลือ"
+        }
+      },
+      "payrollHistory": {
+        "completed": {
+          "title": "บันทึกการเปลี่ยนแปลงประวัติเงินเดือนแล้ว",
+          "body": "เปิดบันทึกการนำเข้าเพื่อดูสิ่งที่บันทึก"
+        },
+        "failed": {
+          "title": "การเปลี่ยนแปลงประวัติเงินเดือนหยุดลง",
+          "body": "ไม่มีการเปลี่ยนแปลงประวัติเงินเดือน เปิดบันทึกการนำเข้าเพื่อดูสาเหตุ"
+        },
+        "cancelled": {
+          "title": "ยกเลิกการเปลี่ยนแปลงประวัติเงินเดือนแล้ว",
+          "body": "ไม่มีการเปลี่ยนแปลงประวัติเงินเดือน"
+        }
+      },
+      "payrollReprocess": {
+        "completed": {
+          "title": "ประมวลผลเงินเดือนใหม่เสร็จแล้ว",
+          "body": "เปิดรอบการจ่ายเพื่อตรวจสอบพนักงานที่ประมวลผลใหม่"
+        },
+        "failed": {
+          "title": "การประมวลผลเงินเดือนใหม่หยุดลง",
+          "body": "พนักงานที่ประมวลผลใหม่แล้วยังคงผลลัพธ์ใหม่ไว้ เปิดรอบการจ่ายเพื่อดูว่าหยุดที่ใด"
+        },
+        "cancelled": {
+          "title": "ยกเลิกการประมวลผลเงินเดือนใหม่แล้ว",
+          "body": "พนักงานที่ประมวลผลใหม่แล้วยังคงผลลัพธ์ใหม่ไว้"
+        }
+      },
+      "movementImport": {
+        "completed": {
+          "title": "นำเข้าการเปลี่ยนแปลงการจ้างงานเสร็จสิ้น",
+          "body": "เปิดประวัติการนำเข้าเพื่อดูการเปลี่ยนแปลงที่บันทึกแล้วและพนักงานที่บันทึกไม่สำเร็จ"
+        },
+        "failed": {
+          "title": "การนำเข้าการเปลี่ยนแปลงการจ้างงานหยุดลง",
+          "body": "เปิดประวัติการนำเข้าเพื่อดูสาเหตุ พนักงานที่บันทึกแล้วยังคงมีการเปลี่ยนแปลงของตน"
+        },
+        "cancelled": {
+          "title": "การนำเข้าการเปลี่ยนแปลงการจ้างงานหยุดลง",
+          "body": "พนักงานที่บันทึกแล้วยังคงมีการเปลี่ยนแปลงของตน เปิดประวัติการนำเข้าเพื่อดูรายละเอียด"
+        }
+      },
+      "movementCheck": {
+        "completed": {
+          "title": "ตรวจสอบไฟล์การเปลี่ยนแปลงการจ้างงานแล้ว",
+          "body": "การตรวจสอบถูกบันทึกในประวัติการนำเข้า หากคุณออกจากหน้าจอนำเข้าแล้ว โปรดอัปโหลดไฟล์อีกครั้งเพื่อตรวจทานและยืนยัน"
+        },
+        "failed": {
+          "title": "การตรวจสอบการเปลี่ยนแปลงการจ้างงานหยุดลง",
+          "body": "เปิดประวัติการนำเข้าเพื่อดูสาเหตุ ไม่มีการบันทึกใด ๆ"
+        },
+        "cancelled": {
+          "title": "การตรวจสอบการเปลี่ยนแปลงการจ้างงานหยุดลง",
+          "body": "ไม่มีการบันทึกใด ๆ เปิดประวัติการนำเข้าเพื่อดูรายละเอียด"
+        }
+      },
+      "movementImportRevert": {
+        "completed": {
+          "title": "ย้อนกลับการนำเข้าการเปลี่ยนแปลงการจ้างงานเสร็จสิ้น",
+          "body": "เปิดประวัติการนำเข้าเพื่อดูการเปลี่ยนแปลงที่ถูกย้อนกลับ"
+        },
+        "failed": {
+          "title": "การย้อนกลับการนำเข้าการเปลี่ยนแปลงการจ้างงานหยุดลง",
+          "body": "ไม่มีการเปลี่ยนแปลงใด ๆ เปิดประวัติการนำเข้าเพื่อดูสาเหตุ"
+        },
+        "cancelled": {
+          "title": "ยกเลิกการย้อนกลับการนำเข้าการเปลี่ยนแปลงการจ้างงานแล้ว",
+          "body": "ไม่มีการเปลี่ยนแปลงใด ๆ เปิดประวัติการนำเข้าเพื่อดูรายละเอียด"
+        }
+      },
+      "recruitmentImport": {
+        "completed": {
+          "title": "นำเข้าผู้สมัครเสร็จสิ้น",
+          "body": "เปิดการนำเข้าเพื่อดูผลลัพธ์ทีละแถวและผู้สมัครที่รออยู่ในรายการรอมอบหมาย"
+        },
+        "failed": {
+          "title": "การนำเข้าผู้สมัครหยุดแล้ว",
+          "body": "เกิดปัญหาทำให้การนำเข้าหยุด แถวที่นำเข้าแล้วจะยังคงอยู่ เปิดการนำเข้าเพื่อดูผลลัพธ์"
+        },
+        "cancelled": {
+          "title": "การนำเข้าผู้สมัครหยุดแล้ว",
+          "body": "การนำเข้าถูกหยุด แถวที่นำเข้าแล้วจะยังคงอยู่ เปิดการนำเข้าเพื่อดูผลลัพธ์"
+        }
+      }
+    },
+    "panel": {
+      "queued": "กำลังรอเริ่ม",
+      "preparing": "กำลังตรวจสอบทุกการเปลี่ยนแปลง",
+      "running": "กำลังบันทึก",
+      "finalizing": "กำลังดำเนินการให้เสร็จ",
+      "discarding": "กำลังหยุด",
+      "completed": "เสร็จสิ้น",
+      "failed": "หยุดแล้ว",
+      "cancelled": "ยกเลิกแล้ว",
+      "progressCount": "เสร็จแล้ว {done} จาก {total} ขั้นตอน",
+      "backgroundHelp": "คุณออกจากหน้านี้ได้ งานจะดำเนินต่อไปและคุณจะได้รับแจ้งเมื่อเสร็จ",
+      "waiting": "กำลังรอบริการเบื้องหลัง ความคืบหน้าถูกบันทึกแล้ว อย่าเริ่มงานนี้ซ้ำ",
+      "workerUnavailable": "บริการเบื้องหลังยังไม่ทำงาน คำขอของคุณถูกบันทึกแล้วและจะเริ่มโดยอัตโนมัติทันทีที่บริการทำงาน"
+    },
+    "roster": {
+      "generate": "กำลังสร้างตารางเวร",
+      "copy": "กำลังคัดลอกตารางเวร",
+      "assign": "กำลังใช้การเปลี่ยนแปลงตารางเวร",
+      "import": "กำลังบันทึกตารางเวรที่อัปโหลด",
+      "otherRunning": "การเปลี่ยนแปลงตารางเวรอีกรายการยังบันทึกอยู่ โปรดรอให้เสร็จแล้วลองอีกครั้ง",
+      "saveFailed": "ไม่สามารถบันทึกการเปลี่ยนแปลงตารางเวรได้ โปรดลองอีกครั้ง หรือติดต่อผู้ดูแลระบบ HR",
+      "queuedBehind": "อยู่ในคิวต่อจากงานตารางเวรอีกรายการ จะเริ่มโดยอัตโนมัติทันทีที่งานนั้นเสร็จ"
+    },
+    "scheduleGroup": {
+      "title": "กำลังกำหนดกลุ่มตารางงาน",
+      "otherRunning": "การกำหนดกลุ่มตารางงานอีกรายการยังบันทึกอยู่ โปรดรอให้เสร็จแล้วลองอีกครั้ง",
+      "queuedBehind": "อยู่ในคิวต่อจากการกำหนดกลุ่มตารางงานอีกรายการ จะเริ่มโดยอัตโนมัติทันทีที่รายการนั้นเสร็จ"
+    }
+  },
+  "importLog": {
+    "batchReference": "เลขอ้างอิงชุด",
+    "importedBy": "นำเข้าโดย",
+    "batchLabel": "ชุด {code}",
+    "actorWithId": "{name} ({employeeId})",
+    "actorUnlinked": "การล็อกอินของผู้ดูแลระบบ (ไม่มีประวัติพนักงาน · ล็อกอินลงท้ายด้วย {suffix})",
+    "actorUnavailable": "ผู้ใช้ที่ไม่พร้อมใช้งาน"
+  },
+  "lifecycleEmailHold": {
+    "inboxAction": "พักอีเมลไว้: {email}"
+  },
+  "rewardConfig": {
+    "title": "ตรวจดูก่อนบันทึก",
+    "saving": "กำลังบันทึก…",
+    "whyReview": "เหตุผลที่ต้องตรวจดู",
+    "reason": "เหตุผลของการเปลี่ยนแปลงนี้",
+    "cancel": "ยกเลิก",
+    "highImpact": {
+      "released-pat": "PAT เปลี่ยนสำหรับการทบทวนที่เผยแพร่แล้ว",
+      "released-library": "การทบทวนที่เผยแพร่แล้วใช้เวอร์ชันก่อนหน้าและจะใช้ต่อไป การทบทวนใหม่จะใช้เวอร์ชันนี้",
+      "released-limit": "วงเงินงบประมาณเปลี่ยนสำหรับการทบทวนที่เผยแพร่แล้ว",
+      "release-review": "การเผยแพร่จะส่งการทบทวนนี้ไปยัง CEO ของ BU",
+      "remove-access": "มีผู้สูญเสียสิทธิ์เข้าถึงการทบทวน",
+      "open-offcycle": "การเปิดปีนอกรอบทำให้ผู้นำใช้ยอดคงเหลือของบริษัทสำหรับคำขอนอกรอบได้",
+      "offcycle-window": "ช่วงกลางปีกำหนดว่าข้อเสนอกลางปียื่นได้เมื่อใด"
+    },
+    "whatChanges": "สิ่งที่เปลี่ยน ({count})",
+    "item": "รายการ",
+    "before": "ก่อน",
+    "after": "หลัง",
+    "noValueChanges": "ไม่มีค่าที่เปลี่ยน",
+    "moreLines": "มีการเปลี่ยนแปลงอีก {count} รายการในบันทึกการเปลี่ยนแปลง",
+    "affected": "การทบทวนที่ได้รับผลกระทบ ({count})",
+    "noReviewsAffected": "ไม่มีการทบทวนที่ได้รับผลกระทบ",
+    "consequence": {
+      "repriced": "คำนวณใหม่ทันที",
+      "recalculation-required": "คำนวณใหม่และแจ้งผู้อนุมัติปัจจุบัน",
+      "keeps-version": "ใช้เวอร์ชันที่เริ่มต้นไว้ต่อไป",
+      "released-to-bu": "เผยแพร่ไปยัง CEO ของ BU",
+      "access-removed": "นำสิทธิ์เข้าถึงออก",
+      "none": "ไม่มีการเปลี่ยนแปลง"
+    },
+    "notificationTitle": "การตั้งค่า Rewards มีการเปลี่ยนแปลง",
+    "noAccess": "คุณไม่มีสิทธิ์ดูบันทึกการเปลี่ยนแปลง Rewards",
+    "logHelp": "การเปลี่ยนแปลงการตั้งค่า Rewards ทุกรายการ: ใครทำ เมื่อใด อะไรเปลี่ยน และเพราะอะไร การเปลี่ยนแปลงจะไม่ถูกแก้ไขหรือลบ",
+    "area": "ส่วน",
+    "allAreas": "ทุกส่วน",
+    "company": "บริษัท",
+    "allCompanies": "ทุกบริษัท",
+    "person": "เปลี่ยนโดย",
+    "from": "ตั้งแต่",
+    "to": "ถึง",
+    "highImpactOnly": "เฉพาะผลกระทบสูง",
+    "filter": "ใช้ตัวกรอง",
+    "exportExcel": "ส่งออกเป็น Excel",
+    "when": "เมื่อ",
+    "areaColumn": "ส่วน",
+    "reasonColumn": "เหตุผล",
+    "changes": "การเปลี่ยนแปลง",
+    "changedValues": "{count, plural, =0 {ไม่มีค่า} other {# ค่า}}",
+    "system": "ระบบ",
+    "unknownPerson": "ไม่ทราบ",
+    "highImpactBadge": "ผลกระทบสูง",
+    "areas": {
+      "salary": "โครงสร้างเงินเดือน",
+      "bonus": "เมทริกซ์โบนัส",
+      "pat": "ข้อมูล PAT",
+      "plan": "การตั้งค่า Rewards ที่ใช้ร่วมกัน",
+      "shared": "การตั้งค่าที่ใช้ร่วมกัน",
+      "exemption": "การยกเว้นวงเงินงบประมาณ",
+      "senior": "แผนระดับอาวุโส",
+      "upload": "รางวัลที่อัปโหลด",
+      "preparation": "การตั้งค่าการทบทวน",
+      "access": "สิทธิ์เข้าถึง Rewards",
+      "role_permission": "สิทธิ์ตามบทบาท",
+      "group_role": "บทบาททั้งกลุ่ม",
+      "limit": "การควบคุมวงเงิน",
+      "offcycle": "นอกรอบ"
+    },
+    "actions": {
+      "returned-to-draft": "คืนเป็นฉบับร่าง",
+      "saved-draft": "บันทึกฉบับร่างแล้ว",
+      "activated": "เปิดใช้งานแล้ว",
+      "restored": "กู้คืนจากเวอร์ชันก่อนหน้า",
+      "saved": "บันทึกแล้ว",
+      "released": "เผยแพร่แล้ว",
+      "applied": "นำไปใช้แล้ว",
+      "changed": "เปลี่ยนแล้ว",
+      "reset": "รีเซ็ตเป็นค่าเริ่มต้น"
+    },
+    "empty": "ไม่มีการเปลี่ยนแปลงที่ตรงกับตัวกรอง",
+    "pages": "หน้า",
+    "previous": "ก่อนหน้า",
+    "next": "ถัดไป",
+    "exportTruncated": "รวมเฉพาะ 5,000 รายการแรก โปรดจำกัดตัวกรองเพื่อส่งออกส่วนที่เหลือ"
+  },
+  "rewardLimits": {
+    "description": "ขีดจำกัดและเกณฑ์สำหรับแต่ละปีรางวัล การตรวจสอบทุกรายการในรอบพิจารณา ที่ปรึกษา AI และการวิเคราะห์รางวัลใช้ค่าของปีรางวัลของรอบพิจารณานั้น",
+    "noAccess": "คุณไม่มีสิทธิ์เข้าถึง",
+    "noAccessHelp": "การควบคุมขีดจำกัดใช้ได้สำหรับ Group Rewards, CTRO และ EC",
+    "year": "ปีรางวัล",
+    "show": "แสดง",
+    "viewOnly": "คุณดูขีดจำกัดเหล่านี้ได้ เฉพาะ Group Rewards เท่านั้นที่เปลี่ยนแปลงได้",
+    "versionLine": "ใช้เวอร์ชัน {version} สำหรับปี {year}",
+    "baselineLine": "ยังไม่มีการบันทึกเวอร์ชันสำหรับปี {year} ค่าเหล่านี้เป็นค่ามาตรฐาน การบันทึกจะสร้างเวอร์ชัน 1",
+    "typeHelp": "บล็อก: หยุดการส่ง ข้อยกเว้นและคำเตือนติดไปกับรอบพิจารณาและต้องระบุเหตุผลก่อนส่ง หมายเหตุแสดงเพื่อทราบเท่านั้น",
+    "columns": {
+      "limit": "ขีดจำกัด",
+      "value": "ค่า",
+      "type": "ประเภท",
+      "appliesTo": "ใช้กับ",
+      "lastChanged": "เปลี่ยนล่าสุดโดย / วันที่"
+    },
+    "areas": {
+      "pools": "กองทุนขึ้นเงินเดือน",
+      "person": "การขึ้นเงินเดือนต่อคน",
+      "bonus": "โบนัส",
+      "lump": "เงินก้อน",
+      "exemption": "การยกเว้น",
+      "advisor": "ที่ปรึกษา AI"
+    },
+    "labels": {
+      "pool_standard_merit": "กองทุนผลงาน (% ของฐานเงินเดือนที่มีสิทธิ์)",
+      "pool_standard_promotion": "กองทุนเลื่อนตำแหน่ง (% ของฐานเงินเดือนที่มีสิทธิ์)",
+      "pool_standard_special": "กองทุนปรับพิเศษ (% ของฐานเงินเดือนที่มีสิทธิ์)",
+      "pool_h_merit": "กองทุนผลงาน (% ของฐานเงินเดือนที่มีสิทธิ์)",
+      "pool_h_promotion": "กองทุนเลื่อนตำแหน่ง (% ของฐานเงินเดือนที่มีสิทธิ์)",
+      "pool_h_special": "กองทุนปรับพิเศษ (% ของฐานเงินเดือนที่มีสิทธิ์)",
+      "pool_separate": "กองทุนไม่สามารถใช้แทนกันหรือใช้ให้บริษัทอื่น",
+      "increase_withoutPromotion": "การขึ้นรวมโดยไม่เลื่อนตำแหน่งเกิน",
+      "increase_withPromotion": "การขึ้นรวมพร้อมเลื่อนตำแหน่งตั้งแต่",
+      "promotion_increment": "อัตราขึ้นเมื่อเลื่อนตำแหน่ง",
+      "promotion_maxGrades": "จำนวนระดับที่เลื่อนได้สูงสุด",
+      "promotion_maxGrade": "ระดับสูงสุดหลังเลื่อนตำแหน่ง",
+      "catchUp_crFloor": "เกณฑ์ CR สำหรับการปรับให้ทันของ STAR/SSTAR",
+      "salary_noReduction": "ห้ามลดเงินเดือน",
+      "bonus_poolCap": "เพดานกองทุนโบนัส",
+      "bonus_underUse": "คำเตือนการใช้ต่ำกว่า",
+      "bonus_individualCeiling": "เพดานโบนัสรายบุคคลเกิน",
+      "bonus_rounding": "การปัดเศษการจ่าย (ปัดลง)",
+      "bonus_individualMultiplier": "ตัวคูณรายบุคคลต่างจากหน่วยงาน",
+      "lump_share": "สัดส่วนของยอดคงเหลือ",
+      "lump_step": "ขั้นการปัดเศษ",
+      "lump_cap": "เพดานต่อคน",
+      "lump_aboveSuggestion": "จำนวนของหน่วยงานสูงกว่าที่แนะนำ",
+      "lump_individualAmendment": "การแก้ไขรายบุคคล",
+      "exemption_budgetCapsOnly": "บริษัทที่ได้รับการยกเว้น: เฉพาะเพดานงบประมาณ พร้อมเหตุผล",
+      "advisor_override": "เกณฑ์การปรับแก้",
+      "advisor_longWithoutIncrease": "นานโดยไม่ได้ขึ้นเงินเดือน",
+      "advisor_peerGap": "ช่องว่างเงินเดือนกับเพื่อนร่วมระดับ"
+    },
+    "types": {
+      "block": "บล็อก",
+      "exception": "ข้อยกเว้น",
+      "warning": "คำเตือน",
+      "note": "หมายเหตุ"
+    },
+    "appliesTo": {
+      "standard": "แผนมาตรฐาน",
+      "h": "แผน JG H",
+      "all": "ทุกแผน"
+    },
+    "units": {
+      "percent": "%",
+      "points": "จุดร้อยละ",
+      "ratio": "CR",
+      "months": "เดือน",
+      "myr": "RM",
+      "grades": "ระดับ",
+      "grade": "JG",
+      "years": "ปี"
+    },
+    "fixed": "คงที่",
+    "fixedHelp": "กำหนดไว้เพื่อปกป้องค่าตอบแทน ไม่สามารถเปลี่ยนได้",
+    "none": "ไม่มี",
+    "standardValue": "ค่ามาตรฐาน",
+    "changedBy": "{name} · {date}",
+    "unknownPerson": "ไม่ทราบ",
+    "valueFor": "ค่าสำหรับ {limit}",
+    "typeFor": "ประเภทสำหรับ {limit}",
+    "reviewSave": "ตรวจทานก่อนบันทึก",
+    "save": "บันทึกเวอร์ชันใหม่",
+    "discard": "ยกเลิกการเปลี่ยนแปลง",
+    "saved": "บันทึกเป็นเวอร์ชัน {version} แล้ว",
+    "errors": {
+      "system": "ไม่สามารถบันทึกขีดจำกัดได้ การเปลี่ยนแปลงของคุณยังอยู่ โปรดลองอีกครั้ง"
+    },
+    "reviewsHeading": "รอบพิจารณาในปีรางวัลนี้",
+    "reviewsHelp": "รอบพิจารณาฉบับร่างใช้เวอร์ชันปัจจุบัน รอบพิจารณาที่ผ่านฉบับร่างแล้วจะคงเวอร์ชันที่ใช้ตอนส่ง หากคุณนำเวอร์ชันปัจจุบันไปใช้ การตรวจสอบจะทำงานใหม่และผู้อนุมัติปัจจุบันจะได้รับแจ้ง",
+    "reviewColumns": {
+      "review": "รอบพิจารณา",
+      "stage": "ขั้นตอน",
+      "versionUsed": "ขีดจำกัดที่ใช้"
+    },
+    "select": "เลือก",
+    "selectReview": "เลือก {review}",
+    "baseline": "ค่ามาตรฐาน (ก่อนมีการควบคุมขีดจำกัด)",
+    "currentVersion": "ปัจจุบัน (เวอร์ชัน {version})",
+    "version": "เวอร์ชัน {version}",
+    "apply": "นำเวอร์ชัน {version} ไปใช้กับรอบพิจารณาที่เลือก",
+    "applyConfirm": "นำไปใช้และแจ้งผู้อนุมัติ",
+    "applied": "{count, plural, other {นำไปใช้กับ # รอบพิจารณาแล้ว}}",
+    "noReviews": "ยังไม่มีรอบพิจารณาที่ใช้ปีรางวัลนี้",
+    "reviewsTruncated": "แสดงเฉพาะ 200 รอบพิจารณาแรก",
+    "exemptionsHeading": "การยกเว้นเพดานงบประมาณ",
+    "exemptionsHelp": "การยกเว้นผ่อนปรนเฉพาะเพดานงบประมาณ (กองทุนขึ้นเงินเดือนและเพดานกองทุนโบนัส) และบันทึกพร้อมเหตุผลในการตั้งค่าของรอบพิจารณา",
+    "noExemptions": "ไม่มีรอบพิจารณาในปีรางวัลนี้ที่ได้รับการยกเว้นเพดานงบประมาณ",
+    "historyHeading": "ประวัติเวอร์ชัน",
+    "noVersions": "ยังไม่มีเวอร์ชัน",
+    "changeLogLink": "ดูการเปลี่ยนแปลงทั้งหมดในบันทึกการเปลี่ยนแปลง"
+  },
+  "scheduleOvertimeSetting": {
+    "title": "การตั้งค่าล่วงเวลา",
+    "intro": "ควบคุมวิธีบันทึก อนุมัติ หักชดเชย และปัดเศษล่วงเวลาของพนักงานในกลุ่มตารางงานนี้ มีผลตั้งแต่วันที่เริ่ม: วันก่อนหน้า บันทึกเวลา บันทึกการมาสาย และเงินเดือนที่ผ่านมาจะไม่ถูกคำนวณใหม่",
+    "companiesLabel": "ใช้กับ",
+    "allCompanies": "ทุกบริษัท",
+    "selectedCompanies": "บริษัทที่เลือก",
+    "effectiveFrom": "วันที่เริ่ม",
+    "effectiveHint": "หลังวันนี้ และหลังวันที่เริ่มที่บันทึกไว้แล้วของบริษัทที่เลือก",
+    "applicabilityTitle": "การใช้ล่วงเวลา",
+    "beforeShift": "ล่วงเวลาก่อนกะ",
+    "beforeShiftHint": "อนุญาตล่วงเวลาก่อนกะที่กำหนด",
+    "afterShift": "ล่วงเวลาหลังกะ",
+    "afterShiftHint": "อนุญาตล่วงเวลาหลังกะที่กำหนด",
+    "allowBackdated": "อนุญาตคำขอล่วงเวลาย้อนหลังโดยไม่มีการบันทึกเวลา",
+    "allowBackdatedHint": "พนักงานขอล่วงเวลาย้อนหลังได้โดยไม่มีบันทึกเวลาที่ตรงกัน ฝ่ายบุคคลยังต้องบันทึกช่วงเวลาทำงานจริงก่อนจึงจะนับ",
+    "splitAtMidnight": "แยกล่วงเวลาที่เที่ยงคืน",
+    "splitAtMidnightHint": "ล่วงเวลาหลังเที่ยงคืนนับเป็นล่วงเวลาช่วงเช้าของวันถัดไป ตัวอย่าง: 22:00 ถึง 02:00 ได้วันละ 2 ชั่วโมง",
+    "offsetTitle": "หักล่วงเวลาด้วยการมาสาย",
+    "offsetLateness": "หักล่วงเวลาด้วยการมาสาย",
+    "offsetHint": "หักนาทีที่มาสายออกจากล่วงเวลาที่มีสิทธิ์ ตัวอย่าง: สาย 20 นาที จากล่วงเวลาที่มีสิทธิ์ 60 นาที เหลือ 40 การมาสายที่บันทึกไว้ยังคงอยู่",
+    "showLatenessException": "แสดงข้อยกเว้นการมาสายหลังหักชดเชย",
+    "showLatenessExceptionHint": "แสดงข้อยกเว้นการมาสายสำหรับการมาสายที่เหลือหลังหักชดเชย",
+    "approvalTitle": "วิธีอนุมัติล่วงเวลา",
+    "approvalManual": "ด้วยตนเอง",
+    "approvalAuto": "อัตโนมัติ",
+    "approvalManualHint": "การลงเวลาไม่สร้างล่วงเวลาที่ต้องจ่าย บันทึกเวลายังคงเก็บไว้ และป้อนล่วงเวลาด้วยตนเองในระบบเงินเดือน",
+    "autoMethod": "วิธีอนุมัติล่วงเวลาอัตโนมัติ",
+    "methodIntersect": "ส่วนที่ตรงกันระหว่างจริงและอนุมัติล่วงหน้า",
+    "methodActual": "ชั่วโมงจริง",
+    "methodPreApproved": "ล่วงเวลาที่อนุมัติ",
+    "methodIntersectHint": "จ่ายตามนาทีที่น้อยกว่าระหว่างที่อนุมัติและจริง: อนุมัติ 120 จริง 90 จ่าย 90",
+    "methodActualHint": "จ่ายตามนาทีที่มีสิทธิ์จริง โดยไม่มีเพดานการอนุมัติ",
+    "methodPreApprovedHint": "จ่ายตามระยะเวลาที่อนุมัติ: อนุมัติ 120 จริง 90 จ่าย 120",
+    "patternsTitle": "รูปแบบล่วงเวลาสำหรับแต่ละประเภทวัน",
+    "patternsHint": "ค่าล่วงเวลาคำนวณโดยรูปแบบล่วงเวลาที่เลือก แสดงเฉพาะรูปแบบที่ใช้งานได้กับทุกบริษัทที่เลือก",
+    "patternsNone": "ไม่มีรูปแบบล่วงเวลาที่ใช้งานได้กับทุกบริษัทที่เลือก เปิดใช้งานหนึ่งรูปแบบในรูปแบบล่วงเวลาเพื่อใช้อัตโนมัติ หรือเลือกด้วยตนเอง",
+    "choosePattern": "เลือกรูปแบบล่วงเวลา",
+    "dayNormal": "วันทำงาน",
+    "dayOff": "วันหยุดงาน",
+    "dayRest": "วันพัก",
+    "dayPublicHoliday": "วันหยุดนักขัตฤกษ์",
+    "dayReplacementHoliday": "วันหยุดชดเชย",
+    "roundingTitle": "การปัดเศษล่วงเวลา",
+    "roundingMethod": "วิธีปัดเศษล่วงเวลา",
+    "roundUp": "ปัดขึ้น",
+    "roundDown": "ปัดลง",
+    "roundingStep": "ปัดเศษล่วงเวลาเป็นนาที",
+    "stepMinutes": "{n} นาที",
+    "roundingHint": "การปัดเศษทำเป็นขั้นสุดท้าย หลังวิธีอนุมัติและการหักชดเชยการมาสาย ระยะเวลาบันทึกเวลาไม่เปลี่ยนแปลง",
+    "unsupportedRounding": "การปัดเศษที่บันทึกไว้ใช้ตัวเลือกที่ส่วนนี้ไม่มี การบันทึกจะแทนที่ตั้งแต่วันที่เริ่มใหม่",
+    "differs": "{n, plural, other {# บริษัท}}มีการตั้งค่าล่วงเวลาต่างกันหรือยังไม่มี การบันทึกจะใช้การตั้งค่านี้กับทุกบริษัทที่เลือก",
+    "savedFrom": "การตั้งค่าที่บันทึกไว้เริ่มวันที่ {date}",
+    "none": "ยังไม่มีการตั้งค่าล่วงเวลา ล่วงเวลาของกลุ่มนี้ทำงานเหมือนเดิมจนกว่าจะบันทึก",
+    "save": "บันทึกการตั้งค่าล่วงเวลา",
+    "systemReason": "บันทึกการตั้งค่าล่วงเวลาของกลุ่มตารางงานแล้ว",
+    "on": "เปิด",
+    "off": "ปิด",
+    "payrollNote": "ระบบเงินเดือนได้รับตัวเลขล่วงเวลาสุดท้ายจากการตั้งค่านี้ เช่นเดียวกับที่ได้รับล่วงเวลาในปัจจุบัน",
+    "approvalIntro": "กำหนดว่าระบบลงเวลาจะคำนวณค่าล่วงเวลาที่ต้องจ่ายหรือไม่ และใช้นาทีใดบ้าง",
+    "roundingIntro": "กำหนดว่านาทีล่วงเวลาที่มีสิทธิ์จะปัดขึ้น ปัดลง หรือไม่ปัดเศษ",
+    "roundNone": "ไม่ปัดเศษ",
+    "roundingNoneHint": "ไม่ใช้เมื่อเลือกไม่ปัดเศษ ระบบจะเก็บนาทีล่วงเวลาที่มีสิทธิ์ตามจริง",
+    "notApplicable": "ไม่ใช้",
+    "minutesValue": "{n} นาที",
+    "roundingExampleTitle": "ตัวอย่างการคำนวณ",
+    "roundingExampleActual": "ล่วงเวลาที่มีสิทธิ์ตามจริง",
+    "roundingExampleMethod": "วิธีปัดเศษ",
+    "roundingExampleInterval": "ช่วง",
+    "roundingExampleFinal": "ล่วงเวลาสุดท้าย",
+    "backdateTitle": "การควบคุมการขอล่วงเวลาย้อนหลัง",
+    "backdateIntro": "กำหนดว่าคำขอล่วงเวลาสามารถลงวันที่ย้อนหลังได้กี่วัน การตั้งค่าอนุญาตคำขอล่วงเวลาย้อนหลังโดยไม่มีการบันทึกเวลาเป็นคนละเรื่อง: ใช้กำหนดเพียงว่าต้องมีการบันทึกเวลาหรือไม่",
+    "backdateControl": "เปิดใช้การควบคุมการขอล่วงเวลาย้อนหลัง",
+    "backdateControlHint": "ใช้กับคำขอล่วงเวลาของพนักงานเองบนเว็บและแอปมือถือ คำขอผ่านผู้ช่วย AI และการยื่นคำขอแทน ผู้ดูแล HR ต้องปฏิบัติตามขีดจำกัดเดียวกัน",
+    "backdateDays": "อนุญาตให้ยื่นย้อนหลังได้ภายใน (วัน)",
+    "backdateDaysHint": "จำนวนเต็มตั้งแต่ 1 ถึง {max} นับย้อนหลังจากวันที่ยื่นคำขอ หากตั้งไว้ 3 วัน คำขอที่ยื่นวันที่ 16-Nov-2026 สามารถขอสำหรับวันที่ 13 ถึง 16-Nov-2026",
+    "backdateDaysValue": "{n, plural, other {# วัน}}",
+    "backdateRefused": "คำขอล่วงเวลาลงวันที่ย้อนหลังได้ไม่เกิน {days, plural, other {# วัน}} โปรดเลือกวันที่ {date} หรือหลังจากนั้น"
+  },
+  "attendanceOnBehalf": {
+    "requestTitle": "ยื่นคำขอแทน",
+    "requestHelp": "เลือกพนักงาน แล้วยื่นความผิดปกติของการเข้างานหรือการทำงานล่วงเวลาให้เขาบนหน้าจอเดิม คำขอจะเป็นไปตามเวิร์กโฟลว์และผู้อนุมัติของพนักงานผู้นั้น",
+    "approveTitle": "อนุมัติแทน",
+    "approveHelp": "เลือกผู้อนุมัติที่กำหนดซึ่งคุณต้องจัดการคำขอการเข้างานที่รออยู่",
+    "approveListHelp": "คำขอที่รอ {name} ซึ่งคุณสามารถตัดสินใจแทนได้",
+    "searchLabel": "ค้นหาด้วยรหัสพนักงานหรือชื่อ",
+    "searchPlaceholder": "เช่น EMP-0123 หรือชื่อ",
+    "search": "ค้นหา",
+    "results": "พนักงานที่คุณดำเนินการแทนได้",
+    "noResults": "ไม่มีพนักงานที่คุณดำเนินการแทนได้ตรงกับการค้นหานี้",
+    "noPermission": "บทบาทของคุณไม่มีสิทธิ์นี้ หากต้องการโปรดติดต่อผู้ดูแลระบบ",
+    "choose": "เลือก",
+    "employeeName": "พนักงาน",
+    "employeeId": "รหัสพนักงาน",
+    "company": "บริษัท",
+    "department": "แผนก",
+    "changeEmployee": "เปลี่ยนพนักงาน",
+    "chooseCategory": "คุณต้องการยื่นคำขอประเภทใด",
+    "irregularity": "ความผิดปกติของการเข้างาน",
+    "irregularityHelp": "เวลาเข้าออกที่ขาดหายหรือผิด ชั่วโมงไม่ครบ หรือการขาดงาน ในวันของพนักงานเอง",
+    "selfOvertime": "การทำงานล่วงเวลาด้วยตนเอง",
+    "selfOvertimeHelp": "วางแผนหรือขอการทำงานล่วงเวลาตามกลุ่มตารางงานและกฎการทำงานล่วงเวลาของพนักงานเอง",
+    "banner": "กำลังยื่นแทน {name}",
+    "pendingTitle": "คำขอที่รอการอนุมัติ",
+    "pendingEmpty": "ไม่มีคำขอที่รอผู้อนุมัติรายนี้ซึ่งคุณตัดสินใจได้",
+    "approveOnBehalf": "อนุมัติแทน",
+    "rejectOnBehalf": "ปฏิเสธแทน",
+    "approveAudit": "ประวัติจะคงผู้ที่เลือกไว้เป็นผู้อนุมัติที่กำหนด และบันทึกคุณเป็นผู้ดำเนินการ",
+    "previous": "ก่อนหน้า",
+    "next": "ถัดไป"
+  },
+  "importErrorLogDataBankCostInfo": {
+    "corrections": {
+      "duplicateInFile": "ค่านี้ปรากฏมากกว่าหนึ่งครั้งในไฟล์ - เก็บไว้เพียงแถวเดียว",
+      "duplicateEmployeeInFile": "รหัสพนักงานนี้ปรากฏมากกว่าหนึ่งครั้งในไฟล์ - เก็บไว้เพียงแถวเดียว",
+      "chooseReference": "เลือกค่าจากชีต Reference ของเทมเพลต",
+      "chooseCompany": "เลือก Company Code จากชีต Reference",
+      "chooseCostCenter": "เลือก Cost Center Code ที่แสดงไว้สำหรับบริษัทนี้ในชีต Allocation Reference",
+      "date": "ป้อนวันที่ในรูปแบบ YYYY-MM-DD หรือเป็นวันที่ของ Excel",
+      "required": "กรอกคอลัมน์นี้ - เป็นคอลัมน์ที่จำเป็น",
+      "yesNo": "ป้อน yes หรือ no",
+      "revalidate": "อัปโหลดไฟล์ที่แก้ไขแล้วอีกครั้งเพื่อให้ตรวจสอบแถวนี้ใหม่",
+      "permission": "ลบแถวนี้ หรือขอให้ผู้ดูแลระบบให้สิทธิ์เข้าถึงบริษัทของพนักงานคนนี้",
+      "systemError": "อัปโหลดไฟล์อีกครั้ง หากยังเกิดขึ้นอีก ให้แจ้งเลขอ้างอิงการสนับสนุนแก่ทีมเทคนิค",
+      "textCode": "จัดรูปแบบเซลล์เป็น Text แล้วป้อนรหัสอีกครั้ง",
+      "noFormula": "พิมพ์ค่าโดยตรง ไม่ใช่สูตร",
+      "existingEmployee": "ตรวจสอบรหัสพนักงาน พนักงานใหม่ต้องเพิ่มด้วย \"ทั้งหมด - พนักงานใหม่\" ก่อน",
+      "percentage": "ป้อนเปอร์เซ็นต์ที่มากกว่า 0 และไม่เกิน 100 โดยมีทศนิยมไม่เกินสองตำแหน่ง",
+      "periodUnit": "ป้อนตัวเลขพร้อมหน่วย (Month, Week หรือ Day) ไปด้วยกัน",
+      "reason": "ป้อนเหตุผลอย่างน้อยสามตัวอักษร",
+      "statutoryRecord": "บันทึกเลขประจำตัวของพนักงานในข้อมูลบุคลากรก่อน แล้วจึงอัปโหลดไฟล์นี้อีกครั้ง",
+      "template": "ดาวน์โหลดเทมเพลตปัจจุบัน คัดลอกแถวของคุณลงไป แล้วอัปโหลดอีกครั้ง",
+      "bankPair": "ป้อนชื่อธนาคารและเลขที่บัญชีธนาคารไปพร้อมกัน"
+    },
+    "bank": {
+      "duplicateEmployeeId": "รหัสพนักงานซ้ำในไฟล์นี้ ใช้ครั้งแรกที่แถว Excel {row}",
+      "duplicateCardId": "รหัสบัตรซ้ำในไฟล์นี้",
+      "cardIdTaken": "card_id ถูกใช้กับพนักงานคนอื่นแล้ว เลือกรหัสบัตรที่ยังไม่ได้ใช้",
+      "noPermission": "คุณไม่มีสิทธิ์อัปเดตพนักงานคนนี้",
+      "changedAfterValidation": "แถวนี้ไม่ได้บันทึก ข้อมูลหรือสิทธิ์ของแถวนี้เปลี่ยนไปหลังการตรวจสอบ โปรดตรวจทานแล้วนำเข้าอีกครั้ง",
+      "missingEmployeeId": "ไม่มี employee_code — ซึ่งเป็นตัวเชื่อมไปยังพนักงานที่กำลังอัปเดต",
+      "unknownEmployee": "ไม่มีพนักงานที่มีรหัสพนักงาน \"{code}\" ไฟล์แบบแยกส่วนอัปเดตได้เฉพาะบุคคลที่มีอยู่ในระบบแล้วเท่านั้น — ไม่สามารถเพิ่มใครได้ หากต้องการเพิ่มบุคคลนี้ ให้เลือก \"ทั้งหมด — พนักงานใหม่\" ที่ด้านบนของหน้านี้และใช้เทมเพลตพนักงานแบบเต็ม แล้วเรียกใช้ไฟล์นี้อีกครั้ง",
+      "duplicateEmployeeCode": "employee_code ซ้ำในไฟล์นี้",
+      "bankTransferNeedsBank": "การโอนผ่านธนาคารต้องมีชื่อธนาคารและเลขที่บัญชี",
+      "bankPair": "ต้องระบุ bank_name และ bank_account_no ไปพร้อมกัน",
+      "noStatutoryRecordYet": "พนักงานคนนี้ยังไม่มีบันทึกตามกฎหมาย — บันทึกเลขประจำตัวในข้อมูลบุคลากรก่อน แล้วเรียกใช้ไฟล์นี้อีกครั้ง",
+      "noStatutoryRecord": "พนักงานคนนี้ไม่มีบันทึกตามกฎหมาย โปรดตั้งค่าตามกฎหมายในข้อมูลบุคลากรให้เสร็จก่อน",
+      "notActiveOption": "\"{value}\" ไม่ใช่ตัวเลือก {category} ที่ใช้งานอยู่ — คอลัมน์ {column}",
+      "yesNo": "{column} ต้องเป็น yes หรือ no",
+      "jobStopped": "การนำเข้าหยุดลง แถวที่บันทึกแล้วยังคงอยู่ ตรวจสอบผลลัพธ์และสิทธิ์การเข้าถึงของคุณก่อนลองอีกครั้ง เลขอ้างอิง {ref}",
+      "jobStoppedEarlier": "การนำเข้าหยุดลง แถวที่บันทึกแล้วยังคงอยู่ ตรวจสอบผลลัพธ์และสิทธิ์การเข้าถึงของคุณก่อนลองอีกครั้ง",
+      "fileTooLarge": "ไฟล์เกินขีดจำกัดขนาดการนำเข้าหรือเวิร์กชีต ใช้ได้ไม่เกิน 250,000 แถวและ 128 MiB",
+      "fileUnreadable": "ไม่สามารถอ่านไฟล์ได้ ใช้เทมเพลตธนาคารและข้อมูลตามกฎหมาย และชีตอ้างอิงของเทมเพลต",
+      "fileRowCount": "เลือกไฟล์ที่มีข้อมูล 1 ถึง 250,000 แถว",
+      "fileIncomplete": "ไฟล์ที่อัปโหลดไม่สมบูรณ์หรือค่าตรวจสอบไม่ตรงกัน โปรดอัปโหลดอีกครั้ง"
+    },
+    "allocation": {
+      "errors": {
+        "invalid": "ป้อนเปอร์เซ็นต์ที่มากกว่าศูนย์และไม่เกิน 100 โดยมีทศนิยมไม่เกินสองตำแหน่ง",
+        "duplicate": "เลือกศูนย์ต้นทุนแต่ละแห่งเพียงครั้งเดียว",
+        "total": "การปันส่วนรวมต้องไม่เกิน 100%",
+        "scope": "ไม่มีบันทึกพนักงานหรือสิทธิ์ที่ใช้ได้",
+        "label": "ศูนย์ต้นทุนไม่ได้ใช้งานหรือไม่พร้อมใช้สำหรับบริษัทนี้",
+        "changed": "การปันส่วนเปลี่ยนไปแล้ว โปรดโหลดใหม่และดูตัวอย่างอีกครั้ง",
+        "date": "เลือกวันที่มีผลที่มีประวัติบริษัทการจ้างงานที่ยืนยันแล้ว",
+        "clear": "การล้างการปันส่วนต้องใช้การดำเนินการ Clear อย่างชัดเจน",
+        "preview": "ข้อมูลนำเข้าหรือข้อมูลอ้างอิงเปลี่ยนไป โปรดดูตัวอย่างอีกครั้ง",
+        "binding": "จับคู่การปันส่วนแต่ละรายการกับบริษัทและรหัสพนักงานเพียงหนึ่งเดียว",
+        "transfer": "บันทึกชุด Clear อย่างชัดเจนในวันที่โอนย้าย และล้างชุดที่ตั้งเวลาไว้หลังจากนั้นก่อนโอนย้าย จากนั้นบันทึกการปันส่วนใหม่สำหรับบริษัทปลายทาง"
+      },
+      "operation": "Operation ต้องเป็น Replace หรือ Clear และต้องเหมือนกันทุกแถวสำหรับพนักงานหนึ่งคนและวันที่หนึ่งวัน",
+      "clearRow": "Clear ต้องมีเพียงหนึ่งแถวที่ Cost Center Code และ Percentage ว่าง",
+      "costCenterUnavailable": "Cost Center Code นี้ไม่พร้อมใช้สำหรับ {company}",
+      "companyRequired": "ต้องระบุ Company Code",
+      "companyAmbiguous": "Company Code \"{code}\" ตรงกับบริษัทมากกว่าหนึ่งแห่ง ใช้ Company Code ที่แสดงในชีต Reference",
+      "companyUnknown": "Company Code \"{code}\" ไม่ตรงกับบริษัทที่คุณนำเข้าได้",
+      "effectiveDate": "Effective Date ต้องเป็นวันที่ในรูปแบบ YYYY-MM-DD",
+      "employeeInvalid": "ไม่มีรหัสพนักงานหรือรหัสไม่ถูกต้อง",
+      "employeeAmbiguous": "รหัสพนักงาน {code} ตรงกับพนักงานของ {company} มากกว่าหนึ่งคน",
+      "employeeNotInCompany": "รหัสพนักงาน {code} ไม่ใช่พนักงานของ {company} ในวันที่ {date}",
+      "heldBack": "การปันส่วนอีกรายการสำหรับรหัสพนักงาน {code} ในไฟล์นี้มีข้อผิดพลาด จึงไม่นำเข้าพนักงานคนนี้ โปรดแก้ไขแถวนั้นก่อน",
+      "unavailable": "บริษัท พนักงาน หรือวันที่มีผลของการปันส่วนไม่พร้อมใช้",
+      "saveFailed": "ไม่สามารถบันทึกพนักงานคนนี้ได้ ไม่มีการเปลี่ยนแปลงใดๆ สำหรับพนักงานคนนี้",
+      "file": {
+        "legacyLayout": "ไฟล์นี้ใช้รูปแบบเก่าที่มีรหัสบริษัทภายใน (company_id) โปรดดาวน์โหลดเทมเพลตใหม่และกรอกคอลัมน์ Company Code แทน",
+        "duplicateHeaders": "ไม่อนุญาตให้มีหัวคอลัมน์การปันส่วนซ้ำกัน",
+        "missingColumns": "ไม่มีคอลัมน์การปันส่วน: {columns}",
+        "unexpectedColumns": "คอลัมน์การปันส่วนที่ไม่คาดคิด: {columns}",
+        "tooManyRows": "ใช้แถวการปันส่วนไม่เกิน 5000 แถวต่อไฟล์",
+        "tooLarge": "ไฟล์การปันส่วนมีขนาดเกินกว่าที่รองรับ",
+        "tooLarge10": "เลือกไฟล์ที่มีขนาดไม่เกิน 10 MB",
+        "unreadableWorkbook": "ไม่สามารถอ่านเวิร์กบุ๊กได้ โปรดดาวน์โหลดเทมเพลตแล้วลองอีกครั้ง",
+        "utf8": "บันทึกไฟล์ CSV เป็น UTF-8",
+        "fileType": "เลือกเทมเพลต .xlsx หรือไฟล์ .csv ที่มีคอลัมน์เหมือนกัน",
+        "unreadable": "ไม่สามารถอ่านไฟล์นี้ได้",
+        "noRows": "ไฟล์นี้ไม่มีแถวการปันส่วน"
+      }
+    },
+    "correction": {
+      "noFormula": "ไม่รับสูตรและเซลล์ที่มีข้อผิดพลาด",
+      "textCode": "ป้อนรหัสเป็นข้อความเพื่อคงเลขศูนย์นำหน้าไว้",
+      "date": "ใช้ YYYY-MM-DD หรือวันที่ของ Excel",
+      "tooLong": "สูงสุด 1,000 ตัวอักษร",
+      "periodUnit": "ป้อนระยะเวลาพร้อมหน่วยไปด้วยกัน ({unit})",
+      "notOption": "\"{value}\" ไม่ใช่ตัวเลือกสำหรับบริษัทนี้ โปรดตรวจสอบชีตอ้างอิง {sheet}",
+      "superiorUnknown": "ไม่พบรหัสพนักงานนี้ หรือคุณไม่มีสิทธิ์มองเห็น",
+      "organisationFormula": "คอลัมน์องค์กรต้องไม่มีสูตรหรือเซลล์ที่มีข้อผิดพลาด",
+      "organisationTooLong": "ค่าองค์กร: สูงสุด 1,000 ตัวอักษร",
+      "companyRequired": "ต้องระบุ Company Code",
+      "employeeRequired": "ต้องระบุรหัสพนักงาน",
+      "reasonShort": "Correction Reason ต้องมีอย่างน้อยสามตัวอักษร",
+      "duplicateEmployee": "พนักงานคนนี้ปรากฏมากกว่าหนึ่งครั้ง เก็บแถวการแก้ไขไว้หนึ่งแถวต่อพนักงานหนึ่งคน",
+      "companyUnknown": "Company Code ไม่รู้จัก ไม่ชัดเจน หรืออยู่นอกสิทธิ์ของคุณ",
+      "employeeUnknown": "รหัสพนักงานไม่รู้จักหรือไม่ชัดเจนในบริษัทที่มีอยู่",
+      "newCompanyUnknown": "New Company Code ไม่รู้จัก ไม่ชัดเจน หรืออยู่นอกสิทธิ์ของคุณ",
+      "gradeInactive": "Job Grade ไม่ใช่รหัสระบบที่ใช้งานอยู่",
+      "sameEmployee": "หลายแถวอ้างถึงพนักงานคนเดียวกัน"
+    }
+  },
+  "importErrorLogEmployee": {
+    "problemsTitle": "ปัญหาที่ต้องแก้ไข",
+    "missingColumn": "ชีตไม่มีคอลัมน์ที่จำเป็นนี้",
+    "thisField": "คอลัมน์นี้",
+    "downloadFailed": "ไม่สามารถจัดเตรียมบันทึกข้อผิดพลาดได้ โปรดลองอีกครั้ง",
+    "correction": {
+      "reference": "เลือก{field}จากชีต Reference",
+      "date": "กรอกวันที่ในรูปแบบ YYYY-MM-DD หรือเป็นวันที่ของ Excel",
+      "month": "กรอกเดือนในรูปแบบ YYYY-MM",
+      "required": "กรอก{field} - เป็นข้อมูลที่จำเป็น",
+      "requiredForContract": "กรอกคอลัมน์นี้ - จำเป็นสำหรับพนักงานสัญญาจ้าง",
+      "duplicateInFile": "ค่านี้ปรากฏในไฟล์มากกว่าหนึ่งครั้ง - เก็บไว้เพียงแถวเดียว",
+      "duplicateEmployeeId": "รหัสพนักงานนี้ปรากฏในไฟล์มากกว่าหนึ่งครั้ง - เก็บไว้เพียงแถวเดียว",
+      "duplicateInSystem": "ค่านี้ถูกใช้โดยพนักงานคนอื่นแล้ว - กรอกค่าอื่น หรือนำแถวนี้ออก",
+      "number": "กรอกตัวเลข (เฉพาะตัวเลข ไม่มีสัญลักษณ์สกุลเงิน)",
+      "choice": "เลือกค่าใดค่าหนึ่งที่ระบุไว้ในชีต Instructions หรือ Reference",
+      "yesNo": "กรอก Yes หรือ No",
+      "email": "กรอกอีเมลแบบเต็ม เช่น name@company.com",
+      "notOnEmployeeSheet": "เพิ่มพนักงานคนนี้ในชีตพนักงาน หรือแก้ไขรหัสพนักงาน",
+      "employeeNotFound": "ตรวจสอบรหัสพนักงาน หากต้องการเพิ่มพนักงานใหม่ ให้ใช้ ทั้งหมด - พนักงานใหม่ ก่อน",
+      "missingColumn": "เพิ่มคอลัมน์ {field} โดยใช้แม่แบบปัจจุบัน แล้วอัปโหลดอีกครั้ง",
+      "wrongSection": "นำคอลัมน์นั้นออก หรือนำเข้าด้วยแม่แบบที่เป็นเจ้าของคอลัมน์นั้น",
+      "system": "โปรดลองอีกครั้ง หากยังเกิดขึ้นอีก ให้แจ้งหมายเลขอ้างอิงสำหรับฝ่ายสนับสนุนแก่ผู้ดูแลระบบ",
+      "uploadAgain": "แก้ไขแถวที่ทำให้การนำเข้าหยุด แล้วอัปโหลดทั้งไฟล์อีกครั้ง"
+    }
+  },
+  "importProblems": {
+    "headers": {
+      "sheet": "แผ่นงาน",
+      "row": "แถว Excel",
+      "category": "หมวดหมู่",
+      "reference": "รหัสอ้างอิง",
+      "employeeName": "ชื่อพนักงาน",
+      "field": "ฟิลด์",
+      "value": "ค่าที่ป้อน",
+      "problem": "สิ่งที่ผิด",
+      "correction": "วิธีแก้ไข",
+      "stage": "พบระหว่าง",
+      "result": "ผลลัพธ์",
+      "errorReference": "รหัสอ้างอิงสำหรับฝ่ายสนับสนุน"
+    },
+    "stage": {
+      "file": "อ่านไฟล์",
+      "check": "ตรวจสอบไฟล์",
+      "save": "บันทึก",
+      "system": "ข้อผิดพลาดของระบบ"
+    },
+    "result": {
+      "refused": "ไม่ได้นำเข้า",
+      "skipped": "ข้าม",
+      "stopped": "ทำให้การนำเข้าหยุด",
+      "cancelled": "ไม่ได้บันทึก - แถวอื่นทำให้การนำเข้าหยุด",
+      "not_saved": "ไม่ได้บันทึก - อัปโหลดไฟล์ที่แก้ไขแล้วอีกครั้ง"
+    },
+    "hiddenValue": "(ซ่อนไว้)",
+    "wholeFile": "ทั้งไฟล์",
+    "moreInLog": "มีปัญหาอีก {count} รายการในบันทึกข้อผิดพลาด",
+    "downloadLog": "ดาวน์โหลดบันทึกข้อผิดพลาด",
+    "summary": {
+      "sheetTitle": "สรุป",
+      "batch": "การนำเข้า",
+      "file": "ไฟล์",
+      "status": "สถานะ",
+      "problems": "ปัญหา",
+      "truncated": "รายการนี้ถูกตัดให้สั้นลงเมื่อบันทึกการนำเข้า ดาวน์โหลดบันทึกข้อผิดพลาดทันทีหลังการนำเข้าเพื่อดูปัญหาทั้งหมด"
+    }
+  },
+  "automation": {
+    "crumb": "HR Automation",
+    "filterLabel": "Module",
+    "done": "Done",
+    "none": "None",
+    "noChoices": "No choices are available.",
+    "notAvailable": "{value} (no longer available)",
+    "modules": {
+      "all": "All modules",
+      "onb": "Onboarding",
+      "off": "Offboarding",
+      "contract_staff": "Contract staff",
+      "probation": "Probation"
+    },
+    "status": {
+      "live": "Live",
+      "paused": "Paused",
+      "retired": "Retired",
+      "required": "Required",
+      "attention": "Needs attention"
+    },
+    "ops": {
+      "is": "is",
+      "isNot": "is not",
+      "lt": "is less than",
+      "lte": "is at most",
+      "gte": "is at least"
+    },
+    "errors": {
+      "unavailable": "This could not be completed. Try again, or reload the page."
+    },
+    "recipients": {
+      "routing": "{name} (routing)",
+      "group": "{name} (group)"
+    },
+    "legacy": {
+      "workflows": "workflow builder",
+      "templates": "template builder",
+      "groups": "assignment groups",
+      "workflowsIntro": "This module keeps its own workflow builder until it moves to the shared builder. Its workflows are unchanged.",
+      "templatesIntro": "This module keeps its own templates until it moves to the shared builder. Its templates are unchanged.",
+      "groupsIntro": "Assignment groups are kept in the On/Off Boarding configuration.",
+      "openV9": "Open the On/Off Boarding {what}",
+      "openContract": "Open the Contract staff {what}",
+      "notAllowed": "You cannot configure this module."
+    },
+    "people": {
+      "title": "Named people",
+      "search": "Search people by name",
+      "placeholder": "Type at least two letters",
+      "find": "Find",
+      "add": "Add {name}",
+      "added": "Added",
+      "none": "Nobody matches."
+    },
+    "defaults": {
+      "install": "Install default Probation workflows",
+      "confirm": "Install the 16 default Probation workflows, 4 email templates and 2 routings? They are installed Paused. Anything already installed is left as it is.",
+      "done": "Installed {workflows} workflows, {emails} email templates and {routings} routings, all Paused. Review each one before making it live."
+    },
+    "workflows": {
+      "title": "Workflows",
+      "intro": "One builder for Onboarding, Offboarding, Contract staff and Probation. Active workflows run when their trigger and conditions match.",
+      "probationIntro": "Probation workflows send messages, generate letters, create Personnel postings and start offboarding. Overdue flags, scoring and gates run inside the probation module and cannot be switched off here.",
+      "requiredBanner": "{names} {count, plural, one {is} other {are}} required for probation but not live.",
+      "empty": "No Probation workflows yet. Create one, or install the default workflows.",
+      "new": "New workflow",
+      "newName": "New workflow",
+      "edit": "Edit",
+      "view": "View",
+      "editNamed": "Open {name}",
+      "probationNotAllowed": "You cannot configure Probation automation.",
+      "cardIntro": "Automate documents, emails, approvals and reminders for each case. Active workflows run when their trigger and conditions match."
+    },
+    "editor": {
+      "untitled": "Untitled workflow",
+      "name": "Workflow name",
+      "required": "Required for probation (pausing it shows a warning on the tracker)",
+      "whatStarts": "What starts it",
+      "chooseTrigger": "Choose…",
+      "workdays": "Count working days (Mon–Fri)",
+      "repeat": "Repeat every morning after that",
+      "skipWhen": "Skip when",
+      "onlyIf": "Only if",
+      "onlyIfHelp": "All conditions must match. Leave empty to apply to every case in this module.",
+      "multiHint": "Several values: is matches any, is not matches none.",
+      "addCondition": "Add condition",
+      "thenHelp": "Steps run in order. Use the arrows to reorder them.",
+      "stepOnlyIf": "Only run this step if",
+      "stepConditions": "Conditions of step {step}",
+      "addStepCondition": "Add step condition",
+      "stepConditionHint": "Leave empty to always run this step. A skipped step is noted in the case activity.",
+      "addStep": "Add a step",
+      "chooseStep": "Choose a step…",
+      "moveUp": "Move step {step} up",
+      "moveDown": "Move step {step} down",
+      "removeStep": "Remove step {step}",
+      "remove": "Remove",
+      "to": "To",
+      "cc": "CC",
+      "stepTo": "Step {step} To",
+      "stepCc": "Step {step} CC",
+      "subject": "Subject",
+      "message": "Message",
+      "insertMergeField": "Insert merge field…",
+      "insertMerge": "Insert merge field into the {where} of step {step}",
+      "mergeHelp": "Pick a merge field from the list, or type it in double curly brackets, for example {example}.",
+      "emailTemplate": "Email template",
+      "emailSubject": "Subject: {subject} (set in the email template)",
+      "emailFromTemplate": "The subject and message come from the email template.",
+      "choose": "Choose…",
+      "letterTemplate": "Letter template",
+      "letterTemplateId": "Letter template id",
+      "letterNote": "The letter is generated from the chosen Probation letter template and pauses until it is signed. Its signing and review routing is set in the template.",
+      "postingEvent": "Event type in Personnel Management",
+      "postingNote": "Each outcome logs its own event type. The posting is approved in Personnel postings, and Personnel Management only changes after approval.",
+      "exitReason": "Exit reason on the offboarding case",
+      "offboardingNote": "Runs once per case, for Non-confirmation only.",
+      "problems": "Problems",
+      "warnings": "Notes",
+      "note": "Change note (optional)",
+      "notePlaceholder": "Why this change was made",
+      "makeLive": "Make it live",
+      "pause": "Pause",
+      "save": "Save changes",
+      "retire": "Retire workflow",
+      "back": "Back to workflows",
+      "fixFirst": "Fix the problems above first",
+      "retireConfirm": "Retire this workflow? It stops for good. Runs already waiting keep their steps.",
+      "leaveUnsaved": "Leave without saving your changes?",
+      "runsKeep": "Changes are saved when you press a button. Runs already waiting keep the steps they started with.",
+      "retiredReadOnly": "This workflow is retired and can no longer change.",
+      "isLive": "“{name}” is live.",
+      "paused": "“{name}” is paused. Nothing new starts; runs already waiting keep their steps.",
+      "retired": "“{name}” is retired.",
+      "saved": "Saved.",
+      "reasonSave": "Edited in the workflow builder",
+      "reasonLive": "Made live in the workflow builder",
+      "reasonPause": "Paused in the workflow builder",
+      "reasonRetire": "Retired in the workflow builder"
+    },
+    "conditions": {
+      "field": "Condition field",
+      "operator": "Condition operator",
+      "valueFor": "Condition value for {field}",
+      "typeValues": "Type values, separated by commas",
+      "unavailable": "not available for this trigger",
+      "remove": "Remove condition"
+    },
+    "dry": {
+      "title": "Dry run",
+      "intro": "A dry run shows what would happen for one case. Nothing is sent and nothing is saved. Date-based triggers run from the nightly scheduler, so they can only be checked here.",
+      "searchCase": "Find a probation case",
+      "searchPlaceholder": "Employee name",
+      "findCases": "Find cases",
+      "noCases": "No probation case you can open matches.",
+      "testCase": "Test case",
+      "pendingNote": "On a real case the system checks whose step is pending on the day the reminder runs.",
+      "run": "Run the dry run",
+      "result": "Dry run result",
+      "runDate": "Would run on {date}.",
+      "repeats": "Then every morning after that.",
+      "wouldRun": "Would run for {name}.",
+      "wouldNotRun": "Would not run for {name}.",
+      "unavailable": "not available for this trigger",
+      "thisCase": "this case: {value}",
+      "empty": "empty",
+      "to": "to {names}",
+      "cc": "CC {names}",
+      "nobody": "nobody",
+      "skipped": "skipped: {why}",
+      "nothingSent": "Nothing is sent and nothing is saved."
+    },
+    "templates": {
+      "title": "Templates",
+      "intro": "Document templates and email templates. A workflow decides when a document is generated or an email is sent.",
+      "documents": "Document templates",
+      "documentsIntro": "Probation letters, with their signing and review routing, are edited in the letter template editor.",
+      "noLetterCompany": "You do not configure Probation letters for any company.",
+      "company": "Company",
+      "goLive": "Go-live check: {count} of 3 probation letters published.",
+      "noLetters": "No letter templates yet.",
+      "letterLine": "Letter · version {version} · {state}",
+      "state": {
+        "draft": "draft",
+        "published": "in use",
+        "retired": "retired"
+      },
+      "openLetterEditor": "Open the letter template editor",
+      "emails": "Email templates",
+      "emailsIntro": "The words, merge fields and extra CC. A workflow decides when it is sent. Turning a template off skips its Send email steps and notes it on the case; nothing else changes.",
+      "noEmails": "No Probation email templates yet.",
+      "newEmail": "New email",
+      "newName": "New email",
+      "editNamed": "Open email template {name}",
+      "editorTitle": "Email template {name}",
+      "turnedOff": "turned off",
+      "name": "Template name",
+      "active": "Send this email (on)",
+      "offNote": "This template is turned off. Send email steps that use it are skipped and noted on the case.",
+      "cc": "Always copy (CC)",
+      "insertMerge": "Insert merge field into the {where}",
+      "fixFirst": "Fix the problems before saving.",
+      "save": "Save template",
+      "retire": "Retire template",
+      "retireConfirm": "Retire this email template? Workflows that use it will show a problem until another template is chosen.",
+      "close": "Close",
+      "reasonCreate": "Created in the template builder",
+      "reasonSave": "Edited in the template builder",
+      "reasonRetire": "Retired in the template builder",
+      "goLiveReady": "All outcome letters are ready.",
+      "goLiveMissing": "Publish a letter template for each outcome before go-live.",
+      "letter": "Letter",
+      "versionPill": "v{version} {state}",
+      "editLetter": "Edit {name} in the letter template editor",
+      "signing": {
+        "chain": "signing: {chain}",
+        "existing": "signing: the existing letter signing route",
+        "missing": "a routing or group that was removed",
+        "people": "{count, plural, one {1 named person} other {# named people}}",
+        "employee": "the employee",
+        "directSuperior": "the Direct Superior",
+        "action": {
+          "review": "Review",
+          "approve": "Approve",
+          "sign": "Sign"
+        }
+      }
+    },
+    "groups": {
+      "title": "Assignment groups",
+      "intro": "Groups and routing rules are shared by Onboarding, Offboarding, Contract staff and Probation.",
+      "groups": "Assignment groups",
+      "groupsIntro": "Round robin skips people on leave and people at their open task limit. Groups and their members are edited in the On/Off Boarding configuration.",
+      "noGroups": "No assignment groups yet.",
+      "usedBy": "{count, plural, =0 {Not used by a routing} one {Used by # routing} other {Used by # routings}}",
+      "editGroups": "Edit assignment groups in On/Off Boarding",
+      "groupsReadOnly": "Only On/Off Boarding administrators can change groups and their members.",
+      "routings": "Routing rules",
+      "routingIntro": "Each routing finds who acts for an employee. Pick a routing by name in any To or CC list, or in an approval or signing step, when the person depends on who the employee is. The most specific matching row wins; leave a field on Any to match everyone.",
+      "approvalNote": "In an approval or signing step a routing yields one person (any member or round robin). As a To or CC recipient it yields everyone in the matched group or list.",
+      "newRouting": "New routing",
+      "newRoutingName": "New routing",
+      "noRoutings": "No routings yet. Create one to route approvals and messages by business group, company, department or job title.",
+      "retired": "{count, plural, one {# retired routing} other {# retired routings}}",
+      "routingName": "Routing name",
+      "duplicateName": "Another routing already has this name.",
+      "usedIn": "Used in: {list}{more, plural, =0 {} other { and # more}}",
+      "notUsed": "Not used in any workflow yet",
+      "dimension": {
+        "businessGroup": "Business group",
+        "company": "Company",
+        "department": "Department",
+        "jobTitle": "Job title"
+      },
+      "rowDimension": "Row {row} {dimension}",
+      "any": "Any",
+      "assignTo": "Assign to",
+      "assignGroup": "Assignment group",
+      "assignPeople": "Specific people",
+      "group": "Group",
+      "people": "People (1 to {max})",
+      "rowPeople": "Row {row} people",
+      "removeRow": "Remove row {row}",
+      "addRow": "Add row",
+      "matches": "Matches employees with {what}",
+      "matchesEveryone": "Default: matches everyone no other row matches",
+      "goesTo": "goes to {who}",
+      "toGroup": "everyone in “{name}”",
+      "noGroupChosen": "no group chosen",
+      "noPeopleChosen": "nobody yet",
+      "unknownPerson": "someone who can no longer be found",
+      "fixFirst": "Fix the routing before saving it.",
+      "save": "Save routing",
+      "retire": "Retire routing",
+      "retireConfirm": "Retire this routing? {count, plural, =0 {No workflow uses it.} one {# workflow uses it and will show a problem.} other {# workflows use it and will show a problem.}}",
+      "retiredNow": "“{name}” is retired.",
+      "cancel": "Cancel",
+      "reasonCreate": "Created in the routing rules",
+      "reasonSave": "Edited in the routing rules",
+      "reasonRetire": "Retired in the routing rules",
+      "routingNamed": "Routing “{name}”",
+      "usedByList": "Used by: {list}",
+      "groupName": "Group name"
+    },
+    "move": {
+      "title": "Move Probation workflows to shared workflows",
+      "help": "Moves each workflow of the Probation workflow builder whose shared form reaches the same people with the same words. A moved workflow goes Live here and stops sending from the Probation builder, so nobody is notified twice. The rest stay where they are and are listed with the reason. Running it again moves nothing twice.",
+      "reason": "Reason (kept in the audit history)",
+      "button": "Move to shared workflows",
+      "confirm": "Move the Probation workflows that convert exactly? Each moved workflow goes Live here and stops sending from the Probation builder.",
+      "done": "Moved {moved}; {kept} stay on the Probation builder; {already} were moved before.",
+      "result": "Move result",
+      "moved": "Moved",
+      "kept": "Staying on the Probation builder",
+      "none": "There was nothing left to move."
+    }
+  },
+  "personnelPostings": {
+    "breadcrumb": "Probation Confirmation / Personnel postings",
+    "title": "Personnel postings",
+    "intro": "Changes to Personnel Management created by Probation workflows wait here. Approve applies the change; Edit opens the event movement in Personnel Management.",
+    "rule": "Only members of the group set in Probation settings › “Who approves Personnel postings” can approve, by Approve or by Save event. Anyone who can record events can Edit; their changes wait for an approver. Nothing reaches Personnel Management until approval.",
+    "columns": {
+      "posting": "Posting",
+      "employee": "Employee",
+      "eventType": "Event type",
+      "change": "Change",
+      "created": "Created",
+      "status": "Status",
+      "actions": "Actions",
+      "from": "From"
+    },
+    "events": {
+      "confirmation": "Confirmation",
+      "probationExtension": "Probation Extension"
+    },
+    "change": {
+      "confirmation": "Confirmation Date {date} · status Probation → Active",
+      "probationExtension": "Probation extended · new end date {end} · effective {date}",
+      "remarks": "Remarks: {remarks}"
+    },
+    "status": {
+      "pending": "Pending",
+      "edited": "Edited · waiting for approval",
+      "approved": "Approved"
+    },
+    "editedNote": "Edited by {name} {date}: {changes}",
+    "fields": {
+      "effectiveDate": "effective date",
+      "endDate": "end date",
+      "remarks": "remarks"
+    },
+    "fieldChange": "{field} {before} → {after}",
+    "someone": "a colleague",
+    "unknownGroup": "the posting approver group",
+    "approve": "Approve",
+    "edit": "Edit",
+    "editLabel": "Edit {posting} in Personnel Management",
+    "approveOnlyGroup": "Only {group} can approve",
+    "filters": {
+      "label": "Show postings",
+      "pending": "Waiting for approval",
+      "approved": "Approved",
+      "all": "All"
+    },
+    "empty": "No postings here.",
+    "previous": "Previous",
+    "next": "Next",
+    "saved": {
+      "approved": "Posting {posting} approved. Personnel Management is updated.",
+      "edited": "Your changes to posting {posting} are saved and wait for approval."
+    },
+    "movement": {
+      "banner": "From Personnel posting {posting} · Probation Confirmation.",
+      "approverHint": "You are in the posting approver group ({group}): saving applies this event, approves the posting as you and clears the pending state on the case.",
+      "editorHint": "You can correct these details. The posting stays Pending until {group} approves it; Personnel Management does not change yet.",
+      "leaveHint": "Leaving without saving changes nothing.",
+      "saveAndApprove": "Save event and approve",
+      "saveForApproval": "Save changes for approval",
+      "notPending": "Posting {posting} is no longer waiting for approval.",
+      "backToPostings": "Back to Personnel postings"
+    },
+    "introGroup": "Changes to Personnel Management created by workflows wait here as drafts. Approve applies the change, and Edit opens the event movement in Personnel Management. Probation postings are approved by <b>{group}</b>, set in Probation settings.",
+    "sources": {
+      "probation": "Probation"
+    },
+    "approverGroupFallback": "the posting approver group"
+  },
+  "probationLetters": {
+    "routing": {
+      "title": "Signing and review routing",
+      "help": "Who reviews, approves and signs this letter, and in what order. Steps with the same order number happen at the same time, and the letter moves on when all of them are done. Who each step resolves to comes from Assignment groups and Routing rules. A Review step can edit the letter until the first signature; after that the text is locked. Anyone can send the letter back with a comment: every signature is cleared and it returns to the step that owns the document (or the People Business Partner if none is ticked).",
+      "empty": "No signing routing set. This letter uses the signing route below, as today.",
+      "notStored": "Signing and review routing is switched on together with the new letter flow. Until then this letter uses the signing route below.",
+      "stepTitle": "Step {n}",
+      "order": "Order",
+      "action": "Action",
+      "who": "Who",
+      "owner": "Owns the document",
+      "pick": "Choose one person by",
+      "pickAny": "Any member",
+      "pickRoundRobin": "Round robin",
+      "oneOfGroup": "A routing or group gives one person for this step, chosen by the rule above.",
+      "actions": {
+        "review": "Review",
+        "approve": "Approve",
+        "sign": "Sign"
+      },
+      "hint": {
+        "review": "Can edit the letter until the first signature. Shown in Approval Items.",
+        "approve": "A decision with no signature. Shown in Approval Items.",
+        "sign": "Signs the letter. The last step releases it. Signers can’t edit the text.",
+        "owner": "Send-backs come to this step."
+      },
+      "whoEmployee": "The employee",
+      "whoDirectSuperior": "Their Direct Superior",
+      "whoRouting": "Routing: {name}",
+      "whoGroup": "Assignment group: {name}",
+      "whoPeople": "Named people",
+      "unknown": "No longer available",
+      "people": "People at this step",
+      "removePerson": "Remove {name}",
+      "remove": "Remove step {n}",
+      "add": "Add signing step",
+      "problems": "Problems",
+      "blocks": "Signature blocks",
+      "blocksHelp": "Who signs comes from the signing routing above. This only decides where that signature prints.",
+      "noBlocks": "This version has no signature block yet. Add one in the content.",
+      "blockLabel": "Signature block {n}",
+      "chooseStep": "Choose a signing step…",
+      "stepOption": "Step {order} · Sign · {who}",
+      "oldSetting": "{role} (old setting — choose a step)",
+      "stepRemoved": "Signing step removed — choose another"
+    },
+    "preview": {
+      "caseLabel": "Preview values for",
+      "chooseCase": "Choose a case",
+      "loading": "Loading the case’s values…",
+      "noOutcome": "This case has no decided outcome yet, so merge fields show as placeholders.",
+      "notPublished": "Case values can be previewed for a saved, published version that matches the case’s outcome. Merge fields show as placeholders.",
+      "unavailable": "The preview values are unavailable right now."
+    },
+    "history": {
+      "routingSteps": "{count, plural, =0 {no routing} one {# routing step} other {# routing steps}}"
+    }
+  },
+  "automationRuntime": {
+    "status": {
+      "running": "Running",
+      "waiting": "Waiting for the document",
+      "done": "Finished",
+      "skipped": "Skipped",
+      "failed": "Stopped"
+    },
+    "log": {
+      "started": "Started",
+      "skipped": "Skipped",
+      "stepDone": "Step done",
+      "stepSkipped": "Step skipped",
+      "stepFailed": "Step failed",
+      "waiting": "Waiting",
+      "resumed": "Continued",
+      "done": "Finished",
+      "failed": "Stopped"
+    },
+    "noWorkflow": "No workflow matched this case, so it was sent to the People Business Partner.",
+    "fallback": "Meant for {meantFor}; sent to the fallback group because nobody was found."
+  },
+  "probationAccess": {
+    "breadcrumb": "Probation Confirmation / Configuration / Access",
+    "title": "Access",
+    "intro": "Same access model as Contract Management. Line Managers get access automatically through the Direct Superiors rule. Business Partners and everyone else aren’t given access automatically: create a role below and add them as members with the right scope. System Administrators manage this page and every Probation setting; to see or act on cases they add themselves to a role like anyone else.",
+    "forbidden": "Only a System Administrator or someone who manages access can open Probation access.",
+    "on": "On",
+    "off": "Off",
+    "superiors": {
+      "title": "Direct Superiors",
+      "intro": "Anyone named as an employee’s Direct Superior in Personnel Management gets these permissions for that employee’s cases.",
+      "enabled": "Rule is on",
+      "view": "View cases",
+      "kpis": "Set Week 1 KPIs",
+      "assessments": "Complete assessments",
+      "alwaysOn": "always on",
+      "declined": "Record a declined signature",
+      "offWarning": "With the rule off, Line Managers can’t see their team’s cases, set KPIs or complete assessments, so reviews would stall. Only switch it off if another role covers this.",
+      "save": "Save rule",
+      "saved": "Direct Superiors rule saved.",
+      "savedOff": "Direct Superiors rule saved. Line Managers no longer get automatic access."
+    },
+    "roles": {
+      "title": "Roles",
+      "intro": "Create a role, choose what it can see and do, and add its members, each with a business group and company scope.",
+      "newRole": "+ New role",
+      "newRoleName": "New role",
+      "name": "Role name",
+      "save": "Save role",
+      "cancel": "Cancel",
+      "delete": "Delete role",
+      "deleteConfirm": "Delete {name}? Its members lose these permissions now.",
+      "empty": "No roles yet. Create a role to give Business Partners and others access.",
+      "cases": "Cases (within each member’s scope)",
+      "settings": "Settings",
+      "postingsNote": "Decides who may choose the posting-approver group in Probation settings. Only that group approves Personnel postings.",
+      "actNote": "A member never acts on their own probation.",
+      "created": "Role {name} created.",
+      "saved": "Role {name} saved.",
+      "deleted": "Role {name} deleted."
+    },
+    "permissions": {
+      "view": "View cases",
+      "letters": "Approve and release letters",
+      "lowResult": "Record low-result actions",
+      "route": "Change a case’s route",
+      "configure": "Configure probation",
+      "intake": "Intake and activation",
+      "postings": "Approve Personnel postings"
+    },
+    "members": {
+      "title": "Members",
+      "empty": "No members yet.",
+      "businessGroup": "Business group",
+      "allBusinessGroups": "All business groups",
+      "company": "Company",
+      "allCompanies": "All companies",
+      "validFrom": "Valid from",
+      "validTo": "Valid to (optional)",
+      "active": "Active",
+      "scheduled": "Scheduled",
+      "expired": "Expired",
+      "save": "Save",
+      "remove": "Remove",
+      "removeLabel": "Remove {name} from {role}",
+      "add": "+ Add member",
+      "find": "Find a person",
+      "search": "Search",
+      "noMatch": "No active person matches “{query}”.",
+      "addPerson": "Add {name}",
+      "added": "{name} added to {role}.",
+      "changed": "{name}’s scope saved.",
+      "removed": "{name} removed from {role}."
+    },
+    "earlier": {
+      "title": "Earlier PBP and GBS assignments",
+      "intro": "These assignments were made before roles existed and still apply.",
+      "pbp": "People Business Partner",
+      "gbs": "GBS People Ops",
+      "validFrom": "from {date}",
+      "validTo": "until {date}"
+    }
   },
   "recruitment": {
     "noCompany": "ไม่มีบริษัทในขอบเขตปัจจุบันของคุณที่คุณดูแลการสรรหา โปรดเปลี่ยนบริษัท หรือขอบทบาทพาร์ทเนอร์สรรหาจากผู้ดูแลระบบระดับกลุ่ม",
@@ -41586,858 +43888,6 @@
       "repeat": "ผู้สมัครรายนี้กำลังรอตรวจสอบสำหรับตำแหน่งนี้จากสัญญาของคุณอยู่แล้ว",
       "dailyLimit": "คุณเสนอครบ 20 รายการซึ่งเป็นขีดจำกัดของวันนี้แล้ว ลองอีกครั้งพรุ่งนี้",
       "notAvailable": "ตำแหน่งนี้ไม่เปิดให้สัญญาของคุณอีกต่อไป"
-    }
-  },
-  "bulkJobs": {
-    "notification": {
-      "employeeImport": {
-        "completed": {
-          "title": "นำเข้าพนักงานเสร็จสิ้น",
-          "body": "เปิดประวัติการนำเข้าเพื่อดูพนักงานที่เพิ่มเข้ามา"
-        },
-        "failed": {
-          "title": "การนำเข้าพนักงานหยุดลง",
-          "body": "ไม่มีการเพิ่มพนักงาน เปิดประวัติการนำเข้าเพื่อดูสาเหตุ"
-        },
-        "cancelled": {
-          "title": "ยกเลิกการนำเข้าพนักงานแล้ว",
-          "body": "ไม่มีการเพิ่มพนักงาน เปิดประวัติการนำเข้าเพื่อดูรายละเอียด"
-        }
-      },
-      "leaveImport": {
-        "completed": {
-          "title": "นำเข้าข้อมูลการลาเสร็จสิ้น",
-          "body": "แถวที่นำเข้าได้รวมอยู่ในยอดวันลาของพนักงานแล้ว"
-        },
-        "failed": {
-          "title": "การนำเข้าข้อมูลการลาหยุดลง",
-          "body": "แถวที่บันทึกแล้วจะยังคงอยู่ หากนำเข้าไฟล์เดิมอีกครั้ง ระบบจะข้ามแถวเหล่านั้น"
-        },
-        "cancelled": {
-          "title": "ยกเลิกการนำเข้าข้อมูลการลาแล้ว",
-          "body": "แถวที่บันทึกแล้วจะยังคงอยู่ หากนำเข้าไฟล์เดิมอีกครั้ง ระบบจะข้ามแถวเหล่านั้น"
-        }
-      },
-      "leaveProcessing": {
-        "completed": {
-          "title": "การประมวลผลวันลาเสร็จสิ้น",
-          "body": "อัปเดตตัวเลขวันลาแล้ว"
-        },
-        "failed": {
-          "title": "การประมวลผลวันลาหยุดลง",
-          "body": "พนักงานที่ประมวลผลแล้วยังคงใช้ตัวเลขเดิม เรียกใช้อีกครั้งเพื่อดำเนินการส่วนที่เหลือ"
-        },
-        "cancelled": {
-          "title": "ยกเลิกการประมวลผลวันลาแล้ว",
-          "body": "พนักงานที่ประมวลผลแล้วยังคงใช้ตัวเลขเดิม เรียกใช้อีกครั้งเพื่อดำเนินการส่วนที่เหลือ"
-        }
-      },
-      "roster": {
-        "completed": {
-          "title": "การเปลี่ยนแปลงตารางเวรเสร็จสิ้น",
-          "body": "เปิดตารางเวรเพื่อดูผลลัพธ์"
-        },
-        "failed": {
-          "title": "การเปลี่ยนแปลงตารางเวรหยุดลง",
-          "body": "เปิดตารางเวรเพื่อดูสาเหตุ"
-        },
-        "cancelled": {
-          "title": "การเปลี่ยนแปลงตารางเวรถูกยกเลิก",
-          "body": "เปิดตารางเวรเพื่อดูรายละเอียด"
-        }
-      },
-      "scheduleGroup": {
-        "completed": {
-          "title": "การกำหนดกลุ่มตารางงานเสร็จสิ้น",
-          "body": "เปิดหน้ากำหนดกลุ่มตารางงานเพื่อดูผลลัพธ์"
-        },
-        "failed": {
-          "title": "การกำหนดกลุ่มตารางงานหยุดลง",
-          "body": "เปิดหน้ากำหนดกลุ่มตารางงานเพื่อดูสาเหตุ"
-        },
-        "cancelled": {
-          "title": "การกำหนดกลุ่มตารางงานถูกยกเลิก",
-          "body": "เปิดหน้ากำหนดกลุ่มตารางงานเพื่อดูรายละเอียด"
-        }
-      },
-      "clockingImport": {
-        "completed": {
-          "title": "นำเข้าการลงเวลาเสร็จสิ้น",
-          "body": "เปิดบันทึกการนำเข้าเพื่อดูการลงเวลาที่เพิ่มเข้ามา"
-        },
-        "failed": {
-          "title": "การนำเข้าการลงเวลาหยุดลง",
-          "body": "เปิดบันทึกการนำเข้าเพื่อดูสิ่งที่บันทึกไว้และสาเหตุที่หยุด"
-        },
-        "cancelled": {
-          "title": "การนำเข้าการลงเวลาหยุดลง",
-          "body": "เปิดบันทึกการนำเข้าเพื่อดูสิ่งที่บันทึกไว้"
-        }
-      },
-      "attendanceRecomputePreview": {
-        "completed": {
-          "title": "ตัวอย่างการคำนวณใหม่พร้อมแล้ว",
-          "body": "เปิดคำนวณการลงเวลาใหม่เพื่อตรวจสอบสิ่งที่จะเปลี่ยนแปลง"
-        },
-        "failed": {
-          "title": "ตัวอย่างการคำนวณใหม่หยุดลง",
-          "body": "เปิดคำนวณการลงเวลาใหม่เพื่อดูสาเหตุ"
-        },
-        "cancelled": {
-          "title": "ตัวอย่างการคำนวณใหม่หยุดลง",
-          "body": "เปิดคำนวณการลงเวลาใหม่เพื่อเริ่มอีกครั้ง"
-        }
-      },
-      "attendanceRecompute": {
-        "completed": {
-          "title": "คำนวณการลงเวลาใหม่แล้ว",
-          "body": "เปิดคำนวณการลงเวลาใหม่เพื่อดูวันที่เปลี่ยนแปลง"
-        },
-        "failed": {
-          "title": "การคำนวณการลงเวลาใหม่หยุดลง",
-          "body": "เปิดคำนวณการลงเวลาใหม่เพื่อดูสาเหตุ"
-        },
-        "cancelled": {
-          "title": "การคำนวณการลงเวลาใหม่หยุดลง",
-          "body": "เปิดคำนวณการลงเวลาใหม่เพื่อดูรายละเอียด"
-        }
-      },
-      "payrollProcess": {
-        "completed": {
-          "title": "ประมวลผลเงินเดือนเสร็จแล้ว",
-          "body": "เปิดเงินเดือนเพื่อตรวจทานรอบที่ประมวลผลแล้ว"
-        },
-        "failed": {
-          "title": "การประมวลผลเงินเดือนหยุดลง",
-          "body": "รอบกลับเป็นฉบับร่างและไม่มีการเก็บสลิปเงินเดือน เปิดเงินเดือนเพื่อดูสาเหตุ"
-        },
-        "cancelled": {
-          "title": "ยกเลิกการประมวลผลเงินเดือนแล้ว",
-          "body": "รอบกลับเป็นฉบับร่างและไม่มีการเก็บสลิปเงินเดือน"
-        }
-      },
-      "systemLabelImport": {
-        "completed": {
-          "title": "นำเข้าป้ายกำกับระบบเสร็จสิ้น",
-          "body": "เปิดป้ายกำกับระบบเพื่อดูรหัสที่เพิ่มเข้ามา"
-        },
-        "failed": {
-          "title": "การนำเข้าป้ายกำกับระบบหยุดลง",
-          "body": "ไม่มีการเพิ่มรหัส เปิดป้ายกำกับระบบและแสดงตัวอย่างเวิร์กบุ๊กอีกครั้ง"
-        },
-        "cancelled": {
-          "title": "ยกเลิกการนำเข้าป้ายกำกับระบบแล้ว",
-          "body": "ไม่มีการเพิ่มรหัส"
-        }
-      },
-      "sectionImport": {
-        "completed": {
-          "title": "นำเข้าส่วนข้อมูลเสร็จสิ้น",
-          "body": "เปิดหน้านำเข้าเพื่อดูแถวที่อัปเดตแล้ว"
-        },
-        "failed": {
-          "title": "การนำเข้าส่วนข้อมูลหยุดลง",
-          "body": "แถวที่บันทึกไว้ก่อนหยุดยังคงอยู่ เปิดหน้านำเข้าเพื่อดูสาเหตุ"
-        },
-        "cancelled": {
-          "title": "ยกเลิกการนำเข้าส่วนข้อมูลแล้ว",
-          "body": "แถวที่บันทึกไว้ก่อนหยุดยังคงอยู่ เปิดหน้านำเข้าเพื่อดูรายละเอียด"
-        }
-      },
-      "registerImport": {
-        "completed": {
-          "title": "นำเข้าทะเบียนเสร็จสิ้น",
-          "body": "เปิดหน้านำเข้าเพื่อดูรายการทะเบียนที่บันทึกแล้ว"
-        },
-        "failed": {
-          "title": "การนำเข้าทะเบียนหยุดลง",
-          "body": "ไม่มีการบันทึกรายการทะเบียน เปิดหน้านำเข้าเพื่อดูสาเหตุ"
-        },
-        "cancelled": {
-          "title": "ยกเลิกการนำเข้าทะเบียนแล้ว",
-          "body": "ไม่มีการบันทึกรายการทะเบียน เปิดหน้านำเข้าเพื่อดูรายละเอียด"
-        }
-      },
-      "employeeImportRevert": {
-        "completed": {
-          "title": "ย้อนกลับการนำเข้าเสร็จสิ้น",
-          "body": "เปิดประวัติการนำเข้าเพื่อดูพนักงานที่ถูกยกเลิก"
-        },
-        "failed": {
-          "title": "การย้อนกลับการนำเข้าหยุดลง",
-          "body": "ไม่มีการเปลี่ยนแปลงใด ๆ เปิดประวัติการนำเข้าเพื่อดูสาเหตุ"
-        },
-        "cancelled": {
-          "title": "ยกเลิกการย้อนกลับการนำเข้าแล้ว",
-          "body": "ไม่มีการเปลี่ยนแปลงใด ๆ เปิดประวัติการนำเข้าเพื่อดูรายละเอียด"
-        }
-      },
-      "leaveGeneration": {
-        "completed": {
-          "title": "สร้างสิทธิ์การลาเสร็จแล้ว",
-          "body": "ตัวเลขวันลาได้รับการอัปเดตแล้ว"
-        },
-        "failed": {
-          "title": "การสร้างสิทธิ์การลาหยุดลง",
-          "body": "ไม่มีการเปลี่ยนแปลงใด ๆ เปิดหน้าสร้างสิทธิ์การลาเพื่อดูสาเหตุ แล้วเรียกใช้อีกครั้ง"
-        },
-        "cancelled": {
-          "title": "ยกเลิกการสร้างสิทธิ์การลาแล้ว",
-          "body": "ไม่มีการเปลี่ยนแปลงใด ๆ"
-        }
-      },
-      "leaveRecalculation": {
-        "completed": {
-          "title": "คำนวณยอดวันลาใหม่แล้ว",
-          "body": "ตัวเลขวันลาของพนักงานเป็นไปตามการตั้งค่าที่บันทึกไว้แล้ว"
-        },
-        "failed": {
-          "title": "การคำนวณวันลาใหม่หยุดลง",
-          "body": "พนักงานที่คำนวณใหม่แล้วยังคงใช้ตัวเลขใหม่ บันทึกการตั้งค่าอีกครั้งเพื่อคำนวณส่วนที่เหลือ"
-        },
-        "cancelled": {
-          "title": "ยกเลิกการคำนวณวันลาใหม่แล้ว",
-          "body": "พนักงานที่คำนวณใหม่แล้วยังคงใช้ตัวเลขใหม่ บันทึกการตั้งค่าอีกครั้งเพื่อคำนวณส่วนที่เหลือ"
-        }
-      },
-      "leaveYearType": {
-        "completed": {
-          "title": "ใช้ประเภทปีการลาแล้ว",
-          "body": "ตัวเลขวันลาของพนักงานปีแรกเป็นไปตามประเภทปีการลาที่บันทึกไว้แล้ว"
-        },
-        "failed": {
-          "title": "ไม่ได้ใช้ประเภทปีการลากับยอดวันลา",
-          "body": "ไม่มีการเปลี่ยนแปลงตัวเลขวันลา บันทึกประเภทปีการลาอีกครั้งเพื่อลองใหม่"
-        },
-        "cancelled": {
-          "title": "ยกเลิกการปรับประเภทปีการลาแล้ว",
-          "body": "ไม่มีการเปลี่ยนแปลงตัวเลขวันลา"
-        }
-      },
-      "toilSweep": {
-        "completed": {
-          "title": "การดำเนินการวันหยุดชดเชยเสร็จสิ้น",
-          "body": "เครดิตวันหยุดชดเชยที่ถึงกำหนดได้รับการดำเนินการแล้ว เปิดหน้าเครดิตวันลาเพื่อตรวจสอบ"
-        },
-        "failed": {
-          "title": "การดำเนินการวันหยุดชดเชยหยุดลง",
-          "body": "เครดิตที่ดำเนินการแล้วจะคงอยู่ตามเดิม เรียกใช้อีกครั้งเพื่อดำเนินการส่วนที่เหลือ"
-        },
-        "cancelled": {
-          "title": "ยกเลิกการดำเนินการวันหยุดชดเชยแล้ว",
-          "body": "เครดิตที่ดำเนินการแล้วจะคงอยู่ตามเดิม เรียกใช้อีกครั้งเพื่อดำเนินการส่วนที่เหลือ"
-        }
-      },
-      "payrollHistory": {
-        "completed": {
-          "title": "บันทึกการเปลี่ยนแปลงประวัติเงินเดือนแล้ว",
-          "body": "เปิดบันทึกการนำเข้าเพื่อดูสิ่งที่บันทึก"
-        },
-        "failed": {
-          "title": "การเปลี่ยนแปลงประวัติเงินเดือนหยุดลง",
-          "body": "ไม่มีการเปลี่ยนแปลงประวัติเงินเดือน เปิดบันทึกการนำเข้าเพื่อดูสาเหตุ"
-        },
-        "cancelled": {
-          "title": "ยกเลิกการเปลี่ยนแปลงประวัติเงินเดือนแล้ว",
-          "body": "ไม่มีการเปลี่ยนแปลงประวัติเงินเดือน"
-        }
-      },
-      "payrollReprocess": {
-        "completed": {
-          "title": "ประมวลผลเงินเดือนใหม่เสร็จแล้ว",
-          "body": "เปิดรอบการจ่ายเพื่อตรวจสอบพนักงานที่ประมวลผลใหม่"
-        },
-        "failed": {
-          "title": "การประมวลผลเงินเดือนใหม่หยุดลง",
-          "body": "พนักงานที่ประมวลผลใหม่แล้วยังคงผลลัพธ์ใหม่ไว้ เปิดรอบการจ่ายเพื่อดูว่าหยุดที่ใด"
-        },
-        "cancelled": {
-          "title": "ยกเลิกการประมวลผลเงินเดือนใหม่แล้ว",
-          "body": "พนักงานที่ประมวลผลใหม่แล้วยังคงผลลัพธ์ใหม่ไว้"
-        }
-      },
-      "movementImport": {
-        "completed": {
-          "title": "นำเข้าการเปลี่ยนแปลงการจ้างงานเสร็จสิ้น",
-          "body": "เปิดประวัติการนำเข้าเพื่อดูการเปลี่ยนแปลงที่บันทึกแล้วและพนักงานที่บันทึกไม่สำเร็จ"
-        },
-        "failed": {
-          "title": "การนำเข้าการเปลี่ยนแปลงการจ้างงานหยุดลง",
-          "body": "เปิดประวัติการนำเข้าเพื่อดูสาเหตุ พนักงานที่บันทึกแล้วยังคงมีการเปลี่ยนแปลงของตน"
-        },
-        "cancelled": {
-          "title": "การนำเข้าการเปลี่ยนแปลงการจ้างงานหยุดลง",
-          "body": "พนักงานที่บันทึกแล้วยังคงมีการเปลี่ยนแปลงของตน เปิดประวัติการนำเข้าเพื่อดูรายละเอียด"
-        }
-      },
-      "movementCheck": {
-        "completed": {
-          "title": "ตรวจสอบไฟล์การเปลี่ยนแปลงการจ้างงานแล้ว",
-          "body": "การตรวจสอบถูกบันทึกในประวัติการนำเข้า หากคุณออกจากหน้าจอนำเข้าแล้ว โปรดอัปโหลดไฟล์อีกครั้งเพื่อตรวจทานและยืนยัน"
-        },
-        "failed": {
-          "title": "การตรวจสอบการเปลี่ยนแปลงการจ้างงานหยุดลง",
-          "body": "เปิดประวัติการนำเข้าเพื่อดูสาเหตุ ไม่มีการบันทึกใด ๆ"
-        },
-        "cancelled": {
-          "title": "การตรวจสอบการเปลี่ยนแปลงการจ้างงานหยุดลง",
-          "body": "ไม่มีการบันทึกใด ๆ เปิดประวัติการนำเข้าเพื่อดูรายละเอียด"
-        }
-      },
-      "movementImportRevert": {
-        "completed": {
-          "title": "ย้อนกลับการนำเข้าการเปลี่ยนแปลงการจ้างงานเสร็จสิ้น",
-          "body": "เปิดประวัติการนำเข้าเพื่อดูการเปลี่ยนแปลงที่ถูกย้อนกลับ"
-        },
-        "failed": {
-          "title": "การย้อนกลับการนำเข้าการเปลี่ยนแปลงการจ้างงานหยุดลง",
-          "body": "ไม่มีการเปลี่ยนแปลงใด ๆ เปิดประวัติการนำเข้าเพื่อดูสาเหตุ"
-        },
-        "cancelled": {
-          "title": "ยกเลิกการย้อนกลับการนำเข้าการเปลี่ยนแปลงการจ้างงานแล้ว",
-          "body": "ไม่มีการเปลี่ยนแปลงใด ๆ เปิดประวัติการนำเข้าเพื่อดูรายละเอียด"
-        }
-      },
-      "recruitmentImport": {
-        "completed": {
-          "title": "นำเข้าผู้สมัครเสร็จสิ้น",
-          "body": "เปิดการนำเข้าเพื่อดูผลลัพธ์ทีละแถวและผู้สมัครที่รออยู่ในรายการรอมอบหมาย"
-        },
-        "failed": {
-          "title": "การนำเข้าผู้สมัครหยุดแล้ว",
-          "body": "เกิดปัญหาทำให้การนำเข้าหยุด แถวที่นำเข้าแล้วจะยังคงอยู่ เปิดการนำเข้าเพื่อดูผลลัพธ์"
-        },
-        "cancelled": {
-          "title": "การนำเข้าผู้สมัครหยุดแล้ว",
-          "body": "การนำเข้าถูกหยุด แถวที่นำเข้าแล้วจะยังคงอยู่ เปิดการนำเข้าเพื่อดูผลลัพธ์"
-        }
-      }
-    },
-    "panel": {
-      "queued": "กำลังรอเริ่ม",
-      "preparing": "กำลังตรวจสอบทุกการเปลี่ยนแปลง",
-      "running": "กำลังบันทึก",
-      "finalizing": "กำลังดำเนินการให้เสร็จ",
-      "discarding": "กำลังหยุด",
-      "completed": "เสร็จสิ้น",
-      "failed": "หยุดแล้ว",
-      "cancelled": "ยกเลิกแล้ว",
-      "progressCount": "เสร็จแล้ว {done} จาก {total} ขั้นตอน",
-      "backgroundHelp": "คุณออกจากหน้านี้ได้ งานจะดำเนินต่อไปและคุณจะได้รับแจ้งเมื่อเสร็จ",
-      "waiting": "กำลังรอบริการเบื้องหลัง ความคืบหน้าถูกบันทึกแล้ว อย่าเริ่มงานนี้ซ้ำ",
-      "workerUnavailable": "บริการเบื้องหลังยังไม่ทำงาน คำขอของคุณถูกบันทึกแล้วและจะเริ่มโดยอัตโนมัติทันทีที่บริการทำงาน"
-    },
-    "roster": {
-      "generate": "กำลังสร้างตารางเวร",
-      "copy": "กำลังคัดลอกตารางเวร",
-      "assign": "กำลังใช้การเปลี่ยนแปลงตารางเวร",
-      "import": "กำลังบันทึกตารางเวรที่อัปโหลด",
-      "otherRunning": "การเปลี่ยนแปลงตารางเวรอีกรายการยังบันทึกอยู่ โปรดรอให้เสร็จแล้วลองอีกครั้ง",
-      "saveFailed": "ไม่สามารถบันทึกการเปลี่ยนแปลงตารางเวรได้ โปรดลองอีกครั้ง หรือติดต่อผู้ดูแลระบบ HR",
-      "queuedBehind": "อยู่ในคิวต่อจากงานตารางเวรอีกรายการ จะเริ่มโดยอัตโนมัติทันทีที่งานนั้นเสร็จ"
-    },
-    "scheduleGroup": {
-      "title": "กำลังกำหนดกลุ่มตารางงาน",
-      "otherRunning": "การกำหนดกลุ่มตารางงานอีกรายการยังบันทึกอยู่ โปรดรอให้เสร็จแล้วลองอีกครั้ง",
-      "queuedBehind": "อยู่ในคิวต่อจากการกำหนดกลุ่มตารางงานอีกรายการ จะเริ่มโดยอัตโนมัติทันทีที่รายการนั้นเสร็จ"
-    }
-  },
-  "importLog": {
-    "batchReference": "เลขอ้างอิงชุด",
-    "importedBy": "นำเข้าโดย",
-    "batchLabel": "ชุด {code}",
-    "actorWithId": "{name} ({employeeId})",
-    "actorUnlinked": "การล็อกอินของผู้ดูแลระบบ (ไม่มีประวัติพนักงาน · ล็อกอินลงท้ายด้วย {suffix})",
-    "actorUnavailable": "ผู้ใช้ที่ไม่พร้อมใช้งาน"
-  },
-  "scheduleOvertimeSetting": {
-    "title": "การตั้งค่าล่วงเวลา",
-    "intro": "ควบคุมวิธีบันทึก อนุมัติ หักชดเชย และปัดเศษล่วงเวลาของพนักงานในกลุ่มตารางงานนี้ มีผลตั้งแต่วันที่เริ่ม: วันก่อนหน้า บันทึกเวลา บันทึกการมาสาย และเงินเดือนที่ผ่านมาจะไม่ถูกคำนวณใหม่",
-    "companiesLabel": "ใช้กับ",
-    "allCompanies": "ทุกบริษัท",
-    "selectedCompanies": "บริษัทที่เลือก",
-    "effectiveFrom": "วันที่เริ่ม",
-    "effectiveHint": "หลังวันนี้ และหลังวันที่เริ่มที่บันทึกไว้แล้วของบริษัทที่เลือก",
-    "applicabilityTitle": "การใช้ล่วงเวลา",
-    "beforeShift": "ล่วงเวลาก่อนกะ",
-    "beforeShiftHint": "อนุญาตล่วงเวลาก่อนกะที่กำหนด",
-    "afterShift": "ล่วงเวลาหลังกะ",
-    "afterShiftHint": "อนุญาตล่วงเวลาหลังกะที่กำหนด",
-    "allowBackdated": "อนุญาตคำขอล่วงเวลาย้อนหลังโดยไม่มีการบันทึกเวลา",
-    "allowBackdatedHint": "พนักงานขอล่วงเวลาย้อนหลังได้โดยไม่มีบันทึกเวลาที่ตรงกัน ฝ่ายบุคคลยังต้องบันทึกช่วงเวลาทำงานจริงก่อนจึงจะนับ",
-    "splitAtMidnight": "แยกล่วงเวลาที่เที่ยงคืน",
-    "splitAtMidnightHint": "ล่วงเวลาหลังเที่ยงคืนนับเป็นล่วงเวลาช่วงเช้าของวันถัดไป ตัวอย่าง: 22:00 ถึง 02:00 ได้วันละ 2 ชั่วโมง",
-    "offsetTitle": "หักล่วงเวลาด้วยการมาสาย",
-    "offsetLateness": "หักล่วงเวลาด้วยการมาสาย",
-    "offsetHint": "หักนาทีที่มาสายออกจากล่วงเวลาที่มีสิทธิ์ ตัวอย่าง: สาย 20 นาที จากล่วงเวลาที่มีสิทธิ์ 60 นาที เหลือ 40 การมาสายที่บันทึกไว้ยังคงอยู่",
-    "showLatenessException": "แสดงข้อยกเว้นการมาสายหลังหักชดเชย",
-    "showLatenessExceptionHint": "แสดงข้อยกเว้นการมาสายสำหรับการมาสายที่เหลือหลังหักชดเชย",
-    "approvalTitle": "วิธีอนุมัติล่วงเวลา",
-    "approvalManual": "ด้วยตนเอง",
-    "approvalAuto": "อัตโนมัติ",
-    "approvalManualHint": "การลงเวลาไม่สร้างล่วงเวลาที่ต้องจ่าย บันทึกเวลายังคงเก็บไว้ และป้อนล่วงเวลาด้วยตนเองในระบบเงินเดือน",
-    "autoMethod": "วิธีอนุมัติล่วงเวลาอัตโนมัติ",
-    "methodIntersect": "ส่วนที่ตรงกันระหว่างจริงและอนุมัติล่วงหน้า",
-    "methodActual": "ชั่วโมงจริง",
-    "methodPreApproved": "ล่วงเวลาที่อนุมัติ",
-    "methodIntersectHint": "จ่ายตามนาทีที่น้อยกว่าระหว่างที่อนุมัติและจริง: อนุมัติ 120 จริง 90 จ่าย 90",
-    "methodActualHint": "จ่ายตามนาทีที่มีสิทธิ์จริง โดยไม่มีเพดานการอนุมัติ",
-    "methodPreApprovedHint": "จ่ายตามระยะเวลาที่อนุมัติ: อนุมัติ 120 จริง 90 จ่าย 120",
-    "patternsTitle": "รูปแบบล่วงเวลาสำหรับแต่ละประเภทวัน",
-    "patternsHint": "ค่าล่วงเวลาคำนวณโดยรูปแบบล่วงเวลาที่เลือก แสดงเฉพาะรูปแบบที่ใช้งานได้กับทุกบริษัทที่เลือก",
-    "patternsNone": "ไม่มีรูปแบบล่วงเวลาที่ใช้งานได้กับทุกบริษัทที่เลือก เปิดใช้งานหนึ่งรูปแบบในรูปแบบล่วงเวลาเพื่อใช้อัตโนมัติ หรือเลือกด้วยตนเอง",
-    "choosePattern": "เลือกรูปแบบล่วงเวลา",
-    "dayNormal": "วันทำงาน",
-    "dayOff": "วันหยุดงาน",
-    "dayRest": "วันพัก",
-    "dayPublicHoliday": "วันหยุดนักขัตฤกษ์",
-    "dayReplacementHoliday": "วันหยุดชดเชย",
-    "roundingTitle": "การปัดเศษล่วงเวลา",
-    "roundingMethod": "วิธีปัดเศษล่วงเวลา",
-    "roundUp": "ปัดขึ้น",
-    "roundDown": "ปัดลง",
-    "roundingStep": "ปัดเศษล่วงเวลาเป็นนาที",
-    "stepMinutes": "{n} นาที",
-    "roundingHint": "การปัดเศษทำเป็นขั้นสุดท้าย หลังวิธีอนุมัติและการหักชดเชยการมาสาย ระยะเวลาบันทึกเวลาไม่เปลี่ยนแปลง",
-    "unsupportedRounding": "การปัดเศษที่บันทึกไว้ใช้ตัวเลือกที่ส่วนนี้ไม่มี การบันทึกจะแทนที่ตั้งแต่วันที่เริ่มใหม่",
-    "differs": "{n, plural, other {# บริษัท}}มีการตั้งค่าล่วงเวลาต่างกันหรือยังไม่มี การบันทึกจะใช้การตั้งค่านี้กับทุกบริษัทที่เลือก",
-    "savedFrom": "การตั้งค่าที่บันทึกไว้เริ่มวันที่ {date}",
-    "none": "ยังไม่มีการตั้งค่าล่วงเวลา ล่วงเวลาของกลุ่มนี้ทำงานเหมือนเดิมจนกว่าจะบันทึก",
-    "save": "บันทึกการตั้งค่าล่วงเวลา",
-    "systemReason": "บันทึกการตั้งค่าล่วงเวลาของกลุ่มตารางงานแล้ว",
-    "on": "เปิด",
-    "off": "ปิด",
-    "payrollNote": "ระบบเงินเดือนได้รับตัวเลขล่วงเวลาสุดท้ายจากการตั้งค่านี้ เช่นเดียวกับที่ได้รับล่วงเวลาในปัจจุบัน"
-  },
-  "attendanceOnBehalf": {
-    "requestTitle": "ยื่นคำขอแทน",
-    "requestHelp": "เลือกพนักงาน แล้วยื่นความผิดปกติของการเข้างานหรือการทำงานล่วงเวลาให้เขาบนหน้าจอเดิม คำขอจะเป็นไปตามเวิร์กโฟลว์และผู้อนุมัติของพนักงานผู้นั้น",
-    "approveTitle": "อนุมัติแทน",
-    "approveHelp": "เลือกผู้อนุมัติที่กำหนดซึ่งคุณต้องจัดการคำขอการเข้างานที่รออยู่",
-    "approveListHelp": "คำขอที่รอ {name} ซึ่งคุณสามารถตัดสินใจแทนได้",
-    "searchLabel": "ค้นหาด้วยรหัสพนักงานหรือชื่อ",
-    "searchPlaceholder": "เช่น EMP-0123 หรือชื่อ",
-    "search": "ค้นหา",
-    "results": "พนักงานที่คุณดำเนินการแทนได้",
-    "noResults": "ไม่มีพนักงานที่คุณดำเนินการแทนได้ตรงกับการค้นหานี้",
-    "noPermission": "บทบาทของคุณไม่มีสิทธิ์นี้ หากต้องการโปรดติดต่อผู้ดูแลระบบ",
-    "choose": "เลือก",
-    "employeeName": "พนักงาน",
-    "employeeId": "รหัสพนักงาน",
-    "company": "บริษัท",
-    "department": "แผนก",
-    "changeEmployee": "เปลี่ยนพนักงาน",
-    "chooseCategory": "คุณต้องการยื่นคำขอประเภทใด",
-    "irregularity": "ความผิดปกติของการเข้างาน",
-    "irregularityHelp": "เวลาเข้าออกที่ขาดหายหรือผิด ชั่วโมงไม่ครบ หรือการขาดงาน ในวันของพนักงานเอง",
-    "selfOvertime": "การทำงานล่วงเวลาด้วยตนเอง",
-    "selfOvertimeHelp": "วางแผนหรือขอการทำงานล่วงเวลาตามกลุ่มตารางงานและกฎการทำงานล่วงเวลาของพนักงานเอง",
-    "banner": "กำลังยื่นแทน {name}",
-    "pendingTitle": "คำขอที่รอการอนุมัติ",
-    "pendingEmpty": "ไม่มีคำขอที่รอผู้อนุมัติรายนี้ซึ่งคุณตัดสินใจได้",
-    "approveOnBehalf": "อนุมัติแทน",
-    "rejectOnBehalf": "ปฏิเสธแทน",
-    "approveAudit": "ประวัติจะคงผู้ที่เลือกไว้เป็นผู้อนุมัติที่กำหนด และบันทึกคุณเป็นผู้ดำเนินการ",
-    "previous": "ก่อนหน้า",
-    "next": "ถัดไป"
-  },
-  "importErrorLogMovement": {
-    "correction": {
-      "date": "กรอกวันที่ในรูปแบบ DD-MMM-YYYY (เช่น 06-Jan-2026) หรือเป็นวันที่ของ Excel",
-      "required": "กรอกฟิลด์นี้ - ประเภทเหตุการณ์นี้กำหนดให้ต้องกรอก",
-      "chooseCompany": "เลือกรหัสบริษัทจากชีต Reference",
-      "eventType": "เลือกประเภทเหตุการณ์ที่ใช้งานอยู่จากรายการดรอปดาวน์",
-      "chooseReference": "เลือกค่าจากรายการดรอปดาวน์หรือชีต Reference",
-      "employeeId": "ตรวจสอบรหัสพนักงานและรหัสบริษัทในแถวนี้กับข้อมูลใน Personnel",
-      "systemField": "เลือกฟิลด์ระบบที่ประเภทเหตุการณ์นี้เปลี่ยนได้ (ดูชีต Reference) หรือลบแถวนั้นออก",
-      "duplicateField": "เก็บไว้เพียงหนึ่งแถวต่อฟิลด์ระบบแต่ละฟิลด์ของการเคลื่อนไหวหนึ่งรายการ",
-      "number": "กรอกตัวเลข (เฉพาะตัวเลข ไม่มีสัญลักษณ์สกุลเงิน)",
-      "noFormula": "พิมพ์ค่าโดยตรง ไม่ใช่สูตร",
-      "movementId": "คัดลอกรหัสเหตุการณ์การเคลื่อนไหวจากประวัติการเคลื่อนไหวของพนักงาน",
-      "before": "กรอกค่าที่อยู่ในระเบียนของพนักงานตอนนี้ในช่อง ก่อน หรือดาวน์โหลดเทมเพลตใหม่",
-      "otherRows": "แก้ไขแถวอื่นของพนักงานคนนี้ แล้วอัปโหลดทั้งไฟล์อีกครั้ง",
-      "recheck": "อัปโหลดไฟล์อีกครั้งเพื่อให้ตรวจสอบกับข้อมูลปัจจุบัน",
-      "template": "ดาวน์โหลดเทมเพลตการเคลื่อนไหวปัจจุบัน คัดลอกแถวของคุณลงไป แล้วอัปโหลดอีกครั้ง",
-      "splitFile": "แบ่งไฟล์เป็นไฟล์ที่เล็กลง (ไม่เกิน 200 แถว 50 คน และ 20 แถวต่อพนักงาน) แล้วอัปโหลดทีละไฟล์",
-      "saveStopped": "ไม่มีข้อมูลใดของพนักงานคนนี้ถูกบันทึก แก้ไขปัญหา แล้วนำเข้าพนักงานคนนี้อีกครั้ง"
-    }
-  },
-  "lifecycleEmailHold": {
-    "inboxAction": "พักอีเมลไว้: {email}"
-  },
-  "rewardConfig": {
-    "title": "ตรวจดูก่อนบันทึก",
-    "saving": "กำลังบันทึก…",
-    "whyReview": "เหตุผลที่ต้องตรวจดู",
-    "reason": "เหตุผลของการเปลี่ยนแปลงนี้",
-    "cancel": "ยกเลิก",
-    "highImpact": {
-      "released-pat": "PAT เปลี่ยนสำหรับการทบทวนที่เผยแพร่แล้ว",
-      "released-library": "การทบทวนที่เผยแพร่แล้วใช้เวอร์ชันก่อนหน้าและจะใช้ต่อไป การทบทวนใหม่จะใช้เวอร์ชันนี้",
-      "released-limit": "วงเงินงบประมาณเปลี่ยนสำหรับการทบทวนที่เผยแพร่แล้ว",
-      "release-review": "การเผยแพร่จะส่งการทบทวนนี้ไปยัง CEO ของ BU",
-      "remove-access": "มีผู้สูญเสียสิทธิ์เข้าถึงการทบทวน",
-      "open-offcycle": "การเปิดปีนอกรอบทำให้ผู้นำใช้ยอดคงเหลือของบริษัทสำหรับคำขอนอกรอบได้",
-      "offcycle-window": "ช่วงกลางปีกำหนดว่าข้อเสนอกลางปียื่นได้เมื่อใด"
-    },
-    "whatChanges": "สิ่งที่เปลี่ยน ({count})",
-    "item": "รายการ",
-    "before": "ก่อน",
-    "after": "หลัง",
-    "noValueChanges": "ไม่มีค่าที่เปลี่ยน",
-    "moreLines": "มีการเปลี่ยนแปลงอีก {count} รายการในบันทึกการเปลี่ยนแปลง",
-    "affected": "การทบทวนที่ได้รับผลกระทบ ({count})",
-    "noReviewsAffected": "ไม่มีการทบทวนที่ได้รับผลกระทบ",
-    "consequence": {
-      "repriced": "คำนวณใหม่ทันที",
-      "recalculation-required": "คำนวณใหม่และแจ้งผู้อนุมัติปัจจุบัน",
-      "keeps-version": "ใช้เวอร์ชันที่เริ่มต้นไว้ต่อไป",
-      "released-to-bu": "เผยแพร่ไปยัง CEO ของ BU",
-      "access-removed": "นำสิทธิ์เข้าถึงออก",
-      "none": "ไม่มีการเปลี่ยนแปลง"
-    },
-    "notificationTitle": "การตั้งค่า Rewards มีการเปลี่ยนแปลง",
-    "noAccess": "คุณไม่มีสิทธิ์ดูบันทึกการเปลี่ยนแปลง Rewards",
-    "logHelp": "การเปลี่ยนแปลงการตั้งค่า Rewards ทุกรายการ: ใครทำ เมื่อใด อะไรเปลี่ยน และเพราะอะไร การเปลี่ยนแปลงจะไม่ถูกแก้ไขหรือลบ",
-    "area": "ส่วน",
-    "allAreas": "ทุกส่วน",
-    "company": "บริษัท",
-    "allCompanies": "ทุกบริษัท",
-    "person": "เปลี่ยนโดย",
-    "from": "ตั้งแต่",
-    "to": "ถึง",
-    "highImpactOnly": "เฉพาะผลกระทบสูง",
-    "filter": "ใช้ตัวกรอง",
-    "exportExcel": "ส่งออกเป็น Excel",
-    "when": "เมื่อ",
-    "areaColumn": "ส่วน",
-    "reasonColumn": "เหตุผล",
-    "changes": "การเปลี่ยนแปลง",
-    "changedValues": "{count, plural, =0 {ไม่มีค่า} other {# ค่า}}",
-    "system": "ระบบ",
-    "unknownPerson": "ไม่ทราบ",
-    "highImpactBadge": "ผลกระทบสูง",
-    "areas": {
-      "salary": "โครงสร้างเงินเดือน",
-      "bonus": "เมทริกซ์โบนัส",
-      "pat": "ข้อมูล PAT",
-      "plan": "การตั้งค่า Rewards ที่ใช้ร่วมกัน",
-      "shared": "การตั้งค่าที่ใช้ร่วมกัน",
-      "exemption": "การยกเว้นวงเงินงบประมาณ",
-      "senior": "แผนระดับอาวุโส",
-      "upload": "รางวัลที่อัปโหลด",
-      "preparation": "การตั้งค่าการทบทวน",
-      "access": "สิทธิ์เข้าถึง Rewards",
-      "role_permission": "สิทธิ์ตามบทบาท",
-      "group_role": "บทบาททั้งกลุ่ม",
-      "limit": "การควบคุมวงเงิน",
-      "offcycle": "นอกรอบ"
-    },
-    "actions": {
-      "returned-to-draft": "คืนเป็นฉบับร่าง",
-      "saved-draft": "บันทึกฉบับร่างแล้ว",
-      "activated": "เปิดใช้งานแล้ว",
-      "restored": "กู้คืนจากเวอร์ชันก่อนหน้า",
-      "saved": "บันทึกแล้ว",
-      "released": "เผยแพร่แล้ว",
-      "applied": "นำไปใช้แล้ว",
-      "changed": "เปลี่ยนแล้ว",
-      "reset": "รีเซ็ตเป็นค่าเริ่มต้น"
-    },
-    "empty": "ไม่มีการเปลี่ยนแปลงที่ตรงกับตัวกรอง",
-    "pages": "หน้า",
-    "previous": "ก่อนหน้า",
-    "next": "ถัดไป",
-    "exportTruncated": "รวมเฉพาะ 5,000 รายการแรก โปรดจำกัดตัวกรองเพื่อส่งออกส่วนที่เหลือ"
-  },
-  "rewardLimits": {
-    "description": "ขีดจำกัดและเกณฑ์สำหรับแต่ละปีรางวัล การตรวจสอบทุกรายการในรอบพิจารณา ที่ปรึกษา AI และการวิเคราะห์รางวัลใช้ค่าของปีรางวัลของรอบพิจารณานั้น",
-    "noAccess": "คุณไม่มีสิทธิ์เข้าถึง",
-    "noAccessHelp": "การควบคุมขีดจำกัดใช้ได้สำหรับ Group Rewards, CTRO และ EC",
-    "year": "ปีรางวัล",
-    "show": "แสดง",
-    "viewOnly": "คุณดูขีดจำกัดเหล่านี้ได้ เฉพาะ Group Rewards เท่านั้นที่เปลี่ยนแปลงได้",
-    "versionLine": "ใช้เวอร์ชัน {version} สำหรับปี {year}",
-    "baselineLine": "ยังไม่มีการบันทึกเวอร์ชันสำหรับปี {year} ค่าเหล่านี้เป็นค่ามาตรฐาน การบันทึกจะสร้างเวอร์ชัน 1",
-    "typeHelp": "บล็อก: หยุดการส่ง ข้อยกเว้นและคำเตือนติดไปกับรอบพิจารณาและต้องระบุเหตุผลก่อนส่ง หมายเหตุแสดงเพื่อทราบเท่านั้น",
-    "columns": {
-      "limit": "ขีดจำกัด",
-      "value": "ค่า",
-      "type": "ประเภท",
-      "appliesTo": "ใช้กับ",
-      "lastChanged": "เปลี่ยนล่าสุดโดย / วันที่"
-    },
-    "areas": {
-      "pools": "กองทุนขึ้นเงินเดือน",
-      "person": "การขึ้นเงินเดือนต่อคน",
-      "bonus": "โบนัส",
-      "lump": "เงินก้อน",
-      "exemption": "การยกเว้น",
-      "advisor": "ที่ปรึกษา AI"
-    },
-    "labels": {
-      "pool_standard_merit": "กองทุนผลงาน (% ของฐานเงินเดือนที่มีสิทธิ์)",
-      "pool_standard_promotion": "กองทุนเลื่อนตำแหน่ง (% ของฐานเงินเดือนที่มีสิทธิ์)",
-      "pool_standard_special": "กองทุนปรับพิเศษ (% ของฐานเงินเดือนที่มีสิทธิ์)",
-      "pool_h_merit": "กองทุนผลงาน (% ของฐานเงินเดือนที่มีสิทธิ์)",
-      "pool_h_promotion": "กองทุนเลื่อนตำแหน่ง (% ของฐานเงินเดือนที่มีสิทธิ์)",
-      "pool_h_special": "กองทุนปรับพิเศษ (% ของฐานเงินเดือนที่มีสิทธิ์)",
-      "pool_separate": "กองทุนไม่สามารถใช้แทนกันหรือใช้ให้บริษัทอื่น",
-      "increase_withoutPromotion": "การขึ้นรวมโดยไม่เลื่อนตำแหน่งเกิน",
-      "increase_withPromotion": "การขึ้นรวมพร้อมเลื่อนตำแหน่งตั้งแต่",
-      "promotion_increment": "อัตราขึ้นเมื่อเลื่อนตำแหน่ง",
-      "promotion_maxGrades": "จำนวนระดับที่เลื่อนได้สูงสุด",
-      "promotion_maxGrade": "ระดับสูงสุดหลังเลื่อนตำแหน่ง",
-      "catchUp_crFloor": "เกณฑ์ CR สำหรับการปรับให้ทันของ STAR/SSTAR",
-      "salary_noReduction": "ห้ามลดเงินเดือน",
-      "bonus_poolCap": "เพดานกองทุนโบนัส",
-      "bonus_underUse": "คำเตือนการใช้ต่ำกว่า",
-      "bonus_individualCeiling": "เพดานโบนัสรายบุคคลเกิน",
-      "bonus_rounding": "การปัดเศษการจ่าย (ปัดลง)",
-      "bonus_individualMultiplier": "ตัวคูณรายบุคคลต่างจากหน่วยงาน",
-      "lump_share": "สัดส่วนของยอดคงเหลือ",
-      "lump_step": "ขั้นการปัดเศษ",
-      "lump_cap": "เพดานต่อคน",
-      "lump_aboveSuggestion": "จำนวนของหน่วยงานสูงกว่าที่แนะนำ",
-      "lump_individualAmendment": "การแก้ไขรายบุคคล",
-      "exemption_budgetCapsOnly": "บริษัทที่ได้รับการยกเว้น: เฉพาะเพดานงบประมาณ พร้อมเหตุผล",
-      "advisor_override": "เกณฑ์การปรับแก้",
-      "advisor_longWithoutIncrease": "นานโดยไม่ได้ขึ้นเงินเดือน",
-      "advisor_peerGap": "ช่องว่างเงินเดือนกับเพื่อนร่วมระดับ"
-    },
-    "types": {
-      "block": "บล็อก",
-      "exception": "ข้อยกเว้น",
-      "warning": "คำเตือน",
-      "note": "หมายเหตุ"
-    },
-    "appliesTo": {
-      "standard": "แผนมาตรฐาน",
-      "h": "แผน JG H",
-      "all": "ทุกแผน"
-    },
-    "units": {
-      "percent": "%",
-      "points": "จุดร้อยละ",
-      "ratio": "CR",
-      "months": "เดือน",
-      "myr": "RM",
-      "grades": "ระดับ",
-      "grade": "JG",
-      "years": "ปี"
-    },
-    "fixed": "คงที่",
-    "fixedHelp": "กำหนดไว้เพื่อปกป้องค่าตอบแทน ไม่สามารถเปลี่ยนได้",
-    "none": "ไม่มี",
-    "standardValue": "ค่ามาตรฐาน",
-    "changedBy": "{name} · {date}",
-    "unknownPerson": "ไม่ทราบ",
-    "valueFor": "ค่าสำหรับ {limit}",
-    "typeFor": "ประเภทสำหรับ {limit}",
-    "reviewSave": "ตรวจทานก่อนบันทึก",
-    "save": "บันทึกเวอร์ชันใหม่",
-    "discard": "ยกเลิกการเปลี่ยนแปลง",
-    "saved": "บันทึกเป็นเวอร์ชัน {version} แล้ว",
-    "errors": {
-      "system": "ไม่สามารถบันทึกขีดจำกัดได้ การเปลี่ยนแปลงของคุณยังอยู่ โปรดลองอีกครั้ง"
-    },
-    "reviewsHeading": "รอบพิจารณาในปีรางวัลนี้",
-    "reviewsHelp": "รอบพิจารณาฉบับร่างใช้เวอร์ชันปัจจุบัน รอบพิจารณาที่ผ่านฉบับร่างแล้วจะคงเวอร์ชันที่ใช้ตอนส่ง หากคุณนำเวอร์ชันปัจจุบันไปใช้ การตรวจสอบจะทำงานใหม่และผู้อนุมัติปัจจุบันจะได้รับแจ้ง",
-    "reviewColumns": {
-      "review": "รอบพิจารณา",
-      "stage": "ขั้นตอน",
-      "versionUsed": "ขีดจำกัดที่ใช้"
-    },
-    "select": "เลือก",
-    "selectReview": "เลือก {review}",
-    "baseline": "ค่ามาตรฐาน (ก่อนมีการควบคุมขีดจำกัด)",
-    "currentVersion": "ปัจจุบัน (เวอร์ชัน {version})",
-    "version": "เวอร์ชัน {version}",
-    "apply": "นำเวอร์ชัน {version} ไปใช้กับรอบพิจารณาที่เลือก",
-    "applyConfirm": "นำไปใช้และแจ้งผู้อนุมัติ",
-    "applied": "{count, plural, other {นำไปใช้กับ # รอบพิจารณาแล้ว}}",
-    "noReviews": "ยังไม่มีรอบพิจารณาที่ใช้ปีรางวัลนี้",
-    "reviewsTruncated": "แสดงเฉพาะ 200 รอบพิจารณาแรก",
-    "exemptionsHeading": "การยกเว้นเพดานงบประมาณ",
-    "exemptionsHelp": "การยกเว้นผ่อนปรนเฉพาะเพดานงบประมาณ (กองทุนขึ้นเงินเดือนและเพดานกองทุนโบนัส) และบันทึกพร้อมเหตุผลในการตั้งค่าของรอบพิจารณา",
-    "noExemptions": "ไม่มีรอบพิจารณาในปีรางวัลนี้ที่ได้รับการยกเว้นเพดานงบประมาณ",
-    "historyHeading": "ประวัติเวอร์ชัน",
-    "noVersions": "ยังไม่มีเวอร์ชัน",
-    "changeLogLink": "ดูการเปลี่ยนแปลงทั้งหมดในบันทึกการเปลี่ยนแปลง"
-  },
-  "importErrorLogDataBankCostInfo": {
-    "corrections": {
-      "duplicateInFile": "ค่านี้ปรากฏมากกว่าหนึ่งครั้งในไฟล์ - เก็บไว้เพียงแถวเดียว",
-      "duplicateEmployeeInFile": "รหัสพนักงานนี้ปรากฏมากกว่าหนึ่งครั้งในไฟล์ - เก็บไว้เพียงแถวเดียว",
-      "chooseReference": "เลือกค่าจากชีต Reference ของเทมเพลต",
-      "chooseCompany": "เลือก Company Code จากชีต Reference",
-      "chooseCostCenter": "เลือก Cost Center Code ที่แสดงไว้สำหรับบริษัทนี้ในชีต Allocation Reference",
-      "date": "ป้อนวันที่ในรูปแบบ YYYY-MM-DD หรือเป็นวันที่ของ Excel",
-      "required": "กรอกคอลัมน์นี้ - เป็นคอลัมน์ที่จำเป็น",
-      "yesNo": "ป้อน yes หรือ no",
-      "revalidate": "อัปโหลดไฟล์ที่แก้ไขแล้วอีกครั้งเพื่อให้ตรวจสอบแถวนี้ใหม่",
-      "permission": "ลบแถวนี้ หรือขอให้ผู้ดูแลระบบให้สิทธิ์เข้าถึงบริษัทของพนักงานคนนี้",
-      "systemError": "อัปโหลดไฟล์อีกครั้ง หากยังเกิดขึ้นอีก ให้แจ้งเลขอ้างอิงการสนับสนุนแก่ทีมเทคนิค",
-      "textCode": "จัดรูปแบบเซลล์เป็น Text แล้วป้อนรหัสอีกครั้ง",
-      "noFormula": "พิมพ์ค่าโดยตรง ไม่ใช่สูตร",
-      "existingEmployee": "ตรวจสอบรหัสพนักงาน พนักงานใหม่ต้องเพิ่มด้วย \"ทั้งหมด - พนักงานใหม่\" ก่อน",
-      "percentage": "ป้อนเปอร์เซ็นต์ที่มากกว่า 0 และไม่เกิน 100 โดยมีทศนิยมไม่เกินสองตำแหน่ง",
-      "periodUnit": "ป้อนตัวเลขพร้อมหน่วย (Month, Week หรือ Day) ไปด้วยกัน",
-      "reason": "ป้อนเหตุผลอย่างน้อยสามตัวอักษร",
-      "statutoryRecord": "บันทึกเลขประจำตัวของพนักงานในข้อมูลบุคลากรก่อน แล้วจึงอัปโหลดไฟล์นี้อีกครั้ง",
-      "template": "ดาวน์โหลดเทมเพลตปัจจุบัน คัดลอกแถวของคุณลงไป แล้วอัปโหลดอีกครั้ง",
-      "bankPair": "ป้อนชื่อธนาคารและเลขที่บัญชีธนาคารไปพร้อมกัน"
-    },
-    "bank": {
-      "duplicateEmployeeId": "รหัสพนักงานซ้ำในไฟล์นี้ ใช้ครั้งแรกที่แถว Excel {row}",
-      "duplicateCardId": "รหัสบัตรซ้ำในไฟล์นี้",
-      "cardIdTaken": "card_id ถูกใช้กับพนักงานคนอื่นแล้ว เลือกรหัสบัตรที่ยังไม่ได้ใช้",
-      "noPermission": "คุณไม่มีสิทธิ์อัปเดตพนักงานคนนี้",
-      "changedAfterValidation": "แถวนี้ไม่ได้บันทึก ข้อมูลหรือสิทธิ์ของแถวนี้เปลี่ยนไปหลังการตรวจสอบ โปรดตรวจทานแล้วนำเข้าอีกครั้ง",
-      "missingEmployeeId": "ไม่มี employee_code — ซึ่งเป็นตัวเชื่อมไปยังพนักงานที่กำลังอัปเดต",
-      "unknownEmployee": "ไม่มีพนักงานที่มีรหัสพนักงาน \"{code}\" ไฟล์แบบแยกส่วนอัปเดตได้เฉพาะบุคคลที่มีอยู่ในระบบแล้วเท่านั้น — ไม่สามารถเพิ่มใครได้ หากต้องการเพิ่มบุคคลนี้ ให้เลือก \"ทั้งหมด — พนักงานใหม่\" ที่ด้านบนของหน้านี้และใช้เทมเพลตพนักงานแบบเต็ม แล้วเรียกใช้ไฟล์นี้อีกครั้ง",
-      "duplicateEmployeeCode": "employee_code ซ้ำในไฟล์นี้",
-      "bankTransferNeedsBank": "การโอนผ่านธนาคารต้องมีชื่อธนาคารและเลขที่บัญชี",
-      "bankPair": "ต้องระบุ bank_name และ bank_account_no ไปพร้อมกัน",
-      "noStatutoryRecordYet": "พนักงานคนนี้ยังไม่มีบันทึกตามกฎหมาย — บันทึกเลขประจำตัวในข้อมูลบุคลากรก่อน แล้วเรียกใช้ไฟล์นี้อีกครั้ง",
-      "noStatutoryRecord": "พนักงานคนนี้ไม่มีบันทึกตามกฎหมาย โปรดตั้งค่าตามกฎหมายในข้อมูลบุคลากรให้เสร็จก่อน",
-      "notActiveOption": "\"{value}\" ไม่ใช่ตัวเลือก {category} ที่ใช้งานอยู่ — คอลัมน์ {column}",
-      "yesNo": "{column} ต้องเป็น yes หรือ no",
-      "jobStopped": "การนำเข้าหยุดลง แถวที่บันทึกแล้วยังคงอยู่ ตรวจสอบผลลัพธ์และสิทธิ์การเข้าถึงของคุณก่อนลองอีกครั้ง เลขอ้างอิง {ref}",
-      "jobStoppedEarlier": "การนำเข้าหยุดลง แถวที่บันทึกแล้วยังคงอยู่ ตรวจสอบผลลัพธ์และสิทธิ์การเข้าถึงของคุณก่อนลองอีกครั้ง",
-      "fileTooLarge": "ไฟล์เกินขีดจำกัดขนาดการนำเข้าหรือเวิร์กชีต ใช้ได้ไม่เกิน 250,000 แถวและ 128 MiB",
-      "fileUnreadable": "ไม่สามารถอ่านไฟล์ได้ ใช้เทมเพลตธนาคารและข้อมูลตามกฎหมาย และชีตอ้างอิงของเทมเพลต",
-      "fileRowCount": "เลือกไฟล์ที่มีข้อมูล 1 ถึง 250,000 แถว",
-      "fileIncomplete": "ไฟล์ที่อัปโหลดไม่สมบูรณ์หรือค่าตรวจสอบไม่ตรงกัน โปรดอัปโหลดอีกครั้ง"
-    },
-    "allocation": {
-      "errors": {
-        "invalid": "ป้อนเปอร์เซ็นต์ที่มากกว่าศูนย์และไม่เกิน 100 โดยมีทศนิยมไม่เกินสองตำแหน่ง",
-        "duplicate": "เลือกศูนย์ต้นทุนแต่ละแห่งเพียงครั้งเดียว",
-        "total": "การปันส่วนรวมต้องไม่เกิน 100%",
-        "scope": "ไม่มีบันทึกพนักงานหรือสิทธิ์ที่ใช้ได้",
-        "label": "ศูนย์ต้นทุนไม่ได้ใช้งานหรือไม่พร้อมใช้สำหรับบริษัทนี้",
-        "changed": "การปันส่วนเปลี่ยนไปแล้ว โปรดโหลดใหม่และดูตัวอย่างอีกครั้ง",
-        "date": "เลือกวันที่มีผลที่มีประวัติบริษัทการจ้างงานที่ยืนยันแล้ว",
-        "clear": "การล้างการปันส่วนต้องใช้การดำเนินการ Clear อย่างชัดเจน",
-        "preview": "ข้อมูลนำเข้าหรือข้อมูลอ้างอิงเปลี่ยนไป โปรดดูตัวอย่างอีกครั้ง",
-        "binding": "จับคู่การปันส่วนแต่ละรายการกับบริษัทและรหัสพนักงานเพียงหนึ่งเดียว",
-        "transfer": "บันทึกชุด Clear อย่างชัดเจนในวันที่โอนย้าย และล้างชุดที่ตั้งเวลาไว้หลังจากนั้นก่อนโอนย้าย จากนั้นบันทึกการปันส่วนใหม่สำหรับบริษัทปลายทาง"
-      },
-      "operation": "Operation ต้องเป็น Replace หรือ Clear และต้องเหมือนกันทุกแถวสำหรับพนักงานหนึ่งคนและวันที่หนึ่งวัน",
-      "clearRow": "Clear ต้องมีเพียงหนึ่งแถวที่ Cost Center Code และ Percentage ว่าง",
-      "costCenterUnavailable": "Cost Center Code นี้ไม่พร้อมใช้สำหรับ {company}",
-      "companyRequired": "ต้องระบุ Company Code",
-      "companyAmbiguous": "Company Code \"{code}\" ตรงกับบริษัทมากกว่าหนึ่งแห่ง ใช้ Company Code ที่แสดงในชีต Reference",
-      "companyUnknown": "Company Code \"{code}\" ไม่ตรงกับบริษัทที่คุณนำเข้าได้",
-      "effectiveDate": "Effective Date ต้องเป็นวันที่ในรูปแบบ YYYY-MM-DD",
-      "employeeInvalid": "ไม่มีรหัสพนักงานหรือรหัสไม่ถูกต้อง",
-      "employeeAmbiguous": "รหัสพนักงาน {code} ตรงกับพนักงานของ {company} มากกว่าหนึ่งคน",
-      "employeeNotInCompany": "รหัสพนักงาน {code} ไม่ใช่พนักงานของ {company} ในวันที่ {date}",
-      "heldBack": "การปันส่วนอีกรายการสำหรับรหัสพนักงาน {code} ในไฟล์นี้มีข้อผิดพลาด จึงไม่นำเข้าพนักงานคนนี้ โปรดแก้ไขแถวนั้นก่อน",
-      "unavailable": "บริษัท พนักงาน หรือวันที่มีผลของการปันส่วนไม่พร้อมใช้",
-      "saveFailed": "ไม่สามารถบันทึกพนักงานคนนี้ได้ ไม่มีการเปลี่ยนแปลงใดๆ สำหรับพนักงานคนนี้",
-      "file": {
-        "legacyLayout": "ไฟล์นี้ใช้รูปแบบเก่าที่มีรหัสบริษัทภายใน (company_id) โปรดดาวน์โหลดเทมเพลตใหม่และกรอกคอลัมน์ Company Code แทน",
-        "duplicateHeaders": "ไม่อนุญาตให้มีหัวคอลัมน์การปันส่วนซ้ำกัน",
-        "missingColumns": "ไม่มีคอลัมน์การปันส่วน: {columns}",
-        "unexpectedColumns": "คอลัมน์การปันส่วนที่ไม่คาดคิด: {columns}",
-        "tooManyRows": "ใช้แถวการปันส่วนไม่เกิน 5000 แถวต่อไฟล์",
-        "tooLarge": "ไฟล์การปันส่วนมีขนาดเกินกว่าที่รองรับ",
-        "tooLarge10": "เลือกไฟล์ที่มีขนาดไม่เกิน 10 MB",
-        "unreadableWorkbook": "ไม่สามารถอ่านเวิร์กบุ๊กได้ โปรดดาวน์โหลดเทมเพลตแล้วลองอีกครั้ง",
-        "utf8": "บันทึกไฟล์ CSV เป็น UTF-8",
-        "fileType": "เลือกเทมเพลต .xlsx หรือไฟล์ .csv ที่มีคอลัมน์เหมือนกัน",
-        "unreadable": "ไม่สามารถอ่านไฟล์นี้ได้",
-        "noRows": "ไฟล์นี้ไม่มีแถวการปันส่วน"
-      }
-    },
-    "correction": {
-      "noFormula": "ไม่รับสูตรและเซลล์ที่มีข้อผิดพลาด",
-      "textCode": "ป้อนรหัสเป็นข้อความเพื่อคงเลขศูนย์นำหน้าไว้",
-      "date": "ใช้ YYYY-MM-DD หรือวันที่ของ Excel",
-      "tooLong": "สูงสุด 1,000 ตัวอักษร",
-      "periodUnit": "ป้อนระยะเวลาพร้อมหน่วยไปด้วยกัน ({unit})",
-      "notOption": "\"{value}\" ไม่ใช่ตัวเลือกสำหรับบริษัทนี้ โปรดตรวจสอบชีตอ้างอิง {sheet}",
-      "superiorUnknown": "ไม่พบรหัสพนักงานนี้ หรือคุณไม่มีสิทธิ์มองเห็น",
-      "organisationFormula": "คอลัมน์องค์กรต้องไม่มีสูตรหรือเซลล์ที่มีข้อผิดพลาด",
-      "organisationTooLong": "ค่าองค์กร: สูงสุด 1,000 ตัวอักษร",
-      "companyRequired": "ต้องระบุ Company Code",
-      "employeeRequired": "ต้องระบุรหัสพนักงาน",
-      "reasonShort": "Correction Reason ต้องมีอย่างน้อยสามตัวอักษร",
-      "duplicateEmployee": "พนักงานคนนี้ปรากฏมากกว่าหนึ่งครั้ง เก็บแถวการแก้ไขไว้หนึ่งแถวต่อพนักงานหนึ่งคน",
-      "companyUnknown": "Company Code ไม่รู้จัก ไม่ชัดเจน หรืออยู่นอกสิทธิ์ของคุณ",
-      "employeeUnknown": "รหัสพนักงานไม่รู้จักหรือไม่ชัดเจนในบริษัทที่มีอยู่",
-      "newCompanyUnknown": "New Company Code ไม่รู้จัก ไม่ชัดเจน หรืออยู่นอกสิทธิ์ของคุณ",
-      "gradeInactive": "Job Grade ไม่ใช่รหัสระบบที่ใช้งานอยู่",
-      "sameEmployee": "หลายแถวอ้างถึงพนักงานคนเดียวกัน"
-    }
-  },
-  "importErrorLogEmployee": {
-    "problemsTitle": "ปัญหาที่ต้องแก้ไข",
-    "missingColumn": "ชีตไม่มีคอลัมน์ที่จำเป็นนี้",
-    "thisField": "คอลัมน์นี้",
-    "downloadFailed": "ไม่สามารถจัดเตรียมบันทึกข้อผิดพลาดได้ โปรดลองอีกครั้ง",
-    "correction": {
-      "reference": "เลือก{field}จากชีต Reference",
-      "date": "กรอกวันที่ในรูปแบบ YYYY-MM-DD หรือเป็นวันที่ของ Excel",
-      "month": "กรอกเดือนในรูปแบบ YYYY-MM",
-      "required": "กรอก{field} - เป็นข้อมูลที่จำเป็น",
-      "requiredForContract": "กรอกคอลัมน์นี้ - จำเป็นสำหรับพนักงานสัญญาจ้าง",
-      "duplicateInFile": "ค่านี้ปรากฏในไฟล์มากกว่าหนึ่งครั้ง - เก็บไว้เพียงแถวเดียว",
-      "duplicateEmployeeId": "รหัสพนักงานนี้ปรากฏในไฟล์มากกว่าหนึ่งครั้ง - เก็บไว้เพียงแถวเดียว",
-      "duplicateInSystem": "ค่านี้ถูกใช้โดยพนักงานคนอื่นแล้ว - กรอกค่าอื่น หรือนำแถวนี้ออก",
-      "number": "กรอกตัวเลข (เฉพาะตัวเลข ไม่มีสัญลักษณ์สกุลเงิน)",
-      "choice": "เลือกค่าใดค่าหนึ่งที่ระบุไว้ในชีต Instructions หรือ Reference",
-      "yesNo": "กรอก Yes หรือ No",
-      "email": "กรอกอีเมลแบบเต็ม เช่น name@company.com",
-      "notOnEmployeeSheet": "เพิ่มพนักงานคนนี้ในชีตพนักงาน หรือแก้ไขรหัสพนักงาน",
-      "employeeNotFound": "ตรวจสอบรหัสพนักงาน หากต้องการเพิ่มพนักงานใหม่ ให้ใช้ ทั้งหมด - พนักงานใหม่ ก่อน",
-      "missingColumn": "เพิ่มคอลัมน์ {field} โดยใช้แม่แบบปัจจุบัน แล้วอัปโหลดอีกครั้ง",
-      "wrongSection": "นำคอลัมน์นั้นออก หรือนำเข้าด้วยแม่แบบที่เป็นเจ้าของคอลัมน์นั้น",
-      "system": "โปรดลองอีกครั้ง หากยังเกิดขึ้นอีก ให้แจ้งหมายเลขอ้างอิงสำหรับฝ่ายสนับสนุนแก่ผู้ดูแลระบบ",
-      "uploadAgain": "แก้ไขแถวที่ทำให้การนำเข้าหยุด แล้วอัปโหลดทั้งไฟล์อีกครั้ง"
-    }
-  },
-  "importProblems": {
-    "headers": {
-      "sheet": "แผ่นงาน",
-      "row": "แถว Excel",
-      "category": "หมวดหมู่",
-      "reference": "รหัสอ้างอิง",
-      "employeeName": "ชื่อพนักงาน",
-      "field": "ฟิลด์",
-      "value": "ค่าที่ป้อน",
-      "problem": "สิ่งที่ผิด",
-      "correction": "วิธีแก้ไข",
-      "stage": "พบระหว่าง",
-      "result": "ผลลัพธ์",
-      "errorReference": "รหัสอ้างอิงสำหรับฝ่ายสนับสนุน"
-    },
-    "stage": {
-      "file": "อ่านไฟล์",
-      "check": "ตรวจสอบไฟล์",
-      "save": "บันทึก",
-      "system": "ข้อผิดพลาดของระบบ"
-    },
-    "result": {
-      "refused": "ไม่ได้นำเข้า",
-      "skipped": "ข้าม",
-      "stopped": "ทำให้การนำเข้าหยุด",
-      "cancelled": "ไม่ได้บันทึก - แถวอื่นทำให้การนำเข้าหยุด",
-      "not_saved": "ไม่ได้บันทึก - อัปโหลดไฟล์ที่แก้ไขแล้วอีกครั้ง"
-    },
-    "hiddenValue": "(ซ่อนไว้)",
-    "wholeFile": "ทั้งไฟล์",
-    "moreInLog": "มีปัญหาอีก {count} รายการในบันทึกข้อผิดพลาด",
-    "downloadLog": "ดาวน์โหลดบันทึกข้อผิดพลาด",
-    "summary": {
-      "sheetTitle": "สรุป",
-      "batch": "การนำเข้า",
-      "file": "ไฟล์",
-      "status": "สถานะ",
-      "problems": "ปัญหา",
-      "truncated": "รายการนี้ถูกตัดให้สั้นลงเมื่อบันทึกการนำเข้า ดาวน์โหลดบันทึกข้อผิดพลาดทันทีหลังการนำเข้าเพื่อดูปัญหาทั้งหมด"
     }
   },
   "agencyPortal": {

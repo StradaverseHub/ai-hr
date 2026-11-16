@@ -33,6 +33,9 @@ export type InformationWarning={code:'companyFrom'|'historyStartAligned'|'salary
 export type InformationTimelineRecord={date:string;kind:string;label:string|null;company:string|null;status:'corrected'|'unchanged'|'conflict'};
 /** Board 4604dccc — a later movement whose recorded "from" value the correction would contradict. */
 export type InformationConflict={movementId:string;date:string;field:InformationField;kind:string;label:string|null};
+/** Board 4604dccc r4 — an earlier correction whose period this one now covers (the latest saved correction controls).
+ * It stays in the correction history; the review lists it for information only. */
+export type InformationReplacedCorrection={sequence:number;effectiveOn:string;savedAt:string;fields:InformationField[];actor:string|null};
 export type InformationPreview={effectiveOn:string;employmentId:string;employeeCode:string;name:string;fingerprint:string;before:InformationValues;after:InformationValues;beforeLabels:InformationValues;afterLabels:InformationValues;reason:string;changed:InformationField[];
  /** Board 154511c4 — the correction reaches back to the start of the dated history. Kept on events for older readers. */
  fromJoinDate?:true;warnings?:InformationWarning[];
@@ -47,7 +50,9 @@ export type InformationPreview={effectiveOn:string;employmentId:string;employeeC
  /** Board 4604dccc — closed payroll months in the corrected period; saving requires an acknowledgement. */
  closedPayrollPeriods?:string[];
  /** Board 4604dccc — the corrected period of each dated field that stops at a later recorded change. */
- until?:Partial<Record<InformationField,string>>};
+ until?:Partial<Record<InformationField,string>>;
+ /** Board 4604dccc r4 — earlier corrections this one replaces from its Effective Date (informational, not a block). */
+ replacedCorrections?:InformationReplacedCorrection[]};
 export type InformationOptions={companies:{id:string;code:string;name:string}[];grades:{id:string;code:string;name:string}[];employmentTypes:string[];organisation?:{companyId:string;companyCode:string;kind:'department'|'position'|'business_unit';id:string;code:string;name:string}[];labels?:{field:typeof INFORMATION_LABEL_FIELDS[number];value:string;label:string}[]};
 /** Version 1 (five facts) stays readable so an old file's ignored Business Unit never starts writing. */
 export const INFORMATION_HEADERS=['Company Code','Employee ID','Employee Name','New Company Code','Group Join Date','Join Date','Job Grade','Employment Type','Correction Reason'] as const;

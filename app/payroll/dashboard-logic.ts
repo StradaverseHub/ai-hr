@@ -9,6 +9,7 @@
  * the only "saved view" and it works for everybody.
  */
 import { todayInKualaLumpur } from '@/lib/hr-date';
+import { payrollCloseCycleLabel } from '@/core/payslip-cycle-label';
 
 /** Month numbers as the URL and the timeline speak them: 1 = January … 12 = December. */
 export const MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
@@ -107,6 +108,33 @@ export function parseMonths(
     }
   }
   return [...out].sort((a, b) => a - b);
+}
+
+/**
+ * fd8156d4 — did the address name a period? Only `?year` and `?m` count: every link the screen builds
+ * (dashboardHref, and through it the Back round trip of d75b0c11) writes both, so a reader who has chosen
+ * anything keeps it, and only a bare first entry is defaulted.
+ */
+export const hasExplicitPeriod = (raw: { year?: string | string[]; m?: string | string[] }): boolean =>
+  raw.year != null || raw.m != null;
+
+/**
+ * fd8156d4 — the year and months the dashboard shows. With no `?year`/`?m` it opens on `latestPeriod`
+ * (the latest payroll period created in the reader's company scope, core/payroll.ts
+ * latestPayrollDashboardPeriod), whatever today's date is; with none created, on the tenant's current
+ * month as before. Any explicit param keeps today's parsing exactly.
+ */
+export function resolveDashboardPeriod(
+  raw: { year?: string | string[]; m?: string | string[] },
+  latestPeriod: string | null | undefined,
+  thisYear: number,
+  currentMonth: number = currentTenantMonth(),
+): { year: number; months: number[] } {
+  if (!hasExplicitPeriod(raw) && latestPeriod) {
+    const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(latestPeriod);
+    if (match) return { year: Number(match[1]), months: [Number(match[2])] };
+  }
+  return { year: parseYear(raw.year, thisYear), months: parseMonths(raw.m, currentMonth) };
 }
 
 /** Repeated-param values as a string[] (a single string becomes a 1-element array). */
@@ -223,6 +251,88 @@ export function reprocessEmploymentIds(b: RecalcMarkedRow): string[] {
 }
 
 /**
+ * ── fd8156d4 — PAYROLL CYCLE NAMES ON THE DASHBOARD ─────────────────────────────────────────────────
+ *
+ * The Payroll Cycle column and dropdown show the configured cycle name (payroll_cycle.name, "Monthly")
+ * instead of the run type ("Regular"). Filter values carry a prefix so they can never collide with the
+ * run-type values older links used:
+ *   - `name:<lower-case name>`  a configured cycle, matched by name across companies
+ *   - `type:<run type>`         a run with no configured cycle, by the run type it shows today
+ *   - `regular`, `bonus`, …     an OLD link's bare run type, which still filters by run type exactly as before
+ */
+export const cycleNameKey = (name: string): string => `name:${name.trim().toLowerCase()}`;
+export const cycleTypeKey = (runType: string): string => `type:${runType}`;
+
+export type DashboardCycleRow = {
+  runType: string;
+  filterRunType?: string | null;
+  payrollCycleName?: string | null;
+};
+
+/** The dropdown value a run files under: its configured cycle's name, else its run type. */
+export function dashboardCycleKey(r: DashboardCycleRow): string {
+  const name = typeof r.payrollCycleName === 'string' ? r.payrollCycleName.trim() : '';
+  return name ? cycleNameKey(name) : cycleTypeKey(r.filterRunType ?? r.runType);
+}
+
+/**
+ * What the Payroll Cycle column says. Imported history keeps "<imported cycle> - By Import"; any other
+ * run shows its configured cycle's name, else its run-type word. The run's free-text remarks (the label
+ * an off-cycle preset snapshots, e.g. "Advance Salary") still follow, unless they only repeat the name.
+ */
+export function dashboardCycleLabel(
+  r: DashboardCycleRow & {
+    historyImportAttemptId?: string | null;
+    historyImportCycleName?: string | null;
+    remarks?: string | null;
+  },
+  runTypeLabel: string,
+): string {
+  const label = payrollCloseCycleLabel(r, runTypeLabel);
+  if (r.historyImportAttemptId) return label;
+  const remarks = typeof r.remarks === 'string' ? r.remarks.trim() : '';
+  return remarks && remarks.toLowerCase() !== label.trim().toLowerCase() ? `${label} — ${remarks}` : label;
+}
+
+/**
+ * The Payroll Cycle dropdown: the configured names in scope (catalogue order), any other cycle name a
+ * run of the year carries (an archived cycle), the run-type fallbacks for runs with no cycle so nothing
+ * becomes unfilterable, and finally whatever is selected so an old `?cycle=regular` link still shows.
+ */
+export function cycleFilterOptions(
+  configuredNames: readonly string[],
+  rows: readonly DashboardCycleRow[],
+  selected: readonly string[],
+  runTypeLabels: Readonly<Record<string, string>>,
+): { value: string; label: string }[] {
+  const out = new Map<string, string>();
+  for (const name of configuredNames) {
+    const trimmed = name.trim();
+    if (trimmed && !out.has(cycleNameKey(trimmed))) out.set(cycleNameKey(trimmed), trimmed);
+  }
+  const extraNames = new Map<string, string>();
+  const types = new Set<string>();
+  for (const r of rows) {
+    const key = dashboardCycleKey(r);
+    if (key.startsWith('name:')) {
+      if (!out.has(key) && !extraNames.has(key)) extraNames.set(key, r.payrollCycleName!.trim());
+    } else types.add(key.slice('type:'.length));
+  }
+  for (const [key, label] of [...extraNames].sort((a, b) => a[1].localeCompare(b[1]))) out.set(key, label);
+  const typeOrder = Object.keys(runTypeLabels);
+  for (const t of [...types].sort((a, b) => typeOrder.indexOf(a) - typeOrder.indexOf(b))) {
+    out.set(cycleTypeKey(t), runTypeLabels[t] ?? t);
+  }
+  for (const v of selected) {
+    if (out.has(v)) continue;
+    if (v.startsWith('name:')) out.set(v, v.slice('name:'.length));
+    else if (v.startsWith('type:')) out.set(v, runTypeLabels[v.slice('type:'.length)] ?? v.slice('type:'.length));
+    else out.set(v, runTypeLabels[v] ?? v);
+  }
+  return [...out].map(([value, label]) => ({ value, label }));
+}
+
+/**
  * Apply the non-period filters in JS over the year's already-fetched rows.
  *
  * The PERIOD narrowing happens in SQL (listBatches takes the period set); company / cycle / status are
@@ -237,6 +347,8 @@ export function applyFilters<
     runType: string;
     /** b240c0ff — set by listBatches; imported history filters under its imported cycle's run type. */
     filterRunType?: string | null;
+    /** fd8156d4 — the configured cycle's name; the dropdown's `name:` values match it. */
+    payrollCycleName?: string | null;
     status: string;
     needsRecalcAt?: Date | string | null;
   },
@@ -252,7 +364,9 @@ export function applyFilters<
     (r) =>
       periods.has(r.payPeriod) &&
       (companies.size === 0 || companies.has(r.companyId)) &&
-      (cycles.size === 0 || cycles.has(r.filterRunType ?? r.runType)) &&
+      // fd8156d4 — a dropdown value (`name:` / `type:`) matches the run's cycle key; a bare run type from
+      // an older link keeps matching the run type exactly as it did before cycle names were shown.
+      (cycles.size === 0 || cycles.has(r.filterRunType ?? r.runType) || cycles.has(dashboardCycleKey(r))) &&
       // 0b326d5f — the status filter reaches the DERIVED state as well as the stored one, and the two
       // are OR-ed rather than swapped. That is the decision, stated: "Processed" still means every
       // processed run INCLUDING the stale ones (the plan's promise that nothing which already

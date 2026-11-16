@@ -674,7 +674,7 @@ describe('row security on the referral table', () => {
     const columns = await owner.db.execute<{ column_name: string; privilege_type: string }>(sql`select column_name, privilege_type from information_schema.column_privileges
       where table_schema = 'public' and table_name = 'recruitment_referral' and grantee in ('ai_hr_app', 'PUBLIC') order by column_name`);
     expect(columns.every((c) => c.privilege_type === 'SELECT')).toBe(true);
-    // Slice 23 (5725) adds the frozen reward amount and currency.
+    // Slice 23 (5875) adds the frozen reward amount and currency.
     expect(columns.map((c) => c.column_name)).toEqual(['application_id', 'candidate_id', 'company_id', 'confirmed_at', 'created_at', 'id', 'job_id',
       'referrer_person_id', 'referrer_user_id', 'reward_amount', 'reward_currency', 'tenant_id']);
     const marker = await owner.db.execute(sql`select grantee from information_schema.role_table_grants where table_schema = 'app'

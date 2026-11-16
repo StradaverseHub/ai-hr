@@ -1,5 +1,5 @@
 /**
- * Recruitment slice 14 — the pure rules and the static shape of 5715 (no database). The database behaviour of cases 95–100 is
+ * Recruitment slice 14 — the pure rules and the static shape of 5865 (no database). The database behaviour of cases 95–100 is
  * test/recruitment-custom-fields.test.ts; case 101 is the lead's rendered check.
  */
 import { readFileSync } from 'node:fs';
@@ -288,17 +288,17 @@ describe('filters and ordering', () => {
   });
 });
 
-describe('5715 static shape', () => {
-  const sql = read('db/migrations/5715_recruitment_custom_fields.sql');
+describe('5865 static shape', () => {
+  const sql = read('db/migrations/5865_recruitment_custom_fields.sql');
   const journal = JSON.parse(read('db/migrations/meta/_journal.json')) as { entries: { idx: number; when: number; tag: string }[] };
-  it('is journalled once at idx 5115 / when 1793330005415, after 5714', () => {
-    const entries = journal.entries.filter((e) => e.tag === '5715_recruitment_custom_fields');
-    expect(entries).toEqual([expect.objectContaining({ idx: 5115, when: 1793330005415 })]);
-    // The entry before it (5716, slice 15, follows it since).
-    expect(journal.entries[journal.entries.findIndex((e) => e.tag === '5715_recruitment_custom_fields') - 1]?.tag).toBe('5714_recruitment_consume_invitation_access_lock');
+  it('is journalled once at idx 5265 / when 1793330005565, after 5864', () => {
+    const entries = journal.entries.filter((e) => e.tag === '5865_recruitment_custom_fields');
+    expect(entries).toEqual([expect.objectContaining({ idx: 5265, when: 1793330005565 })]);
+    // The entry before it (5866, slice 15, follows it since).
+    expect(journal.entries[journal.entries.findIndex((e) => e.tag === '5865_recruitment_custom_fields') - 1]?.tag).toBe('5864_recruitment_consume_invitation_access_lock');
   });
-  it('restates 5713\'s removal and company delete byte for byte with added steps only', () => {
-    const prior = read('db/migrations/5713_recruitment_talent_pools_blocked_list.sql');
+  it('restates 5863\'s removal and company delete byte for byte with added steps only', () => {
+    const prior = read('db/migrations/5863_recruitment_talent_pools_blocked_list.sql');
     const body = (src: string, start: string, end: string) => src.slice(src.indexOf(start), src.indexOf(end, src.indexOf(start)) + end.length);
     for (const [start, end] of [
       ['CREATE OR REPLACE FUNCTION app.recruitment_destroy_candidate(p_candidate uuid)', 'GRANT EXECUTE ON FUNCTION app.recruitment_destroy_candidate(uuid) TO ai_hr_app;'],

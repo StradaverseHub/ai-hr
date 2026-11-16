@@ -1172,7 +1172,8 @@ export function listProcessedPayslipsAcross(
     // An absent cap does not call .limit() at all, so every existing caller — including the CSV
     // export, which must never be clipped — issues exactly the query it issued before.
     const rows=await (limit ? q.limit(limit) : q);
-    const retained=await informationPayslipDocuments(tx,{...p,cycle,intendedCycle:true});
+    // Same cap as the live rows: the landing tab must not read (or fail on) every retained document ever kept.
+    const retained=await informationPayslipDocuments(tx,{...p,cycle,intendedCycle:true,limit});
     const seen=new Set(rows.map(row=>row.id));
     for(const document of retained){const r=informationDocumentRow(document);if(seen.has(r.id))continue;
       rows.push({id:r.id,employmentId:r.employmentId,employeeName:r.employeeName,employeeCode:r.employeeCode,companyId:r.companyId,company:r.company,currency:r.currency,batchId:r.batchId!,payPeriod:r.payPeriod,runType:r.runType,runSeq:r.runSeq,batchStatus:r.batchStatus,historyImportAttemptId:r.historyImportAttemptId??null,historyImportCycleName:r.historyImportCycleName??null,coverageFrom:r.coverageFrom??null,coverageTo:r.coverageTo??null,releasedAt:r.releasedAt,version:r.version,basic:r.basic,allowance:r.allowance,overtime:r.overtime,bonus:r.bonus,gross:r.gross,statutory:r.statutory,otherDeductions:r.otherDeductions,totalDeductions:r.totalDeductions,net:r.net});
@@ -3314,6 +3315,9 @@ export function listFilableRunsForPeriod(
  * permissions and audit; this owner owns saved payroll semantics. No live company-currency fallback. */
 export async function payrollComparisonSourcesTx(tx: Tx, ctx: SessionContext, p: {
   companyIds: readonly string[]; previousPeriod: string; currentPeriod: string; runType: 'regular' | 'all'; cycleIds?: string[]; previousCycleIds?: string[]; payItemCode: string;
+  /** One employee's comparison (Payroll Reconciliation's row link): only that employee's saved results are read.
+   *  Run completeness is still checked over each whole run, with one grouped count. */
+  employmentId?: string;
 }) {
   if (!p.companyIds.length) return { runs: [], sources: [] };
   if (p.companyIds.length > 1000) throw new Error('Payroll comparison exceeds 1000 companies. Narrow the scope.');
@@ -3337,10 +3341,18 @@ export async function payrollComparisonSourcesTx(tx: Tx, ctx: SessionContext, p:
   const results = await tx.select({ id: payslip.id, version: payslip.version, runId: payslip.batchId,
     employmentId: payslip.employmentId, basicSalary: payslip.basicSalary, allowance:payslip.allowance,overtimePay:payslip.overtimePay,bonus:payslip.bonus,otherDeductions:payslip.otherDeductions,netPay:payslip.netPay,grossPay:payslip.grossPay,totalDeductions:payslip.totalDeductions,employerCost:payslip.employerCost, statutory: payslip.statutory,
     coverageFrom: payslip.coverageFrom, coverageTo: payslip.coverageTo }).from(payslip)
-    .where(and(eq(payslip.tenantId, ctx.tenantId), inArray(payslip.batchId, batches.map(batch => batch.id))))
+    .where(and(eq(payslip.tenantId, ctx.tenantId), inArray(payslip.batchId, batches.map(batch => batch.id)),
+      p.employmentId ? eq(payslip.employmentId, p.employmentId) : undefined))
     .orderBy(asc(payslip.id)).limit(20001);
   if (results.length > 20000) throw new Error('Payroll comparison exceeds 20000 saved results. Narrow the company scope.');
-  const counts=new Map<string,number>();for(const result of results)counts.set(result.runId,(counts.get(result.runId)??0)+1);
+  const counts=new Map<string,number>();
+  if (p.employmentId) {
+    // Completeness is a property of the whole run, not of the one employee read: count every run's results in SQL.
+    const runCounts = batches.length ? await tx.select({ runId: payslip.batchId, n: sql<number>`count(*)::int` }).from(payslip)
+      .where(and(eq(payslip.tenantId, ctx.tenantId), inArray(payslip.batchId, batches.map(batch => batch.id))))
+      .groupBy(payslip.batchId) : [];
+    for (const row of runCounts) counts.set(row.runId, Number(row.n));
+  } else for(const result of results)counts.set(result.runId,(counts.get(result.runId)??0)+1);
   if(batches.some(batch=>(counts.get(batch.id)??0)!==batch.expectedResults))throw new Error('Saved payroll results are incomplete or unavailable in this scope. No partial comparison was generated.');
   const sources = results.map(slip => {
     const batch = batchById.get(slip.runId)!;

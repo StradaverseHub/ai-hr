@@ -104,7 +104,9 @@ import {
 } from './absence-days';
 import { holidayDatesByEmployment, holidayDatesFor, holidayCalendarProvenanceFor } from './holidays';
 import type {PolicyCalendarProof} from '../lib/attendance-policy-calendar';
-import {attendanceGroupPolicyOnTx,type ResolvedAttendanceGroupPolicy} from './attendance-group-policy';
+import {attendanceGroupPolicyOnTx,hasAttendanceBackdateLimitRevisionTx,type ResolvedAttendanceGroupPolicy} from './attendance-group-policy';
+import {OvertimeBackdateNotAllowedError,overtimeBackdateEarliestDate} from '../lib/overtime-backdate';
+export {OvertimeBackdateNotAllowedError} from '../lib/overtime-backdate';
 import {HR_LOCAL_TZ} from '../lib/hr-date';
 import {overtimeUuid,overtimeDate} from '../lib/overtime-pattern-schema';
 import { approvedLeaveDates, approvedLeavePresenceByEmploymentTx } from './leave';
@@ -5528,11 +5530,14 @@ export function listAttendanceCorrections(
 /** The three day classifications a plan can be filed against. Same vocabulary as attendance.day_type. */
 export type PlanOtDayType = 'workday' | 'rest_day' | 'holiday';
 
+type AttendanceWorkflowRead = NonNullable<ReturnType<Awaited<ReturnType<typeof attendanceWorkflowsForTx>>['get']>>;
 /** One row of the Plan OT list. */
 export type OvertimePlanRow = {
   id: string;
   /** Saved current-level names; null/absent identifies a legacy reporting-line request. */
   assignedApproverNames?: string[] | null;
+  /** 237c31e6: the frozen request (with approver Employee IDs) for the "View approval progress" panel; null for legacy. */
+  workflow?: AttendanceWorkflowRead | null;
   attendanceDate: string;
   plannedStartTime: string | null;
   plannedEndTime: string | null;
@@ -6302,7 +6307,7 @@ export function myOvertimePlans(
       const workflow = workflows.get(row.id);
       return {...row, assignedApproverNames: workflow
         ? (workflow.effectiveStages[workflow.currentStage]?.approvers.map(actor => actor.name) ?? [])
-        : null};
+        : null, workflow: workflow ?? null};
     });
   });
 }
@@ -6841,7 +6846,8 @@ export type MyAttendanceRequestRow = {
   createdAt: Date;
   /** True when a supporting file was attached (the file itself streams from its own route). */
   hasAttachment: boolean;
-  workflow?: Awaited<ReturnType<typeof import('./attendance-workflow').attendanceWorkflowForTx>>;
+  /** 237c31e6: approverCodes are the frozen identities' Employee IDs (5697), read once per page. */
+  workflow?: (NonNullable<Awaited<ReturnType<typeof import('./attendance-workflow').attendanceWorkflowForTx>>> & { approverCodes?: Record<string, string | null> }) | null;
   cancellationKind?: 'cancelled' | 'withdrawn' | null;
 };
 
@@ -8041,6 +8047,35 @@ type AttendanceCorrectionInsertInput={
   plannedStartTime:string|null;plannedEndTime:string|null;otReasonCategory:OtReasonCategory|null;
   remark:string|null;requestKind:AttendanceRequestKind;unclockedWork?:AttendancePolicyUnclockedWork;
 };
+/** 87bd9656 — Overtime Backdate Control, checked in the ONE submission owner below, so the employee's own web and
+ * mobile requests, the AI assistant's reviewed requests, Request On Behalf and HR's day screens all meet the same
+ * rule. There is no actor exemption. Today and later dates (planned overtime) always pass and read nothing more.
+ *
+ * The limit is the employee's Schedule Group revision IN FORCE ON THE SUBMISSION DATE (todayInKualaLumpur), for the
+ * group and employer that own the requested date. Reading today's revision, not the requested date's, closes the
+ * loophole where a date before the setting's start is governed by an older revision (or by none). A group with no
+ * dated revision on today keeps no limit. */
+async function assertOvertimeBackdateAllowedTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string},
+  context:Awaited<ReturnType<typeof attendancePolicyExecutionContextTx>>){
+  const today=todayInKualaLumpur();
+  if(p.date>=today||context.state==='unavailable')return;
+  let scope:{companyId:string;ruleId:string}|null=context.state==='policy'?{companyId:context.companyId,ruleId:context.schedule.ruleId}:null;
+  if(!scope){
+    // Legacy on the requested date: no revision covers it. Its group may still have one in force today.
+    const company=(await provenCompanyDatesTx(tx,[p])).get(`${p.employmentId}|${p.date}`);
+    if(!company?.companyId||company.reason)return;
+    // One indexed tenant/company read keeps the schedule resolution off every legacy-only employer.
+    if(!await hasAttendanceBackdateLimitRevisionTx(tx,ctx,{companyId:company.companyId,date:today}))return;
+    const schedule=await scheduleFor(tx,p.employmentId,p.date);
+    if(!schedule.rule)return;
+    scope={companyId:company.companyId,ruleId:schedule.rule.id};
+  }
+  const inForce=await attendanceGroupPolicyOnTx(tx,ctx,{...scope,date:today});
+  const limitDays=inForce?.policy.overtime.backdateLimitDays;
+  if(limitDays===undefined)return;
+  const earliestDate=overtimeBackdateEarliestDate(today,limitDays);
+  if(p.date<earliestDate)throw new OvertimeBackdateNotAllowedError(limitDays,earliestDate);
+}
 async function prepareAttendanceCorrectionInsertSourceTx(tx:Tx,ctx:SessionContext,p:AttendanceCorrectionInsertInput){
   const {clockChanges,checkIn,checkOut,requestedOtMinutes}=p;
   // Freeze the server resolver's selected identity, never a form-supplied rule/revision. Use the
@@ -8051,6 +8086,7 @@ async function prepareAttendanceCorrectionInsertSourceTx(tx:Tx,ctx:SessionContex
     await lockAttendancePolicyImportTx(tx,ctx,[{employmentId:p.employmentId,date:p.date}]);
     const context=await attendancePolicyExecutionContextTx(tx,ctx,{employmentId:p.employmentId,date:p.date});
     if(context.state==='unavailable')throw Error('The submitted Attendance policy is unavailable.');
+    await assertOvertimeBackdateAllowedTx(tx,ctx,p,context);
     if(p.unclockedWork&&(context.state!=='policy'||!context.selected.policy.overtime.enabled
       ||!context.selected.policy.overtime.allowBackdatedWithoutClock||context.selected.activation.epoch<1))
       throw Error('The dated Schedule Group policy does not permit unclocked overtime.');

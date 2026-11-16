@@ -2,13 +2,13 @@
  * Candidate e-mail rules (slice 19, D-063, docs/adr/2026-11-14-recruitment-candidate-email.md). Pure and client-safe: the kinds and
  * their placeholder allowlists, the limits, template and settings validation, and the ONE renderer every candidate e-mail goes
  * through — the preview a person sees, the content frozen at queue time and the careers receipt all call renderCandidateEmail, so
- * what is previewed is what is sent. db/migrations/5720_recruitment_candidate_email.sql refuses the same illegal templates, settings
+ * what is previewed is what is sent. db/migrations/5870_recruitment_candidate_email.sql refuses the same illegal templates, settings
  * and rows again.
  */
 import { isCanonicalEmailAddress } from '../../lib/email-address';
 
 /** The kinds candidate e-mail sends: slice 19's receipt and rejection, slice 20's interview invitation, reminder and cancellation
- *  and offer (5721 adds them to the CHECKs and restates the placeholder allowlist), and slice 22's survey (5724). */
+ *  and offer (5871 adds them to the CHECKs and restates the placeholder allowlist), and slice 22's survey (5874). */
 export const CANDIDATE_EMAIL_KINDS = ['application_received', 'rejection', 'interview_invitation', 'interview_reminder', 'interview_cancelled', 'offer', 'survey'] as const;
 export const INTERVIEW_EMAIL_KINDS = ['interview_invitation', 'interview_reminder', 'interview_cancelled'] as const;
 export type InterviewEmailKind = (typeof INTERVIEW_EMAIL_KINDS)[number];
@@ -36,7 +36,7 @@ export const CANDIDATE_EMAIL_PLACEHOLDERS: Record<CandidateEmailKind, readonly s
 };
 export type Placeholder = BasePlaceholder | InterviewPlaceholder | 'offerDetails' | 'responseLink' | 'surveyLink';
 export type CandidateEmailValues = Record<BasePlaceholder, string> & Partial<Record<InterviewPlaceholder | 'offerDetails' | 'responseLink' | 'surveyLink', string>>;
-/** The longest value each placeholder can take: candidate names and job titles are at most 200 (5701), the sender name 80; the company
+/** The longest value each placeholder can take: candidate names and job titles are at most 200 (5851), the sender name 80; the company
  *  name has no stored limit, so the renderer cuts every value to these lengths and a template's worst case is known at save time.
  *  Slice 20: the interview values are formatted here (below) from bounded parts; the place is at most a room (120), an address name
  *  (120), an address (500), a region (120) and a map link (2,000) with separators; offer details are refused above 10,000 characters
@@ -44,12 +44,12 @@ export type CandidateEmailValues = Record<BasePlaceholder, string> & Partial<Rec
 export const CANDIDATE_EMAIL_VALUE_MAX: Record<Placeholder, number> = {
   candidateName: 200, jobTitle: 200, companyName: 200, senderName: 80,
   interviewRound: 80, interviewType: 80, interviewDate: 120, interviewTime: 160, interviewDuration: 80, interviewPlace: 3200, offerDetails: 10000,
-  // Slice 21b: one sentence with the response link (at most 400 characters, 5723).
+  // Slice 21b: one sentence with the response link (at most 400 characters, 5873).
   responseLink: 600,
   // Slice 22: the survey link the sweep puts in (https, the installation host and a 43-character token).
   surveyLink: 300,
 };
-/** What 5720 freezes at most: the rendered subject and text. A template whose worst case (every placeholder at its longest value)
+/** What 5870 freezes at most: the rendered subject and text. A template whose worst case (every placeholder at its longest value)
  *  exceeds these is refused on save (email_too_long), so a render can never exceed the frozen columns. The HTML is then at most
  *  6 x the text plus its wrapper (an escaped character is at most 6 characters), well inside its 200,000. */
 export const CANDIDATE_EMAIL_FROZEN_SUBJECT_MAX = 1000;
@@ -60,7 +60,7 @@ export const CANDIDATE_EMAIL_SUBJECT_MAX = 200;
 export const CANDIDATE_EMAIL_BODY_MAX = 5000;
 export const CANDIDATE_EMAIL_SENDER_NAME_MAX = 80;
 export const CANDIDATE_EMAIL_REPLY_TO_MAX = 254;
-/** Per company, e-mails queued in any hour (5720 counts the same under a per-company lock). */
+/** Per company, e-mails queued in any hour (5870 counts the same under a per-company lock). */
 export const CANDIDATE_EMAIL_HOURLY_CAP = 500;
 /** A rejection e-mail is sent now or 1, 2 or 3 days later, as the person chooses. */
 export const REJECTION_EMAIL_DELAYS = [0, 1, 2, 3] as const;
@@ -89,7 +89,7 @@ export function candidateEmailBackoffSeconds(attempts: number): number {
 
 const CONTROL_SUBJECT = /[\u0001-\u001f\u007f-\u009f]/;
 const CONTROL_BODY = /[\u0001-\u0009\u000b-\u001f\u007f-\u009f]/;
-/** Link-like text, the SAME pattern as 5720's app.recruitment_candidate_email_linkish (a test compares them): a known scheme followed by
+/** Link-like text, the SAME pattern as 5870's app.recruitment_candidate_email_linkish (a test compares them): a known scheme followed by
  *  ":" and more (http, https, ftp, mailto, tel, sms, data, javascript, vbscript, file), any "://", a "//" at the start or after a space
  *  or punctuation, "www" with any dot (Unicode dots too), punycode, or a bare domain followed by "/" ("evil.example/login").
  *  Case-insensitive. Ordinary names and titles ("S.Kumar", "Node.js Developer", "Ref:HR-12") are not link-like. Templates must not
@@ -97,7 +97,7 @@ const CONTROL_BODY = /[\u0001-\u0009\u000b-\u001f\u007f-\u009f]/;
 export const LINK_PATTERN = '(^|[^a-z0-9])(https?|ftp|mailto|tel|sms|data|javascript|vbscript|file):\\S|://|(^|[^a-z0-9])//|www[.。．｡]|xn--|[a-z0-9-][.。．｡][a-z]{2,}/';
 const LINK = new RegExp(LINK_PATTERN, 'i');
 export const linkish = (text: string) => LINK.test(text);
-/** The HTML grammar the renderer emits and 5720's body_html CHECK accepts (the same text): its wrapper, paragraphs, line breaks and
+/** The HTML grammar the renderer emits and 5870's body_html CHECK accepts (the same text): its wrapper, paragraphs, line breaks and
  *  five entities only. */
 export const HTML_GRAMMAR = '^<!doctype html><html lang="(en|ms|zh|vi|ta|th)"><head><meta charset="utf-8"></head><body>(<p>([^<>&]|<br>|&(amp|lt|gt|quot|#39);)*</p>)*</body></html>$';
 const PLACEHOLDER = /\{([^{}]*)\}/g;
@@ -140,7 +140,7 @@ export function validateCandidateEmailTemplate(kind: CandidateEmailKind, input: 
     return p.stray || p.names.some((n) => !allowed.has(n));
   });
   if (bad.length) return { ok: false, code: 'email_placeholder', fields: bad };
-  // Slice 22: a survey's body names {surveyLink} exactly once and its subject never (5724 checks the frozen e-mail the same way).
+  // Slice 22: a survey's body names {surveyLink} exactly once and its subject never (5874 checks the frozen e-mail the same way).
   if (kind === 'survey') {
     const misplaced = [
       ...(templatePlaceholders(subject).names.includes(SURVEY_LINK_PLACEHOLDER_NAME) ? ['subject' as const] : []),
@@ -162,16 +162,16 @@ export function validateCandidateEmailTemplate(kind: CandidateEmailKind, input: 
 export function validReplyTo(value: string): boolean {
   return value.length <= CANDIDATE_EMAIL_REPLY_TO_MAX && isCanonicalEmailAddress(value);
 }
-/** A candidate's recorded e-mail the transport would accept (the same canonical rule, at most 254 as 5720 stores it); anything else
+/** A candidate's recorded e-mail the transport would accept (the same canonical rule, at most 254 as 5870 stores it); anything else
  *  counts as no usable address: the candidate is skipped and the person told. */
 export function usableRecipient(email: string | null | undefined): email is string {
   return typeof email === 'string' && email.length <= CANDIDATE_EMAIL_REPLY_TO_MAX && isCanonicalEmailAddress(email);
 }
 /** Characters the transport refuses in a display name (lib/managed-email-policy.ts validManagedEmailSenderName: control characters
- *  and @ < > ", so a name never looks like another mailbox); the C1 controls are refused here as well. 5720's sender CHECKs use the
+ *  and @ < > ", so a name never looks like another mailbox); the C1 controls are refused here as well. 5870's sender CHECKs use the
  *  same class. */
 export const SENDER_NAME_REFUSED = /[\u0001-\u001f\u007f-\u009f@<>"]/;
-/** The display name used when the company sets none — the same rule as 5720's app.recruitment_candidate_email_sender (D-064): every
+/** The display name used when the company sets none — the same rule as 5870's app.recruitment_candidate_email_sender (D-064): every
  *  character the transport refuses made a space, runs of spaces made one, leading space removed, cut to 80 characters, trailing space
  *  removed (JavaScript's trim set, which includes the no-break and ideographic spaces the transport's check removes). A company name
  *  with nothing else left gives '': the company must then set its own sender name to switch candidate e-mail on. */
@@ -255,7 +255,7 @@ export function parseReminderHours(value: unknown): number | null {
   return Number.isInteger(n) && n >= REMINDER_HOURS_MIN && n <= REMINDER_HOURS_MAX ? n : null;
 }
 /** When a reminder is due: the interview's start minus the company's hours — or none when that moment is not ahead of `now` (an
- *  interview scheduled closer than that gets its invitation only). 5721 pins the same time. */
+ *  interview scheduled closer than that gets its invitation only). 5871 pins the same time. */
 export function reminderDueAt(startsAt: Date, hours: number, now: Date): Date | null {
   const due = new Date(startsAt.getTime() - hours * 3_600_000);
   return due.getTime() > now.getTime() ? due : null;
@@ -329,13 +329,13 @@ export function interviewEmailValues(f: InterviewEmailFacts, labels: InterviewEm
     },
   };
 }
-/** Link-like text with exactly the given map link removed (the frozen text's rule in 5721: every other link still refuses). */
+/** Link-like text with exactly the given map link removed (the frozen text's rule in 5871: every other link still refuses). */
 export function linkishExcept(text: string, mapUrl: string | null, responseUrl: string | null = null): boolean {
   let t = mapUrl ? text.split(mapUrl).join(' ') : text;
   if (responseUrl) t = t.split(responseUrl).join(' ');
   return linkish(t);
 }
-/** Slice 21b: the response link's sentence ("Accept or decline here: {url}"), or '' without a link. 5723 holds the URL itself to
+/** Slice 21b: the response link's sentence ("Accept or decline here: {url}"), or '' without a link. 5873 holds the URL itself to
  *  https://<host>/careers/r/<43-character token>. */
 export const RESPONSE_URL_PATTERN = /^https:\/\/[A-Za-z0-9.-]+(:[0-9]{1,5})?\/careers\/r\/[A-Za-z0-9_-]{43}$/;
 export function responseLinkValue(sentence: string, url: string | null): string {
@@ -354,7 +354,7 @@ export function offerDetailsText(lines: readonly OfferEmailLine[]): string | nul
 
 /**
  * An interview e-mail as the candidate receives it — the ONE function the schedule form's live preview (in the browser), the
- * cancellation preview, the frozen invitation, reminder and cancellation all call. `mapUrl` is what 5721 freezes (never for a
+ * cancellation preview, the frozen invitation, reminder and cancellation all call. `mapUrl` is what 5871 freezes (never for a
  * cancellation, which names no place); `valueLink` when a value would make the subject link-like or the text link-like other than by
  * exactly that map link (the e-mail is then not sent).
  */
@@ -388,7 +388,7 @@ export function interviewFactsFromForm(form: { roundNo: number; type: 'onsite' |
 
 // ── Slice 22: the anonymous candidate survey ─────────────────────────────────────────────────────────────────────
 
-/** What the frozen survey e-mail holds where the link goes; the sweep replaces it with a fresh link when it sends (5724). */
+/** What the frozen survey e-mail holds where the link goes; the sweep replaces it with a fresh link when it sends (5874). */
 export const SURVEY_LINK_PLACEHOLDER = '{surveyLink}';
 /** Sent 1–14 days after the hire, or after the rejection e-mail; default 3. */
 export const SURVEY_DELAY_DEFAULT = 3;
@@ -401,7 +401,7 @@ export function parseSurveyDelay(value: unknown): number | null {
 /** The survey link the sweep makes: the installation's https origin and a 43-character token on the careers host. */
 export const SURVEY_URL_PATTERN = /^https:\/\/[A-Za-z0-9.-]+(:[0-9]{1,5})?\/careers\/s\/[A-Za-z0-9_-]{43}$/;
 /** The message as sent: the frozen subject, text and HTML with the one placeholder replaced by the link (null when the frozen content
- *  does not hold it exactly once in the text and HTML and never in the subject — 5724 refuses such a row, so this is a backstop). */
+ *  does not hold it exactly once in the text and HTML and never in the subject — 5874 refuses such a row, so this is a backstop). */
 export function withSurveyLink(m: RenderedCandidateEmail, url: string): RenderedCandidateEmail | null {
   const once = (t: string) => t.split(SURVEY_LINK_PLACEHOLDER).length === 2;
   if (!SURVEY_URL_PATTERN.test(url) || m.subject.includes(SURVEY_LINK_PLACEHOLDER) || !once(m.text) || !once(m.html)) return null;

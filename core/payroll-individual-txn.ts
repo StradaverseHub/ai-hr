@@ -1455,7 +1455,10 @@ export function updateIndividualTxn(
     amount?: number;
     quantity?: number | null;
     unit?: string | null;
-    calculationMethod?: IndividualCalculationMethod;
+    /** OMITTED leaves the stored input method alone. aac17dd0 — null is an explicit CLEAR: an inline "Calculated by
+     *  Formula" row moved from a typed Amount back to Hours or Days returns to the legacy derived path (method NULL)
+     *  and takes its pay_item_rule marker again. */
+    calculationMethod?: IndividualCalculationMethod | null;
     notes?: string | null;
     componentId?: string | null;
     /** c11e81aa — the configured Pay Cycle. OMITTED leaves the stored choice alone; null clears it (the
@@ -1505,7 +1508,7 @@ export function updateIndividualTxn(
       batchCycleId: batch != null ? batch.payrollCycleId : null,
     });
 
-    const priced=p.calculationMethod===undefined?null:await priceIndividualTxnInputTx(tx,ctx,{
+    const priced=p.calculationMethod==null?null:await priceIndividualTxnInputTx(tx,ctx,{
       componentId:nextComponentId,employmentId:existing.employmentId,companyId:batch?.companyId??existing.companyId!,
       payPeriod,txnDate:nextDate,quantity:p.quantity===undefined?(existing.quantity==null?null:Number(existing.quantity)):p.quantity,
       unit:p.unit===undefined?existing.unit:p.unit,amount:p.amount??Number(existing.amount),method:p.calculationMethod,
@@ -1513,6 +1516,8 @@ export function updateIndividualTxn(
     });
     const patch: Record<string, unknown> = {};
     if(priced){patch.amount=money(priced.amount);patch.calculationMethod=priced.calculationMethod;}
+    const clearsMethod=p.calculationMethod===null&&existing.calculationMethod!=null;
+    if(clearsMethod)patch.calculationMethod=null;
     if (p.kind !== undefined) patch.kind = p.kind;
     if (nextComponentId !== existing.componentId) patch.componentId = nextComponentId;
     if (p.txnDate !== undefined) patch.txnDate = p.txnDate;
@@ -1528,7 +1533,7 @@ export function updateIndividualTxn(
     // 792053e5 — the pricing marker follows the row's FINAL inputs: an edit that re-prices (or types over) the amount
     // re-decides it; a saved-formula row the edit did not re-price keeps its own.
     if (Object.keys(patch).length > 0) {
-      const nextMethod=(priced?.calculationMethod??existing.calculationMethod??null) as IndividualCalculationMethod|null;
+      const nextMethod=(p.calculationMethod===null?null:priced?.calculationMethod??existing.calculationMethod??null) as IndividualCalculationMethod|null;
       const nextQuantity=patch.quantity!==undefined?(patch.quantity==null?null:Number(patch.quantity)):existing.quantity==null?null:Number(existing.quantity);
       const marker=nextMethod==='formula'&&!priced
         ?{pricingSource:existing.pricingSource,pricingRef:existing.pricingRef,pricedAt:existing.pricedAt}
@@ -1558,6 +1563,7 @@ export function updateIndividualTxn(
       // References only (no cleartext amount) — ADR-0030 Layer 0.
       payload: {
         ...(priced?{calculationMethod:priced.calculationMethod,...('formulaRevisionId' in priced?{formulaId:priced.formulaId,formulaRevisionId:priced.formulaRevisionId}:{})}:{}),
+        ...(clearsMethod?{calculationMethod:null,previousCalculationMethod:existing.calculationMethod}:{}),
         before: {
           kind: existing.kind,
           txnDate: existing.txnDate,

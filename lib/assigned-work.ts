@@ -24,11 +24,20 @@ export const PACK_TASK_KINDS=['performanceReview','assessmentWork','careerPlan',
  // agency contract expiry. Slice 11: a screening request waiting for the hiring manager's feedback. Slice 12: the recorder's
  // background check waiting for the candidate's authorisation, and one in progress for more than 14 Kuala Lumpur days.
  'recruitmentRequisitionApproval','recruitmentOfferApproval','recruitmentFeedback','recruitmentAgencyReview','recruitmentContractExpiry','recruitmentScreening',
- 'recruitmentBackgroundCheckAuthorisation','recruitmentBackgroundCheckOverdue'] as const;
+ 'recruitmentBackgroundCheckAuthorisation','recruitmentBackgroundCheckOverdue',
+ // Probation (core/probation.ts pendingProbationTasks): Approve steps, and every other Probation task (employee, Line
+ // Manager, PBP and GBS tasks, letter Sign steps). Both open the case view.
+ 'probationApproval','probationTask'] as const;
 /** The Recruitment kinds above. Only surfaces that ask for them (core/approvals-inbox.ts InboxModulesWithRecruitment) get them. */
 export const RECRUITMENT_TASK_KINDS=['recruitmentRequisitionApproval','recruitmentOfferApproval','recruitmentFeedback','recruitmentAgencyReview','recruitmentContractExpiry','recruitmentScreening','recruitmentBackgroundCheckAuthorisation','recruitmentBackgroundCheckOverdue'] as const satisfies readonly PackTaskKind[];
 export type PackTaskKind=typeof PACK_TASK_KINDS[number];
 export type RecruitmentTaskKind=typeof RECRUITMENT_TASK_KINDS[number];
-export type PackTaskItem={id:string;kind:PackTaskKind;subjectName:string|null;createdAt:string;linkPath:string};
+/**
+ * Probation only (lane L, L5): the plain step code of the caller's task (app.probation_task_list `kind`, for example
+ * `letter_sign`) and its part number, so the queues name the step ("Sign probation letter") instead of a generic
+ * "Probation task". A code and a part number, never content; other packs keep exactly the five keys above.
+ */
+export type PackTaskAction={code:string;part:number|null};
+export type PackTaskItem={id:string;kind:PackTaskKind;subjectName:string|null;createdAt:string;linkPath:string;action?:PackTaskAction};
 /** A pack's task provider. `scopeIds` is the company-switcher selection; undefined means no filter. */
 export type PackTaskProvider=(ctx:SessionContext,scopeIds:string[]|undefined)=>Promise<PackTaskItem[]>;

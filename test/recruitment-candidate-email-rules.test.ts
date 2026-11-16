@@ -1,7 +1,7 @@
 /**
  * Recruitment slice 19 — the pure candidate e-mail rules (packs/recruitment/candidate-email-model.ts), the code-owned default wording in
  * the six messages files, the transport's per-message display name and reply-to (lib/internal-auth/smtp.ts, nodemailer faked), and the
- * 5720 restatements of the candidate removal and company delete (byte for byte plus added steps). No database. Fictional values only.
+ * 5870 restatements of the candidate removal and company delete (byte for byte plus added steps). No database. Fictional values only.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -138,17 +138,17 @@ describe('settings, delays, states and backoff', () => {
       expect(usableRecipient(bad), String(bad)).toBe(false);
     }
   });
-  it('cuts the default sender name at 80 and trims Unicode spaces after the cut (as 5720 does)', () => {
+  it('cuts the default sender name at 80 and trims Unicode spaces after the cut (as 5870 does)', () => {
     expect(defaultSenderName('\u3000 Fictional QZE\u00a0')).toBe('Fictional QZE');
     const name = 'Q'.repeat(79) + '\u00a0' + 'tail';
     expect(defaultSenderName(name)).toBe('Q'.repeat(79));
     expect(defaultSenderName('A\nB')).toBe('A B');
-    expect(read('db/migrations/5720_recruitment_candidate_email.sql')).toContain('\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff');
+    expect(read('db/migrations/5870_recruitment_candidate_email.sql')).toContain('\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff');
   });
   it('refuses a sender name the transport refuses (@ < > " and control characters); every accepted name passes the transport rule', () => {
     for (const bad of ['QZE@Talent', 'talent@example.test', 'QZE <Talent>', 'QZE Talent >', 'QZE "Talent"', '"', 'QZE\tTalent', 'QZE\u0085Talent']) {
       expect(validateCandidateEmailSettings({ enabled: false, senderName: bad }), JSON.stringify(bad)).toEqual({ ok: false, code: 'invalid_input', fields: ['senderName'] });
-      // The transport refuses each of these too (C1 controls are refused here only, as 5720 refuses them).
+      // The transport refuses each of these too (C1 controls are refused here only, as 5870 refuses them).
       if (!/[\u0080-\u009f]/.test(bad)) expect(validManagedEmailSenderName(bad.trim()), JSON.stringify(bad)).not.toBe(bad.trim());
     }
     for (const good of ['QZE Talent & Co.', 'Fictional QZE (Talent)', "O'Brien QZE", 'QZE 人才团队', 'Q'.repeat(80), '\u00a0QZE Talent\u3000']) {
@@ -171,9 +171,9 @@ describe('settings, delays, states and backoff', () => {
       expect(validManagedEmailSenderName(d), JSON.stringify(name)).toBe(d);
     }
   });
-  it('5720 refuses the same characters in both sender CHECKs and makes them spaces in the default (one class, as the model)', () => {
+  it('5870 refuses the same characters in both sender CHECKs and makes them spaces in the default (one class, as the model)', () => {
     expect(SENDER_NAME_REFUSED.source).toBe('[\\u0001-\\u001f\\u007f-\\u009f@<>"]');
-    const m = read('db/migrations/5720_recruitment_candidate_email.sql');
+    const m = read('db/migrations/5870_recruitment_candidate_email.sql');
     const cls = `'[\\x01-\\x1f\\x7f-\\x9f@<>"]'`;
     expect(m).toContain(`AND sender_name !~ ${cls})),`);
     expect(m).toContain(`sender_name text NOT NULL CHECK (char_length(sender_name) BETWEEN 1 AND 80 AND sender_name !~ ${cls}`);
@@ -219,8 +219,8 @@ describe('default wording in the six languages', () => {
   });
 });
 
-describe('5720 agrees with the model', () => {
-  const m = read('db/migrations/5720_recruitment_candidate_email.sql');
+describe('5870 agrees with the model', () => {
+  const m = read('db/migrations/5870_recruitment_candidate_email.sql');
   it('uses the same link pattern and HTML grammar as the model, and has no careers receipt path (D-064)', () => {
     expect(m).toContain(`SELECT p_text ~* '${LINK_PATTERN}';`);
     expect(m).toContain(`body_html ~ '${HTML_GRAMMAR}'`);
@@ -236,7 +236,7 @@ describe('5720 agrees with the model', () => {
     expect(m).toContain('REFERENCING NEW TABLE AS inserted FOR EACH STATEMENT');
     expect(m).toContain('least(3600, 60 * power(2, x.attempts))');
   });
-  it('restates the candidate removal (5717) and the company delete (5719) byte for byte with added steps only', () => {
+  it('restates the candidate removal (5867) and the company delete (5869) byte for byte with added steps only', () => {
     const fn = (source: string, name: string) => {
       const start = source.lastIndexOf(`CREATE OR REPLACE FUNCTION ${name}(`);
       expect(start, name).toBeGreaterThan(-1);
@@ -253,10 +253,10 @@ describe('5720 agrees with the model', () => {
       expect(b.length).toBeGreaterThan(90);
       return a.slice(i, a.length - j);
     };
-    const destroy = added('5717_recruitment_import_export.sql', 'app.recruitment_destroy_candidate');
+    const destroy = added('5867_recruitment_import_export.sql', 'app.recruitment_destroy_candidate');
     expect(destroy.filter((l) => /DELETE FROM/.test(l)).map((l) => l.trim().split(' ')[2])).toEqual(['public.recruitment_candidate_email']);
     expect(destroy).toHaveLength(4);
-    const del = added('5719_recruitment_interview_setup.sql', 'app.recruitment_delete_company_setup');
+    const del = added('5869_recruitment_interview_setup.sql', 'app.recruitment_delete_company_setup');
     expect(del.filter((l) => /DELETE FROM/.test(l)).map((l) => l.trim().split(' ')[2])).toEqual(['public.recruitment_candidate_email',
       'public.recruitment_candidate_email_template', 'public.recruitment_candidate_email_setting']);
     expect(del).toHaveLength(9);

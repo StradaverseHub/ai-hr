@@ -4,7 +4,7 @@
  * no accounts), see the jobs released to their contracts, submit candidates and follow a coarse status. A portal submission waits
  * in HR's inbox; the job's recruiter, assistants or an administrator records it through slice 10's own path or declines it.
  *
- * Public calls run on the careers pool through the 5727 definers; the database never sees a code or a session token, only keyed
+ * Public calls run on the careers pool through the 5877 definers; the database never sees a code or a session token, only keyed
  * hashes. HR calls run as the signed-in user under row security.
  */
 import { and, eq, sql } from 'drizzle-orm';

@@ -588,13 +588,22 @@
     "probationTracker": "சோதனைக் காலக் கண்காணிப்பு",
     "myPayrollReadiness": "எனது சம்பளத் தயார்நிலை",
     "attendanceFormulaBuilder": "வருகைச் சூத்திரங்கள்",
-    "recruitment": "ஆட்சேர்ப்பு",
-    "myReferrals": "வேட்பாளரைப் பரிந்துரை",
-    "attendanceRequestOnBehalf": "சார்பாக கோரிக்கை",
-    "attendanceApproveOnBehalf": "சார்பாக ஒப்புதல்",
     "rewardsReviewSetup": "மதிப்பாய்வு அமைப்பு",
     "rewardsChangeLog": "மாற்றப் பதிவு",
-    "rewardsLimitControls": "வரம்புக் கட்டுப்பாடுகள்"
+    "rewardsLimitControls": "வரம்புக் கட்டுப்பாடுகள்",
+    "attendanceRequestOnBehalf": "சார்பாக கோரிக்கை",
+    "attendanceApproveOnBehalf": "சார்பாக ஒப்புதல்",
+    "moduleHrAutomation": "HR Automation · Shared",
+    "automationWorkflows": "Workflows",
+    "automationTemplates": "Templates",
+    "automationGroups": "Assignment groups",
+    "automationOnOffWorkflows": "On/Off Boarding workflows",
+    "automationOnOffTemplates": "On/Off Boarding templates",
+    "automationOnOffGroups": "On/Off Boarding assignment groups",
+    "probationPostings": "Personnel postings",
+    "probationAccess": "Access",
+    "recruitment": "ஆட்சேர்ப்பு",
+    "myReferrals": "வேட்பாளரைப் பரிந்துரை"
   },
   "dashboard": {
     "viewAll": "அனைத்தையும் காண்"
@@ -2458,6 +2467,7 @@
           "no_data_rows": "தலைப்பிற்குக் கீழே குறைந்தது ஒரு நிகழ்வு வரியைச் சேர்க்கவும்.",
           "movement_catalog_too_large": "நிகழ்வு வகைப் பட்டியல் இந்த இறக்குமதி ஆதரிக்கும் அளவை மீறுகிறது. தனித்தனி புதிய நிகழ்வுகளைப் பயன்படுத்தவும்.",
           "movement_reference_catalog_too_large": "குறிப்புப் பட்டியல் இந்த இறக்குமதி ஆதரிக்கும் அளவை மீறுகிறது. இந்த மாற்றங்களுக்கு பணியாளர் பக்கத்தைப் பயன்படுத்தவும்.",
+          "movement_template_too_large": "இத்தனை நிறுவனங்கள் மற்றும் மதிப்புப் பட்டியல்களுக்கு வார்ப்புரு மிகப் பெரியதாக இருப்பதால் உருவாக்க முடியவில்லை. எந்தக் கோப்பும் உருவாக்கப்படவில்லை. உதவிக்கு ஆதரவுக் குழுவைத் தொடர்புகொள்ளவும்.",
           "movement_history_too_large": "இந்த ஊழியரின் வரலாறு இறக்குமதி சரிபார்ப்பு வரம்பை மீறுகிறது. நிகழ்வைப் பணியாளர் பக்கத்தில் பதிவு செய்யவும்.",
           "change_refused": "மாற்றம் மறுக்கப்பட்டது. இந்த ஊழியரின் மாற்றங்கள் எதுவும் சேமிக்கப்படவில்லை.",
           "workbook_key_unavailable": "பணிப்புத்தகக் கையொப்ப வசதி அமைக்கப்படவில்லை. கணினி நிர்வாகியைத் தொடர்புகொள்ளவும்; CSV-ஐத் தொடர்ந்து பயன்படுத்தலாம்.",
@@ -2526,7 +2536,6 @@
           "movement_field_must_change": "இந்த நிகழ்வு வகைக்கு இந்தப் புலம் மாற வேண்டும்.",
           "movement_document_required": "இந்த மாற்றத்திற்கு ஆதார ஆவணம் தேவை, அதை இறக்குமதி கொண்டு செல்ல முடியாது. இந்த நகர்வை நகர்வு தாவலில் பதிவு செய்யுங்கள்.",
           "movement_document_not_enabled": "இந்த நிகழ்வு வகை இந்தப் புலத்திற்கு ஆதார ஆவணத்தை ஏற்காது.",
-          "movement_template_too_large": "இத்தனை நிறுவனங்கள் மற்றும் மதிப்புப் பட்டியல்களுக்கு வார்ப்புரு மிகப் பெரியதாக இருப்பதால் உருவாக்க முடியவில்லை. எந்தக் கோப்பும் உருவாக்கப்படவில்லை. உதவிக்கு ஆதரவுக் குழுவைத் தொடர்புகொள்ளவும்.",
           "movement_before_current_record": "இந்தத் தேதி பணியாளரின் தற்போதைய நிறுவனம் மற்றும் பதவிப் பதிவை விட முந்தையது; அந்தப் பதிவு %date% அன்று தொடங்குகிறது. %date% அல்லது அதற்குப் பிந்தைய தேதியைப் பயன்படுத்துங்கள், அல்லது அந்தப் பதிவை உருவாக்கிய மாற்றத்தை முதலில் திரும்பப் பெறுங்கள்.",
           "movement_already_in_company": "இந்தத் தேதியில் பணியாளர் ஏற்கனவே இந்த நிறுவனத்தில் உள்ளார்.",
           "movement_label_other_company": "இந்த மதிப்பை இந்தத் தேதியில் பணியாளரின் நிறுவனத்தில் பயன்படுத்த முடியாது. அந்த நிறுவனத்திற்குக் கிடைக்கும் மதிப்பைத் தேர்ந்தெடுக்கவும்",
@@ -2622,6 +2631,7 @@
           "referenceValues": "ஒவ்வொரு நிறுவனத்திற்கும் அனுமதிக்கப்பட்ட மதிப்புகள்",
           "colValue": "பின் புலத்தில் உள்ளிட வேண்டிய மதிப்பு",
           "colLabel": "பொருள்",
+          "allCompanies": "அனைத்து நிறுவனங்களும்",
           "screenHint": "ஒவ்வொரு இயக்க வகைக்கும் நிறுவனத்திற்கும் ஒரே வார்ப்புரு. மாறும் ஒவ்வொரு புலத்திற்கும் ஒரு வரி; ஒரே நிறுவனம், பணியாளர், தேதி மற்றும் நிகழ்வு வகை கொண்ட வரிகள் ஒரு இயக்கம்.",
           "downloadTemplate": "வார்ப்புருவைப் பதிவிறக்கு",
           "history": "இறக்குமதி வரலாறு",
@@ -2656,8 +2666,7 @@
           "closedPayrollRow": "{periods} க்கான சம்பளப்பட்டியல் ஏற்கனவே மூடப்பட்டுள்ளது.",
           "closedPayrollTitle": "சில திருத்தங்கள் மூடப்பட்ட சம்பளப்பட்டியலுக்குப் பின்னுள்ள நகர்வுகளை மாற்றுகின்றன ({periods}).",
           "closedPayrollBody": "இந்தத் திருத்தங்கள் பணியாளர்களின் பதிவுகளையும் எதிர்கால செயலாக்கத்தையும் புதுப்பிக்கின்றன. மூடப்பட்ட சம்பளப்பட்டியல், வெளியிடப்பட்ட சம்பளச் சீட்டுகள் மற்றும் சட்டப்பூர்வ சமர்ப்பிப்புகள் இறுதி எண்ணிக்கைகளை வைத்திருக்கும்; மீண்டும் கணக்கிடப்படாது. இந்த உறுதிப்படுத்தல் இல்லாமல், தொடர்புடைய பணியாளர்கள் சேமிக்கப்படமாட்டார்கள்.",
-          "closedPayrollAcknowledge": "மூடப்பட்ட சம்பளப்பட்டியல் மாறாது என்பதை நான் புரிந்துகொள்கிறேன்.",
-          "allCompanies": "அனைத்து நிறுவனங்களும்"
+          "closedPayrollAcknowledge": "மூடப்பட்ட சம்பளப்பட்டியல் மாறாது என்பதை நான் புரிந்துகொள்கிறேன்."
         },
         "historyRow": "வரலாறாகப் பதிவு செய்யப்பட்டது: {from} முதல் {to} வரை முந்தைய மதிப்புகளைப் பெறும். {date} முதல் உள்ள பதிவு மாறாது."
       },
@@ -3556,6 +3565,7 @@
       "loading": "ஏற்றுகிறது…",
       "saved": "தகவல் திருத்தப்பட்டது. முடிந்த பரிவர்த்தனைகள் மாறாது.",
       "unchanged": "மாற்றமில்லை — இந்த வரி தவிர்க்கப்படும்.",
+      "effectiveDateOnly": "திருத்த எதுவும் இல்லை. திருத்தப்பட்ட மதிப்புகள் எப்போது பொருந்தும் என்பதை மட்டுமே நடைமுறைத் தேதி அமைக்கிறது. பணியாளரின் பதிவுகள் தொடங்கும் தேதியை ({date}) மாற்ற, குழும சேர்க்கைத் தேதியைத் திருத்தவும்.",
       "history": "திருத்த வரலாறு",
       "noHistory": "தகவல் மட்டும் திருத்தங்கள் பதிவாகவில்லை.",
       "importHelp": "நிறுவனக் குறியீடு தற்போதைய நிறுவனத்தைச் சரிபார்க்கும். புதிய நிறுவனக் குறியீடு விருப்பமானது. காலியான திருத்தப் புலங்கள் பழைய மதிப்பை வைத்திருக்கும். கணினிக் குறியீடுகளுக்கு குறிப்புத் தாள்களைப் பார்க்கவும். அதிகபட்சம் 200 வரிகள்.",
@@ -3604,7 +3614,6 @@
         "failed": "தோல்வி",
         "unchanged": "மாற்றமில்லை"
       },
-      "effective": "எதிர்காலச் செயலாக்கம் திருத்திய தகவலை {date} முதல் பயன்படுத்தும்.",
       "templateFields": "இந்த வார்ப்புரு திருத்தும் புலங்கள் (புதியவை முன்னிலைப்படுத்தப்பட்டுள்ளன). வெற்று கலங்கள் தற்போதைய மதிப்பை வைத்திருக்கும்.",
       "templateFieldsLabel": "இந்த வார்ப்புரு திருத்தும் புலங்கள்",
       "ownersNote": "அடிப்படைச் சம்பளம் மற்றும் ராஜினாமா தேதிகள் அவற்றைப் பதிவுசெய்த நிகழ்வில் திருத்தப்படும்: \"Update\" செயலுடன் இயக்க இறக்குமதியைப் பயன்படுத்தவும். கட்டண முறை வங்கி மற்றும் சட்டப்பூர்வ இறக்குமதியில் உள்ளது.",
@@ -3619,10 +3628,10 @@
       "effectiveDateHint": "{start} முதல் இன்று ({today}) வரை எந்தத் தேதியும். இயல்புநிலை இன்று.",
       "effectiveDateFollowsJoin": "மிக முந்தைய தேதி: {start}, கீழே உள்ளிட்ட குழுச் சேர்க்கைத் தேதி.",
       "historyClosedPayroll": "மூடப்பட்ட சம்பளம் மாறாமல் வைக்கப்பட்டது: {periods}.",
-      "effectiveDateJoin": "குழுச் சேர்க்கைத் தேதியான {start} ஐத் தேர்ந்தெடுத்தால் பணியாளரின் அசல் பணியமர்த்தல் விவரங்கள் திருத்தப்படும். நிறுவனம், வேலைவாய்ப்பு வகை, வணிகப் பிரிவு, துறை, பதவி, நிறுவன லேபிள்கள் மற்றும் நேரடி மேற்பார்வையாளர் நடைமுறைத் தேதி முதல் அடுத்த பதிவு செய்யப்பட்ட மாற்றம் வரை பொருந்தும்.",
+      "effectiveDateJoin": "குழுச் சேர்க்கைத் தேதியான {start} ஐத் தேர்ந்தெடுத்தால் பணியாளரின் அசல் பணியமர்த்தல் விவரங்கள் திருத்தப்படும். நிறுவனம், வேலைவாய்ப்பு வகை, வணிகப் பிரிவு, துறை, பதவி, நிறுவன லேபிள்கள் மற்றும் நேரடி மேற்பார்வையாளர் நடைமுறைத் தேதி முதல், அவற்றை மாற்றும் அடுத்த பதிவு செய்யப்பட்ட நகர்வு வரை பொருந்தும். இந்தத் திருத்தம் அந்தத் தேதி முதல் முந்தைய திருத்தங்களை மாற்றீடு செய்கிறது.",
       "timeline": {
         "title": "நடைமுறைத் தேதி வரிசையில் பதிவுகள்",
-        "intro": "திருத்தப்பட்ட இந்த விவரங்கள் {date} முதல் அடுத்த பதிவு செய்யப்பட்ட மாற்றம் வரை பொருந்தும். பிந்தைய பதிவுகள் தங்கள் சொந்தத் தேதிகளையும் மதிப்புகளையும் வைத்திருக்கும். எதுவும் மேலெழுதப்படவோ நீக்கப்படவோ இல்லை.",
+        "intro": "திருத்தப்பட்ட இந்த விவரங்கள் {date} முதல், அவற்றை மாற்றும் அடுத்த பதிவு செய்யப்பட்ட நகர்வு வரை பொருந்தும். இந்தத் தேதி முதலான முந்தைய திருத்தங்கள் மாற்றீடு செய்யப்பட்டு திருத்த வரலாற்றில் இருக்கும். நகர்வுகள் தங்கள் சொந்தத் தேதிகளையும் மதிப்புகளையும் வைத்திருக்கும். எதுவும் நீக்கப்படவில்லை.",
         "date": "நடைமுறைத் தேதி",
         "record": "பதிவு",
         "company": "நிறுவனம்",
@@ -3639,12 +3648,38 @@
           "conflict": "இந்த மாற்றத்துடன் முரண்படுகிறது"
         }
       },
+      "replaced": {
+        "title": "இந்தத் திருத்தம் மாற்றீடு செய்யும் முந்தைய திருத்தங்கள்",
+        "intro": "{date} முதல் இந்த விவரங்களைப் புதிய திருத்தமே கட்டுப்படுத்தும். கீழே உள்ள முந்தைய திருத்தங்கள் திருத்த வரலாற்றில் இருக்கும்.",
+        "item": "{date} முதல் நடைமுறையான திருத்தம் ({fields}), {saved} அன்று {actor} சேமித்தது"
+      },
       "conflictTitle": "இந்தத் திருத்தத்தைச் சேமிக்க முடியாது",
       "conflict": "{date} அன்று உள்ள {record}, {field} வேறு மதிப்பிலிருந்து மாறியதாகப் பதிவு செய்கிறது. முதலில் அந்த நகர்வைத் திருத்தவும் (நகர்வு நிகழ்வு ID {id}), அல்லது {date} க்குப் பிறகான நடைமுறைத் தேதியைத் தேர்ந்தெடுக்கவும்.",
       "closedPayroll": "திருத்தப்பட்ட காலத்தில் {periods} க்கான சம்பளம் ஏற்கனவே மூடப்பட்டுள்ளது. மூடப்பட்ட சம்பளம், சம்பளச் சீட்டுகள், EA படிவங்கள் மற்றும் சட்டப்பூர்வ சமர்ப்பிப்புகள் மீண்டும் கணக்கிடப்படாது.",
       "closedPayrollAcknowledge": "மூடப்பட்ட சம்பளம் வழங்கப்பட்டபடியே இருக்கும் என்பதை உறுதிப்படுத்துகிறேன்.",
       "importClosedPayroll": "இந்த வரிசைகள் மூடப்பட்ட சம்பளம் உள்ள காலத்தைத் திருத்துகின்றன. அவற்றைச் சேமிக்கக் கீழே உறுதிப்படுத்தவும்; உறுதிப்படுத்தல் இல்லையெனில் அவை சேமிக்கப்படாது.",
       "importClosedPayrollRow": "வரிசை {row} · {employee} · {periods}"
+    }
+  },
+  "importErrorLogMovement": {
+    "correction": {
+      "date": "தேதியை DD-MMM-YYYY ஆக (எ.கா. 06-Jan-2026) அல்லது Excel தேதியாக உள்ளிடவும்.",
+      "required": "இந்தப் புலத்தை நிரப்பவும் - இந்த நிகழ்வு வகைக்கு இது தேவை.",
+      "chooseCompany": "Reference தாளிலிருந்து நிறுவன ஐடியைத் தேர்ந்தெடுக்கவும்.",
+      "eventType": "கீழிறங்கு பட்டியலிலிருந்து செயலில் உள்ள நிகழ்வு வகையைத் தேர்ந்தெடுக்கவும்.",
+      "chooseReference": "கீழிறங்கு பட்டியல் அல்லது Reference தாளிலிருந்து ஒரு மதிப்பைத் தேர்ந்தெடுக்கவும்.",
+      "employeeId": "இந்த வரிசையிலுள்ள பணியாளர் ஐடி மற்றும் நிறுவன ஐடியை Personnel பதிவுடன் சரிபார்க்கவும்.",
+      "systemField": "இந்த நிகழ்வு வகை மாற்றக்கூடிய கணினி புலத்தைத் தேர்ந்தெடுக்கவும் (Reference தாளைப் பார்க்கவும்), அல்லது அந்த வரிசையை நீக்கவும்.",
+      "duplicateField": "ஒரு நகர்வின் ஒவ்வொரு கணினி புலத்திற்கும் ஒரு வரிசையை மட்டும் வைக்கவும்.",
+      "number": "எண்ணை உள்ளிடவும் (இலக்கங்கள் மட்டும், நாணயக் குறி இல்லாமல்).",
+      "noFormula": "சூத்திரம் அல்ல, மதிப்பையே தட்டச்சு செய்யவும்.",
+      "movementId": "பணியாளரின் நகர்வு வரலாற்றிலிருந்து நகர்வு நிகழ்வு ID ஐ நகலெடுக்கவும்.",
+      "before": "பணியாளர் பதிவில் தற்போது உள்ள மதிப்பை முன் என உள்ளிடவும், அல்லது புதிய டெம்ப்ளேட்டைப் பதிவிறக்கவும்.",
+      "otherRows": "இந்தப் பணியாளரின் மற்ற வரிசைகளைச் சரிசெய்து, பின்னர் முழுக் கோப்பையும் மீண்டும் பதிவேற்றவும்.",
+      "recheck": "தற்போதைய பதிவுகளுடன் சரிபார்க்கப்பட கோப்பை மீண்டும் பதிவேற்றவும்.",
+      "template": "தற்போதைய நகர்வு டெம்ப்ளேட்டைப் பதிவிறக்கி, உங்கள் வரிசைகளை அதில் நகலெடுத்து மீண்டும் பதிவேற்றவும்.",
+      "splitFile": "கோப்பைச் சிறிய கோப்புகளாகப் பிரித்து (அதிகபட்சம் 200 வரிசைகள், 50 பணியாளர்கள், ஒரு பணியாளருக்கு 20 வரிசைகள்) ஒவ்வொன்றையும் பதிவேற்றவும்.",
+      "saveStopped": "இந்தப் பணியாளருக்கு எதுவும் சேமிக்கப்படவில்லை. சிக்கலைச் சரிசெய்து, பின்னர் இந்தப் பணியாளரை மீண்டும் இறக்குமதி செய்யவும்."
     }
   },
   "leave": {
@@ -5875,7 +5910,13 @@
     "rewards": "வெகுமதிகள்",
     "reviewRewards": "வெகுமதிகளை மதிப்பாய்வு செய்",
     "focusedDescription": "இந்தக் கோரிக்கை தற்போது உங்களுக்கு ஒதுக்கப்பட்டுள்ளது.",
-    "viewAllAssigned": "அனைத்து ஒப்புதல்களையும் பார்க்கவும்"
+    "viewAllAssigned": "அனைத்து ஒப்புதல்களையும் பார்க்கவும்",
+    "probation": "Probation",
+    "probationPart": "Part {part} review",
+    "probationDue": "due {date}",
+    "probationOpen": "Open review",
+    "probationCapped": "Showing the first {shown} approvals.",
+    "probationSeeAll": "See all in the Probation tracker"
   },
   "performance": {
     "list": {
@@ -7395,7 +7436,13 @@
         "running": "தேர்ந்தெடுத்த பணியாளர்களை மீண்டும் செயலாக்குகிறது",
         "progress": "{total} பணியாளர்களில் {done} முடிந்தது",
         "help": "நீங்கள் இந்தப் பக்கத்திலிருந்து வெளியேறலாம். ஒவ்வொரு பணியாளரும் தனித்தனியாக மீண்டும் கணக்கிடப்படுவார்; மீண்டும் செயலாக்கம் முடிந்ததும் முடிவுகள் இங்கே தோன்றும்."
-      }
+      },
+      "registerSearchLabel": "இந்த ஓட்டத்தில் ஊழியர்களைத் தேடு",
+      "registerSearchPlaceholder": "ஊழியர் பெயர் அல்லது ஊழியர் ஐடி மூலம் தேடு",
+      "registerSearchSubmit": "தேடு",
+      "registerSearchClear": "தேடலை அழி",
+      "registerSearchSummary": "{total} ஊழியர்களில் {n} பேர் “{q}” உடன் பொருந்துகின்றனர்",
+      "registerSearchEmpty": "இந்த ஓட்டத்தில் “{q}” உடன் பொருந்தும் ஊழியர் இல்லை."
     },
     "transactions": {
       "title": "பரிவர்த்தனை உள்ளீடு",
@@ -7699,6 +7746,7 @@
         "inputType": "உள்ளீட்டு வகை",
         "inputTypeNone": "இல்லை",
         "amountIsFinalHint": "இங்கே உள்ளிடப்பட்ட தொகையே வழங்கப்படும் தொகை. ஊதிய உருப்படியின் சூத்திரம் ஒரு முறை பரிவர்த்தனைகளுக்குப் பயன்படுத்தப்படாது.",
+        "amountManualFormulaHint": "தொகை கைமுறையாக உள்ளிடப்பட்டது. இந்த ஊதிய உருப்படியின் சூத்திரம் இந்தப் பரிவர்த்தனைக்குப் பயன்படுத்தப்படாது.",
         "identicalWarning": "இந்த ஊழியருக்கு ஒரே மாதிரியான பதிவு ஏற்கனவே உள்ளது (அதே உருப்படி, தேதி, தொகை மற்றும் குறிப்புகள்). உண்மையிலேயே இரண்டாவது என்றால் மட்டும் சேமிக்கவும்.",
         "saveAndAnother": "சேமித்து மற்றொன்றைச் சேர்",
         "cancel": "ரத்து",
@@ -9024,6 +9072,17 @@
       "traceEpfFlatRate": "நிலையான விகிதம், ரிங்கிட்டுக்கு மேல்நோக்கி முழுமையாக்கப்பட்டது",
       "traceEpfRates": "ஊழியர் {employee} · முதலாளி {employer}",
       "traceEpfBonusEmployerPartE": "போனஸில் முதலாளி பங்களிப்பு",
+      "traceEpfBonusRuleNormal": "சாதாரண EPF சம்பளம் (EPF Bonus 2012 தவிர)",
+      "traceEpfBonusRuleBonus": "EPF Bonus 2012 சம்பளம்",
+      "traceEpfBonusRuleTotal": "மொத்த EPF சம்பளம்",
+      "traceEpfBonusRuleRate": "சாதாரண சம்பளத்தின் அடிப்படையில் முடிவான முதலாளி விகிதம்",
+      "traceEpfBonusRuleRateValue": "{normal} என்பது {threshold} அல்லது குறைவு, எனவே {rate}",
+      "traceEpfBonusRuleEmployer": "முதலாளி பங்களிப்பு",
+      "traceEpfBonusRuleEmployerValue": "{base} × {rate} = {exact}, {amount} ஆக மேல்நோக்கி முழுமையாக்கப்பட்டது",
+      "traceEpfBonusRuleEmployee": "ஊழியர் பங்களிப்பு (அட்டவணை வரம்பு)",
+      "traceEpfBonusRuleEmployeeValue": "{range}, எனவே {amount}",
+      "traceEpfBonusRuleEmployeeAbove": "ஊழியர் பங்களிப்பு (RM20,000க்கு மேல்)",
+      "traceEpfBonusRuleEmployeeAboveValue": "{base} × {rate}, {amount} ஆக மேல்நோக்கி முழுமையாக்கப்பட்டது",
       "traceEpfFlatNormal": "சாதாரண சம்பளத்தில் ஊழியர் / முதலாளி",
       "traceEpfFlatBonus": "போனஸ் சம்பளத்தில் ஊழியர் / முதலாளி",
       "traceEpfMethod": "முறை",
@@ -15304,6 +15363,8 @@
       "probation": "சோதனைக் காலப் பணி உறுதிப்படுத்தல்",
       "contract_staff": "ஒப்பந்த மேலாண்மை",
       "contractDateCorrection": "ஒப்பந்த தேதி திருத்தம்",
+      "probationApproval": "Approve probation review",
+      "probationTask": "Probation task",
       "recruitmentRequisitionApproval": "வேலைக் கோரிக்கையை அங்கீகரிக்கவும்",
       "recruitmentOfferApproval": "வேலைச் சலுகையை அங்கீகரிக்கவும்",
       "recruitmentFeedback": "நேர்காணல் கருத்தை வழங்கவும்",
@@ -17520,7 +17581,8 @@
     "moduleLabel": {
       "leave": "விடுப்பு",
       "attendance": "வருகை",
-      "claims": "உரிமைகோரல்கள்"
+      "claims": "உரிமைகோரல்கள்",
+      "probation": "Probation"
     },
     "taskLabel": {
       "leaveApplication": "விடுப்பு விண்ணப்ப ஒப்புதல்",
@@ -17530,7 +17592,10 @@
       "claimsClaim": "உரிமைகோரல் ஒப்புதல்",
       "leaveRequestCreation": "விடுப்பு விண்ணப்பம் உருவாக்கம்",
       "leaveAmendmentRequest": "விடுப்பு திருத்தக் கோரிக்கை",
-      "leaveCancellationRequest": "விடுப்பு ரத்து கோரிக்கை"
+      "leaveCancellationRequest": "விடுப்பு ரத்து கோரிக்கை",
+      "probationReview": "Probation review (Head of Department, PBP, GBS)",
+      "probationApprove": "Probation approval (Head of Department, PBP, GBS)",
+      "probationLetterSign": "Probation letter signature"
     },
     "groupLabel": {
       "leaveRequest": "விடுப்பு கோரிக்கை",
@@ -28234,7 +28299,7 @@
     "routeUnavailable": "சேமித்த வழியிலிருந்து அடுத்த தகுதியுள்ள ஒப்புதலாளரை உறுதிசெய்ய முடியவில்லை. ஒதுக்கீட்டைச் சரிபார்க்க HR-ஐ அணுகவும்.",
     "someApproversUnavailable": "சேமிக்கப்பட்ட சில ஒப்புதலாளர்களின் தற்போதைய தகுதியை உறுதிப்படுத்த முடியவில்லை. HR-ஐ நியமனத்தைச் சரிபார்க்கச் சொல்லவும்.",
     "notStarted": "தொடங்கவில்லை",
-    "notRequired": "மேலும் முடிவு தேவையில்லை",
+    "notRequired": "தேவையில்லை",
     "currentEmployeeId": "தற்போதைய பணியாளர் ID",
     "routingRecord": "சேமித்த வழி விவரம்",
     "notRecorded": "பதிவாகவில்லை",
@@ -28313,7 +28378,28 @@
     "escalatedBy": "கணினியின் தானியங்கி மேலேற்றம்",
     "submittedOnBehalfBy": "{name} சார்பாகச் சமர்ப்பித்தார்",
     "approvedOnBehalf": "சார்பாக ஒப்புதல் அளிக்கப்பட்டது",
-    "rejectedOnBehalf": "சார்பாக நிராகரிக்கப்பட்டது"
+    "rejectedOnBehalf": "சார்பாக நிராகரிக்கப்பட்டது",
+    "pendingApproval": "ஒப்புதல் நிலுவையில்",
+    "waitingPreviousLevel": "முந்தைய நிலை ஒப்புதலுக்காகக் காத்திருக்கிறது",
+    "skippedNotRequired": "தவிர்க்கப்பட்டது / தேவையில்லை",
+    "levelOrdinal": {
+      "1": "முதல்",
+      "2": "இரண்டாம்",
+      "3": "மூன்றாம்",
+      "4": "நான்காம்",
+      "5": "ஐந்தாம்",
+      "6": "ஆறாம்",
+      "7": "ஏழாம்",
+      "8": "எட்டாம்",
+      "9": "ஒன்பதாம்",
+      "10": "பத்தாம்"
+    },
+    "progressMessage": "{completed} நிலை ஒப்புதல் முடிந்தது. {waiting} நிலை ஒப்புதலுக்காகக் காத்திருக்கிறது.",
+    "progressWaiting": "{waiting} நிலை ஒப்புதலுக்காகக் காத்திருக்கிறது.",
+    "progressFinal": "கோரிக்கையின் ஒட்டுமொத்த நிலை: {status}.",
+    "configurationWarning": "இந்த நிலைக்கான ஒப்புதலாளரைக் கண்டறிய முடியவில்லை. ஒப்புதல் அமைப்பைச் சரிபார்க்க HR-இடம் கேளுங்கள்.",
+    "levelOfTotal": "நிலை {level} / {total}",
+    "viewApprovalProgress": "ஒப்புதல் முன்னேற்றத்தைக் காண்க"
   },
   "scheduleDrafts": {
     "staleLadder": "பொதுப் பகுதியில் கூடுதல் நேரப் பிரிவுகள் அல்லது விகிதங்கள் மாற்றப்பட்டுள்ளன. உங்கள் வரைவு இங்கே உள்ளது. கூடுதல் நேர அமைப்புகளைச் சேமிக்கும் முன் இந்தப் பக்கத்தை மீண்டும் ஏற்றவும். உறுதிப்படுத்திய பின்னரே சேமிக்காத மாற்றங்கள் நீக்கப்படும்.",
@@ -29917,7 +30003,8 @@
         "lateOffset": "தாமத நேரத்தை ஒருமுறை கழிக்கவும்",
         "approval": "ஒப்புதல் முறை",
         "autoMethod": "தானியங்கி ஒப்புதல் முறை",
-        "rounding": "நேரத்தை முழுமைப்படுத்துதல்"
+        "rounding": "நேரத்தை முழுமைப்படுத்துதல்",
+        "backdate": "மிகைநேர முன்தேதி வரம்பு"
       },
       "days": {
         "normal": "சாதாரண நாள்",
@@ -29925,7 +30012,8 @@
         "rest": "ஓய்வு நாள்",
         "publicHoliday": "பொது விடுமுறை",
         "replacementHoliday": "மாற்றுப் பொது விடுமுறை"
-      }
+      },
+      "backdateDays": "{count, plural, one {# நாள்} other {# நாட்கள்}}"
     },
     "positionSearch": "பதவிகளைத் தேடு",
     "loadMorePositions": "மேலும் பதவிகளை ஏற்று",
@@ -32365,7 +32453,9 @@
       "assessmentWork": "செயல்திறன் மதிப்பீடு",
       "careerPlan": "தொழில் திட்ட மதிப்பாய்வு",
       "calibration": "செயல்திறன் அளவுத்திருத்தம்",
-      "rewardReview": "வெகுமதி மதிப்பாய்வு"
+      "rewardReview": "வெகுமதி மதிப்பாய்வு",
+      "probationApproval": "Probation approval",
+      "probationTask": "Probation task"
     },
     "quickActions": {
       "leave": "விடுப்புக்கு விண்ணப்பி",
@@ -35771,7 +35861,10 @@
       "pbp": "மனிதவள வணிகக் கூட்டாளர்",
       "gbs": "GBS People Ops",
       "admin": "பெயரிடப்பட்ட தயாரிப்பாளர்",
-      "system": "பின்னணிச் செயலாக்கம்"
+      "system": "பின்னணிச் செயலாக்கம்",
+      "superior": "Direct Superior",
+      "people": "Named people",
+      "approver": "Approver"
     },
     "columns": {
       "employee": "பணியாளர்",
@@ -35795,7 +35888,9 @@
       "confirmed": "உறுதிசெய்யப்பட்டது",
       "extended": "நீட்டிக்கப்பட்டது",
       "not_confirmed": "உறுதிப்படுத்தவில்லை",
-      "withdrawn": "திரும்பப்பெறப்பட்டது"
+      "withdrawn": "திரும்பப்பெறப்பட்டது",
+      "waitingForStart": "Waiting for start date",
+      "didNotJoin": "Did not join"
     },
     "partStates": {
       "not_issued": "வெளியிடப்படவில்லை",
@@ -35899,7 +35994,16 @@
       "missing": "பொறுப்பாளரைத் தீர்மானிக்க வேண்டும்",
       "frozenFacts": "இந்த மதிப்பாய்வு கையொப்பமிட்ட உள்ளடக்கத்திற்காகப் பதிவு செய்த பணியாளர் மற்றும் சோதனைக் கால விவரங்களைத் தக்கவைக்கும்.",
       "combinedConsent": "பின்வரும் பங்குகளுக்கு இது எனது கையொப்பம் என்பதை உறுதிப்படுத்துகிறேன்: {roles}.",
-      "combinedHistory": "அதே கையொப்பம் இதற்கும் பொருந்தும்"
+      "combinedHistory": "அதே கையொப்பம் இதற்கும் பொருந்தும்",
+      "onBehalfOf": "on behalf of {name}",
+      "reviewStep": "Review",
+      "approveStep": "Approve",
+      "reviewed": "Reviewed",
+      "approved": "Approved",
+      "decisionComment": "Comment (optional)",
+      "markReviewed": "Mark as reviewed",
+      "markApproved": "Approve",
+      "meantFor": "Meant for {who}; the fallback group took it"
     },
     "controls": {
       "title": "அங்கீகரிக்கப்பட்ட மதிப்பாய்வுக் கட்டுப்பாடுகள்",
@@ -35925,7 +36029,9 @@
       "development": "மேம்பாட்டு நடவடிக்கை",
       "extension_recommendation": "நீட்டிப்புப் பரிந்துரை",
       "nonconfirmation_recommendation": "பணி உறுதிசெய்யாமைக்கான பரிந்துரை",
-      "refusal_request": "பணியாளர் மறுப்பு குறித்த கலந்துரையாடல்"
+      "refusal_request": "பணியாளர் மறுப்பு குறித்த கலந்துரையாடல்",
+      "low_result_action": "Low-result action",
+      "other_decided": "Other outcome decided"
     },
     "files": {
       "title": "தாக்கல் செய்த ஆவணங்கள்",
@@ -35961,7 +36067,89 @@
         "ending14": "14 நாட்களுக்குள் முடிகிறது",
         "low_result": "குறைந்த முடிவு",
         "kpi_submit": "KPI-கள் சமர்ப்பிக்கப்படவில்லை",
-        "kpi_ack": "KPI-கள் ஏற்றுக்கொள்ளப்படவில்லை"
+        "kpi_ack": "KPI-கள் ஏற்றுக்கொள்ளப்படவில்லை",
+        "overridden": "Suggestion overridden"
+      },
+      "extensionsUsed": "{used} / {max}",
+      "startsOn": "Starts {date}",
+      "actions": {
+        "open": "Open",
+        "review_letter": "Review letter",
+        "record_action": "Record action",
+        "log_followup": "Log follow-up"
+      },
+      "mineOnly": "Showing only cases with work waiting on you.",
+      "mineClear": "Show all cases",
+      "breadcrumb": "Probation Confirmation / Probation tracker",
+      "intro": "Track employees with Probation status in Personnel Management and their confirmation progress.",
+      "synced": "Synced from Personnel Management. Every employee whose status is <b>Probation</b> gets a case here automatically, including records activated before their start date.",
+      "tiles": {
+        "overdue": "Overdue steps",
+        "end_passed": "End passed, no outcome",
+        "ending14": "Ending within 14 days",
+        "low_result": "Low result (Band 1–2 by default)",
+        "kpi_submit": "KPIs not submitted",
+        "kpi_ack": "KPIs not acknowledged",
+        "overridden": "Suggestion overridden"
+      },
+      "hints": {
+        "search": "Personnel Management · Full name (as per IC/passport)",
+        "businessGroup": "Personnel Management · recorded at case start",
+        "businessUnit": "Personnel Management · recorded at case start",
+        "department": "Personnel Management · Department",
+        "grade": "Personnel Management · Job Grade at case start"
+      },
+      "namePlaceholder": "Type a name…",
+      "showClosed": "Show closed cases",
+      "caseCount": "{shown} of {total} cases",
+      "filteredBy": "filtered by “{tile}”",
+      "columns": {
+        "employee": "Employee",
+        "organisation": "Business group · unit",
+        "endOn": "Probation end",
+        "plan": "Review plan",
+        "stage": "Stage",
+        "waiting": "Waiting on",
+        "due": "Due",
+        "flags": "Flags",
+        "extensions": "Ext.",
+        "extensionsFull": "Extensions used",
+        "action": "Action"
+      },
+      "planMonths": "{months, plural, one {# month} other {# months}}",
+      "planParts": {
+        "both": "Part 2 + Part 3",
+        "p3": "Part 3 only",
+        "p2": "Part 2 only"
+      },
+      "stage": {
+        "1": "Week 1 KPIs",
+        "2": "Part 2 Mid-Probation",
+        "3": "Part 3 Final review",
+        "afterExtension": "{stage} (after extension)"
+      },
+      "what": {
+        "kpis": "KPI submission",
+        "self": "self-assessment",
+        "assessment": "assessment",
+        "acknowledge": "signature",
+        "approval": "approval",
+        "letter": "letter"
+      },
+      "waitingOn": "{role} · {name} · {step}",
+      "pills": {
+        "end_passed": "End date passed",
+        "ending14": "Ends within 14 days",
+        "low_result": "Band {band} · low result",
+        "low_actioned": "PBP action recorded",
+        "kpi_submit": "KPIs not submitted",
+        "kpi_ack": "KPIs not acknowledged",
+        "overridden": "Suggestion overridden",
+        "plan_review": "Plan review required"
+      },
+      "links": {
+        "settings": "Probation settings",
+        "intake": "Intake and activation"
       }
     },
     "applyFilters": "வடிகட்டிகளைப் பயன்படுத்தவும்",
@@ -36142,6 +36330,121 @@
         "pending": "நிலுவையில் உள்ளது",
         "held": "மதிப்பாய்வுக்காக நிறுத்தி வைக்கப்பட்டுள்ளது",
         "failed": "மீண்டும் முயல வேண்டும்"
+      },
+      "extensionsUsed": {
+        "title": "Confirm extensions already used",
+        "help": "Personnel Management keeps only the total Extended Probation Period, so the number of extensions already used cannot be worked out. Confirm 0, 1 or 2 for each case by choosing the actual extension events in the employee's review.",
+        "period": "Extended Probation Period (Personnel)",
+        "periodValue": "{original} → {extended}",
+        "used": "Extensions used",
+        "count": "{count} of {max}",
+        "notConfirmed": "Not confirmed",
+        "confirm": "Confirm",
+        "review": "Review"
+      },
+      "activationByCompany": {
+        "title": "Activation by company",
+        "help": "Employees on Probation in Personnel Management (full time) against open probation cases. A difference means someone has no case yet or a case is still open after Personnel moved on. Switching a company on still goes through the reviewed rehearsal below.",
+        "columns": {
+          "company": "Company",
+          "personnel": "Probation in Personnel",
+          "cases": "Open cases",
+          "status": "Status"
+        },
+        "match": "✓",
+        "missing": "{count, plural, one {1 employee on Probation has no case} other {# employees on Probation have no case}}",
+        "extra": "{count, plural, one {1 case more than Personnel shows} other {# cases more than Personnel shows}}",
+        "live": "Live since {date}",
+        "preparation": "Preparation"
+      },
+      "htmlImport": {
+        "title": "1. Import saved HTML evaluation forms",
+        "help": "Upload the files staff and managers saved from form v22.9.26 (“Save form”). Only the saved values inside each file are read, on the server; the page itself is never opened or run. Each file is matched to the employee by Employee ID and must name the same employee as Personnel. Fully signed parts are recorded as signed offline in the case history; started parts open as drafts. PDFs are evidence only: attach them from the case or the employee’s intake review.",
+        "choose": "Choose files",
+        "fileLabel": "Saved evaluation forms",
+        "noFile": "No file chosen · .html or .pdf",
+        "reading": "Reading…",
+        "read": "{count, plural, one {1 file read} other {# files read}}",
+        "tooMany": "Choose at most {max} files at a time.",
+        "columns": {
+          "file": "File",
+          "found": "Found in file",
+          "result": "Check"
+        },
+        "pdf": "PDF only: values can’t be read. Attach it as evidence from the case or the employee’s intake review.",
+        "statuses": {
+          "ready": "Ready",
+          "warning": "Warning",
+          "refused": "Can’t import",
+          "skipped": "Not imported",
+          "importing": "Importing…",
+          "merged": "Merged into the case",
+          "staged": "Added to intake",
+          "unchanged": "Already imported"
+        },
+        "partSummary": {
+          "part1": "Part 1: {kpis} KPIs, {signatures} signatures, {status}",
+          "review": "Part {part}: {ratings} of 9 manager ratings, {signatures} signatures, {status}"
+        },
+        "partStatus": {
+          "signed": "signed",
+          "started": "started",
+          "not_started": "not started"
+        },
+        "confirm": "I’ve checked this preview. Import the ready and warning rows; skip the rest. Each import is written to the case history.",
+        "import": "{count, plural, one {Import 1 file} other {Import # files}}",
+        "done": "Imported. Open the cases in the Probation tracker to check what was read, then continue them in the system.",
+        "resultHelp": {
+          "merged": "Merged into the existing case. Blank drafts were filled from the file. Signatures still happen in the system; to record a part as completed offline, attach its signed PDF.",
+          "staged": "No case yet: the file waits in this employee’s intake review. The case opens at the reviewed cut-over; upload the file again then to fill its drafts.",
+          "unchanged": "This exact file was already imported for this employee. Nothing changed."
+        },
+        "applied": {
+          "draft_filled": "Part {part}: drafts filled from the file",
+          "kept_system_values": "Part {part}: kept the values already in the system",
+          "part_not_open": "Part {part}: not open in the system, so nothing was filled",
+          "no_part": "Part {part}: not in this case’s plan"
+        },
+        "refusals": {
+          "file_type": "Only saved .html evaluation forms can be imported.",
+          "empty": "The file is empty.",
+          "too_large": "The file is larger than 2 MB. A saved evaluation form is much smaller; check the file.",
+          "no_block": "The file has no saved values. Open the form and use “Save form”, not the browser’s Save page.",
+          "several_blocks": "The file has more than one saved-values block, so it can’t be read safely.",
+          "block_type": "The saved-values block is not JSON, so it can’t be read safely.",
+          "damaged": "The saved values in the file are damaged and could not be read.",
+          "no_version": "The file doesn’t say which form version it is. Only form v22.9.26 can be imported.",
+          "wrong_version": "This is form v{version}. Only form v22.9.26 can be imported; nothing was guessed.",
+          "no_values": "The file has no saved values. Use “Save form” in the form itself.",
+          "invalid_field": "The field “{field}” has a value that can’t be read. Nothing was guessed; correct the form and save it again.",
+          "no_employee_id": "The file has no Employee ID, so it can’t be matched to an employee.",
+          "no_employee_name": "The file has no employee name.",
+          "not_entitled": "Probation is not available for this company.",
+          "no_employee": "No employee with this Employee ID is in this company within your intake scope.",
+          "name_mismatch": "The employee name in the file doesn’t match Personnel for this Employee ID. Check the file.",
+          "excluded": "A probation case can’t be created for this employee: {reason}.",
+          "no_settings": "Publish the probation settings for this company before importing.",
+          "opens_automatically": "This new starter’s case opens automatically now that probation is switched on. Import the file once the case is open.",
+          "case_closed": "The matching case is closed. Nothing was changed.",
+          "not_saved": "The file could not be imported. Nothing was changed; try again."
+        },
+        "exclusionReasons": {
+          "confirmed": "already confirmed in Personnel",
+          "resignation": "a resignation is recorded",
+          "ended": "the employment has ended",
+          "no_probation": "no probation applies",
+          "reviewed_exclusion": "excluded at intake",
+          "employment_type": "not a full-time employee",
+          "grade_not_enabled": "the job grade is not in the probation settings",
+          "company_transfer": "moved from another company during intake",
+          "not_eligible": "not eligible for probation",
+          "unavailable": "not available"
+        },
+        "historyTitle": "Imported forms",
+        "historyEmpty": "No saved forms imported yet.",
+        "candidateTitle": "From the imported saved form",
+        "candidateHelp": "Map each Part below with the usual rules: a signed part is Completed offline with its signed PDF attached; a started part continues as unfinished work. After cut-over, upload the file again to fill the case drafts.",
+        "candidatePart": "Part {part} {status}"
       }
     },
     "workflows": {
@@ -36265,7 +36568,23 @@
       "open": "முடிவுக் கடிதத்தைத் திற",
       "preparationClosed": "வெளியீடு ஏற்கெனவே கோரப்பட்டுள்ளது அல்லது முடிக்கப்பட்டுள்ளது. பதிவிலிருந்து சேமித்த கடிதத்தையும் கோப்பாக்க நிலையையும் மதிப்பாய்வு செய்யவும்.",
       "templateTie": "ஒன்றுக்கு மேற்பட்ட வார்ப்புருக்கள் சமமாகப் பொருந்துகின்றன. மதிப்பாய்வு செய்த வார்ப்புருவை வெளிப்படையாகத் தேர்ந்தெடுக்கவும்.",
-      "filingPending": "வெளியீட்டுக் கோரிக்கை சேமிக்கப்பட்டது. முடிவைச் செயல்படுத்தும் முன் ஏற்கெனவே உள்ள பின்னணிப் பணி கையொப்பமிட்ட PDF கோப்பை உருவாக்கிப் பதிவில் சேர்க்கும். தோல்விகள் மீண்டும் முயலுவதற்காகத் தொடர்ந்து காட்டப்படும்."
+      "filingPending": "வெளியீட்டுக் கோரிக்கை சேமிக்கப்பட்டது. முடிவைச் செயல்படுத்தும் முன் ஏற்கெனவே உள்ள பின்னணிப் பணி கையொப்பமிட்ட PDF கோப்பை உருவாக்கிப் பதிவில் சேர்க்கும். தோல்விகள் மீண்டும் முயலுவதற்காகத் தொடர்ந்து காட்டப்படும்.",
+      "contentPrivate": "This letter is private until it reaches you. You can see who it is with and its status.",
+      "routingFallback": "Nobody could be found for some steps, so the fallback group took them:",
+      "sentBack": "{name} sent this letter back: {reason}",
+      "resend": "Send round again",
+      "meantFor": "meant for {who}",
+      "routedStep": {
+        "review": "Review",
+        "approve": "Approve",
+        "sign": "Sign",
+        "acknowledge": "Acknowledge"
+      },
+      "decision": {
+        "reviewed": "Mark as reviewed",
+        "approved": "Approve"
+      },
+      "holderOnBehalf": "{name} on behalf of {represented}"
     },
     "dates": {
       "title": "தகுதிகாண் தேதிகளை மதிப்பாய்வு செய்",
@@ -36335,6 +36654,608 @@
       "title": "சில இயல்புநிலை தகுதிகாண் காலச் செய்திகள் கிடைக்கவில்லை",
       "summary": "மனிதவள வணிகக் கூட்டாளரைப் பெறுநராகக் கொண்டு நிறுவனம் முழுவதற்குமான காலதாமதச் சுருக்கப் பணிப்பாய்வு ஒன்றை வெளியிடுக.",
       "help": "கிடைக்காத பணிப்பாய்வுகளை வெளியிட்டு அவற்றின் செய்திகளை மீட்டெடுக்கவும். மதிப்பாய்வு காலக்கெடுவும் காலதாமதக் குறியீடுகளும் தொடர்ந்து பொருந்தும்."
+    },
+    "settingsScope": {
+      "subtitle": "Each company uses exactly one published setting. Changes apply to new cases only.",
+      "newSetting": "New company setting",
+      "inUse": "Settings in use",
+      "columns": {
+        "setting": "Setting",
+        "appliesTo": "Applies to",
+        "version": "Version",
+        "overrides": "Overrides",
+        "action": "Action",
+        "field": "Field",
+        "standard": "Group standard",
+        "thisSetting": "This setting",
+        "company": "Company",
+        "differences": "Fields that would change",
+        "pickedUp": "Picks up",
+        "shielded": "Shielded by an override"
+      },
+      "groupStandard": "Group standard",
+      "allCompanies": "All {count} companies",
+      "notPublished": "Not published yet. Each company uses its own settings version.",
+      "setsEveryField": "— (sets every field)",
+      "edit": "Edit",
+      "publishedAlso": "Version {version} is published and in use.",
+      "overrideSummary": "{count, plural, one {1 field} other {# fields}}: {fields}. Inherits the rest.",
+      "noOverrides": "No fields overridden.",
+      "redundant": "Same as the group standard, so it can be removed: {fields}",
+      "rule": "A company setting overrides only the fields it ticks; every other field follows the group standard, including future changes to it. A company can be in only one company setting.",
+      "noStandardTitle": "No group standard yet",
+      "noStandardHelp": "Until a group standard is published, each company keeps using its own published settings version and nothing changes. Create the standard from the company whose settings should apply to everyone, then add company settings for companies that must keep different values. Company settings take effect together with the standard.",
+      "continueDraft": "Continue the group standard draft",
+      "createFrom": "Create group standard from",
+      "startFromDefaults": "Recommended defaults",
+      "createStandard": "Create group standard",
+      "notCurrentTitle": "Companies not using the current settings yet",
+      "notCurrentHelp": "These companies started using Probation after the group standard was last published. Apply the group standard and their company setting to them.",
+      "applyNow": "Apply now",
+      "refreshed": "{company} now uses the current settings.",
+      "unknownCompany": "Unavailable company",
+      "editing": "Editing: {name}",
+      "newCompanySetting": "New company setting",
+      "standardHelp": "The group standard sets every field for all companies. Running cases keep the values they started with.",
+      "companyHelp": "Tick Override for each field this setting changes. Inherited fields follow the group standard, including later changes to it.",
+      "waitsForStandard": "No group standard is published yet. This company setting takes effect when the group standard is published.",
+      "name": "Setting name",
+      "inOther": "in {name}",
+      "overlap": "A company can be in only one company setting. Remove it from the other setting first: {companies}",
+      "standardVersion": "Group standard v{version}",
+      "inherited": "Inherited",
+      "override": "Override",
+      "sameAsStandard": "Same as the standard",
+      "changed": "Changed",
+      "extensionsFixed": "Extensions: {months} months, at most {max}. Fixed for every company.",
+      "diffTitle": "How companies differ from this standard",
+      "diffHelp": "Publishing the standard gives these companies its values for new cases, unless a company setting overrides the field. Add company settings first for companies that must keep their values.",
+      "previewTitle": "Before you publish",
+      "previewNone": "No field differs from the published group standard.",
+      "previewRunning": "Cases already running keep the values they started with either way.",
+      "resolvedNote": "Companies in this setting use these overridden fields: {fields}. Everything else follows the group standard.",
+      "resolvedPreview": "Values these companies will use",
+      "reason": "Reason for the change (optional)",
+      "close": "Close",
+      "publishedNotice": "Published. New cases use these settings.",
+      "retire": "Retire this company setting",
+      "retireHelp": "Its companies go back to the group standard for new cases. Running cases keep their values.",
+      "retiredNotice": "Company setting retired.",
+      "rulesInCompanySetting": "Narrow KPI gate rules are set in a company setting.",
+      "rulesOneCompany": "Narrow KPI gate rules can be overridden when the setting applies to one company.",
+      "ruleCount": "{count, plural, =0 {No rules} one {1 rule} other {# rules}}",
+      "daysBeforeDue": "{days} calendar days before due",
+      "planWithMidpoint": "{months} months · Part 2 at month {midpoint}",
+      "planFinalOnly": "{months} months · Part 3 only",
+      "defaultGroup": "GBS People Ops",
+      "savedGroup": "Saved group (no longer listed)",
+      "on": "On",
+      "off": "Off",
+      "truncated": "Only the first 200 settings are shown.",
+      "companyVersionTitle": "Company settings version",
+      "lockedNotice": "A group standard is published, so this company's settings come from the group standard and its company setting. Edit them above. Access below stays per company.",
+      "nonWorking": {
+        "previous": "Move to the working day before",
+        "next": "Move to the next working day"
+      },
+      "fields": {
+        "eligibleGrades": "Eligible grades",
+        "gradeHEnabled": "Grade H",
+        "defaultMonths": "Default probation months",
+        "plans": "Review plans",
+        "kpiGate": "KPI acknowledgement gate",
+        "issueLeadDays": "Review form opens",
+        "nonWorkingDayRule": "Due date on a non-working day",
+        "fallbackGroupId": "When no one can be found",
+        "postingApproverGroupId": "Who approves Personnel postings",
+        "kpiDueWorkingDays": "KPIs due after working days",
+        "kpiReminderWorkingDay": "KPI reminder on working day",
+        "firstReminderDays": "First reminder before due · days",
+        "dailyReminderDays": "Daily reminders from · days before due",
+        "lowBand": "Low-result band threshold",
+        "lmWaitsForEmployee": "Manager waits for the employee self-assessment",
+        "overrides": "Narrow KPI gate rules",
+        "maxExtensions": "Maximum extensions"
+      }
+    },
+    "startStatus": {
+      "waiting": "Waiting for start date. The case opened at activation; no reviews, tasks or reminders start before {date}. Part 1 counts from the start date.",
+      "didNotJoin": "Closed as Did not join: the hire was withdrawn or the employment ended before the start date."
+    },
+    "overrideNotice": "The Line Manager chose a different outcome from the suggestion and wrote a justification.",
+    "formRouting": {
+      "title": "Review and approval routing",
+      "help": "Who approves and signs each part, and in what order. Lower numbers go first; steps sharing a number run one after another in the order listed. A case keeps the routing of the form version it started on.",
+      "legacy": "This form version has no approval steps of its own, so its cases use the published signing routes configuration. Set approval steps here to route new cases from this form instead.",
+      "useForm": "Set approval steps on this form",
+      "core": "Always first, and not editable: {steps}.",
+      "coreKpi": "Line Manager sets and signs the KPIs → Employee acknowledges",
+      "coreReview": "Employee self-review → Line Manager assessment and signature → Employee acknowledges",
+      "order": "Order",
+      "action": "Action",
+      "who": "Who",
+      "actions": {
+        "approve_sign": "Approve and sign",
+        "review": "Review",
+        "approve": "Approve"
+      },
+      "remove": "Remove the {who} step",
+      "add": "Add approval step",
+      "none": "No approval steps.",
+      "partThreeRequired": "Part 3 needs at least one approval step.",
+      "reserved": "Head of Department, People Business Partner and Direct Superior steps follow the case’s current holders, their delegations and the policy below.",
+      "policyInherit": "Use the signing routes configuration’s setting",
+      "whoKinds": {
+        "hod": "Head of Department",
+        "pbp": "People Business Partner",
+        "superior": "Direct Superior",
+        "routing": "A routing",
+        "group": "An assignment group",
+        "people": "Named people"
+      },
+      "routing": "Routing",
+      "group": "Assignment group",
+      "people": "People",
+      "pick": "Who takes it",
+      "picks": {
+        "any": "Any member",
+        "roundRobin": "Round robin"
+      },
+      "missingChoice": "No longer available: choose another",
+      "resolveNote": "A routing, an assignment group or named people gives the step to one person, chosen by the step’s rule when the Line Manager submits, and that person keeps it for the part. If nobody is available, the case’s fallback group takes it and the case records who it was meant for."
+    },
+    "lowResult": {
+      "title": "Low result",
+      "notice": "Part {part} scored Band {band}. Record the action taken with the Line Manager.",
+      "note": "Action taken with the Line Manager",
+      "save": "Record action",
+      "waiting": "Waiting for the People Business Partner to record the action taken."
+    },
+    "otherOutcome": {
+      "title": "Outcome “Other” · PBP decision",
+      "help": "No letter is generated automatically. Choose the outcome to apply. The case then continues as that outcome: the letter, its signatures, then the posting or the offboarding case.",
+      "choice": "Decision",
+      "months": "Extension length",
+      "monthsOption": "{months} months",
+      "reason": "Reason",
+      "save": "Apply this outcome",
+      "waiting": "Waiting for the People Business Partner to choose the outcome."
+    },
+    "automationHistory": {
+      "title": "Workflow history",
+      "empty": "No shared workflow has run for this case yet.",
+      "recipients": "{count, plural, one {# person} other {# people}} reached",
+      "unresolved": "Not reached: {who}. {reason}",
+      "status": {
+        "running": "Running",
+        "waiting": "Waiting for the letter",
+        "done": "Done",
+        "skipped": "Skipped",
+        "failed": "Failed"
+      }
+    },
+    "taskKinds": {
+      "submit_employee": {
+        "title": "Complete your self-assessment · Part {part}",
+        "action": "Open form"
+      },
+      "submit_manager_kpis": {
+        "title": "Set Week 1 KPIs and sign",
+        "action": "Set KPIs"
+      },
+      "submit_manager": {
+        "title": "Complete the Line Manager assessment and sign · Part {part}",
+        "action": "Open assessment"
+      },
+      "acknowledge": {
+        "title": "Acknowledge and sign · Part {part}",
+        "action": "Acknowledge"
+      },
+      "approve": {
+        "title": "Approve Part {part}",
+        "action": "Review and approve"
+      },
+      "record": {
+        "title": "Record the completed Part {part}",
+        "action": "Record"
+      },
+      "confirm_extension": {
+        "title": "Confirm the extension · Part {part}",
+        "action": "Confirm extension"
+      },
+      "confirm_refusal": {
+        "title": "Confirm a declined signature · Part {part}",
+        "action": "Confirm"
+      },
+      "kpi_exception": {
+        "title": "Decide on the KPI acknowledgement hold · Part {part}",
+        "action": "Decide"
+      },
+      "employee_wait_exception": {
+        "title": "Decide whether to continue without the self-assessment · Part {part}",
+        "action": "Decide"
+      },
+      "letter_sign": {
+        "title": "Sign probation letter",
+        "action": "Sign letter"
+      },
+      "letter_review": {
+        "title": "Review probation letter",
+        "action": "Review letter"
+      },
+      "letter_approve": {
+        "title": "Approve probation letter",
+        "action": "Approve letter"
+      },
+      "letter_revise": {
+        "title": "Update probation letter after send-back",
+        "action": "Update letter"
+      },
+      "letter_release": {
+        "title": "Release probation letter",
+        "action": "Release letter"
+      },
+      "low_result_action": {
+        "title": "Record low-result action",
+        "action": "Record action"
+      },
+      "choose_outcome": {
+        "title": "Decide Other outcome",
+        "action": "Decide outcome"
+      },
+      "other": {
+        "title": "Probation task",
+        "action": "Open"
+      }
+    },
+    "caseView": {
+      "heading": "Probation · {stage}",
+      "stage": {
+        "1": "Part 1 · Week 1 Success Plan",
+        "2": "Part 2 · Mid-Probation Review",
+        "3": "Part 3 · Final Confirmation Review",
+        "cycle": "{part} (cycle {cycle})",
+        "outcome": "Outcome"
+      },
+      "short": {
+        "1": "Week 1 KPIs",
+        "2": "Part 2 Mid-Probation",
+        "3": "Part 3 Final review",
+        "outcome": "Outcome"
+      },
+      "tabs": {
+        "label": "Case sections",
+        "1": "Part 1 · Week 1 KPIs",
+        "2": "Part 2 · Mid-Probation",
+        "3": "Part 3 · Final",
+        "cycle": "{part} (cycle {cycle})",
+        "outcome": "Outcome & letters",
+        "files": "Files ({count})",
+        "history": "History",
+        "current": "current stage"
+      },
+      "partsLabel": "Parts",
+      "routeLabel": "Signing route for the current part",
+      "waitingOn": "Waiting on: {who}",
+      "closed": "Case closed.",
+      "opens": "Form opens {date}",
+      "due": "due {date}",
+      "daysLeft": "{count, plural, one {# day left} other {# days left}}",
+      "daysOverdue": "{count, plural, one {# day overdue} other {# days overdue}}",
+      "dueToday": "due today",
+      "who": "{role} · {name} · {what}",
+      "whoNoName": "{role} · {what}",
+      "what": {
+        "kpis": "set Week 1 KPIs and sign",
+        "self": "self-assessment",
+        "assessment": "assessment",
+        "returned": "returned part",
+        "acknowledge": "acknowledge and sign",
+        "approve": "approval",
+        "review": "review",
+        "sign": "signature"
+      },
+      "facts": {
+        "employee": "Employee",
+        "titleGrade": "Job title / grade",
+        "businessGroup": "Business group",
+        "businessUnit": "Business unit",
+        "probation": "Probation",
+        "plan": "Review plan",
+        "extensions": "Extensions used",
+        "people": "People"
+      },
+      "plan": {
+        "6": "6 months · P2 + P3",
+        "3": "3 months · P3 only",
+        "other": "{months} months"
+      },
+      "months": "{months, plural, one {# month} other {# months}}",
+      "peopleLm": "LM {name}",
+      "peoplePbp": "PBP {name}",
+      "steps": {
+        "self": "Employee self-assessment",
+        "lmKpis": "LM sets KPIs and signs",
+        "lmAssess": "LM assessment",
+        "ack": "Employee acknowledges",
+        "approveSign": "Approve and sign · {who}",
+        "approve": "Approve · {who}",
+        "review": "Review · {who}",
+        "sign": "Sign · {who}"
+      },
+      "stepState": {
+        "done": "done",
+        "current": "current",
+        "waiting": "not reached",
+        "overdue": "overdue",
+        "returned": "returned with comments"
+      },
+      "noOutcome": "The outcome is decided at the final review (Part 3 Final review).",
+      "filesEmpty": "No files yet. Completed forms and letters appear here when each part is recorded.",
+      "earlierCycles": "Earlier cycles of this part",
+      "cycleLink": "Cycle {cycle} · {state}",
+      "waitingStart": "Waiting for the start date ({date}). The record was activated in Personnel Management before the start date. Nothing is sent and no step is due until then.",
+      "noPart": "This part is not part of this case's review plan.",
+      "back": "Probation tracker",
+      "pill": "Probation",
+      "yourStep": "Your step:",
+      "waitingOnLabel": "Waiting on:",
+      "nextAction": "Next action:",
+      "outcomeHeading": "Outcome",
+      "earlierLetters": "Earlier letters",
+      "download": "Download",
+      "downloadFile": "Download {name}",
+      "fileKinds": {
+        "completed_part": "Completed evaluation form with signature page · stored on the employee file",
+        "letter_released": "Released letter · stored on the employee file",
+        "letter_draft": "Letter prepared for signatures",
+        "offline": "Original file kept as offline evidence"
+      },
+      "letter": {
+        "sub": "From the shared Templates builder · module Probation · template v{version}",
+        "routing": "Signing routing on this document",
+        "state": {
+          "released": "Released",
+          "filing": "Filing pending",
+          "sentBack": "Sent back",
+          "waitingFor": "Waiting for {names}",
+          "ready": "Ready to release",
+          "waiting": "Waiting",
+          "paused": "Paused"
+        },
+        "and": " and "
+      },
+      "form": {
+        "cycle": "{part} · after extension {count}",
+        "status": "{state} · due {date}",
+        "yourSelf": "Your self-assessment",
+        "yourLm": "Your Line Manager assessment",
+        "sections": {
+          "2": "A. Performance Progress Review · B. Leadership Principles – Mid-Point",
+          "3": "A. Role Performance Assessment · B. {count} Leadership Principles"
+        },
+        "rateHelp": "Rate every criterion 1–5. Ratings start blank. A rating of 1 or 2 needs written evidence before you can submit.",
+        "readHelp": "Ratings as submitted. A column opens once that person has submitted.",
+        "gridLabel": "Assessment criteria and ratings",
+        "col": {
+          "criterion": "Criterion",
+          "weight": "Weight",
+          "employee": "Employee",
+          "lm": "Line Manager",
+          "evidence": "Comments / evidence",
+          "yourEvidence": "Your evidence"
+        },
+        "sectionRole": "A. Role ({weight}%)",
+        "sectionPrinciples": "B. {count} Leadership Principles ({weight}%)",
+        "guide": "Guide",
+        "guideFor": "Guide for {criterion}",
+        "kpiLink": "Shows the {count} Week 1 KPIs",
+        "ratingGroup": "{who} rating for {criterion}",
+        "ratingButton": "{rating} · {label}",
+        "clearRating": "Clear",
+        "clearRatingFor": "Clear the rating for {criterion}",
+        "evidenceFor": "Evidence for {criterion}",
+        "yourEvidenceFor": "Your evidence for {criterion}",
+        "evidencePlaceholder": "Observable example / evidence",
+        "hiddenLm": "Hidden until the Line Manager submits",
+        "hiddenEmployee": "Not submitted yet",
+        "evidenceRequired": "Evidence required for a rating of {rating}",
+        "evidenceRequiredKpi": "Evidence required while the Week 1 KPIs are not acknowledged",
+        "drawer": {
+          "close": "Close",
+          "kpiTitle": "Week 1 KPIs (Part 1)",
+          "criterionTitle": "Appendix A · {criterion}",
+          "behaviours": "Key behaviours",
+          "prompt": "Evidence prompt",
+          "principles": "Evidence-based rating principles.",
+          "principlesText": "Rate observable behaviour and demonstrated results, not personality. Use examples from the full probation period. A rating of 1 or 2 requires clear evidence, prior feedback and documented development support.",
+          "noKpis": "No KPIs agreed yet.",
+          "kpiLine": "{measure} · target {target} by {date}",
+          "support": "Planned support"
+        },
+        "result": {
+          "2": "C. Overall Mid-Point Assessment",
+          "3": "C. Overall Result and Recommendation"
+        },
+        "resultSub": "Worked out by the system from the Line Manager’s ratings.",
+        "sectionA": "Section A /{max}",
+        "sectionB": "Section B /{max}",
+        "total": "Total /{max}",
+        "band": "Band",
+        "rateAll": "Rate all {count}",
+        "selfScore": "Employee self-score {score} (Band {band}). Only the Line Manager’s result drives the suggestion.",
+        "selfScoreNone": "Employee self-score not submitted. Only the Line Manager’s result drives the suggestion.",
+        "justification": {
+          "2": "Justification",
+          "3": "Recommendation and justification"
+        },
+        "justificationRequired": "Required: explain why you chose something other than the suggestion",
+        "noMidpointOutcome": "No final employment outcome is applied at the mid-point.",
+        "choice": {
+          "2": "E. Mid-Probation Status",
+          "3": "Outcome"
+        },
+        "options": {
+          "confirm": "Confirm employment",
+          "extend": "Extend probation",
+          "not_confirm": "Non-confirmation",
+          "other": "Other",
+          "satisfactory": "Progressing satisfactorily",
+          "development": "Progressing with development actions",
+          "at_risk": "At risk of not meeting probation requirements – People Team consultation required"
+        },
+        "extendHint": "{first} or {second} months",
+        "otherHint": "needs justification and a PBP decision",
+        "suggested": "suggested",
+        "extensionsUsed": "{count} of {max} extensions used",
+        "extensionLength": "Extension length (Line Manager recommends, PBP confirms)",
+        "monthsOption": "{months} months",
+        "choiceNote": "Choosing anything other than the suggestion needs a written justification and is flagged to the People Business Partner.",
+        "nothingPreselected": "Nothing is pre-selected.",
+        "managerComments": "Manager’s overall comments",
+        "coaching": "D. Coaching Summary and Development Plan",
+        "strengths": "Top strengths demonstrated",
+        "development": "Priority development areas",
+        "employeeComments2": "Employee’s comments",
+        "ackHeading": "D. Employee Comments and Acknowledgement",
+        "employeeComments3": "Employee comments",
+        "ackNote": "Discussed and received. Acknowledgement does not mean agreement.",
+        "optional": "Optional",
+        "kpiHeading": "A. Key Accountabilities and KPIs",
+        "kpiSub": "Line Manager enters 1–5 rows. They lock after the employee acknowledges and carry into the KPI criterion of every later review.",
+        "kpiCols": {
+          "no": "No.",
+          "accountability": "Key accountability",
+          "measure": "KPI / success measure",
+          "target": "Target",
+          "targetDate": "Target date"
+        },
+        "kpiField": "{field} {index}",
+        "kpiRemove": "Remove",
+        "kpiRemoveRow": "Remove accountability {index}",
+        "kpiAdd": "Add accountability · maximum 5",
+        "kpiEmpty": "Not entered yet.",
+        "supportHeading": "B. Planned Support for Employee",
+        "supportLabels": {
+          "coaching": "On-the-job training / coaching",
+          "access": "SOPs, policies, guidelines or system access",
+          "checkins": "Regular check-ins / feedback arrangements",
+          "other": "Other support required"
+        },
+        "supportPlaceholder": "Details / owner / timing",
+        "meetingHeading": "C. Meeting Acknowledgement",
+        "meetingHint": "Editable only by the employee at the acknowledgement step.",
+        "meetingNote": "Line Manager signs on submission, then the employee signs on acknowledgement.",
+        "scheduled": "Scheduled. The form opens on {opens}, {lead} days before the due date {due}.",
+        "gateBlocks": "KPI gate is set to Block: the form also waits until Part 1 is acknowledged.",
+        "signatures": "Signatures",
+        "sigWaiting": "Waiting",
+        "signHeading": "Signing and acknowledgement",
+        "signNote": "Signing means discussed and received, not agreement.",
+        "signWho": "Verified login: {name} ({role})",
+        "signFingerprint": "Your name, role, date and time and a fingerprint of this version of the form are saved with your signature.",
+        "methods": {
+          "typed": "Typed",
+          "drawn": "Drawn"
+        },
+        "issuesTitle": "{count, plural, one {# item needs fixing before submission} other {# items need fixing before submission}}",
+        "notes": {
+          "self": "Your self-assessment submission is not a signature. The Line Manager completes their assessment afterwards.",
+          "lm": "Submitting sends the review to {name} to acknowledge.",
+          "lmKpis": "You are signing as Line Manager.",
+          "ack1": "Acknowledging means the KPIs were discussed and received.",
+          "ack": "You can add comments. You cannot change ratings.",
+          "review": "Review step from the form’s approval routing · no signature needed.",
+          "approve": "Approve step from the form’s approval routing · no signature needed.",
+          "locked1": "Part 1 is recorded and locked.",
+          "locked": "This part is recorded and locked.",
+          "waiting": "Waiting on {who} ({what}).",
+          "nothing": "Nothing to do here right now."
+        },
+        "returnHeading": "Return to the Line Manager",
+        "returnHelp": "The part goes back to the Line Manager. Signatures so far are cleared and everyone signs again after the changes.",
+        "returnedBy": "Returned by {name}:",
+        "returnedNote": "Earlier signatures were cleared. The part goes through the signing route again.",
+        "decisionHeading": "Your decision"
+      }
+    }
+  },
+  "probationConfig": {
+    "crumb": "Probation Confirmation / Configuration / {page}",
+    "live": "Live",
+    "preparation": "Preparation",
+    "settings": {
+      "title": "Probation settings",
+      "sub": "Group standard version {version} published · company settings override only the fields they tick · changes apply to new cases only",
+      "subNoStandard": "No group standard published yet · each company uses its own settings version · changes apply to new cases only",
+      "subCompany": "Changes apply to new cases only.",
+      "editStandard": "Edit group standard",
+      "newCompanySetting": "New company setting",
+      "bannerLead": "Group standard with company settings.",
+      "banner": "The group standard applies the same way to every company. A company setting changes only the fields it ticks for its companies; every other field follows the standard, including later changes to it.",
+      "live": "Live in {live} of {total} companies. Running cases keep the settings version they started with.",
+      "running": "Running cases keep the settings version they started with.",
+      "standardCards": "Group standard settings",
+      "whoHelp": "A case opens automatically when an employee’s Personnel Management status becomes Probation (on activation, before, on or after the start date). Draft records never open a case.",
+      "plansHelp": "Picked from the Probation Period in Personnel Management.",
+      "planPeriod": "Probation Period",
+      "planReviews": "Reviews",
+      "planMonths": "{months} Month(s)",
+      "planMidpoint": "Part 2 at Month {midpoint} · Part 3 on the end date",
+      "planFinal": "Part 3 on the end date only",
+      "extensionMonths": "{months} months"
+    },
+    "cards": {
+      "who": "Who gets a case",
+      "plans": "Review plans",
+      "timing": "Timing",
+      "kpis": "Week 1 KPIs and reminders",
+      "extensions": "Extensions and results"
+    },
+    "form": {
+      "sub": "Criteria, weights, rating scale, bands and guidance are saved with each form version. Each case keeps the form it started on.",
+      "versions": "Form versions",
+      "formTitle": "Form",
+      "gradesTitle": "Job grade assignment",
+      "gradesHelp": "New probation cases in these grades (Personnel Management Job Grade at the case start) use this form. Leave it empty to use the form for the normal eligible grades.",
+      "gradesNote": "Changes to the grade assignment apply to new cases only.",
+      "noGrades": "No grades",
+      "chooseGrades": "Choose job grades…",
+      "selected": "{count} selected",
+      "searchGrades": "Search grade, e.g. 12",
+      "selectAll": "Select all",
+      "clear": "Clear",
+      "noGradeMatch": "No grade matches “{query}”.",
+      "done": "Done",
+      "criteriaTitle": "Criteria and weights",
+      "section": "Section {letter} · {name}",
+      "sectionTotal": "Criteria total {total}% of {weight}%",
+      "criterion": "Criterion",
+      "weight": "Weight %",
+      "guidance": "Guidance",
+      "order": "Order and remove",
+      "criterionPlaceholder": "Criterion name",
+      "weightFor": "Weight for {name}",
+      "newCriterion": "new criterion",
+      "hideGuidance": "Hide",
+      "viewGuidance": "View",
+      "editGuidance": "Edit",
+      "moveUp": "Move {name} up",
+      "moveDown": "Move {name} down",
+      "up": "Up",
+      "down": "Down",
+      "removeNamed": "Remove {name}",
+      "addCriterion": "Add criterion to Section {letter}",
+      "formTotal": "Form total {total}%",
+      "formTotalParts": "(Section A {a}% · Section B {b}%). Every criterion is rated 1–5.",
+      "scaleTitle": "Rating scale",
+      "bandsTitle": "Bands"
+    },
+    "intake": {
+      "sub": "Bring in staff who were already on probation using the offline HTML form, then switch probation on per company.",
+      "extensionsTitle": "2. Confirm extensions already used",
+      "activationTitle": "3. Activation by company",
+      "noExtensions": "No cases with an existing extension."
     }
   },
   "templateEditor": {
@@ -38698,6 +39619,1387 @@
     "appliesFromTomorrow": "இணைக்கும் முறை மற்றும் நேரப் பதிவுகளுக்கிடையிலான குறைந்தபட்ச இடைவெளி மாற்றங்கள் நாளை முதல் பொருந்தும்; இன்று ஏற்கனவே பதிவான வருகை மீண்டும் கணக்கிடப்படாது. யார் எப்போது மாற்றினார்கள் என்பதை வரலாறு பதிவு செய்கிறது.",
     "systemReason": "அட்டவணைக் குழு அமைப்புகளில் புதுப்பிக்கப்பட்டது",
     "dutyRosterPoolNote": "மேலே உள்ள அனுமதிக்கப்பட்ட பணிமுறைகளில் சேர்க்கப்பட்ட பணிமுறைகளை மட்டுமே சுழற்சி பயன்படுத்த முடியும்."
+  },
+  "bulkJobs": {
+    "notification": {
+      "employeeImport": {
+        "completed": {
+          "title": "பணியாளர் இறக்குமதி முடிந்தது",
+          "body": "சேர்க்கப்பட்ட பணியாளர்களைப் பார்க்க இறக்குமதி வரலாற்றைத் திறக்கவும்."
+        },
+        "failed": {
+          "title": "பணியாளர் இறக்குமதி நிறுத்தப்பட்டது",
+          "body": "எந்தப் பணியாளரும் சேர்க்கப்படவில்லை. காரணத்தைப் பார்க்க இறக்குமதி வரலாற்றைத் திறக்கவும்."
+        },
+        "cancelled": {
+          "title": "பணியாளர் இறக்குமதி ரத்து செய்யப்பட்டது",
+          "body": "எந்தப் பணியாளரும் சேர்க்கப்படவில்லை. விவரங்களுக்கு இறக்குமதி வரலாற்றைத் திறக்கவும்."
+        }
+      },
+      "leaveImport": {
+        "completed": {
+          "title": "விடுப்பு இறக்குமதி முடிந்தது",
+          "body": "இறக்குமதி செய்யப்பட்ட வரிகள் இப்போது பணியாளர்களின் விடுப்பு இருப்பில் சேர்க்கப்பட்டுள்ளன."
+        },
+        "failed": {
+          "title": "விடுப்பு இறக்குமதி நிறுத்தப்பட்டது",
+          "body": "ஏற்கனவே சேமிக்கப்பட்ட வரிகள் வைத்திருக்கப்படும். அதே கோப்பை மீண்டும் இறக்குமதி செய்தால் அவை தவிர்க்கப்படும்."
+        },
+        "cancelled": {
+          "title": "விடுப்பு இறக்குமதி ரத்து செய்யப்பட்டது",
+          "body": "ஏற்கனவே சேமிக்கப்பட்ட வரிகள் வைத்திருக்கப்படும். அதே கோப்பை மீண்டும் இறக்குமதி செய்தால் அவை தவிர்க்கப்படும்."
+        }
+      },
+      "leaveProcessing": {
+        "completed": {
+          "title": "விடுப்புச் செயலாக்கம் முடிந்தது",
+          "body": "விடுப்பு எண்ணிக்கைகள் புதுப்பிக்கப்பட்டன."
+        },
+        "failed": {
+          "title": "விடுப்புச் செயலாக்கம் நிறுத்தப்பட்டது",
+          "body": "ஏற்கனவே செயலாக்கப்பட்ட பணியாளர்களின் எண்ணிக்கைகள் மாறாது. மீதமுள்ளவர்களை முடிக்க மீண்டும் இயக்கவும்."
+        },
+        "cancelled": {
+          "title": "விடுப்புச் செயலாக்கம் ரத்து செய்யப்பட்டது",
+          "body": "ஏற்கனவே செயலாக்கப்பட்ட பணியாளர்களின் எண்ணிக்கைகள் மாறாது. மீதமுள்ளவர்களை முடிக்க மீண்டும் இயக்கவும்."
+        }
+      },
+      "roster": {
+        "completed": {
+          "title": "பணி அட்டவணை மாற்றம் முடிந்தது",
+          "body": "முடிவைக் காண பணி அட்டவணையைத் திறக்கவும்."
+        },
+        "failed": {
+          "title": "பணி அட்டவணை மாற்றம் நிறுத்தப்பட்டது",
+          "body": "காரணத்தைக் காண பணி அட்டவணையைத் திறக்கவும்."
+        },
+        "cancelled": {
+          "title": "பணி அட்டவணை மாற்றம் ரத்து செய்யப்பட்டது",
+          "body": "விவரங்களுக்கு பணி அட்டவணையைத் திறக்கவும்."
+        }
+      },
+      "scheduleGroup": {
+        "completed": {
+          "title": "அட்டவணைக் குழு ஒதுக்கீடு முடிந்தது",
+          "body": "முடிவைக் காண அட்டவணைக் குழு ஒதுக்கீட்டைத் திறக்கவும்."
+        },
+        "failed": {
+          "title": "அட்டவணைக் குழு ஒதுக்கீடு நிறுத்தப்பட்டது",
+          "body": "காரணத்தைக் காண அட்டவணைக் குழு ஒதுக்கீட்டைத் திறக்கவும்."
+        },
+        "cancelled": {
+          "title": "அட்டவணைக் குழு ஒதுக்கீடு ரத்து செய்யப்பட்டது",
+          "body": "விவரங்களுக்கு அட்டவணைக் குழு ஒதுக்கீட்டைத் திறக்கவும்."
+        }
+      },
+      "clockingImport": {
+        "completed": {
+          "title": "நேரப் பதிவு இறக்குமதி முடிந்தது",
+          "body": "சேர்க்கப்பட்ட நேரப் பதிவுகளைப் பார்க்க இறக்குமதிப் பதிவேடுகளைத் திறக்கவும்."
+        },
+        "failed": {
+          "title": "நேரப் பதிவு இறக்குமதி நின்றுவிட்டது",
+          "body": "என்ன சேமிக்கப்பட்டது, ஏன் நின்றது என்பதைப் பார்க்க இறக்குமதிப் பதிவேடுகளைத் திறக்கவும்."
+        },
+        "cancelled": {
+          "title": "நேரப் பதிவு இறக்குமதி நின்றுவிட்டது",
+          "body": "என்ன சேமிக்கப்பட்டது என்பதைப் பார்க்க இறக்குமதிப் பதிவேடுகளைத் திறக்கவும்."
+        }
+      },
+      "attendanceRecomputePreview": {
+        "completed": {
+          "title": "மீள்கணக்கீட்டு முன்னோட்டம் தயார்",
+          "body": "என்ன மாறும் என்பதைச் சரிபார்க்க வருகை மீள்கணக்கீட்டைத் திறக்கவும்."
+        },
+        "failed": {
+          "title": "மீள்கணக்கீட்டு முன்னோட்டம் நின்றுவிட்டது",
+          "body": "காரணத்தைப் பார்க்க வருகை மீள்கணக்கீட்டைத் திறக்கவும்."
+        },
+        "cancelled": {
+          "title": "மீள்கணக்கீட்டு முன்னோட்டம் நின்றுவிட்டது",
+          "body": "மீண்டும் தொடங்க வருகை மீள்கணக்கீட்டைத் திறக்கவும்."
+        }
+      },
+      "attendanceRecompute": {
+        "completed": {
+          "title": "வருகை மீண்டுக் கணக்கிடப்பட்டது",
+          "body": "மாறிய நாட்களைப் பார்க்க வருகை மீள்கணக்கீட்டைத் திறக்கவும்."
+        },
+        "failed": {
+          "title": "வருகை மீள்கணக்கீடு நின்றுவிட்டது",
+          "body": "காரணத்தைப் பார்க்க வருகை மீள்கணக்கீட்டைத் திறக்கவும்."
+        },
+        "cancelled": {
+          "title": "வருகை மீள்கணக்கீடு நின்றுவிட்டது",
+          "body": "விவரங்களுக்கு வருகை மீள்கணக்கீட்டைத் திறக்கவும்."
+        }
+      },
+      "payrollProcess": {
+        "completed": {
+          "title": "ஊதியச் செயலாக்கம் முடிந்தது",
+          "body": "செயலாக்கப்பட்ட ஓட்டத்தை மதிப்பாய்வு செய்ய ஊதியத்தைத் திறக்கவும்."
+        },
+        "failed": {
+          "title": "ஊதியச் செயலாக்கம் நிறுத்தப்பட்டது",
+          "body": "ஓட்டம் மீண்டும் வரைவில் உள்ளது; எந்த ஊதியச் சீட்டும் வைக்கப்படவில்லை. காரணத்தைப் பார்க்க ஊதியத்தைத் திறக்கவும்."
+        },
+        "cancelled": {
+          "title": "ஊதியச் செயலாக்கம் ரத்து செய்யப்பட்டது",
+          "body": "ஓட்டம் மீண்டும் வரைவில் உள்ளது; எந்த ஊதியச் சீட்டும் வைக்கப்படவில்லை."
+        }
+      },
+      "systemLabelImport": {
+        "completed": {
+          "title": "கணினி லேபிள்கள் இறக்குமதி முடிந்தது",
+          "body": "சேர்க்கப்பட்ட குறியீடுகளைப் பார்க்க கணினி லேபிள்களைத் திறக்கவும்."
+        },
+        "failed": {
+          "title": "கணினி லேபிள்கள் இறக்குமதி நிறுத்தப்பட்டது",
+          "body": "குறியீடுகள் எதுவும் சேர்க்கப்படவில்லை. கணினி லேபிள்களைத் திறந்து பணிப்புத்தகத்தை மீண்டும் முன்னோட்டமிடவும்."
+        },
+        "cancelled": {
+          "title": "கணினி லேபிள்கள் இறக்குமதி ரத்து செய்யப்பட்டது",
+          "body": "குறியீடுகள் எதுவும் சேர்க்கப்படவில்லை."
+        }
+      },
+      "sectionImport": {
+        "completed": {
+          "title": "பிரிவு இறக்குமதி முடிந்தது",
+          "body": "புதுப்பிக்கப்பட்ட வரிசைகளைப் பார்க்க இறக்குமதியைத் திறக்கவும்."
+        },
+        "failed": {
+          "title": "பிரிவு இறக்குமதி நிறுத்தப்பட்டது",
+          "body": "நிற்கும் முன் சேமிக்கப்பட்ட வரிசைகள் வைக்கப்பட்டன. காரணத்தைப் பார்க்க இறக்குமதியைத் திறக்கவும்."
+        },
+        "cancelled": {
+          "title": "பிரிவு இறக்குமதி ரத்து செய்யப்பட்டது",
+          "body": "நிற்கும் முன் சேமிக்கப்பட்ட வரிசைகள் வைக்கப்பட்டன. விவரங்களுக்கு இறக்குமதியைத் திறக்கவும்."
+        }
+      },
+      "registerImport": {
+        "completed": {
+          "title": "பதிவேட்டு இறக்குமதி முடிந்தது",
+          "body": "சேமிக்கப்பட்ட பதிவேட்டுப் பதிவுகளைப் பார்க்க இறக்குமதியைத் திறக்கவும்."
+        },
+        "failed": {
+          "title": "பதிவேட்டு இறக்குமதி நிறுத்தப்பட்டது",
+          "body": "எந்தப் பதிவேட்டுப் பதிவும் சேமிக்கப்படவில்லை. காரணத்தைப் பார்க்க இறக்குமதியைத் திறக்கவும்."
+        },
+        "cancelled": {
+          "title": "பதிவேட்டு இறக்குமதி ரத்து செய்யப்பட்டது",
+          "body": "எந்தப் பதிவேட்டுப் பதிவும் சேமிக்கப்படவில்லை. விவரங்களுக்கு இறக்குமதியைத் திறக்கவும்."
+        }
+      },
+      "employeeImportRevert": {
+        "completed": {
+          "title": "இறக்குமதி மீளமைப்பு முடிந்தது",
+          "body": "ரத்து செய்யப்பட்ட பணியாளர்களைப் பார்க்க இறக்குமதி வரலாற்றைத் திறக்கவும்."
+        },
+        "failed": {
+          "title": "இறக்குமதி மீளமைப்பு நிறுத்தப்பட்டது",
+          "body": "எதுவும் மாற்றப்படவில்லை. காரணத்தைப் பார்க்க இறக்குமதி வரலாற்றைத் திறக்கவும்."
+        },
+        "cancelled": {
+          "title": "இறக்குமதி மீளமைப்பு ரத்து செய்யப்பட்டது",
+          "body": "எதுவும் மாற்றப்படவில்லை. விவரங்களுக்கு இறக்குமதி வரலாற்றைத் திறக்கவும்."
+        }
+      },
+      "leaveGeneration": {
+        "completed": {
+          "title": "உரிமை உருவாக்கம் முடிந்தது",
+          "body": "விடுப்பு எண்ணிக்கைகள் புதுப்பிக்கப்பட்டன."
+        },
+        "failed": {
+          "title": "உரிமை உருவாக்கம் நிறுத்தப்பட்டது",
+          "body": "எதுவும் மாற்றப்படவில்லை. காரணத்தைப் பார்க்க உரிமை உருவாக்கத்தைத் திறந்து, பின்னர் மீண்டும் இயக்கவும்."
+        },
+        "cancelled": {
+          "title": "உரிமை உருவாக்கம் ரத்து செய்யப்பட்டது",
+          "body": "எதுவும் மாற்றப்படவில்லை."
+        }
+      },
+      "leaveRecalculation": {
+        "completed": {
+          "title": "விடுப்பு இருப்புகள் மீண்டும் கணக்கிடப்பட்டன",
+          "body": "பணியாளர்களின் விடுப்பு எண்ணிக்கைகள் இப்போது சேமிக்கப்பட்ட அமைப்புகளைப் பின்பற்றுகின்றன."
+        },
+        "failed": {
+          "title": "விடுப்பு மறுகணக்கீடு நிறுத்தப்பட்டது",
+          "body": "ஏற்கனவே மீண்டும் கணக்கிடப்பட்ட பணியாளர்கள் தங்கள் புதிய எண்ணிக்கைகளை வைத்திருப்பார்கள். மீதமுள்ளவர்களை மீண்டும் கணக்கிட அமைப்பை மீண்டும் சேமிக்கவும்."
+        },
+        "cancelled": {
+          "title": "விடுப்பு மறுகணக்கீடு ரத்து செய்யப்பட்டது",
+          "body": "ஏற்கனவே மீண்டும் கணக்கிடப்பட்ட பணியாளர்கள் தங்கள் புதிய எண்ணிக்கைகளை வைத்திருப்பார்கள். மீதமுள்ளவர்களை மீண்டும் கணக்கிட அமைப்பை மீண்டும் சேமிக்கவும்."
+        }
+      },
+      "leaveYearType": {
+        "completed": {
+          "title": "விடுப்பு ஆண்டு வகை பயன்படுத்தப்பட்டது",
+          "body": "முதல் ஆண்டு பணியாளர்களின் விடுப்பு எண்ணிக்கைகள் இப்போது சேமிக்கப்பட்ட விடுப்பு ஆண்டு வகையைப் பின்பற்றுகின்றன."
+        },
+        "failed": {
+          "title": "விடுப்பு ஆண்டு வகை இருப்புகளில் பயன்படுத்தப்படவில்லை",
+          "body": "எந்த விடுப்பு எண்ணிக்கையும் மாற்றப்படவில்லை. மீண்டும் முயற்சிக்க விடுப்பு ஆண்டு வகையை மீண்டும் சேமிக்கவும்."
+        },
+        "cancelled": {
+          "title": "விடுப்பு ஆண்டு வகை திருத்தம் ரத்து செய்யப்பட்டது",
+          "body": "எந்த விடுப்பு எண்ணிக்கையும் மாற்றப்படவில்லை."
+        }
+      },
+      "toilSweep": {
+        "completed": {
+          "title": "ஈட்டு விடுப்புத் தீர்வு முடிந்தது",
+          "body": "தீர்க்க வேண்டிய ஈட்டு விடுப்பு வரவுகள் தீர்க்கப்பட்டன. அவற்றைப் பார்க்க விடுப்பு வரவு பக்கத்தைத் திறக்கவும்."
+        },
+        "failed": {
+          "title": "ஈட்டு விடுப்புத் தீர்வு நிறுத்தப்பட்டது",
+          "body": "ஏற்கனவே தீர்க்கப்பட்ட வரவுகள் அப்படியே இருக்கும். மீதமுள்ளவற்றைத் தீர்க்க மீண்டும் இயக்கவும்."
+        },
+        "cancelled": {
+          "title": "ஈட்டு விடுப்புத் தீர்வு ரத்து செய்யப்பட்டது",
+          "body": "ஏற்கனவே தீர்க்கப்பட்ட வரவுகள் அப்படியே இருக்கும். மீதமுள்ளவற்றைத் தீர்க்க மீண்டும் இயக்கவும்."
+        }
+      },
+      "payrollHistory": {
+        "completed": {
+          "title": "சம்பள வரலாற்று மாற்றம் சமர்ப்பிக்கப்பட்டது",
+          "body": "சமர்ப்பிக்கப்பட்டதைப் பார்க்க இறக்குமதிப் பதிவைத் திறக்கவும்."
+        },
+        "failed": {
+          "title": "சம்பள வரலாற்று மாற்றம் நிறுத்தப்பட்டது",
+          "body": "சம்பள வரலாறு எதுவும் மாற்றப்படவில்லை. காரணத்தைப் பார்க்க இறக்குமதிப் பதிவைத் திறக்கவும்."
+        },
+        "cancelled": {
+          "title": "சம்பள வரலாற்று மாற்றம் ரத்து செய்யப்பட்டது",
+          "body": "சம்பள வரலாறு எதுவும் மாற்றப்படவில்லை."
+        }
+      },
+      "payrollReprocess": {
+        "completed": {
+          "title": "சம்பள மீள்செயலாக்கம் முடிந்தது",
+          "body": "மீண்டும் செயலாக்கப்பட்ட பணியாளர்களைச் சரிபார்க்க ஓட்டத்தைத் திறக்கவும்."
+        },
+        "failed": {
+          "title": "சம்பள மீள்செயலாக்கம் நிறுத்தப்பட்டது",
+          "body": "ஏற்கனவே மீண்டும் செயலாக்கப்பட்ட பணியாளர்கள் தங்கள் புதிய முடிவுகளை வைத்திருப்பார்கள். எங்கே நின்றது என்பதைப் பார்க்க ஓட்டத்தைத் திறக்கவும்."
+        },
+        "cancelled": {
+          "title": "சம்பள மீள்செயலாக்கம் ரத்து செய்யப்பட்டது",
+          "body": "ஏற்கனவே மீண்டும் செயலாக்கப்பட்ட பணியாளர்கள் தங்கள் புதிய முடிவுகளை வைத்திருப்பார்கள்."
+        }
+      },
+      "movementImport": {
+        "completed": {
+          "title": "பணிநிலை மாற்ற இறக்குமதி முடிந்தது",
+          "body": "சேமிக்கப்பட்ட மாற்றங்களையும் சேமிக்க முடியாத பணியாளர்களையும் பார்க்க இறக்குமதி வரலாற்றைத் திறக்கவும்."
+        },
+        "failed": {
+          "title": "பணிநிலை மாற்ற இறக்குமதி நிறுத்தப்பட்டது",
+          "body": "காரணத்தைப் பார்க்க இறக்குமதி வரலாற்றைத் திறக்கவும். ஏற்கெனவே சேமிக்கப்பட்ட பணியாளர்களின் மாற்றங்கள் அப்படியே இருக்கும்."
+        },
+        "cancelled": {
+          "title": "பணிநிலை மாற்ற இறக்குமதி நிறுத்தப்பட்டது",
+          "body": "ஏற்கெனவே சேமிக்கப்பட்ட பணியாளர்களின் மாற்றங்கள் அப்படியே இருக்கும். விவரங்களுக்கு இறக்குமதி வரலாற்றைத் திறக்கவும்."
+        }
+      },
+      "movementCheck": {
+        "completed": {
+          "title": "பணிநிலை மாற்றக் கோப்பு சரிபார்க்கப்பட்டது",
+          "body": "சரிபார்ப்பு இறக்குமதி வரலாற்றில் பதிவு செய்யப்பட்டுள்ளது. இறக்குமதித் திரையை விட்டு வெளியேறியிருந்தால், மதிப்பாய்வு செய்து உறுதிப்படுத்தக் கோப்பை மீண்டும் பதிவேற்றவும்."
+        },
+        "failed": {
+          "title": "பணிநிலை மாற்றச் சரிபார்ப்பு நிறுத்தப்பட்டது",
+          "body": "காரணத்தைப் பார்க்க இறக்குமதி வரலாற்றைத் திறக்கவும். எதுவும் சேமிக்கப்படவில்லை."
+        },
+        "cancelled": {
+          "title": "பணிநிலை மாற்றச் சரிபார்ப்பு நிறுத்தப்பட்டது",
+          "body": "எதுவும் சேமிக்கப்படவில்லை. விவரங்களுக்கு இறக்குமதி வரலாற்றைத் திறக்கவும்."
+        }
+      },
+      "movementImportRevert": {
+        "completed": {
+          "title": "பணிநிலை மாற்ற இறக்குமதி திரும்பப்பெறல் முடிந்தது",
+          "body": "திரும்பப்பெறப்பட்ட மாற்றங்களைப் பார்க்க இறக்குமதி வரலாற்றைத் திறக்கவும்."
+        },
+        "failed": {
+          "title": "பணிநிலை மாற்ற இறக்குமதி திரும்பப்பெறல் நிறுத்தப்பட்டது",
+          "body": "எதுவும் மாற்றப்படவில்லை. காரணத்தைப் பார்க்க இறக்குமதி வரலாற்றைத் திறக்கவும்."
+        },
+        "cancelled": {
+          "title": "பணிநிலை மாற்ற இறக்குமதி திரும்பப்பெறல் ரத்து செய்யப்பட்டது",
+          "body": "எதுவும் மாற்றப்படவில்லை. விவரங்களுக்கு இறக்குமதி வரலாற்றைத் திறக்கவும்."
+        }
+      },
+      "recruitmentImport": {
+        "completed": {
+          "title": "விண்ணப்பதாரர் இறக்குமதி முடிந்தது",
+          "body": "வரிசை வாரியான முடிவையும் ஒதுக்க வேண்டியவை பட்டியலில் காத்திருக்கும் விண்ணப்பதாரர்களையும் காண இறக்குமதியைத் திறக்கவும்."
+        },
+        "failed": {
+          "title": "விண்ணப்பதாரர் இறக்குமதி நின்றது",
+          "body": "ஒரு சிக்கல் இறக்குமதியை நிறுத்தியது. ஏற்கனவே இறக்குமதி செய்யப்பட்ட வரிசைகள் அப்படியே இருக்கும்; முடிவைக் காண இறக்குமதியைத் திறக்கவும்."
+        },
+        "cancelled": {
+          "title": "விண்ணப்பதாரர் இறக்குமதி நிறுத்தப்பட்டது",
+          "body": "இறக்குமதி நிறுத்தப்பட்டது. ஏற்கனவே இறக்குமதி செய்யப்பட்ட வரிசைகள் அப்படியே இருக்கும்; முடிவைக் காண இறக்குமதியைத் திறக்கவும்."
+        }
+      }
+    },
+    "panel": {
+      "queued": "தொடங்கக் காத்திருக்கிறது",
+      "preparing": "ஒவ்வொரு மாற்றத்தையும் சரிபார்க்கிறது",
+      "running": "சேமிக்கிறது",
+      "finalizing": "நிறைவு செய்கிறது",
+      "discarding": "நிறுத்துகிறது",
+      "completed": "முடிந்தது",
+      "failed": "நிறுத்தப்பட்டது",
+      "cancelled": "ரத்து செய்யப்பட்டது",
+      "progressCount": "{total} படிகளில் {done} முடிந்தன",
+      "backgroundHelp": "நீங்கள் இந்தப் பக்கத்திலிருந்து வெளியேறலாம். பணி தொடரும்; முடிந்ததும் உங்களுக்கு அறிவிக்கப்படும்.",
+      "waiting": "பின்னணிச் சேவைக்காகக் காத்திருக்கிறது. முன்னேற்றம் சேமிக்கப்பட்டுள்ளது; இதை மீண்டும் தொடங்க வேண்டாம்.",
+      "workerUnavailable": "பின்னணிச் சேவை இன்னும் இயங்கவில்லை. உங்கள் கோரிக்கை சேமிக்கப்பட்டுள்ளது; சேவை இயங்கியதும் தானாகவே தொடங்கும்."
+    },
+    "roster": {
+      "generate": "பணி அட்டவணையை உருவாக்குகிறது",
+      "copy": "பணி அட்டவணையை நகலெடுக்கிறது",
+      "assign": "பணி அட்டவணை மாற்றத்தைப் பயன்படுத்துகிறது",
+      "import": "பதிவேற்றிய பணி அட்டவணையைச் சேமிக்கிறது",
+      "otherRunning": "மற்றொரு பணி அட்டவணை மாற்றம் இன்னும் சேமிக்கப்படுகிறது. அது முடியும் வரை காத்திருந்து, பின்னர் மீண்டும் முயலவும்.",
+      "saveFailed": "பணி அட்டவணை மாற்றத்தைச் சேமிக்க முடியவில்லை. மீண்டும் முயலவும், அல்லது HR நிர்வாகியிடம் கேட்கவும்.",
+      "queuedBehind": "மற்றொரு பணி அட்டவணைப் பணிக்குப் பின்னால் வரிசையில் உள்ளது. அது முடிந்ததும் இது தானாகவே தொடங்கும்."
+    },
+    "scheduleGroup": {
+      "title": "அட்டவணைக் குழுவை ஒதுக்குகிறது",
+      "otherRunning": "மற்றொரு அட்டவணைக் குழு ஒதுக்கீடு இன்னும் சேமிக்கப்படுகிறது. அது முடியும் வரை காத்திருந்து, பின்னர் மீண்டும் முயலவும்.",
+      "queuedBehind": "மற்றொரு அட்டவணைக் குழு ஒதுக்கீட்டுக்குப் பின்னால் வரிசையில் உள்ளது. அது முடிந்ததும் இது தானாகவே தொடங்கும்."
+    }
+  },
+  "importLog": {
+    "batchReference": "தொகுதி குறிப்பு",
+    "importedBy": "இறக்குமதி செய்தவர்",
+    "batchLabel": "தொகுதி {code}",
+    "actorWithId": "{name} ({employeeId})",
+    "actorUnlinked": "நிர்வாகி உள்நுழைவு (பணியாளர் பதிவு இல்லை · {suffix} இல் முடியும் உள்நுழைவு)",
+    "actorUnavailable": "கிடைக்காத பயனர்"
+  },
+  "lifecycleEmailHold": {
+    "inboxAction": "மின்னஞ்சல் நிறுத்தி வைக்கப்பட்டது: {email}"
+  },
+  "rewardConfig": {
+    "title": "சேமிக்கும் முன் பார்க்கவும்",
+    "saving": "சேமிக்கிறது…",
+    "whyReview": "இதைப் பார்க்க வேண்டிய காரணம்",
+    "reason": "இந்த மாற்றத்திற்கான காரணம்",
+    "cancel": "ரத்துசெய்",
+    "highImpact": {
+      "released-pat": "ஏற்கெனவே வெளியிடப்பட்ட மதிப்பாய்வுக்கான PAT மாறுகிறது.",
+      "released-library": "ஏற்கெனவே வெளியிடப்பட்ட மதிப்பாய்வுகள் முந்தைய பதிப்பைப் பயன்படுத்துகின்றன; அவை அதையே வைத்திருக்கும். புதிய மதிப்பாய்வுகள் இதைப் பயன்படுத்தும்.",
+      "released-limit": "ஏற்கெனவே வெளியிடப்பட்ட மதிப்பாய்வுக்கான பட்ஜெட் வரம்பு மாறுகிறது.",
+      "release-review": "வெளியிட்டால் இந்த மதிப்பாய்வு BU CEO-க்கு அனுப்பப்படும்.",
+      "remove-access": "ஒருவர் ஒரு மதிப்பாய்வுக்கான அணுகலை இழக்கிறார்.",
+      "open-offcycle": "சுழற்சிக்கு வெளியே ஆண்டைத் திறப்பது நிறுவன இருப்புகளைத் தலைவர்களின் கோரிக்கைகளுக்குக் கிடைக்கச் செய்யும்.",
+      "offcycle-window": "ஆண்டு நடுப்பகுதி பரிந்துரைகளை எப்போது சமர்ப்பிக்கலாம் என்பதை ஆண்டு நடுப்பகுதி காலம் தீர்மானிக்கிறது."
+    },
+    "whatChanges": "என்ன மாறுகிறது ({count})",
+    "item": "உருப்படி",
+    "before": "முன்",
+    "after": "பின்",
+    "noValueChanges": "எந்த மதிப்பும் மாறவில்லை.",
+    "moreLines": "மேலும் {count} மாற்றங்கள் மாற்றப் பதிவில் உள்ளன.",
+    "affected": "பாதிக்கப்படும் மதிப்பாய்வுகள் ({count})",
+    "noReviewsAffected": "எந்த மதிப்பாய்வும் பாதிக்கப்படவில்லை.",
+    "consequence": {
+      "repriced": "இப்போதே மீண்டும் கணக்கிடப்படும்",
+      "recalculation-required": "மீண்டும் கணக்கிடப்படும்; தற்போதைய அங்கீகரிப்பாளருக்குத் தெரிவிக்கப்படும்",
+      "keeps-version": "தொடங்கிய பதிப்பையே வைத்திருக்கும்",
+      "released-to-bu": "BU CEO-க்கு வெளியிடப்படும்",
+      "access-removed": "அணுகல் நீக்கப்படும்",
+      "none": "மாற்றம் இல்லை"
+    },
+    "notificationTitle": "Rewards அமைப்பு மாற்றப்பட்டது",
+    "noAccess": "Rewards மாற்றப் பதிவு உங்களுக்குக் கிடைக்கவில்லை.",
+    "logHelp": "ஒவ்வொரு Rewards அமைப்பு மாற்றமும்: யார் செய்தார், எப்போது, என்ன மாறியது, ஏன். மாற்றங்கள் ஒருபோதும் திருத்தப்படவோ நீக்கப்படவோ மாட்டா.",
+    "area": "பகுதி",
+    "allAreas": "எல்லாப் பகுதிகளும்",
+    "company": "நிறுவனம்",
+    "allCompanies": "எல்லா நிறுவனங்களும்",
+    "person": "மாற்றியவர்",
+    "from": "முதல்",
+    "to": "வரை",
+    "highImpactOnly": "அதிகத் தாக்கம் மட்டும்",
+    "filter": "வடிகட்டிகளைப் பயன்படுத்து",
+    "exportExcel": "Excel-க்கு ஏற்றுமதி",
+    "when": "எப்போது",
+    "areaColumn": "பகுதி",
+    "reasonColumn": "காரணம்",
+    "changes": "மாற்றங்கள்",
+    "changedValues": "{count, plural, =0 {மதிப்புகள் இல்லை} one {# மதிப்பு} other {# மதிப்புகள்}}",
+    "system": "அமைப்பு",
+    "unknownPerson": "தெரியாதவர்",
+    "highImpactBadge": "அதிகத் தாக்கம்",
+    "areas": {
+      "salary": "சம்பளக் கட்டமைப்புகள்",
+      "bonus": "போனஸ் அணிகள்",
+      "pat": "PAT உள்ளீடுகள்",
+      "plan": "பகிரப்பட்ட Rewards அமைப்பு",
+      "shared": "பகிரப்பட்ட அமைப்பு",
+      "exemption": "பட்ஜெட் வரம்பு விலக்கு",
+      "senior": "மூத்தோர் திட்டம்",
+      "upload": "பதிவேற்றிய விருதுகள்",
+      "preparation": "மதிப்பாய்வு அமைப்பு",
+      "access": "Rewards அணுகல்",
+      "role_permission": "பங்கு அனுமதிகள்",
+      "group_role": "முழுக் குழுப் பங்குகள்",
+      "limit": "வரம்புக் கட்டுப்பாடுகள்",
+      "offcycle": "சுழற்சிக்கு வெளியே"
+    },
+    "actions": {
+      "returned-to-draft": "வரைவுக்குத் திருப்பப்பட்டது",
+      "saved-draft": "வரைவு சேமிக்கப்பட்டது",
+      "activated": "செயல்படுத்தப்பட்டது",
+      "restored": "முந்தைய பதிப்பிலிருந்து மீட்டமைக்கப்பட்டது",
+      "saved": "சேமிக்கப்பட்டது",
+      "released": "வெளியிடப்பட்டது",
+      "applied": "பயன்படுத்தப்பட்டது",
+      "changed": "மாற்றப்பட்டது",
+      "reset": "இயல்புநிலைக்கு மீட்டமைக்கப்பட்டது"
+    },
+    "empty": "இந்த வடிகட்டிகளுக்குப் பொருந்தும் மாற்றங்கள் இல்லை.",
+    "pages": "பக்கங்கள்",
+    "previous": "முந்தையது",
+    "next": "அடுத்தது",
+    "exportTruncated": "முதல் 5,000 மாற்றங்கள் மட்டுமே சேர்க்கப்பட்டுள்ளன. மீதியை ஏற்றுமதி செய்ய வடிகட்டிகளைக் குறைக்கவும்."
+  },
+  "rewardLimits": {
+    "description": "ஒவ்வொரு வெகுமதி ஆண்டுக்குமான வரம்புகளும் எல்லைகளும். மதிப்பாய்வுகள், AI ஆலோசகர் மற்றும் வெகுமதிப் பகுப்பாய்வில் உள்ள ஒவ்வொரு சரிபார்ப்பும் மதிப்பாய்வின் வெகுமதி ஆண்டுக்கான மதிப்புகளைப் பயன்படுத்துகிறது.",
+    "noAccess": "உங்களுக்கு அணுகல் இல்லை",
+    "noAccessHelp": "வரம்புக் கட்டுப்பாடுகள் Group Rewards, CTRO மற்றும் EC க்குக் கிடைக்கும்.",
+    "year": "வெகுமதி ஆண்டு",
+    "show": "காட்டு",
+    "viewOnly": "இந்த வரம்புகளைப் பார்க்கலாம். Group Rewards மட்டுமே அவற்றை மாற்ற முடியும்.",
+    "versionLine": "{year} க்குப் பதிப்பு {version} பயன்பாட்டில் உள்ளது.",
+    "baselineLine": "{year} க்கு இன்னும் பதிப்பு எதுவும் சேமிக்கப்படவில்லை. இவை நிலையான மதிப்புகள்; சேமித்தால் பதிப்பு 1 உருவாகும்.",
+    "typeHelp": "தடை சமர்ப்பிப்பை நிறுத்தும். விதிவிலக்கு மற்றும் எச்சரிக்கை மதிப்பாய்வுடன் செல்லும்; சமர்ப்பிக்கும் முன் காரணம் தேவை. குறிப்பு தகவலுக்கு மட்டும்.",
+    "columns": {
+      "limit": "வரம்பு",
+      "value": "மதிப்பு",
+      "type": "வகை",
+      "appliesTo": "பொருந்துவது",
+      "lastChanged": "கடைசியாக மாற்றியவர் / தேதி"
+    },
+    "areas": {
+      "pools": "சம்பள உயர்வு நிதிகள்",
+      "person": "ஒருவருக்கான சம்பள உயர்வு",
+      "bonus": "போனஸ்",
+      "lump": "ஒருமுறைத் தொகை",
+      "exemption": "விலக்குகள்",
+      "advisor": "AI ஆலோசகர்"
+    },
+    "labels": {
+      "pool_standard_merit": "தகுதி நிதி (தகுதியான சம்பளத்தின் %)",
+      "pool_standard_promotion": "பதவி உயர்வு நிதி (தகுதியான சம்பளத்தின் %)",
+      "pool_standard_special": "சிறப்புச் சரிசெய்தல் நிதி (தகுதியான சம்பளத்தின் %)",
+      "pool_h_merit": "தகுதி நிதி (தகுதியான சம்பளத்தின் %)",
+      "pool_h_promotion": "பதவி உயர்வு நிதி (தகுதியான சம்பளத்தின் %)",
+      "pool_h_special": "சிறப்புச் சரிசெய்தல் நிதி (தகுதியான சம்பளத்தின் %)",
+      "pool_separate": "நிதிகள் ஒன்றுக்கொன்று அல்லது வேறு நிறுவனத்துக்கு நிதியளிக்க முடியாது",
+      "increase_withoutPromotion": "பதவி உயர்வு இல்லாத மொத்த உயர்வு இதற்கு மேல்",
+      "increase_withPromotion": "பதவி உயர்வுடன் மொத்த உயர்வு இதற்குச் சமம் அல்லது மேல்",
+      "promotion_increment": "பதவி உயர்வு அதிகரிப்பு",
+      "promotion_maxGrades": "அதிகபட்ச நிலை உயர்வு",
+      "promotion_maxGrade": "பதவி உயர்வுக்குப் பின் உயர்ந்த நிலை",
+      "catchUp_crFloor": "STAR/SSTAR க்கான CR சமன்செய்தல் தளம்",
+      "salary_noReduction": "சம்பளக் குறைப்பு இல்லை",
+      "bonus_poolCap": "போனஸ் நிதி உச்சவரம்பு",
+      "bonus_underUse": "குறைவான பயன்பாட்டு எச்சரிக்கை இதற்குக் கீழ்",
+      "bonus_individualCeiling": "தனிநபர் போனஸ் உச்சவரம்பு இதற்கு மேல்",
+      "bonus_rounding": "கொடுப்பனவு முழுமையாக்கல் (கீழ்நோக்கி)",
+      "bonus_individualMultiplier": "அலகிலிருந்து வேறுபட்ட தனிநபர் பெருக்கி",
+      "lump_share": "மீதமுள்ள இருப்பின் பங்கு",
+      "lump_step": "முழுமையாக்கல் படி",
+      "lump_cap": "ஒருவருக்கான உச்சவரம்பு",
+      "lump_aboveSuggestion": "பரிந்துரைக்கு மேலான அலகுத் தொகை",
+      "lump_individualAmendment": "தனிநபர் திருத்தங்கள்",
+      "exemption_budgetCapsOnly": "விலக்கு பெற்ற நிறுவனங்கள்: பட்ஜெட் உச்சவரம்புகள் மட்டும், காரணத்துடன்",
+      "advisor_override": "மாற்ற எல்லை",
+      "advisor_longWithoutIncrease": "நீண்ட காலம் உயர்வு இல்லை",
+      "advisor_peerGap": "சக ஊழியர் சம்பள இடைவெளி"
+    },
+    "types": {
+      "block": "தடை",
+      "exception": "விதிவிலக்கு",
+      "warning": "எச்சரிக்கை",
+      "note": "குறிப்பு"
+    },
+    "appliesTo": {
+      "standard": "நிலையான திட்டம்",
+      "h": "JG H திட்டம்",
+      "all": "அனைத்துத் திட்டங்களும்"
+    },
+    "units": {
+      "percent": "%",
+      "points": "சதவீதப் புள்ளிகள்",
+      "ratio": "CR",
+      "months": "மாதங்கள்",
+      "myr": "RM",
+      "grades": "நிலைகள்",
+      "grade": "JG",
+      "years": "ஆண்டுகள்"
+    },
+    "fixed": "நிலையானது",
+    "fixedHelp": "சம்பளத்தைப் பாதுகாக்க நிலையாக்கப்பட்டது; மாற்ற முடியாது.",
+    "none": "இல்லை",
+    "standardValue": "நிலையான மதிப்பு",
+    "changedBy": "{name} · {date}",
+    "unknownPerson": "தெரியாது",
+    "valueFor": "{limit} க்கான மதிப்பு",
+    "typeFor": "{limit} க்கான வகை",
+    "reviewSave": "சேமிக்கும் முன் மதிப்பாய்வு செய்",
+    "save": "புதிய பதிப்பைச் சேமி",
+    "discard": "மாற்றங்களை நிராகரி",
+    "saved": "பதிப்பு {version} ஆகச் சேமிக்கப்பட்டது.",
+    "errors": {
+      "system": "வரம்புகளைச் சேமிக்க முடியவில்லை. உங்கள் மாற்றங்கள் அப்படியே உள்ளன; மீண்டும் முயலவும்."
+    },
+    "reviewsHeading": "இந்த வெகுமதி ஆண்டின் மதிப்பாய்வுகள்",
+    "reviewsHelp": "வரைவு மதிப்பாய்வுகள் தற்போதைய பதிப்பைப் பயன்படுத்தும். வரைவைக் கடந்த மதிப்பாய்வுகள் சமர்ப்பித்தபோது இருந்த பதிப்பை வைத்திருக்கும். தற்போதைய பதிப்பை அவற்றுக்குப் பயன்படுத்தினால், சரிபார்ப்புகள் மீண்டும் இயங்கும், தற்போதைய ஒப்புதலாளருக்குத் தெரிவிக்கப்படும்.",
+    "reviewColumns": {
+      "review": "மதிப்பாய்வு",
+      "stage": "நிலை",
+      "versionUsed": "பயன்படுத்தும் வரம்புகள்"
+    },
+    "select": "தேர்ந்தெடு",
+    "selectReview": "{review} ஐத் தேர்ந்தெடு",
+    "baseline": "நிலையான மதிப்புகள் (வரம்புக் கட்டுப்பாடுகளுக்கு முன்)",
+    "currentVersion": "தற்போதையது (பதிப்பு {version})",
+    "version": "பதிப்பு {version}",
+    "apply": "தேர்ந்தெடுத்த மதிப்பாய்வுகளுக்குப் பதிப்பு {version} ஐப் பயன்படுத்து",
+    "applyConfirm": "பயன்படுத்தி ஒப்புதலாளர்களுக்குத் தெரிவி",
+    "applied": "{count, plural, other {# மதிப்பாய்வுகளுக்குப் பயன்படுத்தப்பட்டது.}}",
+    "noReviews": "இந்த வெகுமதி ஆண்டை இன்னும் எந்த மதிப்பாய்வும் பயன்படுத்தவில்லை.",
+    "reviewsTruncated": "முதல் 200 மதிப்பாய்வுகள் மட்டும் பட்டியலிடப்பட்டுள்ளன.",
+    "exemptionsHeading": "பட்ஜெட் உச்சவரம்பு விலக்குகள்",
+    "exemptionsHelp": "விலக்கு பட்ஜெட் உச்சவரம்புகளை (சம்பள உயர்வு நிதிகள் மற்றும் போனஸ் நிதி உச்சவரம்பு) மட்டுமே தளர்த்தும். அது காரணத்துடன் மதிப்பாய்வின் அமைப்பில் பதிவு செய்யப்படும்.",
+    "noExemptions": "இந்த வெகுமதி ஆண்டில் எந்த மதிப்பாய்வுக்கும் பட்ஜெட் உச்சவரம்பு விலக்கு இல்லை.",
+    "historyHeading": "பதிப்பு வரலாறு",
+    "noVersions": "இன்னும் பதிப்புகள் இல்லை.",
+    "changeLogLink": "மாற்றப் பதிவில் எல்லா மாற்றங்களையும் காண்க"
+  },
+  "scheduleOvertimeSetting": {
+    "title": "மிகைநேர அமைப்பு",
+    "intro": "இந்த அட்டவணைக் குழுவில் உள்ள ஊழியர்களின் மிகைநேரம் எவ்வாறு பதிவு, ஒப்புதல், ஈடு மற்றும் முழுமையாக்கம் செய்யப்படுகிறது என்பதைக் கட்டுப்படுத்துகிறது. இது தொடக்கத் தேதியிலிருந்து பொருந்தும்: முந்தைய நாட்கள், வருகைப் பதிவுகள், தாமதப் பதிவுகள் மற்றும் கடந்த சம்பளம் மீண்டும் கணக்கிடப்படாது.",
+    "companiesLabel": "பொருந்துவது",
+    "allCompanies": "அனைத்து நிறுவனங்களும்",
+    "selectedCompanies": "தேர்ந்தெடுத்த நிறுவனங்கள்",
+    "effectiveFrom": "தொடக்கத் தேதி",
+    "effectiveHint": "இன்றைக்குப் பிறகும், தேர்ந்தெடுத்த நிறுவனத்துக்கு ஏற்கனவே சேமித்த தொடக்கத்துக்குப் பிறகும்.",
+    "applicabilityTitle": "மிகைநேரப் பொருந்துதல்",
+    "beforeShift": "ஷிப்டுக்கு முன் மிகைநேரம்",
+    "beforeShiftHint": "திட்டமிட்ட ஷிப்டுக்கு முன் மிகைநேரத்தை அனுமதிக்கவும்.",
+    "afterShift": "ஷிப்டுக்குப் பின் மிகைநேரம்",
+    "afterShiftHint": "திட்டமிட்ட ஷிப்டுக்குப் பின் மிகைநேரத்தை அனுமதிக்கவும்.",
+    "allowBackdated": "வருகைப் பதிவு இல்லாமல் முன்தேதி மிகைநேரக் கோரிக்கையை அனுமதி",
+    "allowBackdatedHint": "பொருந்தும் வருகைப் பதிவு இல்லாமல் ஊழியர்கள் முன்தேதி மிகைநேரம் கோரலாம். அது கணக்கில் சேரும் முன் HR உண்மையான வேலை நேரத்தைப் பதிவு செய்ய வேண்டும்.",
+    "splitAtMidnight": "நள்ளிரவில் மிகைநேரத்தைப் பிரி",
+    "splitAtMidnightHint": "நள்ளிரவுக்குப் பிந்தைய மிகைநேரம் அடுத்த நாள்காட்டி நாளின் ஆரம்ப மிகைநேரமாகக் கணக்கிடப்படும். எ.கா.: இரவு 10:00 முதல் அதிகாலை 2:00 வரை, ஒவ்வொரு தேதிக்கும் 2 மணி நேரம்.",
+    "offsetTitle": "தாமதத்தால் மிகைநேரத்தை ஈடுசெய்",
+    "offsetLateness": "தாமதத்தால் மிகைநேரத்தை ஈடுசெய்",
+    "offsetHint": "தகுதியான மிகைநேரத்திலிருந்து தாமத நிமிடங்களைக் கழிக்கவும். எ.கா.: 60 தகுதி நிமிடங்களுக்கு எதிராக 20 நிமிடத் தாமதம் 40 ஐ விடுகிறது. பதிவான தாமதம் அப்படியே இருக்கும்.",
+    "showLatenessException": "ஈடுக்குப் பின் தாமத விதிவிலக்கைக் காட்டு",
+    "showLatenessExceptionHint": "ஈடுக்குப் பின் மீதமுள்ள தாமதத்துக்குத் தாமத விதிவிலக்கைக் காட்டவும்.",
+    "approvalTitle": "மிகைநேர ஒப்புதல் முறை",
+    "approvalManual": "கைமுறை",
+    "approvalAuto": "தானியங்கி",
+    "approvalManualHint": "வருகை செலுத்த வேண்டிய மிகைநேரத்தை உருவாக்காது. வருகைப் பதிவுகள் வைக்கப்படும்; மிகைநேரம் சம்பளத்தில் கைமுறையாக உள்ளிடப்படும்.",
+    "autoMethod": "தானியங்கி மிகைநேர ஒப்புதல் முறை",
+    "methodIntersect": "உண்மை மற்றும் முன்-ஒப்புதல் வெட்டு",
+    "methodActual": "உண்மையான மணிநேரம்",
+    "methodPreApproved": "ஒப்புதல் பெற்ற மிகைநேரம்",
+    "methodIntersectHint": "ஒப்புதல் மற்றும் உண்மை நிமிடங்களில் குறைவானதைச் செலுத்தும்: ஒப்புதல் 120, உண்மை 90 என்றால் 90.",
+    "methodActualHint": "உண்மையான தகுதி நிமிடங்களைச் செலுத்தும், ஒப்புதல் வரம்பு இல்லை.",
+    "methodPreApprovedHint": "ஒப்புதல் பெற்ற நேரத்தைச் செலுத்தும்: ஒப்புதல் 120, உண்மை 90 என்றால் 120.",
+    "patternsTitle": "ஒவ்வொரு நாள் வகைக்குமான மிகைநேர முறை",
+    "patternsHint": "மிகைநேர ஊதியம் தேர்ந்தெடுத்த மிகைநேர முறையால் கணக்கிடப்படுகிறது. தேர்ந்தெடுத்த ஒவ்வொரு நிறுவனத்துக்கும் செயலில் உள்ள முறைகள் மட்டுமே பட்டியலிடப்படும்.",
+    "patternsNone": "தேர்ந்தெடுத்த ஒவ்வொரு நிறுவனத்துக்கும் செயலில் உள்ள மிகைநேர முறை இல்லை. தானியங்கியைப் பயன்படுத்த மிகைநேர முறைகளில் ஒன்றைச் செயல்படுத்தவும், அல்லது கைமுறையைத் தேர்ந்தெடுக்கவும்.",
+    "choosePattern": "மிகைநேர முறையைத் தேர்ந்தெடுக்கவும்",
+    "dayNormal": "வேலை நாள்",
+    "dayOff": "வேலையில்லா நாள்",
+    "dayRest": "ஓய்வு நாள்",
+    "dayPublicHoliday": "பொது விடுமுறை",
+    "dayReplacementHoliday": "மாற்று விடுமுறை",
+    "roundingTitle": "மிகைநேர முழுமையாக்கம்",
+    "roundingMethod": "மிகைநேர முழுமையாக்க முறை",
+    "roundUp": "மேல்நோக்கி முழுமையாக்கு",
+    "roundDown": "கீழ்நோக்கி முழுமையாக்கு",
+    "roundingStep": "நிமிடத்துக்கு மிகைநேர முழுமையாக்கம்",
+    "stepMinutes": "{n} நிமிடங்கள்",
+    "roundingHint": "முழுமையாக்கம் கடைசியாக, ஒப்புதல் முறை மற்றும் தாமத ஈட்டுக்குப் பின் செய்யப்படும். பதிவான வருகை நேரம் மாற்றப்படாது.",
+    "unsupportedRounding": "சேமித்த முழுமையாக்கம் இந்தப் பகுதி வழங்காத தேர்வைப் பயன்படுத்துகிறது. சேமித்தால் புதிய தொடக்கத் தேதியிலிருந்து மாற்றப்படும்.",
+    "differs": "{n, plural, one {# நிறுவனத்துக்கு} other {# நிறுவனங்களுக்கு}} வேறுபட்ட மிகைநேர அமைப்பு உள்ளது, அல்லது இல்லை. சேமித்தால் தேர்ந்தெடுத்த ஒவ்வொரு நிறுவனத்துக்கும் இந்த அமைப்பு பொருந்தும்.",
+    "savedFrom": "சேமித்த அமைப்பு {date} முதல் தொடங்குகிறது.",
+    "none": "இன்னும் மிகைநேர அமைப்பு சேமிக்கப்படவில்லை. ஒன்று சேமிக்கப்படும் வரை இந்தக் குழுவின் மிகைநேரம் முன்பு போலவே செயல்படும்.",
+    "save": "மிகைநேர அமைப்பைச் சேமி",
+    "systemReason": "அட்டவணைக் குழு மிகைநேர அமைப்பு சேமிக்கப்பட்டது",
+    "on": "இயக்கம்",
+    "off": "நிறுத்தம்",
+    "payrollNote": "இந்த அமைப்பிலிருந்து இறுதி மிகைநேர எண்ணிக்கைகளைச் சம்பளம் இன்று பெறுவது போலவே பெறுகிறது.",
+    "approvalIntro": "வருகைப்பதிவு ஊதியத்திற்குரிய மிகைநேரத்தைக் கணக்கிடுமா, எந்த நிமிடங்களைப் பயன்படுத்தும் என்பதைக் கட்டுப்படுத்துகிறது.",
+    "roundingIntro": "தகுதியான மிகைநேர நிமிடங்கள் மேல்நோக்கி, கீழ்நோக்கி முழுமையாக்கப்படுமா அல்லது முழுமையாக்கப்படாதா என்பதைக் கட்டுப்படுத்துகிறது.",
+    "roundNone": "எதுவுமில்லை",
+    "roundingNoneHint": "எதுவுமில்லை தேர்ந்தெடுத்தால் பொருந்தாது. உண்மையான தகுதியான மிகைநேர நிமிடங்கள் வைக்கப்படும்.",
+    "notApplicable": "பொருந்தாது",
+    "minutesValue": "{n} நிமிடங்கள்",
+    "roundingExampleTitle": "கணக்கீட்டு எடுத்துக்காட்டு",
+    "roundingExampleActual": "உண்மையான தகுதியான மிகைநேரம்",
+    "roundingExampleMethod": "முழுமையாக்கும் முறை",
+    "roundingExampleInterval": "இடைவெளி",
+    "roundingExampleFinal": "இறுதி மிகைநேரம்",
+    "backdateTitle": "மிகைநேர முன்தேதி கட்டுப்பாடு",
+    "backdateIntro": "மிகைநேர விண்ணப்பத்தை எத்தனை நாட்கள் முன்தேதியிட முடியும் என்பதைக் கட்டுப்படுத்துகிறது. வருகைப் பதிவு இல்லாமல் முன்தேதி மிகைநேரக் கோரிக்கையை அனுமதி என்பது தனி அமைப்பு: அது வருகைப் பதிவு தேவையா என்பதை மட்டுமே தீர்மானிக்கிறது.",
+    "backdateControl": "மிகைநேர முன்தேதி கட்டுப்பாட்டை இயக்கு",
+    "backdateControlHint": "இணையம் மற்றும் கைபேசி செயலியில் ஊழியரின் சொந்த மிகைநேரக் கோரிக்கைகள், AI உதவியாளர் மூலம் செய்யப்படும் கோரிக்கைகள் மற்றும் சார்பாகக் கோருதல் ஆகியவற்றுக்குப் பொருந்தும். HR நிர்வாகிகளும் இதே வரம்பைப் பின்பற்றுவர்.",
+    "backdateDays": "முன்தேதி விண்ணப்பத்தை அனுமதிக்கும் காலம் (நாட்கள்)",
+    "backdateDaysHint": "1 முதல் {max} வரையிலான முழு எண், விண்ணப்பம் சமர்ப்பிக்கப்படும் நாளிலிருந்து பின்னோக்கிக் கணக்கிடப்படும். 3 நாட்கள் எனில், 16-Nov-2026 அன்று சமர்ப்பிக்கப்படும் விண்ணப்பம் 13 முதல் 16-Nov-2026 வரையிலான தேதிகளுக்கு இருக்கலாம்.",
+    "backdateDaysValue": "{n, plural, one {# நாள்} other {# நாட்கள்}}",
+    "backdateRefused": "மிகைநேர விண்ணப்பத்தை அதிகபட்சம் {days, plural, one {# நாள்} other {# நாட்கள்}} முன்தேதியிடலாம். {date} அல்லது அதற்குப் பிந்தைய தேதியைத் தேர்ந்தெடுக்கவும்."
+  },
+  "attendanceOnBehalf": {
+    "requestTitle": "சார்பாக கோரிக்கை",
+    "requestHelp": "ஊழியரைத் தேர்ந்தெடுத்து, வழக்கமான திரைகளில் அவருக்காக வருகை முறைகேடு அல்லது சுய கூடுதல் நேரத்தைச் சமர்ப்பிக்கவும். கோரிக்கை அவரது சொந்த பணிப்பாய்வு மற்றும் ஒப்புதலாளர்களைப் பின்பற்றும்.",
+    "approveTitle": "சார்பாக ஒப்புதல்",
+    "approveHelp": "நிலுவையில் உள்ள வருகைக் கோரிக்கைகளை நீங்கள் கையாள வேண்டிய நியமிக்கப்பட்ட ஒப்புதலாளரைத் தேர்ந்தெடுக்கவும்.",
+    "approveListHelp": "{name} அவர்களுக்காகக் காத்திருக்கும், அவர் சார்பாக நீங்கள் முடிவெடுக்கக்கூடிய கோரிக்கைகள்.",
+    "searchLabel": "ஊழியர் ID அல்லது பெயரால் தேடு",
+    "searchPlaceholder": "எ.கா. EMP-0123 அல்லது ஒரு பெயர்",
+    "search": "தேடு",
+    "results": "நீங்கள் சார்பாகச் செயல்படக்கூடிய ஊழியர்கள்",
+    "noResults": "இந்தத் தேடலுடன் பொருந்தும், நீங்கள் சார்பாகச் செயல்படக்கூடிய ஊழியர் இல்லை.",
+    "noPermission": "உங்கள் பங்குக்கு இந்த அனுமதி இல்லை. தேவைப்பட்டால் நிர்வாகியிடம் கேளுங்கள்.",
+    "choose": "தேர்ந்தெடு",
+    "employeeName": "ஊழியர்",
+    "employeeId": "ஊழியர் ID",
+    "company": "நிறுவனம்",
+    "department": "துறை",
+    "changeEmployee": "ஊழியரை மாற்று",
+    "chooseCategory": "நீங்கள் எதைச் சமர்ப்பிக்க விரும்புகிறீர்கள்?",
+    "irregularity": "வருகை முறைகேடு",
+    "irregularityHelp": "ஊழியரின் சொந்த நாட்களுக்கான விடுபட்ட அல்லது தவறான நேரப் பதிவுகள், குறைந்த மணிநேரம் அல்லது வருகையின்மை.",
+    "selfOvertime": "சுய கூடுதல் நேரம்",
+    "selfOvertimeHelp": "ஊழியரின் சொந்த அட்டவணைக் குழு மற்றும் கூடுதல் நேர விதிகளின் கீழ் கூடுதல் நேரத்தைத் திட்டமிடவும் அல்லது கோரவும்.",
+    "banner": "{name} சார்பாகச் சமர்ப்பிக்கிறது",
+    "pendingTitle": "நிலுவையிலுள்ள ஒப்புதல் கோரிக்கைகள்",
+    "pendingEmpty": "நீங்கள் முடிவெடுக்கக்கூடிய, இந்த ஒப்புதலாளருக்காகக் காத்திருக்கும் எதுவும் இல்லை.",
+    "approveOnBehalf": "சார்பாக ஒப்புதல்",
+    "rejectOnBehalf": "சார்பாக நிராகரி",
+    "approveAudit": "வரலாறு தேர்ந்தெடுக்கப்பட்டவரை நியமிக்கப்பட்ட ஒப்புதலாளராக வைத்திருக்கும், உங்களைச் செயல்பட்டவராகப் பதிவு செய்யும்.",
+    "previous": "முந்தைய",
+    "next": "அடுத்து"
+  },
+  "importErrorLogDataBankCostInfo": {
+    "corrections": {
+      "duplicateInFile": "இந்த மதிப்பு கோப்பில் ஒன்றுக்கு மேற்பட்ட முறை வருகிறது - ஒரு வரிசையை மட்டும் வைத்திருக்கவும்.",
+      "duplicateEmployeeInFile": "இந்த ஊழியர் ID கோப்பில் ஒன்றுக்கு மேற்பட்ட முறை வருகிறது - ஒரு வரிசையை மட்டும் வைத்திருக்கவும்.",
+      "chooseReference": "வார்ப்புருவின் Reference தாளிலிருந்து ஒரு மதிப்பைத் தேர்ந்தெடுக்கவும்.",
+      "chooseCompany": "Reference தாளிலிருந்து Company Code ஐத் தேர்ந்தெடுக்கவும்.",
+      "chooseCostCenter": "Allocation Reference தாளில் இந்த நிறுவனத்திற்குப் பட்டியலிடப்பட்ட Cost Center Code ஐத் தேர்ந்தெடுக்கவும்.",
+      "date": "தேதியை YYYY-MM-DD ஆக அல்லது Excel தேதியாக உள்ளிடவும்.",
+      "required": "இந்த நெடுவரிசையை நிரப்பவும் - இது கட்டாயமானது.",
+      "yesNo": "yes அல்லது no என உள்ளிடவும்.",
+      "revalidate": "இந்த வரிசை மீண்டும் சரிபார்க்கப்பட, திருத்திய கோப்பை மீண்டும் பதிவேற்றவும்.",
+      "permission": "இந்த வரிசையை நீக்கவும், அல்லது இந்த ஊழியரின் நிறுவனத்திற்கான அணுகலை நிர்வாகியிடம் கேட்கவும்.",
+      "systemError": "கோப்பை மீண்டும் பதிவேற்றவும். இது தொடர்ந்தால், ஆதரவு குறிப்பு எண்ணைத் தொழில்நுட்பக் குழுவிடம் கொடுக்கவும்.",
+      "textCode": "கலத்தை Text ஆக வடிவமைத்து குறியீட்டை மீண்டும் உள்ளிடவும்.",
+      "noFormula": "சூத்திரம் அல்ல, மதிப்பையே தட்டச்சு செய்யவும்.",
+      "existingEmployee": "ஊழியர் ID ஐச் சரிபார்க்கவும். புதிய ஊழியரை முதலில் \"அனைத்தும் - புதிய பணியாளர்கள்\" மூலம் சேர்க்க வேண்டும்.",
+      "percentage": "0 ஐ விட அதிகமான, அதிகபட்சம் 100 வரையிலான சதவீதத்தை, இரண்டு தசம இடங்கள் வரை உள்ளிடவும்.",
+      "periodUnit": "எண்ணையும் அதன் அலகையும் (Month, Week அல்லது Day) சேர்த்து உள்ளிடவும்.",
+      "reason": "குறைந்தது மூன்று எழுத்துகள் கொண்ட காரணத்தை உள்ளிடவும்.",
+      "statutoryRecord": "முதலில் ஊழியரின் அடையாள எண்ணை அவரது பணியாளர் பதிவில் சேமித்து, பின்னர் இந்தக் கோப்பை மீண்டும் பதிவேற்றவும்.",
+      "template": "தற்போதைய வார்ப்புருவைப் பதிவிறக்கி, உங்கள் வரிசைகளை அதில் நகலெடுத்து மீண்டும் பதிவேற்றவும்.",
+      "bankPair": "வங்கியின் பெயரையும் வங்கிக் கணக்கு எண்ணையும் சேர்த்து உள்ளிடவும்."
+    },
+    "bank": {
+      "duplicateEmployeeId": "இந்தக் கோப்பில் ஊழியர் ID மீண்டும் வருகிறது; முதலில் Excel வரிசை {row} இல் பயன்படுத்தப்பட்டது.",
+      "duplicateCardId": "இந்தக் கோப்பில் அட்டை ID மீண்டும் வருகிறது.",
+      "cardIdTaken": "card_id ஏற்கனவே வேறொரு ஊழியரைக் குறிக்கிறது; பயன்படுத்தப்படாத அட்டை ID ஐத் தேர்ந்தெடுக்கவும்.",
+      "noPermission": "இந்த ஊழியரைப் புதுப்பிக்க உங்களுக்கு அனுமதி இல்லை.",
+      "changedAfterValidation": "இந்த வரிசை சேமிக்கப்படவில்லை. சரிபார்ப்புக்குப் பிறகு அதன் தரவு அல்லது அனுமதிகள் மாறிவிட்டன; மீளாய்வு செய்து மீண்டும் இறக்குமதி செய்யவும்.",
+      "missingEmployeeId": "employee_code இல்லை — இதுவே புதுப்பிக்கப்படும் ஊழியருக்கான இணைப்பு",
+      "unknownEmployee": "\"{code}\" என்ற ஊழியர் ID உடைய ஊழியர் யாரும் இல்லை. பிரிவுக் கோப்பு அமைப்பில் ஏற்கனவே உள்ளவர்களை மட்டுமே புதுப்பிக்க முடியும் — யாரையும் சேர்க்க முடியாது. இவரைச் சேர்க்க, இந்தப் பக்கத்தின் மேலே \"அனைத்தும் — புதிய பணியாளர்கள்\" ஐத் தேர்ந்தெடுத்து முழு ஊழியர் வார்ப்புருவைப் பயன்படுத்தி, பின்னர் இந்தக் கோப்பை மீண்டும் இயக்கவும்.",
+      "duplicateEmployeeCode": "இந்தக் கோப்பில் employee_code மீண்டும் வருகிறது",
+      "bankTransferNeedsBank": "வங்கிப் பரிமாற்றத்திற்கு வங்கியின் பெயரும் கணக்கு எண்ணும் தேவை.",
+      "bankPair": "bank_name மற்றும் bank_account_no இரண்டையும் சேர்த்து வழங்க வேண்டும்",
+      "noStatutoryRecordYet": "இந்த ஊழியருக்கு இன்னும் சட்டப்பூர்வப் பதிவு இல்லை — முதலில் அவரது அடையாள எண்ணை பணியாளர் பதிவில் சேமித்து, பின்னர் இந்தக் கோப்பை மீண்டும் இயக்கவும்",
+      "noStatutoryRecord": "இந்த ஊழியருக்குச் சட்டப்பூர்வப் பதிவு இல்லை; முதலில் பணியாளர் பதிவில் சட்டப்பூர்வ அமைப்பை முடிக்கவும்.",
+      "notActiveOption": "\"{value}\" என்பது செயலில் உள்ள {category} தேர்வு அல்ல — நெடுவரிசை {column}",
+      "yesNo": "{column} yes அல்லது no ஆக இருக்க வேண்டும்",
+      "jobStopped": "இறக்குமதி நிறுத்தப்பட்டது. ஏற்கனவே சேமித்த வரிசைகள் தக்கவைக்கப்படும். மீண்டும் முயலும் முன் முடிவையும் உங்கள் அணுகலையும் மீளாய்வு செய்யவும். குறிப்பு எண் {ref}.",
+      "jobStoppedEarlier": "இறக்குமதி நிறுத்தப்பட்டது. ஏற்கனவே சேமித்த வரிசைகள் தக்கவைக்கப்படும். மீண்டும் முயலும் முன் முடிவையும் உங்கள் அணுகலையும் மீளாய்வு செய்யவும்.",
+      "fileTooLarge": "கோப்பு இறக்குமதி அளவு அல்லது பணித்தாள் வரம்புகளை மீறுகிறது. அதிகபட்சம் 250,000 வரிசைகள் மற்றும் 128 MiB பயன்படுத்தவும்.",
+      "fileUnreadable": "கோப்பைப் படிக்க முடியவில்லை. வங்கி மற்றும் சட்டப்பூர்வம் வார்ப்புருவையும் அதன் குறிப்புத் தாள்களையும் பயன்படுத்தவும்.",
+      "fileRowCount": "1 முதல் 250,000 தரவு வரிசைகள் கொண்ட கோப்பைத் தேர்ந்தெடுக்கவும்.",
+      "fileIncomplete": "பதிவேற்றிய கோப்பு முழுமையற்றது அல்லது அதன் சரிபார்ப்புத் தொகை வேறுபடுகிறது. மீண்டும் பதிவேற்றவும்."
+    },
+    "allocation": {
+      "errors": {
+        "invalid": "பூஜ்ஜியத்தை விட அதிகமான, அதிகபட்சம் 100 வரையிலான சதவீதத்தை, இரண்டு தசம இடங்கள் வரை உள்ளிடவும்.",
+        "duplicate": "ஒவ்வொரு செலவு மையத்தையும் ஒரு முறை மட்டும் தேர்ந்தெடுக்கவும்.",
+        "total": "மொத்த ஒதுக்கீடு 100% ஐ மீறக்கூடாது.",
+        "scope": "ஊழியர் பதிவு அல்லது அனுமதி கிடைக்கவில்லை.",
+        "label": "ஒரு செலவு மையம் இந்த நிறுவனத்திற்குச் செயலற்றது அல்லது கிடைக்கவில்லை.",
+        "changed": "ஒதுக்கீடுகள் மாறிவிட்டன. மீண்டும் ஏற்றி மீண்டும் முன்னோட்டமிடவும்.",
+        "date": "உறுதிப்படுத்தப்பட்ட வேலைவாய்ப்பு நிறுவன வரலாறு உள்ள நடைமுறைத் தேதியைத் தேர்ந்தெடுக்கவும்.",
+        "clear": "ஒதுக்கீடுகளை அழிக்க வெளிப்படையான Clear செயல்பாடு தேவை.",
+        "preview": "உள்ளீடு அல்லது குறிப்புத் தரவு மாறிவிட்டது. மீண்டும் முன்னோட்டமிடவும்.",
+        "binding": "ஒவ்வொரு ஒதுக்கீட்டையும் ஒரு நிறுவனம் மற்றும் ஒரு ஊழியர் ID உடன் பொருத்தவும்.",
+        "transfer": "இடமாற்றத்திற்கு முன், இடமாற்றத் தேதியில் வெளிப்படையான Clear தொகுப்பைச் சேமித்து, பின்னர் திட்டமிடப்பட்ட தொகுப்புகளை அழிக்கவும். பின்னர் சேரும் நிறுவனத்திற்கான புதிய ஒதுக்கீட்டைச் சேமிக்கவும்."
+      },
+      "operation": "Operation என்பது Replace அல்லது Clear ஆக இருக்க வேண்டும், மேலும் ஒரு ஊழியர் மற்றும் ஒரு தேதிக்கான ஒவ்வொரு வரிசையிலும் ஒன்றாக இருக்க வேண்டும்.",
+      "clearRow": "Clear க்கு Cost Center Code மற்றும் Percentage வெறுமையாக உள்ள சரியாக ஒரு வரிசை தேவை.",
+      "costCenterUnavailable": "இந்த Cost Center Code {company} க்குக் கிடைக்கவில்லை.",
+      "companyRequired": "Company Code கட்டாயமானது.",
+      "companyAmbiguous": "Company Code \"{code}\" ஒன்றுக்கு மேற்பட்ட நிறுவனங்களுடன் பொருந்துகிறது. Reference தாளில் பட்டியலிடப்பட்ட Company Code ஐப் பயன்படுத்தவும்.",
+      "companyUnknown": "Company Code \"{code}\" நீங்கள் இறக்குமதி செய்யக்கூடிய எந்த நிறுவனத்துடனும் பொருந்தவில்லை.",
+      "effectiveDate": "Effective Date என்பது YYYY-MM-DD வடிவிலான தேதியாக இருக்க வேண்டும்.",
+      "employeeInvalid": "ஊழியர் ID இல்லை அல்லது தவறானது.",
+      "employeeAmbiguous": "ஊழியர் ID {code} {company} இன் ஒன்றுக்கு மேற்பட்ட ஊழியர்களுடன் பொருந்துகிறது.",
+      "employeeNotInCompany": "ஊழியர் ID {code} {date} அன்று {company} இன் ஊழியர் அல்ல.",
+      "heldBack": "இந்தக் கோப்பில் ஊழியர் ID {code} க்கான மற்றொரு ஒதுக்கீட்டில் பிழைகள் உள்ளன, எனவே இந்த ஊழியர் இறக்குமதி செய்யப்படவில்லை. முதலில் அந்த வரிசையைத் திருத்தவும்.",
+      "unavailable": "ஒதுக்கீட்டின் நிறுவனம், ஊழியர் அல்லது நடைமுறைத் தேதி கிடைக்கவில்லை.",
+      "saveFailed": "இந்த ஊழியரைச் சேமிக்க முடியவில்லை; அவருக்கு எதுவும் மாற்றப்படவில்லை.",
+      "file": {
+        "legacyLayout": "இந்தக் கோப்பு உள் நிறுவன அடையாளம் (company_id) கொண்ட பழைய அமைப்பைப் பயன்படுத்துகிறது. புதிய வார்ப்புருவைப் பதிவிறக்கி, அதற்குப் பதிலாக Company Code நெடுவரிசையை நிரப்பவும்.",
+        "duplicateHeaders": "மீண்டும் வரும் ஒதுக்கீட்டு நெடுவரிசைத் தலைப்புகள் அனுமதிக்கப்படாது.",
+        "missingColumns": "ஒதுக்கீட்டு நெடுவரிசைகள் இல்லை: {columns}",
+        "unexpectedColumns": "எதிர்பாராத ஒதுக்கீட்டு நெடுவரிசைகள்: {columns}",
+        "tooManyRows": "ஒரு கோப்பிற்கு அதிகபட்சம் 5000 ஒதுக்கீட்டு வரிசைகளைப் பயன்படுத்தவும்.",
+        "tooLarge": "ஒதுக்கீட்டுக் கோப்பு ஆதரிக்கப்படும் அளவை மீறுகிறது.",
+        "tooLarge10": "10 MB க்கு மேல் இல்லாத கோப்பைத் தேர்ந்தெடுக்கவும்.",
+        "unreadableWorkbook": "பணிப்புத்தகத்தைப் படிக்க முடியவில்லை. வார்ப்புருவைப் பதிவிறக்கி மீண்டும் முயலவும்.",
+        "utf8": "CSV கோப்பை UTF-8 ஆகச் சேமிக்கவும்.",
+        "fileType": ".xlsx வார்ப்புருவையோ அதே நெடுவரிசைகள் கொண்ட .csv கோப்பையோ தேர்ந்தெடுக்கவும்.",
+        "unreadable": "இந்தக் கோப்பைப் படிக்க முடியவில்லை.",
+        "noRows": "இந்தக் கோப்பில் ஒதுக்கீட்டு வரிசைகள் இல்லை."
+      }
+    },
+    "correction": {
+      "noFormula": "சூத்திரங்களும் பிழைக் கலங்களும் ஏற்கப்படாது.",
+      "textCode": "முன்னணி பூஜ்ஜியங்களைத் தக்கவைக்க குறியீட்டை உரையாக உள்ளிடவும்.",
+      "date": "YYYY-MM-DD அல்லது Excel தேதியைப் பயன்படுத்தவும்.",
+      "tooLong": "அதிகபட்சம் 1,000 எழுத்துகள்.",
+      "periodUnit": "காலத்தையும் அதன் அலகையும் சேர்த்து உள்ளிடவும் ({unit}).",
+      "notOption": "\"{value}\" இந்த நிறுவனத்திற்கான தேர்வு அல்ல. {sheet} குறிப்புத் தாளைச் சரிபார்க்கவும்.",
+      "superiorUnknown": "இந்த ஊழியர் ID தெரியவில்லை அல்லது உங்களுக்குத் தெரியாது.",
+      "organisationFormula": "அமைப்பு நெடுவரிசைகளில் சூத்திரங்கள் அல்லது பிழைக் கலங்கள் இருக்கக்கூடாது.",
+      "organisationTooLong": "அமைப்பு மதிப்பு: அதிகபட்சம் 1,000 எழுத்துகள்.",
+      "companyRequired": "Company Code கட்டாயமானது.",
+      "employeeRequired": "ஊழியர் ID கட்டாயமானது.",
+      "reasonShort": "Correction Reason குறைந்தது மூன்று எழுத்துகளைக் கொண்டிருக்க வேண்டும்.",
+      "duplicateEmployee": "இந்த ஊழியர் ஒன்றுக்கு மேற்பட்ட முறை வருகிறார். ஒரு ஊழியருக்கு ஒரு திருத்த வரிசையை மட்டும் வைத்திருக்கவும்.",
+      "companyUnknown": "Company Code தெரியாதது, தெளிவற்றது அல்லது உங்கள் அனுமதிக்கு வெளியே உள்ளது.",
+      "employeeUnknown": "தற்போதைய நிறுவனத்தில் ஊழியர் ID தெரியாதது அல்லது தெளிவற்றது.",
+      "newCompanyUnknown": "New Company Code தெரியாதது, தெளிவற்றது அல்லது உங்கள் அனுமதிக்கு வெளியே உள்ளது.",
+      "gradeInactive": "Job Grade செயலில் உள்ள கணினிக் குறியீடு அல்ல.",
+      "sameEmployee": "பல வரிசைகள் ஒரே ஊழியரைக் குறிக்கின்றன."
+    }
+  },
+  "importErrorLogEmployee": {
+    "problemsTitle": "சரிசெய்ய வேண்டிய சிக்கல்கள்",
+    "missingColumn": "இந்த கட்டாய நெடுவரிசை தாளில் இல்லை.",
+    "thisField": "இந்த நெடுவரிசை",
+    "downloadFailed": "பிழைப் பதிவைத் தயாரிக்க முடியவில்லை. மீண்டும் முயலவும்.",
+    "correction": {
+      "reference": "Reference தாளிலிருந்து {field} ஐத் தேர்ந்தெடுக்கவும்.",
+      "date": "தேதியை YYYY-MM-DD ஆக அல்லது Excel தேதியாக உள்ளிடவும்.",
+      "month": "மாதத்தை YYYY-MM ஆக உள்ளிடவும்.",
+      "required": "{field} ஐ நிரப்பவும் - இது கட்டாயம்.",
+      "requiredForContract": "இந்த நெடுவரிசையை நிரப்பவும் - ஒப்பந்த ஊழியர்களுக்கு இது கட்டாயம்.",
+      "duplicateInFile": "இந்த மதிப்பு கோப்பில் ஒன்றுக்கு மேற்பட்ட முறை வருகிறது - ஒரு வரிசையை மட்டும் வைக்கவும்.",
+      "duplicateEmployeeId": "இந்த ஊழியர் ID கோப்பில் ஒன்றுக்கு மேற்பட்ட முறை வருகிறது - ஒரு வரிசையை மட்டும் வைக்கவும்.",
+      "duplicateInSystem": "இந்த மதிப்பு ஏற்கனவே மற்றொரு ஊழியரால் பயன்படுத்தப்படுகிறது - வேறு மதிப்பை உள்ளிடவும், அல்லது இந்த வரிசையை நீக்கவும்.",
+      "number": "எண்ணை உள்ளிடவும் (இலக்கங்கள் மட்டும், நாணயக் குறி இல்லாமல்).",
+      "choice": "Instructions அல்லது Reference தாளில் உள்ள மதிப்புகளில் ஒன்றைத் தேர்ந்தெடுக்கவும்.",
+      "yesNo": "Yes அல்லது No என உள்ளிடவும்.",
+      "email": "முழு மின்னஞ்சல் முகவரியை உள்ளிடவும், உதாரணமாக name@company.com.",
+      "notOnEmployeeSheet": "இந்த ஊழியரை ஊழியர் தாளில் சேர்க்கவும், அல்லது ஊழியர் ID ஐத் திருத்தவும்.",
+      "employeeNotFound": "ஊழியர் ID ஐச் சரிபார்க்கவும். புதிய ஊழியரைச் சேர்க்க, முதலில் அனைத்தும் - புதிய பணியாளர்கள் என்பதைப் பயன்படுத்தவும்.",
+      "missingColumn": "தற்போதைய வார்ப்புருவைப் பயன்படுத்தி {field} நெடுவரிசையைச் சேர்த்து, மீண்டும் பதிவேற்றவும்.",
+      "wrongSection": "அந்த நெடுவரிசையை நீக்கவும், அல்லது அதற்குரிய வார்ப்புருவுடன் இறக்குமதி செய்யவும்.",
+      "system": "மீண்டும் முயலவும். இது தொடர்ந்தால், ஆதரவுக் குறிப்பை உங்கள் நிர்வாகியிடம் வழங்கவும்.",
+      "uploadAgain": "இறக்குமதியை நிறுத்திய வரிசைகளைச் சரிசெய்து, பின்னர் முழுக் கோப்பையும் மீண்டும் பதிவேற்றவும்."
+    }
+  },
+  "importProblems": {
+    "headers": {
+      "sheet": "தாள்",
+      "row": "Excel வரிசை",
+      "category": "வகை",
+      "reference": "குறிப்பு",
+      "employeeName": "ஊழியர் பெயர்",
+      "field": "புலம்",
+      "value": "உள்ளிட்ட மதிப்பு",
+      "problem": "என்ன தவறு",
+      "correction": "சரிசெய்வது எப்படி",
+      "stage": "கண்டறியப்பட்டது",
+      "result": "முடிவு",
+      "errorReference": "உதவி குறிப்பு"
+    },
+    "stage": {
+      "file": "கோப்பைப் படிக்கும்போது",
+      "check": "கோப்பைச் சரிபார்க்கும்போது",
+      "save": "சேமிக்கும்போது",
+      "system": "கணினிப் பிழை"
+    },
+    "result": {
+      "refused": "இறக்குமதி செய்யப்படவில்லை",
+      "skipped": "தவிர்க்கப்பட்டது",
+      "stopped": "இறக்குமதியை நிறுத்தியது",
+      "cancelled": "சேமிக்கப்படவில்லை - வேறு வரிசை இறக்குமதியை நிறுத்தியது",
+      "not_saved": "சேமிக்கப்படவில்லை - திருத்திய கோப்பை மீண்டும் பதிவேற்றவும்"
+    },
+    "hiddenValue": "(மறைக்கப்பட்டது)",
+    "wholeFile": "முழுக் கோப்பு",
+    "moreInLog": "மேலும் {count} சிக்கல்கள் பிழைப் பதிவில் உள்ளன.",
+    "downloadLog": "பிழைப் பதிவைப் பதிவிறக்கு",
+    "summary": {
+      "sheetTitle": "சுருக்கம்",
+      "batch": "இறக்குமதி",
+      "file": "கோப்பு",
+      "status": "நிலை",
+      "problems": "சிக்கல்கள்",
+      "truncated": "இறக்குமதி பதிவு செய்யப்பட்டபோது இந்தப் பட்டியல் சுருக்கப்பட்டது. அனைத்து சிக்கல்களையும் காண இறக்குமதி முடிந்தவுடன் பிழைப் பதிவைப் பதிவிறக்கவும்."
+    }
+  },
+  "automation": {
+    "crumb": "HR Automation",
+    "filterLabel": "Module",
+    "done": "Done",
+    "none": "None",
+    "noChoices": "No choices are available.",
+    "notAvailable": "{value} (no longer available)",
+    "modules": {
+      "all": "All modules",
+      "onb": "Onboarding",
+      "off": "Offboarding",
+      "contract_staff": "Contract staff",
+      "probation": "Probation"
+    },
+    "status": {
+      "live": "Live",
+      "paused": "Paused",
+      "retired": "Retired",
+      "required": "Required",
+      "attention": "Needs attention"
+    },
+    "ops": {
+      "is": "is",
+      "isNot": "is not",
+      "lt": "is less than",
+      "lte": "is at most",
+      "gte": "is at least"
+    },
+    "errors": {
+      "unavailable": "This could not be completed. Try again, or reload the page."
+    },
+    "recipients": {
+      "routing": "{name} (routing)",
+      "group": "{name} (group)"
+    },
+    "legacy": {
+      "workflows": "workflow builder",
+      "templates": "template builder",
+      "groups": "assignment groups",
+      "workflowsIntro": "This module keeps its own workflow builder until it moves to the shared builder. Its workflows are unchanged.",
+      "templatesIntro": "This module keeps its own templates until it moves to the shared builder. Its templates are unchanged.",
+      "groupsIntro": "Assignment groups are kept in the On/Off Boarding configuration.",
+      "openV9": "Open the On/Off Boarding {what}",
+      "openContract": "Open the Contract staff {what}",
+      "notAllowed": "You cannot configure this module."
+    },
+    "people": {
+      "title": "Named people",
+      "search": "Search people by name",
+      "placeholder": "Type at least two letters",
+      "find": "Find",
+      "add": "Add {name}",
+      "added": "Added",
+      "none": "Nobody matches."
+    },
+    "defaults": {
+      "install": "Install default Probation workflows",
+      "confirm": "Install the 16 default Probation workflows, 4 email templates and 2 routings? They are installed Paused. Anything already installed is left as it is.",
+      "done": "Installed {workflows} workflows, {emails} email templates and {routings} routings, all Paused. Review each one before making it live."
+    },
+    "workflows": {
+      "title": "Workflows",
+      "intro": "One builder for Onboarding, Offboarding, Contract staff and Probation. Active workflows run when their trigger and conditions match.",
+      "probationIntro": "Probation workflows send messages, generate letters, create Personnel postings and start offboarding. Overdue flags, scoring and gates run inside the probation module and cannot be switched off here.",
+      "requiredBanner": "{names} {count, plural, one {is} other {are}} required for probation but not live.",
+      "empty": "No Probation workflows yet. Create one, or install the default workflows.",
+      "new": "New workflow",
+      "newName": "New workflow",
+      "edit": "Edit",
+      "view": "View",
+      "editNamed": "Open {name}",
+      "probationNotAllowed": "You cannot configure Probation automation.",
+      "cardIntro": "Automate documents, emails, approvals and reminders for each case. Active workflows run when their trigger and conditions match."
+    },
+    "editor": {
+      "untitled": "Untitled workflow",
+      "name": "Workflow name",
+      "required": "Required for probation (pausing it shows a warning on the tracker)",
+      "whatStarts": "What starts it",
+      "chooseTrigger": "Choose…",
+      "workdays": "Count working days (Mon–Fri)",
+      "repeat": "Repeat every morning after that",
+      "skipWhen": "Skip when",
+      "onlyIf": "Only if",
+      "onlyIfHelp": "All conditions must match. Leave empty to apply to every case in this module.",
+      "multiHint": "Several values: is matches any, is not matches none.",
+      "addCondition": "Add condition",
+      "thenHelp": "Steps run in order. Use the arrows to reorder them.",
+      "stepOnlyIf": "Only run this step if",
+      "stepConditions": "Conditions of step {step}",
+      "addStepCondition": "Add step condition",
+      "stepConditionHint": "Leave empty to always run this step. A skipped step is noted in the case activity.",
+      "addStep": "Add a step",
+      "chooseStep": "Choose a step…",
+      "moveUp": "Move step {step} up",
+      "moveDown": "Move step {step} down",
+      "removeStep": "Remove step {step}",
+      "remove": "Remove",
+      "to": "To",
+      "cc": "CC",
+      "stepTo": "Step {step} To",
+      "stepCc": "Step {step} CC",
+      "subject": "Subject",
+      "message": "Message",
+      "insertMergeField": "Insert merge field…",
+      "insertMerge": "Insert merge field into the {where} of step {step}",
+      "mergeHelp": "Pick a merge field from the list, or type it in double curly brackets, for example {example}.",
+      "emailTemplate": "Email template",
+      "emailSubject": "Subject: {subject} (set in the email template)",
+      "emailFromTemplate": "The subject and message come from the email template.",
+      "choose": "Choose…",
+      "letterTemplate": "Letter template",
+      "letterTemplateId": "Letter template id",
+      "letterNote": "The letter is generated from the chosen Probation letter template and pauses until it is signed. Its signing and review routing is set in the template.",
+      "postingEvent": "Event type in Personnel Management",
+      "postingNote": "Each outcome logs its own event type. The posting is approved in Personnel postings, and Personnel Management only changes after approval.",
+      "exitReason": "Exit reason on the offboarding case",
+      "offboardingNote": "Runs once per case, for Non-confirmation only.",
+      "problems": "Problems",
+      "warnings": "Notes",
+      "note": "Change note (optional)",
+      "notePlaceholder": "Why this change was made",
+      "makeLive": "Make it live",
+      "pause": "Pause",
+      "save": "Save changes",
+      "retire": "Retire workflow",
+      "back": "Back to workflows",
+      "fixFirst": "Fix the problems above first",
+      "retireConfirm": "Retire this workflow? It stops for good. Runs already waiting keep their steps.",
+      "leaveUnsaved": "Leave without saving your changes?",
+      "runsKeep": "Changes are saved when you press a button. Runs already waiting keep the steps they started with.",
+      "retiredReadOnly": "This workflow is retired and can no longer change.",
+      "isLive": "“{name}” is live.",
+      "paused": "“{name}” is paused. Nothing new starts; runs already waiting keep their steps.",
+      "retired": "“{name}” is retired.",
+      "saved": "Saved.",
+      "reasonSave": "Edited in the workflow builder",
+      "reasonLive": "Made live in the workflow builder",
+      "reasonPause": "Paused in the workflow builder",
+      "reasonRetire": "Retired in the workflow builder"
+    },
+    "conditions": {
+      "field": "Condition field",
+      "operator": "Condition operator",
+      "valueFor": "Condition value for {field}",
+      "typeValues": "Type values, separated by commas",
+      "unavailable": "not available for this trigger",
+      "remove": "Remove condition"
+    },
+    "dry": {
+      "title": "Dry run",
+      "intro": "A dry run shows what would happen for one case. Nothing is sent and nothing is saved. Date-based triggers run from the nightly scheduler, so they can only be checked here.",
+      "searchCase": "Find a probation case",
+      "searchPlaceholder": "Employee name",
+      "findCases": "Find cases",
+      "noCases": "No probation case you can open matches.",
+      "testCase": "Test case",
+      "pendingNote": "On a real case the system checks whose step is pending on the day the reminder runs.",
+      "run": "Run the dry run",
+      "result": "Dry run result",
+      "runDate": "Would run on {date}.",
+      "repeats": "Then every morning after that.",
+      "wouldRun": "Would run for {name}.",
+      "wouldNotRun": "Would not run for {name}.",
+      "unavailable": "not available for this trigger",
+      "thisCase": "this case: {value}",
+      "empty": "empty",
+      "to": "to {names}",
+      "cc": "CC {names}",
+      "nobody": "nobody",
+      "skipped": "skipped: {why}",
+      "nothingSent": "Nothing is sent and nothing is saved."
+    },
+    "templates": {
+      "title": "Templates",
+      "intro": "Document templates and email templates. A workflow decides when a document is generated or an email is sent.",
+      "documents": "Document templates",
+      "documentsIntro": "Probation letters, with their signing and review routing, are edited in the letter template editor.",
+      "noLetterCompany": "You do not configure Probation letters for any company.",
+      "company": "Company",
+      "goLive": "Go-live check: {count} of 3 probation letters published.",
+      "noLetters": "No letter templates yet.",
+      "letterLine": "Letter · version {version} · {state}",
+      "state": {
+        "draft": "draft",
+        "published": "in use",
+        "retired": "retired"
+      },
+      "openLetterEditor": "Open the letter template editor",
+      "emails": "Email templates",
+      "emailsIntro": "The words, merge fields and extra CC. A workflow decides when it is sent. Turning a template off skips its Send email steps and notes it on the case; nothing else changes.",
+      "noEmails": "No Probation email templates yet.",
+      "newEmail": "New email",
+      "newName": "New email",
+      "editNamed": "Open email template {name}",
+      "editorTitle": "Email template {name}",
+      "turnedOff": "turned off",
+      "name": "Template name",
+      "active": "Send this email (on)",
+      "offNote": "This template is turned off. Send email steps that use it are skipped and noted on the case.",
+      "cc": "Always copy (CC)",
+      "insertMerge": "Insert merge field into the {where}",
+      "fixFirst": "Fix the problems before saving.",
+      "save": "Save template",
+      "retire": "Retire template",
+      "retireConfirm": "Retire this email template? Workflows that use it will show a problem until another template is chosen.",
+      "close": "Close",
+      "reasonCreate": "Created in the template builder",
+      "reasonSave": "Edited in the template builder",
+      "reasonRetire": "Retired in the template builder",
+      "goLiveReady": "All outcome letters are ready.",
+      "goLiveMissing": "Publish a letter template for each outcome before go-live.",
+      "letter": "Letter",
+      "versionPill": "v{version} {state}",
+      "editLetter": "Edit {name} in the letter template editor",
+      "signing": {
+        "chain": "signing: {chain}",
+        "existing": "signing: the existing letter signing route",
+        "missing": "a routing or group that was removed",
+        "people": "{count, plural, one {1 named person} other {# named people}}",
+        "employee": "the employee",
+        "directSuperior": "the Direct Superior",
+        "action": {
+          "review": "Review",
+          "approve": "Approve",
+          "sign": "Sign"
+        }
+      }
+    },
+    "groups": {
+      "title": "Assignment groups",
+      "intro": "Groups and routing rules are shared by Onboarding, Offboarding, Contract staff and Probation.",
+      "groups": "Assignment groups",
+      "groupsIntro": "Round robin skips people on leave and people at their open task limit. Groups and their members are edited in the On/Off Boarding configuration.",
+      "noGroups": "No assignment groups yet.",
+      "usedBy": "{count, plural, =0 {Not used by a routing} one {Used by # routing} other {Used by # routings}}",
+      "editGroups": "Edit assignment groups in On/Off Boarding",
+      "groupsReadOnly": "Only On/Off Boarding administrators can change groups and their members.",
+      "routings": "Routing rules",
+      "routingIntro": "Each routing finds who acts for an employee. Pick a routing by name in any To or CC list, or in an approval or signing step, when the person depends on who the employee is. The most specific matching row wins; leave a field on Any to match everyone.",
+      "approvalNote": "In an approval or signing step a routing yields one person (any member or round robin). As a To or CC recipient it yields everyone in the matched group or list.",
+      "newRouting": "New routing",
+      "newRoutingName": "New routing",
+      "noRoutings": "No routings yet. Create one to route approvals and messages by business group, company, department or job title.",
+      "retired": "{count, plural, one {# retired routing} other {# retired routings}}",
+      "routingName": "Routing name",
+      "duplicateName": "Another routing already has this name.",
+      "usedIn": "Used in: {list}{more, plural, =0 {} other { and # more}}",
+      "notUsed": "Not used in any workflow yet",
+      "dimension": {
+        "businessGroup": "Business group",
+        "company": "Company",
+        "department": "Department",
+        "jobTitle": "Job title"
+      },
+      "rowDimension": "Row {row} {dimension}",
+      "any": "Any",
+      "assignTo": "Assign to",
+      "assignGroup": "Assignment group",
+      "assignPeople": "Specific people",
+      "group": "Group",
+      "people": "People (1 to {max})",
+      "rowPeople": "Row {row} people",
+      "removeRow": "Remove row {row}",
+      "addRow": "Add row",
+      "matches": "Matches employees with {what}",
+      "matchesEveryone": "Default: matches everyone no other row matches",
+      "goesTo": "goes to {who}",
+      "toGroup": "everyone in “{name}”",
+      "noGroupChosen": "no group chosen",
+      "noPeopleChosen": "nobody yet",
+      "unknownPerson": "someone who can no longer be found",
+      "fixFirst": "Fix the routing before saving it.",
+      "save": "Save routing",
+      "retire": "Retire routing",
+      "retireConfirm": "Retire this routing? {count, plural, =0 {No workflow uses it.} one {# workflow uses it and will show a problem.} other {# workflows use it and will show a problem.}}",
+      "retiredNow": "“{name}” is retired.",
+      "cancel": "Cancel",
+      "reasonCreate": "Created in the routing rules",
+      "reasonSave": "Edited in the routing rules",
+      "reasonRetire": "Retired in the routing rules",
+      "routingNamed": "Routing “{name}”",
+      "usedByList": "Used by: {list}",
+      "groupName": "Group name"
+    },
+    "move": {
+      "title": "Move Probation workflows to shared workflows",
+      "help": "Moves each workflow of the Probation workflow builder whose shared form reaches the same people with the same words. A moved workflow goes Live here and stops sending from the Probation builder, so nobody is notified twice. The rest stay where they are and are listed with the reason. Running it again moves nothing twice.",
+      "reason": "Reason (kept in the audit history)",
+      "button": "Move to shared workflows",
+      "confirm": "Move the Probation workflows that convert exactly? Each moved workflow goes Live here and stops sending from the Probation builder.",
+      "done": "Moved {moved}; {kept} stay on the Probation builder; {already} were moved before.",
+      "result": "Move result",
+      "moved": "Moved",
+      "kept": "Staying on the Probation builder",
+      "none": "There was nothing left to move."
+    }
+  },
+  "personnelPostings": {
+    "breadcrumb": "Probation Confirmation / Personnel postings",
+    "title": "Personnel postings",
+    "intro": "Changes to Personnel Management created by Probation workflows wait here. Approve applies the change; Edit opens the event movement in Personnel Management.",
+    "rule": "Only members of the group set in Probation settings › “Who approves Personnel postings” can approve, by Approve or by Save event. Anyone who can record events can Edit; their changes wait for an approver. Nothing reaches Personnel Management until approval.",
+    "columns": {
+      "posting": "Posting",
+      "employee": "Employee",
+      "eventType": "Event type",
+      "change": "Change",
+      "created": "Created",
+      "status": "Status",
+      "actions": "Actions",
+      "from": "From"
+    },
+    "events": {
+      "confirmation": "Confirmation",
+      "probationExtension": "Probation Extension"
+    },
+    "change": {
+      "confirmation": "Confirmation Date {date} · status Probation → Active",
+      "probationExtension": "Probation extended · new end date {end} · effective {date}",
+      "remarks": "Remarks: {remarks}"
+    },
+    "status": {
+      "pending": "Pending",
+      "edited": "Edited · waiting for approval",
+      "approved": "Approved"
+    },
+    "editedNote": "Edited by {name} {date}: {changes}",
+    "fields": {
+      "effectiveDate": "effective date",
+      "endDate": "end date",
+      "remarks": "remarks"
+    },
+    "fieldChange": "{field} {before} → {after}",
+    "someone": "a colleague",
+    "unknownGroup": "the posting approver group",
+    "approve": "Approve",
+    "edit": "Edit",
+    "editLabel": "Edit {posting} in Personnel Management",
+    "approveOnlyGroup": "Only {group} can approve",
+    "filters": {
+      "label": "Show postings",
+      "pending": "Waiting for approval",
+      "approved": "Approved",
+      "all": "All"
+    },
+    "empty": "No postings here.",
+    "previous": "Previous",
+    "next": "Next",
+    "saved": {
+      "approved": "Posting {posting} approved. Personnel Management is updated.",
+      "edited": "Your changes to posting {posting} are saved and wait for approval."
+    },
+    "movement": {
+      "banner": "From Personnel posting {posting} · Probation Confirmation.",
+      "approverHint": "You are in the posting approver group ({group}): saving applies this event, approves the posting as you and clears the pending state on the case.",
+      "editorHint": "You can correct these details. The posting stays Pending until {group} approves it; Personnel Management does not change yet.",
+      "leaveHint": "Leaving without saving changes nothing.",
+      "saveAndApprove": "Save event and approve",
+      "saveForApproval": "Save changes for approval",
+      "notPending": "Posting {posting} is no longer waiting for approval.",
+      "backToPostings": "Back to Personnel postings"
+    },
+    "introGroup": "Changes to Personnel Management created by workflows wait here as drafts. Approve applies the change, and Edit opens the event movement in Personnel Management. Probation postings are approved by <b>{group}</b>, set in Probation settings.",
+    "sources": {
+      "probation": "Probation"
+    },
+    "approverGroupFallback": "the posting approver group"
+  },
+  "probationLetters": {
+    "routing": {
+      "title": "Signing and review routing",
+      "help": "Who reviews, approves and signs this letter, and in what order. Steps with the same order number happen at the same time, and the letter moves on when all of them are done. Who each step resolves to comes from Assignment groups and Routing rules. A Review step can edit the letter until the first signature; after that the text is locked. Anyone can send the letter back with a comment: every signature is cleared and it returns to the step that owns the document (or the People Business Partner if none is ticked).",
+      "empty": "No signing routing set. This letter uses the signing route below, as today.",
+      "notStored": "Signing and review routing is switched on together with the new letter flow. Until then this letter uses the signing route below.",
+      "stepTitle": "Step {n}",
+      "order": "Order",
+      "action": "Action",
+      "who": "Who",
+      "owner": "Owns the document",
+      "pick": "Choose one person by",
+      "pickAny": "Any member",
+      "pickRoundRobin": "Round robin",
+      "oneOfGroup": "A routing or group gives one person for this step, chosen by the rule above.",
+      "actions": {
+        "review": "Review",
+        "approve": "Approve",
+        "sign": "Sign"
+      },
+      "hint": {
+        "review": "Can edit the letter until the first signature. Shown in Approval Items.",
+        "approve": "A decision with no signature. Shown in Approval Items.",
+        "sign": "Signs the letter. The last step releases it. Signers can’t edit the text.",
+        "owner": "Send-backs come to this step."
+      },
+      "whoEmployee": "The employee",
+      "whoDirectSuperior": "Their Direct Superior",
+      "whoRouting": "Routing: {name}",
+      "whoGroup": "Assignment group: {name}",
+      "whoPeople": "Named people",
+      "unknown": "No longer available",
+      "people": "People at this step",
+      "removePerson": "Remove {name}",
+      "remove": "Remove step {n}",
+      "add": "Add signing step",
+      "problems": "Problems",
+      "blocks": "Signature blocks",
+      "blocksHelp": "Who signs comes from the signing routing above. This only decides where that signature prints.",
+      "noBlocks": "This version has no signature block yet. Add one in the content.",
+      "blockLabel": "Signature block {n}",
+      "chooseStep": "Choose a signing step…",
+      "stepOption": "Step {order} · Sign · {who}",
+      "oldSetting": "{role} (old setting — choose a step)",
+      "stepRemoved": "Signing step removed — choose another"
+    },
+    "preview": {
+      "caseLabel": "Preview values for",
+      "chooseCase": "Choose a case",
+      "loading": "Loading the case’s values…",
+      "noOutcome": "This case has no decided outcome yet, so merge fields show as placeholders.",
+      "notPublished": "Case values can be previewed for a saved, published version that matches the case’s outcome. Merge fields show as placeholders.",
+      "unavailable": "The preview values are unavailable right now."
+    },
+    "history": {
+      "routingSteps": "{count, plural, =0 {no routing} one {# routing step} other {# routing steps}}"
+    }
+  },
+  "automationRuntime": {
+    "status": {
+      "running": "Running",
+      "waiting": "Waiting for the document",
+      "done": "Finished",
+      "skipped": "Skipped",
+      "failed": "Stopped"
+    },
+    "log": {
+      "started": "Started",
+      "skipped": "Skipped",
+      "stepDone": "Step done",
+      "stepSkipped": "Step skipped",
+      "stepFailed": "Step failed",
+      "waiting": "Waiting",
+      "resumed": "Continued",
+      "done": "Finished",
+      "failed": "Stopped"
+    },
+    "noWorkflow": "No workflow matched this case, so it was sent to the People Business Partner.",
+    "fallback": "Meant for {meantFor}; sent to the fallback group because nobody was found."
+  },
+  "probationAccess": {
+    "breadcrumb": "Probation Confirmation / Configuration / Access",
+    "title": "Access",
+    "intro": "Same access model as Contract Management. Line Managers get access automatically through the Direct Superiors rule. Business Partners and everyone else aren’t given access automatically: create a role below and add them as members with the right scope. System Administrators manage this page and every Probation setting; to see or act on cases they add themselves to a role like anyone else.",
+    "forbidden": "Only a System Administrator or someone who manages access can open Probation access.",
+    "on": "On",
+    "off": "Off",
+    "superiors": {
+      "title": "Direct Superiors",
+      "intro": "Anyone named as an employee’s Direct Superior in Personnel Management gets these permissions for that employee’s cases.",
+      "enabled": "Rule is on",
+      "view": "View cases",
+      "kpis": "Set Week 1 KPIs",
+      "assessments": "Complete assessments",
+      "alwaysOn": "always on",
+      "declined": "Record a declined signature",
+      "offWarning": "With the rule off, Line Managers can’t see their team’s cases, set KPIs or complete assessments, so reviews would stall. Only switch it off if another role covers this.",
+      "save": "Save rule",
+      "saved": "Direct Superiors rule saved.",
+      "savedOff": "Direct Superiors rule saved. Line Managers no longer get automatic access."
+    },
+    "roles": {
+      "title": "Roles",
+      "intro": "Create a role, choose what it can see and do, and add its members, each with a business group and company scope.",
+      "newRole": "+ New role",
+      "newRoleName": "New role",
+      "name": "Role name",
+      "save": "Save role",
+      "cancel": "Cancel",
+      "delete": "Delete role",
+      "deleteConfirm": "Delete {name}? Its members lose these permissions now.",
+      "empty": "No roles yet. Create a role to give Business Partners and others access.",
+      "cases": "Cases (within each member’s scope)",
+      "settings": "Settings",
+      "postingsNote": "Decides who may choose the posting-approver group in Probation settings. Only that group approves Personnel postings.",
+      "actNote": "A member never acts on their own probation.",
+      "created": "Role {name} created.",
+      "saved": "Role {name} saved.",
+      "deleted": "Role {name} deleted."
+    },
+    "permissions": {
+      "view": "View cases",
+      "letters": "Approve and release letters",
+      "lowResult": "Record low-result actions",
+      "route": "Change a case’s route",
+      "configure": "Configure probation",
+      "intake": "Intake and activation",
+      "postings": "Approve Personnel postings"
+    },
+    "members": {
+      "title": "Members",
+      "empty": "No members yet.",
+      "businessGroup": "Business group",
+      "allBusinessGroups": "All business groups",
+      "company": "Company",
+      "allCompanies": "All companies",
+      "validFrom": "Valid from",
+      "validTo": "Valid to (optional)",
+      "active": "Active",
+      "scheduled": "Scheduled",
+      "expired": "Expired",
+      "save": "Save",
+      "remove": "Remove",
+      "removeLabel": "Remove {name} from {role}",
+      "add": "+ Add member",
+      "find": "Find a person",
+      "search": "Search",
+      "noMatch": "No active person matches “{query}”.",
+      "addPerson": "Add {name}",
+      "added": "{name} added to {role}.",
+      "changed": "{name}’s scope saved.",
+      "removed": "{name} removed from {role}."
+    },
+    "earlier": {
+      "title": "Earlier PBP and GBS assignments",
+      "intro": "These assignments were made before roles existed and still apply.",
+      "pbp": "People Business Partner",
+      "gbs": "GBS People Ops",
+      "validFrom": "from {date}",
+      "validTo": "until {date}"
+    }
   },
   "recruitment": {
     "noCompany": "உங்கள் தற்போதைய வரம்பில் நீங்கள் ஆட்சேர்ப்பை நிர்வகிக்கும் நிறுவனம் எதுவும் இல்லை. நிறுவனத்தை மாற்றவும் அல்லது குழு நிர்வாகியிடம் ஆட்சேர்ப்பு பங்காளர் பங்கைக் கேட்கவும்.",
@@ -41586,858 +43888,6 @@
       "repeat": "இந்த விண்ணப்பதாரர் உங்கள் ஒப்பந்தத்திலிருந்து இந்தப் பணியிடத்துக்கான பரிசீலனைக்கு ஏற்கெனவே காத்திருக்கிறார்.",
       "dailyLimit": "இன்றைய 20 பரிந்துரைகள் வரம்பை எட்டிவிட்டீர்கள். நாளை மீண்டும் முயலுங்கள்.",
       "notAvailable": "இந்தப் பணியிடம் இனி உங்கள் ஒப்பந்தத்துக்குத் திறந்திருக்கவில்லை."
-    }
-  },
-  "bulkJobs": {
-    "notification": {
-      "employeeImport": {
-        "completed": {
-          "title": "பணியாளர் இறக்குமதி முடிந்தது",
-          "body": "சேர்க்கப்பட்ட பணியாளர்களைப் பார்க்க இறக்குமதி வரலாற்றைத் திறக்கவும்."
-        },
-        "failed": {
-          "title": "பணியாளர் இறக்குமதி நிறுத்தப்பட்டது",
-          "body": "எந்தப் பணியாளரும் சேர்க்கப்படவில்லை. காரணத்தைப் பார்க்க இறக்குமதி வரலாற்றைத் திறக்கவும்."
-        },
-        "cancelled": {
-          "title": "பணியாளர் இறக்குமதி ரத்து செய்யப்பட்டது",
-          "body": "எந்தப் பணியாளரும் சேர்க்கப்படவில்லை. விவரங்களுக்கு இறக்குமதி வரலாற்றைத் திறக்கவும்."
-        }
-      },
-      "leaveImport": {
-        "completed": {
-          "title": "விடுப்பு இறக்குமதி முடிந்தது",
-          "body": "இறக்குமதி செய்யப்பட்ட வரிகள் இப்போது பணியாளர்களின் விடுப்பு இருப்பில் சேர்க்கப்பட்டுள்ளன."
-        },
-        "failed": {
-          "title": "விடுப்பு இறக்குமதி நிறுத்தப்பட்டது",
-          "body": "ஏற்கனவே சேமிக்கப்பட்ட வரிகள் வைத்திருக்கப்படும். அதே கோப்பை மீண்டும் இறக்குமதி செய்தால் அவை தவிர்க்கப்படும்."
-        },
-        "cancelled": {
-          "title": "விடுப்பு இறக்குமதி ரத்து செய்யப்பட்டது",
-          "body": "ஏற்கனவே சேமிக்கப்பட்ட வரிகள் வைத்திருக்கப்படும். அதே கோப்பை மீண்டும் இறக்குமதி செய்தால் அவை தவிர்க்கப்படும்."
-        }
-      },
-      "leaveProcessing": {
-        "completed": {
-          "title": "விடுப்புச் செயலாக்கம் முடிந்தது",
-          "body": "விடுப்பு எண்ணிக்கைகள் புதுப்பிக்கப்பட்டன."
-        },
-        "failed": {
-          "title": "விடுப்புச் செயலாக்கம் நிறுத்தப்பட்டது",
-          "body": "ஏற்கனவே செயலாக்கப்பட்ட பணியாளர்களின் எண்ணிக்கைகள் மாறாது. மீதமுள்ளவர்களை முடிக்க மீண்டும் இயக்கவும்."
-        },
-        "cancelled": {
-          "title": "விடுப்புச் செயலாக்கம் ரத்து செய்யப்பட்டது",
-          "body": "ஏற்கனவே செயலாக்கப்பட்ட பணியாளர்களின் எண்ணிக்கைகள் மாறாது. மீதமுள்ளவர்களை முடிக்க மீண்டும் இயக்கவும்."
-        }
-      },
-      "roster": {
-        "completed": {
-          "title": "பணி அட்டவணை மாற்றம் முடிந்தது",
-          "body": "முடிவைக் காண பணி அட்டவணையைத் திறக்கவும்."
-        },
-        "failed": {
-          "title": "பணி அட்டவணை மாற்றம் நிறுத்தப்பட்டது",
-          "body": "காரணத்தைக் காண பணி அட்டவணையைத் திறக்கவும்."
-        },
-        "cancelled": {
-          "title": "பணி அட்டவணை மாற்றம் ரத்து செய்யப்பட்டது",
-          "body": "விவரங்களுக்கு பணி அட்டவணையைத் திறக்கவும்."
-        }
-      },
-      "scheduleGroup": {
-        "completed": {
-          "title": "அட்டவணைக் குழு ஒதுக்கீடு முடிந்தது",
-          "body": "முடிவைக் காண அட்டவணைக் குழு ஒதுக்கீட்டைத் திறக்கவும்."
-        },
-        "failed": {
-          "title": "அட்டவணைக் குழு ஒதுக்கீடு நிறுத்தப்பட்டது",
-          "body": "காரணத்தைக் காண அட்டவணைக் குழு ஒதுக்கீட்டைத் திறக்கவும்."
-        },
-        "cancelled": {
-          "title": "அட்டவணைக் குழு ஒதுக்கீடு ரத்து செய்யப்பட்டது",
-          "body": "விவரங்களுக்கு அட்டவணைக் குழு ஒதுக்கீட்டைத் திறக்கவும்."
-        }
-      },
-      "clockingImport": {
-        "completed": {
-          "title": "நேரப் பதிவு இறக்குமதி முடிந்தது",
-          "body": "சேர்க்கப்பட்ட நேரப் பதிவுகளைப் பார்க்க இறக்குமதிப் பதிவேடுகளைத் திறக்கவும்."
-        },
-        "failed": {
-          "title": "நேரப் பதிவு இறக்குமதி நின்றுவிட்டது",
-          "body": "என்ன சேமிக்கப்பட்டது, ஏன் நின்றது என்பதைப் பார்க்க இறக்குமதிப் பதிவேடுகளைத் திறக்கவும்."
-        },
-        "cancelled": {
-          "title": "நேரப் பதிவு இறக்குமதி நின்றுவிட்டது",
-          "body": "என்ன சேமிக்கப்பட்டது என்பதைப் பார்க்க இறக்குமதிப் பதிவேடுகளைத் திறக்கவும்."
-        }
-      },
-      "attendanceRecomputePreview": {
-        "completed": {
-          "title": "மீள்கணக்கீட்டு முன்னோட்டம் தயார்",
-          "body": "என்ன மாறும் என்பதைச் சரிபார்க்க வருகை மீள்கணக்கீட்டைத் திறக்கவும்."
-        },
-        "failed": {
-          "title": "மீள்கணக்கீட்டு முன்னோட்டம் நின்றுவிட்டது",
-          "body": "காரணத்தைப் பார்க்க வருகை மீள்கணக்கீட்டைத் திறக்கவும்."
-        },
-        "cancelled": {
-          "title": "மீள்கணக்கீட்டு முன்னோட்டம் நின்றுவிட்டது",
-          "body": "மீண்டும் தொடங்க வருகை மீள்கணக்கீட்டைத் திறக்கவும்."
-        }
-      },
-      "attendanceRecompute": {
-        "completed": {
-          "title": "வருகை மீண்டுக் கணக்கிடப்பட்டது",
-          "body": "மாறிய நாட்களைப் பார்க்க வருகை மீள்கணக்கீட்டைத் திறக்கவும்."
-        },
-        "failed": {
-          "title": "வருகை மீள்கணக்கீடு நின்றுவிட்டது",
-          "body": "காரணத்தைப் பார்க்க வருகை மீள்கணக்கீட்டைத் திறக்கவும்."
-        },
-        "cancelled": {
-          "title": "வருகை மீள்கணக்கீடு நின்றுவிட்டது",
-          "body": "விவரங்களுக்கு வருகை மீள்கணக்கீட்டைத் திறக்கவும்."
-        }
-      },
-      "payrollProcess": {
-        "completed": {
-          "title": "ஊதியச் செயலாக்கம் முடிந்தது",
-          "body": "செயலாக்கப்பட்ட ஓட்டத்தை மதிப்பாய்வு செய்ய ஊதியத்தைத் திறக்கவும்."
-        },
-        "failed": {
-          "title": "ஊதியச் செயலாக்கம் நிறுத்தப்பட்டது",
-          "body": "ஓட்டம் மீண்டும் வரைவில் உள்ளது; எந்த ஊதியச் சீட்டும் வைக்கப்படவில்லை. காரணத்தைப் பார்க்க ஊதியத்தைத் திறக்கவும்."
-        },
-        "cancelled": {
-          "title": "ஊதியச் செயலாக்கம் ரத்து செய்யப்பட்டது",
-          "body": "ஓட்டம் மீண்டும் வரைவில் உள்ளது; எந்த ஊதியச் சீட்டும் வைக்கப்படவில்லை."
-        }
-      },
-      "systemLabelImport": {
-        "completed": {
-          "title": "கணினி லேபிள்கள் இறக்குமதி முடிந்தது",
-          "body": "சேர்க்கப்பட்ட குறியீடுகளைப் பார்க்க கணினி லேபிள்களைத் திறக்கவும்."
-        },
-        "failed": {
-          "title": "கணினி லேபிள்கள் இறக்குமதி நிறுத்தப்பட்டது",
-          "body": "குறியீடுகள் எதுவும் சேர்க்கப்படவில்லை. கணினி லேபிள்களைத் திறந்து பணிப்புத்தகத்தை மீண்டும் முன்னோட்டமிடவும்."
-        },
-        "cancelled": {
-          "title": "கணினி லேபிள்கள் இறக்குமதி ரத்து செய்யப்பட்டது",
-          "body": "குறியீடுகள் எதுவும் சேர்க்கப்படவில்லை."
-        }
-      },
-      "sectionImport": {
-        "completed": {
-          "title": "பிரிவு இறக்குமதி முடிந்தது",
-          "body": "புதுப்பிக்கப்பட்ட வரிசைகளைப் பார்க்க இறக்குமதியைத் திறக்கவும்."
-        },
-        "failed": {
-          "title": "பிரிவு இறக்குமதி நிறுத்தப்பட்டது",
-          "body": "நிற்கும் முன் சேமிக்கப்பட்ட வரிசைகள் வைக்கப்பட்டன. காரணத்தைப் பார்க்க இறக்குமதியைத் திறக்கவும்."
-        },
-        "cancelled": {
-          "title": "பிரிவு இறக்குமதி ரத்து செய்யப்பட்டது",
-          "body": "நிற்கும் முன் சேமிக்கப்பட்ட வரிசைகள் வைக்கப்பட்டன. விவரங்களுக்கு இறக்குமதியைத் திறக்கவும்."
-        }
-      },
-      "registerImport": {
-        "completed": {
-          "title": "பதிவேட்டு இறக்குமதி முடிந்தது",
-          "body": "சேமிக்கப்பட்ட பதிவேட்டுப் பதிவுகளைப் பார்க்க இறக்குமதியைத் திறக்கவும்."
-        },
-        "failed": {
-          "title": "பதிவேட்டு இறக்குமதி நிறுத்தப்பட்டது",
-          "body": "எந்தப் பதிவேட்டுப் பதிவும் சேமிக்கப்படவில்லை. காரணத்தைப் பார்க்க இறக்குமதியைத் திறக்கவும்."
-        },
-        "cancelled": {
-          "title": "பதிவேட்டு இறக்குமதி ரத்து செய்யப்பட்டது",
-          "body": "எந்தப் பதிவேட்டுப் பதிவும் சேமிக்கப்படவில்லை. விவரங்களுக்கு இறக்குமதியைத் திறக்கவும்."
-        }
-      },
-      "employeeImportRevert": {
-        "completed": {
-          "title": "இறக்குமதி மீளமைப்பு முடிந்தது",
-          "body": "ரத்து செய்யப்பட்ட பணியாளர்களைப் பார்க்க இறக்குமதி வரலாற்றைத் திறக்கவும்."
-        },
-        "failed": {
-          "title": "இறக்குமதி மீளமைப்பு நிறுத்தப்பட்டது",
-          "body": "எதுவும் மாற்றப்படவில்லை. காரணத்தைப் பார்க்க இறக்குமதி வரலாற்றைத் திறக்கவும்."
-        },
-        "cancelled": {
-          "title": "இறக்குமதி மீளமைப்பு ரத்து செய்யப்பட்டது",
-          "body": "எதுவும் மாற்றப்படவில்லை. விவரங்களுக்கு இறக்குமதி வரலாற்றைத் திறக்கவும்."
-        }
-      },
-      "leaveGeneration": {
-        "completed": {
-          "title": "உரிமை உருவாக்கம் முடிந்தது",
-          "body": "விடுப்பு எண்ணிக்கைகள் புதுப்பிக்கப்பட்டன."
-        },
-        "failed": {
-          "title": "உரிமை உருவாக்கம் நிறுத்தப்பட்டது",
-          "body": "எதுவும் மாற்றப்படவில்லை. காரணத்தைப் பார்க்க உரிமை உருவாக்கத்தைத் திறந்து, பின்னர் மீண்டும் இயக்கவும்."
-        },
-        "cancelled": {
-          "title": "உரிமை உருவாக்கம் ரத்து செய்யப்பட்டது",
-          "body": "எதுவும் மாற்றப்படவில்லை."
-        }
-      },
-      "leaveRecalculation": {
-        "completed": {
-          "title": "விடுப்பு இருப்புகள் மீண்டும் கணக்கிடப்பட்டன",
-          "body": "பணியாளர்களின் விடுப்பு எண்ணிக்கைகள் இப்போது சேமிக்கப்பட்ட அமைப்புகளைப் பின்பற்றுகின்றன."
-        },
-        "failed": {
-          "title": "விடுப்பு மறுகணக்கீடு நிறுத்தப்பட்டது",
-          "body": "ஏற்கனவே மீண்டும் கணக்கிடப்பட்ட பணியாளர்கள் தங்கள் புதிய எண்ணிக்கைகளை வைத்திருப்பார்கள். மீதமுள்ளவர்களை மீண்டும் கணக்கிட அமைப்பை மீண்டும் சேமிக்கவும்."
-        },
-        "cancelled": {
-          "title": "விடுப்பு மறுகணக்கீடு ரத்து செய்யப்பட்டது",
-          "body": "ஏற்கனவே மீண்டும் கணக்கிடப்பட்ட பணியாளர்கள் தங்கள் புதிய எண்ணிக்கைகளை வைத்திருப்பார்கள். மீதமுள்ளவர்களை மீண்டும் கணக்கிட அமைப்பை மீண்டும் சேமிக்கவும்."
-        }
-      },
-      "leaveYearType": {
-        "completed": {
-          "title": "விடுப்பு ஆண்டு வகை பயன்படுத்தப்பட்டது",
-          "body": "முதல் ஆண்டு பணியாளர்களின் விடுப்பு எண்ணிக்கைகள் இப்போது சேமிக்கப்பட்ட விடுப்பு ஆண்டு வகையைப் பின்பற்றுகின்றன."
-        },
-        "failed": {
-          "title": "விடுப்பு ஆண்டு வகை இருப்புகளில் பயன்படுத்தப்படவில்லை",
-          "body": "எந்த விடுப்பு எண்ணிக்கையும் மாற்றப்படவில்லை. மீண்டும் முயற்சிக்க விடுப்பு ஆண்டு வகையை மீண்டும் சேமிக்கவும்."
-        },
-        "cancelled": {
-          "title": "விடுப்பு ஆண்டு வகை திருத்தம் ரத்து செய்யப்பட்டது",
-          "body": "எந்த விடுப்பு எண்ணிக்கையும் மாற்றப்படவில்லை."
-        }
-      },
-      "toilSweep": {
-        "completed": {
-          "title": "ஈட்டு விடுப்புத் தீர்வு முடிந்தது",
-          "body": "தீர்க்க வேண்டிய ஈட்டு விடுப்பு வரவுகள் தீர்க்கப்பட்டன. அவற்றைப் பார்க்க விடுப்பு வரவு பக்கத்தைத் திறக்கவும்."
-        },
-        "failed": {
-          "title": "ஈட்டு விடுப்புத் தீர்வு நிறுத்தப்பட்டது",
-          "body": "ஏற்கனவே தீர்க்கப்பட்ட வரவுகள் அப்படியே இருக்கும். மீதமுள்ளவற்றைத் தீர்க்க மீண்டும் இயக்கவும்."
-        },
-        "cancelled": {
-          "title": "ஈட்டு விடுப்புத் தீர்வு ரத்து செய்யப்பட்டது",
-          "body": "ஏற்கனவே தீர்க்கப்பட்ட வரவுகள் அப்படியே இருக்கும். மீதமுள்ளவற்றைத் தீர்க்க மீண்டும் இயக்கவும்."
-        }
-      },
-      "payrollHistory": {
-        "completed": {
-          "title": "சம்பள வரலாற்று மாற்றம் சமர்ப்பிக்கப்பட்டது",
-          "body": "சமர்ப்பிக்கப்பட்டதைப் பார்க்க இறக்குமதிப் பதிவைத் திறக்கவும்."
-        },
-        "failed": {
-          "title": "சம்பள வரலாற்று மாற்றம் நிறுத்தப்பட்டது",
-          "body": "சம்பள வரலாறு எதுவும் மாற்றப்படவில்லை. காரணத்தைப் பார்க்க இறக்குமதிப் பதிவைத் திறக்கவும்."
-        },
-        "cancelled": {
-          "title": "சம்பள வரலாற்று மாற்றம் ரத்து செய்யப்பட்டது",
-          "body": "சம்பள வரலாறு எதுவும் மாற்றப்படவில்லை."
-        }
-      },
-      "payrollReprocess": {
-        "completed": {
-          "title": "சம்பள மீள்செயலாக்கம் முடிந்தது",
-          "body": "மீண்டும் செயலாக்கப்பட்ட பணியாளர்களைச் சரிபார்க்க ஓட்டத்தைத் திறக்கவும்."
-        },
-        "failed": {
-          "title": "சம்பள மீள்செயலாக்கம் நிறுத்தப்பட்டது",
-          "body": "ஏற்கனவே மீண்டும் செயலாக்கப்பட்ட பணியாளர்கள் தங்கள் புதிய முடிவுகளை வைத்திருப்பார்கள். எங்கே நின்றது என்பதைப் பார்க்க ஓட்டத்தைத் திறக்கவும்."
-        },
-        "cancelled": {
-          "title": "சம்பள மீள்செயலாக்கம் ரத்து செய்யப்பட்டது",
-          "body": "ஏற்கனவே மீண்டும் செயலாக்கப்பட்ட பணியாளர்கள் தங்கள் புதிய முடிவுகளை வைத்திருப்பார்கள்."
-        }
-      },
-      "movementImport": {
-        "completed": {
-          "title": "பணிநிலை மாற்ற இறக்குமதி முடிந்தது",
-          "body": "சேமிக்கப்பட்ட மாற்றங்களையும் சேமிக்க முடியாத பணியாளர்களையும் பார்க்க இறக்குமதி வரலாற்றைத் திறக்கவும்."
-        },
-        "failed": {
-          "title": "பணிநிலை மாற்ற இறக்குமதி நிறுத்தப்பட்டது",
-          "body": "காரணத்தைப் பார்க்க இறக்குமதி வரலாற்றைத் திறக்கவும். ஏற்கெனவே சேமிக்கப்பட்ட பணியாளர்களின் மாற்றங்கள் அப்படியே இருக்கும்."
-        },
-        "cancelled": {
-          "title": "பணிநிலை மாற்ற இறக்குமதி நிறுத்தப்பட்டது",
-          "body": "ஏற்கெனவே சேமிக்கப்பட்ட பணியாளர்களின் மாற்றங்கள் அப்படியே இருக்கும். விவரங்களுக்கு இறக்குமதி வரலாற்றைத் திறக்கவும்."
-        }
-      },
-      "movementCheck": {
-        "completed": {
-          "title": "பணிநிலை மாற்றக் கோப்பு சரிபார்க்கப்பட்டது",
-          "body": "சரிபார்ப்பு இறக்குமதி வரலாற்றில் பதிவு செய்யப்பட்டுள்ளது. இறக்குமதித் திரையை விட்டு வெளியேறியிருந்தால், மதிப்பாய்வு செய்து உறுதிப்படுத்தக் கோப்பை மீண்டும் பதிவேற்றவும்."
-        },
-        "failed": {
-          "title": "பணிநிலை மாற்றச் சரிபார்ப்பு நிறுத்தப்பட்டது",
-          "body": "காரணத்தைப் பார்க்க இறக்குமதி வரலாற்றைத் திறக்கவும். எதுவும் சேமிக்கப்படவில்லை."
-        },
-        "cancelled": {
-          "title": "பணிநிலை மாற்றச் சரிபார்ப்பு நிறுத்தப்பட்டது",
-          "body": "எதுவும் சேமிக்கப்படவில்லை. விவரங்களுக்கு இறக்குமதி வரலாற்றைத் திறக்கவும்."
-        }
-      },
-      "movementImportRevert": {
-        "completed": {
-          "title": "பணிநிலை மாற்ற இறக்குமதி திரும்பப்பெறல் முடிந்தது",
-          "body": "திரும்பப்பெறப்பட்ட மாற்றங்களைப் பார்க்க இறக்குமதி வரலாற்றைத் திறக்கவும்."
-        },
-        "failed": {
-          "title": "பணிநிலை மாற்ற இறக்குமதி திரும்பப்பெறல் நிறுத்தப்பட்டது",
-          "body": "எதுவும் மாற்றப்படவில்லை. காரணத்தைப் பார்க்க இறக்குமதி வரலாற்றைத் திறக்கவும்."
-        },
-        "cancelled": {
-          "title": "பணிநிலை மாற்ற இறக்குமதி திரும்பப்பெறல் ரத்து செய்யப்பட்டது",
-          "body": "எதுவும் மாற்றப்படவில்லை. விவரங்களுக்கு இறக்குமதி வரலாற்றைத் திறக்கவும்."
-        }
-      },
-      "recruitmentImport": {
-        "completed": {
-          "title": "விண்ணப்பதாரர் இறக்குமதி முடிந்தது",
-          "body": "வரிசை வாரியான முடிவையும் ஒதுக்க வேண்டியவை பட்டியலில் காத்திருக்கும் விண்ணப்பதாரர்களையும் காண இறக்குமதியைத் திறக்கவும்."
-        },
-        "failed": {
-          "title": "விண்ணப்பதாரர் இறக்குமதி நின்றது",
-          "body": "ஒரு சிக்கல் இறக்குமதியை நிறுத்தியது. ஏற்கனவே இறக்குமதி செய்யப்பட்ட வரிசைகள் அப்படியே இருக்கும்; முடிவைக் காண இறக்குமதியைத் திறக்கவும்."
-        },
-        "cancelled": {
-          "title": "விண்ணப்பதாரர் இறக்குமதி நிறுத்தப்பட்டது",
-          "body": "இறக்குமதி நிறுத்தப்பட்டது. ஏற்கனவே இறக்குமதி செய்யப்பட்ட வரிசைகள் அப்படியே இருக்கும்; முடிவைக் காண இறக்குமதியைத் திறக்கவும்."
-        }
-      }
-    },
-    "panel": {
-      "queued": "தொடங்கக் காத்திருக்கிறது",
-      "preparing": "ஒவ்வொரு மாற்றத்தையும் சரிபார்க்கிறது",
-      "running": "சேமிக்கிறது",
-      "finalizing": "நிறைவு செய்கிறது",
-      "discarding": "நிறுத்துகிறது",
-      "completed": "முடிந்தது",
-      "failed": "நிறுத்தப்பட்டது",
-      "cancelled": "ரத்து செய்யப்பட்டது",
-      "progressCount": "{total} படிகளில் {done} முடிந்தன",
-      "backgroundHelp": "நீங்கள் இந்தப் பக்கத்திலிருந்து வெளியேறலாம். பணி தொடரும்; முடிந்ததும் உங்களுக்கு அறிவிக்கப்படும்.",
-      "waiting": "பின்னணிச் சேவைக்காகக் காத்திருக்கிறது. முன்னேற்றம் சேமிக்கப்பட்டுள்ளது; இதை மீண்டும் தொடங்க வேண்டாம்.",
-      "workerUnavailable": "பின்னணிச் சேவை இன்னும் இயங்கவில்லை. உங்கள் கோரிக்கை சேமிக்கப்பட்டுள்ளது; சேவை இயங்கியதும் தானாகவே தொடங்கும்."
-    },
-    "roster": {
-      "generate": "பணி அட்டவணையை உருவாக்குகிறது",
-      "copy": "பணி அட்டவணையை நகலெடுக்கிறது",
-      "assign": "பணி அட்டவணை மாற்றத்தைப் பயன்படுத்துகிறது",
-      "import": "பதிவேற்றிய பணி அட்டவணையைச் சேமிக்கிறது",
-      "otherRunning": "மற்றொரு பணி அட்டவணை மாற்றம் இன்னும் சேமிக்கப்படுகிறது. அது முடியும் வரை காத்திருந்து, பின்னர் மீண்டும் முயலவும்.",
-      "saveFailed": "பணி அட்டவணை மாற்றத்தைச் சேமிக்க முடியவில்லை. மீண்டும் முயலவும், அல்லது HR நிர்வாகியிடம் கேட்கவும்.",
-      "queuedBehind": "மற்றொரு பணி அட்டவணைப் பணிக்குப் பின்னால் வரிசையில் உள்ளது. அது முடிந்ததும் இது தானாகவே தொடங்கும்."
-    },
-    "scheduleGroup": {
-      "title": "அட்டவணைக் குழுவை ஒதுக்குகிறது",
-      "otherRunning": "மற்றொரு அட்டவணைக் குழு ஒதுக்கீடு இன்னும் சேமிக்கப்படுகிறது. அது முடியும் வரை காத்திருந்து, பின்னர் மீண்டும் முயலவும்.",
-      "queuedBehind": "மற்றொரு அட்டவணைக் குழு ஒதுக்கீட்டுக்குப் பின்னால் வரிசையில் உள்ளது. அது முடிந்ததும் இது தானாகவே தொடங்கும்."
-    }
-  },
-  "importLog": {
-    "batchReference": "தொகுதி குறிப்பு",
-    "importedBy": "இறக்குமதி செய்தவர்",
-    "batchLabel": "தொகுதி {code}",
-    "actorWithId": "{name} ({employeeId})",
-    "actorUnlinked": "நிர்வாகி உள்நுழைவு (பணியாளர் பதிவு இல்லை · {suffix} இல் முடியும் உள்நுழைவு)",
-    "actorUnavailable": "கிடைக்காத பயனர்"
-  },
-  "scheduleOvertimeSetting": {
-    "title": "மிகைநேர அமைப்பு",
-    "intro": "இந்த அட்டவணைக் குழுவில் உள்ள ஊழியர்களின் மிகைநேரம் எவ்வாறு பதிவு, ஒப்புதல், ஈடு மற்றும் முழுமையாக்கம் செய்யப்படுகிறது என்பதைக் கட்டுப்படுத்துகிறது. இது தொடக்கத் தேதியிலிருந்து பொருந்தும்: முந்தைய நாட்கள், வருகைப் பதிவுகள், தாமதப் பதிவுகள் மற்றும் கடந்த சம்பளம் மீண்டும் கணக்கிடப்படாது.",
-    "companiesLabel": "பொருந்துவது",
-    "allCompanies": "அனைத்து நிறுவனங்களும்",
-    "selectedCompanies": "தேர்ந்தெடுத்த நிறுவனங்கள்",
-    "effectiveFrom": "தொடக்கத் தேதி",
-    "effectiveHint": "இன்றைக்குப் பிறகும், தேர்ந்தெடுத்த நிறுவனத்துக்கு ஏற்கனவே சேமித்த தொடக்கத்துக்குப் பிறகும்.",
-    "applicabilityTitle": "மிகைநேரப் பொருந்துதல்",
-    "beforeShift": "ஷிப்டுக்கு முன் மிகைநேரம்",
-    "beforeShiftHint": "திட்டமிட்ட ஷிப்டுக்கு முன் மிகைநேரத்தை அனுமதிக்கவும்.",
-    "afterShift": "ஷிப்டுக்குப் பின் மிகைநேரம்",
-    "afterShiftHint": "திட்டமிட்ட ஷிப்டுக்குப் பின் மிகைநேரத்தை அனுமதிக்கவும்.",
-    "allowBackdated": "வருகைப் பதிவு இல்லாமல் முன்தேதி மிகைநேரக் கோரிக்கையை அனுமதி",
-    "allowBackdatedHint": "பொருந்தும் வருகைப் பதிவு இல்லாமல் ஊழியர்கள் முன்தேதி மிகைநேரம் கோரலாம். அது கணக்கில் சேரும் முன் HR உண்மையான வேலை நேரத்தைப் பதிவு செய்ய வேண்டும்.",
-    "splitAtMidnight": "நள்ளிரவில் மிகைநேரத்தைப் பிரி",
-    "splitAtMidnightHint": "நள்ளிரவுக்குப் பிந்தைய மிகைநேரம் அடுத்த நாள்காட்டி நாளின் ஆரம்ப மிகைநேரமாகக் கணக்கிடப்படும். எ.கா.: இரவு 10:00 முதல் அதிகாலை 2:00 வரை, ஒவ்வொரு தேதிக்கும் 2 மணி நேரம்.",
-    "offsetTitle": "தாமதத்தால் மிகைநேரத்தை ஈடுசெய்",
-    "offsetLateness": "தாமதத்தால் மிகைநேரத்தை ஈடுசெய்",
-    "offsetHint": "தகுதியான மிகைநேரத்திலிருந்து தாமத நிமிடங்களைக் கழிக்கவும். எ.கா.: 60 தகுதி நிமிடங்களுக்கு எதிராக 20 நிமிடத் தாமதம் 40 ஐ விடுகிறது. பதிவான தாமதம் அப்படியே இருக்கும்.",
-    "showLatenessException": "ஈடுக்குப் பின் தாமத விதிவிலக்கைக் காட்டு",
-    "showLatenessExceptionHint": "ஈடுக்குப் பின் மீதமுள்ள தாமதத்துக்குத் தாமத விதிவிலக்கைக் காட்டவும்.",
-    "approvalTitle": "மிகைநேர ஒப்புதல் முறை",
-    "approvalManual": "கைமுறை",
-    "approvalAuto": "தானியங்கி",
-    "approvalManualHint": "வருகை செலுத்த வேண்டிய மிகைநேரத்தை உருவாக்காது. வருகைப் பதிவுகள் வைக்கப்படும்; மிகைநேரம் சம்பளத்தில் கைமுறையாக உள்ளிடப்படும்.",
-    "autoMethod": "தானியங்கி மிகைநேர ஒப்புதல் முறை",
-    "methodIntersect": "உண்மை மற்றும் முன்-ஒப்புதல் வெட்டு",
-    "methodActual": "உண்மையான மணிநேரம்",
-    "methodPreApproved": "ஒப்புதல் பெற்ற மிகைநேரம்",
-    "methodIntersectHint": "ஒப்புதல் மற்றும் உண்மை நிமிடங்களில் குறைவானதைச் செலுத்தும்: ஒப்புதல் 120, உண்மை 90 என்றால் 90.",
-    "methodActualHint": "உண்மையான தகுதி நிமிடங்களைச் செலுத்தும், ஒப்புதல் வரம்பு இல்லை.",
-    "methodPreApprovedHint": "ஒப்புதல் பெற்ற நேரத்தைச் செலுத்தும்: ஒப்புதல் 120, உண்மை 90 என்றால் 120.",
-    "patternsTitle": "ஒவ்வொரு நாள் வகைக்குமான மிகைநேர முறை",
-    "patternsHint": "மிகைநேர ஊதியம் தேர்ந்தெடுத்த மிகைநேர முறையால் கணக்கிடப்படுகிறது. தேர்ந்தெடுத்த ஒவ்வொரு நிறுவனத்துக்கும் செயலில் உள்ள முறைகள் மட்டுமே பட்டியலிடப்படும்.",
-    "patternsNone": "தேர்ந்தெடுத்த ஒவ்வொரு நிறுவனத்துக்கும் செயலில் உள்ள மிகைநேர முறை இல்லை. தானியங்கியைப் பயன்படுத்த மிகைநேர முறைகளில் ஒன்றைச் செயல்படுத்தவும், அல்லது கைமுறையைத் தேர்ந்தெடுக்கவும்.",
-    "choosePattern": "மிகைநேர முறையைத் தேர்ந்தெடுக்கவும்",
-    "dayNormal": "வேலை நாள்",
-    "dayOff": "வேலையில்லா நாள்",
-    "dayRest": "ஓய்வு நாள்",
-    "dayPublicHoliday": "பொது விடுமுறை",
-    "dayReplacementHoliday": "மாற்று விடுமுறை",
-    "roundingTitle": "மிகைநேர முழுமையாக்கம்",
-    "roundingMethod": "மிகைநேர முழுமையாக்க முறை",
-    "roundUp": "மேல்நோக்கி முழுமையாக்கு",
-    "roundDown": "கீழ்நோக்கி முழுமையாக்கு",
-    "roundingStep": "நிமிடத்துக்கு மிகைநேர முழுமையாக்கம்",
-    "stepMinutes": "{n} நிமிடங்கள்",
-    "roundingHint": "முழுமையாக்கம் கடைசியாக, ஒப்புதல் முறை மற்றும் தாமத ஈட்டுக்குப் பின் செய்யப்படும். பதிவான வருகை நேரம் மாற்றப்படாது.",
-    "unsupportedRounding": "சேமித்த முழுமையாக்கம் இந்தப் பகுதி வழங்காத தேர்வைப் பயன்படுத்துகிறது. சேமித்தால் புதிய தொடக்கத் தேதியிலிருந்து மாற்றப்படும்.",
-    "differs": "{n, plural, one {# நிறுவனத்துக்கு} other {# நிறுவனங்களுக்கு}} வேறுபட்ட மிகைநேர அமைப்பு உள்ளது, அல்லது இல்லை. சேமித்தால் தேர்ந்தெடுத்த ஒவ்வொரு நிறுவனத்துக்கும் இந்த அமைப்பு பொருந்தும்.",
-    "savedFrom": "சேமித்த அமைப்பு {date} முதல் தொடங்குகிறது.",
-    "none": "இன்னும் மிகைநேர அமைப்பு சேமிக்கப்படவில்லை. ஒன்று சேமிக்கப்படும் வரை இந்தக் குழுவின் மிகைநேரம் முன்பு போலவே செயல்படும்.",
-    "save": "மிகைநேர அமைப்பைச் சேமி",
-    "systemReason": "அட்டவணைக் குழு மிகைநேர அமைப்பு சேமிக்கப்பட்டது",
-    "on": "இயக்கம்",
-    "off": "நிறுத்தம்",
-    "payrollNote": "இந்த அமைப்பிலிருந்து இறுதி மிகைநேர எண்ணிக்கைகளைச் சம்பளம் இன்று பெறுவது போலவே பெறுகிறது."
-  },
-  "attendanceOnBehalf": {
-    "requestTitle": "சார்பாக கோரிக்கை",
-    "requestHelp": "ஊழியரைத் தேர்ந்தெடுத்து, வழக்கமான திரைகளில் அவருக்காக வருகை முறைகேடு அல்லது சுய கூடுதல் நேரத்தைச் சமர்ப்பிக்கவும். கோரிக்கை அவரது சொந்த பணிப்பாய்வு மற்றும் ஒப்புதலாளர்களைப் பின்பற்றும்.",
-    "approveTitle": "சார்பாக ஒப்புதல்",
-    "approveHelp": "நிலுவையில் உள்ள வருகைக் கோரிக்கைகளை நீங்கள் கையாள வேண்டிய நியமிக்கப்பட்ட ஒப்புதலாளரைத் தேர்ந்தெடுக்கவும்.",
-    "approveListHelp": "{name} அவர்களுக்காகக் காத்திருக்கும், அவர் சார்பாக நீங்கள் முடிவெடுக்கக்கூடிய கோரிக்கைகள்.",
-    "searchLabel": "ஊழியர் ID அல்லது பெயரால் தேடு",
-    "searchPlaceholder": "எ.கா. EMP-0123 அல்லது ஒரு பெயர்",
-    "search": "தேடு",
-    "results": "நீங்கள் சார்பாகச் செயல்படக்கூடிய ஊழியர்கள்",
-    "noResults": "இந்தத் தேடலுடன் பொருந்தும், நீங்கள் சார்பாகச் செயல்படக்கூடிய ஊழியர் இல்லை.",
-    "noPermission": "உங்கள் பங்குக்கு இந்த அனுமதி இல்லை. தேவைப்பட்டால் நிர்வாகியிடம் கேளுங்கள்.",
-    "choose": "தேர்ந்தெடு",
-    "employeeName": "ஊழியர்",
-    "employeeId": "ஊழியர் ID",
-    "company": "நிறுவனம்",
-    "department": "துறை",
-    "changeEmployee": "ஊழியரை மாற்று",
-    "chooseCategory": "நீங்கள் எதைச் சமர்ப்பிக்க விரும்புகிறீர்கள்?",
-    "irregularity": "வருகை முறைகேடு",
-    "irregularityHelp": "ஊழியரின் சொந்த நாட்களுக்கான விடுபட்ட அல்லது தவறான நேரப் பதிவுகள், குறைந்த மணிநேரம் அல்லது வருகையின்மை.",
-    "selfOvertime": "சுய கூடுதல் நேரம்",
-    "selfOvertimeHelp": "ஊழியரின் சொந்த அட்டவணைக் குழு மற்றும் கூடுதல் நேர விதிகளின் கீழ் கூடுதல் நேரத்தைத் திட்டமிடவும் அல்லது கோரவும்.",
-    "banner": "{name} சார்பாகச் சமர்ப்பிக்கிறது",
-    "pendingTitle": "நிலுவையிலுள்ள ஒப்புதல் கோரிக்கைகள்",
-    "pendingEmpty": "நீங்கள் முடிவெடுக்கக்கூடிய, இந்த ஒப்புதலாளருக்காகக் காத்திருக்கும் எதுவும் இல்லை.",
-    "approveOnBehalf": "சார்பாக ஒப்புதல்",
-    "rejectOnBehalf": "சார்பாக நிராகரி",
-    "approveAudit": "வரலாறு தேர்ந்தெடுக்கப்பட்டவரை நியமிக்கப்பட்ட ஒப்புதலாளராக வைத்திருக்கும், உங்களைச் செயல்பட்டவராகப் பதிவு செய்யும்.",
-    "previous": "முந்தைய",
-    "next": "அடுத்து"
-  },
-  "importErrorLogMovement": {
-    "correction": {
-      "date": "தேதியை DD-MMM-YYYY ஆக (எ.கா. 06-Jan-2026) அல்லது Excel தேதியாக உள்ளிடவும்.",
-      "required": "இந்தப் புலத்தை நிரப்பவும் - இந்த நிகழ்வு வகைக்கு இது தேவை.",
-      "chooseCompany": "Reference தாளிலிருந்து நிறுவன ஐடியைத் தேர்ந்தெடுக்கவும்.",
-      "eventType": "கீழிறங்கு பட்டியலிலிருந்து செயலில் உள்ள நிகழ்வு வகையைத் தேர்ந்தெடுக்கவும்.",
-      "chooseReference": "கீழிறங்கு பட்டியல் அல்லது Reference தாளிலிருந்து ஒரு மதிப்பைத் தேர்ந்தெடுக்கவும்.",
-      "employeeId": "இந்த வரிசையிலுள்ள பணியாளர் ஐடி மற்றும் நிறுவன ஐடியை Personnel பதிவுடன் சரிபார்க்கவும்.",
-      "systemField": "இந்த நிகழ்வு வகை மாற்றக்கூடிய கணினி புலத்தைத் தேர்ந்தெடுக்கவும் (Reference தாளைப் பார்க்கவும்), அல்லது அந்த வரிசையை நீக்கவும்.",
-      "duplicateField": "ஒரு நகர்வின் ஒவ்வொரு கணினி புலத்திற்கும் ஒரு வரிசையை மட்டும் வைக்கவும்.",
-      "number": "எண்ணை உள்ளிடவும் (இலக்கங்கள் மட்டும், நாணயக் குறி இல்லாமல்).",
-      "noFormula": "சூத்திரம் அல்ல, மதிப்பையே தட்டச்சு செய்யவும்.",
-      "movementId": "பணியாளரின் நகர்வு வரலாற்றிலிருந்து நகர்வு நிகழ்வு ID ஐ நகலெடுக்கவும்.",
-      "before": "பணியாளர் பதிவில் தற்போது உள்ள மதிப்பை முன் என உள்ளிடவும், அல்லது புதிய டெம்ப்ளேட்டைப் பதிவிறக்கவும்.",
-      "otherRows": "இந்தப் பணியாளரின் மற்ற வரிசைகளைச் சரிசெய்து, பின்னர் முழுக் கோப்பையும் மீண்டும் பதிவேற்றவும்.",
-      "recheck": "தற்போதைய பதிவுகளுடன் சரிபார்க்கப்பட கோப்பை மீண்டும் பதிவேற்றவும்.",
-      "template": "தற்போதைய நகர்வு டெம்ப்ளேட்டைப் பதிவிறக்கி, உங்கள் வரிசைகளை அதில் நகலெடுத்து மீண்டும் பதிவேற்றவும்.",
-      "splitFile": "கோப்பைச் சிறிய கோப்புகளாகப் பிரித்து (அதிகபட்சம் 200 வரிசைகள், 50 பணியாளர்கள், ஒரு பணியாளருக்கு 20 வரிசைகள்) ஒவ்வொன்றையும் பதிவேற்றவும்.",
-      "saveStopped": "இந்தப் பணியாளருக்கு எதுவும் சேமிக்கப்படவில்லை. சிக்கலைச் சரிசெய்து, பின்னர் இந்தப் பணியாளரை மீண்டும் இறக்குமதி செய்யவும்."
-    }
-  },
-  "lifecycleEmailHold": {
-    "inboxAction": "மின்னஞ்சல் நிறுத்தி வைக்கப்பட்டது: {email}"
-  },
-  "rewardConfig": {
-    "title": "சேமிக்கும் முன் பார்க்கவும்",
-    "saving": "சேமிக்கிறது…",
-    "whyReview": "இதைப் பார்க்க வேண்டிய காரணம்",
-    "reason": "இந்த மாற்றத்திற்கான காரணம்",
-    "cancel": "ரத்துசெய்",
-    "highImpact": {
-      "released-pat": "ஏற்கெனவே வெளியிடப்பட்ட மதிப்பாய்வுக்கான PAT மாறுகிறது.",
-      "released-library": "ஏற்கெனவே வெளியிடப்பட்ட மதிப்பாய்வுகள் முந்தைய பதிப்பைப் பயன்படுத்துகின்றன; அவை அதையே வைத்திருக்கும். புதிய மதிப்பாய்வுகள் இதைப் பயன்படுத்தும்.",
-      "released-limit": "ஏற்கெனவே வெளியிடப்பட்ட மதிப்பாய்வுக்கான பட்ஜெட் வரம்பு மாறுகிறது.",
-      "release-review": "வெளியிட்டால் இந்த மதிப்பாய்வு BU CEO-க்கு அனுப்பப்படும்.",
-      "remove-access": "ஒருவர் ஒரு மதிப்பாய்வுக்கான அணுகலை இழக்கிறார்.",
-      "open-offcycle": "சுழற்சிக்கு வெளியே ஆண்டைத் திறப்பது நிறுவன இருப்புகளைத் தலைவர்களின் கோரிக்கைகளுக்குக் கிடைக்கச் செய்யும்.",
-      "offcycle-window": "ஆண்டு நடுப்பகுதி பரிந்துரைகளை எப்போது சமர்ப்பிக்கலாம் என்பதை ஆண்டு நடுப்பகுதி காலம் தீர்மானிக்கிறது."
-    },
-    "whatChanges": "என்ன மாறுகிறது ({count})",
-    "item": "உருப்படி",
-    "before": "முன்",
-    "after": "பின்",
-    "noValueChanges": "எந்த மதிப்பும் மாறவில்லை.",
-    "moreLines": "மேலும் {count} மாற்றங்கள் மாற்றப் பதிவில் உள்ளன.",
-    "affected": "பாதிக்கப்படும் மதிப்பாய்வுகள் ({count})",
-    "noReviewsAffected": "எந்த மதிப்பாய்வும் பாதிக்கப்படவில்லை.",
-    "consequence": {
-      "repriced": "இப்போதே மீண்டும் கணக்கிடப்படும்",
-      "recalculation-required": "மீண்டும் கணக்கிடப்படும்; தற்போதைய அங்கீகரிப்பாளருக்குத் தெரிவிக்கப்படும்",
-      "keeps-version": "தொடங்கிய பதிப்பையே வைத்திருக்கும்",
-      "released-to-bu": "BU CEO-க்கு வெளியிடப்படும்",
-      "access-removed": "அணுகல் நீக்கப்படும்",
-      "none": "மாற்றம் இல்லை"
-    },
-    "notificationTitle": "Rewards அமைப்பு மாற்றப்பட்டது",
-    "noAccess": "Rewards மாற்றப் பதிவு உங்களுக்குக் கிடைக்கவில்லை.",
-    "logHelp": "ஒவ்வொரு Rewards அமைப்பு மாற்றமும்: யார் செய்தார், எப்போது, என்ன மாறியது, ஏன். மாற்றங்கள் ஒருபோதும் திருத்தப்படவோ நீக்கப்படவோ மாட்டா.",
-    "area": "பகுதி",
-    "allAreas": "எல்லாப் பகுதிகளும்",
-    "company": "நிறுவனம்",
-    "allCompanies": "எல்லா நிறுவனங்களும்",
-    "person": "மாற்றியவர்",
-    "from": "முதல்",
-    "to": "வரை",
-    "highImpactOnly": "அதிகத் தாக்கம் மட்டும்",
-    "filter": "வடிகட்டிகளைப் பயன்படுத்து",
-    "exportExcel": "Excel-க்கு ஏற்றுமதி",
-    "when": "எப்போது",
-    "areaColumn": "பகுதி",
-    "reasonColumn": "காரணம்",
-    "changes": "மாற்றங்கள்",
-    "changedValues": "{count, plural, =0 {மதிப்புகள் இல்லை} one {# மதிப்பு} other {# மதிப்புகள்}}",
-    "system": "அமைப்பு",
-    "unknownPerson": "தெரியாதவர்",
-    "highImpactBadge": "அதிகத் தாக்கம்",
-    "areas": {
-      "salary": "சம்பளக் கட்டமைப்புகள்",
-      "bonus": "போனஸ் அணிகள்",
-      "pat": "PAT உள்ளீடுகள்",
-      "plan": "பகிரப்பட்ட Rewards அமைப்பு",
-      "shared": "பகிரப்பட்ட அமைப்பு",
-      "exemption": "பட்ஜெட் வரம்பு விலக்கு",
-      "senior": "மூத்தோர் திட்டம்",
-      "upload": "பதிவேற்றிய விருதுகள்",
-      "preparation": "மதிப்பாய்வு அமைப்பு",
-      "access": "Rewards அணுகல்",
-      "role_permission": "பங்கு அனுமதிகள்",
-      "group_role": "முழுக் குழுப் பங்குகள்",
-      "limit": "வரம்புக் கட்டுப்பாடுகள்",
-      "offcycle": "சுழற்சிக்கு வெளியே"
-    },
-    "actions": {
-      "returned-to-draft": "வரைவுக்குத் திருப்பப்பட்டது",
-      "saved-draft": "வரைவு சேமிக்கப்பட்டது",
-      "activated": "செயல்படுத்தப்பட்டது",
-      "restored": "முந்தைய பதிப்பிலிருந்து மீட்டமைக்கப்பட்டது",
-      "saved": "சேமிக்கப்பட்டது",
-      "released": "வெளியிடப்பட்டது",
-      "applied": "பயன்படுத்தப்பட்டது",
-      "changed": "மாற்றப்பட்டது",
-      "reset": "இயல்புநிலைக்கு மீட்டமைக்கப்பட்டது"
-    },
-    "empty": "இந்த வடிகட்டிகளுக்குப் பொருந்தும் மாற்றங்கள் இல்லை.",
-    "pages": "பக்கங்கள்",
-    "previous": "முந்தையது",
-    "next": "அடுத்தது",
-    "exportTruncated": "முதல் 5,000 மாற்றங்கள் மட்டுமே சேர்க்கப்பட்டுள்ளன. மீதியை ஏற்றுமதி செய்ய வடிகட்டிகளைக் குறைக்கவும்."
-  },
-  "rewardLimits": {
-    "description": "ஒவ்வொரு வெகுமதி ஆண்டுக்குமான வரம்புகளும் எல்லைகளும். மதிப்பாய்வுகள், AI ஆலோசகர் மற்றும் வெகுமதிப் பகுப்பாய்வில் உள்ள ஒவ்வொரு சரிபார்ப்பும் மதிப்பாய்வின் வெகுமதி ஆண்டுக்கான மதிப்புகளைப் பயன்படுத்துகிறது.",
-    "noAccess": "உங்களுக்கு அணுகல் இல்லை",
-    "noAccessHelp": "வரம்புக் கட்டுப்பாடுகள் Group Rewards, CTRO மற்றும் EC க்குக் கிடைக்கும்.",
-    "year": "வெகுமதி ஆண்டு",
-    "show": "காட்டு",
-    "viewOnly": "இந்த வரம்புகளைப் பார்க்கலாம். Group Rewards மட்டுமே அவற்றை மாற்ற முடியும்.",
-    "versionLine": "{year} க்குப் பதிப்பு {version} பயன்பாட்டில் உள்ளது.",
-    "baselineLine": "{year} க்கு இன்னும் பதிப்பு எதுவும் சேமிக்கப்படவில்லை. இவை நிலையான மதிப்புகள்; சேமித்தால் பதிப்பு 1 உருவாகும்.",
-    "typeHelp": "தடை சமர்ப்பிப்பை நிறுத்தும். விதிவிலக்கு மற்றும் எச்சரிக்கை மதிப்பாய்வுடன் செல்லும்; சமர்ப்பிக்கும் முன் காரணம் தேவை. குறிப்பு தகவலுக்கு மட்டும்.",
-    "columns": {
-      "limit": "வரம்பு",
-      "value": "மதிப்பு",
-      "type": "வகை",
-      "appliesTo": "பொருந்துவது",
-      "lastChanged": "கடைசியாக மாற்றியவர் / தேதி"
-    },
-    "areas": {
-      "pools": "சம்பள உயர்வு நிதிகள்",
-      "person": "ஒருவருக்கான சம்பள உயர்வு",
-      "bonus": "போனஸ்",
-      "lump": "ஒருமுறைத் தொகை",
-      "exemption": "விலக்குகள்",
-      "advisor": "AI ஆலோசகர்"
-    },
-    "labels": {
-      "pool_standard_merit": "தகுதி நிதி (தகுதியான சம்பளத்தின் %)",
-      "pool_standard_promotion": "பதவி உயர்வு நிதி (தகுதியான சம்பளத்தின் %)",
-      "pool_standard_special": "சிறப்புச் சரிசெய்தல் நிதி (தகுதியான சம்பளத்தின் %)",
-      "pool_h_merit": "தகுதி நிதி (தகுதியான சம்பளத்தின் %)",
-      "pool_h_promotion": "பதவி உயர்வு நிதி (தகுதியான சம்பளத்தின் %)",
-      "pool_h_special": "சிறப்புச் சரிசெய்தல் நிதி (தகுதியான சம்பளத்தின் %)",
-      "pool_separate": "நிதிகள் ஒன்றுக்கொன்று அல்லது வேறு நிறுவனத்துக்கு நிதியளிக்க முடியாது",
-      "increase_withoutPromotion": "பதவி உயர்வு இல்லாத மொத்த உயர்வு இதற்கு மேல்",
-      "increase_withPromotion": "பதவி உயர்வுடன் மொத்த உயர்வு இதற்குச் சமம் அல்லது மேல்",
-      "promotion_increment": "பதவி உயர்வு அதிகரிப்பு",
-      "promotion_maxGrades": "அதிகபட்ச நிலை உயர்வு",
-      "promotion_maxGrade": "பதவி உயர்வுக்குப் பின் உயர்ந்த நிலை",
-      "catchUp_crFloor": "STAR/SSTAR க்கான CR சமன்செய்தல் தளம்",
-      "salary_noReduction": "சம்பளக் குறைப்பு இல்லை",
-      "bonus_poolCap": "போனஸ் நிதி உச்சவரம்பு",
-      "bonus_underUse": "குறைவான பயன்பாட்டு எச்சரிக்கை இதற்குக் கீழ்",
-      "bonus_individualCeiling": "தனிநபர் போனஸ் உச்சவரம்பு இதற்கு மேல்",
-      "bonus_rounding": "கொடுப்பனவு முழுமையாக்கல் (கீழ்நோக்கி)",
-      "bonus_individualMultiplier": "அலகிலிருந்து வேறுபட்ட தனிநபர் பெருக்கி",
-      "lump_share": "மீதமுள்ள இருப்பின் பங்கு",
-      "lump_step": "முழுமையாக்கல் படி",
-      "lump_cap": "ஒருவருக்கான உச்சவரம்பு",
-      "lump_aboveSuggestion": "பரிந்துரைக்கு மேலான அலகுத் தொகை",
-      "lump_individualAmendment": "தனிநபர் திருத்தங்கள்",
-      "exemption_budgetCapsOnly": "விலக்கு பெற்ற நிறுவனங்கள்: பட்ஜெட் உச்சவரம்புகள் மட்டும், காரணத்துடன்",
-      "advisor_override": "மாற்ற எல்லை",
-      "advisor_longWithoutIncrease": "நீண்ட காலம் உயர்வு இல்லை",
-      "advisor_peerGap": "சக ஊழியர் சம்பள இடைவெளி"
-    },
-    "types": {
-      "block": "தடை",
-      "exception": "விதிவிலக்கு",
-      "warning": "எச்சரிக்கை",
-      "note": "குறிப்பு"
-    },
-    "appliesTo": {
-      "standard": "நிலையான திட்டம்",
-      "h": "JG H திட்டம்",
-      "all": "அனைத்துத் திட்டங்களும்"
-    },
-    "units": {
-      "percent": "%",
-      "points": "சதவீதப் புள்ளிகள்",
-      "ratio": "CR",
-      "months": "மாதங்கள்",
-      "myr": "RM",
-      "grades": "நிலைகள்",
-      "grade": "JG",
-      "years": "ஆண்டுகள்"
-    },
-    "fixed": "நிலையானது",
-    "fixedHelp": "சம்பளத்தைப் பாதுகாக்க நிலையாக்கப்பட்டது; மாற்ற முடியாது.",
-    "none": "இல்லை",
-    "standardValue": "நிலையான மதிப்பு",
-    "changedBy": "{name} · {date}",
-    "unknownPerson": "தெரியாது",
-    "valueFor": "{limit} க்கான மதிப்பு",
-    "typeFor": "{limit} க்கான வகை",
-    "reviewSave": "சேமிக்கும் முன் மதிப்பாய்வு செய்",
-    "save": "புதிய பதிப்பைச் சேமி",
-    "discard": "மாற்றங்களை நிராகரி",
-    "saved": "பதிப்பு {version} ஆகச் சேமிக்கப்பட்டது.",
-    "errors": {
-      "system": "வரம்புகளைச் சேமிக்க முடியவில்லை. உங்கள் மாற்றங்கள் அப்படியே உள்ளன; மீண்டும் முயலவும்."
-    },
-    "reviewsHeading": "இந்த வெகுமதி ஆண்டின் மதிப்பாய்வுகள்",
-    "reviewsHelp": "வரைவு மதிப்பாய்வுகள் தற்போதைய பதிப்பைப் பயன்படுத்தும். வரைவைக் கடந்த மதிப்பாய்வுகள் சமர்ப்பித்தபோது இருந்த பதிப்பை வைத்திருக்கும். தற்போதைய பதிப்பை அவற்றுக்குப் பயன்படுத்தினால், சரிபார்ப்புகள் மீண்டும் இயங்கும், தற்போதைய ஒப்புதலாளருக்குத் தெரிவிக்கப்படும்.",
-    "reviewColumns": {
-      "review": "மதிப்பாய்வு",
-      "stage": "நிலை",
-      "versionUsed": "பயன்படுத்தும் வரம்புகள்"
-    },
-    "select": "தேர்ந்தெடு",
-    "selectReview": "{review} ஐத் தேர்ந்தெடு",
-    "baseline": "நிலையான மதிப்புகள் (வரம்புக் கட்டுப்பாடுகளுக்கு முன்)",
-    "currentVersion": "தற்போதையது (பதிப்பு {version})",
-    "version": "பதிப்பு {version}",
-    "apply": "தேர்ந்தெடுத்த மதிப்பாய்வுகளுக்குப் பதிப்பு {version} ஐப் பயன்படுத்து",
-    "applyConfirm": "பயன்படுத்தி ஒப்புதலாளர்களுக்குத் தெரிவி",
-    "applied": "{count, plural, other {# மதிப்பாய்வுகளுக்குப் பயன்படுத்தப்பட்டது.}}",
-    "noReviews": "இந்த வெகுமதி ஆண்டை இன்னும் எந்த மதிப்பாய்வும் பயன்படுத்தவில்லை.",
-    "reviewsTruncated": "முதல் 200 மதிப்பாய்வுகள் மட்டும் பட்டியலிடப்பட்டுள்ளன.",
-    "exemptionsHeading": "பட்ஜெட் உச்சவரம்பு விலக்குகள்",
-    "exemptionsHelp": "விலக்கு பட்ஜெட் உச்சவரம்புகளை (சம்பள உயர்வு நிதிகள் மற்றும் போனஸ் நிதி உச்சவரம்பு) மட்டுமே தளர்த்தும். அது காரணத்துடன் மதிப்பாய்வின் அமைப்பில் பதிவு செய்யப்படும்.",
-    "noExemptions": "இந்த வெகுமதி ஆண்டில் எந்த மதிப்பாய்வுக்கும் பட்ஜெட் உச்சவரம்பு விலக்கு இல்லை.",
-    "historyHeading": "பதிப்பு வரலாறு",
-    "noVersions": "இன்னும் பதிப்புகள் இல்லை.",
-    "changeLogLink": "மாற்றப் பதிவில் எல்லா மாற்றங்களையும் காண்க"
-  },
-  "importErrorLogDataBankCostInfo": {
-    "corrections": {
-      "duplicateInFile": "இந்த மதிப்பு கோப்பில் ஒன்றுக்கு மேற்பட்ட முறை வருகிறது - ஒரு வரிசையை மட்டும் வைத்திருக்கவும்.",
-      "duplicateEmployeeInFile": "இந்த ஊழியர் ID கோப்பில் ஒன்றுக்கு மேற்பட்ட முறை வருகிறது - ஒரு வரிசையை மட்டும் வைத்திருக்கவும்.",
-      "chooseReference": "வார்ப்புருவின் Reference தாளிலிருந்து ஒரு மதிப்பைத் தேர்ந்தெடுக்கவும்.",
-      "chooseCompany": "Reference தாளிலிருந்து Company Code ஐத் தேர்ந்தெடுக்கவும்.",
-      "chooseCostCenter": "Allocation Reference தாளில் இந்த நிறுவனத்திற்குப் பட்டியலிடப்பட்ட Cost Center Code ஐத் தேர்ந்தெடுக்கவும்.",
-      "date": "தேதியை YYYY-MM-DD ஆக அல்லது Excel தேதியாக உள்ளிடவும்.",
-      "required": "இந்த நெடுவரிசையை நிரப்பவும் - இது கட்டாயமானது.",
-      "yesNo": "yes அல்லது no என உள்ளிடவும்.",
-      "revalidate": "இந்த வரிசை மீண்டும் சரிபார்க்கப்பட, திருத்திய கோப்பை மீண்டும் பதிவேற்றவும்.",
-      "permission": "இந்த வரிசையை நீக்கவும், அல்லது இந்த ஊழியரின் நிறுவனத்திற்கான அணுகலை நிர்வாகியிடம் கேட்கவும்.",
-      "systemError": "கோப்பை மீண்டும் பதிவேற்றவும். இது தொடர்ந்தால், ஆதரவு குறிப்பு எண்ணைத் தொழில்நுட்பக் குழுவிடம் கொடுக்கவும்.",
-      "textCode": "கலத்தை Text ஆக வடிவமைத்து குறியீட்டை மீண்டும் உள்ளிடவும்.",
-      "noFormula": "சூத்திரம் அல்ல, மதிப்பையே தட்டச்சு செய்யவும்.",
-      "existingEmployee": "ஊழியர் ID ஐச் சரிபார்க்கவும். புதிய ஊழியரை முதலில் \"அனைத்தும் - புதிய பணியாளர்கள்\" மூலம் சேர்க்க வேண்டும்.",
-      "percentage": "0 ஐ விட அதிகமான, அதிகபட்சம் 100 வரையிலான சதவீதத்தை, இரண்டு தசம இடங்கள் வரை உள்ளிடவும்.",
-      "periodUnit": "எண்ணையும் அதன் அலகையும் (Month, Week அல்லது Day) சேர்த்து உள்ளிடவும்.",
-      "reason": "குறைந்தது மூன்று எழுத்துகள் கொண்ட காரணத்தை உள்ளிடவும்.",
-      "statutoryRecord": "முதலில் ஊழியரின் அடையாள எண்ணை அவரது பணியாளர் பதிவில் சேமித்து, பின்னர் இந்தக் கோப்பை மீண்டும் பதிவேற்றவும்.",
-      "template": "தற்போதைய வார்ப்புருவைப் பதிவிறக்கி, உங்கள் வரிசைகளை அதில் நகலெடுத்து மீண்டும் பதிவேற்றவும்.",
-      "bankPair": "வங்கியின் பெயரையும் வங்கிக் கணக்கு எண்ணையும் சேர்த்து உள்ளிடவும்."
-    },
-    "bank": {
-      "duplicateEmployeeId": "இந்தக் கோப்பில் ஊழியர் ID மீண்டும் வருகிறது; முதலில் Excel வரிசை {row} இல் பயன்படுத்தப்பட்டது.",
-      "duplicateCardId": "இந்தக் கோப்பில் அட்டை ID மீண்டும் வருகிறது.",
-      "cardIdTaken": "card_id ஏற்கனவே வேறொரு ஊழியரைக் குறிக்கிறது; பயன்படுத்தப்படாத அட்டை ID ஐத் தேர்ந்தெடுக்கவும்.",
-      "noPermission": "இந்த ஊழியரைப் புதுப்பிக்க உங்களுக்கு அனுமதி இல்லை.",
-      "changedAfterValidation": "இந்த வரிசை சேமிக்கப்படவில்லை. சரிபார்ப்புக்குப் பிறகு அதன் தரவு அல்லது அனுமதிகள் மாறிவிட்டன; மீளாய்வு செய்து மீண்டும் இறக்குமதி செய்யவும்.",
-      "missingEmployeeId": "employee_code இல்லை — இதுவே புதுப்பிக்கப்படும் ஊழியருக்கான இணைப்பு",
-      "unknownEmployee": "\"{code}\" என்ற ஊழியர் ID உடைய ஊழியர் யாரும் இல்லை. பிரிவுக் கோப்பு அமைப்பில் ஏற்கனவே உள்ளவர்களை மட்டுமே புதுப்பிக்க முடியும் — யாரையும் சேர்க்க முடியாது. இவரைச் சேர்க்க, இந்தப் பக்கத்தின் மேலே \"அனைத்தும் — புதிய பணியாளர்கள்\" ஐத் தேர்ந்தெடுத்து முழு ஊழியர் வார்ப்புருவைப் பயன்படுத்தி, பின்னர் இந்தக் கோப்பை மீண்டும் இயக்கவும்.",
-      "duplicateEmployeeCode": "இந்தக் கோப்பில் employee_code மீண்டும் வருகிறது",
-      "bankTransferNeedsBank": "வங்கிப் பரிமாற்றத்திற்கு வங்கியின் பெயரும் கணக்கு எண்ணும் தேவை.",
-      "bankPair": "bank_name மற்றும் bank_account_no இரண்டையும் சேர்த்து வழங்க வேண்டும்",
-      "noStatutoryRecordYet": "இந்த ஊழியருக்கு இன்னும் சட்டப்பூர்வப் பதிவு இல்லை — முதலில் அவரது அடையாள எண்ணை பணியாளர் பதிவில் சேமித்து, பின்னர் இந்தக் கோப்பை மீண்டும் இயக்கவும்",
-      "noStatutoryRecord": "இந்த ஊழியருக்குச் சட்டப்பூர்வப் பதிவு இல்லை; முதலில் பணியாளர் பதிவில் சட்டப்பூர்வ அமைப்பை முடிக்கவும்.",
-      "notActiveOption": "\"{value}\" என்பது செயலில் உள்ள {category} தேர்வு அல்ல — நெடுவரிசை {column}",
-      "yesNo": "{column} yes அல்லது no ஆக இருக்க வேண்டும்",
-      "jobStopped": "இறக்குமதி நிறுத்தப்பட்டது. ஏற்கனவே சேமித்த வரிசைகள் தக்கவைக்கப்படும். மீண்டும் முயலும் முன் முடிவையும் உங்கள் அணுகலையும் மீளாய்வு செய்யவும். குறிப்பு எண் {ref}.",
-      "jobStoppedEarlier": "இறக்குமதி நிறுத்தப்பட்டது. ஏற்கனவே சேமித்த வரிசைகள் தக்கவைக்கப்படும். மீண்டும் முயலும் முன் முடிவையும் உங்கள் அணுகலையும் மீளாய்வு செய்யவும்.",
-      "fileTooLarge": "கோப்பு இறக்குமதி அளவு அல்லது பணித்தாள் வரம்புகளை மீறுகிறது. அதிகபட்சம் 250,000 வரிசைகள் மற்றும் 128 MiB பயன்படுத்தவும்.",
-      "fileUnreadable": "கோப்பைப் படிக்க முடியவில்லை. வங்கி மற்றும் சட்டப்பூர்வம் வார்ப்புருவையும் அதன் குறிப்புத் தாள்களையும் பயன்படுத்தவும்.",
-      "fileRowCount": "1 முதல் 250,000 தரவு வரிசைகள் கொண்ட கோப்பைத் தேர்ந்தெடுக்கவும்.",
-      "fileIncomplete": "பதிவேற்றிய கோப்பு முழுமையற்றது அல்லது அதன் சரிபார்ப்புத் தொகை வேறுபடுகிறது. மீண்டும் பதிவேற்றவும்."
-    },
-    "allocation": {
-      "errors": {
-        "invalid": "பூஜ்ஜியத்தை விட அதிகமான, அதிகபட்சம் 100 வரையிலான சதவீதத்தை, இரண்டு தசம இடங்கள் வரை உள்ளிடவும்.",
-        "duplicate": "ஒவ்வொரு செலவு மையத்தையும் ஒரு முறை மட்டும் தேர்ந்தெடுக்கவும்.",
-        "total": "மொத்த ஒதுக்கீடு 100% ஐ மீறக்கூடாது.",
-        "scope": "ஊழியர் பதிவு அல்லது அனுமதி கிடைக்கவில்லை.",
-        "label": "ஒரு செலவு மையம் இந்த நிறுவனத்திற்குச் செயலற்றது அல்லது கிடைக்கவில்லை.",
-        "changed": "ஒதுக்கீடுகள் மாறிவிட்டன. மீண்டும் ஏற்றி மீண்டும் முன்னோட்டமிடவும்.",
-        "date": "உறுதிப்படுத்தப்பட்ட வேலைவாய்ப்பு நிறுவன வரலாறு உள்ள நடைமுறைத் தேதியைத் தேர்ந்தெடுக்கவும்.",
-        "clear": "ஒதுக்கீடுகளை அழிக்க வெளிப்படையான Clear செயல்பாடு தேவை.",
-        "preview": "உள்ளீடு அல்லது குறிப்புத் தரவு மாறிவிட்டது. மீண்டும் முன்னோட்டமிடவும்.",
-        "binding": "ஒவ்வொரு ஒதுக்கீட்டையும் ஒரு நிறுவனம் மற்றும் ஒரு ஊழியர் ID உடன் பொருத்தவும்.",
-        "transfer": "இடமாற்றத்திற்கு முன், இடமாற்றத் தேதியில் வெளிப்படையான Clear தொகுப்பைச் சேமித்து, பின்னர் திட்டமிடப்பட்ட தொகுப்புகளை அழிக்கவும். பின்னர் சேரும் நிறுவனத்திற்கான புதிய ஒதுக்கீட்டைச் சேமிக்கவும்."
-      },
-      "operation": "Operation என்பது Replace அல்லது Clear ஆக இருக்க வேண்டும், மேலும் ஒரு ஊழியர் மற்றும் ஒரு தேதிக்கான ஒவ்வொரு வரிசையிலும் ஒன்றாக இருக்க வேண்டும்.",
-      "clearRow": "Clear க்கு Cost Center Code மற்றும் Percentage வெறுமையாக உள்ள சரியாக ஒரு வரிசை தேவை.",
-      "costCenterUnavailable": "இந்த Cost Center Code {company} க்குக் கிடைக்கவில்லை.",
-      "companyRequired": "Company Code கட்டாயமானது.",
-      "companyAmbiguous": "Company Code \"{code}\" ஒன்றுக்கு மேற்பட்ட நிறுவனங்களுடன் பொருந்துகிறது. Reference தாளில் பட்டியலிடப்பட்ட Company Code ஐப் பயன்படுத்தவும்.",
-      "companyUnknown": "Company Code \"{code}\" நீங்கள் இறக்குமதி செய்யக்கூடிய எந்த நிறுவனத்துடனும் பொருந்தவில்லை.",
-      "effectiveDate": "Effective Date என்பது YYYY-MM-DD வடிவிலான தேதியாக இருக்க வேண்டும்.",
-      "employeeInvalid": "ஊழியர் ID இல்லை அல்லது தவறானது.",
-      "employeeAmbiguous": "ஊழியர் ID {code} {company} இன் ஒன்றுக்கு மேற்பட்ட ஊழியர்களுடன் பொருந்துகிறது.",
-      "employeeNotInCompany": "ஊழியர் ID {code} {date} அன்று {company} இன் ஊழியர் அல்ல.",
-      "heldBack": "இந்தக் கோப்பில் ஊழியர் ID {code} க்கான மற்றொரு ஒதுக்கீட்டில் பிழைகள் உள்ளன, எனவே இந்த ஊழியர் இறக்குமதி செய்யப்படவில்லை. முதலில் அந்த வரிசையைத் திருத்தவும்.",
-      "unavailable": "ஒதுக்கீட்டின் நிறுவனம், ஊழியர் அல்லது நடைமுறைத் தேதி கிடைக்கவில்லை.",
-      "saveFailed": "இந்த ஊழியரைச் சேமிக்க முடியவில்லை; அவருக்கு எதுவும் மாற்றப்படவில்லை.",
-      "file": {
-        "legacyLayout": "இந்தக் கோப்பு உள் நிறுவன அடையாளம் (company_id) கொண்ட பழைய அமைப்பைப் பயன்படுத்துகிறது. புதிய வார்ப்புருவைப் பதிவிறக்கி, அதற்குப் பதிலாக Company Code நெடுவரிசையை நிரப்பவும்.",
-        "duplicateHeaders": "மீண்டும் வரும் ஒதுக்கீட்டு நெடுவரிசைத் தலைப்புகள் அனுமதிக்கப்படாது.",
-        "missingColumns": "ஒதுக்கீட்டு நெடுவரிசைகள் இல்லை: {columns}",
-        "unexpectedColumns": "எதிர்பாராத ஒதுக்கீட்டு நெடுவரிசைகள்: {columns}",
-        "tooManyRows": "ஒரு கோப்பிற்கு அதிகபட்சம் 5000 ஒதுக்கீட்டு வரிசைகளைப் பயன்படுத்தவும்.",
-        "tooLarge": "ஒதுக்கீட்டுக் கோப்பு ஆதரிக்கப்படும் அளவை மீறுகிறது.",
-        "tooLarge10": "10 MB க்கு மேல் இல்லாத கோப்பைத் தேர்ந்தெடுக்கவும்.",
-        "unreadableWorkbook": "பணிப்புத்தகத்தைப் படிக்க முடியவில்லை. வார்ப்புருவைப் பதிவிறக்கி மீண்டும் முயலவும்.",
-        "utf8": "CSV கோப்பை UTF-8 ஆகச் சேமிக்கவும்.",
-        "fileType": ".xlsx வார்ப்புருவையோ அதே நெடுவரிசைகள் கொண்ட .csv கோப்பையோ தேர்ந்தெடுக்கவும்.",
-        "unreadable": "இந்தக் கோப்பைப் படிக்க முடியவில்லை.",
-        "noRows": "இந்தக் கோப்பில் ஒதுக்கீட்டு வரிசைகள் இல்லை."
-      }
-    },
-    "correction": {
-      "noFormula": "சூத்திரங்களும் பிழைக் கலங்களும் ஏற்கப்படாது.",
-      "textCode": "முன்னணி பூஜ்ஜியங்களைத் தக்கவைக்க குறியீட்டை உரையாக உள்ளிடவும்.",
-      "date": "YYYY-MM-DD அல்லது Excel தேதியைப் பயன்படுத்தவும்.",
-      "tooLong": "அதிகபட்சம் 1,000 எழுத்துகள்.",
-      "periodUnit": "காலத்தையும் அதன் அலகையும் சேர்த்து உள்ளிடவும் ({unit}).",
-      "notOption": "\"{value}\" இந்த நிறுவனத்திற்கான தேர்வு அல்ல. {sheet} குறிப்புத் தாளைச் சரிபார்க்கவும்.",
-      "superiorUnknown": "இந்த ஊழியர் ID தெரியவில்லை அல்லது உங்களுக்குத் தெரியாது.",
-      "organisationFormula": "அமைப்பு நெடுவரிசைகளில் சூத்திரங்கள் அல்லது பிழைக் கலங்கள் இருக்கக்கூடாது.",
-      "organisationTooLong": "அமைப்பு மதிப்பு: அதிகபட்சம் 1,000 எழுத்துகள்.",
-      "companyRequired": "Company Code கட்டாயமானது.",
-      "employeeRequired": "ஊழியர் ID கட்டாயமானது.",
-      "reasonShort": "Correction Reason குறைந்தது மூன்று எழுத்துகளைக் கொண்டிருக்க வேண்டும்.",
-      "duplicateEmployee": "இந்த ஊழியர் ஒன்றுக்கு மேற்பட்ட முறை வருகிறார். ஒரு ஊழியருக்கு ஒரு திருத்த வரிசையை மட்டும் வைத்திருக்கவும்.",
-      "companyUnknown": "Company Code தெரியாதது, தெளிவற்றது அல்லது உங்கள் அனுமதிக்கு வெளியே உள்ளது.",
-      "employeeUnknown": "தற்போதைய நிறுவனத்தில் ஊழியர் ID தெரியாதது அல்லது தெளிவற்றது.",
-      "newCompanyUnknown": "New Company Code தெரியாதது, தெளிவற்றது அல்லது உங்கள் அனுமதிக்கு வெளியே உள்ளது.",
-      "gradeInactive": "Job Grade செயலில் உள்ள கணினிக் குறியீடு அல்ல.",
-      "sameEmployee": "பல வரிசைகள் ஒரே ஊழியரைக் குறிக்கின்றன."
-    }
-  },
-  "importErrorLogEmployee": {
-    "problemsTitle": "சரிசெய்ய வேண்டிய சிக்கல்கள்",
-    "missingColumn": "இந்த கட்டாய நெடுவரிசை தாளில் இல்லை.",
-    "thisField": "இந்த நெடுவரிசை",
-    "downloadFailed": "பிழைப் பதிவைத் தயாரிக்க முடியவில்லை. மீண்டும் முயலவும்.",
-    "correction": {
-      "reference": "Reference தாளிலிருந்து {field} ஐத் தேர்ந்தெடுக்கவும்.",
-      "date": "தேதியை YYYY-MM-DD ஆக அல்லது Excel தேதியாக உள்ளிடவும்.",
-      "month": "மாதத்தை YYYY-MM ஆக உள்ளிடவும்.",
-      "required": "{field} ஐ நிரப்பவும் - இது கட்டாயம்.",
-      "requiredForContract": "இந்த நெடுவரிசையை நிரப்பவும் - ஒப்பந்த ஊழியர்களுக்கு இது கட்டாயம்.",
-      "duplicateInFile": "இந்த மதிப்பு கோப்பில் ஒன்றுக்கு மேற்பட்ட முறை வருகிறது - ஒரு வரிசையை மட்டும் வைக்கவும்.",
-      "duplicateEmployeeId": "இந்த ஊழியர் ID கோப்பில் ஒன்றுக்கு மேற்பட்ட முறை வருகிறது - ஒரு வரிசையை மட்டும் வைக்கவும்.",
-      "duplicateInSystem": "இந்த மதிப்பு ஏற்கனவே மற்றொரு ஊழியரால் பயன்படுத்தப்படுகிறது - வேறு மதிப்பை உள்ளிடவும், அல்லது இந்த வரிசையை நீக்கவும்.",
-      "number": "எண்ணை உள்ளிடவும் (இலக்கங்கள் மட்டும், நாணயக் குறி இல்லாமல்).",
-      "choice": "Instructions அல்லது Reference தாளில் உள்ள மதிப்புகளில் ஒன்றைத் தேர்ந்தெடுக்கவும்.",
-      "yesNo": "Yes அல்லது No என உள்ளிடவும்.",
-      "email": "முழு மின்னஞ்சல் முகவரியை உள்ளிடவும், உதாரணமாக name@company.com.",
-      "notOnEmployeeSheet": "இந்த ஊழியரை ஊழியர் தாளில் சேர்க்கவும், அல்லது ஊழியர் ID ஐத் திருத்தவும்.",
-      "employeeNotFound": "ஊழியர் ID ஐச் சரிபார்க்கவும். புதிய ஊழியரைச் சேர்க்க, முதலில் அனைத்தும் - புதிய பணியாளர்கள் என்பதைப் பயன்படுத்தவும்.",
-      "missingColumn": "தற்போதைய வார்ப்புருவைப் பயன்படுத்தி {field} நெடுவரிசையைச் சேர்த்து, மீண்டும் பதிவேற்றவும்.",
-      "wrongSection": "அந்த நெடுவரிசையை நீக்கவும், அல்லது அதற்குரிய வார்ப்புருவுடன் இறக்குமதி செய்யவும்.",
-      "system": "மீண்டும் முயலவும். இது தொடர்ந்தால், ஆதரவுக் குறிப்பை உங்கள் நிர்வாகியிடம் வழங்கவும்.",
-      "uploadAgain": "இறக்குமதியை நிறுத்திய வரிசைகளைச் சரிசெய்து, பின்னர் முழுக் கோப்பையும் மீண்டும் பதிவேற்றவும்."
-    }
-  },
-  "importProblems": {
-    "headers": {
-      "sheet": "தாள்",
-      "row": "Excel வரிசை",
-      "category": "வகை",
-      "reference": "குறிப்பு",
-      "employeeName": "ஊழியர் பெயர்",
-      "field": "புலம்",
-      "value": "உள்ளிட்ட மதிப்பு",
-      "problem": "என்ன தவறு",
-      "correction": "சரிசெய்வது எப்படி",
-      "stage": "கண்டறியப்பட்டது",
-      "result": "முடிவு",
-      "errorReference": "உதவி குறிப்பு"
-    },
-    "stage": {
-      "file": "கோப்பைப் படிக்கும்போது",
-      "check": "கோப்பைச் சரிபார்க்கும்போது",
-      "save": "சேமிக்கும்போது",
-      "system": "கணினிப் பிழை"
-    },
-    "result": {
-      "refused": "இறக்குமதி செய்யப்படவில்லை",
-      "skipped": "தவிர்க்கப்பட்டது",
-      "stopped": "இறக்குமதியை நிறுத்தியது",
-      "cancelled": "சேமிக்கப்படவில்லை - வேறு வரிசை இறக்குமதியை நிறுத்தியது",
-      "not_saved": "சேமிக்கப்படவில்லை - திருத்திய கோப்பை மீண்டும் பதிவேற்றவும்"
-    },
-    "hiddenValue": "(மறைக்கப்பட்டது)",
-    "wholeFile": "முழுக் கோப்பு",
-    "moreInLog": "மேலும் {count} சிக்கல்கள் பிழைப் பதிவில் உள்ளன.",
-    "downloadLog": "பிழைப் பதிவைப் பதிவிறக்கு",
-    "summary": {
-      "sheetTitle": "சுருக்கம்",
-      "batch": "இறக்குமதி",
-      "file": "கோப்பு",
-      "status": "நிலை",
-      "problems": "சிக்கல்கள்",
-      "truncated": "இறக்குமதி பதிவு செய்யப்பட்டபோது இந்தப் பட்டியல் சுருக்கப்பட்டது. அனைத்து சிக்கல்களையும் காண இறக்குமதி முடிந்தவுடன் பிழைப் பதிவைப் பதிவிறக்கவும்."
     }
   },
   "agencyPortal": {

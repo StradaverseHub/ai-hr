@@ -4,10 +4,10 @@
  *
  * Two audiences:
  *   - HR (withRecruitmentTenant): the company's careers page settings, its publish switch and privacy notice versions,
- *     and each job's "Show on careers page" switch (recruitment administrators only; 5708 refuses anybody else again);
+ *     and each job's "Show on careers page" switch (recruitment administrators only; 5858 refuses anybody else again);
  *     the careers application (source, message, arrival) on an application page for the job's reviewers.
  *   - The VISITOR (anonymous): the careers page, one job and the application form. No session exists, so these calls
- *     use the app role's plain connection and reach the data ONLY through 5708's three SECURITY DEFINER functions, which
+ *     use the app role's plain connection and reach the data ONLY through 5858's three SECURITY DEFINER functions, which
  *     take the address and job id (plus the form) and return only the public fields. Every unavailable page or job is the
  *     same null ("not found"); every well-formed accepted, repeated or honeypot submission is the same "received".
  * Nothing here sends a message (D-029), calls a model or scores a candidate.
@@ -150,7 +150,7 @@ export async function setCareersPublished(s: SessionContext, companyId: unknown,
   });
 }
 
-/** A job's "Show on careers page" switch: recruitment administrators of the job's company only (5708 refuses again). */
+/** A job's "Show on careers page" switch: recruitment administrators of the job's company only (5858 refuses again). */
 export async function setJobCareersPage(s: SessionContext, jobId: string, on: unknown): Promise<void> {
   const value = on === true || on === 'on' || on === 'true';
   const user = actorId(s);
@@ -458,7 +458,7 @@ async function queueCareersReceipt(address: string, jobId: string, applicationId
     [tokenHash, applicationId, mail.subject, mail.text, mail.html]);
 }
 
-// ── Slice 21b: response links (5723) ───────────────────────────────────────────────────────────────────────────────
+// ── Slice 21b: response links (5873) ───────────────────────────────────────────────────────────────────────────────
 
 /** What a candidate's response link shows: the job and company, the interview's time and type (or "your offer"), whether it still
  *  takes an answer and the answer given. No other data. */
@@ -493,7 +493,7 @@ export async function answerCandidateResponse(token: string, answer: 'accepted' 
   return { status: 'not_found' };
 }
 
-// ── Slice 22: the anonymous candidate survey (5724) ─────────────────────────────────────────────────────────────────
+// ── Slice 22: the anonymous candidate survey (5874) ─────────────────────────────────────────────────────────────────
 
 /** What a live survey link shows: the company's name only. Null for an unknown, used or expired link (one page for all three).
  *  Read-only: opening a link changes nothing (mail scanners open links). */
@@ -503,7 +503,7 @@ export async function candidateSurveyView(token: string): Promise<{ companyName:
   return row?.r ? { companyName: String(row.r.companyName ?? '') } : null;
 }
 export type CandidateSurveyResult = { status: 'answered' | 'closed' | 'limited' } | { status: 'invalid'; fields: string[] };
-/** The candidate's answers (a POST), checked here and again by 5724: answered once; closed (unknown, used or expired); limited (20 an
+/** The candidate's answers (a POST), checked here and again by 5874: answered once; closed (unknown, used or expired); limited (20 an
  *  hour per client, counted with response links); invalid (the fields to correct; nothing is counted or stored). */
 export async function answerCandidateSurvey(token: string, form: Readonly<Record<string, unknown>>, clientHash: string): Promise<CandidateSurveyResult> {
   if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return { status: 'closed' };

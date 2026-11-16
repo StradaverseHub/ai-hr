@@ -75,15 +75,15 @@ export {
 } from './referral-model';
 export type { ReferralStatus, ReferralRefusal, ReferralProgress } from './referral-model';
 // Slice 8 — the public careers page and online applications: HR's settings, notice versions and job switch; the
-// anonymous page, job and submission (through 5708's definer functions only); the careers record on an application.
+// anonymous page, job and submission (through 5858's definer functions only); the careers record on an application.
 export {
   careersSettings, updateCareersSettings, setCareersPublished, setJobCareersPage, jobCareersStatus, applicationCareers, careersPublicPage,
   careersPublicJob, submitCareersApplication, careersClientLimited,
-  // Slice 21a: verified applicants (5722).
+  // Slice 21a: verified applicants (5872).
   careersApplyMode, requestCareersCode, checkCareersCode,
-  // Slice 21b: candidate response links (5723).
+  // Slice 21b: candidate response links (5873).
   candidateResponseView, answerCandidateResponse,
-  // Slice 22: the anonymous candidate survey (5724).
+  // Slice 22: the anonymous candidate survey (5874).
   candidateSurveyView, answerCandidateSurvey,
 } from './careers';
 export type {
@@ -99,7 +99,7 @@ export {
 } from './careers-model';
 export type { CareersPublishRequirement, CareersFormField, CareersFieldError, CareersOutcome, CareersApplicationInput, CareersSettingsInput } from './careers-model';
 // Slice 9 — recruitment tasks and updates: the live to-do list (also the bell's recruitment tasks), the live updates per
-// category, unread counts against the viewer's own read markers (5709) and "Mark all as read".
+// category, unread counts against the viewer's own read markers (5859) and "Mark all as read".
 export { recruitmentTodos, recruitmentJobTodos, recruitmentWaitingTodos, recruitmentUpdates, recruitmentUnreadCounts, markRecruitmentTasksRead, pendingRecruitmentTasks } from './tasks';
 export type { RecruitmentUpdatesPage, RecruitmentJobTodos } from './tasks';
 export {
@@ -261,7 +261,7 @@ export type { WaitingDayKind, WaitingFilter, WaitingRule, WaitingLevel, WaitingR
 // Slice 18 — interview set-up: interviewer groups (scheduling and addInterviewers add each current member once; the group grants
 // nothing and is not recorded on the interview), the question bank linked to scorecard templates (read-only guidance on the feedback
 // form, never scored; retired questions hidden), and the company's interview addresses and meeting rooms (a room is never booked
-// for two overlapping interviews: 5719's exclusion constraint). No meeting or calendar integration (D-058).
+// for two overlapping interviews: 5869's exclusion constraint). No meeting or calendar integration (D-058).
 export {
   interviewerGroupSettings, saveInterviewerGroup, deleteInterviewerGroup, questionBankSettings, saveInterviewQuestion, setInterviewQuestionRetired,
   deleteInterviewQuestion, interviewPlaceSettings, saveInterviewAddress, deleteInterviewAddress, saveInterviewRoom, deleteInterviewRoom,
@@ -293,7 +293,7 @@ export type {
 } from './hiring-model';
 // Slice 19 — candidate e-mail: the company's sender and templates (administrators), the previews people see, receipts HR ticks and
 // rejection letters queued with the action they belong to (careers-page receipts wait for slice 21, D-064), the application page's list, an administrator's retry, and the sweep
-// step that delivers through the embedded relay (5720; docs/adr/2026-11-14-recruitment-candidate-email.md).
+// step that delivers through the embedded relay (5870; docs/adr/2026-11-14-recruitment-candidate-email.md).
 export {
   candidateEmailComposers, previewCandidateEmail, candidateEmailSettings, saveCandidateEmailSettings, saveCandidateEmailTemplate, resetCandidateEmailTemplate,
   applicationCandidateEmails, retryCandidateEmail, candidateEmailDefault, rejectionEmailPreviews, REJECTION_PREVIEW_LIMIT,
@@ -311,7 +311,7 @@ export {
 } from './candidate-email-model';
 export type { CandidateEmailKind, CandidateEmailLocale, CandidateEmailDisplayState, RenderedCandidateEmail } from './candidate-email-model';
 // Slice 20 — candidate e-mail about interviews and offers: the schedule form's invitation offer and live preview (rendered on the server
-// with the function that freezes it), cancellation and offer previews, and the reminder settings (5721; D-065).
+// with the function that freezes it), cancellation and offer previews, and the reminder settings (5871; D-065).
 export { invitationOffer, previewInterviewInvitation, interviewCancellationPreviews, offerEmailPreview, interviewEmailLabels } from './candidate-email-hiring';
 export type { InvitationOffer, InvitationPreview, CancellationEmailPreview, OfferEmailPreview, OfferEmailBlock, InterviewEmailOutcome } from './candidate-email-hiring';
 export {
@@ -320,7 +320,7 @@ export {
 } from './candidate-email-model';
 export type { InterviewEmailLabels, InterviewEmailFacts, InterviewPlaceOption, OfferEmailLine } from './candidate-email-model';
 // Slice 22 — the anonymous candidate survey after a hire or a rejection: settings, the link the sweep makes, the survey page's
-// questions and the results' minimums (5724; D-067).
+// questions and the results' minimums (5874; D-067).
 export {
   SURVEY_LINK_PLACEHOLDER, SURVEY_DELAY_DEFAULT, SURVEY_DELAY_MIN, SURVEY_DELAY_MAX, SURVEY_RATINGS, SURVEY_RECOMMEND, SURVEY_COMMENT_MAX,
   SURVEY_MIN_RESPONSES, SURVEY_COMMENT_LIMIT, parseSurveyDelay, withSurveyLink, validateSurveyAnswers, summarizeSurvey, surveyFigures,
@@ -328,7 +328,7 @@ export {
 } from './candidate-email-model';
 export type { SurveyRating, SurveyRecommend, SurveyAnswers, SurveyTally, SurveyFigures, SurveySummary } from './candidate-email-model';
 // Slice 23 — referral rewards (a job's fixed reward, HR approval after probation, one payroll earning) and agency fees (recorded
-// and approved, never paid through payroll) (5725; D-063, D-068).
+// and approved, never paid through payroll) (5875; D-063, D-068).
 export {
   setJobReferralReward, referralRewards, decideReferralReward, rewardPayrollCompanies, rewardPayrollQueue, sendRewardToPayroll,
   agencyFees, recordAgencyFee, decideAgencyFee,
@@ -340,11 +340,11 @@ export {
 } from './reward-model';
 export type { RewardState, MyRewardState, RewardFacts, RewardHireFacts, RewardPayee, AgencyFeeInput, ValidAgencyFee } from './reward-model';
 // Slice 24 — AI match summary suggestions for the job's reviewers: never a rank, score or decision, never stored, and locked until
-// the owner records the provider-data approval for recruitment_match_summary_v1; a company switch, default off (5726; D-063, D-069).
+// the owner records the provider-data approval for recruitment_match_summary_v1; a company switch, default off (5876; D-063, D-069).
 export { suggestMatchSummary, matchSummarySetting, matchSummaryOffered, updateMatchSummarySetting, matchSummaryApproved } from './match-summary';
 export type { MatchSummarySetting, RecruitmentMatchSummary } from './match-summary';
 // Slice 25 — the agency portal: consultants sign in on the careers address with an e-mailed code, see the jobs released to their
-// contracts, submit candidates into HR's inbox and follow a coarse status; HR records each through slice 10 or declines it (5727; D-070).
+// contracts, submit candidates into HR's inbox and follow a coarse status; HR records each through slice 10 or declines it (5877; D-070).
 export {
   requestAgencyPortalCode, checkAgencyPortalCode, agencyPortalAvailable, signOutAgencyPortal, agencyPortalView, submitAgencyPortal,
   agencyPortalInbox, recordAgencyPortalSubmission, declineAgencyPortalSubmission, agencyPortalResume, agencyPortalSetting, updateAgencyPortalSetting,

@@ -41,7 +41,8 @@ import {pendingReviewCandidatesExistSql,pendingReviewTaskMetadata} from './emplo
 import {pendingPerformanceTasks} from '../packs/performance/service';
 import {pendingRewardTasks} from '../packs/rewards/service';
 import {pendingRecruitmentTasks} from '../packs/recruitment/service';
-import {RECRUITMENT_TASK_KINDS,type PackTaskItem,type PackTaskKind,type PackTaskProvider,type RecruitmentTaskKind} from '../lib/assigned-work';
+import {pendingProbationTasks} from '../packs/probation/service';
+import {RECRUITMENT_TASK_KINDS,type PackTaskAction,type PackTaskItem,type PackTaskKind,type PackTaskProvider,type RecruitmentTaskKind} from '../lib/assigned-work';
 import type {AccountTaskBundle,AccountTaskModules,AccountTaskRead} from './account-task-bundle';
 
 /** The account task statement, loaded on first use: this file is reached from the root layout and from narrow unit
@@ -78,6 +79,8 @@ export type PendingTaskItem = {
   createdAt: string;
   /** Where the user acts on it — the matching /approvals section where one exists. */
   linkPath: string;
+  /** Probation's step code and part (lib/assigned-work.ts PackTaskAction), for a plain-language title; absent elsewhere. */
+  action?: PackTaskAction;
 };
 
 /**
@@ -100,10 +103,12 @@ export type PendingTaskItem = {
  * `true` would throw for a declined tenant and `false` would hide real tasks from a paying one — and the
  * next caller would inherit whichever was guessed. Making it a parameter puts the compiler on the hook.
  */
-export type InboxModules = { attendance: boolean; claims: boolean; performance: boolean; rewards: boolean };
+export type InboxModules = { attendance: boolean; claims: boolean; performance: boolean; rewards: boolean;
+  /** Probation (Lifecycle): on for the tenant or for any scoped company. Mobile callers pass false (published kinds). */
+  probation: boolean };
 /**
  * Recruitment slice 9 — the caller ALSO answers whether Recruitment is enabled, which is how a surface asks for the
- * recruitment to-dos at all. Required on this type for the same reason as the four above; a surface that passes plain
+ * recruitment to-dos at all. Required on this type for the same reason as the flags above; a surface that passes plain
  * `InboxModules` has not asked and gets no recruitment kind (the overloads below type its result without them). Only the
  * bell (app/layout.tsx) and My tasks (app/tasks/page.tsx through listMyTasks) ask: Home's task kinds (lib/employee-home.ts)
  * and the mobile v2 task enum do not carry them (D-034).
@@ -123,9 +128,11 @@ export type InboxModulesWithRecruitment = InboxModules & { recruitment: boolean 
  * Each provider is its pack's projection of an owner that already decides the work; it returns only
  * id, kind, subject name, owner time and link (lib/assigned-work.ts PackTaskItem).
  */
-const PACK_TASK_SOURCES:readonly {module:'performance'|'rewards';load:PackTaskProvider}[]=[
+const PACK_TASK_SOURCES:readonly {module:'performance'|'rewards'|'probation';load:PackTaskProvider}[]=[
   {module:'performance',load:pendingPerformanceTasks},
   {module:'rewards',load:pendingRewardTasks},
+  // Probation: one bounded, set-based read of the caller's Approve steps and tasks (migration 5751).
+  {module:'probation',load:pendingProbationTasks},
 ];
 /**
  * Recruitment slice 9: the viewer's personal to-dos only — requisition and offer approval steps waiting for them,
@@ -238,7 +245,8 @@ async function loadBundledCommonTaskSources(ctx:SessionContext,scopeIds:string[]
   bundle:Promise<AccountTaskBundle|null>):CommonTaskSources{
   const read=await bundle,notices=options.noticeAcknowledgements!==false;
   if(!read||!options.preview||!sameRead(read.read,{companyIds:scopeIds,personal:false,notices}))return loadCommonTaskSources(ctx,scopeIds,modules,options);
-  const same=(module:keyof InboxModules)=>read.modules[module]===modules[module];
+  // The account task statement has no Probation section: Probation always reads through its own provider.
+  const same=(module:Exclude<keyof InboxModules,'probation'>)=>read.modules[module]===modules[module];
   const own=<T,>(value:T|null,owner:()=>Promise<T>)=>()=>value!==null?Promise.resolve(value):owner();
   return settleReadGroup([
     own(read.leave,()=>pendingLeaveTaskMetadata(ctx,scopeIds)),()=>loadDecisionHeaders(ctx,scopeIds,true,read),
@@ -247,7 +255,7 @@ async function loadBundledCommonTaskSources(ctx:SessionContext,scopeIds:string[]
     // Profile candidates from the statement still pass the owner's locked decision transaction.
     ()=>read.profile!==null?Promise.resolve(read.profile):read.profileCandidates?pendingProfileTasksFromCandidates(ctx,read.profileCandidates):pendingProfileTaskMetadata(ctx,scopeIds),
     own(notices?read.notices:[],()=>pendingNoticeAcknowledgementTasks(ctx)),
-    ()=>settleReadGroup(PACK_TASK_SOURCES.map(source=>own(same(source.module)?read[source.module]:null,
+    ()=>settleReadGroup(PACK_TASK_SOURCES.map(source=>own(source.module!=='probation'&&same(source.module)?read[source.module]:null,
       ()=>modules[source.module]?source.load(ctx,scopeIds):Promise.resolve([])))),
   ]);
 }
@@ -331,7 +339,7 @@ async function loadPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,m
     ...profile.map(row=>({id:row.id,kind:'profile' as const,subjectName:row.employee,createdAt:iso(row.createdAt),linkPath:`/admin/personnel/profile-changes?assigned=1&requestId=${row.id}#request-${row.id}`})),
     ...projectTasks(claimResult.items,'claim'),...projectTasks(resignations,'resignation'),
     ...projectTasks(managerReviews,'managerReview'),...projectTasks(hrReviews,'hrReview'),
-    ...packTasks.map(({id,kind,subjectName,createdAt,linkPath})=>({id,kind,subjectName,createdAt,linkPath})),
+    ...packTasks.map(({id,kind,subjectName,createdAt,linkPath,action})=>({id,kind,subjectName,createdAt,linkPath,...(action?{action:{code:action.code,part:action.part}}:{})})),
   ];
   items.sort(inboxOrder);
   const omittedClaims=Math.max(0,claimResult.total-claimResult.items.length);

@@ -588,13 +588,22 @@
     "probationTracker": "Penjejak percubaan",
     "myPayrollReadiness": "Kesediaan gaji saya",
     "attendanceFormulaBuilder": "Formula kehadiran",
-    "recruitment": "Pengambilan",
-    "myReferrals": "Rujuk calon",
-    "attendanceRequestOnBehalf": "Mohon Bagi Pihak",
-    "attendanceApproveOnBehalf": "Lulus Bagi Pihak",
     "rewardsReviewSetup": "Persediaan Semakan",
     "rewardsChangeLog": "Log perubahan",
-    "rewardsLimitControls": "Kawalan Had"
+    "rewardsLimitControls": "Kawalan Had",
+    "attendanceRequestOnBehalf": "Mohon Bagi Pihak",
+    "attendanceApproveOnBehalf": "Lulus Bagi Pihak",
+    "moduleHrAutomation": "HR Automation · Shared",
+    "automationWorkflows": "Workflows",
+    "automationTemplates": "Templates",
+    "automationGroups": "Assignment groups",
+    "automationOnOffWorkflows": "On/Off Boarding workflows",
+    "automationOnOffTemplates": "On/Off Boarding templates",
+    "automationOnOffGroups": "On/Off Boarding assignment groups",
+    "probationPostings": "Personnel postings",
+    "probationAccess": "Access",
+    "recruitment": "Pengambilan",
+    "myReferrals": "Rujuk calon"
   },
   "dashboard": {
     "viewAll": "Lihat semua"
@@ -2458,6 +2467,7 @@
           "no_data_rows": "Tambah sekurang-kurangnya satu baris peristiwa di bawah pengepala.",
           "movement_catalog_too_large": "Senarai jenis peristiwa melebihi saiz import yang disokong. Gunakan entri Peristiwa Baharu individu.",
           "movement_reference_catalog_too_large": "Senarai rujukan melebihi saiz import yang disokong. Gunakan Personel untuk perubahan ini.",
+          "movement_template_too_large": "Templat terlalu besar untuk dibina bagi bilangan syarikat dan senarai nilai ini. Tiada fail dihasilkan. Hubungi sokongan untuk bantuan.",
           "movement_history_too_large": "Sejarah pekerja ini melebihi had semakan import. Gunakan Personel untuk merekodkan peristiwa.",
           "change_refused": "Perubahan ditolak. Tiada perubahan untuk pekerja ini disimpan.",
           "workbook_key_unavailable": "Penandatanganan buku kerja belum dikonfigurasi. Hubungi pentadbir sistem; CSV masih boleh digunakan.",
@@ -2526,7 +2536,6 @@
           "movement_field_must_change": "Jenis peristiwa ini memerlukan medan ini diubah.",
           "movement_document_required": "Perubahan ini memerlukan dokumen sokongan, yang tidak boleh dibawa oleh import. Rekodkan pergerakan ini di tab Pergerakan.",
           "movement_document_not_enabled": "Jenis peristiwa ini tidak menerima dokumen sokongan untuk medan ini.",
-          "movement_template_too_large": "Templat terlalu besar untuk dibina bagi bilangan syarikat dan senarai nilai ini. Tiada fail dihasilkan. Hubungi sokongan untuk bantuan.",
           "movement_before_current_record": "Tarikh ini lebih awal daripada rekod syarikat dan jawatan semasa pekerja, yang bermula pada %date%. Gunakan tarikh pada atau selepas %date%, atau batalkan dahulu perubahan yang mewujudkan rekod itu.",
           "movement_already_in_company": "Pekerja sudah berada dalam syarikat ini pada tarikh ini.",
           "movement_label_other_company": "Nilai ini tidak boleh digunakan dalam syarikat pekerja pada tarikh ini. Pilih nilai yang tersedia untuk syarikat itu",
@@ -2622,6 +2631,7 @@
           "referenceValues": "Nilai yang dibenarkan bagi setiap syarikat",
           "colValue": "Nilai untuk dimasukkan dalam Selepas",
           "colLabel": "Maksud",
+          "allCompanies": "Semua syarikat",
           "screenHint": "Satu templat untuk setiap jenis pergerakan dan syarikat. Masukkan satu baris bagi setiap medan yang berubah; baris dengan syarikat, pekerja, tarikh dan jenis peristiwa yang sama ialah satu pergerakan.",
           "downloadTemplate": "Muat turun templat",
           "history": "Sejarah import",
@@ -2656,8 +2666,7 @@
           "closedPayrollRow": "Gaji bagi {periods} sudah ditutup.",
           "closedPayrollTitle": "Sesetengah pembetulan mengubah pergerakan di sebalik gaji yang telah ditutup ({periods}).",
           "closedPayrollBody": "Pembetulan ini mengemas kini rekod pekerja dan pemprosesan akan datang. Gaji yang ditutup, slip gaji yang telah dikeluarkan dan penyerahan berkanun mengekalkan angka muktamad dan tidak akan dikira semula. Tanpa pengesahan ini, pekerja berkenaan tidak disimpan.",
-          "closedPayrollAcknowledge": "Saya faham bahawa gaji yang telah ditutup tidak akan berubah.",
-          "allCompanies": "Semua syarikat"
+          "closedPayrollAcknowledge": "Saya faham bahawa gaji yang telah ditutup tidak akan berubah."
         },
         "historyRow": "Direkodkan sebagai sejarah: {from} hingga {to} mengambil nilai Sebelum. Rekod dari {date} tidak berubah."
       },
@@ -3556,6 +3565,7 @@
       "loading": "Memuatkan…",
       "saved": "Maklumat dibetulkan. Transaksi selesai kekal.",
       "unchanged": "Tiada perubahan — baris ini akan dilangkau.",
+      "effectiveDateOnly": "Tiada apa untuk dibetulkan. Tarikh Berkuat Kuasa hanya menetapkan bila nilai yang dibetulkan mula terpakai. Untuk menukar tarikh rekod pekerja bermula ({date}), betulkan Tarikh Sertai Kumpulan.",
       "history": "Sejarah pembetulan",
       "noHistory": "Tiada pembetulan maklumat sahaja direkodkan.",
       "importHelp": "Kod Syarikat menyemak syarikat sedia ada. Kod Syarikat Baharu adalah pilihan. Sel pembetulan kosong mengekalkan nilai. Rujuk helaian kod sistem. Maksimum 200 baris.",
@@ -3604,7 +3614,6 @@
         "failed": "Gagal",
         "unchanged": "Tiada perubahan"
       },
-      "effective": "Proses akan datang menggunakan maklumat dibetulkan mulai {date}.",
       "templateFields": "Medan yang dibetulkan oleh templat ini (medan baharu diserlahkan). Sel kosong mengekalkan nilai sedia ada.",
       "templateFieldsLabel": "Medan yang dibetulkan oleh templat ini",
       "ownersNote": "Gaji Pokok dan tarikh peletakan jawatan dibetulkan pada peristiwa yang merekodkannya: gunakan import Pergerakan dengan Tindakan \"Update\". Kaedah Pembayaran terdapat dalam import Bank dan Berkanun.",
@@ -3619,10 +3628,10 @@
       "effectiveDateHint": "Sebarang tarikh dari {start} hingga hari ini ({today}). Lalai ialah hari ini.",
       "effectiveDateFollowsJoin": "Tarikh terawal: {start}, Tarikh Sertai Kumpulan yang dimasukkan di bawah.",
       "historyClosedPayroll": "Gaji yang ditutup kekal tidak berubah: {periods}.",
-      "effectiveDateJoin": "Memilih {start}, Tarikh Sertai Kumpulan, membetulkan butiran pengambilan asal pekerja. Syarikat, Jenis Pekerjaan, Unit Perniagaan, Jabatan, Jawatan, label organisasi dan Penyelia Langsung terpakai dari Tarikh Berkuat Kuasa hingga perubahan tercatat seterusnya.",
+      "effectiveDateJoin": "Memilih {start}, Tarikh Sertai Kumpulan, membetulkan butiran pengambilan asal pekerja. Syarikat, Jenis Pekerjaan, Unit Perniagaan, Jabatan, Jawatan, label organisasi dan Penyelia Langsung terpakai dari Tarikh Berkuat Kuasa hingga pergerakan tercatat seterusnya yang mengubahnya. Pembetulan ini menggantikan pembetulan terdahulu mulai tarikh itu.",
       "timeline": {
         "title": "Rekod mengikut susunan Tarikh Berkuat Kuasa",
-        "intro": "Butiran yang dibetulkan ini terpakai mulai {date} hingga perubahan tercatat seterusnya. Rekod kemudian mengekalkan tarikh dan nilainya sendiri. Tiada apa-apa ditimpa atau dipadam.",
+        "intro": "Butiran yang dibetulkan ini terpakai mulai {date} hingga pergerakan tercatat seterusnya yang mengubahnya. Pembetulan terdahulu mulai tarikh ini digantikan dan kekal dalam sejarah pembetulan. Pergerakan mengekalkan tarikh dan nilainya sendiri. Tiada apa-apa dipadam.",
         "date": "Tarikh Berkuat Kuasa",
         "record": "Rekod",
         "company": "Syarikat",
@@ -3639,12 +3648,38 @@
           "conflict": "Bercanggah dengan perubahan ini"
         }
       },
+      "replaced": {
+        "title": "Pembetulan terdahulu yang digantikan oleh pembetulan ini",
+        "intro": "Pembetulan terbaharu mengawal butiran ini mulai {date}. Pembetulan terdahulu di bawah kekal dalam sejarah pembetulan.",
+        "item": "Pembetulan berkuat kuasa {date} ({fields}), disimpan {saved} oleh {actor}"
+      },
       "conflictTitle": "Pembetulan ini tidak boleh disimpan",
       "conflict": "{record} pada {date} merekodkan {field} berubah daripada nilai yang berbeza. Betulkan pergerakan itu dahulu (ID Peristiwa Pergerakan {id}), atau pilih Tarikh Berkuat Kuasa selepas {date}.",
       "closedPayroll": "Gaji bagi {periods} sudah ditutup dalam tempoh yang dibetulkan. Gaji yang ditutup, slip gaji, Borang EA dan serahan berkanun tidak dikira semula.",
       "closedPayrollAcknowledge": "Saya mengesahkan bahawa gaji yang ditutup kekal seperti yang dikeluarkan.",
       "importClosedPayroll": "Baris ini membetulkan tempoh yang mempunyai gaji ditutup. Sahkan di bawah untuk menyimpannya; tanpa pengesahan, baris ini tidak disimpan.",
       "importClosedPayrollRow": "Baris {row} · {employee} · {periods}"
+    }
+  },
+  "importErrorLogMovement": {
+    "correction": {
+      "date": "Masukkan tarikh sebagai DD-MMM-YYYY (contohnya 06-Jan-2026) atau sebagai tarikh Excel.",
+      "required": "Isi medan ini - jenis peristiwa ini memerlukannya.",
+      "chooseCompany": "Pilih ID Syarikat daripada helaian Reference.",
+      "eventType": "Pilih Jenis Peristiwa yang aktif daripada senarai juntai bawah.",
+      "chooseReference": "Pilih nilai daripada senarai juntai bawah atau helaian Reference.",
+      "employeeId": "Semak ID Pekerja dan ID Syarikat pada baris ini dengan rekod Personnel.",
+      "systemField": "Pilih Medan Sistem yang boleh diubah oleh jenis peristiwa ini (lihat helaian Reference), atau buang baris itu.",
+      "duplicateField": "Simpan satu baris sahaja bagi setiap Medan Sistem untuk satu pergerakan.",
+      "number": "Masukkan nombor (digit sahaja, tanpa simbol mata wang).",
+      "noFormula": "Taip nilai itu sendiri, bukan formula.",
+      "movementId": "Salin ID Peristiwa Pergerakan daripada sejarah Pergerakan pekerja.",
+      "before": "Masukkan nilai yang kini ada dalam rekod pekerja sebagai Sebelum, atau muat turun templat baharu.",
+      "otherRows": "Betulkan baris lain bagi pekerja ini, kemudian muat naik semula keseluruhan fail.",
+      "recheck": "Muat naik fail sekali lagi supaya ia disemak berdasarkan rekod semasa.",
+      "template": "Muat turun templat Pergerakan terkini, salin baris anda ke dalamnya dan muat naik semula.",
+      "splitFile": "Pecahkan fail kepada fail yang lebih kecil (paling banyak 200 baris, 50 pekerja dan 20 baris bagi setiap pekerja) dan muat naik setiap satu.",
+      "saveStopped": "Tiada apa-apa yang disimpan untuk pekerja ini. Betulkan masalah itu, kemudian import pekerja ini sekali lagi."
     }
   },
   "leave": {
@@ -5875,7 +5910,13 @@
     "rewards": "Ganjaran",
     "reviewRewards": "Semak ganjaran",
     "focusedDescription": "Permohonan ini sedang ditugaskan kepada anda.",
-    "viewAllAssigned": "Lihat semua kelulusan"
+    "viewAllAssigned": "Lihat semua kelulusan",
+    "probation": "Probation",
+    "probationPart": "Part {part} review",
+    "probationDue": "due {date}",
+    "probationOpen": "Open review",
+    "probationCapped": "Showing the first {shown} approvals.",
+    "probationSeeAll": "See all in the Probation tracker"
   },
   "performance": {
     "list": {
@@ -7395,7 +7436,13 @@
         "running": "Memproses semula pekerja yang dipilih",
         "progress": "{done} daripada {total} pekerja selesai",
         "help": "Anda boleh meninggalkan halaman ini. Setiap pekerja dikira semula secara berasingan, dan keputusan dipaparkan di sini apabila pemprosesan semula selesai."
-      }
+      },
+      "registerSearchLabel": "Cari pekerja dalam larian ini",
+      "registerSearchPlaceholder": "Cari mengikut nama pekerja atau ID Pekerja",
+      "registerSearchSubmit": "Cari",
+      "registerSearchClear": "Kosongkan carian",
+      "registerSearchSummary": "{n} daripada {total} pekerja sepadan dengan “{q}”",
+      "registerSearchEmpty": "Tiada pekerja dalam larian ini yang sepadan dengan “{q}”."
     },
     "transactions": {
       "title": "Kemasukan Transaksi",
@@ -7699,6 +7746,7 @@
         "inputType": "Jenis input",
         "inputTypeNone": "Tiada",
         "amountIsFinalHint": "Jumlah yang dimasukkan di sini ialah jumlah yang dibayar. Formula item gaji tidak digunakan pada transaksi sekali sahaja.",
+        "amountManualFormulaHint": "Jumlah dimasukkan secara manual. Formula Item Gaji ini tidak digunakan untuk transaksi ini.",
         "identicalWarning": "Entri yang serupa sudah wujud untuk pekerja ini (item, tarikh, jumlah dan catatan yang sama). Simpan hanya jika ia benar-benar entri kedua.",
         "saveAndAnother": "Simpan & tambah lagi",
         "cancel": "Batal",
@@ -9024,6 +9072,17 @@
       "traceEpfFlatRate": "Kadar rata, dibundarkan ke atas kepada ringgit",
       "traceEpfRates": "Pekerja {employee} · Majikan {employer}",
       "traceEpfBonusEmployerPartE": "Caruman majikan atas bonus",
+      "traceEpfBonusRuleNormal": "Upah KWSP biasa (tidak termasuk Bonus KWSP 2012)",
+      "traceEpfBonusRuleBonus": "Upah Bonus KWSP 2012",
+      "traceEpfBonusRuleTotal": "Jumlah upah KWSP",
+      "traceEpfBonusRuleRate": "Kadar majikan ditentukan atas upah biasa",
+      "traceEpfBonusRuleRateValue": "{normal} adalah {threshold} atau kurang, maka {rate}",
+      "traceEpfBonusRuleEmployer": "Caruman majikan",
+      "traceEpfBonusRuleEmployerValue": "{base} × {rate} = {exact}, dibundarkan ke atas kepada {amount}",
+      "traceEpfBonusRuleEmployee": "Caruman pekerja (julat jadual)",
+      "traceEpfBonusRuleEmployeeValue": "{range}, maka {amount}",
+      "traceEpfBonusRuleEmployeeAbove": "Caruman pekerja (melebihi RM20,000)",
+      "traceEpfBonusRuleEmployeeAboveValue": "{base} × {rate}, dibundarkan ke atas kepada {amount}",
       "traceEpfFlatNormal": "Pekerja / majikan atas upah biasa",
       "traceEpfFlatBonus": "Pekerja / majikan atas upah bonus",
       "traceEpfMethod": "Kaedah",
@@ -15304,6 +15363,8 @@
       "probation": "Pengesahan Percubaan",
       "contract_staff": "Pengurusan Kontrak",
       "contractDateCorrection": "Pembetulan tarikh kontrak",
+      "probationApproval": "Approve probation review",
+      "probationTask": "Probation task",
       "recruitmentRequisitionApproval": "Luluskan permintaan jawatan",
       "recruitmentOfferApproval": "Luluskan tawaran kerja",
       "recruitmentFeedback": "Beri maklum balas temu duga",
@@ -17520,7 +17581,8 @@
     "moduleLabel": {
       "leave": "Cuti",
       "attendance": "Kehadiran",
-      "claims": "Tuntutan"
+      "claims": "Tuntutan",
+      "probation": "Probation"
     },
     "taskLabel": {
       "leaveApplication": "Kelulusan Permohonan Cuti",
@@ -17530,7 +17592,10 @@
       "claimsClaim": "Kelulusan Tuntutan",
       "leaveRequestCreation": "Penciptaan Permohonan Cuti",
       "leaveAmendmentRequest": "Permohonan Pindaan Cuti",
-      "leaveCancellationRequest": "Permohonan Pembatalan Cuti"
+      "leaveCancellationRequest": "Permohonan Pembatalan Cuti",
+      "probationReview": "Probation review (Head of Department, PBP, GBS)",
+      "probationApprove": "Probation approval (Head of Department, PBP, GBS)",
+      "probationLetterSign": "Probation letter signature"
     },
     "groupLabel": {
       "leaveRequest": "Permohonan Cuti",
@@ -28234,7 +28299,7 @@
     "routeUnavailable": "Pelulus layak seterusnya tidak dapat disahkan daripada laluan disimpan. Minta HR menyemak penetapan.",
     "someApproversUnavailable": "Kelayakan sesetengah pelulus yang disimpan belum dapat disahkan. Minta HR menyemak penugasan.",
     "notStarted": "Belum bermula",
-    "notRequired": "Tiada keputusan lanjut diperlukan",
+    "notRequired": "Tidak Diperlukan",
     "currentEmployeeId": "ID Pekerja semasa",
     "routingRecord": "Rujukan laluan disimpan",
     "notRecorded": "Tidak direkodkan",
@@ -28313,7 +28378,28 @@
     "escalatedBy": "Eskalasi automatik oleh sistem",
     "submittedOnBehalfBy": "Dihantar bagi pihak oleh {name}",
     "approvedOnBehalf": "Diluluskan Bagi Pihak",
-    "rejectedOnBehalf": "Ditolak Bagi Pihak"
+    "rejectedOnBehalf": "Ditolak Bagi Pihak",
+    "pendingApproval": "Menunggu Kelulusan",
+    "waitingPreviousLevel": "Menunggu Kelulusan Peringkat Sebelumnya",
+    "skippedNotRequired": "Dilangkau / Tidak Diperlukan",
+    "levelOrdinal": {
+      "1": "pertama",
+      "2": "kedua",
+      "3": "ketiga",
+      "4": "keempat",
+      "5": "kelima",
+      "6": "keenam",
+      "7": "ketujuh",
+      "8": "kelapan",
+      "9": "kesembilan",
+      "10": "kesepuluh"
+    },
+    "progressMessage": "Kelulusan peringkat {completed} selesai. Menunggu kelulusan peringkat {waiting}.",
+    "progressWaiting": "Menunggu kelulusan peringkat {waiting}.",
+    "progressFinal": "Status keseluruhan permohonan: {status}.",
+    "configurationWarning": "Pelulus bagi peringkat ini tidak dapat ditentukan. Minta HR menyemak tetapan kelulusan.",
+    "levelOfTotal": "Peringkat {level} daripada {total}",
+    "viewApprovalProgress": "Lihat kemajuan kelulusan"
   },
   "scheduleDrafts": {
     "staleLadder": "Julat masa atau kadar kerja lebih masa telah berubah dalam bahagian Umum. Draf anda masih ada di sini. Muat semula halaman ini sebelum menyimpan tetapan kerja lebih masa. Perubahan yang belum disimpan hanya dibuang selepas pengesahan.",
@@ -29917,7 +30003,8 @@
         "lateOffset": "Tolak kelewatan sekali",
         "approval": "Mod kelulusan",
         "autoMethod": "Kaedah kelulusan Auto",
-        "rounding": "Pembundaran tempoh"
+        "rounding": "Pembundaran tempoh",
+        "backdate": "Had tarikh terdahulu kerja lebih masa"
       },
       "days": {
         "normal": "Hari biasa",
@@ -29925,7 +30012,8 @@
         "rest": "Hari rehat",
         "publicHoliday": "Cuti umum",
         "replacementHoliday": "Cuti umum gantian"
-      }
+      },
+      "backdateDays": "{count, plural, other {# hari}}"
     },
     "positionSearch": "Cari jawatan",
     "loadMorePositions": "Muatkan lebih banyak jawatan",
@@ -32365,7 +32453,9 @@
       "assessmentWork": "Penilaian prestasi",
       "careerPlan": "Semakan pelan kerjaya",
       "calibration": "Kalibrasi prestasi",
-      "rewardReview": "Semakan ganjaran"
+      "rewardReview": "Semakan ganjaran",
+      "probationApproval": "Probation approval",
+      "probationTask": "Probation task"
     },
     "quickActions": {
       "leave": "Mohon cuti",
@@ -35771,7 +35861,10 @@
       "pbp": "Rakan Perniagaan Sumber Manusia",
       "gbs": "GBS People Ops",
       "admin": "Penyedia yang dinamakan",
-      "system": "Pemprosesan latar"
+      "system": "Pemprosesan latar",
+      "superior": "Direct Superior",
+      "people": "Named people",
+      "approver": "Approver"
     },
     "columns": {
       "employee": "Pekerja",
@@ -35795,7 +35888,9 @@
       "confirmed": "Disahkan",
       "extended": "Dilanjutkan",
       "not_confirmed": "Belum disahkan",
-      "withdrawn": "Ditarik balik"
+      "withdrawn": "Ditarik balik",
+      "waitingForStart": "Waiting for start date",
+      "didNotJoin": "Did not join"
     },
     "partStates": {
       "not_issued": "Belum dikeluarkan",
@@ -35899,7 +35994,16 @@
       "missing": "Pemegang perlu ditentukan",
       "frozenFacts": "Semakan ini mengekalkan butiran pekerja dan tempoh percubaan yang disimpan untuk kandungan bertandatangannya.",
       "combinedConsent": "Saya mengesahkan bahawa ini tandatangan saya untuk peranan berikut: {roles}.",
-      "combinedHistory": "Dilindungi oleh tandatangan yang sama"
+      "combinedHistory": "Dilindungi oleh tandatangan yang sama",
+      "onBehalfOf": "on behalf of {name}",
+      "reviewStep": "Review",
+      "approveStep": "Approve",
+      "reviewed": "Reviewed",
+      "approved": "Approved",
+      "decisionComment": "Comment (optional)",
+      "markReviewed": "Mark as reviewed",
+      "markApproved": "Approve",
+      "meantFor": "Meant for {who}; the fallback group took it"
     },
     "controls": {
       "title": "Kawalan semakan yang dibenarkan",
@@ -35925,7 +36029,9 @@
       "development": "Tindakan pembangunan",
       "extension_recommendation": "Cadangan lanjutan",
       "nonconfirmation_recommendation": "Cadangan tidak mengesahkan jawatan",
-      "refusal_request": "Perbincangan penolakan pekerja"
+      "refusal_request": "Perbincangan penolakan pekerja",
+      "low_result_action": "Low-result action",
+      "other_decided": "Other outcome decided"
     },
     "files": {
       "title": "Dokumen difailkan",
@@ -35961,7 +36067,89 @@
         "ending14": "Berakhir dalam 14 hari",
         "low_result": "Hasil rendah",
         "kpi_submit": "KPI belum dihantar",
-        "kpi_ack": "KPI belum diakui"
+        "kpi_ack": "KPI belum diakui",
+        "overridden": "Suggestion overridden"
+      },
+      "extensionsUsed": "{used} / {max}",
+      "startsOn": "Starts {date}",
+      "actions": {
+        "open": "Open",
+        "review_letter": "Review letter",
+        "record_action": "Record action",
+        "log_followup": "Log follow-up"
+      },
+      "mineOnly": "Showing only cases with work waiting on you.",
+      "mineClear": "Show all cases",
+      "breadcrumb": "Probation Confirmation / Probation tracker",
+      "intro": "Track employees with Probation status in Personnel Management and their confirmation progress.",
+      "synced": "Synced from Personnel Management. Every employee whose status is <b>Probation</b> gets a case here automatically, including records activated before their start date.",
+      "tiles": {
+        "overdue": "Overdue steps",
+        "end_passed": "End passed, no outcome",
+        "ending14": "Ending within 14 days",
+        "low_result": "Low result (Band 1–2 by default)",
+        "kpi_submit": "KPIs not submitted",
+        "kpi_ack": "KPIs not acknowledged",
+        "overridden": "Suggestion overridden"
+      },
+      "hints": {
+        "search": "Personnel Management · Full name (as per IC/passport)",
+        "businessGroup": "Personnel Management · recorded at case start",
+        "businessUnit": "Personnel Management · recorded at case start",
+        "department": "Personnel Management · Department",
+        "grade": "Personnel Management · Job Grade at case start"
+      },
+      "namePlaceholder": "Type a name…",
+      "showClosed": "Show closed cases",
+      "caseCount": "{shown} of {total} cases",
+      "filteredBy": "filtered by “{tile}”",
+      "columns": {
+        "employee": "Employee",
+        "organisation": "Business group · unit",
+        "endOn": "Probation end",
+        "plan": "Review plan",
+        "stage": "Stage",
+        "waiting": "Waiting on",
+        "due": "Due",
+        "flags": "Flags",
+        "extensions": "Ext.",
+        "extensionsFull": "Extensions used",
+        "action": "Action"
+      },
+      "planMonths": "{months, plural, one {# month} other {# months}}",
+      "planParts": {
+        "both": "Part 2 + Part 3",
+        "p3": "Part 3 only",
+        "p2": "Part 2 only"
+      },
+      "stage": {
+        "1": "Week 1 KPIs",
+        "2": "Part 2 Mid-Probation",
+        "3": "Part 3 Final review",
+        "afterExtension": "{stage} (after extension)"
+      },
+      "what": {
+        "kpis": "KPI submission",
+        "self": "self-assessment",
+        "assessment": "assessment",
+        "acknowledge": "signature",
+        "approval": "approval",
+        "letter": "letter"
+      },
+      "waitingOn": "{role} · {name} · {step}",
+      "pills": {
+        "end_passed": "End date passed",
+        "ending14": "Ends within 14 days",
+        "low_result": "Band {band} · low result",
+        "low_actioned": "PBP action recorded",
+        "kpi_submit": "KPIs not submitted",
+        "kpi_ack": "KPIs not acknowledged",
+        "overridden": "Suggestion overridden",
+        "plan_review": "Plan review required"
+      },
+      "links": {
+        "settings": "Probation settings",
+        "intake": "Intake and activation"
       }
     },
     "applyFilters": "Gunakan penapis",
@@ -36142,6 +36330,121 @@
         "pending": "Belum selesai",
         "held": "Ditahan untuk semakan",
         "failed": "Perlu dicuba semula"
+      },
+      "extensionsUsed": {
+        "title": "Confirm extensions already used",
+        "help": "Personnel Management keeps only the total Extended Probation Period, so the number of extensions already used cannot be worked out. Confirm 0, 1 or 2 for each case by choosing the actual extension events in the employee's review.",
+        "period": "Extended Probation Period (Personnel)",
+        "periodValue": "{original} → {extended}",
+        "used": "Extensions used",
+        "count": "{count} of {max}",
+        "notConfirmed": "Not confirmed",
+        "confirm": "Confirm",
+        "review": "Review"
+      },
+      "activationByCompany": {
+        "title": "Activation by company",
+        "help": "Employees on Probation in Personnel Management (full time) against open probation cases. A difference means someone has no case yet or a case is still open after Personnel moved on. Switching a company on still goes through the reviewed rehearsal below.",
+        "columns": {
+          "company": "Company",
+          "personnel": "Probation in Personnel",
+          "cases": "Open cases",
+          "status": "Status"
+        },
+        "match": "✓",
+        "missing": "{count, plural, one {1 employee on Probation has no case} other {# employees on Probation have no case}}",
+        "extra": "{count, plural, one {1 case more than Personnel shows} other {# cases more than Personnel shows}}",
+        "live": "Live since {date}",
+        "preparation": "Preparation"
+      },
+      "htmlImport": {
+        "title": "1. Import saved HTML evaluation forms",
+        "help": "Upload the files staff and managers saved from form v22.9.26 (“Save form”). Only the saved values inside each file are read, on the server; the page itself is never opened or run. Each file is matched to the employee by Employee ID and must name the same employee as Personnel. Fully signed parts are recorded as signed offline in the case history; started parts open as drafts. PDFs are evidence only: attach them from the case or the employee’s intake review.",
+        "choose": "Choose files",
+        "fileLabel": "Saved evaluation forms",
+        "noFile": "No file chosen · .html or .pdf",
+        "reading": "Reading…",
+        "read": "{count, plural, one {1 file read} other {# files read}}",
+        "tooMany": "Choose at most {max} files at a time.",
+        "columns": {
+          "file": "File",
+          "found": "Found in file",
+          "result": "Check"
+        },
+        "pdf": "PDF only: values can’t be read. Attach it as evidence from the case or the employee’s intake review.",
+        "statuses": {
+          "ready": "Ready",
+          "warning": "Warning",
+          "refused": "Can’t import",
+          "skipped": "Not imported",
+          "importing": "Importing…",
+          "merged": "Merged into the case",
+          "staged": "Added to intake",
+          "unchanged": "Already imported"
+        },
+        "partSummary": {
+          "part1": "Part 1: {kpis} KPIs, {signatures} signatures, {status}",
+          "review": "Part {part}: {ratings} of 9 manager ratings, {signatures} signatures, {status}"
+        },
+        "partStatus": {
+          "signed": "signed",
+          "started": "started",
+          "not_started": "not started"
+        },
+        "confirm": "I’ve checked this preview. Import the ready and warning rows; skip the rest. Each import is written to the case history.",
+        "import": "{count, plural, one {Import 1 file} other {Import # files}}",
+        "done": "Imported. Open the cases in the Probation tracker to check what was read, then continue them in the system.",
+        "resultHelp": {
+          "merged": "Merged into the existing case. Blank drafts were filled from the file. Signatures still happen in the system; to record a part as completed offline, attach its signed PDF.",
+          "staged": "No case yet: the file waits in this employee’s intake review. The case opens at the reviewed cut-over; upload the file again then to fill its drafts.",
+          "unchanged": "This exact file was already imported for this employee. Nothing changed."
+        },
+        "applied": {
+          "draft_filled": "Part {part}: drafts filled from the file",
+          "kept_system_values": "Part {part}: kept the values already in the system",
+          "part_not_open": "Part {part}: not open in the system, so nothing was filled",
+          "no_part": "Part {part}: not in this case’s plan"
+        },
+        "refusals": {
+          "file_type": "Only saved .html evaluation forms can be imported.",
+          "empty": "The file is empty.",
+          "too_large": "The file is larger than 2 MB. A saved evaluation form is much smaller; check the file.",
+          "no_block": "The file has no saved values. Open the form and use “Save form”, not the browser’s Save page.",
+          "several_blocks": "The file has more than one saved-values block, so it can’t be read safely.",
+          "block_type": "The saved-values block is not JSON, so it can’t be read safely.",
+          "damaged": "The saved values in the file are damaged and could not be read.",
+          "no_version": "The file doesn’t say which form version it is. Only form v22.9.26 can be imported.",
+          "wrong_version": "This is form v{version}. Only form v22.9.26 can be imported; nothing was guessed.",
+          "no_values": "The file has no saved values. Use “Save form” in the form itself.",
+          "invalid_field": "The field “{field}” has a value that can’t be read. Nothing was guessed; correct the form and save it again.",
+          "no_employee_id": "The file has no Employee ID, so it can’t be matched to an employee.",
+          "no_employee_name": "The file has no employee name.",
+          "not_entitled": "Probation is not available for this company.",
+          "no_employee": "No employee with this Employee ID is in this company within your intake scope.",
+          "name_mismatch": "The employee name in the file doesn’t match Personnel for this Employee ID. Check the file.",
+          "excluded": "A probation case can’t be created for this employee: {reason}.",
+          "no_settings": "Publish the probation settings for this company before importing.",
+          "opens_automatically": "This new starter’s case opens automatically now that probation is switched on. Import the file once the case is open.",
+          "case_closed": "The matching case is closed. Nothing was changed.",
+          "not_saved": "The file could not be imported. Nothing was changed; try again."
+        },
+        "exclusionReasons": {
+          "confirmed": "already confirmed in Personnel",
+          "resignation": "a resignation is recorded",
+          "ended": "the employment has ended",
+          "no_probation": "no probation applies",
+          "reviewed_exclusion": "excluded at intake",
+          "employment_type": "not a full-time employee",
+          "grade_not_enabled": "the job grade is not in the probation settings",
+          "company_transfer": "moved from another company during intake",
+          "not_eligible": "not eligible for probation",
+          "unavailable": "not available"
+        },
+        "historyTitle": "Imported forms",
+        "historyEmpty": "No saved forms imported yet.",
+        "candidateTitle": "From the imported saved form",
+        "candidateHelp": "Map each Part below with the usual rules: a signed part is Completed offline with its signed PDF attached; a started part continues as unfinished work. After cut-over, upload the file again to fill the case drafts.",
+        "candidatePart": "Part {part} {status}"
       }
     },
     "workflows": {
@@ -36265,7 +36568,23 @@
       "open": "Buka surat keputusan",
       "preparationClosed": "Pengeluaran telah diminta atau diselesaikan. Semak surat tersimpan dan status pemfailan daripada kes.",
       "templateTie": "Lebih daripada satu templat sepadan pada tahap yang sama. Pilih templat yang disemak secara nyata.",
-      "filingPending": "Permintaan pengeluaran disimpan. Pekerja latar sedia ada akan menjana dan memfailkan PDF ditandatangani sebelum melaksanakan keputusan. Sebarang kegagalan kekal kelihatan untuk dicuba semula."
+      "filingPending": "Permintaan pengeluaran disimpan. Pekerja latar sedia ada akan menjana dan memfailkan PDF ditandatangani sebelum melaksanakan keputusan. Sebarang kegagalan kekal kelihatan untuk dicuba semula.",
+      "contentPrivate": "This letter is private until it reaches you. You can see who it is with and its status.",
+      "routingFallback": "Nobody could be found for some steps, so the fallback group took them:",
+      "sentBack": "{name} sent this letter back: {reason}",
+      "resend": "Send round again",
+      "meantFor": "meant for {who}",
+      "routedStep": {
+        "review": "Review",
+        "approve": "Approve",
+        "sign": "Sign",
+        "acknowledge": "Acknowledge"
+      },
+      "decision": {
+        "reviewed": "Mark as reviewed",
+        "approved": "Approve"
+      },
+      "holderOnBehalf": "{name} on behalf of {represented}"
     },
     "dates": {
       "title": "Semakan tarikh percubaan",
@@ -36335,6 +36654,608 @@
       "title": "Sesetengah mesej lalai percubaan tidak tersedia",
       "summary": "Terbitkan satu aliran kerja ringkasan lewat untuk seluruh syarikat dengan People Business Partner sebagai penerima.",
       "help": "Terbitkan aliran kerja yang belum tersedia untuk memulihkan mesejnya. Tarikh akhir semakan dan penanda lewat masih berkuat kuasa."
+    },
+    "settingsScope": {
+      "subtitle": "Each company uses exactly one published setting. Changes apply to new cases only.",
+      "newSetting": "New company setting",
+      "inUse": "Settings in use",
+      "columns": {
+        "setting": "Setting",
+        "appliesTo": "Applies to",
+        "version": "Version",
+        "overrides": "Overrides",
+        "action": "Action",
+        "field": "Field",
+        "standard": "Group standard",
+        "thisSetting": "This setting",
+        "company": "Company",
+        "differences": "Fields that would change",
+        "pickedUp": "Picks up",
+        "shielded": "Shielded by an override"
+      },
+      "groupStandard": "Group standard",
+      "allCompanies": "All {count} companies",
+      "notPublished": "Not published yet. Each company uses its own settings version.",
+      "setsEveryField": "— (sets every field)",
+      "edit": "Edit",
+      "publishedAlso": "Version {version} is published and in use.",
+      "overrideSummary": "{count, plural, one {1 field} other {# fields}}: {fields}. Inherits the rest.",
+      "noOverrides": "No fields overridden.",
+      "redundant": "Same as the group standard, so it can be removed: {fields}",
+      "rule": "A company setting overrides only the fields it ticks; every other field follows the group standard, including future changes to it. A company can be in only one company setting.",
+      "noStandardTitle": "No group standard yet",
+      "noStandardHelp": "Until a group standard is published, each company keeps using its own published settings version and nothing changes. Create the standard from the company whose settings should apply to everyone, then add company settings for companies that must keep different values. Company settings take effect together with the standard.",
+      "continueDraft": "Continue the group standard draft",
+      "createFrom": "Create group standard from",
+      "startFromDefaults": "Recommended defaults",
+      "createStandard": "Create group standard",
+      "notCurrentTitle": "Companies not using the current settings yet",
+      "notCurrentHelp": "These companies started using Probation after the group standard was last published. Apply the group standard and their company setting to them.",
+      "applyNow": "Apply now",
+      "refreshed": "{company} now uses the current settings.",
+      "unknownCompany": "Unavailable company",
+      "editing": "Editing: {name}",
+      "newCompanySetting": "New company setting",
+      "standardHelp": "The group standard sets every field for all companies. Running cases keep the values they started with.",
+      "companyHelp": "Tick Override for each field this setting changes. Inherited fields follow the group standard, including later changes to it.",
+      "waitsForStandard": "No group standard is published yet. This company setting takes effect when the group standard is published.",
+      "name": "Setting name",
+      "inOther": "in {name}",
+      "overlap": "A company can be in only one company setting. Remove it from the other setting first: {companies}",
+      "standardVersion": "Group standard v{version}",
+      "inherited": "Inherited",
+      "override": "Override",
+      "sameAsStandard": "Same as the standard",
+      "changed": "Changed",
+      "extensionsFixed": "Extensions: {months} months, at most {max}. Fixed for every company.",
+      "diffTitle": "How companies differ from this standard",
+      "diffHelp": "Publishing the standard gives these companies its values for new cases, unless a company setting overrides the field. Add company settings first for companies that must keep their values.",
+      "previewTitle": "Before you publish",
+      "previewNone": "No field differs from the published group standard.",
+      "previewRunning": "Cases already running keep the values they started with either way.",
+      "resolvedNote": "Companies in this setting use these overridden fields: {fields}. Everything else follows the group standard.",
+      "resolvedPreview": "Values these companies will use",
+      "reason": "Reason for the change (optional)",
+      "close": "Close",
+      "publishedNotice": "Published. New cases use these settings.",
+      "retire": "Retire this company setting",
+      "retireHelp": "Its companies go back to the group standard for new cases. Running cases keep their values.",
+      "retiredNotice": "Company setting retired.",
+      "rulesInCompanySetting": "Narrow KPI gate rules are set in a company setting.",
+      "rulesOneCompany": "Narrow KPI gate rules can be overridden when the setting applies to one company.",
+      "ruleCount": "{count, plural, =0 {No rules} one {1 rule} other {# rules}}",
+      "daysBeforeDue": "{days} calendar days before due",
+      "planWithMidpoint": "{months} months · Part 2 at month {midpoint}",
+      "planFinalOnly": "{months} months · Part 3 only",
+      "defaultGroup": "GBS People Ops",
+      "savedGroup": "Saved group (no longer listed)",
+      "on": "On",
+      "off": "Off",
+      "truncated": "Only the first 200 settings are shown.",
+      "companyVersionTitle": "Company settings version",
+      "lockedNotice": "A group standard is published, so this company's settings come from the group standard and its company setting. Edit them above. Access below stays per company.",
+      "nonWorking": {
+        "previous": "Move to the working day before",
+        "next": "Move to the next working day"
+      },
+      "fields": {
+        "eligibleGrades": "Eligible grades",
+        "gradeHEnabled": "Grade H",
+        "defaultMonths": "Default probation months",
+        "plans": "Review plans",
+        "kpiGate": "KPI acknowledgement gate",
+        "issueLeadDays": "Review form opens",
+        "nonWorkingDayRule": "Due date on a non-working day",
+        "fallbackGroupId": "When no one can be found",
+        "postingApproverGroupId": "Who approves Personnel postings",
+        "kpiDueWorkingDays": "KPIs due after working days",
+        "kpiReminderWorkingDay": "KPI reminder on working day",
+        "firstReminderDays": "First reminder before due · days",
+        "dailyReminderDays": "Daily reminders from · days before due",
+        "lowBand": "Low-result band threshold",
+        "lmWaitsForEmployee": "Manager waits for the employee self-assessment",
+        "overrides": "Narrow KPI gate rules",
+        "maxExtensions": "Maximum extensions"
+      }
+    },
+    "startStatus": {
+      "waiting": "Waiting for start date. The case opened at activation; no reviews, tasks or reminders start before {date}. Part 1 counts from the start date.",
+      "didNotJoin": "Closed as Did not join: the hire was withdrawn or the employment ended before the start date."
+    },
+    "overrideNotice": "The Line Manager chose a different outcome from the suggestion and wrote a justification.",
+    "formRouting": {
+      "title": "Review and approval routing",
+      "help": "Who approves and signs each part, and in what order. Lower numbers go first; steps sharing a number run one after another in the order listed. A case keeps the routing of the form version it started on.",
+      "legacy": "This form version has no approval steps of its own, so its cases use the published signing routes configuration. Set approval steps here to route new cases from this form instead.",
+      "useForm": "Set approval steps on this form",
+      "core": "Always first, and not editable: {steps}.",
+      "coreKpi": "Line Manager sets and signs the KPIs → Employee acknowledges",
+      "coreReview": "Employee self-review → Line Manager assessment and signature → Employee acknowledges",
+      "order": "Order",
+      "action": "Action",
+      "who": "Who",
+      "actions": {
+        "approve_sign": "Approve and sign",
+        "review": "Review",
+        "approve": "Approve"
+      },
+      "remove": "Remove the {who} step",
+      "add": "Add approval step",
+      "none": "No approval steps.",
+      "partThreeRequired": "Part 3 needs at least one approval step.",
+      "reserved": "Head of Department, People Business Partner and Direct Superior steps follow the case’s current holders, their delegations and the policy below.",
+      "policyInherit": "Use the signing routes configuration’s setting",
+      "whoKinds": {
+        "hod": "Head of Department",
+        "pbp": "People Business Partner",
+        "superior": "Direct Superior",
+        "routing": "A routing",
+        "group": "An assignment group",
+        "people": "Named people"
+      },
+      "routing": "Routing",
+      "group": "Assignment group",
+      "people": "People",
+      "pick": "Who takes it",
+      "picks": {
+        "any": "Any member",
+        "roundRobin": "Round robin"
+      },
+      "missingChoice": "No longer available: choose another",
+      "resolveNote": "A routing, an assignment group or named people gives the step to one person, chosen by the step’s rule when the Line Manager submits, and that person keeps it for the part. If nobody is available, the case’s fallback group takes it and the case records who it was meant for."
+    },
+    "lowResult": {
+      "title": "Low result",
+      "notice": "Part {part} scored Band {band}. Record the action taken with the Line Manager.",
+      "note": "Action taken with the Line Manager",
+      "save": "Record action",
+      "waiting": "Waiting for the People Business Partner to record the action taken."
+    },
+    "otherOutcome": {
+      "title": "Outcome “Other” · PBP decision",
+      "help": "No letter is generated automatically. Choose the outcome to apply. The case then continues as that outcome: the letter, its signatures, then the posting or the offboarding case.",
+      "choice": "Decision",
+      "months": "Extension length",
+      "monthsOption": "{months} months",
+      "reason": "Reason",
+      "save": "Apply this outcome",
+      "waiting": "Waiting for the People Business Partner to choose the outcome."
+    },
+    "automationHistory": {
+      "title": "Workflow history",
+      "empty": "No shared workflow has run for this case yet.",
+      "recipients": "{count, plural, one {# person} other {# people}} reached",
+      "unresolved": "Not reached: {who}. {reason}",
+      "status": {
+        "running": "Running",
+        "waiting": "Waiting for the letter",
+        "done": "Done",
+        "skipped": "Skipped",
+        "failed": "Failed"
+      }
+    },
+    "taskKinds": {
+      "submit_employee": {
+        "title": "Complete your self-assessment · Part {part}",
+        "action": "Open form"
+      },
+      "submit_manager_kpis": {
+        "title": "Set Week 1 KPIs and sign",
+        "action": "Set KPIs"
+      },
+      "submit_manager": {
+        "title": "Complete the Line Manager assessment and sign · Part {part}",
+        "action": "Open assessment"
+      },
+      "acknowledge": {
+        "title": "Acknowledge and sign · Part {part}",
+        "action": "Acknowledge"
+      },
+      "approve": {
+        "title": "Approve Part {part}",
+        "action": "Review and approve"
+      },
+      "record": {
+        "title": "Record the completed Part {part}",
+        "action": "Record"
+      },
+      "confirm_extension": {
+        "title": "Confirm the extension · Part {part}",
+        "action": "Confirm extension"
+      },
+      "confirm_refusal": {
+        "title": "Confirm a declined signature · Part {part}",
+        "action": "Confirm"
+      },
+      "kpi_exception": {
+        "title": "Decide on the KPI acknowledgement hold · Part {part}",
+        "action": "Decide"
+      },
+      "employee_wait_exception": {
+        "title": "Decide whether to continue without the self-assessment · Part {part}",
+        "action": "Decide"
+      },
+      "letter_sign": {
+        "title": "Sign probation letter",
+        "action": "Sign letter"
+      },
+      "letter_review": {
+        "title": "Review probation letter",
+        "action": "Review letter"
+      },
+      "letter_approve": {
+        "title": "Approve probation letter",
+        "action": "Approve letter"
+      },
+      "letter_revise": {
+        "title": "Update probation letter after send-back",
+        "action": "Update letter"
+      },
+      "letter_release": {
+        "title": "Release probation letter",
+        "action": "Release letter"
+      },
+      "low_result_action": {
+        "title": "Record low-result action",
+        "action": "Record action"
+      },
+      "choose_outcome": {
+        "title": "Decide Other outcome",
+        "action": "Decide outcome"
+      },
+      "other": {
+        "title": "Probation task",
+        "action": "Open"
+      }
+    },
+    "caseView": {
+      "heading": "Probation · {stage}",
+      "stage": {
+        "1": "Part 1 · Week 1 Success Plan",
+        "2": "Part 2 · Mid-Probation Review",
+        "3": "Part 3 · Final Confirmation Review",
+        "cycle": "{part} (cycle {cycle})",
+        "outcome": "Outcome"
+      },
+      "short": {
+        "1": "Week 1 KPIs",
+        "2": "Part 2 Mid-Probation",
+        "3": "Part 3 Final review",
+        "outcome": "Outcome"
+      },
+      "tabs": {
+        "label": "Case sections",
+        "1": "Part 1 · Week 1 KPIs",
+        "2": "Part 2 · Mid-Probation",
+        "3": "Part 3 · Final",
+        "cycle": "{part} (cycle {cycle})",
+        "outcome": "Outcome & letters",
+        "files": "Files ({count})",
+        "history": "History",
+        "current": "current stage"
+      },
+      "partsLabel": "Parts",
+      "routeLabel": "Signing route for the current part",
+      "waitingOn": "Waiting on: {who}",
+      "closed": "Case closed.",
+      "opens": "Form opens {date}",
+      "due": "due {date}",
+      "daysLeft": "{count, plural, one {# day left} other {# days left}}",
+      "daysOverdue": "{count, plural, one {# day overdue} other {# days overdue}}",
+      "dueToday": "due today",
+      "who": "{role} · {name} · {what}",
+      "whoNoName": "{role} · {what}",
+      "what": {
+        "kpis": "set Week 1 KPIs and sign",
+        "self": "self-assessment",
+        "assessment": "assessment",
+        "returned": "returned part",
+        "acknowledge": "acknowledge and sign",
+        "approve": "approval",
+        "review": "review",
+        "sign": "signature"
+      },
+      "facts": {
+        "employee": "Employee",
+        "titleGrade": "Job title / grade",
+        "businessGroup": "Business group",
+        "businessUnit": "Business unit",
+        "probation": "Probation",
+        "plan": "Review plan",
+        "extensions": "Extensions used",
+        "people": "People"
+      },
+      "plan": {
+        "6": "6 months · P2 + P3",
+        "3": "3 months · P3 only",
+        "other": "{months} months"
+      },
+      "months": "{months, plural, one {# month} other {# months}}",
+      "peopleLm": "LM {name}",
+      "peoplePbp": "PBP {name}",
+      "steps": {
+        "self": "Employee self-assessment",
+        "lmKpis": "LM sets KPIs and signs",
+        "lmAssess": "LM assessment",
+        "ack": "Employee acknowledges",
+        "approveSign": "Approve and sign · {who}",
+        "approve": "Approve · {who}",
+        "review": "Review · {who}",
+        "sign": "Sign · {who}"
+      },
+      "stepState": {
+        "done": "done",
+        "current": "current",
+        "waiting": "not reached",
+        "overdue": "overdue",
+        "returned": "returned with comments"
+      },
+      "noOutcome": "The outcome is decided at the final review (Part 3 Final review).",
+      "filesEmpty": "No files yet. Completed forms and letters appear here when each part is recorded.",
+      "earlierCycles": "Earlier cycles of this part",
+      "cycleLink": "Cycle {cycle} · {state}",
+      "waitingStart": "Waiting for the start date ({date}). The record was activated in Personnel Management before the start date. Nothing is sent and no step is due until then.",
+      "noPart": "This part is not part of this case's review plan.",
+      "back": "Probation tracker",
+      "pill": "Probation",
+      "yourStep": "Your step:",
+      "waitingOnLabel": "Waiting on:",
+      "nextAction": "Next action:",
+      "outcomeHeading": "Outcome",
+      "earlierLetters": "Earlier letters",
+      "download": "Download",
+      "downloadFile": "Download {name}",
+      "fileKinds": {
+        "completed_part": "Completed evaluation form with signature page · stored on the employee file",
+        "letter_released": "Released letter · stored on the employee file",
+        "letter_draft": "Letter prepared for signatures",
+        "offline": "Original file kept as offline evidence"
+      },
+      "letter": {
+        "sub": "From the shared Templates builder · module Probation · template v{version}",
+        "routing": "Signing routing on this document",
+        "state": {
+          "released": "Released",
+          "filing": "Filing pending",
+          "sentBack": "Sent back",
+          "waitingFor": "Waiting for {names}",
+          "ready": "Ready to release",
+          "waiting": "Waiting",
+          "paused": "Paused"
+        },
+        "and": " and "
+      },
+      "form": {
+        "cycle": "{part} · after extension {count}",
+        "status": "{state} · due {date}",
+        "yourSelf": "Your self-assessment",
+        "yourLm": "Your Line Manager assessment",
+        "sections": {
+          "2": "A. Performance Progress Review · B. Leadership Principles – Mid-Point",
+          "3": "A. Role Performance Assessment · B. {count} Leadership Principles"
+        },
+        "rateHelp": "Rate every criterion 1–5. Ratings start blank. A rating of 1 or 2 needs written evidence before you can submit.",
+        "readHelp": "Ratings as submitted. A column opens once that person has submitted.",
+        "gridLabel": "Assessment criteria and ratings",
+        "col": {
+          "criterion": "Criterion",
+          "weight": "Weight",
+          "employee": "Employee",
+          "lm": "Line Manager",
+          "evidence": "Comments / evidence",
+          "yourEvidence": "Your evidence"
+        },
+        "sectionRole": "A. Role ({weight}%)",
+        "sectionPrinciples": "B. {count} Leadership Principles ({weight}%)",
+        "guide": "Guide",
+        "guideFor": "Guide for {criterion}",
+        "kpiLink": "Shows the {count} Week 1 KPIs",
+        "ratingGroup": "{who} rating for {criterion}",
+        "ratingButton": "{rating} · {label}",
+        "clearRating": "Clear",
+        "clearRatingFor": "Clear the rating for {criterion}",
+        "evidenceFor": "Evidence for {criterion}",
+        "yourEvidenceFor": "Your evidence for {criterion}",
+        "evidencePlaceholder": "Observable example / evidence",
+        "hiddenLm": "Hidden until the Line Manager submits",
+        "hiddenEmployee": "Not submitted yet",
+        "evidenceRequired": "Evidence required for a rating of {rating}",
+        "evidenceRequiredKpi": "Evidence required while the Week 1 KPIs are not acknowledged",
+        "drawer": {
+          "close": "Close",
+          "kpiTitle": "Week 1 KPIs (Part 1)",
+          "criterionTitle": "Appendix A · {criterion}",
+          "behaviours": "Key behaviours",
+          "prompt": "Evidence prompt",
+          "principles": "Evidence-based rating principles.",
+          "principlesText": "Rate observable behaviour and demonstrated results, not personality. Use examples from the full probation period. A rating of 1 or 2 requires clear evidence, prior feedback and documented development support.",
+          "noKpis": "No KPIs agreed yet.",
+          "kpiLine": "{measure} · target {target} by {date}",
+          "support": "Planned support"
+        },
+        "result": {
+          "2": "C. Overall Mid-Point Assessment",
+          "3": "C. Overall Result and Recommendation"
+        },
+        "resultSub": "Worked out by the system from the Line Manager’s ratings.",
+        "sectionA": "Section A /{max}",
+        "sectionB": "Section B /{max}",
+        "total": "Total /{max}",
+        "band": "Band",
+        "rateAll": "Rate all {count}",
+        "selfScore": "Employee self-score {score} (Band {band}). Only the Line Manager’s result drives the suggestion.",
+        "selfScoreNone": "Employee self-score not submitted. Only the Line Manager’s result drives the suggestion.",
+        "justification": {
+          "2": "Justification",
+          "3": "Recommendation and justification"
+        },
+        "justificationRequired": "Required: explain why you chose something other than the suggestion",
+        "noMidpointOutcome": "No final employment outcome is applied at the mid-point.",
+        "choice": {
+          "2": "E. Mid-Probation Status",
+          "3": "Outcome"
+        },
+        "options": {
+          "confirm": "Confirm employment",
+          "extend": "Extend probation",
+          "not_confirm": "Non-confirmation",
+          "other": "Other",
+          "satisfactory": "Progressing satisfactorily",
+          "development": "Progressing with development actions",
+          "at_risk": "At risk of not meeting probation requirements – People Team consultation required"
+        },
+        "extendHint": "{first} or {second} months",
+        "otherHint": "needs justification and a PBP decision",
+        "suggested": "suggested",
+        "extensionsUsed": "{count} of {max} extensions used",
+        "extensionLength": "Extension length (Line Manager recommends, PBP confirms)",
+        "monthsOption": "{months} months",
+        "choiceNote": "Choosing anything other than the suggestion needs a written justification and is flagged to the People Business Partner.",
+        "nothingPreselected": "Nothing is pre-selected.",
+        "managerComments": "Manager’s overall comments",
+        "coaching": "D. Coaching Summary and Development Plan",
+        "strengths": "Top strengths demonstrated",
+        "development": "Priority development areas",
+        "employeeComments2": "Employee’s comments",
+        "ackHeading": "D. Employee Comments and Acknowledgement",
+        "employeeComments3": "Employee comments",
+        "ackNote": "Discussed and received. Acknowledgement does not mean agreement.",
+        "optional": "Optional",
+        "kpiHeading": "A. Key Accountabilities and KPIs",
+        "kpiSub": "Line Manager enters 1–5 rows. They lock after the employee acknowledges and carry into the KPI criterion of every later review.",
+        "kpiCols": {
+          "no": "No.",
+          "accountability": "Key accountability",
+          "measure": "KPI / success measure",
+          "target": "Target",
+          "targetDate": "Target date"
+        },
+        "kpiField": "{field} {index}",
+        "kpiRemove": "Remove",
+        "kpiRemoveRow": "Remove accountability {index}",
+        "kpiAdd": "Add accountability · maximum 5",
+        "kpiEmpty": "Not entered yet.",
+        "supportHeading": "B. Planned Support for Employee",
+        "supportLabels": {
+          "coaching": "On-the-job training / coaching",
+          "access": "SOPs, policies, guidelines or system access",
+          "checkins": "Regular check-ins / feedback arrangements",
+          "other": "Other support required"
+        },
+        "supportPlaceholder": "Details / owner / timing",
+        "meetingHeading": "C. Meeting Acknowledgement",
+        "meetingHint": "Editable only by the employee at the acknowledgement step.",
+        "meetingNote": "Line Manager signs on submission, then the employee signs on acknowledgement.",
+        "scheduled": "Scheduled. The form opens on {opens}, {lead} days before the due date {due}.",
+        "gateBlocks": "KPI gate is set to Block: the form also waits until Part 1 is acknowledged.",
+        "signatures": "Signatures",
+        "sigWaiting": "Waiting",
+        "signHeading": "Signing and acknowledgement",
+        "signNote": "Signing means discussed and received, not agreement.",
+        "signWho": "Verified login: {name} ({role})",
+        "signFingerprint": "Your name, role, date and time and a fingerprint of this version of the form are saved with your signature.",
+        "methods": {
+          "typed": "Typed",
+          "drawn": "Drawn"
+        },
+        "issuesTitle": "{count, plural, one {# item needs fixing before submission} other {# items need fixing before submission}}",
+        "notes": {
+          "self": "Your self-assessment submission is not a signature. The Line Manager completes their assessment afterwards.",
+          "lm": "Submitting sends the review to {name} to acknowledge.",
+          "lmKpis": "You are signing as Line Manager.",
+          "ack1": "Acknowledging means the KPIs were discussed and received.",
+          "ack": "You can add comments. You cannot change ratings.",
+          "review": "Review step from the form’s approval routing · no signature needed.",
+          "approve": "Approve step from the form’s approval routing · no signature needed.",
+          "locked1": "Part 1 is recorded and locked.",
+          "locked": "This part is recorded and locked.",
+          "waiting": "Waiting on {who} ({what}).",
+          "nothing": "Nothing to do here right now."
+        },
+        "returnHeading": "Return to the Line Manager",
+        "returnHelp": "The part goes back to the Line Manager. Signatures so far are cleared and everyone signs again after the changes.",
+        "returnedBy": "Returned by {name}:",
+        "returnedNote": "Earlier signatures were cleared. The part goes through the signing route again.",
+        "decisionHeading": "Your decision"
+      }
+    }
+  },
+  "probationConfig": {
+    "crumb": "Probation Confirmation / Configuration / {page}",
+    "live": "Live",
+    "preparation": "Preparation",
+    "settings": {
+      "title": "Probation settings",
+      "sub": "Group standard version {version} published · company settings override only the fields they tick · changes apply to new cases only",
+      "subNoStandard": "No group standard published yet · each company uses its own settings version · changes apply to new cases only",
+      "subCompany": "Changes apply to new cases only.",
+      "editStandard": "Edit group standard",
+      "newCompanySetting": "New company setting",
+      "bannerLead": "Group standard with company settings.",
+      "banner": "The group standard applies the same way to every company. A company setting changes only the fields it ticks for its companies; every other field follows the standard, including later changes to it.",
+      "live": "Live in {live} of {total} companies. Running cases keep the settings version they started with.",
+      "running": "Running cases keep the settings version they started with.",
+      "standardCards": "Group standard settings",
+      "whoHelp": "A case opens automatically when an employee’s Personnel Management status becomes Probation (on activation, before, on or after the start date). Draft records never open a case.",
+      "plansHelp": "Picked from the Probation Period in Personnel Management.",
+      "planPeriod": "Probation Period",
+      "planReviews": "Reviews",
+      "planMonths": "{months} Month(s)",
+      "planMidpoint": "Part 2 at Month {midpoint} · Part 3 on the end date",
+      "planFinal": "Part 3 on the end date only",
+      "extensionMonths": "{months} months"
+    },
+    "cards": {
+      "who": "Who gets a case",
+      "plans": "Review plans",
+      "timing": "Timing",
+      "kpis": "Week 1 KPIs and reminders",
+      "extensions": "Extensions and results"
+    },
+    "form": {
+      "sub": "Criteria, weights, rating scale, bands and guidance are saved with each form version. Each case keeps the form it started on.",
+      "versions": "Form versions",
+      "formTitle": "Form",
+      "gradesTitle": "Job grade assignment",
+      "gradesHelp": "New probation cases in these grades (Personnel Management Job Grade at the case start) use this form. Leave it empty to use the form for the normal eligible grades.",
+      "gradesNote": "Changes to the grade assignment apply to new cases only.",
+      "noGrades": "No grades",
+      "chooseGrades": "Choose job grades…",
+      "selected": "{count} selected",
+      "searchGrades": "Search grade, e.g. 12",
+      "selectAll": "Select all",
+      "clear": "Clear",
+      "noGradeMatch": "No grade matches “{query}”.",
+      "done": "Done",
+      "criteriaTitle": "Criteria and weights",
+      "section": "Section {letter} · {name}",
+      "sectionTotal": "Criteria total {total}% of {weight}%",
+      "criterion": "Criterion",
+      "weight": "Weight %",
+      "guidance": "Guidance",
+      "order": "Order and remove",
+      "criterionPlaceholder": "Criterion name",
+      "weightFor": "Weight for {name}",
+      "newCriterion": "new criterion",
+      "hideGuidance": "Hide",
+      "viewGuidance": "View",
+      "editGuidance": "Edit",
+      "moveUp": "Move {name} up",
+      "moveDown": "Move {name} down",
+      "up": "Up",
+      "down": "Down",
+      "removeNamed": "Remove {name}",
+      "addCriterion": "Add criterion to Section {letter}",
+      "formTotal": "Form total {total}%",
+      "formTotalParts": "(Section A {a}% · Section B {b}%). Every criterion is rated 1–5.",
+      "scaleTitle": "Rating scale",
+      "bandsTitle": "Bands"
+    },
+    "intake": {
+      "sub": "Bring in staff who were already on probation using the offline HTML form, then switch probation on per company.",
+      "extensionsTitle": "2. Confirm extensions already used",
+      "activationTitle": "3. Activation by company",
+      "noExtensions": "No cases with an existing extension."
     }
   },
   "templateEditor": {
@@ -38698,6 +39619,1387 @@
     "appliesFromTomorrow": "Perubahan pada Kaedah Padanan dan Sela Minimum Antara Rekod Waktu berkuat kuasa mulai esok, jadi kehadiran yang sudah direkodkan hari ini tidak dikira semula. Sejarah merekodkan siapa yang mengubahnya dan bila.",
     "systemReason": "Dikemas kini dalam tetapan Kumpulan Jadual",
     "dutyRosterPoolNote": "Giliran hanya boleh menggunakan syif yang Disertakan dalam Syif Dibenarkan di atas."
+  },
+  "bulkJobs": {
+    "notification": {
+      "employeeImport": {
+        "completed": {
+          "title": "Import pekerja selesai",
+          "body": "Buka Sejarah Import untuk melihat pekerja yang ditambah."
+        },
+        "failed": {
+          "title": "Import pekerja dihentikan",
+          "body": "Tiada pekerja ditambah. Buka Sejarah Import untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Import pekerja dibatalkan",
+          "body": "Tiada pekerja ditambah. Buka Sejarah Import untuk butiran."
+        }
+      },
+      "leaveImport": {
+        "completed": {
+          "title": "Import cuti selesai",
+          "body": "Baris yang diimport kini termasuk dalam baki cuti pekerja."
+        },
+        "failed": {
+          "title": "Import cuti dihentikan",
+          "body": "Baris yang telah disimpan dikekalkan. Mengimport fail yang sama sekali lagi akan melangkau baris tersebut."
+        },
+        "cancelled": {
+          "title": "Import cuti dibatalkan",
+          "body": "Baris yang telah disimpan dikekalkan. Mengimport fail yang sama sekali lagi akan melangkau baris tersebut."
+        }
+      },
+      "leaveProcessing": {
+        "completed": {
+          "title": "Pemprosesan cuti selesai",
+          "body": "Angka cuti telah dikemas kini."
+        },
+        "failed": {
+          "title": "Pemprosesan cuti dihentikan",
+          "body": "Pekerja yang telah diproses mengekalkan angka mereka. Jalankan sekali lagi untuk melengkapkan selebihnya."
+        },
+        "cancelled": {
+          "title": "Pemprosesan cuti dibatalkan",
+          "body": "Pekerja yang telah diproses mengekalkan angka mereka. Jalankan sekali lagi untuk melengkapkan selebihnya."
+        }
+      },
+      "roster": {
+        "completed": {
+          "title": "Perubahan roster selesai",
+          "body": "Buka roster untuk melihat hasilnya."
+        },
+        "failed": {
+          "title": "Perubahan roster dihentikan",
+          "body": "Buka roster untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Perubahan roster dibatalkan",
+          "body": "Buka roster untuk butiran."
+        }
+      },
+      "scheduleGroup": {
+        "completed": {
+          "title": "Penetapan Kumpulan Jadual selesai",
+          "body": "Buka Tetapkan Kumpulan Jadual untuk melihat hasilnya."
+        },
+        "failed": {
+          "title": "Penetapan Kumpulan Jadual dihentikan",
+          "body": "Buka Tetapkan Kumpulan Jadual untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Penetapan Kumpulan Jadual dibatalkan",
+          "body": "Buka Tetapkan Kumpulan Jadual untuk butiran."
+        }
+      },
+      "clockingImport": {
+        "completed": {
+          "title": "Import kehadiran selesai",
+          "body": "Buka log import untuk melihat rekod kehadiran yang ditambah."
+        },
+        "failed": {
+          "title": "Import kehadiran dihentikan",
+          "body": "Buka log import untuk melihat apa yang disimpan dan sebab ia dihentikan."
+        },
+        "cancelled": {
+          "title": "Import kehadiran dihentikan",
+          "body": "Buka log import untuk melihat apa yang disimpan."
+        }
+      },
+      "attendanceRecomputePreview": {
+        "completed": {
+          "title": "Pratonton kiraan semula sedia",
+          "body": "Buka Kira Semula Kehadiran untuk menyemak apa yang akan berubah."
+        },
+        "failed": {
+          "title": "Pratonton kiraan semula dihentikan",
+          "body": "Buka Kira Semula Kehadiran untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Pratonton kiraan semula dihentikan",
+          "body": "Buka Kira Semula Kehadiran untuk memulakannya semula."
+        }
+      },
+      "attendanceRecompute": {
+        "completed": {
+          "title": "Kehadiran dikira semula",
+          "body": "Buka Kira Semula Kehadiran untuk melihat hari yang berubah."
+        },
+        "failed": {
+          "title": "Kiraan semula kehadiran dihentikan",
+          "body": "Buka Kira Semula Kehadiran untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Kiraan semula kehadiran dihentikan",
+          "body": "Buka Kira Semula Kehadiran untuk butiran."
+        }
+      },
+      "payrollProcess": {
+        "completed": {
+          "title": "Pemprosesan gaji selesai",
+          "body": "Buka Gaji untuk menyemak larian yang telah diproses."
+        },
+        "failed": {
+          "title": "Pemprosesan gaji dihentikan",
+          "body": "Larian kembali ke draf dan tiada slip gaji disimpan. Buka Gaji untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Pemprosesan gaji dibatalkan",
+          "body": "Larian kembali ke draf dan tiada slip gaji disimpan."
+        }
+      },
+      "systemLabelImport": {
+        "completed": {
+          "title": "Import Label Sistem selesai",
+          "body": "Buka Label Sistem untuk melihat kod yang ditambah."
+        },
+        "failed": {
+          "title": "Import Label Sistem dihentikan",
+          "body": "Tiada kod ditambah. Buka Label Sistem dan pratonton buku kerja sekali lagi."
+        },
+        "cancelled": {
+          "title": "Import Label Sistem dibatalkan",
+          "body": "Tiada kod ditambah."
+        }
+      },
+      "sectionImport": {
+        "completed": {
+          "title": "Import bahagian selesai",
+          "body": "Buka Import untuk melihat baris yang dikemas kini."
+        },
+        "failed": {
+          "title": "Import bahagian dihentikan",
+          "body": "Baris yang disimpan sebelum ia berhenti dikekalkan. Buka Import untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Import bahagian dibatalkan",
+          "body": "Baris yang disimpan sebelum ia berhenti dikekalkan. Buka Import untuk butiran."
+        }
+      },
+      "registerImport": {
+        "completed": {
+          "title": "Import daftar selesai",
+          "body": "Buka Import untuk melihat rekod daftar yang disimpan."
+        },
+        "failed": {
+          "title": "Import daftar dihentikan",
+          "body": "Tiada rekod daftar disimpan. Buka Import untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Import daftar dibatalkan",
+          "body": "Tiada rekod daftar disimpan. Buka Import untuk butiran."
+        }
+      },
+      "employeeImportRevert": {
+        "completed": {
+          "title": "Pembatalan import selesai",
+          "body": "Buka Sejarah Import untuk melihat pekerja yang dibatalkan."
+        },
+        "failed": {
+          "title": "Pembatalan import dihentikan",
+          "body": "Tiada apa-apa yang diubah. Buka Sejarah Import untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Pembatalan import dibatalkan",
+          "body": "Tiada apa-apa yang diubah. Buka Sejarah Import untuk butiran."
+        }
+      },
+      "leaveGeneration": {
+        "completed": {
+          "title": "Penjanaan kelayakan selesai",
+          "body": "Angka cuti telah dikemas kini."
+        },
+        "failed": {
+          "title": "Penjanaan kelayakan dihentikan",
+          "body": "Tiada apa-apa yang diubah. Buka Jana Kelayakan untuk melihat sebabnya, kemudian jalankan sekali lagi."
+        },
+        "cancelled": {
+          "title": "Penjanaan kelayakan dibatalkan",
+          "body": "Tiada apa-apa yang diubah."
+        }
+      },
+      "leaveRecalculation": {
+        "completed": {
+          "title": "Baki cuti telah dikira semula",
+          "body": "Angka cuti pekerja kini mengikut tetapan yang disimpan."
+        },
+        "failed": {
+          "title": "Pengiraan semula cuti dihentikan",
+          "body": "Pekerja yang telah dikira semula mengekalkan angka baharu mereka. Simpan tetapan sekali lagi untuk mengira semula selebihnya."
+        },
+        "cancelled": {
+          "title": "Pengiraan semula cuti dibatalkan",
+          "body": "Pekerja yang telah dikira semula mengekalkan angka baharu mereka. Simpan tetapan sekali lagi untuk mengira semula selebihnya."
+        }
+      },
+      "leaveYearType": {
+        "completed": {
+          "title": "Jenis tahun cuti telah digunakan",
+          "body": "Angka cuti pekerja tahun pertama kini mengikut jenis tahun cuti yang disimpan."
+        },
+        "failed": {
+          "title": "Jenis tahun cuti tidak digunakan pada baki",
+          "body": "Tiada angka cuti yang diubah. Simpan jenis tahun cuti sekali lagi untuk mencuba semula."
+        },
+        "cancelled": {
+          "title": "Pembetulan jenis tahun cuti dibatalkan",
+          "body": "Tiada angka cuti yang diubah."
+        }
+      },
+      "toilSweep": {
+        "completed": {
+          "title": "Penyelesaian cuti ganti selesai",
+          "body": "Kredit cuti ganti yang perlu diselesaikan telah diselesaikan. Buka Kredit Cuti untuk menyemaknya."
+        },
+        "failed": {
+          "title": "Penyelesaian cuti ganti dihentikan",
+          "body": "Kredit yang telah diselesaikan kekal begitu. Jalankan sekali lagi untuk menyelesaikan selebihnya."
+        },
+        "cancelled": {
+          "title": "Penyelesaian cuti ganti dibatalkan",
+          "body": "Kredit yang telah diselesaikan kekal begitu. Jalankan sekali lagi untuk menyelesaikan selebihnya."
+        }
+      },
+      "payrollHistory": {
+        "completed": {
+          "title": "Perubahan sejarah gaji disimpan",
+          "body": "Buka log import untuk melihat apa yang disimpan."
+        },
+        "failed": {
+          "title": "Perubahan sejarah gaji dihentikan",
+          "body": "Tiada sejarah gaji diubah. Buka log import untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Perubahan sejarah gaji dibatalkan",
+          "body": "Tiada sejarah gaji diubah."
+        }
+      },
+      "payrollReprocess": {
+        "completed": {
+          "title": "Pemprosesan semula gaji selesai",
+          "body": "Buka larian untuk menyemak pekerja yang diproses semula."
+        },
+        "failed": {
+          "title": "Pemprosesan semula gaji dihentikan",
+          "body": "Pekerja yang telah diproses semula mengekalkan keputusan baharu mereka. Buka larian untuk melihat di mana ia berhenti."
+        },
+        "cancelled": {
+          "title": "Pemprosesan semula gaji dibatalkan",
+          "body": "Pekerja yang telah diproses semula mengekalkan keputusan baharu mereka."
+        }
+      },
+      "movementImport": {
+        "completed": {
+          "title": "Import pergerakan selesai",
+          "body": "Buka Sejarah Import untuk melihat pergerakan yang disimpan dan pekerja yang tidak dapat disimpan."
+        },
+        "failed": {
+          "title": "Import pergerakan dihentikan",
+          "body": "Buka Sejarah Import untuk melihat sebabnya. Pekerja yang telah disimpan mengekalkan pergerakan mereka."
+        },
+        "cancelled": {
+          "title": "Import pergerakan dihentikan",
+          "body": "Pekerja yang telah disimpan mengekalkan pergerakan mereka. Buka Sejarah Import untuk butiran."
+        }
+      },
+      "movementCheck": {
+        "completed": {
+          "title": "Fail pergerakan telah disemak",
+          "body": "Semakan direkodkan dalam Sejarah Import. Jika anda telah meninggalkan skrin import, muat naik fail itu sekali lagi untuk menyemak dan mengesahkannya."
+        },
+        "failed": {
+          "title": "Semakan pergerakan dihentikan",
+          "body": "Buka Sejarah Import untuk melihat sebabnya. Tiada apa-apa disimpan."
+        },
+        "cancelled": {
+          "title": "Semakan pergerakan dihentikan",
+          "body": "Tiada apa-apa disimpan. Buka Sejarah Import untuk butiran."
+        }
+      },
+      "movementImportRevert": {
+        "completed": {
+          "title": "Pembatalan import pergerakan selesai",
+          "body": "Buka Sejarah Import untuk melihat pergerakan yang telah dibatalkan."
+        },
+        "failed": {
+          "title": "Pembatalan import pergerakan dihentikan",
+          "body": "Tiada apa-apa diubah. Buka Sejarah Import untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Pembatalan import pergerakan dibatalkan",
+          "body": "Tiada apa-apa diubah. Buka Sejarah Import untuk butiran."
+        }
+      },
+      "recruitmentImport": {
+        "completed": {
+          "title": "Import calon selesai",
+          "body": "Buka import untuk melihat hasil baris demi baris dan calon yang menunggu dalam senarai Untuk ditetapkan."
+        },
+        "failed": {
+          "title": "Import calon berhenti",
+          "body": "Satu masalah menghentikan import. Baris yang sudah diimport kekal; buka import untuk melihat hasil."
+        },
+        "cancelled": {
+          "title": "Import calon dihentikan",
+          "body": "Import telah dihentikan. Baris yang sudah diimport kekal; buka import untuk melihat hasil."
+        }
+      }
+    },
+    "panel": {
+      "queued": "Menunggu untuk bermula",
+      "preparing": "Menyemak setiap perubahan",
+      "running": "Menyimpan",
+      "finalizing": "Menyelesaikan",
+      "discarding": "Menghentikan",
+      "completed": "Selesai",
+      "failed": "Dihentikan",
+      "cancelled": "Dibatalkan",
+      "progressCount": "{done} daripada {total} langkah selesai",
+      "backgroundHelp": "Anda boleh tinggalkan halaman ini. Kerja diteruskan dan anda akan dimaklumkan apabila selesai.",
+      "waiting": "Menunggu perkhidmatan latar belakang. Kemajuan disimpan; jangan mulakan sekali lagi.",
+      "workerUnavailable": "Perkhidmatan latar belakang belum berjalan. Permintaan anda telah disimpan dan akan bermula secara automatik sebaik sahaja perkhidmatan itu berjalan."
+    },
+    "roster": {
+      "generate": "Menjana roster",
+      "copy": "Menyalin roster",
+      "assign": "Menggunakan perubahan roster",
+      "import": "Menyimpan roster yang dimuat naik",
+      "otherRunning": "Satu lagi perubahan roster masih disimpan. Tunggu sehingga selesai, kemudian cuba lagi.",
+      "saveFailed": "Perubahan roster tidak dapat disimpan. Sila cuba lagi, atau hubungi pentadbir HR.",
+      "queuedBehind": "Beratur di belakang kerja roster lain. Ia bermula secara automatik sebaik sahaja kerja itu selesai."
+    },
+    "scheduleGroup": {
+      "title": "Menetapkan Kumpulan Jadual",
+      "otherRunning": "Satu lagi penetapan Kumpulan Jadual masih disimpan. Tunggu sehingga selesai, kemudian cuba lagi.",
+      "queuedBehind": "Beratur di belakang penetapan Kumpulan Jadual lain. Ia bermula secara automatik sebaik sahaja penetapan itu selesai."
+    }
+  },
+  "importLog": {
+    "batchReference": "Rujukan kelompok",
+    "importedBy": "Diimport oleh",
+    "batchLabel": "Kelompok {code}",
+    "actorWithId": "{name} ({employeeId})",
+    "actorUnlinked": "Log masuk pentadbir (tiada rekod pekerja · log masuk berakhir {suffix})",
+    "actorUnavailable": "Pengguna tidak tersedia"
+  },
+  "lifecycleEmailHold": {
+    "inboxAction": "E-mel ditahan: {email}"
+  },
+  "rewardConfig": {
+    "title": "Semak sebelum menyimpan",
+    "saving": "Menyimpan…",
+    "whyReview": "Sebab ini perlu disemak",
+    "reason": "Sebab perubahan ini",
+    "cancel": "Batal",
+    "highImpact": {
+      "released-pat": "PAT berubah untuk semakan yang telah dilepaskan.",
+      "released-library": "Semakan yang telah dilepaskan menggunakan versi terdahulu. Semakan itu mengekalkannya; semakan baharu menggunakan versi ini.",
+      "released-limit": "Had bajet berubah untuk semakan yang telah dilepaskan.",
+      "release-review": "Pelepasan menghantar semakan ini kepada CEO BU.",
+      "remove-access": "Seseorang kehilangan akses kepada semakan.",
+      "open-offcycle": "Membuka tahun luar kitaran menjadikan baki syarikat tersedia kepada pemimpin untuk permohonan luar kitaran.",
+      "offcycle-window": "Tempoh pertengahan tahun menentukan bila syor pertengahan tahun boleh dihantar."
+    },
+    "whatChanges": "Apa yang berubah ({count})",
+    "item": "Item",
+    "before": "Sebelum",
+    "after": "Selepas",
+    "noValueChanges": "Tiada nilai berubah.",
+    "moreLines": "{count} perubahan lagi disenaraikan dalam log perubahan.",
+    "affected": "Semakan terjejas ({count})",
+    "noReviewsAffected": "Tiada semakan terjejas.",
+    "consequence": {
+      "repriced": "Dikira semula sekarang",
+      "recalculation-required": "Dikira semula; pelulus semasa dimaklumkan",
+      "keeps-version": "Mengekalkan versi asalnya",
+      "released-to-bu": "Dilepaskan kepada CEO BU",
+      "access-removed": "Akses dibuang",
+      "none": "Tiada perubahan"
+    },
+    "notificationTitle": "Konfigurasi Ganjaran berubah",
+    "noAccess": "Log perubahan Ganjaran tidak tersedia untuk anda.",
+    "logHelp": "Setiap perubahan konfigurasi Ganjaran: siapa yang membuatnya, bila, apa yang berubah dan mengapa. Perubahan tidak pernah disunting atau dibuang.",
+    "area": "Bahagian",
+    "allAreas": "Semua bahagian",
+    "company": "Syarikat",
+    "allCompanies": "Semua syarikat",
+    "person": "Diubah oleh",
+    "from": "Dari",
+    "to": "Hingga",
+    "highImpactOnly": "Impak tinggi sahaja",
+    "filter": "Gunakan penapis",
+    "exportExcel": "Eksport ke Excel",
+    "when": "Bila",
+    "areaColumn": "Bahagian",
+    "reasonColumn": "Sebab",
+    "changes": "Perubahan",
+    "changedValues": "{count, plural, =0 {Tiada nilai} one {# nilai} other {# nilai}}",
+    "system": "Sistem",
+    "unknownPerson": "Tidak diketahui",
+    "highImpactBadge": "Impak tinggi",
+    "areas": {
+      "salary": "Struktur gaji",
+      "bonus": "Matriks bonus",
+      "pat": "Input PAT",
+      "plan": "Konfigurasi Ganjaran Dikongsi",
+      "shared": "Konfigurasi dikongsi",
+      "exemption": "Pengecualian had bajet",
+      "senior": "Pelan Senior",
+      "upload": "Anugerah dimuat naik",
+      "preparation": "Persediaan semakan",
+      "access": "Akses Ganjaran",
+      "role_permission": "Kebenaran peranan",
+      "group_role": "Peranan seluruh kumpulan",
+      "limit": "Kawalan had",
+      "offcycle": "Luar kitaran"
+    },
+    "actions": {
+      "returned-to-draft": "Dikembalikan ke draf",
+      "saved-draft": "Draf disimpan",
+      "activated": "Dijadikan aktif",
+      "restored": "Dipulihkan daripada versi terdahulu",
+      "saved": "Disimpan",
+      "released": "Dilepaskan",
+      "applied": "Digunakan",
+      "changed": "Diubah",
+      "reset": "Ditetapkan semula kepada lalai"
+    },
+    "empty": "Tiada perubahan sepadan dengan penapis ini.",
+    "pages": "Halaman",
+    "previous": "Sebelumnya",
+    "next": "Seterusnya",
+    "exportTruncated": "Hanya 5,000 perubahan pertama disertakan. Kecilkan penapis untuk mengeksport selebihnya."
+  },
+  "rewardLimits": {
+    "description": "Had dan ambang bagi setiap tahun ganjaran. Setiap semakan dalam ulasan, penasihat AI dan Analitik Ganjaran menggunakan nilai bagi tahun ganjaran ulasan itu.",
+    "noAccess": "Anda tidak mempunyai akses",
+    "noAccessHelp": "Kawalan Had tersedia untuk Group Rewards, CTRO dan EC.",
+    "year": "Tahun ganjaran",
+    "show": "Tunjuk",
+    "viewOnly": "Anda boleh melihat had ini. Hanya Group Rewards boleh mengubahnya.",
+    "versionLine": "Versi {version} digunakan untuk {year}.",
+    "baselineLine": "Belum ada versi disimpan untuk {year}. Ini ialah nilai standard; menyimpan akan mencipta versi 1.",
+    "typeHelp": "Sekat menghalang penghantaran. Pengecualian dan Amaran dibawa bersama ulasan dan memerlukan sebab sebelum dihantar. Nota hanya untuk makluman.",
+    "columns": {
+      "limit": "Had",
+      "value": "Nilai",
+      "type": "Jenis",
+      "appliesTo": "Terpakai kepada",
+      "lastChanged": "Terakhir diubah oleh / tarikh"
+    },
+    "areas": {
+      "pools": "Kumpulan kenaikan gaji",
+      "person": "Kenaikan gaji setiap orang",
+      "bonus": "Bonus",
+      "lump": "Bayaran sekali gus",
+      "exemption": "Pengecualian",
+      "advisor": "Penasihat AI"
+    },
+    "labels": {
+      "pool_standard_merit": "Kumpulan merit (% gaji layak)",
+      "pool_standard_promotion": "Kumpulan kenaikan pangkat (% gaji layak)",
+      "pool_standard_special": "Kumpulan pelarasan khas (% gaji layak)",
+      "pool_h_merit": "Kumpulan merit (% gaji layak)",
+      "pool_h_promotion": "Kumpulan kenaikan pangkat (% gaji layak)",
+      "pool_h_special": "Kumpulan pelarasan khas (% gaji layak)",
+      "pool_separate": "Kumpulan tidak boleh membiayai satu sama lain atau syarikat lain",
+      "increase_withoutPromotion": "Jumlah kenaikan tanpa kenaikan pangkat melebihi",
+      "increase_withPromotion": "Jumlah kenaikan dengan kenaikan pangkat pada atau melebihi",
+      "promotion_increment": "Kenaikan bagi kenaikan pangkat",
+      "promotion_maxGrades": "Maksimum gred naik",
+      "promotion_maxGrade": "Gred tertinggi selepas kenaikan pangkat",
+      "catchUp_crFloor": "Lantai CR susulan untuk STAR/SSTAR",
+      "salary_noReduction": "Tiada pengurangan gaji",
+      "bonus_poolCap": "Had kumpulan bonus",
+      "bonus_underUse": "Amaran penggunaan rendah di bawah",
+      "bonus_individualCeiling": "Siling bonus individu melebihi",
+      "bonus_rounding": "Pembundaran bayaran (bundar ke bawah)",
+      "bonus_individualMultiplier": "Pendarab individu berbeza daripada unit",
+      "lump_share": "Bahagian baki yang tinggal",
+      "lump_step": "Langkah pembundaran",
+      "lump_cap": "Had setiap orang",
+      "lump_aboveSuggestion": "Amaun unit melebihi cadangan",
+      "lump_individualAmendment": "Pindaan individu",
+      "exemption_budgetCapsOnly": "Syarikat dikecualikan: had bajet sahaja, dengan sebab",
+      "advisor_override": "Ambang pindaan",
+      "advisor_longWithoutIncrease": "Lama tanpa kenaikan",
+      "advisor_peerGap": "Jurang gaji rakan setara"
+    },
+    "types": {
+      "block": "Sekat",
+      "exception": "Pengecualian",
+      "warning": "Amaran",
+      "note": "Nota"
+    },
+    "appliesTo": {
+      "standard": "Pelan standard",
+      "h": "Pelan JG H",
+      "all": "Semua pelan"
+    },
+    "units": {
+      "percent": "%",
+      "points": "mata peratusan",
+      "ratio": "CR",
+      "months": "bulan",
+      "myr": "RM",
+      "grades": "gred",
+      "grade": "JG",
+      "years": "tahun"
+    },
+    "fixed": "Tetap",
+    "fixedHelp": "Ditetapkan untuk melindungi gaji; tidak boleh diubah.",
+    "none": "Tiada",
+    "standardValue": "Nilai standard",
+    "changedBy": "{name} · {date}",
+    "unknownPerson": "Tidak diketahui",
+    "valueFor": "Nilai untuk {limit}",
+    "typeFor": "Jenis untuk {limit}",
+    "reviewSave": "Semak sebelum menyimpan",
+    "save": "Simpan versi baharu",
+    "discard": "Buang perubahan",
+    "saved": "Disimpan sebagai versi {version}.",
+    "errors": {
+      "system": "Had tidak dapat disimpan. Perubahan anda masih ada; cuba lagi."
+    },
+    "reviewsHeading": "Ulasan dalam tahun ganjaran ini",
+    "reviewsHelp": "Ulasan Draf menggunakan versi semasa. Ulasan yang telah melepasi Draf mengekalkan versi semasa ia dihantar. Jika anda menggunakan versi semasa padanya, semakannya dijalankan semula dan pelulus semasanya dimaklumkan.",
+    "reviewColumns": {
+      "review": "Ulasan",
+      "stage": "Peringkat",
+      "versionUsed": "Had digunakan"
+    },
+    "select": "Pilih",
+    "selectReview": "Pilih {review}",
+    "baseline": "Nilai standard (sebelum Kawalan Had)",
+    "currentVersion": "Semasa (versi {version})",
+    "version": "Versi {version}",
+    "apply": "Gunakan versi {version} pada ulasan yang dipilih",
+    "applyConfirm": "Gunakan dan maklumkan pelulus",
+    "applied": "{count, plural, one {Digunakan pada # ulasan.} other {Digunakan pada # ulasan.}}",
+    "noReviews": "Belum ada ulasan menggunakan tahun ganjaran ini.",
+    "reviewsTruncated": "Hanya 200 ulasan pertama disenaraikan.",
+    "exemptionsHeading": "Pengecualian had bajet",
+    "exemptionsHelp": "Pengecualian hanya melonggarkan had bajet (kumpulan kenaikan gaji dan had kumpulan bonus). Ia direkodkan bersama sebabnya pada persediaan ulasan.",
+    "noExemptions": "Tiada ulasan dalam tahun ganjaran ini mempunyai pengecualian had bajet.",
+    "historyHeading": "Sejarah versi",
+    "noVersions": "Belum ada versi.",
+    "changeLogLink": "Lihat setiap perubahan dalam log perubahan"
+  },
+  "scheduleOvertimeSetting": {
+    "title": "Tetapan Kerja Lebih Masa",
+    "intro": "Mengawal cara kerja lebih masa direkod, diluluskan, diimbangi dan dibundarkan bagi pekerja dalam Kumpulan Jadual ini. Ia terpakai mulai tarikh mula: hari terdahulu, rekod perakaman waktu, rekod kelewatan dan gaji lalu tidak dikira semula.",
+    "companiesLabel": "Terpakai kepada",
+    "allCompanies": "Semua syarikat",
+    "selectedCompanies": "Syarikat terpilih",
+    "effectiveFrom": "Tarikh mula",
+    "effectiveHint": "Selepas hari ini, dan selepas sebarang tarikh mula yang telah disimpan bagi syarikat terpilih.",
+    "applicabilityTitle": "Kebolehgunaan Kerja Lebih Masa",
+    "beforeShift": "Kerja Lebih Masa Sebelum Syif",
+    "beforeShiftHint": "Benarkan kerja lebih masa sebelum syif yang dijadualkan.",
+    "afterShift": "Kerja Lebih Masa Selepas Syif",
+    "afterShiftHint": "Benarkan kerja lebih masa selepas syif yang dijadualkan.",
+    "allowBackdated": "Benarkan Permohonan Kerja Lebih Masa Terdahulu Tanpa Perakaman Waktu",
+    "allowBackdatedHint": "Pekerja boleh memohon kerja lebih masa terdahulu tanpa rekod perakaman waktu. HR masih merekod tempoh kerja sebenar sebelum ia dikira.",
+    "splitAtMidnight": "Pisahkan Kerja Lebih Masa pada Tengah Malam",
+    "splitAtMidnightHint": "Kerja lebih masa selepas tengah malam dikira pada hari kalendar berikutnya sebagai kerja lebih masa awal. Contoh: 10:00 PM hingga 2:00 AM memberi 2 jam pada setiap tarikh.",
+    "offsetTitle": "Imbangi Kerja Lebih Masa dengan Kelewatan",
+    "offsetLateness": "Imbangi Kerja Lebih Masa dengan Kelewatan",
+    "offsetHint": "Tolak minit lewat masuk daripada kerja lebih masa yang layak. Contoh: lewat 20 minit berbanding 60 minit layak meninggalkan 40. Kelewatan yang direkod dikekalkan.",
+    "showLatenessException": "Tunjukkan Pengecualian Kelewatan Selepas Imbangan",
+    "showLatenessExceptionHint": "Tunjukkan pengecualian kelewatan bagi kelewatan yang masih berbaki selepas imbangan.",
+    "approvalTitle": "Kaedah Kelulusan Kerja Lebih Masa",
+    "approvalManual": "Manual",
+    "approvalAuto": "Auto",
+    "approvalManualHint": "Kehadiran tidak mencipta kerja lebih masa yang perlu dibayar. Rekod perakaman waktu dikekalkan, dan kerja lebih masa dimasukkan secara manual dalam Gaji.",
+    "autoMethod": "Kaedah Kelulusan Auto Kerja Lebih Masa",
+    "methodIntersect": "Persilangan Sebenar dan Pra-Lulus",
+    "methodActual": "Jam Sebenar",
+    "methodPreApproved": "Kerja Lebih Masa Diluluskan",
+    "methodIntersectHint": "Membayar yang lebih rendah antara minit diluluskan dan sebenar: diluluskan 120 dan sebenar 90 membayar 90.",
+    "methodActualHint": "Membayar minit layak sebenar, tanpa had kelulusan.",
+    "methodPreApprovedHint": "Membayar tempoh yang diluluskan: diluluskan 120 dan sebenar 90 membayar 120.",
+    "patternsTitle": "Corak Kerja Lebih Masa bagi setiap jenis hari",
+    "patternsHint": "Bayaran kerja lebih masa dikira oleh Corak Kerja Lebih Masa yang dipilih. Hanya corak yang aktif bagi setiap syarikat terpilih disenaraikan.",
+    "patternsNone": "Tiada Corak Kerja Lebih Masa yang aktif bagi setiap syarikat terpilih. Aktifkan satu dalam Corak Kerja Lebih Masa untuk menggunakan Auto, atau pilih Manual.",
+    "choosePattern": "Pilih Corak Kerja Lebih Masa",
+    "dayNormal": "Hari bekerja",
+    "dayOff": "Hari tidak bekerja",
+    "dayRest": "Hari rehat",
+    "dayPublicHoliday": "Cuti umum",
+    "dayReplacementHoliday": "Cuti gantian",
+    "roundingTitle": "Pembundaran Kerja Lebih Masa",
+    "roundingMethod": "Kaedah Pembundaran Kerja Lebih Masa",
+    "roundUp": "Bundarkan Ke Atas",
+    "roundDown": "Bundarkan Ke Bawah",
+    "roundingStep": "Pembundaran Kerja Lebih Masa kepada Minit",
+    "stepMinutes": "{n} Minit",
+    "roundingHint": "Pembundaran digunakan terakhir, selepas kaedah kelulusan dan imbangan kelewatan. Tempoh perakaman waktu yang direkod tidak diubah.",
+    "unsupportedRounding": "Pembundaran yang disimpan menggunakan pilihan yang tidak ditawarkan oleh bahagian ini. Menyimpan akan menggantikannya mulai tarikh mula baharu.",
+    "differs": "{n, plural, other {# syarikat mempunyai}} Tetapan Kerja Lebih Masa yang berbeza, atau tiada. Menyimpan akan menggunakan tetapan ini bagi setiap syarikat terpilih.",
+    "savedFrom": "Tetapan yang disimpan bermula pada {date}.",
+    "none": "Belum ada Tetapan Kerja Lebih Masa disimpan. Kerja lebih masa kumpulan ini berfungsi seperti sebelum ini sehingga satu disimpan.",
+    "save": "Simpan Tetapan Kerja Lebih Masa",
+    "systemReason": "Tetapan Kerja Lebih Masa Kumpulan Jadual disimpan",
+    "on": "Hidup",
+    "off": "Mati",
+    "payrollNote": "Gaji menerima angka kerja lebih masa akhir daripada tetapan ini, sama seperti ia menerima kerja lebih masa hari ini.",
+    "approvalIntro": "Menentukan sama ada Kehadiran mengira kerja lebih masa yang dibayar, dan minit mana yang digunakan.",
+    "roundingIntro": "Menentukan sama ada minit kerja lebih masa yang layak dibundarkan ke atas, dibundarkan ke bawah atau tidak dibundarkan.",
+    "roundNone": "Tiada",
+    "roundingNoneHint": "Tidak berkenaan apabila Tiada dipilih. Minit kerja lebih masa layak yang sebenar dikekalkan.",
+    "notApplicable": "Tidak berkenaan",
+    "minutesValue": "{n} minit",
+    "roundingExampleTitle": "Contoh pengiraan",
+    "roundingExampleActual": "Kerja lebih masa layak sebenar",
+    "roundingExampleMethod": "Kaedah Pembundaran",
+    "roundingExampleInterval": "Selang",
+    "roundingExampleFinal": "Kerja lebih masa akhir",
+    "backdateTitle": "Kawalan Tarikh Terdahulu Kerja Lebih Masa",
+    "backdateIntro": "Menentukan sejauh mana permohonan kerja lebih masa boleh ditarikhkan ke belakang. Benarkan Permohonan Kerja Lebih Masa Terdahulu Tanpa Perakaman Waktu adalah berasingan: ia hanya menentukan sama ada perakaman waktu diperlukan.",
+    "backdateControl": "Dayakan Kawalan Tarikh Terdahulu Kerja Lebih Masa",
+    "backdateControlHint": "Terpakai kepada permohonan kerja lebih masa pekerja sendiri di web dan aplikasi mudah alih, permohonan melalui pembantu AI, dan Mohon Bagi Pihak. Pentadbir HR tertakluk kepada had yang sama.",
+    "backdateDays": "Benarkan Permohonan Terdahulu Dalam Tempoh (Hari)",
+    "backdateDaysHint": "Nombor bulat dari 1 hingga {max}, dikira ke belakang dari hari permohonan dihantar. Dengan 3 hari, permohonan yang dihantar pada 16-Nov-2026 boleh dibuat untuk 13 hingga 16-Nov-2026.",
+    "backdateDaysValue": "{n, plural, other {# hari}}",
+    "backdateRefused": "Permohonan kerja lebih masa boleh ditarikhkan paling lama {days, plural, other {# hari}} ke belakang. Pilih {date} atau tarikh yang lebih lewat."
+  },
+  "attendanceOnBehalf": {
+    "requestTitle": "Mohon Bagi Pihak",
+    "requestHelp": "Pilih pekerja, kemudian failkan Ketidakaturan Kehadiran atau Lebih Masa Sendiri untuk mereka pada skrin biasa. Permohonan mengikut aliran kerja dan pelulus mereka sendiri.",
+    "approveTitle": "Lulus Bagi Pihak",
+    "approveHelp": "Pilih pelulus yang ditetapkan yang permohonan kehadiran belum selesainya perlu anda uruskan.",
+    "approveListHelp": "Permohonan yang menunggu {name} yang boleh anda putuskan bagi pihak mereka.",
+    "searchLabel": "Cari mengikut ID Pekerja atau nama",
+    "searchPlaceholder": "cth. EMP-0123 atau nama",
+    "search": "Cari",
+    "results": "Pekerja yang boleh anda wakili",
+    "noResults": "Tiada pekerja yang boleh anda wakili sepadan dengan carian ini.",
+    "noPermission": "Peranan anda tidak mempunyai kebenaran ini. Minta pentadbir jika anda memerlukannya.",
+    "choose": "Pilih",
+    "employeeName": "Pekerja",
+    "employeeId": "ID Pekerja",
+    "company": "Syarikat",
+    "department": "Jabatan",
+    "changeEmployee": "Tukar pekerja",
+    "chooseCategory": "Apakah yang ingin anda failkan?",
+    "irregularity": "Ketidakaturan Kehadiran",
+    "irregularityHelp": "Waktu jam yang tiada atau salah, jam kurang atau ketidakhadiran, untuk hari pekerja itu sendiri.",
+    "selfOvertime": "Lebih Masa Sendiri",
+    "selfOvertimeHelp": "Rancang atau tuntut lebih masa di bawah Kumpulan Jadual dan peraturan lebih masa pekerja itu sendiri.",
+    "banner": "Menghantar bagi pihak {name}",
+    "pendingTitle": "Permohonan menunggu kelulusan",
+    "pendingEmpty": "Tiada apa-apa yang menunggu pelulus ini yang boleh anda putuskan.",
+    "approveOnBehalf": "Lulus Bagi Pihak",
+    "rejectOnBehalf": "Tolak Bagi Pihak",
+    "approveAudit": "Sejarah mengekalkan orang yang dipilih sebagai pelulus yang ditetapkan dan merekodkan anda sebagai orang yang bertindak.",
+    "previous": "Sebelumnya",
+    "next": "Seterusnya"
+  },
+  "importErrorLogDataBankCostInfo": {
+    "corrections": {
+      "duplicateInFile": "Nilai ini muncul lebih daripada sekali dalam fail - simpan satu baris sahaja.",
+      "duplicateEmployeeInFile": "ID Pekerja ini muncul lebih daripada sekali dalam fail - simpan satu baris sahaja.",
+      "chooseReference": "Pilih nilai daripada helaian Reference dalam templat.",
+      "chooseCompany": "Pilih Company Code daripada helaian Reference.",
+      "chooseCostCenter": "Pilih Cost Center Code yang disenaraikan untuk syarikat ini dalam helaian Allocation Reference.",
+      "date": "Masukkan tarikh sebagai YYYY-MM-DD atau sebagai tarikh Excel.",
+      "required": "Isi lajur ini - ia wajib.",
+      "yesNo": "Masukkan yes atau no.",
+      "revalidate": "Muat naik semula fail yang telah dibetulkan supaya baris ini disemak semula.",
+      "permission": "Buang baris ini, atau minta pentadbir memberi akses kepada syarikat pekerja ini.",
+      "systemError": "Muat naik fail sekali lagi. Jika masalah berulang, berikan rujukan sokongan kepada pasukan teknikal.",
+      "textCode": "Formatkan sel sebagai Text dan masukkan kod sekali lagi.",
+      "noFormula": "Taip nilai itu sendiri, bukan formula.",
+      "existingEmployee": "Semak ID Pekerja. Pekerja baharu mesti ditambah melalui \"Semuanya - pekerja baharu\" terlebih dahulu.",
+      "percentage": "Masukkan peratusan lebih daripada 0 dan paling banyak 100, dengan sehingga dua tempat perpuluhan.",
+      "periodUnit": "Masukkan nombor dan unitnya (Month, Week atau Day) bersama-sama.",
+      "reason": "Masukkan sebab sekurang-kurangnya tiga aksara.",
+      "statutoryRecord": "Simpan nombor pengenalan pekerja dalam rekod Personel mereka dahulu, kemudian muat naik fail ini semula.",
+      "template": "Muat turun templat terkini, salin baris anda ke dalamnya dan muat naik semula.",
+      "bankPair": "Masukkan nama bank dan nombor akaun bank bersama-sama."
+    },
+    "bank": {
+      "duplicateEmployeeId": "ID Pekerja berulang dalam fail ini; mula-mula digunakan pada baris Excel {row}.",
+      "duplicateCardId": "ID Kad berulang dalam fail ini.",
+      "cardIdTaken": "card_id sudah digunakan oleh pekerja lain; pilih ID kad yang belum digunakan.",
+      "noPermission": "Anda tiada kebenaran untuk mengemas kini pekerja ini.",
+      "changedAfterValidation": "Baris ini tidak disimpan. Data atau kebenarannya berubah selepas pengesahan; semak dan import semula.",
+      "missingEmployeeId": "employee_code tiada — ia ialah pautan kepada pekerja yang dikemas kini",
+      "unknownEmployee": "Tiada pekerja dengan ID Pekerja \"{code}\". Fail bahagian hanya boleh MENGEMAS KINI orang yang sudah ada dalam sistem — ia tidak boleh menambah sesiapa. Untuk menambah orang ini, pilih \"Semuanya — pekerja baharu\" di bahagian atas halaman ini dan gunakan templat pekerja penuh, kemudian jalankan fail ini semula.",
+      "duplicateEmployeeCode": "employee_code berulang dalam fail ini",
+      "bankTransferNeedsBank": "Pindahan Bank memerlukan nama bank dan nombor akaun.",
+      "bankPair": "bank_name dan bank_account_no mesti diberikan bersama-sama",
+      "noStatutoryRecordYet": "Pekerja ini belum mempunyai rekod berkanun — simpan nombor pengenalan mereka dalam rekod Personel dahulu, kemudian jalankan fail ini semula",
+      "noStatutoryRecord": "Pekerja ini tiada rekod berkanun; lengkapkan tetapan berkanun dalam rekod Personel dahulu.",
+      "notActiveOption": "\"{value}\" bukan pilihan {category} yang aktif — lajur {column}",
+      "yesNo": "{column} mestilah yes atau no",
+      "jobStopped": "Import dihentikan. Baris yang sudah disimpan dikekalkan. Semak keputusan dan akses anda sebelum mencuba semula. Rujukan {ref}.",
+      "jobStoppedEarlier": "Import dihentikan. Baris yang sudah disimpan dikekalkan. Semak keputusan dan akses anda sebelum mencuba semula.",
+      "fileTooLarge": "Fail melebihi had saiz import atau helaian kerja. Gunakan sehingga 250,000 baris dan 128 MiB.",
+      "fileUnreadable": "Fail tidak dapat dibaca. Gunakan templat Bank dan Statutori dan helaian rujukannya.",
+      "fileRowCount": "Pilih fail dengan 1 hingga 250,000 baris data.",
+      "fileIncomplete": "Fail yang dimuat naik tidak lengkap atau checksumnya berbeza. Muat naik semula."
+    },
+    "allocation": {
+      "errors": {
+        "invalid": "Masukkan peratusan lebih daripada sifar dan paling banyak 100, dengan sehingga dua tempat perpuluhan.",
+        "duplicate": "Pilih setiap pusat kos sekali sahaja.",
+        "total": "Jumlah peruntukan tidak boleh melebihi 100%.",
+        "scope": "Rekod pekerja atau kebenaran tidak tersedia.",
+        "label": "Pusat kos tidak aktif atau tidak tersedia untuk syarikat ini.",
+        "changed": "Peruntukan telah berubah. Muat semula dan pratonton sekali lagi.",
+        "date": "Pilih tarikh berkuat kuasa yang mempunyai sejarah syarikat pekerjaan yang terbukti.",
+        "clear": "Mengosongkan peruntukan memerlukan operasi Clear yang jelas.",
+        "preview": "Data input atau rujukan telah berubah. Pratonton sekali lagi.",
+        "binding": "Padankan setiap peruntukan dengan satu syarikat dan ID Pekerja.",
+        "transfer": "Simpan set Clear yang jelas pada tarikh pertukaran dan kosongkan set berjadual yang kemudian sebelum pertukaran. Kemudian simpan peruntukan baharu untuk syarikat destinasi."
+      },
+      "operation": "Operation mestilah Replace atau Clear, dan sama pada setiap baris untuk seorang pekerja dan satu tarikh.",
+      "clearRow": "Clear memerlukan tepat satu baris dengan Cost Center Code dan Percentage yang kosong.",
+      "costCenterUnavailable": "Cost Center Code ini tidak tersedia untuk {company}.",
+      "companyRequired": "Company Code wajib diisi.",
+      "companyAmbiguous": "Company Code \"{code}\" sepadan dengan lebih daripada satu syarikat. Gunakan Company Code yang disenaraikan dalam helaian Reference.",
+      "companyUnknown": "Company Code \"{code}\" tidak sepadan dengan syarikat yang boleh anda import.",
+      "effectiveDate": "Effective Date mestilah tarikh dalam bentuk YYYY-MM-DD.",
+      "employeeInvalid": "ID Pekerja tiada atau tidak sah.",
+      "employeeAmbiguous": "ID Pekerja {code} sepadan dengan lebih daripada seorang pekerja {company}.",
+      "employeeNotInCompany": "ID Pekerja {code} bukan pekerja {company} pada {date}.",
+      "heldBack": "Satu lagi peruntukan untuk ID Pekerja {code} dalam fail ini mempunyai ralat, jadi pekerja ini tidak diimport. Betulkan baris itu dahulu.",
+      "unavailable": "Syarikat, pekerja atau tarikh berkuat kuasa peruntukan tidak tersedia.",
+      "saveFailed": "Pekerja ini tidak dapat disimpan; tiada apa-apa yang diubah untuk mereka.",
+      "file": {
+        "legacyLayout": "Fail ini menggunakan susun atur lama dengan pengecam syarikat dalaman (company_id). Muat turun templat baharu dan isi lajur Company Code.",
+        "duplicateHeaders": "Tajuk lajur peruntukan yang berulang tidak dibenarkan.",
+        "missingColumns": "Lajur peruntukan tiada: {columns}",
+        "unexpectedColumns": "Lajur peruntukan yang tidak dijangka: {columns}",
+        "tooManyRows": "Gunakan paling banyak 5000 baris peruntukan bagi setiap fail.",
+        "tooLarge": "Fail peruntukan melebihi saiz yang disokong.",
+        "tooLarge10": "Pilih fail yang tidak melebihi 10 MB.",
+        "unreadableWorkbook": "Buku kerja tidak dapat dibaca. Muat turun templat dan cuba lagi.",
+        "utf8": "Simpan fail CSV sebagai UTF-8.",
+        "fileType": "Pilih templat .xlsx atau fail .csv dengan lajur yang sama.",
+        "unreadable": "Fail ini tidak dapat dibaca.",
+        "noRows": "Fail ini tiada baris peruntukan."
+      }
+    },
+    "correction": {
+      "noFormula": "Formula dan sel ralat tidak diterima.",
+      "textCode": "Masukkan kod sebagai teks untuk mengekalkan sifar di hadapan.",
+      "date": "Gunakan YYYY-MM-DD atau tarikh Excel.",
+      "tooLong": "Maksimum 1,000 aksara.",
+      "periodUnit": "Masukkan tempoh dan unitnya bersama-sama ({unit}).",
+      "notOption": "\"{value}\" bukan pilihan untuk syarikat ini. Semak helaian rujukan {sheet}.",
+      "superiorUnknown": "ID Pekerja tidak dikenali atau tidak kelihatan kepada anda.",
+      "organisationFormula": "Lajur organisasi tidak boleh mengandungi formula atau sel ralat.",
+      "organisationTooLong": "Nilai organisasi: maksimum 1,000 aksara.",
+      "companyRequired": "Company Code wajib diisi.",
+      "employeeRequired": "ID Pekerja wajib diisi.",
+      "reasonShort": "Correction Reason mesti mengandungi sekurang-kurangnya tiga aksara.",
+      "duplicateEmployee": "Pekerja ini muncul lebih daripada sekali. Simpan satu baris pembetulan bagi setiap pekerja.",
+      "companyUnknown": "Company Code tidak dikenali, samar-samar atau di luar kebenaran anda.",
+      "employeeUnknown": "ID Pekerja tidak dikenali atau samar-samar dalam syarikat sedia ada.",
+      "newCompanyUnknown": "New Company Code tidak dikenali, samar-samar atau di luar kebenaran anda.",
+      "gradeInactive": "Job Grade bukan kod sistem yang aktif.",
+      "sameEmployee": "Beberapa baris merujuk kepada pekerja yang sama."
+    }
+  },
+  "importErrorLogEmployee": {
+    "problemsTitle": "Masalah untuk dibetulkan",
+    "missingColumn": "Lajur wajib ini tiada dalam helaian.",
+    "thisField": "lajur ini",
+    "downloadFailed": "Log Ralat tidak dapat disediakan. Cuba lagi.",
+    "correction": {
+      "reference": "Pilih {field} daripada helaian Reference.",
+      "date": "Masukkan tarikh sebagai YYYY-MM-DD atau sebagai tarikh Excel.",
+      "month": "Masukkan bulan sebagai YYYY-MM.",
+      "required": "Isikan {field} - ia wajib.",
+      "requiredForContract": "Isikan lajur ini - ia wajib bagi pekerja Kontrak.",
+      "duplicateInFile": "Nilai ini muncul lebih daripada sekali dalam fail - simpan satu baris sahaja.",
+      "duplicateEmployeeId": "ID Pekerja ini muncul lebih daripada sekali dalam fail - simpan satu baris sahaja.",
+      "duplicateInSystem": "Nilai ini sudah digunakan oleh pekerja lain - masukkan nilai lain, atau keluarkan baris ini.",
+      "number": "Masukkan nombor (digit sahaja, tanpa simbol mata wang).",
+      "choice": "Pilih salah satu nilai yang disenaraikan dalam helaian Instructions atau Reference.",
+      "yesNo": "Masukkan Yes atau No.",
+      "email": "Masukkan alamat e-mel penuh, contohnya nama@syarikat.com.",
+      "notOnEmployeeSheet": "Tambah pekerja ini ke helaian pekerja, atau betulkan ID Pekerja.",
+      "employeeNotFound": "Semak ID Pekerja. Untuk menambah pekerja baharu, gunakan Semuanya - pekerja baharu dahulu.",
+      "missingColumn": "Tambah lajur {field} menggunakan templat semasa, dan muat naik semula.",
+      "wrongSection": "Keluarkan lajur itu, atau importnya dengan templat yang memilikinya.",
+      "system": "Cuba lagi. Jika ia berulang, berikan rujukan sokongan kepada pentadbir anda.",
+      "uploadAgain": "Betulkan baris yang menghentikan import, kemudian muat naik semula keseluruhan fail."
+    }
+  },
+  "importProblems": {
+    "headers": {
+      "sheet": "Helaian",
+      "row": "Baris Excel",
+      "category": "Kategori",
+      "reference": "Rujukan",
+      "employeeName": "Nama pekerja",
+      "field": "Medan",
+      "value": "Nilai dimasukkan",
+      "problem": "Apa yang salah",
+      "correction": "Cara membetulkannya",
+      "stage": "Ditemui semasa",
+      "result": "Keputusan",
+      "errorReference": "Rujukan sokongan"
+    },
+    "stage": {
+      "file": "Membaca fail",
+      "check": "Menyemak fail",
+      "save": "Menyimpan",
+      "system": "Ralat sistem"
+    },
+    "result": {
+      "refused": "Tidak diimport",
+      "skipped": "Dilangkau",
+      "stopped": "Menghentikan import",
+      "cancelled": "Tidak disimpan - baris lain menghentikan import",
+      "not_saved": "Tidak disimpan - muat naik semula fail yang telah dibetulkan"
+    },
+    "hiddenValue": "(disembunyikan)",
+    "wholeFile": "Seluruh fail",
+    "moreInLog": "{count} lagi masalah disenaraikan dalam Log Ralat.",
+    "downloadLog": "Muat turun Log Ralat",
+    "summary": {
+      "sheetTitle": "Ringkasan",
+      "batch": "Import",
+      "file": "Fail",
+      "status": "Status",
+      "problems": "Masalah",
+      "truncated": "Senarai ini telah dipendekkan semasa import direkodkan. Muat turun Log Ralat sejurus selepas import untuk melihat semua masalah."
+    }
+  },
+  "automation": {
+    "crumb": "HR Automation",
+    "filterLabel": "Module",
+    "done": "Done",
+    "none": "None",
+    "noChoices": "No choices are available.",
+    "notAvailable": "{value} (no longer available)",
+    "modules": {
+      "all": "All modules",
+      "onb": "Onboarding",
+      "off": "Offboarding",
+      "contract_staff": "Contract staff",
+      "probation": "Probation"
+    },
+    "status": {
+      "live": "Live",
+      "paused": "Paused",
+      "retired": "Retired",
+      "required": "Required",
+      "attention": "Needs attention"
+    },
+    "ops": {
+      "is": "is",
+      "isNot": "is not",
+      "lt": "is less than",
+      "lte": "is at most",
+      "gte": "is at least"
+    },
+    "errors": {
+      "unavailable": "This could not be completed. Try again, or reload the page."
+    },
+    "recipients": {
+      "routing": "{name} (routing)",
+      "group": "{name} (group)"
+    },
+    "legacy": {
+      "workflows": "workflow builder",
+      "templates": "template builder",
+      "groups": "assignment groups",
+      "workflowsIntro": "This module keeps its own workflow builder until it moves to the shared builder. Its workflows are unchanged.",
+      "templatesIntro": "This module keeps its own templates until it moves to the shared builder. Its templates are unchanged.",
+      "groupsIntro": "Assignment groups are kept in the On/Off Boarding configuration.",
+      "openV9": "Open the On/Off Boarding {what}",
+      "openContract": "Open the Contract staff {what}",
+      "notAllowed": "You cannot configure this module."
+    },
+    "people": {
+      "title": "Named people",
+      "search": "Search people by name",
+      "placeholder": "Type at least two letters",
+      "find": "Find",
+      "add": "Add {name}",
+      "added": "Added",
+      "none": "Nobody matches."
+    },
+    "defaults": {
+      "install": "Install default Probation workflows",
+      "confirm": "Install the 16 default Probation workflows, 4 email templates and 2 routings? They are installed Paused. Anything already installed is left as it is.",
+      "done": "Installed {workflows} workflows, {emails} email templates and {routings} routings, all Paused. Review each one before making it live."
+    },
+    "workflows": {
+      "title": "Workflows",
+      "intro": "One builder for Onboarding, Offboarding, Contract staff and Probation. Active workflows run when their trigger and conditions match.",
+      "probationIntro": "Probation workflows send messages, generate letters, create Personnel postings and start offboarding. Overdue flags, scoring and gates run inside the probation module and cannot be switched off here.",
+      "requiredBanner": "{names} {count, plural, one {is} other {are}} required for probation but not live.",
+      "empty": "No Probation workflows yet. Create one, or install the default workflows.",
+      "new": "New workflow",
+      "newName": "New workflow",
+      "edit": "Edit",
+      "view": "View",
+      "editNamed": "Open {name}",
+      "probationNotAllowed": "You cannot configure Probation automation.",
+      "cardIntro": "Automate documents, emails, approvals and reminders for each case. Active workflows run when their trigger and conditions match."
+    },
+    "editor": {
+      "untitled": "Untitled workflow",
+      "name": "Workflow name",
+      "required": "Required for probation (pausing it shows a warning on the tracker)",
+      "whatStarts": "What starts it",
+      "chooseTrigger": "Choose…",
+      "workdays": "Count working days (Mon–Fri)",
+      "repeat": "Repeat every morning after that",
+      "skipWhen": "Skip when",
+      "onlyIf": "Only if",
+      "onlyIfHelp": "All conditions must match. Leave empty to apply to every case in this module.",
+      "multiHint": "Several values: is matches any, is not matches none.",
+      "addCondition": "Add condition",
+      "thenHelp": "Steps run in order. Use the arrows to reorder them.",
+      "stepOnlyIf": "Only run this step if",
+      "stepConditions": "Conditions of step {step}",
+      "addStepCondition": "Add step condition",
+      "stepConditionHint": "Leave empty to always run this step. A skipped step is noted in the case activity.",
+      "addStep": "Add a step",
+      "chooseStep": "Choose a step…",
+      "moveUp": "Move step {step} up",
+      "moveDown": "Move step {step} down",
+      "removeStep": "Remove step {step}",
+      "remove": "Remove",
+      "to": "To",
+      "cc": "CC",
+      "stepTo": "Step {step} To",
+      "stepCc": "Step {step} CC",
+      "subject": "Subject",
+      "message": "Message",
+      "insertMergeField": "Insert merge field…",
+      "insertMerge": "Insert merge field into the {where} of step {step}",
+      "mergeHelp": "Pick a merge field from the list, or type it in double curly brackets, for example {example}.",
+      "emailTemplate": "Email template",
+      "emailSubject": "Subject: {subject} (set in the email template)",
+      "emailFromTemplate": "The subject and message come from the email template.",
+      "choose": "Choose…",
+      "letterTemplate": "Letter template",
+      "letterTemplateId": "Letter template id",
+      "letterNote": "The letter is generated from the chosen Probation letter template and pauses until it is signed. Its signing and review routing is set in the template.",
+      "postingEvent": "Event type in Personnel Management",
+      "postingNote": "Each outcome logs its own event type. The posting is approved in Personnel postings, and Personnel Management only changes after approval.",
+      "exitReason": "Exit reason on the offboarding case",
+      "offboardingNote": "Runs once per case, for Non-confirmation only.",
+      "problems": "Problems",
+      "warnings": "Notes",
+      "note": "Change note (optional)",
+      "notePlaceholder": "Why this change was made",
+      "makeLive": "Make it live",
+      "pause": "Pause",
+      "save": "Save changes",
+      "retire": "Retire workflow",
+      "back": "Back to workflows",
+      "fixFirst": "Fix the problems above first",
+      "retireConfirm": "Retire this workflow? It stops for good. Runs already waiting keep their steps.",
+      "leaveUnsaved": "Leave without saving your changes?",
+      "runsKeep": "Changes are saved when you press a button. Runs already waiting keep the steps they started with.",
+      "retiredReadOnly": "This workflow is retired and can no longer change.",
+      "isLive": "“{name}” is live.",
+      "paused": "“{name}” is paused. Nothing new starts; runs already waiting keep their steps.",
+      "retired": "“{name}” is retired.",
+      "saved": "Saved.",
+      "reasonSave": "Edited in the workflow builder",
+      "reasonLive": "Made live in the workflow builder",
+      "reasonPause": "Paused in the workflow builder",
+      "reasonRetire": "Retired in the workflow builder"
+    },
+    "conditions": {
+      "field": "Condition field",
+      "operator": "Condition operator",
+      "valueFor": "Condition value for {field}",
+      "typeValues": "Type values, separated by commas",
+      "unavailable": "not available for this trigger",
+      "remove": "Remove condition"
+    },
+    "dry": {
+      "title": "Dry run",
+      "intro": "A dry run shows what would happen for one case. Nothing is sent and nothing is saved. Date-based triggers run from the nightly scheduler, so they can only be checked here.",
+      "searchCase": "Find a probation case",
+      "searchPlaceholder": "Employee name",
+      "findCases": "Find cases",
+      "noCases": "No probation case you can open matches.",
+      "testCase": "Test case",
+      "pendingNote": "On a real case the system checks whose step is pending on the day the reminder runs.",
+      "run": "Run the dry run",
+      "result": "Dry run result",
+      "runDate": "Would run on {date}.",
+      "repeats": "Then every morning after that.",
+      "wouldRun": "Would run for {name}.",
+      "wouldNotRun": "Would not run for {name}.",
+      "unavailable": "not available for this trigger",
+      "thisCase": "this case: {value}",
+      "empty": "empty",
+      "to": "to {names}",
+      "cc": "CC {names}",
+      "nobody": "nobody",
+      "skipped": "skipped: {why}",
+      "nothingSent": "Nothing is sent and nothing is saved."
+    },
+    "templates": {
+      "title": "Templates",
+      "intro": "Document templates and email templates. A workflow decides when a document is generated or an email is sent.",
+      "documents": "Document templates",
+      "documentsIntro": "Probation letters, with their signing and review routing, are edited in the letter template editor.",
+      "noLetterCompany": "You do not configure Probation letters for any company.",
+      "company": "Company",
+      "goLive": "Go-live check: {count} of 3 probation letters published.",
+      "noLetters": "No letter templates yet.",
+      "letterLine": "Letter · version {version} · {state}",
+      "state": {
+        "draft": "draft",
+        "published": "in use",
+        "retired": "retired"
+      },
+      "openLetterEditor": "Open the letter template editor",
+      "emails": "Email templates",
+      "emailsIntro": "The words, merge fields and extra CC. A workflow decides when it is sent. Turning a template off skips its Send email steps and notes it on the case; nothing else changes.",
+      "noEmails": "No Probation email templates yet.",
+      "newEmail": "New email",
+      "newName": "New email",
+      "editNamed": "Open email template {name}",
+      "editorTitle": "Email template {name}",
+      "turnedOff": "turned off",
+      "name": "Template name",
+      "active": "Send this email (on)",
+      "offNote": "This template is turned off. Send email steps that use it are skipped and noted on the case.",
+      "cc": "Always copy (CC)",
+      "insertMerge": "Insert merge field into the {where}",
+      "fixFirst": "Fix the problems before saving.",
+      "save": "Save template",
+      "retire": "Retire template",
+      "retireConfirm": "Retire this email template? Workflows that use it will show a problem until another template is chosen.",
+      "close": "Close",
+      "reasonCreate": "Created in the template builder",
+      "reasonSave": "Edited in the template builder",
+      "reasonRetire": "Retired in the template builder",
+      "goLiveReady": "All outcome letters are ready.",
+      "goLiveMissing": "Publish a letter template for each outcome before go-live.",
+      "letter": "Letter",
+      "versionPill": "v{version} {state}",
+      "editLetter": "Edit {name} in the letter template editor",
+      "signing": {
+        "chain": "signing: {chain}",
+        "existing": "signing: the existing letter signing route",
+        "missing": "a routing or group that was removed",
+        "people": "{count, plural, one {1 named person} other {# named people}}",
+        "employee": "the employee",
+        "directSuperior": "the Direct Superior",
+        "action": {
+          "review": "Review",
+          "approve": "Approve",
+          "sign": "Sign"
+        }
+      }
+    },
+    "groups": {
+      "title": "Assignment groups",
+      "intro": "Groups and routing rules are shared by Onboarding, Offboarding, Contract staff and Probation.",
+      "groups": "Assignment groups",
+      "groupsIntro": "Round robin skips people on leave and people at their open task limit. Groups and their members are edited in the On/Off Boarding configuration.",
+      "noGroups": "No assignment groups yet.",
+      "usedBy": "{count, plural, =0 {Not used by a routing} one {Used by # routing} other {Used by # routings}}",
+      "editGroups": "Edit assignment groups in On/Off Boarding",
+      "groupsReadOnly": "Only On/Off Boarding administrators can change groups and their members.",
+      "routings": "Routing rules",
+      "routingIntro": "Each routing finds who acts for an employee. Pick a routing by name in any To or CC list, or in an approval or signing step, when the person depends on who the employee is. The most specific matching row wins; leave a field on Any to match everyone.",
+      "approvalNote": "In an approval or signing step a routing yields one person (any member or round robin). As a To or CC recipient it yields everyone in the matched group or list.",
+      "newRouting": "New routing",
+      "newRoutingName": "New routing",
+      "noRoutings": "No routings yet. Create one to route approvals and messages by business group, company, department or job title.",
+      "retired": "{count, plural, one {# retired routing} other {# retired routings}}",
+      "routingName": "Routing name",
+      "duplicateName": "Another routing already has this name.",
+      "usedIn": "Used in: {list}{more, plural, =0 {} other { and # more}}",
+      "notUsed": "Not used in any workflow yet",
+      "dimension": {
+        "businessGroup": "Business group",
+        "company": "Company",
+        "department": "Department",
+        "jobTitle": "Job title"
+      },
+      "rowDimension": "Row {row} {dimension}",
+      "any": "Any",
+      "assignTo": "Assign to",
+      "assignGroup": "Assignment group",
+      "assignPeople": "Specific people",
+      "group": "Group",
+      "people": "People (1 to {max})",
+      "rowPeople": "Row {row} people",
+      "removeRow": "Remove row {row}",
+      "addRow": "Add row",
+      "matches": "Matches employees with {what}",
+      "matchesEveryone": "Default: matches everyone no other row matches",
+      "goesTo": "goes to {who}",
+      "toGroup": "everyone in “{name}”",
+      "noGroupChosen": "no group chosen",
+      "noPeopleChosen": "nobody yet",
+      "unknownPerson": "someone who can no longer be found",
+      "fixFirst": "Fix the routing before saving it.",
+      "save": "Save routing",
+      "retire": "Retire routing",
+      "retireConfirm": "Retire this routing? {count, plural, =0 {No workflow uses it.} one {# workflow uses it and will show a problem.} other {# workflows use it and will show a problem.}}",
+      "retiredNow": "“{name}” is retired.",
+      "cancel": "Cancel",
+      "reasonCreate": "Created in the routing rules",
+      "reasonSave": "Edited in the routing rules",
+      "reasonRetire": "Retired in the routing rules",
+      "routingNamed": "Routing “{name}”",
+      "usedByList": "Used by: {list}",
+      "groupName": "Group name"
+    },
+    "move": {
+      "title": "Move Probation workflows to shared workflows",
+      "help": "Moves each workflow of the Probation workflow builder whose shared form reaches the same people with the same words. A moved workflow goes Live here and stops sending from the Probation builder, so nobody is notified twice. The rest stay where they are and are listed with the reason. Running it again moves nothing twice.",
+      "reason": "Reason (kept in the audit history)",
+      "button": "Move to shared workflows",
+      "confirm": "Move the Probation workflows that convert exactly? Each moved workflow goes Live here and stops sending from the Probation builder.",
+      "done": "Moved {moved}; {kept} stay on the Probation builder; {already} were moved before.",
+      "result": "Move result",
+      "moved": "Moved",
+      "kept": "Staying on the Probation builder",
+      "none": "There was nothing left to move."
+    }
+  },
+  "personnelPostings": {
+    "breadcrumb": "Probation Confirmation / Personnel postings",
+    "title": "Personnel postings",
+    "intro": "Changes to Personnel Management created by Probation workflows wait here. Approve applies the change; Edit opens the event movement in Personnel Management.",
+    "rule": "Only members of the group set in Probation settings › “Who approves Personnel postings” can approve, by Approve or by Save event. Anyone who can record events can Edit; their changes wait for an approver. Nothing reaches Personnel Management until approval.",
+    "columns": {
+      "posting": "Posting",
+      "employee": "Employee",
+      "eventType": "Event type",
+      "change": "Change",
+      "created": "Created",
+      "status": "Status",
+      "actions": "Actions",
+      "from": "From"
+    },
+    "events": {
+      "confirmation": "Confirmation",
+      "probationExtension": "Probation Extension"
+    },
+    "change": {
+      "confirmation": "Confirmation Date {date} · status Probation → Active",
+      "probationExtension": "Probation extended · new end date {end} · effective {date}",
+      "remarks": "Remarks: {remarks}"
+    },
+    "status": {
+      "pending": "Pending",
+      "edited": "Edited · waiting for approval",
+      "approved": "Approved"
+    },
+    "editedNote": "Edited by {name} {date}: {changes}",
+    "fields": {
+      "effectiveDate": "effective date",
+      "endDate": "end date",
+      "remarks": "remarks"
+    },
+    "fieldChange": "{field} {before} → {after}",
+    "someone": "a colleague",
+    "unknownGroup": "the posting approver group",
+    "approve": "Approve",
+    "edit": "Edit",
+    "editLabel": "Edit {posting} in Personnel Management",
+    "approveOnlyGroup": "Only {group} can approve",
+    "filters": {
+      "label": "Show postings",
+      "pending": "Waiting for approval",
+      "approved": "Approved",
+      "all": "All"
+    },
+    "empty": "No postings here.",
+    "previous": "Previous",
+    "next": "Next",
+    "saved": {
+      "approved": "Posting {posting} approved. Personnel Management is updated.",
+      "edited": "Your changes to posting {posting} are saved and wait for approval."
+    },
+    "movement": {
+      "banner": "From Personnel posting {posting} · Probation Confirmation.",
+      "approverHint": "You are in the posting approver group ({group}): saving applies this event, approves the posting as you and clears the pending state on the case.",
+      "editorHint": "You can correct these details. The posting stays Pending until {group} approves it; Personnel Management does not change yet.",
+      "leaveHint": "Leaving without saving changes nothing.",
+      "saveAndApprove": "Save event and approve",
+      "saveForApproval": "Save changes for approval",
+      "notPending": "Posting {posting} is no longer waiting for approval.",
+      "backToPostings": "Back to Personnel postings"
+    },
+    "introGroup": "Changes to Personnel Management created by workflows wait here as drafts. Approve applies the change, and Edit opens the event movement in Personnel Management. Probation postings are approved by <b>{group}</b>, set in Probation settings.",
+    "sources": {
+      "probation": "Probation"
+    },
+    "approverGroupFallback": "the posting approver group"
+  },
+  "probationLetters": {
+    "routing": {
+      "title": "Signing and review routing",
+      "help": "Who reviews, approves and signs this letter, and in what order. Steps with the same order number happen at the same time, and the letter moves on when all of them are done. Who each step resolves to comes from Assignment groups and Routing rules. A Review step can edit the letter until the first signature; after that the text is locked. Anyone can send the letter back with a comment: every signature is cleared and it returns to the step that owns the document (or the People Business Partner if none is ticked).",
+      "empty": "No signing routing set. This letter uses the signing route below, as today.",
+      "notStored": "Signing and review routing is switched on together with the new letter flow. Until then this letter uses the signing route below.",
+      "stepTitle": "Step {n}",
+      "order": "Order",
+      "action": "Action",
+      "who": "Who",
+      "owner": "Owns the document",
+      "pick": "Choose one person by",
+      "pickAny": "Any member",
+      "pickRoundRobin": "Round robin",
+      "oneOfGroup": "A routing or group gives one person for this step, chosen by the rule above.",
+      "actions": {
+        "review": "Review",
+        "approve": "Approve",
+        "sign": "Sign"
+      },
+      "hint": {
+        "review": "Can edit the letter until the first signature. Shown in Approval Items.",
+        "approve": "A decision with no signature. Shown in Approval Items.",
+        "sign": "Signs the letter. The last step releases it. Signers can’t edit the text.",
+        "owner": "Send-backs come to this step."
+      },
+      "whoEmployee": "The employee",
+      "whoDirectSuperior": "Their Direct Superior",
+      "whoRouting": "Routing: {name}",
+      "whoGroup": "Assignment group: {name}",
+      "whoPeople": "Named people",
+      "unknown": "No longer available",
+      "people": "People at this step",
+      "removePerson": "Remove {name}",
+      "remove": "Remove step {n}",
+      "add": "Add signing step",
+      "problems": "Problems",
+      "blocks": "Signature blocks",
+      "blocksHelp": "Who signs comes from the signing routing above. This only decides where that signature prints.",
+      "noBlocks": "This version has no signature block yet. Add one in the content.",
+      "blockLabel": "Signature block {n}",
+      "chooseStep": "Choose a signing step…",
+      "stepOption": "Step {order} · Sign · {who}",
+      "oldSetting": "{role} (old setting — choose a step)",
+      "stepRemoved": "Signing step removed — choose another"
+    },
+    "preview": {
+      "caseLabel": "Preview values for",
+      "chooseCase": "Choose a case",
+      "loading": "Loading the case’s values…",
+      "noOutcome": "This case has no decided outcome yet, so merge fields show as placeholders.",
+      "notPublished": "Case values can be previewed for a saved, published version that matches the case’s outcome. Merge fields show as placeholders.",
+      "unavailable": "The preview values are unavailable right now."
+    },
+    "history": {
+      "routingSteps": "{count, plural, =0 {no routing} one {# routing step} other {# routing steps}}"
+    }
+  },
+  "automationRuntime": {
+    "status": {
+      "running": "Running",
+      "waiting": "Waiting for the document",
+      "done": "Finished",
+      "skipped": "Skipped",
+      "failed": "Stopped"
+    },
+    "log": {
+      "started": "Started",
+      "skipped": "Skipped",
+      "stepDone": "Step done",
+      "stepSkipped": "Step skipped",
+      "stepFailed": "Step failed",
+      "waiting": "Waiting",
+      "resumed": "Continued",
+      "done": "Finished",
+      "failed": "Stopped"
+    },
+    "noWorkflow": "No workflow matched this case, so it was sent to the People Business Partner.",
+    "fallback": "Meant for {meantFor}; sent to the fallback group because nobody was found."
+  },
+  "probationAccess": {
+    "breadcrumb": "Probation Confirmation / Configuration / Access",
+    "title": "Access",
+    "intro": "Same access model as Contract Management. Line Managers get access automatically through the Direct Superiors rule. Business Partners and everyone else aren’t given access automatically: create a role below and add them as members with the right scope. System Administrators manage this page and every Probation setting; to see or act on cases they add themselves to a role like anyone else.",
+    "forbidden": "Only a System Administrator or someone who manages access can open Probation access.",
+    "on": "On",
+    "off": "Off",
+    "superiors": {
+      "title": "Direct Superiors",
+      "intro": "Anyone named as an employee’s Direct Superior in Personnel Management gets these permissions for that employee’s cases.",
+      "enabled": "Rule is on",
+      "view": "View cases",
+      "kpis": "Set Week 1 KPIs",
+      "assessments": "Complete assessments",
+      "alwaysOn": "always on",
+      "declined": "Record a declined signature",
+      "offWarning": "With the rule off, Line Managers can’t see their team’s cases, set KPIs or complete assessments, so reviews would stall. Only switch it off if another role covers this.",
+      "save": "Save rule",
+      "saved": "Direct Superiors rule saved.",
+      "savedOff": "Direct Superiors rule saved. Line Managers no longer get automatic access."
+    },
+    "roles": {
+      "title": "Roles",
+      "intro": "Create a role, choose what it can see and do, and add its members, each with a business group and company scope.",
+      "newRole": "+ New role",
+      "newRoleName": "New role",
+      "name": "Role name",
+      "save": "Save role",
+      "cancel": "Cancel",
+      "delete": "Delete role",
+      "deleteConfirm": "Delete {name}? Its members lose these permissions now.",
+      "empty": "No roles yet. Create a role to give Business Partners and others access.",
+      "cases": "Cases (within each member’s scope)",
+      "settings": "Settings",
+      "postingsNote": "Decides who may choose the posting-approver group in Probation settings. Only that group approves Personnel postings.",
+      "actNote": "A member never acts on their own probation.",
+      "created": "Role {name} created.",
+      "saved": "Role {name} saved.",
+      "deleted": "Role {name} deleted."
+    },
+    "permissions": {
+      "view": "View cases",
+      "letters": "Approve and release letters",
+      "lowResult": "Record low-result actions",
+      "route": "Change a case’s route",
+      "configure": "Configure probation",
+      "intake": "Intake and activation",
+      "postings": "Approve Personnel postings"
+    },
+    "members": {
+      "title": "Members",
+      "empty": "No members yet.",
+      "businessGroup": "Business group",
+      "allBusinessGroups": "All business groups",
+      "company": "Company",
+      "allCompanies": "All companies",
+      "validFrom": "Valid from",
+      "validTo": "Valid to (optional)",
+      "active": "Active",
+      "scheduled": "Scheduled",
+      "expired": "Expired",
+      "save": "Save",
+      "remove": "Remove",
+      "removeLabel": "Remove {name} from {role}",
+      "add": "+ Add member",
+      "find": "Find a person",
+      "search": "Search",
+      "noMatch": "No active person matches “{query}”.",
+      "addPerson": "Add {name}",
+      "added": "{name} added to {role}.",
+      "changed": "{name}’s scope saved.",
+      "removed": "{name} removed from {role}."
+    },
+    "earlier": {
+      "title": "Earlier PBP and GBS assignments",
+      "intro": "These assignments were made before roles existed and still apply.",
+      "pbp": "People Business Partner",
+      "gbs": "GBS People Ops",
+      "validFrom": "from {date}",
+      "validTo": "until {date}"
+    }
   },
   "recruitment": {
     "noCompany": "Tiada syarikat dalam skop semasa anda mempunyai Pengambilan yang anda uruskan. Tukar syarikat atau minta peranan Rakan Pengambilan daripada pentadbir kumpulan.",
@@ -41586,858 +43888,6 @@
       "repeat": "Calon ini sudah menunggu semakan untuk jawatan ini daripada kontrak anda.",
       "dailyLimit": "Anda telah mencapai had 20 penyerahan hari ini. Cuba lagi esok.",
       "notAvailable": "Jawatan ini tidak lagi terbuka kepada kontrak anda."
-    }
-  },
-  "bulkJobs": {
-    "notification": {
-      "employeeImport": {
-        "completed": {
-          "title": "Import pekerja selesai",
-          "body": "Buka Sejarah Import untuk melihat pekerja yang ditambah."
-        },
-        "failed": {
-          "title": "Import pekerja dihentikan",
-          "body": "Tiada pekerja ditambah. Buka Sejarah Import untuk melihat sebabnya."
-        },
-        "cancelled": {
-          "title": "Import pekerja dibatalkan",
-          "body": "Tiada pekerja ditambah. Buka Sejarah Import untuk butiran."
-        }
-      },
-      "leaveImport": {
-        "completed": {
-          "title": "Import cuti selesai",
-          "body": "Baris yang diimport kini termasuk dalam baki cuti pekerja."
-        },
-        "failed": {
-          "title": "Import cuti dihentikan",
-          "body": "Baris yang telah disimpan dikekalkan. Mengimport fail yang sama sekali lagi akan melangkau baris tersebut."
-        },
-        "cancelled": {
-          "title": "Import cuti dibatalkan",
-          "body": "Baris yang telah disimpan dikekalkan. Mengimport fail yang sama sekali lagi akan melangkau baris tersebut."
-        }
-      },
-      "leaveProcessing": {
-        "completed": {
-          "title": "Pemprosesan cuti selesai",
-          "body": "Angka cuti telah dikemas kini."
-        },
-        "failed": {
-          "title": "Pemprosesan cuti dihentikan",
-          "body": "Pekerja yang telah diproses mengekalkan angka mereka. Jalankan sekali lagi untuk melengkapkan selebihnya."
-        },
-        "cancelled": {
-          "title": "Pemprosesan cuti dibatalkan",
-          "body": "Pekerja yang telah diproses mengekalkan angka mereka. Jalankan sekali lagi untuk melengkapkan selebihnya."
-        }
-      },
-      "roster": {
-        "completed": {
-          "title": "Perubahan roster selesai",
-          "body": "Buka roster untuk melihat hasilnya."
-        },
-        "failed": {
-          "title": "Perubahan roster dihentikan",
-          "body": "Buka roster untuk melihat sebabnya."
-        },
-        "cancelled": {
-          "title": "Perubahan roster dibatalkan",
-          "body": "Buka roster untuk butiran."
-        }
-      },
-      "scheduleGroup": {
-        "completed": {
-          "title": "Penetapan Kumpulan Jadual selesai",
-          "body": "Buka Tetapkan Kumpulan Jadual untuk melihat hasilnya."
-        },
-        "failed": {
-          "title": "Penetapan Kumpulan Jadual dihentikan",
-          "body": "Buka Tetapkan Kumpulan Jadual untuk melihat sebabnya."
-        },
-        "cancelled": {
-          "title": "Penetapan Kumpulan Jadual dibatalkan",
-          "body": "Buka Tetapkan Kumpulan Jadual untuk butiran."
-        }
-      },
-      "clockingImport": {
-        "completed": {
-          "title": "Import kehadiran selesai",
-          "body": "Buka log import untuk melihat rekod kehadiran yang ditambah."
-        },
-        "failed": {
-          "title": "Import kehadiran dihentikan",
-          "body": "Buka log import untuk melihat apa yang disimpan dan sebab ia dihentikan."
-        },
-        "cancelled": {
-          "title": "Import kehadiran dihentikan",
-          "body": "Buka log import untuk melihat apa yang disimpan."
-        }
-      },
-      "attendanceRecomputePreview": {
-        "completed": {
-          "title": "Pratonton kiraan semula sedia",
-          "body": "Buka Kira Semula Kehadiran untuk menyemak apa yang akan berubah."
-        },
-        "failed": {
-          "title": "Pratonton kiraan semula dihentikan",
-          "body": "Buka Kira Semula Kehadiran untuk melihat sebabnya."
-        },
-        "cancelled": {
-          "title": "Pratonton kiraan semula dihentikan",
-          "body": "Buka Kira Semula Kehadiran untuk memulakannya semula."
-        }
-      },
-      "attendanceRecompute": {
-        "completed": {
-          "title": "Kehadiran dikira semula",
-          "body": "Buka Kira Semula Kehadiran untuk melihat hari yang berubah."
-        },
-        "failed": {
-          "title": "Kiraan semula kehadiran dihentikan",
-          "body": "Buka Kira Semula Kehadiran untuk melihat sebabnya."
-        },
-        "cancelled": {
-          "title": "Kiraan semula kehadiran dihentikan",
-          "body": "Buka Kira Semula Kehadiran untuk butiran."
-        }
-      },
-      "payrollProcess": {
-        "completed": {
-          "title": "Pemprosesan gaji selesai",
-          "body": "Buka Gaji untuk menyemak larian yang telah diproses."
-        },
-        "failed": {
-          "title": "Pemprosesan gaji dihentikan",
-          "body": "Larian kembali ke draf dan tiada slip gaji disimpan. Buka Gaji untuk melihat sebabnya."
-        },
-        "cancelled": {
-          "title": "Pemprosesan gaji dibatalkan",
-          "body": "Larian kembali ke draf dan tiada slip gaji disimpan."
-        }
-      },
-      "systemLabelImport": {
-        "completed": {
-          "title": "Import Label Sistem selesai",
-          "body": "Buka Label Sistem untuk melihat kod yang ditambah."
-        },
-        "failed": {
-          "title": "Import Label Sistem dihentikan",
-          "body": "Tiada kod ditambah. Buka Label Sistem dan pratonton buku kerja sekali lagi."
-        },
-        "cancelled": {
-          "title": "Import Label Sistem dibatalkan",
-          "body": "Tiada kod ditambah."
-        }
-      },
-      "sectionImport": {
-        "completed": {
-          "title": "Import bahagian selesai",
-          "body": "Buka Import untuk melihat baris yang dikemas kini."
-        },
-        "failed": {
-          "title": "Import bahagian dihentikan",
-          "body": "Baris yang disimpan sebelum ia berhenti dikekalkan. Buka Import untuk melihat sebabnya."
-        },
-        "cancelled": {
-          "title": "Import bahagian dibatalkan",
-          "body": "Baris yang disimpan sebelum ia berhenti dikekalkan. Buka Import untuk butiran."
-        }
-      },
-      "registerImport": {
-        "completed": {
-          "title": "Import daftar selesai",
-          "body": "Buka Import untuk melihat rekod daftar yang disimpan."
-        },
-        "failed": {
-          "title": "Import daftar dihentikan",
-          "body": "Tiada rekod daftar disimpan. Buka Import untuk melihat sebabnya."
-        },
-        "cancelled": {
-          "title": "Import daftar dibatalkan",
-          "body": "Tiada rekod daftar disimpan. Buka Import untuk butiran."
-        }
-      },
-      "employeeImportRevert": {
-        "completed": {
-          "title": "Pembatalan import selesai",
-          "body": "Buka Sejarah Import untuk melihat pekerja yang dibatalkan."
-        },
-        "failed": {
-          "title": "Pembatalan import dihentikan",
-          "body": "Tiada apa-apa yang diubah. Buka Sejarah Import untuk melihat sebabnya."
-        },
-        "cancelled": {
-          "title": "Pembatalan import dibatalkan",
-          "body": "Tiada apa-apa yang diubah. Buka Sejarah Import untuk butiran."
-        }
-      },
-      "leaveGeneration": {
-        "completed": {
-          "title": "Penjanaan kelayakan selesai",
-          "body": "Angka cuti telah dikemas kini."
-        },
-        "failed": {
-          "title": "Penjanaan kelayakan dihentikan",
-          "body": "Tiada apa-apa yang diubah. Buka Jana Kelayakan untuk melihat sebabnya, kemudian jalankan sekali lagi."
-        },
-        "cancelled": {
-          "title": "Penjanaan kelayakan dibatalkan",
-          "body": "Tiada apa-apa yang diubah."
-        }
-      },
-      "leaveRecalculation": {
-        "completed": {
-          "title": "Baki cuti telah dikira semula",
-          "body": "Angka cuti pekerja kini mengikut tetapan yang disimpan."
-        },
-        "failed": {
-          "title": "Pengiraan semula cuti dihentikan",
-          "body": "Pekerja yang telah dikira semula mengekalkan angka baharu mereka. Simpan tetapan sekali lagi untuk mengira semula selebihnya."
-        },
-        "cancelled": {
-          "title": "Pengiraan semula cuti dibatalkan",
-          "body": "Pekerja yang telah dikira semula mengekalkan angka baharu mereka. Simpan tetapan sekali lagi untuk mengira semula selebihnya."
-        }
-      },
-      "leaveYearType": {
-        "completed": {
-          "title": "Jenis tahun cuti telah digunakan",
-          "body": "Angka cuti pekerja tahun pertama kini mengikut jenis tahun cuti yang disimpan."
-        },
-        "failed": {
-          "title": "Jenis tahun cuti tidak digunakan pada baki",
-          "body": "Tiada angka cuti yang diubah. Simpan jenis tahun cuti sekali lagi untuk mencuba semula."
-        },
-        "cancelled": {
-          "title": "Pembetulan jenis tahun cuti dibatalkan",
-          "body": "Tiada angka cuti yang diubah."
-        }
-      },
-      "toilSweep": {
-        "completed": {
-          "title": "Penyelesaian cuti ganti selesai",
-          "body": "Kredit cuti ganti yang perlu diselesaikan telah diselesaikan. Buka Kredit Cuti untuk menyemaknya."
-        },
-        "failed": {
-          "title": "Penyelesaian cuti ganti dihentikan",
-          "body": "Kredit yang telah diselesaikan kekal begitu. Jalankan sekali lagi untuk menyelesaikan selebihnya."
-        },
-        "cancelled": {
-          "title": "Penyelesaian cuti ganti dibatalkan",
-          "body": "Kredit yang telah diselesaikan kekal begitu. Jalankan sekali lagi untuk menyelesaikan selebihnya."
-        }
-      },
-      "payrollHistory": {
-        "completed": {
-          "title": "Perubahan sejarah gaji disimpan",
-          "body": "Buka log import untuk melihat apa yang disimpan."
-        },
-        "failed": {
-          "title": "Perubahan sejarah gaji dihentikan",
-          "body": "Tiada sejarah gaji diubah. Buka log import untuk melihat sebabnya."
-        },
-        "cancelled": {
-          "title": "Perubahan sejarah gaji dibatalkan",
-          "body": "Tiada sejarah gaji diubah."
-        }
-      },
-      "payrollReprocess": {
-        "completed": {
-          "title": "Pemprosesan semula gaji selesai",
-          "body": "Buka larian untuk menyemak pekerja yang diproses semula."
-        },
-        "failed": {
-          "title": "Pemprosesan semula gaji dihentikan",
-          "body": "Pekerja yang telah diproses semula mengekalkan keputusan baharu mereka. Buka larian untuk melihat di mana ia berhenti."
-        },
-        "cancelled": {
-          "title": "Pemprosesan semula gaji dibatalkan",
-          "body": "Pekerja yang telah diproses semula mengekalkan keputusan baharu mereka."
-        }
-      },
-      "movementImport": {
-        "completed": {
-          "title": "Import pergerakan selesai",
-          "body": "Buka Sejarah Import untuk melihat pergerakan yang disimpan dan pekerja yang tidak dapat disimpan."
-        },
-        "failed": {
-          "title": "Import pergerakan dihentikan",
-          "body": "Buka Sejarah Import untuk melihat sebabnya. Pekerja yang telah disimpan mengekalkan pergerakan mereka."
-        },
-        "cancelled": {
-          "title": "Import pergerakan dihentikan",
-          "body": "Pekerja yang telah disimpan mengekalkan pergerakan mereka. Buka Sejarah Import untuk butiran."
-        }
-      },
-      "movementCheck": {
-        "completed": {
-          "title": "Fail pergerakan telah disemak",
-          "body": "Semakan direkodkan dalam Sejarah Import. Jika anda telah meninggalkan skrin import, muat naik fail itu sekali lagi untuk menyemak dan mengesahkannya."
-        },
-        "failed": {
-          "title": "Semakan pergerakan dihentikan",
-          "body": "Buka Sejarah Import untuk melihat sebabnya. Tiada apa-apa disimpan."
-        },
-        "cancelled": {
-          "title": "Semakan pergerakan dihentikan",
-          "body": "Tiada apa-apa disimpan. Buka Sejarah Import untuk butiran."
-        }
-      },
-      "movementImportRevert": {
-        "completed": {
-          "title": "Pembatalan import pergerakan selesai",
-          "body": "Buka Sejarah Import untuk melihat pergerakan yang telah dibatalkan."
-        },
-        "failed": {
-          "title": "Pembatalan import pergerakan dihentikan",
-          "body": "Tiada apa-apa diubah. Buka Sejarah Import untuk melihat sebabnya."
-        },
-        "cancelled": {
-          "title": "Pembatalan import pergerakan dibatalkan",
-          "body": "Tiada apa-apa diubah. Buka Sejarah Import untuk butiran."
-        }
-      },
-      "recruitmentImport": {
-        "completed": {
-          "title": "Import calon selesai",
-          "body": "Buka import untuk melihat hasil baris demi baris dan calon yang menunggu dalam senarai Untuk ditetapkan."
-        },
-        "failed": {
-          "title": "Import calon berhenti",
-          "body": "Satu masalah menghentikan import. Baris yang sudah diimport kekal; buka import untuk melihat hasil."
-        },
-        "cancelled": {
-          "title": "Import calon dihentikan",
-          "body": "Import telah dihentikan. Baris yang sudah diimport kekal; buka import untuk melihat hasil."
-        }
-      }
-    },
-    "panel": {
-      "queued": "Menunggu untuk bermula",
-      "preparing": "Menyemak setiap perubahan",
-      "running": "Menyimpan",
-      "finalizing": "Menyelesaikan",
-      "discarding": "Menghentikan",
-      "completed": "Selesai",
-      "failed": "Dihentikan",
-      "cancelled": "Dibatalkan",
-      "progressCount": "{done} daripada {total} langkah selesai",
-      "backgroundHelp": "Anda boleh tinggalkan halaman ini. Kerja diteruskan dan anda akan dimaklumkan apabila selesai.",
-      "waiting": "Menunggu perkhidmatan latar belakang. Kemajuan disimpan; jangan mulakan sekali lagi.",
-      "workerUnavailable": "Perkhidmatan latar belakang belum berjalan. Permintaan anda telah disimpan dan akan bermula secara automatik sebaik sahaja perkhidmatan itu berjalan."
-    },
-    "roster": {
-      "generate": "Menjana roster",
-      "copy": "Menyalin roster",
-      "assign": "Menggunakan perubahan roster",
-      "import": "Menyimpan roster yang dimuat naik",
-      "otherRunning": "Satu lagi perubahan roster masih disimpan. Tunggu sehingga selesai, kemudian cuba lagi.",
-      "saveFailed": "Perubahan roster tidak dapat disimpan. Sila cuba lagi, atau hubungi pentadbir HR.",
-      "queuedBehind": "Beratur di belakang kerja roster lain. Ia bermula secara automatik sebaik sahaja kerja itu selesai."
-    },
-    "scheduleGroup": {
-      "title": "Menetapkan Kumpulan Jadual",
-      "otherRunning": "Satu lagi penetapan Kumpulan Jadual masih disimpan. Tunggu sehingga selesai, kemudian cuba lagi.",
-      "queuedBehind": "Beratur di belakang penetapan Kumpulan Jadual lain. Ia bermula secara automatik sebaik sahaja penetapan itu selesai."
-    }
-  },
-  "importLog": {
-    "batchReference": "Rujukan kelompok",
-    "importedBy": "Diimport oleh",
-    "batchLabel": "Kelompok {code}",
-    "actorWithId": "{name} ({employeeId})",
-    "actorUnlinked": "Log masuk pentadbir (tiada rekod pekerja · log masuk berakhir {suffix})",
-    "actorUnavailable": "Pengguna tidak tersedia"
-  },
-  "scheduleOvertimeSetting": {
-    "title": "Tetapan Kerja Lebih Masa",
-    "intro": "Mengawal cara kerja lebih masa direkod, diluluskan, diimbangi dan dibundarkan bagi pekerja dalam Kumpulan Jadual ini. Ia terpakai mulai tarikh mula: hari terdahulu, rekod perakaman waktu, rekod kelewatan dan gaji lalu tidak dikira semula.",
-    "companiesLabel": "Terpakai kepada",
-    "allCompanies": "Semua syarikat",
-    "selectedCompanies": "Syarikat terpilih",
-    "effectiveFrom": "Tarikh mula",
-    "effectiveHint": "Selepas hari ini, dan selepas sebarang tarikh mula yang telah disimpan bagi syarikat terpilih.",
-    "applicabilityTitle": "Kebolehgunaan Kerja Lebih Masa",
-    "beforeShift": "Kerja Lebih Masa Sebelum Syif",
-    "beforeShiftHint": "Benarkan kerja lebih masa sebelum syif yang dijadualkan.",
-    "afterShift": "Kerja Lebih Masa Selepas Syif",
-    "afterShiftHint": "Benarkan kerja lebih masa selepas syif yang dijadualkan.",
-    "allowBackdated": "Benarkan Permohonan Kerja Lebih Masa Terdahulu Tanpa Perakaman Waktu",
-    "allowBackdatedHint": "Pekerja boleh memohon kerja lebih masa terdahulu tanpa rekod perakaman waktu. HR masih merekod tempoh kerja sebenar sebelum ia dikira.",
-    "splitAtMidnight": "Pisahkan Kerja Lebih Masa pada Tengah Malam",
-    "splitAtMidnightHint": "Kerja lebih masa selepas tengah malam dikira pada hari kalendar berikutnya sebagai kerja lebih masa awal. Contoh: 10:00 PM hingga 2:00 AM memberi 2 jam pada setiap tarikh.",
-    "offsetTitle": "Imbangi Kerja Lebih Masa dengan Kelewatan",
-    "offsetLateness": "Imbangi Kerja Lebih Masa dengan Kelewatan",
-    "offsetHint": "Tolak minit lewat masuk daripada kerja lebih masa yang layak. Contoh: lewat 20 minit berbanding 60 minit layak meninggalkan 40. Kelewatan yang direkod dikekalkan.",
-    "showLatenessException": "Tunjukkan Pengecualian Kelewatan Selepas Imbangan",
-    "showLatenessExceptionHint": "Tunjukkan pengecualian kelewatan bagi kelewatan yang masih berbaki selepas imbangan.",
-    "approvalTitle": "Kaedah Kelulusan Kerja Lebih Masa",
-    "approvalManual": "Manual",
-    "approvalAuto": "Auto",
-    "approvalManualHint": "Kehadiran tidak mencipta kerja lebih masa yang perlu dibayar. Rekod perakaman waktu dikekalkan, dan kerja lebih masa dimasukkan secara manual dalam Gaji.",
-    "autoMethod": "Kaedah Kelulusan Auto Kerja Lebih Masa",
-    "methodIntersect": "Persilangan Sebenar dan Pra-Lulus",
-    "methodActual": "Jam Sebenar",
-    "methodPreApproved": "Kerja Lebih Masa Diluluskan",
-    "methodIntersectHint": "Membayar yang lebih rendah antara minit diluluskan dan sebenar: diluluskan 120 dan sebenar 90 membayar 90.",
-    "methodActualHint": "Membayar minit layak sebenar, tanpa had kelulusan.",
-    "methodPreApprovedHint": "Membayar tempoh yang diluluskan: diluluskan 120 dan sebenar 90 membayar 120.",
-    "patternsTitle": "Corak Kerja Lebih Masa bagi setiap jenis hari",
-    "patternsHint": "Bayaran kerja lebih masa dikira oleh Corak Kerja Lebih Masa yang dipilih. Hanya corak yang aktif bagi setiap syarikat terpilih disenaraikan.",
-    "patternsNone": "Tiada Corak Kerja Lebih Masa yang aktif bagi setiap syarikat terpilih. Aktifkan satu dalam Corak Kerja Lebih Masa untuk menggunakan Auto, atau pilih Manual.",
-    "choosePattern": "Pilih Corak Kerja Lebih Masa",
-    "dayNormal": "Hari bekerja",
-    "dayOff": "Hari tidak bekerja",
-    "dayRest": "Hari rehat",
-    "dayPublicHoliday": "Cuti umum",
-    "dayReplacementHoliday": "Cuti gantian",
-    "roundingTitle": "Pembundaran Kerja Lebih Masa",
-    "roundingMethod": "Kaedah Pembundaran Kerja Lebih Masa",
-    "roundUp": "Bundarkan Ke Atas",
-    "roundDown": "Bundarkan Ke Bawah",
-    "roundingStep": "Pembundaran Kerja Lebih Masa kepada Minit",
-    "stepMinutes": "{n} Minit",
-    "roundingHint": "Pembundaran digunakan terakhir, selepas kaedah kelulusan dan imbangan kelewatan. Tempoh perakaman waktu yang direkod tidak diubah.",
-    "unsupportedRounding": "Pembundaran yang disimpan menggunakan pilihan yang tidak ditawarkan oleh bahagian ini. Menyimpan akan menggantikannya mulai tarikh mula baharu.",
-    "differs": "{n, plural, other {# syarikat mempunyai}} Tetapan Kerja Lebih Masa yang berbeza, atau tiada. Menyimpan akan menggunakan tetapan ini bagi setiap syarikat terpilih.",
-    "savedFrom": "Tetapan yang disimpan bermula pada {date}.",
-    "none": "Belum ada Tetapan Kerja Lebih Masa disimpan. Kerja lebih masa kumpulan ini berfungsi seperti sebelum ini sehingga satu disimpan.",
-    "save": "Simpan Tetapan Kerja Lebih Masa",
-    "systemReason": "Tetapan Kerja Lebih Masa Kumpulan Jadual disimpan",
-    "on": "Hidup",
-    "off": "Mati",
-    "payrollNote": "Gaji menerima angka kerja lebih masa akhir daripada tetapan ini, sama seperti ia menerima kerja lebih masa hari ini."
-  },
-  "attendanceOnBehalf": {
-    "requestTitle": "Mohon Bagi Pihak",
-    "requestHelp": "Pilih pekerja, kemudian failkan Ketidakaturan Kehadiran atau Lebih Masa Sendiri untuk mereka pada skrin biasa. Permohonan mengikut aliran kerja dan pelulus mereka sendiri.",
-    "approveTitle": "Lulus Bagi Pihak",
-    "approveHelp": "Pilih pelulus yang ditetapkan yang permohonan kehadiran belum selesainya perlu anda uruskan.",
-    "approveListHelp": "Permohonan yang menunggu {name} yang boleh anda putuskan bagi pihak mereka.",
-    "searchLabel": "Cari mengikut ID Pekerja atau nama",
-    "searchPlaceholder": "cth. EMP-0123 atau nama",
-    "search": "Cari",
-    "results": "Pekerja yang boleh anda wakili",
-    "noResults": "Tiada pekerja yang boleh anda wakili sepadan dengan carian ini.",
-    "noPermission": "Peranan anda tidak mempunyai kebenaran ini. Minta pentadbir jika anda memerlukannya.",
-    "choose": "Pilih",
-    "employeeName": "Pekerja",
-    "employeeId": "ID Pekerja",
-    "company": "Syarikat",
-    "department": "Jabatan",
-    "changeEmployee": "Tukar pekerja",
-    "chooseCategory": "Apakah yang ingin anda failkan?",
-    "irregularity": "Ketidakaturan Kehadiran",
-    "irregularityHelp": "Waktu jam yang tiada atau salah, jam kurang atau ketidakhadiran, untuk hari pekerja itu sendiri.",
-    "selfOvertime": "Lebih Masa Sendiri",
-    "selfOvertimeHelp": "Rancang atau tuntut lebih masa di bawah Kumpulan Jadual dan peraturan lebih masa pekerja itu sendiri.",
-    "banner": "Menghantar bagi pihak {name}",
-    "pendingTitle": "Permohonan menunggu kelulusan",
-    "pendingEmpty": "Tiada apa-apa yang menunggu pelulus ini yang boleh anda putuskan.",
-    "approveOnBehalf": "Lulus Bagi Pihak",
-    "rejectOnBehalf": "Tolak Bagi Pihak",
-    "approveAudit": "Sejarah mengekalkan orang yang dipilih sebagai pelulus yang ditetapkan dan merekodkan anda sebagai orang yang bertindak.",
-    "previous": "Sebelumnya",
-    "next": "Seterusnya"
-  },
-  "importErrorLogMovement": {
-    "correction": {
-      "date": "Masukkan tarikh sebagai DD-MMM-YYYY (contohnya 06-Jan-2026) atau sebagai tarikh Excel.",
-      "required": "Isi medan ini - jenis peristiwa ini memerlukannya.",
-      "chooseCompany": "Pilih ID Syarikat daripada helaian Reference.",
-      "eventType": "Pilih Jenis Peristiwa yang aktif daripada senarai juntai bawah.",
-      "chooseReference": "Pilih nilai daripada senarai juntai bawah atau helaian Reference.",
-      "employeeId": "Semak ID Pekerja dan ID Syarikat pada baris ini dengan rekod Personnel.",
-      "systemField": "Pilih Medan Sistem yang boleh diubah oleh jenis peristiwa ini (lihat helaian Reference), atau buang baris itu.",
-      "duplicateField": "Simpan satu baris sahaja bagi setiap Medan Sistem untuk satu pergerakan.",
-      "number": "Masukkan nombor (digit sahaja, tanpa simbol mata wang).",
-      "noFormula": "Taip nilai itu sendiri, bukan formula.",
-      "movementId": "Salin ID Peristiwa Pergerakan daripada sejarah Pergerakan pekerja.",
-      "before": "Masukkan nilai yang kini ada dalam rekod pekerja sebagai Sebelum, atau muat turun templat baharu.",
-      "otherRows": "Betulkan baris lain bagi pekerja ini, kemudian muat naik semula keseluruhan fail.",
-      "recheck": "Muat naik fail sekali lagi supaya ia disemak berdasarkan rekod semasa.",
-      "template": "Muat turun templat Pergerakan terkini, salin baris anda ke dalamnya dan muat naik semula.",
-      "splitFile": "Pecahkan fail kepada fail yang lebih kecil (paling banyak 200 baris, 50 pekerja dan 20 baris bagi setiap pekerja) dan muat naik setiap satu.",
-      "saveStopped": "Tiada apa-apa yang disimpan untuk pekerja ini. Betulkan masalah itu, kemudian import pekerja ini sekali lagi."
-    }
-  },
-  "lifecycleEmailHold": {
-    "inboxAction": "E-mel ditahan: {email}"
-  },
-  "rewardConfig": {
-    "title": "Semak sebelum menyimpan",
-    "saving": "Menyimpan…",
-    "whyReview": "Sebab ini perlu disemak",
-    "reason": "Sebab perubahan ini",
-    "cancel": "Batal",
-    "highImpact": {
-      "released-pat": "PAT berubah untuk semakan yang telah dilepaskan.",
-      "released-library": "Semakan yang telah dilepaskan menggunakan versi terdahulu. Semakan itu mengekalkannya; semakan baharu menggunakan versi ini.",
-      "released-limit": "Had bajet berubah untuk semakan yang telah dilepaskan.",
-      "release-review": "Pelepasan menghantar semakan ini kepada CEO BU.",
-      "remove-access": "Seseorang kehilangan akses kepada semakan.",
-      "open-offcycle": "Membuka tahun luar kitaran menjadikan baki syarikat tersedia kepada pemimpin untuk permohonan luar kitaran.",
-      "offcycle-window": "Tempoh pertengahan tahun menentukan bila syor pertengahan tahun boleh dihantar."
-    },
-    "whatChanges": "Apa yang berubah ({count})",
-    "item": "Item",
-    "before": "Sebelum",
-    "after": "Selepas",
-    "noValueChanges": "Tiada nilai berubah.",
-    "moreLines": "{count} perubahan lagi disenaraikan dalam log perubahan.",
-    "affected": "Semakan terjejas ({count})",
-    "noReviewsAffected": "Tiada semakan terjejas.",
-    "consequence": {
-      "repriced": "Dikira semula sekarang",
-      "recalculation-required": "Dikira semula; pelulus semasa dimaklumkan",
-      "keeps-version": "Mengekalkan versi asalnya",
-      "released-to-bu": "Dilepaskan kepada CEO BU",
-      "access-removed": "Akses dibuang",
-      "none": "Tiada perubahan"
-    },
-    "notificationTitle": "Konfigurasi Ganjaran berubah",
-    "noAccess": "Log perubahan Ganjaran tidak tersedia untuk anda.",
-    "logHelp": "Setiap perubahan konfigurasi Ganjaran: siapa yang membuatnya, bila, apa yang berubah dan mengapa. Perubahan tidak pernah disunting atau dibuang.",
-    "area": "Bahagian",
-    "allAreas": "Semua bahagian",
-    "company": "Syarikat",
-    "allCompanies": "Semua syarikat",
-    "person": "Diubah oleh",
-    "from": "Dari",
-    "to": "Hingga",
-    "highImpactOnly": "Impak tinggi sahaja",
-    "filter": "Gunakan penapis",
-    "exportExcel": "Eksport ke Excel",
-    "when": "Bila",
-    "areaColumn": "Bahagian",
-    "reasonColumn": "Sebab",
-    "changes": "Perubahan",
-    "changedValues": "{count, plural, =0 {Tiada nilai} one {# nilai} other {# nilai}}",
-    "system": "Sistem",
-    "unknownPerson": "Tidak diketahui",
-    "highImpactBadge": "Impak tinggi",
-    "areas": {
-      "salary": "Struktur gaji",
-      "bonus": "Matriks bonus",
-      "pat": "Input PAT",
-      "plan": "Konfigurasi Ganjaran Dikongsi",
-      "shared": "Konfigurasi dikongsi",
-      "exemption": "Pengecualian had bajet",
-      "senior": "Pelan Senior",
-      "upload": "Anugerah dimuat naik",
-      "preparation": "Persediaan semakan",
-      "access": "Akses Ganjaran",
-      "role_permission": "Kebenaran peranan",
-      "group_role": "Peranan seluruh kumpulan",
-      "limit": "Kawalan had",
-      "offcycle": "Luar kitaran"
-    },
-    "actions": {
-      "returned-to-draft": "Dikembalikan ke draf",
-      "saved-draft": "Draf disimpan",
-      "activated": "Dijadikan aktif",
-      "restored": "Dipulihkan daripada versi terdahulu",
-      "saved": "Disimpan",
-      "released": "Dilepaskan",
-      "applied": "Digunakan",
-      "changed": "Diubah",
-      "reset": "Ditetapkan semula kepada lalai"
-    },
-    "empty": "Tiada perubahan sepadan dengan penapis ini.",
-    "pages": "Halaman",
-    "previous": "Sebelumnya",
-    "next": "Seterusnya",
-    "exportTruncated": "Hanya 5,000 perubahan pertama disertakan. Kecilkan penapis untuk mengeksport selebihnya."
-  },
-  "rewardLimits": {
-    "description": "Had dan ambang bagi setiap tahun ganjaran. Setiap semakan dalam ulasan, penasihat AI dan Analitik Ganjaran menggunakan nilai bagi tahun ganjaran ulasan itu.",
-    "noAccess": "Anda tidak mempunyai akses",
-    "noAccessHelp": "Kawalan Had tersedia untuk Group Rewards, CTRO dan EC.",
-    "year": "Tahun ganjaran",
-    "show": "Tunjuk",
-    "viewOnly": "Anda boleh melihat had ini. Hanya Group Rewards boleh mengubahnya.",
-    "versionLine": "Versi {version} digunakan untuk {year}.",
-    "baselineLine": "Belum ada versi disimpan untuk {year}. Ini ialah nilai standard; menyimpan akan mencipta versi 1.",
-    "typeHelp": "Sekat menghalang penghantaran. Pengecualian dan Amaran dibawa bersama ulasan dan memerlukan sebab sebelum dihantar. Nota hanya untuk makluman.",
-    "columns": {
-      "limit": "Had",
-      "value": "Nilai",
-      "type": "Jenis",
-      "appliesTo": "Terpakai kepada",
-      "lastChanged": "Terakhir diubah oleh / tarikh"
-    },
-    "areas": {
-      "pools": "Kumpulan kenaikan gaji",
-      "person": "Kenaikan gaji setiap orang",
-      "bonus": "Bonus",
-      "lump": "Bayaran sekali gus",
-      "exemption": "Pengecualian",
-      "advisor": "Penasihat AI"
-    },
-    "labels": {
-      "pool_standard_merit": "Kumpulan merit (% gaji layak)",
-      "pool_standard_promotion": "Kumpulan kenaikan pangkat (% gaji layak)",
-      "pool_standard_special": "Kumpulan pelarasan khas (% gaji layak)",
-      "pool_h_merit": "Kumpulan merit (% gaji layak)",
-      "pool_h_promotion": "Kumpulan kenaikan pangkat (% gaji layak)",
-      "pool_h_special": "Kumpulan pelarasan khas (% gaji layak)",
-      "pool_separate": "Kumpulan tidak boleh membiayai satu sama lain atau syarikat lain",
-      "increase_withoutPromotion": "Jumlah kenaikan tanpa kenaikan pangkat melebihi",
-      "increase_withPromotion": "Jumlah kenaikan dengan kenaikan pangkat pada atau melebihi",
-      "promotion_increment": "Kenaikan bagi kenaikan pangkat",
-      "promotion_maxGrades": "Maksimum gred naik",
-      "promotion_maxGrade": "Gred tertinggi selepas kenaikan pangkat",
-      "catchUp_crFloor": "Lantai CR susulan untuk STAR/SSTAR",
-      "salary_noReduction": "Tiada pengurangan gaji",
-      "bonus_poolCap": "Had kumpulan bonus",
-      "bonus_underUse": "Amaran penggunaan rendah di bawah",
-      "bonus_individualCeiling": "Siling bonus individu melebihi",
-      "bonus_rounding": "Pembundaran bayaran (bundar ke bawah)",
-      "bonus_individualMultiplier": "Pendarab individu berbeza daripada unit",
-      "lump_share": "Bahagian baki yang tinggal",
-      "lump_step": "Langkah pembundaran",
-      "lump_cap": "Had setiap orang",
-      "lump_aboveSuggestion": "Amaun unit melebihi cadangan",
-      "lump_individualAmendment": "Pindaan individu",
-      "exemption_budgetCapsOnly": "Syarikat dikecualikan: had bajet sahaja, dengan sebab",
-      "advisor_override": "Ambang pindaan",
-      "advisor_longWithoutIncrease": "Lama tanpa kenaikan",
-      "advisor_peerGap": "Jurang gaji rakan setara"
-    },
-    "types": {
-      "block": "Sekat",
-      "exception": "Pengecualian",
-      "warning": "Amaran",
-      "note": "Nota"
-    },
-    "appliesTo": {
-      "standard": "Pelan standard",
-      "h": "Pelan JG H",
-      "all": "Semua pelan"
-    },
-    "units": {
-      "percent": "%",
-      "points": "mata peratusan",
-      "ratio": "CR",
-      "months": "bulan",
-      "myr": "RM",
-      "grades": "gred",
-      "grade": "JG",
-      "years": "tahun"
-    },
-    "fixed": "Tetap",
-    "fixedHelp": "Ditetapkan untuk melindungi gaji; tidak boleh diubah.",
-    "none": "Tiada",
-    "standardValue": "Nilai standard",
-    "changedBy": "{name} · {date}",
-    "unknownPerson": "Tidak diketahui",
-    "valueFor": "Nilai untuk {limit}",
-    "typeFor": "Jenis untuk {limit}",
-    "reviewSave": "Semak sebelum menyimpan",
-    "save": "Simpan versi baharu",
-    "discard": "Buang perubahan",
-    "saved": "Disimpan sebagai versi {version}.",
-    "errors": {
-      "system": "Had tidak dapat disimpan. Perubahan anda masih ada; cuba lagi."
-    },
-    "reviewsHeading": "Ulasan dalam tahun ganjaran ini",
-    "reviewsHelp": "Ulasan Draf menggunakan versi semasa. Ulasan yang telah melepasi Draf mengekalkan versi semasa ia dihantar. Jika anda menggunakan versi semasa padanya, semakannya dijalankan semula dan pelulus semasanya dimaklumkan.",
-    "reviewColumns": {
-      "review": "Ulasan",
-      "stage": "Peringkat",
-      "versionUsed": "Had digunakan"
-    },
-    "select": "Pilih",
-    "selectReview": "Pilih {review}",
-    "baseline": "Nilai standard (sebelum Kawalan Had)",
-    "currentVersion": "Semasa (versi {version})",
-    "version": "Versi {version}",
-    "apply": "Gunakan versi {version} pada ulasan yang dipilih",
-    "applyConfirm": "Gunakan dan maklumkan pelulus",
-    "applied": "{count, plural, one {Digunakan pada # ulasan.} other {Digunakan pada # ulasan.}}",
-    "noReviews": "Belum ada ulasan menggunakan tahun ganjaran ini.",
-    "reviewsTruncated": "Hanya 200 ulasan pertama disenaraikan.",
-    "exemptionsHeading": "Pengecualian had bajet",
-    "exemptionsHelp": "Pengecualian hanya melonggarkan had bajet (kumpulan kenaikan gaji dan had kumpulan bonus). Ia direkodkan bersama sebabnya pada persediaan ulasan.",
-    "noExemptions": "Tiada ulasan dalam tahun ganjaran ini mempunyai pengecualian had bajet.",
-    "historyHeading": "Sejarah versi",
-    "noVersions": "Belum ada versi.",
-    "changeLogLink": "Lihat setiap perubahan dalam log perubahan"
-  },
-  "importErrorLogDataBankCostInfo": {
-    "corrections": {
-      "duplicateInFile": "Nilai ini muncul lebih daripada sekali dalam fail - simpan satu baris sahaja.",
-      "duplicateEmployeeInFile": "ID Pekerja ini muncul lebih daripada sekali dalam fail - simpan satu baris sahaja.",
-      "chooseReference": "Pilih nilai daripada helaian Reference dalam templat.",
-      "chooseCompany": "Pilih Company Code daripada helaian Reference.",
-      "chooseCostCenter": "Pilih Cost Center Code yang disenaraikan untuk syarikat ini dalam helaian Allocation Reference.",
-      "date": "Masukkan tarikh sebagai YYYY-MM-DD atau sebagai tarikh Excel.",
-      "required": "Isi lajur ini - ia wajib.",
-      "yesNo": "Masukkan yes atau no.",
-      "revalidate": "Muat naik semula fail yang telah dibetulkan supaya baris ini disemak semula.",
-      "permission": "Buang baris ini, atau minta pentadbir memberi akses kepada syarikat pekerja ini.",
-      "systemError": "Muat naik fail sekali lagi. Jika masalah berulang, berikan rujukan sokongan kepada pasukan teknikal.",
-      "textCode": "Formatkan sel sebagai Text dan masukkan kod sekali lagi.",
-      "noFormula": "Taip nilai itu sendiri, bukan formula.",
-      "existingEmployee": "Semak ID Pekerja. Pekerja baharu mesti ditambah melalui \"Semuanya - pekerja baharu\" terlebih dahulu.",
-      "percentage": "Masukkan peratusan lebih daripada 0 dan paling banyak 100, dengan sehingga dua tempat perpuluhan.",
-      "periodUnit": "Masukkan nombor dan unitnya (Month, Week atau Day) bersama-sama.",
-      "reason": "Masukkan sebab sekurang-kurangnya tiga aksara.",
-      "statutoryRecord": "Simpan nombor pengenalan pekerja dalam rekod Personel mereka dahulu, kemudian muat naik fail ini semula.",
-      "template": "Muat turun templat terkini, salin baris anda ke dalamnya dan muat naik semula.",
-      "bankPair": "Masukkan nama bank dan nombor akaun bank bersama-sama."
-    },
-    "bank": {
-      "duplicateEmployeeId": "ID Pekerja berulang dalam fail ini; mula-mula digunakan pada baris Excel {row}.",
-      "duplicateCardId": "ID Kad berulang dalam fail ini.",
-      "cardIdTaken": "card_id sudah digunakan oleh pekerja lain; pilih ID kad yang belum digunakan.",
-      "noPermission": "Anda tiada kebenaran untuk mengemas kini pekerja ini.",
-      "changedAfterValidation": "Baris ini tidak disimpan. Data atau kebenarannya berubah selepas pengesahan; semak dan import semula.",
-      "missingEmployeeId": "employee_code tiada — ia ialah pautan kepada pekerja yang dikemas kini",
-      "unknownEmployee": "Tiada pekerja dengan ID Pekerja \"{code}\". Fail bahagian hanya boleh MENGEMAS KINI orang yang sudah ada dalam sistem — ia tidak boleh menambah sesiapa. Untuk menambah orang ini, pilih \"Semuanya — pekerja baharu\" di bahagian atas halaman ini dan gunakan templat pekerja penuh, kemudian jalankan fail ini semula.",
-      "duplicateEmployeeCode": "employee_code berulang dalam fail ini",
-      "bankTransferNeedsBank": "Pindahan Bank memerlukan nama bank dan nombor akaun.",
-      "bankPair": "bank_name dan bank_account_no mesti diberikan bersama-sama",
-      "noStatutoryRecordYet": "Pekerja ini belum mempunyai rekod berkanun — simpan nombor pengenalan mereka dalam rekod Personel dahulu, kemudian jalankan fail ini semula",
-      "noStatutoryRecord": "Pekerja ini tiada rekod berkanun; lengkapkan tetapan berkanun dalam rekod Personel dahulu.",
-      "notActiveOption": "\"{value}\" bukan pilihan {category} yang aktif — lajur {column}",
-      "yesNo": "{column} mestilah yes atau no",
-      "jobStopped": "Import dihentikan. Baris yang sudah disimpan dikekalkan. Semak keputusan dan akses anda sebelum mencuba semula. Rujukan {ref}.",
-      "jobStoppedEarlier": "Import dihentikan. Baris yang sudah disimpan dikekalkan. Semak keputusan dan akses anda sebelum mencuba semula.",
-      "fileTooLarge": "Fail melebihi had saiz import atau helaian kerja. Gunakan sehingga 250,000 baris dan 128 MiB.",
-      "fileUnreadable": "Fail tidak dapat dibaca. Gunakan templat Bank dan Statutori dan helaian rujukannya.",
-      "fileRowCount": "Pilih fail dengan 1 hingga 250,000 baris data.",
-      "fileIncomplete": "Fail yang dimuat naik tidak lengkap atau checksumnya berbeza. Muat naik semula."
-    },
-    "allocation": {
-      "errors": {
-        "invalid": "Masukkan peratusan lebih daripada sifar dan paling banyak 100, dengan sehingga dua tempat perpuluhan.",
-        "duplicate": "Pilih setiap pusat kos sekali sahaja.",
-        "total": "Jumlah peruntukan tidak boleh melebihi 100%.",
-        "scope": "Rekod pekerja atau kebenaran tidak tersedia.",
-        "label": "Pusat kos tidak aktif atau tidak tersedia untuk syarikat ini.",
-        "changed": "Peruntukan telah berubah. Muat semula dan pratonton sekali lagi.",
-        "date": "Pilih tarikh berkuat kuasa yang mempunyai sejarah syarikat pekerjaan yang terbukti.",
-        "clear": "Mengosongkan peruntukan memerlukan operasi Clear yang jelas.",
-        "preview": "Data input atau rujukan telah berubah. Pratonton sekali lagi.",
-        "binding": "Padankan setiap peruntukan dengan satu syarikat dan ID Pekerja.",
-        "transfer": "Simpan set Clear yang jelas pada tarikh pertukaran dan kosongkan set berjadual yang kemudian sebelum pertukaran. Kemudian simpan peruntukan baharu untuk syarikat destinasi."
-      },
-      "operation": "Operation mestilah Replace atau Clear, dan sama pada setiap baris untuk seorang pekerja dan satu tarikh.",
-      "clearRow": "Clear memerlukan tepat satu baris dengan Cost Center Code dan Percentage yang kosong.",
-      "costCenterUnavailable": "Cost Center Code ini tidak tersedia untuk {company}.",
-      "companyRequired": "Company Code wajib diisi.",
-      "companyAmbiguous": "Company Code \"{code}\" sepadan dengan lebih daripada satu syarikat. Gunakan Company Code yang disenaraikan dalam helaian Reference.",
-      "companyUnknown": "Company Code \"{code}\" tidak sepadan dengan syarikat yang boleh anda import.",
-      "effectiveDate": "Effective Date mestilah tarikh dalam bentuk YYYY-MM-DD.",
-      "employeeInvalid": "ID Pekerja tiada atau tidak sah.",
-      "employeeAmbiguous": "ID Pekerja {code} sepadan dengan lebih daripada seorang pekerja {company}.",
-      "employeeNotInCompany": "ID Pekerja {code} bukan pekerja {company} pada {date}.",
-      "heldBack": "Satu lagi peruntukan untuk ID Pekerja {code} dalam fail ini mempunyai ralat, jadi pekerja ini tidak diimport. Betulkan baris itu dahulu.",
-      "unavailable": "Syarikat, pekerja atau tarikh berkuat kuasa peruntukan tidak tersedia.",
-      "saveFailed": "Pekerja ini tidak dapat disimpan; tiada apa-apa yang diubah untuk mereka.",
-      "file": {
-        "legacyLayout": "Fail ini menggunakan susun atur lama dengan pengecam syarikat dalaman (company_id). Muat turun templat baharu dan isi lajur Company Code.",
-        "duplicateHeaders": "Tajuk lajur peruntukan yang berulang tidak dibenarkan.",
-        "missingColumns": "Lajur peruntukan tiada: {columns}",
-        "unexpectedColumns": "Lajur peruntukan yang tidak dijangka: {columns}",
-        "tooManyRows": "Gunakan paling banyak 5000 baris peruntukan bagi setiap fail.",
-        "tooLarge": "Fail peruntukan melebihi saiz yang disokong.",
-        "tooLarge10": "Pilih fail yang tidak melebihi 10 MB.",
-        "unreadableWorkbook": "Buku kerja tidak dapat dibaca. Muat turun templat dan cuba lagi.",
-        "utf8": "Simpan fail CSV sebagai UTF-8.",
-        "fileType": "Pilih templat .xlsx atau fail .csv dengan lajur yang sama.",
-        "unreadable": "Fail ini tidak dapat dibaca.",
-        "noRows": "Fail ini tiada baris peruntukan."
-      }
-    },
-    "correction": {
-      "noFormula": "Formula dan sel ralat tidak diterima.",
-      "textCode": "Masukkan kod sebagai teks untuk mengekalkan sifar di hadapan.",
-      "date": "Gunakan YYYY-MM-DD atau tarikh Excel.",
-      "tooLong": "Maksimum 1,000 aksara.",
-      "periodUnit": "Masukkan tempoh dan unitnya bersama-sama ({unit}).",
-      "notOption": "\"{value}\" bukan pilihan untuk syarikat ini. Semak helaian rujukan {sheet}.",
-      "superiorUnknown": "ID Pekerja tidak dikenali atau tidak kelihatan kepada anda.",
-      "organisationFormula": "Lajur organisasi tidak boleh mengandungi formula atau sel ralat.",
-      "organisationTooLong": "Nilai organisasi: maksimum 1,000 aksara.",
-      "companyRequired": "Company Code wajib diisi.",
-      "employeeRequired": "ID Pekerja wajib diisi.",
-      "reasonShort": "Correction Reason mesti mengandungi sekurang-kurangnya tiga aksara.",
-      "duplicateEmployee": "Pekerja ini muncul lebih daripada sekali. Simpan satu baris pembetulan bagi setiap pekerja.",
-      "companyUnknown": "Company Code tidak dikenali, samar-samar atau di luar kebenaran anda.",
-      "employeeUnknown": "ID Pekerja tidak dikenali atau samar-samar dalam syarikat sedia ada.",
-      "newCompanyUnknown": "New Company Code tidak dikenali, samar-samar atau di luar kebenaran anda.",
-      "gradeInactive": "Job Grade bukan kod sistem yang aktif.",
-      "sameEmployee": "Beberapa baris merujuk kepada pekerja yang sama."
-    }
-  },
-  "importErrorLogEmployee": {
-    "problemsTitle": "Masalah untuk dibetulkan",
-    "missingColumn": "Lajur wajib ini tiada dalam helaian.",
-    "thisField": "lajur ini",
-    "downloadFailed": "Log Ralat tidak dapat disediakan. Cuba lagi.",
-    "correction": {
-      "reference": "Pilih {field} daripada helaian Reference.",
-      "date": "Masukkan tarikh sebagai YYYY-MM-DD atau sebagai tarikh Excel.",
-      "month": "Masukkan bulan sebagai YYYY-MM.",
-      "required": "Isikan {field} - ia wajib.",
-      "requiredForContract": "Isikan lajur ini - ia wajib bagi pekerja Kontrak.",
-      "duplicateInFile": "Nilai ini muncul lebih daripada sekali dalam fail - simpan satu baris sahaja.",
-      "duplicateEmployeeId": "ID Pekerja ini muncul lebih daripada sekali dalam fail - simpan satu baris sahaja.",
-      "duplicateInSystem": "Nilai ini sudah digunakan oleh pekerja lain - masukkan nilai lain, atau keluarkan baris ini.",
-      "number": "Masukkan nombor (digit sahaja, tanpa simbol mata wang).",
-      "choice": "Pilih salah satu nilai yang disenaraikan dalam helaian Instructions atau Reference.",
-      "yesNo": "Masukkan Yes atau No.",
-      "email": "Masukkan alamat e-mel penuh, contohnya nama@syarikat.com.",
-      "notOnEmployeeSheet": "Tambah pekerja ini ke helaian pekerja, atau betulkan ID Pekerja.",
-      "employeeNotFound": "Semak ID Pekerja. Untuk menambah pekerja baharu, gunakan Semuanya - pekerja baharu dahulu.",
-      "missingColumn": "Tambah lajur {field} menggunakan templat semasa, dan muat naik semula.",
-      "wrongSection": "Keluarkan lajur itu, atau importnya dengan templat yang memilikinya.",
-      "system": "Cuba lagi. Jika ia berulang, berikan rujukan sokongan kepada pentadbir anda.",
-      "uploadAgain": "Betulkan baris yang menghentikan import, kemudian muat naik semula keseluruhan fail."
-    }
-  },
-  "importProblems": {
-    "headers": {
-      "sheet": "Helaian",
-      "row": "Baris Excel",
-      "category": "Kategori",
-      "reference": "Rujukan",
-      "employeeName": "Nama pekerja",
-      "field": "Medan",
-      "value": "Nilai dimasukkan",
-      "problem": "Apa yang salah",
-      "correction": "Cara membetulkannya",
-      "stage": "Ditemui semasa",
-      "result": "Keputusan",
-      "errorReference": "Rujukan sokongan"
-    },
-    "stage": {
-      "file": "Membaca fail",
-      "check": "Menyemak fail",
-      "save": "Menyimpan",
-      "system": "Ralat sistem"
-    },
-    "result": {
-      "refused": "Tidak diimport",
-      "skipped": "Dilangkau",
-      "stopped": "Menghentikan import",
-      "cancelled": "Tidak disimpan - baris lain menghentikan import",
-      "not_saved": "Tidak disimpan - muat naik semula fail yang telah dibetulkan"
-    },
-    "hiddenValue": "(disembunyikan)",
-    "wholeFile": "Seluruh fail",
-    "moreInLog": "{count} lagi masalah disenaraikan dalam Log Ralat.",
-    "downloadLog": "Muat turun Log Ralat",
-    "summary": {
-      "sheetTitle": "Ringkasan",
-      "batch": "Import",
-      "file": "Fail",
-      "status": "Status",
-      "problems": "Masalah",
-      "truncated": "Senarai ini telah dipendekkan semasa import direkodkan. Muat turun Log Ralat sejurus selepas import untuk melihat semua masalah."
     }
   },
   "agencyPortal": {

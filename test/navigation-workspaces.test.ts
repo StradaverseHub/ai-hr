@@ -31,6 +31,10 @@ describe('Ops and Strata placement never grants authority',()=>{
   // D-P1-32 PT-X5 — Performance & Talent (the area home and every route below it) and Performance admin (the cycle
   // list and one cycle's admin area), one module each.
   ['/lifecycle/v9','ops','onboarding','hr'],['/me/lifecycle','ops','onboarding','mine'],
+  // ADR 2026-11-15-probation-shared-automation, decision 1: the shared builders and the moved V9 builder views.
+  ['/automation/workflows','ops','automation','config'],['/automation/templates','ops','automation','config'],['/automation/groups','ops','automation','config'],
+  ['/lifecycle/v9?view=workflows','ops','automation','config'],['/lifecycle/v9?view=templates','ops','automation','config'],['/lifecycle/v9?view=groups','ops','automation','config'],
+  ['/lifecycle/v9?view=settings','ops','onboarding','hr'],['/lifecycle/probation/postings','ops','probation','hr'],
   ['/performance/home','strata','performance','mine'],['/performance/my','strata','performance','mine'],
   ['/performance/workspace','strata','performance','mine'],['/performance/calibration/talent-box','strata','performance','mine'],
   ['/performance','strata','performanceAdmin','hr'],['/performance/0f9b4c1e-2d3a-4b5c-8d7e-6f5a4b3c2d1e/cycle/calendar','strata','performanceAdmin','hr'],
@@ -105,7 +109,7 @@ describe('Ops and Strata placement never grants authority',()=>{
  });
  it('keeps each module in exactly one workspace',()=>{
   // Issue 17: the Control Tower module left Ops; People is first.
-  expect(NAVIGATION_MODULES.filter(module=>module.workspace==='ops').map(module=>module.id)).toEqual(['people','eLetter','onboarding','leave','attendance','claims','payroll','probation','contracts','recruitment']);
+  expect(NAVIGATION_MODULES.filter(module=>module.workspace==='ops').map(module=>module.id)).toEqual(['people','eLetter','onboarding','leave','attendance','claims','payroll','probation','contracts','recruitment','automation']);
   // PT-X5: Talent and Development retired into the area's tabs; Rewards keeps its own module.
   expect(NAVIGATION_MODULES.filter(module=>module.workspace==='strata').map(module=>module.id)).toEqual(['performance','performanceAdmin','rewards','workforceInsights']);
   expect(new Set(NAVIGATION_MODULES.map(module=>module.id)).size).toBe(NAVIGATION_MODULES.length);

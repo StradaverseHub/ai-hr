@@ -499,7 +499,7 @@ No recruitment test failed on GitHub.
 
 origin/main (== origin/alpha at the time, 2a2495919) was merged into this branch with a normal merge commit; the
 branch is now 0 behind origin/main. The 14 Recruitment migrations moved from 4400–4413 (idx 3800–3813, when
-…4100–…4113) to 5200–5213 (idx 4600–4613, when …4900–…4913; since renumbered to 5700–5713, see the 14 November section) with SQL bytes unchanged, after a survey of every
+…4100–…4113) to 5200–5213 (idx 4600–4613, when …4900–…4913; since renumbered to 5850–5863, see the 14 November section) with SQL bytes unchanged, after a survey of every
 remote journal, allocation document and worktree found no claim on that block. 5214 restates main's 5000 version of
 `app.consume_invitation` with `recruiting_partner` added, because 5201's older restatement would otherwise drop
 main's Access lock (diff checked: one line). Slice 13 (8fefb6242) had no separate GitHub run; it is covered here.
@@ -606,7 +606,7 @@ same room and time could be booked for another candidate. No server errors.
 
 ## Merge of origin/main (7282034468) after slice 18 — commit 463e24dd3
 
-Main's migrations 5129–5162 (idx 4529–4562) sit below the recruitment block 5200–5219 (idx 4600–4619; now 5700–5719); no function or
+Main's migrations 5129–5162 (idx 4529–4562) sit below the recruitment block 5200–5219 (idx 4600–4619; now 5850–5869); no function or
 table is defined on both sides. Conflicts were additive only (messages merged key by key with identical key sets in all
 six locales, the journal as a union in idx order, the allocation document, the regenerated AI manifests).
 
@@ -622,14 +622,14 @@ six locales, the journal as a union in idx order, the allocation document, the r
 
 origin/main (9b4f22c09) ends at `5640_lifecycle_v9_email_hold_company_tenant` (idx 5040, when …5340), above the
 recruitment block 5200–5220 (idx 4600–4620, when …4900–…4920), so an installation applying main first would skip the
-block. It moved with `git mv` to 5700–5720 (idx 5100–5120, when …5400–…5420), in order, after 5640; only comments naming
-sibling migrations and 5719's precondition message changed inside 5714–5720. Mapping and survey: the top entry of
+block. It moved with `git mv` to 5850–5870 (idx 5250–5120, when …5400–…5420), in order, after 5640; only comments naming
+sibling migrations and 5869's precondition message changed inside 5864–5870. Mapping and survey: the top entry of
 `docs/MIGRATION-ALLOCATION.md`. Sections above keep the numbers of their time.
 
 ## Slice 19 — Candidate e-mail (receipts and rejection letters)
 
 Local: after a review and two confirmation rounds, 56 files and 872 tests passed; after the merge of origin/main and the
-renumber to 5700–5720, 65 files (1,001 tests; the three failures of the first run were fixed in test code and their two
+renumber to 5850–5870, 65 files (1,001 tests; the three failures of the first run were fixed in test code and their two
 files rerun, 124 passed) and the whole-repo type check passed. Sending was exercised with faked transports only.
 Rendered (case 132, partly): the render server runs without the embedded sign-in, so the settings page showed that
 candidate e-mail is unavailable on this installation, the switch disabled, the data-processing note, the 30-day
@@ -639,7 +639,7 @@ with a domain link were refused with the typed wording kept; a valid rejection w
 Not rendered: queuing a receipt or a rejection with a preview, and the application page's e-mail list, which need an
 installation with an active embedded mail relay.
 
-| Run (bde982fbe: slice 19, merge of origin/main, renumber to 5700–5720) | Job | Result |
+| Run (bde982fbe: slice 19, merge of origin/main, renumber to 5850–5870) | Job | Result |
 | --- | --- | --- |
 | 43582353939 | Whole-repo type check | PASS |
 | 43582353939 | Production build | PASS |
@@ -649,7 +649,7 @@ installation with an active embedded mail relay.
 
 ## Merge of origin/main (1299e6724) after slice 19 — commit 12b68a8df (2026-11-15)
 
-Main's journal ends at `5660_pay_component_bonus_epf_bonus_2012` (when 1793330005360), below this branch's `5700`–`5720`, so no
+Main's journal ends at `5660_pay_component_bonus_epf_bonus_2012` (when 1793330005360), below this branch's `5850`–`5870`, so no
 renumber: the journal keeps main's entries byte for byte and appends the block; main's allocation section is prepended; both AI
 source manifests were regenerated with the repo scripts.
 
@@ -662,7 +662,7 @@ source manifests were regenerated with the repo scripts.
 
 ## Slice 20 — Candidate e-mail (interview invitations, reminders, cancellations, offers) — commits 80a66c098 … 48843bac6
 
-Built: migration `5721` (idx 5121, when 1793330005421); invitation with a server-rendered live preview in the schedule form (the form
+Built: migration `5871` (idx 5271, when 1793330005571); invitation with a server-rendered live preview in the schedule form (the form
 posts the subject and text it showed; a difference refuses); the automatic reminder (on by default, 24 hours before, 2–72) frozen with
 the invitation; withdrawal of a cancelled interview's waiting invitation and reminder (new state `withdrawn`); the cancellation e-mail
 a person ticks after a preview (never for the automatic cancel on close); "Send offer by e-mail" for an Approved offer stating only the
@@ -670,7 +670,7 @@ fields marked "In e-mail", as entered, recorded as sent by e-mail; Mark as sent 
 setting; six languages. Decisions in D-065 (the address's map link is the one link allowed; server-side preview; no reschedule path).
 
 Tests: `test/recruitment-candidate-email-hiring.test.ts` (cases 133–135 against Postgres, sweep with a faked transport) and
-`test/recruitment-candidate-email-hiring-rules.test.ts` (pure rules and agreement with 5721).
+`test/recruitment-candidate-email-hiring-rules.test.ts` (pure rules and agreement with 5871).
 
 Not rendered (case 136): the local render cluster from slice 19 no longer exists, and queuing needs an installation with the embedded
 sign-in and an active mail relay (as for slice 19's case 132), which the local server does not have.
@@ -680,7 +680,7 @@ sign-in and an active mail relay (as for slice 19's case 132), which the local s
 | 43689634616 (80a66c098) | Type check | FAIL: offer-field fixtures in recruitment-hiring-rules lacked `includeInEmail` (fixed d4c4c93fe) |
 | 43689634616 | Unit tests | FAIL: two slice 19 expectations (settings shape) and a wrapped-array comparison (fixed d4c4c93fe); DB stage not reached |
 | 43691141570 (d4c4c93fe) | Type check, build, 31 unit files | PASS |
-| 43691141570 | DB tests | FAIL before tests: 5721 did not apply — a CASE inside an IF condition in `finish` (PL/pgSQL read its THEN as the IF's). Reproduced and confirmed on a throwaway local Postgres 16 chain apply (fixed e44b5c612) |
+| 43691141570 | DB tests | FAIL before tests: 5871 did not apply — a CASE inside an IF condition in `finish` (PL/pgSQL read its THEN as the IF's). Reproduced and confirmed on a throwaway local Postgres 16 chain apply (fixed e44b5c612) |
 | 43692883716 (e44b5c612) | DB tests | FAIL: the withdrawal trigger inserted text into the `actor_type` enum, so every interview cancellation failed (19 tests in interview set-up, tasks, agencies and reports), plus two slice 19 pins (12 → 36 templates, the `withdrawn` count) (fixed 5b9b4cf0d) |
 | 43694134042 (5b9b4cf0d) | Type check, build | PASS |
 | 43694134042 | Unit (31 files, 446 tests) | PASS |
@@ -689,10 +689,10 @@ sign-in and an active mail relay (as for slice 19's case 132), which the local s
 
 ## Slice 21a — Verified careers applicants and careers receipts — commits 5fd274bff … (2026-11-15)
 
-Built: migration `5722` (idx 5122, when 1793330005422): a 6-digit e-mail code before applying while the company's candidate e-mail is
+Built: migration `5872` (idx 5272, when 1793330005572): a 6-digit e-mail code before applying while the company's candidate e-mail is
 on (10 minutes, 5 wrong entries, replaced by a new one; 3 an hour and 10 a day per address, 10 codes and 30 checks an hour per
 client; the same page whatever happened); a 30-minute, single-use verification for that address and job, enforced by the database
-(the app role no longer reaches 5708's submission directly); the company's receipt queued automatically for a verified application,
+(the app role no longer reaches 5858's submission directly); the company's receipt queued automatically for a verified application,
 as by the applicant; hashes only, pruned after 2 days, deleted with the candidate. Companies with candidate e-mail off keep slice 8's
 form (D-066). The code e-mail wording is code-owned in six languages. Spec "Slice 21" (21a and 21b).
 
@@ -711,12 +711,12 @@ Not rendered (case 142): no local render cluster with an embedded relay.
 
 ## Slice 21b — Candidate response links — commits 6b3396941 … (2026-11-15)
 
-Built: migration `5723` (idx 5123, when 1793330005423). Invitations and offer e-mails carry one link, `/careers/r/<token>` on the
+Built: migration `5873` (idx 5273, when 1793330005573). Invitations and offer e-mails carry one link, `/careers/r/<token>` on the
 installation's own https origin (embedded sign-in's origin or an explicit AUTH_PUBLIC_ORIGIN; no link without one); the token's
 sha256 is stored. GET shows the job, company and interview time or "your offer" and changes nothing; Accept / Decline is a POST, 20 an
 hour per client. An interview answer sets the candidate response while the interview is open, not started and its application
 active; an offer answer is the candidate's reply, shown on the Offer tab and pre-selected for HR, who record the decision (the reply
-is kept on the link, so 5703's offer guard is untouched — a change from the spec's "recorded on the offer"). The preview shows a
+is kept on the link, so 5853's offer guard is untouched — a change from the spec's "recorded on the offer"). The preview shows a
 stand-in link; the frozen e-mail carries the candidate's own, and the database refuses any other link and any link not issued with
 the e-mail.
 
@@ -725,7 +725,7 @@ Tests: `test/recruitment-candidate-response.test.ts`; slice 20 expectations upda
 | Run | Job | Result |
 | --- | --- | --- |
 | 43704449195 (6b3396941) | DB (24 files, 334 tests) | PASS |
-| 43704449195 | Unit (31 files) | 445 PASS; FAIL 1: the rules test compared placeholders with 5721 instead of 5723's restatement |
+| 43704449195 | Unit (31 files) | 445 PASS; FAIL 1: the rules test compared placeholders with 5871 instead of 5873's restatement |
 | 43704449195 | Type check, build | FAIL: the link route read `state` without narrowing the result (fixed with the test in the next commit) |
 | 43705357817 | Type check, build; 3 affected files (41 tests) | PASS |
 
@@ -733,14 +733,14 @@ Not rendered (case 142 and the link pages): no local installation with the embed
 
 ## Slice 22 — anonymous candidate survey (2026-11-15)
 
-`origin/main` (`e55138825`, board 4604dccc) was merged at `c3b891e7f` without a renumber (main's newest, `5680`, sorts below `5700`).
-Migration `5724` (idx 5124, when 1793330005424) applied after all 875 earlier migrations on a throwaway local Postgres 16 before CI.
+`origin/main` (`e55138825`, board 4604dccc) was merged at `c3b891e7f` without a renumber (main's newest, `5680`, sorts below `5850`).
+Migration `5874` (idx 5274, when 1793330005574) applied after all 875 earlier migrations on a throwaway local Postgres 16 before CI.
 Decisions D-067; spec cases 143–148.
 
 | Check | Result |
 | --- | --- |
 | Run 43714371926 on `3ec72d635` (60 files: every `test/recruitment-*` file plus `company-referrers`, module, i18n, migration-journal and pack suites; type check; build) | Type check and build PASS; 6 tests FAIL in 3 files |
-| Cause 1 (4 survey-page tests): postgres.js bound the answers' JSON string to `$2::jsonb` as a JSON *string*, so 5724 refused every answer (22023) and the page answered 503 | Fixed in `982cefdaf`: bound as text and cast `::text::jsonb` |
+| Cause 1 (4 survey-page tests): postgres.js bound the answers' JSON string to `$2::jsonb` as a JSON *string*, so 5874 refused every answer (22023) and the page answered 503 | Fixed in `982cefdaf`: bound as text and cast `::text::jsonb` |
 | Cause 2 (2 tests): the recruitment table-count pins in `recruitment-slices-service` and `recruitment-candidate-privacy` (81 → 82, the survey answer table) | Pins updated; the sentinel and bystander scans now cover the new table |
 | Run 43716161965 on `982cefdaf` (the 4 affected files; type check) | PASS |
 
@@ -750,8 +750,8 @@ staging.
 
 ## Slice 23 — referral rewards and agency fees (2026-11-16)
 
-`origin/main` (`8244cfa81`) was merged at `7b84427c4` without a renumber (main's newest, `5695`, sorts below `5700`). Migration `5725`
-(idx 5125, when 1793330005425) applied after all 878 earlier migrations on a throwaway local Postgres 16 before CI; its facts function was
+`origin/main` (`8244cfa81`) was merged at `7b84427c4` without a renumber (main's newest, `5695`, sorts below `5850`). Migration `5875`
+(idx 5275, when 1793330005575) applied after all 878 earlier migrations on a throwaway local Postgres 16 before CI; its facts function was
 re-created there after the fix below. Decisions D-068; spec cases 149–155.
 
 | Check | Result |
@@ -759,8 +759,8 @@ re-created there after the fix below. Decisions D-068; spec cases 149–155.
 | Run 43753308090 on `64e6eb70f` (62 files: the slice 22 set plus the two new reward files; type check; build) | 59 files PASS; type check, build and 8 tests in 3 files FAIL |
 | Cause 1 (type check, build): BigInt literals in `reward-model.ts` are not allowed by the project's compile target | Fixed in `35386fb6c`: whole-cent integer arithmetic |
 | Cause 2 (5 reward tests): `app.recruitment_reward_facts` read the hire's record variable before it was assigned when no employee record existed yet (55000) | Fixed in `35386fb6c`: the hire's facts are built only when the hire exists |
-| Cause 3 (same tests): the fixture linked a made-up draft id; 5703's hand-off guard requires a real draft of the company | Fixed: the test creates a real employee draft |
-| Cause 4 (2 tests): the careers definer pin and the referral column pin correctly flagged 5725's new portal function and frozen columns | Pins updated |
+| Cause 3 (same tests): the fixture linked a made-up draft id; 5853's hand-off guard requires a real draft of the company | Fixed: the test creates a real employee draft |
+| Cause 4 (2 tests): the careers definer pin and the referral column pin correctly flagged 5875's new portal function and frozen columns | Pins updated |
 | Cause 5 (1 assertion): a non-administrator gets `not_found` for a job row security hides, not `forbidden` | Expectation corrected |
 | Run 43754899214 on `35386fb6c` (the 4 affected files; type check; build) | Type check, build and 3 files PASS; the careers pin listed two functions in the wrong order |
 | Run 43756868066 on `23bfe430d` (`recruitment-careers`) | PASS |
@@ -772,7 +772,7 @@ staging.
 ## Slice 24 — AI match summary suggestions, locked (2026-11-16)
 
 Built locked at the owner's request: provider contract `recruitment_match_summary_v1` has no approval record, so the gateway refuses
-every send. Decisions D-069; spec cases 156–161; migration 5726.
+every send. Decisions D-069; spec cases 156–161; migration 5876.
 
 | Check | Result |
 | --- | --- |
@@ -783,7 +783,7 @@ panel (case 161; this machine has no installed dependencies). Nothing is on stag
 
 ## Slice 25 — Agency portal (2026-11-16)
 
-Decisions D-070; spec cases 162–169; migration 5727. `origin/main` (`9d32dfab1`) merged first at `75288c7f8` (manifest conflicts
+Decisions D-070; spec cases 162–169; migration 5877. `origin/main` (`9d32dfab1`) merged first at `75288c7f8` (manifest conflicts
 regenerated).
 
 | Check | Result |

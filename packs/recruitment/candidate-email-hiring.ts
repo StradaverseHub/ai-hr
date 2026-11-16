@@ -2,8 +2,8 @@
  * Candidate e-mail about interviews and offers (slice 20, D-063, D-065; docs/adr/2026-11-14-recruitment-candidate-email.md): the
  * invitation a person ticks when scheduling an interview (with the reminder that follows it), the cancellation a person ticks when
  * cancelling one, and the offer e-mail a person sends for an Approved offer. Reached from outside the pack only through ./service;
- * ./interviews and ./offers call the *Tx functions inside their own transactions. Delivery is 5720's sweep (./candidate-email-delivery);
- * db/migrations/5721_recruitment_candidate_email_interviews_offers.sql refuses every illegal queue again.
+ * ./interviews and ./offers call the *Tx functions inside their own transactions. Delivery is 5870's sweep (./candidate-email-delivery);
+ * db/migrations/5871_recruitment_candidate_email_interviews_offers.sql refuses every illegal queue again.
  *
  * What a person previews is what is frozen:
  *   invitation   — the schedule form asks previewInterviewInvitation (a server action, as the person types) for the e-mail of what is
@@ -13,7 +13,7 @@
  *   cancellation — rendered here per open interview with a fingerprint, posted with the cancel form (as slice 19's rejection);
  *   offer        — rendered here with a fingerprint, posted with "Send offer by e-mail".
  * The reminder is automatic (D-063): rendered and frozen with the invitation, due at the interview's start minus the company's hours,
- * withdrawn by 5721's trigger if the interview is cancelled first.
+ * withdrawn by 5871's trigger if the interview is cancelled first.
  *
  * The offer e-mail states only the fields the company marks "In e-mail", each as people entered it (money as its currency and amount;
  * nothing computed). A marked private field the sender cannot see refuses the send (email_private_field) rather than leaving it out.
@@ -40,7 +40,7 @@ import { validateInterviewInput } from './hiring-model';
 
 const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
 
-// ── Slice 21b: response links (5723) ────────────────────────────────────────────────────────────────────────────
+// ── Slice 21b: response links (5873) ────────────────────────────────────────────────────────────────────────────
 /** A preview shows this in place of the candidate's personal token (which exists only once the e-mail is queued); the frozen e-mail
  *  differs from the preview by exactly the token. */
 export const PREVIEW_RESPONSE_TOKEN = 'your-personal-link-appears-here-when-sent--';
@@ -60,7 +60,7 @@ function previewResponseUrl(template: { subject: string; body: string }): string
   const origin = responseOrigin();
   return origin && usesResponseLink(template) ? `${origin}/careers/r/${PREVIEW_RESPONSE_TOKEN}` : null;
 }
-/** Issue the real link for an interview just scheduled or an offer just sent (5723 checks both), returning its URL; the stand-in URL in
+/** Issue the real link for an interview just scheduled or an offer just sent (5873 checks both), returning its URL; the stand-in URL in
  *  the rendered preview is then replaced by it. */
 async function issueResponseLink(tx: Tx, kind: 'interview' | 'offer', targetId: string): Promise<string> {
   const origin = responseOrigin();
@@ -113,7 +113,7 @@ const factsOf = (r: InterviewRow): InterviewEmailFacts => ({
 const baseOf = (c: CandidateEmailComposer, r: { full_name: string; title: string }) =>
   ({ candidateName: r.full_name, jobTitle: r.title, companyName: c.companyName, senderName: c.senderName });
 
-/** Insert a set of e-mails of ONE company in one statement (5721 checks the set once) after the per-company hourly cap, and write one
+/** Insert a set of e-mails of ONE company in one statement (5871 checks the set once) after the per-company hourly cap, and write one
  *  event per e-mail. Each row is fully rendered; nothing here decides content. */
 type Row = {
   kind: CandidateEmailKind; job_id: string; application_id: string; candidate_id: string; recipient: string; mail: RenderedCandidateEmail;
@@ -241,7 +241,7 @@ export async function queueInterviewInvitationTx(tx: Tx, s: SessionContext, inte
     { sentence: await responseSentence(invitation.locale, 'interview'), url: stand });
   if (inv.valueLink) return 'value_link';
   if (posted.subject !== inv.mail.subject || posted.text !== inv.mail.text) throw new RecruitmentError('email_changed');
-  // Slice 21b: the candidate's own link replaces the preview's stand-in (5723 confirms it was issued for this interview now).
+  // Slice 21b: the candidate's own link replaces the preview's stand-in (5873 confirms it was issued for this interview now).
   const responseUrl = stand ? await issueResponseLink(tx, 'interview', row.id) : null;
   if (stand && responseUrl) inv.mail = swapLink(inv.mail, stand, responseUrl);
   const startsAt = facts.startsAt.toISOString();
@@ -327,7 +327,7 @@ export async function offerEmailPreviewTx(tx: Tx, s: SessionContext, application
     full_name: string; email: string | null; destroyed: boolean; title: string; sees_private: boolean }>(sql`
     select o.id, o.company_id, o.job_id, o.status, o.sent_at is not null as sent, o.candidate_decision as decision,
       app.can_operate_recruitment_job(o.company_id, o.job_id) as operate, c.full_name, c.email, c.destroyed_at is not null as destroyed, j.title,
-      -- The 5703 private-value predicate (as ./offers seesPrivateTx).
+      -- The 5853 private-value predicate (as ./offers seesPrivateTx).
       (app.can_admin_recruitment_for(o.company_id) or app.recruitment_has_job_role(o.job_id, array['recruiter']) or o.created_by_user_id = app.current_user_id()) as sees_private
     from recruitment_offer o
     join recruitment_application a on a.id = o.application_id and a.tenant_id = o.tenant_id
@@ -376,7 +376,7 @@ export async function queueOfferEmailTx(tx: Tx, s: SessionContext, offer: { id: 
   if (!fingerprint || fingerprint !== preview.fingerprint) throw new RecruitmentError('email_changed');
   const c = await composerOf(tx, s, offer.companyId, 'offer');
   if (!c) throw new RecruitmentError('email_off');
-  // Slice 21b: the candidate's own link replaces the preview's stand-in (5723 confirms it was issued for this offer's send now).
+  // Slice 21b: the candidate's own link replaces the preview's stand-in (5873 confirms it was issued for this offer's send now).
   const responseUrl = preview.previewResponseUrl ? await issueResponseLink(tx, 'offer', offer.id) : null;
   const mail = preview.previewResponseUrl && responseUrl ? swapLink(preview, preview.previewResponseUrl, responseUrl) : { subject: preview.subject, text: preview.text, html: preview.html };
   await insertEmailsTx(tx, s, offer.companyId, new Map([['offer', c]]), [{ kind: 'offer', job_id: offer.jobId, application_id: offer.applicationId,

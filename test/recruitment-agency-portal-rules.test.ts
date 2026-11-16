@@ -1,6 +1,6 @@
 /**
  * Recruitment slice 25 — the agency portal with no database: the exact public paths, the page markup (escaping, no script, the
- * cookie never in the page), and the shape of migration 5727 (owner-only sign-in tables, the inbox's grants and guard, the
+ * cookie never in the page), and the shape of migration 5877 (owner-only sign-in tables, the inbox's grants and guard, the
  * definers refusing signed-in callers, no address stored in clear).
  */
 import { readFileSync } from 'node:fs';
@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { agencyPortalJobPath, agencyPortalPath, isCareersRoute } from '../lib/careers-route';
 
 const JOB = '0b9a4a3e-6f1d-4c39-9d7b-2a8f9e1c5d44';
-const m5727 = readFileSync(new URL('../db/migrations/5727_recruitment_agency_portal.sql', import.meta.url), 'utf8');
+const m5727 = readFileSync(new URL('../db/migrations/5877_recruitment_agency_portal.sql', import.meta.url), 'utf8');
 const fn = (name: string) => {
   const start = m5727.indexOf(`CREATE FUNCTION app.${name}(`);
   expect(start, name).toBeGreaterThan(-1);
@@ -28,7 +28,7 @@ describe('public paths', () => {
   });
 });
 
-describe('migration 5727', () => {
+describe('migration 5877', () => {
   it('keeps codes, checks, sessions and the context owner-only, storing hashes only', () => {
     for (const t of ['code', 'check', 'session', 'context']) expect(m5727).toContain(`'recruitment_agency_portal_${t}'`);
     expect(m5727).toMatch(/REVOKE ALL ON app\.%I FROM PUBLIC, ai_hr_app/);

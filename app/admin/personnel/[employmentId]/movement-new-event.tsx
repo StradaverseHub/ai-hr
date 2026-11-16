@@ -151,6 +151,25 @@ export type MovementEditTarget = {
   pendingUnavailable?: boolean;
 };
 
+/**
+ * Personnel postings (ADR 2026-11-15 decision 4, screen 8) — the pending posting this New Event form is prefilled from.
+ * Absent = the New Event form, unchanged. Present: the event type is the posting's, only the posting's fields are
+ * offered (dates and remarks), and the submit either applies the event and approves the posting (approver group) or
+ * keeps the corrections on the posting for approval (everyone else who can record events). The server decides both.
+ */
+export type MovementPostingTarget = {
+  id: string;
+  label: string;
+  revision: number;
+  kind: string;
+  effectiveDate: string;
+  endDate: string | null;
+  remarks: string | null;
+  canApprove: boolean;
+  /** Pre-translated by the server page (personnelPostings namespace); the island adds no translation namespace. */
+  labels: { banner: string; hint: string; leaveHint: string; submit: string };
+};
+
 export function MovementNewEvent({
   employmentId,
   today,
@@ -171,6 +190,8 @@ export function MovementNewEvent({
   cancelHref,
   pageContext,
   edit,
+  posting,
+  postingAction,
   rehire,
 }: {
   employmentId: string;
@@ -224,6 +245,8 @@ export function MovementNewEvent({
   cancelHref: string;
   pageContext?:MovementPageContext;
   edit?: MovementEditTarget;
+  posting?: MovementPostingTarget;
+  postingAction?: (previous: string | null, data: FormData) => Promise<string | null>;
   /** Board 511aa74a — present only when this employee may be rehired (Resigned, nothing current). The
    *  Rehired type then renders its own form (a new employment, core/rehire.ts), never the movement writer. */
   rehire?: Omit<RehireFormProps, 'kindCode'>;
@@ -237,9 +260,9 @@ export function MovementNewEvent({
   const byCode = new Map(catalog.map((c) => [c.code, c]));
   /** What a code DOES. Every branch below asks this, never the code itself. */
   const behaviourOf = (k: string): string => byCode.get(k)?.behaviourKind ?? k;
-  const [kind, setKind] = useState<string>(edit?.kind ?? catalog[0]?.code ?? 'transfer');
+  const [kind, setKind] = useState<string>(posting?.kind ?? edit?.kind ?? catalog[0]?.code ?? 'transfer');
   const behaviour = behaviourOf(kind);
-  const [correctionDate, setCorrectionDate] = useState(edit?.effectiveDate ?? today);
+  const [correctionDate, setCorrectionDate] = useState(posting?.effectiveDate ?? edit?.effectiveDate ?? today);
   const proposedMonth = (/^\d{4}-\d{2}-\d{2}$/.test(correctionDate) ? correctionDate : edit?.effectiveDate ?? today).slice(0,7);
   const correctionClosedPeriods = edit ? [...new Set([
     ...(edit.payrollClosedPeriods ?? []),
@@ -260,6 +283,8 @@ export function MovementNewEvent({
     }
     return saveMovementPageAction(previous,data);
   },null);
+  const [postingError,postingFormAction,postingPending]=useActionState(async(previous:string|null,data:FormData)=>
+    posting&&postingAction?postingAction(previous,data):previous,null);
   const submitPendingCorrection=async(data:FormData)=>{
     for(const key of MOVEMENT_PENDING_INPUT_FIELDS){
       if(Object.prototype.hasOwnProperty.call(saved,key)||touched.current.has(key))continue;
@@ -578,7 +603,7 @@ export function MovementNewEvent({
       </select>),
   ];
 
-  const kindOptions: readonly string[] = edit ? edit.allowedKinds : catalog.map((c) => c.code);
+  const kindOptions: readonly string[] = posting ? [posting.kind] : edit ? edit.allowedKinds : catalog.map((c) => c.code);
   const savedScope=isEntityTransfer?saved?.companyId??current.companyId:current.companyId;
   const savedOrg=orgByCompany?.[savedScope]??{departments,positions,businessUnits,locations};
   const referenceChoices={companyId:companies??[{id:current.companyId,name:current.companyName??''}],
@@ -624,10 +649,12 @@ export function MovementNewEvent({
   }
 
   return (
-    <form aria-busy={pagePending} action={pageContext ? pageAction : saved ? submitPendingCorrection : edit ? editMovementEventAction : createMovementEventAction}
+    <form aria-busy={pagePending||postingPending} action={posting && postingAction ? postingFormAction : pageContext ? pageAction : saved ? submitPendingCorrection : edit ? editMovementEventAction : createMovementEventAction}
       ref={form=>{if(saved&&form&&!initialFields.current)initialFields.current=new Map(Array.from(new FormData(form).entries()).filter((entry):entry is [string,string]=>typeof entry[1]==='string'));}}
       onSubmit={event=>{
-        if(pagePending){event.preventDefault();return;}
+        if(pagePending||postingPending){event.preventDefault();return;}
+        // A posting carries only dates and remarks: the comparison grid and its Field Controls are not offered.
+        if (posting) return;
         // A history entry changes nothing from its date onward, so Required to Change does not apply to it.
         if (historyMode) return;
         // 1d58019a Step 2 — Required to Change, checked before the round trip (the server checks it too).
@@ -656,6 +683,17 @@ export function MovementNewEvent({
       }}>
       {pageContext&&<><input type="hidden" name="movementPage" value={edit?'edit':'new'}/><input type="hidden" name="showCorrected" value={pageContext.showCorrected??''}/><input type="hidden" name="from" value={pageContext.from??''}/></>}
       {pageError&&<p role="alert" className="border-b border-border bg-destructive/10 px-4 py-3 text-sm text-destructive">{pageError}</p>}
+      {postingError&&<p role="alert" className="border-b border-border bg-destructive/10 px-4 py-3 text-sm text-destructive">{postingError}</p>}
+      {posting&&<>
+        <input type="hidden" name="postingId" value={posting.id}/>
+        <input type="hidden" name="postingRevision" value={posting.revision}/>
+        <input type="hidden" name="postingIntent" value={posting.canApprove?'approve':'edit'}/>
+        <div data-testid="movement-posting-banner" className="space-y-1 border-b border-border bg-muted/40 px-4 py-3 text-sm">
+          <p className="font-medium">{posting.labels.banner}</p>
+          <p>{posting.labels.hint}</p>
+          <p className="text-xs text-muted-foreground">{posting.labels.leaveHint}</p>
+        </div>
+      </>}
       <input type="hidden" name="employmentId" value={employmentId} />
       <DerivedOrganisationFields state={derivedOrganisation}/>
       {edit && <input type="hidden" name="movementId" value={edit.movementId} />}
@@ -725,7 +763,7 @@ export function MovementNewEvent({
             <DateField
               {...personnelWorkflowControl(movementField('effectiveDate'), 'movement', 'record')}
 
-              defaultValue={edit?.effectiveDate ?? today}
+              defaultValue={posting?.effectiveDate ?? edit?.effectiveDate ?? today}
               onChange={event => setCorrectionDate(event.target.value)}
               className={inputCls}
               label={label(movementField('effectiveDate'))}
@@ -752,7 +790,7 @@ export function MovementNewEvent({
             <DateField
               {...personnelWorkflowControl((isTermination||isResignation) ? 'employment_history.event_information.lastworkingdate' : movementField('endDate'), 'movement', 'edit', {movementEndDate:behaviour==='probationExtension'||isTermination})}
 
-              defaultValue={edit?.endDate ?? ''}
+              defaultValue={posting?.endDate ?? edit?.endDate ?? ''}
               className={inputCls}
               label={label((isTermination||isResignation) ? 'employment_history.event_information.lastworkingdate' : movementField('endDate'))}
             />
@@ -835,7 +873,7 @@ export function MovementNewEvent({
 
         <label className="flex flex-col gap-1 text-xs text-muted-foreground sm:col-span-2">
           {label(movementField('remarks'))}
-          <input {...personnelWorkflowInput(movementField('remarks'), 'movement', 'edit', { historicalHireRemarks: behaviour === 'historicalHire' })} maxLength={200} defaultValue={edit?.remarks ?? ''} className={inputCls} />
+          <input {...personnelWorkflowInput(movementField('remarks'), 'movement', 'edit', { historicalHireRemarks: behaviour === 'historicalHire' })} maxLength={200} defaultValue={posting?.remarks ?? edit?.remarks ?? ''} className={inputCls} />
         </label>
 
         {edit && (
@@ -852,7 +890,7 @@ export function MovementNewEvent({
         )}
       </div>
 
-      {isComparison && !edit && !saved && (
+      {isComparison && !edit && !saved && !posting && (
         <div className="space-y-3 border-t border-border px-4 py-3">
           <label className="flex items-start gap-2 text-sm">
             <input name="recordHistory" type="checkbox" value="1" className="mt-1" checked={historyMode} onChange={(e) => setHistoryMode(e.target.checked)} />
@@ -871,7 +909,8 @@ export function MovementNewEvent({
         </div>
       )}
 
-      {isComparison && (
+      {isComparison && (posting ? null : (
+        // Personnel postings carry only dates and remarks, so a posting offers no comparison grid.
         // Board 154511c4 — hidden (not unmounted) while recording history: the server ignores these After values then.
         <div className="border-t border-border" hidden={historyMode}>
           <div className="hidden bg-muted/50 px-4 py-2 text-xs uppercase tracking-wide text-muted-foreground sm:grid sm:grid-cols-[11rem_minmax(0,1fr)_minmax(0,1fr)] sm:gap-4">
@@ -887,13 +926,17 @@ export function MovementNewEvent({
             {isEntityTransfer ? t('form.entityTransferHint') : t('form.comparisonHint')}
           </p>
         </div>
-      )}
+      ))}
 
       <div className="flex items-center justify-end gap-2 border-t border-border p-4">
         <a href={cancelHref} className={btnGhost}>
           {t('form.cancel')}
         </a>
-        {behaviour === 'termination' && !edit ? (
+        {posting ? (
+          <ActionButton actionKind="saving" className={btnPrimary}>
+            {posting.labels.submit}
+          </ActionButton>
+        ) : behaviour === 'termination' && !edit ? (
           <ConfirmSubmit
             title={t('form.terminateConfirmTitle')}
             description={t('form.terminateConfirmDescription')}

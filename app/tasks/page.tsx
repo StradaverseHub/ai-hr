@@ -9,7 +9,9 @@ import { TasksView } from './tasks-view';
 // count is this page's sidebar badge (core/approvals-inbox.ts myTaskSummary, the summary form of listMyTasks).
 export default async function Page(){
  const {s,scopeIds}=await scopedSession();
- const modules={attendance:isModuleEnabledOrFalse(s,'attendance'),claims:isModuleEnabledOrFalse(s,'claims'),performance:isModuleEnabledOrFalse(s,'performance'),rewards:isModuleEnabledOrFalse(s,'rewards'),recruitment:isModuleEnabledOrFalse(s,'recruitment')};
+ const modules={attendance:isModuleEnabledOrFalse(s,'attendance'),claims:isModuleEnabledOrFalse(s,'claims'),performance:isModuleEnabledOrFalse(s,'performance'),rewards:isModuleEnabledOrFalse(s,'rewards'),recruitment:isModuleEnabledOrFalse(s,'recruitment'),
+  // Probation (Lifecycle, possibly on for some companies only): its Approve steps and tasks are a shared task source.
+  probation:isModuleEnabledOrFalse(s,'lifecycle')||!!s.entitlements?.scopedModules.lifecycle?.length};
  const [items,summary,navigation]=await Promise.all([
   isModuleEnabledOrFalse(s,'lifecycle')?onboardingTasks(s):Promise.resolve([]),
   myTaskSummary(s,scopeIds,modules),lifecycleModuleNavigation(s),

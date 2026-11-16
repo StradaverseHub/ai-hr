@@ -76,7 +76,9 @@ class TaskRefused extends Error {
   constructor(readonly code: TaskDecisionRefusalCode) { super(code); this.name = 'TaskRefused'; }
 }
 const modulesOf = (ctx: SessionContext) => ({ attendance: isModuleEnabled(ctx, 'attendance'), claims: isModuleEnabled(ctx, 'claims'),
-  performance: isModuleEnabled(ctx, 'performance'), rewards: isModuleEnabled(ctx, 'rewards') });
+  performance: isModuleEnabled(ctx, 'performance'), rewards: isModuleEnabled(ctx, 'rewards'),
+  // Probation's kinds are not in the published mobile vocabulary; the app lists them only once a contract version does.
+  probation: false });
 const iso = (d: Date | string) => (d instanceof Date ? d : new Date(d)).toISOString();
 const hhmm = (v: unknown): string | null => (typeof v === 'string' && /^\d{2}:\d{2}/.test(v) ? v.slice(0, 5) : null);
 const num = (v: unknown): number => Number(v ?? 0);
@@ -139,12 +141,13 @@ export async function tasksPageV2(ctx: SessionContext, q: { limit: number; curso
   const rows = after.slice(0, q.limit), last = rows[rows.length - 1];
   const summaries = await summariesFor(ctx, rows, locale);
   return {
-    items: rows.map((t: Pending) => {
+    // Probation kinds are not in the published mobile vocabulary (modulesOf reads probation: false; this keeps the type).
+    items: rows.filter((t: Pending): t is Pending & { kind: Exclude<Pending['kind'], 'probationApproval' | 'probationTask'> } => t.kind !== 'probationApproval' && t.kind !== 'probationTask').map((t) => {
       const native = q.expandedNative === true ? isNativeTaskKind(t.kind) || isReviewWorkspaceKind(t.kind) || isRequestWorkspaceKind(t.kind) || isPackWorkspaceKind(t.kind) : isNativeTaskKind(t.kind) && t.kind !== 'replacementLeave';
       return { id: t.id, kind: t.kind, subject: { name: t.subjectName, code: null }, createdAt: t.createdAt, nativeDecision: native, webPath: native ? null : t.linkPath,
         summary: native ? summaries.get(`${t.kind}:${t.id}`) ?? null : null };
     }),
-    nextCursor: after.length > q.limit && last ? encodeCursor(TASKS_CURSOR, [last.createdAt, last.kind, last.id]) : null,
+    nextCursor: after.length > q.limit && last && last.kind !== 'probationApproval' && last.kind !== 'probationTask' ? encodeCursor(TASKS_CURSOR, [last.createdAt, last.kind, last.id]) : null,
   };
 }
 

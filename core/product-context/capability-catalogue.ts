@@ -197,7 +197,9 @@ export const DECIDER_ACTORS:ReadonlySet<string>=new Set(['assigned_approver','pe
 /** The inbox kinds that make a deciding action this caller's work. Any other deciding action, by its module's kinds. */
 export const DECIDER_WORK:Readonly<Record<string,readonly PendingTaskKind[]>>=Object.freeze({
  'approvals.leave.decide':['leave'],'approvals.claim.decide':['claim'],'approvals.attendance.decide':['attendance'],'approvals.toil.decide':['replacementLeave']});
-export const MODULE_WORK:Readonly<Record<string,readonly PendingTaskKind[]>>=Object.freeze({performance:['performanceReview','assessmentWork','careerPlan','calibration'],rewards:['rewardReview']});
+export const MODULE_WORK:Readonly<Record<string,readonly PendingTaskKind[]>>=Object.freeze({performance:['performanceReview','assessmentWork','careerPlan','calibration'],rewards:['rewardReview'],
+ // Probation work (lib/assigned-work.ts): no suggestable deciding action in Lifecycle yet; listed so every pack kind has its module.
+ lifecycle:['probationApproval','probationTask']});
 const ACTOR:ReadonlyMap<string,string>=new Map(SUGGESTABLE_ACTIONS.map(action=>[action.id,action.permission.actor]));
 const decides=(row:Readonly<{id:string}>)=>DECIDER_ACTORS.has(ACTOR.get(row.id)??'');
 /** Which of the caller's actions to list: every one with team access; otherwise a deciding action only while the inbox
@@ -206,7 +208,7 @@ async function heldNow(ctx:SessionContext,catalogue:readonly SuggestableAction[]
  if(hasTeamAccess(ctx)||!catalogue.some(decides))return()=>true;
  let kinds:ReadonlySet<string>;
  try{kinds=new Set((await listPendingTasks(ctx,undefined,{attendance:moduleOn(ctx,'attendance'),claims:moduleOn(ctx,'claims'),performance:moduleOn(ctx,'performance'),
-  rewards:moduleOn(ctx,'rewards')},{noticeAcknowledgements:false})).map(task=>task.kind));}
+  rewards:moduleOn(ctx,'rewards'),probation:false},{noticeAcknowledgements:false})).map(task=>task.kind));}
  catch{kinds=new Set();}
  return row=>!decides(row)||(DECIDER_WORK[row.id]??MODULE_WORK[row.module]??[]).some(kind=>kinds.has(kind));
 }

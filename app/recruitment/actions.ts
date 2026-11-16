@@ -138,13 +138,13 @@ export async function changeJobStatusAction(f: FormData) {
   return run(back(f, `/recruitment/positions/${encodeURIComponent(jobId)}`), (s) => changeJobStatus(s, jobId, str(f, 'status')));
 }
 
-/** Slice 7: the job's "Show on the referral portal" setting (recruitment administrators; the service and 5707 refuse others). */
+/** Slice 7: the job's "Show on the referral portal" setting (recruitment administrators; the service and 5857 refuse others). */
 export async function setJobReferralPortalAction(f: FormData) {
   const jobId = str(f, 'jobId');
   return run(back(f, `/recruitment/positions/${encodeURIComponent(jobId)}?tab=settings`), (s) => setJobReferralPortal(s, jobId, f.get('showOnReferralPortal') === 'on'));
 }
 
-/** Slice 23: the job's referral reward (recruitment administrators; empty clears it; the service and 5725 refuse others). */
+/** Slice 23: the job's referral reward (recruitment administrators; empty clears it; the service and 5875 refuse others). */
 export async function setJobReferralRewardAction(f: FormData) {
   const jobId = str(f, 'jobId');
   return run(back(f, `/recruitment/positions/${encodeURIComponent(jobId)}?tab=settings`), (s) => setJobReferralReward(s, jobId, str(f, 'referralReward')));
@@ -176,7 +176,7 @@ export async function decideAgencyFeeAction(f: FormData) {
   return run(back(f, '/recruitment/rewards?view=fees'), (s) => decideAgencyFee(s, { feeId: str(f, 'feeId'), decision: str(f, 'decision'), reason: str(f, 'reason') }));
 }
 
-/** Slice 8: the job's "Show on careers page" switch (recruitment administrators; the service and 5708 refuse others). */
+/** Slice 8: the job's "Show on careers page" switch (recruitment administrators; the service and 5858 refuse others). */
 export async function setJobCareersPageAction(f: FormData) {
   const jobId = str(f, 'jobId');
   return run(back(f, `/recruitment/positions/${encodeURIComponent(jobId)}?tab=settings`), (s) => setJobCareersPage(s, jobId, f.get('showOnCareersPage') === 'on'));

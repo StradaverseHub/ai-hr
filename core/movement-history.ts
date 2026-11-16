@@ -345,7 +345,9 @@ export async function salaryStartKeptTx(tx:Tx,employmentId:string,start:string):
  * Board 4604dccc (ADR 2026-11-15 dated information corrections) — information-only corrections are DATED. A correction applies from its Effective
  * Date: the version covering that date is split there, and each corrected placement field is carried through
  * the later versions that merely inherited it, stopping where the field changes again (the next recorded
- * change owns its own period). Nothing after a stop is touched. Versions are superseded and re-inserted, never
+ * change owns its own period). Nothing after a stop is touched. Revision 4: a boundary an earlier-saved
+ * information correction created is not a stop (the latest saved correction controls); only a recorded movement
+ * that changes the field (or any other writer's boundary) stops it (`carry`). Versions are superseded and re-inserted, never
  * updated in place, except that the covering version keeps its id and ends on the Effective Date (the shape
  * every assignment writer and Roll Back already use), so a movement's rollback still finds it.
  */
@@ -363,14 +365,20 @@ export type DatedCorrectionPlan={
  affected:{index:number;values:Partial<Record<DatedAssignmentField,string|null>>}[];
 };
 const liveSpan=(v:{validFrom:string;validTo:string|null})=>v.validTo===null||v.validTo>v.validFrom;
+/** Board 4604dccc r4 — per corrected field, the start dates of later versions whose boundary for that field an
+ * earlier-saved information correction created (and no recorded movement owns for that field). The latest saved
+ * correction controls from its Effective Date onward, so it is carried through these instead of stopping there. */
+export type CorrectionCarry=Partial<Record<DatedAssignmentField,readonly string[]>>;
 /** Pure: what a dated correction writes over these live versions (oldest first, zero-length rows excluded). */
-export function planDatedCorrection(versions:readonly DatedVersion[],effectiveOn:string,after:Partial<Record<DatedAssignmentField,string|null>>):DatedCorrectionPlan{
+export function planDatedCorrection(versions:readonly DatedVersion[],effectiveOn:string,after:Partial<Record<DatedAssignmentField,string|null>>,carry:CorrectionCarry={}):DatedCorrectionPlan{
  const cover=versions.findIndex(v=>covers(v,effectiveOn));
  if(cover<0)throw new MovementHistoryError('movement_history_no_period');
  const stops:DatedCorrectionPlan['stops']={},ranges:DatedCorrectionPlan['ranges']={};
  for(const f of Object.keys(after) as DatedAssignmentField[]){
+  const through=new Set(carry[f]??[]);
   let stop=cover+1;
-  while(stop<versions.length&&versions[stop][f]===versions[stop-1][f])stop++;
+  // A field stops where it changes again, unless that change is an earlier-saved correction's boundary.
+  while(stop<versions.length&&(versions[stop][f]===versions[stop-1][f]||through.has(versions[stop].validFrom)))stop++;
   stops[f]=stop;ranges[f]={from:effectiveOn,to:stop<versions.length?versions[stop].validFrom:null};
  }
  const last=Math.max(cover+1,...Object.values(stops).map(n=>n??cover+1));
@@ -390,9 +398,9 @@ export async function datedVersionsTx(tx:Tx,employmentId:string,lock=false){
 }
 export type DatedCorrectionWrite={replaced:{supersededId:string;replacementId:string}[];inserted:string[];currentId:string|null;plan:DatedCorrectionPlan};
 /** Writes a dated correction of the placement fields. The caller has checked authority, payroll and labels. */
-export async function writeDatedCorrectionTx(tx:Tx,employmentId:string,effectiveOn:string,after:Partial<Record<DatedAssignmentField,string|null>>):Promise<DatedCorrectionWrite>{
+export async function writeDatedCorrectionTx(tx:Tx,employmentId:string,effectiveOn:string,after:Partial<Record<DatedAssignmentField,string|null>>,carry:CorrectionCarry={}):Promise<DatedCorrectionWrite>{
  const rows=await datedVersionsTx(tx,employmentId,true);
- const plan=planDatedCorrection(rows,effectiveOn,after);
+ const plan=planDatedCorrection(rows,effectiveOn,after,carry);
  const now=new Date(),replaced:DatedCorrectionWrite['replaced']=[],inserted:string[]=[];
  let currentId:string|null=rows.find(r=>r.validTo===null)?.id??null;
  for(const {index,values} of plan.affected){
@@ -515,16 +523,25 @@ export async function reapplyCorrectionBoundariesTx(tx:Tx,ctx:SessionContext,emp
 
 /**
  * The company app.company_org_employment_company gives for `day` (that SQL owner is not executable by the web role):
- * the "before" company of the earliest information correction, by sequence, dated after `day`; else the live
- * assignment covering `day`; else today's company. The organisation tag owner checks a recorded company against it.
+ * the "before" company of the earliest information correction, by sequence, dated after `day` and saved after the
+ * correction of the company in force on `day` (board 4604dccc r4, migration 5696: the latest saved correction
+ * controls); else the live assignment covering `day`; else today's company. The organisation tag owner checks a
+ * recorded company against it.
  */
 export async function companyRecordOnTx(tx:Tx,tenantId:string,employmentId:string,day:string):Promise<string|null>{
- const [correction]=await tx.select({companyId:sql<string|null>`nullif(${domainEvent.payload}->'before'->>'companyId','')`}).from(domainEvent)
-  .where(and(eq(domainEvent.tenantId,tenantId),eq(domainEvent.subjectEmploymentId,employmentId),eq(domainEvent.eventType,'employment.information.corrected'),sql`${domainEvent.payload}->>'effectiveOn' > ${day}`))
-  .orderBy(asc(domainEvent.sequence)).limit(1);
- if(correction?.companyId)return correction.companyId;
+ const corrected=await correctionCompanyOnTx(tx,tenantId,employmentId,day);
+ if(corrected)return corrected;
  const [row]=await tx.select({companyId:assignment.companyId}).from(assignment).where(and(eq(assignment.employmentId,employmentId),isNull(assignment.supersededAt),sql`${assignment.validFrom}<=${day}::date`,sql`(${assignment.validTo} is null or ${assignment.validTo}>${day}::date)`)).orderBy(sql`${assignment.validFrom} desc`,asc(assignment.id)).limit(1);
  if(row?.companyId)return row.companyId;
  const [emp]=await tx.select({companyId:employment.companyId}).from(employment).where(eq(employment.id,employmentId)).limit(1);
  return emp?.companyId??null;
+}
+/** The before-image part of companyRecordOnTx alone: the company a correction saved after the one in force on `day`
+ * and dated after it says the employee had then, or null when the organisation owner answers from the dated record. */
+export async function correctionCompanyOnTx(tx:Tx,tenantId:string,employmentId:string,day:string):Promise<string|null>{
+ const inForce=sql`coalesce((select max(in_force.sequence) from domain_event in_force where in_force.tenant_id=${tenantId}::uuid and in_force.subject_employment_id=${employmentId}::uuid and in_force.event_type='employment.information.corrected' and in_force.payload->>'effectiveOn'<=${day} and (case when jsonb_typeof(in_force.payload->'fields')='array' then in_force.payload->'fields' @> '["companyId"]'::jsonb else (in_force.payload->'before'->>'companyId') is distinct from (in_force.payload->'after'->>'companyId') end)),0)`;
+ const [correction]=await tx.select({companyId:sql<string|null>`nullif(${domainEvent.payload}->'before'->>'companyId','')`}).from(domainEvent)
+  .where(and(eq(domainEvent.tenantId,tenantId),eq(domainEvent.subjectEmploymentId,employmentId),eq(domainEvent.eventType,'employment.information.corrected'),sql`${domainEvent.payload}->>'effectiveOn' > ${day}`,sql`${domainEvent.sequence} > ${inForce}`))
+  .orderBy(asc(domainEvent.sequence)).limit(1);
+ return correction?.companyId??null;
 }

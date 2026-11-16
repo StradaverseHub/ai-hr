@@ -1,5 +1,5 @@
 /**
- * Recruitment slice 13 — the pure rules and the static shape of 5713 (no database). The database behaviour of cases 88–93 is in
+ * Recruitment slice 13 — the pure rules and the static shape of 5863 (no database). The database behaviour of cases 88–93 is in
  * test/recruitment-pools.test.ts and test/recruitment-blocked-list.test.ts.
  */
 import { readFileSync } from 'node:fs';
@@ -103,26 +103,26 @@ describe('the blocked list', () => {
   });
 });
 
-describe('migration 5713', () => {
-  const m13 = read('db/migrations/5713_recruitment_talent_pools_blocked_list.sql');
-  const m12 = read('db/migrations/5712_recruitment_background_checks.sql');
+describe('migration 5863', () => {
+  const m13 = read('db/migrations/5863_recruitment_talent_pools_blocked_list.sql');
+  const m12 = read('db/migrations/5862_recruitment_background_checks.sql');
   const fn = (src: string, name: string) => {
     const start = src.indexOf(`CREATE OR REPLACE FUNCTION ${name}(`);
     expect(start, name).toBeGreaterThanOrEqual(0);
     return src.slice(start, src.indexOf('TO ai_hr_app;', start));
   };
-  it('is journalled at idx 5113 / when 1793330005413 after 5712', () => {
+  it('is journalled at idx 5263 / when 1793330005563 after 5862', () => {
     const journal = JSON.parse(read('db/migrations/meta/_journal.json')) as { entries: { idx: number; when: number; tag: string }[] };
-    const i = journal.entries.findIndex((e) => e.tag === '5713_recruitment_talent_pools_blocked_list');
-    expect(journal.entries[i]).toMatchObject({ idx: 5113, when: 1793330005413 });
-    expect(journal.entries[i - 1]).toMatchObject({ tag: '5712_recruitment_background_checks', idx: 5112, when: 1793330005412 });
+    const i = journal.entries.findIndex((e) => e.tag === '5863_recruitment_talent_pools_blocked_list');
+    expect(journal.entries[i]).toMatchObject({ idx: 5263, when: 1793330005563 });
+    expect(journal.entries[i - 1]).toMatchObject({ tag: '5862_recruitment_background_checks', idx: 5262, when: 1793330005562 });
   });
-  it('restates the removal and the company delete as 5712\'s bodies byte for byte plus added steps only', () => {
+  it('restates the removal and the company delete as 5862\'s bodies byte for byte plus added steps only', () => {
     for (const name of ['app.recruitment_destroy_candidate', 'app.recruitment_delete_company_setup']) {
       const before = fn(m12, name);
       const after = fn(m13, name);
       expect(after.length).toBeGreaterThan(before.length);
-      // Every line of 5712's body is in 5713's, in the same order; nothing of it changed.
+      // Every line of 5862's body is in 5863's, in the same order; nothing of it changed.
       const lines = after.split('\n');
       let at = 0;
       for (const line of before.split('\n')) {

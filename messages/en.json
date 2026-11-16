@@ -588,13 +588,22 @@
     "probationTracker": "Probation tracker",
     "myPayrollReadiness": "My payroll readiness",
     "attendanceFormulaBuilder": "Attendance formulas",
-    "recruitment": "Recruitment",
-    "myReferrals": "Refer a candidate",
-    "attendanceRequestOnBehalf": "Request On Behalf",
-    "attendanceApproveOnBehalf": "Approve On Behalf",
     "rewardsReviewSetup": "Review Set-up",
     "rewardsChangeLog": "Change log",
-    "rewardsLimitControls": "Limit Controls"
+    "rewardsLimitControls": "Limit Controls",
+    "attendanceRequestOnBehalf": "Request On Behalf",
+    "attendanceApproveOnBehalf": "Approve On Behalf",
+    "moduleHrAutomation": "HR Automation · Shared",
+    "automationWorkflows": "Workflows",
+    "automationTemplates": "Templates",
+    "automationGroups": "Assignment groups",
+    "automationOnOffWorkflows": "On/Off Boarding workflows",
+    "automationOnOffTemplates": "On/Off Boarding templates",
+    "automationOnOffGroups": "On/Off Boarding assignment groups",
+    "probationPostings": "Personnel postings",
+    "probationAccess": "Access",
+    "recruitment": "Recruitment",
+    "myReferrals": "Refer a candidate"
   },
   "dashboard": {
     "viewAll": "View all"
@@ -2458,6 +2467,7 @@
           "no_data_rows": "Add at least one event row below the header.",
           "movement_catalog_too_large": "The event type list exceeds this import’s supported size. Use individual New Event entries.",
           "movement_reference_catalog_too_large": "A reference list exceeds this import’s supported size. Use Personnel for these changes.",
+          "movement_template_too_large": "The template is too large to build for this many companies and lists of values. No file was created. Contact support for help.",
           "movement_history_too_large": "This employee’s history exceeds the bounded import check. Use Personnel to record the event.",
           "change_refused": "The change was refused. No changes from this employee were saved.",
           "workbook_key_unavailable": "Workbook signing is not configured. Contact the system administrator; CSV is still available.",
@@ -2526,7 +2536,6 @@
           "movement_field_must_change": "This event type requires this field to change.",
           "movement_document_required": "This change needs a supporting document, which an import cannot carry. Record this movement on the Movement tab instead.",
           "movement_document_not_enabled": "This event type does not take a supporting document for this field.",
-          "movement_template_too_large": "The template is too large to build for this many companies and lists of values. No file was created. Contact support for help.",
           "movement_before_current_record": "This date is earlier than the employee’s current company and position record, which starts on %date%. Use a date on or after %date%, or reverse the change that created that record first.",
           "movement_already_in_company": "The employee is already in this company on this date.",
           "movement_label_other_company": "This value cannot be used in the employee’s company on this date. Choose a value available to that company",
@@ -2622,6 +2631,7 @@
           "referenceValues": "Allowed values for each company",
           "colValue": "Value to enter in After",
           "colLabel": "Meaning",
+          "allCompanies": "All companies",
           "screenHint": "One template for every movement type and company. Enter one row per field that changes; rows with the same company, employee, date and event type are one movement.",
           "downloadTemplate": "Download template",
           "history": "Import history",
@@ -2656,8 +2666,7 @@
           "closedPayrollRow": "Payroll for {periods} is already closed.",
           "closedPayrollTitle": "Some corrections change movements behind closed payroll ({periods}).",
           "closedPayrollBody": "These corrections update the employees’ records and future processing. The closed payroll, released payslips and statutory submissions keep their finalised figures and will not be recalculated. Without this confirmation, the employees concerned are not saved.",
-          "closedPayrollAcknowledge": "I understand that closed payroll will not change.",
-          "allCompanies": "All companies"
+          "closedPayrollAcknowledge": "I understand that closed payroll will not change."
         },
         "historyRow": "Recorded as history: {from} to {to} takes the Before values. The record from {date} does not change."
       },
@@ -3556,6 +3565,7 @@
       "loading": "Loading…",
       "saved": "Information corrected. Completed transactions remain unchanged.",
       "unchanged": "Unchanged — this row will be skipped.",
+      "effectiveDateOnly": "Nothing to correct. The Effective Date only sets when corrected values apply. To change the date the employee’s records start ({date}), correct the Group Join Date.",
       "history": "Correction history",
       "noHistory": "No information-only corrections recorded.",
       "importHelp": "Company Code verifies the existing company. New Company Code is optional. Blank correction cells mean unchanged. Use the reference sheets for system codes. Maximum 200 rows.",
@@ -3604,7 +3614,6 @@
         "failed": "Failed",
         "unchanged": "Unchanged"
       },
-      "effective": "Future processing uses these corrected details from {date}.",
       "templateFields": "Fields this template corrects (new ones highlighted). Blank cells keep the existing value.",
       "templateFieldsLabel": "Fields this template corrects",
       "ownersNote": "Basic Salary and resignation dates are corrected on the event that recorded them: use the Movement import with Action \"Update\". Payment Method is in the Bank and Statutory import.",
@@ -3619,10 +3628,10 @@
       "effectiveDateHint": "Any date from {start} up to today ({today}). Defaults to today.",
       "effectiveDateFollowsJoin": "Earliest date: {start}, the Group Join Date entered below.",
       "historyClosedPayroll": "Closed payroll kept unchanged: {periods}.",
-      "effectiveDateJoin": "Choosing {start}, the Group Join Date, corrects the employee’s original hire details. Company, Employment Type, Business Unit, Department, Position, organisation labels and Direct Superior apply from the Effective Date until the next recorded change.",
+      "effectiveDateJoin": "Choosing {start}, the Group Join Date, corrects the employee’s original hire details. Company, Employment Type, Business Unit, Department, Position, organisation labels and Direct Superior apply from the Effective Date until the next recorded movement that changes them. This correction replaces earlier corrections from that date onward.",
       "timeline": {
         "title": "Records in Effective Date order",
-        "intro": "These corrected details apply from {date} until the next recorded change. Later records keep their own dates and values. Nothing is overwritten or deleted.",
+        "intro": "These corrected details apply from {date} until the next recorded movement that changes them. Earlier corrections from this date are replaced and stay in the correction history. Movements keep their own dates and values. Nothing is deleted.",
         "date": "Effective Date",
         "record": "Record",
         "company": "Company",
@@ -3639,12 +3648,38 @@
           "conflict": "Conflicts with this change"
         }
       },
+      "replaced": {
+        "title": "Earlier corrections this one replaces",
+        "intro": "The newest correction controls these details from {date}. The earlier corrections below stay in the correction history.",
+        "item": "Correction effective {date} ({fields}), saved {saved} by {actor}"
+      },
       "conflictTitle": "This correction cannot be saved",
       "conflict": "{record} on {date} records {field} changing from a different value. Correct that movement first (Movement Event ID {id}), or choose an Effective Date after {date}.",
       "closedPayroll": "Payroll for {periods} is already closed in the corrected period. Closed payroll, payslips, EA Forms and statutory submissions are not recalculated.",
       "closedPayrollAcknowledge": "I confirm that closed payroll stays as issued.",
       "importClosedPayroll": "These rows correct a period with closed payroll. Confirm below to save them; without the confirmation they are not saved.",
       "importClosedPayrollRow": "Row {row} · {employee} · {periods}"
+    }
+  },
+  "importErrorLogMovement": {
+    "correction": {
+      "date": "Enter the date as DD-MMM-YYYY (for example 06-Jan-2026) or as an Excel date.",
+      "required": "Fill in this field - this event type requires it.",
+      "chooseCompany": "Choose a Company ID from the Reference sheet.",
+      "eventType": "Choose an active Event Type from the drop-down list.",
+      "chooseReference": "Choose a value from the drop-down list or the Reference sheet.",
+      "employeeId": "Check the Employee ID and the Company ID on this row against Personnel.",
+      "systemField": "Choose a System Field that this event type can change (see the Reference sheet), or remove that row.",
+      "duplicateField": "Keep one row for each System Field of a movement.",
+      "number": "Enter a number (digits only, no currency sign).",
+      "noFormula": "Type the value itself, not a formula.",
+      "movementId": "Copy the Movement Event ID from the employee’s Movement history.",
+      "before": "Enter the value now on the employee’s record as Before, or download a new template.",
+      "otherRows": "Correct the other rows of this employee, then upload the whole file again.",
+      "recheck": "Upload the file again so it is checked against the current records.",
+      "template": "Download the current Movement template, copy your rows into it and upload it again.",
+      "splitFile": "Split the file into smaller files (at most 200 rows, 50 employees and 20 rows per employee) and upload each one.",
+      "saveStopped": "Nothing was saved for this employee. Correct the problem, then import this employee again."
     }
   },
   "leave": {
@@ -5875,7 +5910,13 @@
     "rewards": "Rewards",
     "reviewRewards": "Review rewards",
     "focusedDescription": "This request is currently assigned to you.",
-    "viewAllAssigned": "View all approvals"
+    "viewAllAssigned": "View all approvals",
+    "probation": "Probation",
+    "probationPart": "Part {part} review",
+    "probationDue": "due {date}",
+    "probationOpen": "Open review",
+    "probationCapped": "Showing the first {shown} approvals.",
+    "probationSeeAll": "See all in the Probation tracker"
   },
   "performance": {
     "list": {
@@ -6671,7 +6712,13 @@
         "running": "Reprocessing the selected employees",
         "progress": "{done} of {total} employees done",
         "help": "You can leave this page. Each employee is recalculated on its own, and the results appear here when the reprocess finishes."
-      }
+      },
+      "registerSearchLabel": "Search employees in this run",
+      "registerSearchPlaceholder": "Search by employee name or Employee ID",
+      "registerSearchSubmit": "Search",
+      "registerSearchClear": "Clear search",
+      "registerSearchSummary": "{n} of {total} employees match “{q}”",
+      "registerSearchEmpty": "No employee in this run matches “{q}”."
     },
     "reports": {
       "pageTitle": "Payroll",
@@ -7699,6 +7746,7 @@
         "inputType": "Input type",
         "inputTypeNone": "None",
         "amountIsFinalHint": "The amount entered here is the amount paid. A pay item’s formula is not applied to one-off transactions.",
+        "amountManualFormulaHint": "Amount entered manually. This Pay Item's formula is not used for this transaction.",
         "identicalWarning": "An identical entry already exists for this employee (same item, date, amount and remarks). Save only if it is genuinely a second one.",
         "saveAndAnother": "Save & add another",
         "cancel": "Cancel",
@@ -9024,6 +9072,17 @@
       "traceEpfFlatRate": "Flat rate, rounded up to the ringgit",
       "traceEpfRates": "Employee {employee} · Employer {employer}",
       "traceEpfBonusEmployerPartE": "Employer contribution on the bonus",
+      "traceEpfBonusRuleNormal": "Normal EPF wages (excluding EPF Bonus 2012)",
+      "traceEpfBonusRuleBonus": "EPF Bonus 2012 wages",
+      "traceEpfBonusRuleTotal": "Total EPF wages",
+      "traceEpfBonusRuleRate": "Employer rate decided on normal wages",
+      "traceEpfBonusRuleRateValue": "{normal} is {threshold} or below, so {rate}",
+      "traceEpfBonusRuleEmployer": "Employer contribution",
+      "traceEpfBonusRuleEmployerValue": "{base} × {rate} = {exact}, rounded up to {amount}",
+      "traceEpfBonusRuleEmployee": "Employee contribution (table range)",
+      "traceEpfBonusRuleEmployeeValue": "{range}, so {amount}",
+      "traceEpfBonusRuleEmployeeAbove": "Employee contribution (above RM20,000)",
+      "traceEpfBonusRuleEmployeeAboveValue": "{base} × {rate}, rounded up to {amount}",
       "traceEpfFlatNormal": "Employee / employer on normal wages",
       "traceEpfFlatBonus": "Employee / employer on bonus wages",
       "traceEpfMethod": "Method",
@@ -15304,6 +15363,8 @@
       "probation": "Probation Confirmation",
       "contract_staff": "Contract Management",
       "contractDateCorrection": "Contract date correction",
+      "probationApproval": "Approve probation review",
+      "probationTask": "Probation task",
       "recruitmentRequisitionApproval": "Approve job requisition",
       "recruitmentOfferApproval": "Approve job offer",
       "recruitmentFeedback": "Give interview feedback",
@@ -17513,14 +17574,15 @@
     "hideHistory": "Hide history",
     "selfHint": "You are handing over your own approval duties while you are away.",
     "scopeTitle": "What does this delegation cover?",
-    "scopeHint": "Choose the modules and tasks to hand over. Leave everything unchecked to cover all approvals.",
+    "scopeHint": "Choose the modules and tasks to hand over. Leave everything unchecked to cover all approvals except Probation, which is handed over only when ticked.",
     "wholeModule": "All {module} approvals",
     "reason": "Reason for delegation",
     "reasonPlaceholder": "Why are you delegating (e.g. annual leave, medical leave)?",
     "moduleLabel": {
       "leave": "Leave",
       "attendance": "Attendance",
-      "claims": "Claims"
+      "claims": "Claims",
+      "probation": "Probation"
     },
     "taskLabel": {
       "leaveApplication": "Leave Application Approval",
@@ -17530,7 +17592,10 @@
       "claimsClaim": "Claim Approval",
       "leaveRequestCreation": "Leave Request Creation",
       "leaveAmendmentRequest": "Leave Amendment Request",
-      "leaveCancellationRequest": "Leave Cancellation Request"
+      "leaveCancellationRequest": "Leave Cancellation Request",
+      "probationReview": "Probation review (Head of Department, PBP, GBS)",
+      "probationApprove": "Probation approval (Head of Department, PBP, GBS)",
+      "probationLetterSign": "Probation letter signature"
     },
     "groupLabel": {
       "leaveRequest": "Leave Request",
@@ -28234,7 +28299,7 @@
     "routeUnavailable": "The next eligible approver cannot be confirmed from the saved route. Ask HR to review the assignment.",
     "someApproversUnavailable": "Some saved approvers cannot currently be confirmed as eligible. Ask HR to review the assignment.",
     "notStarted": "Not started",
-    "notRequired": "No further decision required",
+    "notRequired": "Not Required",
     "currentEmployeeId": "Current Employee ID",
     "routingRecord": "Saved routing reference",
     "notRecorded": "Not recorded",
@@ -28313,7 +28378,28 @@
     "escalatedBy": "Automatic escalation by the system",
     "submittedOnBehalfBy": "Submitted on behalf by {name}",
     "approvedOnBehalf": "Approved On Behalf",
-    "rejectedOnBehalf": "Rejected On Behalf"
+    "rejectedOnBehalf": "Rejected On Behalf",
+    "pendingApproval": "Pending Approval",
+    "waitingPreviousLevel": "Waiting for Previous Level Approval",
+    "skippedNotRequired": "Skipped / Not Required",
+    "levelOrdinal": {
+      "1": "first",
+      "2": "second",
+      "3": "third",
+      "4": "fourth",
+      "5": "fifth",
+      "6": "sixth",
+      "7": "seventh",
+      "8": "eighth",
+      "9": "ninth",
+      "10": "tenth"
+    },
+    "progressMessage": "{completed}-level approval completed. Waiting for {waiting}-level approval.",
+    "progressWaiting": "Waiting for {waiting}-level approval.",
+    "progressFinal": "Overall request status: {status}.",
+    "configurationWarning": "The approver for this level could not be worked out. Ask HR to check the approval setup.",
+    "levelOfTotal": "Level {level} of {total}",
+    "viewApprovalProgress": "View approval progress"
   },
   "scheduleDrafts": {
     "staleLadder": "The overtime bands or rates changed in General. Your draft is still here. Reload this page before saving overtime settings. Reloading discards unsaved changes only after confirmation.",
@@ -29917,7 +30003,8 @@
         "lateOffset": "Offset lateness once",
         "approval": "Approval mode",
         "autoMethod": "Auto approval method",
-        "rounding": "Duration rounding"
+        "rounding": "Duration rounding",
+        "backdate": "Overtime backdate limit"
       },
       "days": {
         "normal": "Normal Day",
@@ -29925,7 +30012,8 @@
         "rest": "Rest Day",
         "publicHoliday": "Public Holiday",
         "replacementHoliday": "Replacement Public Holiday"
-      }
+      },
+      "backdateDays": "{count, plural, one {# day} other {# days}}"
     },
     "positionSearch": "Search positions",
     "loadMorePositions": "Load more positions",
@@ -32365,7 +32453,9 @@
       "assessmentWork": "Performance assessment",
       "careerPlan": "Career plan review",
       "calibration": "Performance calibration",
-      "rewardReview": "Rewards review"
+      "rewardReview": "Rewards review",
+      "probationApproval": "Probation approval",
+      "probationTask": "Probation task"
     },
     "quickActions": {
       "leave": "Apply leave",
@@ -35771,7 +35861,10 @@
       "pbp": "People Business Partner",
       "gbs": "GBS People Ops",
       "admin": "Named preparer",
-      "system": "Background processing"
+      "system": "Background processing",
+      "superior": "Direct Superior",
+      "people": "Named people",
+      "approver": "Approver"
     },
     "columns": {
       "employee": "Employee",
@@ -35795,7 +35888,9 @@
       "confirmed": "Confirmed",
       "extended": "Extended",
       "not_confirmed": "Not confirmed",
-      "withdrawn": "Withdrawn"
+      "withdrawn": "Withdrawn",
+      "waitingForStart": "Waiting for start date",
+      "didNotJoin": "Did not join"
     },
     "partStates": {
       "not_issued": "Not issued",
@@ -35894,12 +35989,21 @@
     "signing": {
       "title": "Signing route and history",
       "signed": "Signed",
-      "declined": "Acknowledgement declined — confirmed",
+      "declined": "Declined to sign",
       "pending": "Pending",
       "missing": "Holder needs resolution",
       "frozenFacts": "This review retains the employee and probation-period details captured for its signed content.",
       "combinedConsent": "I confirm this is my signature for these roles: {roles}.",
-      "combinedHistory": "Covered by the same signature"
+      "combinedHistory": "Covered by the same signature",
+      "onBehalfOf": "on behalf of {name}",
+      "reviewStep": "Review",
+      "approveStep": "Approve",
+      "reviewed": "Reviewed",
+      "approved": "Approved",
+      "decisionComment": "Comment (optional)",
+      "markReviewed": "Mark as reviewed",
+      "markApproved": "Approve",
+      "meantFor": "Meant for {who}; the fallback group took it"
     },
     "controls": {
       "title": "Authorized review controls",
@@ -35912,8 +36016,8 @@
       "kpi_exception": "Record KPI-gate exception",
       "employee_wait_exception": "Record self-assessment wait exception",
       "confirm_extension": "Confirm extension",
-      "request_refusal": "Record employee refusal discussion",
-      "confirm_refusal": "Confirm acknowledgement refusal"
+      "request_refusal": "Employee declined to sign",
+      "confirm_refusal": "Confirm the declined signature"
     },
     "followup": {
       "title": "Follow-up and development record",
@@ -35925,7 +36029,9 @@
       "development": "Development action",
       "extension_recommendation": "Extension recommendation",
       "nonconfirmation_recommendation": "Non-confirmation recommendation",
-      "refusal_request": "Employee refusal discussion"
+      "refusal_request": "Employee refusal discussion",
+      "low_result_action": "Low-result action",
+      "other_decided": "Other outcome decided"
     },
     "files": {
       "title": "Filed documents",
@@ -35946,7 +36052,7 @@
       "suggestionsUnavailable": "Name suggestions are unavailable. You can still enter a name and apply filters.",
       "search": "Employee name",
       "cases": "Cases",
-      "empty": "No probation cases match these filters.",
+      "empty": "No probation cases match these filters. Dropdowns list only values from current cases, so they stay at “All” when no cases exist.",
       "pageRows": "Showing {from}–{to} of {total}",
       "planReview": "Plan review required",
       "workingOverdue": "{days} working days overdue",
@@ -35961,7 +36067,89 @@
         "ending14": "Ending within 14 days",
         "low_result": "Low result",
         "kpi_submit": "KPIs not submitted",
-        "kpi_ack": "KPIs not acknowledged"
+        "kpi_ack": "KPIs not acknowledged",
+        "overridden": "Suggestion overridden"
+      },
+      "extensionsUsed": "{used} / {max}",
+      "startsOn": "Start date {date}",
+      "actions": {
+        "open": "Open",
+        "review_letter": "Review letter",
+        "record_action": "Record action",
+        "log_followup": "Log follow-up"
+      },
+      "mineOnly": "Showing only cases with work waiting on you.",
+      "mineClear": "Show all cases",
+      "breadcrumb": "Probation Confirmation / Probation tracker",
+      "intro": "Track employees with Probation status in Personnel Management and their confirmation progress.",
+      "synced": "Synced from Personnel Management. Every employee whose status is <b>Probation</b> gets a case here automatically, including records activated before their start date.",
+      "tiles": {
+        "overdue": "Overdue steps",
+        "end_passed": "End passed, no outcome",
+        "ending14": "Ending within 14 days",
+        "low_result": "Low result (Band 1–2 by default)",
+        "kpi_submit": "KPIs not submitted",
+        "kpi_ack": "KPIs not acknowledged",
+        "overridden": "Suggestion overridden"
+      },
+      "hints": {
+        "search": "Personnel Management · Full name (as per IC/passport)",
+        "businessGroup": "Personnel Management · recorded at case start",
+        "businessUnit": "Personnel Management · recorded at case start",
+        "department": "Personnel Management · Department",
+        "grade": "Personnel Management · Job Grade at case start"
+      },
+      "namePlaceholder": "Type a name…",
+      "showClosed": "Show closed cases",
+      "caseCount": "{shown} of {total} cases",
+      "filteredBy": "filtered by “{tile}”",
+      "columns": {
+        "employee": "Employee",
+        "organisation": "Business group · unit",
+        "endOn": "Probation end",
+        "plan": "Review plan",
+        "stage": "Stage",
+        "waiting": "Waiting on",
+        "due": "Due",
+        "flags": "Flags",
+        "extensions": "Ext.",
+        "extensionsFull": "Extensions used",
+        "action": "Action"
+      },
+      "planMonths": "{months, plural, one {# month} other {# months}}",
+      "planParts": {
+        "both": "Part 2 + Part 3",
+        "p3": "Part 3 only",
+        "p2": "Part 2 only"
+      },
+      "stage": {
+        "1": "Week 1 KPIs",
+        "2": "Part 2 Mid-Probation",
+        "3": "Part 3 Final review",
+        "afterExtension": "{stage} (after extension)"
+      },
+      "what": {
+        "kpis": "KPI submission",
+        "self": "self-assessment",
+        "assessment": "assessment",
+        "acknowledge": "signature",
+        "approval": "approval",
+        "letter": "letter"
+      },
+      "waitingOn": "{role} · {name} · {step}",
+      "pills": {
+        "end_passed": "End date passed",
+        "ending14": "Ends within 14 days",
+        "low_result": "Band {band} · low result",
+        "low_actioned": "PBP action recorded",
+        "kpi_submit": "KPIs not submitted",
+        "kpi_ack": "KPIs not acknowledged",
+        "overridden": "Suggestion overridden",
+        "plan_review": "Plan review required"
+      },
+      "links": {
+        "settings": "Probation settings",
+        "intake": "Intake and activation"
       }
     },
     "applyFilters": "Apply filters",
@@ -36142,6 +36330,121 @@
         "pending": "Pending",
         "held": "Held for review",
         "failed": "Needs a retry"
+      },
+      "extensionsUsed": {
+        "title": "Confirm extensions already used",
+        "help": "Personnel Management keeps only the total Extended Probation Period, so the number of extensions already used cannot be worked out. Confirm 0, 1 or 2 for each case by choosing the actual extension events in the employee's review.",
+        "period": "Extended Probation Period (Personnel)",
+        "periodValue": "{original} → {extended}",
+        "used": "Extensions used",
+        "count": "{count} of {max}",
+        "notConfirmed": "Not confirmed",
+        "confirm": "Confirm",
+        "review": "Review"
+      },
+      "activationByCompany": {
+        "title": "Activation by company",
+        "help": "Employees on Probation in Personnel Management (full time) against open probation cases. A difference means someone has no case yet or a case is still open after Personnel moved on. Switching a company on still goes through the reviewed rehearsal below.",
+        "columns": {
+          "company": "Company",
+          "personnel": "Probation in Personnel",
+          "cases": "Open cases",
+          "status": "Status"
+        },
+        "match": "✓",
+        "missing": "{count, plural, one {1 employee on Probation has no case} other {# employees on Probation have no case}}",
+        "extra": "{count, plural, one {1 case more than Personnel shows} other {# cases more than Personnel shows}}",
+        "live": "Live since {date}",
+        "preparation": "Preparation"
+      },
+      "htmlImport": {
+        "title": "1. Import saved HTML evaluation forms",
+        "help": "Upload the files staff and managers saved from form v22.9.26 (“Save form”). Only the saved values inside each file are read, on the server; the page itself is never opened or run. Each file is matched to the employee by Employee ID and must name the same employee as Personnel. Fully signed parts are recorded as signed offline in the case history; started parts open as drafts. PDFs are evidence only: attach them from the case or the employee’s intake review.",
+        "choose": "Choose files",
+        "fileLabel": "Saved evaluation forms",
+        "noFile": "No file chosen · .html or .pdf",
+        "reading": "Reading…",
+        "read": "{count, plural, one {1 file read} other {# files read}}",
+        "tooMany": "Choose at most {max} files at a time.",
+        "columns": {
+          "file": "File",
+          "found": "Found in file",
+          "result": "Check"
+        },
+        "pdf": "PDF only: values can’t be read. Attach it as evidence from the case or the employee’s intake review.",
+        "statuses": {
+          "ready": "Ready",
+          "warning": "Warning",
+          "refused": "Can’t import",
+          "skipped": "Not imported",
+          "importing": "Importing…",
+          "merged": "Merged into the case",
+          "staged": "Added to intake",
+          "unchanged": "Already imported"
+        },
+        "partSummary": {
+          "part1": "Part 1: {kpis} KPIs, {signatures} signatures, {status}",
+          "review": "Part {part}: {ratings} of 9 manager ratings, {signatures} signatures, {status}"
+        },
+        "partStatus": {
+          "signed": "signed",
+          "started": "started",
+          "not_started": "not started"
+        },
+        "confirm": "I’ve checked this preview. Import the ready and warning rows; skip the rest. Each import is written to the case history.",
+        "import": "{count, plural, one {Import 1 file} other {Import # files}}",
+        "done": "Imported. Open the cases in the Probation tracker to check what was read, then continue them in the system.",
+        "resultHelp": {
+          "merged": "Merged into the existing case. Blank drafts were filled from the file. Signatures still happen in the system; to record a part as completed offline, attach its signed PDF.",
+          "staged": "No case yet: the file waits in this employee’s intake review. The case opens at the reviewed cut-over; upload the file again then to fill its drafts.",
+          "unchanged": "This exact file was already imported for this employee. Nothing changed."
+        },
+        "applied": {
+          "draft_filled": "Part {part}: drafts filled from the file",
+          "kept_system_values": "Part {part}: kept the values already in the system",
+          "part_not_open": "Part {part}: not open in the system, so nothing was filled",
+          "no_part": "Part {part}: not in this case’s plan"
+        },
+        "refusals": {
+          "file_type": "Only saved .html evaluation forms can be imported.",
+          "empty": "The file is empty.",
+          "too_large": "The file is larger than 2 MB. A saved evaluation form is much smaller; check the file.",
+          "no_block": "The file has no saved values. Open the form and use “Save form”, not the browser’s Save page.",
+          "several_blocks": "The file has more than one saved-values block, so it can’t be read safely.",
+          "block_type": "The saved-values block is not JSON, so it can’t be read safely.",
+          "damaged": "The saved values in the file are damaged and could not be read.",
+          "no_version": "The file doesn’t say which form version it is. Only form v22.9.26 can be imported.",
+          "wrong_version": "This is form v{version}. Only form v22.9.26 can be imported; nothing was guessed.",
+          "no_values": "The file has no saved values. Use “Save form” in the form itself.",
+          "invalid_field": "The field “{field}” has a value that can’t be read. Nothing was guessed; correct the form and save it again.",
+          "no_employee_id": "The file has no Employee ID, so it can’t be matched to an employee.",
+          "no_employee_name": "The file has no employee name.",
+          "not_entitled": "Probation is not available for this company.",
+          "no_employee": "No employee with this Employee ID is in this company within your intake scope.",
+          "name_mismatch": "The employee name in the file doesn’t match Personnel for this Employee ID. Check the file.",
+          "excluded": "A probation case can’t be created for this employee: {reason}.",
+          "no_settings": "Publish the probation settings for this company before importing.",
+          "opens_automatically": "This new starter’s case opens automatically now that probation is switched on. Import the file once the case is open.",
+          "case_closed": "The matching case is closed. Nothing was changed.",
+          "not_saved": "The file could not be imported. Nothing was changed; try again."
+        },
+        "exclusionReasons": {
+          "confirmed": "already confirmed in Personnel",
+          "resignation": "a resignation is recorded",
+          "ended": "the employment has ended",
+          "no_probation": "no probation applies",
+          "reviewed_exclusion": "excluded at intake",
+          "employment_type": "not a full-time employee",
+          "grade_not_enabled": "the job grade is not in the probation settings",
+          "company_transfer": "moved from another company during intake",
+          "not_eligible": "not eligible for probation",
+          "unavailable": "not available"
+        },
+        "historyTitle": "Imported forms",
+        "historyEmpty": "No saved forms imported yet.",
+        "candidateTitle": "From the imported saved form",
+        "candidateHelp": "Map each Part below with the usual rules: a signed part is Completed offline with its signed PDF attached; a started part continues as unfinished work. After cut-over, upload the file again to fill the case drafts.",
+        "candidatePart": "Part {part} {status}"
       }
     },
     "workflows": {
@@ -36265,7 +36568,23 @@
       "open": "Open outcome letter",
       "preparationClosed": "Release has already been requested or completed. Review the saved letter and filing status from the case.",
       "templateTie": "More than one template matches equally. Choose the reviewed template explicitly.",
-      "filingPending": "The release request is saved. The existing background worker will render and file the signed PDF before applying the outcome. Any failure stays visible for retry."
+      "filingPending": "The release request is saved. The existing background worker will render and file the signed PDF before applying the outcome. Any failure stays visible for retry.",
+      "contentPrivate": "This letter is private until it reaches you. You can see who it is with and its status.",
+      "routingFallback": "Nobody could be found for some steps, so the fallback group took them:",
+      "sentBack": "{name} sent this letter back: {reason}",
+      "resend": "Send round again",
+      "meantFor": "meant for {who}",
+      "routedStep": {
+        "review": "Review",
+        "approve": "Approve",
+        "sign": "Sign",
+        "acknowledge": "Acknowledge"
+      },
+      "decision": {
+        "reviewed": "Mark as reviewed",
+        "approved": "Approve"
+      },
+      "holderOnBehalf": "{name} on behalf of {represented}"
     },
     "dates": {
       "title": "Probation date review",
@@ -36335,6 +36654,608 @@
       "title": "Some default probation messages are unavailable",
       "summary": "Publish one company-wide overdue summary workflow with a People Business Partner recipient.",
       "help": "Publish the missing workflows to restore their messages. Review deadlines and overdue flags still apply."
+    },
+    "settingsScope": {
+      "subtitle": "Each company uses exactly one published setting. Changes apply to new cases only.",
+      "newSetting": "New company setting",
+      "inUse": "Settings in use",
+      "columns": {
+        "setting": "Setting",
+        "appliesTo": "Applies to",
+        "version": "Version",
+        "overrides": "Overrides",
+        "action": "Action",
+        "field": "Field",
+        "standard": "Group standard",
+        "thisSetting": "This setting",
+        "company": "Company",
+        "differences": "Fields that would change",
+        "pickedUp": "Picks up",
+        "shielded": "Shielded by an override"
+      },
+      "groupStandard": "Group standard",
+      "allCompanies": "All {count} companies",
+      "notPublished": "Not published yet. Each company uses its own settings version.",
+      "setsEveryField": "— (sets every field)",
+      "edit": "Edit",
+      "publishedAlso": "Version {version} is published and in use.",
+      "overrideSummary": "{count, plural, one {1 field} other {# fields}}: {fields}. Inherits the rest.",
+      "noOverrides": "No fields overridden.",
+      "redundant": "Same as the group standard, so it can be removed: {fields}",
+      "rule": "A company setting overrides only the fields it ticks; every other field follows the group standard, including future changes to it. A company can be in only one company setting.",
+      "noStandardTitle": "No group standard yet",
+      "noStandardHelp": "Until a group standard is published, each company keeps using its own published settings version and nothing changes. Create the standard from the company whose settings should apply to everyone, then add company settings for companies that must keep different values. Company settings take effect together with the standard.",
+      "continueDraft": "Continue the group standard draft",
+      "createFrom": "Create group standard from",
+      "startFromDefaults": "Recommended defaults",
+      "createStandard": "Create group standard",
+      "notCurrentTitle": "Companies not using the current settings yet",
+      "notCurrentHelp": "These companies started using Probation after the group standard was last published. Apply the group standard and their company setting to them.",
+      "applyNow": "Apply now",
+      "refreshed": "{company} now uses the current settings.",
+      "unknownCompany": "Unavailable company",
+      "editing": "Editing: {name}",
+      "newCompanySetting": "New company setting",
+      "standardHelp": "The group standard sets every field for all companies. Running cases keep the values they started with.",
+      "companyHelp": "Tick Override for each field this setting changes. Inherited fields follow the group standard, including later changes to it.",
+      "waitsForStandard": "No group standard is published yet. This company setting takes effect when the group standard is published.",
+      "name": "Setting name",
+      "inOther": "in {name}",
+      "overlap": "A company can be in only one company setting. Remove it from the other setting first: {companies}",
+      "standardVersion": "Group standard v{version}",
+      "inherited": "Inherited",
+      "override": "Override",
+      "sameAsStandard": "Same as the standard",
+      "changed": "Changed",
+      "extensionsFixed": "Extension lengths stay {months} months for every company. Running cases keep the maximum they started with.",
+      "diffTitle": "How companies differ from this standard",
+      "diffHelp": "Publishing the standard gives these companies its values for new cases, unless a company setting overrides the field. Add company settings first for companies that must keep their values.",
+      "previewTitle": "Before you publish",
+      "previewNone": "No field differs from the published group standard.",
+      "previewRunning": "Cases already running keep the values they started with either way.",
+      "resolvedNote": "Companies in this setting use these overridden fields: {fields}. Everything else follows the group standard.",
+      "resolvedPreview": "Values these companies will use",
+      "reason": "Reason for the change (optional)",
+      "close": "Close",
+      "publishedNotice": "Published. New cases use these settings.",
+      "retire": "Retire this company setting",
+      "retireHelp": "Its companies go back to the group standard for new cases. Running cases keep their values.",
+      "retiredNotice": "Company setting retired.",
+      "rulesInCompanySetting": "Narrow KPI gate rules are set in a company setting.",
+      "rulesOneCompany": "Narrow KPI gate rules can be overridden when the setting applies to one company.",
+      "ruleCount": "{count, plural, =0 {No rules} one {1 rule} other {# rules}}",
+      "daysBeforeDue": "{days} calendar days before due",
+      "planWithMidpoint": "{months} months · Part 2 at month {midpoint}",
+      "planFinalOnly": "{months} months · Part 3 only",
+      "defaultGroup": "GBS People Ops",
+      "savedGroup": "Saved group (no longer listed)",
+      "on": "On",
+      "off": "Off",
+      "truncated": "Only the first 200 settings are shown.",
+      "companyVersionTitle": "Company settings version",
+      "lockedNotice": "A group standard is published, so this company's settings come from the group standard and its company setting. Edit them above. Access below stays per company.",
+      "nonWorking": {
+        "previous": "Move to the working day before",
+        "next": "Move to the next working day"
+      },
+      "fields": {
+        "eligibleGrades": "Eligible grades",
+        "gradeHEnabled": "Grade H",
+        "defaultMonths": "Default probation months",
+        "plans": "Review plans",
+        "kpiGate": "KPI acknowledgement gate",
+        "issueLeadDays": "Review form opens",
+        "nonWorkingDayRule": "Due date on a non-working day",
+        "fallbackGroupId": "When no one can be found",
+        "postingApproverGroupId": "Who approves Personnel postings",
+        "kpiDueWorkingDays": "KPIs due after working days",
+        "kpiReminderWorkingDay": "KPI reminder on working day",
+        "firstReminderDays": "First reminder before due · days",
+        "dailyReminderDays": "Daily reminders from · days before due",
+        "lowBand": "Low-result band threshold",
+        "lmWaitsForEmployee": "Manager waits for the employee self-assessment",
+        "overrides": "Narrow KPI gate rules",
+        "maxExtensions": "Maximum extensions"
+      }
+    },
+    "startStatus": {
+      "waiting": "Waiting for start date. The case opened at activation; no reviews, tasks or reminders start before {date}. Part 1 counts from the start date.",
+      "didNotJoin": "Closed as Did not join: the hire was withdrawn or the employment ended before the start date."
+    },
+    "overrideNotice": "The Line Manager chose a different outcome from the suggestion and wrote a justification.",
+    "formRouting": {
+      "title": "Review and approval routing",
+      "help": "Who approves and signs each part, and in what order. Lower numbers go first; steps sharing a number run one after another in the order listed. A case keeps the routing of the form version it started on.",
+      "legacy": "This form version has no approval steps of its own, so its cases use the published signing routes configuration. Set approval steps here to route new cases from this form instead.",
+      "useForm": "Set approval steps on this form",
+      "core": "Always first, and not editable: {steps}.",
+      "coreKpi": "Line Manager sets and signs the KPIs → Employee acknowledges",
+      "coreReview": "Employee self-review → Line Manager assessment and signature → Employee acknowledges",
+      "order": "Order",
+      "action": "Action",
+      "who": "Who",
+      "actions": {
+        "approve_sign": "Approve and sign",
+        "review": "Review",
+        "approve": "Approve"
+      },
+      "remove": "Remove the {who} step",
+      "add": "Add approval step",
+      "none": "No approval steps.",
+      "partThreeRequired": "Part 3 needs at least one approval step.",
+      "reserved": "Head of Department, People Business Partner and Direct Superior steps follow the case’s current holders, their delegations and the policy below.",
+      "policyInherit": "Use the signing routes configuration’s setting",
+      "whoKinds": {
+        "hod": "Head of Department",
+        "pbp": "People Business Partner",
+        "superior": "Direct Superior",
+        "routing": "A routing",
+        "group": "An assignment group",
+        "people": "Named people"
+      },
+      "routing": "Routing",
+      "group": "Assignment group",
+      "people": "People",
+      "pick": "Who takes it",
+      "picks": {
+        "any": "Any member",
+        "roundRobin": "Round robin"
+      },
+      "missingChoice": "No longer available: choose another",
+      "resolveNote": "A routing, an assignment group or named people gives the step to one person, chosen by the step’s rule when the Line Manager submits, and that person keeps it for the part. If nobody is available, the case’s fallback group takes it and the case records who it was meant for."
+    },
+    "lowResult": {
+      "title": "Low result",
+      "notice": "Part {part} scored Band {band}. Record the action taken with the Line Manager.",
+      "note": "Action taken with the Line Manager",
+      "save": "Record action",
+      "waiting": "Waiting for the People Business Partner to record the action taken."
+    },
+    "otherOutcome": {
+      "title": "Outcome “Other” · PBP decision",
+      "help": "No letter is generated automatically. Choose the outcome to apply. The case then continues as that outcome: the letter, its signatures, then the posting or the offboarding case.",
+      "choice": "Decision",
+      "months": "Extension length",
+      "monthsOption": "{months} months",
+      "reason": "Reason",
+      "save": "Apply this outcome",
+      "waiting": "Waiting for the People Business Partner to choose the outcome."
+    },
+    "automationHistory": {
+      "title": "Workflow history",
+      "empty": "No shared workflow has run for this case yet.",
+      "recipients": "{count, plural, one {# person} other {# people}} reached",
+      "unresolved": "Not reached: {who}. {reason}",
+      "status": {
+        "running": "Running",
+        "waiting": "Waiting for the letter",
+        "done": "Done",
+        "skipped": "Skipped",
+        "failed": "Failed"
+      }
+    },
+    "taskKinds": {
+      "submit_employee": {
+        "title": "Complete your self-assessment · Part {part}",
+        "action": "Open form"
+      },
+      "submit_manager_kpis": {
+        "title": "Set Week 1 KPIs and sign",
+        "action": "Set KPIs"
+      },
+      "submit_manager": {
+        "title": "Complete the Line Manager assessment and sign · Part {part}",
+        "action": "Open assessment"
+      },
+      "acknowledge": {
+        "title": "Acknowledge and sign · Part {part}",
+        "action": "Acknowledge"
+      },
+      "approve": {
+        "title": "Approve Part {part}",
+        "action": "Review and approve"
+      },
+      "record": {
+        "title": "Record the completed Part {part}",
+        "action": "Record"
+      },
+      "confirm_extension": {
+        "title": "Confirm the extension · Part {part}",
+        "action": "Confirm extension"
+      },
+      "confirm_refusal": {
+        "title": "Confirm a declined signature · Part {part}",
+        "action": "Confirm"
+      },
+      "kpi_exception": {
+        "title": "Decide on the KPI acknowledgement hold · Part {part}",
+        "action": "Decide"
+      },
+      "employee_wait_exception": {
+        "title": "Decide whether to continue without the self-assessment · Part {part}",
+        "action": "Decide"
+      },
+      "letter_sign": {
+        "title": "Sign probation letter",
+        "action": "Sign letter"
+      },
+      "letter_review": {
+        "title": "Review probation letter",
+        "action": "Review letter"
+      },
+      "letter_approve": {
+        "title": "Approve probation letter",
+        "action": "Approve letter"
+      },
+      "letter_revise": {
+        "title": "Update probation letter after send-back",
+        "action": "Update letter"
+      },
+      "letter_release": {
+        "title": "Release probation letter",
+        "action": "Release letter"
+      },
+      "low_result_action": {
+        "title": "Record low-result action",
+        "action": "Record action"
+      },
+      "choose_outcome": {
+        "title": "Decide Other outcome",
+        "action": "Decide outcome"
+      },
+      "other": {
+        "title": "Probation task",
+        "action": "Open"
+      }
+    },
+    "caseView": {
+      "heading": "Probation · {stage}",
+      "stage": {
+        "1": "Part 1 · Week 1 Success Plan",
+        "2": "Part 2 · Mid-Probation Review",
+        "3": "Part 3 · Final Confirmation Review",
+        "cycle": "{part} (cycle {cycle})",
+        "outcome": "Outcome"
+      },
+      "short": {
+        "1": "Week 1 KPIs",
+        "2": "Part 2 Mid-Probation",
+        "3": "Part 3 Final review",
+        "outcome": "Outcome"
+      },
+      "tabs": {
+        "label": "Case sections",
+        "1": "Part 1 · Week 1 KPIs",
+        "2": "Part 2 · Mid-Probation",
+        "3": "Part 3 · Final",
+        "cycle": "{part} (cycle {cycle})",
+        "outcome": "Outcome & letters",
+        "files": "Files ({count})",
+        "history": "History",
+        "current": "current stage"
+      },
+      "partsLabel": "Parts",
+      "routeLabel": "Signing route for the current part",
+      "waitingOn": "Waiting on: {who}",
+      "closed": "Case closed.",
+      "opens": "Form opens {date}",
+      "due": "due {date}",
+      "daysLeft": "{count, plural, one {# day left} other {# days left}}",
+      "daysOverdue": "{count, plural, one {# day overdue} other {# days overdue}}",
+      "dueToday": "due today",
+      "who": "{role} · {name} · {what}",
+      "whoNoName": "{role} · {what}",
+      "what": {
+        "kpis": "set Week 1 KPIs and sign",
+        "self": "self-assessment",
+        "assessment": "assessment",
+        "returned": "returned part",
+        "acknowledge": "acknowledge and sign",
+        "approve": "approval",
+        "review": "review",
+        "sign": "signature"
+      },
+      "facts": {
+        "employee": "Employee",
+        "titleGrade": "Job title / grade",
+        "businessGroup": "Business group",
+        "businessUnit": "Business unit",
+        "probation": "Probation",
+        "plan": "Review plan",
+        "extensions": "Extensions used",
+        "people": "People"
+      },
+      "plan": {
+        "6": "6 months · P2 + P3",
+        "3": "3 months · P3 only",
+        "other": "{months} months"
+      },
+      "months": "{months, plural, one {# month} other {# months}}",
+      "peopleLm": "LM {name}",
+      "peoplePbp": "PBP {name}",
+      "steps": {
+        "self": "Employee self-assessment",
+        "lmKpis": "LM sets KPIs and signs",
+        "lmAssess": "LM assessment",
+        "ack": "Employee acknowledges",
+        "approveSign": "Approve and sign · {who}",
+        "approve": "Approve · {who}",
+        "review": "Review · {who}",
+        "sign": "Sign · {who}"
+      },
+      "stepState": {
+        "done": "done",
+        "current": "current",
+        "waiting": "not reached",
+        "overdue": "overdue",
+        "returned": "returned with comments"
+      },
+      "noOutcome": "The outcome is decided at the final review (Part 3 Final review).",
+      "filesEmpty": "No files yet. Completed forms and letters appear here when each part is recorded.",
+      "earlierCycles": "Earlier cycles of this part",
+      "cycleLink": "Cycle {cycle} · {state}",
+      "waitingStart": "Waiting for the start date ({date}). The record was activated in Personnel Management before the start date. Nothing is sent and no step is due until then.",
+      "noPart": "This part is not part of this case's review plan.",
+      "back": "Probation tracker",
+      "pill": "Probation",
+      "yourStep": "Your step:",
+      "waitingOnLabel": "Waiting on:",
+      "nextAction": "Next action:",
+      "outcomeHeading": "Outcome",
+      "earlierLetters": "Earlier letters",
+      "download": "Download",
+      "downloadFile": "Download {name}",
+      "fileKinds": {
+        "completed_part": "Completed evaluation form with signature page · stored on the employee file",
+        "letter_released": "Released letter · stored on the employee file",
+        "letter_draft": "Letter prepared for signatures",
+        "offline": "Original file kept as offline evidence"
+      },
+      "letter": {
+        "sub": "From the shared Templates builder · module Probation · template v{version}",
+        "routing": "Signing routing on this document",
+        "state": {
+          "released": "Released",
+          "filing": "Filing pending",
+          "sentBack": "Sent back",
+          "waitingFor": "Waiting for {names}",
+          "ready": "Ready to release",
+          "waiting": "Waiting",
+          "paused": "Paused"
+        },
+        "and": " and "
+      },
+      "form": {
+        "cycle": "{part} · after extension {count}",
+        "status": "{state} · due {date}",
+        "yourSelf": "Your self-assessment",
+        "yourLm": "Your Line Manager assessment",
+        "sections": {
+          "2": "A. Performance Progress Review · B. Leadership Principles – Mid-Point",
+          "3": "A. Role Performance Assessment · B. {count} Leadership Principles"
+        },
+        "rateHelp": "Rate every criterion 1–5. Ratings start blank. A rating of 1 or 2 needs written evidence before you can submit.",
+        "readHelp": "Ratings as submitted. A column opens once that person has submitted.",
+        "gridLabel": "Assessment criteria and ratings",
+        "col": {
+          "criterion": "Criterion",
+          "weight": "Weight",
+          "employee": "Employee",
+          "lm": "Line Manager",
+          "evidence": "Comments / evidence",
+          "yourEvidence": "Your evidence"
+        },
+        "sectionRole": "A. Role ({weight}%)",
+        "sectionPrinciples": "B. {count} Leadership Principles ({weight}%)",
+        "guide": "Guide",
+        "guideFor": "Guide for {criterion}",
+        "kpiLink": "Shows the {count} Week 1 KPIs",
+        "ratingGroup": "{who} rating for {criterion}",
+        "ratingButton": "{rating} · {label}",
+        "clearRating": "Clear",
+        "clearRatingFor": "Clear the rating for {criterion}",
+        "evidenceFor": "Evidence for {criterion}",
+        "yourEvidenceFor": "Your evidence for {criterion}",
+        "evidencePlaceholder": "Observable example / evidence",
+        "hiddenLm": "Hidden until the Line Manager submits",
+        "hiddenEmployee": "Not submitted yet",
+        "evidenceRequired": "Evidence required for a rating of {rating}",
+        "evidenceRequiredKpi": "Evidence required while the Week 1 KPIs are not acknowledged",
+        "drawer": {
+          "close": "Close",
+          "kpiTitle": "Week 1 KPIs (Part 1)",
+          "criterionTitle": "Appendix A · {criterion}",
+          "behaviours": "Key behaviours",
+          "prompt": "Evidence prompt",
+          "principles": "Evidence-based rating principles.",
+          "principlesText": "Rate observable behaviour and demonstrated results, not personality. Use examples from the full probation period. A rating of 1 or 2 requires clear evidence, prior feedback and documented development support.",
+          "noKpis": "No KPIs agreed yet.",
+          "kpiLine": "{measure} · target {target} by {date}",
+          "support": "Planned support"
+        },
+        "result": {
+          "2": "C. Overall Mid-Point Assessment",
+          "3": "C. Overall Result and Recommendation"
+        },
+        "resultSub": "Worked out by the system from the Line Manager’s ratings.",
+        "sectionA": "Section A /{max}",
+        "sectionB": "Section B /{max}",
+        "total": "Total /{max}",
+        "band": "Band",
+        "rateAll": "Rate all {count}",
+        "selfScore": "Employee self-score {score} (Band {band}). Only the Line Manager’s result drives the suggestion.",
+        "selfScoreNone": "Employee self-score not submitted. Only the Line Manager’s result drives the suggestion.",
+        "justification": {
+          "2": "Justification",
+          "3": "Recommendation and justification"
+        },
+        "justificationRequired": "Required: explain why you chose something other than the suggestion",
+        "noMidpointOutcome": "No final employment outcome is applied at the mid-point.",
+        "choice": {
+          "2": "E. Mid-Probation Status",
+          "3": "Outcome"
+        },
+        "options": {
+          "confirm": "Confirm employment",
+          "extend": "Extend probation",
+          "not_confirm": "Non-confirmation",
+          "other": "Other",
+          "satisfactory": "Progressing satisfactorily",
+          "development": "Progressing with development actions",
+          "at_risk": "At risk of not meeting probation requirements – People Team consultation required"
+        },
+        "extendHint": "{first} or {second} months",
+        "otherHint": "needs justification and a PBP decision",
+        "suggested": "suggested",
+        "extensionsUsed": "{count} of {max} extensions used",
+        "extensionLength": "Extension length (Line Manager recommends, PBP confirms)",
+        "monthsOption": "{months} months",
+        "choiceNote": "Choosing anything other than the suggestion needs a written justification and is flagged to the People Business Partner.",
+        "nothingPreselected": "Nothing is pre-selected.",
+        "managerComments": "Manager’s overall comments",
+        "coaching": "D. Coaching Summary and Development Plan",
+        "strengths": "Top strengths demonstrated",
+        "development": "Priority development areas",
+        "employeeComments2": "Employee’s comments",
+        "ackHeading": "D. Employee Comments and Acknowledgement",
+        "employeeComments3": "Employee comments",
+        "ackNote": "Discussed and received. Acknowledgement does not mean agreement.",
+        "optional": "Optional",
+        "kpiHeading": "A. Key Accountabilities and KPIs",
+        "kpiSub": "Line Manager enters 1–5 rows. They lock after the employee acknowledges and carry into the KPI criterion of every later review.",
+        "kpiCols": {
+          "no": "No.",
+          "accountability": "Key accountability",
+          "measure": "KPI / success measure",
+          "target": "Target",
+          "targetDate": "Target date"
+        },
+        "kpiField": "{field} {index}",
+        "kpiRemove": "Remove",
+        "kpiRemoveRow": "Remove accountability {index}",
+        "kpiAdd": "Add accountability · maximum 5",
+        "kpiEmpty": "Not entered yet.",
+        "supportHeading": "B. Planned Support for Employee",
+        "supportLabels": {
+          "coaching": "On-the-job training / coaching",
+          "access": "SOPs, policies, guidelines or system access",
+          "checkins": "Regular check-ins / feedback arrangements",
+          "other": "Other support required"
+        },
+        "supportPlaceholder": "Details / owner / timing",
+        "meetingHeading": "C. Meeting Acknowledgement",
+        "meetingHint": "Editable only by the employee at the acknowledgement step.",
+        "meetingNote": "Line Manager signs on submission, then the employee signs on acknowledgement.",
+        "scheduled": "Scheduled. The form opens on {opens}, {lead} days before the due date {due}.",
+        "gateBlocks": "KPI gate is set to Block: the form also waits until Part 1 is acknowledged.",
+        "signatures": "Signatures",
+        "sigWaiting": "Waiting",
+        "signHeading": "Signing and acknowledgement",
+        "signNote": "Signing means discussed and received, not agreement.",
+        "signWho": "Verified login: {name} ({role})",
+        "signFingerprint": "Your name, role, date and time and a fingerprint of this version of the form are saved with your signature.",
+        "methods": {
+          "typed": "Typed",
+          "drawn": "Drawn"
+        },
+        "issuesTitle": "{count, plural, one {# item needs fixing before submission} other {# items need fixing before submission}}",
+        "notes": {
+          "self": "Your self-assessment submission is not a signature. The Line Manager completes their assessment afterwards.",
+          "lm": "Submitting sends the review to {name} to acknowledge.",
+          "lmKpis": "You are signing as Line Manager.",
+          "ack1": "Acknowledging means the KPIs were discussed and received.",
+          "ack": "You can add comments. You cannot change ratings.",
+          "review": "Review step from the form’s approval routing · no signature needed.",
+          "approve": "Approve step from the form’s approval routing · no signature needed.",
+          "locked1": "Part 1 is recorded and locked.",
+          "locked": "This part is recorded and locked.",
+          "waiting": "Waiting on {who} ({what}).",
+          "nothing": "Nothing to do here right now."
+        },
+        "returnHeading": "Return to the Line Manager",
+        "returnHelp": "The part goes back to the Line Manager. Signatures so far are cleared and everyone signs again after the changes.",
+        "returnedBy": "Returned by {name}:",
+        "returnedNote": "Earlier signatures were cleared. The part goes through the signing route again.",
+        "decisionHeading": "Your decision"
+      }
+    }
+  },
+  "probationConfig": {
+    "crumb": "Probation Confirmation / Configuration / {page}",
+    "live": "Live",
+    "preparation": "Preparation",
+    "settings": {
+      "title": "Probation settings",
+      "sub": "Group standard version {version} published · company settings override only the fields they tick · changes apply to new cases only",
+      "subNoStandard": "No group standard published yet · each company uses its own settings version · changes apply to new cases only",
+      "subCompany": "Changes apply to new cases only.",
+      "editStandard": "Edit group standard",
+      "newCompanySetting": "New company setting",
+      "bannerLead": "Group standard with company settings.",
+      "banner": "The group standard applies the same way to every company. A company setting changes only the fields it ticks for its companies; every other field follows the standard, including later changes to it.",
+      "live": "Live in {live} of {total} companies. Running cases keep the settings version they started with.",
+      "running": "Running cases keep the settings version they started with.",
+      "standardCards": "Group standard settings",
+      "whoHelp": "A case opens automatically when an employee’s Personnel Management status becomes Probation (on activation, before, on or after the start date). Draft records never open a case.",
+      "plansHelp": "Picked from the Probation Period in Personnel Management.",
+      "planPeriod": "Probation Period",
+      "planReviews": "Reviews",
+      "planMonths": "{months} Month(s)",
+      "planMidpoint": "Part 2 at Month {midpoint} · Part 3 on the end date",
+      "planFinal": "Part 3 on the end date only",
+      "extensionMonths": "{months} months"
+    },
+    "cards": {
+      "who": "Who gets a case",
+      "plans": "Review plans",
+      "timing": "Timing",
+      "kpis": "Week 1 KPIs and reminders",
+      "extensions": "Extensions and results"
+    },
+    "form": {
+      "sub": "Criteria, weights, rating scale, bands and guidance are saved with each form version. Each case keeps the form it started on.",
+      "versions": "Form versions",
+      "formTitle": "Form",
+      "gradesTitle": "Job grade assignment",
+      "gradesHelp": "New probation cases in these grades (Personnel Management Job Grade at the case start) use this form. Leave it empty to use the form for the normal eligible grades.",
+      "gradesNote": "Changes to the grade assignment apply to new cases only.",
+      "noGrades": "No grades",
+      "chooseGrades": "Choose job grades…",
+      "selected": "{count} selected",
+      "searchGrades": "Search grade, e.g. 12",
+      "selectAll": "Select all",
+      "clear": "Clear",
+      "noGradeMatch": "No grade matches “{query}”.",
+      "done": "Done",
+      "criteriaTitle": "Criteria and weights",
+      "section": "Section {letter} · {name}",
+      "sectionTotal": "Criteria total {total}% of {weight}%",
+      "criterion": "Criterion",
+      "weight": "Weight %",
+      "guidance": "Guidance",
+      "order": "Order and remove",
+      "criterionPlaceholder": "Criterion name",
+      "weightFor": "Weight for {name}",
+      "newCriterion": "new criterion",
+      "hideGuidance": "Hide",
+      "viewGuidance": "View",
+      "editGuidance": "Edit",
+      "moveUp": "Move {name} up",
+      "moveDown": "Move {name} down",
+      "up": "Up",
+      "down": "Down",
+      "removeNamed": "Remove {name}",
+      "addCriterion": "Add criterion to Section {letter}",
+      "formTotal": "Form total {total}%",
+      "formTotalParts": "(Section A {a}% · Section B {b}%). Every criterion is rated 1–5.",
+      "scaleTitle": "Rating scale",
+      "bandsTitle": "Bands"
+    },
+    "intake": {
+      "sub": "Bring in staff who were already on probation using the offline HTML form, then switch probation on per company.",
+      "extensionsTitle": "2. Confirm extensions already used",
+      "activationTitle": "3. Activation by company",
+      "noExtensions": "No cases with an existing extension."
     }
   },
   "templateEditor": {
@@ -38698,6 +39619,1387 @@
     "appliesFromTomorrow": "Changes to Pairing Method and Minimum Interval Between Clock apply from tomorrow, so attendance already captured today is not reworked. The history records who changed them and when.",
     "systemReason": "Updated in Schedule Group settings",
     "dutyRosterPoolNote": "The rotation can only use the shifts Included in Shift Allowed above."
+  },
+  "bulkJobs": {
+    "notification": {
+      "employeeImport": {
+        "completed": {
+          "title": "Employee import finished",
+          "body": "Open Import History to see the employees that were added."
+        },
+        "failed": {
+          "title": "Employee import stopped",
+          "body": "No employees were added. Open Import History to see why."
+        },
+        "cancelled": {
+          "title": "Employee import cancelled",
+          "body": "No employees were added. Open Import History for details."
+        }
+      },
+      "leaveImport": {
+        "completed": {
+          "title": "Leave import finished",
+          "body": "The imported rows are now in employees' leave balances."
+        },
+        "failed": {
+          "title": "Leave import stopped",
+          "body": "Rows already saved are kept. Importing the same file again skips them."
+        },
+        "cancelled": {
+          "title": "Leave import cancelled",
+          "body": "Rows already saved are kept. Importing the same file again skips them."
+        }
+      },
+      "leaveProcessing": {
+        "completed": {
+          "title": "Leave processing finished",
+          "body": "The leave figures have been updated."
+        },
+        "failed": {
+          "title": "Leave processing stopped",
+          "body": "Employees already processed keep their figures. Run it again to complete the rest."
+        },
+        "cancelled": {
+          "title": "Leave processing cancelled",
+          "body": "Employees already processed keep their figures. Run it again to complete the rest."
+        }
+      },
+      "roster": {
+        "completed": {
+          "title": "Roster change finished",
+          "body": "Open the roster to see the result."
+        },
+        "failed": {
+          "title": "Roster change stopped",
+          "body": "Open the roster to see why."
+        },
+        "cancelled": {
+          "title": "Roster change cancelled",
+          "body": "Open the roster for details."
+        }
+      },
+      "scheduleGroup": {
+        "completed": {
+          "title": "Schedule Group assignment finished",
+          "body": "Open Assign Schedule Group to see the result."
+        },
+        "failed": {
+          "title": "Schedule Group assignment stopped",
+          "body": "Open Assign Schedule Group to see why."
+        },
+        "cancelled": {
+          "title": "Schedule Group assignment cancelled",
+          "body": "Open Assign Schedule Group for details."
+        }
+      },
+      "clockingImport": {
+        "completed": {
+          "title": "Clocking import finished",
+          "body": "Open the import logs to see the clockings that were added."
+        },
+        "failed": {
+          "title": "Clocking import stopped",
+          "body": "Open the import logs to see what was saved and why it stopped."
+        },
+        "cancelled": {
+          "title": "Clocking import stopped",
+          "body": "Open the import logs to see what was saved."
+        }
+      },
+      "attendanceRecomputePreview": {
+        "completed": {
+          "title": "Recompute preview ready",
+          "body": "Open Recompute Attendance to review what would change."
+        },
+        "failed": {
+          "title": "Recompute preview stopped",
+          "body": "Open Recompute Attendance to see why."
+        },
+        "cancelled": {
+          "title": "Recompute preview stopped",
+          "body": "Open Recompute Attendance to start it again."
+        }
+      },
+      "attendanceRecompute": {
+        "completed": {
+          "title": "Attendance recalculated",
+          "body": "Open Recompute Attendance to see the days that changed."
+        },
+        "failed": {
+          "title": "Attendance recompute stopped",
+          "body": "Open Recompute Attendance to see why."
+        },
+        "cancelled": {
+          "title": "Attendance recompute stopped",
+          "body": "Open Recompute Attendance for details."
+        }
+      },
+      "payrollProcess": {
+        "completed": {
+          "title": "Payroll processing finished",
+          "body": "Open Payroll to review the processed run."
+        },
+        "failed": {
+          "title": "Payroll processing stopped",
+          "body": "The run is back in draft and no payslips were kept. Open Payroll to see why."
+        },
+        "cancelled": {
+          "title": "Payroll processing cancelled",
+          "body": "The run is back in draft and no payslips were kept."
+        }
+      },
+      "systemLabelImport": {
+        "completed": {
+          "title": "System Labels import finished",
+          "body": "Open System Labels to see the codes that were added."
+        },
+        "failed": {
+          "title": "System Labels import stopped",
+          "body": "No codes were added. Open System Labels and preview the workbook again."
+        },
+        "cancelled": {
+          "title": "System Labels import cancelled",
+          "body": "No codes were added."
+        }
+      },
+      "sectionImport": {
+        "completed": {
+          "title": "Section import finished",
+          "body": "Open Import to see the rows that were updated."
+        },
+        "failed": {
+          "title": "Section import stopped",
+          "body": "Rows saved before it stopped were kept. Open Import to see why."
+        },
+        "cancelled": {
+          "title": "Section import cancelled",
+          "body": "Rows saved before it stopped were kept. Open Import for details."
+        }
+      },
+      "registerImport": {
+        "completed": {
+          "title": "Register import finished",
+          "body": "Open Import to see the register records that were saved."
+        },
+        "failed": {
+          "title": "Register import stopped",
+          "body": "No register records were saved. Open Import to see why."
+        },
+        "cancelled": {
+          "title": "Register import cancelled",
+          "body": "No register records were saved. Open Import for details."
+        }
+      },
+      "employeeImportRevert": {
+        "completed": {
+          "title": "Import revert finished",
+          "body": "Open Import History to see the employees that were voided."
+        },
+        "failed": {
+          "title": "Import revert stopped",
+          "body": "Nothing was changed. Open Import History to see why."
+        },
+        "cancelled": {
+          "title": "Import revert cancelled",
+          "body": "Nothing was changed. Open Import History for details."
+        }
+      },
+      "leaveGeneration": {
+        "completed": {
+          "title": "Entitlement generation finished",
+          "body": "The leave figures have been updated."
+        },
+        "failed": {
+          "title": "Entitlement generation stopped",
+          "body": "Nothing was changed. Open Generate Entitlement to see why, then run it again."
+        },
+        "cancelled": {
+          "title": "Entitlement generation cancelled",
+          "body": "Nothing was changed."
+        }
+      },
+      "leaveRecalculation": {
+        "completed": {
+          "title": "Leave balances recalculated",
+          "body": "Employees' leave figures now follow the saved settings."
+        },
+        "failed": {
+          "title": "Leave recalculation stopped",
+          "body": "Employees already recalculated keep their new figures. Save the setting again to recalculate the rest."
+        },
+        "cancelled": {
+          "title": "Leave recalculation cancelled",
+          "body": "Employees already recalculated keep their new figures. Save the setting again to recalculate the rest."
+        }
+      },
+      "leaveYearType": {
+        "completed": {
+          "title": "Leave year type applied",
+          "body": "First-year employees' leave figures now follow the saved leave year type."
+        },
+        "failed": {
+          "title": "Leave year type not applied to balances",
+          "body": "No leave figures were changed. Save the leave year type again to retry."
+        },
+        "cancelled": {
+          "title": "Leave year type correction cancelled",
+          "body": "No leave figures were changed."
+        }
+      },
+      "toilSweep": {
+        "completed": {
+          "title": "Replacement leave settlement finished",
+          "body": "The replacement leave credits that were due have been settled. Open Leave Credit to review them."
+        },
+        "failed": {
+          "title": "Replacement leave settlement stopped",
+          "body": "Credits already settled stay settled. Run it again to settle the rest."
+        },
+        "cancelled": {
+          "title": "Replacement leave settlement cancelled",
+          "body": "Credits already settled stay settled. Run it again to settle the rest."
+        }
+      },
+      "payrollHistory": {
+        "completed": {
+          "title": "Payroll history change committed",
+          "body": "Open the import log to see what was committed."
+        },
+        "failed": {
+          "title": "Payroll history change stopped",
+          "body": "No payroll history was changed. Open the import log to see why."
+        },
+        "cancelled": {
+          "title": "Payroll history change cancelled",
+          "body": "No payroll history was changed."
+        }
+      },
+      "payrollReprocess": {
+        "completed": {
+          "title": "Payroll reprocess finished",
+          "body": "Open the run to review the reprocessed employees."
+        },
+        "failed": {
+          "title": "Payroll reprocess stopped",
+          "body": "Employees already reprocessed keep their new results. Open the run to see where it stopped."
+        },
+        "cancelled": {
+          "title": "Payroll reprocess cancelled",
+          "body": "Employees already reprocessed keep their new results."
+        }
+      },
+      "movementImport": {
+        "completed": {
+          "title": "Movement import finished",
+          "body": "Open Import History to see the movements that were saved and any employees that could not be."
+        },
+        "failed": {
+          "title": "Movement import stopped",
+          "body": "Open Import History to see why. Employees already saved keep their movements."
+        },
+        "cancelled": {
+          "title": "Movement import stopped",
+          "body": "Employees already saved keep their movements. Open Import History for details."
+        }
+      },
+      "movementCheck": {
+        "completed": {
+          "title": "Movement file checked",
+          "body": "The check is recorded in Import History. If you left the import screen, upload the file again to review and confirm it."
+        },
+        "failed": {
+          "title": "Movement check stopped",
+          "body": "Open Import History to see why. Nothing was saved."
+        },
+        "cancelled": {
+          "title": "Movement check stopped",
+          "body": "Nothing was saved. Open Import History for details."
+        }
+      },
+      "movementImportRevert": {
+        "completed": {
+          "title": "Movement import revert finished",
+          "body": "Open Import History to see the movements that were rolled back."
+        },
+        "failed": {
+          "title": "Movement import revert stopped",
+          "body": "Nothing was changed. Open Import History to see why."
+        },
+        "cancelled": {
+          "title": "Movement import revert cancelled",
+          "body": "Nothing was changed. Open Import History for details."
+        }
+      },
+      "recruitmentImport": {
+        "completed": {
+          "title": "Candidate import finished",
+          "body": "Open the import to see the result row by row and any candidates waiting on the To assign list."
+        },
+        "failed": {
+          "title": "Candidate import stopped",
+          "body": "A problem stopped the import. Rows already imported stay; open the import to see the result."
+        },
+        "cancelled": {
+          "title": "Candidate import stopped",
+          "body": "The import was stopped. Rows already imported stay; open the import to see the result."
+        }
+      }
+    },
+    "panel": {
+      "queued": "Waiting to start",
+      "preparing": "Checking every change",
+      "running": "Saving",
+      "finalizing": "Finishing",
+      "discarding": "Stopping",
+      "completed": "Finished",
+      "failed": "Stopped",
+      "cancelled": "Cancelled",
+      "progressCount": "{done} of {total} steps complete",
+      "backgroundHelp": "You can leave this page. The work continues and you will be notified when it finishes.",
+      "waiting": "Waiting for the background service. Progress is saved; do not start this again.",
+      "workerUnavailable": "The background service is not running yet. Your request is saved and starts automatically as soon as it is."
+    },
+    "roster": {
+      "generate": "Generating the roster",
+      "copy": "Copying the roster",
+      "assign": "Applying the roster change",
+      "import": "Saving the uploaded roster",
+      "otherRunning": "Another roster change is still being saved. Wait for it to finish, then try again.",
+      "saveFailed": "The roster change could not be saved. Please try again, or ask an HR administrator.",
+      "queuedBehind": "Queued behind another roster job. It starts automatically as soon as that one finishes."
+    },
+    "scheduleGroup": {
+      "title": "Assigning the Schedule Group",
+      "otherRunning": "Another Schedule Group assignment is still being saved. Wait for it to finish, then try again.",
+      "queuedBehind": "Queued behind another Schedule Group assignment. It starts automatically as soon as that one finishes."
+    }
+  },
+  "importLog": {
+    "batchReference": "Batch reference",
+    "importedBy": "Imported by",
+    "batchLabel": "Batch {code}",
+    "actorWithId": "{name} ({employeeId})",
+    "actorUnlinked": "Administrator login (no employee record · login ending {suffix})",
+    "actorUnavailable": "Unavailable user"
+  },
+  "lifecycleEmailHold": {
+    "inboxAction": "Email held: {email}"
+  },
+  "rewardConfig": {
+    "title": "Review before saving",
+    "saving": "Saving…",
+    "whyReview": "Why this needs a review",
+    "reason": "Reason for this change",
+    "cancel": "Cancel",
+    "highImpact": {
+      "released-pat": "PAT changes for a review that has already been released.",
+      "released-library": "Reviews already released use an earlier version. They keep it; new reviews use this one.",
+      "released-limit": "A budget limit changes for a review that has already been released.",
+      "release-review": "Releasing sends this review to the BU CEO.",
+      "remove-access": "Someone loses access to a review.",
+      "open-offcycle": "Opening the off-cycle year makes company balances available to leaders for off-cycle requests.",
+      "offcycle-window": "The mid-year window decides when mid-year recommendations can be submitted."
+    },
+    "whatChanges": "What changes ({count})",
+    "item": "Item",
+    "before": "Before",
+    "after": "After",
+    "noValueChanges": "No values change.",
+    "moreLines": "{count} more changes are listed in the change log.",
+    "affected": "Reviews affected ({count})",
+    "noReviewsAffected": "No reviews are affected.",
+    "consequence": {
+      "repriced": "Recalculated now",
+      "recalculation-required": "Recalculated; the current approver is told",
+      "keeps-version": "Keeps the version it started with",
+      "released-to-bu": "Released to the BU CEO",
+      "access-removed": "Access removed",
+      "none": "No change"
+    },
+    "notificationTitle": "Rewards configuration changed",
+    "noAccess": "The Rewards change log is not available to you.",
+    "logHelp": "Every Rewards configuration change: who made it, when, what changed and why. Changes are never edited or removed.",
+    "area": "Area",
+    "allAreas": "All areas",
+    "company": "Company",
+    "allCompanies": "All companies",
+    "person": "Changed by",
+    "from": "From",
+    "to": "To",
+    "highImpactOnly": "High-impact only",
+    "filter": "Apply filters",
+    "exportExcel": "Export to Excel",
+    "when": "When",
+    "areaColumn": "Area",
+    "reasonColumn": "Reason",
+    "changes": "Changes",
+    "changedValues": "{count, plural, =0 {No values} one {# value} other {# values}}",
+    "system": "System",
+    "unknownPerson": "Unknown",
+    "highImpactBadge": "High impact",
+    "areas": {
+      "salary": "Salary structures",
+      "bonus": "Bonus matrices",
+      "pat": "PAT Inputs",
+      "plan": "Shared Rewards Configuration",
+      "shared": "Shared configuration",
+      "exemption": "Budget-cap exemption",
+      "senior": "Senior plan",
+      "upload": "Uploaded awards",
+      "preparation": "Review set-up",
+      "access": "Rewards access",
+      "role_permission": "Role permissions",
+      "group_role": "Whole-group roles",
+      "limit": "Limit controls",
+      "offcycle": "Off-cycle"
+    },
+    "actions": {
+      "returned-to-draft": "Returned to draft",
+      "saved-draft": "Draft saved",
+      "activated": "Made active",
+      "restored": "Restored from an earlier version",
+      "saved": "Saved",
+      "released": "Released",
+      "applied": "Applied",
+      "changed": "Changed",
+      "reset": "Reset to default"
+    },
+    "empty": "No changes match these filters.",
+    "pages": "Pages",
+    "previous": "Previous",
+    "next": "Next",
+    "exportTruncated": "Only the first 5,000 changes are included. Narrow the filters to export the rest."
+  },
+  "rewardLimits": {
+    "description": "Limits and thresholds for each reward year. Every check in the reviews, the AI advisor and Rewards Analytics uses the values for the review's reward year.",
+    "noAccess": "You don't have access",
+    "noAccessHelp": "Limit Controls are available to Group Rewards, CTRO and EC.",
+    "year": "Reward year",
+    "show": "Show",
+    "viewOnly": "You can view these limits. Only Group Rewards can change them.",
+    "versionLine": "Version {version} is in use for {year}.",
+    "baselineLine": "No version has been saved for {year} yet. These are the standard values; saving creates version 1.",
+    "typeHelp": "Block stops submission. Exception and Warning travel with the review and need a reason before it is submitted. Note is shown for information only.",
+    "columns": {
+      "limit": "Limit",
+      "value": "Value",
+      "type": "Type",
+      "appliesTo": "Applies to",
+      "lastChanged": "Last changed by / date"
+    },
+    "areas": {
+      "pools": "Salary increase pools",
+      "person": "Salary increase per person",
+      "bonus": "Bonus",
+      "lump": "Lump sum",
+      "exemption": "Exemptions",
+      "advisor": "AI advisor"
+    },
+    "labels": {
+      "pool_standard_merit": "Merit pool (% of eligible payroll)",
+      "pool_standard_promotion": "Promotion pool (% of eligible payroll)",
+      "pool_standard_special": "Special adjustment pool (% of eligible payroll)",
+      "pool_h_merit": "Merit pool (% of eligible payroll)",
+      "pool_h_promotion": "Promotion pool (% of eligible payroll)",
+      "pool_h_special": "Special adjustment pool (% of eligible payroll)",
+      "pool_separate": "Pools can't fund each other or another company",
+      "increase_withoutPromotion": "Total increase without promotion above",
+      "increase_withPromotion": "Total increase with promotion at or above",
+      "promotion_increment": "Promotion increment",
+      "promotion_maxGrades": "Maximum grades up",
+      "promotion_maxGrade": "Highest grade after promotion",
+      "catchUp_crFloor": "CR catch-up floor for STAR/SSTAR",
+      "salary_noReduction": "No salary reduction",
+      "bonus_poolCap": "Bonus pool cap",
+      "bonus_underUse": "Under-use warning below",
+      "bonus_individualCeiling": "Individual bonus ceiling above",
+      "bonus_rounding": "Payout rounding (round down)",
+      "bonus_individualMultiplier": "Individual multiplier different from the unit's",
+      "lump_share": "Share of remaining balance",
+      "lump_step": "Rounding step",
+      "lump_cap": "Per-person cap",
+      "lump_aboveSuggestion": "Unit amount above the suggestion",
+      "lump_individualAmendment": "Individual amendments",
+      "exemption_budgetCapsOnly": "Exempt companies: budget caps only, with a reason",
+      "advisor_override": "Override threshold",
+      "advisor_longWithoutIncrease": "Long time without increase",
+      "advisor_peerGap": "Peer pay gap"
+    },
+    "types": {
+      "block": "Block",
+      "exception": "Exception",
+      "warning": "Warning",
+      "note": "Note"
+    },
+    "appliesTo": {
+      "standard": "Standard plan",
+      "h": "JG H plan",
+      "all": "All plans"
+    },
+    "units": {
+      "percent": "%",
+      "points": "percentage points",
+      "ratio": "CR",
+      "months": "months",
+      "myr": "RM",
+      "grades": "grades",
+      "grade": "JG",
+      "years": "years"
+    },
+    "fixed": "Fixed",
+    "fixedHelp": "Fixed to protect pay; it cannot be changed.",
+    "none": "None",
+    "standardValue": "Standard value",
+    "changedBy": "{name} · {date}",
+    "unknownPerson": "Unknown",
+    "valueFor": "Value for {limit}",
+    "typeFor": "Type for {limit}",
+    "reviewSave": "Review before saving",
+    "save": "Save new version",
+    "discard": "Discard changes",
+    "saved": "Saved as version {version}.",
+    "errors": {
+      "system": "The limits could not be saved. Your changes are still here; try again."
+    },
+    "reviewsHeading": "Reviews in this reward year",
+    "reviewsHelp": "Draft reviews use the current version. Reviews past Draft keep the version they were submitted with. If you apply the current version to them, their checks are run again and their current approver is told.",
+    "reviewColumns": {
+      "review": "Review",
+      "stage": "Stage",
+      "versionUsed": "Limits used"
+    },
+    "select": "Select",
+    "selectReview": "Select {review}",
+    "baseline": "Standard values (before Limit Controls)",
+    "currentVersion": "Current (version {version})",
+    "version": "Version {version}",
+    "apply": "Apply version {version} to the selected reviews",
+    "applyConfirm": "Apply and notify approvers",
+    "applied": "{count, plural, one {Applied to # review.} other {Applied to # reviews.}}",
+    "noReviews": "No reviews use this reward year yet.",
+    "reviewsTruncated": "Only the first 200 reviews are listed.",
+    "exemptionsHeading": "Budget-cap exemptions",
+    "exemptionsHelp": "An exemption only relaxes budget caps (the salary increase pools and the bonus pool cap). It is recorded with its reason on the review's set-up.",
+    "noExemptions": "No review in this reward year has a budget-cap exemption.",
+    "historyHeading": "Version history",
+    "noVersions": "No versions yet.",
+    "changeLogLink": "See every change in the change log"
+  },
+  "scheduleOvertimeSetting": {
+    "title": "Overtime Setting",
+    "intro": "Controls how overtime is captured, approved, offset and rounded for employees in this Schedule Group. It applies from its start date: earlier days, clocking records, lateness records and past payroll are never recalculated.",
+    "companiesLabel": "Applies to",
+    "allCompanies": "All companies",
+    "selectedCompanies": "Selected companies",
+    "effectiveFrom": "Start date",
+    "effectiveHint": "After today, and after any start already saved for a chosen company.",
+    "applicabilityTitle": "Overtime Applicability",
+    "beforeShift": "Before Shift Overtime",
+    "beforeShiftHint": "Allow overtime before the scheduled shift.",
+    "afterShift": "After Shift Overtime",
+    "afterShiftHint": "Allow overtime after the scheduled shift.",
+    "allowBackdated": "Allow Request Backdated Overtime Without Clocking",
+    "allowBackdatedHint": "Employees may request backdated overtime with no matching clocking. HR still records the actual worked period before it counts.",
+    "splitAtMidnight": "Split Overtime at Midnight",
+    "splitAtMidnightHint": "Overtime after midnight belongs to the next calendar day as early overtime. Example: 10:00 PM to 2:00 AM gives 2 hours on each date.",
+    "offsetTitle": "Offset Overtime by Lateness",
+    "offsetLateness": "Offset Overtime by Lateness",
+    "offsetHint": "Deduct late-in minutes from eligible overtime. Example: 20 minutes late against 60 eligible minutes leaves 40. The recorded lateness is kept.",
+    "showLatenessException": "Show Lateness Exception After Offset",
+    "showLatenessExceptionHint": "Show a lateness exception for lateness that remains after the offset.",
+    "approvalTitle": "Overtime Approval Method",
+    "approvalManual": "Manual",
+    "approvalAuto": "Auto",
+    "approvalManualHint": "Attendance creates no payable overtime. Clocking records are kept, and overtime is entered by hand in Payroll.",
+    "autoMethod": "Auto Overtime Approval Method",
+    "methodIntersect": "Intersect Actual and Pre-Approved",
+    "methodActual": "Actual Hours",
+    "methodPreApproved": "Approved Overtime",
+    "methodIntersectHint": "Pays the lower of the approved and actual minutes: approved 120 and actual 90 pays 90.",
+    "methodActualHint": "Pays the actual eligible minutes, with no approved limit.",
+    "methodPreApprovedHint": "Pays the approved duration: approved 120 and actual 90 pays 120.",
+    "patternsTitle": "Overtime Pattern for each day type",
+    "patternsHint": "Overtime pay is calculated by the chosen Overtime Pattern. Only patterns active for every chosen company are listed.",
+    "patternsNone": "No Overtime Pattern is active for every chosen company. Activate one in Overtime Patterns to use Auto, or choose Manual.",
+    "choosePattern": "Choose an Overtime Pattern",
+    "dayNormal": "Working day",
+    "dayOff": "Off day",
+    "dayRest": "Rest day",
+    "dayPublicHoliday": "Public holiday",
+    "dayReplacementHoliday": "Replacement holiday",
+    "roundingTitle": "Overtime Rounding",
+    "roundingMethod": "Overtime Rounding Method",
+    "roundUp": "Round Up",
+    "roundDown": "Round Down",
+    "roundingStep": "Overtime Rounding to Minute",
+    "stepMinutes": "{n} Minutes",
+    "roundingHint": "Rounding is applied last, after the approval method and the lateness offset. The recorded clocking duration is not changed.",
+    "unsupportedRounding": "The saved rounding uses an option this section does not offer. Saving replaces it from the new start date.",
+    "differs": "{n, plural, one {# company has} other {# companies have}} a different Overtime Setting, or none. Saving applies this setting to every chosen company.",
+    "savedFrom": "The saved setting starts on {date}.",
+    "none": "No Overtime Setting is saved yet. This group's overtime works as before until one is saved.",
+    "save": "Save Overtime Setting",
+    "systemReason": "Schedule Group Overtime Setting saved",
+    "on": "On",
+    "off": "Off",
+    "payrollNote": "Payroll receives the final overtime figures from this setting, the same way it receives overtime today.",
+    "approvalIntro": "Controls whether Attendance calculates payable overtime, and which minutes it uses.",
+    "roundingIntro": "Controls whether eligible overtime minutes are rounded up, rounded down or not rounded.",
+    "roundNone": "None",
+    "roundingNoneHint": "Not applicable with None. The actual eligible overtime minutes are kept.",
+    "notApplicable": "Not applicable",
+    "minutesValue": "{n} minutes",
+    "roundingExampleTitle": "Worked example",
+    "roundingExampleActual": "Actual eligible overtime",
+    "roundingExampleMethod": "Rounding Method",
+    "roundingExampleInterval": "Interval",
+    "roundingExampleFinal": "Final overtime",
+    "backdateTitle": "Overtime Backdate Control",
+    "backdateIntro": "Controls how far back an overtime application can be dated. Allow Request Backdated Overtime Without Clocking is separate: it only decides whether a clocking is needed.",
+    "backdateControl": "Enable Overtime Backdate Control",
+    "backdateControlHint": "Applies to the employee's own overtime requests on the web and the mobile app, requests through the AI assistant, and Request On Behalf. HR administrators follow the same limit.",
+    "backdateDays": "Allow Backdate Application Within (Days)",
+    "backdateDaysHint": "A whole number from 1 to {max}, counted back from the day the application is submitted. With 3 days, an application submitted on 16-Nov-2026 can be for 13 to 16-Nov-2026.",
+    "backdateDaysValue": "{n, plural, one {# day} other {# days}}",
+    "backdateRefused": "An overtime application can be dated at most {days, plural, one {# day} other {# days}} back. Choose {date} or a later date."
+  },
+  "attendanceOnBehalf": {
+    "requestTitle": "Request On Behalf",
+    "requestHelp": "Choose the employee, then file Attendance Irregularity or Self Overtime for them on the usual screens. The request follows their own workflow and approvers.",
+    "approveTitle": "Approve On Behalf",
+    "approveHelp": "Choose the designated approver whose pending attendance requests you need to handle.",
+    "approveListHelp": "Requests waiting for {name} that you may decide on their behalf.",
+    "searchLabel": "Search by Employee ID or name",
+    "searchPlaceholder": "e.g. EMP-0123 or a name",
+    "search": "Search",
+    "results": "Employees you may act for",
+    "noResults": "No employee you may act for matches this search.",
+    "noPermission": "Your role does not have this permission. Ask an administrator if you need it.",
+    "choose": "Select",
+    "employeeName": "Employee",
+    "employeeId": "Employee ID",
+    "company": "Company",
+    "department": "Department",
+    "changeEmployee": "Change employee",
+    "chooseCategory": "What would you like to file?",
+    "irregularity": "Attendance Irregularity",
+    "irregularityHelp": "Missing or wrong clock times, short hours or absence, for the employee's own days.",
+    "selfOvertime": "Self Overtime",
+    "selfOvertimeHelp": "Plan or claim overtime under the employee's own Schedule Group and overtime rules.",
+    "banner": "Submitting on behalf of {name}",
+    "pendingTitle": "Pending approval requests",
+    "pendingEmpty": "Nothing is waiting for this approver that you may decide.",
+    "approveOnBehalf": "Approve On Behalf",
+    "rejectOnBehalf": "Reject On Behalf",
+    "approveAudit": "History keeps the chosen person as the designated approver and records you as the person who acted.",
+    "previous": "Previous",
+    "next": "Next"
+  },
+  "importErrorLogDataBankCostInfo": {
+    "corrections": {
+      "duplicateInFile": "This value appears more than once in the file - keep one row.",
+      "duplicateEmployeeInFile": "This Employee ID appears more than once in the file - keep one row.",
+      "chooseReference": "Choose a value from the Reference sheet of the template.",
+      "chooseCompany": "Choose a Company Code from the Reference sheet.",
+      "chooseCostCenter": "Choose a Cost Center Code listed for this company on the Allocation Reference sheet.",
+      "date": "Enter the date as YYYY-MM-DD or as an Excel date.",
+      "required": "Fill in this column - it is required.",
+      "yesNo": "Enter yes or no.",
+      "revalidate": "Upload the corrected file again so the row is checked again.",
+      "permission": "Remove this row, or ask an administrator for access to this employee's company.",
+      "systemError": "Upload the file again. If it keeps happening, give the support reference to the technical team.",
+      "textCode": "Format the cell as Text and enter the code again.",
+      "noFormula": "Type the value itself, not a formula.",
+      "existingEmployee": "Check the Employee ID. A new employee must be added with \"Everything - new employees\" first.",
+      "percentage": "Enter a percentage greater than 0 and at most 100, with up to two decimal places.",
+      "periodUnit": "Enter the number and its unit (Month, Week or Day) together.",
+      "reason": "Enter a reason of at least three characters.",
+      "statutoryRecord": "Save the employee's identity number on their Personnel record first, then upload this file again.",
+      "template": "Download the current template, copy your rows into it and upload it again.",
+      "bankPair": "Enter the bank name and the bank account number together."
+    },
+    "bank": {
+      "duplicateEmployeeId": "Duplicate Employee ID in this file; first used at Excel row {row}.",
+      "duplicateCardId": "Duplicate Card ID in this file.",
+      "cardIdTaken": "card_id already identifies another employee; choose an unused card ID.",
+      "noPermission": "You do not have permission to update this employee.",
+      "changedAfterValidation": "This row was not saved. Its data or permissions changed after validation; review and import it again.",
+      "missingEmployeeId": "Missing employee_code — it is the link to the employee being updated",
+      "unknownEmployee": "No employee has Employee ID \"{code}\". A section file can only UPDATE people who are already in the system — it cannot add anyone. To add this person, choose \"Everything — new employees\" at the top of this page and use the full employee template, then run this file again.",
+      "duplicateEmployeeCode": "Duplicate employee_code in this file",
+      "bankTransferNeedsBank": "Bank Transfer requires a bank name and account number.",
+      "bankPair": "bank_name and bank_account_no must be provided together",
+      "noStatutoryRecordYet": "This employee has no statutory record yet — save their identity number on their Personnel record first, then re-run this file",
+      "noStatutoryRecord": "This employee has no statutory record; complete the Personnel statutory setup first.",
+      "notActiveOption": "\"{value}\" is not an active {category} option — column {column}",
+      "yesNo": "{column} must be yes or no",
+      "jobStopped": "Import stopped. Rows already saved are retained. Review the result and your access before trying again. Reference {ref}.",
+      "jobStoppedEarlier": "Import stopped. Rows already saved are retained. Review the result and your access before trying again.",
+      "fileTooLarge": "The file exceeds the import size or worksheet limits. Use up to 250,000 rows and 128 MiB.",
+      "fileUnreadable": "The file could not be read. Use the Bank & Statutory template and its reference sheets.",
+      "fileRowCount": "Choose a file with 1 to 250,000 data rows.",
+      "fileIncomplete": "The uploaded file is incomplete or its checksum differs. Upload it again."
+    },
+    "allocation": {
+      "errors": {
+        "invalid": "Enter a percentage greater than zero and at most 100, with up to two decimal places.",
+        "duplicate": "Select each cost center once.",
+        "total": "The total allocation cannot exceed 100%.",
+        "scope": "Employee record or permission is unavailable.",
+        "label": "A cost center is inactive or unavailable for this company.",
+        "changed": "Allocations changed. Reload and preview again.",
+        "date": "Choose an effective date with proven employment company history.",
+        "clear": "Clearing allocations requires an explicit clear operation.",
+        "preview": "The input or reference data changed. Preview again.",
+        "binding": "Match each allocation to one company and Employee ID.",
+        "transfer": "Save an explicit clear set at the transfer date and clear any later scheduled sets before transferring. Then save a new destination-company allocation."
+      },
+      "operation": "Operation must be Replace or Clear, and the same on every row for one employee and date.",
+      "clearRow": "Clear needs exactly one row with a blank Cost Center Code and Percentage.",
+      "costCenterUnavailable": "This Cost Center Code is not available for {company}.",
+      "companyRequired": "Company Code is required.",
+      "companyAmbiguous": "Company Code \"{code}\" matches more than one company. Use the Company Code listed on the Reference sheet.",
+      "companyUnknown": "Company Code \"{code}\" does not match a company you can import for.",
+      "effectiveDate": "Effective Date must be a date in YYYY-MM-DD form.",
+      "employeeInvalid": "Employee ID is missing or invalid.",
+      "employeeAmbiguous": "Employee ID {code} matches more than one employee of {company}.",
+      "employeeNotInCompany": "Employee ID {code} is not an employee of {company} on {date}.",
+      "heldBack": "Another allocation for Employee ID {code} in this file has errors, so this employee is not imported. Correct that row first.",
+      "unavailable": "The allocation company, employee or effective date is unavailable.",
+      "saveFailed": "This employee could not be saved; nothing was changed for them.",
+      "file": {
+        "legacyLayout": "This file uses the old layout with an internal company identifier (company_id). Download the new template and fill in the Company Code column instead.",
+        "duplicateHeaders": "Duplicate allocation column headers are not allowed.",
+        "missingColumns": "Missing allocation columns: {columns}",
+        "unexpectedColumns": "Unexpected allocation columns: {columns}",
+        "tooManyRows": "Use at most 5000 allocation rows per file.",
+        "tooLarge": "Allocation file exceeds the supported size.",
+        "tooLarge10": "Choose a file no larger than 10 MB.",
+        "unreadableWorkbook": "The workbook could not be read. Download the template and try again.",
+        "utf8": "Save the CSV file as UTF-8.",
+        "fileType": "Choose the .xlsx template or a .csv file with the same columns.",
+        "unreadable": "This file could not be read.",
+        "noRows": "The file has no allocation rows."
+      }
+    },
+    "correction": {
+      "noFormula": "Formulas and error cells are not accepted.",
+      "textCode": "Enter a text code to preserve leading zeros.",
+      "date": "Use YYYY-MM-DD or an Excel date.",
+      "tooLong": "Maximum 1,000 characters.",
+      "periodUnit": "Enter the period and its unit together ({unit}).",
+      "notOption": "\"{value}\" is not an option for this company. Check the {sheet} reference sheet.",
+      "superiorUnknown": "The Employee ID is unknown or not visible to you.",
+      "organisationFormula": "Organisation columns cannot contain formulas or error cells.",
+      "organisationTooLong": "Organisation value: maximum 1,000 characters.",
+      "companyRequired": "Company Code is required.",
+      "employeeRequired": "Employee ID is required.",
+      "reasonShort": "Correction Reason must contain at least three characters.",
+      "duplicateEmployee": "This employee appears more than once. Keep one correction row per employee.",
+      "companyUnknown": "Company Code is unknown, ambiguous or outside your permission.",
+      "employeeUnknown": "Employee ID is unknown or ambiguous within the existing company.",
+      "newCompanyUnknown": "New Company Code is unknown, ambiguous or outside your permission.",
+      "gradeInactive": "Job Grade is not an active system code.",
+      "sameEmployee": "Multiple rows resolve to the same employee."
+    }
+  },
+  "importErrorLogEmployee": {
+    "problemsTitle": "Problems to fix",
+    "missingColumn": "This required column is missing from the sheet.",
+    "thisField": "this column",
+    "downloadFailed": "The Error Log could not be prepared. Try again.",
+    "correction": {
+      "reference": "Choose a {field} from the Reference sheet.",
+      "date": "Enter the date as YYYY-MM-DD or as an Excel date.",
+      "month": "Enter the month as YYYY-MM.",
+      "required": "Fill in {field} - it is required.",
+      "requiredForContract": "Fill in this column - it is required for Contract employees.",
+      "duplicateInFile": "This value appears more than once in the file - keep one row.",
+      "duplicateEmployeeId": "This Employee ID appears more than once in the file - keep one row.",
+      "duplicateInSystem": "This value is already used by another employee - enter a different one, or leave the row out.",
+      "number": "Enter a number (digits only, no currency sign).",
+      "choice": "Choose one of the values listed on the Instructions or Reference sheet.",
+      "yesNo": "Enter Yes or No.",
+      "email": "Enter a full email address, for example name@company.com.",
+      "notOnEmployeeSheet": "Add this employee to the employee sheet, or correct the Employee ID.",
+      "employeeNotFound": "Check the Employee ID. To add a new employee, use Everything - new employees first.",
+      "missingColumn": "Add the {field} column, using the current template, and upload again.",
+      "wrongSection": "Remove the column, or import it with the template that owns it.",
+      "system": "Try again. If it keeps happening, give the support reference to your administrator.",
+      "uploadAgain": "Fix the rows that stopped the import, then upload the whole file again."
+    }
+  },
+  "importProblems": {
+    "headers": {
+      "sheet": "Sheet",
+      "row": "Excel row",
+      "category": "Category",
+      "reference": "Reference",
+      "employeeName": "Employee name",
+      "field": "Field",
+      "value": "Value entered",
+      "problem": "What is wrong",
+      "correction": "How to fix it",
+      "stage": "Found while",
+      "result": "Result",
+      "errorReference": "Support reference"
+    },
+    "stage": {
+      "file": "Reading the file",
+      "check": "Checking the file",
+      "save": "Saving",
+      "system": "System error"
+    },
+    "result": {
+      "refused": "Not imported",
+      "skipped": "Skipped",
+      "stopped": "Stopped the import",
+      "cancelled": "Not saved - another row stopped the import",
+      "not_saved": "Not saved - upload the corrected file again"
+    },
+    "hiddenValue": "(hidden)",
+    "wholeFile": "Whole file",
+    "moreInLog": "{count} more problems are listed in the Error Log.",
+    "downloadLog": "Download Error Log",
+    "summary": {
+      "sheetTitle": "Summary",
+      "batch": "Import",
+      "file": "File",
+      "status": "Status",
+      "problems": "Problems",
+      "truncated": "This list was shortened when the import was recorded. Download the Error Log straight after an import to see every problem."
+    }
+  },
+  "automation": {
+    "crumb": "HR Automation",
+    "filterLabel": "Module",
+    "done": "Done",
+    "none": "None",
+    "noChoices": "No choices are available.",
+    "notAvailable": "{value} (no longer available)",
+    "modules": {
+      "all": "All modules",
+      "onb": "Onboarding",
+      "off": "Offboarding",
+      "contract_staff": "Contract staff",
+      "probation": "Probation"
+    },
+    "status": {
+      "live": "Live",
+      "paused": "Paused",
+      "retired": "Retired",
+      "required": "Required",
+      "attention": "Needs attention"
+    },
+    "ops": {
+      "is": "is",
+      "isNot": "is not",
+      "lt": "is less than",
+      "lte": "is at most",
+      "gte": "is at least"
+    },
+    "errors": {
+      "unavailable": "This could not be completed. Try again, or reload the page."
+    },
+    "recipients": {
+      "routing": "{name} (routing)",
+      "group": "{name} (group)"
+    },
+    "legacy": {
+      "workflows": "workflow builder",
+      "templates": "template builder",
+      "groups": "assignment groups",
+      "workflowsIntro": "This module keeps its own workflow builder until it moves to the shared builder. Its workflows are unchanged.",
+      "templatesIntro": "This module keeps its own templates until it moves to the shared builder. Its templates are unchanged.",
+      "groupsIntro": "Assignment groups are kept in the On/Off Boarding configuration.",
+      "openV9": "Open the On/Off Boarding {what}",
+      "openContract": "Open the Contract staff {what}",
+      "notAllowed": "You cannot configure this module."
+    },
+    "people": {
+      "title": "Named people",
+      "search": "Search people by name",
+      "placeholder": "Type at least two letters",
+      "find": "Find",
+      "add": "Add {name}",
+      "added": "Added",
+      "none": "Nobody matches."
+    },
+    "defaults": {
+      "install": "Install default Probation workflows",
+      "confirm": "Install the 16 default Probation workflows, 4 email templates and 2 routings? They are installed Paused. Anything already installed is left as it is.",
+      "done": "Installed {workflows} workflows, {emails} email templates and {routings} routings, all Paused. Review each one before making it live."
+    },
+    "workflows": {
+      "title": "Workflows",
+      "intro": "One builder for Onboarding, Offboarding, Contract staff and Probation. Active workflows run when their trigger and conditions match.",
+      "probationIntro": "Probation workflows send messages, generate letters, create Personnel postings and start offboarding. Overdue flags, scoring and gates run inside the probation module and cannot be switched off here.",
+      "requiredBanner": "{names} {count, plural, one {is} other {are}} required for probation but not live.",
+      "empty": "No Probation workflows yet. Create one, or install the default workflows.",
+      "new": "New workflow",
+      "newName": "New workflow",
+      "edit": "Edit",
+      "view": "View",
+      "editNamed": "Open {name}",
+      "probationNotAllowed": "You cannot configure Probation automation.",
+      "cardIntro": "Automate documents, emails, approvals and reminders for each case. Active workflows run when their trigger and conditions match."
+    },
+    "editor": {
+      "untitled": "Untitled workflow",
+      "name": "Workflow name",
+      "required": "Required for probation (pausing it shows a warning on the tracker)",
+      "whatStarts": "What starts it",
+      "chooseTrigger": "Choose…",
+      "workdays": "Count working days (Mon–Fri)",
+      "repeat": "Repeat every morning after that",
+      "skipWhen": "Skip when",
+      "onlyIf": "Only if",
+      "onlyIfHelp": "All conditions must match. Leave empty to apply to every case in this module.",
+      "multiHint": "Several values: is matches any, is not matches none.",
+      "addCondition": "Add condition",
+      "thenHelp": "Steps run in order. Use the arrows to reorder them.",
+      "stepOnlyIf": "Only run this step if",
+      "stepConditions": "Conditions of step {step}",
+      "addStepCondition": "Add step condition",
+      "stepConditionHint": "Leave empty to always run this step. A skipped step is noted in the case activity.",
+      "addStep": "Add a step",
+      "chooseStep": "Choose a step…",
+      "moveUp": "Move step {step} up",
+      "moveDown": "Move step {step} down",
+      "removeStep": "Remove step {step}",
+      "remove": "Remove",
+      "to": "To",
+      "cc": "CC",
+      "stepTo": "Step {step} To",
+      "stepCc": "Step {step} CC",
+      "subject": "Subject",
+      "message": "Message",
+      "insertMergeField": "Insert merge field…",
+      "insertMerge": "Insert merge field into the {where} of step {step}",
+      "mergeHelp": "Pick a merge field from the list, or type it in double curly brackets, for example {example}.",
+      "emailTemplate": "Email template",
+      "emailSubject": "Subject: {subject} (set in the email template)",
+      "emailFromTemplate": "The subject and message come from the email template.",
+      "choose": "Choose…",
+      "letterTemplate": "Letter template",
+      "letterTemplateId": "Letter template id",
+      "letterNote": "The letter is generated from the chosen Probation letter template and pauses until it is signed. Its signing and review routing is set in the template.",
+      "postingEvent": "Event type in Personnel Management",
+      "postingNote": "Each outcome logs its own event type. The posting is approved in Personnel postings, and Personnel Management only changes after approval.",
+      "exitReason": "Exit reason on the offboarding case",
+      "offboardingNote": "Runs once per case, for Non-confirmation only.",
+      "problems": "Problems",
+      "warnings": "Notes",
+      "note": "Change note (optional)",
+      "notePlaceholder": "Why this change was made",
+      "makeLive": "Make it live",
+      "pause": "Pause",
+      "save": "Save changes",
+      "retire": "Retire workflow",
+      "back": "Back to workflows",
+      "fixFirst": "Fix the problems above first",
+      "retireConfirm": "Retire this workflow? It stops for good. Runs already waiting keep their steps.",
+      "leaveUnsaved": "Leave without saving your changes?",
+      "runsKeep": "Changes are saved when you press a button. Runs already waiting keep the steps they started with.",
+      "retiredReadOnly": "This workflow is retired and can no longer change.",
+      "isLive": "“{name}” is live.",
+      "paused": "“{name}” is paused. Nothing new starts; runs already waiting keep their steps.",
+      "retired": "“{name}” is retired.",
+      "saved": "Saved.",
+      "reasonSave": "Edited in the workflow builder",
+      "reasonLive": "Made live in the workflow builder",
+      "reasonPause": "Paused in the workflow builder",
+      "reasonRetire": "Retired in the workflow builder"
+    },
+    "conditions": {
+      "field": "Condition field",
+      "operator": "Condition operator",
+      "valueFor": "Condition value for {field}",
+      "typeValues": "Type values, separated by commas",
+      "unavailable": "not available for this trigger",
+      "remove": "Remove condition"
+    },
+    "dry": {
+      "title": "Dry run",
+      "intro": "A dry run shows what would happen for one case. Nothing is sent and nothing is saved. Date-based triggers run from the nightly scheduler, so they can only be checked here.",
+      "searchCase": "Find a probation case",
+      "searchPlaceholder": "Employee name",
+      "findCases": "Find cases",
+      "noCases": "No probation case you can open matches.",
+      "testCase": "Test case",
+      "pendingNote": "On a real case the system checks whose step is pending on the day the reminder runs.",
+      "run": "Run the dry run",
+      "result": "Dry run result",
+      "runDate": "Would run on {date}.",
+      "repeats": "Then every morning after that.",
+      "wouldRun": "Would run for {name}.",
+      "wouldNotRun": "Would not run for {name}.",
+      "unavailable": "not available for this trigger",
+      "thisCase": "this case: {value}",
+      "empty": "empty",
+      "to": "to {names}",
+      "cc": "CC {names}",
+      "nobody": "nobody",
+      "skipped": "skipped: {why}",
+      "nothingSent": "Nothing is sent and nothing is saved."
+    },
+    "templates": {
+      "title": "Templates",
+      "intro": "Document templates and email templates. A workflow decides when a document is generated or an email is sent.",
+      "documents": "Document templates",
+      "documentsIntro": "Probation letters, with their signing and review routing, are edited in the letter template editor.",
+      "noLetterCompany": "You do not configure Probation letters for any company.",
+      "company": "Company",
+      "goLive": "Go-live check: {count} of 3 probation letters published.",
+      "noLetters": "No letter templates yet.",
+      "letterLine": "Letter · version {version} · {state}",
+      "state": {
+        "draft": "draft",
+        "published": "in use",
+        "retired": "retired"
+      },
+      "openLetterEditor": "Open the letter template editor",
+      "emails": "Email templates",
+      "emailsIntro": "The words, merge fields and extra CC. A workflow decides when it is sent. Turning a template off skips its Send email steps and notes it on the case; nothing else changes.",
+      "noEmails": "No Probation email templates yet.",
+      "newEmail": "New email",
+      "newName": "New email",
+      "editNamed": "Open email template {name}",
+      "editorTitle": "Email template {name}",
+      "turnedOff": "turned off",
+      "name": "Template name",
+      "active": "Send this email (on)",
+      "offNote": "This template is turned off. Send email steps that use it are skipped and noted on the case.",
+      "cc": "Always copy (CC)",
+      "insertMerge": "Insert merge field into the {where}",
+      "fixFirst": "Fix the problems before saving.",
+      "save": "Save template",
+      "retire": "Retire template",
+      "retireConfirm": "Retire this email template? Workflows that use it will show a problem until another template is chosen.",
+      "close": "Close",
+      "reasonCreate": "Created in the template builder",
+      "reasonSave": "Edited in the template builder",
+      "reasonRetire": "Retired in the template builder",
+      "goLiveReady": "All outcome letters are ready.",
+      "goLiveMissing": "Publish a letter template for each outcome before go-live.",
+      "letter": "Letter",
+      "versionPill": "v{version} {state}",
+      "editLetter": "Edit {name} in the letter template editor",
+      "signing": {
+        "chain": "signing: {chain}",
+        "existing": "signing: the existing letter signing route",
+        "missing": "a routing or group that was removed",
+        "people": "{count, plural, one {1 named person} other {# named people}}",
+        "employee": "the employee",
+        "directSuperior": "the Direct Superior",
+        "action": {
+          "review": "Review",
+          "approve": "Approve",
+          "sign": "Sign"
+        }
+      }
+    },
+    "groups": {
+      "title": "Assignment groups",
+      "intro": "Groups and routing rules are shared by Onboarding, Offboarding, Contract staff and Probation.",
+      "groups": "Assignment groups",
+      "groupsIntro": "Round robin skips people on leave and people at their open task limit. Groups and their members are edited in the On/Off Boarding configuration.",
+      "noGroups": "No assignment groups yet.",
+      "usedBy": "{count, plural, =0 {Not used by a routing} one {Used by # routing} other {Used by # routings}}",
+      "editGroups": "Edit assignment groups in On/Off Boarding",
+      "groupsReadOnly": "Only On/Off Boarding administrators can change groups and their members.",
+      "routings": "Routing rules",
+      "routingIntro": "Each routing finds who acts for an employee. Pick a routing by name in any To or CC list, or in an approval or signing step, when the person depends on who the employee is. The most specific matching row wins; leave a field on Any to match everyone.",
+      "approvalNote": "In an approval or signing step a routing yields one person (any member or round robin). As a To or CC recipient it yields everyone in the matched group or list.",
+      "newRouting": "New routing",
+      "newRoutingName": "New routing",
+      "noRoutings": "No routings yet. Create one to route approvals and messages by business group, company, department or job title.",
+      "retired": "{count, plural, one {# retired routing} other {# retired routings}}",
+      "routingName": "Routing name",
+      "duplicateName": "Another routing already has this name.",
+      "usedIn": "Used in: {list}{more, plural, =0 {} other { and # more}}",
+      "notUsed": "Not used in any workflow yet",
+      "dimension": {
+        "businessGroup": "Business group",
+        "company": "Company",
+        "department": "Department",
+        "jobTitle": "Job title"
+      },
+      "rowDimension": "Row {row} {dimension}",
+      "any": "Any",
+      "assignTo": "Assign to",
+      "assignGroup": "Assignment group",
+      "assignPeople": "Specific people",
+      "group": "Group",
+      "people": "People (1 to {max})",
+      "rowPeople": "Row {row} people",
+      "removeRow": "Remove row {row}",
+      "addRow": "Add row",
+      "matches": "Matches employees with {what}",
+      "matchesEveryone": "Default: matches everyone no other row matches",
+      "goesTo": "goes to {who}",
+      "toGroup": "everyone in “{name}”",
+      "noGroupChosen": "no group chosen",
+      "noPeopleChosen": "nobody yet",
+      "unknownPerson": "someone who can no longer be found",
+      "fixFirst": "Fix the routing before saving it.",
+      "save": "Save routing",
+      "retire": "Retire routing",
+      "retireConfirm": "Retire this routing? {count, plural, =0 {No workflow uses it.} one {# workflow uses it and will show a problem.} other {# workflows use it and will show a problem.}}",
+      "retiredNow": "“{name}” is retired.",
+      "cancel": "Cancel",
+      "reasonCreate": "Created in the routing rules",
+      "reasonSave": "Edited in the routing rules",
+      "reasonRetire": "Retired in the routing rules",
+      "routingNamed": "Routing “{name}”",
+      "usedByList": "Used by: {list}",
+      "groupName": "Group name"
+    },
+    "move": {
+      "title": "Move Probation workflows to shared workflows",
+      "help": "Moves each workflow of the Probation workflow builder whose shared form reaches the same people with the same words. A moved workflow goes Live here and stops sending from the Probation builder, so nobody is notified twice. The rest stay where they are and are listed with the reason. Running it again moves nothing twice.",
+      "reason": "Reason (kept in the audit history)",
+      "button": "Move to shared workflows",
+      "confirm": "Move the Probation workflows that convert exactly? Each moved workflow goes Live here and stops sending from the Probation builder.",
+      "done": "Moved {moved}; {kept} stay on the Probation builder; {already} were moved before.",
+      "result": "Move result",
+      "moved": "Moved",
+      "kept": "Staying on the Probation builder",
+      "none": "There was nothing left to move."
+    }
+  },
+  "personnelPostings": {
+    "breadcrumb": "Probation Confirmation / Personnel postings",
+    "title": "Personnel postings",
+    "intro": "Changes to Personnel Management created by Probation workflows wait here. Approve applies the change; Edit opens the event movement in Personnel Management.",
+    "rule": "Only members of the group set in Probation settings › “Who approves Personnel postings” can approve, by Approve or by Save event. Anyone who can record events can Edit; their changes wait for an approver. Nothing reaches Personnel Management until approval.",
+    "columns": {
+      "posting": "Posting",
+      "employee": "Employee",
+      "eventType": "Event type",
+      "change": "Change",
+      "created": "Created",
+      "status": "Status",
+      "actions": "Actions",
+      "from": "From"
+    },
+    "events": {
+      "confirmation": "Confirmation",
+      "probationExtension": "Probation Extension"
+    },
+    "change": {
+      "confirmation": "Confirmation Date {date} · status Probation → Active",
+      "probationExtension": "Probation extended · new end date {end} · effective {date}",
+      "remarks": "Remarks: {remarks}"
+    },
+    "status": {
+      "pending": "Pending",
+      "edited": "Edited · waiting for approval",
+      "approved": "Approved"
+    },
+    "editedNote": "Edited by {name} {date}: {changes}",
+    "fields": {
+      "effectiveDate": "effective date",
+      "endDate": "end date",
+      "remarks": "remarks"
+    },
+    "fieldChange": "{field} {before} → {after}",
+    "someone": "a colleague",
+    "unknownGroup": "the posting approver group",
+    "approve": "Approve",
+    "edit": "Edit",
+    "editLabel": "Edit {posting} in Personnel Management",
+    "approveOnlyGroup": "Only {group} can approve",
+    "filters": {
+      "label": "Show postings",
+      "pending": "Waiting for approval",
+      "approved": "Approved",
+      "all": "All"
+    },
+    "empty": "No postings here.",
+    "previous": "Previous",
+    "next": "Next",
+    "saved": {
+      "approved": "Posting {posting} approved. Personnel Management is updated.",
+      "edited": "Your changes to posting {posting} are saved and wait for approval."
+    },
+    "movement": {
+      "banner": "From Personnel posting {posting} · Probation Confirmation.",
+      "approverHint": "You are in the posting approver group ({group}): saving applies this event, approves the posting as you and clears the pending state on the case.",
+      "editorHint": "You can correct these details. The posting stays Pending until {group} approves it; Personnel Management does not change yet.",
+      "leaveHint": "Leaving without saving changes nothing.",
+      "saveAndApprove": "Save event and approve",
+      "saveForApproval": "Save changes for approval",
+      "notPending": "Posting {posting} is no longer waiting for approval.",
+      "backToPostings": "Back to Personnel postings"
+    },
+    "introGroup": "Changes to Personnel Management created by workflows wait here as drafts. Approve applies the change, and Edit opens the event movement in Personnel Management. Probation postings are approved by <b>{group}</b>, set in Probation settings.",
+    "sources": {
+      "probation": "Probation"
+    },
+    "approverGroupFallback": "the posting approver group"
+  },
+  "probationLetters": {
+    "routing": {
+      "title": "Signing and review routing",
+      "help": "Who reviews, approves and signs this letter, and in what order. Steps with the same order number happen at the same time, and the letter moves on when all of them are done. Who each step resolves to comes from Assignment groups and Routing rules. A Review step can edit the letter until the first signature; after that the text is locked. Anyone can send the letter back with a comment: every signature is cleared and it returns to the step that owns the document (or the People Business Partner if none is ticked).",
+      "empty": "No signing routing set. This letter uses the signing route below, as today.",
+      "notStored": "Signing and review routing is switched on together with the new letter flow. Until then this letter uses the signing route below.",
+      "stepTitle": "Step {n}",
+      "order": "Order",
+      "action": "Action",
+      "who": "Who",
+      "owner": "Owns the document",
+      "pick": "Choose one person by",
+      "pickAny": "Any member",
+      "pickRoundRobin": "Round robin",
+      "oneOfGroup": "A routing or group gives one person for this step, chosen by the rule above.",
+      "actions": {
+        "review": "Review",
+        "approve": "Approve",
+        "sign": "Sign"
+      },
+      "hint": {
+        "review": "Can edit the letter until the first signature. Shown in Approval Items.",
+        "approve": "A decision with no signature. Shown in Approval Items.",
+        "sign": "Signs the letter. The last step releases it. Signers can’t edit the text.",
+        "owner": "Send-backs come to this step."
+      },
+      "whoEmployee": "The employee",
+      "whoDirectSuperior": "Their Direct Superior",
+      "whoRouting": "Routing: {name}",
+      "whoGroup": "Assignment group: {name}",
+      "whoPeople": "Named people",
+      "unknown": "No longer available",
+      "people": "People at this step",
+      "removePerson": "Remove {name}",
+      "remove": "Remove step {n}",
+      "add": "Add signing step",
+      "problems": "Problems",
+      "blocks": "Signature blocks",
+      "blocksHelp": "Who signs comes from the signing routing above. This only decides where that signature prints.",
+      "noBlocks": "This version has no signature block yet. Add one in the content.",
+      "blockLabel": "Signature block {n}",
+      "chooseStep": "Choose a signing step…",
+      "stepOption": "Step {order} · Sign · {who}",
+      "oldSetting": "{role} (old setting — choose a step)",
+      "stepRemoved": "Signing step removed — choose another"
+    },
+    "preview": {
+      "caseLabel": "Preview values for",
+      "chooseCase": "Choose a case",
+      "loading": "Loading the case’s values…",
+      "noOutcome": "This case has no decided outcome yet, so merge fields show as placeholders.",
+      "notPublished": "Case values can be previewed for a saved, published version that matches the case’s outcome. Merge fields show as placeholders.",
+      "unavailable": "The preview values are unavailable right now."
+    },
+    "history": {
+      "routingSteps": "{count, plural, =0 {no routing} one {# routing step} other {# routing steps}}"
+    }
+  },
+  "automationRuntime": {
+    "status": {
+      "running": "Running",
+      "waiting": "Waiting for the document",
+      "done": "Finished",
+      "skipped": "Skipped",
+      "failed": "Stopped"
+    },
+    "log": {
+      "started": "Started",
+      "skipped": "Skipped",
+      "stepDone": "Step done",
+      "stepSkipped": "Step skipped",
+      "stepFailed": "Step failed",
+      "waiting": "Waiting",
+      "resumed": "Continued",
+      "done": "Finished",
+      "failed": "Stopped"
+    },
+    "noWorkflow": "No workflow matched this case, so it was sent to the People Business Partner.",
+    "fallback": "Meant for {meantFor}; sent to the fallback group because nobody was found."
+  },
+  "probationAccess": {
+    "breadcrumb": "Probation Confirmation / Configuration / Access",
+    "title": "Access",
+    "intro": "Same access model as Contract Management. Line Managers get access automatically through the Direct Superiors rule. Business Partners and everyone else aren’t given access automatically: create a role below and add them as members with the right scope. System Administrators manage this page and every Probation setting; to see or act on cases they add themselves to a role like anyone else.",
+    "forbidden": "Only a System Administrator or someone who manages access can open Probation access.",
+    "on": "On",
+    "off": "Off",
+    "superiors": {
+      "title": "Direct Superiors",
+      "intro": "Anyone named as an employee’s Direct Superior in Personnel Management gets these permissions for that employee’s cases.",
+      "enabled": "Rule is on",
+      "view": "View cases",
+      "kpis": "Set Week 1 KPIs",
+      "assessments": "Complete assessments",
+      "alwaysOn": "always on",
+      "declined": "Record a declined signature",
+      "offWarning": "With the rule off, Line Managers can’t see their team’s cases, set KPIs or complete assessments, so reviews would stall. Only switch it off if another role covers this.",
+      "save": "Save rule",
+      "saved": "Direct Superiors rule saved.",
+      "savedOff": "Direct Superiors rule saved. Line Managers no longer get automatic access."
+    },
+    "roles": {
+      "title": "Roles",
+      "intro": "Create a role, choose what it can see and do, and add its members, each with a business group and company scope.",
+      "newRole": "+ New role",
+      "newRoleName": "New role",
+      "name": "Role name",
+      "save": "Save role",
+      "cancel": "Cancel",
+      "delete": "Delete role",
+      "deleteConfirm": "Delete {name}? Its members lose these permissions now.",
+      "empty": "No roles yet. Create a role to give Business Partners and others access.",
+      "cases": "Cases (within each member’s scope)",
+      "settings": "Settings",
+      "postingsNote": "Decides who may choose the posting-approver group in Probation settings. Only that group approves Personnel postings.",
+      "actNote": "A member never acts on their own probation.",
+      "created": "Role {name} created.",
+      "saved": "Role {name} saved.",
+      "deleted": "Role {name} deleted."
+    },
+    "permissions": {
+      "view": "View cases",
+      "letters": "Approve and release letters",
+      "lowResult": "Record low-result actions",
+      "route": "Change a case’s route",
+      "configure": "Configure probation",
+      "intake": "Intake and activation",
+      "postings": "Approve Personnel postings"
+    },
+    "members": {
+      "title": "Members",
+      "empty": "No members yet.",
+      "businessGroup": "Business group",
+      "allBusinessGroups": "All business groups",
+      "company": "Company",
+      "allCompanies": "All companies",
+      "validFrom": "Valid from",
+      "validTo": "Valid to (optional)",
+      "active": "Active",
+      "scheduled": "Scheduled",
+      "expired": "Expired",
+      "save": "Save",
+      "remove": "Remove",
+      "removeLabel": "Remove {name} from {role}",
+      "add": "+ Add member",
+      "find": "Find a person",
+      "search": "Search",
+      "noMatch": "No active person matches “{query}”.",
+      "addPerson": "Add {name}",
+      "added": "{name} added to {role}.",
+      "changed": "{name}’s scope saved.",
+      "removed": "{name} removed from {role}."
+    },
+    "earlier": {
+      "title": "Earlier PBP and GBS assignments",
+      "intro": "These assignments were made before roles existed and still apply.",
+      "pbp": "People Business Partner",
+      "gbs": "GBS People Ops",
+      "validFrom": "from {date}",
+      "validTo": "until {date}"
+    }
   },
   "recruitment": {
     "noCompany": "None of the companies in your current scope has Recruitment that you manage. Switch company or ask a group administrator for the Recruiting Partner role.",
@@ -41586,858 +43888,6 @@
       "repeat": "This candidate is already waiting for review for this position from your contract.",
       "dailyLimit": "You have reached today's limit of 20 submissions. Try again tomorrow.",
       "notAvailable": "This position is no longer open to your contract."
-    }
-  },
-  "bulkJobs": {
-    "notification": {
-      "employeeImport": {
-        "completed": {
-          "title": "Employee import finished",
-          "body": "Open Import History to see the employees that were added."
-        },
-        "failed": {
-          "title": "Employee import stopped",
-          "body": "No employees were added. Open Import History to see why."
-        },
-        "cancelled": {
-          "title": "Employee import cancelled",
-          "body": "No employees were added. Open Import History for details."
-        }
-      },
-      "leaveImport": {
-        "completed": {
-          "title": "Leave import finished",
-          "body": "The imported rows are now in employees' leave balances."
-        },
-        "failed": {
-          "title": "Leave import stopped",
-          "body": "Rows already saved are kept. Importing the same file again skips them."
-        },
-        "cancelled": {
-          "title": "Leave import cancelled",
-          "body": "Rows already saved are kept. Importing the same file again skips them."
-        }
-      },
-      "leaveProcessing": {
-        "completed": {
-          "title": "Leave processing finished",
-          "body": "The leave figures have been updated."
-        },
-        "failed": {
-          "title": "Leave processing stopped",
-          "body": "Employees already processed keep their figures. Run it again to complete the rest."
-        },
-        "cancelled": {
-          "title": "Leave processing cancelled",
-          "body": "Employees already processed keep their figures. Run it again to complete the rest."
-        }
-      },
-      "roster": {
-        "completed": {
-          "title": "Roster change finished",
-          "body": "Open the roster to see the result."
-        },
-        "failed": {
-          "title": "Roster change stopped",
-          "body": "Open the roster to see why."
-        },
-        "cancelled": {
-          "title": "Roster change cancelled",
-          "body": "Open the roster for details."
-        }
-      },
-      "scheduleGroup": {
-        "completed": {
-          "title": "Schedule Group assignment finished",
-          "body": "Open Assign Schedule Group to see the result."
-        },
-        "failed": {
-          "title": "Schedule Group assignment stopped",
-          "body": "Open Assign Schedule Group to see why."
-        },
-        "cancelled": {
-          "title": "Schedule Group assignment cancelled",
-          "body": "Open Assign Schedule Group for details."
-        }
-      },
-      "clockingImport": {
-        "completed": {
-          "title": "Clocking import finished",
-          "body": "Open the import logs to see the clockings that were added."
-        },
-        "failed": {
-          "title": "Clocking import stopped",
-          "body": "Open the import logs to see what was saved and why it stopped."
-        },
-        "cancelled": {
-          "title": "Clocking import stopped",
-          "body": "Open the import logs to see what was saved."
-        }
-      },
-      "attendanceRecomputePreview": {
-        "completed": {
-          "title": "Recompute preview ready",
-          "body": "Open Recompute Attendance to review what would change."
-        },
-        "failed": {
-          "title": "Recompute preview stopped",
-          "body": "Open Recompute Attendance to see why."
-        },
-        "cancelled": {
-          "title": "Recompute preview stopped",
-          "body": "Open Recompute Attendance to start it again."
-        }
-      },
-      "attendanceRecompute": {
-        "completed": {
-          "title": "Attendance recalculated",
-          "body": "Open Recompute Attendance to see the days that changed."
-        },
-        "failed": {
-          "title": "Attendance recompute stopped",
-          "body": "Open Recompute Attendance to see why."
-        },
-        "cancelled": {
-          "title": "Attendance recompute stopped",
-          "body": "Open Recompute Attendance for details."
-        }
-      },
-      "payrollProcess": {
-        "completed": {
-          "title": "Payroll processing finished",
-          "body": "Open Payroll to review the processed run."
-        },
-        "failed": {
-          "title": "Payroll processing stopped",
-          "body": "The run is back in draft and no payslips were kept. Open Payroll to see why."
-        },
-        "cancelled": {
-          "title": "Payroll processing cancelled",
-          "body": "The run is back in draft and no payslips were kept."
-        }
-      },
-      "systemLabelImport": {
-        "completed": {
-          "title": "System Labels import finished",
-          "body": "Open System Labels to see the codes that were added."
-        },
-        "failed": {
-          "title": "System Labels import stopped",
-          "body": "No codes were added. Open System Labels and preview the workbook again."
-        },
-        "cancelled": {
-          "title": "System Labels import cancelled",
-          "body": "No codes were added."
-        }
-      },
-      "sectionImport": {
-        "completed": {
-          "title": "Section import finished",
-          "body": "Open Import to see the rows that were updated."
-        },
-        "failed": {
-          "title": "Section import stopped",
-          "body": "Rows saved before it stopped were kept. Open Import to see why."
-        },
-        "cancelled": {
-          "title": "Section import cancelled",
-          "body": "Rows saved before it stopped were kept. Open Import for details."
-        }
-      },
-      "registerImport": {
-        "completed": {
-          "title": "Register import finished",
-          "body": "Open Import to see the register records that were saved."
-        },
-        "failed": {
-          "title": "Register import stopped",
-          "body": "No register records were saved. Open Import to see why."
-        },
-        "cancelled": {
-          "title": "Register import cancelled",
-          "body": "No register records were saved. Open Import for details."
-        }
-      },
-      "employeeImportRevert": {
-        "completed": {
-          "title": "Import revert finished",
-          "body": "Open Import History to see the employees that were voided."
-        },
-        "failed": {
-          "title": "Import revert stopped",
-          "body": "Nothing was changed. Open Import History to see why."
-        },
-        "cancelled": {
-          "title": "Import revert cancelled",
-          "body": "Nothing was changed. Open Import History for details."
-        }
-      },
-      "leaveGeneration": {
-        "completed": {
-          "title": "Entitlement generation finished",
-          "body": "The leave figures have been updated."
-        },
-        "failed": {
-          "title": "Entitlement generation stopped",
-          "body": "Nothing was changed. Open Generate Entitlement to see why, then run it again."
-        },
-        "cancelled": {
-          "title": "Entitlement generation cancelled",
-          "body": "Nothing was changed."
-        }
-      },
-      "leaveRecalculation": {
-        "completed": {
-          "title": "Leave balances recalculated",
-          "body": "Employees' leave figures now follow the saved settings."
-        },
-        "failed": {
-          "title": "Leave recalculation stopped",
-          "body": "Employees already recalculated keep their new figures. Save the setting again to recalculate the rest."
-        },
-        "cancelled": {
-          "title": "Leave recalculation cancelled",
-          "body": "Employees already recalculated keep their new figures. Save the setting again to recalculate the rest."
-        }
-      },
-      "leaveYearType": {
-        "completed": {
-          "title": "Leave year type applied",
-          "body": "First-year employees' leave figures now follow the saved leave year type."
-        },
-        "failed": {
-          "title": "Leave year type not applied to balances",
-          "body": "No leave figures were changed. Save the leave year type again to retry."
-        },
-        "cancelled": {
-          "title": "Leave year type correction cancelled",
-          "body": "No leave figures were changed."
-        }
-      },
-      "toilSweep": {
-        "completed": {
-          "title": "Replacement leave settlement finished",
-          "body": "The replacement leave credits that were due have been settled. Open Leave Credit to review them."
-        },
-        "failed": {
-          "title": "Replacement leave settlement stopped",
-          "body": "Credits already settled stay settled. Run it again to settle the rest."
-        },
-        "cancelled": {
-          "title": "Replacement leave settlement cancelled",
-          "body": "Credits already settled stay settled. Run it again to settle the rest."
-        }
-      },
-      "payrollHistory": {
-        "completed": {
-          "title": "Payroll history change committed",
-          "body": "Open the import log to see what was committed."
-        },
-        "failed": {
-          "title": "Payroll history change stopped",
-          "body": "No payroll history was changed. Open the import log to see why."
-        },
-        "cancelled": {
-          "title": "Payroll history change cancelled",
-          "body": "No payroll history was changed."
-        }
-      },
-      "payrollReprocess": {
-        "completed": {
-          "title": "Payroll reprocess finished",
-          "body": "Open the run to review the reprocessed employees."
-        },
-        "failed": {
-          "title": "Payroll reprocess stopped",
-          "body": "Employees already reprocessed keep their new results. Open the run to see where it stopped."
-        },
-        "cancelled": {
-          "title": "Payroll reprocess cancelled",
-          "body": "Employees already reprocessed keep their new results."
-        }
-      },
-      "movementImport": {
-        "completed": {
-          "title": "Movement import finished",
-          "body": "Open Import History to see the movements that were saved and any employees that could not be."
-        },
-        "failed": {
-          "title": "Movement import stopped",
-          "body": "Open Import History to see why. Employees already saved keep their movements."
-        },
-        "cancelled": {
-          "title": "Movement import stopped",
-          "body": "Employees already saved keep their movements. Open Import History for details."
-        }
-      },
-      "movementCheck": {
-        "completed": {
-          "title": "Movement file checked",
-          "body": "The check is recorded in Import History. If you left the import screen, upload the file again to review and confirm it."
-        },
-        "failed": {
-          "title": "Movement check stopped",
-          "body": "Open Import History to see why. Nothing was saved."
-        },
-        "cancelled": {
-          "title": "Movement check stopped",
-          "body": "Nothing was saved. Open Import History for details."
-        }
-      },
-      "movementImportRevert": {
-        "completed": {
-          "title": "Movement import revert finished",
-          "body": "Open Import History to see the movements that were rolled back."
-        },
-        "failed": {
-          "title": "Movement import revert stopped",
-          "body": "Nothing was changed. Open Import History to see why."
-        },
-        "cancelled": {
-          "title": "Movement import revert cancelled",
-          "body": "Nothing was changed. Open Import History for details."
-        }
-      },
-      "recruitmentImport": {
-        "completed": {
-          "title": "Candidate import finished",
-          "body": "Open the import to see the result row by row and any candidates waiting on the To assign list."
-        },
-        "failed": {
-          "title": "Candidate import stopped",
-          "body": "A problem stopped the import. Rows already imported stay; open the import to see the result."
-        },
-        "cancelled": {
-          "title": "Candidate import stopped",
-          "body": "The import was stopped. Rows already imported stay; open the import to see the result."
-        }
-      }
-    },
-    "panel": {
-      "queued": "Waiting to start",
-      "preparing": "Checking every change",
-      "running": "Saving",
-      "finalizing": "Finishing",
-      "discarding": "Stopping",
-      "completed": "Finished",
-      "failed": "Stopped",
-      "cancelled": "Cancelled",
-      "progressCount": "{done} of {total} steps complete",
-      "backgroundHelp": "You can leave this page. The work continues and you will be notified when it finishes.",
-      "waiting": "Waiting for the background service. Progress is saved; do not start this again.",
-      "workerUnavailable": "The background service is not running yet. Your request is saved and starts automatically as soon as it is."
-    },
-    "roster": {
-      "generate": "Generating the roster",
-      "copy": "Copying the roster",
-      "assign": "Applying the roster change",
-      "import": "Saving the uploaded roster",
-      "otherRunning": "Another roster change is still being saved. Wait for it to finish, then try again.",
-      "saveFailed": "The roster change could not be saved. Please try again, or ask an HR administrator.",
-      "queuedBehind": "Queued behind another roster job. It starts automatically as soon as that one finishes."
-    },
-    "scheduleGroup": {
-      "title": "Assigning the Schedule Group",
-      "otherRunning": "Another Schedule Group assignment is still being saved. Wait for it to finish, then try again.",
-      "queuedBehind": "Queued behind another Schedule Group assignment. It starts automatically as soon as that one finishes."
-    }
-  },
-  "importLog": {
-    "batchReference": "Batch reference",
-    "importedBy": "Imported by",
-    "batchLabel": "Batch {code}",
-    "actorWithId": "{name} ({employeeId})",
-    "actorUnlinked": "Administrator login (no employee record · login ending {suffix})",
-    "actorUnavailable": "Unavailable user"
-  },
-  "scheduleOvertimeSetting": {
-    "title": "Overtime Setting",
-    "intro": "Controls how overtime is captured, approved, offset and rounded for employees in this Schedule Group. It applies from its start date: earlier days, clocking records, lateness records and past payroll are never recalculated.",
-    "companiesLabel": "Applies to",
-    "allCompanies": "All companies",
-    "selectedCompanies": "Selected companies",
-    "effectiveFrom": "Start date",
-    "effectiveHint": "After today, and after any start already saved for a chosen company.",
-    "applicabilityTitle": "Overtime Applicability",
-    "beforeShift": "Before Shift Overtime",
-    "beforeShiftHint": "Allow overtime before the scheduled shift.",
-    "afterShift": "After Shift Overtime",
-    "afterShiftHint": "Allow overtime after the scheduled shift.",
-    "allowBackdated": "Allow Request Backdated Overtime Without Clocking",
-    "allowBackdatedHint": "Employees may request backdated overtime with no matching clocking. HR still records the actual worked period before it counts.",
-    "splitAtMidnight": "Split Overtime at Midnight",
-    "splitAtMidnightHint": "Overtime after midnight belongs to the next calendar day as early overtime. Example: 10:00 PM to 2:00 AM gives 2 hours on each date.",
-    "offsetTitle": "Offset Overtime by Lateness",
-    "offsetLateness": "Offset Overtime by Lateness",
-    "offsetHint": "Deduct late-in minutes from eligible overtime. Example: 20 minutes late against 60 eligible minutes leaves 40. The recorded lateness is kept.",
-    "showLatenessException": "Show Lateness Exception After Offset",
-    "showLatenessExceptionHint": "Show a lateness exception for lateness that remains after the offset.",
-    "approvalTitle": "Overtime Approval Method",
-    "approvalManual": "Manual",
-    "approvalAuto": "Auto",
-    "approvalManualHint": "Attendance creates no payable overtime. Clocking records are kept, and overtime is entered by hand in Payroll.",
-    "autoMethod": "Auto Overtime Approval Method",
-    "methodIntersect": "Intersect Actual and Pre-Approved",
-    "methodActual": "Actual Hours",
-    "methodPreApproved": "Approved Overtime",
-    "methodIntersectHint": "Pays the lower of the approved and actual minutes: approved 120 and actual 90 pays 90.",
-    "methodActualHint": "Pays the actual eligible minutes, with no approved limit.",
-    "methodPreApprovedHint": "Pays the approved duration: approved 120 and actual 90 pays 120.",
-    "patternsTitle": "Overtime Pattern for each day type",
-    "patternsHint": "Overtime pay is calculated by the chosen Overtime Pattern. Only patterns active for every chosen company are listed.",
-    "patternsNone": "No Overtime Pattern is active for every chosen company. Activate one in Overtime Patterns to use Auto, or choose Manual.",
-    "choosePattern": "Choose an Overtime Pattern",
-    "dayNormal": "Working day",
-    "dayOff": "Off day",
-    "dayRest": "Rest day",
-    "dayPublicHoliday": "Public holiday",
-    "dayReplacementHoliday": "Replacement holiday",
-    "roundingTitle": "Overtime Rounding",
-    "roundingMethod": "Overtime Rounding Method",
-    "roundUp": "Round Up",
-    "roundDown": "Round Down",
-    "roundingStep": "Overtime Rounding to Minute",
-    "stepMinutes": "{n} Minutes",
-    "roundingHint": "Rounding is applied last, after the approval method and the lateness offset. The recorded clocking duration is not changed.",
-    "unsupportedRounding": "The saved rounding uses an option this section does not offer. Saving replaces it from the new start date.",
-    "differs": "{n, plural, one {# company has} other {# companies have}} a different Overtime Setting, or none. Saving applies this setting to every chosen company.",
-    "savedFrom": "The saved setting starts on {date}.",
-    "none": "No Overtime Setting is saved yet. This group's overtime works as before until one is saved.",
-    "save": "Save Overtime Setting",
-    "systemReason": "Schedule Group Overtime Setting saved",
-    "on": "On",
-    "off": "Off",
-    "payrollNote": "Payroll receives the final overtime figures from this setting, the same way it receives overtime today."
-  },
-  "attendanceOnBehalf": {
-    "requestTitle": "Request On Behalf",
-    "requestHelp": "Choose the employee, then file Attendance Irregularity or Self Overtime for them on the usual screens. The request follows their own workflow and approvers.",
-    "approveTitle": "Approve On Behalf",
-    "approveHelp": "Choose the designated approver whose pending attendance requests you need to handle.",
-    "approveListHelp": "Requests waiting for {name} that you may decide on their behalf.",
-    "searchLabel": "Search by Employee ID or name",
-    "searchPlaceholder": "e.g. EMP-0123 or a name",
-    "search": "Search",
-    "results": "Employees you may act for",
-    "noResults": "No employee you may act for matches this search.",
-    "noPermission": "Your role does not have this permission. Ask an administrator if you need it.",
-    "choose": "Select",
-    "employeeName": "Employee",
-    "employeeId": "Employee ID",
-    "company": "Company",
-    "department": "Department",
-    "changeEmployee": "Change employee",
-    "chooseCategory": "What would you like to file?",
-    "irregularity": "Attendance Irregularity",
-    "irregularityHelp": "Missing or wrong clock times, short hours or absence, for the employee's own days.",
-    "selfOvertime": "Self Overtime",
-    "selfOvertimeHelp": "Plan or claim overtime under the employee's own Schedule Group and overtime rules.",
-    "banner": "Submitting on behalf of {name}",
-    "pendingTitle": "Pending approval requests",
-    "pendingEmpty": "Nothing is waiting for this approver that you may decide.",
-    "approveOnBehalf": "Approve On Behalf",
-    "rejectOnBehalf": "Reject On Behalf",
-    "approveAudit": "History keeps the chosen person as the designated approver and records you as the person who acted.",
-    "previous": "Previous",
-    "next": "Next"
-  },
-  "importErrorLogMovement": {
-    "correction": {
-      "date": "Enter the date as DD-MMM-YYYY (for example 06-Jan-2026) or as an Excel date.",
-      "required": "Fill in this field - this event type requires it.",
-      "chooseCompany": "Choose a Company ID from the Reference sheet.",
-      "eventType": "Choose an active Event Type from the drop-down list.",
-      "chooseReference": "Choose a value from the drop-down list or the Reference sheet.",
-      "employeeId": "Check the Employee ID and the Company ID on this row against Personnel.",
-      "systemField": "Choose a System Field that this event type can change (see the Reference sheet), or remove that row.",
-      "duplicateField": "Keep one row for each System Field of a movement.",
-      "number": "Enter a number (digits only, no currency sign).",
-      "noFormula": "Type the value itself, not a formula.",
-      "movementId": "Copy the Movement Event ID from the employee’s Movement history.",
-      "before": "Enter the value now on the employee’s record as Before, or download a new template.",
-      "otherRows": "Correct the other rows of this employee, then upload the whole file again.",
-      "recheck": "Upload the file again so it is checked against the current records.",
-      "template": "Download the current Movement template, copy your rows into it and upload it again.",
-      "splitFile": "Split the file into smaller files (at most 200 rows, 50 employees and 20 rows per employee) and upload each one.",
-      "saveStopped": "Nothing was saved for this employee. Correct the problem, then import this employee again."
-    }
-  },
-  "lifecycleEmailHold": {
-    "inboxAction": "Email held: {email}"
-  },
-  "rewardConfig": {
-    "title": "Review before saving",
-    "saving": "Saving…",
-    "whyReview": "Why this needs a review",
-    "reason": "Reason for this change",
-    "cancel": "Cancel",
-    "highImpact": {
-      "released-pat": "PAT changes for a review that has already been released.",
-      "released-library": "Reviews already released use an earlier version. They keep it; new reviews use this one.",
-      "released-limit": "A budget limit changes for a review that has already been released.",
-      "release-review": "Releasing sends this review to the BU CEO.",
-      "remove-access": "Someone loses access to a review.",
-      "open-offcycle": "Opening the off-cycle year makes company balances available to leaders for off-cycle requests.",
-      "offcycle-window": "The mid-year window decides when mid-year recommendations can be submitted."
-    },
-    "whatChanges": "What changes ({count})",
-    "item": "Item",
-    "before": "Before",
-    "after": "After",
-    "noValueChanges": "No values change.",
-    "moreLines": "{count} more changes are listed in the change log.",
-    "affected": "Reviews affected ({count})",
-    "noReviewsAffected": "No reviews are affected.",
-    "consequence": {
-      "repriced": "Recalculated now",
-      "recalculation-required": "Recalculated; the current approver is told",
-      "keeps-version": "Keeps the version it started with",
-      "released-to-bu": "Released to the BU CEO",
-      "access-removed": "Access removed",
-      "none": "No change"
-    },
-    "notificationTitle": "Rewards configuration changed",
-    "noAccess": "The Rewards change log is not available to you.",
-    "logHelp": "Every Rewards configuration change: who made it, when, what changed and why. Changes are never edited or removed.",
-    "area": "Area",
-    "allAreas": "All areas",
-    "company": "Company",
-    "allCompanies": "All companies",
-    "person": "Changed by",
-    "from": "From",
-    "to": "To",
-    "highImpactOnly": "High-impact only",
-    "filter": "Apply filters",
-    "exportExcel": "Export to Excel",
-    "when": "When",
-    "areaColumn": "Area",
-    "reasonColumn": "Reason",
-    "changes": "Changes",
-    "changedValues": "{count, plural, =0 {No values} one {# value} other {# values}}",
-    "system": "System",
-    "unknownPerson": "Unknown",
-    "highImpactBadge": "High impact",
-    "areas": {
-      "salary": "Salary structures",
-      "bonus": "Bonus matrices",
-      "pat": "PAT Inputs",
-      "plan": "Shared Rewards Configuration",
-      "shared": "Shared configuration",
-      "exemption": "Budget-cap exemption",
-      "senior": "Senior plan",
-      "upload": "Uploaded awards",
-      "preparation": "Review set-up",
-      "access": "Rewards access",
-      "role_permission": "Role permissions",
-      "group_role": "Whole-group roles",
-      "limit": "Limit controls",
-      "offcycle": "Off-cycle"
-    },
-    "actions": {
-      "returned-to-draft": "Returned to draft",
-      "saved-draft": "Draft saved",
-      "activated": "Made active",
-      "restored": "Restored from an earlier version",
-      "saved": "Saved",
-      "released": "Released",
-      "applied": "Applied",
-      "changed": "Changed",
-      "reset": "Reset to default"
-    },
-    "empty": "No changes match these filters.",
-    "pages": "Pages",
-    "previous": "Previous",
-    "next": "Next",
-    "exportTruncated": "Only the first 5,000 changes are included. Narrow the filters to export the rest."
-  },
-  "rewardLimits": {
-    "description": "Limits and thresholds for each reward year. Every check in the reviews, the AI advisor and Rewards Analytics uses the values for the review's reward year.",
-    "noAccess": "You don't have access",
-    "noAccessHelp": "Limit Controls are available to Group Rewards, CTRO and EC.",
-    "year": "Reward year",
-    "show": "Show",
-    "viewOnly": "You can view these limits. Only Group Rewards can change them.",
-    "versionLine": "Version {version} is in use for {year}.",
-    "baselineLine": "No version has been saved for {year} yet. These are the standard values; saving creates version 1.",
-    "typeHelp": "Block stops submission. Exception and Warning travel with the review and need a reason before it is submitted. Note is shown for information only.",
-    "columns": {
-      "limit": "Limit",
-      "value": "Value",
-      "type": "Type",
-      "appliesTo": "Applies to",
-      "lastChanged": "Last changed by / date"
-    },
-    "areas": {
-      "pools": "Salary increase pools",
-      "person": "Salary increase per person",
-      "bonus": "Bonus",
-      "lump": "Lump sum",
-      "exemption": "Exemptions",
-      "advisor": "AI advisor"
-    },
-    "labels": {
-      "pool_standard_merit": "Merit pool (% of eligible payroll)",
-      "pool_standard_promotion": "Promotion pool (% of eligible payroll)",
-      "pool_standard_special": "Special adjustment pool (% of eligible payroll)",
-      "pool_h_merit": "Merit pool (% of eligible payroll)",
-      "pool_h_promotion": "Promotion pool (% of eligible payroll)",
-      "pool_h_special": "Special adjustment pool (% of eligible payroll)",
-      "pool_separate": "Pools can't fund each other or another company",
-      "increase_withoutPromotion": "Total increase without promotion above",
-      "increase_withPromotion": "Total increase with promotion at or above",
-      "promotion_increment": "Promotion increment",
-      "promotion_maxGrades": "Maximum grades up",
-      "promotion_maxGrade": "Highest grade after promotion",
-      "catchUp_crFloor": "CR catch-up floor for STAR/SSTAR",
-      "salary_noReduction": "No salary reduction",
-      "bonus_poolCap": "Bonus pool cap",
-      "bonus_underUse": "Under-use warning below",
-      "bonus_individualCeiling": "Individual bonus ceiling above",
-      "bonus_rounding": "Payout rounding (round down)",
-      "bonus_individualMultiplier": "Individual multiplier different from the unit's",
-      "lump_share": "Share of remaining balance",
-      "lump_step": "Rounding step",
-      "lump_cap": "Per-person cap",
-      "lump_aboveSuggestion": "Unit amount above the suggestion",
-      "lump_individualAmendment": "Individual amendments",
-      "exemption_budgetCapsOnly": "Exempt companies: budget caps only, with a reason",
-      "advisor_override": "Override threshold",
-      "advisor_longWithoutIncrease": "Long time without increase",
-      "advisor_peerGap": "Peer pay gap"
-    },
-    "types": {
-      "block": "Block",
-      "exception": "Exception",
-      "warning": "Warning",
-      "note": "Note"
-    },
-    "appliesTo": {
-      "standard": "Standard plan",
-      "h": "JG H plan",
-      "all": "All plans"
-    },
-    "units": {
-      "percent": "%",
-      "points": "percentage points",
-      "ratio": "CR",
-      "months": "months",
-      "myr": "RM",
-      "grades": "grades",
-      "grade": "JG",
-      "years": "years"
-    },
-    "fixed": "Fixed",
-    "fixedHelp": "Fixed to protect pay; it cannot be changed.",
-    "none": "None",
-    "standardValue": "Standard value",
-    "changedBy": "{name} · {date}",
-    "unknownPerson": "Unknown",
-    "valueFor": "Value for {limit}",
-    "typeFor": "Type for {limit}",
-    "reviewSave": "Review before saving",
-    "save": "Save new version",
-    "discard": "Discard changes",
-    "saved": "Saved as version {version}.",
-    "errors": {
-      "system": "The limits could not be saved. Your changes are still here; try again."
-    },
-    "reviewsHeading": "Reviews in this reward year",
-    "reviewsHelp": "Draft reviews use the current version. Reviews past Draft keep the version they were submitted with. If you apply the current version to them, their checks are run again and their current approver is told.",
-    "reviewColumns": {
-      "review": "Review",
-      "stage": "Stage",
-      "versionUsed": "Limits used"
-    },
-    "select": "Select",
-    "selectReview": "Select {review}",
-    "baseline": "Standard values (before Limit Controls)",
-    "currentVersion": "Current (version {version})",
-    "version": "Version {version}",
-    "apply": "Apply version {version} to the selected reviews",
-    "applyConfirm": "Apply and notify approvers",
-    "applied": "{count, plural, one {Applied to # review.} other {Applied to # reviews.}}",
-    "noReviews": "No reviews use this reward year yet.",
-    "reviewsTruncated": "Only the first 200 reviews are listed.",
-    "exemptionsHeading": "Budget-cap exemptions",
-    "exemptionsHelp": "An exemption only relaxes budget caps (the salary increase pools and the bonus pool cap). It is recorded with its reason on the review's set-up.",
-    "noExemptions": "No review in this reward year has a budget-cap exemption.",
-    "historyHeading": "Version history",
-    "noVersions": "No versions yet.",
-    "changeLogLink": "See every change in the change log"
-  },
-  "importErrorLogDataBankCostInfo": {
-    "corrections": {
-      "duplicateInFile": "This value appears more than once in the file - keep one row.",
-      "duplicateEmployeeInFile": "This Employee ID appears more than once in the file - keep one row.",
-      "chooseReference": "Choose a value from the Reference sheet of the template.",
-      "chooseCompany": "Choose a Company Code from the Reference sheet.",
-      "chooseCostCenter": "Choose a Cost Center Code listed for this company on the Allocation Reference sheet.",
-      "date": "Enter the date as YYYY-MM-DD or as an Excel date.",
-      "required": "Fill in this column - it is required.",
-      "yesNo": "Enter yes or no.",
-      "revalidate": "Upload the corrected file again so the row is checked again.",
-      "permission": "Remove this row, or ask an administrator for access to this employee's company.",
-      "systemError": "Upload the file again. If it keeps happening, give the support reference to the technical team.",
-      "textCode": "Format the cell as Text and enter the code again.",
-      "noFormula": "Type the value itself, not a formula.",
-      "existingEmployee": "Check the Employee ID. A new employee must be added with \"Everything - new employees\" first.",
-      "percentage": "Enter a percentage greater than 0 and at most 100, with up to two decimal places.",
-      "periodUnit": "Enter the number and its unit (Month, Week or Day) together.",
-      "reason": "Enter a reason of at least three characters.",
-      "statutoryRecord": "Save the employee's identity number on their Personnel record first, then upload this file again.",
-      "template": "Download the current template, copy your rows into it and upload it again.",
-      "bankPair": "Enter the bank name and the bank account number together."
-    },
-    "bank": {
-      "duplicateEmployeeId": "Duplicate Employee ID in this file; first used at Excel row {row}.",
-      "duplicateCardId": "Duplicate Card ID in this file.",
-      "cardIdTaken": "card_id already identifies another employee; choose an unused card ID.",
-      "noPermission": "You do not have permission to update this employee.",
-      "changedAfterValidation": "This row was not saved. Its data or permissions changed after validation; review and import it again.",
-      "missingEmployeeId": "Missing employee_code — it is the link to the employee being updated",
-      "unknownEmployee": "No employee has Employee ID \"{code}\". A section file can only UPDATE people who are already in the system — it cannot add anyone. To add this person, choose \"Everything — new employees\" at the top of this page and use the full employee template, then run this file again.",
-      "duplicateEmployeeCode": "Duplicate employee_code in this file",
-      "bankTransferNeedsBank": "Bank Transfer requires a bank name and account number.",
-      "bankPair": "bank_name and bank_account_no must be provided together",
-      "noStatutoryRecordYet": "This employee has no statutory record yet — save their identity number on their Personnel record first, then re-run this file",
-      "noStatutoryRecord": "This employee has no statutory record; complete the Personnel statutory setup first.",
-      "notActiveOption": "\"{value}\" is not an active {category} option — column {column}",
-      "yesNo": "{column} must be yes or no",
-      "jobStopped": "Import stopped. Rows already saved are retained. Review the result and your access before trying again. Reference {ref}.",
-      "jobStoppedEarlier": "Import stopped. Rows already saved are retained. Review the result and your access before trying again.",
-      "fileTooLarge": "The file exceeds the import size or worksheet limits. Use up to 250,000 rows and 128 MiB.",
-      "fileUnreadable": "The file could not be read. Use the Bank & Statutory template and its reference sheets.",
-      "fileRowCount": "Choose a file with 1 to 250,000 data rows.",
-      "fileIncomplete": "The uploaded file is incomplete or its checksum differs. Upload it again."
-    },
-    "allocation": {
-      "errors": {
-        "invalid": "Enter a percentage greater than zero and at most 100, with up to two decimal places.",
-        "duplicate": "Select each cost center once.",
-        "total": "The total allocation cannot exceed 100%.",
-        "scope": "Employee record or permission is unavailable.",
-        "label": "A cost center is inactive or unavailable for this company.",
-        "changed": "Allocations changed. Reload and preview again.",
-        "date": "Choose an effective date with proven employment company history.",
-        "clear": "Clearing allocations requires an explicit clear operation.",
-        "preview": "The input or reference data changed. Preview again.",
-        "binding": "Match each allocation to one company and Employee ID.",
-        "transfer": "Save an explicit clear set at the transfer date and clear any later scheduled sets before transferring. Then save a new destination-company allocation."
-      },
-      "operation": "Operation must be Replace or Clear, and the same on every row for one employee and date.",
-      "clearRow": "Clear needs exactly one row with a blank Cost Center Code and Percentage.",
-      "costCenterUnavailable": "This Cost Center Code is not available for {company}.",
-      "companyRequired": "Company Code is required.",
-      "companyAmbiguous": "Company Code \"{code}\" matches more than one company. Use the Company Code listed on the Reference sheet.",
-      "companyUnknown": "Company Code \"{code}\" does not match a company you can import for.",
-      "effectiveDate": "Effective Date must be a date in YYYY-MM-DD form.",
-      "employeeInvalid": "Employee ID is missing or invalid.",
-      "employeeAmbiguous": "Employee ID {code} matches more than one employee of {company}.",
-      "employeeNotInCompany": "Employee ID {code} is not an employee of {company} on {date}.",
-      "heldBack": "Another allocation for Employee ID {code} in this file has errors, so this employee is not imported. Correct that row first.",
-      "unavailable": "The allocation company, employee or effective date is unavailable.",
-      "saveFailed": "This employee could not be saved; nothing was changed for them.",
-      "file": {
-        "legacyLayout": "This file uses the old layout with an internal company identifier (company_id). Download the new template and fill in the Company Code column instead.",
-        "duplicateHeaders": "Duplicate allocation column headers are not allowed.",
-        "missingColumns": "Missing allocation columns: {columns}",
-        "unexpectedColumns": "Unexpected allocation columns: {columns}",
-        "tooManyRows": "Use at most 5000 allocation rows per file.",
-        "tooLarge": "Allocation file exceeds the supported size.",
-        "tooLarge10": "Choose a file no larger than 10 MB.",
-        "unreadableWorkbook": "The workbook could not be read. Download the template and try again.",
-        "utf8": "Save the CSV file as UTF-8.",
-        "fileType": "Choose the .xlsx template or a .csv file with the same columns.",
-        "unreadable": "This file could not be read.",
-        "noRows": "The file has no allocation rows."
-      }
-    },
-    "correction": {
-      "noFormula": "Formulas and error cells are not accepted.",
-      "textCode": "Enter a text code to preserve leading zeros.",
-      "date": "Use YYYY-MM-DD or an Excel date.",
-      "tooLong": "Maximum 1,000 characters.",
-      "periodUnit": "Enter the period and its unit together ({unit}).",
-      "notOption": "\"{value}\" is not an option for this company. Check the {sheet} reference sheet.",
-      "superiorUnknown": "The Employee ID is unknown or not visible to you.",
-      "organisationFormula": "Organisation columns cannot contain formulas or error cells.",
-      "organisationTooLong": "Organisation value: maximum 1,000 characters.",
-      "companyRequired": "Company Code is required.",
-      "employeeRequired": "Employee ID is required.",
-      "reasonShort": "Correction Reason must contain at least three characters.",
-      "duplicateEmployee": "This employee appears more than once. Keep one correction row per employee.",
-      "companyUnknown": "Company Code is unknown, ambiguous or outside your permission.",
-      "employeeUnknown": "Employee ID is unknown or ambiguous within the existing company.",
-      "newCompanyUnknown": "New Company Code is unknown, ambiguous or outside your permission.",
-      "gradeInactive": "Job Grade is not an active system code.",
-      "sameEmployee": "Multiple rows resolve to the same employee."
-    }
-  },
-  "importErrorLogEmployee": {
-    "problemsTitle": "Problems to fix",
-    "missingColumn": "This required column is missing from the sheet.",
-    "thisField": "this column",
-    "downloadFailed": "The Error Log could not be prepared. Try again.",
-    "correction": {
-      "reference": "Choose a {field} from the Reference sheet.",
-      "date": "Enter the date as YYYY-MM-DD or as an Excel date.",
-      "month": "Enter the month as YYYY-MM.",
-      "required": "Fill in {field} - it is required.",
-      "requiredForContract": "Fill in this column - it is required for Contract employees.",
-      "duplicateInFile": "This value appears more than once in the file - keep one row.",
-      "duplicateEmployeeId": "This Employee ID appears more than once in the file - keep one row.",
-      "duplicateInSystem": "This value is already used by another employee - enter a different one, or leave the row out.",
-      "number": "Enter a number (digits only, no currency sign).",
-      "choice": "Choose one of the values listed on the Instructions or Reference sheet.",
-      "yesNo": "Enter Yes or No.",
-      "email": "Enter a full email address, for example name@company.com.",
-      "notOnEmployeeSheet": "Add this employee to the employee sheet, or correct the Employee ID.",
-      "employeeNotFound": "Check the Employee ID. To add a new employee, use Everything - new employees first.",
-      "missingColumn": "Add the {field} column, using the current template, and upload again.",
-      "wrongSection": "Remove the column, or import it with the template that owns it.",
-      "system": "Try again. If it keeps happening, give the support reference to your administrator.",
-      "uploadAgain": "Fix the rows that stopped the import, then upload the whole file again."
-    }
-  },
-  "importProblems": {
-    "headers": {
-      "sheet": "Sheet",
-      "row": "Excel row",
-      "category": "Category",
-      "reference": "Reference",
-      "employeeName": "Employee name",
-      "field": "Field",
-      "value": "Value entered",
-      "problem": "What is wrong",
-      "correction": "How to fix it",
-      "stage": "Found while",
-      "result": "Result",
-      "errorReference": "Support reference"
-    },
-    "stage": {
-      "file": "Reading the file",
-      "check": "Checking the file",
-      "save": "Saving",
-      "system": "System error"
-    },
-    "result": {
-      "refused": "Not imported",
-      "skipped": "Skipped",
-      "stopped": "Stopped the import",
-      "cancelled": "Not saved - another row stopped the import",
-      "not_saved": "Not saved - upload the corrected file again"
-    },
-    "hiddenValue": "(hidden)",
-    "wholeFile": "Whole file",
-    "moreInLog": "{count} more problems are listed in the Error Log.",
-    "downloadLog": "Download Error Log",
-    "summary": {
-      "sheetTitle": "Summary",
-      "batch": "Import",
-      "file": "File",
-      "status": "Status",
-      "problems": "Problems",
-      "truncated": "This list was shortened when the import was recorded. Download the Error Log straight after an import to see every problem."
     }
   },
   "agencyPortal": {

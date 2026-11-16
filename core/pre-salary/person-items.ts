@@ -347,7 +347,7 @@ export const APPROVAL_KIND:Readonly<Partial<Record<PendingTaskItem['kind'],Payro
  leave:'approve_leave',leaveCancellation:'approve_leave_cancellation',attendance:'approve_attendance',claim:'approve_claim',replacementLeave:'approve_toil'});
 function startApprovals(ctx:SessionContext,scopeIds:readonly string[]|undefined,preview=false){
  const modules={attendance:moduleState(ctx,'attendance'),claims:moduleState(ctx,'claims')};
- const modulesRead={attendance:modules.attendance==='on',claims:modules.claims==='on',performance:false,rewards:false};
+ const modulesRead={attendance:modules.attendance==='on',claims:modules.claims==='on',performance:false,rewards:false,probation:false};
  const scope=scopeIds?[...scopeIds]:undefined;
  const tasks=settle<{items:readonly PendingTaskItem[];claimTotal:number}>(()=>preview?pendingTaskSummary(ctx,scope,modulesRead,{noticeAcknowledgements:false}):listPendingTasks(ctx,scope,modulesRead,{noticeAcknowledgements:false}).then(items=>({items,claimTotal:items.filter(task=>task.kind==='claim').length})));
  return {modules,tasks,preview};

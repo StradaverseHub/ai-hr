@@ -532,3 +532,181 @@ payroll stays unchanged and no historical recalculation will run"). Changed cove
 provider-data scope only through the import graph. No provider transform, outbound field, purpose or transport changed.
 The 28 approvals were carried forward to `1aad1797…` and the agent manifest regenerated (`306e3222…`), under the owner's
 standing pre-approval for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding for the Transaction View retained-document cap (16 November 2026)
+
+`claude/txn-view-retained-cap-20261116`, cut from main/alpha `9d32dfab1` (binding `1aad1797…`), caps the retained
+information-correction documents that Transaction View's History landing read loads, at the same row limit as its
+live payslips, instead of refusing above 5,000 (production 15–16 November 2026: "This page could not be displayed").
+Changed covered files: `core/information-correction-history.ts` and `core/payroll-view.ts`, in the provider-data scope
+only through the import graph. No provider transform, outbound field, purpose or transport changed. The 28 approvals
+were carried forward to `ad0ee451…` and the agent manifest regenerated (`644d2c37…`), under the owner's standing
+pre-approval for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding for board fd8156d4, Payroll Process listing, cycle names and run search (16 November 2026)
+
+`claude/fb-fd8156d4-payroll-process`, merged with main/alpha `22ba7e3a5` (binding `ad0ee451…`), opens Payroll Process
+on the latest created period, sorts runs by period then company, shows configured Payroll Cycle names and adds an
+employee search to a run's View page (owner approved the plan on the board, 16 November 2026). Changed covered files:
+`core/payroll.ts` and the six `messages/*.json` catalogues, in the provider-data scope only through the import graph.
+No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried forward to
+`c1baf4ee…` and the agent manifest regenerated (`bf8328ea…`), under the owner's standing pre-approval for staging
+re-binds (12 November 2026). Staging only.
+
+### Re-binding for board 4604dccc revision 4, the latest saved correction controls (16 November 2026)
+
+`claude/fb-4604dccc-r4-latest-correction`, merged with `ee02bba4d` (board fd8156d4 on main 22ba7e3a5, binding
+`c1baf4ee…`), makes the latest saved Information-Only Correction control each field from its Effective Date, in the
+TypeScript readers and, through migration 5696, the SQL company and report readers (owner approved the plan on the board,
+16 November 2026). Changed covered files include `core/information-correction-history.ts`,
+`core/information-correction.ts`, `core/movement-history.ts`, `core/movement.ts`, `core/hire-correction.ts`,
+`lib/information-correction.ts` and the six `messages/*.json` catalogues, in the provider-data scope only through the
+import graph. No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried forward
+to `d18c9c64…` and the agent manifest regenerated, under the owner's standing pre-approval for staging re-binds
+(12 November 2026). Staging only.
+
+### Re-binding for the combined batch: 4604dccc revision 4 plus the Payroll Reconciliation fixes (16 November 2026)
+
+The owner approved combining board 4604dccc revision 4 and the Payroll Reconciliation fixes
+(`claude/payroll-comparison-employee-scope-20261116`: one employee's comparison reads only that employee; the refused
+page links back to Reconciliation) into one gate and one staging install (16 November 2026). Added covered files:
+`core/payroll-view.ts` and `core/report-payroll-comparison.ts`, in the provider-data scope only through the import graph.
+No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried forward from
+`d18c9c64…` to `da60fba1…` and the agent manifest regenerated, under the owner's standing pre-approval for staging
+re-binds (12 November 2026). Staging only.
+### Re-binding for the Information-Only Correction Effective-Date-only message (16 November 2026)
+
+`claude/info-correction-review-messages`, cut from main/alpha `ee02bba4d` (binding `c1baf4ee…`), adds a screen message
+when only the Effective Date differs (staging feedback, EMP-0004). Changed covered files: the six `messages/*.json`
+catalogues, in the provider-data scope only through the import graph. No provider transform, outbound field, purpose or
+transport changed. The 28 approvals were carried forward to `3656aa94…` and the agent manifest regenerated (`90c997db…`),
+under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding after merging main 5160eb4e4 into the combined 4604dccc revision 4 + Reconciliation batch (16 November 2026)
+
+Main advanced to `5160eb4e4` (the Effective-Date-only message, on staging). Merging it into the owner-approved combined
+batch changed no covered source beyond both sides' own reviewed changes. No provider transform, outbound field, purpose
+or transport changed. The 28 approvals were carried forward from `da60fba1…` to `c88b5a04…` and the agent manifest
+regenerated, under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding for board 237c31e6, Attendance approval progress (16 November 2026)
+
+`claude/fb-237c31e6-approval-progress-20261116`, cut from main/alpha `03b06f0de` (binding `c88b5a04…`), shows every
+approval level with its status and approver Employee ID on the Attendance request screens. Changed covered files
+include `core/attendance-workflow.ts`, `core/attendance.ts`, `core/attendance-application-history.ts`,
+`core/attendance-application-review.ts`, `core/mobile-attendance.ts`, `lib/attendance-progress.ts` and the six
+`messages/*.json` catalogues, in the provider-data scope only through the import graph. No provider transform, outbound
+field, purpose or transport changed. The 28 approvals were carried forward to `b9a6f0af…` and the agent manifest
+regenerated (`61d2d520…`), under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding for board 87bd9656: Schedule Group Overtime Setting None rounding and Overtime Backdate Control (16 November 2026)
+
+`claude/fb-87bd9656-ot-backdate-20261116`, cut from main/alpha `03b06f0de` (binding `c88b5a04…`), adds None to Overtime
+Rounding Method and the optional `overtime.backdateLimitDays` policy key, enforced in the one attendance submission
+owner. Changed covered files: `core/attendance.ts`, `core/attendance-group-policy.ts`, `lib/attendance-group-policy.ts`,
+`lib/schedule-overtime-setting.ts` and the six `messages/*.json` catalogues; added covered file:
+`lib/overtime-backdate.ts` (a pure date rule and refusal type). All are in the provider-data scope only through the
+import graph. No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried forward
+from `c88b5a04…` to `1b3f89b3…` and the agent manifest regenerated (`0efc1d52…`), under the owner's standing pre-approval
+for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding for the combined Irwin release: 237c31e6, aac17dd0, 87bd9656 and 7f5cc653 (16 November 2026)
+
+The owner approved releasing boards 237c31e6 (Attendance approval progress), aac17dd0 (typed Amount on Calculated by
+Formula Pay Items), 87bd9656 (Overtime Setting None rounding and Backdate Control) and 7f5cc653 (EPF Part A bonus
+note) as one gate and one staging install (16 November 2026), on `claude/release-combined-irwin-20261116` from
+main/alpha `03b06f0de`. Added covered files beyond the notes above: `core/payroll-individual-txn.ts`,
+`packs/payroll/individual-calculation.ts`, `localization/my/payroll.ts` and `core/statutory-trace-explain.ts`, in the
+provider-data scope only through the import graph. No provider transform, outbound field, purpose or transport changed.
+The per-branch bindings above were superseded: the 28 approvals were carried forward from `b9a6f0af…` to `f446073c…`
+(1,595 files) and the agent manifest regenerated (`02c0c88c…`), under the owner's standing pre-approval for staging
+re-binds (12 November 2026). Staging only.
+
+### Re-binding for the Probation Confirmation reshape onto shared HR automation (16 November 2026)
+
+`claude/probation-confirmation-aihr-b81c70`, merged with main/alpha `9d32dfab1` (binding `1aad1797…`), at its final merge, adds
+the shared HR Automation builders and runner, Personnel postings, document signing review routing and the Probation
+settings, queue, routing and outcome changes (ADR `docs/adr/2026-11-15-probation-shared-automation.md`, migrations
+5740–5759). The changed files reach the provider-data scope only through the import graph (message catalogues,
+company referrers, the approvals and Today task sources); no file under lib/ai, core/ai*, core/assistant*,
+core/teras* or core/loops changed. No provider transform, outbound field, purpose or transport changed. The 28 approvals
+were carried forward to `2811064b…` and the agent manifest regenerated (`e11a6cf7…`), under the owner's standing
+pre-approval for staging re-binds (12 November 2026). This binding grants no production authority.
+
+### Re-binding for the Probation handoff gaps and saved-form import (16 November 2026)
+
+`claude/probation-confirmation-aihr-b81c70` at binding `2811064b…` merges lane J (`claude/probation-lane-import-20261116`,
+importing saved v22.9.26 HTML evaluation forms in Probation intake; migration 5762) and lane I
+(`claude/probation-lane-gaps-20261116`, the default outcome path creating a Personnel posting, letter queues by step
+kind, PBP low-result and Other tasks, workflow history, routed recipients and tracker steps; migrations 5760–5761).
+Changed covered files are `core/probation*.ts`, `lib/probation-intake-html.ts` and the six `messages/*.json` catalogues,
+in the provider-data scope only through the import graph; no file under lib/ai, core/ai*, core/assistant*, core/teras*
+or core/loops changed. No provider transform, outbound field, purpose or transport changed. The 28 approvals were
+carried forward to `a6ebe974…` and the agent manifest regenerated (`db714b6f…`), under the owner's standing
+pre-approval for staging re-binds (12 November 2026). This binding grants no production authority.
+
+### Re-binding for the Probation access model, routed holders and prototype UI, merged with main (16 November 2026)
+
+`claude/probation-confirmation-aihr-b81c70` merges lane K (`claude/probation-lane-access-20261116`: Probation access
+roles, scoped dated members and the Direct Superiors rule, migration 5763; the case's PBP and Head of Department from the
+shared routings, migration 5764), lane L (`claude/probation-lane-ui-20261116`: the case view, Configuration sub-menu,
+readable times, task labels and letter signers, migration 5765) and main/alpha `5160eb4e4` (binding `3656aa94…`).
+Changed covered files are Probation core, navigation and the six `messages/*.json` catalogues, in the provider-data scope
+only through the import graph; no file under lib/ai, core/ai*, core/assistant*, core/teras* or core/loops changed apart
+from these manifests. No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried
+forward to `235863e0…` and the agent manifest regenerated (`0c3dfb15…`), under the owner's standing pre-approval for
+staging re-binds (12 November 2026). This binding grants no production authority.
+
+### Re-binding for the Probation screens matched to the prototype, merged with main (16 November 2026)
+
+`claude/probation-confirmation-aihr-b81c70` merges lanes M1–M3 (`claude/probation-lane-m1-tracker-20261116`,
+`claude/probation-lane-m2-case-20261116`, `claude/probation-lane-m3-config-20261116`: the tracker, Personnel postings,
+case page and part forms, Probation configuration and HR Automation screens restyled to the approved prototype; one
+optional "show closed cases" filter on the tracker read; no migration) and main/alpha `03b06f0de` (binding `c88b5a04…`).
+Changed covered files are Probation core, pages and the six `messages/*.json` catalogues, in the provider-data scope only
+through the import graph; no file under lib/ai, core/ai*, core/assistant*, core/teras* or core/loops changed apart from
+these manifests. No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried
+forward to `06b5c60f…` and the agent manifest regenerated (`21404a12…`), under the owner's standing pre-approval for
+staging re-binds (12 November 2026). This binding grants no production authority.
+
+### Re-binding for the Probation release-gate inventory repairs (16 November 2026)
+
+`claude/probation-confirmation-aihr-b81c70` at binding `06b5c60f…` repairs what release gate 43850661612 (attempt 1,
+failed) found: `lib/ai/agent-capability-inventory.ts` classifies the 25 new Probation and HR Automation server actions and
+routes (backlog or handoff only; no action is registered for the agent and no tier is raised), `core/personnel-posting.ts`
+reaches leave through `packs/leave/service`, `core/company-refs.ts` declares four new company referrers, and migration
+5766 adds their read-only in-use check. No provider transform, outbound field, purpose or transport changed. The 28
+approvals were carried forward to `e4fcddfb…` and the agent manifest regenerated (`943a1bee…`), under the owner's
+standing pre-approval for staging re-binds (12 November 2026). This binding grants no production authority.
+
+### Re-binding the combined Irwin release onto the Probation Confirmation staging release (16 November 2026)
+
+The combined Irwin release (237c31e6, aac17dd0, 87bd9656, 7f5cc653) was rebuilt as
+`claude/release-combined-irwin-20261116-r2` on top of the Probation Confirmation release `267574da5` (installed on
+staging, binding `e4fcddfb…`), because staging moved past the original base `03b06f0de`. Merging changed no covered
+source beyond both sides' own reviewed changes. No provider transform, outbound field, purpose or transport changed. The
+28 approvals were carried forward from `e4fcddfb…` to `800269d5…` (1,624 files) and the agent manifest regenerated
+(`97bd0705…`, 493 files), under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding for breadcrumb task ancestry (16 November 2026)
+
+The breadcrumb repair branch is based on main/alpha `59f06b08d`. The only changed covered source is
+`packs/payroll/index.ts`: navigation ownership metadata now associates payroll settings, loans and history imports
+with their existing task rows. No service, provider transform, outbound field, purpose, transport or permission
+changes. Under the owner's standing staging re-bind pre-approval of 12 November 2026, the existing approved
+records carry forward to `3ac2fd19076f1bd8c7bc3565fb1cc2a583d2f3fc0b42d4c216f9a258a47cfe3c` over 1,623 files.
+Their statuses, reviewers, purposes and original approval evidence remain unchanged. The provider manifest and
+agent manifest were regenerated; the agent fingerprint is `4d753fc768766c58d9dbd245b7dd332023c79cbc8b23bb73853c73e1991ec084`
+over 493 files. This binding grants no production authority.
+
+### Re-binding Irwin f0443eaf2 with breadcrumb task ancestry (16 November 2026)
+
+The owner explicitly requested exact Irwin commit `f0443eaf27d3584f55b6a2e7d48558bd553d4149` be merged before
+the breadcrumb gate. Its reviewed payroll/attendance changes and migration 5770 are preserved unchanged. The breadcrumb
+side changes covered source only in `packs/payroll/index.ts` (navigation ownership metadata). Generated conflicts were
+resolved from Irwin's approval records and both histories, then regenerated over the actual combined source. Under the
+standing staging re-bind pre-approval of 12 November 2026, the same 29 already-approved records carry forward to
+`f4b83a1fa86cf3a53f111b8be69e10f29e0e629f9fa4f50c8ea0209987034494` over 1,624 files. Statuses, purposes, reviewers and original approval evidence
+remain unchanged. The agent manifest is `1da03e300d47181a3a1a803e3f35d4b2159be8989b56f77fa01ed8ce81b68e52` over 493 files.
+No provider transform, outbound field, purpose or transport was added by the breadcrumb repair. This binding grants
+no production authority. The owner separately requires approval before this candidate is released.

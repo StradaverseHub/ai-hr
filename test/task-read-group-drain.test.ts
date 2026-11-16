@@ -29,7 +29,7 @@ it('keeps the real inbox and Performance provider inside one logical lease throu
  const gate=createBackgroundReadAdmission({capacity:1,maxWaiting:2,waitMs:1000});
  const ctx={tenantId:'fictional-tenant',personId:'fictional-person'} as SessionContext;
  let finished=false,nextEntered=false;const original=new Error('manager owner failed');
- const first=gate.run(ctx.tenantId,()=>pendingTaskSummary(ctx,undefined,{attendance:false,claims:false,performance:true,rewards:false}));
+ const first=gate.run(ctx.tenantId,()=>pendingTaskSummary(ctx,undefined,{attendance:false,claims:false,performance:true,rewards:false,probation:false}));
  const observed=first.then(()=>{finished=true;return null;},error=>{finished=true;return error;});
  const next=gate.run('another-tenant',async()=>{nextEntered=true;});
  await vi.waitFor(()=>{expect(io.manager).toHaveBeenCalledTimes(1);expect(io.calibration).toHaveBeenCalledTimes(1);expect(io.assessment).toHaveBeenCalledTimes(1);});

@@ -1,6 +1,7 @@
 /**
  * Board 4604dccc — Information-Only Correction with an Effective Date (ADR 2026-11-15 dated information corrections).
- * A correction applies from its Effective Date until each field's next recorded change; it no longer blocks an
+ * A correction applies from its Effective Date until each field's next recorded movement (revision 4: an earlier-saved
+ * correction no longer ends it; information-correction-latest-saved.test.ts); it no longer blocks an
  * earlier-dated movement; closed payroll in the corrected period is acknowledged, never recalculated; the hire
  * correction passes through a correction boundary for fields it did not set. Fictional tenant, companies, people.
  */
@@ -56,19 +57,20 @@ async function closedPayroll(employmentId:string,companyId:string,period:string)
 }
 
 describe('a dated correction',()=>{
- it('splits the covering record at the Effective Date and leaves a later correction untouched',async()=>{
+ it('splits the covering record at the Effective Date; the latest saved correction replaces an earlier one dated later',async()=>{
   const id=await hire('ED-1');
   await correct(id,{companyId:coB},'2026-06-01');
   expect((await versions(id)).map(v=>[v.validFrom,v.companyId])).toEqual([[HIRED,b.companyId],['2026-06-01',coB]]);
   const review=await correct(id,{companyId:coC},'2026-01-01');
-  // The later correction owns its own period; the new one stops there.
-  expect(review.until).toEqual({companyId:'2026-06-01'});
-  expect(review.warnings?.[0]).toEqual({code:'companyFrom',date:'2026-01-01',to:'2026-06-01'});
-  expect((await versions(id)).map(v=>[v.validFrom,v.validTo,v.companyId])).toEqual([[HIRED,'2026-01-01',b.companyId],['2026-01-01','2026-06-01',coC],['2026-06-01',null,coB]]);
-  // Today's company stays with the record with the latest Effective Date.
-  expect(await companyOf(id)).toBe(coB);
+  // Board 4604dccc r4 — the latest saved correction controls from its Effective Date: the earlier-saved correction
+  // dated 1 Jun no longer ends it. It stays in the history and the review names it.
+  expect(review.until).toBeUndefined();
+  expect(review.warnings?.[0]).toEqual({code:'companyFrom',date:'2026-01-01'});
+  expect(review.replacedCorrections).toEqual([expect.objectContaining({effectiveOn:'2026-06-01',fields:['companyId']})]);
+  expect((await versions(id)).map(v=>[v.validFrom,v.validTo,v.companyId])).toEqual([[HIRED,'2026-01-01',b.companyId],['2026-01-01','2026-06-01',coC],['2026-06-01',null,coC]]);
+  expect(await companyOf(id)).toBe(coC);
   const [event]=await owner.db.select({payload:schema.domainEvent.payload}).from(schema.domainEvent).where(and(eq(schema.domainEvent.subjectEmploymentId,id),eq(schema.domainEvent.eventType,'employment.information.corrected'))).orderBy(asc(schema.domainEvent.sequence)).offset(1);
-  expect(event.payload).toMatchObject({effectiveOn:'2026-01-01',nextBoundary:'2026-06-01',dated:true,fields:['companyId']});
+  expect(event.payload).toMatchObject({effectiveOn:'2026-01-01',nextBoundary:null,dated:true,fields:['companyId'],replacedCorrectionSequences:[expect.any(Number)]});
  });
  it('from the Group Join Date corrects every field through the records that inherited it',async()=>{
   const id=await hire('ED-2');
@@ -193,7 +195,9 @@ describe('the reporter\'s migration scenario',()=>{
   expect((await versions(id)).map(v=>[v.validFrom,v.companyId])).toEqual([[JOIN,coB],[today,b.companyId]]);
   // The form compares with the record on the Effective Date: Company B then, although Company A today.
   const review=await correct(id,{companyId:b.companyId},JOIN);
-  expect(review.before.companyId).toBe(coB);expect(review.until).toEqual({companyId:today});
+  // Board 4604dccc r4 — the from-today correction is replaced (same company), so nothing ends this one.
+  expect(review.before.companyId).toBe(coB);expect(review.until).toBeUndefined();
+  expect(review.replacedCorrections).toEqual([expect.objectContaining({effectiveOn:today,fields:['companyId']})]);
   expect((await versions(id)).map(v=>[v.validFrom,v.companyId])).toEqual([[JOIN,b.companyId],[today,b.companyId]]);
   await createMovementEvent(ctx(),{employmentId:id,kind:'entityTransfer',effectiveDate:TRANSFER,companyId:coB,remarks:'Fictional transfer recorded after the corrections'});
   // The old correction no longer changes anything after the join-date correction, so the transfer's company stands.

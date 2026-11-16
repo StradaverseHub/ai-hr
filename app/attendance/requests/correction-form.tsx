@@ -78,7 +78,8 @@ export function CorrectionForm({
   behalfEmploymentId,
 }: {
   copy: CorrectionCopy;
-  approver: string;
+  /** 237c31e6: the approval progress panel (components/attendance-route-progress.tsx), resolved by the page. */
+  approver: ReactNode;
   workflowFingerprint?: string | null;
   submitAction: Action;
   /** Which section the request is filed from — carried so the action lands back on the right tab. */
@@ -167,7 +168,7 @@ export function CorrectionForm({
       </Field>
       <p className="text-[11px] text-muted-foreground">{copy.attachmentHelp}</p>
       <Field label={copy.goesTo}>
-        <div className={`${inputCls} flex items-center bg-muted/40`} role={workflowFingerprint===null?'status':undefined}>{approver}</div>
+        <div className="rounded-md border border-input bg-muted/40 px-3 py-2" data-approval-progress>{approver}</div>
       </Field>
       <p className="text-[11px] text-muted-foreground">{copy.originalKept}</p>
       <div className="flex items-center justify-end gap-2 pt-1">

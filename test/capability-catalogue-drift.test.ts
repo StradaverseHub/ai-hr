@@ -212,6 +212,7 @@ const NOT_A_PAGE:Readonly<Record<string,string>>={
 const NOT_YET_LINKABLE:Readonly<Record<string,string>>={
  '/lifecycle/probation':'Main\'s Probation Confirmation pages: unlinkable until their semantic, guide and corpus entries exist.',
  '/lifecycle/contracts':'Main\'s Contract Management pages: unlinkable until their semantic, guide and corpus entries exist.',
+ '/automation':'The shared HR Automation builders (ADR 2026-11-15-probation-shared-automation): unlinkable until their semantic, guide and corpus entries exist.',
 };
 const pendingArea=(path:string)=>Object.keys(NOT_YET_LINKABLE).find(area=>path===area||path.startsWith(area+'/'));
 describe('destinations',()=>{
@@ -322,8 +323,8 @@ describe('deciding actions are mapped to the inbox work that makes them the call
   // Every pack task kind belongs to the module that owns it, and no kind is invented.
   // Recruitment's kinds (slice 9) map to no deciding catalogue action: the action catalogue has no recruitment module at all, and the
   // inbox read here does not ask for recruitment work, so a MODULE_WORK entry for them would be dead.
-  expect([...MODULE_WORK.performance,...MODULE_WORK.rewards].sort()).toEqual(PACK_TASK_KINDS.filter((k) => !(RECRUITMENT_TASK_KINDS as readonly string[]).includes(k)).sort());
-  expect(Object.keys(MODULE_WORK).sort()).toEqual(['performance','rewards']);
+  expect([...MODULE_WORK.performance,...MODULE_WORK.rewards,...MODULE_WORK.lifecycle].sort()).toEqual(PACK_TASK_KINDS.filter((k) => !(RECRUITMENT_TASK_KINDS as readonly string[]).includes(k)).sort());
+  expect(Object.keys(MODULE_WORK).sort()).toEqual(['lifecycle','performance','rewards']);
   // Own, administrator, lifecycle staff and automatic classes are not per-item deciders.
   for(const actor of ['self','hr_admin','tenant_admin','payroll_admin','rewards_admin','workforce_maintainer','lifecycle_staff','agent_principal'])
    expect(DECIDER_ACTORS.has(actor),actor).toBe(false);

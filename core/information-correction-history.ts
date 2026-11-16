@@ -4,9 +4,20 @@ import {informationPayslipSnapshot,payslip,payrollBatch,employment,domainEvent} 
 export function frozenPayslipInformation(field:'grade'|'employmentType',fallback:SQL){
  return sql<string|null>`case when exists(select 1 from ${informationPayslipSnapshot} f where f.payslip_id=${payslip.id}) then (select ${field==='grade'?sql`f.grade`:sql`f.employment_type`} from ${informationPayslipSnapshot} f where f.payslip_id=${payslip.id}) else ${fallback}::text end`;
 }
-/** Before-images are used only before the correction's business day. Earliest later correction wins. */
+/** Board 4604dccc r4 (ADR 2026-11-15 dated information corrections, revision 4) — the LATEST SAVED correction of a
+ * field controls it from its Effective Date onward. The correction in force on `asOf` is the latest saved one (by
+ * domain_event.sequence) that changed `field` and is dated on or before `asOf`; nothing saved before it can override
+ * it. A before-image is used only before a correction's business day, and only from a correction saved after the one
+ * in force (the earliest such one wins); otherwise the fallback (current master data) answers. Corrections saved in
+ * Effective Date order give exactly the earlier rule ("earliest later correction wins"): every correction dated after
+ * `asOf` was then saved after the one in force. One correlated subquery per field (SCALE rule 2). */
 export function employmentInformationAt<F extends 'hiredOn'|'joinDate'|'companyId'>(field:F,asOf:SQL,fallback:SQL):SQL<F extends 'joinDate'?string|null:string>{
- return sql<F extends 'joinDate'?string|null:string>`case when exists(select 1 from ${domainEvent} ev where ev.tenant_id=app.current_tenant_id() and ev.subject_employment_id=${employment.id} and ev.event_type='employment.information.corrected' and ev.payload->>'effectiveOn'>${asOf}::text) then (select ev.payload->'before'->>${field} from ${domainEvent} ev where ev.tenant_id=app.current_tenant_id() and ev.subject_employment_id=${employment.id} and ev.event_type='employment.information.corrected' and ev.payload->>'effectiveOn'>${asOf}::text order by ev.sequence limit 1) else ${fallback}::text end`;
+ // A correction changed the field when its `fields` list names it; an older payload without the list, when its before
+ // and after values differ.
+ const changed=sql`(case when jsonb_typeof(l.payload->'fields')='array' then l.payload->'fields' @> jsonb_build_array(${field}::text) else (l.payload->'before'->>${field}) is distinct from (l.payload->'after'->>${field}) end)`;
+ const inForce=sql`coalesce((select max(l.sequence) from ${domainEvent} l where l.tenant_id=app.current_tenant_id() and l.subject_employment_id=${employment.id} and l.event_type='employment.information.corrected' and l.payload->>'effectiveOn'<=${asOf}::text and ${changed}),0)`;
+ const later=sql`ev.tenant_id=app.current_tenant_id() and ev.subject_employment_id=${employment.id} and ev.event_type='employment.information.corrected' and ev.payload->>'effectiveOn'>${asOf}::text and ev.sequence>${inForce}`;
+ return sql<F extends 'joinDate'?string|null:string>`case when exists(select 1 from ${domainEvent} ev where ${later}) then (select ev.payload->'before'->>${field} from ${domainEvent} ev where ${later} order by ev.sequence limit 1) else ${fallback}::text end`;
 }
 
 import {QueryBuilder} from 'drizzle-orm/pg-core';
@@ -26,12 +37,24 @@ export function overlayInformationDocument<T extends object>(row:T,document:Hist
 export async function informationPayslipDocument(tx:Tx,id:string):Promise<HistoricalDocument|null>{
  const [row]=await tx.execute<{document:HistoricalDocument|null}>(sql`select app.information_payslip_document(${id}::uuid) as document`);return row?.document??null;
 }
-export async function informationPayslipDocuments(tx:Tx,p:{companyIds:string[];year?:number;month?:number;cycle?:string;employmentId?:string;intendedCycle?:boolean}):Promise<HistoricalDocument[]>{
+/** Safety ceiling for an UNCAPPED read (exports, one employee's runs). The database function returns at most one row
+ * more than this per company chunk. */
+export const RETAINED_DOCUMENT_CEILING=5000;
+/**
+ * `limit` — a capped caller (Transaction View's History landing tab) wants only the newest `limit` documents, the
+ * same cap its live rows already have. Each company chunk then returns at most `limit` rows in the function's
+ * newest-period-first order, so the union always contains the newest `limit` of the whole scope, and the caller
+ * merges, sorts and slices exactly as it does for live rows. A capped read never throws: prod 2026-11-15, "All
+ * companies" with no period passed 5,000 retained documents and the landing tab became an error page.
+ * Without `limit` the ceiling still refuses rather than silently returning a partial set.
+ */
+export async function informationPayslipDocuments(tx:Tx,p:{companyIds:string[];year?:number;month?:number;cycle?:string;employmentId?:string;intendedCycle?:boolean;limit?:number}):Promise<HistoricalDocument[]>{
  const documents:HistoricalDocument[]=[],companies=[...new Set(p.companyIds)];
+ const limit=Number.isInteger(p.limit)&&p.limit!>0?Math.min(p.limit!,RETAINED_DOCUMENT_CEILING):undefined;
  for(let offset=0;offset<companies.length;offset+=100){
-  const rows=await tx.execute<{document:HistoricalDocument}>(sql`select document from app.information_payslip_documents(array[${sql.join(companies.slice(offset,offset+100).map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[],${p.year??null}::integer,${p.month??null}::integer,${p.cycle??null}::text,${p.employmentId??null}::uuid,${p.intendedCycle??false}::boolean) as document`);
+  const rows=await tx.execute<{document:HistoricalDocument}>(sql`select d.document from app.information_payslip_documents(array[${sql.join(companies.slice(offset,offset+100).map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[],${p.year??null}::integer,${p.month??null}::integer,${p.cycle??null}::text,${p.employmentId??null}::uuid,${p.intendedCycle??false}::boolean) with ordinality as d(document,ordinal) order by d.ordinal${limit?sql` limit ${limit}`:sql``}`);
   documents.push(...rows.map(r=>r.document));
-  if(documents.length>5000)throw new Error('Narrow the payroll period to view retained documents.');
+  if(!limit&&documents.length>RETAINED_DOCUMENT_CEILING)throw new Error('Narrow the payroll period to view retained documents.');
  }
  return documents;
 }

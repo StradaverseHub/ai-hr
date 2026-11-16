@@ -14,9 +14,9 @@
  *            never a reason to send again (the lease runs out and the row becomes uncertain).
  * When the installation cannot send (no embedded relay, no active relay), claimed e-mails are held (due again in 5 minutes, the
  * attempt not counted; failed as relay unavailable after 7 days). An e-mail whose frozen address is no longer the candidate's recorded
- * e-mail, or whose company switched candidate e-mail off, is not sent (failed, not eligible). Every database step is an owner-only 5720 function that takes the id and token, never an address or words.
+ * e-mail, or whose company switched candidate e-mail off, is not sent (failed, not eligible). Every database step is an owner-only 5870 function that takes the id and token, never an address or words.
  *
- * Slice 22 (5724): a survey's frozen content holds the placeholder {surveyLink}; between target and start the sweep makes a fresh random
+ * Slice 22 (5874): a survey's frozen content holds the placeholder {surveyLink}; between target and start the sweep makes a fresh random
  * token, records only its sha256 (app.recruitment_survey_issue, for this lease) and sends the message with the link put in. The link is
  * never stored, so nobody in the company can open a candidate's survey.
  */
@@ -69,7 +69,7 @@ export async function deliverCandidateEmails(ctx: SessionContext, connection: No
         if (await finish('skipped', 'notEligible')) out.failed++;
         continue;
       }
-      // Slice 22: a survey's link is made now, for this send only (5724 stores its sha256; the frozen e-mail keeps {surveyLink}).
+      // Slice 22: a survey's link is made now, for this send only (5874 stores its sha256; the frozen e-mail keeps {surveyLink}).
       // No origin to link to, or content that does not take the link: not sent (failed, not eligible).
       let message = { subject: target.subject, text: target.text, html: target.html };
       if (target.kind === 'survey') {

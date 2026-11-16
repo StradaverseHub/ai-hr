@@ -94,7 +94,7 @@ import {
 import { movementFieldRuleViolations, type MovementFieldRule, type MovementFieldRuleViolation } from '../lib/movement-field-rules';
 // Board 154511c4 — history recorded backwards from the current record. Its event projects a movement row and
 // its row replacements join the hire correction's in the chain Roll Back follows.
-import { MOVEMENT_HISTORY_EVENT, MOVEMENT_HISTORY_REVERTED_EVENT, MovementHistoryError, isAssignmentReplacementEvent, alignHistoryToGroupJoinDateTx, reverseHistoryMovementTx, liftCorrectionBoundariesTx, reapplyCorrectionBoundariesTx, companyRecordOnTx } from './movement-history';
+import { MOVEMENT_HISTORY_EVENT, MOVEMENT_HISTORY_REVERTED_EVENT, MovementHistoryError, isAssignmentReplacementEvent, alignHistoryToGroupJoinDateTx, reverseHistoryMovementTx, liftCorrectionBoundariesTx, reapplyCorrectionBoundariesTx, correctionCompanyOnTx } from './movement-history';
 // c063eea9 — the hire-details correction. It owns its event and the trace the Hired row wears; this module
 // loads the event (it projects no row of its own) and follows its row replacements when rolling back.
 import {
@@ -2606,10 +2606,11 @@ async function applyComparisonMovementTx(
 
 /**
  * The placement legs record the employee's organisation tags as at the movement date, and the tag owner refuses a
- * company that app.company_org_employment_company does not give for that date. That SQL owner still answers from the
- * "before" company of the earliest information correction dated after the day (ADR-0163's rule, which predates dated
- * corrections). Where the two disagree the movement is refused here with a named row code instead of a database
- * error; the SQL owner's rule is a recorded follow-up (ADR 2026-11-15 dated information corrections, Consequences).
+ * company that app.company_org_employment_company does not give for that date. That SQL owner answers from the
+ * "before" company of the earliest information correction dated after the day and saved after the correction in
+ * force on it (ADR-0163's before-image rule, bounded by migration 5696: the latest saved correction controls). Where
+ * the two disagree the movement is refused here with a named row code instead of a database error (ADR 2026-11-15
+ * dated information corrections, Consequences).
  */
 async function assertCompanyRecordAgreesTx(tx: Tx, ctx: SessionContext, p: CreateMovementInput) {
   if (!isCalendarDate(p.effectiveDate)) return;
@@ -2619,7 +2620,9 @@ async function assertCompanyRecordAgreesTx(tx: Tx, ctx: SessionContext, p: Creat
   if (!later) return;
   const [emp] = await tx.select({ companyId: employment.companyId }).from(employment).where(eq(employment.id, p.employmentId)).limit(1);
   const recorded = p.kind === 'entityTransfer' && p.companyId ? p.companyId : emp?.companyId;
-  const owner = await companyRecordOnTx(tx, ctx.tenantId, p.employmentId, p.effectiveDate);
+  // Board 4604dccc r4 (5696): only a before-image of a correction saved after the one in force contradicts the
+  // movement; without one the owner answers from the dated record, which the movement itself writes.
+  const owner = await correctionCompanyOnTx(tx, ctx.tenantId, p.employmentId, p.effectiveDate);
   if (recorded && owner && owner !== recorded) throw new MovementHistoryError('movement_correction_company_record:' + later.effectiveOn);
 }
 

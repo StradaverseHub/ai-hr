@@ -588,13 +588,22 @@
     "probationTracker": "Theo dõi thử việc",
     "myPayrollReadiness": "Mức sẵn sàng cho kỳ lương của tôi",
     "attendanceFormulaBuilder": "Công thức chấm công",
-    "recruitment": "Tuyển dụng",
-    "myReferrals": "Giới thiệu ứng viên",
-    "attendanceRequestOnBehalf": "Gửi yêu cầu thay",
-    "attendanceApproveOnBehalf": "Phê duyệt thay",
     "rewardsReviewSetup": "Thiết lập đánh giá",
     "rewardsChangeLog": "Nhật ký thay đổi",
-    "rewardsLimitControls": "Kiểm soát giới hạn"
+    "rewardsLimitControls": "Kiểm soát giới hạn",
+    "attendanceRequestOnBehalf": "Gửi yêu cầu thay",
+    "attendanceApproveOnBehalf": "Phê duyệt thay",
+    "moduleHrAutomation": "HR Automation · Shared",
+    "automationWorkflows": "Workflows",
+    "automationTemplates": "Templates",
+    "automationGroups": "Assignment groups",
+    "automationOnOffWorkflows": "On/Off Boarding workflows",
+    "automationOnOffTemplates": "On/Off Boarding templates",
+    "automationOnOffGroups": "On/Off Boarding assignment groups",
+    "probationPostings": "Personnel postings",
+    "probationAccess": "Access",
+    "recruitment": "Tuyển dụng",
+    "myReferrals": "Giới thiệu ứng viên"
   },
   "dashboard": {
     "viewAll": "Xem tất cả"
@@ -2458,6 +2467,7 @@
           "no_data_rows": "Thêm ít nhất một dòng sự kiện bên dưới tiêu đề.",
           "movement_catalog_too_large": "Danh sách loại sự kiện vượt kích thước nhập được hỗ trợ. Hãy dùng từng Sự kiện mới.",
           "movement_reference_catalog_too_large": "Danh sách tham chiếu vượt kích thước nhập được hỗ trợ. Hãy dùng Nhân sự để thay đổi.",
+          "movement_template_too_large": "Mẫu quá lớn để tạo cho số lượng công ty và danh sách giá trị này. Không có tệp nào được tạo. Hãy liên hệ bộ phận hỗ trợ.",
           "movement_history_too_large": "Lịch sử nhân viên vượt giới hạn kiểm tra nhập. Hãy ghi sự kiện trong Nhân sự.",
           "change_refused": "Thay đổi bị từ chối. Không lưu thay đổi nào của nhân viên này.",
           "workbook_key_unavailable": "Chưa cấu hình ký sổ làm việc. Hãy liên hệ quản trị viên hệ thống; bạn vẫn có thể dùng CSV.",
@@ -2526,7 +2536,6 @@
           "movement_field_must_change": "Loại sự kiện này yêu cầu trường này phải thay đổi.",
           "movement_document_required": "Thay đổi này cần tài liệu hỗ trợ, mà tệp nhập không thể mang theo. Hãy ghi nhận biến động này ở thẻ Biến động.",
           "movement_document_not_enabled": "Loại sự kiện này không nhận tài liệu hỗ trợ cho trường này.",
-          "movement_template_too_large": "Mẫu quá lớn để tạo cho số lượng công ty và danh sách giá trị này. Không có tệp nào được tạo. Hãy liên hệ bộ phận hỗ trợ.",
           "movement_before_current_record": "Ngày này sớm hơn hồ sơ công ty và vị trí hiện tại của nhân viên, bắt đầu từ %date%. Hãy dùng ngày từ %date% trở đi, hoặc hủy trước thay đổi đã tạo hồ sơ đó.",
           "movement_already_in_company": "Nhân viên đã thuộc công ty này vào ngày này.",
           "movement_label_other_company": "Không thể dùng giá trị này cho công ty của nhân viên vào ngày này. Hãy chọn giá trị có sẵn cho công ty đó",
@@ -2622,6 +2631,7 @@
           "referenceValues": "Giá trị được phép cho từng công ty",
           "colValue": "Giá trị nhập vào Sau",
           "colLabel": "Ý nghĩa",
+          "allCompanies": "Tất cả công ty",
           "screenHint": "Một mẫu cho mọi loại biến động và mọi công ty. Nhập một dòng cho mỗi trường thay đổi; các dòng cùng công ty, nhân viên, ngày và loại sự kiện là một biến động.",
           "downloadTemplate": "Tải mẫu",
           "history": "Lịch sử nhập",
@@ -2656,8 +2666,7 @@
           "closedPayrollRow": "Bảng lương kỳ {periods} đã đóng.",
           "closedPayrollTitle": "Một số chỉnh sửa thay đổi biến động thuộc kỳ lương đã đóng ({periods}).",
           "closedPayrollBody": "Các chỉnh sửa này cập nhật hồ sơ nhân viên và việc xử lý về sau. Bảng lương đã đóng, phiếu lương đã phát hành và các tờ khai theo luật định giữ nguyên số liệu đã chốt và sẽ không được tính lại. Nếu không xác nhận, các nhân viên liên quan sẽ không được lưu.",
-          "closedPayrollAcknowledge": "Tôi hiểu rằng bảng lương đã đóng sẽ không thay đổi.",
-          "allCompanies": "Tất cả công ty"
+          "closedPayrollAcknowledge": "Tôi hiểu rằng bảng lương đã đóng sẽ không thay đổi."
         },
         "historyRow": "Ghi nhận là lịch sử: {from} đến {to} nhận các giá trị Trước. Hồ sơ từ {date} không thay đổi."
       },
@@ -3556,6 +3565,7 @@
       "loading": "Đang tải…",
       "saved": "Đã sửa thông tin. Giao dịch hoàn tất không thay đổi.",
       "unchanged": "Không thay đổi — bỏ qua dòng này.",
+      "effectiveDateOnly": "Không có gì để chỉnh sửa. Ngày hiệu lực chỉ xác định khi nào các giá trị đã chỉnh sửa được áp dụng. Để thay đổi ngày bắt đầu hồ sơ của nhân viên ({date}), hãy chỉnh sửa Ngày gia nhập tập đoàn.",
       "history": "Lịch sử chỉnh sửa",
       "noHistory": "Chưa có bản ghi chỉ chỉnh sửa thông tin.",
       "importHelp": "Mã công ty xác minh công ty hiện tại. Mã công ty mới không bắt buộc. Ô chỉnh sửa trống giữ nguyên giá trị. Xem mã hệ thống trên các trang tham chiếu. Tối đa 200 dòng.",
@@ -3604,7 +3614,6 @@
         "failed": "Thất bại",
         "unchanged": "Không đổi"
       },
-      "effective": "Xử lý trong tương lai sử dụng thông tin đã sửa từ {date}.",
       "templateFields": "Các trường mẫu này sửa được (trường mới được làm nổi bật). Ô trống giữ nguyên giá trị hiện có.",
       "templateFieldsLabel": "Các trường mẫu này sửa được",
       "ownersNote": "Lương cơ bản và các ngày nghỉ việc được sửa trên sự kiện đã ghi nhận chúng: dùng nhập Biến động với Action \"Update\". Phương thức thanh toán nằm trong nhập Ngân hàng và Pháp định.",
@@ -3619,10 +3628,10 @@
       "effectiveDateHint": "Bất kỳ ngày nào từ {start} đến hôm nay ({today}). Mặc định là hôm nay.",
       "effectiveDateFollowsJoin": "Ngày sớm nhất: {start}, Ngày gia nhập tập đoàn đã nhập bên dưới.",
       "historyClosedPayroll": "Bảng lương đã chốt giữ nguyên: {periods}.",
-      "effectiveDateJoin": "Chọn {start}, Ngày gia nhập tập đoàn, sẽ sửa thông tin tuyển dụng ban đầu của nhân viên. Công ty, Loại hình lao động, Đơn vị kinh doanh, Phòng ban, Chức vụ, nhãn tổ chức và Cấp trên trực tiếp áp dụng từ Ngày hiệu lực đến thay đổi được ghi nhận tiếp theo.",
+      "effectiveDateJoin": "Chọn {start}, Ngày gia nhập tập đoàn, sẽ sửa thông tin tuyển dụng ban đầu của nhân viên. Công ty, Loại hình lao động, Đơn vị kinh doanh, Phòng ban, Chức vụ, nhãn tổ chức và Cấp trên trực tiếp áp dụng từ Ngày hiệu lực đến biến động được ghi nhận tiếp theo làm thay đổi chúng. Lần sửa này thay thế các lần sửa trước đó kể từ ngày đó.",
       "timeline": {
         "title": "Các bản ghi theo thứ tự Ngày hiệu lực",
-        "intro": "Các thông tin đã sửa áp dụng từ {date} đến thay đổi được ghi nhận tiếp theo. Các bản ghi sau giữ nguyên ngày và giá trị của chúng. Không có gì bị ghi đè hoặc xóa.",
+        "intro": "Các thông tin đã sửa áp dụng từ {date} đến biến động được ghi nhận tiếp theo làm thay đổi chúng. Các lần sửa trước đó kể từ ngày này được thay thế và vẫn nằm trong lịch sử sửa. Các biến động giữ nguyên ngày và giá trị của chúng. Không có gì bị xóa.",
         "date": "Ngày hiệu lực",
         "record": "Bản ghi",
         "company": "Công ty",
@@ -3639,12 +3648,38 @@
           "conflict": "Mâu thuẫn với thay đổi này"
         }
       },
+      "replaced": {
+        "title": "Các lần sửa trước đó được lần sửa này thay thế",
+        "intro": "Lần sửa mới nhất quyết định các thông tin này từ {date}. Các lần sửa trước đó dưới đây vẫn nằm trong lịch sử sửa.",
+        "item": "Lần sửa hiệu lực {date} ({fields}), lưu lúc {saved} bởi {actor}"
+      },
       "conflictTitle": "Không thể lưu lần sửa này",
       "conflict": "{record} ngày {date} ghi nhận {field} thay đổi từ một giá trị khác. Hãy sửa biến động đó trước (ID sự kiện biến động {id}), hoặc chọn Ngày hiệu lực sau {date}.",
       "closedPayroll": "Bảng lương cho {periods} đã đóng trong giai đoạn được sửa. Bảng lương đã đóng, phiếu lương, Mẫu EA và hồ sơ nộp theo luật định không được tính lại.",
       "closedPayrollAcknowledge": "Tôi xác nhận bảng lương đã đóng được giữ nguyên như đã phát hành.",
       "importClosedPayroll": "Các dòng này sửa một giai đoạn có bảng lương đã đóng. Xác nhận bên dưới để lưu; nếu không xác nhận, các dòng này sẽ không được lưu.",
       "importClosedPayrollRow": "Dòng {row} · {employee} · {periods}"
+    }
+  },
+  "importErrorLogMovement": {
+    "correction": {
+      "date": "Nhập ngày theo định dạng DD-MMM-YYYY (ví dụ 06-Jan-2026) hoặc dưới dạng ngày Excel.",
+      "required": "Điền trường này - loại sự kiện này bắt buộc phải có.",
+      "chooseCompany": "Chọn Mã công ty từ trang Reference.",
+      "eventType": "Chọn một Loại sự kiện đang hoạt động từ danh sách thả xuống.",
+      "chooseReference": "Chọn một giá trị từ danh sách thả xuống hoặc trang Reference.",
+      "employeeId": "Đối chiếu Mã nhân viên và Mã công ty trên dòng này với hồ sơ Personnel.",
+      "systemField": "Chọn một Trường hệ thống mà loại sự kiện này có thể thay đổi (xem trang Reference), hoặc xóa dòng đó.",
+      "duplicateField": "Chỉ giữ một dòng cho mỗi Trường hệ thống của một biến động.",
+      "number": "Nhập một số (chỉ chữ số, không có ký hiệu tiền tệ).",
+      "noFormula": "Nhập chính giá trị, không dùng công thức.",
+      "movementId": "Sao chép Mã sự kiện biến động từ lịch sử Biến động của nhân viên.",
+      "before": "Nhập giá trị hiện có trong hồ sơ nhân viên vào cột Trước, hoặc tải mẫu mới.",
+      "otherRows": "Sửa các dòng khác của nhân viên này, rồi tải lên lại toàn bộ tệp.",
+      "recheck": "Tải tệp lên lại để tệp được kiểm tra theo dữ liệu hiện tại.",
+      "template": "Tải mẫu Biến động hiện tại, sao chép các dòng của bạn vào đó và tải lên lại.",
+      "splitFile": "Chia tệp thành các tệp nhỏ hơn (tối đa 200 dòng, 50 nhân viên và 20 dòng cho mỗi nhân viên) rồi tải lên từng tệp.",
+      "saveStopped": "Không có gì được lưu cho nhân viên này. Sửa lỗi, rồi nhập lại nhân viên này."
     }
   },
   "leave": {
@@ -5875,7 +5910,13 @@
     "rewards": "Khen thưởng",
     "reviewRewards": "Xét duyệt khen thưởng",
     "focusedDescription": "Yêu cầu này hiện được giao cho bạn xử lý.",
-    "viewAllAssigned": "Xem tất cả phê duyệt"
+    "viewAllAssigned": "Xem tất cả phê duyệt",
+    "probation": "Probation",
+    "probationPart": "Part {part} review",
+    "probationDue": "due {date}",
+    "probationOpen": "Open review",
+    "probationCapped": "Showing the first {shown} approvals.",
+    "probationSeeAll": "See all in the Probation tracker"
   },
   "performance": {
     "list": {
@@ -7395,7 +7436,13 @@
         "running": "Đang xử lý lại các nhân viên đã chọn",
         "progress": "Đã xong {done}/{total} nhân viên",
         "help": "Bạn có thể rời khỏi trang này. Mỗi nhân viên được tính lại riêng, và kết quả sẽ hiện ở đây khi việc xử lý lại hoàn tất."
-      }
+      },
+      "registerSearchLabel": "Tìm nhân viên trong lần chạy này",
+      "registerSearchPlaceholder": "Tìm theo tên nhân viên hoặc Mã nhân viên",
+      "registerSearchSubmit": "Tìm",
+      "registerSearchClear": "Xóa tìm kiếm",
+      "registerSearchSummary": "{n} trên {total} nhân viên khớp với “{q}”",
+      "registerSearchEmpty": "Không có nhân viên nào trong lần chạy này khớp với “{q}”."
     },
     "transactions": {
       "title": "Nhập liệu giao dịch",
@@ -7699,6 +7746,7 @@
         "inputType": "Loại nhập liệu",
         "inputTypeNone": "Không có",
         "amountIsFinalHint": "Số tiền nhập ở đây chính là số tiền được trả. Công thức của khoản lương không áp dụng cho giao dịch một lần.",
+        "amountManualFormulaHint": "Số tiền được nhập thủ công. Công thức của Khoản lương này không được dùng cho giao dịch này.",
         "identicalWarning": "Đã tồn tại một mục giống hệt cho nhân viên này (cùng khoản mục, ngày, số tiền và ghi chú). Chỉ lưu nếu đây thực sự là mục thứ hai.",
         "saveAndAnother": "Lưu & thêm mục khác",
         "cancel": "Hủy",
@@ -9024,6 +9072,17 @@
       "traceEpfFlatRate": "Tỷ lệ cố định, làm tròn lên đến ringgit",
       "traceEpfRates": "Nhân viên {employee} · Chủ lao động {employer}",
       "traceEpfBonusEmployerPartE": "Phần đóng của chủ lao động trên tiền thưởng",
+      "traceEpfBonusRuleNormal": "Lương EPF thông thường (không gồm EPF Bonus 2012)",
+      "traceEpfBonusRuleBonus": "Lương EPF Bonus 2012",
+      "traceEpfBonusRuleTotal": "Tổng lương EPF",
+      "traceEpfBonusRuleRate": "Tỷ lệ của chủ lao động xác định theo lương thông thường",
+      "traceEpfBonusRuleRateValue": "{normal} không vượt quá {threshold}, nên áp dụng {rate}",
+      "traceEpfBonusRuleEmployer": "Phần đóng của chủ lao động",
+      "traceEpfBonusRuleEmployerValue": "{base} × {rate} = {exact}, làm tròn lên thành {amount}",
+      "traceEpfBonusRuleEmployee": "Phần đóng của người lao động (khoảng trong bảng)",
+      "traceEpfBonusRuleEmployeeValue": "{range}, nên là {amount}",
+      "traceEpfBonusRuleEmployeeAbove": "Phần đóng của người lao động (trên RM20,000)",
+      "traceEpfBonusRuleEmployeeAboveValue": "{base} × {rate}, làm tròn lên thành {amount}",
       "traceEpfFlatNormal": "Nhân viên / chủ lao động trên lương thông thường",
       "traceEpfFlatBonus": "Nhân viên / chủ lao động trên lương thưởng",
       "traceEpfMethod": "Phương pháp",
@@ -15304,6 +15363,8 @@
       "probation": "Xác nhận thử việc",
       "contract_staff": "Quản lý hợp đồng",
       "contractDateCorrection": "Điều chỉnh ngày hợp đồng",
+      "probationApproval": "Approve probation review",
+      "probationTask": "Probation task",
       "recruitmentRequisitionApproval": "Phê duyệt yêu cầu tuyển dụng",
       "recruitmentOfferApproval": "Phê duyệt đề nghị tuyển dụng",
       "recruitmentFeedback": "Gửi đánh giá phỏng vấn",
@@ -17520,7 +17581,8 @@
     "moduleLabel": {
       "leave": "Nghỉ phép",
       "attendance": "Chấm công",
-      "claims": "Yêu cầu bồi hoàn"
+      "claims": "Yêu cầu bồi hoàn",
+      "probation": "Probation"
     },
     "taskLabel": {
       "leaveApplication": "Phê duyệt Đơn xin nghỉ",
@@ -17530,7 +17592,10 @@
       "claimsClaim": "Phê duyệt Yêu cầu bồi hoàn",
       "leaveRequestCreation": "Tạo đơn xin nghỉ phép",
       "leaveAmendmentRequest": "Yêu cầu sửa đơn nghỉ phép",
-      "leaveCancellationRequest": "Yêu cầu hủy nghỉ phép"
+      "leaveCancellationRequest": "Yêu cầu hủy nghỉ phép",
+      "probationReview": "Probation review (Head of Department, PBP, GBS)",
+      "probationApprove": "Probation approval (Head of Department, PBP, GBS)",
+      "probationLetterSign": "Probation letter signature"
     },
     "groupLabel": {
       "leaveRequest": "Đơn xin nghỉ phép",
@@ -28234,7 +28299,7 @@
     "routeUnavailable": "Không thể xác nhận người duyệt đủ điều kiện tiếp theo từ luồng đã lưu. Nhờ HR kiểm tra phân công.",
     "someApproversUnavailable": "Hiện chưa xác nhận được quyền phê duyệt của một số người đã lưu. Hãy nhờ nhân sự kiểm tra phân công.",
     "notStarted": "Chưa bắt đầu",
-    "notRequired": "Không cần quyết định thêm",
+    "notRequired": "Không bắt buộc",
     "currentEmployeeId": "Mã nhân viên hiện tại",
     "routingRecord": "Tham chiếu luồng đã lưu",
     "notRecorded": "Chưa ghi nhận",
@@ -28313,7 +28378,28 @@
     "escalatedBy": "Hệ thống tự động chuyển cấp",
     "submittedOnBehalfBy": "Được gửi thay bởi {name}",
     "approvedOnBehalf": "Đã phê duyệt thay",
-    "rejectedOnBehalf": "Đã từ chối thay"
+    "rejectedOnBehalf": "Đã từ chối thay",
+    "pendingApproval": "Chờ phê duyệt",
+    "waitingPreviousLevel": "Chờ cấp trước phê duyệt",
+    "skippedNotRequired": "Bỏ qua / Không bắt buộc",
+    "levelOrdinal": {
+      "1": "thứ nhất",
+      "2": "thứ hai",
+      "3": "thứ ba",
+      "4": "thứ tư",
+      "5": "thứ năm",
+      "6": "thứ sáu",
+      "7": "thứ bảy",
+      "8": "thứ tám",
+      "9": "thứ chín",
+      "10": "thứ mười"
+    },
+    "progressMessage": "Đã hoàn tất phê duyệt cấp {completed}. Đang chờ phê duyệt cấp {waiting}.",
+    "progressWaiting": "Đang chờ phê duyệt cấp {waiting}.",
+    "progressFinal": "Trạng thái chung của đơn: {status}.",
+    "configurationWarning": "Không xác định được người phê duyệt cho cấp này. Hãy đề nghị bộ phận nhân sự kiểm tra thiết lập phê duyệt.",
+    "levelOfTotal": "Cấp {level}/{total}",
+    "viewApprovalProgress": "Xem tiến trình phê duyệt"
   },
   "scheduleDrafts": {
     "staleLadder": "Các khoảng thời gian hoặc mức tính làm thêm giờ đã thay đổi trong phần Chung. Bản nháp của bạn vẫn còn ở đây. Hãy tải lại trang này trước khi lưu cài đặt làm thêm giờ. Các thay đổi chưa lưu chỉ bị bỏ sau khi bạn xác nhận.",
@@ -29917,7 +30003,8 @@
         "lateOffset": "Bù trừ đi muộn một lần",
         "approval": "Chế độ phê duyệt",
         "autoMethod": "Phương thức phê duyệt tự động",
-        "rounding": "Làm tròn thời lượng"
+        "rounding": "Làm tròn thời lượng",
+        "backdate": "Giới hạn đăng ký làm thêm hồi tố"
       },
       "days": {
         "normal": "Ngày thường",
@@ -29925,7 +30012,8 @@
         "rest": "Ngày nghỉ hằng tuần",
         "publicHoliday": "Ngày lễ",
         "replacementHoliday": "Ngày nghỉ lễ bù"
-      }
+      },
+      "backdateDays": "{count, plural, other {# ngày}}"
     },
     "positionSearch": "Tìm chức danh",
     "loadMorePositions": "Tải thêm chức danh",
@@ -32365,7 +32453,9 @@
       "assessmentWork": "Đánh giá năng lực",
       "careerPlan": "Xem xét kế hoạch nghề nghiệp",
       "calibration": "Hiệu chỉnh hiệu suất",
-      "rewardReview": "Xem xét đãi ngộ"
+      "rewardReview": "Xem xét đãi ngộ",
+      "probationApproval": "Probation approval",
+      "probationTask": "Probation task"
     },
     "quickActions": {
       "leave": "Đăng ký nghỉ phép",
@@ -35771,7 +35861,10 @@
       "pbp": "Đối tác nhân sự",
       "gbs": "GBS People Ops",
       "admin": "Người chuẩn bị được chỉ định",
-      "system": "Xử lý nền"
+      "system": "Xử lý nền",
+      "superior": "Direct Superior",
+      "people": "Named people",
+      "approver": "Approver"
     },
     "columns": {
       "employee": "Nhân viên",
@@ -35795,7 +35888,9 @@
       "confirmed": "Đã xác nhận",
       "extended": "Đã gia hạn",
       "not_confirmed": "Chưa xác nhận",
-      "withdrawn": "Đã rút"
+      "withdrawn": "Đã rút",
+      "waitingForStart": "Waiting for start date",
+      "didNotJoin": "Did not join"
     },
     "partStates": {
       "not_issued": "Chưa phát hành",
@@ -35899,7 +35994,16 @@
       "missing": "Cần xác định người phụ trách",
       "frozenFacts": "Đánh giá này giữ thông tin nhân viên và thời hạn thử việc đã chốt cho nội dung được ký.",
       "combinedConsent": "Tôi xác nhận đây là chữ ký của tôi cho các vai trò sau: {roles}.",
-      "combinedHistory": "Được ghi nhận bằng cùng một chữ ký"
+      "combinedHistory": "Được ghi nhận bằng cùng một chữ ký",
+      "onBehalfOf": "on behalf of {name}",
+      "reviewStep": "Review",
+      "approveStep": "Approve",
+      "reviewed": "Reviewed",
+      "approved": "Approved",
+      "decisionComment": "Comment (optional)",
+      "markReviewed": "Mark as reviewed",
+      "markApproved": "Approve",
+      "meantFor": "Meant for {who}; the fallback group took it"
     },
     "controls": {
       "title": "Thao tác đánh giá được phép",
@@ -35925,7 +36029,9 @@
       "development": "Hành động phát triển",
       "extension_recommendation": "Đề xuất gia hạn",
       "nonconfirmation_recommendation": "Đề xuất không xác nhận chính thức",
-      "refusal_request": "Trao đổi về việc nhân viên từ chối"
+      "refusal_request": "Trao đổi về việc nhân viên từ chối",
+      "low_result_action": "Low-result action",
+      "other_decided": "Other outcome decided"
     },
     "files": {
       "title": "Tài liệu đã lưu trữ",
@@ -35961,7 +36067,89 @@
         "ending14": "Kết thúc trong 14 ngày",
         "low_result": "Kết quả thấp",
         "kpi_submit": "KPI chưa được gửi",
-        "kpi_ack": "KPI chưa được xác nhận"
+        "kpi_ack": "KPI chưa được xác nhận",
+        "overridden": "Suggestion overridden"
+      },
+      "extensionsUsed": "{used} / {max}",
+      "startsOn": "Starts {date}",
+      "actions": {
+        "open": "Open",
+        "review_letter": "Review letter",
+        "record_action": "Record action",
+        "log_followup": "Log follow-up"
+      },
+      "mineOnly": "Showing only cases with work waiting on you.",
+      "mineClear": "Show all cases",
+      "breadcrumb": "Probation Confirmation / Probation tracker",
+      "intro": "Track employees with Probation status in Personnel Management and their confirmation progress.",
+      "synced": "Synced from Personnel Management. Every employee whose status is <b>Probation</b> gets a case here automatically, including records activated before their start date.",
+      "tiles": {
+        "overdue": "Overdue steps",
+        "end_passed": "End passed, no outcome",
+        "ending14": "Ending within 14 days",
+        "low_result": "Low result (Band 1–2 by default)",
+        "kpi_submit": "KPIs not submitted",
+        "kpi_ack": "KPIs not acknowledged",
+        "overridden": "Suggestion overridden"
+      },
+      "hints": {
+        "search": "Personnel Management · Full name (as per IC/passport)",
+        "businessGroup": "Personnel Management · recorded at case start",
+        "businessUnit": "Personnel Management · recorded at case start",
+        "department": "Personnel Management · Department",
+        "grade": "Personnel Management · Job Grade at case start"
+      },
+      "namePlaceholder": "Type a name…",
+      "showClosed": "Show closed cases",
+      "caseCount": "{shown} of {total} cases",
+      "filteredBy": "filtered by “{tile}”",
+      "columns": {
+        "employee": "Employee",
+        "organisation": "Business group · unit",
+        "endOn": "Probation end",
+        "plan": "Review plan",
+        "stage": "Stage",
+        "waiting": "Waiting on",
+        "due": "Due",
+        "flags": "Flags",
+        "extensions": "Ext.",
+        "extensionsFull": "Extensions used",
+        "action": "Action"
+      },
+      "planMonths": "{months, plural, one {# month} other {# months}}",
+      "planParts": {
+        "both": "Part 2 + Part 3",
+        "p3": "Part 3 only",
+        "p2": "Part 2 only"
+      },
+      "stage": {
+        "1": "Week 1 KPIs",
+        "2": "Part 2 Mid-Probation",
+        "3": "Part 3 Final review",
+        "afterExtension": "{stage} (after extension)"
+      },
+      "what": {
+        "kpis": "KPI submission",
+        "self": "self-assessment",
+        "assessment": "assessment",
+        "acknowledge": "signature",
+        "approval": "approval",
+        "letter": "letter"
+      },
+      "waitingOn": "{role} · {name} · {step}",
+      "pills": {
+        "end_passed": "End date passed",
+        "ending14": "Ends within 14 days",
+        "low_result": "Band {band} · low result",
+        "low_actioned": "PBP action recorded",
+        "kpi_submit": "KPIs not submitted",
+        "kpi_ack": "KPIs not acknowledged",
+        "overridden": "Suggestion overridden",
+        "plan_review": "Plan review required"
+      },
+      "links": {
+        "settings": "Probation settings",
+        "intake": "Intake and activation"
       }
     },
     "applyFilters": "Áp dụng bộ lọc",
@@ -36142,6 +36330,121 @@
         "pending": "Đang chờ",
         "held": "Tạm giữ để rà soát",
         "failed": "Cần thử lại"
+      },
+      "extensionsUsed": {
+        "title": "Confirm extensions already used",
+        "help": "Personnel Management keeps only the total Extended Probation Period, so the number of extensions already used cannot be worked out. Confirm 0, 1 or 2 for each case by choosing the actual extension events in the employee's review.",
+        "period": "Extended Probation Period (Personnel)",
+        "periodValue": "{original} → {extended}",
+        "used": "Extensions used",
+        "count": "{count} of {max}",
+        "notConfirmed": "Not confirmed",
+        "confirm": "Confirm",
+        "review": "Review"
+      },
+      "activationByCompany": {
+        "title": "Activation by company",
+        "help": "Employees on Probation in Personnel Management (full time) against open probation cases. A difference means someone has no case yet or a case is still open after Personnel moved on. Switching a company on still goes through the reviewed rehearsal below.",
+        "columns": {
+          "company": "Company",
+          "personnel": "Probation in Personnel",
+          "cases": "Open cases",
+          "status": "Status"
+        },
+        "match": "✓",
+        "missing": "{count, plural, one {1 employee on Probation has no case} other {# employees on Probation have no case}}",
+        "extra": "{count, plural, one {1 case more than Personnel shows} other {# cases more than Personnel shows}}",
+        "live": "Live since {date}",
+        "preparation": "Preparation"
+      },
+      "htmlImport": {
+        "title": "1. Import saved HTML evaluation forms",
+        "help": "Upload the files staff and managers saved from form v22.9.26 (“Save form”). Only the saved values inside each file are read, on the server; the page itself is never opened or run. Each file is matched to the employee by Employee ID and must name the same employee as Personnel. Fully signed parts are recorded as signed offline in the case history; started parts open as drafts. PDFs are evidence only: attach them from the case or the employee’s intake review.",
+        "choose": "Choose files",
+        "fileLabel": "Saved evaluation forms",
+        "noFile": "No file chosen · .html or .pdf",
+        "reading": "Reading…",
+        "read": "{count, plural, one {1 file read} other {# files read}}",
+        "tooMany": "Choose at most {max} files at a time.",
+        "columns": {
+          "file": "File",
+          "found": "Found in file",
+          "result": "Check"
+        },
+        "pdf": "PDF only: values can’t be read. Attach it as evidence from the case or the employee’s intake review.",
+        "statuses": {
+          "ready": "Ready",
+          "warning": "Warning",
+          "refused": "Can’t import",
+          "skipped": "Not imported",
+          "importing": "Importing…",
+          "merged": "Merged into the case",
+          "staged": "Added to intake",
+          "unchanged": "Already imported"
+        },
+        "partSummary": {
+          "part1": "Part 1: {kpis} KPIs, {signatures} signatures, {status}",
+          "review": "Part {part}: {ratings} of 9 manager ratings, {signatures} signatures, {status}"
+        },
+        "partStatus": {
+          "signed": "signed",
+          "started": "started",
+          "not_started": "not started"
+        },
+        "confirm": "I’ve checked this preview. Import the ready and warning rows; skip the rest. Each import is written to the case history.",
+        "import": "{count, plural, one {Import 1 file} other {Import # files}}",
+        "done": "Imported. Open the cases in the Probation tracker to check what was read, then continue them in the system.",
+        "resultHelp": {
+          "merged": "Merged into the existing case. Blank drafts were filled from the file. Signatures still happen in the system; to record a part as completed offline, attach its signed PDF.",
+          "staged": "No case yet: the file waits in this employee’s intake review. The case opens at the reviewed cut-over; upload the file again then to fill its drafts.",
+          "unchanged": "This exact file was already imported for this employee. Nothing changed."
+        },
+        "applied": {
+          "draft_filled": "Part {part}: drafts filled from the file",
+          "kept_system_values": "Part {part}: kept the values already in the system",
+          "part_not_open": "Part {part}: not open in the system, so nothing was filled",
+          "no_part": "Part {part}: not in this case’s plan"
+        },
+        "refusals": {
+          "file_type": "Only saved .html evaluation forms can be imported.",
+          "empty": "The file is empty.",
+          "too_large": "The file is larger than 2 MB. A saved evaluation form is much smaller; check the file.",
+          "no_block": "The file has no saved values. Open the form and use “Save form”, not the browser’s Save page.",
+          "several_blocks": "The file has more than one saved-values block, so it can’t be read safely.",
+          "block_type": "The saved-values block is not JSON, so it can’t be read safely.",
+          "damaged": "The saved values in the file are damaged and could not be read.",
+          "no_version": "The file doesn’t say which form version it is. Only form v22.9.26 can be imported.",
+          "wrong_version": "This is form v{version}. Only form v22.9.26 can be imported; nothing was guessed.",
+          "no_values": "The file has no saved values. Use “Save form” in the form itself.",
+          "invalid_field": "The field “{field}” has a value that can’t be read. Nothing was guessed; correct the form and save it again.",
+          "no_employee_id": "The file has no Employee ID, so it can’t be matched to an employee.",
+          "no_employee_name": "The file has no employee name.",
+          "not_entitled": "Probation is not available for this company.",
+          "no_employee": "No employee with this Employee ID is in this company within your intake scope.",
+          "name_mismatch": "The employee name in the file doesn’t match Personnel for this Employee ID. Check the file.",
+          "excluded": "A probation case can’t be created for this employee: {reason}.",
+          "no_settings": "Publish the probation settings for this company before importing.",
+          "opens_automatically": "This new starter’s case opens automatically now that probation is switched on. Import the file once the case is open.",
+          "case_closed": "The matching case is closed. Nothing was changed.",
+          "not_saved": "The file could not be imported. Nothing was changed; try again."
+        },
+        "exclusionReasons": {
+          "confirmed": "already confirmed in Personnel",
+          "resignation": "a resignation is recorded",
+          "ended": "the employment has ended",
+          "no_probation": "no probation applies",
+          "reviewed_exclusion": "excluded at intake",
+          "employment_type": "not a full-time employee",
+          "grade_not_enabled": "the job grade is not in the probation settings",
+          "company_transfer": "moved from another company during intake",
+          "not_eligible": "not eligible for probation",
+          "unavailable": "not available"
+        },
+        "historyTitle": "Imported forms",
+        "historyEmpty": "No saved forms imported yet.",
+        "candidateTitle": "From the imported saved form",
+        "candidateHelp": "Map each Part below with the usual rules: a signed part is Completed offline with its signed PDF attached; a started part continues as unfinished work. After cut-over, upload the file again to fill the case drafts.",
+        "candidatePart": "Part {part} {status}"
       }
     },
     "workflows": {
@@ -36265,7 +36568,23 @@
       "open": "Mở thư kết quả",
       "preparationClosed": "Đã yêu cầu hoặc hoàn tất phát hành. Xem thư đã lưu và trạng thái nộp hồ sơ từ hồ sơ thử việc.",
       "templateTie": "Có nhiều mẫu có mức độ phù hợp bằng nhau. Hãy chọn rõ mẫu đã được rà soát.",
-      "filingPending": "Yêu cầu phát hành đã được lưu. Tác vụ nền hiện có sẽ tạo và nộp PDF đã ký trước khi áp dụng kết quả. Mọi lỗi vẫn hiển thị để thử lại."
+      "filingPending": "Yêu cầu phát hành đã được lưu. Tác vụ nền hiện có sẽ tạo và nộp PDF đã ký trước khi áp dụng kết quả. Mọi lỗi vẫn hiển thị để thử lại.",
+      "contentPrivate": "This letter is private until it reaches you. You can see who it is with and its status.",
+      "routingFallback": "Nobody could be found for some steps, so the fallback group took them:",
+      "sentBack": "{name} sent this letter back: {reason}",
+      "resend": "Send round again",
+      "meantFor": "meant for {who}",
+      "routedStep": {
+        "review": "Review",
+        "approve": "Approve",
+        "sign": "Sign",
+        "acknowledge": "Acknowledge"
+      },
+      "decision": {
+        "reviewed": "Mark as reviewed",
+        "approved": "Approve"
+      },
+      "holderOnBehalf": "{name} on behalf of {represented}"
     },
     "dates": {
       "title": "Rà soát ngày thử việc",
@@ -36335,6 +36654,608 @@
       "title": "Một số thông báo thử việc mặc định không khả dụng",
       "summary": "Phát hành một quy trình tổng hợp các mục quá hạn cho toàn công ty với Đối tác Nhân sự là người nhận.",
       "help": "Phát hành các quy trình còn thiếu để khôi phục thông báo tương ứng. Hạn rà soát và dấu hiệu quá hạn vẫn áp dụng."
+    },
+    "settingsScope": {
+      "subtitle": "Each company uses exactly one published setting. Changes apply to new cases only.",
+      "newSetting": "New company setting",
+      "inUse": "Settings in use",
+      "columns": {
+        "setting": "Setting",
+        "appliesTo": "Applies to",
+        "version": "Version",
+        "overrides": "Overrides",
+        "action": "Action",
+        "field": "Field",
+        "standard": "Group standard",
+        "thisSetting": "This setting",
+        "company": "Company",
+        "differences": "Fields that would change",
+        "pickedUp": "Picks up",
+        "shielded": "Shielded by an override"
+      },
+      "groupStandard": "Group standard",
+      "allCompanies": "All {count} companies",
+      "notPublished": "Not published yet. Each company uses its own settings version.",
+      "setsEveryField": "— (sets every field)",
+      "edit": "Edit",
+      "publishedAlso": "Version {version} is published and in use.",
+      "overrideSummary": "{count, plural, one {1 field} other {# fields}}: {fields}. Inherits the rest.",
+      "noOverrides": "No fields overridden.",
+      "redundant": "Same as the group standard, so it can be removed: {fields}",
+      "rule": "A company setting overrides only the fields it ticks; every other field follows the group standard, including future changes to it. A company can be in only one company setting.",
+      "noStandardTitle": "No group standard yet",
+      "noStandardHelp": "Until a group standard is published, each company keeps using its own published settings version and nothing changes. Create the standard from the company whose settings should apply to everyone, then add company settings for companies that must keep different values. Company settings take effect together with the standard.",
+      "continueDraft": "Continue the group standard draft",
+      "createFrom": "Create group standard from",
+      "startFromDefaults": "Recommended defaults",
+      "createStandard": "Create group standard",
+      "notCurrentTitle": "Companies not using the current settings yet",
+      "notCurrentHelp": "These companies started using Probation after the group standard was last published. Apply the group standard and their company setting to them.",
+      "applyNow": "Apply now",
+      "refreshed": "{company} now uses the current settings.",
+      "unknownCompany": "Unavailable company",
+      "editing": "Editing: {name}",
+      "newCompanySetting": "New company setting",
+      "standardHelp": "The group standard sets every field for all companies. Running cases keep the values they started with.",
+      "companyHelp": "Tick Override for each field this setting changes. Inherited fields follow the group standard, including later changes to it.",
+      "waitsForStandard": "No group standard is published yet. This company setting takes effect when the group standard is published.",
+      "name": "Setting name",
+      "inOther": "in {name}",
+      "overlap": "A company can be in only one company setting. Remove it from the other setting first: {companies}",
+      "standardVersion": "Group standard v{version}",
+      "inherited": "Inherited",
+      "override": "Override",
+      "sameAsStandard": "Same as the standard",
+      "changed": "Changed",
+      "extensionsFixed": "Extensions: {months} months, at most {max}. Fixed for every company.",
+      "diffTitle": "How companies differ from this standard",
+      "diffHelp": "Publishing the standard gives these companies its values for new cases, unless a company setting overrides the field. Add company settings first for companies that must keep their values.",
+      "previewTitle": "Before you publish",
+      "previewNone": "No field differs from the published group standard.",
+      "previewRunning": "Cases already running keep the values they started with either way.",
+      "resolvedNote": "Companies in this setting use these overridden fields: {fields}. Everything else follows the group standard.",
+      "resolvedPreview": "Values these companies will use",
+      "reason": "Reason for the change (optional)",
+      "close": "Close",
+      "publishedNotice": "Published. New cases use these settings.",
+      "retire": "Retire this company setting",
+      "retireHelp": "Its companies go back to the group standard for new cases. Running cases keep their values.",
+      "retiredNotice": "Company setting retired.",
+      "rulesInCompanySetting": "Narrow KPI gate rules are set in a company setting.",
+      "rulesOneCompany": "Narrow KPI gate rules can be overridden when the setting applies to one company.",
+      "ruleCount": "{count, plural, =0 {No rules} one {1 rule} other {# rules}}",
+      "daysBeforeDue": "{days} calendar days before due",
+      "planWithMidpoint": "{months} months · Part 2 at month {midpoint}",
+      "planFinalOnly": "{months} months · Part 3 only",
+      "defaultGroup": "GBS People Ops",
+      "savedGroup": "Saved group (no longer listed)",
+      "on": "On",
+      "off": "Off",
+      "truncated": "Only the first 200 settings are shown.",
+      "companyVersionTitle": "Company settings version",
+      "lockedNotice": "A group standard is published, so this company's settings come from the group standard and its company setting. Edit them above. Access below stays per company.",
+      "nonWorking": {
+        "previous": "Move to the working day before",
+        "next": "Move to the next working day"
+      },
+      "fields": {
+        "eligibleGrades": "Eligible grades",
+        "gradeHEnabled": "Grade H",
+        "defaultMonths": "Default probation months",
+        "plans": "Review plans",
+        "kpiGate": "KPI acknowledgement gate",
+        "issueLeadDays": "Review form opens",
+        "nonWorkingDayRule": "Due date on a non-working day",
+        "fallbackGroupId": "When no one can be found",
+        "postingApproverGroupId": "Who approves Personnel postings",
+        "kpiDueWorkingDays": "KPIs due after working days",
+        "kpiReminderWorkingDay": "KPI reminder on working day",
+        "firstReminderDays": "First reminder before due · days",
+        "dailyReminderDays": "Daily reminders from · days before due",
+        "lowBand": "Low-result band threshold",
+        "lmWaitsForEmployee": "Manager waits for the employee self-assessment",
+        "overrides": "Narrow KPI gate rules",
+        "maxExtensions": "Maximum extensions"
+      }
+    },
+    "startStatus": {
+      "waiting": "Waiting for start date. The case opened at activation; no reviews, tasks or reminders start before {date}. Part 1 counts from the start date.",
+      "didNotJoin": "Closed as Did not join: the hire was withdrawn or the employment ended before the start date."
+    },
+    "overrideNotice": "The Line Manager chose a different outcome from the suggestion and wrote a justification.",
+    "formRouting": {
+      "title": "Review and approval routing",
+      "help": "Who approves and signs each part, and in what order. Lower numbers go first; steps sharing a number run one after another in the order listed. A case keeps the routing of the form version it started on.",
+      "legacy": "This form version has no approval steps of its own, so its cases use the published signing routes configuration. Set approval steps here to route new cases from this form instead.",
+      "useForm": "Set approval steps on this form",
+      "core": "Always first, and not editable: {steps}.",
+      "coreKpi": "Line Manager sets and signs the KPIs → Employee acknowledges",
+      "coreReview": "Employee self-review → Line Manager assessment and signature → Employee acknowledges",
+      "order": "Order",
+      "action": "Action",
+      "who": "Who",
+      "actions": {
+        "approve_sign": "Approve and sign",
+        "review": "Review",
+        "approve": "Approve"
+      },
+      "remove": "Remove the {who} step",
+      "add": "Add approval step",
+      "none": "No approval steps.",
+      "partThreeRequired": "Part 3 needs at least one approval step.",
+      "reserved": "Head of Department, People Business Partner and Direct Superior steps follow the case’s current holders, their delegations and the policy below.",
+      "policyInherit": "Use the signing routes configuration’s setting",
+      "whoKinds": {
+        "hod": "Head of Department",
+        "pbp": "People Business Partner",
+        "superior": "Direct Superior",
+        "routing": "A routing",
+        "group": "An assignment group",
+        "people": "Named people"
+      },
+      "routing": "Routing",
+      "group": "Assignment group",
+      "people": "People",
+      "pick": "Who takes it",
+      "picks": {
+        "any": "Any member",
+        "roundRobin": "Round robin"
+      },
+      "missingChoice": "No longer available: choose another",
+      "resolveNote": "A routing, an assignment group or named people gives the step to one person, chosen by the step’s rule when the Line Manager submits, and that person keeps it for the part. If nobody is available, the case’s fallback group takes it and the case records who it was meant for."
+    },
+    "lowResult": {
+      "title": "Low result",
+      "notice": "Part {part} scored Band {band}. Record the action taken with the Line Manager.",
+      "note": "Action taken with the Line Manager",
+      "save": "Record action",
+      "waiting": "Waiting for the People Business Partner to record the action taken."
+    },
+    "otherOutcome": {
+      "title": "Outcome “Other” · PBP decision",
+      "help": "No letter is generated automatically. Choose the outcome to apply. The case then continues as that outcome: the letter, its signatures, then the posting or the offboarding case.",
+      "choice": "Decision",
+      "months": "Extension length",
+      "monthsOption": "{months} months",
+      "reason": "Reason",
+      "save": "Apply this outcome",
+      "waiting": "Waiting for the People Business Partner to choose the outcome."
+    },
+    "automationHistory": {
+      "title": "Workflow history",
+      "empty": "No shared workflow has run for this case yet.",
+      "recipients": "{count, plural, one {# person} other {# people}} reached",
+      "unresolved": "Not reached: {who}. {reason}",
+      "status": {
+        "running": "Running",
+        "waiting": "Waiting for the letter",
+        "done": "Done",
+        "skipped": "Skipped",
+        "failed": "Failed"
+      }
+    },
+    "taskKinds": {
+      "submit_employee": {
+        "title": "Complete your self-assessment · Part {part}",
+        "action": "Open form"
+      },
+      "submit_manager_kpis": {
+        "title": "Set Week 1 KPIs and sign",
+        "action": "Set KPIs"
+      },
+      "submit_manager": {
+        "title": "Complete the Line Manager assessment and sign · Part {part}",
+        "action": "Open assessment"
+      },
+      "acknowledge": {
+        "title": "Acknowledge and sign · Part {part}",
+        "action": "Acknowledge"
+      },
+      "approve": {
+        "title": "Approve Part {part}",
+        "action": "Review and approve"
+      },
+      "record": {
+        "title": "Record the completed Part {part}",
+        "action": "Record"
+      },
+      "confirm_extension": {
+        "title": "Confirm the extension · Part {part}",
+        "action": "Confirm extension"
+      },
+      "confirm_refusal": {
+        "title": "Confirm a declined signature · Part {part}",
+        "action": "Confirm"
+      },
+      "kpi_exception": {
+        "title": "Decide on the KPI acknowledgement hold · Part {part}",
+        "action": "Decide"
+      },
+      "employee_wait_exception": {
+        "title": "Decide whether to continue without the self-assessment · Part {part}",
+        "action": "Decide"
+      },
+      "letter_sign": {
+        "title": "Sign probation letter",
+        "action": "Sign letter"
+      },
+      "letter_review": {
+        "title": "Review probation letter",
+        "action": "Review letter"
+      },
+      "letter_approve": {
+        "title": "Approve probation letter",
+        "action": "Approve letter"
+      },
+      "letter_revise": {
+        "title": "Update probation letter after send-back",
+        "action": "Update letter"
+      },
+      "letter_release": {
+        "title": "Release probation letter",
+        "action": "Release letter"
+      },
+      "low_result_action": {
+        "title": "Record low-result action",
+        "action": "Record action"
+      },
+      "choose_outcome": {
+        "title": "Decide Other outcome",
+        "action": "Decide outcome"
+      },
+      "other": {
+        "title": "Probation task",
+        "action": "Open"
+      }
+    },
+    "caseView": {
+      "heading": "Probation · {stage}",
+      "stage": {
+        "1": "Part 1 · Week 1 Success Plan",
+        "2": "Part 2 · Mid-Probation Review",
+        "3": "Part 3 · Final Confirmation Review",
+        "cycle": "{part} (cycle {cycle})",
+        "outcome": "Outcome"
+      },
+      "short": {
+        "1": "Week 1 KPIs",
+        "2": "Part 2 Mid-Probation",
+        "3": "Part 3 Final review",
+        "outcome": "Outcome"
+      },
+      "tabs": {
+        "label": "Case sections",
+        "1": "Part 1 · Week 1 KPIs",
+        "2": "Part 2 · Mid-Probation",
+        "3": "Part 3 · Final",
+        "cycle": "{part} (cycle {cycle})",
+        "outcome": "Outcome & letters",
+        "files": "Files ({count})",
+        "history": "History",
+        "current": "current stage"
+      },
+      "partsLabel": "Parts",
+      "routeLabel": "Signing route for the current part",
+      "waitingOn": "Waiting on: {who}",
+      "closed": "Case closed.",
+      "opens": "Form opens {date}",
+      "due": "due {date}",
+      "daysLeft": "{count, plural, one {# day left} other {# days left}}",
+      "daysOverdue": "{count, plural, one {# day overdue} other {# days overdue}}",
+      "dueToday": "due today",
+      "who": "{role} · {name} · {what}",
+      "whoNoName": "{role} · {what}",
+      "what": {
+        "kpis": "set Week 1 KPIs and sign",
+        "self": "self-assessment",
+        "assessment": "assessment",
+        "returned": "returned part",
+        "acknowledge": "acknowledge and sign",
+        "approve": "approval",
+        "review": "review",
+        "sign": "signature"
+      },
+      "facts": {
+        "employee": "Employee",
+        "titleGrade": "Job title / grade",
+        "businessGroup": "Business group",
+        "businessUnit": "Business unit",
+        "probation": "Probation",
+        "plan": "Review plan",
+        "extensions": "Extensions used",
+        "people": "People"
+      },
+      "plan": {
+        "6": "6 months · P2 + P3",
+        "3": "3 months · P3 only",
+        "other": "{months} months"
+      },
+      "months": "{months, plural, one {# month} other {# months}}",
+      "peopleLm": "LM {name}",
+      "peoplePbp": "PBP {name}",
+      "steps": {
+        "self": "Employee self-assessment",
+        "lmKpis": "LM sets KPIs and signs",
+        "lmAssess": "LM assessment",
+        "ack": "Employee acknowledges",
+        "approveSign": "Approve and sign · {who}",
+        "approve": "Approve · {who}",
+        "review": "Review · {who}",
+        "sign": "Sign · {who}"
+      },
+      "stepState": {
+        "done": "done",
+        "current": "current",
+        "waiting": "not reached",
+        "overdue": "overdue",
+        "returned": "returned with comments"
+      },
+      "noOutcome": "The outcome is decided at the final review (Part 3 Final review).",
+      "filesEmpty": "No files yet. Completed forms and letters appear here when each part is recorded.",
+      "earlierCycles": "Earlier cycles of this part",
+      "cycleLink": "Cycle {cycle} · {state}",
+      "waitingStart": "Waiting for the start date ({date}). The record was activated in Personnel Management before the start date. Nothing is sent and no step is due until then.",
+      "noPart": "This part is not part of this case's review plan.",
+      "back": "Probation tracker",
+      "pill": "Probation",
+      "yourStep": "Your step:",
+      "waitingOnLabel": "Waiting on:",
+      "nextAction": "Next action:",
+      "outcomeHeading": "Outcome",
+      "earlierLetters": "Earlier letters",
+      "download": "Download",
+      "downloadFile": "Download {name}",
+      "fileKinds": {
+        "completed_part": "Completed evaluation form with signature page · stored on the employee file",
+        "letter_released": "Released letter · stored on the employee file",
+        "letter_draft": "Letter prepared for signatures",
+        "offline": "Original file kept as offline evidence"
+      },
+      "letter": {
+        "sub": "From the shared Templates builder · module Probation · template v{version}",
+        "routing": "Signing routing on this document",
+        "state": {
+          "released": "Released",
+          "filing": "Filing pending",
+          "sentBack": "Sent back",
+          "waitingFor": "Waiting for {names}",
+          "ready": "Ready to release",
+          "waiting": "Waiting",
+          "paused": "Paused"
+        },
+        "and": " and "
+      },
+      "form": {
+        "cycle": "{part} · after extension {count}",
+        "status": "{state} · due {date}",
+        "yourSelf": "Your self-assessment",
+        "yourLm": "Your Line Manager assessment",
+        "sections": {
+          "2": "A. Performance Progress Review · B. Leadership Principles – Mid-Point",
+          "3": "A. Role Performance Assessment · B. {count} Leadership Principles"
+        },
+        "rateHelp": "Rate every criterion 1–5. Ratings start blank. A rating of 1 or 2 needs written evidence before you can submit.",
+        "readHelp": "Ratings as submitted. A column opens once that person has submitted.",
+        "gridLabel": "Assessment criteria and ratings",
+        "col": {
+          "criterion": "Criterion",
+          "weight": "Weight",
+          "employee": "Employee",
+          "lm": "Line Manager",
+          "evidence": "Comments / evidence",
+          "yourEvidence": "Your evidence"
+        },
+        "sectionRole": "A. Role ({weight}%)",
+        "sectionPrinciples": "B. {count} Leadership Principles ({weight}%)",
+        "guide": "Guide",
+        "guideFor": "Guide for {criterion}",
+        "kpiLink": "Shows the {count} Week 1 KPIs",
+        "ratingGroup": "{who} rating for {criterion}",
+        "ratingButton": "{rating} · {label}",
+        "clearRating": "Clear",
+        "clearRatingFor": "Clear the rating for {criterion}",
+        "evidenceFor": "Evidence for {criterion}",
+        "yourEvidenceFor": "Your evidence for {criterion}",
+        "evidencePlaceholder": "Observable example / evidence",
+        "hiddenLm": "Hidden until the Line Manager submits",
+        "hiddenEmployee": "Not submitted yet",
+        "evidenceRequired": "Evidence required for a rating of {rating}",
+        "evidenceRequiredKpi": "Evidence required while the Week 1 KPIs are not acknowledged",
+        "drawer": {
+          "close": "Close",
+          "kpiTitle": "Week 1 KPIs (Part 1)",
+          "criterionTitle": "Appendix A · {criterion}",
+          "behaviours": "Key behaviours",
+          "prompt": "Evidence prompt",
+          "principles": "Evidence-based rating principles.",
+          "principlesText": "Rate observable behaviour and demonstrated results, not personality. Use examples from the full probation period. A rating of 1 or 2 requires clear evidence, prior feedback and documented development support.",
+          "noKpis": "No KPIs agreed yet.",
+          "kpiLine": "{measure} · target {target} by {date}",
+          "support": "Planned support"
+        },
+        "result": {
+          "2": "C. Overall Mid-Point Assessment",
+          "3": "C. Overall Result and Recommendation"
+        },
+        "resultSub": "Worked out by the system from the Line Manager’s ratings.",
+        "sectionA": "Section A /{max}",
+        "sectionB": "Section B /{max}",
+        "total": "Total /{max}",
+        "band": "Band",
+        "rateAll": "Rate all {count}",
+        "selfScore": "Employee self-score {score} (Band {band}). Only the Line Manager’s result drives the suggestion.",
+        "selfScoreNone": "Employee self-score not submitted. Only the Line Manager’s result drives the suggestion.",
+        "justification": {
+          "2": "Justification",
+          "3": "Recommendation and justification"
+        },
+        "justificationRequired": "Required: explain why you chose something other than the suggestion",
+        "noMidpointOutcome": "No final employment outcome is applied at the mid-point.",
+        "choice": {
+          "2": "E. Mid-Probation Status",
+          "3": "Outcome"
+        },
+        "options": {
+          "confirm": "Confirm employment",
+          "extend": "Extend probation",
+          "not_confirm": "Non-confirmation",
+          "other": "Other",
+          "satisfactory": "Progressing satisfactorily",
+          "development": "Progressing with development actions",
+          "at_risk": "At risk of not meeting probation requirements – People Team consultation required"
+        },
+        "extendHint": "{first} or {second} months",
+        "otherHint": "needs justification and a PBP decision",
+        "suggested": "suggested",
+        "extensionsUsed": "{count} of {max} extensions used",
+        "extensionLength": "Extension length (Line Manager recommends, PBP confirms)",
+        "monthsOption": "{months} months",
+        "choiceNote": "Choosing anything other than the suggestion needs a written justification and is flagged to the People Business Partner.",
+        "nothingPreselected": "Nothing is pre-selected.",
+        "managerComments": "Manager’s overall comments",
+        "coaching": "D. Coaching Summary and Development Plan",
+        "strengths": "Top strengths demonstrated",
+        "development": "Priority development areas",
+        "employeeComments2": "Employee’s comments",
+        "ackHeading": "D. Employee Comments and Acknowledgement",
+        "employeeComments3": "Employee comments",
+        "ackNote": "Discussed and received. Acknowledgement does not mean agreement.",
+        "optional": "Optional",
+        "kpiHeading": "A. Key Accountabilities and KPIs",
+        "kpiSub": "Line Manager enters 1–5 rows. They lock after the employee acknowledges and carry into the KPI criterion of every later review.",
+        "kpiCols": {
+          "no": "No.",
+          "accountability": "Key accountability",
+          "measure": "KPI / success measure",
+          "target": "Target",
+          "targetDate": "Target date"
+        },
+        "kpiField": "{field} {index}",
+        "kpiRemove": "Remove",
+        "kpiRemoveRow": "Remove accountability {index}",
+        "kpiAdd": "Add accountability · maximum 5",
+        "kpiEmpty": "Not entered yet.",
+        "supportHeading": "B. Planned Support for Employee",
+        "supportLabels": {
+          "coaching": "On-the-job training / coaching",
+          "access": "SOPs, policies, guidelines or system access",
+          "checkins": "Regular check-ins / feedback arrangements",
+          "other": "Other support required"
+        },
+        "supportPlaceholder": "Details / owner / timing",
+        "meetingHeading": "C. Meeting Acknowledgement",
+        "meetingHint": "Editable only by the employee at the acknowledgement step.",
+        "meetingNote": "Line Manager signs on submission, then the employee signs on acknowledgement.",
+        "scheduled": "Scheduled. The form opens on {opens}, {lead} days before the due date {due}.",
+        "gateBlocks": "KPI gate is set to Block: the form also waits until Part 1 is acknowledged.",
+        "signatures": "Signatures",
+        "sigWaiting": "Waiting",
+        "signHeading": "Signing and acknowledgement",
+        "signNote": "Signing means discussed and received, not agreement.",
+        "signWho": "Verified login: {name} ({role})",
+        "signFingerprint": "Your name, role, date and time and a fingerprint of this version of the form are saved with your signature.",
+        "methods": {
+          "typed": "Typed",
+          "drawn": "Drawn"
+        },
+        "issuesTitle": "{count, plural, one {# item needs fixing before submission} other {# items need fixing before submission}}",
+        "notes": {
+          "self": "Your self-assessment submission is not a signature. The Line Manager completes their assessment afterwards.",
+          "lm": "Submitting sends the review to {name} to acknowledge.",
+          "lmKpis": "You are signing as Line Manager.",
+          "ack1": "Acknowledging means the KPIs were discussed and received.",
+          "ack": "You can add comments. You cannot change ratings.",
+          "review": "Review step from the form’s approval routing · no signature needed.",
+          "approve": "Approve step from the form’s approval routing · no signature needed.",
+          "locked1": "Part 1 is recorded and locked.",
+          "locked": "This part is recorded and locked.",
+          "waiting": "Waiting on {who} ({what}).",
+          "nothing": "Nothing to do here right now."
+        },
+        "returnHeading": "Return to the Line Manager",
+        "returnHelp": "The part goes back to the Line Manager. Signatures so far are cleared and everyone signs again after the changes.",
+        "returnedBy": "Returned by {name}:",
+        "returnedNote": "Earlier signatures were cleared. The part goes through the signing route again.",
+        "decisionHeading": "Your decision"
+      }
+    }
+  },
+  "probationConfig": {
+    "crumb": "Probation Confirmation / Configuration / {page}",
+    "live": "Live",
+    "preparation": "Preparation",
+    "settings": {
+      "title": "Probation settings",
+      "sub": "Group standard version {version} published · company settings override only the fields they tick · changes apply to new cases only",
+      "subNoStandard": "No group standard published yet · each company uses its own settings version · changes apply to new cases only",
+      "subCompany": "Changes apply to new cases only.",
+      "editStandard": "Edit group standard",
+      "newCompanySetting": "New company setting",
+      "bannerLead": "Group standard with company settings.",
+      "banner": "The group standard applies the same way to every company. A company setting changes only the fields it ticks for its companies; every other field follows the standard, including later changes to it.",
+      "live": "Live in {live} of {total} companies. Running cases keep the settings version they started with.",
+      "running": "Running cases keep the settings version they started with.",
+      "standardCards": "Group standard settings",
+      "whoHelp": "A case opens automatically when an employee’s Personnel Management status becomes Probation (on activation, before, on or after the start date). Draft records never open a case.",
+      "plansHelp": "Picked from the Probation Period in Personnel Management.",
+      "planPeriod": "Probation Period",
+      "planReviews": "Reviews",
+      "planMonths": "{months} Month(s)",
+      "planMidpoint": "Part 2 at Month {midpoint} · Part 3 on the end date",
+      "planFinal": "Part 3 on the end date only",
+      "extensionMonths": "{months} months"
+    },
+    "cards": {
+      "who": "Who gets a case",
+      "plans": "Review plans",
+      "timing": "Timing",
+      "kpis": "Week 1 KPIs and reminders",
+      "extensions": "Extensions and results"
+    },
+    "form": {
+      "sub": "Criteria, weights, rating scale, bands and guidance are saved with each form version. Each case keeps the form it started on.",
+      "versions": "Form versions",
+      "formTitle": "Form",
+      "gradesTitle": "Job grade assignment",
+      "gradesHelp": "New probation cases in these grades (Personnel Management Job Grade at the case start) use this form. Leave it empty to use the form for the normal eligible grades.",
+      "gradesNote": "Changes to the grade assignment apply to new cases only.",
+      "noGrades": "No grades",
+      "chooseGrades": "Choose job grades…",
+      "selected": "{count} selected",
+      "searchGrades": "Search grade, e.g. 12",
+      "selectAll": "Select all",
+      "clear": "Clear",
+      "noGradeMatch": "No grade matches “{query}”.",
+      "done": "Done",
+      "criteriaTitle": "Criteria and weights",
+      "section": "Section {letter} · {name}",
+      "sectionTotal": "Criteria total {total}% of {weight}%",
+      "criterion": "Criterion",
+      "weight": "Weight %",
+      "guidance": "Guidance",
+      "order": "Order and remove",
+      "criterionPlaceholder": "Criterion name",
+      "weightFor": "Weight for {name}",
+      "newCriterion": "new criterion",
+      "hideGuidance": "Hide",
+      "viewGuidance": "View",
+      "editGuidance": "Edit",
+      "moveUp": "Move {name} up",
+      "moveDown": "Move {name} down",
+      "up": "Up",
+      "down": "Down",
+      "removeNamed": "Remove {name}",
+      "addCriterion": "Add criterion to Section {letter}",
+      "formTotal": "Form total {total}%",
+      "formTotalParts": "(Section A {a}% · Section B {b}%). Every criterion is rated 1–5.",
+      "scaleTitle": "Rating scale",
+      "bandsTitle": "Bands"
+    },
+    "intake": {
+      "sub": "Bring in staff who were already on probation using the offline HTML form, then switch probation on per company.",
+      "extensionsTitle": "2. Confirm extensions already used",
+      "activationTitle": "3. Activation by company",
+      "noExtensions": "No cases with an existing extension."
     }
   },
   "templateEditor": {
@@ -38698,6 +39619,1387 @@
     "appliesFromTomorrow": "Thay đổi Cách ghép lượt chấm công và Khoảng cách tối thiểu giữa các lượt chấm công có hiệu lực từ ngày mai, nên dữ liệu chấm công đã ghi nhận hôm nay không bị tính lại. Lịch sử ghi lại ai đã thay đổi và khi nào.",
     "systemReason": "Đã cập nhật trong cài đặt Nhóm lịch làm việc",
     "dutyRosterPoolNote": "Vòng xoay chỉ có thể dùng các ca Đã đưa vào trong Ca được phép ở trên."
+  },
+  "bulkJobs": {
+    "notification": {
+      "employeeImport": {
+        "completed": {
+          "title": "Đã nhập nhân viên xong",
+          "body": "Mở Lịch sử nhập để xem các nhân viên đã được thêm."
+        },
+        "failed": {
+          "title": "Việc nhập nhân viên đã dừng",
+          "body": "Không có nhân viên nào được thêm. Mở Lịch sử nhập để xem lý do."
+        },
+        "cancelled": {
+          "title": "Đã hủy việc nhập nhân viên",
+          "body": "Không có nhân viên nào được thêm. Mở Lịch sử nhập để xem chi tiết."
+        }
+      },
+      "leaveImport": {
+        "completed": {
+          "title": "Đã nhập dữ liệu nghỉ phép xong",
+          "body": "Các dòng đã nhập hiện đã có trong số dư nghỉ phép của nhân viên."
+        },
+        "failed": {
+          "title": "Việc nhập dữ liệu nghỉ phép đã dừng",
+          "body": "Các dòng đã lưu được giữ lại. Nhập lại cùng tệp sẽ bỏ qua các dòng đó."
+        },
+        "cancelled": {
+          "title": "Đã hủy việc nhập dữ liệu nghỉ phép",
+          "body": "Các dòng đã lưu được giữ lại. Nhập lại cùng tệp sẽ bỏ qua các dòng đó."
+        }
+      },
+      "leaveProcessing": {
+        "completed": {
+          "title": "Đã xử lý nghỉ phép xong",
+          "body": "Số liệu nghỉ phép đã được cập nhật."
+        },
+        "failed": {
+          "title": "Việc xử lý nghỉ phép đã dừng",
+          "body": "Các nhân viên đã được xử lý giữ nguyên số liệu. Hãy chạy lại để hoàn tất phần còn lại."
+        },
+        "cancelled": {
+          "title": "Đã hủy việc xử lý nghỉ phép",
+          "body": "Các nhân viên đã được xử lý giữ nguyên số liệu. Hãy chạy lại để hoàn tất phần còn lại."
+        }
+      },
+      "roster": {
+        "completed": {
+          "title": "Thay đổi lịch ca đã hoàn tất",
+          "body": "Mở lịch ca để xem kết quả."
+        },
+        "failed": {
+          "title": "Thay đổi lịch ca đã dừng",
+          "body": "Mở lịch ca để xem lý do."
+        },
+        "cancelled": {
+          "title": "Thay đổi lịch ca đã bị hủy",
+          "body": "Mở lịch ca để xem chi tiết."
+        }
+      },
+      "scheduleGroup": {
+        "completed": {
+          "title": "Phân nhóm lịch làm việc đã hoàn tất",
+          "body": "Mở trang Phân nhóm lịch làm việc để xem kết quả."
+        },
+        "failed": {
+          "title": "Phân nhóm lịch làm việc đã dừng",
+          "body": "Mở trang Phân nhóm lịch làm việc để xem lý do."
+        },
+        "cancelled": {
+          "title": "Phân nhóm lịch làm việc đã bị hủy",
+          "body": "Mở trang Phân nhóm lịch làm việc để xem chi tiết."
+        }
+      },
+      "clockingImport": {
+        "completed": {
+          "title": "Đã nhập dữ liệu chấm công xong",
+          "body": "Mở nhật ký nhập để xem dữ liệu chấm công đã được thêm."
+        },
+        "failed": {
+          "title": "Quá trình nhập chấm công đã dừng",
+          "body": "Mở nhật ký nhập để xem những gì đã được lưu và lý do dừng."
+        },
+        "cancelled": {
+          "title": "Quá trình nhập chấm công đã dừng",
+          "body": "Mở nhật ký nhập để xem những gì đã được lưu."
+        }
+      },
+      "attendanceRecomputePreview": {
+        "completed": {
+          "title": "Bản xem trước tính lại đã sẵn sàng",
+          "body": "Mở Tính lại chấm công để xem những gì sẽ thay đổi."
+        },
+        "failed": {
+          "title": "Bản xem trước tính lại đã dừng",
+          "body": "Mở Tính lại chấm công để xem lý do."
+        },
+        "cancelled": {
+          "title": "Bản xem trước tính lại đã dừng",
+          "body": "Mở Tính lại chấm công để bắt đầu lại."
+        }
+      },
+      "attendanceRecompute": {
+        "completed": {
+          "title": "Đã tính lại chấm công",
+          "body": "Mở Tính lại chấm công để xem những ngày đã thay đổi."
+        },
+        "failed": {
+          "title": "Quá trình tính lại chấm công đã dừng",
+          "body": "Mở Tính lại chấm công để xem lý do."
+        },
+        "cancelled": {
+          "title": "Quá trình tính lại chấm công đã dừng",
+          "body": "Mở Tính lại chấm công để xem chi tiết."
+        }
+      },
+      "payrollProcess": {
+        "completed": {
+          "title": "Đã xử lý xong bảng lương",
+          "body": "Mở Bảng lương để rà soát đợt đã xử lý."
+        },
+        "failed": {
+          "title": "Việc xử lý bảng lương đã dừng",
+          "body": "Đợt lương trở về bản nháp và không giữ phiếu lương nào. Mở Bảng lương để xem lý do."
+        },
+        "cancelled": {
+          "title": "Đã hủy xử lý bảng lương",
+          "body": "Đợt lương trở về bản nháp và không giữ phiếu lương nào."
+        }
+      },
+      "systemLabelImport": {
+        "completed": {
+          "title": "Đã nhập Nhãn hệ thống xong",
+          "body": "Mở Nhãn hệ thống để xem các mã đã được thêm."
+        },
+        "failed": {
+          "title": "Đã dừng nhập Nhãn hệ thống",
+          "body": "Không có mã nào được thêm. Mở Nhãn hệ thống và xem trước sổ làm việc lần nữa."
+        },
+        "cancelled": {
+          "title": "Đã hủy nhập Nhãn hệ thống",
+          "body": "Không có mã nào được thêm."
+        }
+      },
+      "sectionImport": {
+        "completed": {
+          "title": "Đã nhập phần hồ sơ xong",
+          "body": "Mở Nhập để xem các dòng đã được cập nhật."
+        },
+        "failed": {
+          "title": "Việc nhập phần hồ sơ đã dừng",
+          "body": "Các dòng đã lưu trước khi dừng vẫn được giữ. Mở Nhập để xem lý do."
+        },
+        "cancelled": {
+          "title": "Đã hủy việc nhập phần hồ sơ",
+          "body": "Các dòng đã lưu trước khi dừng vẫn được giữ. Mở Nhập để xem chi tiết."
+        }
+      },
+      "registerImport": {
+        "completed": {
+          "title": "Đã nhập sổ đăng ký xong",
+          "body": "Mở Nhập để xem các bản ghi sổ đăng ký đã được lưu."
+        },
+        "failed": {
+          "title": "Việc nhập sổ đăng ký đã dừng",
+          "body": "Không có bản ghi sổ đăng ký nào được lưu. Mở Nhập để xem lý do."
+        },
+        "cancelled": {
+          "title": "Đã hủy việc nhập sổ đăng ký",
+          "body": "Không có bản ghi sổ đăng ký nào được lưu. Mở Nhập để xem chi tiết."
+        }
+      },
+      "employeeImportRevert": {
+        "completed": {
+          "title": "Đã hoàn tác việc nhập xong",
+          "body": "Mở Lịch sử nhập để xem các nhân viên đã bị vô hiệu."
+        },
+        "failed": {
+          "title": "Việc hoàn tác nhập đã dừng",
+          "body": "Không có gì thay đổi. Mở Lịch sử nhập để xem lý do."
+        },
+        "cancelled": {
+          "title": "Đã hủy việc hoàn tác nhập",
+          "body": "Không có gì thay đổi. Mở Lịch sử nhập để xem chi tiết."
+        }
+      },
+      "leaveGeneration": {
+        "completed": {
+          "title": "Đã tạo xong quyền lợi nghỉ phép",
+          "body": "Số liệu nghỉ phép đã được cập nhật."
+        },
+        "failed": {
+          "title": "Việc tạo quyền lợi nghỉ phép đã dừng",
+          "body": "Không có gì bị thay đổi. Mở Tạo quyền lợi để xem lý do, sau đó chạy lại."
+        },
+        "cancelled": {
+          "title": "Đã hủy việc tạo quyền lợi nghỉ phép",
+          "body": "Không có gì bị thay đổi."
+        }
+      },
+      "leaveRecalculation": {
+        "completed": {
+          "title": "Đã tính lại số dư nghỉ phép",
+          "body": "Số liệu nghỉ phép của nhân viên giờ đã theo các thiết lập đã lưu."
+        },
+        "failed": {
+          "title": "Việc tính lại nghỉ phép đã dừng",
+          "body": "Các nhân viên đã được tính lại giữ số liệu mới. Hãy lưu lại thiết lập để tính lại phần còn lại."
+        },
+        "cancelled": {
+          "title": "Đã hủy việc tính lại nghỉ phép",
+          "body": "Các nhân viên đã được tính lại giữ số liệu mới. Hãy lưu lại thiết lập để tính lại phần còn lại."
+        }
+      },
+      "leaveYearType": {
+        "completed": {
+          "title": "Đã áp dụng loại năm nghỉ phép",
+          "body": "Số liệu nghỉ phép của nhân viên năm đầu giờ đã theo loại năm nghỉ phép đã lưu."
+        },
+        "failed": {
+          "title": "Chưa áp dụng loại năm nghỉ phép cho số dư",
+          "body": "Không có số liệu nghỉ phép nào bị thay đổi. Hãy lưu lại loại năm nghỉ phép để thử lại."
+        },
+        "cancelled": {
+          "title": "Đã hủy việc điều chỉnh loại năm nghỉ phép",
+          "body": "Không có số liệu nghỉ phép nào bị thay đổi."
+        }
+      },
+      "toilSweep": {
+        "completed": {
+          "title": "Đã xử lý xong ngày nghỉ bù",
+          "body": "Các khoản ngày nghỉ bù đến hạn đã được xử lý. Mở Tín dụng nghỉ phép để xem lại."
+        },
+        "failed": {
+          "title": "Việc xử lý ngày nghỉ bù đã dừng",
+          "body": "Các khoản đã được xử lý vẫn giữ nguyên. Hãy chạy lại để xử lý phần còn lại."
+        },
+        "cancelled": {
+          "title": "Đã hủy việc xử lý ngày nghỉ bù",
+          "body": "Các khoản đã được xử lý vẫn giữ nguyên. Hãy chạy lại để xử lý phần còn lại."
+        }
+      },
+      "payrollHistory": {
+        "completed": {
+          "title": "Đã ghi nhận thay đổi lịch sử lương",
+          "body": "Mở nhật ký nhập để xem những gì đã được ghi nhận."
+        },
+        "failed": {
+          "title": "Thay đổi lịch sử lương đã dừng",
+          "body": "Lịch sử lương không bị thay đổi. Mở nhật ký nhập để xem lý do."
+        },
+        "cancelled": {
+          "title": "Đã hủy thay đổi lịch sử lương",
+          "body": "Lịch sử lương không bị thay đổi."
+        }
+      },
+      "payrollReprocess": {
+        "completed": {
+          "title": "Đã xử lý lại bảng lương",
+          "body": "Mở kỳ lương để xem các nhân viên đã được xử lý lại."
+        },
+        "failed": {
+          "title": "Việc xử lý lại bảng lương đã dừng",
+          "body": "Nhân viên đã được xử lý lại vẫn giữ kết quả mới. Mở kỳ lương để xem nơi đã dừng."
+        },
+        "cancelled": {
+          "title": "Đã hủy xử lý lại bảng lương",
+          "body": "Nhân viên đã được xử lý lại vẫn giữ kết quả mới."
+        }
+      },
+      "movementImport": {
+        "completed": {
+          "title": "Đã nhập biến động xong",
+          "body": "Mở Lịch sử nhập để xem các biến động đã được lưu và những nhân viên chưa lưu được."
+        },
+        "failed": {
+          "title": "Việc nhập biến động đã dừng",
+          "body": "Mở Lịch sử nhập để xem lý do. Nhân viên đã được lưu vẫn giữ các biến động của mình."
+        },
+        "cancelled": {
+          "title": "Việc nhập biến động đã dừng",
+          "body": "Nhân viên đã được lưu vẫn giữ các biến động của mình. Mở Lịch sử nhập để xem chi tiết."
+        }
+      },
+      "movementCheck": {
+        "completed": {
+          "title": "Đã kiểm tra tệp biến động",
+          "body": "Lần kiểm tra được ghi trong Lịch sử nhập. Nếu bạn đã rời màn hình nhập, hãy tải tệp lên lần nữa để xem lại và xác nhận."
+        },
+        "failed": {
+          "title": "Việc kiểm tra biến động đã dừng",
+          "body": "Mở Lịch sử nhập để xem lý do. Chưa có gì được lưu."
+        },
+        "cancelled": {
+          "title": "Việc kiểm tra biến động đã dừng",
+          "body": "Chưa có gì được lưu. Mở Lịch sử nhập để xem chi tiết."
+        }
+      },
+      "movementImportRevert": {
+        "completed": {
+          "title": "Đã hoàn tác việc nhập biến động",
+          "body": "Mở Lịch sử nhập để xem các biến động đã được hoàn tác."
+        },
+        "failed": {
+          "title": "Việc hoàn tác nhập biến động đã dừng",
+          "body": "Không có gì thay đổi. Mở Lịch sử nhập để xem lý do."
+        },
+        "cancelled": {
+          "title": "Đã hủy việc hoàn tác nhập biến động",
+          "body": "Không có gì thay đổi. Mở Lịch sử nhập để xem chi tiết."
+        }
+      },
+      "recruitmentImport": {
+        "completed": {
+          "title": "Đã nhập xong ứng viên",
+          "body": "Mở lần nhập để xem kết quả từng dòng và các ứng viên đang chờ trong danh sách Cần phân công."
+        },
+        "failed": {
+          "title": "Việc nhập ứng viên đã dừng",
+          "body": "Một sự cố đã dừng việc nhập. Các dòng đã nhập vẫn được giữ; mở lần nhập để xem kết quả."
+        },
+        "cancelled": {
+          "title": "Việc nhập ứng viên đã dừng",
+          "body": "Việc nhập đã được dừng. Các dòng đã nhập vẫn được giữ; mở lần nhập để xem kết quả."
+        }
+      }
+    },
+    "panel": {
+      "queued": "Đang chờ bắt đầu",
+      "preparing": "Đang kiểm tra từng thay đổi",
+      "running": "Đang lưu",
+      "finalizing": "Đang hoàn tất",
+      "discarding": "Đang dừng",
+      "completed": "Đã xong",
+      "failed": "Đã dừng",
+      "cancelled": "Đã hủy",
+      "progressCount": "Đã hoàn tất {done}/{total} bước",
+      "backgroundHelp": "Bạn có thể rời trang này. Công việc vẫn tiếp tục và bạn sẽ được thông báo khi hoàn tất.",
+      "waiting": "Đang chờ dịch vụ chạy nền. Tiến độ đã được lưu; đừng bắt đầu lại.",
+      "workerUnavailable": "Dịch vụ chạy nền chưa hoạt động. Yêu cầu của bạn đã được lưu và sẽ tự động bắt đầu ngay khi dịch vụ hoạt động."
+    },
+    "roster": {
+      "generate": "Đang tạo lịch ca",
+      "copy": "Đang sao chép lịch ca",
+      "assign": "Đang áp dụng thay đổi lịch ca",
+      "import": "Đang lưu lịch ca đã tải lên",
+      "otherRunning": "Một thay đổi lịch ca khác vẫn đang được lưu. Hãy đợi hoàn tất rồi thử lại.",
+      "saveFailed": "Không thể lưu thay đổi lịch ca. Vui lòng thử lại hoặc liên hệ quản trị viên nhân sự.",
+      "queuedBehind": "Đang xếp hàng sau một công việc lịch ca khác. Công việc sẽ tự bắt đầu ngay khi công việc kia hoàn tất."
+    },
+    "scheduleGroup": {
+      "title": "Đang phân nhóm lịch làm việc",
+      "otherRunning": "Một lượt phân nhóm lịch làm việc khác vẫn đang được lưu. Hãy đợi hoàn tất rồi thử lại.",
+      "queuedBehind": "Đang xếp hàng sau một lượt phân nhóm lịch làm việc khác. Sẽ tự bắt đầu ngay khi lượt kia hoàn tất."
+    }
+  },
+  "importLog": {
+    "batchReference": "Mã lô",
+    "importedBy": "Người nhập",
+    "batchLabel": "Lô {code}",
+    "actorWithId": "{name} ({employeeId})",
+    "actorUnlinked": "Đăng nhập quản trị (không có hồ sơ nhân viên · đăng nhập kết thúc bằng {suffix})",
+    "actorUnavailable": "Người dùng không khả dụng"
+  },
+  "lifecycleEmailHold": {
+    "inboxAction": "Thư đang bị giữ: {email}"
+  },
+  "rewardConfig": {
+    "title": "Xem trước khi lưu",
+    "saving": "Đang lưu…",
+    "whyReview": "Lý do cần xem lại",
+    "reason": "Lý do thay đổi",
+    "cancel": "Hủy",
+    "highImpact": {
+      "released-pat": "PAT thay đổi cho một đợt đánh giá đã phát hành.",
+      "released-library": "Các đợt đánh giá đã phát hành dùng phiên bản trước và sẽ giữ phiên bản đó; đợt đánh giá mới dùng phiên bản này.",
+      "released-limit": "Hạn mức ngân sách thay đổi cho một đợt đánh giá đã phát hành.",
+      "release-review": "Phát hành sẽ gửi đợt đánh giá này đến CEO đơn vị kinh doanh.",
+      "remove-access": "Một người sẽ mất quyền truy cập vào đợt đánh giá.",
+      "open-offcycle": "Mở năm ngoài chu kỳ cho phép lãnh đạo dùng số dư công ty cho yêu cầu ngoài chu kỳ.",
+      "offcycle-window": "Khoảng giữa năm quyết định khi nào có thể nộp đề xuất giữa năm."
+    },
+    "whatChanges": "Nội dung thay đổi ({count})",
+    "item": "Mục",
+    "before": "Trước",
+    "after": "Sau",
+    "noValueChanges": "Không có giá trị nào thay đổi.",
+    "moreLines": "Còn {count} thay đổi khác trong nhật ký thay đổi.",
+    "affected": "Đợt đánh giá bị ảnh hưởng ({count})",
+    "noReviewsAffected": "Không có đợt đánh giá nào bị ảnh hưởng.",
+    "consequence": {
+      "repriced": "Tính lại ngay",
+      "recalculation-required": "Tính lại; người phê duyệt hiện tại được thông báo",
+      "keeps-version": "Giữ phiên bản đã dùng khi bắt đầu",
+      "released-to-bu": "Phát hành cho CEO đơn vị kinh doanh",
+      "access-removed": "Đã gỡ quyền truy cập",
+      "none": "Không thay đổi"
+    },
+    "notificationTitle": "Cấu hình Rewards đã thay đổi",
+    "noAccess": "Bạn không xem được nhật ký thay đổi Rewards.",
+    "logHelp": "Mọi thay đổi cấu hình Rewards: ai thực hiện, khi nào, thay đổi gì và vì sao. Các thay đổi không bao giờ bị sửa hoặc xóa.",
+    "area": "Phạm vi",
+    "allAreas": "Mọi phạm vi",
+    "company": "Công ty",
+    "allCompanies": "Mọi công ty",
+    "person": "Người thay đổi",
+    "from": "Từ",
+    "to": "Đến",
+    "highImpactOnly": "Chỉ tác động cao",
+    "filter": "Áp dụng bộ lọc",
+    "exportExcel": "Xuất ra Excel",
+    "when": "Thời điểm",
+    "areaColumn": "Phạm vi",
+    "reasonColumn": "Lý do",
+    "changes": "Thay đổi",
+    "changedValues": "{count, plural, =0 {Không có giá trị} other {# giá trị}}",
+    "system": "Hệ thống",
+    "unknownPerson": "Không rõ",
+    "highImpactBadge": "Tác động cao",
+    "areas": {
+      "salary": "Cấu trúc lương",
+      "bonus": "Ma trận thưởng",
+      "pat": "Dữ liệu PAT",
+      "plan": "Cấu hình Rewards dùng chung",
+      "shared": "Cấu hình dùng chung",
+      "exemption": "Miễn trừ hạn mức ngân sách",
+      "senior": "Kế hoạch cấp cao",
+      "upload": "Thưởng đã tải lên",
+      "preparation": "Thiết lập đợt đánh giá",
+      "access": "Quyền truy cập Rewards",
+      "role_permission": "Quyền theo vai trò",
+      "group_role": "Vai trò toàn tập đoàn",
+      "limit": "Kiểm soát hạn mức",
+      "offcycle": "Ngoài chu kỳ"
+    },
+    "actions": {
+      "returned-to-draft": "Trả về bản nháp",
+      "saved-draft": "Đã lưu bản nháp",
+      "activated": "Đã áp dụng",
+      "restored": "Khôi phục từ phiên bản trước",
+      "saved": "Đã lưu",
+      "released": "Đã phát hành",
+      "applied": "Đã áp dụng thay đổi",
+      "changed": "Đã thay đổi",
+      "reset": "Đặt lại mặc định"
+    },
+    "empty": "Không có thay đổi nào khớp bộ lọc.",
+    "pages": "Trang",
+    "previous": "Trước",
+    "next": "Tiếp",
+    "exportTruncated": "Chỉ gồm 5.000 thay đổi đầu tiên. Thu hẹp bộ lọc để xuất phần còn lại."
+  },
+  "rewardLimits": {
+    "description": "Giới hạn và ngưỡng cho từng năm thưởng. Mọi kiểm tra trong đợt xét, cố vấn AI và Phân tích thưởng đều dùng giá trị của năm thưởng của đợt xét.",
+    "noAccess": "Bạn không có quyền truy cập",
+    "noAccessHelp": "Kiểm soát giới hạn dành cho Group Rewards, CTRO và EC.",
+    "year": "Năm thưởng",
+    "show": "Hiển thị",
+    "viewOnly": "Bạn có thể xem các giới hạn này. Chỉ Group Rewards mới có thể thay đổi.",
+    "versionLine": "Phiên bản {version} đang được dùng cho năm {year}.",
+    "baselineLine": "Chưa có phiên bản nào được lưu cho năm {year}. Đây là giá trị chuẩn; lưu sẽ tạo phiên bản 1.",
+    "typeHelp": "Chặn: ngăn việc gửi. Ngoại lệ và Cảnh báo đi kèm đợt xét và cần lý do trước khi gửi. Ghi chú chỉ để tham khảo.",
+    "columns": {
+      "limit": "Giới hạn",
+      "value": "Giá trị",
+      "type": "Loại",
+      "appliesTo": "Áp dụng cho",
+      "lastChanged": "Người / ngày thay đổi gần nhất"
+    },
+    "areas": {
+      "pools": "Quỹ tăng lương",
+      "person": "Tăng lương mỗi người",
+      "bonus": "Thưởng",
+      "lump": "Thưởng một lần",
+      "exemption": "Miễn trừ",
+      "advisor": "Cố vấn AI"
+    },
+    "labels": {
+      "pool_standard_merit": "Quỹ thành tích (% quỹ lương hợp lệ)",
+      "pool_standard_promotion": "Quỹ thăng chức (% quỹ lương hợp lệ)",
+      "pool_standard_special": "Quỹ điều chỉnh đặc biệt (% quỹ lương hợp lệ)",
+      "pool_h_merit": "Quỹ thành tích (% quỹ lương hợp lệ)",
+      "pool_h_promotion": "Quỹ thăng chức (% quỹ lương hợp lệ)",
+      "pool_h_special": "Quỹ điều chỉnh đặc biệt (% quỹ lương hợp lệ)",
+      "pool_separate": "Các quỹ không được bù cho nhau hoặc cho công ty khác",
+      "increase_withoutPromotion": "Tổng mức tăng không thăng chức vượt quá",
+      "increase_withPromotion": "Tổng mức tăng có thăng chức từ",
+      "promotion_increment": "Mức tăng khi thăng chức",
+      "promotion_maxGrades": "Số bậc tăng tối đa",
+      "promotion_maxGrade": "Bậc cao nhất sau thăng chức",
+      "catchUp_crFloor": "Ngưỡng CR bắt kịp cho STAR/SSTAR",
+      "salary_noReduction": "Không giảm lương",
+      "bonus_poolCap": "Trần quỹ thưởng",
+      "bonus_underUse": "Cảnh báo dùng thiếu dưới",
+      "bonus_individualCeiling": "Trần thưởng cá nhân vượt quá",
+      "bonus_rounding": "Làm tròn khoản chi (làm tròn xuống)",
+      "bonus_individualMultiplier": "Hệ số cá nhân khác với đơn vị",
+      "lump_share": "Tỷ lệ số dư còn lại",
+      "lump_step": "Bước làm tròn",
+      "lump_cap": "Trần mỗi người",
+      "lump_aboveSuggestion": "Số tiền đơn vị cao hơn đề xuất",
+      "lump_individualAmendment": "Điều chỉnh cá nhân",
+      "exemption_budgetCapsOnly": "Công ty được miễn trừ: chỉ trần ngân sách, kèm lý do",
+      "advisor_override": "Ngưỡng điều chỉnh",
+      "advisor_longWithoutIncrease": "Lâu không được tăng lương",
+      "advisor_peerGap": "Chênh lệch lương với đồng cấp"
+    },
+    "types": {
+      "block": "Chặn",
+      "exception": "Ngoại lệ",
+      "warning": "Cảnh báo",
+      "note": "Ghi chú"
+    },
+    "appliesTo": {
+      "standard": "Gói chuẩn",
+      "h": "Gói JG H",
+      "all": "Tất cả các gói"
+    },
+    "units": {
+      "percent": "%",
+      "points": "điểm phần trăm",
+      "ratio": "CR",
+      "months": "tháng",
+      "myr": "RM",
+      "grades": "bậc",
+      "grade": "JG",
+      "years": "năm"
+    },
+    "fixed": "Cố định",
+    "fixedHelp": "Cố định để bảo vệ lương; không thể thay đổi.",
+    "none": "Không có",
+    "standardValue": "Giá trị chuẩn",
+    "changedBy": "{name} · {date}",
+    "unknownPerson": "Không rõ",
+    "valueFor": "Giá trị cho {limit}",
+    "typeFor": "Loại cho {limit}",
+    "reviewSave": "Xem lại trước khi lưu",
+    "save": "Lưu phiên bản mới",
+    "discard": "Bỏ thay đổi",
+    "saved": "Đã lưu thành phiên bản {version}.",
+    "errors": {
+      "system": "Không thể lưu giới hạn. Thay đổi của bạn vẫn còn; hãy thử lại."
+    },
+    "reviewsHeading": "Các đợt xét trong năm thưởng này",
+    "reviewsHelp": "Đợt xét ở trạng thái Nháp dùng phiên bản hiện tại. Đợt xét đã qua Nháp giữ phiên bản khi được gửi. Nếu bạn áp dụng phiên bản hiện tại, các kiểm tra sẽ chạy lại và người phê duyệt hiện tại được thông báo.",
+    "reviewColumns": {
+      "review": "Đợt xét",
+      "stage": "Giai đoạn",
+      "versionUsed": "Giới hạn đang dùng"
+    },
+    "select": "Chọn",
+    "selectReview": "Chọn {review}",
+    "baseline": "Giá trị chuẩn (trước Kiểm soát giới hạn)",
+    "currentVersion": "Hiện tại (phiên bản {version})",
+    "version": "Phiên bản {version}",
+    "apply": "Áp dụng phiên bản {version} cho các đợt xét đã chọn",
+    "applyConfirm": "Áp dụng và thông báo người phê duyệt",
+    "applied": "{count, plural, other {Đã áp dụng cho # đợt xét.}}",
+    "noReviews": "Chưa có đợt xét nào dùng năm thưởng này.",
+    "reviewsTruncated": "Chỉ liệt kê 200 đợt xét đầu tiên.",
+    "exemptionsHeading": "Miễn trừ trần ngân sách",
+    "exemptionsHelp": "Miễn trừ chỉ nới lỏng trần ngân sách (quỹ tăng lương và trần quỹ thưởng). Miễn trừ được ghi kèm lý do trong phần thiết lập của đợt xét.",
+    "noExemptions": "Không có đợt xét nào trong năm thưởng này được miễn trừ trần ngân sách.",
+    "historyHeading": "Lịch sử phiên bản",
+    "noVersions": "Chưa có phiên bản.",
+    "changeLogLink": "Xem mọi thay đổi trong nhật ký thay đổi"
+  },
+  "scheduleOvertimeSetting": {
+    "title": "Cài đặt làm thêm giờ",
+    "intro": "Kiểm soát cách ghi nhận, phê duyệt, bù trừ và làm tròn giờ làm thêm cho nhân viên trong Nhóm lịch này. Áp dụng từ ngày bắt đầu: các ngày trước, bản ghi chấm công, bản ghi đi muộn và bảng lương đã qua không bao giờ được tính lại.",
+    "companiesLabel": "Áp dụng cho",
+    "allCompanies": "Tất cả công ty",
+    "selectedCompanies": "Công ty đã chọn",
+    "effectiveFrom": "Ngày bắt đầu",
+    "effectiveHint": "Sau hôm nay, và sau mọi ngày bắt đầu đã lưu của công ty được chọn.",
+    "applicabilityTitle": "Phạm vi làm thêm giờ",
+    "beforeShift": "Làm thêm trước ca",
+    "beforeShiftHint": "Cho phép làm thêm trước ca đã lên lịch.",
+    "afterShift": "Làm thêm sau ca",
+    "afterShiftHint": "Cho phép làm thêm sau ca đã lên lịch.",
+    "allowBackdated": "Cho phép yêu cầu làm thêm hồi tố không cần chấm công",
+    "allowBackdatedHint": "Nhân viên có thể yêu cầu làm thêm hồi tố khi không có bản ghi chấm công tương ứng. Nhân sự vẫn phải ghi nhận khoảng thời gian làm việc thực tế trước khi được tính.",
+    "splitAtMidnight": "Tách làm thêm giờ lúc nửa đêm",
+    "splitAtMidnightHint": "Phần làm thêm sau nửa đêm thuộc ngày dương lịch kế tiếp như làm thêm sớm. Ví dụ: 22:00 đến 02:00 tính 2 giờ cho mỗi ngày.",
+    "offsetTitle": "Bù trừ làm thêm bằng đi muộn",
+    "offsetLateness": "Bù trừ làm thêm bằng đi muộn",
+    "offsetHint": "Trừ số phút đi muộn khỏi giờ làm thêm hợp lệ. Ví dụ: muộn 20 phút so với 60 phút hợp lệ còn lại 40. Số phút đi muộn đã ghi được giữ nguyên.",
+    "showLatenessException": "Hiển thị ngoại lệ đi muộn sau bù trừ",
+    "showLatenessExceptionHint": "Hiển thị ngoại lệ đi muộn cho phần đi muộn còn lại sau bù trừ.",
+    "approvalTitle": "Phương thức phê duyệt làm thêm giờ",
+    "approvalManual": "Thủ công",
+    "approvalAuto": "Tự động",
+    "approvalManualHint": "Chấm công không tạo giờ làm thêm phải trả. Bản ghi chấm công được giữ lại, và giờ làm thêm được nhập thủ công trong Bảng lương.",
+    "autoMethod": "Phương thức phê duyệt làm thêm tự động",
+    "methodIntersect": "Giao giữa thực tế và đã duyệt trước",
+    "methodActual": "Giờ thực tế",
+    "methodPreApproved": "Làm thêm đã duyệt",
+    "methodIntersectHint": "Trả theo số phút thấp hơn giữa đã duyệt và thực tế: duyệt 120, thực tế 90 trả 90.",
+    "methodActualHint": "Trả theo số phút hợp lệ thực tế, không giới hạn theo phê duyệt.",
+    "methodPreApprovedHint": "Trả theo thời lượng đã duyệt: duyệt 120, thực tế 90 trả 120.",
+    "patternsTitle": "Mẫu làm thêm giờ cho từng loại ngày",
+    "patternsHint": "Tiền làm thêm được tính bởi Mẫu làm thêm giờ đã chọn. Chỉ liệt kê các mẫu đang hoạt động cho mọi công ty được chọn.",
+    "patternsNone": "Không có Mẫu làm thêm giờ nào đang hoạt động cho mọi công ty được chọn. Kích hoạt một mẫu trong Mẫu làm thêm giờ để dùng Tự động, hoặc chọn Thủ công.",
+    "choosePattern": "Chọn Mẫu làm thêm giờ",
+    "dayNormal": "Ngày làm việc",
+    "dayOff": "Ngày nghỉ không làm việc",
+    "dayRest": "Ngày nghỉ hằng tuần",
+    "dayPublicHoliday": "Ngày lễ",
+    "dayReplacementHoliday": "Ngày nghỉ bù",
+    "roundingTitle": "Làm tròn làm thêm giờ",
+    "roundingMethod": "Phương thức làm tròn làm thêm giờ",
+    "roundUp": "Làm tròn lên",
+    "roundDown": "Làm tròn xuống",
+    "roundingStep": "Làm tròn làm thêm giờ theo phút",
+    "stepMinutes": "{n} phút",
+    "roundingHint": "Làm tròn được áp dụng cuối cùng, sau phương thức phê duyệt và bù trừ đi muộn. Thời lượng chấm công đã ghi không thay đổi.",
+    "unsupportedRounding": "Cách làm tròn đã lưu dùng tùy chọn mà phần này không cung cấp. Lưu sẽ thay thế từ ngày bắt đầu mới.",
+    "differs": "{n, plural, other {# công ty}} có Cài đặt làm thêm giờ khác hoặc chưa có. Lưu sẽ áp dụng cài đặt này cho mọi công ty được chọn.",
+    "savedFrom": "Cài đặt đã lưu bắt đầu từ {date}.",
+    "none": "Chưa lưu Cài đặt làm thêm giờ. Giờ làm thêm của nhóm này hoạt động như trước cho đến khi lưu.",
+    "save": "Lưu cài đặt làm thêm giờ",
+    "systemReason": "Đã lưu Cài đặt làm thêm giờ của Nhóm lịch",
+    "on": "Bật",
+    "off": "Tắt",
+    "payrollNote": "Bảng lương nhận số liệu làm thêm cuối cùng từ cài đặt này, giống như cách nhận làm thêm hiện nay.",
+    "approvalIntro": "Quyết định Chấm công có tính làm thêm giờ được trả lương hay không, và dùng những phút nào.",
+    "roundingIntro": "Quyết định số phút làm thêm hợp lệ được làm tròn lên, làm tròn xuống hay không làm tròn.",
+    "roundNone": "Không làm tròn",
+    "roundingNoneHint": "Không áp dụng khi chọn Không làm tròn. Số phút làm thêm hợp lệ thực tế được giữ nguyên.",
+    "notApplicable": "Không áp dụng",
+    "minutesValue": "{n} phút",
+    "roundingExampleTitle": "Ví dụ tính toán",
+    "roundingExampleActual": "Làm thêm hợp lệ thực tế",
+    "roundingExampleMethod": "Phương thức làm tròn",
+    "roundingExampleInterval": "Khoảng",
+    "roundingExampleFinal": "Làm thêm cuối cùng",
+    "backdateTitle": "Kiểm soát đăng ký làm thêm hồi tố",
+    "backdateIntro": "Quyết định đơn làm thêm giờ có thể ghi lùi ngày tối đa bao nhiêu ngày. Cho phép yêu cầu làm thêm hồi tố không cần chấm công là thiết lập riêng: nó chỉ quyết định có cần chấm công hay không.",
+    "backdateControl": "Bật kiểm soát đăng ký làm thêm hồi tố",
+    "backdateControlHint": "Áp dụng cho yêu cầu làm thêm của chính nhân viên trên web và ứng dụng di động, yêu cầu qua trợ lý AI và Yêu cầu thay mặt. Quản trị viên HR cũng tuân theo cùng giới hạn.",
+    "backdateDays": "Cho phép đăng ký hồi tố trong vòng (ngày)",
+    "backdateDaysHint": "Số nguyên từ 1 đến {max}, tính lùi từ ngày nộp đơn. Với 3 ngày, đơn nộp ngày 16-Nov-2026 có thể dành cho ngày 13 đến 16-Nov-2026.",
+    "backdateDaysValue": "{n, plural, other {# ngày}}",
+    "backdateRefused": "Đơn làm thêm giờ chỉ được ghi lùi tối đa {days, plural, other {# ngày}}. Hãy chọn ngày {date} hoặc muộn hơn."
+  },
+  "attendanceOnBehalf": {
+    "requestTitle": "Gửi yêu cầu thay",
+    "requestHelp": "Chọn nhân viên, sau đó gửi Bất thường chấm công hoặc Tự khai làm thêm giờ cho họ trên các màn hình thông thường. Yêu cầu theo quy trình và người phê duyệt của chính họ.",
+    "approveTitle": "Phê duyệt thay",
+    "approveHelp": "Chọn người phê duyệt được chỉ định có các yêu cầu chấm công đang chờ mà bạn cần xử lý.",
+    "approveListHelp": "Các yêu cầu đang chờ {name} mà bạn có thể quyết định thay họ.",
+    "searchLabel": "Tìm theo mã nhân viên hoặc tên",
+    "searchPlaceholder": "vd. EMP-0123 hoặc tên",
+    "search": "Tìm",
+    "results": "Nhân viên bạn có thể thay mặt",
+    "noResults": "Không có nhân viên nào bạn có thể thay mặt khớp với tìm kiếm này.",
+    "noPermission": "Vai trò của bạn không có quyền này. Hãy hỏi quản trị viên nếu bạn cần.",
+    "choose": "Chọn",
+    "employeeName": "Nhân viên",
+    "employeeId": "Mã nhân viên",
+    "company": "Công ty",
+    "department": "Phòng ban",
+    "changeEmployee": "Đổi nhân viên",
+    "chooseCategory": "Bạn muốn gửi loại yêu cầu nào?",
+    "irregularity": "Bất thường chấm công",
+    "irregularityHelp": "Giờ chấm công thiếu hoặc sai, thiếu giờ hoặc vắng mặt, trong các ngày của chính nhân viên.",
+    "selfOvertime": "Tự khai làm thêm giờ",
+    "selfOvertimeHelp": "Lập kế hoạch hoặc khai làm thêm giờ theo Nhóm lịch và quy tắc làm thêm giờ của chính nhân viên.",
+    "banner": "Đang gửi thay cho {name}",
+    "pendingTitle": "Yêu cầu đang chờ phê duyệt",
+    "pendingEmpty": "Không có yêu cầu nào đang chờ người phê duyệt này mà bạn có thể quyết định.",
+    "approveOnBehalf": "Phê duyệt thay",
+    "rejectOnBehalf": "Từ chối thay",
+    "approveAudit": "Lịch sử giữ người được chọn là người phê duyệt được chỉ định và ghi nhận bạn là người thực hiện.",
+    "previous": "Trước",
+    "next": "Tiếp"
+  },
+  "importErrorLogDataBankCostInfo": {
+    "corrections": {
+      "duplicateInFile": "Giá trị này xuất hiện nhiều lần trong tệp - chỉ giữ lại một dòng.",
+      "duplicateEmployeeInFile": "Mã nhân viên này xuất hiện nhiều lần trong tệp - chỉ giữ lại một dòng.",
+      "chooseReference": "Chọn một giá trị từ trang Reference của mẫu.",
+      "chooseCompany": "Chọn Company Code từ trang Reference.",
+      "chooseCostCenter": "Chọn Cost Center Code được liệt kê cho công ty này trên trang Allocation Reference.",
+      "date": "Nhập ngày theo dạng YYYY-MM-DD hoặc dưới dạng ngày Excel.",
+      "required": "Điền vào cột này - đây là cột bắt buộc.",
+      "yesNo": "Nhập yes hoặc no.",
+      "revalidate": "Tải lên lại tệp đã sửa để dòng này được kiểm tra lại.",
+      "permission": "Xóa dòng này, hoặc đề nghị quản trị viên cấp quyền truy cập vào công ty của nhân viên này.",
+      "systemError": "Tải tệp lên lại. Nếu lỗi vẫn tiếp diễn, hãy gửi mã tham chiếu hỗ trợ cho nhóm kỹ thuật.",
+      "textCode": "Định dạng ô là Text và nhập lại mã.",
+      "noFormula": "Nhập chính giá trị, không dùng công thức.",
+      "existingEmployee": "Kiểm tra mã nhân viên. Nhân viên mới phải được thêm bằng \"Tất cả - nhân viên mới\" trước.",
+      "percentage": "Nhập tỷ lệ phần trăm lớn hơn 0 và tối đa 100, với tối đa hai chữ số thập phân.",
+      "periodUnit": "Nhập số và đơn vị của nó (Month, Week hoặc Day) cùng nhau.",
+      "reason": "Nhập lý do có ít nhất ba ký tự.",
+      "statutoryRecord": "Hãy lưu số định danh của nhân viên trong hồ sơ Nhân sự trước, sau đó tải tệp này lên lại.",
+      "template": "Tải mẫu hiện tại, sao chép các dòng của bạn vào đó và tải lên lại.",
+      "bankPair": "Nhập tên ngân hàng và số tài khoản ngân hàng cùng nhau."
+    },
+    "bank": {
+      "duplicateEmployeeId": "Mã nhân viên bị trùng trong tệp này; được dùng lần đầu ở dòng Excel {row}.",
+      "duplicateCardId": "Mã thẻ bị trùng trong tệp này.",
+      "cardIdTaken": "card_id đã được dùng cho một nhân viên khác; hãy chọn mã thẻ chưa được sử dụng.",
+      "noPermission": "Bạn không có quyền cập nhật nhân viên này.",
+      "changedAfterValidation": "Dòng này chưa được lưu. Dữ liệu hoặc quyền của nó đã thay đổi sau khi kiểm tra; hãy xem lại và nhập lại.",
+      "missingEmployeeId": "Thiếu employee_code — đây là liên kết tới nhân viên đang được cập nhật",
+      "unknownEmployee": "Không có nhân viên nào có mã nhân viên \"{code}\". Tệp theo mục chỉ có thể CẬP NHẬT những người đã có trong hệ thống — không thể thêm ai. Để thêm người này, hãy chọn \"Tất cả — nhân viên mới\" ở đầu trang này và dùng mẫu nhân viên đầy đủ, sau đó chạy lại tệp này.",
+      "duplicateEmployeeCode": "employee_code bị trùng trong tệp này",
+      "bankTransferNeedsBank": "Chuyển khoản ngân hàng cần tên ngân hàng và số tài khoản.",
+      "bankPair": "bank_name và bank_account_no phải được cung cấp cùng nhau",
+      "noStatutoryRecordYet": "Nhân viên này chưa có hồ sơ theo luật định — hãy lưu số định danh trong hồ sơ Nhân sự trước, sau đó chạy lại tệp này",
+      "noStatutoryRecord": "Nhân viên này không có hồ sơ theo luật định; hãy hoàn tất thiết lập luật định trong hồ sơ Nhân sự trước.",
+      "notActiveOption": "\"{value}\" không phải là lựa chọn {category} đang hoạt động — cột {column}",
+      "yesNo": "{column} phải là yes hoặc no",
+      "jobStopped": "Đã dừng nhập. Các dòng đã lưu vẫn được giữ lại. Hãy xem lại kết quả và quyền truy cập của bạn trước khi thử lại. Mã tham chiếu {ref}.",
+      "jobStoppedEarlier": "Đã dừng nhập. Các dòng đã lưu vẫn được giữ lại. Hãy xem lại kết quả và quyền truy cập của bạn trước khi thử lại.",
+      "fileTooLarge": "Tệp vượt quá giới hạn kích thước nhập hoặc trang tính. Dùng tối đa 250,000 dòng và 128 MiB.",
+      "fileUnreadable": "Không thể đọc tệp. Hãy dùng mẫu Ngân hàng và pháp định và các trang tham chiếu của nó.",
+      "fileRowCount": "Chọn tệp có từ 1 đến 250,000 dòng dữ liệu.",
+      "fileIncomplete": "Tệp đã tải lên chưa đầy đủ hoặc mã kiểm tra khác. Hãy tải lên lại."
+    },
+    "allocation": {
+      "errors": {
+        "invalid": "Nhập tỷ lệ phần trăm lớn hơn không và tối đa 100, với tối đa hai chữ số thập phân.",
+        "duplicate": "Mỗi trung tâm chi phí chỉ chọn một lần.",
+        "total": "Tổng phân bổ không được vượt quá 100%.",
+        "scope": "Hồ sơ nhân viên hoặc quyền không khả dụng.",
+        "label": "Một trung tâm chi phí không hoạt động hoặc không khả dụng cho công ty này.",
+        "changed": "Phân bổ đã thay đổi. Hãy tải lại và xem trước lần nữa.",
+        "date": "Chọn ngày hiệu lực có lịch sử công ty tuyển dụng đã được xác nhận.",
+        "clear": "Xóa phân bổ cần một thao tác Clear rõ ràng.",
+        "preview": "Dữ liệu đầu vào hoặc dữ liệu tham chiếu đã thay đổi. Hãy xem trước lần nữa.",
+        "binding": "Ghép mỗi phân bổ với một công ty và một mã nhân viên.",
+        "transfer": "Lưu một bộ Clear rõ ràng vào ngày điều chuyển và xóa các bộ đã lên lịch sau đó trước khi điều chuyển. Sau đó lưu phân bổ mới cho công ty đích."
+      },
+      "operation": "Operation phải là Replace hoặc Clear, và giống nhau trên mọi dòng của một nhân viên và một ngày.",
+      "clearRow": "Clear cần đúng một dòng với Cost Center Code và Percentage để trống.",
+      "costCenterUnavailable": "Cost Center Code này không khả dụng cho {company}.",
+      "companyRequired": "Company Code là bắt buộc.",
+      "companyAmbiguous": "Company Code \"{code}\" khớp với nhiều công ty. Hãy dùng Company Code được liệt kê trên trang Reference.",
+      "companyUnknown": "Company Code \"{code}\" không khớp với công ty nào bạn có thể nhập.",
+      "effectiveDate": "Effective Date phải là ngày theo dạng YYYY-MM-DD.",
+      "employeeInvalid": "Mã nhân viên bị thiếu hoặc không hợp lệ.",
+      "employeeAmbiguous": "Mã nhân viên {code} khớp với nhiều nhân viên của {company}.",
+      "employeeNotInCompany": "Mã nhân viên {code} không phải là nhân viên của {company} vào ngày {date}.",
+      "heldBack": "Một phân bổ khác cho mã nhân viên {code} trong tệp này có lỗi, vì vậy nhân viên này không được nhập. Hãy sửa dòng đó trước.",
+      "unavailable": "Công ty, nhân viên hoặc ngày hiệu lực của phân bổ không khả dụng.",
+      "saveFailed": "Không thể lưu nhân viên này; không có gì được thay đổi cho họ.",
+      "file": {
+        "legacyLayout": "Tệp này dùng bố cục cũ với mã công ty nội bộ (company_id). Hãy tải mẫu mới và điền cột Company Code thay thế.",
+        "duplicateHeaders": "Không cho phép tiêu đề cột phân bổ bị trùng.",
+        "missingColumns": "Thiếu cột phân bổ: {columns}",
+        "unexpectedColumns": "Cột phân bổ không mong đợi: {columns}",
+        "tooManyRows": "Dùng tối đa 5000 dòng phân bổ cho mỗi tệp.",
+        "tooLarge": "Tệp phân bổ vượt quá kích thước được hỗ trợ.",
+        "tooLarge10": "Chọn tệp không lớn hơn 10 MB.",
+        "unreadableWorkbook": "Không thể đọc sổ làm việc. Hãy tải mẫu và thử lại.",
+        "utf8": "Lưu tệp CSV dưới dạng UTF-8.",
+        "fileType": "Chọn mẫu .xlsx hoặc tệp .csv có cùng các cột.",
+        "unreadable": "Không thể đọc tệp này.",
+        "noRows": "Tệp không có dòng phân bổ nào."
+      }
+    },
+    "correction": {
+      "noFormula": "Không chấp nhận công thức và ô lỗi.",
+      "textCode": "Nhập mã dưới dạng văn bản để giữ các số 0 ở đầu.",
+      "date": "Dùng YYYY-MM-DD hoặc ngày Excel.",
+      "tooLong": "Tối đa 1,000 ký tự.",
+      "periodUnit": "Nhập thời hạn và đơn vị của nó cùng nhau ({unit}).",
+      "notOption": "\"{value}\" không phải là lựa chọn cho công ty này. Hãy kiểm tra trang tham chiếu {sheet}.",
+      "superiorUnknown": "Mã nhân viên không xác định hoặc bạn không xem được.",
+      "organisationFormula": "Các cột tổ chức không được chứa công thức hoặc ô lỗi.",
+      "organisationTooLong": "Giá trị tổ chức: tối đa 1,000 ký tự.",
+      "companyRequired": "Company Code là bắt buộc.",
+      "employeeRequired": "Mã nhân viên là bắt buộc.",
+      "reasonShort": "Correction Reason phải có ít nhất ba ký tự.",
+      "duplicateEmployee": "Nhân viên này xuất hiện nhiều lần. Chỉ giữ một dòng sửa cho mỗi nhân viên.",
+      "companyUnknown": "Company Code không xác định, không rõ ràng hoặc nằm ngoài quyền của bạn.",
+      "employeeUnknown": "Mã nhân viên không xác định hoặc không rõ ràng trong công ty hiện tại.",
+      "newCompanyUnknown": "New Company Code không xác định, không rõ ràng hoặc nằm ngoài quyền của bạn.",
+      "gradeInactive": "Job Grade không phải là mã hệ thống đang hoạt động.",
+      "sameEmployee": "Nhiều dòng trỏ tới cùng một nhân viên."
+    }
+  },
+  "importErrorLogEmployee": {
+    "problemsTitle": "Các vấn đề cần sửa",
+    "missingColumn": "Trang tính thiếu cột bắt buộc này.",
+    "thisField": "cột này",
+    "downloadFailed": "Không thể chuẩn bị Nhật ký lỗi. Vui lòng thử lại.",
+    "correction": {
+      "reference": "Chọn {field} từ trang Reference.",
+      "date": "Nhập ngày theo định dạng YYYY-MM-DD hoặc dưới dạng ngày Excel.",
+      "month": "Nhập tháng theo định dạng YYYY-MM.",
+      "required": "Điền {field} - đây là thông tin bắt buộc.",
+      "requiredForContract": "Điền cột này - bắt buộc đối với nhân viên Hợp đồng.",
+      "duplicateInFile": "Giá trị này xuất hiện nhiều lần trong tệp - chỉ giữ một dòng.",
+      "duplicateEmployeeId": "Mã nhân viên này xuất hiện nhiều lần trong tệp - chỉ giữ một dòng.",
+      "duplicateInSystem": "Giá trị này đã được nhân viên khác sử dụng - nhập giá trị khác hoặc bỏ dòng này.",
+      "number": "Nhập một số (chỉ chữ số, không có ký hiệu tiền tệ).",
+      "choice": "Chọn một trong các giá trị được liệt kê trên trang Instructions hoặc Reference.",
+      "yesNo": "Nhập Yes hoặc No.",
+      "email": "Nhập địa chỉ email đầy đủ, ví dụ name@company.com.",
+      "notOnEmployeeSheet": "Thêm nhân viên này vào trang nhân viên, hoặc sửa Mã nhân viên.",
+      "employeeNotFound": "Kiểm tra Mã nhân viên. Để thêm nhân viên mới, hãy dùng Tất cả - nhân viên mới trước.",
+      "missingColumn": "Thêm cột {field} theo mẫu hiện tại, rồi tải lên lại.",
+      "wrongSection": "Xóa cột đó, hoặc nhập nó bằng mẫu sở hữu cột đó.",
+      "system": "Vui lòng thử lại. Nếu vẫn xảy ra, hãy cung cấp mã tham chiếu hỗ trợ cho quản trị viên của bạn.",
+      "uploadAgain": "Sửa các dòng đã làm dừng việc nhập, rồi tải lên lại toàn bộ tệp."
+    }
+  },
+  "importProblems": {
+    "headers": {
+      "sheet": "Trang tính",
+      "row": "Dòng Excel",
+      "category": "Danh mục",
+      "reference": "Mã tham chiếu",
+      "employeeName": "Tên nhân viên",
+      "field": "Trường",
+      "value": "Giá trị đã nhập",
+      "problem": "Lỗi gì",
+      "correction": "Cách sửa",
+      "stage": "Phát hiện khi",
+      "result": "Kết quả",
+      "errorReference": "Mã tham chiếu hỗ trợ"
+    },
+    "stage": {
+      "file": "Đọc tệp",
+      "check": "Kiểm tra tệp",
+      "save": "Lưu",
+      "system": "Lỗi hệ thống"
+    },
+    "result": {
+      "refused": "Không được nhập",
+      "skipped": "Đã bỏ qua",
+      "stopped": "Đã dừng việc nhập",
+      "cancelled": "Không được lưu - một dòng khác đã dừng việc nhập",
+      "not_saved": "Không được lưu - hãy tải lên lại tệp đã sửa"
+    },
+    "hiddenValue": "(đã ẩn)",
+    "wholeFile": "Toàn bộ tệp",
+    "moreInLog": "Còn {count} lỗi khác được liệt kê trong Nhật ký lỗi.",
+    "downloadLog": "Tải xuống Nhật ký lỗi",
+    "summary": {
+      "sheetTitle": "Tóm tắt",
+      "batch": "Lần nhập",
+      "file": "Tệp",
+      "status": "Trạng thái",
+      "problems": "Lỗi",
+      "truncated": "Danh sách này đã được rút gọn khi ghi nhận lần nhập. Hãy tải Nhật ký lỗi ngay sau khi nhập để xem tất cả lỗi."
+    }
+  },
+  "automation": {
+    "crumb": "HR Automation",
+    "filterLabel": "Module",
+    "done": "Done",
+    "none": "None",
+    "noChoices": "No choices are available.",
+    "notAvailable": "{value} (no longer available)",
+    "modules": {
+      "all": "All modules",
+      "onb": "Onboarding",
+      "off": "Offboarding",
+      "contract_staff": "Contract staff",
+      "probation": "Probation"
+    },
+    "status": {
+      "live": "Live",
+      "paused": "Paused",
+      "retired": "Retired",
+      "required": "Required",
+      "attention": "Needs attention"
+    },
+    "ops": {
+      "is": "is",
+      "isNot": "is not",
+      "lt": "is less than",
+      "lte": "is at most",
+      "gte": "is at least"
+    },
+    "errors": {
+      "unavailable": "This could not be completed. Try again, or reload the page."
+    },
+    "recipients": {
+      "routing": "{name} (routing)",
+      "group": "{name} (group)"
+    },
+    "legacy": {
+      "workflows": "workflow builder",
+      "templates": "template builder",
+      "groups": "assignment groups",
+      "workflowsIntro": "This module keeps its own workflow builder until it moves to the shared builder. Its workflows are unchanged.",
+      "templatesIntro": "This module keeps its own templates until it moves to the shared builder. Its templates are unchanged.",
+      "groupsIntro": "Assignment groups are kept in the On/Off Boarding configuration.",
+      "openV9": "Open the On/Off Boarding {what}",
+      "openContract": "Open the Contract staff {what}",
+      "notAllowed": "You cannot configure this module."
+    },
+    "people": {
+      "title": "Named people",
+      "search": "Search people by name",
+      "placeholder": "Type at least two letters",
+      "find": "Find",
+      "add": "Add {name}",
+      "added": "Added",
+      "none": "Nobody matches."
+    },
+    "defaults": {
+      "install": "Install default Probation workflows",
+      "confirm": "Install the 16 default Probation workflows, 4 email templates and 2 routings? They are installed Paused. Anything already installed is left as it is.",
+      "done": "Installed {workflows} workflows, {emails} email templates and {routings} routings, all Paused. Review each one before making it live."
+    },
+    "workflows": {
+      "title": "Workflows",
+      "intro": "One builder for Onboarding, Offboarding, Contract staff and Probation. Active workflows run when their trigger and conditions match.",
+      "probationIntro": "Probation workflows send messages, generate letters, create Personnel postings and start offboarding. Overdue flags, scoring and gates run inside the probation module and cannot be switched off here.",
+      "requiredBanner": "{names} {count, plural, one {is} other {are}} required for probation but not live.",
+      "empty": "No Probation workflows yet. Create one, or install the default workflows.",
+      "new": "New workflow",
+      "newName": "New workflow",
+      "edit": "Edit",
+      "view": "View",
+      "editNamed": "Open {name}",
+      "probationNotAllowed": "You cannot configure Probation automation.",
+      "cardIntro": "Automate documents, emails, approvals and reminders for each case. Active workflows run when their trigger and conditions match."
+    },
+    "editor": {
+      "untitled": "Untitled workflow",
+      "name": "Workflow name",
+      "required": "Required for probation (pausing it shows a warning on the tracker)",
+      "whatStarts": "What starts it",
+      "chooseTrigger": "Choose…",
+      "workdays": "Count working days (Mon–Fri)",
+      "repeat": "Repeat every morning after that",
+      "skipWhen": "Skip when",
+      "onlyIf": "Only if",
+      "onlyIfHelp": "All conditions must match. Leave empty to apply to every case in this module.",
+      "multiHint": "Several values: is matches any, is not matches none.",
+      "addCondition": "Add condition",
+      "thenHelp": "Steps run in order. Use the arrows to reorder them.",
+      "stepOnlyIf": "Only run this step if",
+      "stepConditions": "Conditions of step {step}",
+      "addStepCondition": "Add step condition",
+      "stepConditionHint": "Leave empty to always run this step. A skipped step is noted in the case activity.",
+      "addStep": "Add a step",
+      "chooseStep": "Choose a step…",
+      "moveUp": "Move step {step} up",
+      "moveDown": "Move step {step} down",
+      "removeStep": "Remove step {step}",
+      "remove": "Remove",
+      "to": "To",
+      "cc": "CC",
+      "stepTo": "Step {step} To",
+      "stepCc": "Step {step} CC",
+      "subject": "Subject",
+      "message": "Message",
+      "insertMergeField": "Insert merge field…",
+      "insertMerge": "Insert merge field into the {where} of step {step}",
+      "mergeHelp": "Pick a merge field from the list, or type it in double curly brackets, for example {example}.",
+      "emailTemplate": "Email template",
+      "emailSubject": "Subject: {subject} (set in the email template)",
+      "emailFromTemplate": "The subject and message come from the email template.",
+      "choose": "Choose…",
+      "letterTemplate": "Letter template",
+      "letterTemplateId": "Letter template id",
+      "letterNote": "The letter is generated from the chosen Probation letter template and pauses until it is signed. Its signing and review routing is set in the template.",
+      "postingEvent": "Event type in Personnel Management",
+      "postingNote": "Each outcome logs its own event type. The posting is approved in Personnel postings, and Personnel Management only changes after approval.",
+      "exitReason": "Exit reason on the offboarding case",
+      "offboardingNote": "Runs once per case, for Non-confirmation only.",
+      "problems": "Problems",
+      "warnings": "Notes",
+      "note": "Change note (optional)",
+      "notePlaceholder": "Why this change was made",
+      "makeLive": "Make it live",
+      "pause": "Pause",
+      "save": "Save changes",
+      "retire": "Retire workflow",
+      "back": "Back to workflows",
+      "fixFirst": "Fix the problems above first",
+      "retireConfirm": "Retire this workflow? It stops for good. Runs already waiting keep their steps.",
+      "leaveUnsaved": "Leave without saving your changes?",
+      "runsKeep": "Changes are saved when you press a button. Runs already waiting keep the steps they started with.",
+      "retiredReadOnly": "This workflow is retired and can no longer change.",
+      "isLive": "“{name}” is live.",
+      "paused": "“{name}” is paused. Nothing new starts; runs already waiting keep their steps.",
+      "retired": "“{name}” is retired.",
+      "saved": "Saved.",
+      "reasonSave": "Edited in the workflow builder",
+      "reasonLive": "Made live in the workflow builder",
+      "reasonPause": "Paused in the workflow builder",
+      "reasonRetire": "Retired in the workflow builder"
+    },
+    "conditions": {
+      "field": "Condition field",
+      "operator": "Condition operator",
+      "valueFor": "Condition value for {field}",
+      "typeValues": "Type values, separated by commas",
+      "unavailable": "not available for this trigger",
+      "remove": "Remove condition"
+    },
+    "dry": {
+      "title": "Dry run",
+      "intro": "A dry run shows what would happen for one case. Nothing is sent and nothing is saved. Date-based triggers run from the nightly scheduler, so they can only be checked here.",
+      "searchCase": "Find a probation case",
+      "searchPlaceholder": "Employee name",
+      "findCases": "Find cases",
+      "noCases": "No probation case you can open matches.",
+      "testCase": "Test case",
+      "pendingNote": "On a real case the system checks whose step is pending on the day the reminder runs.",
+      "run": "Run the dry run",
+      "result": "Dry run result",
+      "runDate": "Would run on {date}.",
+      "repeats": "Then every morning after that.",
+      "wouldRun": "Would run for {name}.",
+      "wouldNotRun": "Would not run for {name}.",
+      "unavailable": "not available for this trigger",
+      "thisCase": "this case: {value}",
+      "empty": "empty",
+      "to": "to {names}",
+      "cc": "CC {names}",
+      "nobody": "nobody",
+      "skipped": "skipped: {why}",
+      "nothingSent": "Nothing is sent and nothing is saved."
+    },
+    "templates": {
+      "title": "Templates",
+      "intro": "Document templates and email templates. A workflow decides when a document is generated or an email is sent.",
+      "documents": "Document templates",
+      "documentsIntro": "Probation letters, with their signing and review routing, are edited in the letter template editor.",
+      "noLetterCompany": "You do not configure Probation letters for any company.",
+      "company": "Company",
+      "goLive": "Go-live check: {count} of 3 probation letters published.",
+      "noLetters": "No letter templates yet.",
+      "letterLine": "Letter · version {version} · {state}",
+      "state": {
+        "draft": "draft",
+        "published": "in use",
+        "retired": "retired"
+      },
+      "openLetterEditor": "Open the letter template editor",
+      "emails": "Email templates",
+      "emailsIntro": "The words, merge fields and extra CC. A workflow decides when it is sent. Turning a template off skips its Send email steps and notes it on the case; nothing else changes.",
+      "noEmails": "No Probation email templates yet.",
+      "newEmail": "New email",
+      "newName": "New email",
+      "editNamed": "Open email template {name}",
+      "editorTitle": "Email template {name}",
+      "turnedOff": "turned off",
+      "name": "Template name",
+      "active": "Send this email (on)",
+      "offNote": "This template is turned off. Send email steps that use it are skipped and noted on the case.",
+      "cc": "Always copy (CC)",
+      "insertMerge": "Insert merge field into the {where}",
+      "fixFirst": "Fix the problems before saving.",
+      "save": "Save template",
+      "retire": "Retire template",
+      "retireConfirm": "Retire this email template? Workflows that use it will show a problem until another template is chosen.",
+      "close": "Close",
+      "reasonCreate": "Created in the template builder",
+      "reasonSave": "Edited in the template builder",
+      "reasonRetire": "Retired in the template builder",
+      "goLiveReady": "All outcome letters are ready.",
+      "goLiveMissing": "Publish a letter template for each outcome before go-live.",
+      "letter": "Letter",
+      "versionPill": "v{version} {state}",
+      "editLetter": "Edit {name} in the letter template editor",
+      "signing": {
+        "chain": "signing: {chain}",
+        "existing": "signing: the existing letter signing route",
+        "missing": "a routing or group that was removed",
+        "people": "{count, plural, one {1 named person} other {# named people}}",
+        "employee": "the employee",
+        "directSuperior": "the Direct Superior",
+        "action": {
+          "review": "Review",
+          "approve": "Approve",
+          "sign": "Sign"
+        }
+      }
+    },
+    "groups": {
+      "title": "Assignment groups",
+      "intro": "Groups and routing rules are shared by Onboarding, Offboarding, Contract staff and Probation.",
+      "groups": "Assignment groups",
+      "groupsIntro": "Round robin skips people on leave and people at their open task limit. Groups and their members are edited in the On/Off Boarding configuration.",
+      "noGroups": "No assignment groups yet.",
+      "usedBy": "{count, plural, =0 {Not used by a routing} one {Used by # routing} other {Used by # routings}}",
+      "editGroups": "Edit assignment groups in On/Off Boarding",
+      "groupsReadOnly": "Only On/Off Boarding administrators can change groups and their members.",
+      "routings": "Routing rules",
+      "routingIntro": "Each routing finds who acts for an employee. Pick a routing by name in any To or CC list, or in an approval or signing step, when the person depends on who the employee is. The most specific matching row wins; leave a field on Any to match everyone.",
+      "approvalNote": "In an approval or signing step a routing yields one person (any member or round robin). As a To or CC recipient it yields everyone in the matched group or list.",
+      "newRouting": "New routing",
+      "newRoutingName": "New routing",
+      "noRoutings": "No routings yet. Create one to route approvals and messages by business group, company, department or job title.",
+      "retired": "{count, plural, one {# retired routing} other {# retired routings}}",
+      "routingName": "Routing name",
+      "duplicateName": "Another routing already has this name.",
+      "usedIn": "Used in: {list}{more, plural, =0 {} other { and # more}}",
+      "notUsed": "Not used in any workflow yet",
+      "dimension": {
+        "businessGroup": "Business group",
+        "company": "Company",
+        "department": "Department",
+        "jobTitle": "Job title"
+      },
+      "rowDimension": "Row {row} {dimension}",
+      "any": "Any",
+      "assignTo": "Assign to",
+      "assignGroup": "Assignment group",
+      "assignPeople": "Specific people",
+      "group": "Group",
+      "people": "People (1 to {max})",
+      "rowPeople": "Row {row} people",
+      "removeRow": "Remove row {row}",
+      "addRow": "Add row",
+      "matches": "Matches employees with {what}",
+      "matchesEveryone": "Default: matches everyone no other row matches",
+      "goesTo": "goes to {who}",
+      "toGroup": "everyone in “{name}”",
+      "noGroupChosen": "no group chosen",
+      "noPeopleChosen": "nobody yet",
+      "unknownPerson": "someone who can no longer be found",
+      "fixFirst": "Fix the routing before saving it.",
+      "save": "Save routing",
+      "retire": "Retire routing",
+      "retireConfirm": "Retire this routing? {count, plural, =0 {No workflow uses it.} one {# workflow uses it and will show a problem.} other {# workflows use it and will show a problem.}}",
+      "retiredNow": "“{name}” is retired.",
+      "cancel": "Cancel",
+      "reasonCreate": "Created in the routing rules",
+      "reasonSave": "Edited in the routing rules",
+      "reasonRetire": "Retired in the routing rules",
+      "routingNamed": "Routing “{name}”",
+      "usedByList": "Used by: {list}",
+      "groupName": "Group name"
+    },
+    "move": {
+      "title": "Move Probation workflows to shared workflows",
+      "help": "Moves each workflow of the Probation workflow builder whose shared form reaches the same people with the same words. A moved workflow goes Live here and stops sending from the Probation builder, so nobody is notified twice. The rest stay where they are and are listed with the reason. Running it again moves nothing twice.",
+      "reason": "Reason (kept in the audit history)",
+      "button": "Move to shared workflows",
+      "confirm": "Move the Probation workflows that convert exactly? Each moved workflow goes Live here and stops sending from the Probation builder.",
+      "done": "Moved {moved}; {kept} stay on the Probation builder; {already} were moved before.",
+      "result": "Move result",
+      "moved": "Moved",
+      "kept": "Staying on the Probation builder",
+      "none": "There was nothing left to move."
+    }
+  },
+  "personnelPostings": {
+    "breadcrumb": "Probation Confirmation / Personnel postings",
+    "title": "Personnel postings",
+    "intro": "Changes to Personnel Management created by Probation workflows wait here. Approve applies the change; Edit opens the event movement in Personnel Management.",
+    "rule": "Only members of the group set in Probation settings › “Who approves Personnel postings” can approve, by Approve or by Save event. Anyone who can record events can Edit; their changes wait for an approver. Nothing reaches Personnel Management until approval.",
+    "columns": {
+      "posting": "Posting",
+      "employee": "Employee",
+      "eventType": "Event type",
+      "change": "Change",
+      "created": "Created",
+      "status": "Status",
+      "actions": "Actions",
+      "from": "From"
+    },
+    "events": {
+      "confirmation": "Confirmation",
+      "probationExtension": "Probation Extension"
+    },
+    "change": {
+      "confirmation": "Confirmation Date {date} · status Probation → Active",
+      "probationExtension": "Probation extended · new end date {end} · effective {date}",
+      "remarks": "Remarks: {remarks}"
+    },
+    "status": {
+      "pending": "Pending",
+      "edited": "Edited · waiting for approval",
+      "approved": "Approved"
+    },
+    "editedNote": "Edited by {name} {date}: {changes}",
+    "fields": {
+      "effectiveDate": "effective date",
+      "endDate": "end date",
+      "remarks": "remarks"
+    },
+    "fieldChange": "{field} {before} → {after}",
+    "someone": "a colleague",
+    "unknownGroup": "the posting approver group",
+    "approve": "Approve",
+    "edit": "Edit",
+    "editLabel": "Edit {posting} in Personnel Management",
+    "approveOnlyGroup": "Only {group} can approve",
+    "filters": {
+      "label": "Show postings",
+      "pending": "Waiting for approval",
+      "approved": "Approved",
+      "all": "All"
+    },
+    "empty": "No postings here.",
+    "previous": "Previous",
+    "next": "Next",
+    "saved": {
+      "approved": "Posting {posting} approved. Personnel Management is updated.",
+      "edited": "Your changes to posting {posting} are saved and wait for approval."
+    },
+    "movement": {
+      "banner": "From Personnel posting {posting} · Probation Confirmation.",
+      "approverHint": "You are in the posting approver group ({group}): saving applies this event, approves the posting as you and clears the pending state on the case.",
+      "editorHint": "You can correct these details. The posting stays Pending until {group} approves it; Personnel Management does not change yet.",
+      "leaveHint": "Leaving without saving changes nothing.",
+      "saveAndApprove": "Save event and approve",
+      "saveForApproval": "Save changes for approval",
+      "notPending": "Posting {posting} is no longer waiting for approval.",
+      "backToPostings": "Back to Personnel postings"
+    },
+    "introGroup": "Changes to Personnel Management created by workflows wait here as drafts. Approve applies the change, and Edit opens the event movement in Personnel Management. Probation postings are approved by <b>{group}</b>, set in Probation settings.",
+    "sources": {
+      "probation": "Probation"
+    },
+    "approverGroupFallback": "the posting approver group"
+  },
+  "probationLetters": {
+    "routing": {
+      "title": "Signing and review routing",
+      "help": "Who reviews, approves and signs this letter, and in what order. Steps with the same order number happen at the same time, and the letter moves on when all of them are done. Who each step resolves to comes from Assignment groups and Routing rules. A Review step can edit the letter until the first signature; after that the text is locked. Anyone can send the letter back with a comment: every signature is cleared and it returns to the step that owns the document (or the People Business Partner if none is ticked).",
+      "empty": "No signing routing set. This letter uses the signing route below, as today.",
+      "notStored": "Signing and review routing is switched on together with the new letter flow. Until then this letter uses the signing route below.",
+      "stepTitle": "Step {n}",
+      "order": "Order",
+      "action": "Action",
+      "who": "Who",
+      "owner": "Owns the document",
+      "pick": "Choose one person by",
+      "pickAny": "Any member",
+      "pickRoundRobin": "Round robin",
+      "oneOfGroup": "A routing or group gives one person for this step, chosen by the rule above.",
+      "actions": {
+        "review": "Review",
+        "approve": "Approve",
+        "sign": "Sign"
+      },
+      "hint": {
+        "review": "Can edit the letter until the first signature. Shown in Approval Items.",
+        "approve": "A decision with no signature. Shown in Approval Items.",
+        "sign": "Signs the letter. The last step releases it. Signers can’t edit the text.",
+        "owner": "Send-backs come to this step."
+      },
+      "whoEmployee": "The employee",
+      "whoDirectSuperior": "Their Direct Superior",
+      "whoRouting": "Routing: {name}",
+      "whoGroup": "Assignment group: {name}",
+      "whoPeople": "Named people",
+      "unknown": "No longer available",
+      "people": "People at this step",
+      "removePerson": "Remove {name}",
+      "remove": "Remove step {n}",
+      "add": "Add signing step",
+      "problems": "Problems",
+      "blocks": "Signature blocks",
+      "blocksHelp": "Who signs comes from the signing routing above. This only decides where that signature prints.",
+      "noBlocks": "This version has no signature block yet. Add one in the content.",
+      "blockLabel": "Signature block {n}",
+      "chooseStep": "Choose a signing step…",
+      "stepOption": "Step {order} · Sign · {who}",
+      "oldSetting": "{role} (old setting — choose a step)",
+      "stepRemoved": "Signing step removed — choose another"
+    },
+    "preview": {
+      "caseLabel": "Preview values for",
+      "chooseCase": "Choose a case",
+      "loading": "Loading the case’s values…",
+      "noOutcome": "This case has no decided outcome yet, so merge fields show as placeholders.",
+      "notPublished": "Case values can be previewed for a saved, published version that matches the case’s outcome. Merge fields show as placeholders.",
+      "unavailable": "The preview values are unavailable right now."
+    },
+    "history": {
+      "routingSteps": "{count, plural, =0 {no routing} one {# routing step} other {# routing steps}}"
+    }
+  },
+  "automationRuntime": {
+    "status": {
+      "running": "Running",
+      "waiting": "Waiting for the document",
+      "done": "Finished",
+      "skipped": "Skipped",
+      "failed": "Stopped"
+    },
+    "log": {
+      "started": "Started",
+      "skipped": "Skipped",
+      "stepDone": "Step done",
+      "stepSkipped": "Step skipped",
+      "stepFailed": "Step failed",
+      "waiting": "Waiting",
+      "resumed": "Continued",
+      "done": "Finished",
+      "failed": "Stopped"
+    },
+    "noWorkflow": "No workflow matched this case, so it was sent to the People Business Partner.",
+    "fallback": "Meant for {meantFor}; sent to the fallback group because nobody was found."
+  },
+  "probationAccess": {
+    "breadcrumb": "Probation Confirmation / Configuration / Access",
+    "title": "Access",
+    "intro": "Same access model as Contract Management. Line Managers get access automatically through the Direct Superiors rule. Business Partners and everyone else aren’t given access automatically: create a role below and add them as members with the right scope. System Administrators manage this page and every Probation setting; to see or act on cases they add themselves to a role like anyone else.",
+    "forbidden": "Only a System Administrator or someone who manages access can open Probation access.",
+    "on": "On",
+    "off": "Off",
+    "superiors": {
+      "title": "Direct Superiors",
+      "intro": "Anyone named as an employee’s Direct Superior in Personnel Management gets these permissions for that employee’s cases.",
+      "enabled": "Rule is on",
+      "view": "View cases",
+      "kpis": "Set Week 1 KPIs",
+      "assessments": "Complete assessments",
+      "alwaysOn": "always on",
+      "declined": "Record a declined signature",
+      "offWarning": "With the rule off, Line Managers can’t see their team’s cases, set KPIs or complete assessments, so reviews would stall. Only switch it off if another role covers this.",
+      "save": "Save rule",
+      "saved": "Direct Superiors rule saved.",
+      "savedOff": "Direct Superiors rule saved. Line Managers no longer get automatic access."
+    },
+    "roles": {
+      "title": "Roles",
+      "intro": "Create a role, choose what it can see and do, and add its members, each with a business group and company scope.",
+      "newRole": "+ New role",
+      "newRoleName": "New role",
+      "name": "Role name",
+      "save": "Save role",
+      "cancel": "Cancel",
+      "delete": "Delete role",
+      "deleteConfirm": "Delete {name}? Its members lose these permissions now.",
+      "empty": "No roles yet. Create a role to give Business Partners and others access.",
+      "cases": "Cases (within each member’s scope)",
+      "settings": "Settings",
+      "postingsNote": "Decides who may choose the posting-approver group in Probation settings. Only that group approves Personnel postings.",
+      "actNote": "A member never acts on their own probation.",
+      "created": "Role {name} created.",
+      "saved": "Role {name} saved.",
+      "deleted": "Role {name} deleted."
+    },
+    "permissions": {
+      "view": "View cases",
+      "letters": "Approve and release letters",
+      "lowResult": "Record low-result actions",
+      "route": "Change a case’s route",
+      "configure": "Configure probation",
+      "intake": "Intake and activation",
+      "postings": "Approve Personnel postings"
+    },
+    "members": {
+      "title": "Members",
+      "empty": "No members yet.",
+      "businessGroup": "Business group",
+      "allBusinessGroups": "All business groups",
+      "company": "Company",
+      "allCompanies": "All companies",
+      "validFrom": "Valid from",
+      "validTo": "Valid to (optional)",
+      "active": "Active",
+      "scheduled": "Scheduled",
+      "expired": "Expired",
+      "save": "Save",
+      "remove": "Remove",
+      "removeLabel": "Remove {name} from {role}",
+      "add": "+ Add member",
+      "find": "Find a person",
+      "search": "Search",
+      "noMatch": "No active person matches “{query}”.",
+      "addPerson": "Add {name}",
+      "added": "{name} added to {role}.",
+      "changed": "{name}’s scope saved.",
+      "removed": "{name} removed from {role}."
+    },
+    "earlier": {
+      "title": "Earlier PBP and GBS assignments",
+      "intro": "These assignments were made before roles existed and still apply.",
+      "pbp": "People Business Partner",
+      "gbs": "GBS People Ops",
+      "validFrom": "from {date}",
+      "validTo": "until {date}"
+    }
   },
   "recruitment": {
     "noCompany": "Không có công ty nào trong phạm vi hiện tại có Tuyển dụng do bạn quản lý. Hãy đổi công ty hoặc đề nghị quản trị viên tập đoàn cấp vai trò Đối tác Tuyển dụng.",
@@ -41586,858 +43888,6 @@
       "repeat": "Ứng viên này đã đang chờ xem xét cho vị trí này từ hợp đồng của bạn.",
       "dailyLimit": "Bạn đã đạt giới hạn 20 hồ sơ trong hôm nay. Hãy thử lại vào ngày mai.",
       "notAvailable": "Vị trí này không còn mở cho hợp đồng của bạn."
-    }
-  },
-  "bulkJobs": {
-    "notification": {
-      "employeeImport": {
-        "completed": {
-          "title": "Đã nhập nhân viên xong",
-          "body": "Mở Lịch sử nhập để xem các nhân viên đã được thêm."
-        },
-        "failed": {
-          "title": "Việc nhập nhân viên đã dừng",
-          "body": "Không có nhân viên nào được thêm. Mở Lịch sử nhập để xem lý do."
-        },
-        "cancelled": {
-          "title": "Đã hủy việc nhập nhân viên",
-          "body": "Không có nhân viên nào được thêm. Mở Lịch sử nhập để xem chi tiết."
-        }
-      },
-      "leaveImport": {
-        "completed": {
-          "title": "Đã nhập dữ liệu nghỉ phép xong",
-          "body": "Các dòng đã nhập hiện đã có trong số dư nghỉ phép của nhân viên."
-        },
-        "failed": {
-          "title": "Việc nhập dữ liệu nghỉ phép đã dừng",
-          "body": "Các dòng đã lưu được giữ lại. Nhập lại cùng tệp sẽ bỏ qua các dòng đó."
-        },
-        "cancelled": {
-          "title": "Đã hủy việc nhập dữ liệu nghỉ phép",
-          "body": "Các dòng đã lưu được giữ lại. Nhập lại cùng tệp sẽ bỏ qua các dòng đó."
-        }
-      },
-      "leaveProcessing": {
-        "completed": {
-          "title": "Đã xử lý nghỉ phép xong",
-          "body": "Số liệu nghỉ phép đã được cập nhật."
-        },
-        "failed": {
-          "title": "Việc xử lý nghỉ phép đã dừng",
-          "body": "Các nhân viên đã được xử lý giữ nguyên số liệu. Hãy chạy lại để hoàn tất phần còn lại."
-        },
-        "cancelled": {
-          "title": "Đã hủy việc xử lý nghỉ phép",
-          "body": "Các nhân viên đã được xử lý giữ nguyên số liệu. Hãy chạy lại để hoàn tất phần còn lại."
-        }
-      },
-      "roster": {
-        "completed": {
-          "title": "Thay đổi lịch ca đã hoàn tất",
-          "body": "Mở lịch ca để xem kết quả."
-        },
-        "failed": {
-          "title": "Thay đổi lịch ca đã dừng",
-          "body": "Mở lịch ca để xem lý do."
-        },
-        "cancelled": {
-          "title": "Thay đổi lịch ca đã bị hủy",
-          "body": "Mở lịch ca để xem chi tiết."
-        }
-      },
-      "scheduleGroup": {
-        "completed": {
-          "title": "Phân nhóm lịch làm việc đã hoàn tất",
-          "body": "Mở trang Phân nhóm lịch làm việc để xem kết quả."
-        },
-        "failed": {
-          "title": "Phân nhóm lịch làm việc đã dừng",
-          "body": "Mở trang Phân nhóm lịch làm việc để xem lý do."
-        },
-        "cancelled": {
-          "title": "Phân nhóm lịch làm việc đã bị hủy",
-          "body": "Mở trang Phân nhóm lịch làm việc để xem chi tiết."
-        }
-      },
-      "clockingImport": {
-        "completed": {
-          "title": "Đã nhập dữ liệu chấm công xong",
-          "body": "Mở nhật ký nhập để xem dữ liệu chấm công đã được thêm."
-        },
-        "failed": {
-          "title": "Quá trình nhập chấm công đã dừng",
-          "body": "Mở nhật ký nhập để xem những gì đã được lưu và lý do dừng."
-        },
-        "cancelled": {
-          "title": "Quá trình nhập chấm công đã dừng",
-          "body": "Mở nhật ký nhập để xem những gì đã được lưu."
-        }
-      },
-      "attendanceRecomputePreview": {
-        "completed": {
-          "title": "Bản xem trước tính lại đã sẵn sàng",
-          "body": "Mở Tính lại chấm công để xem những gì sẽ thay đổi."
-        },
-        "failed": {
-          "title": "Bản xem trước tính lại đã dừng",
-          "body": "Mở Tính lại chấm công để xem lý do."
-        },
-        "cancelled": {
-          "title": "Bản xem trước tính lại đã dừng",
-          "body": "Mở Tính lại chấm công để bắt đầu lại."
-        }
-      },
-      "attendanceRecompute": {
-        "completed": {
-          "title": "Đã tính lại chấm công",
-          "body": "Mở Tính lại chấm công để xem những ngày đã thay đổi."
-        },
-        "failed": {
-          "title": "Quá trình tính lại chấm công đã dừng",
-          "body": "Mở Tính lại chấm công để xem lý do."
-        },
-        "cancelled": {
-          "title": "Quá trình tính lại chấm công đã dừng",
-          "body": "Mở Tính lại chấm công để xem chi tiết."
-        }
-      },
-      "payrollProcess": {
-        "completed": {
-          "title": "Đã xử lý xong bảng lương",
-          "body": "Mở Bảng lương để rà soát đợt đã xử lý."
-        },
-        "failed": {
-          "title": "Việc xử lý bảng lương đã dừng",
-          "body": "Đợt lương trở về bản nháp và không giữ phiếu lương nào. Mở Bảng lương để xem lý do."
-        },
-        "cancelled": {
-          "title": "Đã hủy xử lý bảng lương",
-          "body": "Đợt lương trở về bản nháp và không giữ phiếu lương nào."
-        }
-      },
-      "systemLabelImport": {
-        "completed": {
-          "title": "Đã nhập Nhãn hệ thống xong",
-          "body": "Mở Nhãn hệ thống để xem các mã đã được thêm."
-        },
-        "failed": {
-          "title": "Đã dừng nhập Nhãn hệ thống",
-          "body": "Không có mã nào được thêm. Mở Nhãn hệ thống và xem trước sổ làm việc lần nữa."
-        },
-        "cancelled": {
-          "title": "Đã hủy nhập Nhãn hệ thống",
-          "body": "Không có mã nào được thêm."
-        }
-      },
-      "sectionImport": {
-        "completed": {
-          "title": "Đã nhập phần hồ sơ xong",
-          "body": "Mở Nhập để xem các dòng đã được cập nhật."
-        },
-        "failed": {
-          "title": "Việc nhập phần hồ sơ đã dừng",
-          "body": "Các dòng đã lưu trước khi dừng vẫn được giữ. Mở Nhập để xem lý do."
-        },
-        "cancelled": {
-          "title": "Đã hủy việc nhập phần hồ sơ",
-          "body": "Các dòng đã lưu trước khi dừng vẫn được giữ. Mở Nhập để xem chi tiết."
-        }
-      },
-      "registerImport": {
-        "completed": {
-          "title": "Đã nhập sổ đăng ký xong",
-          "body": "Mở Nhập để xem các bản ghi sổ đăng ký đã được lưu."
-        },
-        "failed": {
-          "title": "Việc nhập sổ đăng ký đã dừng",
-          "body": "Không có bản ghi sổ đăng ký nào được lưu. Mở Nhập để xem lý do."
-        },
-        "cancelled": {
-          "title": "Đã hủy việc nhập sổ đăng ký",
-          "body": "Không có bản ghi sổ đăng ký nào được lưu. Mở Nhập để xem chi tiết."
-        }
-      },
-      "employeeImportRevert": {
-        "completed": {
-          "title": "Đã hoàn tác việc nhập xong",
-          "body": "Mở Lịch sử nhập để xem các nhân viên đã bị vô hiệu."
-        },
-        "failed": {
-          "title": "Việc hoàn tác nhập đã dừng",
-          "body": "Không có gì thay đổi. Mở Lịch sử nhập để xem lý do."
-        },
-        "cancelled": {
-          "title": "Đã hủy việc hoàn tác nhập",
-          "body": "Không có gì thay đổi. Mở Lịch sử nhập để xem chi tiết."
-        }
-      },
-      "leaveGeneration": {
-        "completed": {
-          "title": "Đã tạo xong quyền lợi nghỉ phép",
-          "body": "Số liệu nghỉ phép đã được cập nhật."
-        },
-        "failed": {
-          "title": "Việc tạo quyền lợi nghỉ phép đã dừng",
-          "body": "Không có gì bị thay đổi. Mở Tạo quyền lợi để xem lý do, sau đó chạy lại."
-        },
-        "cancelled": {
-          "title": "Đã hủy việc tạo quyền lợi nghỉ phép",
-          "body": "Không có gì bị thay đổi."
-        }
-      },
-      "leaveRecalculation": {
-        "completed": {
-          "title": "Đã tính lại số dư nghỉ phép",
-          "body": "Số liệu nghỉ phép của nhân viên giờ đã theo các thiết lập đã lưu."
-        },
-        "failed": {
-          "title": "Việc tính lại nghỉ phép đã dừng",
-          "body": "Các nhân viên đã được tính lại giữ số liệu mới. Hãy lưu lại thiết lập để tính lại phần còn lại."
-        },
-        "cancelled": {
-          "title": "Đã hủy việc tính lại nghỉ phép",
-          "body": "Các nhân viên đã được tính lại giữ số liệu mới. Hãy lưu lại thiết lập để tính lại phần còn lại."
-        }
-      },
-      "leaveYearType": {
-        "completed": {
-          "title": "Đã áp dụng loại năm nghỉ phép",
-          "body": "Số liệu nghỉ phép của nhân viên năm đầu giờ đã theo loại năm nghỉ phép đã lưu."
-        },
-        "failed": {
-          "title": "Chưa áp dụng loại năm nghỉ phép cho số dư",
-          "body": "Không có số liệu nghỉ phép nào bị thay đổi. Hãy lưu lại loại năm nghỉ phép để thử lại."
-        },
-        "cancelled": {
-          "title": "Đã hủy việc điều chỉnh loại năm nghỉ phép",
-          "body": "Không có số liệu nghỉ phép nào bị thay đổi."
-        }
-      },
-      "toilSweep": {
-        "completed": {
-          "title": "Đã xử lý xong ngày nghỉ bù",
-          "body": "Các khoản ngày nghỉ bù đến hạn đã được xử lý. Mở Tín dụng nghỉ phép để xem lại."
-        },
-        "failed": {
-          "title": "Việc xử lý ngày nghỉ bù đã dừng",
-          "body": "Các khoản đã được xử lý vẫn giữ nguyên. Hãy chạy lại để xử lý phần còn lại."
-        },
-        "cancelled": {
-          "title": "Đã hủy việc xử lý ngày nghỉ bù",
-          "body": "Các khoản đã được xử lý vẫn giữ nguyên. Hãy chạy lại để xử lý phần còn lại."
-        }
-      },
-      "payrollHistory": {
-        "completed": {
-          "title": "Đã ghi nhận thay đổi lịch sử lương",
-          "body": "Mở nhật ký nhập để xem những gì đã được ghi nhận."
-        },
-        "failed": {
-          "title": "Thay đổi lịch sử lương đã dừng",
-          "body": "Lịch sử lương không bị thay đổi. Mở nhật ký nhập để xem lý do."
-        },
-        "cancelled": {
-          "title": "Đã hủy thay đổi lịch sử lương",
-          "body": "Lịch sử lương không bị thay đổi."
-        }
-      },
-      "payrollReprocess": {
-        "completed": {
-          "title": "Đã xử lý lại bảng lương",
-          "body": "Mở kỳ lương để xem các nhân viên đã được xử lý lại."
-        },
-        "failed": {
-          "title": "Việc xử lý lại bảng lương đã dừng",
-          "body": "Nhân viên đã được xử lý lại vẫn giữ kết quả mới. Mở kỳ lương để xem nơi đã dừng."
-        },
-        "cancelled": {
-          "title": "Đã hủy xử lý lại bảng lương",
-          "body": "Nhân viên đã được xử lý lại vẫn giữ kết quả mới."
-        }
-      },
-      "movementImport": {
-        "completed": {
-          "title": "Đã nhập biến động xong",
-          "body": "Mở Lịch sử nhập để xem các biến động đã được lưu và những nhân viên chưa lưu được."
-        },
-        "failed": {
-          "title": "Việc nhập biến động đã dừng",
-          "body": "Mở Lịch sử nhập để xem lý do. Nhân viên đã được lưu vẫn giữ các biến động của mình."
-        },
-        "cancelled": {
-          "title": "Việc nhập biến động đã dừng",
-          "body": "Nhân viên đã được lưu vẫn giữ các biến động của mình. Mở Lịch sử nhập để xem chi tiết."
-        }
-      },
-      "movementCheck": {
-        "completed": {
-          "title": "Đã kiểm tra tệp biến động",
-          "body": "Lần kiểm tra được ghi trong Lịch sử nhập. Nếu bạn đã rời màn hình nhập, hãy tải tệp lên lần nữa để xem lại và xác nhận."
-        },
-        "failed": {
-          "title": "Việc kiểm tra biến động đã dừng",
-          "body": "Mở Lịch sử nhập để xem lý do. Chưa có gì được lưu."
-        },
-        "cancelled": {
-          "title": "Việc kiểm tra biến động đã dừng",
-          "body": "Chưa có gì được lưu. Mở Lịch sử nhập để xem chi tiết."
-        }
-      },
-      "movementImportRevert": {
-        "completed": {
-          "title": "Đã hoàn tác việc nhập biến động",
-          "body": "Mở Lịch sử nhập để xem các biến động đã được hoàn tác."
-        },
-        "failed": {
-          "title": "Việc hoàn tác nhập biến động đã dừng",
-          "body": "Không có gì thay đổi. Mở Lịch sử nhập để xem lý do."
-        },
-        "cancelled": {
-          "title": "Đã hủy việc hoàn tác nhập biến động",
-          "body": "Không có gì thay đổi. Mở Lịch sử nhập để xem chi tiết."
-        }
-      },
-      "recruitmentImport": {
-        "completed": {
-          "title": "Đã nhập xong ứng viên",
-          "body": "Mở lần nhập để xem kết quả từng dòng và các ứng viên đang chờ trong danh sách Cần phân công."
-        },
-        "failed": {
-          "title": "Việc nhập ứng viên đã dừng",
-          "body": "Một sự cố đã dừng việc nhập. Các dòng đã nhập vẫn được giữ; mở lần nhập để xem kết quả."
-        },
-        "cancelled": {
-          "title": "Việc nhập ứng viên đã dừng",
-          "body": "Việc nhập đã được dừng. Các dòng đã nhập vẫn được giữ; mở lần nhập để xem kết quả."
-        }
-      }
-    },
-    "panel": {
-      "queued": "Đang chờ bắt đầu",
-      "preparing": "Đang kiểm tra từng thay đổi",
-      "running": "Đang lưu",
-      "finalizing": "Đang hoàn tất",
-      "discarding": "Đang dừng",
-      "completed": "Đã xong",
-      "failed": "Đã dừng",
-      "cancelled": "Đã hủy",
-      "progressCount": "Đã hoàn tất {done}/{total} bước",
-      "backgroundHelp": "Bạn có thể rời trang này. Công việc vẫn tiếp tục và bạn sẽ được thông báo khi hoàn tất.",
-      "waiting": "Đang chờ dịch vụ chạy nền. Tiến độ đã được lưu; đừng bắt đầu lại.",
-      "workerUnavailable": "Dịch vụ chạy nền chưa hoạt động. Yêu cầu của bạn đã được lưu và sẽ tự động bắt đầu ngay khi dịch vụ hoạt động."
-    },
-    "roster": {
-      "generate": "Đang tạo lịch ca",
-      "copy": "Đang sao chép lịch ca",
-      "assign": "Đang áp dụng thay đổi lịch ca",
-      "import": "Đang lưu lịch ca đã tải lên",
-      "otherRunning": "Một thay đổi lịch ca khác vẫn đang được lưu. Hãy đợi hoàn tất rồi thử lại.",
-      "saveFailed": "Không thể lưu thay đổi lịch ca. Vui lòng thử lại hoặc liên hệ quản trị viên nhân sự.",
-      "queuedBehind": "Đang xếp hàng sau một công việc lịch ca khác. Công việc sẽ tự bắt đầu ngay khi công việc kia hoàn tất."
-    },
-    "scheduleGroup": {
-      "title": "Đang phân nhóm lịch làm việc",
-      "otherRunning": "Một lượt phân nhóm lịch làm việc khác vẫn đang được lưu. Hãy đợi hoàn tất rồi thử lại.",
-      "queuedBehind": "Đang xếp hàng sau một lượt phân nhóm lịch làm việc khác. Sẽ tự bắt đầu ngay khi lượt kia hoàn tất."
-    }
-  },
-  "importLog": {
-    "batchReference": "Mã lô",
-    "importedBy": "Người nhập",
-    "batchLabel": "Lô {code}",
-    "actorWithId": "{name} ({employeeId})",
-    "actorUnlinked": "Đăng nhập quản trị (không có hồ sơ nhân viên · đăng nhập kết thúc bằng {suffix})",
-    "actorUnavailable": "Người dùng không khả dụng"
-  },
-  "scheduleOvertimeSetting": {
-    "title": "Cài đặt làm thêm giờ",
-    "intro": "Kiểm soát cách ghi nhận, phê duyệt, bù trừ và làm tròn giờ làm thêm cho nhân viên trong Nhóm lịch này. Áp dụng từ ngày bắt đầu: các ngày trước, bản ghi chấm công, bản ghi đi muộn và bảng lương đã qua không bao giờ được tính lại.",
-    "companiesLabel": "Áp dụng cho",
-    "allCompanies": "Tất cả công ty",
-    "selectedCompanies": "Công ty đã chọn",
-    "effectiveFrom": "Ngày bắt đầu",
-    "effectiveHint": "Sau hôm nay, và sau mọi ngày bắt đầu đã lưu của công ty được chọn.",
-    "applicabilityTitle": "Phạm vi làm thêm giờ",
-    "beforeShift": "Làm thêm trước ca",
-    "beforeShiftHint": "Cho phép làm thêm trước ca đã lên lịch.",
-    "afterShift": "Làm thêm sau ca",
-    "afterShiftHint": "Cho phép làm thêm sau ca đã lên lịch.",
-    "allowBackdated": "Cho phép yêu cầu làm thêm hồi tố không cần chấm công",
-    "allowBackdatedHint": "Nhân viên có thể yêu cầu làm thêm hồi tố khi không có bản ghi chấm công tương ứng. Nhân sự vẫn phải ghi nhận khoảng thời gian làm việc thực tế trước khi được tính.",
-    "splitAtMidnight": "Tách làm thêm giờ lúc nửa đêm",
-    "splitAtMidnightHint": "Phần làm thêm sau nửa đêm thuộc ngày dương lịch kế tiếp như làm thêm sớm. Ví dụ: 22:00 đến 02:00 tính 2 giờ cho mỗi ngày.",
-    "offsetTitle": "Bù trừ làm thêm bằng đi muộn",
-    "offsetLateness": "Bù trừ làm thêm bằng đi muộn",
-    "offsetHint": "Trừ số phút đi muộn khỏi giờ làm thêm hợp lệ. Ví dụ: muộn 20 phút so với 60 phút hợp lệ còn lại 40. Số phút đi muộn đã ghi được giữ nguyên.",
-    "showLatenessException": "Hiển thị ngoại lệ đi muộn sau bù trừ",
-    "showLatenessExceptionHint": "Hiển thị ngoại lệ đi muộn cho phần đi muộn còn lại sau bù trừ.",
-    "approvalTitle": "Phương thức phê duyệt làm thêm giờ",
-    "approvalManual": "Thủ công",
-    "approvalAuto": "Tự động",
-    "approvalManualHint": "Chấm công không tạo giờ làm thêm phải trả. Bản ghi chấm công được giữ lại, và giờ làm thêm được nhập thủ công trong Bảng lương.",
-    "autoMethod": "Phương thức phê duyệt làm thêm tự động",
-    "methodIntersect": "Giao giữa thực tế và đã duyệt trước",
-    "methodActual": "Giờ thực tế",
-    "methodPreApproved": "Làm thêm đã duyệt",
-    "methodIntersectHint": "Trả theo số phút thấp hơn giữa đã duyệt và thực tế: duyệt 120, thực tế 90 trả 90.",
-    "methodActualHint": "Trả theo số phút hợp lệ thực tế, không giới hạn theo phê duyệt.",
-    "methodPreApprovedHint": "Trả theo thời lượng đã duyệt: duyệt 120, thực tế 90 trả 120.",
-    "patternsTitle": "Mẫu làm thêm giờ cho từng loại ngày",
-    "patternsHint": "Tiền làm thêm được tính bởi Mẫu làm thêm giờ đã chọn. Chỉ liệt kê các mẫu đang hoạt động cho mọi công ty được chọn.",
-    "patternsNone": "Không có Mẫu làm thêm giờ nào đang hoạt động cho mọi công ty được chọn. Kích hoạt một mẫu trong Mẫu làm thêm giờ để dùng Tự động, hoặc chọn Thủ công.",
-    "choosePattern": "Chọn Mẫu làm thêm giờ",
-    "dayNormal": "Ngày làm việc",
-    "dayOff": "Ngày nghỉ không làm việc",
-    "dayRest": "Ngày nghỉ hằng tuần",
-    "dayPublicHoliday": "Ngày lễ",
-    "dayReplacementHoliday": "Ngày nghỉ bù",
-    "roundingTitle": "Làm tròn làm thêm giờ",
-    "roundingMethod": "Phương thức làm tròn làm thêm giờ",
-    "roundUp": "Làm tròn lên",
-    "roundDown": "Làm tròn xuống",
-    "roundingStep": "Làm tròn làm thêm giờ theo phút",
-    "stepMinutes": "{n} phút",
-    "roundingHint": "Làm tròn được áp dụng cuối cùng, sau phương thức phê duyệt và bù trừ đi muộn. Thời lượng chấm công đã ghi không thay đổi.",
-    "unsupportedRounding": "Cách làm tròn đã lưu dùng tùy chọn mà phần này không cung cấp. Lưu sẽ thay thế từ ngày bắt đầu mới.",
-    "differs": "{n, plural, other {# công ty}} có Cài đặt làm thêm giờ khác hoặc chưa có. Lưu sẽ áp dụng cài đặt này cho mọi công ty được chọn.",
-    "savedFrom": "Cài đặt đã lưu bắt đầu từ {date}.",
-    "none": "Chưa lưu Cài đặt làm thêm giờ. Giờ làm thêm của nhóm này hoạt động như trước cho đến khi lưu.",
-    "save": "Lưu cài đặt làm thêm giờ",
-    "systemReason": "Đã lưu Cài đặt làm thêm giờ của Nhóm lịch",
-    "on": "Bật",
-    "off": "Tắt",
-    "payrollNote": "Bảng lương nhận số liệu làm thêm cuối cùng từ cài đặt này, giống như cách nhận làm thêm hiện nay."
-  },
-  "attendanceOnBehalf": {
-    "requestTitle": "Gửi yêu cầu thay",
-    "requestHelp": "Chọn nhân viên, sau đó gửi Bất thường chấm công hoặc Tự khai làm thêm giờ cho họ trên các màn hình thông thường. Yêu cầu theo quy trình và người phê duyệt của chính họ.",
-    "approveTitle": "Phê duyệt thay",
-    "approveHelp": "Chọn người phê duyệt được chỉ định có các yêu cầu chấm công đang chờ mà bạn cần xử lý.",
-    "approveListHelp": "Các yêu cầu đang chờ {name} mà bạn có thể quyết định thay họ.",
-    "searchLabel": "Tìm theo mã nhân viên hoặc tên",
-    "searchPlaceholder": "vd. EMP-0123 hoặc tên",
-    "search": "Tìm",
-    "results": "Nhân viên bạn có thể thay mặt",
-    "noResults": "Không có nhân viên nào bạn có thể thay mặt khớp với tìm kiếm này.",
-    "noPermission": "Vai trò của bạn không có quyền này. Hãy hỏi quản trị viên nếu bạn cần.",
-    "choose": "Chọn",
-    "employeeName": "Nhân viên",
-    "employeeId": "Mã nhân viên",
-    "company": "Công ty",
-    "department": "Phòng ban",
-    "changeEmployee": "Đổi nhân viên",
-    "chooseCategory": "Bạn muốn gửi loại yêu cầu nào?",
-    "irregularity": "Bất thường chấm công",
-    "irregularityHelp": "Giờ chấm công thiếu hoặc sai, thiếu giờ hoặc vắng mặt, trong các ngày của chính nhân viên.",
-    "selfOvertime": "Tự khai làm thêm giờ",
-    "selfOvertimeHelp": "Lập kế hoạch hoặc khai làm thêm giờ theo Nhóm lịch và quy tắc làm thêm giờ của chính nhân viên.",
-    "banner": "Đang gửi thay cho {name}",
-    "pendingTitle": "Yêu cầu đang chờ phê duyệt",
-    "pendingEmpty": "Không có yêu cầu nào đang chờ người phê duyệt này mà bạn có thể quyết định.",
-    "approveOnBehalf": "Phê duyệt thay",
-    "rejectOnBehalf": "Từ chối thay",
-    "approveAudit": "Lịch sử giữ người được chọn là người phê duyệt được chỉ định và ghi nhận bạn là người thực hiện.",
-    "previous": "Trước",
-    "next": "Tiếp"
-  },
-  "importErrorLogMovement": {
-    "correction": {
-      "date": "Nhập ngày theo định dạng DD-MMM-YYYY (ví dụ 06-Jan-2026) hoặc dưới dạng ngày Excel.",
-      "required": "Điền trường này - loại sự kiện này bắt buộc phải có.",
-      "chooseCompany": "Chọn Mã công ty từ trang Reference.",
-      "eventType": "Chọn một Loại sự kiện đang hoạt động từ danh sách thả xuống.",
-      "chooseReference": "Chọn một giá trị từ danh sách thả xuống hoặc trang Reference.",
-      "employeeId": "Đối chiếu Mã nhân viên và Mã công ty trên dòng này với hồ sơ Personnel.",
-      "systemField": "Chọn một Trường hệ thống mà loại sự kiện này có thể thay đổi (xem trang Reference), hoặc xóa dòng đó.",
-      "duplicateField": "Chỉ giữ một dòng cho mỗi Trường hệ thống của một biến động.",
-      "number": "Nhập một số (chỉ chữ số, không có ký hiệu tiền tệ).",
-      "noFormula": "Nhập chính giá trị, không dùng công thức.",
-      "movementId": "Sao chép Mã sự kiện biến động từ lịch sử Biến động của nhân viên.",
-      "before": "Nhập giá trị hiện có trong hồ sơ nhân viên vào cột Trước, hoặc tải mẫu mới.",
-      "otherRows": "Sửa các dòng khác của nhân viên này, rồi tải lên lại toàn bộ tệp.",
-      "recheck": "Tải tệp lên lại để tệp được kiểm tra theo dữ liệu hiện tại.",
-      "template": "Tải mẫu Biến động hiện tại, sao chép các dòng của bạn vào đó và tải lên lại.",
-      "splitFile": "Chia tệp thành các tệp nhỏ hơn (tối đa 200 dòng, 50 nhân viên và 20 dòng cho mỗi nhân viên) rồi tải lên từng tệp.",
-      "saveStopped": "Không có gì được lưu cho nhân viên này. Sửa lỗi, rồi nhập lại nhân viên này."
-    }
-  },
-  "lifecycleEmailHold": {
-    "inboxAction": "Thư đang bị giữ: {email}"
-  },
-  "rewardConfig": {
-    "title": "Xem trước khi lưu",
-    "saving": "Đang lưu…",
-    "whyReview": "Lý do cần xem lại",
-    "reason": "Lý do thay đổi",
-    "cancel": "Hủy",
-    "highImpact": {
-      "released-pat": "PAT thay đổi cho một đợt đánh giá đã phát hành.",
-      "released-library": "Các đợt đánh giá đã phát hành dùng phiên bản trước và sẽ giữ phiên bản đó; đợt đánh giá mới dùng phiên bản này.",
-      "released-limit": "Hạn mức ngân sách thay đổi cho một đợt đánh giá đã phát hành.",
-      "release-review": "Phát hành sẽ gửi đợt đánh giá này đến CEO đơn vị kinh doanh.",
-      "remove-access": "Một người sẽ mất quyền truy cập vào đợt đánh giá.",
-      "open-offcycle": "Mở năm ngoài chu kỳ cho phép lãnh đạo dùng số dư công ty cho yêu cầu ngoài chu kỳ.",
-      "offcycle-window": "Khoảng giữa năm quyết định khi nào có thể nộp đề xuất giữa năm."
-    },
-    "whatChanges": "Nội dung thay đổi ({count})",
-    "item": "Mục",
-    "before": "Trước",
-    "after": "Sau",
-    "noValueChanges": "Không có giá trị nào thay đổi.",
-    "moreLines": "Còn {count} thay đổi khác trong nhật ký thay đổi.",
-    "affected": "Đợt đánh giá bị ảnh hưởng ({count})",
-    "noReviewsAffected": "Không có đợt đánh giá nào bị ảnh hưởng.",
-    "consequence": {
-      "repriced": "Tính lại ngay",
-      "recalculation-required": "Tính lại; người phê duyệt hiện tại được thông báo",
-      "keeps-version": "Giữ phiên bản đã dùng khi bắt đầu",
-      "released-to-bu": "Phát hành cho CEO đơn vị kinh doanh",
-      "access-removed": "Đã gỡ quyền truy cập",
-      "none": "Không thay đổi"
-    },
-    "notificationTitle": "Cấu hình Rewards đã thay đổi",
-    "noAccess": "Bạn không xem được nhật ký thay đổi Rewards.",
-    "logHelp": "Mọi thay đổi cấu hình Rewards: ai thực hiện, khi nào, thay đổi gì và vì sao. Các thay đổi không bao giờ bị sửa hoặc xóa.",
-    "area": "Phạm vi",
-    "allAreas": "Mọi phạm vi",
-    "company": "Công ty",
-    "allCompanies": "Mọi công ty",
-    "person": "Người thay đổi",
-    "from": "Từ",
-    "to": "Đến",
-    "highImpactOnly": "Chỉ tác động cao",
-    "filter": "Áp dụng bộ lọc",
-    "exportExcel": "Xuất ra Excel",
-    "when": "Thời điểm",
-    "areaColumn": "Phạm vi",
-    "reasonColumn": "Lý do",
-    "changes": "Thay đổi",
-    "changedValues": "{count, plural, =0 {Không có giá trị} other {# giá trị}}",
-    "system": "Hệ thống",
-    "unknownPerson": "Không rõ",
-    "highImpactBadge": "Tác động cao",
-    "areas": {
-      "salary": "Cấu trúc lương",
-      "bonus": "Ma trận thưởng",
-      "pat": "Dữ liệu PAT",
-      "plan": "Cấu hình Rewards dùng chung",
-      "shared": "Cấu hình dùng chung",
-      "exemption": "Miễn trừ hạn mức ngân sách",
-      "senior": "Kế hoạch cấp cao",
-      "upload": "Thưởng đã tải lên",
-      "preparation": "Thiết lập đợt đánh giá",
-      "access": "Quyền truy cập Rewards",
-      "role_permission": "Quyền theo vai trò",
-      "group_role": "Vai trò toàn tập đoàn",
-      "limit": "Kiểm soát hạn mức",
-      "offcycle": "Ngoài chu kỳ"
-    },
-    "actions": {
-      "returned-to-draft": "Trả về bản nháp",
-      "saved-draft": "Đã lưu bản nháp",
-      "activated": "Đã áp dụng",
-      "restored": "Khôi phục từ phiên bản trước",
-      "saved": "Đã lưu",
-      "released": "Đã phát hành",
-      "applied": "Đã áp dụng thay đổi",
-      "changed": "Đã thay đổi",
-      "reset": "Đặt lại mặc định"
-    },
-    "empty": "Không có thay đổi nào khớp bộ lọc.",
-    "pages": "Trang",
-    "previous": "Trước",
-    "next": "Tiếp",
-    "exportTruncated": "Chỉ gồm 5.000 thay đổi đầu tiên. Thu hẹp bộ lọc để xuất phần còn lại."
-  },
-  "rewardLimits": {
-    "description": "Giới hạn và ngưỡng cho từng năm thưởng. Mọi kiểm tra trong đợt xét, cố vấn AI và Phân tích thưởng đều dùng giá trị của năm thưởng của đợt xét.",
-    "noAccess": "Bạn không có quyền truy cập",
-    "noAccessHelp": "Kiểm soát giới hạn dành cho Group Rewards, CTRO và EC.",
-    "year": "Năm thưởng",
-    "show": "Hiển thị",
-    "viewOnly": "Bạn có thể xem các giới hạn này. Chỉ Group Rewards mới có thể thay đổi.",
-    "versionLine": "Phiên bản {version} đang được dùng cho năm {year}.",
-    "baselineLine": "Chưa có phiên bản nào được lưu cho năm {year}. Đây là giá trị chuẩn; lưu sẽ tạo phiên bản 1.",
-    "typeHelp": "Chặn: ngăn việc gửi. Ngoại lệ và Cảnh báo đi kèm đợt xét và cần lý do trước khi gửi. Ghi chú chỉ để tham khảo.",
-    "columns": {
-      "limit": "Giới hạn",
-      "value": "Giá trị",
-      "type": "Loại",
-      "appliesTo": "Áp dụng cho",
-      "lastChanged": "Người / ngày thay đổi gần nhất"
-    },
-    "areas": {
-      "pools": "Quỹ tăng lương",
-      "person": "Tăng lương mỗi người",
-      "bonus": "Thưởng",
-      "lump": "Thưởng một lần",
-      "exemption": "Miễn trừ",
-      "advisor": "Cố vấn AI"
-    },
-    "labels": {
-      "pool_standard_merit": "Quỹ thành tích (% quỹ lương hợp lệ)",
-      "pool_standard_promotion": "Quỹ thăng chức (% quỹ lương hợp lệ)",
-      "pool_standard_special": "Quỹ điều chỉnh đặc biệt (% quỹ lương hợp lệ)",
-      "pool_h_merit": "Quỹ thành tích (% quỹ lương hợp lệ)",
-      "pool_h_promotion": "Quỹ thăng chức (% quỹ lương hợp lệ)",
-      "pool_h_special": "Quỹ điều chỉnh đặc biệt (% quỹ lương hợp lệ)",
-      "pool_separate": "Các quỹ không được bù cho nhau hoặc cho công ty khác",
-      "increase_withoutPromotion": "Tổng mức tăng không thăng chức vượt quá",
-      "increase_withPromotion": "Tổng mức tăng có thăng chức từ",
-      "promotion_increment": "Mức tăng khi thăng chức",
-      "promotion_maxGrades": "Số bậc tăng tối đa",
-      "promotion_maxGrade": "Bậc cao nhất sau thăng chức",
-      "catchUp_crFloor": "Ngưỡng CR bắt kịp cho STAR/SSTAR",
-      "salary_noReduction": "Không giảm lương",
-      "bonus_poolCap": "Trần quỹ thưởng",
-      "bonus_underUse": "Cảnh báo dùng thiếu dưới",
-      "bonus_individualCeiling": "Trần thưởng cá nhân vượt quá",
-      "bonus_rounding": "Làm tròn khoản chi (làm tròn xuống)",
-      "bonus_individualMultiplier": "Hệ số cá nhân khác với đơn vị",
-      "lump_share": "Tỷ lệ số dư còn lại",
-      "lump_step": "Bước làm tròn",
-      "lump_cap": "Trần mỗi người",
-      "lump_aboveSuggestion": "Số tiền đơn vị cao hơn đề xuất",
-      "lump_individualAmendment": "Điều chỉnh cá nhân",
-      "exemption_budgetCapsOnly": "Công ty được miễn trừ: chỉ trần ngân sách, kèm lý do",
-      "advisor_override": "Ngưỡng điều chỉnh",
-      "advisor_longWithoutIncrease": "Lâu không được tăng lương",
-      "advisor_peerGap": "Chênh lệch lương với đồng cấp"
-    },
-    "types": {
-      "block": "Chặn",
-      "exception": "Ngoại lệ",
-      "warning": "Cảnh báo",
-      "note": "Ghi chú"
-    },
-    "appliesTo": {
-      "standard": "Gói chuẩn",
-      "h": "Gói JG H",
-      "all": "Tất cả các gói"
-    },
-    "units": {
-      "percent": "%",
-      "points": "điểm phần trăm",
-      "ratio": "CR",
-      "months": "tháng",
-      "myr": "RM",
-      "grades": "bậc",
-      "grade": "JG",
-      "years": "năm"
-    },
-    "fixed": "Cố định",
-    "fixedHelp": "Cố định để bảo vệ lương; không thể thay đổi.",
-    "none": "Không có",
-    "standardValue": "Giá trị chuẩn",
-    "changedBy": "{name} · {date}",
-    "unknownPerson": "Không rõ",
-    "valueFor": "Giá trị cho {limit}",
-    "typeFor": "Loại cho {limit}",
-    "reviewSave": "Xem lại trước khi lưu",
-    "save": "Lưu phiên bản mới",
-    "discard": "Bỏ thay đổi",
-    "saved": "Đã lưu thành phiên bản {version}.",
-    "errors": {
-      "system": "Không thể lưu giới hạn. Thay đổi của bạn vẫn còn; hãy thử lại."
-    },
-    "reviewsHeading": "Các đợt xét trong năm thưởng này",
-    "reviewsHelp": "Đợt xét ở trạng thái Nháp dùng phiên bản hiện tại. Đợt xét đã qua Nháp giữ phiên bản khi được gửi. Nếu bạn áp dụng phiên bản hiện tại, các kiểm tra sẽ chạy lại và người phê duyệt hiện tại được thông báo.",
-    "reviewColumns": {
-      "review": "Đợt xét",
-      "stage": "Giai đoạn",
-      "versionUsed": "Giới hạn đang dùng"
-    },
-    "select": "Chọn",
-    "selectReview": "Chọn {review}",
-    "baseline": "Giá trị chuẩn (trước Kiểm soát giới hạn)",
-    "currentVersion": "Hiện tại (phiên bản {version})",
-    "version": "Phiên bản {version}",
-    "apply": "Áp dụng phiên bản {version} cho các đợt xét đã chọn",
-    "applyConfirm": "Áp dụng và thông báo người phê duyệt",
-    "applied": "{count, plural, other {Đã áp dụng cho # đợt xét.}}",
-    "noReviews": "Chưa có đợt xét nào dùng năm thưởng này.",
-    "reviewsTruncated": "Chỉ liệt kê 200 đợt xét đầu tiên.",
-    "exemptionsHeading": "Miễn trừ trần ngân sách",
-    "exemptionsHelp": "Miễn trừ chỉ nới lỏng trần ngân sách (quỹ tăng lương và trần quỹ thưởng). Miễn trừ được ghi kèm lý do trong phần thiết lập của đợt xét.",
-    "noExemptions": "Không có đợt xét nào trong năm thưởng này được miễn trừ trần ngân sách.",
-    "historyHeading": "Lịch sử phiên bản",
-    "noVersions": "Chưa có phiên bản.",
-    "changeLogLink": "Xem mọi thay đổi trong nhật ký thay đổi"
-  },
-  "importErrorLogDataBankCostInfo": {
-    "corrections": {
-      "duplicateInFile": "Giá trị này xuất hiện nhiều lần trong tệp - chỉ giữ lại một dòng.",
-      "duplicateEmployeeInFile": "Mã nhân viên này xuất hiện nhiều lần trong tệp - chỉ giữ lại một dòng.",
-      "chooseReference": "Chọn một giá trị từ trang Reference của mẫu.",
-      "chooseCompany": "Chọn Company Code từ trang Reference.",
-      "chooseCostCenter": "Chọn Cost Center Code được liệt kê cho công ty này trên trang Allocation Reference.",
-      "date": "Nhập ngày theo dạng YYYY-MM-DD hoặc dưới dạng ngày Excel.",
-      "required": "Điền vào cột này - đây là cột bắt buộc.",
-      "yesNo": "Nhập yes hoặc no.",
-      "revalidate": "Tải lên lại tệp đã sửa để dòng này được kiểm tra lại.",
-      "permission": "Xóa dòng này, hoặc đề nghị quản trị viên cấp quyền truy cập vào công ty của nhân viên này.",
-      "systemError": "Tải tệp lên lại. Nếu lỗi vẫn tiếp diễn, hãy gửi mã tham chiếu hỗ trợ cho nhóm kỹ thuật.",
-      "textCode": "Định dạng ô là Text và nhập lại mã.",
-      "noFormula": "Nhập chính giá trị, không dùng công thức.",
-      "existingEmployee": "Kiểm tra mã nhân viên. Nhân viên mới phải được thêm bằng \"Tất cả - nhân viên mới\" trước.",
-      "percentage": "Nhập tỷ lệ phần trăm lớn hơn 0 và tối đa 100, với tối đa hai chữ số thập phân.",
-      "periodUnit": "Nhập số và đơn vị của nó (Month, Week hoặc Day) cùng nhau.",
-      "reason": "Nhập lý do có ít nhất ba ký tự.",
-      "statutoryRecord": "Hãy lưu số định danh của nhân viên trong hồ sơ Nhân sự trước, sau đó tải tệp này lên lại.",
-      "template": "Tải mẫu hiện tại, sao chép các dòng của bạn vào đó và tải lên lại.",
-      "bankPair": "Nhập tên ngân hàng và số tài khoản ngân hàng cùng nhau."
-    },
-    "bank": {
-      "duplicateEmployeeId": "Mã nhân viên bị trùng trong tệp này; được dùng lần đầu ở dòng Excel {row}.",
-      "duplicateCardId": "Mã thẻ bị trùng trong tệp này.",
-      "cardIdTaken": "card_id đã được dùng cho một nhân viên khác; hãy chọn mã thẻ chưa được sử dụng.",
-      "noPermission": "Bạn không có quyền cập nhật nhân viên này.",
-      "changedAfterValidation": "Dòng này chưa được lưu. Dữ liệu hoặc quyền của nó đã thay đổi sau khi kiểm tra; hãy xem lại và nhập lại.",
-      "missingEmployeeId": "Thiếu employee_code — đây là liên kết tới nhân viên đang được cập nhật",
-      "unknownEmployee": "Không có nhân viên nào có mã nhân viên \"{code}\". Tệp theo mục chỉ có thể CẬP NHẬT những người đã có trong hệ thống — không thể thêm ai. Để thêm người này, hãy chọn \"Tất cả — nhân viên mới\" ở đầu trang này và dùng mẫu nhân viên đầy đủ, sau đó chạy lại tệp này.",
-      "duplicateEmployeeCode": "employee_code bị trùng trong tệp này",
-      "bankTransferNeedsBank": "Chuyển khoản ngân hàng cần tên ngân hàng và số tài khoản.",
-      "bankPair": "bank_name và bank_account_no phải được cung cấp cùng nhau",
-      "noStatutoryRecordYet": "Nhân viên này chưa có hồ sơ theo luật định — hãy lưu số định danh trong hồ sơ Nhân sự trước, sau đó chạy lại tệp này",
-      "noStatutoryRecord": "Nhân viên này không có hồ sơ theo luật định; hãy hoàn tất thiết lập luật định trong hồ sơ Nhân sự trước.",
-      "notActiveOption": "\"{value}\" không phải là lựa chọn {category} đang hoạt động — cột {column}",
-      "yesNo": "{column} phải là yes hoặc no",
-      "jobStopped": "Đã dừng nhập. Các dòng đã lưu vẫn được giữ lại. Hãy xem lại kết quả và quyền truy cập của bạn trước khi thử lại. Mã tham chiếu {ref}.",
-      "jobStoppedEarlier": "Đã dừng nhập. Các dòng đã lưu vẫn được giữ lại. Hãy xem lại kết quả và quyền truy cập của bạn trước khi thử lại.",
-      "fileTooLarge": "Tệp vượt quá giới hạn kích thước nhập hoặc trang tính. Dùng tối đa 250,000 dòng và 128 MiB.",
-      "fileUnreadable": "Không thể đọc tệp. Hãy dùng mẫu Ngân hàng và pháp định và các trang tham chiếu của nó.",
-      "fileRowCount": "Chọn tệp có từ 1 đến 250,000 dòng dữ liệu.",
-      "fileIncomplete": "Tệp đã tải lên chưa đầy đủ hoặc mã kiểm tra khác. Hãy tải lên lại."
-    },
-    "allocation": {
-      "errors": {
-        "invalid": "Nhập tỷ lệ phần trăm lớn hơn không và tối đa 100, với tối đa hai chữ số thập phân.",
-        "duplicate": "Mỗi trung tâm chi phí chỉ chọn một lần.",
-        "total": "Tổng phân bổ không được vượt quá 100%.",
-        "scope": "Hồ sơ nhân viên hoặc quyền không khả dụng.",
-        "label": "Một trung tâm chi phí không hoạt động hoặc không khả dụng cho công ty này.",
-        "changed": "Phân bổ đã thay đổi. Hãy tải lại và xem trước lần nữa.",
-        "date": "Chọn ngày hiệu lực có lịch sử công ty tuyển dụng đã được xác nhận.",
-        "clear": "Xóa phân bổ cần một thao tác Clear rõ ràng.",
-        "preview": "Dữ liệu đầu vào hoặc dữ liệu tham chiếu đã thay đổi. Hãy xem trước lần nữa.",
-        "binding": "Ghép mỗi phân bổ với một công ty và một mã nhân viên.",
-        "transfer": "Lưu một bộ Clear rõ ràng vào ngày điều chuyển và xóa các bộ đã lên lịch sau đó trước khi điều chuyển. Sau đó lưu phân bổ mới cho công ty đích."
-      },
-      "operation": "Operation phải là Replace hoặc Clear, và giống nhau trên mọi dòng của một nhân viên và một ngày.",
-      "clearRow": "Clear cần đúng một dòng với Cost Center Code và Percentage để trống.",
-      "costCenterUnavailable": "Cost Center Code này không khả dụng cho {company}.",
-      "companyRequired": "Company Code là bắt buộc.",
-      "companyAmbiguous": "Company Code \"{code}\" khớp với nhiều công ty. Hãy dùng Company Code được liệt kê trên trang Reference.",
-      "companyUnknown": "Company Code \"{code}\" không khớp với công ty nào bạn có thể nhập.",
-      "effectiveDate": "Effective Date phải là ngày theo dạng YYYY-MM-DD.",
-      "employeeInvalid": "Mã nhân viên bị thiếu hoặc không hợp lệ.",
-      "employeeAmbiguous": "Mã nhân viên {code} khớp với nhiều nhân viên của {company}.",
-      "employeeNotInCompany": "Mã nhân viên {code} không phải là nhân viên của {company} vào ngày {date}.",
-      "heldBack": "Một phân bổ khác cho mã nhân viên {code} trong tệp này có lỗi, vì vậy nhân viên này không được nhập. Hãy sửa dòng đó trước.",
-      "unavailable": "Công ty, nhân viên hoặc ngày hiệu lực của phân bổ không khả dụng.",
-      "saveFailed": "Không thể lưu nhân viên này; không có gì được thay đổi cho họ.",
-      "file": {
-        "legacyLayout": "Tệp này dùng bố cục cũ với mã công ty nội bộ (company_id). Hãy tải mẫu mới và điền cột Company Code thay thế.",
-        "duplicateHeaders": "Không cho phép tiêu đề cột phân bổ bị trùng.",
-        "missingColumns": "Thiếu cột phân bổ: {columns}",
-        "unexpectedColumns": "Cột phân bổ không mong đợi: {columns}",
-        "tooManyRows": "Dùng tối đa 5000 dòng phân bổ cho mỗi tệp.",
-        "tooLarge": "Tệp phân bổ vượt quá kích thước được hỗ trợ.",
-        "tooLarge10": "Chọn tệp không lớn hơn 10 MB.",
-        "unreadableWorkbook": "Không thể đọc sổ làm việc. Hãy tải mẫu và thử lại.",
-        "utf8": "Lưu tệp CSV dưới dạng UTF-8.",
-        "fileType": "Chọn mẫu .xlsx hoặc tệp .csv có cùng các cột.",
-        "unreadable": "Không thể đọc tệp này.",
-        "noRows": "Tệp không có dòng phân bổ nào."
-      }
-    },
-    "correction": {
-      "noFormula": "Không chấp nhận công thức và ô lỗi.",
-      "textCode": "Nhập mã dưới dạng văn bản để giữ các số 0 ở đầu.",
-      "date": "Dùng YYYY-MM-DD hoặc ngày Excel.",
-      "tooLong": "Tối đa 1,000 ký tự.",
-      "periodUnit": "Nhập thời hạn và đơn vị của nó cùng nhau ({unit}).",
-      "notOption": "\"{value}\" không phải là lựa chọn cho công ty này. Hãy kiểm tra trang tham chiếu {sheet}.",
-      "superiorUnknown": "Mã nhân viên không xác định hoặc bạn không xem được.",
-      "organisationFormula": "Các cột tổ chức không được chứa công thức hoặc ô lỗi.",
-      "organisationTooLong": "Giá trị tổ chức: tối đa 1,000 ký tự.",
-      "companyRequired": "Company Code là bắt buộc.",
-      "employeeRequired": "Mã nhân viên là bắt buộc.",
-      "reasonShort": "Correction Reason phải có ít nhất ba ký tự.",
-      "duplicateEmployee": "Nhân viên này xuất hiện nhiều lần. Chỉ giữ một dòng sửa cho mỗi nhân viên.",
-      "companyUnknown": "Company Code không xác định, không rõ ràng hoặc nằm ngoài quyền của bạn.",
-      "employeeUnknown": "Mã nhân viên không xác định hoặc không rõ ràng trong công ty hiện tại.",
-      "newCompanyUnknown": "New Company Code không xác định, không rõ ràng hoặc nằm ngoài quyền của bạn.",
-      "gradeInactive": "Job Grade không phải là mã hệ thống đang hoạt động.",
-      "sameEmployee": "Nhiều dòng trỏ tới cùng một nhân viên."
-    }
-  },
-  "importErrorLogEmployee": {
-    "problemsTitle": "Các vấn đề cần sửa",
-    "missingColumn": "Trang tính thiếu cột bắt buộc này.",
-    "thisField": "cột này",
-    "downloadFailed": "Không thể chuẩn bị Nhật ký lỗi. Vui lòng thử lại.",
-    "correction": {
-      "reference": "Chọn {field} từ trang Reference.",
-      "date": "Nhập ngày theo định dạng YYYY-MM-DD hoặc dưới dạng ngày Excel.",
-      "month": "Nhập tháng theo định dạng YYYY-MM.",
-      "required": "Điền {field} - đây là thông tin bắt buộc.",
-      "requiredForContract": "Điền cột này - bắt buộc đối với nhân viên Hợp đồng.",
-      "duplicateInFile": "Giá trị này xuất hiện nhiều lần trong tệp - chỉ giữ một dòng.",
-      "duplicateEmployeeId": "Mã nhân viên này xuất hiện nhiều lần trong tệp - chỉ giữ một dòng.",
-      "duplicateInSystem": "Giá trị này đã được nhân viên khác sử dụng - nhập giá trị khác hoặc bỏ dòng này.",
-      "number": "Nhập một số (chỉ chữ số, không có ký hiệu tiền tệ).",
-      "choice": "Chọn một trong các giá trị được liệt kê trên trang Instructions hoặc Reference.",
-      "yesNo": "Nhập Yes hoặc No.",
-      "email": "Nhập địa chỉ email đầy đủ, ví dụ name@company.com.",
-      "notOnEmployeeSheet": "Thêm nhân viên này vào trang nhân viên, hoặc sửa Mã nhân viên.",
-      "employeeNotFound": "Kiểm tra Mã nhân viên. Để thêm nhân viên mới, hãy dùng Tất cả - nhân viên mới trước.",
-      "missingColumn": "Thêm cột {field} theo mẫu hiện tại, rồi tải lên lại.",
-      "wrongSection": "Xóa cột đó, hoặc nhập nó bằng mẫu sở hữu cột đó.",
-      "system": "Vui lòng thử lại. Nếu vẫn xảy ra, hãy cung cấp mã tham chiếu hỗ trợ cho quản trị viên của bạn.",
-      "uploadAgain": "Sửa các dòng đã làm dừng việc nhập, rồi tải lên lại toàn bộ tệp."
-    }
-  },
-  "importProblems": {
-    "headers": {
-      "sheet": "Trang tính",
-      "row": "Dòng Excel",
-      "category": "Danh mục",
-      "reference": "Mã tham chiếu",
-      "employeeName": "Tên nhân viên",
-      "field": "Trường",
-      "value": "Giá trị đã nhập",
-      "problem": "Lỗi gì",
-      "correction": "Cách sửa",
-      "stage": "Phát hiện khi",
-      "result": "Kết quả",
-      "errorReference": "Mã tham chiếu hỗ trợ"
-    },
-    "stage": {
-      "file": "Đọc tệp",
-      "check": "Kiểm tra tệp",
-      "save": "Lưu",
-      "system": "Lỗi hệ thống"
-    },
-    "result": {
-      "refused": "Không được nhập",
-      "skipped": "Đã bỏ qua",
-      "stopped": "Đã dừng việc nhập",
-      "cancelled": "Không được lưu - một dòng khác đã dừng việc nhập",
-      "not_saved": "Không được lưu - hãy tải lên lại tệp đã sửa"
-    },
-    "hiddenValue": "(đã ẩn)",
-    "wholeFile": "Toàn bộ tệp",
-    "moreInLog": "Còn {count} lỗi khác được liệt kê trong Nhật ký lỗi.",
-    "downloadLog": "Tải xuống Nhật ký lỗi",
-    "summary": {
-      "sheetTitle": "Tóm tắt",
-      "batch": "Lần nhập",
-      "file": "Tệp",
-      "status": "Trạng thái",
-      "problems": "Lỗi",
-      "truncated": "Danh sách này đã được rút gọn khi ghi nhận lần nhập. Hãy tải Nhật ký lỗi ngay sau khi nhập để xem tất cả lỗi."
     }
   },
   "agencyPortal": {

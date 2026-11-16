@@ -588,13 +588,22 @@
     "probationTracker": "试用期跟踪",
     "myPayrollReadiness": "我的发薪准备",
     "attendanceFormulaBuilder": "考勤公式",
-    "recruitment": "招聘",
-    "myReferrals": "推荐候选人",
-    "attendanceRequestOnBehalf": "代为申请",
-    "attendanceApproveOnBehalf": "代为审批",
     "rewardsReviewSetup": "审核设置",
     "rewardsChangeLog": "变更日志",
-    "rewardsLimitControls": "限额控制"
+    "rewardsLimitControls": "限额控制",
+    "attendanceRequestOnBehalf": "代为申请",
+    "attendanceApproveOnBehalf": "代为审批",
+    "moduleHrAutomation": "HR Automation · Shared",
+    "automationWorkflows": "Workflows",
+    "automationTemplates": "Templates",
+    "automationGroups": "Assignment groups",
+    "automationOnOffWorkflows": "On/Off Boarding workflows",
+    "automationOnOffTemplates": "On/Off Boarding templates",
+    "automationOnOffGroups": "On/Off Boarding assignment groups",
+    "probationPostings": "Personnel postings",
+    "probationAccess": "Access",
+    "recruitment": "招聘",
+    "myReferrals": "推荐候选人"
   },
   "dashboard": {
     "viewAll": "查看全部"
@@ -2458,6 +2467,7 @@
           "no_data_rows": "请在标题下方添加至少一行事件。",
           "movement_catalog_too_large": "事件类型列表超出本导入支持的范围，请使用单独的新建事件。",
           "movement_reference_catalog_too_large": "参考列表超出本导入支持的范围，请在人事资料中进行这些更改。",
+          "movement_template_too_large": "公司和取值列表过多，模板过大，无法生成。未生成任何文件。请联系支持人员。",
           "movement_history_too_large": "此员工的历史超出导入检查范围，请在人事资料中记录事件。",
           "change_refused": "变更被拒绝，此员工的更改均未保存。",
           "workbook_key_unavailable": "尚未配置工作簿签名。请联系系统管理员；仍可使用 CSV。",
@@ -2526,7 +2536,6 @@
           "movement_field_must_change": "此事件类型要求更改此字段。",
           "movement_document_required": "此更改需要证明文件，而导入无法附带文件。请改在“变动”标签页中记录此变动。",
           "movement_document_not_enabled": "此事件类型不接受此字段的证明文件。",
-          "movement_template_too_large": "公司和取值列表过多，模板过大，无法生成。未生成任何文件。请联系支持人员。",
           "movement_before_current_record": "此日期早于员工当前的公司和职位记录（自 %date% 起）。请使用 %date% 或之后的日期，或先撤销产生该记录的更改。",
           "movement_already_in_company": "该员工在此日期已属于此公司。",
           "movement_label_other_company": "此值在该日期不能用于员工所属公司。请选择该公司可用的值",
@@ -2622,6 +2631,7 @@
           "referenceValues": "每家公司允许的值",
           "colValue": "变更后应填写的值",
           "colLabel": "含义",
+          "allCompanies": "所有公司",
           "screenHint": "所有调动类型和公司共用一个模板。每个变更的字段填写一行；公司、员工、日期和事件类型相同的行构成一项调动。",
           "downloadTemplate": "下载模板",
           "history": "导入历史",
@@ -2656,8 +2666,7 @@
           "closedPayrollRow": "{periods} 的薪资已关闭。",
           "closedPayrollTitle": "部分更正涉及薪资已关闭期间的异动（{periods}）。",
           "closedPayrollBody": "这些更正会更新员工记录及之后的处理。已关闭的薪资、已发放的工资单和法定申报将保留其最终数字，不会重新计算。未勾选此确认时，相关员工不会被保存。",
-          "closedPayrollAcknowledge": "我了解已关闭的薪资不会改变。",
-          "allCompanies": "所有公司"
+          "closedPayrollAcknowledge": "我了解已关闭的薪资不会改变。"
         },
         "historyRow": "记录为历史：{from} 至 {to} 采用“之前”的值。{date} 起的记录不变。"
       },
@@ -3556,6 +3565,7 @@
       "loading": "加载中…",
       "saved": "信息已更正，已完成的交易保持不变。",
       "unchanged": "未更改 — 将跳过此行。",
+      "effectiveDateOnly": "没有需要更正的内容。生效日期仅决定更正后的值从何时开始适用。如需更改员工记录的起始日期（{date}），请更正集团入职日期。",
       "history": "更正历史",
       "noHistory": "尚无仅信息更正记录。",
       "importHelp": "公司代码用于核对现有公司。新公司代码为可选项。空白更正单元格表示保持原值。系统代码见参考表。最多200行。",
@@ -3604,7 +3614,6 @@
         "failed": "失败",
         "unchanged": "未更改"
       },
-      "effective": "未来处理将从{date}起使用这些更正信息。",
       "templateFields": "此模板可更正的字段（新增字段已突出显示）。空白单元格保留现有值。",
       "templateFieldsLabel": "此模板可更正的字段",
       "ownersNote": "基本工资和辞职日期须在记录它们的事件上更正：请使用变动导入，操作选择“Update”。付款方式在银行与法定导入中。",
@@ -3619,10 +3628,10 @@
       "effectiveDateHint": "可选择 {start} 至今天（{today}）之间的任何日期。默认为今天。",
       "effectiveDateFollowsJoin": "最早日期：{start}，即下方输入的集团入职日期。",
       "historyClosedPayroll": "已关闭的薪资保持不变：{periods}。",
-      "effectiveDateJoin": "选择集团入职日期 {start} 将更正员工的原始入职资料。公司、雇佣类型、业务单位、部门、职位、组织标签和直属上司自生效日期起适用，直至下一次记录的变更。",
+      "effectiveDateJoin": "选择集团入职日期 {start} 将更正员工的原始入职资料。公司、雇佣类型、业务单位、部门、职位、组织标签和直属上司自生效日期起适用，直至下一次更改它们的已记录调动。此更正自该日期起取代较早的更正。",
       "timeline": {
         "title": "按生效日期排列的记录",
-        "intro": "这些更正后的资料自 {date} 起适用，直至下一次记录的变更。较晚的记录保留各自的日期和值。不会覆盖或删除任何内容。",
+        "intro": "这些更正后的资料自 {date} 起适用，直至下一次更改它们的已记录调动。自此日期起的较早更正将被取代，并保留在更正历史中。调动保留各自的日期和值。不会删除任何内容。",
         "date": "生效日期",
         "record": "记录",
         "company": "公司",
@@ -3639,12 +3648,38 @@
           "conflict": "与本次变更冲突"
         }
       },
+      "replaced": {
+        "title": "此更正取代的较早更正",
+        "intro": "自 {date} 起，这些资料以最新的更正为准。以下较早的更正保留在更正历史中。",
+        "item": "{date} 生效的更正（{fields}），由 {actor} 于 {saved} 保存"
+      },
       "conflictTitle": "无法保存此更正",
       "conflict": "{date} 的 {record} 记录 {field} 是从另一个值变更而来。请先更正该异动（异动事件 ID {id}），或选择 {date} 之后的生效日期。",
       "closedPayroll": "更正期间内 {periods} 的薪资已关闭。已关闭的薪资、工资单、EA 表格和法定申报不会重新计算。",
       "closedPayrollAcknowledge": "我确认已关闭的薪资保持原样发放。",
       "importClosedPayroll": "这些行更正的期间包含已关闭的薪资。请在下方确认以保存；未确认时这些行不会保存。",
       "importClosedPayrollRow": "第 {row} 行 · {employee} · {periods}"
+    }
+  },
+  "importErrorLogMovement": {
+    "correction": {
+      "date": "请按 DD-MMM-YYYY 格式（例如 06-Jan-2026）或以 Excel 日期输入日期。",
+      "required": "请填写此字段——此事件类型要求填写。",
+      "chooseCompany": "请从 Reference 工作表中选择公司编号。",
+      "eventType": "请从下拉列表中选择一个有效的事件类型。",
+      "chooseReference": "请从下拉列表或 Reference 工作表中选择一个值。",
+      "employeeId": "请对照人事记录核对此行的员工编号和公司编号。",
+      "systemField": "请选择此事件类型可以变更的系统字段（见 Reference 工作表），或删除该行。",
+      "duplicateField": "同一异动的每个系统字段只保留一行。",
+      "number": "请输入数字（仅数字，不含货币符号）。",
+      "noFormula": "请直接输入值本身，不要使用公式。",
+      "movementId": "请从该员工的异动历史中复制异动事件编号。",
+      "before": "请将员工记录中的当前值填入“变更前”，或下载新模板。",
+      "otherRows": "请更正该员工的其他行，然后重新上传整个文件。",
+      "recheck": "请重新上传文件，以便根据当前记录重新检查。",
+      "template": "请下载最新的异动模板，将您的行复制进去，然后重新上传。",
+      "splitFile": "请将文件拆分为较小的文件（每个最多 200 行、50 名员工、每名员工 20 行），然后逐一上传。",
+      "saveStopped": "此员工的任何内容均未保存。请更正问题，然后重新导入此员工。"
     }
   },
   "leave": {
@@ -5875,7 +5910,13 @@
     "rewards": "薪酬奖励",
     "reviewRewards": "审核薪酬奖励",
     "focusedDescription": "此申请目前由您处理。",
-    "viewAllAssigned": "查看所有审批"
+    "viewAllAssigned": "查看所有审批",
+    "probation": "Probation",
+    "probationPart": "Part {part} review",
+    "probationDue": "due {date}",
+    "probationOpen": "Open review",
+    "probationCapped": "Showing the first {shown} approvals.",
+    "probationSeeAll": "See all in the Probation tracker"
   },
   "performance": {
     "list": {
@@ -7395,7 +7436,13 @@
         "running": "正在重新处理所选员工",
         "progress": "已完成 {done}/{total} 名员工",
         "help": "您可以离开此页面。每位员工单独重新计算，重新处理完成后结果会显示在这里。"
-      }
+      },
+      "registerSearchLabel": "在本次运行中搜索员工",
+      "registerSearchPlaceholder": "按员工姓名或员工编号搜索",
+      "registerSearchSubmit": "搜索",
+      "registerSearchClear": "清除搜索",
+      "registerSearchSummary": "{total} 名员工中有 {n} 名匹配“{q}”",
+      "registerSearchEmpty": "本次运行中没有与“{q}”匹配的员工。"
     },
     "transactions": {
       "title": "交易录入",
@@ -7699,6 +7746,7 @@
         "inputType": "输入类型",
         "inputTypeNone": "无",
         "amountIsFinalHint": "此处输入的金额即为支付的金额。薪资项目的公式不会应用于一次性交易。",
+        "amountManualFormulaHint": "金额为手动输入。此交易不使用该薪资项目的公式。",
         "identicalWarning": "该员工已存在完全相同的条目（相同项目、日期、金额和备注）。请仅在确实是第二笔时才保存。",
         "saveAndAnother": "保存并继续新增",
         "cancel": "取消",
@@ -9024,6 +9072,17 @@
       "traceEpfFlatRate": "统一费率，进位至令吉",
       "traceEpfRates": "雇员 {employee} · 雇主 {employer}",
       "traceEpfBonusEmployerPartE": "花红的雇主缴纳额",
+      "traceEpfBonusRuleNormal": "公积金普通工资（不含 EPF Bonus 2012）",
+      "traceEpfBonusRuleBonus": "EPF Bonus 2012 工资",
+      "traceEpfBonusRuleTotal": "公积金工资总额",
+      "traceEpfBonusRuleRate": "按普通工资确定的雇主缴纳率",
+      "traceEpfBonusRuleRateValue": "{normal} 不超过 {threshold}，因此为 {rate}",
+      "traceEpfBonusRuleEmployer": "雇主缴纳额",
+      "traceEpfBonusRuleEmployerValue": "{base} × {rate} = {exact}，向上取整为 {amount}",
+      "traceEpfBonusRuleEmployee": "雇员缴纳额（表格区间）",
+      "traceEpfBonusRuleEmployeeValue": "{range}，因此为 {amount}",
+      "traceEpfBonusRuleEmployeeAbove": "雇员缴纳额（超过 RM20,000）",
+      "traceEpfBonusRuleEmployeeAboveValue": "{base} × {rate}，向上取整为 {amount}",
       "traceEpfFlatNormal": "普通工资的雇员 / 雇主缴纳额",
       "traceEpfFlatBonus": "花红工资的雇员 / 雇主缴纳额",
       "traceEpfMethod": "方法",
@@ -15304,6 +15363,8 @@
       "probation": "试用期转正确认",
       "contract_staff": "合同管理",
       "contractDateCorrection": "合同日期更正",
+      "probationApproval": "Approve probation review",
+      "probationTask": "Probation task",
       "recruitmentRequisitionApproval": "审批招聘需求",
       "recruitmentOfferApproval": "审批录用通知",
       "recruitmentFeedback": "提交面试反馈",
@@ -17520,7 +17581,8 @@
     "moduleLabel": {
       "leave": "请假",
       "attendance": "考勤",
-      "claims": "报销"
+      "claims": "报销",
+      "probation": "Probation"
     },
     "taskLabel": {
       "leaveApplication": "请假申请审批",
@@ -17530,7 +17592,10 @@
       "claimsClaim": "报销审批",
       "leaveRequestCreation": "请假申请提交",
       "leaveAmendmentRequest": "请假修改申请",
-      "leaveCancellationRequest": "请假取消申请"
+      "leaveCancellationRequest": "请假取消申请",
+      "probationReview": "Probation review (Head of Department, PBP, GBS)",
+      "probationApprove": "Probation approval (Head of Department, PBP, GBS)",
+      "probationLetterSign": "Probation letter signature"
     },
     "groupLabel": {
       "leaveRequest": "请假申请",
@@ -28234,7 +28299,7 @@
     "routeUnavailable": "无法根据已保存的流程确认下一位合资格审批人。请联系 HR 检查分配。",
     "someApproversUnavailable": "目前无法确认部分已保存审批人的审批资格。请人力资源部检查审批安排。",
     "notStarted": "尚未开始",
-    "notRequired": "无需后续审批",
+    "notRequired": "无需审批",
     "currentEmployeeId": "当前员工编号",
     "routingRecord": "已保存的流程参考",
     "notRecorded": "未记录",
@@ -28313,7 +28378,28 @@
     "escalatedBy": "系统自动升级",
     "submittedOnBehalfBy": "由 {name} 代为提交",
     "approvedOnBehalf": "已代为批准",
-    "rejectedOnBehalf": "已代为拒绝"
+    "rejectedOnBehalf": "已代为拒绝",
+    "pendingApproval": "待审批",
+    "waitingPreviousLevel": "等待上一级审批",
+    "skippedNotRequired": "已跳过 / 无需审批",
+    "levelOrdinal": {
+      "1": "第一",
+      "2": "第二",
+      "3": "第三",
+      "4": "第四",
+      "5": "第五",
+      "6": "第六",
+      "7": "第七",
+      "8": "第八",
+      "9": "第九",
+      "10": "第十"
+    },
+    "progressMessage": "{completed}级审批已完成，等待{waiting}级审批。",
+    "progressWaiting": "等待{waiting}级审批。",
+    "progressFinal": "申请总体状态：{status}。",
+    "configurationWarning": "无法确定此级别的审批人。请联系人事部门检查审批设置。",
+    "levelOfTotal": "第 {level} 级，共 {total} 级",
+    "viewApprovalProgress": "查看审批进度"
   },
   "scheduleDrafts": {
     "staleLadder": "“常规”部分的加班时段或费率已更改。您的草稿仍保留在此。保存加班设置前，请重新加载此页面。只有在您确认后，未保存的更改才会被丢弃。",
@@ -29917,7 +30003,8 @@
         "lateOffset": "一次性抵扣迟到时间",
         "approval": "审批模式",
         "autoMethod": "自动审批方式",
-        "rounding": "时长舍入"
+        "rounding": "时长舍入",
+        "backdate": "加班补报期限"
       },
       "days": {
         "normal": "正常工作日",
@@ -29925,7 +30012,8 @@
         "rest": "休息日",
         "publicHoliday": "公共假日",
         "replacementHoliday": "补假日"
-      }
+      },
+      "backdateDays": "{count, plural, other {# 天}}"
     },
     "positionSearch": "搜索职位",
     "loadMorePositions": "加载更多职位",
@@ -32365,7 +32453,9 @@
       "assessmentWork": "绩效考核",
       "careerPlan": "职业发展计划审阅",
       "calibration": "绩效校准",
-      "rewardReview": "薪酬奖励审阅"
+      "rewardReview": "薪酬奖励审阅",
+      "probationApproval": "Probation approval",
+      "probationTask": "Probation task"
     },
     "quickActions": {
       "leave": "申请休假",
@@ -35771,7 +35861,10 @@
       "pbp": "人力资源业务伙伴",
       "gbs": "GBS People Ops",
       "admin": "指定准备人员",
-      "system": "后台处理"
+      "system": "后台处理",
+      "superior": "Direct Superior",
+      "people": "Named people",
+      "approver": "Approver"
     },
     "columns": {
       "employee": "员工",
@@ -35795,7 +35888,9 @@
       "confirmed": "已确认",
       "extended": "已延长",
       "not_confirmed": "未确认",
-      "withdrawn": "已撤回"
+      "withdrawn": "已撤回",
+      "waitingForStart": "Waiting for start date",
+      "didNotJoin": "Did not join"
     },
     "partStates": {
       "not_issued": "尚未发出",
@@ -35899,7 +35994,16 @@
       "missing": "需确定负责人",
       "frozenFacts": "此评审保留为签署内容捕获的员工及试用期详情。",
       "combinedConsent": "我确认这是我为以下角色所作的签署：{roles}。",
-      "combinedHistory": "由同一次签署涵盖"
+      "combinedHistory": "由同一次签署涵盖",
+      "onBehalfOf": "on behalf of {name}",
+      "reviewStep": "Review",
+      "approveStep": "Approve",
+      "reviewed": "Reviewed",
+      "approved": "Approved",
+      "decisionComment": "Comment (optional)",
+      "markReviewed": "Mark as reviewed",
+      "markApproved": "Approve",
+      "meantFor": "Meant for {who}; the fallback group took it"
     },
     "controls": {
       "title": "获授权的评审控制",
@@ -35925,7 +36029,9 @@
       "development": "发展行动",
       "extension_recommendation": "延长建议",
       "nonconfirmation_recommendation": "不予转正建议",
-      "refusal_request": "员工拒绝沟通记录"
+      "refusal_request": "员工拒绝沟通记录",
+      "low_result_action": "Low-result action",
+      "other_decided": "Other outcome decided"
     },
     "files": {
       "title": "已归档文件",
@@ -35961,7 +36067,89 @@
         "ending14": "14天内结束",
         "low_result": "结果偏低",
         "kpi_submit": "KPI尚未提交",
-        "kpi_ack": "KPI尚未确认"
+        "kpi_ack": "KPI尚未确认",
+        "overridden": "Suggestion overridden"
+      },
+      "extensionsUsed": "{used} / {max}",
+      "startsOn": "Starts {date}",
+      "actions": {
+        "open": "Open",
+        "review_letter": "Review letter",
+        "record_action": "Record action",
+        "log_followup": "Log follow-up"
+      },
+      "mineOnly": "Showing only cases with work waiting on you.",
+      "mineClear": "Show all cases",
+      "breadcrumb": "Probation Confirmation / Probation tracker",
+      "intro": "Track employees with Probation status in Personnel Management and their confirmation progress.",
+      "synced": "Synced from Personnel Management. Every employee whose status is <b>Probation</b> gets a case here automatically, including records activated before their start date.",
+      "tiles": {
+        "overdue": "Overdue steps",
+        "end_passed": "End passed, no outcome",
+        "ending14": "Ending within 14 days",
+        "low_result": "Low result (Band 1–2 by default)",
+        "kpi_submit": "KPIs not submitted",
+        "kpi_ack": "KPIs not acknowledged",
+        "overridden": "Suggestion overridden"
+      },
+      "hints": {
+        "search": "Personnel Management · Full name (as per IC/passport)",
+        "businessGroup": "Personnel Management · recorded at case start",
+        "businessUnit": "Personnel Management · recorded at case start",
+        "department": "Personnel Management · Department",
+        "grade": "Personnel Management · Job Grade at case start"
+      },
+      "namePlaceholder": "Type a name…",
+      "showClosed": "Show closed cases",
+      "caseCount": "{shown} of {total} cases",
+      "filteredBy": "filtered by “{tile}”",
+      "columns": {
+        "employee": "Employee",
+        "organisation": "Business group · unit",
+        "endOn": "Probation end",
+        "plan": "Review plan",
+        "stage": "Stage",
+        "waiting": "Waiting on",
+        "due": "Due",
+        "flags": "Flags",
+        "extensions": "Ext.",
+        "extensionsFull": "Extensions used",
+        "action": "Action"
+      },
+      "planMonths": "{months, plural, one {# month} other {# months}}",
+      "planParts": {
+        "both": "Part 2 + Part 3",
+        "p3": "Part 3 only",
+        "p2": "Part 2 only"
+      },
+      "stage": {
+        "1": "Week 1 KPIs",
+        "2": "Part 2 Mid-Probation",
+        "3": "Part 3 Final review",
+        "afterExtension": "{stage} (after extension)"
+      },
+      "what": {
+        "kpis": "KPI submission",
+        "self": "self-assessment",
+        "assessment": "assessment",
+        "acknowledge": "signature",
+        "approval": "approval",
+        "letter": "letter"
+      },
+      "waitingOn": "{role} · {name} · {step}",
+      "pills": {
+        "end_passed": "End date passed",
+        "ending14": "Ends within 14 days",
+        "low_result": "Band {band} · low result",
+        "low_actioned": "PBP action recorded",
+        "kpi_submit": "KPIs not submitted",
+        "kpi_ack": "KPIs not acknowledged",
+        "overridden": "Suggestion overridden",
+        "plan_review": "Plan review required"
+      },
+      "links": {
+        "settings": "Probation settings",
+        "intake": "Intake and activation"
       }
     },
     "applyFilters": "应用筛选",
@@ -36142,6 +36330,121 @@
         "pending": "待处理",
         "held": "暂缓，等待复核",
         "failed": "需要重试"
+      },
+      "extensionsUsed": {
+        "title": "Confirm extensions already used",
+        "help": "Personnel Management keeps only the total Extended Probation Period, so the number of extensions already used cannot be worked out. Confirm 0, 1 or 2 for each case by choosing the actual extension events in the employee's review.",
+        "period": "Extended Probation Period (Personnel)",
+        "periodValue": "{original} → {extended}",
+        "used": "Extensions used",
+        "count": "{count} of {max}",
+        "notConfirmed": "Not confirmed",
+        "confirm": "Confirm",
+        "review": "Review"
+      },
+      "activationByCompany": {
+        "title": "Activation by company",
+        "help": "Employees on Probation in Personnel Management (full time) against open probation cases. A difference means someone has no case yet or a case is still open after Personnel moved on. Switching a company on still goes through the reviewed rehearsal below.",
+        "columns": {
+          "company": "Company",
+          "personnel": "Probation in Personnel",
+          "cases": "Open cases",
+          "status": "Status"
+        },
+        "match": "✓",
+        "missing": "{count, plural, one {1 employee on Probation has no case} other {# employees on Probation have no case}}",
+        "extra": "{count, plural, one {1 case more than Personnel shows} other {# cases more than Personnel shows}}",
+        "live": "Live since {date}",
+        "preparation": "Preparation"
+      },
+      "htmlImport": {
+        "title": "1. Import saved HTML evaluation forms",
+        "help": "Upload the files staff and managers saved from form v22.9.26 (“Save form”). Only the saved values inside each file are read, on the server; the page itself is never opened or run. Each file is matched to the employee by Employee ID and must name the same employee as Personnel. Fully signed parts are recorded as signed offline in the case history; started parts open as drafts. PDFs are evidence only: attach them from the case or the employee’s intake review.",
+        "choose": "Choose files",
+        "fileLabel": "Saved evaluation forms",
+        "noFile": "No file chosen · .html or .pdf",
+        "reading": "Reading…",
+        "read": "{count, plural, one {1 file read} other {# files read}}",
+        "tooMany": "Choose at most {max} files at a time.",
+        "columns": {
+          "file": "File",
+          "found": "Found in file",
+          "result": "Check"
+        },
+        "pdf": "PDF only: values can’t be read. Attach it as evidence from the case or the employee’s intake review.",
+        "statuses": {
+          "ready": "Ready",
+          "warning": "Warning",
+          "refused": "Can’t import",
+          "skipped": "Not imported",
+          "importing": "Importing…",
+          "merged": "Merged into the case",
+          "staged": "Added to intake",
+          "unchanged": "Already imported"
+        },
+        "partSummary": {
+          "part1": "Part 1: {kpis} KPIs, {signatures} signatures, {status}",
+          "review": "Part {part}: {ratings} of 9 manager ratings, {signatures} signatures, {status}"
+        },
+        "partStatus": {
+          "signed": "signed",
+          "started": "started",
+          "not_started": "not started"
+        },
+        "confirm": "I’ve checked this preview. Import the ready and warning rows; skip the rest. Each import is written to the case history.",
+        "import": "{count, plural, one {Import 1 file} other {Import # files}}",
+        "done": "Imported. Open the cases in the Probation tracker to check what was read, then continue them in the system.",
+        "resultHelp": {
+          "merged": "Merged into the existing case. Blank drafts were filled from the file. Signatures still happen in the system; to record a part as completed offline, attach its signed PDF.",
+          "staged": "No case yet: the file waits in this employee’s intake review. The case opens at the reviewed cut-over; upload the file again then to fill its drafts.",
+          "unchanged": "This exact file was already imported for this employee. Nothing changed."
+        },
+        "applied": {
+          "draft_filled": "Part {part}: drafts filled from the file",
+          "kept_system_values": "Part {part}: kept the values already in the system",
+          "part_not_open": "Part {part}: not open in the system, so nothing was filled",
+          "no_part": "Part {part}: not in this case’s plan"
+        },
+        "refusals": {
+          "file_type": "Only saved .html evaluation forms can be imported.",
+          "empty": "The file is empty.",
+          "too_large": "The file is larger than 2 MB. A saved evaluation form is much smaller; check the file.",
+          "no_block": "The file has no saved values. Open the form and use “Save form”, not the browser’s Save page.",
+          "several_blocks": "The file has more than one saved-values block, so it can’t be read safely.",
+          "block_type": "The saved-values block is not JSON, so it can’t be read safely.",
+          "damaged": "The saved values in the file are damaged and could not be read.",
+          "no_version": "The file doesn’t say which form version it is. Only form v22.9.26 can be imported.",
+          "wrong_version": "This is form v{version}. Only form v22.9.26 can be imported; nothing was guessed.",
+          "no_values": "The file has no saved values. Use “Save form” in the form itself.",
+          "invalid_field": "The field “{field}” has a value that can’t be read. Nothing was guessed; correct the form and save it again.",
+          "no_employee_id": "The file has no Employee ID, so it can’t be matched to an employee.",
+          "no_employee_name": "The file has no employee name.",
+          "not_entitled": "Probation is not available for this company.",
+          "no_employee": "No employee with this Employee ID is in this company within your intake scope.",
+          "name_mismatch": "The employee name in the file doesn’t match Personnel for this Employee ID. Check the file.",
+          "excluded": "A probation case can’t be created for this employee: {reason}.",
+          "no_settings": "Publish the probation settings for this company before importing.",
+          "opens_automatically": "This new starter’s case opens automatically now that probation is switched on. Import the file once the case is open.",
+          "case_closed": "The matching case is closed. Nothing was changed.",
+          "not_saved": "The file could not be imported. Nothing was changed; try again."
+        },
+        "exclusionReasons": {
+          "confirmed": "already confirmed in Personnel",
+          "resignation": "a resignation is recorded",
+          "ended": "the employment has ended",
+          "no_probation": "no probation applies",
+          "reviewed_exclusion": "excluded at intake",
+          "employment_type": "not a full-time employee",
+          "grade_not_enabled": "the job grade is not in the probation settings",
+          "company_transfer": "moved from another company during intake",
+          "not_eligible": "not eligible for probation",
+          "unavailable": "not available"
+        },
+        "historyTitle": "Imported forms",
+        "historyEmpty": "No saved forms imported yet.",
+        "candidateTitle": "From the imported saved form",
+        "candidateHelp": "Map each Part below with the usual rules: a signed part is Completed offline with its signed PDF attached; a started part continues as unfinished work. After cut-over, upload the file again to fill the case drafts.",
+        "candidatePart": "Part {part} {status}"
       }
     },
     "workflows": {
@@ -36265,7 +36568,23 @@
       "open": "打开结果函",
       "preparationClosed": "已请求或完成发出操作。请从案例查看已保存的函件和归档状态。",
       "templateTie": "有多个同等匹配的模板。请明确选择已审核的模板。",
-      "filingPending": "发出请求已保存。现有后台任务会生成并归档已签署 PDF 后再执行结果。任何失败都会保持可见，以便重试。"
+      "filingPending": "发出请求已保存。现有后台任务会生成并归档已签署 PDF 后再执行结果。任何失败都会保持可见，以便重试。",
+      "contentPrivate": "This letter is private until it reaches you. You can see who it is with and its status.",
+      "routingFallback": "Nobody could be found for some steps, so the fallback group took them:",
+      "sentBack": "{name} sent this letter back: {reason}",
+      "resend": "Send round again",
+      "meantFor": "meant for {who}",
+      "routedStep": {
+        "review": "Review",
+        "approve": "Approve",
+        "sign": "Sign",
+        "acknowledge": "Acknowledge"
+      },
+      "decision": {
+        "reviewed": "Mark as reviewed",
+        "approved": "Approve"
+      },
+      "holderOnBehalf": "{name} on behalf of {represented}"
     },
     "dates": {
       "title": "试用期日期审核",
@@ -36335,6 +36654,608 @@
       "title": "部分默认试用期消息不可用",
       "summary": "发布一个覆盖全公司的逾期汇总工作流程，并将人力资源业务伙伴设为收件人。",
       "help": "发布缺失的工作流程以恢复相应消息。审核截止日期和逾期标记仍然有效。"
+    },
+    "settingsScope": {
+      "subtitle": "Each company uses exactly one published setting. Changes apply to new cases only.",
+      "newSetting": "New company setting",
+      "inUse": "Settings in use",
+      "columns": {
+        "setting": "Setting",
+        "appliesTo": "Applies to",
+        "version": "Version",
+        "overrides": "Overrides",
+        "action": "Action",
+        "field": "Field",
+        "standard": "Group standard",
+        "thisSetting": "This setting",
+        "company": "Company",
+        "differences": "Fields that would change",
+        "pickedUp": "Picks up",
+        "shielded": "Shielded by an override"
+      },
+      "groupStandard": "Group standard",
+      "allCompanies": "All {count} companies",
+      "notPublished": "Not published yet. Each company uses its own settings version.",
+      "setsEveryField": "— (sets every field)",
+      "edit": "Edit",
+      "publishedAlso": "Version {version} is published and in use.",
+      "overrideSummary": "{count, plural, one {1 field} other {# fields}}: {fields}. Inherits the rest.",
+      "noOverrides": "No fields overridden.",
+      "redundant": "Same as the group standard, so it can be removed: {fields}",
+      "rule": "A company setting overrides only the fields it ticks; every other field follows the group standard, including future changes to it. A company can be in only one company setting.",
+      "noStandardTitle": "No group standard yet",
+      "noStandardHelp": "Until a group standard is published, each company keeps using its own published settings version and nothing changes. Create the standard from the company whose settings should apply to everyone, then add company settings for companies that must keep different values. Company settings take effect together with the standard.",
+      "continueDraft": "Continue the group standard draft",
+      "createFrom": "Create group standard from",
+      "startFromDefaults": "Recommended defaults",
+      "createStandard": "Create group standard",
+      "notCurrentTitle": "Companies not using the current settings yet",
+      "notCurrentHelp": "These companies started using Probation after the group standard was last published. Apply the group standard and their company setting to them.",
+      "applyNow": "Apply now",
+      "refreshed": "{company} now uses the current settings.",
+      "unknownCompany": "Unavailable company",
+      "editing": "Editing: {name}",
+      "newCompanySetting": "New company setting",
+      "standardHelp": "The group standard sets every field for all companies. Running cases keep the values they started with.",
+      "companyHelp": "Tick Override for each field this setting changes. Inherited fields follow the group standard, including later changes to it.",
+      "waitsForStandard": "No group standard is published yet. This company setting takes effect when the group standard is published.",
+      "name": "Setting name",
+      "inOther": "in {name}",
+      "overlap": "A company can be in only one company setting. Remove it from the other setting first: {companies}",
+      "standardVersion": "Group standard v{version}",
+      "inherited": "Inherited",
+      "override": "Override",
+      "sameAsStandard": "Same as the standard",
+      "changed": "Changed",
+      "extensionsFixed": "Extensions: {months} months, at most {max}. Fixed for every company.",
+      "diffTitle": "How companies differ from this standard",
+      "diffHelp": "Publishing the standard gives these companies its values for new cases, unless a company setting overrides the field. Add company settings first for companies that must keep their values.",
+      "previewTitle": "Before you publish",
+      "previewNone": "No field differs from the published group standard.",
+      "previewRunning": "Cases already running keep the values they started with either way.",
+      "resolvedNote": "Companies in this setting use these overridden fields: {fields}. Everything else follows the group standard.",
+      "resolvedPreview": "Values these companies will use",
+      "reason": "Reason for the change (optional)",
+      "close": "Close",
+      "publishedNotice": "Published. New cases use these settings.",
+      "retire": "Retire this company setting",
+      "retireHelp": "Its companies go back to the group standard for new cases. Running cases keep their values.",
+      "retiredNotice": "Company setting retired.",
+      "rulesInCompanySetting": "Narrow KPI gate rules are set in a company setting.",
+      "rulesOneCompany": "Narrow KPI gate rules can be overridden when the setting applies to one company.",
+      "ruleCount": "{count, plural, =0 {No rules} one {1 rule} other {# rules}}",
+      "daysBeforeDue": "{days} calendar days before due",
+      "planWithMidpoint": "{months} months · Part 2 at month {midpoint}",
+      "planFinalOnly": "{months} months · Part 3 only",
+      "defaultGroup": "GBS People Ops",
+      "savedGroup": "Saved group (no longer listed)",
+      "on": "On",
+      "off": "Off",
+      "truncated": "Only the first 200 settings are shown.",
+      "companyVersionTitle": "Company settings version",
+      "lockedNotice": "A group standard is published, so this company's settings come from the group standard and its company setting. Edit them above. Access below stays per company.",
+      "nonWorking": {
+        "previous": "Move to the working day before",
+        "next": "Move to the next working day"
+      },
+      "fields": {
+        "eligibleGrades": "Eligible grades",
+        "gradeHEnabled": "Grade H",
+        "defaultMonths": "Default probation months",
+        "plans": "Review plans",
+        "kpiGate": "KPI acknowledgement gate",
+        "issueLeadDays": "Review form opens",
+        "nonWorkingDayRule": "Due date on a non-working day",
+        "fallbackGroupId": "When no one can be found",
+        "postingApproverGroupId": "Who approves Personnel postings",
+        "kpiDueWorkingDays": "KPIs due after working days",
+        "kpiReminderWorkingDay": "KPI reminder on working day",
+        "firstReminderDays": "First reminder before due · days",
+        "dailyReminderDays": "Daily reminders from · days before due",
+        "lowBand": "Low-result band threshold",
+        "lmWaitsForEmployee": "Manager waits for the employee self-assessment",
+        "overrides": "Narrow KPI gate rules",
+        "maxExtensions": "Maximum extensions"
+      }
+    },
+    "startStatus": {
+      "waiting": "Waiting for start date. The case opened at activation; no reviews, tasks or reminders start before {date}. Part 1 counts from the start date.",
+      "didNotJoin": "Closed as Did not join: the hire was withdrawn or the employment ended before the start date."
+    },
+    "overrideNotice": "The Line Manager chose a different outcome from the suggestion and wrote a justification.",
+    "formRouting": {
+      "title": "Review and approval routing",
+      "help": "Who approves and signs each part, and in what order. Lower numbers go first; steps sharing a number run one after another in the order listed. A case keeps the routing of the form version it started on.",
+      "legacy": "This form version has no approval steps of its own, so its cases use the published signing routes configuration. Set approval steps here to route new cases from this form instead.",
+      "useForm": "Set approval steps on this form",
+      "core": "Always first, and not editable: {steps}.",
+      "coreKpi": "Line Manager sets and signs the KPIs → Employee acknowledges",
+      "coreReview": "Employee self-review → Line Manager assessment and signature → Employee acknowledges",
+      "order": "Order",
+      "action": "Action",
+      "who": "Who",
+      "actions": {
+        "approve_sign": "Approve and sign",
+        "review": "Review",
+        "approve": "Approve"
+      },
+      "remove": "Remove the {who} step",
+      "add": "Add approval step",
+      "none": "No approval steps.",
+      "partThreeRequired": "Part 3 needs at least one approval step.",
+      "reserved": "Head of Department, People Business Partner and Direct Superior steps follow the case’s current holders, their delegations and the policy below.",
+      "policyInherit": "Use the signing routes configuration’s setting",
+      "whoKinds": {
+        "hod": "Head of Department",
+        "pbp": "People Business Partner",
+        "superior": "Direct Superior",
+        "routing": "A routing",
+        "group": "An assignment group",
+        "people": "Named people"
+      },
+      "routing": "Routing",
+      "group": "Assignment group",
+      "people": "People",
+      "pick": "Who takes it",
+      "picks": {
+        "any": "Any member",
+        "roundRobin": "Round robin"
+      },
+      "missingChoice": "No longer available: choose another",
+      "resolveNote": "A routing, an assignment group or named people gives the step to one person, chosen by the step’s rule when the Line Manager submits, and that person keeps it for the part. If nobody is available, the case’s fallback group takes it and the case records who it was meant for."
+    },
+    "lowResult": {
+      "title": "Low result",
+      "notice": "Part {part} scored Band {band}. Record the action taken with the Line Manager.",
+      "note": "Action taken with the Line Manager",
+      "save": "Record action",
+      "waiting": "Waiting for the People Business Partner to record the action taken."
+    },
+    "otherOutcome": {
+      "title": "Outcome “Other” · PBP decision",
+      "help": "No letter is generated automatically. Choose the outcome to apply. The case then continues as that outcome: the letter, its signatures, then the posting or the offboarding case.",
+      "choice": "Decision",
+      "months": "Extension length",
+      "monthsOption": "{months} months",
+      "reason": "Reason",
+      "save": "Apply this outcome",
+      "waiting": "Waiting for the People Business Partner to choose the outcome."
+    },
+    "automationHistory": {
+      "title": "Workflow history",
+      "empty": "No shared workflow has run for this case yet.",
+      "recipients": "{count, plural, one {# person} other {# people}} reached",
+      "unresolved": "Not reached: {who}. {reason}",
+      "status": {
+        "running": "Running",
+        "waiting": "Waiting for the letter",
+        "done": "Done",
+        "skipped": "Skipped",
+        "failed": "Failed"
+      }
+    },
+    "taskKinds": {
+      "submit_employee": {
+        "title": "Complete your self-assessment · Part {part}",
+        "action": "Open form"
+      },
+      "submit_manager_kpis": {
+        "title": "Set Week 1 KPIs and sign",
+        "action": "Set KPIs"
+      },
+      "submit_manager": {
+        "title": "Complete the Line Manager assessment and sign · Part {part}",
+        "action": "Open assessment"
+      },
+      "acknowledge": {
+        "title": "Acknowledge and sign · Part {part}",
+        "action": "Acknowledge"
+      },
+      "approve": {
+        "title": "Approve Part {part}",
+        "action": "Review and approve"
+      },
+      "record": {
+        "title": "Record the completed Part {part}",
+        "action": "Record"
+      },
+      "confirm_extension": {
+        "title": "Confirm the extension · Part {part}",
+        "action": "Confirm extension"
+      },
+      "confirm_refusal": {
+        "title": "Confirm a declined signature · Part {part}",
+        "action": "Confirm"
+      },
+      "kpi_exception": {
+        "title": "Decide on the KPI acknowledgement hold · Part {part}",
+        "action": "Decide"
+      },
+      "employee_wait_exception": {
+        "title": "Decide whether to continue without the self-assessment · Part {part}",
+        "action": "Decide"
+      },
+      "letter_sign": {
+        "title": "Sign probation letter",
+        "action": "Sign letter"
+      },
+      "letter_review": {
+        "title": "Review probation letter",
+        "action": "Review letter"
+      },
+      "letter_approve": {
+        "title": "Approve probation letter",
+        "action": "Approve letter"
+      },
+      "letter_revise": {
+        "title": "Update probation letter after send-back",
+        "action": "Update letter"
+      },
+      "letter_release": {
+        "title": "Release probation letter",
+        "action": "Release letter"
+      },
+      "low_result_action": {
+        "title": "Record low-result action",
+        "action": "Record action"
+      },
+      "choose_outcome": {
+        "title": "Decide Other outcome",
+        "action": "Decide outcome"
+      },
+      "other": {
+        "title": "Probation task",
+        "action": "Open"
+      }
+    },
+    "caseView": {
+      "heading": "Probation · {stage}",
+      "stage": {
+        "1": "Part 1 · Week 1 Success Plan",
+        "2": "Part 2 · Mid-Probation Review",
+        "3": "Part 3 · Final Confirmation Review",
+        "cycle": "{part} (cycle {cycle})",
+        "outcome": "Outcome"
+      },
+      "short": {
+        "1": "Week 1 KPIs",
+        "2": "Part 2 Mid-Probation",
+        "3": "Part 3 Final review",
+        "outcome": "Outcome"
+      },
+      "tabs": {
+        "label": "Case sections",
+        "1": "Part 1 · Week 1 KPIs",
+        "2": "Part 2 · Mid-Probation",
+        "3": "Part 3 · Final",
+        "cycle": "{part} (cycle {cycle})",
+        "outcome": "Outcome & letters",
+        "files": "Files ({count})",
+        "history": "History",
+        "current": "current stage"
+      },
+      "partsLabel": "Parts",
+      "routeLabel": "Signing route for the current part",
+      "waitingOn": "Waiting on: {who}",
+      "closed": "Case closed.",
+      "opens": "Form opens {date}",
+      "due": "due {date}",
+      "daysLeft": "{count, plural, one {# day left} other {# days left}}",
+      "daysOverdue": "{count, plural, one {# day overdue} other {# days overdue}}",
+      "dueToday": "due today",
+      "who": "{role} · {name} · {what}",
+      "whoNoName": "{role} · {what}",
+      "what": {
+        "kpis": "set Week 1 KPIs and sign",
+        "self": "self-assessment",
+        "assessment": "assessment",
+        "returned": "returned part",
+        "acknowledge": "acknowledge and sign",
+        "approve": "approval",
+        "review": "review",
+        "sign": "signature"
+      },
+      "facts": {
+        "employee": "Employee",
+        "titleGrade": "Job title / grade",
+        "businessGroup": "Business group",
+        "businessUnit": "Business unit",
+        "probation": "Probation",
+        "plan": "Review plan",
+        "extensions": "Extensions used",
+        "people": "People"
+      },
+      "plan": {
+        "6": "6 months · P2 + P3",
+        "3": "3 months · P3 only",
+        "other": "{months} months"
+      },
+      "months": "{months, plural, one {# month} other {# months}}",
+      "peopleLm": "LM {name}",
+      "peoplePbp": "PBP {name}",
+      "steps": {
+        "self": "Employee self-assessment",
+        "lmKpis": "LM sets KPIs and signs",
+        "lmAssess": "LM assessment",
+        "ack": "Employee acknowledges",
+        "approveSign": "Approve and sign · {who}",
+        "approve": "Approve · {who}",
+        "review": "Review · {who}",
+        "sign": "Sign · {who}"
+      },
+      "stepState": {
+        "done": "done",
+        "current": "current",
+        "waiting": "not reached",
+        "overdue": "overdue",
+        "returned": "returned with comments"
+      },
+      "noOutcome": "The outcome is decided at the final review (Part 3 Final review).",
+      "filesEmpty": "No files yet. Completed forms and letters appear here when each part is recorded.",
+      "earlierCycles": "Earlier cycles of this part",
+      "cycleLink": "Cycle {cycle} · {state}",
+      "waitingStart": "Waiting for the start date ({date}). The record was activated in Personnel Management before the start date. Nothing is sent and no step is due until then.",
+      "noPart": "This part is not part of this case's review plan.",
+      "back": "Probation tracker",
+      "pill": "Probation",
+      "yourStep": "Your step:",
+      "waitingOnLabel": "Waiting on:",
+      "nextAction": "Next action:",
+      "outcomeHeading": "Outcome",
+      "earlierLetters": "Earlier letters",
+      "download": "Download",
+      "downloadFile": "Download {name}",
+      "fileKinds": {
+        "completed_part": "Completed evaluation form with signature page · stored on the employee file",
+        "letter_released": "Released letter · stored on the employee file",
+        "letter_draft": "Letter prepared for signatures",
+        "offline": "Original file kept as offline evidence"
+      },
+      "letter": {
+        "sub": "From the shared Templates builder · module Probation · template v{version}",
+        "routing": "Signing routing on this document",
+        "state": {
+          "released": "Released",
+          "filing": "Filing pending",
+          "sentBack": "Sent back",
+          "waitingFor": "Waiting for {names}",
+          "ready": "Ready to release",
+          "waiting": "Waiting",
+          "paused": "Paused"
+        },
+        "and": " and "
+      },
+      "form": {
+        "cycle": "{part} · after extension {count}",
+        "status": "{state} · due {date}",
+        "yourSelf": "Your self-assessment",
+        "yourLm": "Your Line Manager assessment",
+        "sections": {
+          "2": "A. Performance Progress Review · B. Leadership Principles – Mid-Point",
+          "3": "A. Role Performance Assessment · B. {count} Leadership Principles"
+        },
+        "rateHelp": "Rate every criterion 1–5. Ratings start blank. A rating of 1 or 2 needs written evidence before you can submit.",
+        "readHelp": "Ratings as submitted. A column opens once that person has submitted.",
+        "gridLabel": "Assessment criteria and ratings",
+        "col": {
+          "criterion": "Criterion",
+          "weight": "Weight",
+          "employee": "Employee",
+          "lm": "Line Manager",
+          "evidence": "Comments / evidence",
+          "yourEvidence": "Your evidence"
+        },
+        "sectionRole": "A. Role ({weight}%)",
+        "sectionPrinciples": "B. {count} Leadership Principles ({weight}%)",
+        "guide": "Guide",
+        "guideFor": "Guide for {criterion}",
+        "kpiLink": "Shows the {count} Week 1 KPIs",
+        "ratingGroup": "{who} rating for {criterion}",
+        "ratingButton": "{rating} · {label}",
+        "clearRating": "Clear",
+        "clearRatingFor": "Clear the rating for {criterion}",
+        "evidenceFor": "Evidence for {criterion}",
+        "yourEvidenceFor": "Your evidence for {criterion}",
+        "evidencePlaceholder": "Observable example / evidence",
+        "hiddenLm": "Hidden until the Line Manager submits",
+        "hiddenEmployee": "Not submitted yet",
+        "evidenceRequired": "Evidence required for a rating of {rating}",
+        "evidenceRequiredKpi": "Evidence required while the Week 1 KPIs are not acknowledged",
+        "drawer": {
+          "close": "Close",
+          "kpiTitle": "Week 1 KPIs (Part 1)",
+          "criterionTitle": "Appendix A · {criterion}",
+          "behaviours": "Key behaviours",
+          "prompt": "Evidence prompt",
+          "principles": "Evidence-based rating principles.",
+          "principlesText": "Rate observable behaviour and demonstrated results, not personality. Use examples from the full probation period. A rating of 1 or 2 requires clear evidence, prior feedback and documented development support.",
+          "noKpis": "No KPIs agreed yet.",
+          "kpiLine": "{measure} · target {target} by {date}",
+          "support": "Planned support"
+        },
+        "result": {
+          "2": "C. Overall Mid-Point Assessment",
+          "3": "C. Overall Result and Recommendation"
+        },
+        "resultSub": "Worked out by the system from the Line Manager’s ratings.",
+        "sectionA": "Section A /{max}",
+        "sectionB": "Section B /{max}",
+        "total": "Total /{max}",
+        "band": "Band",
+        "rateAll": "Rate all {count}",
+        "selfScore": "Employee self-score {score} (Band {band}). Only the Line Manager’s result drives the suggestion.",
+        "selfScoreNone": "Employee self-score not submitted. Only the Line Manager’s result drives the suggestion.",
+        "justification": {
+          "2": "Justification",
+          "3": "Recommendation and justification"
+        },
+        "justificationRequired": "Required: explain why you chose something other than the suggestion",
+        "noMidpointOutcome": "No final employment outcome is applied at the mid-point.",
+        "choice": {
+          "2": "E. Mid-Probation Status",
+          "3": "Outcome"
+        },
+        "options": {
+          "confirm": "Confirm employment",
+          "extend": "Extend probation",
+          "not_confirm": "Non-confirmation",
+          "other": "Other",
+          "satisfactory": "Progressing satisfactorily",
+          "development": "Progressing with development actions",
+          "at_risk": "At risk of not meeting probation requirements – People Team consultation required"
+        },
+        "extendHint": "{first} or {second} months",
+        "otherHint": "needs justification and a PBP decision",
+        "suggested": "suggested",
+        "extensionsUsed": "{count} of {max} extensions used",
+        "extensionLength": "Extension length (Line Manager recommends, PBP confirms)",
+        "monthsOption": "{months} months",
+        "choiceNote": "Choosing anything other than the suggestion needs a written justification and is flagged to the People Business Partner.",
+        "nothingPreselected": "Nothing is pre-selected.",
+        "managerComments": "Manager’s overall comments",
+        "coaching": "D. Coaching Summary and Development Plan",
+        "strengths": "Top strengths demonstrated",
+        "development": "Priority development areas",
+        "employeeComments2": "Employee’s comments",
+        "ackHeading": "D. Employee Comments and Acknowledgement",
+        "employeeComments3": "Employee comments",
+        "ackNote": "Discussed and received. Acknowledgement does not mean agreement.",
+        "optional": "Optional",
+        "kpiHeading": "A. Key Accountabilities and KPIs",
+        "kpiSub": "Line Manager enters 1–5 rows. They lock after the employee acknowledges and carry into the KPI criterion of every later review.",
+        "kpiCols": {
+          "no": "No.",
+          "accountability": "Key accountability",
+          "measure": "KPI / success measure",
+          "target": "Target",
+          "targetDate": "Target date"
+        },
+        "kpiField": "{field} {index}",
+        "kpiRemove": "Remove",
+        "kpiRemoveRow": "Remove accountability {index}",
+        "kpiAdd": "Add accountability · maximum 5",
+        "kpiEmpty": "Not entered yet.",
+        "supportHeading": "B. Planned Support for Employee",
+        "supportLabels": {
+          "coaching": "On-the-job training / coaching",
+          "access": "SOPs, policies, guidelines or system access",
+          "checkins": "Regular check-ins / feedback arrangements",
+          "other": "Other support required"
+        },
+        "supportPlaceholder": "Details / owner / timing",
+        "meetingHeading": "C. Meeting Acknowledgement",
+        "meetingHint": "Editable only by the employee at the acknowledgement step.",
+        "meetingNote": "Line Manager signs on submission, then the employee signs on acknowledgement.",
+        "scheduled": "Scheduled. The form opens on {opens}, {lead} days before the due date {due}.",
+        "gateBlocks": "KPI gate is set to Block: the form also waits until Part 1 is acknowledged.",
+        "signatures": "Signatures",
+        "sigWaiting": "Waiting",
+        "signHeading": "Signing and acknowledgement",
+        "signNote": "Signing means discussed and received, not agreement.",
+        "signWho": "Verified login: {name} ({role})",
+        "signFingerprint": "Your name, role, date and time and a fingerprint of this version of the form are saved with your signature.",
+        "methods": {
+          "typed": "Typed",
+          "drawn": "Drawn"
+        },
+        "issuesTitle": "{count, plural, one {# item needs fixing before submission} other {# items need fixing before submission}}",
+        "notes": {
+          "self": "Your self-assessment submission is not a signature. The Line Manager completes their assessment afterwards.",
+          "lm": "Submitting sends the review to {name} to acknowledge.",
+          "lmKpis": "You are signing as Line Manager.",
+          "ack1": "Acknowledging means the KPIs were discussed and received.",
+          "ack": "You can add comments. You cannot change ratings.",
+          "review": "Review step from the form’s approval routing · no signature needed.",
+          "approve": "Approve step from the form’s approval routing · no signature needed.",
+          "locked1": "Part 1 is recorded and locked.",
+          "locked": "This part is recorded and locked.",
+          "waiting": "Waiting on {who} ({what}).",
+          "nothing": "Nothing to do here right now."
+        },
+        "returnHeading": "Return to the Line Manager",
+        "returnHelp": "The part goes back to the Line Manager. Signatures so far are cleared and everyone signs again after the changes.",
+        "returnedBy": "Returned by {name}:",
+        "returnedNote": "Earlier signatures were cleared. The part goes through the signing route again.",
+        "decisionHeading": "Your decision"
+      }
+    }
+  },
+  "probationConfig": {
+    "crumb": "Probation Confirmation / Configuration / {page}",
+    "live": "Live",
+    "preparation": "Preparation",
+    "settings": {
+      "title": "Probation settings",
+      "sub": "Group standard version {version} published · company settings override only the fields they tick · changes apply to new cases only",
+      "subNoStandard": "No group standard published yet · each company uses its own settings version · changes apply to new cases only",
+      "subCompany": "Changes apply to new cases only.",
+      "editStandard": "Edit group standard",
+      "newCompanySetting": "New company setting",
+      "bannerLead": "Group standard with company settings.",
+      "banner": "The group standard applies the same way to every company. A company setting changes only the fields it ticks for its companies; every other field follows the standard, including later changes to it.",
+      "live": "Live in {live} of {total} companies. Running cases keep the settings version they started with.",
+      "running": "Running cases keep the settings version they started with.",
+      "standardCards": "Group standard settings",
+      "whoHelp": "A case opens automatically when an employee’s Personnel Management status becomes Probation (on activation, before, on or after the start date). Draft records never open a case.",
+      "plansHelp": "Picked from the Probation Period in Personnel Management.",
+      "planPeriod": "Probation Period",
+      "planReviews": "Reviews",
+      "planMonths": "{months} Month(s)",
+      "planMidpoint": "Part 2 at Month {midpoint} · Part 3 on the end date",
+      "planFinal": "Part 3 on the end date only",
+      "extensionMonths": "{months} months"
+    },
+    "cards": {
+      "who": "Who gets a case",
+      "plans": "Review plans",
+      "timing": "Timing",
+      "kpis": "Week 1 KPIs and reminders",
+      "extensions": "Extensions and results"
+    },
+    "form": {
+      "sub": "Criteria, weights, rating scale, bands and guidance are saved with each form version. Each case keeps the form it started on.",
+      "versions": "Form versions",
+      "formTitle": "Form",
+      "gradesTitle": "Job grade assignment",
+      "gradesHelp": "New probation cases in these grades (Personnel Management Job Grade at the case start) use this form. Leave it empty to use the form for the normal eligible grades.",
+      "gradesNote": "Changes to the grade assignment apply to new cases only.",
+      "noGrades": "No grades",
+      "chooseGrades": "Choose job grades…",
+      "selected": "{count} selected",
+      "searchGrades": "Search grade, e.g. 12",
+      "selectAll": "Select all",
+      "clear": "Clear",
+      "noGradeMatch": "No grade matches “{query}”.",
+      "done": "Done",
+      "criteriaTitle": "Criteria and weights",
+      "section": "Section {letter} · {name}",
+      "sectionTotal": "Criteria total {total}% of {weight}%",
+      "criterion": "Criterion",
+      "weight": "Weight %",
+      "guidance": "Guidance",
+      "order": "Order and remove",
+      "criterionPlaceholder": "Criterion name",
+      "weightFor": "Weight for {name}",
+      "newCriterion": "new criterion",
+      "hideGuidance": "Hide",
+      "viewGuidance": "View",
+      "editGuidance": "Edit",
+      "moveUp": "Move {name} up",
+      "moveDown": "Move {name} down",
+      "up": "Up",
+      "down": "Down",
+      "removeNamed": "Remove {name}",
+      "addCriterion": "Add criterion to Section {letter}",
+      "formTotal": "Form total {total}%",
+      "formTotalParts": "(Section A {a}% · Section B {b}%). Every criterion is rated 1–5.",
+      "scaleTitle": "Rating scale",
+      "bandsTitle": "Bands"
+    },
+    "intake": {
+      "sub": "Bring in staff who were already on probation using the offline HTML form, then switch probation on per company.",
+      "extensionsTitle": "2. Confirm extensions already used",
+      "activationTitle": "3. Activation by company",
+      "noExtensions": "No cases with an existing extension."
     }
   },
   "templateEditor": {
@@ -38698,6 +39619,1387 @@
     "appliesFromTomorrow": "配对方式和打卡最短间隔的更改从明天起生效，今天已记录的考勤不会被重新计算。历史记录会保存更改人和更改时间。",
     "systemReason": "已在排班组设置中更新",
     "dutyRosterPoolNote": "轮班只能使用上方“允许的班次”中已纳入的班次。"
+  },
+  "bulkJobs": {
+    "notification": {
+      "employeeImport": {
+        "completed": {
+          "title": "员工导入已完成",
+          "body": "打开导入历史，查看已添加的员工。"
+        },
+        "failed": {
+          "title": "员工导入已停止",
+          "body": "未添加任何员工。打开导入历史查看原因。"
+        },
+        "cancelled": {
+          "title": "员工导入已取消",
+          "body": "未添加任何员工。打开导入历史查看详情。"
+        }
+      },
+      "leaveImport": {
+        "completed": {
+          "title": "休假数据导入已完成",
+          "body": "导入的记录现已计入员工的休假余额。"
+        },
+        "failed": {
+          "title": "休假数据导入已停止",
+          "body": "已保存的记录将被保留。再次导入同一文件时会跳过这些记录。"
+        },
+        "cancelled": {
+          "title": "休假数据导入已取消",
+          "body": "已保存的记录将被保留。再次导入同一文件时会跳过这些记录。"
+        }
+      },
+      "leaveProcessing": {
+        "completed": {
+          "title": "休假处理已完成",
+          "body": "休假数据已更新。"
+        },
+        "failed": {
+          "title": "休假处理已停止",
+          "body": "已处理的员工保留其数据。请再次运行以完成其余部分。"
+        },
+        "cancelled": {
+          "title": "休假处理已取消",
+          "body": "已处理的员工保留其数据。请再次运行以完成其余部分。"
+        }
+      },
+      "roster": {
+        "completed": {
+          "title": "排班更改已完成",
+          "body": "打开排班查看结果。"
+        },
+        "failed": {
+          "title": "排班更改已停止",
+          "body": "打开排班查看原因。"
+        },
+        "cancelled": {
+          "title": "排班更改已取消",
+          "body": "打开排班查看详情。"
+        }
+      },
+      "scheduleGroup": {
+        "completed": {
+          "title": "排班组分配已完成",
+          "body": "打开分配排班组查看结果。"
+        },
+        "failed": {
+          "title": "排班组分配已停止",
+          "body": "打开分配排班组查看原因。"
+        },
+        "cancelled": {
+          "title": "排班组分配已取消",
+          "body": "打开分配排班组查看详情。"
+        }
+      },
+      "clockingImport": {
+        "completed": {
+          "title": "打卡导入已完成",
+          "body": "打开导入日志，查看已添加的打卡记录。"
+        },
+        "failed": {
+          "title": "打卡导入已中止",
+          "body": "打开导入日志，查看已保存的内容及中止原因。"
+        },
+        "cancelled": {
+          "title": "打卡导入已中止",
+          "body": "打开导入日志，查看已保存的内容。"
+        }
+      },
+      "attendanceRecomputePreview": {
+        "completed": {
+          "title": "重新计算预览已就绪",
+          "body": "打开重新计算考勤，查看将会发生的变化。"
+        },
+        "failed": {
+          "title": "重新计算预览已中止",
+          "body": "打开重新计算考勤，查看原因。"
+        },
+        "cancelled": {
+          "title": "重新计算预览已中止",
+          "body": "打开重新计算考勤，重新开始。"
+        }
+      },
+      "attendanceRecompute": {
+        "completed": {
+          "title": "考勤已重新计算",
+          "body": "打开重新计算考勤，查看发生变化的日期。"
+        },
+        "failed": {
+          "title": "考勤重新计算已中止",
+          "body": "打开重新计算考勤，查看原因。"
+        },
+        "cancelled": {
+          "title": "考勤重新计算已中止",
+          "body": "打开重新计算考勤，查看详情。"
+        }
+      },
+      "payrollProcess": {
+        "completed": {
+          "title": "薪资处理已完成",
+          "body": "打开薪资，审核已处理的批次。"
+        },
+        "failed": {
+          "title": "薪资处理已停止",
+          "body": "批次已退回草稿，未保留任何工资单。打开薪资查看原因。"
+        },
+        "cancelled": {
+          "title": "薪资处理已取消",
+          "body": "批次已退回草稿，未保留任何工资单。"
+        }
+      },
+      "systemLabelImport": {
+        "completed": {
+          "title": "系统标签导入已完成",
+          "body": "打开系统标签，查看已添加的代码。"
+        },
+        "failed": {
+          "title": "系统标签导入已停止",
+          "body": "未添加任何代码。请打开系统标签并重新预览工作簿。"
+        },
+        "cancelled": {
+          "title": "系统标签导入已取消",
+          "body": "未添加任何代码。"
+        }
+      },
+      "sectionImport": {
+        "completed": {
+          "title": "分项导入已完成",
+          "body": "打开导入页面，查看已更新的行。"
+        },
+        "failed": {
+          "title": "分项导入已停止",
+          "body": "停止前已保存的行均已保留。打开导入页面查看原因。"
+        },
+        "cancelled": {
+          "title": "分项导入已取消",
+          "body": "停止前已保存的行均已保留。打开导入页面查看详情。"
+        }
+      },
+      "registerImport": {
+        "completed": {
+          "title": "登记导入已完成",
+          "body": "打开导入页面，查看已保存的登记记录。"
+        },
+        "failed": {
+          "title": "登记导入已停止",
+          "body": "未保存任何登记记录。打开导入页面查看原因。"
+        },
+        "cancelled": {
+          "title": "登记导入已取消",
+          "body": "未保存任何登记记录。打开导入页面查看详情。"
+        }
+      },
+      "employeeImportRevert": {
+        "completed": {
+          "title": "导入撤销已完成",
+          "body": "打开导入历史，查看已作废的员工。"
+        },
+        "failed": {
+          "title": "导入撤销已停止",
+          "body": "未做任何更改。打开导入历史查看原因。"
+        },
+        "cancelled": {
+          "title": "导入撤销已取消",
+          "body": "未做任何更改。打开导入历史查看详情。"
+        }
+      },
+      "leaveGeneration": {
+        "completed": {
+          "title": "假期额度生成已完成",
+          "body": "假期数据已更新。"
+        },
+        "failed": {
+          "title": "假期额度生成已停止",
+          "body": "未做任何更改。请打开生成假期额度查看原因，然后再次运行。"
+        },
+        "cancelled": {
+          "title": "假期额度生成已取消",
+          "body": "未做任何更改。"
+        }
+      },
+      "leaveRecalculation": {
+        "completed": {
+          "title": "假期余额已重新计算",
+          "body": "员工的假期数据现已按已保存的设置计算。"
+        },
+        "failed": {
+          "title": "假期重新计算已停止",
+          "body": "已重新计算的员工保留其新数据。请再次保存该设置以重新计算其余员工。"
+        },
+        "cancelled": {
+          "title": "假期重新计算已取消",
+          "body": "已重新计算的员工保留其新数据。请再次保存该设置以重新计算其余员工。"
+        }
+      },
+      "leaveYearType": {
+        "completed": {
+          "title": "假期年度类型已应用",
+          "body": "首年员工的假期数据现已按已保存的假期年度类型计算。"
+        },
+        "failed": {
+          "title": "假期年度类型未应用于余额",
+          "body": "未更改任何假期数据。请再次保存假期年度类型以重试。"
+        },
+        "cancelled": {
+          "title": "假期年度类型调整已取消",
+          "body": "未更改任何假期数据。"
+        }
+      },
+      "toilSweep": {
+        "completed": {
+          "title": "补假结算已完成",
+          "body": "到期的补假已处理完毕。打开假期额度页面查看。"
+        },
+        "failed": {
+          "title": "补假结算已停止",
+          "body": "已处理的补假保持不变。请再次运行以处理其余部分。"
+        },
+        "cancelled": {
+          "title": "补假结算已取消",
+          "body": "已处理的补假保持不变。请再次运行以处理其余部分。"
+        }
+      },
+      "payrollHistory": {
+        "completed": {
+          "title": "薪资历史更改已提交",
+          "body": "打开导入日志查看已提交的内容。"
+        },
+        "failed": {
+          "title": "薪资历史更改已停止",
+          "body": "薪资历史未作任何更改。打开导入日志查看原因。"
+        },
+        "cancelled": {
+          "title": "薪资历史更改已取消",
+          "body": "薪资历史未作任何更改。"
+        }
+      },
+      "payrollReprocess": {
+        "completed": {
+          "title": "薪资重新处理已完成",
+          "body": "打开薪资批次查看已重新处理的员工。"
+        },
+        "failed": {
+          "title": "薪资重新处理已停止",
+          "body": "已重新处理的员工保留其新结果。打开薪资批次查看停止的位置。"
+        },
+        "cancelled": {
+          "title": "薪资重新处理已取消",
+          "body": "已重新处理的员工保留其新结果。"
+        }
+      },
+      "movementImport": {
+        "completed": {
+          "title": "异动导入已完成",
+          "body": "打开导入历史，查看已保存的异动以及未能保存的员工。"
+        },
+        "failed": {
+          "title": "异动导入已停止",
+          "body": "打开导入历史查看原因。已保存的员工会保留其异动。"
+        },
+        "cancelled": {
+          "title": "异动导入已停止",
+          "body": "已保存的员工会保留其异动。打开导入历史查看详情。"
+        }
+      },
+      "movementCheck": {
+        "completed": {
+          "title": "异动文件已检查",
+          "body": "检查已记录在导入历史中。如果您已离开导入页面，请重新上传该文件以查看并确认。"
+        },
+        "failed": {
+          "title": "异动检查已停止",
+          "body": "打开导入历史查看原因。未保存任何内容。"
+        },
+        "cancelled": {
+          "title": "异动检查已停止",
+          "body": "未保存任何内容。打开导入历史查看详情。"
+        }
+      },
+      "movementImportRevert": {
+        "completed": {
+          "title": "异动导入撤销已完成",
+          "body": "打开导入历史，查看已撤销的异动。"
+        },
+        "failed": {
+          "title": "异动导入撤销已停止",
+          "body": "未作任何更改。打开导入历史查看原因。"
+        },
+        "cancelled": {
+          "title": "异动导入撤销已取消",
+          "body": "未作任何更改。打开导入历史查看详情。"
+        }
+      },
+      "recruitmentImport": {
+        "completed": {
+          "title": "候选人导入已完成",
+          "body": "打开导入以逐行查看结果，以及在“待分配”列表中等待的候选人。"
+        },
+        "failed": {
+          "title": "候选人导入已停止",
+          "body": "导入因问题而停止。已导入的行会保留；打开导入查看结果。"
+        },
+        "cancelled": {
+          "title": "候选人导入已停止",
+          "body": "导入已被停止。已导入的行会保留；打开导入查看结果。"
+        }
+      }
+    },
+    "panel": {
+      "queued": "等待开始",
+      "preparing": "正在检查每项更改",
+      "running": "正在保存",
+      "finalizing": "正在完成",
+      "discarding": "正在停止",
+      "completed": "已完成",
+      "failed": "已停止",
+      "cancelled": "已取消",
+      "progressCount": "已完成 {done}/{total} 个步骤",
+      "backgroundHelp": "您可以离开此页面。工作会继续进行，完成后会通知您。",
+      "waiting": "正在等待后台服务。进度已保存；请勿再次启动。",
+      "workerUnavailable": "后台服务尚未运行。您的请求已保存，服务一运行便会自动开始。"
+    },
+    "roster": {
+      "generate": "正在生成排班",
+      "copy": "正在复制排班",
+      "assign": "正在应用排班更改",
+      "import": "正在保存上传的排班",
+      "otherRunning": "另一项排班更改仍在保存。请等待其完成后再试。",
+      "saveFailed": "无法保存排班更改。请重试，或联系 HR 管理员。",
+      "queuedBehind": "正在排队，等待另一项排班任务完成。该任务完成后将自动开始。"
+    },
+    "scheduleGroup": {
+      "title": "正在分配排班组",
+      "otherRunning": "另一项排班组分配仍在保存。请等待其完成后再试。",
+      "queuedBehind": "正在排队，等待另一项排班组分配完成。该分配完成后将自动开始。"
+    }
+  },
+  "importLog": {
+    "batchReference": "批次编号",
+    "importedBy": "导入人",
+    "batchLabel": "批次 {code}",
+    "actorWithId": "{name}（{employeeId}）",
+    "actorUnlinked": "管理员登录账号（无员工记录 · 账号结尾 {suffix}）",
+    "actorUnavailable": "不可用的用户"
+  },
+  "lifecycleEmailHold": {
+    "inboxAction": "邮件已暂停：{email}"
+  },
+  "rewardConfig": {
+    "title": "保存前查看",
+    "saving": "正在保存…",
+    "whyReview": "需要查看的原因",
+    "reason": "此次更改的原因",
+    "cancel": "取消",
+    "highImpact": {
+      "released-pat": "已发布的评审的 PAT 发生变化。",
+      "released-library": "已发布的评审使用较早的版本，并将继续沿用；新评审将使用此版本。",
+      "released-limit": "已发布的评审的预算上限发生变化。",
+      "release-review": "发布后此评审将发送给业务单元 CEO。",
+      "remove-access": "有人将失去对某个评审的访问权限。",
+      "open-offcycle": "开启周期外年度后，领导可使用公司余额提交周期外申请。",
+      "offcycle-window": "年中窗口决定何时可以提交年中建议。"
+    },
+    "whatChanges": "变更内容（{count}）",
+    "item": "项目",
+    "before": "变更前",
+    "after": "变更后",
+    "noValueChanges": "没有数值变化。",
+    "moreLines": "另有 {count} 项变更列在变更日志中。",
+    "affected": "受影响的评审（{count}）",
+    "noReviewsAffected": "没有评审受到影响。",
+    "consequence": {
+      "repriced": "立即重新计算",
+      "recalculation-required": "重新计算；并通知当前审批人",
+      "keeps-version": "沿用开始时的版本",
+      "released-to-bu": "已发布给业务单元 CEO",
+      "access-removed": "访问权限已移除",
+      "none": "无变化"
+    },
+    "notificationTitle": "薪酬配置已更改",
+    "noAccess": "您无法查看薪酬变更日志。",
+    "logHelp": "每一项薪酬配置变更：由谁、何时、改了什么以及原因。变更记录永不编辑或删除。",
+    "area": "范围",
+    "allAreas": "所有范围",
+    "company": "公司",
+    "allCompanies": "所有公司",
+    "person": "更改人",
+    "from": "从",
+    "to": "至",
+    "highImpactOnly": "仅限高影响",
+    "filter": "应用筛选",
+    "exportExcel": "导出到 Excel",
+    "when": "时间",
+    "areaColumn": "范围",
+    "reasonColumn": "原因",
+    "changes": "变更",
+    "changedValues": "{count, plural, =0 {无数值} other {# 个数值}}",
+    "system": "系统",
+    "unknownPerson": "未知",
+    "highImpactBadge": "高影响",
+    "areas": {
+      "salary": "薪资结构",
+      "bonus": "奖金矩阵",
+      "pat": "PAT 输入",
+      "plan": "共享薪酬配置",
+      "shared": "共享配置",
+      "exemption": "预算上限豁免",
+      "senior": "高级计划",
+      "upload": "上传的奖励",
+      "preparation": "评审设置",
+      "access": "薪酬访问权限",
+      "role_permission": "角色权限",
+      "group_role": "全集团角色",
+      "limit": "上限控制",
+      "offcycle": "周期外"
+    },
+    "actions": {
+      "returned-to-draft": "已退回草稿",
+      "saved-draft": "已保存草稿",
+      "activated": "已设为生效",
+      "restored": "已从较早版本恢复",
+      "saved": "已保存",
+      "released": "已发布",
+      "applied": "已应用",
+      "changed": "已更改",
+      "reset": "已重置为默认"
+    },
+    "empty": "没有符合这些筛选条件的变更。",
+    "pages": "页面",
+    "previous": "上一页",
+    "next": "下一页",
+    "exportTruncated": "仅包含前 5,000 项变更。请缩小筛选范围以导出其余部分。"
+  },
+  "rewardLimits": {
+    "description": "每个奖励年度的限额和阈值。审查、AI 顾问和奖励分析中的每项检查都使用该审查所属奖励年度的数值。",
+    "noAccess": "您没有访问权限",
+    "noAccessHelp": "限额控制仅供 Group Rewards、CTRO 和 EC 使用。",
+    "year": "奖励年度",
+    "show": "显示",
+    "viewOnly": "您可以查看这些限额。只有 Group Rewards 可以更改。",
+    "versionLine": "{year} 年正在使用第 {version} 版。",
+    "baselineLine": "{year} 年尚未保存任何版本。以下为标准数值；保存后将创建第 1 版。",
+    "typeHelp": "阻止：阻止提交。例外和警告：随审查流转，提交前需要说明理由。备注：仅供参考。",
+    "columns": {
+      "limit": "限额",
+      "value": "数值",
+      "type": "类型",
+      "appliesTo": "适用于",
+      "lastChanged": "最后修改人 / 日期"
+    },
+    "areas": {
+      "pools": "加薪池",
+      "person": "个人加薪",
+      "bonus": "奖金",
+      "lump": "一次性奖金",
+      "exemption": "豁免",
+      "advisor": "AI 顾问"
+    },
+    "labels": {
+      "pool_standard_merit": "绩效加薪池（占合资格工资的 %）",
+      "pool_standard_promotion": "晋升池（占合资格工资的 %）",
+      "pool_standard_special": "特别调整池（占合资格工资的 %）",
+      "pool_h_merit": "绩效加薪池（占合资格工资的 %）",
+      "pool_h_promotion": "晋升池（占合资格工资的 %）",
+      "pool_h_special": "特别调整池（占合资格工资的 %）",
+      "pool_separate": "各池之间及不同公司之间不得相互调拨",
+      "increase_withoutPromotion": "未晋升的总加薪超过",
+      "increase_withPromotion": "晋升的总加薪达到或超过",
+      "promotion_increment": "晋升加薪幅度",
+      "promotion_maxGrades": "最多晋升职级数",
+      "promotion_maxGrade": "晋升后的最高职级",
+      "catchUp_crFloor": "STAR/SSTAR 的 CR 追赶下限",
+      "salary_noReduction": "不得减薪",
+      "bonus_poolCap": "奖金池上限",
+      "bonus_underUse": "使用不足警告低于",
+      "bonus_individualCeiling": "个人奖金上限超过",
+      "bonus_rounding": "发放取整（向下取整）",
+      "bonus_individualMultiplier": "个人系数与单位不同",
+      "lump_share": "剩余余额占比",
+      "lump_step": "取整单位",
+      "lump_cap": "每人上限",
+      "lump_aboveSuggestion": "单位金额高于建议值",
+      "lump_individualAmendment": "个人调整",
+      "exemption_budgetCapsOnly": "豁免公司：仅限预算上限，需说明理由",
+      "advisor_override": "调整阈值",
+      "advisor_longWithoutIncrease": "长期未加薪",
+      "advisor_peerGap": "同级薪资差距"
+    },
+    "types": {
+      "block": "阻止",
+      "exception": "例外",
+      "warning": "警告",
+      "note": "备注"
+    },
+    "appliesTo": {
+      "standard": "标准计划",
+      "h": "JG H 计划",
+      "all": "所有计划"
+    },
+    "units": {
+      "percent": "%",
+      "points": "个百分点",
+      "ratio": "CR",
+      "months": "个月",
+      "myr": "RM",
+      "grades": "级",
+      "grade": "JG",
+      "years": "年"
+    },
+    "fixed": "固定",
+    "fixedHelp": "为保障薪酬而固定，不可更改。",
+    "none": "无",
+    "standardValue": "标准数值",
+    "changedBy": "{name} · {date}",
+    "unknownPerson": "未知",
+    "valueFor": "{limit} 的数值",
+    "typeFor": "{limit} 的类型",
+    "reviewSave": "保存前检查",
+    "save": "保存新版本",
+    "discard": "放弃更改",
+    "saved": "已保存为第 {version} 版。",
+    "errors": {
+      "system": "无法保存限额。您的更改仍在；请重试。"
+    },
+    "reviewsHeading": "本奖励年度的审查",
+    "reviewsHelp": "草稿审查使用当前版本。已提交的审查保留提交时的版本。如果您对其应用当前版本，将重新运行其检查并通知当前审批人。",
+    "reviewColumns": {
+      "review": "审查",
+      "stage": "阶段",
+      "versionUsed": "使用的限额"
+    },
+    "select": "选择",
+    "selectReview": "选择 {review}",
+    "baseline": "标准数值（限额控制之前）",
+    "currentVersion": "当前（第 {version} 版）",
+    "version": "第 {version} 版",
+    "apply": "将第 {version} 版应用于所选审查",
+    "applyConfirm": "应用并通知审批人",
+    "applied": "{count, plural, other {已应用于 # 个审查。}}",
+    "noReviews": "尚无审查使用此奖励年度。",
+    "reviewsTruncated": "仅列出前 200 个审查。",
+    "exemptionsHeading": "预算上限豁免",
+    "exemptionsHelp": "豁免仅放宽预算上限（加薪池和奖金池上限），并连同理由记录在审查的设置中。",
+    "noExemptions": "本奖励年度没有审查获得预算上限豁免。",
+    "historyHeading": "版本历史",
+    "noVersions": "尚无版本。",
+    "changeLogLink": "在变更日志中查看所有更改"
+  },
+  "scheduleOvertimeSetting": {
+    "title": "加班设置",
+    "intro": "控制此排班组员工的加班如何记录、审批、抵扣和取整。自开始日期起生效：之前的日期、打卡记录、迟到记录和以往工资不会重新计算。",
+    "companiesLabel": "适用于",
+    "allCompanies": "所有公司",
+    "selectedCompanies": "选定公司",
+    "effectiveFrom": "开始日期",
+    "effectiveHint": "须晚于今天，并晚于所选公司已保存的任何开始日期。",
+    "applicabilityTitle": "加班适用范围",
+    "beforeShift": "班前加班",
+    "beforeShiftHint": "允许在排定班次之前加班。",
+    "afterShift": "班后加班",
+    "afterShiftHint": "允许在排定班次之后加班。",
+    "allowBackdated": "允许无打卡补报加班",
+    "allowBackdatedHint": "员工可在没有对应打卡记录的情况下补报加班。HR 仍须记录实际工作时段后才会计入。",
+    "splitAtMidnight": "午夜拆分加班",
+    "splitAtMidnightHint": "午夜之后的加班计入下一个日历日，作为早班加班。例如：晚上 10:00 至凌晨 2:00，每个日期各计 2 小时。",
+    "offsetTitle": "以迟到抵扣加班",
+    "offsetLateness": "以迟到抵扣加班",
+    "offsetHint": "从符合条件的加班中扣除迟到分钟。例如：迟到 20 分钟、符合条件加班 60 分钟，剩余 40 分钟。已记录的迟到保持不变。",
+    "showLatenessException": "抵扣后显示迟到异常",
+    "showLatenessExceptionHint": "对抵扣后仍剩余的迟到显示迟到异常。",
+    "approvalTitle": "加班审批方式",
+    "approvalManual": "手动",
+    "approvalAuto": "自动",
+    "approvalManualHint": "考勤不产生应付加班。打卡记录保留，加班在工资模块中手动录入。",
+    "autoMethod": "自动加班审批方式",
+    "methodIntersect": "实际与预批取交集",
+    "methodActual": "实际时数",
+    "methodPreApproved": "已批准加班",
+    "methodIntersectHint": "按批准与实际分钟中较低者支付：批准 120、实际 90，支付 90。",
+    "methodActualHint": "按实际符合条件的分钟支付，不受批准上限限制。",
+    "methodPreApprovedHint": "按批准时长支付：批准 120、实际 90，支付 120。",
+    "patternsTitle": "各日期类型的加班模式",
+    "patternsHint": "加班工资由所选加班模式计算。仅列出对所有选定公司均有效的模式。",
+    "patternsNone": "没有对所有选定公司均有效的加班模式。请在加班模式中启用一个以使用自动，或选择手动。",
+    "choosePattern": "选择加班模式",
+    "dayNormal": "工作日",
+    "dayOff": "非工作日",
+    "dayRest": "休息日",
+    "dayPublicHoliday": "公共假日",
+    "dayReplacementHoliday": "补假日",
+    "roundingTitle": "加班取整",
+    "roundingMethod": "加班取整方式",
+    "roundUp": "向上取整",
+    "roundDown": "向下取整",
+    "roundingStep": "加班取整至分钟",
+    "stepMinutes": "{n} 分钟",
+    "roundingHint": "取整在最后进行，即在审批方式和迟到抵扣之后。已记录的打卡时长不会改变。",
+    "unsupportedRounding": "已保存的取整使用了本部分不提供的选项。保存后将自新开始日期起替换。",
+    "differs": "{n, plural, other {# 家公司}}的加班设置不同或尚未设置。保存后此设置将适用于所有选定公司。",
+    "savedFrom": "已保存的设置自 {date} 起生效。",
+    "none": "尚未保存加班设置。在保存之前，此组的加班照旧运作。",
+    "save": "保存加班设置",
+    "systemReason": "排班组加班设置已保存",
+    "on": "开",
+    "off": "关",
+    "payrollNote": "工资模块从此设置接收最终加班数据，方式与现在接收加班相同。",
+    "approvalIntro": "决定考勤是否计算应付加班，以及使用哪些分钟数。",
+    "roundingIntro": "决定符合条件的加班分钟数是向上取整、向下取整还是不取整。",
+    "roundNone": "不取整",
+    "roundingNoneHint": "选择“不取整”时不适用。保留实际符合条件的加班分钟数。",
+    "notApplicable": "不适用",
+    "minutesValue": "{n} 分钟",
+    "roundingExampleTitle": "计算示例",
+    "roundingExampleActual": "实际符合条件的加班",
+    "roundingExampleMethod": "取整方式",
+    "roundingExampleInterval": "间隔",
+    "roundingExampleFinal": "最终加班",
+    "backdateTitle": "加班补报期限控制",
+    "backdateIntro": "决定加班申请最多可以往前补报多少天。“允许无打卡补报加班”是另一项设置：它只决定是否需要打卡记录。",
+    "backdateControl": "启用加班补报期限控制",
+    "backdateControlHint": "适用于员工在网页和手机应用上提交的本人加班申请、通过 AI 助手提交的申请，以及代为申请。HR 管理员同样受此限制。",
+    "backdateDays": "允许补报的天数（天）",
+    "backdateDaysHint": "1 至 {max} 的整数，从提交申请当天往前计算。设为 3 天时，2026年11月16日提交的申请可以选择 2026年11月13日至16日。",
+    "backdateDaysValue": "{n, plural, other {# 天}}",
+    "backdateRefused": "加班申请最多只能往前补报 {days, plural, other {# 天}}。请选择 {date} 或之后的日期。"
+  },
+  "attendanceOnBehalf": {
+    "requestTitle": "代为申请",
+    "requestHelp": "选择员工，然后在常用页面为其提交考勤异常或自报加班。申请将遵循该员工自己的工作流程和审批人。",
+    "approveTitle": "代为审批",
+    "approveHelp": "选择您需要代为处理其待审批考勤申请的指定审批人。",
+    "approveListHelp": "等待 {name} 审批、您可代为决定的申请。",
+    "searchLabel": "按员工编号或姓名搜索",
+    "searchPlaceholder": "例如 EMP-0123 或姓名",
+    "search": "搜索",
+    "results": "您可代为办理的员工",
+    "noResults": "没有符合此搜索且您可代为办理的员工。",
+    "noPermission": "您的角色没有此权限。如需要，请联系管理员。",
+    "choose": "选择",
+    "employeeName": "员工",
+    "employeeId": "员工编号",
+    "company": "公司",
+    "department": "部门",
+    "changeEmployee": "更换员工",
+    "chooseCategory": "您要提交哪类申请？",
+    "irregularity": "考勤异常",
+    "irregularityHelp": "员工本人日期的缺失或错误打卡、工时不足或缺勤。",
+    "selfOvertime": "自报加班",
+    "selfOvertimeHelp": "按员工本人的排班组和加班规则计划或申报加班。",
+    "banner": "正在代 {name} 提交",
+    "pendingTitle": "待审批申请",
+    "pendingEmpty": "没有您可代为决定、正在等待该审批人的申请。",
+    "approveOnBehalf": "代为批准",
+    "rejectOnBehalf": "代为拒绝",
+    "approveAudit": "历史记录保留所选人员为指定审批人，并记录您为实际操作人。",
+    "previous": "上一页",
+    "next": "下一页"
+  },
+  "importErrorLogDataBankCostInfo": {
+    "corrections": {
+      "duplicateInFile": "此值在文件中出现多次 - 只保留一行。",
+      "duplicateEmployeeInFile": "此员工编号在文件中出现多次 - 只保留一行。",
+      "chooseReference": "请从模板的 Reference 工作表中选择一个值。",
+      "chooseCompany": "请从 Reference 工作表中选择 Company Code。",
+      "chooseCostCenter": "请选择 Allocation Reference 工作表中为该公司列出的 Cost Center Code。",
+      "date": "请以 YYYY-MM-DD 或 Excel 日期格式输入日期。",
+      "required": "请填写此列 - 此列为必填。",
+      "yesNo": "请输入 yes 或 no。",
+      "revalidate": "请重新上传已更正的文件，以便重新检查此行。",
+      "permission": "请删除此行，或请管理员授予您访问该员工所属公司的权限。",
+      "systemError": "请重新上传文件。如果问题持续出现，请将支持参考号提供给技术团队。",
+      "textCode": "请将单元格设置为文本格式，然后重新输入代码。",
+      "noFormula": "请直接输入值本身，不要使用公式。",
+      "existingEmployee": "请检查员工编号。新员工必须先通过 \"全部 - 新员工\" 添加。",
+      "percentage": "请输入大于 0 且不超过 100 的百分比，最多两位小数。",
+      "periodUnit": "请同时输入数字及其单位（Month、Week 或 Day）。",
+      "reason": "请输入至少三个字符的原因。",
+      "statutoryRecord": "请先在员工的人事记录中保存其身份证号码，然后重新上传此文件。",
+      "template": "请下载最新模板，将您的行复制进去，然后重新上传。",
+      "bankPair": "请同时输入银行名称和银行账号。"
+    },
+    "bank": {
+      "duplicateEmployeeId": "此文件中员工编号重复；首次出现在 Excel 第 {row} 行。",
+      "duplicateCardId": "此文件中卡号重复。",
+      "cardIdTaken": "card_id 已被另一名员工使用；请选择未使用的卡号。",
+      "noPermission": "您没有更新此员工的权限。",
+      "changedAfterValidation": "此行未保存。其数据或权限在验证后发生了变化；请检查后重新导入。",
+      "missingEmployeeId": "缺少 employee_code — 它用于关联要更新的员工",
+      "unknownEmployee": "没有员工编号为 \"{code}\" 的员工。分项文件只能更新系统中已有的人员 — 不能新增任何人。如需添加此人，请在本页顶部选择 \"全部 — 新员工\" 并使用完整的员工模板，然后重新运行此文件。",
+      "duplicateEmployeeCode": "此文件中 employee_code 重复",
+      "bankTransferNeedsBank": "银行转账需要银行名称和账号。",
+      "bankPair": "bank_name 和 bank_account_no 必须同时提供",
+      "noStatutoryRecordYet": "此员工尚无法定记录 — 请先在其人事记录中保存身份证号码，然后重新运行此文件",
+      "noStatutoryRecord": "此员工没有法定记录；请先在人事记录中完成法定设置。",
+      "notActiveOption": "\"{value}\" 不是有效的 {category} 选项 — 列 {column}",
+      "yesNo": "{column} 必须为 yes 或 no",
+      "jobStopped": "导入已停止。已保存的行会保留。请检查结果和您的访问权限后再试。参考号 {ref}。",
+      "jobStoppedEarlier": "导入已停止。已保存的行会保留。请检查结果和您的访问权限后再试。",
+      "fileTooLarge": "文件超出了导入大小或工作表限制。最多使用 250,000 行和 128 MiB。",
+      "fileUnreadable": "无法读取文件。请使用银行与法定资料模板及其参考工作表。",
+      "fileRowCount": "请选择包含 1 至 250,000 行数据的文件。",
+      "fileIncomplete": "上传的文件不完整或校验值不同。请重新上传。"
+    },
+    "allocation": {
+      "errors": {
+        "invalid": "请输入大于零且不超过 100 的百分比，最多两位小数。",
+        "duplicate": "每个成本中心只能选择一次。",
+        "total": "分配总额不能超过 100%。",
+        "scope": "员工记录或权限不可用。",
+        "label": "某个成本中心对该公司已停用或不可用。",
+        "changed": "分配已发生变化。请重新加载并再次预览。",
+        "date": "请选择具有已证实的雇佣公司历史的生效日期。",
+        "clear": "清除分配需要明确的 Clear 操作。",
+        "preview": "输入或参考数据已发生变化。请再次预览。",
+        "binding": "请将每项分配对应到一个公司和员工编号。",
+        "transfer": "调动前，请在调动日期保存明确的 Clear 集合，并清除之后已排定的集合。然后为目标公司保存新的分配。"
+      },
+      "operation": "Operation 必须为 Replace 或 Clear，且同一员工同一日期的每一行都必须相同。",
+      "clearRow": "Clear 需要恰好一行，且该行的 Cost Center Code 和 Percentage 为空。",
+      "costCenterUnavailable": "此 Cost Center Code 对 {company} 不可用。",
+      "companyRequired": "Company Code 为必填项。",
+      "companyAmbiguous": "Company Code \"{code}\" 匹配多个公司。请使用 Reference 工作表中列出的 Company Code。",
+      "companyUnknown": "Company Code \"{code}\" 不匹配您可以导入的任何公司。",
+      "effectiveDate": "Effective Date 必须是 YYYY-MM-DD 格式的日期。",
+      "employeeInvalid": "员工编号缺失或无效。",
+      "employeeAmbiguous": "员工编号 {code} 匹配 {company} 的多名员工。",
+      "employeeNotInCompany": "员工编号 {code} 在 {date} 不是 {company} 的员工。",
+      "heldBack": "此文件中员工编号 {code} 的另一项分配有错误，因此该员工未被导入。请先更正那一行。",
+      "unavailable": "分配的公司、员工或生效日期不可用。",
+      "saveFailed": "无法保存此员工；其任何内容均未更改。",
+      "file": {
+        "legacyLayout": "此文件使用的是带有内部公司标识（company_id）的旧版格式。请下载新模板并改为填写 Company Code 列。",
+        "duplicateHeaders": "不允许重复的分配列标题。",
+        "missingColumns": "缺少分配列：{columns}",
+        "unexpectedColumns": "意外的分配列：{columns}",
+        "tooManyRows": "每个文件最多使用 5000 行分配。",
+        "tooLarge": "分配文件超出了支持的大小。",
+        "tooLarge10": "请选择不超过 10 MB 的文件。",
+        "unreadableWorkbook": "无法读取工作簿。请下载模板后重试。",
+        "utf8": "请将 CSV 文件保存为 UTF-8。",
+        "fileType": "请选择 .xlsx 模板或具有相同列的 .csv 文件。",
+        "unreadable": "无法读取此文件。",
+        "noRows": "此文件没有分配行。"
+      }
+    },
+    "correction": {
+      "noFormula": "不接受公式和错误单元格。",
+      "textCode": "请以文本形式输入代码，以保留前导零。",
+      "date": "请使用 YYYY-MM-DD 或 Excel 日期。",
+      "tooLong": "最多 1,000 个字符。",
+      "periodUnit": "请同时输入期限及其单位（{unit}）。",
+      "notOption": "\"{value}\" 不是此公司的选项。请查看 {sheet} 参考工作表。",
+      "superiorUnknown": "该员工编号未知，或您无权查看。",
+      "organisationFormula": "组织列不能包含公式或错误单元格。",
+      "organisationTooLong": "组织值：最多 1,000 个字符。",
+      "companyRequired": "Company Code 为必填项。",
+      "employeeRequired": "员工编号为必填项。",
+      "reasonShort": "Correction Reason 必须至少包含三个字符。",
+      "duplicateEmployee": "此员工出现多次。每名员工只保留一行更正。",
+      "companyUnknown": "Company Code 未知、不明确或超出您的权限。",
+      "employeeUnknown": "员工编号在现有公司中未知或不明确。",
+      "newCompanyUnknown": "New Company Code 未知、不明确或超出您的权限。",
+      "gradeInactive": "Job Grade 不是有效的系统代码。",
+      "sameEmployee": "多行对应同一名员工。"
+    }
+  },
+  "importErrorLogEmployee": {
+    "problemsTitle": "需要更正的问题",
+    "missingColumn": "工作表中缺少此必填列。",
+    "thisField": "此列",
+    "downloadFailed": "无法生成错误日志。请重试。",
+    "correction": {
+      "reference": "请从 Reference 工作表中选择{field}。",
+      "date": "请按 YYYY-MM-DD 格式或以 Excel 日期输入日期。",
+      "month": "请按 YYYY-MM 格式输入月份。",
+      "required": "请填写{field}，此项为必填。",
+      "requiredForContract": "请填写此列 - 合同员工必须填写。",
+      "duplicateInFile": "此值在文件中出现多次 - 只保留一行。",
+      "duplicateEmployeeId": "此员工编号在文件中出现多次 - 只保留一行。",
+      "duplicateInSystem": "此值已被其他员工使用 - 请输入其他值，或删除此行。",
+      "number": "请输入数字（仅数字，不含货币符号）。",
+      "choice": "请从 Instructions 或 Reference 工作表列出的值中选择一个。",
+      "yesNo": "请输入 Yes 或 No。",
+      "email": "请输入完整的电子邮件地址，例如 name@company.com。",
+      "notOnEmployeeSheet": "请将此员工添加到员工工作表，或更正员工编号。",
+      "employeeNotFound": "请检查员工编号。如需添加新员工，请先使用“全部 - 新员工”。",
+      "missingColumn": "请使用当前模板添加“{field}”列，然后重新上传。",
+      "wrongSection": "请删除该列，或使用其所属的模板导入。",
+      "system": "请重试。如果问题持续出现，请将支持参考编号提供给您的管理员。",
+      "uploadAgain": "请更正导致导入停止的行，然后重新上传整个文件。"
+    }
+  },
+  "importProblems": {
+    "headers": {
+      "sheet": "工作表",
+      "row": "Excel 行",
+      "category": "类别",
+      "reference": "参考编号",
+      "employeeName": "员工姓名",
+      "field": "字段",
+      "value": "输入的值",
+      "problem": "问题",
+      "correction": "修正方法",
+      "stage": "发现于",
+      "result": "结果",
+      "errorReference": "支持参考号"
+    },
+    "stage": {
+      "file": "读取文件",
+      "check": "检查文件",
+      "save": "保存",
+      "system": "系统错误"
+    },
+    "result": {
+      "refused": "未导入",
+      "skipped": "已跳过",
+      "stopped": "导致导入停止",
+      "cancelled": "未保存 - 另一行导致导入停止",
+      "not_saved": "未保存 - 请重新上传已更正的文件"
+    },
+    "hiddenValue": "（已隐藏）",
+    "wholeFile": "整个文件",
+    "moreInLog": "另有 {count} 个问题列在错误日志中。",
+    "downloadLog": "下载错误日志",
+    "summary": {
+      "sheetTitle": "摘要",
+      "batch": "导入",
+      "file": "文件",
+      "status": "状态",
+      "problems": "问题",
+      "truncated": "记录导入时此列表已被缩短。请在导入后立即下载错误日志以查看所有问题。"
+    }
+  },
+  "automation": {
+    "crumb": "HR Automation",
+    "filterLabel": "Module",
+    "done": "Done",
+    "none": "None",
+    "noChoices": "No choices are available.",
+    "notAvailable": "{value} (no longer available)",
+    "modules": {
+      "all": "All modules",
+      "onb": "Onboarding",
+      "off": "Offboarding",
+      "contract_staff": "Contract staff",
+      "probation": "Probation"
+    },
+    "status": {
+      "live": "Live",
+      "paused": "Paused",
+      "retired": "Retired",
+      "required": "Required",
+      "attention": "Needs attention"
+    },
+    "ops": {
+      "is": "is",
+      "isNot": "is not",
+      "lt": "is less than",
+      "lte": "is at most",
+      "gte": "is at least"
+    },
+    "errors": {
+      "unavailable": "This could not be completed. Try again, or reload the page."
+    },
+    "recipients": {
+      "routing": "{name} (routing)",
+      "group": "{name} (group)"
+    },
+    "legacy": {
+      "workflows": "workflow builder",
+      "templates": "template builder",
+      "groups": "assignment groups",
+      "workflowsIntro": "This module keeps its own workflow builder until it moves to the shared builder. Its workflows are unchanged.",
+      "templatesIntro": "This module keeps its own templates until it moves to the shared builder. Its templates are unchanged.",
+      "groupsIntro": "Assignment groups are kept in the On/Off Boarding configuration.",
+      "openV9": "Open the On/Off Boarding {what}",
+      "openContract": "Open the Contract staff {what}",
+      "notAllowed": "You cannot configure this module."
+    },
+    "people": {
+      "title": "Named people",
+      "search": "Search people by name",
+      "placeholder": "Type at least two letters",
+      "find": "Find",
+      "add": "Add {name}",
+      "added": "Added",
+      "none": "Nobody matches."
+    },
+    "defaults": {
+      "install": "Install default Probation workflows",
+      "confirm": "Install the 16 default Probation workflows, 4 email templates and 2 routings? They are installed Paused. Anything already installed is left as it is.",
+      "done": "Installed {workflows} workflows, {emails} email templates and {routings} routings, all Paused. Review each one before making it live."
+    },
+    "workflows": {
+      "title": "Workflows",
+      "intro": "One builder for Onboarding, Offboarding, Contract staff and Probation. Active workflows run when their trigger and conditions match.",
+      "probationIntro": "Probation workflows send messages, generate letters, create Personnel postings and start offboarding. Overdue flags, scoring and gates run inside the probation module and cannot be switched off here.",
+      "requiredBanner": "{names} {count, plural, one {is} other {are}} required for probation but not live.",
+      "empty": "No Probation workflows yet. Create one, or install the default workflows.",
+      "new": "New workflow",
+      "newName": "New workflow",
+      "edit": "Edit",
+      "view": "View",
+      "editNamed": "Open {name}",
+      "probationNotAllowed": "You cannot configure Probation automation.",
+      "cardIntro": "Automate documents, emails, approvals and reminders for each case. Active workflows run when their trigger and conditions match."
+    },
+    "editor": {
+      "untitled": "Untitled workflow",
+      "name": "Workflow name",
+      "required": "Required for probation (pausing it shows a warning on the tracker)",
+      "whatStarts": "What starts it",
+      "chooseTrigger": "Choose…",
+      "workdays": "Count working days (Mon–Fri)",
+      "repeat": "Repeat every morning after that",
+      "skipWhen": "Skip when",
+      "onlyIf": "Only if",
+      "onlyIfHelp": "All conditions must match. Leave empty to apply to every case in this module.",
+      "multiHint": "Several values: is matches any, is not matches none.",
+      "addCondition": "Add condition",
+      "thenHelp": "Steps run in order. Use the arrows to reorder them.",
+      "stepOnlyIf": "Only run this step if",
+      "stepConditions": "Conditions of step {step}",
+      "addStepCondition": "Add step condition",
+      "stepConditionHint": "Leave empty to always run this step. A skipped step is noted in the case activity.",
+      "addStep": "Add a step",
+      "chooseStep": "Choose a step…",
+      "moveUp": "Move step {step} up",
+      "moveDown": "Move step {step} down",
+      "removeStep": "Remove step {step}",
+      "remove": "Remove",
+      "to": "To",
+      "cc": "CC",
+      "stepTo": "Step {step} To",
+      "stepCc": "Step {step} CC",
+      "subject": "Subject",
+      "message": "Message",
+      "insertMergeField": "Insert merge field…",
+      "insertMerge": "Insert merge field into the {where} of step {step}",
+      "mergeHelp": "Pick a merge field from the list, or type it in double curly brackets, for example {example}.",
+      "emailTemplate": "Email template",
+      "emailSubject": "Subject: {subject} (set in the email template)",
+      "emailFromTemplate": "The subject and message come from the email template.",
+      "choose": "Choose…",
+      "letterTemplate": "Letter template",
+      "letterTemplateId": "Letter template id",
+      "letterNote": "The letter is generated from the chosen Probation letter template and pauses until it is signed. Its signing and review routing is set in the template.",
+      "postingEvent": "Event type in Personnel Management",
+      "postingNote": "Each outcome logs its own event type. The posting is approved in Personnel postings, and Personnel Management only changes after approval.",
+      "exitReason": "Exit reason on the offboarding case",
+      "offboardingNote": "Runs once per case, for Non-confirmation only.",
+      "problems": "Problems",
+      "warnings": "Notes",
+      "note": "Change note (optional)",
+      "notePlaceholder": "Why this change was made",
+      "makeLive": "Make it live",
+      "pause": "Pause",
+      "save": "Save changes",
+      "retire": "Retire workflow",
+      "back": "Back to workflows",
+      "fixFirst": "Fix the problems above first",
+      "retireConfirm": "Retire this workflow? It stops for good. Runs already waiting keep their steps.",
+      "leaveUnsaved": "Leave without saving your changes?",
+      "runsKeep": "Changes are saved when you press a button. Runs already waiting keep the steps they started with.",
+      "retiredReadOnly": "This workflow is retired and can no longer change.",
+      "isLive": "“{name}” is live.",
+      "paused": "“{name}” is paused. Nothing new starts; runs already waiting keep their steps.",
+      "retired": "“{name}” is retired.",
+      "saved": "Saved.",
+      "reasonSave": "Edited in the workflow builder",
+      "reasonLive": "Made live in the workflow builder",
+      "reasonPause": "Paused in the workflow builder",
+      "reasonRetire": "Retired in the workflow builder"
+    },
+    "conditions": {
+      "field": "Condition field",
+      "operator": "Condition operator",
+      "valueFor": "Condition value for {field}",
+      "typeValues": "Type values, separated by commas",
+      "unavailable": "not available for this trigger",
+      "remove": "Remove condition"
+    },
+    "dry": {
+      "title": "Dry run",
+      "intro": "A dry run shows what would happen for one case. Nothing is sent and nothing is saved. Date-based triggers run from the nightly scheduler, so they can only be checked here.",
+      "searchCase": "Find a probation case",
+      "searchPlaceholder": "Employee name",
+      "findCases": "Find cases",
+      "noCases": "No probation case you can open matches.",
+      "testCase": "Test case",
+      "pendingNote": "On a real case the system checks whose step is pending on the day the reminder runs.",
+      "run": "Run the dry run",
+      "result": "Dry run result",
+      "runDate": "Would run on {date}.",
+      "repeats": "Then every morning after that.",
+      "wouldRun": "Would run for {name}.",
+      "wouldNotRun": "Would not run for {name}.",
+      "unavailable": "not available for this trigger",
+      "thisCase": "this case: {value}",
+      "empty": "empty",
+      "to": "to {names}",
+      "cc": "CC {names}",
+      "nobody": "nobody",
+      "skipped": "skipped: {why}",
+      "nothingSent": "Nothing is sent and nothing is saved."
+    },
+    "templates": {
+      "title": "Templates",
+      "intro": "Document templates and email templates. A workflow decides when a document is generated or an email is sent.",
+      "documents": "Document templates",
+      "documentsIntro": "Probation letters, with their signing and review routing, are edited in the letter template editor.",
+      "noLetterCompany": "You do not configure Probation letters for any company.",
+      "company": "Company",
+      "goLive": "Go-live check: {count} of 3 probation letters published.",
+      "noLetters": "No letter templates yet.",
+      "letterLine": "Letter · version {version} · {state}",
+      "state": {
+        "draft": "draft",
+        "published": "in use",
+        "retired": "retired"
+      },
+      "openLetterEditor": "Open the letter template editor",
+      "emails": "Email templates",
+      "emailsIntro": "The words, merge fields and extra CC. A workflow decides when it is sent. Turning a template off skips its Send email steps and notes it on the case; nothing else changes.",
+      "noEmails": "No Probation email templates yet.",
+      "newEmail": "New email",
+      "newName": "New email",
+      "editNamed": "Open email template {name}",
+      "editorTitle": "Email template {name}",
+      "turnedOff": "turned off",
+      "name": "Template name",
+      "active": "Send this email (on)",
+      "offNote": "This template is turned off. Send email steps that use it are skipped and noted on the case.",
+      "cc": "Always copy (CC)",
+      "insertMerge": "Insert merge field into the {where}",
+      "fixFirst": "Fix the problems before saving.",
+      "save": "Save template",
+      "retire": "Retire template",
+      "retireConfirm": "Retire this email template? Workflows that use it will show a problem until another template is chosen.",
+      "close": "Close",
+      "reasonCreate": "Created in the template builder",
+      "reasonSave": "Edited in the template builder",
+      "reasonRetire": "Retired in the template builder",
+      "goLiveReady": "All outcome letters are ready.",
+      "goLiveMissing": "Publish a letter template for each outcome before go-live.",
+      "letter": "Letter",
+      "versionPill": "v{version} {state}",
+      "editLetter": "Edit {name} in the letter template editor",
+      "signing": {
+        "chain": "signing: {chain}",
+        "existing": "signing: the existing letter signing route",
+        "missing": "a routing or group that was removed",
+        "people": "{count, plural, one {1 named person} other {# named people}}",
+        "employee": "the employee",
+        "directSuperior": "the Direct Superior",
+        "action": {
+          "review": "Review",
+          "approve": "Approve",
+          "sign": "Sign"
+        }
+      }
+    },
+    "groups": {
+      "title": "Assignment groups",
+      "intro": "Groups and routing rules are shared by Onboarding, Offboarding, Contract staff and Probation.",
+      "groups": "Assignment groups",
+      "groupsIntro": "Round robin skips people on leave and people at their open task limit. Groups and their members are edited in the On/Off Boarding configuration.",
+      "noGroups": "No assignment groups yet.",
+      "usedBy": "{count, plural, =0 {Not used by a routing} one {Used by # routing} other {Used by # routings}}",
+      "editGroups": "Edit assignment groups in On/Off Boarding",
+      "groupsReadOnly": "Only On/Off Boarding administrators can change groups and their members.",
+      "routings": "Routing rules",
+      "routingIntro": "Each routing finds who acts for an employee. Pick a routing by name in any To or CC list, or in an approval or signing step, when the person depends on who the employee is. The most specific matching row wins; leave a field on Any to match everyone.",
+      "approvalNote": "In an approval or signing step a routing yields one person (any member or round robin). As a To or CC recipient it yields everyone in the matched group or list.",
+      "newRouting": "New routing",
+      "newRoutingName": "New routing",
+      "noRoutings": "No routings yet. Create one to route approvals and messages by business group, company, department or job title.",
+      "retired": "{count, plural, one {# retired routing} other {# retired routings}}",
+      "routingName": "Routing name",
+      "duplicateName": "Another routing already has this name.",
+      "usedIn": "Used in: {list}{more, plural, =0 {} other { and # more}}",
+      "notUsed": "Not used in any workflow yet",
+      "dimension": {
+        "businessGroup": "Business group",
+        "company": "Company",
+        "department": "Department",
+        "jobTitle": "Job title"
+      },
+      "rowDimension": "Row {row} {dimension}",
+      "any": "Any",
+      "assignTo": "Assign to",
+      "assignGroup": "Assignment group",
+      "assignPeople": "Specific people",
+      "group": "Group",
+      "people": "People (1 to {max})",
+      "rowPeople": "Row {row} people",
+      "removeRow": "Remove row {row}",
+      "addRow": "Add row",
+      "matches": "Matches employees with {what}",
+      "matchesEveryone": "Default: matches everyone no other row matches",
+      "goesTo": "goes to {who}",
+      "toGroup": "everyone in “{name}”",
+      "noGroupChosen": "no group chosen",
+      "noPeopleChosen": "nobody yet",
+      "unknownPerson": "someone who can no longer be found",
+      "fixFirst": "Fix the routing before saving it.",
+      "save": "Save routing",
+      "retire": "Retire routing",
+      "retireConfirm": "Retire this routing? {count, plural, =0 {No workflow uses it.} one {# workflow uses it and will show a problem.} other {# workflows use it and will show a problem.}}",
+      "retiredNow": "“{name}” is retired.",
+      "cancel": "Cancel",
+      "reasonCreate": "Created in the routing rules",
+      "reasonSave": "Edited in the routing rules",
+      "reasonRetire": "Retired in the routing rules",
+      "routingNamed": "Routing “{name}”",
+      "usedByList": "Used by: {list}",
+      "groupName": "Group name"
+    },
+    "move": {
+      "title": "Move Probation workflows to shared workflows",
+      "help": "Moves each workflow of the Probation workflow builder whose shared form reaches the same people with the same words. A moved workflow goes Live here and stops sending from the Probation builder, so nobody is notified twice. The rest stay where they are and are listed with the reason. Running it again moves nothing twice.",
+      "reason": "Reason (kept in the audit history)",
+      "button": "Move to shared workflows",
+      "confirm": "Move the Probation workflows that convert exactly? Each moved workflow goes Live here and stops sending from the Probation builder.",
+      "done": "Moved {moved}; {kept} stay on the Probation builder; {already} were moved before.",
+      "result": "Move result",
+      "moved": "Moved",
+      "kept": "Staying on the Probation builder",
+      "none": "There was nothing left to move."
+    }
+  },
+  "personnelPostings": {
+    "breadcrumb": "Probation Confirmation / Personnel postings",
+    "title": "Personnel postings",
+    "intro": "Changes to Personnel Management created by Probation workflows wait here. Approve applies the change; Edit opens the event movement in Personnel Management.",
+    "rule": "Only members of the group set in Probation settings › “Who approves Personnel postings” can approve, by Approve or by Save event. Anyone who can record events can Edit; their changes wait for an approver. Nothing reaches Personnel Management until approval.",
+    "columns": {
+      "posting": "Posting",
+      "employee": "Employee",
+      "eventType": "Event type",
+      "change": "Change",
+      "created": "Created",
+      "status": "Status",
+      "actions": "Actions",
+      "from": "From"
+    },
+    "events": {
+      "confirmation": "Confirmation",
+      "probationExtension": "Probation Extension"
+    },
+    "change": {
+      "confirmation": "Confirmation Date {date} · status Probation → Active",
+      "probationExtension": "Probation extended · new end date {end} · effective {date}",
+      "remarks": "Remarks: {remarks}"
+    },
+    "status": {
+      "pending": "Pending",
+      "edited": "Edited · waiting for approval",
+      "approved": "Approved"
+    },
+    "editedNote": "Edited by {name} {date}: {changes}",
+    "fields": {
+      "effectiveDate": "effective date",
+      "endDate": "end date",
+      "remarks": "remarks"
+    },
+    "fieldChange": "{field} {before} → {after}",
+    "someone": "a colleague",
+    "unknownGroup": "the posting approver group",
+    "approve": "Approve",
+    "edit": "Edit",
+    "editLabel": "Edit {posting} in Personnel Management",
+    "approveOnlyGroup": "Only {group} can approve",
+    "filters": {
+      "label": "Show postings",
+      "pending": "Waiting for approval",
+      "approved": "Approved",
+      "all": "All"
+    },
+    "empty": "No postings here.",
+    "previous": "Previous",
+    "next": "Next",
+    "saved": {
+      "approved": "Posting {posting} approved. Personnel Management is updated.",
+      "edited": "Your changes to posting {posting} are saved and wait for approval."
+    },
+    "movement": {
+      "banner": "From Personnel posting {posting} · Probation Confirmation.",
+      "approverHint": "You are in the posting approver group ({group}): saving applies this event, approves the posting as you and clears the pending state on the case.",
+      "editorHint": "You can correct these details. The posting stays Pending until {group} approves it; Personnel Management does not change yet.",
+      "leaveHint": "Leaving without saving changes nothing.",
+      "saveAndApprove": "Save event and approve",
+      "saveForApproval": "Save changes for approval",
+      "notPending": "Posting {posting} is no longer waiting for approval.",
+      "backToPostings": "Back to Personnel postings"
+    },
+    "introGroup": "Changes to Personnel Management created by workflows wait here as drafts. Approve applies the change, and Edit opens the event movement in Personnel Management. Probation postings are approved by <b>{group}</b>, set in Probation settings.",
+    "sources": {
+      "probation": "Probation"
+    },
+    "approverGroupFallback": "the posting approver group"
+  },
+  "probationLetters": {
+    "routing": {
+      "title": "Signing and review routing",
+      "help": "Who reviews, approves and signs this letter, and in what order. Steps with the same order number happen at the same time, and the letter moves on when all of them are done. Who each step resolves to comes from Assignment groups and Routing rules. A Review step can edit the letter until the first signature; after that the text is locked. Anyone can send the letter back with a comment: every signature is cleared and it returns to the step that owns the document (or the People Business Partner if none is ticked).",
+      "empty": "No signing routing set. This letter uses the signing route below, as today.",
+      "notStored": "Signing and review routing is switched on together with the new letter flow. Until then this letter uses the signing route below.",
+      "stepTitle": "Step {n}",
+      "order": "Order",
+      "action": "Action",
+      "who": "Who",
+      "owner": "Owns the document",
+      "pick": "Choose one person by",
+      "pickAny": "Any member",
+      "pickRoundRobin": "Round robin",
+      "oneOfGroup": "A routing or group gives one person for this step, chosen by the rule above.",
+      "actions": {
+        "review": "Review",
+        "approve": "Approve",
+        "sign": "Sign"
+      },
+      "hint": {
+        "review": "Can edit the letter until the first signature. Shown in Approval Items.",
+        "approve": "A decision with no signature. Shown in Approval Items.",
+        "sign": "Signs the letter. The last step releases it. Signers can’t edit the text.",
+        "owner": "Send-backs come to this step."
+      },
+      "whoEmployee": "The employee",
+      "whoDirectSuperior": "Their Direct Superior",
+      "whoRouting": "Routing: {name}",
+      "whoGroup": "Assignment group: {name}",
+      "whoPeople": "Named people",
+      "unknown": "No longer available",
+      "people": "People at this step",
+      "removePerson": "Remove {name}",
+      "remove": "Remove step {n}",
+      "add": "Add signing step",
+      "problems": "Problems",
+      "blocks": "Signature blocks",
+      "blocksHelp": "Who signs comes from the signing routing above. This only decides where that signature prints.",
+      "noBlocks": "This version has no signature block yet. Add one in the content.",
+      "blockLabel": "Signature block {n}",
+      "chooseStep": "Choose a signing step…",
+      "stepOption": "Step {order} · Sign · {who}",
+      "oldSetting": "{role} (old setting — choose a step)",
+      "stepRemoved": "Signing step removed — choose another"
+    },
+    "preview": {
+      "caseLabel": "Preview values for",
+      "chooseCase": "Choose a case",
+      "loading": "Loading the case’s values…",
+      "noOutcome": "This case has no decided outcome yet, so merge fields show as placeholders.",
+      "notPublished": "Case values can be previewed for a saved, published version that matches the case’s outcome. Merge fields show as placeholders.",
+      "unavailable": "The preview values are unavailable right now."
+    },
+    "history": {
+      "routingSteps": "{count, plural, =0 {no routing} one {# routing step} other {# routing steps}}"
+    }
+  },
+  "automationRuntime": {
+    "status": {
+      "running": "Running",
+      "waiting": "Waiting for the document",
+      "done": "Finished",
+      "skipped": "Skipped",
+      "failed": "Stopped"
+    },
+    "log": {
+      "started": "Started",
+      "skipped": "Skipped",
+      "stepDone": "Step done",
+      "stepSkipped": "Step skipped",
+      "stepFailed": "Step failed",
+      "waiting": "Waiting",
+      "resumed": "Continued",
+      "done": "Finished",
+      "failed": "Stopped"
+    },
+    "noWorkflow": "No workflow matched this case, so it was sent to the People Business Partner.",
+    "fallback": "Meant for {meantFor}; sent to the fallback group because nobody was found."
+  },
+  "probationAccess": {
+    "breadcrumb": "Probation Confirmation / Configuration / Access",
+    "title": "Access",
+    "intro": "Same access model as Contract Management. Line Managers get access automatically through the Direct Superiors rule. Business Partners and everyone else aren’t given access automatically: create a role below and add them as members with the right scope. System Administrators manage this page and every Probation setting; to see or act on cases they add themselves to a role like anyone else.",
+    "forbidden": "Only a System Administrator or someone who manages access can open Probation access.",
+    "on": "On",
+    "off": "Off",
+    "superiors": {
+      "title": "Direct Superiors",
+      "intro": "Anyone named as an employee’s Direct Superior in Personnel Management gets these permissions for that employee’s cases.",
+      "enabled": "Rule is on",
+      "view": "View cases",
+      "kpis": "Set Week 1 KPIs",
+      "assessments": "Complete assessments",
+      "alwaysOn": "always on",
+      "declined": "Record a declined signature",
+      "offWarning": "With the rule off, Line Managers can’t see their team’s cases, set KPIs or complete assessments, so reviews would stall. Only switch it off if another role covers this.",
+      "save": "Save rule",
+      "saved": "Direct Superiors rule saved.",
+      "savedOff": "Direct Superiors rule saved. Line Managers no longer get automatic access."
+    },
+    "roles": {
+      "title": "Roles",
+      "intro": "Create a role, choose what it can see and do, and add its members, each with a business group and company scope.",
+      "newRole": "+ New role",
+      "newRoleName": "New role",
+      "name": "Role name",
+      "save": "Save role",
+      "cancel": "Cancel",
+      "delete": "Delete role",
+      "deleteConfirm": "Delete {name}? Its members lose these permissions now.",
+      "empty": "No roles yet. Create a role to give Business Partners and others access.",
+      "cases": "Cases (within each member’s scope)",
+      "settings": "Settings",
+      "postingsNote": "Decides who may choose the posting-approver group in Probation settings. Only that group approves Personnel postings.",
+      "actNote": "A member never acts on their own probation.",
+      "created": "Role {name} created.",
+      "saved": "Role {name} saved.",
+      "deleted": "Role {name} deleted."
+    },
+    "permissions": {
+      "view": "View cases",
+      "letters": "Approve and release letters",
+      "lowResult": "Record low-result actions",
+      "route": "Change a case’s route",
+      "configure": "Configure probation",
+      "intake": "Intake and activation",
+      "postings": "Approve Personnel postings"
+    },
+    "members": {
+      "title": "Members",
+      "empty": "No members yet.",
+      "businessGroup": "Business group",
+      "allBusinessGroups": "All business groups",
+      "company": "Company",
+      "allCompanies": "All companies",
+      "validFrom": "Valid from",
+      "validTo": "Valid to (optional)",
+      "active": "Active",
+      "scheduled": "Scheduled",
+      "expired": "Expired",
+      "save": "Save",
+      "remove": "Remove",
+      "removeLabel": "Remove {name} from {role}",
+      "add": "+ Add member",
+      "find": "Find a person",
+      "search": "Search",
+      "noMatch": "No active person matches “{query}”.",
+      "addPerson": "Add {name}",
+      "added": "{name} added to {role}.",
+      "changed": "{name}’s scope saved.",
+      "removed": "{name} removed from {role}."
+    },
+    "earlier": {
+      "title": "Earlier PBP and GBS assignments",
+      "intro": "These assignments were made before roles existed and still apply.",
+      "pbp": "People Business Partner",
+      "gbs": "GBS People Ops",
+      "validFrom": "from {date}",
+      "validTo": "until {date}"
+    }
   },
   "recruitment": {
     "noCompany": "您当前范围内没有由您管理招聘的公司。请切换公司，或向集团管理员申请招聘合作伙伴角色。",
@@ -41586,858 +43888,6 @@
       "repeat": "此候选人已通过您的合同推荐到该职位，正在等待审核。",
       "dailyLimit": "您已达到今天 20 条推荐的上限。请明天再试。",
       "notAvailable": "此职位已不再向您的合同开放。"
-    }
-  },
-  "bulkJobs": {
-    "notification": {
-      "employeeImport": {
-        "completed": {
-          "title": "员工导入已完成",
-          "body": "打开导入历史，查看已添加的员工。"
-        },
-        "failed": {
-          "title": "员工导入已停止",
-          "body": "未添加任何员工。打开导入历史查看原因。"
-        },
-        "cancelled": {
-          "title": "员工导入已取消",
-          "body": "未添加任何员工。打开导入历史查看详情。"
-        }
-      },
-      "leaveImport": {
-        "completed": {
-          "title": "休假数据导入已完成",
-          "body": "导入的记录现已计入员工的休假余额。"
-        },
-        "failed": {
-          "title": "休假数据导入已停止",
-          "body": "已保存的记录将被保留。再次导入同一文件时会跳过这些记录。"
-        },
-        "cancelled": {
-          "title": "休假数据导入已取消",
-          "body": "已保存的记录将被保留。再次导入同一文件时会跳过这些记录。"
-        }
-      },
-      "leaveProcessing": {
-        "completed": {
-          "title": "休假处理已完成",
-          "body": "休假数据已更新。"
-        },
-        "failed": {
-          "title": "休假处理已停止",
-          "body": "已处理的员工保留其数据。请再次运行以完成其余部分。"
-        },
-        "cancelled": {
-          "title": "休假处理已取消",
-          "body": "已处理的员工保留其数据。请再次运行以完成其余部分。"
-        }
-      },
-      "roster": {
-        "completed": {
-          "title": "排班更改已完成",
-          "body": "打开排班查看结果。"
-        },
-        "failed": {
-          "title": "排班更改已停止",
-          "body": "打开排班查看原因。"
-        },
-        "cancelled": {
-          "title": "排班更改已取消",
-          "body": "打开排班查看详情。"
-        }
-      },
-      "scheduleGroup": {
-        "completed": {
-          "title": "排班组分配已完成",
-          "body": "打开分配排班组查看结果。"
-        },
-        "failed": {
-          "title": "排班组分配已停止",
-          "body": "打开分配排班组查看原因。"
-        },
-        "cancelled": {
-          "title": "排班组分配已取消",
-          "body": "打开分配排班组查看详情。"
-        }
-      },
-      "clockingImport": {
-        "completed": {
-          "title": "打卡导入已完成",
-          "body": "打开导入日志，查看已添加的打卡记录。"
-        },
-        "failed": {
-          "title": "打卡导入已中止",
-          "body": "打开导入日志，查看已保存的内容及中止原因。"
-        },
-        "cancelled": {
-          "title": "打卡导入已中止",
-          "body": "打开导入日志，查看已保存的内容。"
-        }
-      },
-      "attendanceRecomputePreview": {
-        "completed": {
-          "title": "重新计算预览已就绪",
-          "body": "打开重新计算考勤，查看将会发生的变化。"
-        },
-        "failed": {
-          "title": "重新计算预览已中止",
-          "body": "打开重新计算考勤，查看原因。"
-        },
-        "cancelled": {
-          "title": "重新计算预览已中止",
-          "body": "打开重新计算考勤，重新开始。"
-        }
-      },
-      "attendanceRecompute": {
-        "completed": {
-          "title": "考勤已重新计算",
-          "body": "打开重新计算考勤，查看发生变化的日期。"
-        },
-        "failed": {
-          "title": "考勤重新计算已中止",
-          "body": "打开重新计算考勤，查看原因。"
-        },
-        "cancelled": {
-          "title": "考勤重新计算已中止",
-          "body": "打开重新计算考勤，查看详情。"
-        }
-      },
-      "payrollProcess": {
-        "completed": {
-          "title": "薪资处理已完成",
-          "body": "打开薪资，审核已处理的批次。"
-        },
-        "failed": {
-          "title": "薪资处理已停止",
-          "body": "批次已退回草稿，未保留任何工资单。打开薪资查看原因。"
-        },
-        "cancelled": {
-          "title": "薪资处理已取消",
-          "body": "批次已退回草稿，未保留任何工资单。"
-        }
-      },
-      "systemLabelImport": {
-        "completed": {
-          "title": "系统标签导入已完成",
-          "body": "打开系统标签，查看已添加的代码。"
-        },
-        "failed": {
-          "title": "系统标签导入已停止",
-          "body": "未添加任何代码。请打开系统标签并重新预览工作簿。"
-        },
-        "cancelled": {
-          "title": "系统标签导入已取消",
-          "body": "未添加任何代码。"
-        }
-      },
-      "sectionImport": {
-        "completed": {
-          "title": "分项导入已完成",
-          "body": "打开导入页面，查看已更新的行。"
-        },
-        "failed": {
-          "title": "分项导入已停止",
-          "body": "停止前已保存的行均已保留。打开导入页面查看原因。"
-        },
-        "cancelled": {
-          "title": "分项导入已取消",
-          "body": "停止前已保存的行均已保留。打开导入页面查看详情。"
-        }
-      },
-      "registerImport": {
-        "completed": {
-          "title": "登记导入已完成",
-          "body": "打开导入页面，查看已保存的登记记录。"
-        },
-        "failed": {
-          "title": "登记导入已停止",
-          "body": "未保存任何登记记录。打开导入页面查看原因。"
-        },
-        "cancelled": {
-          "title": "登记导入已取消",
-          "body": "未保存任何登记记录。打开导入页面查看详情。"
-        }
-      },
-      "employeeImportRevert": {
-        "completed": {
-          "title": "导入撤销已完成",
-          "body": "打开导入历史，查看已作废的员工。"
-        },
-        "failed": {
-          "title": "导入撤销已停止",
-          "body": "未做任何更改。打开导入历史查看原因。"
-        },
-        "cancelled": {
-          "title": "导入撤销已取消",
-          "body": "未做任何更改。打开导入历史查看详情。"
-        }
-      },
-      "leaveGeneration": {
-        "completed": {
-          "title": "假期额度生成已完成",
-          "body": "假期数据已更新。"
-        },
-        "failed": {
-          "title": "假期额度生成已停止",
-          "body": "未做任何更改。请打开生成假期额度查看原因，然后再次运行。"
-        },
-        "cancelled": {
-          "title": "假期额度生成已取消",
-          "body": "未做任何更改。"
-        }
-      },
-      "leaveRecalculation": {
-        "completed": {
-          "title": "假期余额已重新计算",
-          "body": "员工的假期数据现已按已保存的设置计算。"
-        },
-        "failed": {
-          "title": "假期重新计算已停止",
-          "body": "已重新计算的员工保留其新数据。请再次保存该设置以重新计算其余员工。"
-        },
-        "cancelled": {
-          "title": "假期重新计算已取消",
-          "body": "已重新计算的员工保留其新数据。请再次保存该设置以重新计算其余员工。"
-        }
-      },
-      "leaveYearType": {
-        "completed": {
-          "title": "假期年度类型已应用",
-          "body": "首年员工的假期数据现已按已保存的假期年度类型计算。"
-        },
-        "failed": {
-          "title": "假期年度类型未应用于余额",
-          "body": "未更改任何假期数据。请再次保存假期年度类型以重试。"
-        },
-        "cancelled": {
-          "title": "假期年度类型调整已取消",
-          "body": "未更改任何假期数据。"
-        }
-      },
-      "toilSweep": {
-        "completed": {
-          "title": "补假结算已完成",
-          "body": "到期的补假已处理完毕。打开假期额度页面查看。"
-        },
-        "failed": {
-          "title": "补假结算已停止",
-          "body": "已处理的补假保持不变。请再次运行以处理其余部分。"
-        },
-        "cancelled": {
-          "title": "补假结算已取消",
-          "body": "已处理的补假保持不变。请再次运行以处理其余部分。"
-        }
-      },
-      "payrollHistory": {
-        "completed": {
-          "title": "薪资历史更改已提交",
-          "body": "打开导入日志查看已提交的内容。"
-        },
-        "failed": {
-          "title": "薪资历史更改已停止",
-          "body": "薪资历史未作任何更改。打开导入日志查看原因。"
-        },
-        "cancelled": {
-          "title": "薪资历史更改已取消",
-          "body": "薪资历史未作任何更改。"
-        }
-      },
-      "payrollReprocess": {
-        "completed": {
-          "title": "薪资重新处理已完成",
-          "body": "打开薪资批次查看已重新处理的员工。"
-        },
-        "failed": {
-          "title": "薪资重新处理已停止",
-          "body": "已重新处理的员工保留其新结果。打开薪资批次查看停止的位置。"
-        },
-        "cancelled": {
-          "title": "薪资重新处理已取消",
-          "body": "已重新处理的员工保留其新结果。"
-        }
-      },
-      "movementImport": {
-        "completed": {
-          "title": "异动导入已完成",
-          "body": "打开导入历史，查看已保存的异动以及未能保存的员工。"
-        },
-        "failed": {
-          "title": "异动导入已停止",
-          "body": "打开导入历史查看原因。已保存的员工会保留其异动。"
-        },
-        "cancelled": {
-          "title": "异动导入已停止",
-          "body": "已保存的员工会保留其异动。打开导入历史查看详情。"
-        }
-      },
-      "movementCheck": {
-        "completed": {
-          "title": "异动文件已检查",
-          "body": "检查已记录在导入历史中。如果您已离开导入页面，请重新上传该文件以查看并确认。"
-        },
-        "failed": {
-          "title": "异动检查已停止",
-          "body": "打开导入历史查看原因。未保存任何内容。"
-        },
-        "cancelled": {
-          "title": "异动检查已停止",
-          "body": "未保存任何内容。打开导入历史查看详情。"
-        }
-      },
-      "movementImportRevert": {
-        "completed": {
-          "title": "异动导入撤销已完成",
-          "body": "打开导入历史，查看已撤销的异动。"
-        },
-        "failed": {
-          "title": "异动导入撤销已停止",
-          "body": "未作任何更改。打开导入历史查看原因。"
-        },
-        "cancelled": {
-          "title": "异动导入撤销已取消",
-          "body": "未作任何更改。打开导入历史查看详情。"
-        }
-      },
-      "recruitmentImport": {
-        "completed": {
-          "title": "候选人导入已完成",
-          "body": "打开导入以逐行查看结果，以及在“待分配”列表中等待的候选人。"
-        },
-        "failed": {
-          "title": "候选人导入已停止",
-          "body": "导入因问题而停止。已导入的行会保留；打开导入查看结果。"
-        },
-        "cancelled": {
-          "title": "候选人导入已停止",
-          "body": "导入已被停止。已导入的行会保留；打开导入查看结果。"
-        }
-      }
-    },
-    "panel": {
-      "queued": "等待开始",
-      "preparing": "正在检查每项更改",
-      "running": "正在保存",
-      "finalizing": "正在完成",
-      "discarding": "正在停止",
-      "completed": "已完成",
-      "failed": "已停止",
-      "cancelled": "已取消",
-      "progressCount": "已完成 {done}/{total} 个步骤",
-      "backgroundHelp": "您可以离开此页面。工作会继续进行，完成后会通知您。",
-      "waiting": "正在等待后台服务。进度已保存；请勿再次启动。",
-      "workerUnavailable": "后台服务尚未运行。您的请求已保存，服务一运行便会自动开始。"
-    },
-    "roster": {
-      "generate": "正在生成排班",
-      "copy": "正在复制排班",
-      "assign": "正在应用排班更改",
-      "import": "正在保存上传的排班",
-      "otherRunning": "另一项排班更改仍在保存。请等待其完成后再试。",
-      "saveFailed": "无法保存排班更改。请重试，或联系 HR 管理员。",
-      "queuedBehind": "正在排队，等待另一项排班任务完成。该任务完成后将自动开始。"
-    },
-    "scheduleGroup": {
-      "title": "正在分配排班组",
-      "otherRunning": "另一项排班组分配仍在保存。请等待其完成后再试。",
-      "queuedBehind": "正在排队，等待另一项排班组分配完成。该分配完成后将自动开始。"
-    }
-  },
-  "importLog": {
-    "batchReference": "批次编号",
-    "importedBy": "导入人",
-    "batchLabel": "批次 {code}",
-    "actorWithId": "{name}（{employeeId}）",
-    "actorUnlinked": "管理员登录账号（无员工记录 · 账号结尾 {suffix}）",
-    "actorUnavailable": "不可用的用户"
-  },
-  "scheduleOvertimeSetting": {
-    "title": "加班设置",
-    "intro": "控制此排班组员工的加班如何记录、审批、抵扣和取整。自开始日期起生效：之前的日期、打卡记录、迟到记录和以往工资不会重新计算。",
-    "companiesLabel": "适用于",
-    "allCompanies": "所有公司",
-    "selectedCompanies": "选定公司",
-    "effectiveFrom": "开始日期",
-    "effectiveHint": "须晚于今天，并晚于所选公司已保存的任何开始日期。",
-    "applicabilityTitle": "加班适用范围",
-    "beforeShift": "班前加班",
-    "beforeShiftHint": "允许在排定班次之前加班。",
-    "afterShift": "班后加班",
-    "afterShiftHint": "允许在排定班次之后加班。",
-    "allowBackdated": "允许无打卡补报加班",
-    "allowBackdatedHint": "员工可在没有对应打卡记录的情况下补报加班。HR 仍须记录实际工作时段后才会计入。",
-    "splitAtMidnight": "午夜拆分加班",
-    "splitAtMidnightHint": "午夜之后的加班计入下一个日历日，作为早班加班。例如：晚上 10:00 至凌晨 2:00，每个日期各计 2 小时。",
-    "offsetTitle": "以迟到抵扣加班",
-    "offsetLateness": "以迟到抵扣加班",
-    "offsetHint": "从符合条件的加班中扣除迟到分钟。例如：迟到 20 分钟、符合条件加班 60 分钟，剩余 40 分钟。已记录的迟到保持不变。",
-    "showLatenessException": "抵扣后显示迟到异常",
-    "showLatenessExceptionHint": "对抵扣后仍剩余的迟到显示迟到异常。",
-    "approvalTitle": "加班审批方式",
-    "approvalManual": "手动",
-    "approvalAuto": "自动",
-    "approvalManualHint": "考勤不产生应付加班。打卡记录保留，加班在工资模块中手动录入。",
-    "autoMethod": "自动加班审批方式",
-    "methodIntersect": "实际与预批取交集",
-    "methodActual": "实际时数",
-    "methodPreApproved": "已批准加班",
-    "methodIntersectHint": "按批准与实际分钟中较低者支付：批准 120、实际 90，支付 90。",
-    "methodActualHint": "按实际符合条件的分钟支付，不受批准上限限制。",
-    "methodPreApprovedHint": "按批准时长支付：批准 120、实际 90，支付 120。",
-    "patternsTitle": "各日期类型的加班模式",
-    "patternsHint": "加班工资由所选加班模式计算。仅列出对所有选定公司均有效的模式。",
-    "patternsNone": "没有对所有选定公司均有效的加班模式。请在加班模式中启用一个以使用自动，或选择手动。",
-    "choosePattern": "选择加班模式",
-    "dayNormal": "工作日",
-    "dayOff": "非工作日",
-    "dayRest": "休息日",
-    "dayPublicHoliday": "公共假日",
-    "dayReplacementHoliday": "补假日",
-    "roundingTitle": "加班取整",
-    "roundingMethod": "加班取整方式",
-    "roundUp": "向上取整",
-    "roundDown": "向下取整",
-    "roundingStep": "加班取整至分钟",
-    "stepMinutes": "{n} 分钟",
-    "roundingHint": "取整在最后进行，即在审批方式和迟到抵扣之后。已记录的打卡时长不会改变。",
-    "unsupportedRounding": "已保存的取整使用了本部分不提供的选项。保存后将自新开始日期起替换。",
-    "differs": "{n, plural, other {# 家公司}}的加班设置不同或尚未设置。保存后此设置将适用于所有选定公司。",
-    "savedFrom": "已保存的设置自 {date} 起生效。",
-    "none": "尚未保存加班设置。在保存之前，此组的加班照旧运作。",
-    "save": "保存加班设置",
-    "systemReason": "排班组加班设置已保存",
-    "on": "开",
-    "off": "关",
-    "payrollNote": "工资模块从此设置接收最终加班数据，方式与现在接收加班相同。"
-  },
-  "attendanceOnBehalf": {
-    "requestTitle": "代为申请",
-    "requestHelp": "选择员工，然后在常用页面为其提交考勤异常或自报加班。申请将遵循该员工自己的工作流程和审批人。",
-    "approveTitle": "代为审批",
-    "approveHelp": "选择您需要代为处理其待审批考勤申请的指定审批人。",
-    "approveListHelp": "等待 {name} 审批、您可代为决定的申请。",
-    "searchLabel": "按员工编号或姓名搜索",
-    "searchPlaceholder": "例如 EMP-0123 或姓名",
-    "search": "搜索",
-    "results": "您可代为办理的员工",
-    "noResults": "没有符合此搜索且您可代为办理的员工。",
-    "noPermission": "您的角色没有此权限。如需要，请联系管理员。",
-    "choose": "选择",
-    "employeeName": "员工",
-    "employeeId": "员工编号",
-    "company": "公司",
-    "department": "部门",
-    "changeEmployee": "更换员工",
-    "chooseCategory": "您要提交哪类申请？",
-    "irregularity": "考勤异常",
-    "irregularityHelp": "员工本人日期的缺失或错误打卡、工时不足或缺勤。",
-    "selfOvertime": "自报加班",
-    "selfOvertimeHelp": "按员工本人的排班组和加班规则计划或申报加班。",
-    "banner": "正在代 {name} 提交",
-    "pendingTitle": "待审批申请",
-    "pendingEmpty": "没有您可代为决定、正在等待该审批人的申请。",
-    "approveOnBehalf": "代为批准",
-    "rejectOnBehalf": "代为拒绝",
-    "approveAudit": "历史记录保留所选人员为指定审批人，并记录您为实际操作人。",
-    "previous": "上一页",
-    "next": "下一页"
-  },
-  "importErrorLogMovement": {
-    "correction": {
-      "date": "请按 DD-MMM-YYYY 格式（例如 06-Jan-2026）或以 Excel 日期输入日期。",
-      "required": "请填写此字段——此事件类型要求填写。",
-      "chooseCompany": "请从 Reference 工作表中选择公司编号。",
-      "eventType": "请从下拉列表中选择一个有效的事件类型。",
-      "chooseReference": "请从下拉列表或 Reference 工作表中选择一个值。",
-      "employeeId": "请对照人事记录核对此行的员工编号和公司编号。",
-      "systemField": "请选择此事件类型可以变更的系统字段（见 Reference 工作表），或删除该行。",
-      "duplicateField": "同一异动的每个系统字段只保留一行。",
-      "number": "请输入数字（仅数字，不含货币符号）。",
-      "noFormula": "请直接输入值本身，不要使用公式。",
-      "movementId": "请从该员工的异动历史中复制异动事件编号。",
-      "before": "请将员工记录中的当前值填入“变更前”，或下载新模板。",
-      "otherRows": "请更正该员工的其他行，然后重新上传整个文件。",
-      "recheck": "请重新上传文件，以便根据当前记录重新检查。",
-      "template": "请下载最新的异动模板，将您的行复制进去，然后重新上传。",
-      "splitFile": "请将文件拆分为较小的文件（每个最多 200 行、50 名员工、每名员工 20 行），然后逐一上传。",
-      "saveStopped": "此员工的任何内容均未保存。请更正问题，然后重新导入此员工。"
-    }
-  },
-  "lifecycleEmailHold": {
-    "inboxAction": "邮件已暂停：{email}"
-  },
-  "rewardConfig": {
-    "title": "保存前查看",
-    "saving": "正在保存…",
-    "whyReview": "需要查看的原因",
-    "reason": "此次更改的原因",
-    "cancel": "取消",
-    "highImpact": {
-      "released-pat": "已发布的评审的 PAT 发生变化。",
-      "released-library": "已发布的评审使用较早的版本，并将继续沿用；新评审将使用此版本。",
-      "released-limit": "已发布的评审的预算上限发生变化。",
-      "release-review": "发布后此评审将发送给业务单元 CEO。",
-      "remove-access": "有人将失去对某个评审的访问权限。",
-      "open-offcycle": "开启周期外年度后，领导可使用公司余额提交周期外申请。",
-      "offcycle-window": "年中窗口决定何时可以提交年中建议。"
-    },
-    "whatChanges": "变更内容（{count}）",
-    "item": "项目",
-    "before": "变更前",
-    "after": "变更后",
-    "noValueChanges": "没有数值变化。",
-    "moreLines": "另有 {count} 项变更列在变更日志中。",
-    "affected": "受影响的评审（{count}）",
-    "noReviewsAffected": "没有评审受到影响。",
-    "consequence": {
-      "repriced": "立即重新计算",
-      "recalculation-required": "重新计算；并通知当前审批人",
-      "keeps-version": "沿用开始时的版本",
-      "released-to-bu": "已发布给业务单元 CEO",
-      "access-removed": "访问权限已移除",
-      "none": "无变化"
-    },
-    "notificationTitle": "薪酬配置已更改",
-    "noAccess": "您无法查看薪酬变更日志。",
-    "logHelp": "每一项薪酬配置变更：由谁、何时、改了什么以及原因。变更记录永不编辑或删除。",
-    "area": "范围",
-    "allAreas": "所有范围",
-    "company": "公司",
-    "allCompanies": "所有公司",
-    "person": "更改人",
-    "from": "从",
-    "to": "至",
-    "highImpactOnly": "仅限高影响",
-    "filter": "应用筛选",
-    "exportExcel": "导出到 Excel",
-    "when": "时间",
-    "areaColumn": "范围",
-    "reasonColumn": "原因",
-    "changes": "变更",
-    "changedValues": "{count, plural, =0 {无数值} other {# 个数值}}",
-    "system": "系统",
-    "unknownPerson": "未知",
-    "highImpactBadge": "高影响",
-    "areas": {
-      "salary": "薪资结构",
-      "bonus": "奖金矩阵",
-      "pat": "PAT 输入",
-      "plan": "共享薪酬配置",
-      "shared": "共享配置",
-      "exemption": "预算上限豁免",
-      "senior": "高级计划",
-      "upload": "上传的奖励",
-      "preparation": "评审设置",
-      "access": "薪酬访问权限",
-      "role_permission": "角色权限",
-      "group_role": "全集团角色",
-      "limit": "上限控制",
-      "offcycle": "周期外"
-    },
-    "actions": {
-      "returned-to-draft": "已退回草稿",
-      "saved-draft": "已保存草稿",
-      "activated": "已设为生效",
-      "restored": "已从较早版本恢复",
-      "saved": "已保存",
-      "released": "已发布",
-      "applied": "已应用",
-      "changed": "已更改",
-      "reset": "已重置为默认"
-    },
-    "empty": "没有符合这些筛选条件的变更。",
-    "pages": "页面",
-    "previous": "上一页",
-    "next": "下一页",
-    "exportTruncated": "仅包含前 5,000 项变更。请缩小筛选范围以导出其余部分。"
-  },
-  "rewardLimits": {
-    "description": "每个奖励年度的限额和阈值。审查、AI 顾问和奖励分析中的每项检查都使用该审查所属奖励年度的数值。",
-    "noAccess": "您没有访问权限",
-    "noAccessHelp": "限额控制仅供 Group Rewards、CTRO 和 EC 使用。",
-    "year": "奖励年度",
-    "show": "显示",
-    "viewOnly": "您可以查看这些限额。只有 Group Rewards 可以更改。",
-    "versionLine": "{year} 年正在使用第 {version} 版。",
-    "baselineLine": "{year} 年尚未保存任何版本。以下为标准数值；保存后将创建第 1 版。",
-    "typeHelp": "阻止：阻止提交。例外和警告：随审查流转，提交前需要说明理由。备注：仅供参考。",
-    "columns": {
-      "limit": "限额",
-      "value": "数值",
-      "type": "类型",
-      "appliesTo": "适用于",
-      "lastChanged": "最后修改人 / 日期"
-    },
-    "areas": {
-      "pools": "加薪池",
-      "person": "个人加薪",
-      "bonus": "奖金",
-      "lump": "一次性奖金",
-      "exemption": "豁免",
-      "advisor": "AI 顾问"
-    },
-    "labels": {
-      "pool_standard_merit": "绩效加薪池（占合资格工资的 %）",
-      "pool_standard_promotion": "晋升池（占合资格工资的 %）",
-      "pool_standard_special": "特别调整池（占合资格工资的 %）",
-      "pool_h_merit": "绩效加薪池（占合资格工资的 %）",
-      "pool_h_promotion": "晋升池（占合资格工资的 %）",
-      "pool_h_special": "特别调整池（占合资格工资的 %）",
-      "pool_separate": "各池之间及不同公司之间不得相互调拨",
-      "increase_withoutPromotion": "未晋升的总加薪超过",
-      "increase_withPromotion": "晋升的总加薪达到或超过",
-      "promotion_increment": "晋升加薪幅度",
-      "promotion_maxGrades": "最多晋升职级数",
-      "promotion_maxGrade": "晋升后的最高职级",
-      "catchUp_crFloor": "STAR/SSTAR 的 CR 追赶下限",
-      "salary_noReduction": "不得减薪",
-      "bonus_poolCap": "奖金池上限",
-      "bonus_underUse": "使用不足警告低于",
-      "bonus_individualCeiling": "个人奖金上限超过",
-      "bonus_rounding": "发放取整（向下取整）",
-      "bonus_individualMultiplier": "个人系数与单位不同",
-      "lump_share": "剩余余额占比",
-      "lump_step": "取整单位",
-      "lump_cap": "每人上限",
-      "lump_aboveSuggestion": "单位金额高于建议值",
-      "lump_individualAmendment": "个人调整",
-      "exemption_budgetCapsOnly": "豁免公司：仅限预算上限，需说明理由",
-      "advisor_override": "调整阈值",
-      "advisor_longWithoutIncrease": "长期未加薪",
-      "advisor_peerGap": "同级薪资差距"
-    },
-    "types": {
-      "block": "阻止",
-      "exception": "例外",
-      "warning": "警告",
-      "note": "备注"
-    },
-    "appliesTo": {
-      "standard": "标准计划",
-      "h": "JG H 计划",
-      "all": "所有计划"
-    },
-    "units": {
-      "percent": "%",
-      "points": "个百分点",
-      "ratio": "CR",
-      "months": "个月",
-      "myr": "RM",
-      "grades": "级",
-      "grade": "JG",
-      "years": "年"
-    },
-    "fixed": "固定",
-    "fixedHelp": "为保障薪酬而固定，不可更改。",
-    "none": "无",
-    "standardValue": "标准数值",
-    "changedBy": "{name} · {date}",
-    "unknownPerson": "未知",
-    "valueFor": "{limit} 的数值",
-    "typeFor": "{limit} 的类型",
-    "reviewSave": "保存前检查",
-    "save": "保存新版本",
-    "discard": "放弃更改",
-    "saved": "已保存为第 {version} 版。",
-    "errors": {
-      "system": "无法保存限额。您的更改仍在；请重试。"
-    },
-    "reviewsHeading": "本奖励年度的审查",
-    "reviewsHelp": "草稿审查使用当前版本。已提交的审查保留提交时的版本。如果您对其应用当前版本，将重新运行其检查并通知当前审批人。",
-    "reviewColumns": {
-      "review": "审查",
-      "stage": "阶段",
-      "versionUsed": "使用的限额"
-    },
-    "select": "选择",
-    "selectReview": "选择 {review}",
-    "baseline": "标准数值（限额控制之前）",
-    "currentVersion": "当前（第 {version} 版）",
-    "version": "第 {version} 版",
-    "apply": "将第 {version} 版应用于所选审查",
-    "applyConfirm": "应用并通知审批人",
-    "applied": "{count, plural, other {已应用于 # 个审查。}}",
-    "noReviews": "尚无审查使用此奖励年度。",
-    "reviewsTruncated": "仅列出前 200 个审查。",
-    "exemptionsHeading": "预算上限豁免",
-    "exemptionsHelp": "豁免仅放宽预算上限（加薪池和奖金池上限），并连同理由记录在审查的设置中。",
-    "noExemptions": "本奖励年度没有审查获得预算上限豁免。",
-    "historyHeading": "版本历史",
-    "noVersions": "尚无版本。",
-    "changeLogLink": "在变更日志中查看所有更改"
-  },
-  "importErrorLogDataBankCostInfo": {
-    "corrections": {
-      "duplicateInFile": "此值在文件中出现多次 - 只保留一行。",
-      "duplicateEmployeeInFile": "此员工编号在文件中出现多次 - 只保留一行。",
-      "chooseReference": "请从模板的 Reference 工作表中选择一个值。",
-      "chooseCompany": "请从 Reference 工作表中选择 Company Code。",
-      "chooseCostCenter": "请选择 Allocation Reference 工作表中为该公司列出的 Cost Center Code。",
-      "date": "请以 YYYY-MM-DD 或 Excel 日期格式输入日期。",
-      "required": "请填写此列 - 此列为必填。",
-      "yesNo": "请输入 yes 或 no。",
-      "revalidate": "请重新上传已更正的文件，以便重新检查此行。",
-      "permission": "请删除此行，或请管理员授予您访问该员工所属公司的权限。",
-      "systemError": "请重新上传文件。如果问题持续出现，请将支持参考号提供给技术团队。",
-      "textCode": "请将单元格设置为文本格式，然后重新输入代码。",
-      "noFormula": "请直接输入值本身，不要使用公式。",
-      "existingEmployee": "请检查员工编号。新员工必须先通过 \"全部 - 新员工\" 添加。",
-      "percentage": "请输入大于 0 且不超过 100 的百分比，最多两位小数。",
-      "periodUnit": "请同时输入数字及其单位（Month、Week 或 Day）。",
-      "reason": "请输入至少三个字符的原因。",
-      "statutoryRecord": "请先在员工的人事记录中保存其身份证号码，然后重新上传此文件。",
-      "template": "请下载最新模板，将您的行复制进去，然后重新上传。",
-      "bankPair": "请同时输入银行名称和银行账号。"
-    },
-    "bank": {
-      "duplicateEmployeeId": "此文件中员工编号重复；首次出现在 Excel 第 {row} 行。",
-      "duplicateCardId": "此文件中卡号重复。",
-      "cardIdTaken": "card_id 已被另一名员工使用；请选择未使用的卡号。",
-      "noPermission": "您没有更新此员工的权限。",
-      "changedAfterValidation": "此行未保存。其数据或权限在验证后发生了变化；请检查后重新导入。",
-      "missingEmployeeId": "缺少 employee_code — 它用于关联要更新的员工",
-      "unknownEmployee": "没有员工编号为 \"{code}\" 的员工。分项文件只能更新系统中已有的人员 — 不能新增任何人。如需添加此人，请在本页顶部选择 \"全部 — 新员工\" 并使用完整的员工模板，然后重新运行此文件。",
-      "duplicateEmployeeCode": "此文件中 employee_code 重复",
-      "bankTransferNeedsBank": "银行转账需要银行名称和账号。",
-      "bankPair": "bank_name 和 bank_account_no 必须同时提供",
-      "noStatutoryRecordYet": "此员工尚无法定记录 — 请先在其人事记录中保存身份证号码，然后重新运行此文件",
-      "noStatutoryRecord": "此员工没有法定记录；请先在人事记录中完成法定设置。",
-      "notActiveOption": "\"{value}\" 不是有效的 {category} 选项 — 列 {column}",
-      "yesNo": "{column} 必须为 yes 或 no",
-      "jobStopped": "导入已停止。已保存的行会保留。请检查结果和您的访问权限后再试。参考号 {ref}。",
-      "jobStoppedEarlier": "导入已停止。已保存的行会保留。请检查结果和您的访问权限后再试。",
-      "fileTooLarge": "文件超出了导入大小或工作表限制。最多使用 250,000 行和 128 MiB。",
-      "fileUnreadable": "无法读取文件。请使用银行与法定资料模板及其参考工作表。",
-      "fileRowCount": "请选择包含 1 至 250,000 行数据的文件。",
-      "fileIncomplete": "上传的文件不完整或校验值不同。请重新上传。"
-    },
-    "allocation": {
-      "errors": {
-        "invalid": "请输入大于零且不超过 100 的百分比，最多两位小数。",
-        "duplicate": "每个成本中心只能选择一次。",
-        "total": "分配总额不能超过 100%。",
-        "scope": "员工记录或权限不可用。",
-        "label": "某个成本中心对该公司已停用或不可用。",
-        "changed": "分配已发生变化。请重新加载并再次预览。",
-        "date": "请选择具有已证实的雇佣公司历史的生效日期。",
-        "clear": "清除分配需要明确的 Clear 操作。",
-        "preview": "输入或参考数据已发生变化。请再次预览。",
-        "binding": "请将每项分配对应到一个公司和员工编号。",
-        "transfer": "调动前，请在调动日期保存明确的 Clear 集合，并清除之后已排定的集合。然后为目标公司保存新的分配。"
-      },
-      "operation": "Operation 必须为 Replace 或 Clear，且同一员工同一日期的每一行都必须相同。",
-      "clearRow": "Clear 需要恰好一行，且该行的 Cost Center Code 和 Percentage 为空。",
-      "costCenterUnavailable": "此 Cost Center Code 对 {company} 不可用。",
-      "companyRequired": "Company Code 为必填项。",
-      "companyAmbiguous": "Company Code \"{code}\" 匹配多个公司。请使用 Reference 工作表中列出的 Company Code。",
-      "companyUnknown": "Company Code \"{code}\" 不匹配您可以导入的任何公司。",
-      "effectiveDate": "Effective Date 必须是 YYYY-MM-DD 格式的日期。",
-      "employeeInvalid": "员工编号缺失或无效。",
-      "employeeAmbiguous": "员工编号 {code} 匹配 {company} 的多名员工。",
-      "employeeNotInCompany": "员工编号 {code} 在 {date} 不是 {company} 的员工。",
-      "heldBack": "此文件中员工编号 {code} 的另一项分配有错误，因此该员工未被导入。请先更正那一行。",
-      "unavailable": "分配的公司、员工或生效日期不可用。",
-      "saveFailed": "无法保存此员工；其任何内容均未更改。",
-      "file": {
-        "legacyLayout": "此文件使用的是带有内部公司标识（company_id）的旧版格式。请下载新模板并改为填写 Company Code 列。",
-        "duplicateHeaders": "不允许重复的分配列标题。",
-        "missingColumns": "缺少分配列：{columns}",
-        "unexpectedColumns": "意外的分配列：{columns}",
-        "tooManyRows": "每个文件最多使用 5000 行分配。",
-        "tooLarge": "分配文件超出了支持的大小。",
-        "tooLarge10": "请选择不超过 10 MB 的文件。",
-        "unreadableWorkbook": "无法读取工作簿。请下载模板后重试。",
-        "utf8": "请将 CSV 文件保存为 UTF-8。",
-        "fileType": "请选择 .xlsx 模板或具有相同列的 .csv 文件。",
-        "unreadable": "无法读取此文件。",
-        "noRows": "此文件没有分配行。"
-      }
-    },
-    "correction": {
-      "noFormula": "不接受公式和错误单元格。",
-      "textCode": "请以文本形式输入代码，以保留前导零。",
-      "date": "请使用 YYYY-MM-DD 或 Excel 日期。",
-      "tooLong": "最多 1,000 个字符。",
-      "periodUnit": "请同时输入期限及其单位（{unit}）。",
-      "notOption": "\"{value}\" 不是此公司的选项。请查看 {sheet} 参考工作表。",
-      "superiorUnknown": "该员工编号未知，或您无权查看。",
-      "organisationFormula": "组织列不能包含公式或错误单元格。",
-      "organisationTooLong": "组织值：最多 1,000 个字符。",
-      "companyRequired": "Company Code 为必填项。",
-      "employeeRequired": "员工编号为必填项。",
-      "reasonShort": "Correction Reason 必须至少包含三个字符。",
-      "duplicateEmployee": "此员工出现多次。每名员工只保留一行更正。",
-      "companyUnknown": "Company Code 未知、不明确或超出您的权限。",
-      "employeeUnknown": "员工编号在现有公司中未知或不明确。",
-      "newCompanyUnknown": "New Company Code 未知、不明确或超出您的权限。",
-      "gradeInactive": "Job Grade 不是有效的系统代码。",
-      "sameEmployee": "多行对应同一名员工。"
-    }
-  },
-  "importErrorLogEmployee": {
-    "problemsTitle": "需要更正的问题",
-    "missingColumn": "工作表中缺少此必填列。",
-    "thisField": "此列",
-    "downloadFailed": "无法生成错误日志。请重试。",
-    "correction": {
-      "reference": "请从 Reference 工作表中选择{field}。",
-      "date": "请按 YYYY-MM-DD 格式或以 Excel 日期输入日期。",
-      "month": "请按 YYYY-MM 格式输入月份。",
-      "required": "请填写{field}，此项为必填。",
-      "requiredForContract": "请填写此列 - 合同员工必须填写。",
-      "duplicateInFile": "此值在文件中出现多次 - 只保留一行。",
-      "duplicateEmployeeId": "此员工编号在文件中出现多次 - 只保留一行。",
-      "duplicateInSystem": "此值已被其他员工使用 - 请输入其他值，或删除此行。",
-      "number": "请输入数字（仅数字，不含货币符号）。",
-      "choice": "请从 Instructions 或 Reference 工作表列出的值中选择一个。",
-      "yesNo": "请输入 Yes 或 No。",
-      "email": "请输入完整的电子邮件地址，例如 name@company.com。",
-      "notOnEmployeeSheet": "请将此员工添加到员工工作表，或更正员工编号。",
-      "employeeNotFound": "请检查员工编号。如需添加新员工，请先使用“全部 - 新员工”。",
-      "missingColumn": "请使用当前模板添加“{field}”列，然后重新上传。",
-      "wrongSection": "请删除该列，或使用其所属的模板导入。",
-      "system": "请重试。如果问题持续出现，请将支持参考编号提供给您的管理员。",
-      "uploadAgain": "请更正导致导入停止的行，然后重新上传整个文件。"
-    }
-  },
-  "importProblems": {
-    "headers": {
-      "sheet": "工作表",
-      "row": "Excel 行",
-      "category": "类别",
-      "reference": "参考编号",
-      "employeeName": "员工姓名",
-      "field": "字段",
-      "value": "输入的值",
-      "problem": "问题",
-      "correction": "修正方法",
-      "stage": "发现于",
-      "result": "结果",
-      "errorReference": "支持参考号"
-    },
-    "stage": {
-      "file": "读取文件",
-      "check": "检查文件",
-      "save": "保存",
-      "system": "系统错误"
-    },
-    "result": {
-      "refused": "未导入",
-      "skipped": "已跳过",
-      "stopped": "导致导入停止",
-      "cancelled": "未保存 - 另一行导致导入停止",
-      "not_saved": "未保存 - 请重新上传已更正的文件"
-    },
-    "hiddenValue": "（已隐藏）",
-    "wholeFile": "整个文件",
-    "moreInLog": "另有 {count} 个问题列在错误日志中。",
-    "downloadLog": "下载错误日志",
-    "summary": {
-      "sheetTitle": "摘要",
-      "batch": "导入",
-      "file": "文件",
-      "status": "状态",
-      "problems": "问题",
-      "truncated": "记录导入时此列表已被缩短。请在导入后立即下载错误日志以查看所有问题。"
     }
   },
   "agencyPortal": {

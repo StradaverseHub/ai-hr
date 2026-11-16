@@ -487,6 +487,30 @@
       "context": "MovementNewEvent",
       "hidden": true,
       "occurrences": 1,
+      "name": "postingId",
+      "reason": "Guarded Personnel posting pointer (ADR 2026-11-15 decision 4): the posting this New Event page was prefilled from. core/personnel-posting.ts reads it under row security and the database functions check authority. It carries no Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "MovementNewEvent",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "postingRevision",
+      "reason": "Optimistic-concurrency revision of the Personnel posting being saved; app.personnel_posting_edit and app.personnel_posting_approve refuse a stale revision. It carries no Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "MovementNewEvent",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "postingIntent",
+      "reason": "Which posting command the page offers (approve for the approver group, edit for everyone else); each command checks its own authority in the database, so the value grants nothing. It carries no Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "MovementNewEvent",
+      "hidden": true,
+      "occurrences": 1,
       "name": "movementPage",
       "reason": "Hidden standalone Movement page mode used to choose the return route and error presentation after the server action. It carries no Personnel fact."
     },

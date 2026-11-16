@@ -108,8 +108,9 @@ describe('§1 r80 removal: the leave decide path exists ONLY under Approval Item
     // admits admin OR manager and lets the SERVICES decide — so no role lost a route to a decision.
     expect(approvalsPage).toContain("const admin=isAdmin(s),manager=(s.roles??[]).includes('manager');");
     // Rewards unit membership can assign an employee a review without a global manager role.
-    // Existing HR/manager admission remains; an ordinary employee needs a pending scoped reward.
-    expect(approvalsPage).toContain("if(!focus&&!admin&&!manager&&!rewardReviews.length&&!assignedAttendance&&!assignedTasks.length)redirect('/');");
+    // Existing HR/manager admission remains; an ordinary employee needs a pending scoped reward or (5751) a Probation
+    // Approve step routed to them. Admission only widens: nobody who reached a decision before loses the route.
+    expect(approvalsPage).toContain("if(!focus&&!admin&&!manager&&!rewardReviews.length&&!probationApprovals.items.length&&!assignedAttendance&&!assignedTasks.length)redirect('/');");
     expect(approvalsPage).toContain("isModuleEnabledOrFalse(s,'rewards')");
   });
 });

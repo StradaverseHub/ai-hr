@@ -217,7 +217,7 @@ describe('case 128 — receipts: none for careers applications (D-064); HR-added
   const ADDRESS = 'fictional-qze-careers';
   const hashOf = (label: string) => createHash('sha256').update(`fictional-client:${label}`).digest('hex');
 
-  it('slice 21a (5722): with candidate e-mail on, an unverified careers application is refused and queues nothing (receipts need a verified address)', async () => {
+  it('slice 21a (5872): with candidate e-mail on, an unverified careers application is refused and queues nothing (receipts need a verified address)', async () => {
     await emailOn();
     await updateCareersSettings(admin, base.companyId, { address: ADDRESS, displayName: 'Fictional QZE Careers', headline: 'h', introduction: 'i', notice: 'Fictional notice.' });
     await setCareersPublished(admin, base.companyId, true);
@@ -616,7 +616,7 @@ describe('case 131 — who reads e-mails; the AI Centre sees counts only; the ho
   });
 });
 
-describe('5720 — grants, the default sender name, company deletion and the restricted owner', () => {
+describe('5870 — grants, the default sender name, company deletion and the restricted owner', () => {
   const NEW_TABLES = ['recruitment_candidate_email', 'recruitment_candidate_email_setting', 'recruitment_candidate_email_template'];
   it('forces row security with no PUBLIC grant; the sweep functions are owner-only definers; the app role cannot call them', async () => {
     const t = await owner.db.execute<{ relname: string; rls: boolean; forced: boolean; public_grants: number }>(sql`

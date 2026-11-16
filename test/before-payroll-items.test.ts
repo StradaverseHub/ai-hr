@@ -189,7 +189,7 @@ describe('the person\'s own items, every kind',()=>{
    ['approve_claim','Wei Fictional','2026-11-19','/approvals?section=claims&focus=t-claim'],
    ['approve_toil','Siti Fictional','2026-11-19','/approvals?section=replacement&focus=t-toil']]);
   // Approvals only, never notice acknowledgements, and the approvals owner's own company filter.
-  expect(fx.calls.find(call=>call[0]==='listPendingTasks')).toEqual(['listPendingTasks',undefined,{attendance:true,claims:true,performance:false,rewards:false},{noticeAcknowledgements:false}]);
+  expect(fx.calls.find(call=>call[0]==='listPendingTasks')).toEqual(['listPendingTasks',undefined,{attendance:true,claims:true,performance:false,rewards:false,probation:false},{noticeAcknowledgements:false}]);
  });
 
  it('asks a joiner once whether they worked for another employer earlier this year: No removes the TP3 item, Yes keeps it with its link',async()=>{
@@ -306,7 +306,7 @@ describe('AI Centre navigation speed: the approvals read runs while the employme
   expect(fx.calls.map(call=>call[0])).toEqual(['listPendingTasks','requireOwnHomeSubject']);
   release();
   const result=(await pending)!;
-  expect(fx.calls.filter(call=>call[0]==='listPendingTasks')).toEqual([['listPendingTasks',undefined,{attendance:true,claims:true,performance:false,rewards:false},{noticeAcknowledgements:false}]]);
+  expect(fx.calls.filter(call=>call[0]==='listPendingTasks')).toEqual([['listPendingTasks',undefined,{attendance:true,claims:true,performance:false,rewards:false,probation:false},{noticeAcknowledgements:false}]]);
   expect(fx.calls.filter(call=>call[0]==='ownCutOff')).toHaveLength(1);
   // Due by the salary cut-off the period read returned afterwards, as before.
   expect(result.approvals.map(row=>[row.kind,row.due])).toEqual([['approve_leave','2026-11-19'],['approve_leave_cancellation','2026-11-19'],
@@ -364,7 +364,7 @@ it('bounds UI approval rows while preserving exact Claim totals and excluding un
  const result=(await readMyPayrollReadiness(CTX,{today:TODAY,locale:'en',scopeIds:['co-1'],approvalPreview:true}))!;
  expect(result.approvals).toHaveLength(25);expect(result.approvalTotal).toBe(500000);expect(result.approvalClaimTotal).toBe(500000);
  expect(result.approvals.every(row=>row.kind==='approve_claim')).toBe(true);
- expect(fx.approvalSummary).toHaveBeenCalledWith(CTX,['co-1'],{attendance:true,claims:true,performance:false,rewards:false},{noticeAcknowledgements:false});
+ expect(fx.approvalSummary).toHaveBeenCalledWith(CTX,['co-1'],{attendance:true,claims:true,performance:false,rewards:false,probation:false},{noticeAcknowledgements:false});
  expect(fx.calls.some(call=>call[0]==='listPendingTasks')).toBe(false);
 });
 it('keeps the existing unabridged read contract for callers that did not request a UI preview',async()=>{

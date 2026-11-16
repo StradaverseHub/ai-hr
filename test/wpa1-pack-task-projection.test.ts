@@ -53,7 +53,7 @@ async function expectBundledPackTasks(ctx:SessionContext,scopeIds?:string[]){
   return bundle!;
 }
 const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
-const ALL: InboxModules = { attendance: false, claims: false, performance: true, rewards: true };
+const ALL: InboxModules = { attendance: false, claims: false, performance: true, rewards: true, probation: false };
 const packKinds = new Set<string>(PACK_TASK_KINDS);
 const packItems = (rows: PendingTaskItem[]) => rows.filter((row) => packKinds.has(row.kind));
 const ofKind = (rows: PendingTaskItem[], kind: string) => rows.filter((row) => row.kind === kind);
@@ -187,7 +187,7 @@ describe('performance work in the shared task list', () => {
 
   it('a module the caller resolved as off contributes nothing — including a tenant that declined Performance', async () => {
     expect(ofKind(await listPendingTasks(mgr, undefined, ALL), 'performanceReview').length).toBeGreaterThan(0);
-    expect(packItems(await listPendingTasks(mgr, undefined, { ...ALL, performance: false, rewards: false }))).toEqual([]);
+    expect(packItems(await listPendingTasks(mgr, undefined, { ...ALL, performance: false, rewards: false, probation: false }))).toEqual([]);
     await setModule(b.tenantId, 'performance', 'disabled');
     const declined: SessionContext = { ...mgr, entitlements: harnessSnapshot(b.tenantId) };
     const modules: InboxModules = { ...ALL, performance: isModuleEnabled(declined, 'performance'), rewards: isModuleEnabled(declined, 'rewards') };

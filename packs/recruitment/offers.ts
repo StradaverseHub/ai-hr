@@ -5,7 +5,7 @@
  *   - One current offer per application. Its details are values of the company offer-field set. Money is an amount
  *     and a currency a PERSON enters, stored as a decimal; nothing here computes pay, and no model is involved.
  *   - Private values are visible only to recruitment administrators, the job's recruiter and the offer's creator
- *     (5703 row security); everyone else never receives them, so a screen cannot leak them.
+ *     (5853 row security); everyone else never receives them, so a screen cannot leak them.
  *   - Approval: the company flow is copied into a round at submission; approvers act in order, only on their own
  *     pending step, never on an offer they created; a rejection returns the offer to Draft with the comment; Withdraw
  *     is available while pending; a change to a field that needs approval re-runs approval from step 1.
@@ -63,7 +63,7 @@ async function visibleValuesTx(tx: Tx, offerId: string): Promise<Map<string, Off
   const rows = await tx.select().from(recruitmentOfferValue).where(eq(recruitmentOfferValue.offerId, offerId));
   return new Map(rows.map((r) => [r.fieldId, toValue(r)]));
 }
-/** May the caller see (and therefore write) private values of this offer? The same predicate the 5703 policy uses. */
+/** May the caller see (and therefore write) private values of this offer? The same predicate the 5853 policy uses. */
 async function seesPrivateTx(tx: Tx, companyId: string, jobId: string, offerId: string | null): Promise<boolean> {
   const [row] = await tx.execute<{ ok: boolean }>(sql`select app.can_admin_recruitment_for(${companyId}::uuid)
     or app.recruitment_has_job_role(${jobId}::uuid, array['recruiter'])
@@ -182,7 +182,7 @@ export async function saveOffer(s: SessionContext, applicationId: unknown, input
     if (app.state !== 'active') throw new RecruitmentError('application_closed');
     let [offer] = await tx.select().from(recruitmentOffer).where(eq(recruitmentOffer.applicationId, app.id)).for('update');
     if (offer && offer.candidateDecision !== 'pending') throw new RecruitmentError('offer_closed');
-    // Slice 13: no offer for an application that needs an administrator's review (5713 refuses the insert too).
+    // Slice 13: no offer for an application that needs an administrator's review (5863 refuses the insert too).
     if (!offer) await assertNoReviewMarkTx(tx, app.id);
     const allFields = await offerFieldsTx(tx, app.company_id);
     const seesPrivate = await seesPrivateTx(tx, app.company_id, app.job_id, offer?.id ?? null);
@@ -285,7 +285,7 @@ export async function decideOffer(s: SessionContext, offerId: unknown, decision:
     const offer = await lockOfferTx(tx, s, offerId);
     if (offer.status !== 'pending') throw new RecruitmentError('offer_state');
     const plan = decideApproval(roundOf(offer), user, offer.createdByUserId, decision);
-    // The decision is logged first (by its own approver); the offer then moves on, and the 5703 guard checks both.
+    // The decision is logged first (by its own approver); the offer then moves on, and the 5853 guard checks both.
     await tx.insert(recruitmentOfferApproval).values({
       tenantId: s.tenantId, companyId: offer.companyId, jobId: offer.jobId, offerId: offer.id, round: offer.approvalRound, position: plan.position,
       approverUserId: user, decision: plan.decision, comment: note,
@@ -325,7 +325,7 @@ export async function markOfferSent(s: SessionContext, offerId: unknown, channel
  * Slice 20: "Send offer by e-mail" — a person sends an Approved, unsent offer with no candidate decision to the candidate's recorded
  * address, after seeing the e-mail (the fingerprint of the preview posted; a difference refuses as email_changed). In one transaction:
  * the offer is recorded as sent by e-mail by this person (as Mark as sent records it, with the company's validity) and the e-mail is
- * queued (5721 checks both). A blocked e-mail (no usable address, a link-like value, a marked private field hidden from the sender, too
+ * queued (5871 checks both). A blocked e-mail (no usable address, a link-like value, a marked private field hidden from the sender, too
  * long) refuses with its reason and records nothing.
  */
 export async function sendOfferByEmail(s: SessionContext, offerId: unknown, fingerprint: unknown): Promise<void> {
@@ -555,7 +555,7 @@ async function hireContextTx(tx: Tx, s: SessionContext, applicationId: unknown) 
   const [admin] = await tx.execute<{ ok: boolean }>(sql`select app.is_admin_for(${app.company_id}::uuid) as ok`);
   const [link] = await tx.select().from(recruitmentHireHandoff).where(eq(recruitmentHireHandoff.applicationId, app.id));
   const eligible = hireHandoffEligible({ state: app.state, stageSystemKey: app.stage_system_key });
-  // Slice 13: an application that needs an administrator's review is not handed to a new hire (5713 refuses the link too).
+  // Slice 13: an application that needs an administrator's review is not handed to a new hire (5863 refuses the link too).
   const [review] = await tx.execute<{ marked: boolean }>(sql`select app.recruitment_application_needs_review(${app.id}::uuid) as marked`);
   return { app, isAdmin: admin?.ok === true, link, eligible, needsReview: review?.marked === true };
 }
@@ -595,7 +595,7 @@ export async function hireHandoffPrefill(s: SessionContext, applicationId: unkno
 /**
  * Link the employee draft HR just saved (through the personnel writer) back to the application. Refused unless the
  * caller is an HR administrator of the company, the application is still eligible and unlinked, and the draft is a
- * draft of the same company (5703 guard).
+ * draft of the same company (5853 guard).
  */
 export async function linkHireDraft(s: SessionContext, applicationId: unknown, draftId: unknown, employeeCode?: unknown): Promise<void> {
   if (!isUuid(draftId)) throw new RecruitmentError('invalid_input', ['draft']);

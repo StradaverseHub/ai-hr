@@ -1593,7 +1593,7 @@ slice 19 (D-064), go out once the address is verified. The slice lands in two pa
 
 ### 21a — Data
 
-- One migration (5722): code, check and verification tables in `app` (owner-only, forced RLS, no grant); definer functions to
+- One migration (5872): code, check and verification tables in `app` (owner-only, forced RLS, no grant); definer functions to
   issue and check codes and to submit a verified application (the slice 8 submission is no longer granted to the app role
   directly: one wrapper decides whether verification is required); a definer to queue the careers receipt for an application
   the same transaction created from a consumed verification; `queued_by_user_id` may be empty only for such a receipt.
@@ -1687,7 +1687,7 @@ below are this reconstruction's (D-067).
 
 ### Data
 
-- One migration (5724):
+- One migration (5874):
   - the three settings columns;
   - the kind added to the template and e-mail CHECKs, the placeholder allowlist restated;
   - the e-mail's outcome column, with one survey per application;
@@ -1695,7 +1695,7 @@ below are this reconstruction's (D-067).
   - `public.recruitment_candidate_survey_response`, readable by the company's recruitment administrators only and written only by
     the answer definer;
   - definers to issue a link (the sweep, for a leased survey), view and answer (anonymous);
-  - 5723's guard and statement check, and 5721's target and finish, restated with the survey.
+  - 5873's guard and statement check, and 5871's target and finish, restated with the survey.
 
 ### Slice 22 acceptance cases
 
@@ -1776,7 +1776,7 @@ person decides:
 
 ### Data
 
-- One migration (5725):
+- One migration (5875):
   - the job's reward column; the referral's frozen amount and currency, set by a trigger from the job when the referral is
     inserted and never changed afterwards;
   - `public.recruitment_referral_reward`: one row per decided reward, inserted by the company's recruitment administrators and
@@ -1839,7 +1839,7 @@ contract `recruitment_match_summary_v1`. The details below that the owner did no
 - Each request is recorded as a domain event with the company, the outcome (shown, invalid reply, provider unavailable, refused,
   not approved), the provider and model when used, and the provider request digest — never the content.
 
-### Data (5726)
+### Data (5876)
 
 - `recruitment_company_setting.ai_match_summary_enabled` (default false; the table's administrator-only policies apply).
 - The AI Centre function key `read:operation_recruitment_match_summary`.
@@ -1894,7 +1894,7 @@ builds a small portal on the company's careers address; the details below are th
   list. Decided rows are deleted 180 days after the decision (when the portal is next used for that company).
 - Nothing from the portal creates a candidate or an application by itself.
 
-### Data (5727)
+### Data (5877)
 
 - `recruitment_company_setting.agency_portal_enabled`; owner-only code, check, session and context tables (hashes only);
   `recruitment_agency_portal_submission` (the inbox: forced row security; the job's operators read and decide once, guarded; no

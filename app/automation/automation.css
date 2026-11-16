@@ -1,0 +1,42 @@
+/* HR Automation builders: small additions on top of the V9 workspace styles (app/lifecycle/v9/workspace.css). */
+.automation .automation-crumb{margin:0;font-size:13px;color:var(--muted-foreground)}
+.automation .automation-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.automation .automation-between{justify-content:space-between}
+.automation .automation-chips{display:flex;flex-wrap:wrap;gap:8px}
+.automation .automation-chip{min-height:36px;display:inline-flex;align-items:center;padding:0 14px;border:1px solid var(--v9-line);border-radius:999px;background:var(--card);color:var(--foreground);font-size:13.5px;text-decoration:none}
+.automation .automation-chip[aria-current=page]{background:var(--v9-accent);border-color:var(--v9-accent);color:var(--card);font-weight:600}
+.automation .automation-list,.automation .automation-plain-list,.automation .automation-steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.automation .automation-item{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--v9-line)}
+.automation .automation-item:first-child{border-top:0}
+.automation .automation-item-text{flex:1 1 320px;min-width:0}
+.automation .automation-item-text h3{margin:0;font-size:15px}
+.automation .automation-item-text p{margin:4px 0 0;color:var(--muted-foreground);font-size:13.5px;overflow-wrap:anywhere}
+.automation .automation-plain-list>li{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.automation .automation-pill{display:inline-flex;align-items:center;min-height:24px;padding:0 10px;border-radius:999px;font-size:12.5px;background:var(--muted);color:var(--foreground)}
+.automation .automation-pill-ok{background:#e3f4e8;color:#1d5b33}
+.automation .automation-pill-warn{background:#fff4db;color:#6b4100}
+.automation .automation-pill-info{background:#e6efff;color:#1f3f7a}
+.automation .automation-step{border:1px solid var(--v9-line);border-radius:min(10px,var(--radius));padding:12px;display:flex;flex-direction:column;gap:12px;background:var(--card)}
+.automation .automation-step-conditions{border-top:1px solid var(--v9-line);padding-top:10px;display:flex;flex-direction:column;gap:8px}
+.automation .automation-condition{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.automation .automation-condition>select,.automation .automation-condition>input{width:auto;min-width:160px;max-width:100%}
+.automation .automation-multiselect{position:relative;min-width:200px;max-width:100%;flex:1 1 200px}
+.automation .automation-multiselect-button{width:100%;min-height:40px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 10px;border:1px solid var(--input);border-radius:min(8px,var(--radius));background:var(--card);color:var(--foreground);text-align:left;cursor:pointer}
+.automation .automation-multiselect-button>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.automation .automation-multiselect-list{position:absolute;top:calc(100% + 6px);left:0;z-index:20;min-width:100%;max-width:calc(100vw - 48px);max-height:min(24rem,60dvh);overflow-y:auto;padding:8px;display:grid;gap:2px;background:var(--card);border:1px solid var(--v9-line);border-radius:min(10px,var(--radius));box-shadow:0 10px 28px #1b1d2926}
+.automation .automation-multiselect-done{display:flex;justify-content:flex-end;margin-top:4px}
+.automation .automation-check{display:flex;align-items:center;gap:8px;padding:6px 8px;font-weight:400}
+.automation .automation-check>input{width:auto;min-height:0}
+.automation .automation-issues{border:1px solid #f1c48a;background:#fff8ec;border-radius:min(10px,var(--radius));padding:10px 14px}
+.automation .automation-notes{border:1px solid var(--v9-line);background:var(--muted);border-radius:min(10px,var(--radius));padding:10px 14px}
+.automation .automation-issues ul,.automation .automation-notes ul{margin:6px 0 0;padding-left:20px}
+.automation .automation-warning{color:#8a4b00}
+.automation .automation-dry{border:1px dashed var(--v9-line);border-radius:min(10px,var(--radius));padding:14px}
+.automation .automation-merge-picker{width:auto;min-height:32px;font-size:13px}
+.automation .automation-routing{border:1px solid var(--v9-line);border-radius:min(10px,var(--radius));padding:14px}
+.automation .automation-routing-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+.automation .automation-details>summary{cursor:pointer;font-weight:600;min-height:32px}
+.dark .automation .automation-pill-ok{background:#1d3a28;color:#bfe8cc}
+.dark .automation .automation-pill-warn,.dark .automation .automation-issues{background:#3a2c10;color:#f5d9a6}
+.dark .automation .automation-pill-info{background:#1c2a46;color:#c8d8ff}
+.dark .automation .automation-warning{color:#f5c27a}

@@ -273,6 +273,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     // to-dos — live, under the viewer's own access; nothing for a viewer with no recruitment role, and no call at all
     // while the module is off. The AI Centre launcher's count leaves them out: it opens Home, which does not list them (D-034).
     recruitment: isModuleEnabledOrFalse(session, 'recruitment'),
+    probation: isModuleEnabledOrFalse(session, 'lifecycle') || !!session.entitlements?.scopedModules.lifecycle?.length,
   }, { deferClaimPreview: true }),undefined,requestReadScope())).then((approvalSummary):ShellApprovalResult=>({
     state:'ready',
     items:approvalSummary.items,

@@ -1,6 +1,6 @@
 /**
  * Recruitment slice 20 — the pure rules of candidate e-mail about interviews and offers (packs/recruitment/candidate-email-model.ts) and
- * their agreement with db/migrations/5721_recruitment_candidate_email_interviews_offers.sql. No database. Fictional values only; expected
+ * their agreement with db/migrations/5871_recruitment_candidate_email_interviews_offers.sql. No database. Fictional values only; expected
  * times are computed with Intl, never with the module's helpers.
  */
 import { readFileSync } from 'node:fs';
@@ -15,10 +15,10 @@ import { RECRUITMENT_ERROR_CODES } from '../packs/recruitment/model';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (p: string) => readFileSync(`${root}${p}`, 'utf8');
-const m5721 = read('db/migrations/5721_recruitment_candidate_email_interviews_offers.sql');
-/** The latest restatement of the placeholder allowlist (5724, slice 22, added the survey's {surveyLink}; 5723 added {responseLink}), every
+const m5721 = read('db/migrations/5871_recruitment_candidate_email_interviews_offers.sql');
+/** The latest restatement of the placeholder allowlist (5874, slice 22, added the survey's {surveyLink}; 5873 added {responseLink}), every
  *  run of whitespace made one space (its long arrays wrap across lines). */
-const m5724 = read('db/migrations/5724_recruitment_candidate_survey.sql');
+const m5724 = read('db/migrations/5874_recruitment_candidate_survey.sql');
 const flat5721 = m5724.replace(/,\s+/g, ',').replace(/\s+/g, ' ');
 const messages = (l: string) => JSON.parse(read(`messages/${l}.json`)) as {
   recruitment: { candidateEmail: { interview: Omit<InterviewEmailLabels, 'weekdays'> & { weekdays: Record<string, string> }; defaults: Record<string, { subject: string; body: string }> };
@@ -34,15 +34,15 @@ const facts = (over: Record<string, unknown> = {}) => ({
   address: { name: 'QZG Head office', address: '1 Fictional Road', region: 'Kuala Lumpur', mapUrl: MAP }, site: null, meetingRoom: null, ...over,
 });
 
-describe('kinds and placeholders agree with 5721', () => {
-  it('lists the six kinds in the template and delivery CHECKs (5721), and all seven with the survey (5724)', () => {
+describe('kinds and placeholders agree with 5871', () => {
+  it('lists the six kinds in the template and delivery CHECKs (5871), and all seven with the survey (5874)', () => {
     const six = CANDIDATE_EMAIL_KINDS.filter((k) => k !== 'survey').map((k) => `'${k}'`).join(',');
     expect(m5721).toContain(`CHECK (kind IN (${six}))`);
     expect(m5721.split(`CHECK (kind IN (${six}))`)).toHaveLength(3);
     const list = CANDIDATE_EMAIL_KINDS.map((k) => `'${k}'`).join(',');
     expect(m5724.split(`CHECK (kind IN (${list}))`)).toHaveLength(3);
   });
-  it('restates each kind\'s placeholder allowlist exactly as the model (latest restatement, 5724)', () => {
+  it('restates each kind\'s placeholder allowlist exactly as the model (latest restatement, 5874)', () => {
     for (const kind of ['interview_invitation', 'interview_reminder', 'interview_cancelled', 'offer', 'survey'] as const) {
       expect(flat5721).toContain(`WHEN '${kind}' THEN ARRAY[${CANDIDATE_EMAIL_PLACEHOLDERS[kind].map((p) => `'${p}'`).join(',')}]`);
     }
@@ -51,7 +51,7 @@ describe('kinds and placeholders agree with 5721', () => {
     // Nothing a candidate e-mail can name is about the interviewers.
     for (const k of CANDIDATE_EMAIL_KINDS) expect(CANDIDATE_EMAIL_PLACEHOLDERS[k].join(' ')).not.toMatch(/interviewer/i);
   });
-  it('keeps every frozen-content rule of 5720 and adds only the map-link exemption, the new state and the subjects', () => {
+  it('keeps every frozen-content rule of 5870 and adds only the map-link exemption, the new state and the subjects', () => {
     expect(m5721).toContain("NOT app.recruitment_candidate_email_linkish(CASE WHEN map_url IS NULL THEN body_text ELSE replace(body_text, map_url, ' ') END)");
     expect(m5721).toContain("(map_url IS NULL OR kind IN ('interview_invitation','interview_reminder'))");
     expect(m5721).toContain("status IN ('queued','leased','sending','sent','retry','failed','uncertain','withdrawn')");
@@ -62,8 +62,8 @@ describe('kinds and placeholders agree with 5721', () => {
     expect(m5721).toContain('REVOKE ALL ON FUNCTION app.recruitment_withdraw_interview_emails() FROM PUBLIC, ai_hr_app;');
     expect(m5721).toContain('REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT');
   });
-  it('restates 5720\'s guard and statement check with their bodies kept (every 5720 refusal still raised)', () => {
-    const m5720 = read('db/migrations/5720_recruitment_candidate_email.sql');
+  it('restates 5870\'s guard and statement check with their bodies kept (every 5870 refusal still raised)', () => {
+    const m5720 = read('db/migrations/5870_recruitment_candidate_email.sql');
     for (const sentence of ["'A rejection e-mail is sent at most three days later'", "'A candidate e-mail is queued by the current user'", "'A queued candidate e-mail is immutable'",
       "'A purged candidate e-mail stays purged'", "'Only a failed or uncertain e-mail can be retried, by an administrator'",
       "'A candidate e-mail names its application, job and candidate'", "CONSTRAINT = 'recruitment_candidate_email_recipient'",

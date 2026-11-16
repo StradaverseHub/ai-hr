@@ -251,7 +251,8 @@ export type AttendanceDayResult = z.infer<typeof AttendanceDayResult>;
  * Attendance module is off; `request_conflict`: the requestId already recorded a different command;
  * `future`, `pending_exists`, `payroll_closed`, `workflow_unavailable`, `invalid`: the kernel's own refusals
  * (requestAttendanceCorrection / AttendanceLevelError / AttendanceWorkflowError), `message` carries its sentence —
- * for an overtime plan `invalid` also carries the kernel's "already approved / already counted for this date";
+ * for an overtime plan `invalid` also carries the kernel's "already approved / already counted for this date", and
+ * (87bd9656) the Overtime Backdate Control refusal, translated, naming the earliest date the employee can still choose;
  * `not_withdrawable`: the application is no longer pending, or is an overtime plan (withdrawn on the web).
  */
 export const ATTENDANCE_COMMAND_REFUSALS = [

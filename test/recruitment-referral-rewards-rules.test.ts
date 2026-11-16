@@ -1,5 +1,5 @@
 /**
- * Recruitment slice 23 — the pure reward and fee rules (packs/recruitment/reward-model.ts) and the shape of migration 5725
+ * Recruitment slice 23 — the pure reward and fee rules (packs/recruitment/reward-model.ts) and the shape of migration 5875
  * (no database): typed amounts only, the pay months, the reward states from independent dates, the referrer's view, the agency
  * fee form, and the database guards and grants the service relies on.
  */
@@ -10,7 +10,7 @@ import {
   type RewardHireFacts,
 } from '../packs/recruitment/service';
 
-const m5725 = readFileSync(new URL('../db/migrations/5725_recruitment_referral_rewards_agency_fees.sql', import.meta.url), 'utf8');
+const m5725 = readFileSync(new URL('../db/migrations/5875_recruitment_referral_rewards_agency_fees.sql', import.meta.url), 'utf8');
 const section = (from: string, to: string) => {
   const start = m5725.indexOf(from), end = m5725.indexOf(to, start + 1);
   expect(start, from).toBeGreaterThan(-1);
@@ -89,7 +89,7 @@ describe('agency fee form', () => {
   });
 });
 
-describe('migration 5725', () => {
+describe('migration 5875', () => {
   it('freezes the reward on the referral at insert and guards the job reward', () => {
     expect(m5725).toMatch(/CREATE TRIGGER recruitment_referral_reward_freeze BEFORE INSERT ON public\.recruitment_referral/);
     expect(m5725).toMatch(/CREATE TRIGGER recruitment_job_opening_referral_reward_guard BEFORE INSERT OR UPDATE OF referral_reward ON public\.recruitment_job_opening/);

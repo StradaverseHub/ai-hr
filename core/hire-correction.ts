@@ -250,6 +250,11 @@ function rootOf(id: string, origin: Map<string, string>): string {
 
 const zeroLength = (r: { validFrom: string; validTo: string | null }) => r.validTo !== null && r.validTo <= r.validFrom;
 
+/** Board 4604dccc r4 — the version was created by an information correction (or its re-applied boundary) that set this field. */
+function correctionSetField(origin: LedgerEvent | null, field: string): boolean {
+  return origin?.eventType === INFORMATION_CORRECTED && Array.isArray(origin.payload?.fields) && origin.payload.fields.includes(field);
+}
+
 /** The before/after pair the creating event recorded, or null when it recorded none for this field. */
 function inheritedByEvent(origin: LedgerEvent | null, field: string): boolean {
   if (!origin) return false;
@@ -400,8 +405,13 @@ async function loadPlanTx(tx: Tx, tenantId: string, employmentId: string): Promi
     while (n < chain.length) {
       const v = chain[n];
       const prev = chain[n - 1];
+      // Board 4604dccc r4 — the latest saved correction controls: this hire correction is saved after every
+      // information correction, so a boundary one of them set for this field no longer stops it. A recorded
+      // movement's boundary still does.
+      const replacedCorrection = correctionSetField(v.origin, f);
       const inherited =
-        inheritedByEvent(v.origin, f) && ((v.row[f] as string | null) ?? null) === ((prev.row[f] as string | null) ?? null);
+        replacedCorrection ||
+        (inheritedByEvent(v.origin, f) && ((v.row[f] as string | null) ?? null) === ((prev.row[f] as string | null) ?? null));
       if (!inherited) break;
       n++;
     }

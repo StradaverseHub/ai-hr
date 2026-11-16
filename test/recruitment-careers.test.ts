@@ -31,10 +31,10 @@ const careersPublicPage = async (...a: Parameters<typeof pageRead>) => { const r
 const careersPublicJob = async (...a: Parameters<typeof jobRead>) => { const r = await jobRead(...a); if (r === 'limited') throw new Error('read budget'); return r; };
 /** Reviewed SECURITY DEFINER functions that read job openings or careers sites/notices (see the residual-risk guard). */
 const REVIEWED_DEFINERS: string[] = [
-  // 5710: each reads one job opening by id in the caller's tenant (the check refuses unless the caller operates that job;
+  // 5860: each reads one job opening by id in the caller's tenant (the check refuses unless the caller operates that job;
   // the submission guard checks the job's status for a row the caller may write).
   'app.recruitment_agency_check(uuid,uuid,text,text,text,text,uuid,boolean)',
-  // Slice 25 (5727): the agency portal's definers, reviewed: each reads only the company behind the careers address it was given,
+  // Slice 25 (5877): the agency portal's definers, reviewed: each reads only the company behind the careers address it was given,
   // inside that company's portal context.
   'app.recruitment_agency_portal_check_code(text,text,text,text,text)',
   'app.recruitment_agency_portal_email_context(text)',
@@ -43,26 +43,26 @@ const REVIEWED_DEFINERS: string[] = [
   'app.recruitment_agency_portal_site(text)',
   'app.recruitment_agency_portal_submit(text,text,text,uuid,uuid,text,text,text,text,text,text,bytea,boolean)',
   'app.recruitment_agency_portal_view(text,text)',
-  // 5722 (slice 21a): the verified-applicant definers — each resolves the site by address and filters the job by the site's tenant
+  // 5872 (slice 21a): the verified-applicant definers — each resolves the site by address and filters the job by the site's tenant
   // and company; they return statuses only, and the e-mail context returns the job title, company name and sender settings only.
   'app.recruitment_careers_apply(text,text,uuid,text,text,text,text,text,integer,boolean,text,text,bytea)',
   'app.recruitment_careers_check_code(text,uuid,text,text,text,text)',
   'app.recruitment_careers_email_context(text,uuid)',
   'app.recruitment_careers_issue_code(text,uuid,text,text,text)',
-  // 5708: the careers functions themselves — each returns only the spec's public fields.
+  // 5858: the careers functions themselves — each returns only the spec's public fields.
   'app.recruitment_careers_job(text,uuid)',
   'app.recruitment_careers_page(text,text,text,text,integer)',
   'app.recruitment_careers_published(uuid,uuid)',
   'app.recruitment_careers_site_at(text)',
   'app.recruitment_careers_submit(text,uuid,text,text,text,text,text,integer,boolean,text,text,bytea)',
-  // 5701–5705/5708: deletes only the caller's tenant + company setup (checks job openings exist there first).
+  // 5851–5855/5858: deletes only the caller's tenant + company setup (checks job openings exist there first).
   'app.recruitment_delete_company_setup(uuid)',
   'app.recruitment_guard_agency_submission()',
-  // 5711: reads one job opening by id in the caller's tenant, and returns only hiring-manager user ids to the job's operators.
+  // 5861: reads one job opening by id in the caller's tenant, and returns only hiring-manager user ids to the job's operators.
   'app.recruitment_job_hiring_managers(uuid)',
-  // 5707: every job read filters by the caller's tenant (and the referral marker's companies, or the referrer's own rows).
+  // 5857: every job read filters by the caller's tenant (and the referral marker's companies, or the referrer's own rows).
   'app.recruitment_my_referrals()',
-  // 5725: joins the portal function's own rows to their job's reward and company currency (nothing else). Listed in the
+  // 5875: joins the portal function's own rows to their job's reward and company currency (nothing else). Listed in the
   // database's collation order, which sorts it before the portal function itself.
   'app.recruitment_referral_portal_rewards(uuid)',
   'app.recruitment_referral_portal(uuid)',
@@ -695,7 +695,7 @@ describe('row security on the careers tables', () => {
         exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where a.grantee = 0) as pub
       from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'app' and p.proname like 'recruitment\\_careers\\_%' order by 1`);
     expect(fns.map((f) => [f.f, f.definer, f.app, f.pub])).toEqual([
-      // Slice 21a (5722): the app role submits only through apply, which decides whether a verification is required.
+      // Slice 21a (5872): the app role submits only through apply, which decides whether a verification is required.
       ['app.recruitment_careers_apply(text,text,uuid,text,text,text,text,text,integer,boolean,text,text,bytea)', true, true, false],
       ['app.recruitment_careers_check_code(text,uuid,text,text,text,text)', true, true, false],
       ['app.recruitment_careers_client_limited(text)', true, true, false],
@@ -762,7 +762,7 @@ describe('the owner-only, marker-bound policies under a production-like owner', 
       expect((one.r as { notice: { version: number } }).notice.version).toBe(1);
       const [ok] = await tx`select app.recruitment_careers_apply(null, ${ADDRESS}, ${jobId}::uuid, ${hashOf('owner')}, 'Fictional Owner Applicant', 'owner.applicant@example.test',
         '+60 12-000 1111', 'Fictional message', 1, false, 'cv.pdf', 'application/pdf', ${pdf()}::bytea) as r`;
-      expect(ok.r).toMatchObject({ status: 'received' }); // 5722: the result also names the application and candidate (owner callers only)
+      expect(ok.r).toMatchObject({ status: 'received' }); // 5872: the result also names the application and candidate (owner callers only)
       const [repeat] = await tx`select app.recruitment_careers_apply(null, ${ADDRESS}, ${jobId}::uuid, ${hashOf('owner-2')}, 'Fictional Owner Applicant', 'OWNER.applicant@example.test',
         null, null, 1, false) as r`;
       expect(repeat.r).toMatchObject({ status: 'received' });
@@ -982,7 +982,7 @@ describe('a source that has used its hourly submissions is refused before its bo
 
 describe('residual-risk guard: owner-run functions that can see public careers rows', () => {
   it('pins every SECURITY DEFINER function that reads job openings, careers sites or careers notices, so a new one forces a review', async () => {
-    // The owner-only public policies (5708) expose every column of an Open job flagged for a published careers page, and
+    // The owner-only public policies (5858) expose every column of an Open job flagged for a published careers page, and
     // the published sites and their notices, to any code running as the owner. Each function listed here was reviewed
     // to filter by tenant and company itself (or to be a careers function returning only public fields). Adding one
     // fails this test: review it for that before adding it to the list.

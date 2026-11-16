@@ -23,7 +23,15 @@ export type ProbationConfig={
   defaultMonths:number;kpiGate:'block'|'warn'|'off';kpiDueWorkingDays:number;kpiReminderWorkingDay:number;
   issueLeadDays:number;firstReminderDays:number;dailyReminderDays:number;lowBand:number;maxExtensions:number;
   extensionMonths:number[];lmWaitsForEmployee:boolean;plans:{months:number;midpointMonths:number|null}[];
+  /** Absent on versions published before 16 Nov 2026; absent means the defaults below. */
+  nonWorkingDayRule?:ProbationNonWorkingDayRule;fallbackGroupId?:string|null;postingApproverGroupId?:string|null;
+  /** Which group standard and company setting versions produced this resolved version (migration 5742). */
+  scope?:ProbationSettingsProvenance;
 };
+export type ProbationNonWorkingDayRule='previous'|'next';
+export type ProbationSettingsProvenance={standardId:string;standardVersion:number;overrideId:string|null;overrideVersion:number|null;overrideKey:string|null;overrideName:string|null;fields:string[]};
+/** Defaults for the settings fields added with the group standard; an unset field behaves exactly as before. */
+export const PROBATION_SETTINGS_FIELD_DEFAULTS={nonWorkingDayRule:'previous' as ProbationNonWorkingDayRule,fallbackGroupId:null as string|null,postingApproverGroupId:null as string|null};
 export const DEFAULT_PROBATION_CONFIG:ProbationConfig={
   version:1,eligibleGrades:Array.from({length:12},(_,i)=>String(i+12)),gradeHEnabled:false,gradeHFormPublished:false,
   defaultMonths:6,kpiGate:'block',kpiDueWorkingDays:5,kpiReminderWorkingDay:3,issueLeadDays:30,
@@ -34,8 +42,10 @@ export function blankProbationAssessment():Assessment{return Object.fromEntries(
 export function validateProbationConfig(config:ProbationConfig):void{
   if(!Number.isSafeInteger(config.version)||config.version<1||!config.eligibleGrades.length||config.eligibleGrades.some(grade=>!/^(1[2-9]|2[0-3])$/.test(grade))||new Set(config.eligibleGrades).size!==config.eligibleGrades.length)reject('Choose a valid configuration version and eligible grades.');
   for(const n of [config.defaultMonths,config.kpiDueWorkingDays,config.kpiReminderWorkingDay,config.issueLeadDays,config.firstReminderDays,config.dailyReminderDays])if(!Number.isSafeInteger(n)||n<1||n>366)reject('Review timings must be positive whole numbers.');
-  if(!['block','warn','off'].includes(config.kpiGate)||!Number.isSafeInteger(config.lowBand)||config.lowBand<1||config.lowBand>5||config.maxExtensions!==2||config.extensionMonths.length!==2||!config.extensionMonths.includes(3)||!config.extensionMonths.includes(6))reject('Check the KPI gate, result threshold and extension limits.');
+  if(!['block','warn','off'].includes(config.kpiGate)||!Number.isSafeInteger(config.lowBand)||config.lowBand<1||config.lowBand>5||![0,1,2].includes(config.maxExtensions)||config.extensionMonths.length!==2||!config.extensionMonths.includes(3)||!config.extensionMonths.includes(6))reject('Check the KPI gate, result threshold and extension limits.');
   if(config.gradeHEnabled&&!config.gradeHFormPublished)reject('Publish approved Grade H form content before enabling Grade H.');
+  if(config.nonWorkingDayRule!==undefined&&!['previous','next'].includes(config.nonWorkingDayRule))reject('Choose how a due date on a non-working day moves.');
+  for(const group of [config.fallbackGroupId,config.postingApproverGroupId])if(group!==undefined&&group!==null&&(typeof group!=='string'||!group.trim()||group.length>200))reject('Choose an existing assignment group.');
   const lengths=new Set<number>();
   for(const p of config.plans){if(lengths.has(p.months)||!Number.isSafeInteger(p.months)||p.months<1||p.months>36||p.midpointMonths!==null&&(!Number.isSafeInteger(p.midpointMonths)||p.midpointMonths<1||p.midpointMonths>=p.months))reject('Choose unique review plans with valid review points.');lengths.add(p.months);}
 }
@@ -77,6 +87,8 @@ export type ProbationCase={
   revision:number;config:ProbationConfig;planMonths:number;planFlag:boolean;extensionCount:number;kpiAcknowledged:boolean;
   state:'kpi_setting'|'in_review'|'pending_approval'|'outcome_pending'|'confirmed'|'extended'|'not_confirmed'|'withdrawn';
   parts:ProbationPart[];pendingOutcome:ProbationOutcome|null;milestones?:{kpiReminderOn:string;kpiOverdueOn:string};
+  /** Why a withdrawn case closed (migration 5744): the hire did not join, or a Personnel exit after the start. */
+  closure?:'did_not_join'|'exit';
 };
 function validDay(day:string):void{if(!isCalendarDate(day))reject('Enter a valid calendar date.');}
 export function addProbationMonths(day:string,months:number):string{
@@ -90,8 +102,8 @@ export function advanceProbationWorkingDays(day:string,count:number,isWorking:(d
   for(let scanned=0;remaining>0&&scanned<3660;scanned++){current=addDaysIso(current,1);if(isWorking(current))remaining--;}
   if(remaining)reject('The employee working calendar could not resolve this date.');return current;
 }
-export function probationDueDay(day:string,isWorking:(day:string)=>boolean):string{
-  validDay(day);let current=day;for(let i=0;i<366;i++){if(isWorking(current))return current;current=addDaysIso(current,-1);}return reject('The employee working calendar could not resolve this date.');
+export function probationDueDay(day:string,isWorking:(day:string)=>boolean,rule:ProbationNonWorkingDayRule='previous'):string{
+  validDay(day);const step=rule==='next'?1:-1;let current=day;for(let i=0;i<366;i++){if(isWorking(current))return current;current=addDaysIso(current,step);}return reject('The employee working calendar could not resolve this date.');
 }
 export function newProbationPart(id:string,type:ProbationPartType,cycle:number,dueOn:string,lead:number):ProbationPart{
   validDay(dueOn);
@@ -107,8 +119,9 @@ export function createProbationCase(input:{id:string;employmentId:string;company
   const kpiDue=advanceProbationWorkingDays(input.startOn,input.config.kpiDueWorkingDays,input.isWorking);
   const p1=newProbationPart(input.nextId(),1,0,kpiDue,0);p1.issueOn=advanceProbationWorkingDays(input.startOn,1,input.isWorking);
   const parts=[p1];
-  if(plan?.midpointMonths){const midpoint=addProbationMonths(input.startOn,plan.midpointMonths);if(midpoint<end)parts.push(newProbationPart(input.nextId(),2,0,probationDueDay(midpoint,input.isWorking),input.config.issueLeadDays));}
-  parts.push(newProbationPart(input.nextId(),3,0,probationDueDay(end,input.isWorking),input.config.issueLeadDays));
+  const rule=input.config.nonWorkingDayRule??'previous';
+  if(plan?.midpointMonths){const midpoint=addProbationMonths(input.startOn,plan.midpointMonths);if(midpoint<end)parts.push(newProbationPart(input.nextId(),2,0,probationDueDay(midpoint,input.isWorking,rule),input.config.issueLeadDays));}
+  parts.push(newProbationPart(input.nextId(),3,0,probationDueDay(end,input.isWorking,rule),input.config.issueLeadDays));
   return{id:input.id,employmentId:input.employmentId,companyId:input.companyId,sourceKey:input.sourceKey,startOn:input.startOn,originalEndOn:end,endOn:end,gradeAtStart:input.grade,revision:1,config:structuredClone(input.config),planMonths:months,planFlag:input.months===null||!plan,extensionCount:0,kpiAcknowledged:false,state:'kpi_setting',parts,pendingOutcome:null};
 }
 export function probationRoute(type:ProbationPartType,holders:Record<ProbationRole,string|null>):SigningRoute{

@@ -238,3 +238,13 @@ All group 2 slices (19–25) are built. Owner: D-065 to D-070; the slice 24 prov
 
 Update 2026-11-16: the owner accepted the recommendations for D-065 to D-070 (D-071); no code changes. Still open: the slice 24
 provider-data approval (after legal review), re-binding existing provider approvals before staging, and rendered checks on an installation.
+
+## Checkpoint — main merged, migrations renumbered (2026-11-17)
+
+- `origin/main` at `f0443eaf2` (the Combined Irwin staging release) merged. Probation's task source and Recruitment's now sit side
+  by side in the inbox (`lib/assigned-work.ts`, `core/approvals-inbox.ts`, the bell, My tasks); the ops menu lists
+  Recruitment before HR Automation · Shared.
+- The whole recruitment block moved from `5700`–`5727` to `5850`–`5877` (idx 5250–5277, when 1793330005550–1793330005577),
+  because main's `5740`–`5770` now sort above the old numbers. Details and order risks in docs/MIGRATION-ALLOCATION.md.
+- A staging candidate must include `f0443eaf2`; queue behind the architecture/performance release (its migration moves to
+  5771) as well as the Combined Irwin ticket, so 5771 does not land below this block.

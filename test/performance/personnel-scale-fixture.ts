@@ -253,5 +253,8 @@ export async function installPreMigrationOwners(): Promise<() => Promise<void>> 
   });
   return async () => {
     await owner.client.unsafe(migrationSql('5020_personnel_overview_facts')).simple();
+    // Board 4604dccc r4: 5696 bounds the company before-image read of the owners 5020 re-created; replaying it leaves
+    // readers that already carry its bound unchanged.
+    await owner.client.unsafe(migrationSql('5696_information_correction_latest_saved')).simple();
   };
 }
