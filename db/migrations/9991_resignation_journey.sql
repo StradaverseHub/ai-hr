@@ -267,14 +267,21 @@ CREATE OR REPLACE FUNCTION app.automation_can_run(p_module text,p_subject uuid) 
 $$;
 --> statement-breakpoint
 CREATE FUNCTION app.resignation_offboarding_intent(p_id uuid) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE j resignation_journey;
+DECLARE j resignation_journey;construction jsonb;day date:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date;
 BEGIN
  SELECT * INTO j FROM resignation_journey WHERE id=p_id AND tenant_id=app.current_tenant_id();
  IF NOT FOUND OR j.stage NOT IN('accepted','leaving') OR NOT app.resignation_runtime_intent(p_id) THEN RAISE EXCEPTION 'Resignation handoff unavailable' USING ERRCODE='42501';END IF;
- RETURN jsonb_build_object('employmentId',j.employment_id,'type','Resignation','noticeDate',j.submitted_on::text,'lastDay',j.data->>'lastWorkingDay','manualHandoff',false,'offboardingCaseId',j.offboarding_case_id);
+ SELECT jsonb_build_object('employee',jsonb_build_object('id',e.id,'company_id',e.company_id,'person_id',e.person_id,'name',p.full_name,'employee_no',coalesce(e.employee_code,''),'hired_on',coalesce(e.join_date,e.hired_on)::text,'grade_id',e.grade_id,'confirmation_date',e.confirmation_date::text,'final_confirmation_date',e.final_confirmation_date::text,'probation_end_date',e.probation_end_date::text,'provisional_end_on',e.provisional_end_on::text),
+ 'assignment',(SELECT jsonb_build_object('department_id',a.department_id,'business_unit_id',a.business_unit_id,'position_id',a.position_id,'employment_type',a.employment_type::text) FROM assignment a WHERE a.tenant_id=j.tenant_id AND a.employment_id=j.employment_id AND a.superseded_at IS NULL AND a.valid_from<=day AND (a.valid_to IS NULL OR a.valid_to>day) ORDER BY a.valid_from DESC,a.id LIMIT 1),
+ 'logins',coalesce((SELECT jsonb_agg(jsonb_build_object('id',u.id) ORDER BY u.id) FROM app_user u WHERE u.tenant_id=j.tenant_id AND u.person_id=j.person_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)),'[]'::jsonb),
+ 'managers',coalesce((SELECT jsonb_agg(jsonb_build_object('id',u.id) ORDER BY u.id) FROM app_user u WHERE u.tenant_id=j.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND EXISTS(SELECT 1 FROM reporting_line rl JOIN employment me ON me.tenant_id=rl.tenant_id AND me.id=rl.manager_employment_id WHERE rl.tenant_id=j.tenant_id AND rl.subordinate_employment_id=j.employment_id AND rl.line_type='administrative' AND rl.superseded_at IS NULL AND rl.valid_from<=day AND (rl.valid_to IS NULL OR rl.valid_to>day) AND me.person_id=u.person_id)),'[]'::jsonb),
+ 'openExit',EXISTS(SELECT 1 FROM lc_v9_case c WHERE c.tenant_id=j.tenant_id AND c.employment_id=j.employment_id AND c.module='off' AND c.data->>'state' IN('pending','submitted'))) INTO construction
+ FROM employment e JOIN person p ON p.tenant_id=e.tenant_id AND p.id=e.person_id WHERE e.tenant_id=j.tenant_id AND e.id=j.employment_id AND e.company_id=j.company_id AND e.person_id=j.person_id;
+ IF construction IS NULL THEN RAISE EXCEPTION 'The resignation employment subject or company changed; review the case before handoff' USING ERRCODE='40001';END IF;
+ RETURN jsonb_build_object('employmentId',j.employment_id,'type','Resignation','noticeDate',j.submitted_on::text,'lastDay',j.data->>'lastWorkingDay','manualHandoff',false,'offboardingCaseId',j.offboarding_case_id,'construction',construction);
 END $$;
 CREATE FUNCTION app.resignation_offboarding_admit(p_id uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-BEGIN PERFORM app.resignation_offboarding_intent(p_id);PERFORM set_config('app.resignation_handoff',p_id::text,true);END $$;
+BEGIN PERFORM app.resignation_offboarding_intent(p_id);PERFORM 1 FROM employment e JOIN resignation_journey j ON j.tenant_id=e.tenant_id AND j.employment_id=e.id AND j.company_id=e.company_id AND j.person_id=e.person_id WHERE j.tenant_id=app.current_tenant_id() AND j.id=p_id FOR UPDATE OF e;IF NOT FOUND THEN RAISE EXCEPTION 'Resignation employment changed' USING ERRCODE='40001';END IF;PERFORM set_config('app.resignation_handoff',p_id::text,true);END $$;
 CREATE FUNCTION app.resignation_handoff_active() RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE id uuid;
 BEGIN id:=nullif(current_setting('app.resignation_handoff',true),'')::uuid;IF id IS NULL THEN RETURN false;END IF;PERFORM app.resignation_offboarding_intent(id);RETURN true;EXCEPTION WHEN OTHERS THEN RETURN false;END $$;
